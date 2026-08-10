@@ -1,0 +1,18 @@
+{
+  "reproduces": "A Greenhouse-hosted application form: the resume file input, the four identity fields, the per-ATS container and the submit control, on a boards.greenhouse.io URL. The Tier B case the gate exists for.",
+  "vendor": "greenhouse",
+  "reconstructed": "Everything. The `#application_form` container id is quoted from the per-ATS marker list in design section 5, which is what the gate probes for. The bracketed `job_application[...]` field names follow the hosted board's form-parameter convention; only the SUBSTRING is load-bearing to the gate, and the brackets around it are exactly why the identity probes match on substring rather than equality. The accept list is the ordinary resume set. No captured DOM, and no EEO text — the self-identification block a real Greenhouse form carries is left out deliberately, so this fixture scores on the file input and the identity cluster alone and cannot pass for the wrong reason.",
+  "page": {
+    "url": "https://boards.greenhouse.io/acme/jobs/701",
+    "text": "Apply for this job. All fields marked with an asterisk are required.",
+    "elements": [
+      {"tag": "form", "attrs": {"id": "application_form"}},
+      {"tag": "input", "attrs": {"type": "text", "name": "job_application[first_name]"}},
+      {"tag": "input", "attrs": {"type": "text", "name": "job_application[last_name]"}},
+      {"tag": "input", "attrs": {"type": "email", "name": "job_application[email]"}},
+      {"tag": "input", "attrs": {"type": "tel", "name": "job_application[phone]"}},
+      {"tag": "input", "attrs": {"type": "file", "name": "job_application[resume]", "accept": ".pdf,.doc,.docx"}},
+      {"tag": "button", "attrs": {"type": "submit"}, "text": "Submit Application"}
+    ]
+  }
+}

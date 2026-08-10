@@ -1,0 +1,25 @@
+{
+  "__README__": "sha256 of each app/prompts/<key>.txt as of the last time the prompt-row resync obligation was settled. tests/test_prompt_sync_guard.py fails when a file changes without this pin being updated. Read that test before editing: changing a prompt file does NOT change behaviour on an existing install.",
+  "prompts": {
+    "base_from_kb_plan": "9dcb06b4a55e57abfd6d52eee01d8544ae39975f669f5d0f223cc8d8329d45ec",
+    "chat_system": "a5b5b3082972c4e90a45cad97076d88bd72d9e41e540c00041d8e48c427a0649",
+    "coherence_check": "2286c214b4578a559112300f175ecb9ea86c7cf109f3681026fe566c35b548fc",
+    "cover_letter": "b9cdf001fcf1e18e0cb4330514cd645e8d10e0873ca2ec6476e169e4edb2a1b5",
+    "extract_jd": "fd955b146690cb9820623d375cd6ff054f38cf76354582ea1ec42a302f092608",
+    "gap_enrichment": "62c0f7b8e9d2b4f44b100b539c2a40bbe3ed0364009ae4a1a0480a3319ccda6c",
+    "gap_tailor": "8a28e2534ea90473394c4e94abe0e35924a66af0b3e3f8e4f45bce9beccb02b9",
+    "kb_adapt": "237b63cbe7999a881b6ab0d3a2b458da8096968ac9d14311ae55ad8d9645f513",
+    "kb_capture": "cfd740054e9e7ccae6669064e1c8f03d5a1b003bfa87691bddb6d8d43380263d",
+    "kb_cluster_points": "90958c6f80247a51e1f156465b3e12ea9f8e776dbe89adda93e1920e6dd667e4",
+    "kb_document_ingest": "d6eb363fff8269e3f44dc3837deccc4df12d8a5d61ce5491b4352b7264955540",
+    "kb_entity_resolve": "3e56287740b24c29aa876baf6f877edc2750fdf3235c991a5a999e243c3fc09b",
+    "kb_mint": "2b2788cb7ea5e40087ee6b28534f9437763f0af2abbac38d816151e23326fe9d",
+    "kb_resume_parse": "0df967ed4ffb5794d9f95826cc51531faa85e6ce4a0494c863b1b1f453eb9a0a",
+    "persona_draft": "5b4749bf6ac5a2bd5daa3d7c33517da09f72b3f780a957b8e8bfe778140f2801",
+    "qa": "d02528ca434a8b3e83813461267c58a650509f7e5d70bd1f36f11e32a1633e31",
+    "resume_bullet_classify": "34e8dddaa5c8bdb30b2d68b778c91411211bd86eb73d944d9e6aef1c7ecc2d57",
+    "resume_bullet_rewrite": "caf1f7f0bac731c99e772dd50ab3a02ebe2ee8210795c4a7312a87ff9f8f1b77",
+    "resume_finding_verify": "a2065f903bf4e7105d9968a76cd9b688ec5c6b213c7d15e0925f1d7d0dabb405",
+    "tailoring_skill": "afba8d2f74f8d8b519a8370c3be57749bef769394c6bf1593a2fdf22de5af348"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "reproduces": "A Workday tenant's job SEARCH page. An ATS host, per-ATS markers on every node, and nothing anyone can fill or save. The page that proves a host hit is never sufficient.",
+  "vendor": "workday",
+  "reconstructed": "Everything. The `[data-automation-id]` attribute is quoted from the per-ATS marker list in design section 5; Workday stamps it on essentially every node it renders, which is the whole reason it cannot be worth much on its own. The attribute VALUES are invented and nothing reads them. The search input is here because a search box is the shape most likely to be mistaken for a form field, and it is not one.",
+  "page": {
+    "url": "https://acme.wd5.myworkdayjobs.com/en-US/careers",
+    "text": "Search for jobs. 24 results. Sort by relevance.",
+    "elements": [
+      {"tag": "div", "attrs": {"data-automation-id": "searchPanel"}},
+      {"tag": "input", "attrs": {"type": "text", "name": "keywordSearchInput", "data-automation-id": "keywordSearchInput"}},
+      {"tag": "button", "attrs": {"type": "button", "data-automation-id": "searchButton"}, "text": "Search"},
+      {"tag": "ul", "attrs": {"data-automation-id": "jobResults"}}
+    ]
+  }
+}

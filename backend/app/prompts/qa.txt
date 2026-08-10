@@ -1,0 +1,25 @@
+Answer these job application questions based on the resume, job description, and memory below.
+
+RESUME JSON:
+${resume_json}
+
+JOB DESCRIPTION JSON:
+${jd_json}
+
+MEMORY:
+${memory}
+${referral_section}
+
+QUESTIONS:
+${questions}
+
+For each question:
+- Be specific and reference real experience from the resume.
+- Ground every claim in the resume above; never invent experience.
+- Tailor the answer to the job description.
+- Keep answers concise but substantive.
+- For years-of-experience questions, derive from resume dates.
+- For why-this-role questions, connect resume experience to JD requirements.
+- For outreach requests (e.g. a LinkedIn DM or a referral ask), write in first person, keep it short and specific, and address the known contact when one is listed above.
+
+Return answers numbered to match the questions above.

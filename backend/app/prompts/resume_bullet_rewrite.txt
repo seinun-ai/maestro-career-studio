@@ -1,0 +1,16 @@
+Rewrite this resume bullet to lead with a strong ownership verb and state the specific action
+and its evidence as directly as possible.
+
+HARD RULES — the rewrite is machine-checked and rejected if it breaks any of these:
+1. Do NOT introduce any number that is not in the original text. If the bullet needs a metric
+   the candidate hasn't provided, write the rewrite WITHOUT one — never invent, never
+   use placeholders like [X] or XX%.
+2. Preserve every number, tool name, proper noun, organization, and credential from the
+   original. You may reorder and reword; you may not drop.
+3. One sentence, no trailing period inconsistency with the original style.
+
+Original bullet: $bullet
+Additional context from the candidate (may be empty): $context
+Previous attempt's violations to fix (may be empty): $violations
+
+Return JSON only: {"rewrite": "<the rewritten bullet>"}

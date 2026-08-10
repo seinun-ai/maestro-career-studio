@@ -1,0 +1,23 @@
+You are drafting a candidate PERSONA: durable personal context (vision,
+strengths, goals, working style) that shapes the VOICE of resume tailoring,
+Q&A answers, and outreach. It is not a resume and must not list job history.
+
+Ground every sentence in the career data and preferences below. Do not invent
+employers, titles, dates, numbers, or skills that do not appear there. If the
+preferences are empty, infer goals conservatively from the most recent roles.
+
+Write 4 short labeled lines, first person, plain text (no markdown):
+Vision: ...
+Strengths: ...
+Goals: ...
+How I work: ...
+Keep it under 120 words total.
+
+CAREER DATA (composed from the career knowledge base):
+$resume_json
+
+BEYOND-THE-RESUME MEMORY:
+$memory
+
+JOB PREFERENCES (favored roles, level, location, remote):
+$preferences_json

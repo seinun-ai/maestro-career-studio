@@ -1,0 +1,19 @@
+{
+  "reproduces": "The iCIMS e-signature control. One field, kept as a fixture because it is the only signature in the corpus that must stay UNWRITTEN forever: it is the regression pin for the HR-3 deny-list against a real live label rather than an invented one.",
+  "vendor": "icims",
+  "changed_by": "Nothing. If a later task changes this fixture's characterisation away from policy_blocked, that task has a bug.",
+  "telemetry_verbatim": [
+    "signature | icims_f_signature | icims_f_signature"
+  ],
+  "reconstructed": "Nothing. `kind` is 'checkbox' because that is the kind telemetry recorded, which also means the never-tick default and the deny-list have to agree about this control — the deny-list runs first, so they do.",
+  "scenario": {
+    "fields": [
+      {"label": "signature | icims_f_signature | icims_f_signature", "kind": "checkbox"}
+    ],
+    "profile": {
+      "personal": {"first_name": "Sample", "last_name": "Applicant"}
+    },
+    "employment": [],
+    "eeo_enabled": false
+  }
+}

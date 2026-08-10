@@ -1,0 +1,76 @@
+{
+  "_comment": [
+    "Merge the entries you want into the `mcpServers` map of your own",
+    "claude_desktop_config.json, then replace every <PLACEHOLDER>:",
+    "  <MAESTRO_CS_MCP>  absolute path to the maestro-career-studio-mcp console script,",
+    "                       e.g. <REPO>/backend/.venv/bin/maestro-career-studio-mcp",
+    "  <REPO>               absolute path to your clone of this repository",
+    "  <HOME>               your home directory",
+    "  <NODE>               absolute path to node, e.g. /usr/local/bin/node",
+    "BACKEND_URL must be the HOST port compose publishes (8001 by default),",
+    "NOT the container's internal 8000.",
+    "Enable ONE profile per chat: running `full` alongside a scoped profile",
+    "registers the same tool twice and the model has to guess which to call.",
+    "MAESTRO_CS_MCP_CLIENT is an optional provenance label used only when the",
+    "MCP client does not announce its own name; KB writes are recorded with it."
+  ],
+  "mcpServers": {
+    "maestro-career-studio": {
+      "command": "<MAESTRO_CS_MCP>",
+      "env": {
+        "BACKEND_URL": "http://localhost:8001",
+        "MAESTRO_CS_MCP_PROFILE": "full"
+      }
+    },
+    "maestro-career-studio-hunt": {
+      "command": "<MAESTRO_CS_MCP>",
+      "env": {
+        "BACKEND_URL": "http://localhost:8001",
+        "MAESTRO_CS_MCP_PROFILE": "hunt"
+      }
+    },
+    "maestro-career-studio-apply": {
+      "command": "<MAESTRO_CS_MCP>",
+      "env": {
+        "BACKEND_URL": "http://localhost:8001",
+        "MAESTRO_CS_MCP_PROFILE": "apply",
+        "MAESTRO_CS_UPLOAD_DIR": "<REPO>/.playwright-mcp/uploads"
+      }
+    },
+    "maestro-career-studio-explore": {
+      "command": "<MAESTRO_CS_MCP>",
+      "env": {
+        "BACKEND_URL": "http://localhost:8001",
+        "MAESTRO_CS_MCP_PROFILE": "explore"
+      }
+    },
+        "maestro-career-studio-templates": {
+            "command": "<MAESTRO_CS_MCP>",
+            "env": {
+                "BACKEND_URL": "http://localhost:8001",
+                "MAESTRO_CS_MCP_PROFILE": "templates"
+            }
+        },
+        "maestro-career-studio-career": {
+            "command": "<MAESTRO_CS_MCP>",
+            "env": {
+                "BACKEND_URL": "http://localhost:8001",
+                "MAESTRO_CS_MCP_PROFILE": "career",
+                "MAESTRO_CS_MCP_CLIENT": "Claude Desktop"
+            }
+        },
+        "playwright": {
+      "command": "<NODE>",
+      "args": [
+        "<HOME>/.maestro-cs/mcp/node_modules/@playwright/mcp/cli.js",
+        "--browser=chrome",
+        "--user-data-dir=<HOME>/.maestro-cs/apply-profile",
+        "--output-dir=<REPO>/.playwright-mcp"
+      ],
+      "env": {
+        "HOME": "<HOME>",
+        "npm_config_cache": "<HOME>/.npm"
+      }
+    }
+  }
+}

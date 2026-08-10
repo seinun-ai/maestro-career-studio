@@ -1,0 +1,75 @@
+# Market vocabulary — the ONE source of truth for locale behaviour.
+#
+# `key` is the value stored in the `market` setting. `currency` is the default
+# for `salary_currency` on jobs captured while this market is selected.
+#
+# THIS IS DOMAIN DATA, NOT AN ENUM — the same contract role_categories.yaml
+# declares. Adding a market here gives you its currency default, its date
+# conventions and its EEO posture with no code change.
+#
+# `eeo_module` is DELIBERATELY NULL for most markets. It is only non-null where
+# the question set has been verified against a primary source. Shipping a
+# demographic question set we have not verified would be worse than shipping
+# none: the categories are not interchangeable between countries (an Arab
+# candidate is "White" on the US EEO-1 form and "Other ethnic group / Arab" on
+# the UK GSS list), so a wrong module files factually false data under the
+# user's name. France's regulator (CNIL délibération 2025-028) uses a closed
+# ethnic-category dropdown as its worked example of an unlawful question —
+# that is the failure mode a guessed module walks into.
+#
+# A null `eeo_module` means the UI offers no EEO section for that market and
+# says so. That is an honest limit, not a gap to fill by inference.
+
+markets:
+  - key: US
+    label: United States
+    currency: USD
+    date_format: MDY
+    # Verified: EEOC Standard Form 100 (OMB 3046-0007) — 7 categories, with
+    # ethnicity asked first and overriding race. Note both artifacts this
+    # models (CC-305 and the EEO-1 itself) are under live proposals to be
+    # rescinded; re-check before treating this as stable.
+    eeo_module: us_eeo1
+    work_auth_vocab: us_visa
+
+  - key: UK
+    label: United Kingdom
+    currency: GBP
+    date_format: DMY
+    # Verified: GSS/ONS harmonised standard (2021 Census, England & Wales) —
+    # 5 high-level groups, 19 detailed options, plus "Prefer not to say".
+    # Scotland and Northern Ireland use DIFFERENT lists; this module covers
+    # England & Wales only and must say so at the point of asking.
+    eeo_module: uk_gss
+    work_auth_vocab: uk
+
+  - key: CA
+    label: Canada
+    currency: CAD
+    date_format: DMY
+    eeo_module: null          # employment-equity categories not verified
+    work_auth_vocab: generic
+
+  - key: AU
+    label: Australia
+    currency: AUD
+    date_format: DMY
+    eeo_module: null          # not verified
+    work_auth_vocab: generic
+
+  - key: IE
+    label: Ireland
+    currency: EUR
+    date_format: DMY
+    eeo_module: null          # not verified
+    work_auth_vocab: generic
+
+  - key: IN
+    label: India
+    currency: INR
+    date_format: DMY
+    # Deliberately null. The relevant categories here are caste/reservation
+    # ones (SC/ST/OBC), which carry legal weight in public-sector hiring and
+    # are not ours to infer. No module until verified against a primary source.
+    eeo_module: null
+    work_auth_vocab: generic

@@ -1,0 +1,33 @@
+{
+  "reproduces": "Workday Education: year-only date widgets whose own label is just 'Year' and whose question ('From', 'To (actual or expected)') lives only in the container text.",
+  "vendor": "workday",
+  "changed_by": "Task 8 (date-part writer)",
+  "telemetry_verbatim": [
+    "year | education-193--firstyearattended-datesectionyear-input | from",
+    "year | education-193--lastyearattended-datesectionyear-input | to (actual or expected)"
+  ],
+  "reconstructed": "Only the two year inputs are quoted from GET /api/autofill/telemetry/summary. School, Degree and Field of Study are reconstructed from Workday's naming convention; they are here as positive controls, because they are the fields in this block that today's rules already fill, so a characterisation change in them is a change Task 8 did not intend. No month sibling is included: Workday's education dates are year-only, which is exactly what the two signatures show (datesectionyear with no datesectionmonth alongside), and inventing one would let Task 8 solve a problem this page does not pose.",
+  "scenario": {
+    "fields": [
+      {"label": "school or university | education-193--school", "kind": "text"},
+      {"label": "degree | education-193--degree", "kind": "text"},
+      {"label": "field of study | education-193--fieldofstudy", "kind": "text"},
+      {"label": "year | education-193--firstyearattended-datesectionyear-input | from", "kind": "text"},
+      {"label": "year | education-193--lastyearattended-datesectionyear-input | to (actual or expected)", "kind": "text"}
+    ],
+    "profile": {
+      "personal": {"first_name": "Sample", "last_name": "Applicant"},
+      "education": [
+        {
+          "school": "Northern Institute of Technology",
+          "degree": "Master of Science",
+          "discipline": "Statistics",
+          "start_year": "2016",
+          "end_year": "2018"
+        }
+      ]
+    },
+    "employment": [],
+    "eeo_enabled": false
+  }
+}

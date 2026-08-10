@@ -1,0 +1,25 @@
+% ---------------------------------------------------------------------------
+% Header layout adapted from "Jake's Resume" by Jake Gutierrez
+%   https://github.com/jakegut/resume
+%   Copyright (c) 2021 Jake Gutierrez — MIT License
+% Full license text: THIRD_PARTY_NOTICES.md at the repository root.
+%
+% Included by BOTH resume.tex.j2 and cover_letter.tex.j2 — format and scanner
+% changes must handle both (see docs/SYSTEM.md §6).
+% ---------------------------------------------------------------------------
+((* if fmt.header_align == "left" *))\begin{flushleft}((* elif fmt.header_align == "right" *))\begin{flushright}((* else *))\begin{center}((* endif *))
+    {\Huge \scshape ((( contact.name|latex_escape ))) } \\ \vspace{1pt}
+    ((( contact.location|latex_escape ))) \\ \vspace{1pt}
+    \small
+((* if contact.phone *))
+    \raisebox{-0.1\height}\faPhone\ ((( contact.phone|latex_escape ))) ~
+((* endif *))
+    \href{mailto:((( contact.email|latex_escape )))}{\raisebox{-0.2\height}\faEnvelope\ \underline{((( contact.email|latex_escape )))}} ~
+((* if contact.linkedin *))
+    \href{https://((( contact.linkedin|latex_escape )))}{\raisebox{-0.2\height}\faLinkedin\ \underline{((( contact.linkedin|latex_escape )))}} ~
+((* endif *))
+((* if contact.github *))
+    \href{https://((( contact.github|latex_escape )))}{\raisebox{-0.2\height}\faGithub\ \underline{((( contact.github|latex_escape ))) }}
+((* endif *))
+((* if fmt.header_align == "left" *))\end{flushleft}((* elif fmt.header_align == "right" *))\end{flushright}((* else *))\end{center}((* endif *))
+\vspace{((( fmt.section_spacing - 18 )))pt}

@@ -1,0 +1,122 @@
+{
+  "contact": {
+    "name": "Morgan Example",
+    "email": "morgan.example@example.com",
+    "phone": "+1 (555) 010-2048",
+    "location": "Sampleton, IL",
+    "linkedin": "linkedin.com/in/morgan-example",
+    "github": "github.com/morgan-example",
+    "website": "morgan-example.example"
+  },
+  "summary": "Data engineer with six years of experience building reliable analytics platforms, governed data products, and observable batch and streaming pipelines. Partners with analysts and product teams to turn ambiguous questions into measurable, maintainable systems.",
+  "skills": [
+    {
+      "category": "Languages",
+      "items": [
+        "Python",
+        "SQL",
+        "TypeScript",
+        "Bash"
+      ]
+    },
+    {
+      "category": "Data Platforms",
+      "items": [
+        "PostgreSQL",
+        "DuckDB",
+        "Apache Spark",
+        "Apache Kafka",
+        "dbt"
+      ]
+    },
+    {
+      "category": "Cloud and Delivery",
+      "items": [
+        "AWS",
+        "Docker",
+        "Terraform",
+        "GitHub Actions",
+        "OpenTelemetry"
+      ]
+    }
+  ],
+  "experience": [
+    {
+      "company": "Example Analytics Cooperative",
+      "role": "Senior Data Engineer",
+      "location": "Sampleton, IL",
+      "start_date": "March 2022",
+      "end_date": "Present",
+      "enabled": true,
+      "bullets": [
+        "Designed a governed lakehouse ingestion framework processing 18 million daily events with 99.9% successful scheduled runs.",
+        "Reduced median pipeline recovery time from 95 minutes to 24 minutes by adding lineage-aware alerts, replay tools, and runbooks.",
+        "Built reusable dbt models and data contracts for 14 product domains, cutting duplicated analyst queries by 38%.",
+        "Mentored four engineers and led quarterly reliability reviews that retired 27 brittle jobs without interrupting reporting."
+      ]
+    },
+    {
+      "company": "Demo Logistics Laboratory",
+      "role": "Data Engineer",
+      "location": "Remote",
+      "start_date": "June 2019",
+      "end_date": "February 2022",
+      "enabled": true,
+      "bullets": [
+        "Developed Python and SQL pipelines that unified shipment, inventory, and service data from nine source systems.",
+        "Improved forecast-data freshness from next-day to hourly by introducing incremental loads and event-driven orchestration.",
+        "Lowered warehouse compute spend by 31% through partition redesign, query profiling, and automated retention policies.",
+        "Partnered with operations analysts to define 22 quality checks covering completeness, timeliness, and referential integrity."
+      ]
+    }
+  ],
+  "projects": [
+    {
+      "name": "Open Metrics Workshop",
+      "enabled": true,
+      "tech": "Python, DuckDB, FastAPI, Docker",
+      "link": "github.com/morgan-example/open-metrics-workshop",
+      "date": "2025",
+      "bullets": [
+        "Created a local-first reference application that validates event schemas and calculates product metrics from synthetic data.",
+        "Added reproducible fixtures and contract tests covering late events, duplicate records, and schema evolution."
+      ]
+    },
+    {
+      "name": "Transit Reliability Explorer",
+      "enabled": true,
+      "tech": "Python, PostgreSQL, dbt, TypeScript",
+      "link": "morgan-example.example/transit-explorer",
+      "date": "2024",
+      "bullets": [
+        "Built an interactive dashboard over a fictional transit dataset with route-level delay and service-frequency analysis.",
+        "Documented metric definitions and freshness expectations so each chart could be audited back to its source."
+      ]
+    }
+  ],
+  "education": [
+    {
+      "institution": "Sample State Institute of Technology",
+      "degree": "Bachelor of Science",
+      "field": "Information Systems",
+      "location": "Sampleton, IL",
+      "start_date": "August 2015",
+      "end_date": "May 2019",
+      "graduation_date": "May 2019",
+      "gpa": "GPA 3.7/4.0",
+      "coursework": [
+        "Database Systems",
+        "Distributed Computing",
+        "Applied Statistics"
+      ],
+      "bullets": [
+        "Led a student data clinic that delivered reproducible analyses for three fictional community programs."
+      ]
+    }
+  ],
+  "certifications": [
+    "Example Cloud Data Engineer Certificate, 2024",
+    "Demo Analytics Engineering Credential, 2023"
+  ],
+  "extra_sections": []
+}

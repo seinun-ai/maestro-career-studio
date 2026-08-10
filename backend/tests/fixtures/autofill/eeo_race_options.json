@@ -1,0 +1,22 @@
+{
+  "reproduces": "A 'select all that apply' race/ethnicity block whose per-option checkboxes carry NO EEO keyword anywhere in the label — not in the option text, not in the id, and no fieldset legend was found — so isEeoLabel() does not recognise them even with the EEO opt-in on.",
+  "vendor": "unknown (dq-option-* is a diversity-question id, seen on a Taleo-family page)",
+  "changed_by": "Task 9",
+  "telemetry_verbatim": [
+    "american indian or alaska native | dq-option-7 | american indian or alaska native"
+  ],
+  "reconstructed": "The two sibling options. Their option TEXTS are the OMB SPD 15 category names — public standard wording, not captured content — and their ids continue the dq-option-N sequence the verbatim signature shows; the numbers are invented. Critically, no fieldset segment such as 'race/ethnicity (select all that apply)' is appended to any of them: the verbatim signature has three segments and none of them is a legend, which is the whole reason these controls are invisible to isEeoLabel. A comment in sidepanel.js (the eeoOptionFor block) asserts that a fieldset adds that text on the end — the live signature says otherwise for this page, and reconstructing it here would hide the defect.",
+  "scenario": {
+    "fields": [
+      {"label": "american indian or alaska native | dq-option-7 | american indian or alaska native", "kind": "checkbox"},
+      {"label": "asian | dq-option-8 | asian", "kind": "checkbox"},
+      {"label": "white | dq-option-9 | white", "kind": "checkbox"}
+    ],
+    "profile": {
+      "personal": {"first_name": "Sample", "last_name": "Applicant"},
+      "eeo": {"race_ethnicity": ["American Indian or Alaska Native", "Asian"]}
+    },
+    "employment": [],
+    "eeo_enabled": true
+  }
+}

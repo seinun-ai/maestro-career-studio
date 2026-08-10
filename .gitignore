@@ -1,0 +1,73 @@
+# deps
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# build
+.next/
+dist/
+build/
+*.egg-info/
+
+# env
+.env
+.env.*
+!.env.example
+
+# os
+.DS_Store
+
+# generated code-graph (regenerate: graphify extract . --no-cluster --code-only)
+graphify-out
+
+# app data (runtime state — contains real resume/profile PII; never commit)
+/applications/*
+!/applications/.gitkeep
+/logs/*
+!/logs/.gitkeep
+/exports/*
+!/exports/.gitkeep
+/settings/*
+!/settings/.gitkeep
+/base_resumes/*
+!/base_resumes/.gitkeep
+!/base_resumes/example.json
+# template_previews/ is a RUNTIME OUTPUT dir, not an asset dir: validation writes
+# <template_id>.pdf there (template_validation._preview_path) and mkdirs it on
+# demand. It used to be un-ignored, which committed previews of whatever
+# templates the developer happened to have — including third-party-derived ones
+# of unclear provenance. Nothing reads the committed copies: the router
+# regenerates on validate and 404s cleanly when absent, and every test writes its
+# own into a tmp base_resumes_dir.
+/kb_documents/*
+!/kb_documents/.gitkeep
+/pgdata/
+
+# editor
+.vscode/
+.idea/
+.cursor/
+.claude/
+.worktrees/
+
+# caches
+.npm-cache/
+frontend/.npm-cache/
+
+# latex build artifacts
+*.aux
+*.log
+*.out
+
+# Monaco is vendored into public/ at build time by frontend/scripts/vendor-monaco.mjs
+# (15 MB copied from node_modules). Generated output, not source.
+/frontend/public/monaco/
+
+# Agent scratch space, per-machine byproducts either way. `tmp/` collects one-off
+# screenshots and probe output; `.playwright-mcp/` is Playwright MCP's output
+# tree (traces, plus the staged upload copies described in SYSTEM.md §6). Both
+# were swept into a commit by a careless `git add -A` on 2026-08-05.
+/tmp/
+/.playwright-mcp/

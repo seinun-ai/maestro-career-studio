@@ -1,0 +1,20 @@
+{
+  "reproduces": "Workday Skills: one token input that accepts many values, whose only human-readable segment is the placeholder 'Type to add skills'.",
+  "vendor": "workday",
+  "changed_by": "Task 10 (token-input writer)",
+  "telemetry_verbatim": [
+    "type to add skills | search | skills--skills"
+  ],
+  "reconstructed": "Nothing in the field. `kind` is 'text', not 'combobox', because that is the kind telemetry recorded for this signature — isCombobox() returned false on the live page, so Task 10 must not route this through fillCombobox on the assumption that a token widget is a combobox. The profile's top-level `skills` list WAS an invention when Task 7 wrote this fixture, flagged as a proposal Task 10 could rename; Task 10 checked and moved it. Skills are not a profile field: the live autofill profile's top-level keys are personal/education/work_auth/eeo/preferences and nothing else, while every base resume carries data_json.skills as `{category, items[]}` groups — which is also what the design doc's own failure table says the answer is ('resume skills'). So the source is the RESUME, flattened by GET /api/autofill/skills, and it is declared here as its own `skills` scenario key rather than smuggled through the profile. `tokenizes` is what makes the box a token input in the harness: Enter turns whatever is in it into a chip and empties the box, which is why the box reads empty after a SUCCESSFUL fill.",
+  "scenario": {
+    "fields": [
+      {"label": "type to add skills | search | skills--skills", "kind": "text", "tokenizes": true}
+    ],
+    "profile": {
+      "personal": {"first_name": "Sample", "last_name": "Applicant"}
+    },
+    "employment": [],
+    "skills": ["Python", "SQL", "Experiment design"],
+    "eeo_enabled": false
+  }
+}

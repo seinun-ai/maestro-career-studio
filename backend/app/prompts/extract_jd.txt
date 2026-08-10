@@ -1,0 +1,53 @@
+Extract structured job-description data from the raw posting below.
+
+Return ONLY valid JSON with this shape:
+{
+  "company": "<company or null>",
+  "title": "<job title or null>",
+  "role_category": "<$role_options>",
+  "level": "<intern|entry|mid|senior|lead|unknown>",
+  "employment_type": "<full_time|part_time|contract|internship|unknown>",
+  "work_mode": "<remote|hybrid|onsite|unknown>",
+  "city": "<city name or null>",
+  "state": "<2-letter US state code if US, full state/region name otherwise, or null>",
+  "country": "<ISO 3166-1 alpha-2 code (e.g. US, CA, GB) or null>",
+  "requisition_id": "<the posting's requisition/job ID (e.g. R-12345, JR0087, 7381794002) or null>",
+  "location_raw": "<original location string verbatim, or null>",
+  "salary_min": <number or null>,
+  "salary_max": <number or null>,
+  "salary_period": "<hour|day|week|month|year|unknown|null>",
+  "salary_currency": "<ISO 4217 code (USD, GBP, EUR, INR, …) or null>",
+  "salary_source_url": "<URL of a linked pay-scale/benefits page when the posting hyperlinks pay instead of stating numbers, else null>",
+  "work_authorization": "<sponsorship_available|no_sponsorship|citizen_or_gc_required|unstated>",
+  "opt_accepted": "<yes|stem_opt_ok|no|unstated>",
+  "years_experience_min": <integer or null>,
+  "years_experience_max": <integer or null>,
+  "skills": [
+    {
+      "skill_name": "<specific skill>",
+      "skill_category": "<language|framework|cloud|database|tool|methodology|domain|certification|other>",
+      "requirement_level": "<required|preferred|mentioned>"
+    }
+  ],
+  "responsibilities": ["<short responsibility>"],
+  "qualifications": ["<short qualification>"]
+}
+
+Rules:
+- Normalize obvious synonyms, but preserve concrete tool names exactly.
+- Extract only skills actually present in the job description.
+- Use null for missing scalar fields.
+- `requisition_id`: the ATS requisition/job identifier when the posting shows one (Workday "R-12345"/"JR…", Greenhouse/Lever numeric or slug ids, "Req ID", "Job ID", "Requisition Number"). Copy it verbatim. Use null when the posting names none. Never invent or derive one.
+- `location_raw` must preserve the original location phrase verbatim (e.g. "Austin, TX (Hybrid)"); `city`/`state`/`country` are best-effort parses, null when ambiguous.
+- Salary is OPTIONAL. Most postings state no pay at all (~40%+ of US, ~88% of German). A null `salary_min`/`salary_max` is the correct, complete answer — never invent numbers, never treat absence as a failure. When the posting only hyperlinks a publicly viewable pay-scale/benefits page (common under Illinois 820 ILCS 112/10(b-25)), set `salary_source_url` to that URL and leave min/max null.
+- `salary_currency`: ISO 4217 from the posting's stated currency or unambiguous symbol (£→GBP, €→EUR, $ alone is ambiguous across countries — prefer null over guessing when the country is not US). Null when there is no salary amount. Never invent a currency for a null salary.
+- `salary_period`: include `day` and `week` for contractor day/week rates (UK/EU). Use `hour`/`month`/`year` when those are stated.
+- `work_authorization`: use `no_sponsorship` when the posting says sponsorship is not provided — e.g. "no sponsorship", "will not sponsor", "unable to sponsor", "we do not provide sponsorship now or in the future", "must be authorized to work in the US without sponsorship"; `citizen_or_gc_required` when US citizenship, a green card, a security clearance, or US-person status is required — e.g. "US citizens only", "US citizenship required", "active security clearance required", "must be a US person"; `sponsorship_available` when visa sponsorship is explicitly offered; otherwise `unstated`. Do not infer `citizen_or_gc_required` from inclusive language like "US citizens are encouraged to apply".
+- `opt_accepted`: `yes` if any OPT is acceptable, `stem_opt_ok` if only STEM OPT is mentioned as acceptable, `no` if OPT is explicitly excluded; otherwise `unstated`.
+- `years_experience_min`/`max`: extract from phrases like "3-5 years" (min=3, max=5) or "5+ years" (min=5, max=null) or "minimum 7 years" (min=7, max=null). Use null when unstated.
+- Named certifications, licenses and clearances are skills: emit each as a skills row with `skill_category` "certification" and the FULL official name in `skill_name` (e.g. "AWS Certified Solutions Architect - Associate", not "SAA-C03" and not "AWS cert"). Emit one ONLY when the posting names it; never infer a certification from seniority, role type or the tools mentioned. Most postings name none — an empty result is correct.
+- Degree and education requirements are NOT skills. Leave them in `qualifications` verbatim (e.g. "MS in Computer Science required"); do not turn them into skills rows.
+- Return a single JSON object. No markdown fences.
+
+RAW JOB DESCRIPTION:
+${raw_jd}

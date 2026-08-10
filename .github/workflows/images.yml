@@ -1,0 +1,113 @@
+name: Publish container images
+
+# Prebuilt images are the difference between `docker compose up -d` (a download)
+# and `docker compose up --build` (every new user compiling TeX Live locally).
+#
+# Each architecture builds on a NATIVE runner and pushes a digest; a second job
+# merges those digests into one manifest list, so `docker pull` resolves the
+# right architecture automatically. Apple Silicon otherwise runs amd64 under
+# emulation, which is brutal for LaTeX and ONNX.
+#
+# arm64 hosted runners (ubuntu-24.04-arm) are free for public repositories.
+# Building arm64 under QEMU instead costs multiples of the wall clock.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  build:
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { component: backend, platform: linux/amd64, runner: ubuntu-24.04, arch: amd64 }
+          - { component: backend, platform: linux/arm64, runner: ubuntu-24.04-arm, arch: arm64 }
+          - { component: frontend, platform: linux/amd64, runner: ubuntu-24.04, arch: amd64 }
+          - { component: frontend, platform: linux/arm64, runner: ubuntu-24.04-arm, arch: arm64 }
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: ./${{ matrix.component }}
+          platforms: ${{ matrix.platform }}
+          # Push by digest only; the `merge` job attaches the human-readable
+          # tags to the manifest list. Tagging here would leave the last arch
+          # to push overwriting the tag with a single-arch image.
+          outputs: type=image,name=${{ env.REGISTRY }}/${{ github.repository }}-${{ matrix.component }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=${{ matrix.component }}-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.component }}-${{ matrix.arch }}
+
+      - name: Export digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/digests
+          touch "/tmp/digests/${{ matrix.component }}-${{ matrix.arch }}-${DIGEST}"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: digests-${{ matrix.component }}-${{ matrix.arch }}
+          path: /tmp/digests/*
+          retention-days: 1
+
+  merge:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        component: [backend, frontend]
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: digests-${{ matrix.component }}-*
+          path: /tmp/digests
+          merge-multiple: true
+
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create manifest list
+        env:
+          IMAGE: ${{ env.REGISTRY }}/${{ github.repository }}-${{ matrix.component }}
+        run: |
+          set -euo pipefail
+          # Filenames are "<component>-<arch>-sha256:...."; recover the digest.
+          digests=$(ls /tmp/digests | sed 's/.*-\(sha256:.*\)/\1/')
+          refs=""
+          for d in $digests; do refs="$refs $IMAGE@$d"; done
+          tags="-t $IMAGE:latest"
+          if [ "${GITHUB_REF_TYPE:-}" = "tag" ]; then
+            tags="$tags -t $IMAGE:${GITHUB_REF_NAME#v}"
+          fi
+          # shellcheck disable=SC2086
+          docker buildx imagetools create $tags $refs
+          docker buildx imagetools inspect "$IMAGE:latest"

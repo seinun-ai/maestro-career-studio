@@ -1,0 +1,46 @@
+version: 2
+
+# Dependency updates for every ecosystem this repo ships from. The Python entry
+# is the load-bearing one: backend/requirements.lock is what the published
+# container image installs, so an unpatched advisory there reaches users who
+# `docker pull` rather than only developers.
+#
+# Grouped and monthly on purpose -- a solo-maintained project drowns in daily
+# single-package PRs and starts ignoring them, which is worse than a slower
+# cadence that actually gets reviewed. Security updates are NOT subject to this
+# schedule; Dependabot raises those as soon as an advisory lands.
+updates:
+  - package-ecosystem: pip
+    directory: /backend
+    schedule:
+      interval: monthly
+    groups:
+      python-dependencies:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: monthly
+    groups:
+      js-dependencies:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  # Actions are pinned to commit SHAs (a tag is mutable, a SHA is not), which
+  # means nothing updates them without this entry.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: docker
+    directories:
+      - /backend
+      - /frontend
+    schedule:
+      interval: monthly

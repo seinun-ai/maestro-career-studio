@@ -1,0 +1,128 @@
+{
+  "composite": 70.4,
+  "config_version": "07f66d3e2a1f",
+  "coverage_ratio": 0.6667,
+  "coverage_warning": null,
+  "engine_version": "ats-2.5.0",
+  "format_flags": [],
+  "gate_warnings": [],
+  "jd_skills_extracted_count": 6,
+  "jd_skills_matched_count": 4,
+  "requirement_coverage": [
+    {
+      "line": "Build ML models",
+      "score": 0.749
+    },
+    {
+      "line": "5+ years of experience",
+      "score": 0.6565
+    }
+  ],
+  "skill_table": [
+    {
+      "canonical": "python",
+      "contribution": 3.0,
+      "evidence_entries": [
+        "DataCo \u2014 Data Scientist",
+        "RAG Search"
+      ],
+      "fix_hint": null,
+      "jd_skill": "Python",
+      "last_used": "current",
+      "match_credit": 1.0,
+      "match_form": "exact",
+      "matched": true,
+      "matched_term": "python",
+      "placement": "dual",
+      "recency_weight": 1.0,
+      "requirement_level": "required"
+    },
+    {
+      "canonical": "snowflake",
+      "contribution": 0.4,
+      "evidence_entries": [],
+      "fix_hint": "adjacent_available",
+      "jd_skill": "Snowflake",
+      "last_used": null,
+      "match_credit": 0.5,
+      "match_form": "adjacent",
+      "matched": true,
+      "matched_term": "bigquery",
+      "placement": "skills_list_only",
+      "recency_weight": null,
+      "requirement_level": "required"
+    },
+    {
+      "canonical": "salesforce",
+      "contribution": 0.0,
+      "evidence_entries": [],
+      "fix_hint": "absent",
+      "jd_skill": "Salesforce",
+      "last_used": null,
+      "match_credit": 0.0,
+      "match_form": null,
+      "matched": false,
+      "matched_term": null,
+      "placement": null,
+      "recency_weight": null,
+      "requirement_level": "required"
+    },
+    {
+      "canonical": "aws",
+      "contribution": 1.5,
+      "evidence_entries": [
+        "DataCo \u2014 Data Scientist"
+      ],
+      "fix_hint": "mirror_wording",
+      "jd_skill": "AWS",
+      "last_used": "current",
+      "match_credit": 1.0,
+      "match_form": "alias",
+      "matched": true,
+      "matched_term": "amazon web services",
+      "placement": "dual",
+      "recency_weight": 1.0,
+      "requirement_level": "preferred"
+    },
+    {
+      "canonical": "tableau",
+      "contribution": 0.4369,
+      "evidence_entries": [
+        "OldCo \u2014 Analyst"
+      ],
+      "fix_hint": "resurface_recent",
+      "jd_skill": "Tableau",
+      "last_used": "2021-06-01",
+      "match_credit": 1.0,
+      "match_form": "exact",
+      "matched": true,
+      "matched_term": "tableau",
+      "placement": "experience_only",
+      "recency_weight": 0.4369,
+      "requirement_level": "preferred"
+    },
+    {
+      "canonical": "docker",
+      "contribution": 0.0,
+      "evidence_entries": [],
+      "fix_hint": "absent",
+      "jd_skill": "Docker",
+      "last_used": null,
+      "match_credit": 0.0,
+      "match_form": null,
+      "matched": false,
+      "matched_term": null,
+      "placement": null,
+      "recency_weight": null,
+      "requirement_level": "mentioned"
+    }
+  ],
+  "subscores": {
+    "format": 1.0,
+    "keyword": 0.5882,
+    "placement_recency": 0.4186,
+    "semantic_fit": 0.7027,
+    "title": 1.0
+  },
+  "title_tier": "direct"
+}

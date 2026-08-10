@@ -1,0 +1,15 @@
+{
+  "entry_points": [],
+  "duplication_ignore": ["**/tests/**", "**/test_*.py", "**/*_test.py",
+                         "**/conftest.py", "**/__snapshots__/**", "**/*.spec.ts",
+                         "**/*.test.ts", "**/migrations/**",
+                         "**/package-lock.json",
+                         "**/.slop-baseline.json", "**/graphify-out/**"],
+  "allowed_clones": [
+    {
+      "a": "app/settings/page.tsx",
+      "b": "components/settings/autofill-section.tsx",
+      "reason": "Import block only, not logic (verified against the jscpd JSON report 2026-08-04). Both are settings surfaces assembled from the same shadcn primitives, so their import lists already agreed for 13 lines; adding `import { Label }` to page.tsx pushed the identical run past the 50-token threshold. Shared imports cannot be deduplicated. Allowlisted rather than re-baselined so a real duplication regression in either file still trips the gate."
+    }
+  ]
+}

@@ -1,0 +1,74 @@
+{
+  "reproduces": "Workday Work Experience: two visible workexperience-N-- blocks preceded by the hidden prototype block Workday keeps in the DOM.",
+  "vendor": "workday",
+  "changed_by": "Task 11 (safe checkbox writer)",
+  "telemetry_verbatim": [
+    "job title* | jobtitle | workexperience-192--jobtitle",
+    "company* | companyname | workexperience-192--companyname",
+    "location | location | workexperience-192--location",
+    "i currently work here | currentlyworkhere | workexperience-192--currentlyworkhere",
+    "month | workexperience-192--startdate-datesectionmonth-input | from*",
+    "year | workexperience-192--startdate-datesectionyear-input | from*",
+    "month | workexperience-192--enddate-datesectionmonth-input | to*",
+    "year | workexperience-192--enddate-datesectionyear-input | to*",
+    "role description | workexperience-192--roledescription"
+  ],
+  "reconstructed": "All NINE block-192 labels are quoted from GET /api/autofill/telemetry/summary — the whole block is verbatim. Blocks 0 and 214 repeat those shapes with only the block index changed, which is exactly what Workday renders. Field order within a block is Workday's rendered order. The hidden prototype block is indexed 0 and placed FIRST: no hidden-block signature appears in the summary (a hidden field is only logged when a rule matched it), and first is the adversarial position for anything that assigns resume entries by block ordinal, which is the property Task 9 had to preserve. Index 214 for the second block, not 193, so this fixture's labels stay disjoint from workday_education_dates and the two can be concatenated. Employment dates are 'Mon YYYY' because that is the shape /api/autofill/employment-blocks actually returns — routers/autofill._employment_blocks passes resume_json['experience'][*]['start_date'] through verbatim, and the resume data model is 'Mon YYYY' (see services/ats/resume_indexer.parse_month_year). They read ISO until Task 8, which is why the live month and year inputs reported not_stuck under emp-start-date while this fixture showed them filled: an ISO fixture exercises a payload the backend never produces. Job Title, Company, the date parts and Role Description were RECONSTRUCTED here until Task 9 checked them against the summary and found two wrong: the reconstruction had dropped Workday's required-field asterisks, and it read Company as a bare 'company | company | workexperience-192--company'. Workday emits 'company* | companyname | …--companyname', which `company\\s*name` has always matched, so that field was already filling — the plan's premise that Workday's Company never fills was false. The bare 'Company' label is real but belongs to jobs.siemens.com, whose numeric section ids cannot be written into this corpus (the PII guard rejects any run of five or more digits) and are covered in test_extension_block_scope.py instead. 'location' on each employment entry is the key Task 9 added to _employment_blocks.",
+  "scenario": {
+    "fields": [
+      {"label": "job title* | jobtitle | workexperience-0--jobtitle", "kind": "text", "hidden": true},
+      {"label": "company* | companyname | workexperience-0--companyname", "kind": "text", "hidden": true},
+      {"label": "location | location | workexperience-0--location", "kind": "text", "hidden": true},
+      {"label": "i currently work here | currentlyworkhere | workexperience-0--currentlyworkhere", "kind": "checkbox", "hidden": true},
+      {"label": "month | workexperience-0--startdate-datesectionmonth-input | from*", "kind": "text", "hidden": true},
+      {"label": "year | workexperience-0--startdate-datesectionyear-input | from*", "kind": "text", "hidden": true},
+      {"label": "month | workexperience-0--enddate-datesectionmonth-input | to*", "kind": "text", "hidden": true},
+      {"label": "year | workexperience-0--enddate-datesectionyear-input | to*", "kind": "text", "hidden": true},
+      {"label": "role description | workexperience-0--roledescription", "kind": "textarea", "hidden": true},
+
+      {"label": "job title* | jobtitle | workexperience-192--jobtitle", "kind": "text"},
+      {"label": "company* | companyname | workexperience-192--companyname", "kind": "text"},
+      {"label": "location | location | workexperience-192--location", "kind": "text"},
+      {"label": "i currently work here | currentlyworkhere | workexperience-192--currentlyworkhere", "kind": "checkbox"},
+      {"label": "month | workexperience-192--startdate-datesectionmonth-input | from*", "kind": "text"},
+      {"label": "year | workexperience-192--startdate-datesectionyear-input | from*", "kind": "text"},
+      {"label": "month | workexperience-192--enddate-datesectionmonth-input | to*", "kind": "text"},
+      {"label": "year | workexperience-192--enddate-datesectionyear-input | to*", "kind": "text"},
+      {"label": "role description | workexperience-192--roledescription", "kind": "textarea"},
+
+      {"label": "job title* | jobtitle | workexperience-214--jobtitle", "kind": "text"},
+      {"label": "company* | companyname | workexperience-214--companyname", "kind": "text"},
+      {"label": "location | location | workexperience-214--location", "kind": "text"},
+      {"label": "i currently work here | currentlyworkhere | workexperience-214--currentlyworkhere", "kind": "checkbox"},
+      {"label": "month | workexperience-214--startdate-datesectionmonth-input | from*", "kind": "text"},
+      {"label": "year | workexperience-214--startdate-datesectionyear-input | from*", "kind": "text"},
+      {"label": "month | workexperience-214--enddate-datesectionmonth-input | to*", "kind": "text"},
+      {"label": "year | workexperience-214--enddate-datesectionyear-input | to*", "kind": "text"},
+      {"label": "role description | workexperience-214--roledescription", "kind": "textarea"}
+    ],
+    "profile": {
+      "personal": {"first_name": "Sample", "last_name": "Applicant"}
+    },
+    "employment": [
+      {
+        "employer": "Northwind Traders",
+        "title": "Senior Data Scientist",
+        "location": "Austin, TX",
+        "start_date": "March 2021",
+        "end_date": null,
+        "current": true,
+        "description": "Built demand forecasting models for the fulfilment network."
+      },
+      {
+        "employer": "Contoso Ltd",
+        "title": "Data Scientist",
+        "location": "Dallas, TX",
+        "start_date": "July 2018",
+        "end_date": "February 2021",
+        "current": false,
+        "description": "Shipped the experimentation platform used by four product teams."
+      }
+    ],
+    "eeo_enabled": false
+  }
+}

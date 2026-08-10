@@ -1,0 +1,37 @@
+{
+  "manifest_version": 3,
+  "name": "Maestro CS Companion",
+  "version": "0.1.0",
+  "description": "Save job postings into Maestro CS, autofill applications from your profile, and attach your tailored resume.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAjL0kmM5Q/H9Xp+WIJ2jZc4dpjioCk01POE38fljew1vV8OoRMC7tdfs+lIurkujkcTBaTBjZW2elHk14ShWL1rDd5AViHib8hexGPbzS7aBB2ESfi4Hn3FuCc06cvDeS5nwXMIvmKqfqNEBKp1VX9+HyYdIyUIOMvAMHRjhgpH6Fza8tvwsAGGzymj2iCMHVf503y6m7ceCxxjg+fLf9XTepxsRlTenCESR/b3i+4iFKyGIQFpotLT5rFqrCej4sHBgQ+D/JVIRa/qVLoix066ulkwyogAfeqyVjqvRyc4PlzyQBdIGM8Lse+yXr8MypeiEvP4rw20bVros3qI8qHwIDAQAB",
+  "permissions": ["storage", "tabs", "webNavigation", "scripting"],
+  "host_permissions": ["http://*/*", "https://*/*"],
+  "background": { "service_worker": "sw.js" },
+  "content_scripts": [
+    {
+      "matches": ["https://*/*", "http://*/*"],
+      "js": [
+        "content/job-posting.js",
+        "content/policy.js",
+        "content/eeo.js",
+        "content/autofill.js",
+        "content/open-questions.js",
+        "content/detect.js",
+        "content/agent.js",
+        "content/widget.js"
+      ],
+      "all_frames": true,
+      "match_about_blank": true,
+      "match_origin_as_fallback": true,
+      "run_at": "document_idle",
+      "world": "ISOLATED"
+    }
+  ],
+  "action": { "default_title": "Show the Maestro CS widget on this page" },
+  "commands": {
+    "toggle-widget": {
+      "suggested_key": { "default": "Alt+Shift+J" },
+      "description": "Show or hide the Maestro CS widget on this page"
+    }
+  }
+}

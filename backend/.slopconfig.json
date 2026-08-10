@@ -1,0 +1,25 @@
+{
+  "entry_points": [
+    "app.main",
+    "mcp_server.server",
+    "scripts.apply_template_sources",
+    "scripts.ats_calibration",
+    "scripts.ats_snapshot",
+    "scripts.backfill_work_auth",
+    "scripts.template_parity",
+    "migrations.env"
+  ],
+  "duplication_ignore": [
+    "**/tests/**",
+    "**/test_*.py",
+    "**/*_test.py",
+    "**/conftest.py",
+    "**/__snapshots__/**",
+    "**/*.spec.ts",
+    "**/*.test.ts",
+    "**/migrations/**",
+    "**/.slop-baseline.json",
+    "**/graphify-out/**"
+  ],
+  "allowed_clones": []
+}

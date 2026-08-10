@@ -1,0 +1,16 @@
+{
+  "reproduces": "Step one of an account signup: name, email, and Continue. The single most common form shape on the web, and the one a job-application detector has the least excuse for claiming.",
+  "vendor": "none (a generic SaaS signup)",
+  "reconstructed": "Everything. Snake_case field names, because a signup is as likely to use them as camelCase and the gate must miss both spellings; the checkout fixture beside this one carries the camelCase half.",
+  "page": {
+    "url": "https://app.example.test/signup",
+    "text": "Create your account. Step 1 of 3. Already have an account? Sign in.",
+    "elements": [
+      {"tag": "form", "attrs": {"id": "signup"}},
+      {"tag": "input", "attrs": {"type": "text", "name": "first_name"}},
+      {"tag": "input", "attrs": {"type": "text", "name": "last_name"}},
+      {"tag": "input", "attrs": {"type": "email", "name": "work_email"}},
+      {"tag": "button", "attrs": {"type": "submit"}, "text": "Continue"}
+    ]
+  }
+}

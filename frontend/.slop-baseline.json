@@ -1,0 +1,132 @@
+{
+  "structure": {
+    "root": "frontend",
+    "modules": 0,
+    "total_loc": 0,
+    "src_loc": 0,
+    "test_loc": 0,
+    "orphan_modules": [],
+    "test_only_reachable": [],
+    "orphan_loc": 0,
+    "complexity_hotspots": [],
+    "hotspot_count": 0,
+    "error_masking": [],
+    "error_masking_count": 0,
+    "internal_import_edges": 0,
+    "imports_per_module": 0.0,
+    "entry_points_used": []
+  },
+  "duplication": {
+    "available": true,
+    "config": {
+      "min_tokens": 50,
+      "mode": "weak"
+    },
+    "percentage": 1.62,
+    "duplicated_lines": 521,
+    "clones": 43,
+    "allowlisted_clones": 0,
+    "worst_files": [
+      [
+        "components/resume-editor/editor-body.tsx",
+        8
+      ],
+      [
+        "components/resume-editor/tailored-resume-studio.tsx",
+        5
+      ],
+      [
+        "components/career/points-list.tsx",
+        4
+      ],
+      [
+        "components/resume-editor/education-editor.tsx",
+        4
+      ],
+      [
+        "components/resume-editor/experience-editor.tsx",
+        4
+      ],
+      [
+        "components/resume-health/finding-cards.tsx",
+        4
+      ],
+      [
+        "app/base-resumes/page.tsx",
+        3
+      ],
+      [
+        "app/templates/page.tsx",
+        3
+      ],
+      [
+        "components/career/entity-detail.tsx",
+        3
+      ],
+      [
+        "components/settings/autofill-section.tsx",
+        3
+      ],
+      [
+        "app/jobs/[id]/tailor/[sessionId]/page.tsx",
+        2
+      ],
+      [
+        "app/referrals/page.tsx",
+        2
+      ],
+      [
+        "app/settings/page.tsx",
+        2
+      ],
+      [
+        "components/career/new-entity-dialog.tsx",
+        2
+      ],
+      [
+        "components/career/inbox-panel.tsx",
+        2
+      ]
+    ]
+  },
+  "js_dead_code": {
+    "available": false,
+    "reason": "knip not installed (npm i -D knip)"
+  },
+  "graph": {
+    "available": false,
+    "reason": "no graphify-out/graph.json (run graphify extract)"
+  },
+  "config": {
+    "entry_points": [],
+    "duplication_ignore": [
+      "**/tests/**",
+      "**/test_*.py",
+      "**/*_test.py",
+      "**/conftest.py",
+      "**/__snapshots__/**",
+      "**/*.spec.ts",
+      "**/*.test.ts",
+      "**/migrations/**",
+      "**/package-lock.json",
+      "**/.slop-baseline.json",
+      "**/graphify-out/**"
+    ],
+    "allowed_clones": [],
+    "gate_test_loc": false
+  },
+  "ranked": [],
+  "metrics": {
+    "total_loc": 0,
+    "src_loc": 0,
+    "test_loc": 0,
+    "modules": 0,
+    "orphan_loc": 0,
+    "duplication_pct": 1.62,
+    "duplicated_lines": 521,
+    "clone_count": 43,
+    "complexity_hotspots": 0,
+    "error_masking": 0,
+    "imports_per_module": 0.0
+  }
+}

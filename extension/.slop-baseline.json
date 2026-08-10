@@ -1,0 +1,86 @@
+{
+  "structure": {
+    "root": "extension",
+    "modules": 0,
+    "total_loc": 0,
+    "src_loc": 0,
+    "test_loc": 0,
+    "orphan_modules": [],
+    "test_only_reachable": [],
+    "orphan_loc": 0,
+    "complexity_hotspots": [],
+    "hotspot_count": 0,
+    "error_masking": [],
+    "error_masking_count": 0,
+    "internal_import_edges": 0,
+    "imports_per_module": 0.0,
+    "entry_points_used": []
+  },
+  "duplication": {
+    "available": true,
+    "config": {
+      "min_tokens": 50,
+      "mode": "weak"
+    },
+    "percentage": 2.06,
+    "duplicated_lines": 0,
+    "clones": 0,
+    "allowlisted_clones": 2,
+    "worst_files": []
+  },
+  "js_dead_code": {
+    "available": false,
+    "reason": "no package.json"
+  },
+  "graph": {
+    "available": false,
+    "reason": "no graphify-out/graph.json (run graphify extract)"
+  },
+  "config": {
+    "entry_points": [],
+    "duplication_ignore": [
+      "**/tests/**",
+      "**/test_*.py",
+      "**/*_test.py",
+      "**/conftest.py",
+      "**/__snapshots__/**",
+      "**/*.spec.ts",
+      "**/*.test.ts",
+      "**/migrations/**",
+      "**/.slop-baseline.json",
+      "**/graphify-out/**"
+    ],
+    "allowed_clones": [
+      {
+        "a": "content/autofill.js",
+        "b": "content/open-questions.js",
+        "reason": "Deliberate page-context self-copy: the setNativeValue\u2192commitValue ladder exists in both fillFormFromProfile and fillAnswersByQid because each writer must remain self-contained; pinned by test_both_copies_of_the_commit_ladder_stay_identical."
+      },
+      {
+        "a": "content/autofill.js",
+        "b": "content/widget.js",
+        "reason": "The all-frame autofill engine and top-frame widget are separate IIFEs and intentionally carry isolated DOM/message helper fragments; neither can depend on the other's private scope."
+      },
+      {
+        "a": "content/open-questions.js",
+        "b": "content/widget.js",
+        "reason": "Commit-ladder family fragment: open-questions carries the page-injected fillAnswersByQid ladder (formerly in agent.js \u2014 the pre-split allowlist pair was agent.js<->widget.js); widget keeps its own isolated fragment for the same page-context self-containment reason."
+      }
+    ],
+    "gate_test_loc": false
+  },
+  "ranked": [],
+  "metrics": {
+    "total_loc": 0,
+    "src_loc": 0,
+    "test_loc": 0,
+    "modules": 0,
+    "orphan_loc": 0,
+    "duplication_pct": 2.06,
+    "duplicated_lines": 0,
+    "clone_count": 0,
+    "complexity_hotspots": 0,
+    "error_masking": 0,
+    "imports_per_module": 0.0
+  }
+}

@@ -1,0 +1,182 @@
+\documentclass[letterpaper,11pt]{article}
+
+\usepackage{latexsym}
+\usepackage[empty]{fullpage}
+\usepackage{titlesec}
+\usepackage{marvosym}
+\usepackage[usenames,dvipsnames]{color}
+\usepackage{verbatim}
+\usepackage{enumitem}
+\usepackage[hidelinks]{hyperref}
+\usepackage{fancyhdr}
+\usepackage[english]{babel}
+\usepackage{tabularx}
+\usepackage{multicol}
+\setlength{\multicolsep}{-3.0pt}
+\setlength{\columnsep}{-1pt}
+
+% XCharter: clean readable serif, fully ATS-safe
+\usepackage{XCharter}
+\usepackage[T1]{fontenc}
+
+\input{glyphtounicode}
+\pdfgentounicode=1
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyfoot{}
+\renewcommand{\headrulewidth}{0pt}
+\renewcommand{\footrulewidth}{0pt}
+
+% Margins
+\addtolength{\oddsidemargin}{-0.6in}
+\addtolength{\evensidemargin}{-0.5in}
+\addtolength{\textwidth}{1.19in}
+\addtolength{\topmargin}{-.7in}
+\addtolength{\textheight}{1.4in}
+
+\urlstyle{same}
+\raggedbottom
+\raggedright
+\setlength{\tabcolsep}{0in}
+
+% Section formatting
+\titleformat{\section}{
+  \vspace{-4pt}\scshape\raggedright\large\bfseries
+}{}{0em}{}[\color{black}\titlerule \vspace{-5pt}]
+
+%-------------------------
+% Custom commands
+\newcommand{\resumeItem}[1]{
+  \item\small{#1}\vspace{-2pt}
+}
+
+\newcommand{\resumeSubheading}[4]{
+  \vspace{-2pt}\item
+    \begin{tabular*}{1.0\textwidth}[t]{l@{\extracolsep{\fill}}r}
+      \textbf{#1} & \textbf{\small #2} \\
+      \textit{\small#3} & \textit{\small #4} \\
+    \end{tabular*}\vspace{-7pt}
+}
+
+\newcommand{\resumeProjectHeading}[2]{
+    \item
+    \begin{tabular*}{1.001\textwidth}{l@{\extracolsep{\fill}}r}
+      \small#1 & \textbf{\small #2}\\
+    \end{tabular*}\vspace{-7pt}
+}
+
+\newcommand{\resumeSubItem}[1]{\resumeItem{#1}\vspace{-4pt}}
+
+\renewcommand\labelitemi{$\vcenter{\hbox{\tiny$\bullet$}}$}
+\renewcommand\labelitemii{$\vcenter{\hbox{\tiny$\bullet$}}$}
+
+\newcommand{\resumeSubHeadingListStart}{\begin{itemize}[leftmargin=0.0in, label={}]}
+\newcommand{\resumeSubHeadingListEnd}{\end{itemize}}
+\newcommand{\resumeItemListStart}{\begin{itemize}}
+\newcommand{\resumeItemListEnd}{\end{itemize}\vspace{-5pt}}
+
+%-------------------------------------------
+\begin{document}
+
+%----------HEADING----------
+((* set contact = resume.contact *))
+\begin{center}
+    {\Huge \scshape ((( contact.name|latex_escape )))} \\ \vspace{1pt}
+    ((* if contact.location *))\small ((( contact.location|latex_escape ))) \\ \vspace{1pt}((* endif *))
+    \small
+    ((* set sep = joiner(" $|$ ") *))
+    ((* if contact.phone *))((( sep() )))((( contact.phone|latex_escape )))((* endif *))%
+    ((* if contact.email *))((( sep() )))\href{mailto:((( contact.email )))}{\underline{((( contact.email|latex_escape )))}}((* endif *))%
+    ((* if contact.linkedin *))((( sep() )))\href{https://((( contact.linkedin )))}{\underline{((( contact.linkedin|latex_escape )))}}((* endif *))%
+    ((* if contact.github *))((( sep() )))\href{https://((( contact.github )))}{\underline{((( contact.github|latex_escape )))}}((* endif *))%
+    ((* if contact.website *))((( sep() )))\href{https://((( contact.website )))}{\underline{((( contact.website|latex_escape )))}}((* endif *))
+    \vspace{-8pt}
+\end{center}
+
+((* if resume.summary *))
+%-----------SUMMARY-----------
+\section{Summary}
+\small ((( resume.summary|latex_escape )))
+\vspace{-8pt}
+((* endif *))
+
+((* if resume.experience *))
+%-----------EXPERIENCE-----------
+\section{Experience}
+  \resumeSubHeadingListStart
+((* for exp in resume.experience *))
+    \resumeSubheading
+      {((( exp.company|latex_escape )))}{((( exp.start_date|latex_escape )))((* if exp.end_date *)) -- ((( exp.end_date|latex_escape )))((* endif *))}
+      {((( exp.role|latex_escape )))}{((( exp.location|latex_escape )))}
+      \resumeItemListStart
+((* for bullet in exp.bullets *))
+        \resumeItem{((( bullet|latex_escape )))}
+((* endfor *))
+      \resumeItemListEnd
+((* endfor *))
+  \resumeSubHeadingListEnd
+\vspace{-16pt}
+((* endif *))
+
+((* if resume.projects and resume.projects|length > 0 *))
+%-----------PROJECTS-----------
+\section{Projects}
+    \vspace{-5pt}
+    \resumeSubHeadingListStart
+((* for project in resume.projects *))
+      \resumeProjectHeading
+          {\textbf{((( project.name|latex_escape )))}((* if project.tech *)) $|$ \emph{((( project.tech|latex_escape )))}((* endif *))}{((( project.date|latex_escape )))}
+          \resumeItemListStart
+((* for bullet in project.bullets *))
+            \resumeItem{((( bullet|latex_escape )))}
+((* endfor *))
+          \resumeItemListEnd
+((* if not loop.last *))
+          \vspace{-13pt}
+((* endif *))
+((* endfor *))
+    \resumeSubHeadingListEnd
+\vspace{-3pt}
+((* endif *))
+
+((* if resume.skills or resume.certifications *))
+%-----------TECHNICAL SKILLS-----------
+\section{Technical Skills}
+ \begin{itemize}[leftmargin=0.15in, label={}]
+    \small{\item{
+((* for group in resume.skills *))
+     \textbf{((( group.category|latex_escape )))}: ((( group.items|map("latex_escape")|join(", ") )))((* if not loop.last or resume.certifications *)) \\((* endif *))
+((* endfor *))
+((* if resume.certifications *))
+     \textbf{Certifications}: ((( resume.certifications|map("latex_escape")|join(", ") )))
+((* endif *))
+    }}
+ \end{itemize}
+ \vspace{-16pt}
+((* endif *))
+
+((* if resume.education *))
+%-----------EDUCATION-----------
+\section{Education}
+  \resumeSubHeadingListStart
+((* for edu in resume.education *))
+    \resumeSubheading
+      {((( edu.degree|latex_escape )))}{((* if edu.start_date *))((( edu.start_date|latex_escape )))((* if edu.end_date *)) -- ((( edu.end_date|latex_escape )))((* endif *))((* else *))((( edu.graduation_date|latex_escape )))((* endif *))}
+      {((( edu.institution|latex_escape )))((* if edu.location *)), ((( edu.location|latex_escape )))((* endif *))}{((( edu.gpa|latex_escape )))}
+((* if edu.coursework or edu.bullets *))
+\resumeItemListStart
+((* if edu.coursework *))
+    \resumeItem{Coursework: ((( edu.coursework|map("latex_escape")|join(", ") ))).}
+((* endif *))
+((* for bullet in edu.bullets *))
+    \resumeItem{((( bullet|latex_escape )))}
+((* endfor *))
+\resumeItemListEnd
+((* endif *))
+((* endfor *))
+  \resumeSubHeadingListEnd
+
+((* endif *))
+
+\end{document}

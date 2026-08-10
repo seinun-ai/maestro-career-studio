@@ -1,0 +1,16 @@
+{
+  "reproduces": "A Lever job posting: a JobPosting record in the page's JSON-LD, the per-ATS container, and an apply link that leads to the form on a DIFFERENT page. The Tier A case, and the one that shows a posting outranking form-shaped evidence.",
+  "vendor": "lever",
+  "reconstructed": "Everything. The `[data-ui=\"job-post\"]` container is quoted from the per-ATS marker list in design section 5. The apply link's text is the ordinary posting wording and is here because it makes the page score two points of Tier B evidence while carrying no form at all — which is the point: the JSON-LD record decides this page, not the count. The JSON-LD is declared as a SHAPE rather than written out and the harness builds the document, because the corpus guard rejects the at-sign every JSON-LD key begins with — and rightly: it is the same character an email address is caught by.",
+  "page": {
+    "url": "https://jobs.lever.co/acme/9f1c-4b2a",
+    "text": "Senior Data Scientist. Austin, TX. Full time. About the role: you will build models that ship.",
+    "jsonLd": [
+      {"shape": "bare", "types": ["JobPosting"]}
+    ],
+    "elements": [
+      {"tag": "div", "attrs": {"data-ui": "job-post"}},
+      {"tag": "a", "attrs": {"role": "button", "href": "/acme/9f1c-4b2a/apply"}, "text": "Apply for this job"}
+    ]
+  }
+}

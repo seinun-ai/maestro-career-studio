@@ -1,0 +1,18 @@
+{
+  "reproduces": "A personal site whose nav links to a resume section, with a contact form underneath. The word 'resume' is genuinely on this page and it still is not an application form — the difference is that nobody can upload anything here.",
+  "vendor": "none (a hand-built personal site)",
+  "reconstructed": "Everything. The anchor element carrying name=resume is the shape that broke the gate: the name attribute predates id for in-page anchors and is still written that way, so an unscoped `[name*=\"resume\" i]` scored a personal site the strongest signal the extension has. Spelled out in prose rather than as markup because the corpus guard rejects an angle bracket followed by a letter, which is how it catches a pasted outerHTML — the element itself is declared in `elements` below, where it belongs. The contact fields are the ordinary three.",
+  "page": {
+    "url": "https://example-person.test/",
+    "text": "Hi, I build data pipelines. Scroll down for my resume, or get in touch below.",
+    "elements": [
+      {"tag": "a", "attrs": {"name": "resume", "href": "#resume"}, "text": "Resume"},
+      {"tag": "form", "attrs": {"id": "contact"}},
+      {"tag": "input", "attrs": {"type": "text", "name": "first_name"}},
+      {"tag": "input", "attrs": {"type": "email", "name": "email"}},
+      {"tag": "input", "attrs": {"type": "tel", "name": "phone"}},
+      {"tag": "textarea", "attrs": {"name": "message"}},
+      {"tag": "button", "attrs": {"type": "submit"}, "text": "Send message"}
+    ]
+  }
+}

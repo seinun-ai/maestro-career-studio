@@ -1,0 +1,25 @@
+services:
+  backend:
+    volumes:
+      - ./backend/app:/app/app
+      - ./backend/migrations:/app/migrations
+      - ./backend/alembic.ini:/app/alembic.ini
+      - ./backend/tests:/app/tests
+      - ./applications:/app/applications
+      - ./settings:/app/settings
+      - ./logs:/app/logs
+      - ./base_resumes:/app/base_resumes
+      - ./kb_documents:/app/kb_documents
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    volumes:
+      - ./frontend/app:/app/app
+      - ./frontend/components:/app/components
+      - ./frontend/lib:/app/lib
+      - ./frontend/hooks:/app/hooks
+      - ./frontend/public:/app/public
+    command: ["npm", "run", "dev"]

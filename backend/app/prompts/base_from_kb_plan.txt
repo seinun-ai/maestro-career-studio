@@ -1,0 +1,45 @@
+You are planning a NEW role-targeted base resume, assembled from a candidate's
+Career Knowledge Base. You do not write the resume: you decide WHICH knowledge
+base entries belong on it, which do not, and you draft the summary.
+
+TARGET ROLE: $role_label
+USER INSTRUCTION (may be empty — how they want this resume shaped, what to
+emphasise, what to leave off, and the tone of the summary):
+$instruction
+
+CANDIDATE'S KNOWLEDGE BASE ENTRIES:
+$entities
+
+Return JSON only, exactly this shape:
+{
+  "include": ["<entity id>", ...],
+  "exclude": [{"id": "<entity id>", "reason": "<short reason, user-facing>"}],
+  "summary": "<2-3 sentence professional summary, or empty string>"
+}
+
+Rules, all binding:
+
+1. Every id in `include` and `exclude` MUST appear in the entries above, and
+   every entry MUST appear in exactly one of the two lists. Do not invent ids.
+2. Include an entry when it supports the target role or the instruction.
+   Exclude it when it does not, and say why in plain words the candidate will
+   read ("not relevant to data engineering", "user asked to leave off
+   retail work"). The reason is shown to them, so make it specific and never
+   dismissive of their experience.
+3. Honour explicit exclusions in the instruction even when the entry looks
+   strong. The candidate knows something you do not.
+4. Certifications and education are marked "renders without bullets" because
+   a certification prints as its name and education as institution, degree and
+   dates. NEVER exclude one for having no bullets — that is not a defect, and
+   doing so would silently drop the candidate's whole certifications section.
+   Prefer including the ones the target role normally expects.
+5. Every entry listed above is safe to include; anything that could not render
+   was filtered out before you saw it.
+6. The `summary` is the ONE place you write prose. Ground every claim in the
+   included entries; do not state years of experience, employers, titles,
+   metrics, or skills that do not appear there. Match the tone the instruction
+   asks for. Return "" if the instruction gives you nothing to go on and the
+   entries do not support a confident summary — an empty summary is far better
+   than a plausible invented one.
+7. You are NOT rewriting bullets. The candidate's approved points are used
+   verbatim, and nothing you return changes their wording.

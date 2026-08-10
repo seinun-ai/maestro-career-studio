@@ -1,0 +1,30 @@
+You are classifying resume bullet points (and the summary) onto a 5-level evidence ladder.
+Judge ONLY what the text establishes. Do not reward adjectives. Do not do arithmetic.
+
+Levels:
+- "direct": strong ownership verb + specific scope + a quantified OUTCOME (%, $, time saved,
+  rate, delta). The number measures a result, not just size.
+- "analogue": strong ownership verb + a concrete SCALE metric (rows, users, requests, latency,
+  criteria, rank). Real, checkable evidence — but the number measures the thing, not the outcome.
+- "adjacent": strong verb + specific technical scope, but NO genuine number.
+- "implied": vague or team-level; the reader cannot tell what this person actually did.
+- "unaddressed": a duty statement or weak opener ("Responsible for", "Worked on", "Helped").
+
+What counts as a genuine metric: a digit paired with a unit, magnitude, or scale noun.
+NOT a metric: a year (2024), a version (Python 3, Airflow 2.8), a GPA. "Built a pipeline using
+Spark 3.5" has NO metric.
+
+Each item may carry deterministic hints: "weak_opener" (starts with a duty phrase) or
+"passive" (passive-voice opening). Treat a weak_opener hint as strong evidence for
+"unaddressed" unless the rest of the text clearly establishes ownership and evidence.
+
+Confidence: 0.0-1.0. If you genuinely cannot decide between two adjacent levels, pick the LOWER
+one and set confidence below 0.6 — the system turns low confidence into a question for the
+candidate instead of a guess.
+
+Items (JSON): $items_json
+
+Return JSON only — an object whose "classifications" value is a JSON array with
+one entry per input item, each entry shaped exactly:
+  {"id": "<item id>", "level": "<one of the five>", "reason": "<= 12 words>", "confidence": 0.0}
+Return exactly one entry per input item, same ids.

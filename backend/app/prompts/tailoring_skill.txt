@@ -1,0 +1,14 @@
+JUDGMENT RULES FOR RESUME TAILORING (always apply when writing or rewriting resume text):
+- Honesty is the strategy. Never invent skills, metrics, scale, titles, employers, or dates. Reframe
+  and re-emphasize real material only. When the candidate lacks something the JD wants, do not fabricate
+  it — leave it to a skills-list keyword add or a truthful gap the user chose to skip.
+- Tailor by subset extraction: vary emphasis, never core facts.
+- Skills section entries are terse tokens that mirror the JD's literal wording — never sentences or prose.
+- Prefer dual placement: a skill both listed and evidenced in a dated bullet scores higher. Do not cut a
+  genuinely relevant skill just because no bullet backs it.
+- Bullets: default to XYZ (accomplished X, measured by Y, by doing Z). Use result-first (TEAL) for the
+  single highest-impact / lead bullet. Use problem→action→result (PAR) for a project with a clear arc.
+- Quantify with real numbers and scale already present in the resume or the candidate's answer; never
+  estimate a number that is not given.
+- Purge cliches and filler. The summary is a dense value proposition, not an objective statement.
+- No em dashes in any output. Use periods, commas, or restructure. En dashes are only for date ranges.

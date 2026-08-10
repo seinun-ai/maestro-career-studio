@@ -1,0 +1,79 @@
+# Citation File Format 1.2.0 — https://citation-file-format.github.io/
+# GitHub renders this as a "Cite this repository" button once the repo is public.
+#
+# TODO BEFORE PUBLISHING (one placeholder left, marked REPLACE):
+#   date-released / version — set when you cut the first tag. NOTE: cffconvert
+#   validates this file happily with a placeholder date, so it cannot catch a
+#   forgotten one. Check it by eye at tag time.
+cff-version: 1.2.0
+message: "If you use Maestro Career Studio in your work, please cite it as below."
+title: "Maestro Career Studio: a local-first, evidence-backed job-application copilot"
+abstract: >-
+  Maestro Career Studio consolidates a candidate's resume history into a structured
+  Career Knowledge Base, scores resumes against job descriptions with a
+  deterministic, reproducible ATS engine that uses no large language model,
+  walks a guided gap-analysis workflow, and renders typeset LaTeX and Typst
+  application packages. It runs entirely on the user's own machine and can be
+  operated through a web UI, an MCP server, or an in-app chat agent. Resume
+  bullets compose verbatim from approved knowledge-base evidence rather than
+  being generated at render time.
+type: software
+authors:
+  # Matches the copyright line in NOTICE ("Copyright 2026 Seinun LLC — Ajey
+  # Dhayashanker Loganathan"), which is the owner-directed attribution of
+  # record. It moved out of LICENSE when that became the verbatim Apache text.
+  - given-names: Ajey
+    family-names: Loganathan
+    name-particle: Dhayashanker
+    email: ajey@seinun.com
+    affiliation: "Seinun LLC"
+license: Apache-2.0
+repository-code: "https://github.com/seinun-ai/maestro-career-studio"
+url: "https://github.com/seinun-ai/maestro-career-studio"
+# REPLACE when you cut v0.1.0.
+version: "0.1.0"
+date-released: "2026-01-01"
+keywords:
+  - resume
+  - job-application
+  - applicant-tracking-system
+  - ats
+  - career
+  - large-language-models
+  - model-context-protocol
+  - local-first
+  - self-hosted
+  - latex
+  - typst
+references:
+  - type: article
+    title: "C-Pack: Packaged Resources To Advance General Chinese Embedding"
+    abstract: >-
+      Source of BAAI/bge-small-en-v1.5, the pinned embedding model behind the
+      ATS engine's semantic matching layer.
+    authors:
+      - given-names: Shitao
+        family-names: Xiao
+      - given-names: Zheng
+        family-names: Liu
+      - given-names: Peitian
+        family-names: Zhang
+      - given-names: Niklas
+        family-names: Muennighoff
+    year: 2023
+    identifiers:
+      - type: other
+        value: "arXiv:2309.07597"
+        description: arXiv preprint identifier
+    url: "https://arxiv.org/abs/2309.07597"
+  - type: software
+    title: "Jake's Resume"
+    abstract: >-
+      The bundled LaTeX resume and cover-letter templates are adapted from this
+      template. See THIRD_PARTY_NOTICES.md for the full MIT license text.
+    authors:
+      - given-names: Jake
+        family-names: Gutierrez
+    license: MIT
+    year: 2021
+    repository-code: "https://github.com/jakegut/resume"

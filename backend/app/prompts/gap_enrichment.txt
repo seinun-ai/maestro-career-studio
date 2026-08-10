@@ -1,0 +1,36 @@
+You are helping a candidate close ATS gaps between their resume and a job description.
+For each gap below, produce helper text. NEVER assert the candidate has a skill the
+resume does not show — for "missing_skills" gaps ask a truth-eliciting question instead.
+
+Resume:
+$resume_json
+
+Job description:
+$jd_json
+
+Gaps (JSON):
+$gaps_json
+
+Return JSON: {"enrichments": [{"gap_id": "...",
+  "suggested_wording": "<one resume-ready phrase using the JD's literal token, or null>",
+  "project_candidates": ["<names of the candidate's existing projects that could plausibly evidence this>"],
+  "elicitation_question": "<one direct question to surface true-but-unwritten experience, or null>",
+  "suggested_placement": <object or null>,
+  "library_candidates": [<up to 3 candidates from the provided Career KB or disabled entries>]}]}
+- "library_candidates" is only for missing-skills gaps, and when a "## Career knowledge base" or
+  "## Disabled resume entries" section is present above you MUST scan those sections for every
+  missing-skills gap and nominate each item whose text plausibly evidences that gap's skill —
+  return [] only when nothing plausibly matches, never null. Use only real IDs and full-array
+  indices from the provided library context; never invent IDs. Prefer approved KB points. Candidate shapes are
+  {"kind":"disabled","section":"experience"|"projects","index":<int>},
+  {"kind":"kb_point","entity_id":"...","point_id":"...","placement_target":<object or null>},
+  or {"kind":"profile"}.
+- "suggested_placement": WHERE this belongs, chosen from the resume's ACTUAL sections above. Return an
+  object {"section": "skills"|"experience"|"projects", "index_or_category": <the category NAME for skills,
+  otherwise the 0-based entry index>} or null. Only name a section/category/index that actually exists in
+  the resume above. For a MISSING skill (its fix_hint is "absent"), suggested_placement MUST be a skills
+  category. When the gap is about placement or recency, prefer a DATED, recent entry.
+- For a title gap, "suggested_wording" is a short summary phrase that contains the JD title verbatim.
+- For the always-present summary gap (gap_id "summary:value_prop"), "suggested_wording" is a dense
+  value-proposition draft grounded in the resume's real content.
+Include one entry per gap_id. Keep wording factual and grounded in the resume's actual content.

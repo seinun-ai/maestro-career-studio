@@ -1,0 +1,136 @@
+# Role-category vocabulary — the ONE source of truth.
+#
+# `key` is the value stored in Job.role_category and grouped on by analytics.
+# `label` is the human display form. `adjacent` feeds the ATS L3 title tier
+# (`cfg.title_families[role_category]`), so the keys here and the lookup key are
+# the same string by construction — the previous split file used title-cased
+# phrases ("Data Science") that never matched a snake_case role_category value,
+# which made the entire "adjacent" tier unreachable in production.
+#
+# `aliases` are normalized to `key` on ingest, so an LLM answering
+# "machine learning engineer" does not fragment the vocabulary.
+#
+# THIS IS DOMAIN DATA, NOT AN ENUM. The list below is tech/data-shaped because
+# that is the default pack, not because the engine requires it. Add categories
+# for another domain (nursing, law, sales) and extraction, analytics, filtering
+# and the ATS title tier all pick them up with no code change. The extraction
+# prompt's option list is generated from this file, so prompt and code cannot
+# drift apart.
+#
+# Reserved keys, always available and never listed here:
+#   other    - a real role that matches no category
+#   unknown  - not determinable from the JD
+
+categories:
+  - key: data_scientist
+    label: Data Scientist
+    adjacent: [data scientist, machine learning scientist, applied scientist, research scientist]
+    aliases: [ds, data science]
+
+  - key: data_analyst
+    label: Data Analyst
+    adjacent: [data analyst, business intelligence analyst, analytics consultant, reporting analyst]
+    aliases: [analyst, data analytics]
+
+  - key: data_engineer
+    label: Data Engineer
+    adjacent: [data engineer, analytics engineer, etl developer, data platform engineer]
+    aliases: [de, data engineering]
+
+  - key: ai_ml_engineer
+    label: AI/ML Engineer
+    adjacent: [machine learning engineer, ml engineer, ai engineer, mlops engineer, deep learning engineer]
+    aliases: [ml_engineer, machine_learning_engineer, ai_engineer, mle, ai/ml engineer, ai ml engineer]
+
+  - key: analytics_engineer
+    label: Analytics Engineer
+    adjacent: [analytics engineer, data engineer, bi developer, dbt developer]
+    aliases: [ae]
+
+  - key: business_analyst
+    label: Business Analyst
+    adjacent: [business analyst, product analyst, operations analyst, business systems analyst]
+    aliases: [ba, product_analyst]
+
+  - key: bi_developer
+    label: BI Developer
+    adjacent: [business intelligence developer, bi engineer, tableau developer, power bi developer]
+    aliases: [bi_engineer, business_intelligence_developer]
+
+  - key: research_scientist
+    label: Research Scientist
+    adjacent: [research scientist, applied scientist, research engineer]
+    aliases: [researcher]
+
+  - key: software_engineer
+    label: Software Engineer
+    adjacent: [software engineer, backend engineer, full stack engineer, platform engineer]
+    aliases: [swe, sde, developer]
+
+  - key: mlops_engineer
+    label: MLOps Engineer
+    adjacent: [mlops engineer, machine learning infrastructure engineer, ml platform engineer]
+    aliases: [ml_ops, ml_platform_engineer]
+
+# Rank markers: tokens that qualify HOW SENIOR a role is without changing WHAT
+# the role is. Stripping these is what lets the ATS title tier see that
+# "Senior Data Scientist" and "Data Scientist" are the same job.
+#
+# DOMAIN DATA, like the categories above. This list is tech-shaped because that
+# is the default pack — nursing ships "RN I/II/III", law ships
+# "associate"/"partner", government ships the GS ladder. Add them here and the
+# title tier picks them up with no code change.
+#
+# THE BOUNDARY THAT MATTERS: a token belongs here only if removing it leaves the
+# SAME role. `manager`, `director`, `head` and `vp` are NOT rank markers — they
+# name a different job, and stripping them would make "Engineering Manager"
+# score as a direct match for "Engineer". `role_titles.py` layers those on top
+# for its own display-label purpose; the ATS engine must never see them.
+#
+# Level suffixes are the reason this list exists: `iv` and the arabic forms were
+# missing, so a JD titled "Data Scientist IV" fell from the `direct` tier to
+# `adjacent` against a "Data Scientist" resume — a 10-point composite loss
+# caused purely by how the employer spells the level.
+# TWO LISTS, because some rank words can also be the HEAD NOUN of a title.
+#
+# `always` — never a job on their own, so safe to remove wherever they appear.
+# `prefix_only` — removed ONLY when they lead the title. These double as real
+#   job nouns in the suffix position, and stripping them there destroyed the
+#   title: "Tech Lead" became "tech", "Team Lead" became "team", "Sales
+#   Associate" became "sales". Those are ordinary titles, and a core of "tech"
+#   matches nothing, so the tier collapsed to `none`.
+#
+# Known limit, deliberately not fixed here: "Associate Professor" and
+# "Associate Director" are PREFIX uses where the word is itself the rank
+# distinction, so they still reduce to "professor"/"director" and score as a
+# false `direct` against the senior title. Telling those apart requires knowing
+# that "professor" is a rank-bearing noun in academia — domain knowledge this
+# single tech-shaped pack does not have, and the reason per-domain packs exist
+# as a future extension point rather than something to fake here.
+seniority:
+  always:
+    - senior
+    - sr
+    - junior
+    - jr
+    - distinguished
+    - entry level
+    - entry-level
+    - intern
+    - internship
+    - trainee
+    - i
+    - ii
+    - iii
+    - iv
+    - v
+    - "1"
+    - "2"
+    - "3"
+    - "4"
+    - "5"
+  prefix_only:
+    - associate
+    - principal
+    - staff
+    - lead

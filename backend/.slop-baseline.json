@@ -1,0 +1,610 @@
+{
+  "structure": {
+    "root": "backend",
+    "modules": 365,
+    "total_loc": 84874,
+    "src_loc": 32443,
+    "test_loc": 52431,
+    "orphan_modules": [],
+    "test_only_reachable": [],
+    "orphan_loc": 0,
+    "complexity_hotspots": [
+      {
+        "file": "app/services/explore_build_areas.py",
+        "line": 162,
+        "name": "_kb_evidence",
+        "complexity": 39,
+        "params": 3,
+        "lines": 97
+      },
+      {
+        "file": "app/services/kb_consolidation.py",
+        "line": 371,
+        "name": "_cluster_points_for_entity",
+        "complexity": 37,
+        "params": 6,
+        "lines": 119
+      },
+      {
+        "file": "app/services/quick_tailor.py",
+        "line": 91,
+        "name": "_plan_gap",
+        "complexity": 34,
+        "params": 3,
+        "lines": 111
+      },
+      {
+        "file": "app/services/kb_adapt.py",
+        "line": 259,
+        "name": "apply_adapted",
+        "complexity": 32,
+        "params": 2,
+        "lines": 160
+      },
+      {
+        "file": "app/services/proposals.py",
+        "line": 88,
+        "name": "transition",
+        "complexity": 32,
+        "params": 7,
+        "lines": 63
+      },
+      {
+        "file": "app/services/gap_enrichment.py",
+        "line": 133,
+        "name": "enrich_gaps",
+        "complexity": 31,
+        "params": 5,
+        "lines": 102
+      },
+      {
+        "file": "app/services/proposals.py",
+        "line": 283,
+        "name": "get_final_review",
+        "complexity": 31,
+        "params": 2,
+        "lines": 89
+      },
+      {
+        "file": "tests/test_explore_router.py",
+        "line": 199,
+        "name": "test_overview_aggregates",
+        "complexity": 29,
+        "params": 1,
+        "lines": 51
+      },
+      {
+        "file": "app/services/exports.py",
+        "line": 92,
+        "name": "_render_markdown",
+        "complexity": 29,
+        "params": 4,
+        "lines": 79
+      },
+      {
+        "file": "app/services/kb_adapt.py",
+        "line": 161,
+        "name": "_coerce_proposal",
+        "complexity": 28,
+        "params": 4,
+        "lines": 78
+      },
+      {
+        "file": "app/services/tailoring_session.py",
+        "line": 846,
+        "name": "_live_text_fragments",
+        "complexity": 28,
+        "params": 1,
+        "lines": 43
+      },
+      {
+        "file": "app/services/health_gates.py",
+        "line": 52,
+        "name": "_iter_texts",
+        "complexity": 27,
+        "params": 1,
+        "lines": 37
+      },
+      {
+        "file": "app/services/career_kb.py",
+        "line": 134,
+        "name": "compose_context",
+        "complexity": 26,
+        "params": 1,
+        "lines": 68
+      },
+      {
+        "file": "app/services/resume_lint.py",
+        "line": 556,
+        "name": "_advisories",
+        "complexity": 26,
+        "params": 1,
+        "lines": 66
+      },
+      {
+        "file": "app/services/ats/layers.py",
+        "line": 237,
+        "name": "resolve_evidence",
+        "complexity": 26,
+        "params": 5,
+        "lines": 170
+      },
+      {
+        "file": "tests/test_extra_sections_e2e.py",
+        "line": 90,
+        "name": "test_extra_sections_e2e_create_render_frombase_edit_diff",
+        "complexity": 25,
+        "params": 3,
+        "lines": 89
+      },
+      {
+        "file": "app/services/kb_consolidation.py",
+        "line": 495,
+        "name": "_merge_skills",
+        "complexity": 25,
+        "params": 3,
+        "lines": 56
+      },
+      {
+        "file": "app/services/chat_agent.py",
+        "line": 149,
+        "name": "run_turn",
+        "complexity": 25,
+        "params": 6,
+        "lines": 132
+      },
+      {
+        "file": "app/services/explore_build_areas.py",
+        "line": 65,
+        "name": "build_areas",
+        "complexity": 24,
+        "params": 5,
+        "lines": 95
+      },
+      {
+        "file": "app/services/health_verify.py",
+        "line": 22,
+        "name": "verify_detections",
+        "complexity": 24,
+        "params": 5,
+        "lines": 72
+      },
+      {
+        "file": "app/services/autofill_telemetry.py",
+        "line": 82,
+        "name": "summarize_rows",
+        "complexity": 24,
+        "params": 1,
+        "lines": 92
+      },
+      {
+        "file": "app/services/ats/layers.py",
+        "line": 409,
+        "name": "_semantic_stage",
+        "complexity": 24,
+        "params": 15,
+        "lines": 148
+      },
+      {
+        "file": "app/services/placement_targets.py",
+        "line": 83,
+        "name": "canonicalize",
+        "complexity": 23,
+        "params": 3,
+        "lines": 63
+      },
+      {
+        "file": "app/services/career_kb.py",
+        "line": 572,
+        "name": "_compose_item_ops",
+        "complexity": 23,
+        "params": 5,
+        "lines": 115
+      },
+      {
+        "file": "app/services/kb_consolidation.py",
+        "line": 279,
+        "name": "_resolve_family",
+        "complexity": 23,
+        "params": 6,
+        "lines": 76
+      },
+      {
+        "file": "app/services/tailoring_session.py",
+        "line": 1062,
+        "name": "tailor",
+        "complexity": 23,
+        "params": 4,
+        "lines": 182
+      },
+      {
+        "file": "app/services/explore_base_summaries.py",
+        "line": 23,
+        "name": "base_summaries",
+        "complexity": 23,
+        "params": 1,
+        "lines": 124
+      },
+      {
+        "file": "tests/test_extension_eeo_autofill.py",
+        "line": 141,
+        "name": "test_eeo_fill_requires_opt_in_and_visible_control",
+        "complexity": 22,
+        "params": 1,
+        "lines": 38
+      },
+      {
+        "file": "app/services/career_kb.py",
+        "line": 204,
+        "name": "compose_resume_data",
+        "complexity": 22,
+        "params": 2,
+        "lines": 95
+      },
+      {
+        "file": "app/services/career_kb.py",
+        "line": 524,
+        "name": "_build_entry",
+        "complexity": 22,
+        "params": 3,
+        "lines": 46
+      },
+      {
+        "file": "tests/test_tailoring_sessions_router.py",
+        "line": 1846,
+        "name": "test_tailor_happy_path",
+        "complexity": 21,
+        "params": 3,
+        "lines": 53
+      },
+      {
+        "file": "app/services/tailoring_session.py",
+        "line": 758,
+        "name": "_write_back_elicited_points",
+        "complexity": 21,
+        "params": 3,
+        "lines": 61
+      },
+      {
+        "file": "app/services/kb_ingest.py",
+        "line": 187,
+        "name": "ingest_document",
+        "complexity": 21,
+        "params": 4,
+        "lines": 102
+      },
+      {
+        "file": "tests/test_kb_adapt.py",
+        "line": 252,
+        "name": "test_apply_replace_and_add_with_provenance",
+        "complexity": 20,
+        "params": 3,
+        "lines": 72
+      },
+      {
+        "file": "tests/test_kb_doc_ingest.py",
+        "line": 42,
+        "name": "test_ingest_creates_certification_entity_with_metadata",
+        "complexity": 20,
+        "params": 3,
+        "lines": 48
+      },
+      {
+        "file": "tests/extension_harness.py",
+        "line": 1152,
+        "name": "read_detect_fixture",
+        "complexity": 20,
+        "params": 1,
+        "lines": 41
+      },
+      {
+        "file": "app/services/resume_versions.py",
+        "line": 282,
+        "name": "_diff_extra_sections",
+        "complexity": 20,
+        "params": 3,
+        "lines": 48
+      },
+      {
+        "file": "app/services/health_gates.py",
+        "line": 117,
+        "name": "detect_gaps",
+        "complexity": 20,
+        "params": 2,
+        "lines": 50
+      },
+      {
+        "file": "app/services/ats/resume_indexer.py",
+        "line": 180,
+        "name": "_index_extra_sections",
+        "complexity": 20,
+        "params": 2,
+        "lines": 59
+      },
+      {
+        "file": "tests/test_kb_adapt.py",
+        "line": 67,
+        "name": "test_adapt_proposes_merge_replace_and_drop",
+        "complexity": 19,
+        "params": 3,
+        "lines": 65
+      },
+      {
+        "file": "scripts/template_parity.py",
+        "line": 324,
+        "name": "_align_logical_lines",
+        "complexity": 19,
+        "params": 2,
+        "lines": 66
+      },
+      {
+        "file": "scripts/template_parity.py",
+        "line": 478,
+        "name": "run_corpus",
+        "complexity": 19,
+        "params": 1,
+        "lines": 133
+      },
+      {
+        "file": "tests/ats/test_layers.py",
+        "line": 38,
+        "name": "test_evidence_placements",
+        "complexity": 19,
+        "params": 0,
+        "lines": 24
+      },
+      {
+        "file": "tests/ats/test_golden.py",
+        "line": 24,
+        "name": "test_engine_output_matches_golden",
+        "complexity": 19,
+        "params": 0,
+        "lines": 41
+      },
+      {
+        "file": "app/services/typst_compiler.py",
+        "line": 30,
+        "name": "strip_typst_comments",
+        "complexity": 19,
+        "params": 1,
+        "lines": 53
+      },
+      {
+        "file": "app/services/resume_versions.py",
+        "line": 332,
+        "name": "diff_versions",
+        "complexity": 19,
+        "params": 2,
+        "lines": 39
+      },
+      {
+        "file": "app/services/kb_ingest.py",
+        "line": 295,
+        "name": "capture",
+        "complexity": 19,
+        "params": 5,
+        "lines": 92
+      },
+      {
+        "file": "tests/test_kb_port.py",
+        "line": 142,
+        "name": "test_port_creates_project_entry_disabled",
+        "complexity": 18,
+        "params": 3,
+        "lines": 49
+      },
+      {
+        "file": "app/routers/applications.py",
+        "line": 278,
+        "name": "patch_application",
+        "complexity": 18,
+        "params": 3,
+        "lines": 110
+      },
+      {
+        "file": "app/services/attachment_extract.py",
+        "line": 126,
+        "name": "extract_text",
+        "complexity": 18,
+        "params": 3,
+        "lines": 33
+      }
+    ],
+    "hotspot_count": 310,
+    "error_masking": [
+      {
+        "file": "tests/test_tracing.py",
+        "line": 56,
+        "kind": "swallowed_exception"
+      },
+      {
+        "file": "app/routers/templates.py",
+        "line": 127,
+        "kind": "swallowed_exception"
+      },
+      {
+        "file": "app/services/seeding.py",
+        "line": 83,
+        "kind": "swallowed_exception"
+      },
+      {
+        "file": "app/services/application_artifacts.py",
+        "line": 107,
+        "kind": "swallowed_exception"
+      },
+      {
+        "file": "app/services/application_artifacts.py",
+        "line": 101,
+        "kind": "swallowed_exception"
+      },
+      {
+        "file": "app/services/tracing.py",
+        "line": 102,
+        "kind": "swallowed_exception"
+      },
+      {
+        "file": "app/services/proposal_evidence.py",
+        "line": 89,
+        "kind": "swallowed_exception"
+      },
+      {
+        "file": "app/services/artifacts.py",
+        "line": 22,
+        "kind": "swallowed_exception"
+      },
+      {
+        "file": "app/services/artifacts.py",
+        "line": 27,
+        "kind": "swallowed_exception"
+      }
+    ],
+    "error_masking_count": 9,
+    "internal_import_edges": 1516,
+    "imports_per_module": 4.15,
+    "entry_points_used": [
+      "app.main",
+      "mcp_server.server",
+      "scripts.apply_template_sources",
+      "scripts.ats_calibration",
+      "scripts.ats_snapshot",
+      "scripts.backfill_work_auth",
+      "scripts.template_parity"
+    ]
+  },
+  "duplication": {
+    "available": true,
+    "config": {
+      "min_tokens": 50,
+      "mode": "weak"
+    },
+    "percentage": 1.01,
+    "duplicated_lines": 401,
+    "clones": 42,
+    "allowlisted_clones": 0,
+    "worst_files": [
+      [
+        "app/models/application.py",
+        9
+      ],
+      [
+        "app/services/resume_edit.py",
+        6
+      ],
+      [
+        "app/services/tailoring_session.py",
+        6
+      ],
+      [
+        "mcp_server/client.py",
+        6
+      ],
+      [
+        "app/models/application_proposal.py",
+        5
+      ],
+      [
+        "app/models/chat.py",
+        4
+      ],
+      [
+        "app/routers/applications.py",
+        4
+      ],
+      [
+        "app/routers/explore.py",
+        4
+      ],
+      [
+        "app/services/resume_lint.py",
+        4
+      ],
+      [
+        "app/models/tailoring_session.py",
+        3
+      ],
+      [
+        "app/schemas/job.py",
+        3
+      ],
+      [
+        "app/services/kb_ingest.py",
+        3
+      ],
+      [
+        "app/models/base_resume.py",
+        2
+      ],
+      [
+        "app/models/career_kb.py",
+        2
+      ],
+      [
+        "app/routers/base_resumes.py",
+        2
+      ]
+    ]
+  },
+  "js_dead_code": {
+    "available": false,
+    "reason": "no package.json"
+  },
+  "graph": {
+    "available": false,
+    "reason": "no graphify-out/graph.json (run graphify extract)"
+  },
+  "config": {
+    "entry_points": [
+      "app.main",
+      "mcp_server.server",
+      "scripts.apply_template_sources",
+      "scripts.ats_calibration",
+      "scripts.ats_snapshot",
+      "scripts.backfill_work_auth",
+      "scripts.template_parity",
+      "migrations.env"
+    ],
+    "duplication_ignore": [
+      "**/tests/**",
+      "**/test_*.py",
+      "**/*_test.py",
+      "**/conftest.py",
+      "**/__snapshots__/**",
+      "**/*.spec.ts",
+      "**/*.test.ts",
+      "**/migrations/**",
+      "**/.slop-baseline.json",
+      "**/graphify-out/**"
+    ],
+    "allowed_clones": [],
+    "gate_test_loc": false
+  },
+  "ranked": [
+    {
+      "rank": "P2",
+      "signal": "complexity_concentration",
+      "detail": "310 function(s) over threshold. worst: app/services/explore_build_areas.py:162 cc=39",
+      "why": "Complexity mass concentrating in few functions is the erosion signature.",
+      "action": "Decompose the top 3. Do not touch the tail."
+    },
+    {
+      "rank": "P2",
+      "signal": "error_masking",
+      "detail": "9 bare/swallowed exception handlers",
+      "why": "Converts loud failures into silent wrong answers; hides the next defect.",
+      "action": "Narrow the exception type or re-raise. Never leave a bare pass."
+    }
+  ],
+  "metrics": {
+    "total_loc": 84874,
+    "src_loc": 32443,
+    "test_loc": 52431,
+    "modules": 365,
+    "orphan_loc": 0,
+    "duplication_pct": 1.01,
+    "duplicated_lines": 401,
+    "clone_count": 42,
+    "complexity_hotspots": 310,
+    "error_masking": 9,
+    "imports_per_module": 4.15
+  }
+}

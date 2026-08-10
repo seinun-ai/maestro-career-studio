@@ -1,0 +1,18 @@
+{
+  "reproduces": "The shipping step of a checkout: three identity fields and a Continue button. Identical in shape to an application form's opening screen, and the reason three identity fields is worth one point rather than being decisive.",
+  "vendor": "none (a generic checkout)",
+  "reconstructed": "Everything. The field names are the ordinary camelCase a checkout uses, and `Continue to payment` is the wording that made this page score: the affordance regex used to accept a bare `continue`, which is the label on every wizard and checkout step ever built.",
+  "page": {
+    "url": "https://shop.example.test/checkout/shipping",
+    "text": "Shipping address. We will email you when your order ships.",
+    "elements": [
+      {"tag": "form", "attrs": {"id": "shipping-form"}},
+      {"tag": "input", "attrs": {"type": "text", "name": "firstName"}},
+      {"tag": "input", "attrs": {"type": "text", "name": "lastName"}},
+      {"tag": "input", "attrs": {"type": "email", "name": "email"}},
+      {"tag": "input", "attrs": {"type": "tel", "name": "phone"}},
+      {"tag": "select", "attrs": {"name": "country"}},
+      {"tag": "button", "attrs": {"type": "submit"}, "text": "Continue to payment"}
+    ]
+  }
+}

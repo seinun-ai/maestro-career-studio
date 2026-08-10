@@ -1,0 +1,97 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-app}
+      POSTGRES_DB: ${POSTGRES_DB:-maestro_cs}
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      # Bound strictly to localhost for security (zero authentication on services).
+      # 55432, not 5432: the standard port collides with any locally installed
+      # PostgreSQL. Override POSTGRES_HOST_PORT in .env if even this is taken.
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-55432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-app} -d ${POSTGRES_DB:-maestro_cs}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    # Build-first by default: the tag is local (`maestro-career-studio-backend:latest`)
+    # and `docker compose up -d --build` produces it. No image is published yet,
+    # so defaulting to a registry path would make `up -d` fail on a pull.
+    # Once images ship, set IMAGE_REGISTRY=ghcr.io/seinun-ai/maestro-career-studio in .env and the
+    # same compose file pulls instead of building.
+    image: ${IMAGE_REGISTRY:-maestro-career-studio}-backend:${IMAGE_TAG:-latest}
+    build:
+      context: ./backend
+      args:
+        # The container runs as this uid/gid. It must own the bind-mounted data
+        # directories below or they are unwritable on Linux; set APP_UID/APP_GID
+        # in .env to `id -u` / `id -g` when yours are not 1000. macOS and Windows
+        # Docker Desktop translate ownership, so defaults are fine there.
+        APP_UID: ${APP_UID:-1000}
+        APP_GID: ${APP_GID:-1000}
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD:-app}@postgres:5432/${POSTGRES_DB:-maestro_cs}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      # Empty = the OpenAI API. Set to an OpenAI-compatible endpoint (Ollama,
+      # LM Studio, vLLM) to keep every request on this machine. From inside the
+      # container, host Ollama is http://host.docker.internal:11434/v1.
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      FAST_MODEL: ${FAST_MODEL:-gpt-4o-mini}
+      SMART_MODEL: ${SMART_MODEL:-gpt-4o}
+      # Langfuse tracing is NOT part of this stack and is deliberately not
+      # forwarded: the bundled Langfuse stack was deleted, this repo once shipped
+      # placeholder keys, and passing a stale pair through would ship prompts and
+      # completions to Langfuse Cloud. To trace, run the backend yourself with
+      # LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY *and* LANGFUSE_HOST — all three
+      # are required (app/services/tracing.py).
+      # Host header allowlist. The API has no authentication, so this is what
+      # stops a malicious site using DNS rebinding to read it through the user's
+      # own browser -- binding to 127.0.0.1 does not, because the browser is
+      # already inside. Add your own hostname if you front this with a proxy.
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1,backend}
+      # Exact extension ids allowed through CORS (chrome://extensions shows it).
+      # Unset = the companion extension cannot reach the API; the web UI is
+      # unaffected. Never widen this to all extensions.
+      MAESTRO_CS_EXTENSION_IDS: ${MAESTRO_CS_EXTENSION_IDS:-}
+    volumes:
+      - ./applications:/app/applications
+      - ./settings:/app/settings
+      - ./logs:/app/logs
+      - ./exports:/app/exports
+      - ./base_resumes:/app/base_resumes
+      - ./kb_documents:/app/kb_documents
+    ports:
+      # Host 8001 avoids clashes with other local backends. Bound to 127.0.0.1 (zero authentication).
+      - "127.0.0.1:${BACKEND_HOST_PORT:-8001}:8000"
+
+  frontend:
+    image: ${IMAGE_REGISTRY:-maestro-career-studio}-frontend:${IMAGE_TAG:-latest}
+    build: ./frontend
+    security_opt:
+      - no-new-privileges:true
+    depends_on: [backend]
+    environment:
+      # Server-side proxy target (browser uses same-origin /api via Next route handler).
+      API_PROXY_BACKEND: http://backend:8000
+    ports:
+      # Bound strictly to localhost for security. Only the HOST side moves —
+      # Next.js keeps serving on 3000 inside the container, and the browser
+      # reaches the API through this same origin, so a changed host port needs
+      # no other edit except the extension card's app URL.
+      - "127.0.0.1:${FRONTEND_HOST_PORT:-3000}:3000"
+
+volumes:
+  pgdata:

@@ -1,0 +1,51 @@
+name: CodeQL
+
+# Static analysis for the two languages that handle untrusted input: Python
+# (job-description text, uploaded documents, template source, every HTTP body)
+# and JavaScript/TypeScript (the web app and the browser extension, which runs
+# on every page the user visits).
+#
+# The weekly run matters as much as the per-PR one: CodeQL's query packs are
+# updated continuously, so a scheduled scan finds issues in code that has not
+# changed since the last commit.
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  schedule:
+    - cron: "27 4 * * 1"
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ["python", "javascript-typescript"]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@c4dd10e44af883a891fe31ced449bcb4a6728b9b # v3
+        with:
+          languages: ${{ matrix.language }}
+          # security-extended adds the lower-precision security queries. Worth
+          # the extra noise here: this codebase renders templates, spawns a
+          # LaTeX subprocess, and serves files by path.
+          queries: security-extended
+
+      # No build step: both languages are analyzed by CodeQL's own extractors,
+      # and building the backend would mean installing TeX Live for nothing.
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@c4dd10e44af883a891fe31ced449bcb4a6728b9b # v3
+        with:
+          category: "/language:${{ matrix.language }}"

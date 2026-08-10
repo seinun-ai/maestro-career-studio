@@ -1,0 +1,90 @@
+{
+  "_readme": "Machine-checkable removal triggers for docs/SYSTEM.md §13 (Active migrations & deprecation ledger). SYSTEM.md remains the source of truth for WHY each row exists and its traps; this file only encodes the triggers that can be evaluated mechanically. Run: python3 ~/.claude/skills/ai-slop-detector/scripts/ledger_check.py .  (add --strict for a non-zero exit on drift). Rows without triggers are prose/DB/build conditions — verify those by hand per SYSTEM.md. Keep row ids identical to §13.",
+  "rows": [
+    {
+      "id": "typst-default-flip",
+      "status": "both-live",
+      "hand_check": "PARKED pending owner re-review (2026-08-02); both header defects fixed same day: Typst underline hugging/evading descenders (ulink() in xcharter_serif.typ) and LaTeX's comment-eaten separator space (xcharter_serif.tex.j2). DB rows re-synced. Corpus evidence CLEAN 8/8 (2026-07-29); pdftotext word-joining check still pending."
+    },
+    {
+      "id": "latex-render-path",
+      "status": "blocked",
+      "hand_check": "DB condition: count of engine='latex' template rows must be 0 and stay 0 after GET /api/templates re-seeds. Blocked on typst-default-flip."
+    },
+    {
+      "id": "texlive-layer",
+      "status": "blocked",
+      "triggers": [
+        {
+          "kind": "absent",
+          "pattern": "pdflatex",
+          "paths": [
+            "backend/app"
+          ],
+          "ignore_comments": true
+        },
+        {
+          "kind": "absent",
+          "pattern": "texlive",
+          "paths": [
+            "backend/app/config.py"
+          ]
+        }
+      ],
+      "hand_check": "Also requires XCharter vendored (font comes FROM texlive today; dropping the layer silently changes Typst's font)."
+    },
+    {
+      "id": "chat-selection-kind",
+      "status": "both-live",
+      "hand_check": "Stage 1 (frontend emits kind:'resume') not shipped; then DB check on chat_messages.meta_json selections."
+    },
+    {
+      "id": "autofill-education-shape",
+      "status": "new-is-default",
+      "hand_check": "API-shape condition: GET /api/settings/autofill returns education absent-or-array for a pre-normalization profile."
+    },
+    {
+      "id": "autofill-work-auth-shape",
+      "status": "both-live",
+      "triggers": [
+        {
+          "kind": "absent",
+          "pattern": "authorized_to_work|requires_sponsorship",
+          "paths": [
+            "backend/app/services/autofill_profile.py",
+            "extension/content"
+          ]
+        }
+      ],
+      "hand_check": "job_search_brief's identically named response fields are a frozen outward projection, NOT a legacy reader — deliberately outside the trigger paths. Also requires the Settings editor legacy bridge gone and GET /api/settings/autofill clean. Trigger path widened to extension/content/ 2026-08-02 after the phase-2 split moved the dual-read from agent.js to autofill.js:51,56 — a file-pinned path would go green on the next rename without the reader dying."
+    },
+    {
+      "id": "job-location-raw",
+      "status": "both-live",
+      "hand_check": "No reader of jobs.location may remain (JobSummary still exposes only the old field), then op.drop_column."
+    },
+    {
+      "id": "explore-redirect",
+      "status": "ready-to-cut",
+      "hand_check": "Human trigger: owner must explicitly overrule the recorded keep-decision. Never auto-cut."
+    }
+  ],
+  "system_md_baselines": {
+    "total": 1487,
+    "sections": {
+      "1": 9,
+      "2": 33,
+      "3": 19,
+      "4": 535,
+      "5": 67,
+      "6": 137,
+      "7": 103,
+      "8": 272,
+      "9": 76,
+      "10": 19,
+      "11": 63,
+      "12": 45,
+      "13": 72
+    }
+  }
+}

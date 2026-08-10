@@ -1,0 +1,15 @@
+{
+  "entry_points": [],
+  "duplication_ignore": ["**/tests/**", "**/test_*.py", "**/*_test.py",
+                         "**/conftest.py", "**/__snapshots__/**", "**/*.spec.ts",
+                         "**/*.test.ts", "**/migrations/**",
+                         "**/.slop-baseline.json", "**/graphify-out/**"],
+  "allowed_clones": [
+    {"a": "content/autofill.js", "b": "content/open-questions.js",
+     "reason": "Deliberate page-context self-copy: the setNativeValue→commitValue ladder exists in both fillFormFromProfile and fillAnswersByQid because each writer must remain self-contained; pinned by test_both_copies_of_the_commit_ladder_stay_identical."},
+    {"a": "content/autofill.js", "b": "content/widget.js",
+     "reason": "The all-frame autofill engine and top-frame widget are separate IIFEs and intentionally carry isolated DOM/message helper fragments; neither can depend on the other's private scope."},
+    {"a": "content/open-questions.js", "b": "content/widget.js",
+     "reason": "Commit-ladder family fragment: open-questions carries the page-injected fillAnswersByQid ladder (formerly in agent.js — the pre-split allowlist pair was agent.js<->widget.js); widget keeps its own isolated fragment for the same page-context self-containment reason."}
+  ]
+}

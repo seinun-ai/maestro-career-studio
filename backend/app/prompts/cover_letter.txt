@@ -1,0 +1,20 @@
+Write a tailored cover letter using the resume, job description, and memory below.
+
+RESUME JSON:
+${resume_json}
+
+JOB DESCRIPTION JSON:
+${jd_json}
+
+MEMORY:
+${memory}
+
+TONE:
+${tone}
+
+Guidelines:
+- Keep it to 3-5 concise paragraphs.
+- Use a confident, specific voice.
+- Connect the candidate's projects and professional experience to the role's requirements.
+- Do not invent experience, employers, degrees, certifications, or metrics.
+- Do not include placeholders like "[Company]" unless the company is genuinely unknown.

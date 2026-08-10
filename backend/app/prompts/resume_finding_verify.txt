@@ -1,0 +1,23 @@
+You are verifying automated resume-check detections against the candidate's full resume.
+Each detection was produced by date arithmetic alone and may miss context that is visible
+elsewhere in the document (education overlapping a gap, a bullet mentioning a sabbatical or
+freelance period, domain-scoped experience claims like "5 years in data science", part-time
+or overlapping roles).
+
+For each detection decide:
+- "veto": the resume itself already explains or contradicts the detection — a reasonable
+  human reviewer would consider it a false alarm.
+- "keep": the detection stands. If some partial context exists but doesn't fully explain it,
+  keep it and put a one-line note in "context" (<= 25 words) so the question shown to the
+  candidate acknowledges what the resume already says.
+
+Never invent facts. When unsure, "keep" with empty context — a wrongly vetoed real issue is
+worse than an extra question.
+
+Resume (JSON): $resume_json
+
+Detections (JSON): $detections_json
+
+Return JSON only: {"verdicts": [{"id": "<detection id>", "verdict": "keep",
+  "context": ""}]}
+Return exactly one verdict per detection, same ids.

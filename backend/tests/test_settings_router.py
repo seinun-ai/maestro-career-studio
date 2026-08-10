@@ -1,0 +1,374 @@
+import json
+
+from fastapi.testclient import TestClient
+
+from app.db import get_db
+from app.main import app
+from app.models.setting import Setting
+from app.routers import settings
+from app.services import text_settings
+
+
+def _override_db(db_session):
+    def _inner():
+        yield db_session
+
+    return _inner
+
+
+def test_the_memory_endpoint_is_gone(db_session, tmp_path, monkeypatch):
+    # SYSTEM.md §13 memory-get-endpoint (cut 2026-08-02) and memory-blob-store
+    # (cut 2026-08-03): context is composed from the KB
+    # (career_kb.compose_context), and the legacy blob it replaced is gone, so
+    # the whole /memory route is unregistered.
+    monkeypatch.setattr(text_settings.settings, "settings_dir", tmp_path)
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        client = TestClient(app)
+        get_response = client.get("/api/settings/memory")
+        put_response = client.put("/api/settings/memory", json={"value": "New."})
+    finally:
+        app.dependency_overrides.clear()
+
+    assert get_response.status_code == 404
+    assert put_response.status_code == 404
+
+
+def test_persona_endpoints_read_and_write(db_session, tmp_path, monkeypatch):
+    monkeypatch.setattr(text_settings.settings, "settings_dir", tmp_path)
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        client = TestClient(app)
+        put_response = client.put(
+            "/api/settings/persona", json={"value": "Vision: ship."}
+        )
+        get_response = client.get("/api/settings/persona")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert put_response.status_code == 200
+    assert put_response.json() == {"key": "persona", "value": "Vision: ship."}
+    assert get_response.json() == {"key": "persona", "value": "Vision: ship."}
+    assert (tmp_path / "persona.md").read_text(encoding="utf-8") == "Vision: ship."
+
+
+def test_autofill_endpoints_round_trip_json(db_session, tmp_path, monkeypatch):
+    monkeypatch.setattr(text_settings.settings, "settings_dir", tmp_path)
+    profile = {
+        "personal": {"first_name": "Sample", "email": "a@example.com"},
+        "work_auth": {"authorized_to_work": "yes", "requires_sponsorship": "yes"},
+        "custom": [{"question": "Notice period?", "answer": "2 weeks"}],
+    }
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        client = TestClient(app)
+        empty = client.get("/api/settings/autofill")
+        put_response = client.put("/api/settings/autofill", json={"value": profile})
+        get_response = client.get("/api/settings/autofill")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert empty.json() == {"key": "autofill_profile", "value": {}}
+    assert put_response.status_code == 200
+    assert get_response.json()["value"] == profile
+    import json
+
+    assert json.loads((tmp_path / "autofill.json").read_text(encoding="utf-8")) == profile
+
+
+def test_prompt_endpoints_list_update_and_reset(db_session, tmp_path, monkeypatch):
+    monkeypatch.setattr(settings.prompts, "PROMPT_DIR", tmp_path)
+    for key in settings.prompts.VALID_PROMPTS:
+        (tmp_path / f"{key}.txt").write_text(f"default {key}", encoding="utf-8")
+
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        client = TestClient(app)
+        list_response = client.get("/api/settings/prompts")
+        put_response = client.put("/api/settings/prompts/qa", json={"value": "custom qa"})
+        reset_response = client.post("/api/settings/prompts/qa/reset")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert list_response.status_code == 200
+    assert {item["key"] for item in list_response.json()} == settings.prompts.VALID_PROMPTS
+    assert put_response.json() == {"key": "qa", "value": "custom qa"}
+    assert reset_response.json() == {"key": "qa", "value": "default qa"}
+    assert db_session.get(Setting, "prompt.qa").value == "default qa"
+
+
+def test_openai_endpoint_returns_config(db_session, monkeypatch):
+    monkeypatch.setattr(settings.app_settings, "fast_model", "gpt-fast")
+    monkeypatch.setattr(settings.app_settings, "smart_model", "gpt-smart")
+    monkeypatch.setattr(settings.app_settings, "openai_api_key", "sk-abc")
+    monkeypatch.setattr(settings.app_settings, "gemini_api_key", "gemini-abc")
+
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        response = TestClient(app).get("/api/settings/openai")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["fast_model"] == "gpt-fast"
+    assert body["smart_model"] == "gpt-smart"
+    assert body["api_key_configured"] is True
+    assert body["gemini_api_key_configured"] is True
+    assert {option["id"] for option in body["model_options"]} >= {
+        "gpt-4o-mini",
+        "gpt-4o",
+        "gpt-5.6-luna",
+        "gemini-3.1-flash-lite-preview",
+        "gemini-3.1-pro-preview",
+        "gemini-3-flash-preview",
+    }
+
+
+def test_openai_endpoint_reports_missing_key(db_session, monkeypatch):
+    monkeypatch.setattr(settings.app_settings, "openai_api_key", "")
+
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        response = TestClient(app).get("/api/settings/openai")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.json()["api_key_configured"] is False
+
+
+def test_openai_endpoint_updates_models(db_session):
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        response = TestClient(app).put(
+            "/api/settings/openai",
+            json={
+                "fast_model": "gemini-3.1-flash-lite-preview",
+                "smart_model": "gemini-3.1-pro-preview",
+                "openai_api_key": "sk-custom-openai-key",
+                "gemini_api_key": "custom-gemini-key",
+            },
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["fast_model"] == "gemini-3.1-flash-lite-preview"
+    assert body["smart_model"] == "gemini-3.1-pro-preview"
+    # Key material must never come back over this unauthenticated API — only
+    # the booleans. Persisted values are asserted against the DB instead.
+    assert "openai_api_key" not in body
+    assert "gemini_api_key" not in body
+    assert body["api_key_configured"] is True
+    assert body["gemini_api_key_configured"] is True
+    assert db_session.get(Setting, "llm.fast_model").value == "gemini-3.1-flash-lite-preview"
+    assert db_session.get(Setting, "llm.smart_model").value == "gemini-3.1-pro-preview"
+    assert db_session.get(Setting, "llm.openai_api_key").value == "sk-custom-openai-key"
+    assert db_session.get(Setting, "llm.gemini_api_key").value == "custom-gemini-key"
+
+
+def test_get_openai_never_returns_key_material(db_session, monkeypatch):
+    monkeypatch.setattr(settings.app_settings, "openai_api_key", "sk-from-env")
+    db_session.add(Setting(key="llm.openai_api_key", value="sk-stored-in-db"))
+    db_session.commit()
+
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        body = TestClient(app).get("/api/settings/openai").json()
+    finally:
+        app.dependency_overrides.clear()
+
+    assert body["api_key_configured"] is True
+    assert "openai_api_key" not in body
+    assert "gemini_api_key" not in body
+    assert "sk-stored-in-db" not in json.dumps(body)
+    assert "sk-from-env" not in json.dumps(body)
+
+
+def test_model_only_update_preserves_stored_keys(db_session):
+    """Omitting a key field must not clear it.
+
+    The settings page PUTs this payload on every model-dropdown change. Since
+    `set_models` deletes the Setting row on a None key, an absent field has to
+    be re-supplied from storage or changing a model would wipe the key.
+    """
+    db_session.add(Setting(key="llm.openai_api_key", value="sk-keep-me"))
+    db_session.add(Setting(key="llm.gemini_api_key", value="gem-keep-me"))
+    db_session.commit()
+
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        response = TestClient(app).put(
+            "/api/settings/openai",
+            json={
+                "fast_model": "gemini-3.1-flash-lite-preview",
+                "smart_model": "gemini-3.1-pro-preview",
+            },
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["api_key_configured"] is True
+    assert db_session.get(Setting, "llm.openai_api_key").value == "sk-keep-me"
+    assert db_session.get(Setting, "llm.gemini_api_key").value == "gem-keep-me"
+
+
+def test_explicit_null_clears_stored_key(db_session):
+    db_session.add(Setting(key="llm.openai_api_key", value="sk-remove-me"))
+    db_session.commit()
+
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        response = TestClient(app).put(
+            "/api/settings/openai",
+            json={
+                "fast_model": "gemini-3.1-flash-lite-preview",
+                "smart_model": "gemini-3.1-pro-preview",
+                "openai_api_key": None,
+            },
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert db_session.get(Setting, "llm.openai_api_key") is None
+
+
+def test_openai_endpoint_rejects_unknown_model(db_session):
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        response = TestClient(app).put(
+            "/api/settings/openai",
+            json={"fast_model": "bogus", "smart_model": "gpt-4o"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 400
+
+
+def test_unknown_prompt_returns_404(db_session):
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        response = TestClient(app).put(
+            "/api/settings/prompts/not_real",
+            json={"value": "x"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 404
+
+
+def test_chat_model_defaults_and_roundtrip(db_session):
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        client = TestClient(app)
+
+        body = client.get("/api/settings/openai").json()
+        assert body["chat_model"] == "gpt-4o"  # config default until set
+
+        resp = client.put(
+            "/api/settings/openai",
+            json={
+                "fast_model": "gpt-4o-mini",
+                "smart_model": "gemini-3.1-pro-preview",
+                "chat_model": "gpt-5.6-luna",
+            },
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["chat_model"] == "gpt-5.6-luna"
+        assert body["smart_model"] == "gemini-3.1-pro-preview"
+        assert db_session.get(Setting, "llm.chat_model").value == "gpt-5.6-luna"
+
+        # Omitting chat_model leaves the stored value untouched (older clients).
+        resp = client.put(
+            "/api/settings/openai",
+            json={"fast_model": "gpt-4o-mini", "smart_model": "gpt-4o"},
+        )
+        assert resp.json()["chat_model"] == "gpt-5.6-luna"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_chat_model_rejects_non_openai(db_session):
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        resp = TestClient(app).put(
+            "/api/settings/openai",
+            json={
+                "fast_model": "gpt-4o-mini",
+                "smart_model": "gpt-4o",
+                "chat_model": "gemini-3.1-pro-preview",
+            },
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert resp.status_code == 400
+    assert "OpenAI" in resp.json()["detail"]
+
+
+def test_quick_tailor_defaults_when_unset(db_session, tmp_path, monkeypatch):
+    monkeypatch.setattr(text_settings.settings, "settings_dir", tmp_path)
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        response = TestClient(app).get("/api/settings/quick-tailor")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "key": "quick_tailor_profile",
+        "value": {
+            "keywords_into_skills": True,
+            "mirror_wording": True,
+            "summary_rename": False,
+            "project_keyword_injection": False,
+            "default_base_resume": "",
+            "instruction": "",
+        },
+    }
+
+
+def test_quick_tailor_round_trip_merges_defaults(db_session, tmp_path, monkeypatch):
+    monkeypatch.setattr(text_settings.settings, "settings_dir", tmp_path)
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        client = TestClient(app)
+        put_response = client.put(
+            "/api/settings/quick-tailor",
+            json={"value": {"keywords_into_skills": False, "instruction": "keep bullets terse",
+                            "default_base_resume": "data_scientist"}},
+        )
+        get_response = client.get("/api/settings/quick-tailor")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert put_response.status_code == 200
+    value = get_response.json()["value"]
+    assert value["keywords_into_skills"] is False           # stored override
+    assert value["mirror_wording"] is True                  # default shows through
+    assert value["instruction"] == "keep bullets terse"
+    assert value["default_base_resume"] == "data_scientist"
+    import json
+    mirrored = json.loads((tmp_path / "quick_tailor.json").read_text(encoding="utf-8"))
+    assert mirrored["instruction"] == "keep bullets terse"
+
+
+def test_gemini_35_flash_lite_is_a_valid_fast_model(db_session):
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        response = TestClient(app).put(
+            "/api/settings/openai",
+            json={"fast_model": "gemini-3.5-flash-lite", "smart_model": "gpt-5.6-luna"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["fast_model"] == "gemini-3.5-flash-lite"
+    assert db_session.get(Setting, "llm.fast_model").value == "gemini-3.5-flash-lite"

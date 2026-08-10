@@ -1,0 +1,14 @@
+{
+  "reproduces": "A voluntary self-identification step on a company's own careers domain: no ATS host, no JSON-LD, no identity fields, no file input, no apply control. Only the statutory wording. The near-certain signal, isolated.",
+  "vendor": "none (a company-hosted careers domain, deliberately off the ATS host list)",
+  "reconstructed": "Everything. The body text is the public statutory vocabulary the design's own regex names — 'voluntary self-identification', 'veteran status', 'disability status' — not a captured page, and it is worded as a summary rather than reproducing any agency form. The three selects carry the plainest possible names and exist to show they contribute nothing: none is an identity field, so the whole score here comes from the text.",
+  "page": {
+    "url": "https://careers.example.test/apply/step-3",
+    "text": "Voluntary self-identification. Completing this section is voluntary and your answers will not affect the hiring decision. We ask about veteran status and disability status to meet federal reporting obligations.",
+    "elements": [
+      {"tag": "select", "attrs": {"name": "gender"}},
+      {"tag": "select", "attrs": {"name": "veteran_status"}},
+      {"tag": "select", "attrs": {"name": "disability_status"}}
+    ]
+  }
+}

@@ -1,0 +1,1 @@
+# This file ensures frontend/public/ is tracked in git so Docker COPY --from=builder /app/public ./public succeeds cleanly during production builds.

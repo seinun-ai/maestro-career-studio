@@ -1,0 +1,49 @@
+% ---------------------------------------------------------------------------
+% Preamble adapted from "Jake's Resume" by Jake Gutierrez
+%   https://github.com/jakegut/resume
+%   Copyright (c) 2021 Jake Gutierrez — MIT License
+% Full license text: THIRD_PARTY_NOTICES.md at the repository root.
+% ---------------------------------------------------------------------------
+\documentclass[letterpaper,11pt]{article}
+
+\usepackage[empty]{fullpage}
+\usepackage[usenames,dvipsnames]{color}
+\usepackage[hidelinks]{hyperref}
+\usepackage{fancyhdr}
+\usepackage[english]{babel}
+\usepackage{fontawesome5}
+\input{glyphtounicode}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyfoot{}
+\renewcommand{\headrulewidth}{0pt}
+\renewcommand{\footrulewidth}{0pt}
+
+\addtolength{\oddsidemargin}{-0.6in}
+\addtolength{\evensidemargin}{-0.5in}
+\addtolength{\textwidth}{1.19in}
+\addtolength{\topmargin}{-.7in}
+\addtolength{\textheight}{1.4in}
+
+\urlstyle{same}
+\raggedbottom
+\raggedright
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{8pt}
+
+\pdfgentounicode=1
+
+\begin{document}
+
+((* include '_header.tex.j2' *))
+
+\vspace{12pt}
+((( today_date )))
+
+\vspace{6pt}
+((* for paragraph in body_paragraphs *))
+((( paragraph|latex_escape ))) \\[6pt]
+((* endfor *))
+
+\end{document}

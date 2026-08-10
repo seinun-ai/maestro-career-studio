@@ -1,0 +1,17 @@
+{
+  "reproduces": "A company's contact page: an ordinary three-field contact form, under the equal-opportunity line the company carries in its site-wide footer. The residual left when the boilerplate was demoted from weight 2 to weight 1 — it landed exactly on the threshold — and the case that closed it at weight 0.",
+  "vendor": "none (a company's own site, deliberately off the ATS host list)",
+  "reconstructed": "Everything. The footer sentence is the ordinary equal-opportunity line, in the generic wording a company uses rather than any particular company's; it is deliberately NOT self-identification wording, because that block is decisive and this one is not. The three contact fields are the same ones a checkout and an application form both ask for, which is the whole difficulty: nothing in this page's SHAPE distinguishes it, only the weight of what is written on it.",
+  "page": {
+    "url": "https://example-co.test/contact",
+    "text": "Get in touch and we will reply within two working days. Acme is an equal employment opportunity employer and does not discriminate.",
+    "elements": [
+      {"tag": "form", "attrs": {"id": "contact"}},
+      {"tag": "input", "attrs": {"type": "text", "name": "first_name"}},
+      {"tag": "input", "attrs": {"type": "email", "name": "email"}},
+      {"tag": "input", "attrs": {"type": "tel", "name": "phone"}},
+      {"tag": "textarea", "attrs": {"name": "message"}},
+      {"tag": "button", "attrs": {"type": "submit"}, "text": "Send message"}
+    ]
+  }
+}

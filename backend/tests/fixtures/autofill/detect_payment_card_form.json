@@ -1,0 +1,20 @@
+{
+  "reproduces": "A card payment step: the cardholder's name, email and phone beside the card fields. The worst false positive this product can produce — an autofill widget offering itself on a payment form — and it was live until the resume probe was scoped to file inputs.",
+  "vendor": "none (a generic checkout)",
+  "reconstructed": "Everything. The field names are the ordinary camelCase a payment form uses. `cardCvv` is the one that matters and it is here verbatim as the shape that broke the gate: `[name*=\"cv\" i]` is a substring test, so it matched the security code and scored this page the extension's strongest form signal. No card number is present as a value anywhere — these are field NAMES, and the corpus guard would reject a real one on sight.",
+  "page": {
+    "url": "https://shop.example.test/checkout/payment",
+    "text": "Payment. Your card details are encrypted in transit. All fields are required.",
+    "elements": [
+      {"tag": "form", "attrs": {"id": "payment-form"}},
+      {"tag": "input", "attrs": {"type": "text", "name": "cardholderFirstName", "autocomplete": "given-name"}},
+      {"tag": "input", "attrs": {"type": "text", "name": "cardholderLastName", "autocomplete": "family-name"}},
+      {"tag": "input", "attrs": {"type": "email", "name": "billingEmail"}},
+      {"tag": "input", "attrs": {"type": "tel", "name": "billingPhone"}},
+      {"tag": "input", "attrs": {"type": "text", "name": "cardNumber", "autocomplete": "cc-number"}},
+      {"tag": "input", "attrs": {"type": "text", "name": "cardCvv", "autocomplete": "cc-csc"}},
+      {"tag": "select", "attrs": {"name": "cardExpiryMonth"}},
+      {"tag": "button", "attrs": {"type": "submit"}, "text": "Pay now"}
+    ]
+  }
+}

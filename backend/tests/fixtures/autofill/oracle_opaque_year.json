@@ -1,0 +1,77 @@
+{
+  "reproduces": "Oracle Recruiting Cloud: one Professional Experience date widget split into a day select, a month select and a year text box, whose labels are an opaque generated identifier repeated twice, with the human question only in the shared container text — so the ONLY thing telling the from-date from the to-date is DOM order.",
+  "vendor": "oracle",
+  "changed_by": "Task 8 (date-part writer)",
+  "telemetry_verbatim": [
+    "-1_personprofilefields.rcf3214_year | -1_personprofilefields.rcf3214_year | professional experience (1)* required.",
+    "-1_personprofilefields.rcf3215_year | -1_personprofilefields.rcf3215_year | professional experience (1)* required.",
+    "month | -1_personprofilefields.rcf3214_month | -1_personprofilefields.rcf3214_month | professional experience (1)* required. | month",
+    "month | -1_personprofilefields.rcf3215_month | -1_personprofilefields.rcf3215_month | professional experience (1)* required. | month",
+    "day | -1_personprofilefields.rcf3214_date | -1_personprofilefields.rcf3214_date | professional experience (1)* required. | day",
+    "day | -1_personprofilefields.rcf3215_date | -1_personprofilefields.rcf3215_date | professional experience (1)* required. | day"
+  ],
+  "reconstructed": "All six labels, both kinds and both option lists are quoted from GET /api/autofill/telemetry/summary; no sibling field is invented. Two things are NOT recoverable from telemetry and are stated here so they are not mistaken for observation. (1) The order of the three parts WITHIN one date widget: telemetry stores no DOM order, so month-day-year is a guess at Oracle's US rendering — it is immaterial, because each part is resolved by its own counter, which test_the_order_of_parts_inside_one_widget_does_not_matter pins. (2) The day select's real option list runs 1-31; the observed one stops at 30 because the telemetry schema caps options at 30. Across the widgets the order IS observed-adjacent: rcf3214 is the From date and rcf3215 the To date, from Oracle's sequential field numbering (rcf3212 employer, rcf3213 title, then the two dates). Employment dates are 'Mon YYYY' because that is the shape /api/autofill/employment-blocks actually returns — it passes resume_json['experience'][*]['start_date'] through verbatim, and the resume data model is 'Mon YYYY' (see services/ats/resume_indexer.parse_month_year). A fixture holding ISO dates would exercise a payload the backend never produces.",
+  "scenario": {
+    "fields": [
+      {"label": "month | -1_personprofilefields.rcf3214_month | -1_personprofilefields.rcf3214_month | professional experience (1)* required. | month", "kind": "select", "options": [
+        {"value": "Jan", "textContent": "Jan"},
+        {"value": "Feb", "textContent": "Feb"},
+        {"value": "Mar", "textContent": "Mar"},
+        {"value": "Apr", "textContent": "Apr"},
+        {"value": "May", "textContent": "May"},
+        {"value": "Jun", "textContent": "Jun"},
+        {"value": "Jul", "textContent": "Jul"},
+        {"value": "Aug", "textContent": "Aug"},
+        {"value": "Sep", "textContent": "Sep"},
+        {"value": "Oct", "textContent": "Oct"},
+        {"value": "Nov", "textContent": "Nov"},
+        {"value": "Dec", "textContent": "Dec"}
+      ]},
+      {"label": "day | -1_personprofilefields.rcf3214_date | -1_personprofilefields.rcf3214_date | professional experience (1)* required. | day", "kind": "select", "options": [
+        {"value": "1", "textContent": "1"},
+        {"value": "2", "textContent": "2"},
+        {"value": "3", "textContent": "3"},
+        {"value": "15", "textContent": "15"},
+        {"value": "31", "textContent": "31"}
+      ]},
+      {"label": "-1_personprofilefields.rcf3214_year | -1_personprofilefields.rcf3214_year | professional experience (1)* required.", "kind": "text"},
+
+      {"label": "month | -1_personprofilefields.rcf3215_month | -1_personprofilefields.rcf3215_month | professional experience (1)* required. | month", "kind": "select", "options": [
+        {"value": "Jan", "textContent": "Jan"},
+        {"value": "Feb", "textContent": "Feb"},
+        {"value": "Mar", "textContent": "Mar"},
+        {"value": "Apr", "textContent": "Apr"},
+        {"value": "May", "textContent": "May"},
+        {"value": "Jun", "textContent": "Jun"},
+        {"value": "Jul", "textContent": "Jul"},
+        {"value": "Aug", "textContent": "Aug"},
+        {"value": "Sep", "textContent": "Sep"},
+        {"value": "Oct", "textContent": "Oct"},
+        {"value": "Nov", "textContent": "Nov"},
+        {"value": "Dec", "textContent": "Dec"}
+      ]},
+      {"label": "day | -1_personprofilefields.rcf3215_date | -1_personprofilefields.rcf3215_date | professional experience (1)* required. | day", "kind": "select", "options": [
+        {"value": "1", "textContent": "1"},
+        {"value": "2", "textContent": "2"},
+        {"value": "3", "textContent": "3"},
+        {"value": "15", "textContent": "15"},
+        {"value": "31", "textContent": "31"}
+      ]},
+      {"label": "-1_personprofilefields.rcf3215_year | -1_personprofilefields.rcf3215_year | professional experience (1)* required.", "kind": "text"}
+    ],
+    "profile": {
+      "personal": {"first_name": "Sample", "last_name": "Applicant"}
+    },
+    "employment": [
+      {
+        "employer": "Contoso Ltd",
+        "title": "Data Scientist",
+        "start_date": "July 2018",
+        "end_date": "February 2021",
+        "current": false,
+        "description": "Shipped the experimentation platform used by four product teams."
+      }
+    ],
+    "eeo_enabled": false
+  }
+}

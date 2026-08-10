@@ -1,0 +1,29 @@
+# JD skill -> {resume skill: credit}; credit capped at adjacency_max_credit.
+snowflake:
+  bigquery: 0.5
+  redshift: 0.5
+bigquery:
+  snowflake: 0.5
+  redshift: 0.5
+redshift:
+  snowflake: 0.5
+  bigquery: 0.5
+tableau:
+  power bi: 0.5
+power bi:
+  tableau: 0.5
+pytorch:
+  tensorflow: 0.5
+tensorflow:
+  pytorch: 0.5
+# Genuine zero-overlap reformulation surfaced by the post-review corpus sweep:
+# the embedding rates kubernetes ~ "container orchestration" highly, but they
+# share no token, so the anchor gate (C1) correctly blocks the pure-semantic
+# path. Registered here so the transferable-skill credit is still awarded
+# deterministically. (This was the ONE defensible zero-overlap pair in the sweep;
+# every other zero-overlap "match" was a bullet fragment glued to an unrelated
+# JD skill — noise the gate now kills.)
+kubernetes:
+  container orchestration: 0.5
+container orchestration:
+  kubernetes: 0.5

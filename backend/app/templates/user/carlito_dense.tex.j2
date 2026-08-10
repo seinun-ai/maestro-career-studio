@@ -1,0 +1,193 @@
+%-------------------------
+% Resume in LaTeX -- "simple + dense" build
+% Carlito font (Calibri clone), plain bold ALL-CAPS section headers,
+% narrow margins, ATS-safe Unicode.
+% Formatting knobs: every ResumeFormatting key is referenced below (13/13).
+%------------------------
+
+\documentclass[letterpaper,((( fmt.font_size )))pt]{article}
+
+\usepackage[letterpaper, lmargin=((( fmt.side_margins )))in, rmargin=((( fmt.side_margins )))in, tmargin=((( fmt.top_bottom_margin )))in, bmargin=((( fmt.top_bottom_margin )))in, headheight=0pt, headsep=0pt, footskip=0pt]{geometry}
+\usepackage{titlesec}
+\usepackage[usenames,dvipsnames]{color}
+\usepackage{enumitem}
+\usepackage[hidelinks]{hyperref}
+\usepackage[english]{babel}
+\usepackage{tabularx}
+
+% Font: Carlito (Calibri clone), lining figures.
+\usepackage[lining]{carlito}
+\renewcommand{\familydefault}{\sfdefault}
+\usepackage[T1]{fontenc}
+
+% ATS: machine-readable text layer.
+\input{glyphtounicode}
+\pdfgentounicode=1
+
+\pagestyle{empty}
+\urlstyle{same}
+\raggedbottom
+((* if not fmt.justify *))\raggedright((* endif *))
+\setlength{\tabcolsep}{0in}
+\linespread{((( fmt.line_spacing )))}
+
+\setlist[itemize]{itemsep=((( fmt.entry_spacing + 1 )))pt, topsep=1pt, parsep=0pt, partopsep=0pt}
+
+% Plain bold ALL-CAPS section headers with a full-width rule.
+\titleformat{\section}{
+  \vspace{((( fmt.section_spacing - 15 )))pt}\bfseries\large
+}{}{0em}{\MakeUppercase}((* if not fmt.hide_divider *))[\color{black}\titlerule \vspace{-5pt}]((* else *))[\vspace{-5pt}]((* endif *))
+
+%-------------------------
+% Custom commands
+\newcommand{\resumeItem}[1]{\item\small{{#1}}}
+
+\newcommand{\resumeSubheading}[4]{
+  \item
+    \begin{tabular*}{1.0\textwidth}[t]{l@{\extracolsep{\fill}}r}
+      \textbf{#1} & \small #2 \\
+      \textit{\small#3} & \textit{\small #4} \\
+    \end{tabular*}\vspace{1pt}
+}
+
+\newcommand{\resumeProjectHeading}[2]{
+    \item
+    \begin{tabular*}{1.0\textwidth}{l@{\extracolsep{\fill}}r}
+      \small#1 & \small #2\\
+    \end{tabular*}\vspace{1pt}
+}
+
+((* if fmt.bullet_icon == "dash" *))
+\renewcommand\labelitemi{--}
+\renewcommand\labelitemii{--}
+((* else *))
+\renewcommand\labelitemi{$\vcenter{\hbox{\small$\bullet$}}$}
+\renewcommand\labelitemii{$\vcenter{\hbox{\small$\bullet$}}$}
+((* endif *))
+
+\newcommand{\resumeSubHeadingListStart}{\begin{itemize}[leftmargin=0in, label={}, itemsep=((( fmt.entry_spacing )))pt]}
+\newcommand{\resumeSubHeadingListEnd}{\end{itemize}}
+\newcommand{\resumeItemListStart}{\begin{itemize}[leftmargin=0.18in, label=\textbullet]}
+\newcommand{\resumeItemListEnd}{\end{itemize}}
+
+%-------------------------------------------
+\begin{document}
+
+%----------HEADING----------
+((* set contact = resume.contact *))
+((* if fmt.header_align == "left" *))\begin{flushleft}((* elif fmt.header_align == "right" *))\begin{flushright}((* else *))\begin{center}((* endif *))
+    {\LARGE \bfseries ((( contact.name|latex_escape )))} \\ \vspace{2pt}
+    \small
+    ((( contact.location|latex_escape ))) $|$ ((( contact.phone|latex_escape ))) $|$
+    \href{mailto:((( contact.email|latex_escape )))}{((( contact.email|latex_escape )))} $|$
+    \href{https://((( contact.linkedin|latex_escape )))}{((( contact.linkedin|latex_escape )))} $|$
+    \href{https://((( contact.github|latex_escape )))}{((( contact.github|latex_escape )))}((* if contact.website *)) $|$
+    \href{https://((( contact.website|latex_escape )))}{((( contact.website|latex_escape )))}((* endif *))
+((* if fmt.header_align == "left" *))\end{flushleft}((* elif fmt.header_align == "right" *))\end{flushright}((* else *))\end{center}((* endif *))
+
+((* if resume.summary *))
+%-----------SUMMARY-----------
+\section{Summary}
+\small ((( resume.summary|latex_escape )))
+\vspace{-4pt}
+((* endif *))
+
+((* if resume.experience *))
+%-----------EXPERIENCE-----------
+\section{Experience}
+  \resumeSubHeadingListStart
+((* for exp in resume.experience *))
+    \resumeSubheading
+      {((( exp.company|latex_escape )))}{((( exp.start_date|format_date(fmt.date_format)|latex_escape )))((* if exp.end_date *)) -- ((( exp.end_date|format_date(fmt.date_format)|latex_escape )))((* endif *))}
+      {((( exp.role|latex_escape )))}{((( exp.location|latex_escape )))}
+      \resumeItemListStart
+((* for bullet in exp.bullets *))
+        \resumeItem{((( bullet|latex_escape )))}
+((* endfor *))
+      \resumeItemListEnd
+((* endfor *))
+  \resumeSubHeadingListEnd
+((* endif *))
+
+((* if resume.projects and resume.projects|length > 0 *))
+%-----------PROJECTS-----------
+\section{Projects}
+    \resumeSubHeadingListStart
+((* for project in resume.projects *))
+      \resumeProjectHeading
+        {\textbf{((( project.name|latex_escape )))}((* if project.tech *)) $|$ \emph{((( project.tech|latex_escape )))}((* endif *))}{((( project.date|format_date(fmt.date_format)|latex_escape )))}
+        \resumeItemListStart
+((* for bullet in project.bullets *))
+          \resumeItem{((( bullet|latex_escape )))}
+((* endfor *))
+        \resumeItemListEnd
+((* endfor *))
+    \resumeSubHeadingListEnd
+((* endif *))
+
+((* if resume.skills or resume.certifications *))
+%-----------TECHNICAL SKILLS-----------
+\section{Technical Skills}
+((* if fmt.skills_layout == "bulleted" *))
+ \begin{itemize}[leftmargin=0.15in, topsep=1pt, parsep=0pt, itemsep=((( fmt.entry_spacing + 1 )))pt]
+((* for group in resume.skills *))
+    \small\item \textbf{((( group.category|latex_escape )))}: ((( group.items|map("latex_escape")|join(", ") )))
+((* endfor *))
+((* if resume.certifications *))
+    \small\item \textbf{Certifications}: ((( resume.certifications|map("latex_escape")|join(", ") )))
+((* endif *))
+ \end{itemize}
+((* else *))
+ \begin{itemize}[leftmargin=0.15in, label={}]
+    \small{\item{
+((* for group in resume.skills *))
+     \textbf{((( group.category|latex_escape )))}{: ((( group.items|map("latex_escape")|join(", ") )))}((* if not loop.last or resume.certifications *)) \\((* endif *))
+((* endfor *))
+((* if resume.certifications *))
+     \textbf{Certifications}{: ((( resume.certifications|map("latex_escape")|join(", ") )))}
+((* endif *))
+    }}
+ \end{itemize}
+((* endif *))
+((* endif *))
+
+((* if resume.education *))
+%-----------EDUCATION-----------
+\section{Education}
+  \resumeSubHeadingListStart
+((* for edu in resume.education *))
+((* set edu_date = edu.start_date|format_date(fmt.date_format)|latex_escape if edu.start_date else edu.graduation_date|format_date(fmt.date_format)|latex_escape *))
+((* set edu_date_range = edu_date ~ (" -- " ~ (edu.end_date|format_date(fmt.date_format)|latex_escape)) if (edu.start_date and edu.end_date) else edu_date *))
+((* if edu.location and edu.gpa *))
+((* set edu_loc_gpa = edu.location|latex_escape ~ " $|$ " ~ edu.gpa|latex_escape *))
+((* elif edu.location *))
+((* set edu_loc_gpa = edu.location|latex_escape *))
+((* elif edu.gpa *))
+((* set edu_loc_gpa = edu.gpa|latex_escape *))
+((* else *))
+((* set edu_loc_gpa = "" *))
+((* endif *))
+((* if fmt.education_order == "institution_first" *))
+    \resumeSubheading
+      {((( edu.institution|latex_escape )))}{((( edu_date_range )))}
+      {((( edu.degree|latex_escape )))}{((( edu_loc_gpa )))}
+((* else *))
+    \resumeSubheading
+      {((( edu.degree|latex_escape )))}{((( edu_date_range )))}
+      {((( edu.institution|latex_escape )))}{((( edu_loc_gpa )))}
+((* endif *))
+((* if edu.coursework or edu.bullets *))
+      \resumeItemListStart
+((* if edu.coursework *))
+        \resumeItem{Coursework: ((( edu.coursework|map("latex_escape")|join(", ") ))).}
+((* endif *))
+((* for bullet in edu.bullets *))
+        \resumeItem{((( bullet|latex_escape )))}
+((* endfor *))
+      \resumeItemListEnd
+((* endif *))
+((* endfor *))
+  \resumeSubHeadingListEnd
+((* endif *))
+
+\end{document}

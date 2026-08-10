@@ -1,0 +1,15 @@
+{
+  "reproduces": "A page the extension can do nothing with: a video watch page with a search box, a comment composer and two buttons. The negative rule from design section 5 — mount nothing, observe nothing, construct nothing.",
+  "vendor": "none",
+  "reconstructed": "Everything, and deliberately generic. It stands in for the documented category failure the negative rule exists to prevent: a competitor's job detection injected into every page and broke a video site's own buttons. The controls here are the ones such a page has and none of them is an application control — a search input is not an identity field, and 'Subscribe' and 'Share' are not apply affordances.",
+  "page": {
+    "url": "https://www.example-video.test/watch",
+    "text": "Building a canoe from a single log. 412 comments. Sort by newest first. Subscribe for more.",
+    "elements": [
+      {"tag": "input", "attrs": {"type": "search", "name": "search_query"}},
+      {"tag": "button", "attrs": {"type": "button"}, "text": "Subscribe"},
+      {"tag": "textarea", "attrs": {"name": "comment_body"}},
+      {"tag": "button", "attrs": {"type": "button"}, "text": "Share"}
+    ]
+  }
+}
