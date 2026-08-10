@@ -524,7 +524,16 @@ def test_default_engine_parity_uses_named_xcharter_font_roles(
     body_fonts = _font_names_at_size(pdf, 10.0)
     assert body_fonts, engine
     for role in ("XCharter-Roman", "XCharter-Bold", emphasis_role):
-        assert any(name.endswith(role) for name in body_fonts), (engine, role)
+        # Report what was ACTUALLY embedded, not just what was wanted. The
+        # bare (engine, role) tuple this used to raise says a face is missing
+        # and nothing about what took its place, which is unactionable on a
+        # machine you cannot attach to — it cost a full CI cycle to learn that
+        # much. Font names carry a random subset prefix (`ABCDEF+`), so the
+        # set is only meaningful printed whole.
+        assert any(name.endswith(role) for name in body_fonts), (
+            f"{engine}: no body font matching {role!r}; embedded at 10.0pt: "
+            f"{sorted(body_fonts)}"
+        )
     # Entry heading rows are \small on both engines, so the document has no
     # text at the 11pt document size at all.
     assert not _font_names_at_size(pdf, 11.0), engine
