@@ -98,7 +98,13 @@ def _validate_test_db_url(url: str | None) -> str:
             f"TEST_DATABASE_URL points at protected database {db_name!r}. "
             f"Use a different database name (e.g. {db_name}_test)."
         )
-    return url
+    # Both engines in this file are built from the return value, so normalizing
+    # here covers both. Imported locally: this module deliberately sets env vars
+    # before any app import (see the E402 note in pyproject), and a top-level
+    # app.config import would move that boundary.
+    from app.config import normalize_postgres_url
+
+    return normalize_postgres_url(url)
 
 
 @pytest.fixture(scope="session", autouse=True)

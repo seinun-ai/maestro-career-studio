@@ -12,12 +12,16 @@ from alembic.migration import MigrationContext
 from alembic.autogenerate import compare_metadata
 from sqlalchemy import create_engine
 
+from app.config import normalize_postgres_url
 from app.db import Base
 import app.models  # noqa: F401 — import side effect: registers every table
 
 
 def test_models_match_migrations(db_session):
-    url = os.environ["TEST_DATABASE_URL"]
+    # normalize_postgres_url, not the bare env var: SQLAlchemy resolves a plain
+    # `postgresql://` to psycopg2, which this project does not install. The
+    # fifth and last place that built an engine without it.
+    url = normalize_postgres_url(os.environ["TEST_DATABASE_URL"])
     engine = create_engine(url, future=True)
     with engine.connect() as conn:
         diff = compare_metadata(MigrationContext.configure(conn), Base.metadata)

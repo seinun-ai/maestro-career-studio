@@ -13,6 +13,25 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 VENDORED_FONTS_DIR = Path(__file__).resolve().parent / "assets" / "fonts" / "xcharter"
 
 
+def normalize_postgres_url(value: str) -> str:
+    """Force the psycopg **v3** dialect onto a bare ``postgresql://`` URL.
+
+    SQLAlchemy maps the bare scheme to psycopg2, which this project does not
+    install (`psycopg[binary]>=3.2`). Every URL reaching `create_engine` must go
+    through here.
+
+    Module-level, not just a validator, because `TEST_DATABASE_URL` is read
+    straight from the environment by `app/db.py` and `migrations/env.py` and so
+    never touches Settings at all. That gap shipped: both read a bare
+    `postgresql://` and got the psycopg2 dialect, which worked on any machine
+    with psycopg2 lying around — including the maintainer's — and died on the
+    first clean CI box with `ModuleNotFoundError: No module named 'psycopg2'`.
+    """
+    if value.startswith("postgresql://"):
+        return "postgresql+psycopg://" + value[len("postgresql://") :]
+    return value
+
+
 def _split_env_list(value, *, extra_separator: str | None = None) -> list[str]:
     """Parse a list-valued env var written as JSON *or* as a delimited string.
 
@@ -63,12 +82,9 @@ class Settings(BaseSettings):
     @field_validator("database_url")
     @classmethod
     def _use_psycopg_v3(cls, value: str) -> str:
-        # SQLAlchemy maps the bare "postgresql://" scheme to the psycopg2 driver
-        # by default, but we install psycopg v3. Normalize so every consumer
-        # (app engine, Alembic, scripts) picks up the v3 dialect.
-        if value.startswith("postgresql://"):
-            return "postgresql+psycopg://" + value[len("postgresql://") :]
-        return value
+        # Delegates to the module-level helper so the env-var readers that never
+        # construct Settings (app/db.py, migrations/env.py) share one rule.
+        return normalize_postgres_url(value)
 
     # --- Browser-borne attack surface -------------------------------------
     # This API has no authentication by design, so the browser is the only

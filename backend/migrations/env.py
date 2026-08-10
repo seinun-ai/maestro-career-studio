@@ -6,7 +6,7 @@ from sqlalchemy import pool
 
 from alembic import context
 
-from app.config import settings
+from app.config import normalize_postgres_url, settings
 from app.db import Base
 from app.models import *  # noqa: F403 - registers models for Alembic autogenerate
 
@@ -17,8 +17,12 @@ config = context.config
 # migrates its own throwaway database through alembic, and reading only
 # settings.database_url here would silently point those migrations at the DEV
 # database instead — the one holding real career data.
+# Wrapped in normalize_postgres_url for the same reason app/db.py is: the
+# TEST_DATABASE_URL branch never passes through Settings, so a bare
+# `postgresql://` would select the psycopg2 dialect this project does not ship.
 config.set_main_option(
-    "sqlalchemy.url", os.environ.get("TEST_DATABASE_URL") or settings.database_url
+    "sqlalchemy.url",
+    normalize_postgres_url(os.environ.get("TEST_DATABASE_URL") or settings.database_url),
 )
 
 # Interpret the config file for Python logging.
