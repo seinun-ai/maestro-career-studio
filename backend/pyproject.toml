@@ -45,7 +45,7 @@ dev = [
     # that linted clean. The rule set is now pinned in [tool.ruff.lint] too, so
     # this bound is belt-and-braces — lift it deliberately, with a run.
     "ruff>=0.7,<0.17",
-    "respx>=0.21",
+    "respx>=0.23.1",
 ]
 mcp = [
     # Upper bound is load-bearing, not caution. mcp 2.0 removed
