@@ -132,6 +132,23 @@ def run_typst_compile(
         "output": output,
         "root": root,
         "font_paths": font_paths,
+        # ONLY the fonts we ship. typst scans the machine's system fonts by
+        # default and merges them with font_paths, so the same resume could
+        # render with different glyphs on different machines — which is the one
+        # thing a tool whose selling point is reproducible output must not do.
+        #
+        # Not theoretical: CI installs texlive-fonts-extra, which puts a second
+        # XCharter on the box, and the emphasis role resolved to a different
+        # face there than it does on a laptop without it. The vendored set in
+        # app/assets/fonts/xcharter is complete (Roman, Bold, Italic, Slanted,
+        # BoldItalic, BoldSlanted), so nothing is lost by refusing the rest.
+        #
+        # Consequence worth knowing: a USER template naming a font we do not
+        # vendor now fails loudly instead of silently substituting. That is the
+        # better failure — silent substitution is how a resume goes out in a
+        # typeface its author never saw. To support more families, vendor them
+        # and extend settings.typst_font_paths.
+        "ignore_system_fonts": True,
         "sys_inputs": sys_inputs,
         # Defense in depth only (the package gate already rejected @-imports):
         # point package resolution at an empty dir so nothing local resolves.

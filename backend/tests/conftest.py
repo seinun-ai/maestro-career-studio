@@ -177,13 +177,26 @@ def db_session() -> Iterator[Session]:
         ) from None
 
     SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
-    with SessionLocal() as session:
-        _clear_tables(session)
-        session.commit()
-        yield session
-        session.rollback()
-        _clear_tables(session)
-        session.commit()
+    try:
+        with SessionLocal() as session:
+            _clear_tables(session)
+            session.commit()
+            yield session
+            session.rollback()
+            _clear_tables(session)
+            session.commit()
+    finally:
+        # DISPOSE. This fixture builds an engine PER TEST, and an undisposed
+        # engine keeps its pooled connections open. ~2,700 tests against a
+        # server whose default max_connections is 100 exhausts the server, and
+        # the symptom is this fixture's own "database is unreachable" message —
+        # which reads like the DB never came up rather than like a leak.
+        #
+        # Nondeterministic, so it hid for a long time: GC reclaims some engines
+        # and closes their pools, so how far the run gets depends on collection
+        # timing. Locally it always finished; the first CI run got through 1,964
+        # tests and then errored the remaining 798.
+        engine.dispose()
 
 
 def _clear_tables(session: Session) -> None:
