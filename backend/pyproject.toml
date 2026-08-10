@@ -22,7 +22,7 @@ dependencies = [
     "jinja2>=3.1",
     "typst==0.15.0",
     "pyyaml>=6.0",
-    "fastembed>=0.4",
+    "fastembed>=0.8.0",
     "langfuse>=4",
     # PDF: pdfplumber (MIT) reads text, pypdfium2 (BSD-3-Clause/Apache-2.0)
     # rasterizes, pillow (MIT-CMU) handles standalone images. PyMuPDF is
