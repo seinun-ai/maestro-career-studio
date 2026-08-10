@@ -40,7 +40,11 @@ dev = [
     "pytest>=8.3",
     "pytest-asyncio>=0.24",
     "httpx>=0.27",
-    "ruff>=0.7",
+    # Upper bound for the same reason as `mcp` below: unbounded, this resolved
+    # to 0.16.2 in CI against 0.12.0 locally and reported 449 errors on a tree
+    # that linted clean. The rule set is now pinned in [tool.ruff.lint] too, so
+    # this bound is belt-and-braces — lift it deliberately, with a run.
+    "ruff>=0.7,<0.17",
     "respx>=0.21",
 ]
 mcp = [
@@ -92,6 +96,28 @@ markers = [
 
 [tool.ruff]
 line-length = 100
+
+[tool.ruff.lint]
+# PIN THE RULE SET EXPLICITLY. These four are ruff's own defaults as of 0.12,
+# which is what this codebase was linted against — but "ruff's defaults" is a
+# moving target, and leaving it implicit meant the gate meant different things
+# on different machines.
+#
+# Found the hard way: `ruff>=0.7` was unbounded, so CI resolved 0.16.2 while
+# local was 0.12.0, and the first CI run reported 449 errors against a tree that
+# was clean locally. Same shape as the `mcp>=1.2` incident recorded in this
+# file — an unbounded pin is a silent version-drift bug waiting for the first
+# clean environment.
+#
+# Adding a rule here is a deliberate act with a diff attached. Two worth
+# knowing about before anyone "modernizes" this:
+#   B008 — flags `Depends()` in argument defaults. That is the CORRECT FastAPI
+#          idiom and every router uses it; enabling B008 and auto-fixing would
+#          break dependency injection app-wide.
+#   I001 — import sorting. 341 of the 449 were this. Harmless to adopt, but it
+#          is a whole-tree reformat and belongs in its own commit, not smuggled
+#          in under a licence change.
+select = ["E4", "E7", "E9", "F"]
 
 [tool.ruff.lint.per-file-ignores]
 # E402 (import not at top of file) is CORRECT here and must not be "fixed".
