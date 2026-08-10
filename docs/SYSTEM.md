@@ -1315,8 +1315,7 @@ review fixes referenced throughout this file) → 2026-07-15 parallel delegation
 tasks (MCP apply-package tools; health-check-v2 override UI) → 2026-07-16 UI
 polish (Career KB + extension Q&A) → **2026-07-16 custom resume sections
 (`extra_sections`) phases 1-2** (fixed-core-plus-typed-extras, then versioned
-ATS evidence + stable-key gap placement). `docs/application-report.md` is
-historical only.
+ATS evidence + stable-key gap placement).
 
 ## 11. Known deferred items (priority order)
 

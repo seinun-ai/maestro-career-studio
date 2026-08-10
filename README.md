@@ -4,13 +4,7 @@ A **local-first, single-user** job-application copilot built to run entirely on 
 
 It covers the whole loop — build the career record, target it at a role, capture the job, tailor, render, apply, track — across three surfaces that share one backend: a web app, a companion browser extension, and an **MCP server** so the assistant you already use can drive any of it.
 
-> **Not a SaaS, not multi-tenant, and no authentication.** This app is designed as a private personal companion running entirely on your computer. **Nothing phones home.** Even the companion browser extension's autofill telemetry endpoint (`POST /api/autofill/telemetry`) posts strictly to your own local backend, and its schema records zero form field values.
-
----
-
-## ⚠️ Important Security & Network Warning
-Because this tool is built exclusively as an offline, single-user personal companion, **there is zero authentication on any HTTP or MCP endpoint**. 
-All published container ports are bound strictly to localhost (`127.0.0.1`) by default in Docker Compose. **Do not expose this application, database, or API backend to the public internet, LANs, or untrusted network interfaces**, as any reachable user would gain total read/write access to your career history and API configurations. See our [Security Policy](SECURITY.md) for full details.
+> **Not a SaaS, not multi-tenant, and nothing phones home.** It runs on your computer, for you alone. Even the browser extension's autofill telemetry posts strictly to your own local backend, and its schema records zero form field values.
 
 ---
 
@@ -64,6 +58,19 @@ The most powerful feature you can experience in your first ten minutes is automa
 Unlike typical AI wrappers, **scoring is deterministic and LLM-free**. A hybrid scoring engine blends deterministic lexical layers (keyword coverage, section placement, recency weights, title matches, experience gates, and format linting) with a pinned local embedding model (running offline on CPU via fastembed/ONNX) for semantic evaluation.
 - **Anchored Soft-Matching:** A soft semantic match requires both an overlapping lexical anchor token and embedding proximity. This credits genuine industry synonyms and reformulations (e.g., matching "container orchestration" to Kubernetes) without hallucinating unearned skills.
 - The exact same resume, job description, and versioned config will always produce an identical 0–100 score and diagnostic breakdown.
+
+### The trade that buys all of this: no authentication
+
+Single-user and local-first means there is **no login, and no authentication on
+any HTTP or MCP endpoint** — that absence is what removes the accounts, the
+tenancy and the server holding your career history. Compose binds every port to
+`127.0.0.1`, so out of the box nothing outside your machine can reach it.
+
+**One rule follows from that: do not expose it to a network.** Not the public
+internet, not your LAN, not a tunnel. Anything that can reach the API has full
+read and write access to your entire career record and your saved API keys.
+Running it locally is safe by construction; publishing it is not, and no setting
+makes it so. [`SECURITY.md`](SECURITY.md) has the detail and the threat model.
 
 ---
 

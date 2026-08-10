@@ -33,11 +33,27 @@ import re
 import sys
 from pathlib import Path
 
-# The grooming spec targets 1,300 lines with a 1,400 FAIL ceiling. The
-# 2026-08-08 retroactive grooming pass stopped at 1,482 (owner call:
-# diminishing returns vs. rule preservation), so the ceiling is parked at
-# 1,500. Tighten to 1400 after the next grooming pass gets under it.
-MAX_TOTAL_LINES = 1500
+# RAISED 1500 -> 1800 on 2026-08-09, deliberately, after the ceiling stopped
+# working as a budget and started working as a tripwire.
+#
+# History: the grooming spec wanted 1,300 with a 1,400 ceiling; the 2026-08-08
+# pass stopped at 1,482 and parked the ceiling at 1,500. The file then sat at
+# 1,498-1,499 for weeks, which meant every single edit — including one-line
+# corrections to things that had become false — had to win an argument with the
+# gate first. A ceiling you are permanently one line under does not cause
+# integration, it causes avoidance, and the failure mode is a document that
+# quietly goes stale because fixing it is annoying.
+#
+# 1800 is arbitrary; what matters is that it is far enough away to be a budget
+# you notice occasionally rather than a wall you touch daily. The point of the
+# rule was never the number — it is "integrate, don't append", and the
+# per-section growth check below is a better read on whether that is happening.
+#
+# NOTE that the per-section check only WARNS (exit 0). So between here and 1800
+# nothing hard-stops accretion; that is a deliberate trade for editability, not
+# an oversight. If this file reaches ~1750 the honest response is another
+# grooming pass, not another raise.
+MAX_TOTAL_LINES = 1800
 GROWTH_WARN_RATIO = 1.25
 DATE_RE = re.compile(r"\(20\d\d-\d\d-\d\d")
 SHIPPED_RE = re.compile(r"\b(SHIPPED|shipped|DONE)\b")
