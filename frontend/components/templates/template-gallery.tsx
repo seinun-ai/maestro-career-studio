@@ -43,6 +43,7 @@ function TemplateBadgeStrip({ template }: { template: TemplateSummary }) {
 
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-1">
+      {template.archived_at && <Badge variant="secondary">Archived</Badge>}
       <Badge variant={isReady ? "default" : "secondary"}>
         {template.status}
       </Badge>

@@ -204,6 +204,7 @@ def test_typst_classic_seed_records_validation_error(db_session, monkeypatch):
         raise RuntimeError("preview dir unwritable")
 
     monkeypatch.setattr(template_validation, "validate_template", boom)
+    reg.reset_seed_validation_attempts()  # a fresh boot: attempt validation
     reg._bootstrap_typst_classic(db_session)
     row = reg.get(db_session, reg.TYPST_CLASSIC_ID)
     assert row.status == "draft"
@@ -213,6 +214,7 @@ def test_typst_classic_seed_records_validation_error(db_session, monkeypatch):
 def test_typst_classic_seed_revalidates_stuck_draft(db_session, tmp_path, monkeypatch):
     """FIX-12: a seed row stranded non-ready is re-validated on the next ensure."""
     monkeypatch.setattr(tv.settings, "base_resumes_dir", tmp_path)
+    reg.reset_seed_validation_attempts()
     reg.ensure_seed_templates(db_session)
     row = reg.get(db_session, reg.TYPST_CLASSIC_ID)
     assert row.status == "ready"
@@ -220,6 +222,7 @@ def test_typst_classic_seed_revalidates_stuck_draft(db_session, tmp_path, monkey
     row.status = "draft"
     row.last_error = "old failure"
     db_session.commit()
+    reg.reset_seed_validation_attempts()  # i.e. the next boot
     reg.ensure_seed_templates(db_session)  # re-validates the non-ready seed
     assert reg.get(db_session, reg.TYPST_CLASSIC_ID).status == "ready"
 
@@ -240,3 +243,55 @@ def test_list_templates_seeds_typst_classic(db_session):
     body = {t["id"]: t for t in r.json()}
     assert "default" in body
     assert "typst-classic" in body and body["typst-classic"]["engine"] == "typst"
+
+
+def test_default_seed_earns_ready_by_rendering(db_session):
+    """The default used to be INSERTed `ready` with validated_at=now() and no
+    render ever attempted, so every fresh install showed its default template as
+    "Not validated" with a 404 thumbnail. Status must be earned."""
+    reg.reset_seed_validation_attempts()
+    reg.ensure_seed_templates(db_session)
+    from app.models.template import Template
+
+    row = db_session.get(Template, reg.DEFAULT_ID)
+    assert row.is_default is True
+    if row.status == "ready":
+        # Earned: validated_at set AND the preview the gallery asks for exists.
+        from app.services import template_validation as _tv
+
+        assert row.validated_at is not None
+        assert _tv._preview_path(reg.DEFAULT_ID).exists()
+    else:
+        # Validation legitimately failed (e.g. no pdflatex on this host) — then
+        # it must NOT claim a validated_at, and must carry a diagnosis.
+        assert row.validated_at is None
+        assert row.last_error
+
+
+def test_a_ready_row_with_no_preview_is_revalidated(db_session):
+    """The self-heal for installs already carrying the broken default: the flag
+    says ready, the artifact is missing, so the next ensure renders it."""
+    from app.services import template_validation
+
+    reg.reset_seed_validation_attempts()
+    reg.ensure_seed_templates(db_session)
+    preview = template_validation._preview_path(reg.DEFAULT_ID)
+    if not preview.exists():
+        pytest.skip("default seed could not validate on this host")
+    preview.unlink()
+
+    reg.reset_seed_validation_attempts()  # i.e. the next boot
+    reg.ensure_seed_templates(db_session)
+    assert preview.exists(), "a ready row with a missing preview must re-validate"
+
+
+def test_the_four_bundled_designs_seed(db_session):
+    """They shipped inside the image from the start and never reached the
+    database — ensure_seed_templates minted only the two classics."""
+    reg.reset_seed_validation_attempts()
+    reg.ensure_seed_templates(db_session)
+    ids = {t.id for t in reg.list_all(db_session)}
+    for template_id, _name, _engine, _file in reg.BUNDLED_TEMPLATES:
+        assert template_id in ids, f"{template_id} did not seed"
+    # and nothing arrives archived
+    assert all(t.archived_at is None for t in reg.list_all(db_session))

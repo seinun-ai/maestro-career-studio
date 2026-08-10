@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch } from "@/lib/api";
 import type { TemplateDetail, TemplateSummary } from "@/lib/types";
@@ -36,9 +37,14 @@ export default function TemplatesListPage() {
   const qc = useQueryClient();
   const confirm = useConfirm();
 
+  const [showArchived, setShowArchived] = useState(false);
+
   const templates = useQuery({
-    queryKey: ["templates"],
-    queryFn: () => apiFetch<TemplateSummary[]>("/api/templates"),
+    queryKey: ["templates", showArchived],
+    queryFn: () =>
+      apiFetch<TemplateSummary[]>(
+        `/api/templates${showArchived ? "?include_archived=true" : ""}`,
+      ),
   });
 
   const [createOpen, setCreateOpen] = useState(false);
@@ -124,6 +130,19 @@ export default function TemplatesListPage() {
     onError: (err: Error) => toast.error(err.message),
   });
 
+  const archive = useMutation({
+    mutationFn: ({ id, archived }: { id: string; archived: boolean }) =>
+      apiFetch<TemplateDetail>(
+        `/api/templates/${id}/${archived ? "unarchive" : "archive"}`,
+        { method: "POST" },
+      ),
+    onSuccess: (_d, vars) => {
+      toast.success(vars.archived ? "Restored" : "Archived");
+      invalidate();
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
   const del = useMutation({
     mutationFn: (id: string) =>
       apiFetch<void>(`/api/templates/${id}`, { method: "DELETE" }),
@@ -151,7 +170,17 @@ export default function TemplatesListPage() {
         title="Templates"
         subtitle="Templates used to render resumes."
         actions={
-          <Button onClick={() => setCreateOpen(true)}>New template</Button>
+          <div className="flex items-center gap-3">
+            <label className="text-muted-foreground flex items-center gap-2 text-sm">
+              <Switch
+                aria-label="Show archived templates"
+                checked={showArchived}
+                onCheckedChange={setShowArchived}
+              />
+              Show archived
+            </label>
+            <Button onClick={() => setCreateOpen(true)}>New template</Button>
+          </div>
         }
       />
 
@@ -194,6 +223,18 @@ export default function TemplatesListPage() {
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => duplicate.mutate(t)}>
                   Duplicate
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  // The default is the render fallback for any resume whose
+                  // template_id no longer resolves, so hiding it from every
+                  // picker would strand that fallback. Re-point the default
+                  // first; the server enforces this too.
+                  disabled={t.is_default || archive.isPending}
+                  onClick={() =>
+                    archive.mutate({ id: t.id, archived: !!t.archived_at })
+                  }
+                >
+                  {t.archived_at ? "Restore" : "Archive"}
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   variant="destructive"

@@ -494,3 +494,84 @@ def test_preview_pages_after_validate(db_session, tmp_path, monkeypatch):
         assert img.headers["content-type"] == "image/png"
     finally:
         app.dependency_overrides.clear()
+
+
+# --- archiving -----------------------------------------------------------
+#
+# Mirrors base-resume archiving: hide from the gallery and every picker, change
+# nothing else. The default is excluded because it is the render fallback for
+# any resume whose template_id no longer resolves — archiving it would strand
+# that fallback with no way to reach it.
+
+
+def _client(db_session):
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    return TestClient(app)
+
+
+def _seeded_non_default(client):
+    rows = client.get("/api/templates").json()
+    return next(r for r in rows if not r["is_default"])
+
+
+def test_archive_hides_from_the_default_list_only(db_session):
+    client = _client(db_session)
+    try:
+        target = _seeded_non_default(client)
+        assert client.post(f"/api/templates/{target['id']}/archive").status_code == 200
+
+        active = [r["id"] for r in client.get("/api/templates").json()]
+        assert target["id"] not in active
+
+        # include_archived is the ONE lever every picker shares.
+        everything = client.get("/api/templates?include_archived=true").json()
+        row = next(r for r in everything if r["id"] == target["id"])
+        assert row["archived_at"] is not None
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_archiving_touches_no_artifact_and_reverses_cleanly(db_session):
+    # The promise archiving makes over DELETE: the source and the validation
+    # state survive, so a resume already rendering with it keeps rendering.
+    client = _client(db_session)
+    try:
+        target = _seeded_non_default(client)
+        before = client.get(f"/api/templates/{target['id']}").json()
+
+        client.post(f"/api/templates/{target['id']}/archive")
+        during = client.get(f"/api/templates/{target['id']}").json()
+        assert during["source"] == before["source"]
+        assert during["status"] == before["status"]
+        assert during["validated_at"] == before["validated_at"]
+
+        assert client.post(f"/api/templates/{target['id']}/unarchive").status_code == 200
+        after = client.get(f"/api/templates/{target['id']}").json()
+        assert after["archived_at"] is None
+        assert [r["id"] for r in client.get("/api/templates").json()].count(
+            target["id"]
+        ) == 1
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_the_default_template_cannot_be_archived(db_session):
+    client = _client(db_session)
+    try:
+        rows = client.get("/api/templates").json()
+        default_id = next(r["id"] for r in rows if r["is_default"])
+        resp = client.post(f"/api/templates/{default_id}/archive")
+        assert resp.status_code == 400
+        assert "default" in resp.json()["detail"].lower()
+        # and it is still listed
+        assert default_id in [r["id"] for r in client.get("/api/templates").json()]
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_archiving_an_unknown_template_is_404(db_session):
+    client = _client(db_session)
+    try:
+        assert client.post("/api/templates/nope/archive").status_code == 404
+    finally:
+        app.dependency_overrides.clear()

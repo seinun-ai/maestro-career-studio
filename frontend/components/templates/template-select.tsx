@@ -65,8 +65,8 @@ export function useTemplateDefaults(
   templateId: string,
 ): Partial<ResumeFormatting> {
   const q = useQuery({
-    queryKey: ["templates"],
-    queryFn: () => apiFetch<TemplateSummary[]>("/api/templates"),
+    queryKey: ["templates", "all"],
+    queryFn: () => apiFetch<TemplateSummary[]>("/api/templates?include_archived=true"),
   });
   if (!q.data) return {};
   const match = resolveTemplate(q.data, templateId);
@@ -82,8 +82,8 @@ export function useTemplateDefaults(
  */
 export function useSupportedFmtKeys(templateId: string): string[] | undefined {
   const q = useQuery({
-    queryKey: ["templates"],
-    queryFn: () => apiFetch<TemplateSummary[]>("/api/templates"),
+    queryKey: ["templates", "all"],
+    queryFn: () => apiFetch<TemplateSummary[]>("/api/templates?include_archived=true"),
   });
   if (!q.data) return undefined;
   const match = resolveTemplate(q.data, templateId);
@@ -116,17 +116,25 @@ export function TemplateSelect({
   className?: string;
 }) {
   const q = useQuery({
-    queryKey: ["templates"],
-    queryFn: () => apiFetch<TemplateSummary[]>("/api/templates"),
+    queryKey: ["templates", "all"],
+    queryFn: () => apiFetch<TemplateSummary[]>("/api/templates?include_archived=true"),
   });
-  const ready = (q.data ?? []).filter((t) => t.status === "ready");
+  const all = q.data ?? [];
+  // Two different lists on purpose. The BROWSE grid offers only what you would
+  // want to pick — ready and not archived, which is the whole point of
+  // archiving. The LABEL resolves against everything, because a template can be
+  // archived while a resume still points at it; looking that up in the filtered
+  // list would render the raw id where a name belongs.
+  const ready = all.filter((t) => t.status === "ready");
+  const selectable = ready.filter((t) => !t.archived_at);
   const [browseOpen, setBrowseOpen] = useState(false);
-  const defaultTemplate = ready.find((t) => t.is_default);
+  const defaultTemplate = selectable.find((t) => t.is_default);
 
+  const current = ready.find((t) => t.id === value);
   const label =
     value === DEFAULT_TEMPLATE
       ? "Default template"
-      : (ready.find((t) => t.id === value)?.display_name ?? value);
+      : (current?.display_name ?? value);
 
   return (
     <>
@@ -176,13 +184,15 @@ export function TemplateSelect({
             </span>
           </button>
           <div className="min-h-0 flex-1 overflow-y-auto pr-1">
-            {ready.length === 0 ? (
+            {selectable.length === 0 ? (
               <p className="text-muted-foreground text-sm">
-                No templates ready yet.
+                {ready.length === 0
+                  ? "No templates ready yet."
+                  : "Every ready template is archived. Restore one from Templates to pick it here."}
               </p>
             ) : (
               <TemplateGallery
-                templates={ready}
+                templates={selectable}
                 selectedId={value}
                 onSelect={(t) => {
                   onChange(t.id);

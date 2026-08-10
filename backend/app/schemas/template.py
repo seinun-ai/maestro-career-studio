@@ -26,6 +26,11 @@ class TemplateSummary(BaseModel):
     supported_fmt_keys: list[str] = []
     # Partial formatting overlay baked into the theme (real column).
     default_formatting: dict | None = None
+    # Set = hidden from the gallery and every picker. Carried on the SUMMARY,
+    # not just the detail, because the picker needs it: a template archived
+    # while still selected must stay visible in that one dropdown, or the
+    # selection silently reads as blank.
+    archived_at: datetime | None = None
     model_config = {"from_attributes": True}
 
 

@@ -29,6 +29,11 @@ class Template(Base):
     parse_certified: Mapped[bool | None] = mapped_column(Boolean)
     parse_report_json: Mapped[dict | None] = mapped_column(JSONB)  # extractor triple + missing probes
     default_formatting: Mapped[dict | None] = mapped_column(JSONB)
+    # Hidden from the gallery and every picker, nothing else changed. Mirrors
+    # base_resumes.archived_at deliberately — same column, same semantics, same
+    # "not a delete" promise — so there is one archiving concept in the product
+    # rather than two that behave almost alike.
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

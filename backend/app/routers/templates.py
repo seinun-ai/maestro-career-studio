@@ -30,9 +30,22 @@ def _with_fmt_keys(row):
 
 
 @router.get("", response_model=list[TemplateSummary])
-def list_templates(db: Annotated[Session, Depends(get_db)]):
-    reg.ensure_seed_templates(db)  # ensure seeded templates exist
-    return [_with_fmt_keys(row) for row in reg.list_all(db)]
+def list_templates(
+    db: Annotated[Session, Depends(get_db)],
+    include_archived: bool = False,
+):
+    """The ONE list query behind the gallery and every template picker.
+
+    Defaulting `include_archived` to False is what makes archiving reach all of
+    them without a per-caller change — the same lever base resumes use.
+    """
+    # validate=False: rows only. Rendering here would COMMIT this request's
+    # transaction (see ensure_seed_templates) — startup owns validation.
+    reg.ensure_seed_templates(db, validate=False)
+    rows = reg.list_all(db)
+    if not include_archived:
+        rows = [row for row in rows if row.archived_at is None]
+    return [_with_fmt_keys(row) for row in rows]
 
 
 @router.get("/{template_id}", response_model=TemplateDetail)
@@ -203,6 +216,51 @@ def set_default_endpoint(template_id: str, db: Annotated[Session, Depends(get_db
         raise HTTPException(status_code=404, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
+    return _with_fmt_keys(row)
+
+
+def _archivable(template_id: str, db: Session):
+    row = reg.get(db, template_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Template not found")
+    if row.is_default:
+        # Archiving hides a template from every picker, and the default is the
+        # render fallback for any resume whose template_id no longer resolves.
+        # Hiding it would leave that fallback unreachable in the UI while it
+        # kept being used — a state with no way back. Re-point the default
+        # first, then archive this one.
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "The default template cannot be archived. Make another template "
+                "the default first, then archive this one."
+            ),
+        )
+    return row
+
+
+@router.post("/{template_id}/archive", response_model=TemplateDetail)
+def archive_template(template_id: str, db: Annotated[Session, Depends(get_db)]):
+    """Hide from the gallery and every picker; change nothing else.
+
+    Deliberately touches no artifact: the source, the preview PDF and the
+    validation state all survive, and the template stays resolvable by id — so
+    a resume already rendering with it keeps rendering. Unlike DELETE this is
+    meant to be undone.
+    """
+    row = _archivable(template_id, db)
+    row.archived_at = datetime.now(UTC)
+    db.commit()
+    db.refresh(row)
+    return _with_fmt_keys(row)
+
+
+@router.post("/{template_id}/unarchive", response_model=TemplateDetail)
+def unarchive_template(template_id: str, db: Annotated[Session, Depends(get_db)]):
+    row = _archivable(template_id, db)
+    row.archived_at = None
+    db.commit()
+    db.refresh(row)
     return _with_fmt_keys(row)
 
 

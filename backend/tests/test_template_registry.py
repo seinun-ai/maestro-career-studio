@@ -51,11 +51,22 @@ def test_supported_fmt_keys_rejects_path_traversal_includes(tmp_path):
 
 
 def test_get_default_bootstraps_from_file(db_session):
+    reg.reset_seed_validation_attempts()
     tmpl = reg.get_default(db_session)
     assert tmpl.id == "default"
     assert tmpl.is_default is True
-    assert tmpl.status == "ready"
     assert "section" in tmpl.source.lower() or "documentclass" in tmpl.source.lower()
+    # This used to assert status == "ready" unconditionally, which passed only
+    # because the bootstrap ASSERTED ready without ever rendering — the defect
+    # that made every fresh install show its default template as "Not
+    # validated". Ready is now earned, so it is conditional on the host being
+    # able to render at all (CI and dev hosts cannot always write the preview
+    # dir); what must ALWAYS hold is that the status and the evidence agree.
+    if tmpl.status == "ready":
+        assert tmpl.validated_at is not None
+    else:
+        assert tmpl.validated_at is None
+        assert tmpl.last_error
 
 
 def test_bootstrap_default_uses_classic_display_name(db_session):

@@ -859,6 +859,13 @@ export interface TemplateSummary {
    * joined words ("DataScientist").
    */
   parse_certified: boolean | null;
+  /**
+   * Set = hidden from the gallery and the browse dialog. Not a delete: the
+   * template still renders anything already pointed at it, which is why the
+   * shared `["templates"]` query asks for archived rows too — a selection that
+   * was archived after the fact must still resolve to a name and its fmt keys.
+   */
+  archived_at?: string | null;
   /** `fmt.*` variables the template's source opts into (empty when none). */
   supported_fmt_keys: string[];
   /** Partial `fmt.*` overlay baked into the theme; merged under resume values. */
