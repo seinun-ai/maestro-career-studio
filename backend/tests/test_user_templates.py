@@ -503,8 +503,15 @@ def test_default_engine_parity_has_identical_dual_extractor_sequences(
 @pytest.mark.parametrize(
     ("engine", "emphasis_role"),
     [
+        # BOTH engines use the true italic. typst used to resolve to
+        # XCharter-Slanted here, and that was never a decision — the vendored
+        # set carried Italic and Slanted, both declaring family XCharter with
+        # the italic bit, so the winner was whichever the filesystem enumerated
+        # first. macOS picked Slanted, Linux picked Italic, and this assertion
+        # was the only thing that noticed. The Slanted faces are gone; see
+        # app/assets/fonts/xcharter/README.md.
         ("latex", "XCharter-Italic"),
-        ("typst", "XCharter-Slanted"),
+        ("typst", "XCharter-Italic"),
     ],
 )
 def test_default_engine_parity_uses_named_xcharter_font_roles(

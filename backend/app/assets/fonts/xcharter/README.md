@@ -19,6 +19,29 @@ cut (SYSTEM.md §13 `texlive-layer`).
 
 Shipping the font removes the question.
 
+## Why the Slanted faces are NOT here
+
+XCharter ships two italic designs: a **true italic** (`XCharter-Italic`,
+`XCharter-BoldItalic`) and a mechanical **oblique** (`XCharter-Slanted`,
+`XCharter-BoldSlanted`). All four declare family `XCharter` and set the italic
+bit, so a plain "italic" request matches two faces at each weight, and typst
+resolves the tie by **font enumeration order — which is filesystem order**.
+
+That is not a stable property. The same resume rendered in this repository's
+own CI (Linux) and on the maintainer's laptop (macOS) picked *different italic
+designs* from the same six files: `XCharter-Italic` on one, `XCharter-Slanted`
+on the other. Vendoring the fonts had removed the "which XCharter?" question and
+left "which italic?" open, which is the same class of defect one layer down.
+
+Only the four unambiguous faces are vendored now, so the match is forced. This
+also closes a real parity gap rather than merely a test failure: LaTeX's
+`xcharter` package maps `\textit` to the **true italic**, so typst picking the
+oblique meant the two engines were producing visibly different letterforms while
+the parity suite reported agreement.
+
+To restore an oblique deliberately, add the file back **and** give it a distinct
+family name — do not reintroduce the tie.
+
 ## Provenance
 
 - **Family:** XCharter, version 1.26 (2024-06-18)

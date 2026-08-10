@@ -140,8 +140,10 @@ def run_typst_compile(
         # Not theoretical: CI installs texlive-fonts-extra, which puts a second
         # XCharter on the box, and the emphasis role resolved to a different
         # face there than it does on a laptop without it. The vendored set in
-        # app/assets/fonts/xcharter is complete (Roman, Bold, Italic, Slanted,
-        # BoldItalic, BoldSlanted), so nothing is lost by refusing the rest.
+        # app/assets/fonts/xcharter carries the four faces the templates need
+        # (Roman, Bold, Italic, BoldItalic) and deliberately NOT the Slanted
+        # obliques — see that directory's README: two faces claiming the same
+        # family and italic bit let filesystem order decide the letterforms.
         #
         # Consequence worth knowing: a USER template naming a font we do not
         # vendor now fails loudly instead of silently substituting. That is the
