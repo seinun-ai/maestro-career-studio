@@ -10,6 +10,21 @@
 # `aliases` are normalized to `key` on ingest, so an LLM answering
 # "machine learning engineer" does not fragment the vocabulary.
 #
+# `roles` are specific job titles nested under a category, for a searchable
+# picker. They are DISPLAY, SEARCH AND ALIAS ONLY: a role key is never stored
+# and never joins `adjacent`, because the ATS title tier hashes `adjacent` into
+# `config_version` and `propose_from_resume` only proposes when exactly one
+# family matches. A role's key, label and aliases all normalize to its PARENT
+# category, so a JD titled "Product Data Scientist" is stored as
+# `data_scientist` instead of falling to `other`.
+#
+# A role label that restates a string already in its OWN category's `adjacent`
+# list is intentional, not duplication — 16 of them do. The two lists are read
+# by different machinery: `adjacent` is matched against resume/JD titles by the
+# ATS engine and is hashed into `config_version`; `roles` is shown to a human in
+# a picker. Deduplicating them would move `config_version` and invalidate every
+# stored score.
+#
 # THIS IS DOMAIN DATA, NOT AN ENUM. The list below is tech/data-shaped because
 # that is the default pack, not because the engine requires it. Add categories
 # for another domain (nursing, law, sales) and extraction, analytics, filtering
@@ -26,51 +41,164 @@ categories:
     label: Data Scientist
     adjacent: [data scientist, machine learning scientist, applied scientist, research scientist]
     aliases: [ds, data science]
+    roles:
+      - {key: product_data_scientist, label: Product Data Scientist, aliases: [product ds]}
+      - {key: decision_scientist, label: Decision Scientist}
+      - {key: experimentation_scientist, label: Experimentation Scientist, aliases: [ab testing scientist]}
+      - {key: marketing_data_scientist, label: Marketing Data Scientist}
 
   - key: data_analyst
     label: Data Analyst
     adjacent: [data analyst, business intelligence analyst, analytics consultant, reporting analyst]
     aliases: [analyst, data analytics]
+    roles:
+      - {key: marketing_analyst, label: Marketing Analyst}
+      - {key: financial_analyst, label: Financial Analyst}
+      - {key: growth_analyst, label: Growth Analyst}
+      - {key: reporting_analyst, label: Reporting Analyst}
+      # A BI Analyst reads dashboards; a BI Developer builds them. This one
+      # belongs with the analysts, matching `business intelligence analyst`
+      # in the adjacent list above.
+      - {key: bi_analyst, label: BI Analyst}
 
   - key: data_engineer
     label: Data Engineer
     adjacent: [data engineer, analytics engineer, etl developer, data platform engineer]
     aliases: [de, data engineering]
+    roles:
+      - {key: etl_developer, label: ETL Developer}
+      - {key: data_platform_engineer, label: Data Platform Engineer}
+      - {key: big_data_engineer, label: Big Data Engineer}
+      - {key: streaming_data_engineer, label: Streaming Data Engineer}
 
   - key: ai_ml_engineer
     label: AI/ML Engineer
     adjacent: [machine learning engineer, ml engineer, ai engineer, mlops engineer, deep learning engineer]
     aliases: [ml_engineer, machine_learning_engineer, ai_engineer, mle, ai/ml engineer, ai ml engineer]
+    roles:
+      - {key: machine_learning_engineer, label: Machine Learning Engineer}
+      - {key: deep_learning_engineer, label: Deep Learning Engineer}
+      - {key: nlp_engineer, label: NLP Engineer, aliases: [natural language processing engineer]}
+      - {key: computer_vision_engineer, label: Computer Vision Engineer, aliases: [cv engineer]}
+      - {key: generative_ai_engineer, label: Generative AI Engineer, aliases: [genai engineer, llm engineer]}
 
   - key: analytics_engineer
     label: Analytics Engineer
     adjacent: [analytics engineer, data engineer, bi developer, dbt developer]
     aliases: [ae]
+    roles:
+      - {key: dbt_developer, label: dbt Developer}
+      - {key: data_modeler, label: Data Modeler}
+      - {key: analytics_platform_engineer, label: Analytics Platform Engineer}
 
   - key: business_analyst
     label: Business Analyst
     adjacent: [business analyst, product analyst, operations analyst, business systems analyst]
     aliases: [ba, product_analyst]
+    roles:
+      - {key: product_analyst, label: Product Analyst}
+      - {key: operations_analyst, label: Operations Analyst}
+      - {key: business_systems_analyst, label: Business Systems Analyst}
+      - {key: process_analyst, label: Process Analyst}
 
   - key: bi_developer
     label: BI Developer
     adjacent: [business intelligence developer, bi engineer, tableau developer, power bi developer]
     aliases: [bi_engineer, business_intelligence_developer]
+    roles:
+      - {key: tableau_developer, label: Tableau Developer}
+      - {key: power_bi_developer, label: Power BI Developer}
+      - {key: looker_developer, label: Looker Developer}
 
   - key: research_scientist
     label: Research Scientist
     adjacent: [research scientist, applied scientist, research engineer]
     aliases: [researcher]
+    roles:
+      # `applied scientist` and `research engineer` are DELIBERATELY parented
+      # here even though they are genuinely ambiguous — "applied scientist"
+      # sits in `data_scientist.adjacent` as well, and is the example
+      # `propose_from_resume` cites for why it refuses to break ties. A picker
+      # has no such luxury: every entry must name exactly one parent. So the
+      # two disagree on purpose. `normalize("Applied Scientist")` answers
+      # `research_scientist` because a human picked it from a list, while
+      # `propose_from_resume` still answers `unknown` and asks. Do not
+      # "fix" that by adding these to `adjacent` — that moves `config_version`.
+      - {key: applied_scientist, label: Applied Scientist}
+      - {key: research_engineer, label: Research Engineer}
+      - {key: quantitative_researcher, label: Quantitative Researcher, aliases: [quant researcher, quant]}
+      - {key: computational_scientist, label: Computational Scientist}
 
   - key: software_engineer
     label: Software Engineer
-    adjacent: [software engineer, backend engineer, full stack engineer, platform engineer]
+    # `platform engineer` used to sit here. It moved to its own category below:
+    # left in both, `propose_from_resume` matches two families for a title as
+    # ordinary as "Platform Engineer", ties, and answers `unknown`. Every title
+    # that moves to a new category has to LEAVE the old one.
+    adjacent: [software engineer, backend engineer, full stack engineer]
     aliases: [swe, sde, developer]
+    roles:
+      - {key: backend_engineer, label: Backend Engineer}
+      - {key: frontend_engineer, label: Frontend Engineer}
+      - {key: full_stack_engineer, label: Full Stack Engineer}
+      - {key: mobile_engineer, label: Mobile Engineer, aliases: [ios engineer, android engineer]}
 
   - key: mlops_engineer
     label: MLOps Engineer
     adjacent: [mlops engineer, machine learning infrastructure engineer, ml platform engineer]
     aliases: [ml_ops, ml_platform_engineer]
+    roles:
+      - {key: ml_platform_engineer, label: ML Platform Engineer}
+      - {key: ml_infrastructure_engineer, label: ML Infrastructure Engineer}
+      - {key: llmops_engineer, label: LLMOps Engineer}
+
+  # The four below are NOT specialisations of `software_engineer`, which is why
+  # they are categories rather than roles nested under it. A Security Engineer
+  # is a different job from a Software Engineer, not a flavour of one, and an
+  # Engineering Manager is a different job again, not a senior Engineer — the
+  # rank-marker list deliberately refuses to strip `manager`/`director`/`head`
+  # for exactly that reason. Only a category key is storable on a base resume
+  # and only a category can be suggested by `setup_status`, so nesting them
+  # would have left anyone targeting these four with no resume to create.
+  - key: security_engineer
+    label: Security Engineer
+    adjacent: [security engineer, application security engineer, cloud security engineer, information security analyst]
+    aliases: [infosec, appsec, security]
+    roles:
+      - {key: application_security_engineer, label: Application Security Engineer}
+      - {key: cloud_security_engineer, label: Cloud Security Engineer}
+      - {key: detection_engineer, label: Detection Engineer}
+      - {key: penetration_tester, label: Penetration Tester, aliases: [pentester]}
+
+  - key: platform_engineer
+    label: Platform Engineer
+    adjacent: [platform engineer, devops engineer, site reliability engineer, infrastructure engineer]
+    aliases: [devops, sre, infrastructure_engineer]
+    roles:
+      - {key: devops_engineer, label: DevOps Engineer}
+      - {key: site_reliability_engineer, label: Site Reliability Engineer}
+      - {key: cloud_engineer, label: Cloud Engineer}
+      - {key: kubernetes_engineer, label: Kubernetes Engineer}
+
+  - key: product_manager
+    label: Product Manager
+    adjacent: [product manager, technical product manager, product owner, program manager]
+    aliases: [pm, tpm]
+    roles:
+      - {key: technical_product_manager, label: Technical Product Manager}
+      - {key: data_product_manager, label: Data Product Manager}
+      - {key: ai_product_manager, label: AI Product Manager}
+      - {key: product_owner, label: Product Owner}
+
+  - key: engineering_manager
+    label: Engineering Manager
+    adjacent: [engineering manager, data science manager, analytics manager, director of engineering]
+    aliases: [em, dev_manager]
+    roles:
+      - {key: data_science_manager, label: Data Science Manager}
+      - {key: analytics_manager, label: Analytics Manager}
+      - {key: director_of_engineering, label: Director of Engineering}
+      - {key: head_of_data, label: Head of Data}
 
 # Rank markers: tokens that qualify HOW SENIOR a role is without changing WHAT
 # the role is. Stripping these is what lets the ATS title tier see that

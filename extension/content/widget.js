@@ -954,6 +954,7 @@ label.toggle input { margin: 2px 0 0; accent-color: var(--cs-primary); }
   };
 
   const readStore = async () => {
+    if (!extensionAlive()) return { ...STORE_DEFAULTS };
     try {
       return await chrome.storage.local.get(STORE_DEFAULTS);
     } catch (err) {
@@ -964,10 +965,40 @@ label.toggle input { margin: 2px 0 0; accent-color: var(--cs-primary); }
     }
   };
 
-  const writeStore = (patch) =>
-    chrome.storage.local.set(patch).catch((err) => {
+  /** Is the extension still behind this content script?
+   *
+   * `chrome.runtime.id` goes undefined the moment the extension is reloaded or
+   * updated, while the script it injected keeps running on every page that was
+   * already open. Checked before every `chrome.*` call rather than only in
+   * `ask()`, because EVERY one of them throws afterwards. */
+  const extensionAlive = () => {
+    try {
+      return Boolean(chrome.runtime?.id);
+    } catch (_) {
+      // Reading the property can itself throw once the world is gone.
+      return false;
+    }
+  };
+
+  const writeStore = (patch) => {
+    // `.catch()` alone was NOT a guard here, and this is the trap: once the
+    // context is invalidated `chrome.storage.local.set` throws SYNCHRONOUSLY
+    // rather than returning a rejected promise, so the handler chained onto it
+    // never runs and the error escapes as an uncaught exception on the page.
+    //
+    // Reported as "Uncaught Error: Extension context invalidated" from a stale
+    // tab, and it got much more likely when the remembered pick landed: this is
+    // now written after every fill, attach and status change.
+    if (!extensionAlive()) return Promise.resolve();
+    try {
+      return Promise.resolve(chrome.storage.local.set(patch)).catch((err) => {
+        console.warn("[maestro-cs] storage write failed:", err);
+      });
+    } catch (err) {
       console.warn("[maestro-cs] storage write failed:", err);
-    });
+      return Promise.resolve();
+    }
+  };
 
   const saveDock = () => writeStore({ [KEY.dock]: { side: dock.side, offset: dock.offset } });
 
@@ -1029,7 +1060,7 @@ label.toggle input { margin: 2px 0 0; accent-color: var(--cs-primary); }
     // the card. That describes one of our own stack frames to somebody who
     // wants to know why a button did nothing, and it never mentions the one
     // action that fixes it. Reported as exactly that, on a real card.
-    if (!chrome.runtime?.id) throw new Error(CONTEXT_LOST);
+    if (!extensionAlive()) throw new Error(CONTEXT_LOST);
     const reply = await chrome.runtime
       .sendMessage({ type, ...payload })
       .catch((err) => {
@@ -2528,6 +2559,7 @@ label.toggle input { margin: 2px 0 0; accent-color: var(--cs-primary); }
   async function saveSetting(key, value) {
     // Written straight to `chrome.storage.sync`, which is where the service
     // worker reads it from — one store, one value, no copy to keep in step.
+    if (!extensionAlive()) throw new Error(CONTEXT_LOST);
     await chrome.storage.sync.set({ [key]: value });
     card.settings = { ...card.settings, [key]: value };
   }

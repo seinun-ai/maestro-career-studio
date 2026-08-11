@@ -22,6 +22,10 @@ from app.services.explore_build_areas import build_areas
 from app.services.explore_overview import build_overview
 
 LEDGER_DAYS = 30
+# Cap on the per-job years list in the brief; the ledger's cutoff bounds it in
+# time, this bounds it in count. 25 recent scoped jobs is comparison material;
+# 500 is a context bill.
+MAX_BRIEF_JOBS = 25
 
 
 def _str_or_none(value: Any) -> str | None:
@@ -106,6 +110,31 @@ def build_brief(db: Session) -> dict[str, Any]:
         for referral in db.scalars(select(Referral).order_by(Referral.company))
     ]
 
+    # Bounded like the ledger above, and for the same reason: the brief is a
+    # PROMPT BLOCK, not an export. An unbounded select(Job) grows with every
+    # captured job forever. Only jobs that state a years bound can support the
+    # years_experience comparison this list exists for, and only recent ones
+    # are worth prompting on — agents wanting more use list_jobs.
+    jobs = [
+        {
+            "id": str(job.id),
+            "title": job.title,
+            "company": job.company,
+            "years_experience_min": job.years_experience_min,
+            "years_experience_max": job.years_experience_max,
+        }
+        for job in db.scalars(
+            select(Job)
+            .where(Job.created_at >= cutoff)
+            .where(
+                Job.years_experience_min.is_not(None)
+                | Job.years_experience_max.is_not(None)
+            )
+            .order_by(Job.created_at.desc(), Job.id)
+            .limit(MAX_BRIEF_JOBS)
+        )
+    ]
+
     return {
         # Timezone-aware UTC ISO timestamp for the whole brief.
         "generated_at": now.isoformat(),
@@ -122,6 +151,7 @@ def build_brief(db: Session) -> dict[str, Any]:
         # run never burns extraction on a blocklisted company or discovers the
         # per-run/daily caps by 409.
         "job_preferences": job_preferences.get_preferences(db).model_dump(),
+        "jobs": jobs,
         "auto_apply": _auto_apply_block(db),
         "base_resumes": base_summaries(db),
         "role_mix": overview["role_mix"],

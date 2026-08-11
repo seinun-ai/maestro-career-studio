@@ -298,8 +298,9 @@ export function EditorBody({
                   <span className="font-mono text-xs">{slug}</span>
                   <RoleCategoryPicker
                     slug={slug}
-                    role={live?.role_category ?? initial.role_category}
-                    className="h-6 text-xs"
+                    roleCategory={live?.role_category ?? initial.role_category}
+                    roleLabel={live?.role_label ?? initial.role_label}
+                    className="h-6 min-h-6 text-xs"
                   />
                 </span>
               }

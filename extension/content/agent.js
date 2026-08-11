@@ -156,15 +156,33 @@
   };
 
   chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-    if (sender?.id !== chrome.runtime.id) return false;
+    // Reading `chrome.runtime.id` THROWS once the extension has been reloaded
+    // under a page that is still running this script, so the guard that
+    // authorizes the sender is itself a place this can die.
+    try {
+      if (sender?.id !== chrome.runtime.id) return false;
+    } catch (_) {
+      return false;
+    }
     if (!Object.hasOwn(PAGE_HANDLERS, msg?.type ?? "")) return false;
     const handler = PAGE_HANDLERS[msg.type];
 
     (async () => {
+      // `sendResponse` on a port whose extension is gone throws as well, and
+      // it is called from BOTH branches — so the error path was itself an
+      // uncaught-exception path. Nothing here can recover a dead channel; what
+      // it can do is not make that the page's problem.
+      const reply = (payload) => {
+        try {
+          sendResponse(payload);
+        } catch (err) {
+          console.warn("[maestro-cs] could not answer", msg?.type, err);
+        }
+      };
       try {
-        sendResponse({ ok: true, data: await handler(msg) });
+        reply({ ok: true, data: await handler(msg) });
       } catch (err) {
-        sendResponse({ ok: false, error: String(err?.message ?? err) });
+        reply({ ok: false, error: String(err?.message ?? err) });
       }
     })();
     return true;

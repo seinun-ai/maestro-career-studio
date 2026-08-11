@@ -22,6 +22,14 @@ class BaseResume(Base):
     role_category: Mapped[str] = mapped_column(
         Text, nullable=False, default="unknown", server_default="unknown"
     )
+    # The user's own words for the role this resume targets, when the tag is
+    # free text. NULL means the tag IS role_category (a catalog pick), so
+    # existing rows need no backfill. Display prefers this; machines keep
+    # joining on role_category, which becomes the projection: the confirmed
+    # mapping, `other` for deliberately-unmapped free text (the YAML defines
+    # `other` as "a real role that matches no category"), `unknown` only for
+    # never-tagged. See the round-2 design doc for the four-state table.
+    role_label: Mapped[str | None] = mapped_column(Text, nullable=True)
     data_json: Mapped[dict] = mapped_column(JSONB, nullable=False)
     pdf_path: Mapped[str | None] = mapped_column(Text)
     tex_path: Mapped[str | None] = mapped_column(Text)

@@ -28,6 +28,7 @@ from app.schemas.base_resume import (
     ExcludedEntityRead,
 )
 from app.schemas.formatting import validate_formatting
+from app.schemas.job_preferences import MAX_LABEL_CHARS
 from app.schemas.resume import ResumeData
 from app.schemas.resume_edit import ResumeEditRequest
 from app.services import (
@@ -71,6 +72,51 @@ def _validated_role(value: str | None) -> str:
     return value
 
 
+def _resolved_tag(
+    role_label: str | None, role_category: str | None
+) -> tuple[str | None, str]:
+    """The FavoredRole mechanics, on a column pair. Returns (label, category).
+
+    A missing category on free text is completed (`other` — the YAML's "a real
+    role that matches no category"); a CONTRADICTING one would need the label's
+    parent to disagree, and free text has no parent, so any explicit valid
+    category is accepted as the user's confirmed mapping. Typing exactly a
+    catalog entry is a PICK: label collapses to NULL and the key is stored, so
+    one role cannot exist in two shapes.
+    """
+    if role_label is None:
+        return None, _validated_role(role_category)
+    cleaned = " ".join(role_label.split())
+    if not cleaned or len(cleaned) > MAX_LABEL_CHARS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"role_label must be 1-{MAX_LABEL_CHARS} characters",
+        )
+    match = role_categories.match_free_text(cleaned)
+    if match["confidence"] == "exact":
+        # A catalog entry typed verbatim; store as the pick it is. An explicit
+        # category that CONTRADICTS the pick 422s — the design's
+        # validate-never-normalize rule, and what FavoredRole does for the
+        # same shape. (Review fix: the first draft silently kept the pick and
+        # dropped the contradiction.)
+        parent = role_categories.parent_of(match["role"])
+        if role_category is not None and _validated_role(role_category) != parent:
+            raise HTTPException(
+                status_code=422,
+                detail=f"role_label {cleaned!r} is the catalog entry "
+                f"{match['role']!r} under {parent!r}, not {role_category!r}",
+            )
+        return None, parent
+    # An ALIAS hit ("cv engineer", "Sr. Data Scientist") is deliberately NOT a
+    # collapse: match_free_text's own contract says an alias is a suggestion
+    # the user confirms. The words are kept; the matched category applies only
+    # when the client sends it explicitly — that explicit send IS the
+    # confirmation. A bare alias therefore lands at (words, other).
+    if role_category is not None:
+        return cleaned, _validated_role(role_category)
+    return cleaned, role_categories.OTHER
+
+
 def _validate_slug(slug: str) -> None:
     if not SLUG_RE.match(slug):
         raise HTTPException(
@@ -96,6 +142,7 @@ def _detail(row: BaseResume, *, applied: list[dict] | None = None) -> BaseResume
         slug=row.slug,
         display_name=row.display_name,
         role_category=row.role_category,
+        role_label=row.role_label,
         data=ResumeData.model_validate(row.data_json),
         pdf_path=row.pdf_path,
         tex_path=row.tex_path,
@@ -157,11 +204,15 @@ def create_base_resume(
         raise HTTPException(status_code=409, detail="Base resume already exists")
 
     data_dict = payload.data.model_dump(mode="json")
+    role_label, role_category = _resolved_tag(
+        payload.role_label, payload.role_category
+    )
     row = BaseResume(
         slug=payload.slug,
         display_name=payload.display_name,
         data_json=data_dict,
-        role_category=_validated_role(payload.role_category),
+        role_category=role_category,
+        role_label=role_label,
     )
     db.add(row)
     record_version(db, "base", payload.slug, data_dict, source="create")
@@ -293,14 +344,15 @@ def create_from_kb(
     summary on a role-targeted resume is usually wrong.
     """
     slug = payload.slug
-    role_category = payload.role_category
+    role_label, role_category = _resolved_tag(
+        payload.role_label, payload.role_category
+    )
     if slug is None:
-        if role_category is None:
+        if payload.role_label is None and payload.role_category is None:
             raise HTTPException(
                 status_code=422,
                 detail="role_category is required when slug is omitted",
             )
-        role_category = _validated_role(role_category)
         slug = _next_role_slug(role_category, db)
 
     composed = career_kb.compose_resume_data(db, entity_ids=payload.entity_ids)
@@ -334,6 +386,7 @@ def create_from_kb(
             display_name=payload.display_name,
             data=ResumeData.model_validate(composed),
             role_category=role_category,
+            role_label=role_label,
         ),
         db,
     )
@@ -356,10 +409,27 @@ def update_base_resume_identity(
         raise HTTPException(status_code=404, detail="Base resume not found")
 
     fields = payload.model_fields_set
-    if "role_category" in fields:
+    if "role_label" in fields:
         # An explicit null clears the declaration back to the visible
         # "unknown" state; a value is validated, never coerced.
-        row.role_category = _validated_role(payload.role_category)
+        #
+        # A label-only patch on a MAPPED row deliberately demotes the category
+        # to `other`: the confirmation was for the OLD words, and new words are
+        # a new role claim — a stale mapping must not silently transfer to
+        # text it never confirmed. Clients keeping the mapping send the pair.
+        # (Same omitted-vs-null shape as the branch below, decided the same
+        # direction: what the user did not restate does not survive.)
+        row.role_label, row.role_category = _resolved_tag(
+            payload.role_label,
+            payload.role_category if "role_category" in fields else None,
+        )
+    elif "role_category" in fields:
+        # Omitted and explicit null are distinct: a category-only patch maps an
+        # existing custom label, while null clears the whole declaration.
+        row.role_label, row.role_category = _resolved_tag(
+            row.role_label if payload.role_category is not None else None,
+            payload.role_category,
+        )
     if "display_name" in fields:
         row.display_name = payload.display_name
 
@@ -490,6 +560,7 @@ def duplicate_base_resume(
         data_json=data_copy,
         # A duplicate targets the same role by definition.
         role_category=source.role_category,
+        role_label=source.role_label,
     )
     db.add(row)
     record_version(

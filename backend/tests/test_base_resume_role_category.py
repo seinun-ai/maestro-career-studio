@@ -40,6 +40,16 @@ def _client(db_session) -> TestClient:
     return TestClient(app)
 
 
+@pytest.fixture
+def client(db_session, tmp_path, monkeypatch):
+    monkeypatch.setattr("app.routers.base_resumes.settings.base_resumes_dir", tmp_path)
+    monkeypatch.setattr(
+        "app.routers.base_resumes.base_resume_render.render_base_resume",
+        lambda slug, db, **kw: db.get(BaseResume, slug),
+    )
+    return _client(db_session)
+
+
 def teardown_function():
     app.dependency_overrides.clear()
 
@@ -66,13 +76,20 @@ def test_insert_site_2_duplicate_inherits_role(db_session, tmp_path, monkeypatch
         lambda slug, db, **kw: db.get(BaseResume, slug),
     )
     db_session.add(
-        BaseResume(slug="src", display_name="Src", data_json=SAMPLE, role_category="bi_developer")
+        BaseResume(
+            slug="src",
+            display_name="Src",
+            data_json=SAMPLE,
+            role_category="bi_developer",
+            role_label="Analytics Engineer",
+        )
     )
     db_session.commit()
     body = _client(db_session).post(
         "/api/base-resumes/src/duplicate", json={"new_slug": "clone"}
     ).json()
     assert body["role_category"] == "bi_developer"
+    assert body["role_label"] == "Analytics Engineer"
 
 
 def test_insert_site_3_seeding_declares_only_what_is_certain(db_session, tmp_path, monkeypatch):
@@ -100,6 +117,191 @@ def test_no_write_path_can_produce_null(db_session):
     db_session.add(BaseResume(slug="explicit_none", data_json=SAMPLE, role_category=None))
     db_session.commit()
     assert db_session.get(BaseResume, "explicit_none").role_category == "unknown"
+
+
+def test_role_label_round_trips(db_session):
+    row = BaseResume(
+        slug="fde",
+        display_name="FDE",
+        data_json={},
+        role_category="other",
+        role_label="Forward Deployed Engineer",
+    )
+    db_session.add(row)
+    db_session.commit()
+    db_session.refresh(row)
+    assert row.role_label == "Forward Deployed Engineer"
+
+
+def test_role_label_defaults_null(db_session):
+    row = BaseResume(
+        slug="plain",
+        display_name="Plain",
+        data_json={},
+        role_category="data_scientist",
+    )
+    db_session.add(row)
+    db_session.commit()
+    assert row.role_label is None
+
+
+def test_free_text_tag_unmapped_projects_to_other(client):
+    body = client.post(
+        "/api/base-resumes",
+        json={
+            "slug": "fde",
+            "data": SAMPLE,
+            "role_label": "Forward Deployed Engineer",
+        },
+    ).json()
+    assert body["role_label"] == "Forward Deployed Engineer"
+    assert body["role_category"] == "other"
+
+
+def test_free_text_tag_with_confirmed_mapping(client):
+    body = client.post(
+        "/api/base-resumes",
+        json={
+            "slug": "quant",
+            "data": SAMPLE,
+            "role_label": "Quant Researcher",
+            "role_category": "research_scientist",
+        },
+    ).json()
+    assert body["role_category"] == "research_scientist"
+    # "Quant Researcher" is an ALIAS hit, and an alias is a suggestion the
+    # user confirms — never a silent collapse to the catalog role. The words
+    # survive. Without this line a collapse would pass this test unchanged.
+    assert body["role_label"] == "Quant Researcher"
+
+
+def test_a_bare_alias_tag_keeps_the_words_and_lands_at_other(client):
+    # The write-path mirror of the picker's confirmation flow: typing an alias
+    # WITHOUT confirming a category stores the words at `other`, exactly like
+    # any other unmapped free text. The rank-strip retry makes "Sr. Data
+    # Scientist" an alias hit too, so it must not auto-map either.
+    for slug, label in [("cv", "cv engineer"), ("srds", "Sr. Data Scientist")]:
+        body = client.post(
+            "/api/base-resumes",
+            json={"slug": slug, "data": SAMPLE, "role_label": label},
+        ).json()
+        assert body["role_label"] == label
+        assert body["role_category"] == "other"
+
+
+def test_exact_collapse_rejects_a_contradicting_category(client):
+    # Typing a catalog entry verbatim is a pick — and a pick with an explicit
+    # category that disagrees is a CONTRADICTION, which 422s rather than being
+    # silently corrected (the same rule FavoredRole enforces). Review fix: the
+    # first draft kept the pick and dropped the contradiction on the floor.
+    response = client.post(
+        "/api/base-resumes",
+        json={
+            "slug": "contradict",
+            "data": SAMPLE,
+            "role_label": "Data Scientist",
+            "role_category": "software_engineer",
+        },
+    )
+    assert response.status_code == 422
+    assert "data_scientist" in response.json()["detail"]
+
+
+def test_label_only_patch_on_a_mapped_row_demotes_the_stale_mapping(client):
+    # The confirmation was for the OLD words; new words are a new role claim,
+    # so an omitted category deliberately does not survive the relabel.
+    # Clients that mean to keep the mapping send the pair.
+    client.post(
+        "/api/base-resumes",
+        json={
+            "slug": "fde2",
+            "data": SAMPLE,
+            "role_label": "Forward Deployed Eng",
+            "role_category": "software_engineer",
+        },
+    )
+    body = client.patch(
+        "/api/base-resumes/fde2/identity",
+        json={"role_label": "Forward Deployed Engineer"},
+    ).json()
+    assert body["role_label"] == "Forward Deployed Engineer"
+    assert body["role_category"] == "other"
+
+
+def test_catalog_pick_stores_no_label(client):
+    body = client.post(
+        "/api/base-resumes",
+        json={
+            "slug": "ds",
+            "data": SAMPLE,
+            "role_category": "data_scientist",
+        },
+    ).json()
+    assert body["role_label"] is None
+
+
+def test_catalog_key_typed_as_label_is_normalized_to_a_pick(client):
+    # Typing exactly a catalog entry is a pick, not a custom role — otherwise
+    # the same role exists in two shapes and coverage dedup splits.
+    body = client.post(
+        "/api/base-resumes",
+        json={
+            "slug": "ds2",
+            "data": SAMPLE,
+            "role_label": "Data Scientist",
+        },
+    ).json()
+    assert body["role_label"] is None
+    assert body["role_category"] == "data_scientist"
+
+
+def test_blank_and_overlong_labels_422(client):
+    for bad in ["   ", "x" * 81]:
+        response = client.post(
+            "/api/base-resumes",
+            json={"slug": "bad", "data": SAMPLE, "role_label": bad},
+        )
+        assert response.status_code == 422
+
+
+def test_identity_patch_can_set_and_clear_the_label(client):
+    client.post(
+        "/api/base-resumes",
+        json={
+            "slug": "sw",
+            "data": SAMPLE,
+            "role_category": "software_engineer",
+        },
+    )
+    body = client.patch(
+        "/api/base-resumes/sw/identity",
+        json={"role_label": "Forward Deployed Engineer"},
+    ).json()
+    assert body["role_category"] == "other"
+    body = client.patch(
+        "/api/base-resumes/sw/identity",
+        json={"role_label": None, "role_category": "software_engineer"},
+    ).json()
+    assert body["role_label"] is None
+
+
+def test_identity_patch_category_only_preserves_the_custom_label(client):
+    client.post(
+        "/api/base-resumes",
+        json={
+            "slug": "fde_mapped",
+            "data": SAMPLE,
+            "role_label": "Forward Deployed Engineer",
+        },
+    )
+
+    body = client.patch(
+        "/api/base-resumes/fde_mapped/identity",
+        json={"role_category": "software_engineer"},
+    ).json()
+
+    assert body["role_label"] == "Forward Deployed Engineer"
+    assert body["role_category"] == "software_engineer"
 
 
 # --- human-supplied values are validated, not coerced ---------------------

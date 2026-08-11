@@ -33,8 +33,15 @@ import re
 import sys
 from pathlib import Path
 
-# RAISED 1500 -> 1800 on 2026-08-09, deliberately, after the ceiling stopped
+# RAISED to 1800 on 2026-08-09, deliberately, after the ceiling stopped
 # working as a budget and started working as a tripwire.
+#
+# The two branches that merged here had independently concluded the same thing.
+# main crept 1,500 -> 1,503 -> 1,506 in single digits, twice in one day, each
+# time by owner call for real facts that would not fit; this branch jumped to
+# 1,800 with the reasoning below. Three raises in three days IS the argument:
+# a limit renegotiated that often is not restraining anything, it is just
+# charging a toll on every edit.
 #
 # History: the grooming spec wanted 1,300 with a 1,400 ceiling; the 2026-08-08
 # pass stopped at 1,482 and parked the ceiling at 1,500. The file then sat at
@@ -52,7 +59,8 @@ from pathlib import Path
 # NOTE that the per-section check only WARNS (exit 0). So between here and 1800
 # nothing hard-stops accretion; that is a deliberate trade for editability, not
 # an oversight. If this file reaches ~1750 the honest response is another
-# grooming pass, not another raise.
+# grooming pass, not another raise — and the standing debt main recorded still
+# stands: a pass that takes the whole file back under 1,400.
 MAX_TOTAL_LINES = 1800
 GROWTH_WARN_RATIO = 1.25
 DATE_RE = re.compile(r"\(20\d\d-\d\d-\d\d")

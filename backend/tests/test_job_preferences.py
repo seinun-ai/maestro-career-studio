@@ -2,7 +2,7 @@ import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
-from app.schemas.job_preferences import JobPreferences
+from app.schemas.job_preferences import FavoredRole, JobPreferences
 from app.services import job_preferences
 
 
@@ -22,6 +22,28 @@ def test_empty_preferences_are_valid_and_not_set():
     prefs = JobPreferences()
     assert prefs.role_categories == []
     assert not job_preferences.is_set(prefs)
+
+
+def test_years_experience_bounds():
+    assert JobPreferences(years_experience=6).years_experience == 6
+    with pytest.raises(ValidationError):
+        JobPreferences(years_experience=-1)
+    with pytest.raises(ValidationError):
+        JobPreferences(years_experience=61)
+
+
+def test_stored_levels_key_is_ignored_not_fatal(db_session):
+    from app.services import text_settings
+
+    text_settings.set_text(
+        job_preferences.JOB_PREFERENCES_KEY,
+        job_preferences.JOB_PREFERENCES_FILE,
+        '{"role_categories": ["data_scientist"], "levels": ["senior"]}',
+        db_session,
+    )
+    prefs = job_preferences.get_preferences(db_session)
+    assert prefs.role_categories == ["data_scientist"]
+    assert not hasattr(prefs, "levels")
 
 
 def test_unknown_role_category_is_rejected_never_normalized():
@@ -79,3 +101,154 @@ def test_put_bad_role_key_is_422(client):
         json={"value": {"role_categories": ["nope_not_real"]}},
     )
     assert r.status_code == 422
+
+
+def test_put_favored_roles_returns_the_projection(client):
+    r = client.put(
+        "/api/settings/job-preferences",
+        json={"value": {"favored_roles": [
+            {"role": "product_data_scientist"},
+            {"label": "Quant Researcher"},
+        ]}},
+    )
+    assert r.status_code == 200
+    value = client.get("/api/settings/job-preferences").json()["value"]
+    assert value["role_categories"] == ["data_scientist"]
+    assert [f["label"] for f in value["favored_roles"]] == [
+        "Product Data Scientist", "Quant Researcher",
+    ]
+
+
+def test_put_bad_favored_role_is_422(client):
+    r = client.put(
+        "/api/settings/job-preferences",
+        json={"value": {"favored_roles": [{"role": "nope_not_real"}]}},
+    )
+    assert r.status_code == 422
+
+
+def test_specific_role_projects_to_its_coarse_category():
+    prefs = JobPreferences(favored_roles=[FavoredRole(role="product_data_scientist")])
+    assert prefs.role_categories == ["data_scientist"]
+    assert prefs.favored_roles[0].category == "data_scientist"
+
+
+def test_a_catalog_label_is_derived_not_trusted():
+    # The catalog owns display names. A client-supplied label for a catalog role
+    # is overwritten, so editing the YAML can never leave a stale copy behind.
+    prefs = JobPreferences(
+        favored_roles=[FavoredRole(role="nlp_engineer", label="whatever the client sent")]
+    )
+    assert prefs.favored_roles[0].label == "NLP Engineer"
+
+
+def test_legacy_role_categories_only_payload_upgrades():
+    prefs = JobPreferences(role_categories=["data_engineer", "other"])
+    assert [f.role for f in prefs.favored_roles] == ["data_engineer", "other"]
+    assert prefs.role_categories == ["data_engineer", "other"]
+    # Reserved keys are catalog keys too, so the upgrade must label them.
+    assert [f.label for f in prefs.favored_roles] == ["Data Engineer", "Other"]
+
+
+def test_a_stale_role_categories_alongside_favored_roles_is_recomputed():
+    # Autosave can PUT back a `role_categories` the client computed before its
+    # last edit. It is a projection, so whatever arrives is discarded.
+    prefs = JobPreferences(
+        favored_roles=[FavoredRole(role="data_engineer")],
+        role_categories=["data_scientist", "other"],
+    )
+    assert prefs.role_categories == ["data_engineer"]
+
+
+def test_custom_role_may_stay_unmapped():
+    prefs = JobPreferences(favored_roles=[FavoredRole(label="Underwater Basket Weaver")])
+    assert prefs.favored_roles[0].role is None
+    assert prefs.role_categories == []
+    # No projected category, but the user has answered the question — the
+    # setup-status step must not read as untouched.
+    assert job_preferences.is_set(prefs)
+
+
+def test_custom_role_may_be_mapped_by_the_user():
+    prefs = JobPreferences(
+        favored_roles=[FavoredRole(label="Quant Researcher", category="research_scientist")]
+    )
+    assert prefs.role_categories == ["research_scientist"]
+
+
+def test_custom_role_label_is_trimmed_and_collapsed():
+    role = FavoredRole(label="  Quant   Researcher \n")
+    assert role.label == "Quant Researcher"
+
+
+def test_unknown_role_is_rejected():
+    with pytest.raises(ValidationError):
+        JobPreferences(favored_roles=[FavoredRole(role="not_a_role", label="Nope")])
+
+
+def test_unknown_category_on_a_custom_role_is_rejected():
+    with pytest.raises(ValidationError):
+        FavoredRole(label="Quant Researcher", category="Data Science")
+
+
+def test_contradicting_category_is_rejected_not_corrected():
+    with pytest.raises(ValidationError):
+        JobPreferences(favored_roles=[
+            FavoredRole(role="product_data_scientist", category="software_engineer")
+        ])
+
+
+def test_a_custom_role_needs_words():
+    with pytest.raises(ValidationError):
+        FavoredRole(label="   ")
+    with pytest.raises(ValidationError):
+        FavoredRole(label="x" * 81)
+
+
+def test_duplicates_collapse_case_insensitively():
+    prefs = JobPreferences(favored_roles=[
+        FavoredRole(label="Quant Researcher"),
+        FavoredRole(label="quant researcher"),
+        FavoredRole(role="data_scientist"),
+        FavoredRole(role="data_scientist"),
+    ])
+    assert len(prefs.favored_roles) == 2
+
+
+def test_the_list_is_capped():
+    with pytest.raises(ValidationError):
+        JobPreferences(favored_roles=[FavoredRole(label=f"Role {i}") for i in range(26)])
+
+
+def test_the_cap_counts_what_survives_dedupe():
+    # A cap is a real limit; dedupe is cleanup. Twenty-six entries that collapse
+    # to one must save, or an autosave duplicate could strand the whole edit.
+    prefs = JobPreferences(favored_roles=[FavoredRole(role="data_scientist")] * 26)
+    assert len(prefs.favored_roles) == 1
+
+
+def test_projection_dedupes_categories_in_first_seen_order():
+    prefs = JobPreferences(favored_roles=[
+        FavoredRole(role="deep_learning_engineer"),
+        FavoredRole(role="data_scientist"),
+        FavoredRole(role="nlp_engineer"),
+    ])
+    assert prefs.role_categories == ["ai_ml_engineer", "data_scientist"]
+
+
+def test_favored_roles_round_trip_through_the_file_mirror(db_session):
+    job_preferences.set_preferences(
+        JobPreferences(favored_roles=[
+            FavoredRole(role="product_data_scientist"),
+            FavoredRole(label="Quant Researcher", category="research_scientist"),
+            FavoredRole(label="Underwater Basket Weaver"),
+        ]),
+        db_session,
+    )
+    loaded = job_preferences.get_preferences(db_session)
+    assert [(f.role, f.label, f.category) for f in loaded.favored_roles] == [
+        ("product_data_scientist", "Product Data Scientist", "data_scientist"),
+        (None, "Quant Researcher", "research_scientist"),
+        (None, "Underwater Basket Weaver", None),
+    ]
+    assert loaded.role_categories == ["data_scientist", "research_scientist"]

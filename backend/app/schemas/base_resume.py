@@ -12,6 +12,7 @@ class BaseResumeSummary(BaseModel):
     slug: str
     display_name: str | None = None
     role_category: str
+    role_label: str | None = None
     updated_at: datetime
     pdf_rendered_at: datetime | None = None
     # Both drive the gallery card: render_error picks the thumbnail state,
@@ -26,6 +27,7 @@ class BaseResumeDetail(BaseModel):
     slug: str
     display_name: str | None = None
     role_category: str
+    role_label: str | None = None
     data: ResumeData
     pdf_path: str | None = None
     tex_path: str | None = None
@@ -50,6 +52,7 @@ class BaseResumeCreate(BaseModel):
     # extraction but would make a typo indistinguishable from a deliberate
     # "Other" for a human-supplied field.
     role_category: str | None = None
+    role_label: str | None = None
 
 
 class BaseResumeUpdate(BaseModel):
@@ -80,6 +83,7 @@ class BaseResumeFromKB(BaseModel):
     slug: str | None = None
     display_name: str | None = None
     role_category: str | None = None
+    role_label: str | None = None
     entity_ids: list[UUID]
     # The KB summary is written for the whole career; on a base aimed at one
     # role it is usually wrong. Blank-and-visible beats plausible-and-wrong, so
@@ -126,6 +130,7 @@ class BaseResumeIdentity(BaseModel):
     """
 
     role_category: str | None = None
+    role_label: str | None = None
     display_name: str | None = None
 
 

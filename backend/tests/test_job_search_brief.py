@@ -233,6 +233,64 @@ def test_search_brief_carries_preferences_and_auto_apply_guardrails(
     assert set(auto["cap"]) == {"max_per_day", "reserved_last_24h", "remaining"}
 
 
+def test_search_brief_reports_years_without_filtering_jobs(
+    db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(text_settings.settings, "settings_dir", tmp_path)
+    from app.schemas.job_preferences import JobPreferences
+    from app.services import job_preferences
+
+    job_preferences.set_preferences(JobPreferences(years_experience=6), db_session)
+    job = Job(
+        raw_text="Senior role",
+        raw_text_hash="brief-years-h1",
+        title="Senior Analyst",
+        company="Acme",
+        years_experience_min=8,
+        years_experience_max=None,
+    )
+    db_session.add(job)
+    db_session.commit()
+
+    body = _get_brief(db_session).json()
+    assert body["job_preferences"]["years_experience"] == 6
+    assert body["jobs"] == [
+        {
+            "id": str(job.id),
+            "title": "Senior Analyst",
+            "company": "Acme",
+            "years_experience_min": 8,
+            "years_experience_max": None,
+        }
+    ]
+
+
+def test_search_brief_jobs_list_is_bounded(db_session, tmp_path, monkeypatch):
+    # The brief is a prompt block: the jobs list exists for the years
+    # comparison, so a job with NO years bounds contributes nothing and an old
+    # job is not worth prompting on. Both are excluded — that is a bound on
+    # the PROMPT, not a filter on the user's data (list_jobs still has all).
+    monkeypatch.setattr(text_settings.settings, "settings_dir", tmp_path)
+    old = Job(
+        raw_text="old", raw_text_hash="brief-years-h2", title="Old",
+        company="Acme", years_experience_min=3,
+        created_at=datetime.now(UTC) - timedelta(days=40),
+    )
+    boundless = Job(
+        raw_text="no years", raw_text_hash="brief-years-h3", title="NoYears",
+        company="Acme",
+    )
+    recent = Job(
+        raw_text="recent", raw_text_hash="brief-years-h4", title="Recent",
+        company="Acme", years_experience_max=5,
+    )
+    db_session.add_all([old, boundless, recent])
+    db_session.commit()
+
+    titles = [row["title"] for row in _get_brief(db_session).json()["jobs"]]
+    assert titles == ["Recent"]
+
+
 def test_search_brief_tolerates_empty_everything(db_session, tmp_path, monkeypatch):
     # No autofill profile, no persona, no jobs, no bases, no referrals.
     monkeypatch.setattr(text_settings.settings, "settings_dir", tmp_path)

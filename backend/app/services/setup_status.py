@@ -102,13 +102,52 @@ def build_status(db: Session) -> SetupStatus:
     ).all()
 
     prefs = job_preferences.peek_preferences(db)
+
+    def _resolve(label: str | None) -> str | None:
+        # casefold identity, with one chance to resolve through the catalog so
+        # "cv engineer" and "Computer Vision Engineer" meet if EITHER side
+        # resolves. No fuzz beyond this: a near-miss is visibly uncovered.
+        if not label:
+            return None
+        match = role_categories.match_free_text(label)
+        if match["category"] is not None:
+            return f"cat:{match['category']}"
+        return f"label:{label.casefold()}"
+
     covered = {b.role_category for b in active_bases}
+    covered |= {
+        key for key in (_resolve(b.role_label) for b in active_bases) if key
+    }
     labels = role_categories.labels()
-    suggested = [
-        SuggestedBase(role_category=key, label=labels.get(key, key))
-        for key in prefs.role_categories
-        if key not in covered
-    ]
+    suggested: list[SuggestedBase] = []
+    seen_suggestions: set[str] = set()
+    for favored in prefs.favored_roles:
+        # The label bridge fires for FREE-TEXT favored roles (role is None),
+        # mapped or not: a base tagged with the same words — or words that
+        # resolve to the same place — covers them, even when no base carries
+        # the mapped category. Catalog picks stay off the bridge: picking
+        # "Data Scientist" asks for a data-scientist RESUME, and a base whose
+        # free-text tag merely resolves near it is not that resume.
+        # (Review fix: the first draft consulted the bridge only in a branch
+        # whose both arms `continue`d — an observable no-op.)
+        if favored.role is None and _resolve(favored.label) in covered:
+            continue
+        if favored.category is None:
+            # Unmapped custom roles deliberately drive no suggestion — there
+            # is no safe category to propose. Decided 2026-08-10.
+            continue
+        if (
+            favored.category in covered
+            or favored.category in seen_suggestions
+        ):
+            continue
+        seen_suggestions.add(favored.category)
+        suggested.append(
+            SuggestedBase(
+                role_category=favored.category,
+                label=labels.get(favored.category, favored.category),
+            )
+        )
 
     # "Has a default template been CHOSEN?" — not "does every base carry an
     # explicit template_id". A base with template_id=None renders through the

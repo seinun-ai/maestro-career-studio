@@ -22,6 +22,14 @@ class BriefReferral(BaseModel):
     has_contact: bool
 
 
+class BriefJob(BaseModel):
+    id: str
+    title: str | None = None
+    company: str | None = None
+    years_experience_min: int | None = None
+    years_experience_max: int | None = None
+
+
 class RoleCategoryCount(BaseModel):
     role_category: str
     count: int
@@ -70,6 +78,7 @@ class JobSearchBriefResponse(BaseModel):
     persona: str
     job_preferences: dict[str, Any]
     auto_apply: BriefAutoApply
+    jobs: list[BriefJob]
     base_resumes: list[dict[str, Any]]
     role_mix: list[dict[str, Any]]
     top_skills: list[dict[str, Any]]

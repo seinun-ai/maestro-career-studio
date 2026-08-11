@@ -3,16 +3,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
-import { Badge } from "@/components/ui/badge";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  favoredRoleFromTag,
+  identityFromFavoredRole,
+  RolePicker,
+} from "@/components/role-picker";
+import { Badge } from "@/components/ui/badge";
 import { apiFetch } from "@/lib/api";
-import type { BaseResumeDetail, RoleCategory } from "@/lib/types";
+import type { BaseResumeDetail, FavoredRole, RoleCategory } from "@/lib/types";
 
 /** The vocabulary, fetched once. Deliberately NOT duplicated client-side: it
  *  lives in backend/app/services/ats/data/role_categories.yaml, and a second
@@ -36,67 +34,92 @@ export function roleLabel(key: string | null | undefined, options?: RoleCategory
     .join(" ");
 }
 
+/** Prefer the free-text label when present; otherwise the catalog category. */
+export function displayRoleTag(
+  roleCategory: string,
+  roleLabelText: string | null | undefined,
+  options?: RoleCategory[],
+) {
+  if (roleLabelText) return roleLabelText;
+  return roleLabel(roleCategory, options);
+}
+
 /** Read-only role badge. `unknown` is styled as an invitation, not an error —
  *  it is a legitimate state, and the design's promise is that it is always
  *  visible and always one click from being fixed. */
-export function RoleBadge({ role }: { role: string }) {
+export function RoleBadge({
+  role,
+  roleLabel: label,
+}: {
+  role: string;
+  roleLabel?: string | null;
+}) {
   const { data: options } = useRoleCategories();
-  const undeclared = role === "unknown";
+  const undeclared = role === "unknown" && !label;
   return (
     <Badge variant={undeclared ? "outline" : "secondary"} className="font-normal">
-      {undeclared ? "Role not set" : roleLabel(role, options)}
+      {undeclared ? "Role not set" : displayRoleTag(role, label, options)}
     </Badge>
   );
 }
 
 /** Inline picker. Writes through PATCH /identity, which is metadata-only —
- *  it does not re-render the PDF or record a resume version. */
+ *  it does not re-render the PDF or record a resume version. Thin single-mode
+ *  wrapper over the shared RolePicker (free text included). */
 export function RoleCategoryPicker({
   slug,
-  role,
+  roleCategory,
+  roleLabel: label = null,
   className,
 }: {
   slug: string;
-  role: string;
+  roleCategory: string;
+  roleLabel?: string | null;
   className?: string;
 }) {
   const qc = useQueryClient();
   const { data: options } = useRoleCategories();
 
   const save = useMutation({
-    mutationFn: (next: string) =>
+    mutationFn: (entry: FavoredRole | null) =>
       apiFetch<BaseResumeDetail>(`/api/base-resumes/${slug}/identity`, {
         method: "PATCH",
-        body: JSON.stringify({ role_category: next }),
+        body: JSON.stringify(identityFromFavoredRole(entry)),
       }),
     onSuccess: (updated) => {
       qc.setQueryData(["base-resumes", slug], updated);
       qc.invalidateQueries({ queryKey: ["base-resumes"] });
-      toast.success(`Role set to ${roleLabel(updated.role_category, options)}`);
+      toast.success(
+        `Role set to ${displayRoleTag(updated.role_category, updated.role_label, options)}`,
+      );
     },
     onError: (err: Error) => toast.error(err.message),
   });
 
-  const selected = options?.find((o) => o.key === role);
+  const value = favoredRoleFromTag(roleCategory, label, options);
 
   return (
-    <Select
-      value={role}
-      onValueChange={(next) => next && next !== role && save.mutate(next)}
+    <RolePicker
+      mode="single"
+      value={value}
+      onValueChange={(next) => {
+        // Skip no-ops so a remount / same chip does not PATCH.
+        const prev = identityFromFavoredRole(value);
+        const nextBody = identityFromFavoredRole(next);
+        if (
+          prev.role_label === nextBody.role_label &&
+          (prev.role_category ?? null) === (nextBody.role_category ?? null)
+        ) {
+          return;
+        }
+        save.mutate(next);
+      }}
       disabled={save.isPending || !options}
-    >
-      <SelectTrigger className={className} aria-label="Target role">
-        <SelectValue>
-          {role === "unknown" ? "Set role…" : (selected?.label ?? roleLabel(role, options))}
-        </SelectValue>
-      </SelectTrigger>
-      <SelectContent>
-        {options?.map((option) => (
-          <SelectItem key={option.key} value={option.key}>
-            <span>{option.label}</span>
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+      className={
+        className ??
+        "border-input focus-within:ring-ring/50 flex min-h-9 flex-wrap items-center gap-1.5 rounded-md border bg-transparent px-2 py-1.5 text-sm focus-within:ring-2"
+      }
+      placeholder={roleCategory === "unknown" && !label ? "Set role…" : ""}
+    />
   );
 }

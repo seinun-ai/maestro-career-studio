@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 from app.models.base_resume import BaseResume
 from app.models.career_kb import KBEntity
 from app.models.setting import Setting
-from app.schemas.job_preferences import JobPreferences
+from app.schemas.job_preferences import FavoredRole, JobPreferences
 from app.services import job_preferences, persona, text_settings
 
 
@@ -71,6 +71,127 @@ def test_suggested_bases_are_favored_roles_without_an_active_base(client, db_ses
     db_session.commit()
     suggested = {s["role_category"] for s in _status(client)["suggested_bases"]}
     assert suggested == {"data_engineer"}
+
+
+def test_mapped_free_text_favored_role_covered_by_matching_tag(db_session, client):
+    # THE observable bridge case, and why review rewrote this test: a MAPPED
+    # free-text favored role would otherwise suggest its category. An unmapped
+    # one never suggests anything, so asserting on it proves nothing — the
+    # first draft of this test passed with the entire bridge deleted.
+    # Different case on the two labels on purpose.
+    job_preferences.set_preferences(
+        JobPreferences(
+            favored_roles=[
+                FavoredRole(
+                    role=None,
+                    label="Forward Deployed Engineer",
+                    category="software_engineer",
+                )
+            ]
+        ),
+        db_session,
+    )
+    db_session.add(
+        BaseResume(
+            slug="fde",
+            role_category="other",
+            role_label="forward deployed engineer",
+            data_json={"contact": {}},
+        )
+    )
+    db_session.commit()
+
+    # No base carries software_engineer, so without the bridge this suggests.
+    assert _status(client)["suggested_bases"] == []
+
+
+def test_without_a_matching_tag_the_mapped_favored_role_still_suggests(
+    db_session, client
+):
+    # The mirror of the test above, proving it CAN fail: same mapped favored
+    # role, but the only base's tag is different words — the suggestion fires.
+    job_preferences.set_preferences(
+        JobPreferences(
+            favored_roles=[
+                FavoredRole(
+                    role=None,
+                    label="Forward Deployed Engineer",
+                    category="software_engineer",
+                )
+            ]
+        ),
+        db_session,
+    )
+    db_session.add(
+        BaseResume(
+            slug="other-role",
+            role_category="other",
+            role_label="Solutions Architect",
+            data_json={"contact": {}},
+        )
+    )
+    db_session.commit()
+
+    assert [s["role_category"] for s in _status(client)["suggested_bases"]] == [
+        "software_engineer"
+    ]
+
+
+def test_alias_bridges_the_two_sides(db_session, client):
+    # Mapped favored role typed as an alias; the base's tag is the spelled-out
+    # form. Either side resolving through the catalog is enough to meet.
+    job_preferences.set_preferences(
+        JobPreferences(
+            favored_roles=[
+                FavoredRole(
+                    role=None, label="cv engineer", category="ai_ml_engineer"
+                ),
+            ]
+        ),
+        db_session,
+    )
+    db_session.add(
+        BaseResume(
+            slug="cv",
+            role_category="other",
+            role_label="Computer Vision Engineer",
+            data_json={"contact": {}},
+        )
+    )
+    db_session.commit()
+
+    assert _status(client)["suggested_bases"] == []
+
+
+def test_free_text_alias_does_not_cover_a_coarse_category(db_session, client):
+    job_preferences.set_preferences(
+        JobPreferences(role_categories=["ai_ml_engineer"]), db_session
+    )
+    db_session.add(
+        BaseResume(
+            slug="cv_only",
+            role_category="other",
+            role_label="Computer Vision Engineer",
+            data_json={"contact": {}},
+        )
+    )
+    db_session.commit()
+
+    suggested = {s["role_category"] for s in _status(client)["suggested_bases"]}
+    assert suggested == {"ai_ml_engineer"}
+
+
+def test_unmapped_mismatch_still_surfaces_nothing(db_session, client):
+    job_preferences.set_preferences(
+        JobPreferences(
+            favored_roles=[
+                FavoredRole(role=None, label="Underwater Basket Weaver")
+            ]
+        ),
+        db_session,
+    )
+
+    assert _status(client)["suggested_bases"] == []
 
 
 def _template(db_session, template_id: str, origin: str, *, default: bool) -> None:

@@ -148,7 +148,8 @@ export function ResumeImportPanel({ onClose }: { onClose: () => void }) {
                       <span className="truncate text-sm">{b.display_name}</span>
                       <RoleCategoryPicker
                         slug={b.slug}
-                        role={b.role_category}
+                        roleCategory={b.role_category}
+                        roleLabel={b.role_label}
                         className="w-48 shrink-0"
                       />
                     </li>

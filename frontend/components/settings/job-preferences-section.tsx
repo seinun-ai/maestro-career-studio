@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
+import { RolePicker } from "@/components/role-picker";
 import { AutosaveStatus } from "@/components/settings/autosave-status";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,12 +20,11 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { apiFetch } from "@/lib/api";
-import type { JobPreferences, RoleCategory } from "@/lib/types";
+import type { FavoredRole, JobPreferences, RoleCategory } from "@/lib/types";
 
 type JobPreferencesSetting = { key: string; value: JobPreferences };
 
 const NOT_SPECIFIED = "__not_specified__";
-const LEVELS = ["junior", "mid", "senior", "staff", "lead"];
 const REMOTE_OPTIONS = ["remote", "hybrid", "onsite", "any"] as const;
 const EMPLOYMENT_TYPES = ["full_time", "contract", "part_time", "internship"];
 
@@ -88,11 +88,16 @@ function JobPreferencesEditor({
   const queuedPreferences = useRef(initial);
   const inFlightPreferences = useRef<JobPreferences | null>(null);
   const save = useMutation({
-    mutationFn: (next: JobPreferences) =>
-      apiFetch<JobPreferencesSetting>("/api/settings/job-preferences", {
+    mutationFn: (next: JobPreferences) => {
+      // role_categories is a projection of favored_roles that the server
+      // recomputes on every write, so our copy is redundant at best and a
+      // contradiction at worst. JSON.stringify drops the undefined.
+      const value = { ...next, role_categories: undefined };
+      return apiFetch<JobPreferencesSetting>("/api/settings/job-preferences", {
         method: "PUT",
-        body: JSON.stringify({ value: next }),
-      }),
+        body: JSON.stringify({ value }),
+      });
+    },
     onSuccess: (result) => {
       if (queuedPreferences.current === inFlightPreferences.current) {
         qc.setQueryData(["settings", "job-preferences"], result);
@@ -121,21 +126,19 @@ function JobPreferencesEditor({
     setPreferences(next);
     if (inFlightPreferences.current === null) flush();
   };
-  const toggle = (
-    key: "role_categories" | "employment_types" | "levels",
-    value: string,
-  ) => {
+  const toggleEmployment = (value: string) => {
     update((current) => ({
       ...current,
-      [key]: current[key].includes(value)
-        ? current[key].filter((item) => item !== value)
-        : [...current[key], value],
+      employment_types: current.employment_types.includes(value)
+        ? current.employment_types.filter((item) => item !== value)
+        : [...current.employment_types, value],
     }));
   };
-  const selectableRoles = (roleCategories ?? []).filter(
-    (category) => !category.reserved || category.key === "other",
-  );
   const remote = preferences.remote ?? NOT_SPECIFIED;
+
+  const setFavoredRoles = (next: FavoredRole[]) => {
+    update((current) => ({ ...current, favored_roles: next }));
+  };
 
   return (
     <div className="space-y-5">
@@ -146,51 +149,46 @@ function JobPreferencesEditor({
         <AutosaveStatus pending={save.isPending} />
       </div>
       <div className="grid gap-1.5">
-        <Label className="text-xs">
+        <Label htmlFor="job-preferences-roles" className="text-xs">
           Favored roles<span className="text-muted-foreground"> · optional</span>
         </Label>
-        <div className="flex flex-wrap gap-2">
-          {selectableRoles.map((category) => {
-            const selected = preferences.role_categories.includes(category.key);
-            return (
-              <Button
-                key={category.key}
-                type="button"
-                size="sm"
-                variant={selected ? "default" : "outline"}
-                onClick={() => toggle("role_categories", category.key)}
-                aria-pressed={selected}
-                disabled={!roleCategories}
-              >
-                {category.label}
-              </Button>
-            );
-          })}
-        </div>
+        <RolePicker
+          mode="multiple"
+          id="job-preferences-roles"
+          value={preferences.favored_roles}
+          onValueChange={setFavoredRoles}
+          roleCategories={roleCategories}
+        />
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="grid gap-1.5">
-          <Label className="text-xs">
-            Level<span className="text-muted-foreground"> · optional</span>
+          <Label htmlFor="job-preferences-years" className="text-xs">
+            Years of experience
+            <span className="text-muted-foreground"> · optional</span>
           </Label>
-          <div className="flex flex-wrap gap-2">
-            {LEVELS.map((option) => {
-              const selected = preferences.levels.includes(option);
-              return (
-                <Button
-                  key={option}
-                  type="button"
-                  size="sm"
-                  variant={selected ? "default" : "outline"}
-                  onClick={() => toggle("levels", option)}
-                  aria-pressed={selected}
-                >
-                  {humanize(option)}
-                </Button>
-              );
-            })}
-          </div>
+          <Input
+            id="job-preferences-years"
+            type="number"
+            min={0}
+            max={60}
+            value={preferences.years_experience ?? ""}
+            placeholder="e.g. 6"
+            onChange={(event) => {
+              const raw = event.target.value;
+              update((current) => {
+                if (raw === "") {
+                  return { ...current, years_experience: null };
+                }
+                const n = Number(raw);
+                if (Number.isNaN(n)) return current;
+                return {
+                  ...current,
+                  years_experience: Math.min(60, Math.max(0, Math.trunc(n))),
+                };
+              });
+            }}
+          />
         </div>
 
         <div className="grid gap-1.5">
@@ -277,7 +275,7 @@ function JobPreferencesEditor({
                 type="button"
                 size="sm"
                 variant={selected ? "default" : "outline"}
-                onClick={() => toggle("employment_types", type)}
+                onClick={() => toggleEmployment(type)}
                 aria-pressed={selected}
               >
                 {humanize(type)}

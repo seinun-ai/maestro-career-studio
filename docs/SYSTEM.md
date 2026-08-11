@@ -379,13 +379,17 @@ transaction.
   **`role_category`** (NOT NULL, default `'unknown'`) is the role the resume
   targets, drawn from the SAME vocabulary as `Job.role_category`
   (`services/role_categories` ← `ats/data/role_categories.yaml`), so the two
-  axes cross-tab with `=`. Three insert sites: REST create (optional field,
-  **422** on an invalid explicit value), duplicate (**inherits**), seeding (a
-  slug that IS a category key). Human input is VALIDATED, never `normalize()`d
-  — normalize maps unrecognized to `other`, right for LLM extraction but a typo
-  would become indistinguishable from "Other". `'unknown'` is a first-class
-  VISIBLE state, not a failure — the UI shows "Role not set" with a one-click
-  picker. Deliberately no required create field: the documented onboarding path
+  axes cross-tab with `=`; roles nested under a category are picker-only, never
+  storable and never in `adjacent:` (they would tie `propose_from_resume`).
+  **`role_label`** (nullable) holds a free-text tag's words, `role_category`
+  becoming its projection — mapping, `other` if unmapped, `unknown` untagged
+  (still the visible "Role not set" state). Catalog text typed verbatim
+  collapses to the pick; coverage matches free-text tags to free-text favored
+  roles by casefolded label with an alias bridge. Insert sites: REST create
+  (**422** on invalid or contradicting explicit values), duplicate (**inherits
+  the pair**), seeding (a slug that IS a category key). Human input is
+  VALIDATED, never `normalize()`d (its unrecognized→`other` is right for LLM
+  extraction, wrong for a typo). Deliberately no required create field: the documented onboarding path
   drops JSON into `base_resumes/` and reaches `seeding.py` without touching the
   API, so a REST-only validator would not hold. `PATCH
   /api/base-resumes/{slug}/identity` sets role/display_name WITHOUT rewriting
@@ -451,10 +455,13 @@ transaction.
   hand-mirror the frontend autofill groups; update both sides together.
 - **`job_preferences` setting**: fully typed, file-mirrored at
   `settings/job_preferences.json` (`GET/PUT /api/settings/job-preferences`):
-  favored `role_categories`, levels, employment types, locations, remote
-  posture, salary floor, notes. Role keys are validated — an invalid explicit
-  human value 422s, never `normalize()`d. Setup status uses it for
-  missing-role suggestions; persona drafting uses it as a goals signal.
+  `favored_roles` (a catalog key, coarse OR specific, or free text),
+  `years_experience` (one number, comparable to extracted JD year bounds),
+  employment types, locations, remote, salary, notes. Catalog labels are
+  DERIVED and **`role_categories` is a COMPUTED PROJECTION** of the parents, so
+  consumers needed no change. Invalid keys 422, never `normalize()`d. Setup
+  status uses it for missing-role suggestions (an unmapped custom role
+  deliberately drives none); persona drafting uses it as a goals signal.
 - **Career KB** (`models/career_kb.py`, `/career` pages): the durable record
   of experience/projects/education/certs + facts; deliberately a sidecar —
   tailoring does NOT read KB context. Its web UI is view-first: profile/entity

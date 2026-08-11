@@ -1357,8 +1357,12 @@ def test_a_dead_extension_context_says_what_to_do_about_it():
     one action that fixes it.
     """
     assert "CONTEXT_LOST" in WIDGET_JS
-    guard = re.search(r"if \(!chrome\.runtime\?\.id\) throw new Error\(CONTEXT_LOST\)", WIDGET_JS)
-    assert guard, "ask() no longer checks for an invalidated context before using it"
+    # The check lives in one helper now, because EVERY chrome.* call needs it
+    # and ask() was only the first one found.
+    assert "const extensionAlive = () =>" in WIDGET_JS
+    assert re.search(r"if \(!extensionAlive\(\)\) throw new Error\(CONTEXT_LOST\)", WIDGET_JS), (
+        "ask() no longer checks for an invalidated context before using it"
+    )
     # Both spellings: the API can also reject mid-call once the context dies.
     assert re.search(r"context invalidated\|receiving end does not exist", WIDGET_JS)
     message = re.search(r'const CONTEXT_LOST =\s*\n?\s*"([^;]+);', WIDGET_JS, re.S).group(1)
@@ -1399,7 +1403,12 @@ _LOAD_DRIVER_JS = r"""
 // top-frame guard. `window.top !== window.self` makes it return early, so this
 // asserts exactly the part that runs before any UI exists — the constants, the
 // stylesheet template, and the namespace publish.
-global.window = { top: {}, self: {} };
+// The TOP frame when the spec asks for it, so the publish block and the
+// entry point both run — a subframe returns before either, which is right for
+// the load smoke test and useless for driving the widget's own functions.
+const asTopFrame = spec.topFrame === true;
+global.window = asTopFrame ? {} : { top: {}, self: {} };
+if (asTopFrame) { window.top = window; window.self = window; }
 const stubEl = () => ({
   style: { setProperty() {} }, setAttribute() {}, addEventListener() {},
   append() {}, appendChild() {}, querySelector: () => null,
@@ -1410,10 +1419,19 @@ global.document = {
   querySelector: () => null, querySelectorAll: () => [], title: "t",
 };
 global.location = { origin: "https://x.test", hostname: "x.test", href: "https://x.test" };
+// `deadContext` models an extension that has been reloaded under a page that
+// is still running its content script: chrome.runtime.id is gone and every
+// storage call THROWS SYNCHRONOUSLY rather than rejecting.
+const dead = spec.deadContext === true;
+const boom = () => { throw new Error("Extension context invalidated."); };
 global.chrome = {
-  runtime: { id: "abc", onMessage: { addListener() {} }, sendMessage: async () => ({ ok: true }) },
-  storage: { local: { get: async () => ({}), set: async () => {} },
-             sync: { get: async () => ({}), set: async () => {} } },
+  runtime: dead
+    ? { onMessage: { addListener() {} }, sendMessage: boom }
+    : { id: "abc", onMessage: { addListener() {} }, sendMessage: async () => ({ ok: true }) },
+  storage: dead
+    ? { local: { get: boom, set: boom }, sync: { get: boom, set: boom } }
+    : { local: { get: async () => ({}), set: async () => {} },
+        sync: { get: async () => ({}), set: async () => {} } },
 };
 global.CSSStyleSheet = class { replaceSync(text) { this.text = text; } };
 global.IntersectionObserver = class { observe() {} disconnect() {} };
@@ -1423,12 +1441,25 @@ global.addEventListener = () => {};
 
 main(async () => {
   let threw = null;
+  const unhandled = [];
+  process.on("uncaughtException", (err) => unhandled.push(String(err.message)));
+  process.on("unhandledRejection", (err) => unhandled.push(String(err?.message ?? err)));
   try {
     new Function(source)();
+    // Drive the paths that touch storage. On a dead context every one of them
+    // must be a no-op rather than an exception on the page.
+    const widget = window.careerStudioCompanion?.widget;
+    if (spec.drive === true && widget) {
+      // hideHere is read-then-write against chrome.storage.local — the exact
+      // path the uncaught error came from. Deliberately not toggleGlobally,
+      // which MOUNTS and would be testing the shadow-root stub instead.
+      await widget.hideHere();
+    }
   } catch (err) {
     threw = `${err.constructor.name}: ${err.message}`;
   }
-  emit({ threw });
+  await new Promise((r) => setTimeout(r, 20));
+  emit({ threw, unhandled });
 });
 """
 
@@ -1450,6 +1481,28 @@ def test_widget_js_survives_being_loaded(tmp_path):
     """
     result = run_node(_LOAD_DRIVER_JS, {}, tmp_path, source=WIDGET_JS)
     assert result["threw"] is None, result["threw"]
+
+
+def test_a_dead_extension_context_never_throws_onto_the_page(tmp_path):
+    """Reported as "Uncaught Error: Extension context invalidated" on a stale
+    tab, from `chrome.storage.local.set`.
+
+    The trap is that the call THROWS SYNCHRONOUSLY once the context is gone
+    rather than returning a rejected promise, so the `.catch()` chained onto it
+    — the only guard there was — never ran. It got much likelier when the
+    remembered pick landed, because the store is now written after every fill,
+    attach and status change.
+
+    A content script cannot stop being orphaned; what it can do is never make
+    that the page's problem.
+    """
+    result = run_node(
+        _LOAD_DRIVER_JS,
+        {"topFrame": True, "deadContext": True, "drive": True},
+        tmp_path, source=WIDGET_JS,
+    )
+    assert result["threw"] is None, result["threw"]
+    assert result["unhandled"] == [], result["unhandled"]
 
 
 # ---------- filling from a base resume, with no application in sight ----------

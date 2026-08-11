@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -8,6 +8,11 @@ import { Loader2, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
 import { useRoleCategories } from "@/components/role-category-picker";
+import {
+  favoredRoleFromTag,
+  identityFromFavoredRole,
+  RolePicker,
+} from "@/components/role-picker";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -33,7 +38,9 @@ import { uniqueSlug } from "@/lib/slug";
 import type {
   BaseResumeDetail,
   BaseResumeSummary,
+  FavoredRole,
   KBEntitySummary,
+  RoleMatch,
 } from "@/lib/types";
 
 const EMPTY_DATA = {
@@ -136,13 +143,47 @@ function NewBaseResumeForm({
 
   const [mode, setMode] = useState<Mode>(initialMode);
   const [name, setName] = useState("");
-  const [role, setRole] = useState(initialRole ?? "");
+  // ALL three tabs share the free-text tag picker now. The KB tab's plan
+  // endpoint still wants a coarse key, derived on demand by coarseFromTag —
+  // one picker state, not a parallel kbRole that could disagree with it.
+  const [tag, setTag] = useState<FavoredRole | null>(() =>
+    initialRole
+      ? favoredRoleFromTag(initialRole, null, undefined)
+      : null,
+  );
+  const [nameMatchApplied, setNameMatchApplied] = useState(false);
+  const pendingNameMatch = useRef<string | null>(null);
   const [instruction, setInstruction] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [summary, setSummary] = useState("");
   const [plan, setPlan] = useState<Plan | null>(null);
   const [source, setSource] = useState("");
   const slugsTaken = existingResumes.map((r) => r.slug);
+
+  // The coarse key a FavoredRole implies, for the two KB calls that need one.
+  // A confirmed mapping wins; a catalog pick resolves through the catalog (a
+  // coarse key is itself, a specific role finds its parent group); unmapped
+  // free text is `other` — the projection the server would store anyway.
+  const coarseFromTag = (entry: FavoredRole | null): string => {
+    if (!entry) return "";
+    if (entry.category) return entry.category;
+    if (entry.role) {
+      const parent = (roles.data ?? []).find(
+        (c) => c.key === entry.role || c.roles.some((r) => r.key === entry.role),
+      );
+      return parent?.key ?? "";
+    }
+    return "other";
+  };
+
+  const sourceResume = existingResumes.find((r) => r.slug === source);
+  const inheritedTag = sourceResume
+    ? favoredRoleFromTag(
+        sourceResume.role_category,
+        sourceResume.role_label,
+        roles.data,
+      )
+    : null;
 
   const entities = useQuery({
     queryKey: ["kb", "entities"],
@@ -169,7 +210,7 @@ function NewBaseResumeForm({
     mutationFn: () =>
       apiFetch<Plan>("/api/base-resumes/from-kb/plan", {
         method: "POST",
-        body: JSON.stringify({ role_category: role, instruction }),
+        body: JSON.stringify({ role_category: coarseFromTag(tag), instruction }),
       }),
     onSuccess: (result) => {
       setPlan(result);
@@ -182,37 +223,109 @@ function NewBaseResumeForm({
     onError: (err: Error) => toast.error(err.message),
   });
 
+  const matchName = (typedName: string) => {
+    const q = typedName.trim();
+    if (!q) {
+      pendingNameMatch.current = null;
+      return;
+    }
+    pendingNameMatch.current = q;
+    apiFetch<RoleMatch>(
+      `/api/role-categories/match?q=${encodeURIComponent(q)}`,
+    )
+      .then((match) => {
+        if (pendingNameMatch.current !== q || match.confidence === "none") {
+          return;
+        }
+        // Display-side only: show the hit in the tag picker. Create sends
+        // whatever the user left visible — never silent.
+        const next: FavoredRole =
+          match.role !== null
+            ? {
+                role: match.role,
+                label: match.label,
+                category: match.category,
+              }
+            : {
+                role: null,
+                label: match.label || q,
+                category: match.category,
+              };
+        // Nested catalog roles are not storable as role_category; prefer the
+        // parent category chip when the match resolved one.
+        if (match.role !== null && match.category !== null) {
+          const parent = roles.data?.find((c) => c.key === match.category);
+          setTag({
+            role: match.category,
+            label: parent?.label ?? match.label,
+            category: null,
+          });
+        } else {
+          setTag(next);
+        }
+        setNameMatchApplied(true);
+      })
+      .catch(() => undefined);
+  };
+
   /** One request per mode; everything around it (busy, errors, navigate) is
    *  identical, so it stays a single mutation. */
-  const request = () => {
+  const request = async () => {
     const display = name.trim() || null;
     if (mode === "kb") {
       return apiFetch<BaseResumeDetail>("/api/base-resumes/from-kb", {
         method: "POST",
         body: JSON.stringify({
           display_name: display,
-          role_category: role,
+          // The pair, not just the coarse key: a free-text tag survives on
+          // the created resume, and the server's exact-collapse handles a
+          // catalog label. See identityFromFavoredRole for the shape.
+          role_label: identityFromFavoredRole(tag).role_label,
+          role_category: coarseFromTag(tag),
           entity_ids: Array.from(selected),
           summary,
         }),
       });
     }
     if (mode === "existing") {
-      return apiFetch<BaseResumeDetail>(`/api/base-resumes/${source}/duplicate`, {
-        method: "POST",
-        body: JSON.stringify({
-          new_slug: uniqueSlug(name || `${source} copy`, slugsTaken),
-          new_display_name: display,
-        }),
-      });
+      const created = await apiFetch<BaseResumeDetail>(
+        `/api/base-resumes/${source}/duplicate`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            new_slug: uniqueSlug(name || `${source} copy`, slugsTaken),
+            new_display_name: display,
+          }),
+        },
+      );
+      // Duplicate inherits the source tag; PATCH identity with whatever the
+      // user left visible (inherited, match pre-fill, or a manual edit).
+      const body = identityFromFavoredRole(tag);
+      const inherited = identityFromFavoredRole(inheritedTag);
+      if (
+        body.role_label !== inherited.role_label ||
+        (body.role_category ?? null) !== (inherited.role_category ?? null)
+      ) {
+        return apiFetch<BaseResumeDetail>(
+          `/api/base-resumes/${created.slug}/identity`,
+          {
+            method: "PATCH",
+            body: JSON.stringify(body),
+          },
+        );
+      }
+      return created;
     }
+    const tagBody = identityFromFavoredRole(tag);
     return apiFetch<BaseResumeDetail>("/api/base-resumes", {
       method: "POST",
       body: JSON.stringify({
         slug: uniqueSlug(name, slugsTaken),
         display_name: display,
         data: EMPTY_DATA,
-        role_category: role || undefined,
+        ...(tag
+          ? tagBody
+          : {}),
       }),
     });
   };
@@ -229,7 +342,7 @@ function NewBaseResumeForm({
 
   const canCreate =
     mode === "kb"
-      ? Boolean(role) && selected.size > 0
+      ? Boolean(tag) && selected.size > 0
       : mode === "existing"
         ? Boolean(source)
         : Boolean(name.trim());
@@ -243,6 +356,22 @@ function NewBaseResumeForm({
       else next.add(id);
       return next;
     });
+
+  const selectSource = (slug: string) => {
+    setSource(slug);
+    const resume = existingResumes.find((r) => r.slug === slug);
+    setTag(
+      resume
+        ? favoredRoleFromTag(resume.role_category, resume.role_label, roles.data)
+        : null,
+    );
+    setNameMatchApplied(false);
+  };
+
+  const clearNameMatch = () => {
+    setTag(inheritedTag);
+    setNameMatchApplied(false);
+  };
 
   return (
     <>
@@ -261,35 +390,44 @@ function NewBaseResumeForm({
                   id="nbr_name"
                   placeholder="Machine Learning Engineer"
                   value={name}
-                  onChange={(e) => setName(e.target.value)}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    setName(next);
+                    if (mode === "existing" && source) {
+                      matchName(next);
+                    }
+                  }}
                 />
               </div>
-              {mode !== "existing" && (
+              {mode === "kb" && (
+                <div className="grid gap-1.5">
+                  <Label htmlFor="nbr_role">Target role</Label>
+                  {/* The same searchable picker as the other two tabs — the
+                      coarse dropdown here was the one hold-out, reported from
+                      live use. The plan endpoint still wants a coarse key;
+                      `coarseFromTag` derives it below. */}
+                  <RolePicker
+                    mode="single"
+                    id="nbr_role"
+                    value={tag}
+                    onValueChange={setTag}
+                    roleCategories={roles.data}
+                  />
+                </div>
+              )}
+              {mode === "blank" && (
                 <div className="grid gap-1.5">
                   <Label htmlFor="nbr_role">
-                    Target role{mode === "kb" ? "" : " (optional)"}
+                    Target role
+                    <span className="text-muted-foreground"> (optional)</span>
                   </Label>
-                  <Select value={role} onValueChange={(v) => setRole(v as string)}>
-                    <SelectTrigger id="nbr_role" size="sm" className="w-full">
-                      {/* Without children the trigger showed the stored key
-                          (`ai_ml_engineer`) once a role was chosen. */}
-                      <SelectValue placeholder="Choose a role">
-                        {(value) =>
-                          (roles.data ?? []).find((r) => r.key === value)
-                            ?.label ?? String(value ?? "")
-                        }
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      {(roles.data ?? [])
-                        .filter((r) => !r.reserved)
-                        .map((r) => (
-                          <SelectItem key={r.key} value={r.key}>
-                            {r.label}
-                          </SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
+                  <RolePicker
+                    mode="single"
+                    id="nbr_role"
+                    value={tag}
+                    onValueChange={setTag}
+                    roleCategories={roles.data}
+                  />
                 </div>
               )}
             </div>
@@ -318,7 +456,7 @@ function NewBaseResumeForm({
                   type="button"
                   variant="outline"
                   size="sm"
-                  disabled={!role || proposePlan.isPending}
+                  disabled={!tag || proposePlan.isPending}
                   onClick={() => proposePlan.mutate()}
                 >
                   {proposePlan.isPending ? (
@@ -328,7 +466,7 @@ function NewBaseResumeForm({
                   )}
                   {plan ? "Suggest again" : "Suggest a selection"}
                 </Button>
-                {!role && (
+                {!tag && (
                   <span className="text-muted-foreground ml-2 text-xs">
                     Choose a target role first.
                   </span>
@@ -408,30 +546,67 @@ function NewBaseResumeForm({
               )}
             </TabsContent>
 
-            <TabsContent value="existing" className="grid gap-1.5">
-              <Label htmlFor="nbr_source">Copy from</Label>
-              <Select value={source} onValueChange={(v) => setSource(v as string)}>
-                <SelectTrigger id="nbr_source" size="sm" className="w-full">
-                  <SelectValue placeholder="Choose a base resume">
-                    {(value) => {
-                      const hit = existingResumes.find((r) => r.slug === value);
-                      return hit
-                        ? (hit.display_name ?? hit.slug)
-                        : String(value ?? "");
+            <TabsContent value="existing" className="grid gap-4">
+              <div className="grid gap-1.5">
+                <Label htmlFor="nbr_source">Copy from</Label>
+                <Select
+                  value={source}
+                  onValueChange={(v) => selectSource(v as string)}
+                >
+                  <SelectTrigger id="nbr_source" size="sm" className="w-full">
+                    <SelectValue placeholder="Choose a base resume">
+                      {(value) => {
+                        const hit = existingResumes.find((r) => r.slug === value);
+                        return hit
+                          ? (hit.display_name ?? hit.slug)
+                          : String(value ?? "");
+                      }}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {existingResumes.map((r) => (
+                      <SelectItem key={r.slug} value={r.slug}>
+                        {r.display_name ?? r.slug}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-muted-foreground text-xs">
+                  Copies the whole document, including its template and formatting.
+                </p>
+              </div>
+
+              {source && (
+                <div className="grid gap-1.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <Label htmlFor="nbr_copy_role">Target role</Label>
+                    {nameMatchApplied && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        onClick={clearNameMatch}
+                      >
+                        Clear suggestion
+                      </Button>
+                    )}
+                  </div>
+                  <RolePicker
+                    mode="single"
+                    id="nbr_copy_role"
+                    value={tag}
+                    onValueChange={(next) => {
+                      setTag(next);
+                      setNameMatchApplied(false);
                     }}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {existingResumes.map((r) => (
-                    <SelectItem key={r.slug} value={r.slug}>
-                      {r.display_name ?? r.slug}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-muted-foreground text-xs">
-                Copies the whole document, including its template and formatting.
-              </p>
+                    roleCategories={roles.data}
+                  />
+                  <p className="text-muted-foreground text-xs">
+                    Starts as the source resume&apos;s tag. Typing a Name that
+                    matches the catalog pre-fills a suggestion you can clear.
+                  </p>
+                </div>
+              )}
             </TabsContent>
 
             <TabsContent value="blank">

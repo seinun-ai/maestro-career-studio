@@ -274,17 +274,44 @@ export interface OpenAIInfo {
   capabilities: Record<string, CapabilityReport>;
 }
 
+export interface CatalogRole {
+  key: string;
+  label: string;
+}
+
 /** GET /api/role-categories — the vocabulary, served from
- *  backend/app/services/ats/data/role_categories.yaml. Never duplicated here. */
+ *  backend/app/services/ats/data/role_categories.yaml. Never duplicated here.
+ *  `roles` is the specific-role layer: display and search only, never stored. */
 export interface RoleCategory {
   key: string;
   label: string;
   reserved: boolean;
+  roles: CatalogRole[];
+}
+
+/** One targeted role. `role === null` means the user typed it themselves;
+ *  `category` is then their confirmed mapping, or null if left unmapped. */
+export interface FavoredRole {
+  role: string | null;
+  label: string;
+  category: string | null;
+}
+
+/** GET /api/role-categories/match — a MISS is `confidence: "none"` with a 200,
+ *  never an error. Compare against the string: "none" is truthy. */
+export interface RoleMatch {
+  role: string | null;
+  category: string | null;
+  label: string;
+  confidence: "exact" | "alias" | "none";
 }
 
 export interface JobPreferences {
+  favored_roles: FavoredRole[];
+  /** Derived server-side from favored_roles. Read-only in practice. */
   role_categories: string[];
-  levels: string[];
+  /** Years of experience the user claims (0–60). Replaces the old levels pills. */
+  years_experience: number | null;
   employment_types: string[];
   locations: string[];
   remote: "remote" | "hybrid" | "onsite" | "any" | null;
@@ -328,8 +355,11 @@ export interface SetupStatus {
 export interface BaseResumeSummary {
   slug: string;
   display_name: string | null;
-  /** Target role. Always present; "unknown" means not declared yet. */
+  /** Target role projection. Always present; "unknown" means not declared yet. */
   role_category: string;
+  /** User's own words for the tag when free text; null means the tag IS
+   *  role_category (a catalog pick). Display prefers this when set. */
+  role_label: string | null;
   pdf_rendered_at: string | null;
   updated_at: string;
   /** Set when the last auto-render failed — the PDF and its preview are the
@@ -347,6 +377,7 @@ interface ImportedBase {
   slug: string;
   display_name: string;
   role_category: string;
+  role_label: string | null;
   proposed: boolean;
   render_error: string | null;
 }
