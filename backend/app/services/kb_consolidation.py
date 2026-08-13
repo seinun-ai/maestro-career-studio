@@ -24,6 +24,15 @@ def _norm(s: Any) -> str:
     return " ".join(str(s or "").lower().split())
 
 
+def point_text_key(text: str) -> str:
+    """Normalized bullet text for exact / whitespace-insensitive dedup.
+
+    Shared by the LLM cluster path and ``consolidate_deterministic`` so the
+    two entry points cannot drift on what "the same bullet" means.
+    """
+    return _norm(text)
+
+
 @dataclass
 class SourceEntry:
     resume_key: str
@@ -37,6 +46,44 @@ class Group:
     section: str
     key: tuple
     members: list[SourceEntry] = field(default_factory=list)
+
+
+@dataclass
+class DeterministicEntityRef:
+    id: Any
+    kind: str
+    title: str
+    org: str | None
+    created: bool
+
+
+@dataclass
+class DeterministicPointRef:
+    id: Any
+    entity_id: Any
+    text: str
+
+
+@dataclass
+class DeterministicConsolidationReport:
+    """Ids-bearing report for the LLM-free ingest path. Not a substitute for
+    ConsolidationReport — web callers keep that shape unchanged.
+
+    ``points_created`` counts rows written, NOT rows approved: this path lands
+    every point as a draft and ``kb_approve_points`` / the web inbox is the
+    gate. ``duplicates_skipped`` counts every source bullet that did not become
+    a new point — collapsed within the batch, or already present on the entity
+    (including as a retired point).
+    """
+
+    entities: list[DeterministicEntityRef] = field(default_factory=list)
+    points: list[DeterministicPointRef] = field(default_factory=list)
+    entities_created: int = 0
+    entities_matched: int = 0
+    points_created: int = 0
+    duplicates_skipped: int = 0
+    skills_merged: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
 
 
 ENTRY_SECTIONS = ("experience", "projects", "education", "certifications")
@@ -257,20 +304,91 @@ def _make_cert_entity(group: Group) -> KBEntity:
 
 
 # --- existing-entity identity indexes (no-LLM matching) --------------------
+#
+# An index key MUST equal the ``identity_key`` of the source entry that would
+# create the same row, or a re-run forks a second entity forever. The catch is
+# that ``identity_key`` reads the SOURCE fields while the index reads the
+# STORED ones, and the ``_make_*`` builders substitute a fallback title when the
+# source field is blank (``degree or institution``, ``role or "(untitled)"``,
+# ``name or "(untitled)"``). ``_identity_title`` reverses exactly those
+# substitutions so the two keys agree again.
+
+# Titles no source entry can supply — they only ever come from a _make_* fallback.
+_FALLBACK_TITLES = frozenset({"(untitled)", "(education)"})
+
+
+def _identity_title(entity: KBEntity) -> str:
+    """The stored title as ``identity_key`` would have seen the source field."""
+    title = _norm(entity.title)
+    if title in _FALLBACK_TITLES:
+        return ""
+    if entity.kind == "education" and entity.org and title == _norm(entity.org):
+        # _make_education_entity fell back `degree or institution`.
+        return ""
+    return title
+
+
+def _identity_index(session: Session, kind: str, key: Any) -> dict[tuple, KBEntity]:
+    """Identity key -> entity for one kind, oldest row winning a tie.
+
+    Ordered because when two rows share an identity key the SAME one has to win
+    on every run, and an unordered select promises nothing. Oldest-first
+    because the older row is the one carrying the accumulated points and port
+    logs, so it is the right thing to merge onto.
+    """
+    out: dict[tuple, KBEntity] = {}
+    entities = session.scalars(
+        select(KBEntity)
+        .where(KBEntity.kind == kind)
+        .order_by(KBEntity.created_at, KBEntity.id)
+    )
+    for e in entities:
+        out.setdefault(key(e), e)
+    return out
 
 
 def _existing_edu_index(session: Session) -> dict[tuple, KBEntity]:
-    out: dict[tuple, KBEntity] = {}
-    for e in session.scalars(select(KBEntity).where(KBEntity.kind == "education")):
-        out[(_norm(e.org), _norm(e.title))] = e  # institution=org, degree=title
-    return out
+    # institution=org, degree=title
+    return _identity_index(
+        session, "education", lambda e: (_norm(e.org), _identity_title(e))
+    )
 
 
 def _existing_cert_index(session: Session) -> dict[tuple, KBEntity]:
-    out: dict[tuple, KBEntity] = {}
-    for e in session.scalars(select(KBEntity).where(KBEntity.kind == "certification")):
-        out[(_norm(_cert_string(e)),)] = e
-    return out
+    return _identity_index(session, "certification", lambda e: (_norm(_cert_string(e)),))
+
+
+def _existing_exp_index(session: Session) -> dict[tuple, KBEntity]:
+    return _identity_index(
+        session, "experience",
+        lambda e: (_norm(e.org), _identity_title(e), e.start_date or ""),
+    )
+
+
+def _existing_proj_index(session: Session) -> dict[tuple, KBEntity]:
+    return _identity_index(session, "project", lambda e: (_identity_title(e),))
+
+
+def _match_or_create_identity(
+    session: Session,
+    groups: list[Group],
+    index: dict[tuple, KBEntity],
+    make: Any,
+    report: Any,
+    on_entity: Any,
+) -> None:
+    """Identity-key match-or-create used by both consolidation entry points."""
+    for g in groups:
+        ent = index.get(g.key)
+        created = ent is None
+        if created:
+            ent = make(g)
+            session.add(ent)
+            report.entities_created += 1
+            index[g.key] = ent
+        else:
+            report.entities_matched += 1
+        on_entity(ent, g, created)
 
 
 # --- Stage B: experience/project entity resolution (LLM) -------------------
@@ -368,6 +486,25 @@ def _gather_source_bullets(groups: list[Group]) -> list[dict]:
     return bullets
 
 
+def _cluster_candidates(source_bullets: list[dict]) -> tuple[list[dict], int]:
+    """Collapse exact/normalized duplicate bullets into candidates.
+
+    Returns (candidates, duplicates_skipped). Each candidate has rep_text,
+    sources, and key (the point_text_key).
+    """
+    candidates: list[dict] = []
+    by_norm: dict[str, dict] = {}
+    for sb in source_bullets:
+        key = point_text_key(sb["text"])
+        c = by_norm.get(key)
+        if c is None:
+            c = {"rep_text": sb["text"], "sources": [], "key": key}
+            by_norm[key] = c
+            candidates.append(c)
+        c["sources"].append(sb)
+    return candidates, len(source_bullets) - len(candidates)
+
+
 def _cluster_points_for_entity(
     session: Session, entity: KBEntity, groups: list[Group],
     tmpl: str, smart_model: str, report: ConsolidationReport,
@@ -382,16 +519,8 @@ def _cluster_points_for_entity(
     if not source_bullets:
         return
 
-    candidates: list[dict] = []
-    by_norm: dict[str, dict] = {}
-    for sb in source_bullets:
-        c = by_norm.get(_norm(sb["text"]))
-        if c is None:
-            c = {"rep_text": sb["text"], "sources": []}
-            by_norm[_norm(sb["text"])] = c
-            candidates.append(c)
-        c["sources"].append(sb)
-    report.duplicates_skipped += len(source_bullets) - len(candidates)
+    candidates, skipped = _cluster_candidates(source_bullets)
+    report.duplicates_skipped += skipped
 
     existing_points = [p for p in entity.points if p.state != "retired"]
     prompt = (
@@ -574,6 +703,36 @@ def _seed_profile(session: Session, sources: list[tuple[str, dict]]) -> None:
 RESUME_PARSE_CAP = 40_000
 
 
+def _validate_with_salvage(payload: dict) -> tuple[dict, list[str]]:
+    """Validate as ResumeData; on failure drop ONLY the rejected list entries and retry once.
+
+    Salvage never touches contact/summary errors (they mean the parse is unusable) and
+    reports every drop, so a bad row in one section cannot cost the whole file.
+    """
+    from pydantic import ValidationError
+    from app.schemas.resume import ResumeData
+
+    try:
+        return ResumeData.model_validate(payload).model_dump(mode="json"), []
+    except ValidationError as exc:
+        salvageable = {"experience", "projects", "education", "certifications",
+                       "skills", "extra_sections"}
+        drop: dict[str, set[int]] = {}
+        for err in exc.errors():
+            loc = err.get("loc") or ()
+            if len(loc) >= 2 and loc[0] in salvageable and isinstance(loc[1], int):
+                drop.setdefault(loc[0], set()).add(loc[1])
+            else:
+                raise  # not an entry-level defect — salvage can't help
+        pruned = dict(payload)
+        warnings: list[str] = []
+        for section, indices in drop.items():
+            rows = list(pruned.get(section) or [])
+            pruned[section] = [r for i, r in enumerate(rows) if i not in indices]
+            warnings.append(f"dropped {len(indices)} unparseable {section} item(s)")
+        return ResumeData.model_validate(pruned).model_dump(mode="json"), sorted(warnings)
+
+
 def prefetch_prompts(session: Session) -> None:
     """Resolve every prompt this pipeline uses, on a clean session.
 
@@ -592,15 +751,19 @@ def prefetch_prompts(session: Session) -> None:
     model_settings.get_smart_model(session)
 
 
-def parse_resume_text(session: Session, text: str) -> dict:
-    """Parse raw resume text into a validated ResumeData dict via the kb_resume_parse LLM.
+def parse_resume_text(session: Session, text: str) -> tuple[dict, list[str]]:
+    """Parse raw resume text into validated ResumeData plus salvage warnings.
 
     Raises ValueError (router -> 422) on unusable/invalid output.
     """
-    from app.schemas.resume import ResumeData
     if not (text or "").strip():
         raise ValueError("resume text is empty")
-    prompt = prompts.get_prompt("kb_resume_parse", session).replace("$resume_text", (text or "")[:RESUME_PARSE_CAP])
+    from app.services import extra_section_presets
+    prompt = (
+        prompts.get_prompt("kb_resume_parse", session)
+        .replace("$extra_section_presets", extra_section_presets.prompt_block())
+        .replace("$resume_text", (text or "")[:RESUME_PARSE_CAP])
+    )
     try:
         result = llm.call_openai(prompt=prompt, model=model_settings.get_smart_model(session),
                                  response_format="json", trace_name="kb-resume-parse")
@@ -612,7 +775,7 @@ def parse_resume_text(session: Session, text: str) -> dict:
     if not isinstance(result, dict):
         raise ValueError("resume parse returned a non-object")
     try:
-        return ResumeData.model_validate(result).model_dump(mode="json")
+        return _validate_with_salvage(result)
     except Exception as e:  # noqa: BLE001
         raise ValueError(f"resume parse produced invalid ResumeData: {e}") from e
 
@@ -650,34 +813,18 @@ def consolidate(
 
     entity_groups: dict[KBEntity, list[Group]] = {}
 
-    def _register(ent: KBEntity, group: Group) -> None:
+    def _register(ent: KBEntity, group: Group, _created: bool = False) -> None:
         entity_groups.setdefault(ent, []).append(group)
 
-    # Stage B — education (identity-key match, no LLM)
-    edu_index = _existing_edu_index(session)
-    for g in by_section["education"]:
-        ent = edu_index.get(g.key)
-        if ent is not None:
-            report.entities_matched += 1
-        else:
-            ent = _make_education_entity(g)
-            session.add(ent)
-            report.entities_created += 1
-            edu_index[g.key] = ent
-        _register(ent, g)
-
-    # Stage B — certifications (identity-key match, no LLM; no bullets)
-    cert_index = _existing_cert_index(session)
-    for g in by_section["certifications"]:
-        ent = cert_index.get(g.key)
-        if ent is not None:
-            report.entities_matched += 1
-        else:
-            ent = _make_cert_entity(g)
-            session.add(ent)
-            report.entities_created += 1
-            cert_index[g.key] = ent
-        _register(ent, g)
+    # Stage B — education / certifications (identity-key match, no LLM)
+    _match_or_create_identity(
+        session, by_section["education"], _existing_edu_index(session),
+        _make_education_entity, report, _register,
+    )
+    _match_or_create_identity(
+        session, by_section["certifications"], _existing_cert_index(session),
+        _make_cert_entity, report, _register,
+    )
 
     # Stage B — experience + projects (kb_entity_resolve, one call per family)
     for section in ("experience", "projects"):
@@ -702,3 +849,194 @@ def consolidate(
     if commit:
         session.commit()
     return report
+
+
+def _write_verbatim_points(
+    session: Session,
+    entity: KBEntity,
+    groups: list[Group],
+    report: DeterministicConsolidationReport,
+    *,
+    origin: str,
+    origin_detail: str | None,
+) -> list[KBPoint]:
+    """One DRAFT point per distinct-norm bullet; no LLM merge.
+
+    Draft, not approved: the bullets were transcribed by an agent, and a
+    docstring convention is not a gate. ``kb_approve_points`` (or the /career
+    inbox) is where they enter the approved set that composes resumes.
+
+    Dedup is against the entity's points in EVERY state — a retired point is a
+    decision the user already made, and re-ingesting the same resume must not
+    resurrect it as a fresh draft.
+    """
+    source_bullets = _gather_source_bullets(groups)
+    if not source_bullets:
+        return []
+
+    existing_points = session.scalars(
+        select(KBPoint).where(KBPoint.entity_id == entity.id)
+    ).all()
+    existing_norms = {point_text_key(p.text) for p in existing_points}
+
+    candidates, skipped = _cluster_candidates(source_bullets)
+    report.duplicates_skipped += skipped
+
+    created: list[KBPoint] = []
+    for cand in candidates:
+        if cand["key"] in existing_norms:
+            # The candidate's own representative bullet is a duplicate too —
+            # the within-batch collapse above only counted its siblings.
+            report.duplicates_skipped += 1
+            continue
+        p = KBPoint(
+            entity_id=entity.id,
+            text=cand["rep_text"],
+            state="draft",
+            origin=origin,
+            origin_detail=origin_detail,
+            merge_sources_json=[
+                {"resume_key": s["resume_key"], "section": s["section"], "text": s["text"]}
+                for s in cand["sources"]
+            ],
+        )
+        session.add(p)
+        report.points_created += 1
+        created.append(p)
+        existing_norms.add(cand["key"])
+
+    # Port logs mirror what _cluster_points_for_entity backfills per source
+    # bullet — every bullet, including one that deduped onto a point already
+    # there. Without them _usage_from_logs reports zero usage and the explore
+    # build-areas view misclassifies every point this path wrote.
+    session.flush()  # new points need ids before the port-log FKs
+    existing_logs = session.scalars(
+        select(KBPortLog).where(KBPortLog.entity_id == entity.id)
+    ).all()
+    seen = {(r.point_id, r.resume_key, r.section, _norm(r.ported_text)) for r in existing_logs}
+    by_key = {point_text_key(p.text): p for p in [*existing_points, *created]}
+    for cand in candidates:
+        point = by_key.get(cand["key"])
+        if point is None:
+            continue
+        for sb in cand["sources"]:
+            key = (point.id, sb["resume_key"], sb["section"], _norm(sb["text"]))
+            if key in seen:
+                continue
+            seen.add(key)
+            session.add(KBPortLog(
+                entity_id=entity.id, point_id=point.id, resume_kind="base",
+                resume_key=sb["resume_key"], section=sb["section"], ported_text=sb["text"],
+            ))
+    return created
+
+
+def _extra_section_warnings(sources: list[tuple[str, dict]]) -> list[str]:
+    """This path stores no extra sections — say so per source rather than
+    dropping them silently (the caller can still put them on a base resume)."""
+    out: list[str] = []
+    for resume_key, data in sources:
+        if data.get("extra_sections"):
+            out.append(
+                f"{resume_key}: extra_sections are not stored in the Career KB — "
+                "add them to the base resume after creation"
+            )
+    return out
+
+
+def consolidate_deterministic(
+    session: Session,
+    sources: list[tuple[str, dict]],
+    *,
+    origin: str | None = None,
+    origin_detail: str | None = None,
+    commit: bool = True,
+) -> DeterministicConsolidationReport:
+    """LLM-free consolidation: identity-key entity match, verbatim draft points.
+
+    Experience/projects match the way education/certs already do — by
+    ``identity_key`` only. The caller is responsible for normalizing entity
+    names across resumes. Near-duplicate bullets that do not share a
+    normalized-text key both land; that is accepted. New points land as
+    ``draft``; approval is a separate, explicit step.
+
+    ``origin``/``origin_detail`` come from the request's write origin. An
+    ``mcp`` write stamps its points ``origin="mcp"`` so they show up in the
+    /career entity timeline, which only reports agent-written rows.
+    """
+    report = DeterministicConsolidationReport()
+    report.warnings.extend(_extra_section_warnings(sources))
+    groups = group_by_identity(collect_entries(sources))
+    by_section: dict[str, list[Group]] = {s: [] for s in ENTRY_SECTIONS}
+    for g in groups:
+        by_section[g.section].append(g)
+
+    entity_groups: dict[KBEntity, list[Group]] = {}
+    created_flag: dict[int, bool] = {}
+
+    def _register(ent: KBEntity, group: Group, created: bool) -> None:
+        entity_groups.setdefault(ent, []).append(group)
+        if id(ent) not in created_flag:
+            created_flag[id(ent)] = created
+            if created:
+                ent.origin = origin
+                ent.origin_detail = origin_detail
+
+    _match_or_create_identity(
+        session, by_section["education"], _existing_edu_index(session),
+        _make_education_entity, report, _register,
+    )
+    _match_or_create_identity(
+        session, by_section["certifications"], _existing_cert_index(session),
+        _make_cert_entity, report, _register,
+    )
+    _match_or_create_identity(
+        session, by_section["experience"], _existing_exp_index(session),
+        lambda g: _make_entity("experience", {}, [g]), report, _register,
+    )
+    _match_or_create_identity(
+        session, by_section["projects"], _existing_proj_index(session),
+        lambda g: _make_entity("projects", {}, [g]), report, _register,
+    )
+
+    session.flush()
+
+    point_origin = "mcp" if origin == "mcp" else "consolidated"
+    created_points: list[KBPoint] = []
+    for ent, gs in list(entity_groups.items()):
+        if ent.kind == "certification":
+            continue
+        landed = _write_verbatim_points(
+            session, ent, gs, report,
+            origin=point_origin, origin_detail=origin_detail,
+        )
+        if landed and ent.status == "archived":
+            # Matching an archived entity is LLM-path parity, but the points
+            # are invisible to every composed resume until it is un-archived.
+            report.warnings.append(
+                f"points landed on archived entity '{ent.title}' — "
+                "hidden from composed resumes"
+            )
+        created_points.extend(landed)
+
+    _merge_skills(session, sources, report)
+    _seed_profile(session, sources)
+
+    session.flush()
+
+    report.entities = [
+        DeterministicEntityRef(
+            id=ent.id, kind=ent.kind, title=ent.title, org=ent.org,
+            created=created_flag[id(ent)],
+        )
+        for ent in entity_groups
+    ]
+    report.points = [
+        DeterministicPointRef(id=p.id, entity_id=p.entity_id, text=p.text)
+        for p in created_points
+    ]
+
+    if commit:
+        session.commit()
+    return report
+

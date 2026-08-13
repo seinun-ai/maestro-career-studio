@@ -15,18 +15,28 @@ class ContactInfo(BaseModel):
 
 
 class ExperienceEntry(BaseModel):
+    """A role. ``start_date`` is None when the resume states no date for it
+    (functional and academic resumes routinely do): that is a legal
+    representation, not a defect. Renderers must guard it, the ATS indexer
+    treats the entry as undated (no recency credit, no tenure span), and health
+    gate S3 skips it — only a NON-EMPTY unparseable date string is a defect."""
+
     company: str
     role: str
     location: str | None = None
-    start_date: str
+    start_date: str | None = None
     end_date: str | None = None
     enabled: bool = True
     bullets: list[str] = Field(default_factory=list)
 
 
 class EducationEntry(BaseModel):
+    """A term of study. ``degree`` is None for non-degree study (coursework,
+    bootcamps, exchange terms) — never invent a degree title. Renderers must
+    guard it; ``ats/degrees.resume_degree_level`` simply reads no level from it."""
+
     institution: str
-    degree: str
+    degree: str | None = None
     field: str | None = None
     location: str | None = None
     start_date: str | None = None
@@ -62,8 +72,11 @@ class SkillGroup(BaseModel):
 # ``key`` is the stable machine identity (lookups use it as ``section_key``);
 # ``title`` is editable display text. Keys are lowercase slugs, unique
 # case-insensitively across the resume, and must not collide with a core
-# section name. Phase 1 is ATS-neutral: these sections render and are editable
-# but do not feed the ATS engine, gap placement, or the evidence score.
+# section name. Extras are first-class evidence: they feed the ATS engine at
+# the ``extra_only`` tier, gap placement targets them by ``section_key``, and
+# their bullets sit on the health evidence ladder (see SYSTEM.md §4). The
+# canonical common-section vocabulary lives in
+# ``services/extra_section_presets.py``.
 
 # Core section field names an extra-section key may not shadow.
 CORE_SECTION_KEYS = frozenset(

@@ -289,7 +289,7 @@ def validate_template(template_id: str, session: Session) -> dict:
         row.parse_certified = None
         row.parse_report_json = None
         session.commit()
-        return {"ok": False, "error": row.last_error, "parse_certified": None}
+        return {"ok": False, "error": row.last_error, "parse_certified": None, "parse_report": None}
 
     row.status = "ready"
     row.validated_at = datetime.now(UTC)
@@ -302,4 +302,4 @@ def validate_template(template_id: str, session: Session) -> dict:
         row.parse_certified = not report["missing"]
         row.parse_report_json = report
     session.commit()
-    return {"ok": True, "error": None, "parse_certified": row.parse_certified}
+    return {"ok": True, "error": None, "parse_certified": row.parse_certified, "parse_report": row.parse_report_json}

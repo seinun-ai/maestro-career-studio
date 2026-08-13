@@ -6,20 +6,12 @@ reach `title_families()` (that is what `config_version` hashes and what
 `propose_from_resume` requires to stay unambiguous).
 """
 
+import re
 from textwrap import dedent
 
 import pytest
 
 from app.services import role_categories
-
-# `applied_scientist` is parented under `research_scientist` while "applied
-# scientist" also sits in `data_scientist.adjacent`. That disagreement is
-# deliberate and documented in the YAML: a picker entry must name exactly one
-# parent, while the ATS engine is free to call the title ambiguous.
-DOCUMENTED_CROSS_CATEGORY = {("applied_scientist", "data_scientist")}
-# An exception list with no ceiling weakens silently: the next editor to hit a
-# failure can add their way out of it. Growing this set must be a deliberate act.
-assert len(DOCUMENTED_CROSS_CATEGORY) == 1
 
 
 @pytest.fixture
@@ -65,17 +57,19 @@ def test_no_role_leaks_into_the_title_families():
             for other, members in families.items():
                 if other == category:
                     # A role label restating its OWN category's adjacent string
-                    # is intentional; 16 of them do. See the YAML header.
-                    continue
-                if (role["key"], other) in DOCUMENTED_CROSS_CATEGORY:
+                    # is intentional. See the YAML header.
                     continue
                 lowered = [member.lower() for member in members]
                 assert role["label"].lower() not in lowered
 
 
-def test_every_category_exposes_its_roles():
-    for category in role_categories.keys():
-        assert role_categories.roles_for(category), f"{category} has no roles"
+def test_only_deliberately_flat_families_have_no_nested_roles():
+    roleless = {
+        category
+        for category in role_categories.keys()
+        if not role_categories.roles_for(category)
+    }
+    assert roleless == {"bi_developer", "database_administrator"}
     assert {
         "key": "product_data_scientist",
         "label": "Product Data Scientist",
@@ -111,8 +105,8 @@ def test_a_category_alias_still_resolves():
 
 
 def test_label_for_prefers_the_curated_role_label():
-    # Humanizing these mangles them: "Nlp Engineer", "Dbt Developer".
-    assert role_categories.label_for("nlp_engineer") == "NLP Engineer"
+    # Humanizing these mangles them: "Llmops Engineer", "Dbt Developer".
+    assert role_categories.label_for("llmops_engineer") == "LLMOps Engineer"
     assert role_categories.label_for("dbt_developer") == "dbt Developer"
     # Contract unchanged for everything else.
     assert role_categories.label_for("data_scientist") == "Data Scientist"
@@ -125,6 +119,18 @@ def test_title_families_cannot_be_mutated_through_the_accessor():
     # would change scores under a version claiming they are comparable.
     role_categories.title_families()["data_scientist"].append("astronaut")
     assert "astronaut" not in role_categories.title_families()["data_scientist"]
+
+
+def test_normalized_adjacent_phrases_are_owned_by_exactly_one_family():
+    owners: dict[str, str] = {}
+    for category, phrases in role_categories.title_families().items():
+        for phrase in phrases:
+            normalized = re.sub(r"[^a-z0-9]+", " ", phrase.casefold()).strip()
+            assert normalized not in owners, (
+                f"{normalized!r} is adjacent to both {owners.get(normalized)!r} "
+                f"and {category!r}"
+            )
+            owners[normalized] = category
 
 
 def test_a_role_key_may_not_shadow_a_category(vocabulary):
@@ -228,10 +234,129 @@ def test_a_role_may_restate_an_alias_of_its_own_category(vocabulary):
     assert role_categories.parent_of("machine_learning_engineer") == "ai_ml_engineer"
 
 
-def test_new_categories_are_storable():
-    keys = set(role_categories.all_keys())
-    assert {"security_engineer", "platform_engineer",
-            "product_manager", "engineering_manager"} <= keys
+def test_industry_wide_catalog_has_the_fixed_25_family_cut():
+    assert set(role_categories.keys()) == {
+        "data_scientist",
+        "data_analyst",
+        "data_engineer",
+        "ai_ml_engineer",
+        "analytics_engineer",
+        "business_analyst",
+        "bi_developer",
+        "research_scientist",
+        "software_engineer",
+        "mlops_engineer",
+        "security_engineer",
+        "platform_engineer",
+        "product_manager",
+        "engineering_manager",
+        "qa_engineer",
+        "it_support",
+        "network_engineer",
+        "database_administrator",
+        "solutions_engineer",
+        "enterprise_apps_consultant",
+        "devrel",
+        "forward_deployed_engineer",
+        "technical_program_manager",
+        "supply_chain_analyst",
+        "embedded_engineer",
+    }
+
+
+@pytest.mark.parametrize(
+    "category,alias,roles",
+    [
+        ("qa_engineer", "software tester", {"sdet", "automation_test_engineer"}),
+        (
+            "it_support",
+            "desktop support",
+            {"help_desk_specialist", "systems_administrator", "cloud_administrator"},
+        ),
+        ("network_engineer", "network administrator", {"network_architect"}),
+        ("database_administrator", "dba", set()),
+        (
+            "solutions_engineer",
+            "sales engineer",
+            {"solutions_architect", "sales_engineer", "technical_account_manager"},
+        ),
+        (
+            "enterprise_apps_consultant",
+            "salesforce developer",
+            {"salesforce_consultant", "sap_consultant", "erp_consultant"},
+        ),
+        ("devrel", "devrel engineer", {"developer_advocate"}),
+        (
+            "forward_deployed_engineer",
+            "fde",
+            {"applied_ai_engineer"},
+        ),
+        (
+            "technical_program_manager",
+            "tpm",
+            {"it_project_manager", "scrum_master"},
+        ),
+        (
+            "supply_chain_analyst",
+            "supply chain planner",
+            {"supply_chain_manager", "logistics_analyst"},
+        ),
+        (
+            "embedded_engineer",
+            "embedded software engineer",
+            {"firmware_engineer", "hardware_engineer"},
+        ),
+    ],
+)
+def test_new_families_keep_required_aliases_and_specific_roles(category, alias, roles):
+    assert role_categories.normalize(alias) == category
+    assert {role["key"] for role in role_categories.roles_for(category)} == roles
+
+
+def test_security_category_is_broadened_without_changing_its_key():
+    assert role_categories.label_for("security_engineer") == (
+        "Security / Cybersecurity Engineer"
+    )
+    assert role_categories.normalize("cybersecurity engineer") == "security_engineer"
+    assert role_categories.normalize("cybersecurity analyst") == "security_engineer"
+    assert {"security_analyst", "grc_analyst"} <= {
+        role["key"] for role in role_categories.roles_for("security_engineer")
+    }
+
+
+def test_description_accessor_is_optional_and_category_scoped():
+    assert role_categories.description_for("forward_deployed_engineer") == (
+        "Embeds with customers to adapt and deploy software or AI solutions "
+        "in real operating environments."
+    )
+    assert role_categories.description_for("qa_engineer") is None
+    assert role_categories.description_for("other") is None
+
+
+@pytest.mark.parametrize(
+    "title,category",
+    [
+        ("Decision Scientist", "data_scientist"),
+        ("Experimentation Scientist", "data_scientist"),
+        ("Marketing Data Scientist", "data_scientist"),
+        ("Streaming Data Engineer", "data_engineer"),
+        ("Reporting Analyst", "data_analyst"),
+        ("Growth Analyst", "data_analyst"),
+        ("Tableau Developer", "bi_developer"),
+        ("Power BI Developer", "bi_developer"),
+        ("Looker Developer", "bi_developer"),
+        ("NLP Engineer", "ai_ml_engineer"),
+        ("Computer Vision Engineer", "ai_ml_engineer"),
+        ("Prompt Engineer", "ai_ml_engineer"),
+    ],
+)
+def test_pruned_specific_titles_remain_reachable_as_category_aliases(title, category):
+    assert role_categories.match_free_text(title) == {
+        "role": None,
+        "category": category,
+        "label": title,
+        "confidence": "alias",
+    }
 
 
 def test_platform_engineer_no_longer_ties_with_software_engineer():
@@ -249,6 +374,33 @@ def test_a_platform_engineer_resume_resolves_to_one_category():
         {"experience": [{"role": "Platform Engineer"}]}
     )
     assert proposed == "platform_engineer"
+
+
+@pytest.mark.parametrize(
+    "title,category",
+    [
+        ("Forward Deployed Engineer", "forward_deployed_engineer"),
+        ("QA Engineer", "qa_engineer"),
+        ("Supply Chain Analyst", "supply_chain_analyst"),
+        ("QA Engineer / Software Engineer", "unknown"),
+    ],
+)
+def test_expanded_catalog_proposal_smoke_corpus(title, category):
+    assert role_categories.propose_from_resume(
+        {"experience": [{"role": title}]}
+    ) == category
+
+
+@pytest.mark.parametrize(
+    "title",
+    ["Applied AI Engineer", "Embedded Software Engineer"],
+)
+def test_catalog_owned_title_never_proposes_a_different_family(title):
+    match = role_categories.match_free_text(title)
+    assert match["category"] is not None
+    assert role_categories.propose_from_resume(
+        {"experience": [{"role": title}]}
+    ) == "unknown"
 
 
 @pytest.mark.parametrize(
@@ -275,6 +427,7 @@ def test_a_platform_engineer_resume_resolves_to_one_category():
         ("Software Engineer", "software_engineer"),
         ("Backend Engineer", "software_engineer"),
         ("Machine Learning Engineer", "ai_ml_engineer"),
+        ("MLOps Engineer", "mlops_engineer"),
         # Already ambiguous before this change: "data platform engineer" is in
         # `data_engineer.adjacent` while "platform engineer" now sits under
         # `platform_engineer` (it sat under `software_engineer` before). The
@@ -286,12 +439,10 @@ def test_a_platform_engineer_resume_resolves_to_one_category():
         # `mlops_engineer.adjacent`'s "machine learning infrastructure
         # engineer", so the two families now tie where mlops used to win alone.
         #
-        # Left as `unknown` on purpose. Deciding it needs a rule about which
-        # family owns ML infrastructure, which changes scoring for real JDs —
-        # the same reason `ai_ml_engineer.adjacent`'s pre-existing "mlops
-        # engineer" overlap (why "MLOps Engineer" itself proposes `unknown`) is
-        # deferred to its own round. Fix both together, with evidence, and this
-        # expectation is the one to revisit.
+        # Left as `unknown` on purpose. Exact adjacent phrases are now disjoint,
+        # but the shorter Platform-family phrase remains a substring of the
+        # MLOps-family title. Resolving that needs a matching-rule change, not a
+        # duplicate-list cleanup.
         ("Machine Learning Infrastructure Engineer", "unknown"),
     ],
 )
@@ -410,9 +561,9 @@ def test_a_role_owned_alias_still_names_its_role():
     # `alias_to_key` only knows the category, so this used to answer role=None —
     # meaning the abbreviation an alias was WRITTEN for lost the catalog entry
     # it points at, and the picker offered only the coarse category.
-    assert role_categories.match_free_text("cv engineer") == {
-        "role": "computer_vision_engineer", "category": "ai_ml_engineer",
-        "label": "cv engineer", "confidence": "alias",
+    assert role_categories.match_free_text("genai engineer") == {
+        "role": "generative_ai_engineer", "category": "ai_ml_engineer",
+        "label": "genai engineer", "confidence": "alias",
     }
 
 

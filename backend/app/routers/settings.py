@@ -13,6 +13,7 @@ from app.schemas.settings import (
     EeoConsentPayload,
     JobPreferencesPayload,
     MarketPayload,
+    McpWorkflowPayload,
     PromptPayload,
     QuickTailorProfilePayload,
     SettingValue,
@@ -27,6 +28,7 @@ from app.services import (
     llm_capabilities,
     market_settings,
     markets,
+    mcp_workflow,
     model_settings,
     persona,
     prompts,
@@ -130,6 +132,16 @@ def get_quick_tailor(db: Annotated[Session, Depends(get_db)]):
 @router.put("/quick-tailor")
 def put_quick_tailor(payload: QuickTailorProfilePayload, db: Annotated[Session, Depends(get_db)]):
     return {"key": "quick_tailor_profile", "value": quick_tailor.set_profile(payload.value, db)}
+
+
+@router.get("/mcp-workflow")
+def get_mcp_workflow(db: Annotated[Session, Depends(get_db)]):
+    return {"key": "mcp_workflow", "value": mcp_workflow.get_settings(db)}
+
+
+@router.put("/mcp-workflow")
+def put_mcp_workflow(payload: McpWorkflowPayload, db: Annotated[Session, Depends(get_db)]):
+    return {"key": "mcp_workflow", "value": mcp_workflow.set_settings(payload.value, db)}
 
 
 @router.get("/job-preferences")

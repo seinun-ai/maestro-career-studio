@@ -22,17 +22,21 @@
       "min_tokens": 50,
       "mode": "weak"
     },
-    "percentage": 1.62,
-    "duplicated_lines": 521,
+    "percentage": 1.34,
+    "duplicated_lines": 525,
     "clones": 43,
-    "allowlisted_clones": 0,
+    "allowlisted_clones": 1,
     "worst_files": [
       [
         "components/resume-editor/editor-body.tsx",
-        8
+        9
       ],
       [
         "components/resume-editor/tailored-resume-studio.tsx",
+        6
+      ],
+      [
+        "components/resume-editor/experience-editor.tsx",
         5
       ],
       [
@@ -44,19 +48,15 @@
         4
       ],
       [
-        "components/resume-editor/experience-editor.tsx",
-        4
-      ],
-      [
         "components/resume-health/finding-cards.tsx",
         4
       ],
       [
-        "app/base-resumes/page.tsx",
-        3
+        "lib/resume-schema.ts",
+        4
       ],
       [
-        "app/templates/page.tsx",
+        "components/career/new-entity-dialog.tsx",
         3
       ],
       [
@@ -64,7 +64,7 @@
         3
       ],
       [
-        "components/settings/autofill-section.tsx",
+        "components/resume-editor/project-editor.tsx",
         3
       ],
       [
@@ -76,15 +76,15 @@
         2
       ],
       [
-        "app/settings/page.tsx",
-        2
-      ],
-      [
-        "components/career/new-entity-dialog.tsx",
-        2
-      ],
-      [
         "components/career/inbox-panel.tsx",
+        2
+      ],
+      [
+        "components/career/profile-panel.tsx",
+        2
+      ],
+      [
+        "components/charts/tailoring-lift-chart.tsx",
         2
       ]
     ]
@@ -112,7 +112,13 @@
       "**/.slop-baseline.json",
       "**/graphify-out/**"
     ],
-    "allowed_clones": [],
+    "allowed_clones": [
+      {
+        "a": "app/settings/page.tsx",
+        "b": "components/settings/autofill-section.tsx",
+        "reason": "Import block only, not logic (verified against the jscpd JSON report 2026-08-04). Both are settings surfaces assembled from the same shadcn primitives, so their import lists already agreed for 13 lines; adding `import { Label }` to page.tsx pushed the identical run past the 50-token threshold. Shared imports cannot be deduplicated. Allowlisted rather than re-baselined so a real duplication regression in either file still trips the gate."
+      }
+    ],
     "gate_test_loc": false
   },
   "ranked": [],
@@ -122,8 +128,8 @@
     "test_loc": 0,
     "modules": 0,
     "orphan_loc": 0,
-    "duplication_pct": 1.62,
-    "duplicated_lines": 521,
+    "duplication_pct": 1.34,
+    "duplicated_lines": 525,
     "clone_count": 43,
     "complexity_hotspots": 0,
     "error_masking": 0,

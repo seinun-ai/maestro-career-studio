@@ -9,8 +9,9 @@ from mcp.server.fastmcp.exceptions import ToolError
 from pydantic import Field
 
 from app.schemas.resume_edit import op_kinds_ordered, render_ops_shapes
+from mcp_server import workflow
 from mcp_server.client import BackendClient, BackendError
-from mcp_server.profiles import apply_profile_filter
+from mcp_server.profiles import allowed_tools, apply_profile_filter
 
 mcp = FastMCP("maestro-career-studio")
 _client = BackendClient()
@@ -82,6 +83,51 @@ def _client_label(ctx: Context | None) -> str | None:
         or os.environ.get("CAREER_STUDIO_MCP_CLIENT")
         or ""
     ).strip() or None
+
+
+# ---------- next-step hints (mcp_server/workflow.py) ----------
+# The wrapped tools below (score_ats, create_tailoring_session, resolve_gaps,
+# tailor_session, render_pdf, quick_tailor) all need the same two facts to
+# compose a hint: which tools THIS profile registered, and whether the user's
+# Settings switch allows hints at all. Centralized here so each tool reads as
+# "do the work, then ask for a hint" rather than re-deriving both facts inline.
+
+
+def _active_allowed_tools() -> "frozenset[str] | None":
+    """The active MAESTRO_CS_MCP_PROFILE's allowlist, so a hint never names a
+    tool this session did not register (workflow.py's invariant)."""
+    return allowed_tools(_ACTIVE_PROFILE)
+
+
+def _hints_enabled() -> bool:
+    """The user's master switch (GET /api/settings/mcp-workflow). Off means no
+    hint is ever composed, whatever an individual tool call asks for — this is
+    the one control the server itself can hold (see workflow.py's "Who
+    controls the hints")."""
+    return bool(_client.get_mcp_workflow_settings().get("hints", True))
+
+
+def _session_hint(
+    session: dict[str, Any], *, instruction: str | None = None
+) -> dict[str, Any] | None:
+    """Shared by create_tailoring_session, resolve_gaps, and quick_tailor —
+    all three return a session in the same shape, so the same hint composer
+    applies regardless of which call produced it."""
+    return workflow.next_after_session(
+        session,
+        allowed_tools=_active_allowed_tools(),
+        hints_enabled=_hints_enabled(),
+        instruction=instruction,
+    )
+
+
+def _instruction_from_profile(profile: dict[str, Any]) -> str | None:
+    """Mirrors app.services.quick_tailor._instruction_fallback exactly: the
+    saved quick-tailor profile's standing instruction, stripped, or None when
+    blank. Kept as a literal copy rather than a shared import — the two live
+    in different processes' import graphs (this module never imports
+    app.services.quick_tailor), and the rule is one line long."""
+    return (profile.get("instruction") or "").strip() or None
 
 
 # ---------- read ----------
@@ -288,11 +334,12 @@ def kb_list_points(state: str | None = None) -> Any:
 
 
 # ---------- Career KB: write ----------
-# Every tool here mints or edits DRAFT content. There is deliberately no way to
-# approve a point from MCP: approval is the user's review step and lives in the
-# web UI at /career. Never state a date, employer, credential or metric the user
-# did not give you — a fabricated fact written here becomes part of their
-# permanent career record.
+# Every tool here mints DRAFT content, kb_ingest_resume included — an agent
+# transcribing a resume is not the user approving it. The single way to
+# approve from MCP is kb_approve_points, and it is consent-gated: call it only
+# after the user has actually seen these points and said yes. Never state a
+# date, employer, credential or metric the user did not give you — a fabricated
+# fact written here becomes part of their permanent career record.
 @mcp.tool()
 @_guard
 def kb_capture(
@@ -411,6 +458,146 @@ def kb_edit_profile(
         notes=notes,
         origin_detail=_client_label(ctx),
     )
+
+
+@mcp.tool()
+@_guard
+def kb_ingest_resume(
+    resume_key: str,
+    data: dict[str, Any],
+    brief: bool = False,
+    ctx: Context | None = None,
+) -> Any:
+    """Persist one caller-parsed resume into the Career KB. No in-house LLM.
+
+    Points land as DRAFTS, so this call is safe once you have shown the user
+    what you extracted. It puts nothing on a resume: the explicit user-consent
+    gate is kb_approve_points, which you call ONLY after the user has actually
+    approved these points (record_consent convention).
+
+    HONESTY: transcribe the user's resume text exactly — no embellishment, no
+    rewording, no invented metrics. Same honesty model as caller-authored
+    tailor ops: the server stores what you send.
+
+    ENTITY NAMES: normalize company/role/project wording across resumes
+    yourself. Matching is identity-key only (experience: company+role+start_date;
+    projects: name; education: institution+degree; certs: the string). Different
+    spellings will not merge.
+
+    Re-running the same resume_key is a merge: no duplicate entities, and a
+    bullet already on the entity (in ANY state, including retired) is not
+    re-created. resume_key must match ^[a-z0-9][a-z0-9_]*$.
+
+    `data` is ResumeData. Only contact.name and contact.email are required.
+    Sections: contact, summary, skills[{category, items}], experience, projects,
+    education, certifications[str], extra_sections. Nested experience example:
+    {company, role, location?, start_date?, end_date?, bullets[str]}.
+    extra_sections are NOT stored in the Career KB — the report warns per
+    source; add them to the base resume after it is created. skills and
+    contact/summary go to the KB profile, which has no draft state. Profile
+    seeding is non-clobbering, so across single-resume calls the FIRST ingest
+    wins: ingest the user's most CURRENT resume first.
+
+    Response is {report, next}. report carries created/matched entity ids
+    ({id, kind, title, org, created}), the created DRAFT point ids, counts
+    (points_created, duplicates_skipped) and warnings. next is a hint (null
+    when suppressed). Pass brief=True in a multi-resume ingest loop — it
+    suppresses next before any settings read. 422 if any source fails
+    ResumeData validation, or on a duplicate source key (atomic: nothing
+    persisted); fix the payload and resend.
+    """
+    report = _client.kb_ingest_resume(
+        resume_key, data, origin_detail=_client_label(ctx),
+    )
+    if brief:
+        return {"report": report, "next": None}
+    return {
+        "report": report,
+        "next": workflow.next_after_kb_ingest(
+            report,
+            allowed_tools=_active_allowed_tools(),
+            hints_enabled=_hints_enabled(),
+        ),
+    }
+
+
+@mcp.tool()
+@_guard
+def kb_approve_points(
+    point_ids: list[str],
+    state: Literal["approved", "retired"] = "approved",
+) -> Any:
+    """Batch-set Career KB point state. This is the approval gate: it is what
+    puts a point on composed resumes. Call ONLY after the user explicitly
+    approved (or asked to retire) these points — record_consent convention.
+
+    state is approved|retired only; bulk-to-draft is impossible. 1-500 ids;
+    repeats collapse to one result row. Per-id results are honest: unknown ids
+    return ok=false detail="not found" and the rest still proceed. Report
+    failures to the user; do not retry blindly.
+
+    Response is {results: [{id, ok, state, detail}], next}. next is a hint
+    (null when suppressed).
+    """
+    body = _client.kb_approve_points(point_ids, state=state)
+    results = body.get("results") or [] if isinstance(body, dict) else []
+    return {
+        "results": results,
+        "next": workflow.next_after_bulk_state(
+            results,
+            requested_state=state,
+            allowed_tools=_active_allowed_tools(),
+            hints_enabled=_hints_enabled(),
+        ),
+    }
+
+
+@mcp.tool()
+@_guard
+def create_base_resume_from_kb(
+    entity_ids: list[str],
+    role_category: str | None = None,
+    role_label: str | None = None,
+    display_name: str | None = None,
+    include_summary: bool = False,
+    summary: str | None = None,
+) -> Any:
+    """Compose a new base resume from selected Career KB entities. LLM-free.
+
+    entity_ids is REQUIRED. An empty list composes nothing and 422s — that is
+    deliberate; omitting the argument is not allowed because it would have to
+    mean "the whole KB". A role_label or role_category is required (no slug
+    argument). role_category is strict: an unknown value 422s, no
+    normalization. Only APPROVED points under the selected entities compose —
+    points from kb_ingest_resume are DRAFTS and contribute nothing until
+    kb_approve_points (or the user, at /career) approves them.
+    skills and contact arrive in full from the KB profile regardless of entity
+    selection — tell the user to trim skills per-base afterwards. The
+    whole-career summary is dropped unless include_summary, or pass a reviewed
+    summary. A 422 "no resume content" means the selected entities have no
+    approved points.
+
+    Response is {base, next}. next is a hint (null when suppressed). If this
+    call errors AFTER the base was created (the hint's settings read can fail),
+    the base exists: run list_base_resumes before retrying, because a retry
+    mints a second slug (<slug>_2) rather than reusing the first.
+    """
+    base = _client.create_base_resume_from_kb(
+        entity_ids,
+        role_category=role_category,
+        role_label=role_label,
+        display_name=display_name,
+        include_summary=include_summary,
+        summary=summary,
+    )
+    return {
+        "base": base,
+        "next": workflow.next_after_base_from_kb(
+            base if isinstance(base, dict) else {},
+            allowed_tools=_active_allowed_tools(),
+            hints_enabled=_hints_enabled(),
+        ),
+    }
 
 
 @mcp.tool()
@@ -639,11 +826,28 @@ def render_pdf(target_type: Literal["base_resume", "application"], target_id: st
                template_id: str | None = None) -> Any:
     """Render a PDF. target_type is 'base_resume' (target_id=slug) or 'application'
     (target_id=application id). Optional template_id selects a LaTeX template (must be
-    a 'ready' template; omit for the default). Returns the render result incl. pdf_path."""
+    a 'ready' template; omit for the default). Returns the render result incl. pdf_path,
+    plus a `next` key: for an 'application' render this is the terminal apply-readiness
+    hint (autofill_ready, incomplete/blocking groups, a conditional browser-handoff
+    offer); for a 'base_resume' render it is always null — a base-resume preview isn't
+    part of the score->tailor->render arc, so there is nothing to offer."""
     if target_type == "base_resume":
-        return _client.render_base_resume(target_id, template_id=template_id)
+        result = _client.render_base_resume(target_id, template_id=template_id)
+        return {**result, "next": None}
     if target_type == "application":
-        return _client.render_application(target_id, template_id=template_id)
+        result = _client.render_application(target_id, template_id=template_id)
+        # Only fetch setup status (an extra HTTP call) when a hint could
+        # actually use it — the same no-wasted-round-trip rule score_ats's
+        # `brief` applies, just without a separate agent-facing switch since
+        # there is no batch-rendering loop analogous to triage scoring.
+        next_hint = None
+        if _hints_enabled():
+            next_hint = workflow.next_after_render(
+                setup_status=_client.get_setup_status(),
+                allowed_tools=_active_allowed_tools(),
+                hints_enabled=True,
+            )
+        return {**result, "next": next_hint}
     raise ToolError("target_type must be 'base_resume' or 'application'")
 
 
@@ -698,18 +902,18 @@ def prepare_application_pdf_upload(application_id: str) -> Any:
     return _client.prepare_application_pdf_upload(application_id)
 
 
-# ---------- LaTeX templates ----------
+# ---------- resume templates (latex | typst) ----------
 @mcp.tool()
 @_guard
 def list_templates() -> Any:
-    """List LaTeX templates (id, display_name, status['draft'|'ready'], is_default, last_error)."""
+    """List resume templates — both engines (id, display_name, status['draft'|'ready'], engine, is_default, last_error)."""
     return _client.list_templates()
 
 
 @mcp.tool()
 @_guard
 def get_template(template_id: str) -> Any:
-    """Get a template incl. its full Jinja2+LaTeX source."""
+    """Get a template incl. its full source (Jinja2+LaTeX for engine='latex'; raw .typ text for engine='typst') plus engine and supported_fmt_keys."""
     return _client.get_template(template_id)
 
 
@@ -726,7 +930,19 @@ def create_template_draft(
     `engine='typst'` for a Typst template — then `source` is REQUIRED and is the
     raw `.typ` text verbatim (no Jinja delimiters, no escape filters; read data
     via `json(bytes(sys.inputs.resume))` / `json(bytes(sys.inputs.fmt))`; engine
-    is immutable after creation). For LaTeX, omit `source` to start from the
+    is immutable after creation).
+    Typst constraints (engine='typst'): the `resume` JSON uses the SAME field
+    names as the resume.* list below (read as r.contact.name etc.; optional
+    fields arrive as `none` — guard with `!= none`). Dates arrive PRE-FORMATTED
+    server-side per fmt.date_format — do not reference fmt.date_format in the
+    source. Package imports (`#import "@preview/..."` or any `@...` import) are
+    REJECTED before compile — inline the functionality instead. Fonts: only the
+    vendored XCharter faces plus typst's embedded defaults (e.g. Libertinus
+    Serif) exist; any other family compiles WITHOUT error and silently
+    substitutes. The source MUST render r.extra_sections (both the `entries`
+    and `bullets` shapes) or rendering a resume that has custom sections
+    hard-fails — copy the block from get_template('typst-classic').
+    For LaTeX, omit `source` to start from the
     server's canonical starter (a minimal document that already compiles).
     When given, `source` must be a complete, self-contained, compilable LaTeX
     document (its own \\documentclass + preamble) written as a Jinja2 template
@@ -781,10 +997,14 @@ def validate_template(template_id: str) -> Any:
     """Test-compile a template against a built-in sample resume. On success it becomes
     'ready' (usable via render_pdf template_id) and a preview is available via
     get_rendered_pdf('template', id). On failure returns {ok: false, error} with the
-    LaTeX error; fix the source and re-validate. Returns {ok, error, parse_certified}
-    — parse_certified is true when the template's compiled PDF round-trips through a
-    strict text extractor with word boundaries intact, false when it drops text, null
-    when not assessed."""
+    engine's compile error (Typst errors carry file:line:col); fix the source and
+    re-validate. Returns {ok, error, parse_certified} — parse_certified is true when
+    the template's compiled PDF round-trips through a strict text extractor with word
+    boundaries intact, false when it drops text, null when not assessed.
+    Also returns parse_report: {missing, headers_missing, extra_sections_supported,
+    extra_sections_missing} — missing lists the exact sample phrases the PDF dropped
+    (fix those, don't guess); extra_sections_missing non-empty means the template
+    will hard-fail rendering any resume that has custom sections."""
     return _client.validate_template(template_id)
 
 
@@ -900,17 +1120,57 @@ def list_applications(
 
 @mcp.tool()
 @_guard
-def score_ats(job_id: str, target_type: str | None = None, target_id: str | None = None) -> Any:
+def score_ats(
+    job_id: str,
+    target_type: str | None = None,
+    target_id: str | None = None,
+    brief: bool = False,
+) -> Any:
     """Deterministic hybrid ATS score (no LLM): deterministic lexical layers +
     anchored pinned-model semantic matching + section-level semantic_fit. Omit
     target to score ALL base resumes (fast).
 
     target_type "base_resume" (target_id = slug) or "application" (target_id = id).
-    Returns composite (0-100), per-layer subscores (incl. semantic_fit), gate
-    warnings, and a per-skill diagnostic table with fix_hints. Same inputs always
-    give the same score; use it to compare bases and to verify an edit actually
-    moved the number."""
-    return _client.score_ats(job_id, target_type=target_type, target_id=target_id)
+    Same inputs always give the same score; use it to compare bases and to
+    verify an edit actually moved the number.
+
+    Response is {scores, recommendation, next}. `scores` is the raw per-target
+    list: composite (0-100), per-layer subscores (incl. semantic_fit), gate
+    warnings, and a per-skill diagnostic table with fix_hints. `recommendation`
+    is a deterministic ranking of the base-resume rows (order, recommended slug,
+    margin, close_call, reasons, coverage_warning) — always present, cheap, and
+    useful during triage even with hints off. `next` is an optional next-step
+    hint (null when suppressed) naming quick_tailor / create_tailoring_session
+    against the recommended base.
+
+    Pass brief=True when scoring many jobs in a triage/mass-capture loop: it
+    suppresses ONLY `next` (never `recommendation`) and is checked before any
+    settings lookup, so a twenty-posting triage loop pays no extra HTTP
+    round-trip for a hint nobody will read."""
+    scores = _client.score_ats(job_id, target_type=target_type, target_id=target_id)
+    recommendation = workflow.rank_bases(scores)
+    if brief:
+        return {"scores": scores, "recommendation": recommendation, "next": None}
+    # Fetch the quick-tailor profile ONLY when it can actually be shown. It fills
+    # exactly one thing — the quick_tailor option's `detail` — so fetching it with
+    # hints off, or under a profile that never registers quick_tailor (hunt), is a
+    # round-trip whose result is discarded. As keyword ARGUMENTS both reads would
+    # be evaluated unconditionally, which is the trap this avoids: a twenty-posting
+    # hunt loop would have paid 20 wasted calls even with hints switched off.
+    allowed = _active_allowed_tools()
+    hints_enabled = _hints_enabled()
+    show_quick = hints_enabled and (allowed is None or "quick_tailor" in allowed)
+    return {
+        "scores": scores,
+        "recommendation": recommendation,
+        "next": workflow.next_after_scores(
+            recommendation,
+            job_id=job_id,
+            quick_profile=_client.get_quick_tailor_profile() if show_quick else {},
+            allowed_tools=allowed,
+            hints_enabled=hints_enabled,
+        ),
+    }
 
 
 @mcp.tool()
@@ -924,7 +1184,7 @@ def compare_ats(application_id: str) -> Any:
 
 @mcp.tool()
 @_guard
-def create_tailoring_session(job_id: str, base_resume: str, enrich: bool = True) -> Any:
+def create_tailoring_session(job_id: str, base_resume: str, enrich: bool = False) -> Any:
     """Start the gap-analysis tailoring workflow for a job + base resume.
 
     Scores the base (deterministic ATS engine, persisted as the 'before' score) and
@@ -938,9 +1198,77 @@ def create_tailoring_session(job_id: str, base_resume: str, enrich: bool = True)
     skills-list item, never a fabricated bullet. Prefer the evidence-backed paths: ask
     the gap's elicitation question (enrichment.elicitation_question) and record the
     user's answer with a user_input resolution, or attach_project (or skip if they
-    don't have it). enrich=True (default) runs an extra LLM pass that adds display-only
-    explanations and elicitation questions to each gap; it does not change scores."""
-    return _client.create_tailoring_session(job_id, base_resume, enrich=enrich)
+    don't have it).
+
+    enrich=False (default) skips the backend's fast-model enrichment pass — no
+    in-house LLM call — so gaps carry only their deterministic fields (no
+    enrichment.elicitation_question / suggested_wording / suggested_placement).
+    KB coverage detection does NOT depend on it: the deterministic self-nomination
+    and evidence-verification pass that used to sit downstream of the LLM call now
+    runs unconditionally, so KB autos still get stamped with enrich=False and even
+    if a provider outage would have broken the LLM pass. Pass enrich=True to
+    additionally pay for one fast-model call that adds those display-only
+    explanations and elicitation questions to each gap — it never changes scores
+    or which gaps exist.
+
+    Response is the session plus a `next` next-step hint (null when the user's
+    Settings switch has hints off)."""
+    session = _client.create_tailoring_session(job_id, base_resume, enrich=enrich)
+    return {**session, "next": _session_hint(session)}
+
+
+@mcp.tool()
+@_guard
+def quick_tailor(job_id: str, base_resume: str) -> Any:
+    """Start Quick Tailor over MCP: the fast path that fills gaps from the
+    user's saved quick-tailor profile instead of walking them one by one.
+
+    Composes create_tailoring_session(enrich=False) — deterministic scoring
+    and KB/wording autos, no LLM — with the profile fill
+    (POST .../apply-profile: deterministic, routed through the same
+    honesty-gated save path resolve_gaps uses) and returns the filled session.
+
+    This tool makes NO in-house LLM call of its own. That is the point of the
+    whole MCP arc: sessions rely on the CALLING agent's own model, not the
+    backend's. The saved profile only plans mechanical, evidence-respecting
+    moves (verified KB/skills autos, mirrored JD wording, an optional
+    unverified-skill-into-skills-list add) — it does NOT write resume prose.
+    Your job after this call: read the returned resolutions_json (it may
+    already resolve every gap, including system-planned entries whose payload
+    carries `provenance`), author typed edit ops that implement each one
+    yourself, then call tailor_session(tailoring_session_id=..., ops=[...]) —
+    supplying `ops` skips the backend's own LLM pass entirely, so this whole
+    arc stays LLM-free end to end.
+
+    Honesty rule (same one tailor_session states, restated because this is the
+    path most likely to tempt a shortcut): never fabricate skills, experience,
+    metrics, or dates. An unverified or absent skill may ONLY be added to a
+    skills category (an add_skill_item op) — never as an experience or project
+    bullet asserting the candidate did the work.
+
+    A returned session whose resolutions_json contains no planned action
+    beyond "skip" means the saved profile was not ALLOWED to add anything to
+    THIS session (e.g. every profile switch is off, or every gap needed a
+    placement the profile doesn't cover) — it is not an error. Walk the gaps
+    yourself with resolve_gaps instead of assuming quick tailor failed.
+
+    Raises (409, message says which): a failing fatal health gate on the base
+    resume blocks session creation; a stale or no-longer-open session blocks
+    the profile fill. Response is the filled session plus a `next` next-step
+    hint suggesting tailor_session (carrying the profile's standing
+    instruction as user_prompt when the session has no note of its own)."""
+    session = _client.create_tailoring_session(job_id, base_resume, enrich=False)
+    filled = _client.apply_quick_tailor_profile(session["id"])
+    if not _hints_enabled():
+        return {**filled, "next": None}
+    profile = _client.get_quick_tailor_profile()
+    next_hint = workflow.next_after_session(
+        filled,
+        allowed_tools=_active_allowed_tools(),
+        hints_enabled=True,
+        instruction=_instruction_from_profile(profile),
+    )
+    return {**filled, "next": next_hint}
 
 
 @mcp.tool()
@@ -1022,8 +1350,12 @@ def resolve_gaps(tailoring_session_id: str, resolutions: list[GapResolution]) ->
     at session creation (payload.provenance set; see get_tailoring_session).
     Call as many times as needed, then tailor_session.
     Merge-only: omitting a gap_id never removes its saved resolution — to
-    retract one, resend that gap_id with action "skip"."""
-    return _client.resolve_gaps(tailoring_session_id, resolutions)
+    retract one, resend that gap_id with action "skip".
+
+    Response is the session plus a `next` next-step hint (null when the user's
+    Settings switch has hints off)."""
+    session = _client.resolve_gaps(tailoring_session_id, resolutions)
+    return {**session, "next": _session_hint(session)}
 
 
 @mcp.tool()
@@ -1056,13 +1388,23 @@ def tailor_session(
 
     Optional user_prompt adds free-form tailoring guidance. Creates the application
     from the base resume plus the ops, scores the result, and returns
-    {session, compare, compare_error}. compare holds the before/after ATS deltas;
-    it may be null with compare_error set if the scores weren't comparable — the
-    tailor still succeeded in that case, so relay the application and the error
-    note to the user rather than retrying."""
-    return _client.tailor_session(
-        tailoring_session_id, user_prompt=user_prompt, ops=ops
+    {session, compare, compare_error, next}. compare holds the before/after ATS
+    deltas; it may be null with compare_error set if the scores weren't comparable
+    — the tailor still succeeded in that case, so relay the application and the
+    error note to the user rather than retrying. `next` is a next-step hint
+    naming render_pdf for the new application (null when suppressed)."""
+    result = _client.tailor_session(tailoring_session_id, user_prompt=user_prompt, ops=ops)
+    application_id = (result.get("session") or {}).get("application_id")
+    next_hint = (
+        workflow.next_after_tailor(
+            application_id=application_id,
+            allowed_tools=_active_allowed_tools(),
+            hints_enabled=_hints_enabled(),
+        )
+        if application_id
+        else None
     )
+    return {**result, "next": next_hint}
 
 
 @mcp.tool()

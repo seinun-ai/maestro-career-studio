@@ -182,3 +182,18 @@ def test_future_start_on_current_role_does_not_go_negative():
     index = index_resume(resume, as_of=AS_OF)
     assert index.entries[0].date_parse_ok is False
     assert index.total_experience_years == 0.0
+
+
+def test_undated_experience_indexes_without_recency_or_tenure_credit():
+    """An undated role (start_date optional since the Tier 1 schema change) is
+    still READ — its bullets match — but earns no recency credit and no tenure
+    span. Readable-for-the-gate is not creditable-for-the-score."""
+    resume = _resume_with_experience(start_date=None, end_date=None,
+                                     bullets=["Ran the intake triage rotation."])
+    index = index_resume(resume, as_of=AS_OF)
+    entry = index.entries[0]
+    assert entry.last_date is None
+    assert entry.is_current is False
+    assert entry.date_parse_ok is False
+    assert index.total_experience_years == 0
+    assert "triage" in entry.text  # the entry itself is not dropped

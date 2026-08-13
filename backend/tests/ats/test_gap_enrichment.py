@@ -1,8 +1,12 @@
-from datetime import date
+import json
+from datetime import UTC, date, datetime
 
 import pytest
 
-from app.services import gap_enrichment, placement_targets
+from app.config import settings
+from app.models.base_resume import BaseResume
+from app.models.job import Job
+from app.services import gap_enrichment, placement_targets, tailoring_session
 from app.services.ats import score_resume
 from app.services.gap_analysis import build_gaps
 from tests.ats.fixtures import SAMPLE_JD, SAMPLE_RESUME
@@ -195,7 +199,7 @@ _LIBRARY_RESUME = {
     "skills": [{"category": "Data & ETL", "items": ["SQL"]}],
 }
 
-_LIBRARY_KB = {
+_KB_SNAPSHOT = {
     "profile_skills": ["Airflow", "Kafka"],
     "entities": [
         {
@@ -239,30 +243,61 @@ _LIBRARY_GAPS = {
 }
 
 
-def test_enrichment_proposals_are_gated_and_stamped(db_session, monkeypatch):
-    _mock_plumbing(
-        monkeypatch,
-        lambda **kwargs: {
-            "enrichments": [
-                {
-                    "gap_id": "skill:kafka",
-                    "library_candidates": [
-                        {"kind": "disabled", "section": "projects", "index": 0},
-                        {"kind": "kb_point", "point_id": "p999", "entity_id": "e1"},
-                        {"kind": "kb_point", "point_id": "p2", "entity_id": "e1"},
-                    ],
-                }
-            ]
-        },
+# --- stamp_library_candidates: the deterministic gate, no LLM involved -----
+#
+# These pin the merge/gate behaviour itself, so they call
+# stamp_library_candidates directly rather than routing through enrich_gaps
+# (which, post-refactor, no longer performs any gating at all — see the
+# enrich_gaps tests below for that contract). There is no test-only parameter
+# for injecting raw LLM proposals — production has exactly one channel (the
+# gap-level `llm_library_proposals` stash enrich_gaps writes), so tests that
+# need one use _stash_llm_proposals to write it the same way.
+
+
+def _stash_llm_proposals(gaps, gap_id, proposals):
+    """Write raw LLM proposals onto a gap the same way enrich_gaps does (a
+    deep copy, so the module-level fixture dicts stay untouched by callers).
+
+    The "llm_library_proposals" string below is a DELIBERATE literal, not
+    importing gap_enrichment._LLM_PROPOSALS_KEY: a literal is what makes a
+    real rename of that constant fail loudly across every test built on this
+    helper. Importing the constant here would make such a rename invisible
+    to these tests."""
+    out = json.loads(json.dumps(gaps))
+    for category in out["categories"]:
+        for gap in category["gaps"]:
+            if gap["gap_id"] == gap_id:
+                gap["llm_library_proposals"] = proposals
+    return out
+
+
+def test_stamp_library_candidates_runs_without_any_llm(db_session, monkeypatch):
+    """The gating pass is deterministic: it must not touch llm.call_openai."""
+    def _boom(*args, **kwargs):
+        raise AssertionError("stamp_library_candidates called the LLM")
+
+    monkeypatch.setattr(gap_enrichment.llm, "call_openai", _boom)
+
+    gaps = _gaps()
+    out = gap_enrichment.stamp_library_candidates(gaps, SAMPLE_RESUME, _KB_SNAPSHOT)
+
+    missing = [c for c in out["categories"] if c["key"] == "missing_skills"][0]
+    assert missing["gaps"][0]["library_candidates"], "self-nomination found nothing"
+    assert gaps != out, "input gaps must not be mutated in place"
+
+
+def test_enrichment_proposals_are_gated_and_stamped():
+    gaps = _stash_llm_proposals(
+        _LIBRARY_GAPS,
+        "skill:kafka",
+        [
+            {"kind": "disabled", "section": "projects", "index": 0},
+            {"kind": "kb_point", "point_id": "p999", "entity_id": "e1"},
+            {"kind": "kb_point", "point_id": "p2", "entity_id": "e1"},
+        ],
     )
 
-    out = gap_enrichment.enrich_gaps(
-        _LIBRARY_GAPS,
-        _LIBRARY_RESUME,
-        {"skills": [{"name": "Kafka"}]},
-        kb_snapshot=_LIBRARY_KB,
-        session=db_session,
-    )
+    out = gap_enrichment.stamp_library_candidates(gaps, _LIBRARY_RESUME, _KB_SNAPSHOT)
 
     gap = out["categories"][0]["gaps"][0]
     candidates = gap["library_candidates"]
@@ -276,9 +311,260 @@ def test_enrichment_proposals_are_gated_and_stamped(db_session, monkeypatch):
     assert candidates[0]["auto"] is True
     assert candidates[1]["auto"] is True
     assert candidates[2]["auto"] is False  # draft point stays a suggestion
+    assert "llm_library_proposals" not in gap  # the stash was popped, not just read
 
 
-def test_no_kb_snapshot_means_no_candidate_stamping(db_session, monkeypatch):
+def test_wrong_typed_library_candidates_fall_back_to_self_nomination():
+    """Wrong-typed LLM output is ignored, but discovery no longer depends on
+    the LLM: self-nominated lexical hits are stamped regardless (live E2E
+    2026-08-05 caught the fast model returning null for literal matches)."""
+    gaps = _stash_llm_proposals(
+        _LIBRARY_GAPS, "skill:kafka", {"kind": "profile"}  # wrong type: not a list
+    )
+
+    out = gap_enrichment.stamp_library_candidates(gaps, _LIBRARY_RESUME, _KB_SNAPSHOT)
+
+    candidates = out["categories"][0]["gaps"][0]["library_candidates"]
+    assert [c["kind"] for c in candidates] == ["disabled", "profile"]
+    assert all(c["auto"] for c in candidates)
+
+
+def test_self_nomination_stamps_lexical_hits_when_llm_proposes_nothing():
+    out = gap_enrichment.stamp_library_candidates(
+        _LIBRARY_GAPS, _LIBRARY_RESUME, _KB_SNAPSHOT
+    )
+
+    candidates = out["categories"][0]["gaps"][0]["library_candidates"]
+    # Disabled Kafka project + Kafka profile skill found without any LLM help;
+    # the non-matching MLflow/Docker points are NOT demoted into noise chips.
+    assert [c["kind"] for c in candidates] == ["disabled", "profile"]
+    assert all(c["auto"] for c in candidates)
+
+
+def test_stamp_library_candidates_pops_the_stash_key_even_with_no_kb_snapshot():
+    """kb_snapshot=None still returns a gap with the private stash key gone —
+    it just writes no library_candidates, since there is nothing to gate.
+    This is the branch stamp_library_candidates must handle on its own now
+    that create_session calls it unconditionally (no `if kb_snapshot is not
+    None` at the call site to keep in sync with it)."""
+    gaps = _stash_llm_proposals(
+        _LIBRARY_GAPS, "skill:kafka", [{"kind": "profile"}]
+    )
+
+    out = gap_enrichment.stamp_library_candidates(gaps, _LIBRARY_RESUME, None)
+
+    gap = out["categories"][0]["gaps"][0]
+    assert "llm_library_proposals" not in gap
+    assert "library_candidates" not in gap
+
+
+def test_llm_only_semantic_candidate_survives_the_real_stash_and_gate_channel(
+    db_session, monkeypatch
+):
+    """Round-trips through the REAL production channel — enrich_gaps stashes
+    the raw LLM proposal on the gap, stamp_library_candidates gates and pops
+    it — rather than the deleted llm_by_id test-only parameter. Proves an
+    LLM-only proposal actually reaches library_candidates: this KB point's
+    text has no literal "Kafka" anywhere, so self-nomination's lexical_only
+    filter provably CANNOT find it (dropped as a semantic-only hit); only the
+    LLM channel can put it in the result."""
+    kb_snapshot = {
+        "profile_skills": [],
+        "entities": [
+            {
+                "id": "e1",
+                "kind": "project",
+                "title": "Streaming",
+                "status": "completed",
+                "tech": [],
+                "points": [
+                    {
+                        "id": "p1",
+                        "state": "approved",
+                        "text": "Built a real-time event streaming platform",
+                    }
+                ],
+            }
+        ],
+    }
+    _mock_plumbing(
+        monkeypatch,
+        lambda **kwargs: {
+            "enrichments": [
+                {
+                    "gap_id": "skill:kafka",
+                    "library_candidates": [
+                        {"kind": "kb_point", "entity_id": "e1", "point_id": "p1"}
+                    ],
+                }
+            ]
+        },
+    )
+
+    enriched = gap_enrichment.enrich_gaps(
+        _LIBRARY_GAPS,
+        _LIBRARY_RESUME,
+        {"skills": [{"name": "Kafka"}]},
+        kb_snapshot=kb_snapshot,
+        session=db_session,
+    )
+    stashed_gap = enriched["categories"][0]["gaps"][0]
+    assert stashed_gap["llm_library_proposals"] == [
+        {"kind": "kb_point", "entity_id": "e1", "point_id": "p1"}
+    ]
+
+    stamped = gap_enrichment.stamp_library_candidates(enriched, _LIBRARY_RESUME, kb_snapshot)
+
+    # Sweep every gap in every category (not just the one under test): the
+    # private stash key must never survive stamping, anywhere.
+    for category in stamped["categories"]:
+        for gap in category["gaps"]:
+            assert "llm_library_proposals" not in gap, gap
+
+    candidates = stamped["categories"][0]["gaps"][0]["library_candidates"]
+    # _LIBRARY_RESUME's own disabled "Ingestion Pipeline" project literally
+    # mentions Kafka, so self-nomination finds THAT one too (auto, first) —
+    # the LLM-only kb_point is the semantic (non-auto) one riding alongside it.
+    assert [c["kind"] for c in candidates] == ["disabled", "kb_point"]
+    kb_point_candidate = next(c for c in candidates if c["kind"] == "kb_point")
+    assert kb_point_candidate["match_form"] == "semantic"
+    assert kb_point_candidate["auto"] is False
+
+
+_CAP_RESUME = {"skills": [{"category": "Cloud", "items": []}], "experience": [], "projects": []}
+
+_CAP_KB = {
+    "profile_skills": [],
+    "entities": [
+        {
+            "id": "e1",
+            "kind": "project",
+            "title": "Streaming",
+            "status": "completed",
+            "tech": [],
+            "points": [
+                {"id": f"p{i}", "state": "approved", "text": f"Deployed Kafka pipeline {i}"}
+                for i in range(7)
+            ],
+        }
+    ],
+}
+
+
+def test_stamp_library_candidates_caps_at_five():
+    """Spec'd but previously untested: the merged/gated list is capped to 5
+    even when more verified auto candidates exist (mutating [:5] to [:50]
+    left the suite green before this test existed)."""
+    gaps = _stash_llm_proposals(
+        _LIBRARY_GAPS,
+        "skill:kafka",
+        [
+            {
+                "kind": "kb_point",
+                "entity_id": "e1",
+                "point_id": f"p{i}",
+                "placement_target": {"section": "skills", "index_or_category": "Cloud"},
+            }
+            for i in range(7)
+        ],
+    )
+
+    out = gap_enrichment.stamp_library_candidates(gaps, _CAP_RESUME, _CAP_KB)
+
+    candidates = out["categories"][0]["gaps"][0]["library_candidates"]
+    assert len(candidates) == 5
+    assert all(c["auto"] for c in candidates)
+
+
+def test_stamp_library_candidates_duplicate_keeps_auto_eligible_variant():
+    """Spec'd but previously untested: when the SAME candidate identity is
+    proposed twice, the auto-eligible variant wins even when it arrives
+    SECOND (deleting the `elif candidate.get("auto") and not merged[key]...`
+    branch left the suite green before this test existed — the first,
+    non-auto proposal would silently win instead)."""
+    kb_snapshot = {
+        "profile_skills": [],
+        "entities": [
+            {
+                "id": "e1",
+                "kind": "project",
+                "title": "Streaming",
+                "status": "completed",
+                "tech": [],
+                "points": [{"id": "p1", "state": "approved", "text": "Uses Kafka messaging"}],
+            }
+        ],
+    }
+    valid_target = {"section": "skills", "index_or_category": "Cloud"}
+    gaps = _stash_llm_proposals(
+        _LIBRARY_GAPS,
+        "skill:kafka",
+        [
+            # No placement_target -> canonical_target None -> not auto-eligible.
+            {"kind": "kb_point", "entity_id": "e1", "point_id": "p1"},
+            # Same point, valid target this time -> auto-eligible, arrives SECOND.
+            {
+                "kind": "kb_point",
+                "entity_id": "e1",
+                "point_id": "p1",
+                "placement_target": valid_target,
+            },
+        ],
+    )
+
+    out = gap_enrichment.stamp_library_candidates(gaps, _CAP_RESUME, kb_snapshot)
+
+    candidates = out["categories"][0]["gaps"][0]["library_candidates"]
+    assert len(candidates) == 1
+    assert candidates[0]["auto"] is True
+    assert candidates[0]["placement_target"] == valid_target
+
+
+# --- enrich_gaps: prose only now, stashes raw proposals for the gate above -
+
+
+def test_enrich_gaps_stashes_raw_proposals_when_kb_snapshot_present(db_session, monkeypatch):
+    """Gating moved to stamp_library_candidates: with a KB snapshot present,
+    enrich_gaps no longer gates library_candidates itself — it only stashes
+    the raw, UNGATED LLM proposals (under llm_library_proposals) for
+    stamp_library_candidates to gate and pop later."""
+    _mock_plumbing(
+        monkeypatch,
+        lambda **kwargs: {
+            "enrichments": [
+                {
+                    "gap_id": "skill:kafka",
+                    "library_candidates": [
+                        {"kind": "disabled", "section": "projects", "index": 0}
+                    ],
+                }
+            ]
+        },
+    )
+
+    out = gap_enrichment.enrich_gaps(
+        _LIBRARY_GAPS,
+        _LIBRARY_RESUME,
+        {"skills": [{"name": "Kafka"}]},
+        kb_snapshot=_KB_SNAPSHOT,
+        session=db_session,
+    )
+
+    gap = out["categories"][0]["gaps"][0]
+    assert "library_candidates" not in gap
+    assert gap["llm_library_proposals"] == [
+        {"kind": "disabled", "section": "projects", "index": 0}
+    ]
+
+
+def test_enrich_gaps_stashes_raw_proposals_even_without_kb_snapshot(db_session, monkeypatch):
+    """enrich_gaps' stash is no longer gated on kb_snapshot at all: whether
+    the private key ever gets POPPED is entirely stamp_library_candidates'
+    call, and create_session now calls it unconditionally. Two places each
+    reading kb_snapshot to independently decide "did gating run" is what
+    leaked this key in the first place; now there is exactly one source of
+    truth. See test_stamp_library_candidates_pops_the_stash_key_even_with_
+    no_kb_snapshot for the pop side of this same contract."""
     _mock_plumbing(
         monkeypatch,
         lambda **kwargs: {
@@ -301,58 +587,11 @@ def test_no_kb_snapshot_means_no_candidate_stamping(db_session, monkeypatch):
         session=db_session,
     )
 
-    assert "library_candidates" not in out["categories"][0]["gaps"][0]
-
-
-def test_wrong_typed_library_candidates_fall_back_to_self_nomination(
-    db_session, monkeypatch
-):
-    """Wrong-typed LLM output is ignored, but discovery no longer depends on
-    the LLM: self-nominated lexical hits are stamped regardless (live E2E
-    2026-08-05 caught the fast model returning null for literal matches)."""
-    _mock_plumbing(
-        monkeypatch,
-        lambda **kwargs: {
-            "enrichments": [
-                {"gap_id": "skill:kafka", "library_candidates": {"kind": "profile"}}
-            ]
-        },
-    )
-
-    out = gap_enrichment.enrich_gaps(
-        _LIBRARY_GAPS,
-        _LIBRARY_RESUME,
-        {"skills": [{"name": "Kafka"}]},
-        kb_snapshot=_LIBRARY_KB,
-        session=db_session,
-    )
-
-    candidates = out["categories"][0]["gaps"][0]["library_candidates"]
-    assert [c["kind"] for c in candidates] == ["disabled", "profile"]
-    assert all(c["auto"] for c in candidates)
-
-
-def test_self_nomination_stamps_lexical_hits_when_llm_proposes_nothing(
-    db_session, monkeypatch
-):
-    _mock_plumbing(
-        monkeypatch,
-        lambda **kwargs: {"enrichments": [{"gap_id": "skill:kafka"}]},
-    )
-
-    out = gap_enrichment.enrich_gaps(
-        _LIBRARY_GAPS,
-        _LIBRARY_RESUME,
-        {"skills": [{"name": "Kafka"}]},
-        kb_snapshot=_LIBRARY_KB,
-        session=db_session,
-    )
-
-    candidates = out["categories"][0]["gaps"][0]["library_candidates"]
-    # Disabled Kafka project + Kafka profile skill found without any LLM help;
-    # the non-matching MLflow/Docker points are NOT demoted into noise chips.
-    assert [c["kind"] for c in candidates] == ["disabled", "profile"]
-    assert all(c["auto"] for c in candidates)
+    gap = out["categories"][0]["gaps"][0]
+    assert "library_candidates" not in gap  # enrich_gaps itself never gates
+    assert gap["llm_library_proposals"] == [
+        {"kind": "disabled", "section": "projects", "index": 0}
+    ]
 
 
 def test_enrich_gaps_sends_kb_and_full_index_disabled_entries(db_session, monkeypatch):
@@ -371,11 +610,11 @@ def test_enrich_gaps_sends_kb_and_full_index_disabled_entries(db_session, monkey
         _LIBRARY_GAPS,
         _LIBRARY_RESUME,
         {"skills": [{"name": "Kafka"}]},
-        kb_snapshot=_LIBRARY_KB,
+        kb_snapshot=_KB_SNAPSHOT,
         session=db_session,
     )
 
-    assert captured["kb_snapshot"] is _LIBRARY_KB
+    assert captured["kb_snapshot"] is _KB_SNAPSHOT
     assert captured["disabled_entries"] == [
         {
             "section": "projects",
@@ -402,7 +641,7 @@ def test_gap_enrichment_prompt_renders_real_library_ids(monkeypatch):
         _LIBRARY_RESUME,
         {"skills": [{"name": "Kafka"}]},
         _LIBRARY_GAPS,
-        kb_snapshot=_LIBRARY_KB,
+        kb_snapshot=_KB_SNAPSHOT,
         disabled_entries=[
             {
                 "section": "projects",
@@ -759,3 +998,165 @@ def test_enrichment_and_strict_placement_validators_have_exact_parity(
     assert strict_accepted is (coerced is not None)
     if accepted:
         assert coerced == placement
+
+
+# --- create_session: KB gating survives enrich=False and provider outages --
+#
+# SAMPLE_JD/SAMPLE_RESUME's first missing_skills gap is always skill:salesforce
+# (see test_stamp_library_candidates_runs_without_any_llm): HiddenCo is a
+# DISABLED experience entry whose bullet literally says "Salesforce admin
+# work.", so self-nomination stamps it as an auto candidate with no KB rows
+# and no LLM involved at all.
+
+
+def _seed_session_job(db_session):
+    job = Job(
+        raw_text="jd text",
+        raw_text_hash="gap-enrichment-outage-hash",
+        extracted_json=SAMPLE_JD,
+        title=SAMPLE_JD["title"],
+        company=SAMPLE_JD["company"],
+        location="Remote",
+        extracted_at=datetime.now(UTC),
+    )
+    db_session.add(job)
+    db_session.commit()
+    db_session.refresh(job)
+    return job
+
+
+def _seed_session_base(db_session, tmp_path, monkeypatch, slug="outage_survival"):
+    monkeypatch.setattr(settings, "base_resumes_dir", tmp_path)
+    (tmp_path / f"{slug}.json").write_text(json.dumps(SAMPLE_RESUME))
+    db_session.add(BaseResume(slug=slug, data_json=SAMPLE_RESUME))
+    db_session.commit()
+    return slug
+
+
+def _first_missing_skill_gap(row):
+    category = next(
+        c for c in row.gaps_json["categories"] if c["key"] == "missing_skills"
+    )
+    return category["gaps"][0]
+
+
+def test_kb_autos_survive_enrichment_failure(db_session, monkeypatch, tmp_path):
+    """A fast-model outage must not cost deterministic KB coverage."""
+    job = _seed_session_job(db_session)
+    slug = _seed_session_base(db_session, tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        gap_enrichment.llm,
+        "call_openai",
+        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("provider down")),
+    )
+
+    row = tailoring_session.create_session(job.id, slug, session=db_session)
+
+    gap = _first_missing_skill_gap(row)
+    assert gap["gap_id"] == "skill:salesforce"
+    assert gap["library_candidates"], "provider outage cost KB coverage detection"
+
+
+def test_kb_autos_present_without_enrichment(db_session, monkeypatch, tmp_path):
+    """enrich=False must still gate deterministic KB/self-nomination evidence."""
+    job = _seed_session_job(db_session)
+    slug = _seed_session_base(db_session, tmp_path, monkeypatch)
+
+    row = tailoring_session.create_session(
+        job.id, slug, enrich=False, session=db_session
+    )
+
+    gap = _first_missing_skill_gap(row)
+    assert gap["gap_id"] == "skill:salesforce"
+    assert gap["library_candidates"], "enrich=False cost KB coverage detection"
+
+
+def test_create_session_never_leaks_llm_library_proposals_when_snapshot_fails(
+    db_session, monkeypatch, tmp_path
+):
+    """Regression: kb_snapshot load failing (a real production path —
+    tailoring_session.create_session's try/except at the load site exists
+    precisely because load_kb_snapshot can raise on a non-DB error, e.g. a
+    malformed detail_json) while enrichment SUCCEEDS and returns
+    library_candidates must not leak the private llm_library_proposals stash
+    into the frozen, publicly-served gaps_json. stamp_library_candidates runs
+    UNCONDITIONALLY now (kb_snapshot may be None) and is the only thing that
+    ever pops that key — with no snapshot it pops without gating anything, so
+    the write-then-never-pop state this guards against is unreachable."""
+    job = _seed_session_job(db_session)
+    slug = _seed_session_base(db_session, tmp_path, monkeypatch)
+
+    monkeypatch.setattr(
+        tailoring_session.kb_resolver,
+        "load_kb_snapshot",
+        lambda session: (_ for _ in ()).throw(RuntimeError("KB unavailable")),
+    )
+    _mock_plumbing(
+        monkeypatch,
+        lambda **kwargs: {
+            "enrichments": [
+                {
+                    "gap_id": "skill:salesforce",
+                    "library_candidates": [
+                        {"kind": "disabled", "section": "experience", "index": 2}
+                    ],
+                }
+            ]
+        },
+    )
+
+    row = tailoring_session.create_session(job.id, slug, session=db_session)
+
+    for category in row.gaps_json["categories"]:
+        for gap in category["gaps"]:
+            assert "llm_library_proposals" not in gap, gap
+            assert "library_candidates" not in gap, gap
+
+
+def test_create_session_survives_stamp_library_candidates_raising(
+    db_session, monkeypatch, tmp_path
+):
+    """KB library evidence is an ENHANCEMENT: session creation has already
+    paid for a full engine run, so a raising stamp_library_candidates (e.g. a
+    malformed KB entity blowing up kb_resolver.verify_candidate) must degrade
+    to an ungated session, not lose the whole thing — matching its two
+    neighbors (load_kb_snapshot failure -> "continuing without library
+    evidence"; enrichment failure -> "storing unenriched gaps"). The safe
+    fallback (pop_stash) is a pure pop-and-return with no verify_candidate
+    calls, so it cannot fail the same way, and it still scrubs the private
+    stash key.
+
+    enrich=True (with a real enrichment response) is load-bearing here, not
+    incidental: only enrichment actually WRITES the llm_library_proposals
+    stash (see enrich_gaps). enrich=False leaves no stash to scrub, so that
+    variant only proves the try/except avoids a 500 — it can't tell a real
+    scrub from a no-op one, which is exactly how this line went untested the
+    first time this test was written."""
+    job = _seed_session_job(db_session)
+    slug = _seed_session_base(db_session, tmp_path, monkeypatch)
+
+    _mock_plumbing(
+        monkeypatch,
+        lambda **kwargs: {
+            "enrichments": [
+                {
+                    "gap_id": "skill:salesforce",
+                    "library_candidates": [
+                        {"kind": "disabled", "section": "experience", "index": 2}
+                    ],
+                }
+            ]
+        },
+    )
+    monkeypatch.setattr(
+        gap_enrichment.kb_resolver,
+        "verify_candidate",
+        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("malformed KB entity")),
+    )
+
+    row = tailoring_session.create_session(job.id, slug, enrich=True, session=db_session)
+
+    assert row.status == "open"
+    for category in row.gaps_json["categories"]:
+        for gap in category["gaps"]:
+            assert "llm_library_proposals" not in gap, gap

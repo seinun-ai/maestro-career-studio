@@ -5,7 +5,10 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowUp,
+  ChevronLeft,
+  ChevronRight,
   FileText,
+  History,
   Loader2,
   Paperclip,
   Plus,
@@ -29,7 +32,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
+import { useIsMobile } from "@/hooks/use-mobile";
 import {
   apiFetch,
   createChatSession,
@@ -50,10 +61,12 @@ import type {
   ChatProposal,
   ChatProposalOps,
   ChatSelection,
+  ChatSessionSummary,
   UUID,
 } from "@/lib/types";
 
 const NO_TARGET = "__none__";
+const HISTORY_COLLAPSED_KEY = "chatPage.historyCollapsed";
 
 interface StreamingState {
   text: string;
@@ -83,6 +96,21 @@ export function ChatPage() {
   const [attachments, setAttachments] = useState<ChatAttachmentInfo[]>([]);
   const [scopeOpen, setScopeOpen] = useState(false);
   const [streaming, setStreaming] = useState<StreamingState | null>(null);
+  // Desktop rail tuck-in. Mirrors EditorShell's collapsed/hydrated pattern:
+  // the default (false, i.e. open) matches what a first paint without
+  // localStorage renders, so hydrating in an effect — rather than reading
+  // localStorage during render — never produces a client/server mismatch.
+  const [historyCollapsed, setHistoryCollapsed] = useState(false);
+  const [historyHydrated, setHistoryHydrated] = useState(false);
+  // Mobile session list, shown in a Sheet instead of the (hidden) rail. Which
+  // surface is live is decided by CSS (`md:` breakpoints), not this hook —
+  // useIsMobile() resolves in an effect and would render the desktop rail
+  // for one frame on a mobile first paint; a Tailwind media query has no
+  // such flash, so it is what gates the rail/trigger split below. The hook
+  // is still used (see effect below) to close the Sheet when the viewport
+  // crosses to md+, since it is a portal and no `md:` class reaches it.
+  const [historySheetOpen, setHistorySheetOpen] = useState(false);
+  const isMobile = useIsMobile();
   // False until the pin has been resolved for the open session (see below).
   // Gates the auto-seed so it never overwrites a real choice — including an
   // explicit "No pinned resume".
@@ -99,6 +127,37 @@ export function ChatPage() {
   useEffect(() => {
     targetRef.current = target;
   }, [target]);
+
+  // Hydrate the rail's collapsed state from localStorage after mount, same
+  // as EditorShell's preview pane — reading it during render would disagree
+  // with the server-rendered (always-open) markup and trigger a hydration
+  // mismatch.
+  useEffect(() => {
+    const stored = window.localStorage.getItem(HISTORY_COLLAPSED_KEY);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- hydrating from localStorage after mount
+    if (stored === "1") setHistoryCollapsed(true);
+    setHistoryHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    if (!historyHydrated) return;
+    window.localStorage.setItem(
+      HISTORY_COLLAPSED_KEY,
+      historyCollapsed ? "1" : "0",
+    );
+  }, [historyCollapsed, historyHydrated]);
+
+  // The Sheet is a portal (renders under <body>, not this tree), so no
+  // `md:` class on its trigger or the rail reaches it — crossing to desktop
+  // width does not itself close it. Opened at 400px then resized to 1200px,
+  // it would otherwise sit on top of the now-visible desktop rail with no
+  // trigger left to dismiss it from (Escape and the backdrop still would,
+  // but nothing here should depend on that). Close it explicitly on the
+  // crossing instead.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- syncing React state to a matchMedia crossing, not derivable during render
+    if (!isMobile) setHistorySheetOpen(false);
+  }, [isMobile]);
 
   // Event-handler-only (it reads the ref). Selections are paths into the resume
   // they were picked from, so a real switch drops them; an unchanged pin is a
@@ -227,6 +286,16 @@ export function ChatPage() {
     },
     onError: (err: Error) => toast.error(err.message),
   });
+
+  // Shared by the desktop rail and the mobile sheet's session list, so
+  // picking a session behaves identically from either surface.
+  const selectSession = (s: ChatSessionSummary) => {
+    openSession(s.id);
+    // Adopt the session's stored default target.
+    const stored = s.context_json?.target_key;
+    if (stored) setTarget(stored);
+    setHistorySheetOpen(false);
+  };
 
   const send = async () => {
     const content = input.trim();
@@ -475,65 +544,73 @@ export function ChatPage() {
   );
 
   return (
-    <div className="flex h-[calc(100svh-1rem)] gap-4 p-4">
-      {/* Sessions rail */}
-      <aside className="hidden w-64 shrink-0 flex-col gap-3 md:flex">
-        <div className="flex items-center">
-          <Button
-            variant="ghost"
-            onClick={() => newSession.mutate()}
-            disabled={newSession.isPending}
-            className="bg-primary/10 text-primary hover:bg-primary/15 h-10 flex-1 justify-start gap-2 rounded-full px-4"
-          >
-            <Plus className="size-4" /> New chat
-          </Button>
-        </div>
-        <div className="flex-1 space-y-0.5 overflow-y-auto">
-          {(sessions.data?.length ?? 0) > 0 && (
-            <p className="text-muted-foreground px-3 pb-1 text-xs font-medium">
-              Recent
-            </p>
-          )}
-          {sessions.data?.map((s) => (
-            <div
-              key={s.id}
-              className={cn(
-                "group flex items-center gap-1 rounded-full px-3 py-1.5 transition-colors duration-150",
-                sessionId === s.id
-                  ? "bg-primary/10 text-primary"
-                  : "hover:bg-muted",
-              )}
+    // relative: anchors the floating "Show chat history" edge button that
+    // appears once the rail is collapsed (mirrors EditorShell's preview pane).
+    <div className="relative flex h-[calc(100svh-1rem)] gap-4 p-4">
+      {/* Sessions rail — desktop only (md+); below that, the same list lives
+          in the Sheet opened from the thread's "Chat history" button. The
+          rail itself is `hidden md:flex` gated further by `historyCollapsed`,
+          so it never flashes on a mobile first paint (a CSS media query has
+          no client/server mismatch to resolve, unlike useIsMobile()). The
+          Sheet is a portal, though, so its open state is independent React
+          state, not gated by these classes — it is closed on the md
+          crossing by the effect above instead. */}
+      {!historyCollapsed && (
+        <aside className="hidden w-64 shrink-0 flex-col gap-3 md:flex">
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              onClick={() => newSession.mutate()}
+              disabled={newSession.isPending}
+              className="bg-primary/10 text-primary hover:bg-primary/15 h-10 flex-1 justify-start gap-2 rounded-full px-4"
             >
-              <button
-                type="button"
-                className="min-w-0 flex-1 truncate text-left text-sm"
-                onClick={() => {
-                  openSession(s.id);
-                  // Adopt the session's stored default target.
-                  const stored = s.context_json?.target_key;
-                  if (stored) setTarget(stored);
-                }}
-              >
-                {s.title || "Untitled chat"}
-              </button>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label="Delete chat"
-                className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100"
-                onClick={() => removeSession.mutate(s.id)}
-              >
-                <Trash2 className="size-3.5" />
-              </Button>
-            </div>
-          ))}
-        </div>
-      </aside>
+              <Plus className="size-4" /> New chat
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Hide chat history"
+              onClick={() => setHistoryCollapsed(true)}
+            >
+              <ChevronLeft className="size-4" />
+            </Button>
+          </div>
+          <SessionList
+            sessions={sessions.data}
+            activeId={sessionId}
+            onSelect={selectSession}
+            onDelete={(id) => removeSession.mutate(id)}
+          />
+        </aside>
+      )}
+      {historyCollapsed && (
+        <button
+          type="button"
+          aria-label="Show chat history"
+          onClick={() => setHistoryCollapsed(false)}
+          className="bg-background hover:bg-muted text-muted-foreground hover:text-foreground absolute top-1/2 left-0 z-10 hidden h-20 w-7 -translate-y-1/2 items-center justify-center gap-1 rounded-r-md border border-l-0 shadow-md transition-colors md:flex"
+        >
+          <ChevronRight className="size-4" />
+        </button>
+      )}
 
       {/* Thread + composer. This is the page's <main> — the chat layout has an
           <aside> of past sessions beside it, so the landmark belongs on the
           conversation column, not on the two-column wrapper. */}
       <main className="flex min-w-0 flex-1 flex-col">
+        {/* Below md, the rail is `hidden` outright (see above), so this is
+            the only way back to past sessions — without it, chats would be
+            completely unreachable on mobile. */}
+        <div className="flex items-center pb-2 md:hidden">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Chat history"
+            onClick={() => setHistorySheetOpen(true)}
+          >
+            <History className="size-4" />
+          </Button>
+        </div>
         {hasThread ? (
           <>
             <div className="flex-1 overflow-y-auto pr-1">
@@ -620,6 +697,96 @@ export function ChatPage() {
         selections={selections}
         onAdd={(s) => setSelections((prev) => [...prev, s])}
       />
+
+      {/* Mobile session list — same data, same row markup as the desktop
+          rail (via SessionList), just hosted in a Sheet instead of a
+          persistent column. Its trigger lives in the thread header above. */}
+      <Sheet open={historySheetOpen} onOpenChange={setHistorySheetOpen}>
+        {/* showCloseButton=false: the default close X sits top-3 right-3,
+            over the rightmost ~40px of the full-width "New chat" button
+            below, and would swallow taps meant for it. Same call as
+            ui/sidebar.tsx's mobile Sheet. Escape and a backdrop tap still
+            dismiss the sheet. */}
+        <SheetContent
+          side="left"
+          className="w-72 p-0 sm:max-w-72"
+          showCloseButton={false}
+        >
+          <SheetHeader className="sr-only">
+            <SheetTitle>Chat history</SheetTitle>
+            <SheetDescription>
+              Browse and switch between past chats.
+            </SheetDescription>
+          </SheetHeader>
+          <div className="flex h-full flex-col gap-3 p-3">
+            <Button
+              variant="ghost"
+              onClick={() => {
+                newSession.mutate();
+                setHistorySheetOpen(false);
+              }}
+              disabled={newSession.isPending}
+              className="bg-primary/10 text-primary hover:bg-primary/15 h-10 justify-start gap-2 rounded-full px-4"
+            >
+              <Plus className="size-4" /> New chat
+            </Button>
+            <SessionList
+              sessions={sessions.data}
+              activeId={sessionId}
+              onSelect={selectSession}
+              onDelete={(id) => removeSession.mutate(id)}
+            />
+          </div>
+        </SheetContent>
+      </Sheet>
+    </div>
+  );
+}
+
+function SessionList({
+  sessions,
+  activeId,
+  onSelect,
+  onDelete,
+}: {
+  sessions: ChatSessionSummary[] | undefined;
+  activeId: UUID | null;
+  onSelect: (session: ChatSessionSummary) => void;
+  onDelete: (id: UUID) => void;
+}) {
+  return (
+    <div className="flex-1 space-y-0.5 overflow-y-auto">
+      {(sessions?.length ?? 0) > 0 && (
+        <p className="text-muted-foreground px-3 pb-1 text-xs font-medium">
+          Recent
+        </p>
+      )}
+      {sessions?.map((s) => (
+        <div
+          key={s.id}
+          className={cn(
+            "group flex items-center gap-1 rounded-full px-3 py-1.5 transition-colors duration-150",
+            activeId === s.id ? "bg-primary/10 text-primary" : "hover:bg-muted",
+          )}
+        >
+          <button
+            type="button"
+            className="min-w-0 flex-1 truncate text-left text-sm"
+            onClick={() => onSelect(s)}
+          >
+            {s.title || "Untitled chat"}
+          </button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Delete chat"
+            className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100"
+            onClick={() => onDelete(s.id)}
+          >
+            <Trash2 className="size-3.5" />
+          </Button>
+        </div>
+      ))}
     </div>
   );
 }

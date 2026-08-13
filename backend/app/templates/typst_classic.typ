@@ -154,18 +154,26 @@
     if i > 0 { v(fmt.entry_spacing * 1pt) }
     let inst = if edu.location != none [#edu.institution, #edu.location] else [#edu.institution]
     let edu_start = if edu.start_date != none { edu.start_date } else { edu.graduation_date }
-    let first = if fmt.education_order == "institution_first" [*#inst*] else [*#edu.degree*]
-    let second = if fmt.education_order == "institution_first" [#emph(edu.degree)] else [#emph(inst)]
+    // Non-degree study (degree == none) has no title to lead with, so it always
+    // renders institution-first: the degree-first branch would otherwise open
+    // the entry with an empty line carrying the dates.
+    let inst_first = fmt.education_order == "institution_first" or edu.degree == none
+    let first = if inst_first [*#inst*] else [*#edu.degree*]
+    let second = if inst_first {
+      if edu.degree != none [#emph(edu.degree)]
+    } else [#emph(inst)]
     grid(
       columns: (1fr, auto),
       first,
       [*#date_range(edu_start, edu.end_date)*],
     )
-    grid(
-      columns: (1fr, auto),
-      second,
-      [#if edu.gpa != none [#edu.gpa]],
-    )
+    if second != none or edu.gpa != none {
+      grid(
+        columns: (1fr, auto),
+        if second != none { second } else [],
+        [#if edu.gpa != none [#edu.gpa]],
+      )
+    }
     if edu.coursework.len() > 0 [
       - Coursework: #edu.coursework.join(", ").
     ]

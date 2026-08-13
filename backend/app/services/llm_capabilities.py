@@ -100,7 +100,21 @@ def _probe_json(model: str) -> None:
 
 
 def _probe_tools(model: str) -> None:
-    """Tool calling AND streaming — the chat agent needs both together."""
+    """Tool calling AND streaming — the chat agent needs both together.
+
+    Every argument here must match what `chat_agent.run_turn` sends: the same
+    client, and the same per-model kwargs from `llm.completion_extras`. A probe
+    of a call the app never makes measures nothing.
+    """
+    if llm._is_gemini_model(model):
+        # Gemini inference goes over `llm._call_gemini` (raw REST), which has no
+        # tool-calling path at all — asking the OpenAI client about a Gemini id
+        # only ever answered "model does not exist", which is the wrong reason
+        # for the right No. `set_models` refuses a Gemini chat model for this.
+        raise RuntimeError(
+            "Gemini models are served over the Gemini REST path, which does not "
+            "implement streaming tool calls — they cannot drive the chat agent"
+        )
     # Same client the chat agent uses (it imports `_get_client` too) so the
     # probe exercises the exact transport the capability is needed on.
     stream = llm._get_client().chat.completions.create(
@@ -108,6 +122,7 @@ def _probe_tools(model: str) -> None:
         messages=[{"role": "user", "content": "Call report_ok with ok=true."}],
         tools=_PROBE_TOOL,
         stream=True,
+        **llm.completion_extras(model),
     )
     saw_tool_call = False
     for chunk in stream:

@@ -123,7 +123,7 @@ export interface ExperienceEntry {
   company: string;
   role: string;
   location?: string | null;
-  start_date: string;
+  start_date?: string | null;
   end_date?: string | null;
   enabled?: boolean;
   bullets: string[];
@@ -131,7 +131,7 @@ export interface ExperienceEntry {
 
 export interface EducationEntry {
   institution: string;
-  degree: string;
+  degree?: string | null;
   field?: string | null;
   location?: string | null;
   start_date?: string | null;
@@ -1235,8 +1235,47 @@ export interface CoherenceFlag {
   proposal: string;
 }
 
+/**
+ * A deterministic `resume_lint.rule_notes` finding, scoped to loci the
+ * tailoring changed and with any defect already present in the base resume
+ * suppressed (`coherence_check.py`). `proposal` is non-null only for the two
+ * mechanical trailing-punctuation rules — everything else (duplicates,
+ * sentence-like items) is read-only, since the fix is a judgment call.
+ */
+export interface HygieneFlag {
+  locus: {
+    kind: "hygiene";
+    section: string | null;
+    index: number | null;
+    /** The raw offending source string — the apply-by-exact-match needle. */
+    after: string | null;
+  };
+  /** Stable rule slug, e.g. "skills.trailing_punct". */
+  rule: string;
+  issue: string;
+  why: string;
+  how: string;
+  label: string;
+  proposal: string | null;
+}
+
+/**
+ * A structural gate run against the tailored document (`resume_lint._gate_dict`,
+ * `health_gates.gate_dates`/`gate_placeholders`). Read-only here — unlike the
+ * base health report, coherence-check gates have no waive/unwaive affordance.
+ */
+export interface HealthGate {
+  id: string;
+  tier: "fatal" | "serious";
+  status: "pass" | "fail" | "not_assessed";
+  label: string;
+  detail: string;
+}
+
 export interface CoherenceCheckResult {
   flags: CoherenceFlag[];
+  hygiene: HygieneFlag[];
+  gates: HealthGate[];
 }
 
 export interface TailorResult {

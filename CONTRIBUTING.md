@@ -191,8 +191,8 @@ npx tsc --noEmit && npm run build
 ## 7. Pull Requests
 
 When submitting a pull request:
-1. Confirm you have signed the CLA (individual or corporate) — see §3.
-2. Complete the checklist in our Pull Request Template.
-3. Ensure `pytest` passes cleanly across all backend and MCP tests.
-4. Ensure `tsc --noEmit` and `npm run build` succeed for the frontend.
-5. Verify that any updates or architectural changes are reflected directly in `docs/SYSTEM.md`.
+1. Complete the checklist in our Pull Request Template. (There is **no CLA**
+   and nothing to sign — see §3.)
+2. Ensure `pytest` passes cleanly across all backend and MCP tests.
+3. Ensure `tsc --noEmit` and `npm run build` succeed for the frontend.
+4. Verify that any updates or architectural changes are reflected directly in `docs/SYSTEM.md`.

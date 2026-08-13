@@ -158,17 +158,19 @@ def create_session(
         )
 
         gaps = gap_analysis.build_gaps(result)
+        # Snapshot load is OUTSIDE the enrich branch: the gating pass below is
+        # deterministic and must run whether or not enrichment does.
+        try:
+            kb_snapshot = kb_resolver.load_kb_snapshot(session)
+        except Exception:
+            kb_snapshot = None
+            logger.warning(
+                "Career KB snapshot failed for job %s; continuing without library evidence",
+                job_id,
+                exc_info=True,
+            )
         if enrich:
             try:
-                try:
-                    kb_snapshot = kb_resolver.load_kb_snapshot(session)
-                except Exception:
-                    kb_snapshot = None
-                    logger.warning(
-                        "Career KB snapshot failed for job %s; continuing without library evidence",
-                        job_id,
-                        exc_info=True,
-                    )
                 gaps = gap_enrichment.enrich_gaps(
                     gaps,
                     resume_json,
@@ -182,10 +184,38 @@ def create_session(
                     job_id,
                     exc_info=True,
                 )
+        # Called UNCONDITIONALLY (kb_snapshot may be None): stamp_library_candidates
+        # itself decides what "no snapshot" means (pop the private stash, write no
+        # library_candidates), so there is no second place that has to agree with
+        # it on when gating ran — the correctness argument used to be spread across
+        # this call site AND enrich_gaps' stash guard both reading kb_snapshot, and
+        # a single missed guard leaked a private key into frozen gaps_json.
+        #
+        # KB library evidence is an ENHANCEMENT, not a requirement, and this point
+        # has already paid for a full engine run — losing the whole session because
+        # one malformed KB detail_json blew up the merge is the wrong trade, so this
+        # degrades like its two neighbors above rather than failing loud.
+        try:
+            gaps = gap_enrichment.stamp_library_candidates(gaps, resume_json, kb_snapshot)
+        except Exception:
+            logger.warning(
+                "Library candidate gating failed for job %s; storing ungated gaps",
+                job_id,
+                exc_info=True,
+            )
+            # Scrub, don't re-stamp: pop_stash shares the deepcopy/category/gap
+            # walk with the path that just raised, but has no verify_candidate
+            # call in it, so the malformed-KB failure class above cannot recur
+            # here (a malformed `gaps` SHAPE would take both paths down alike —
+            # not reachable with real data, since gaps comes from in-house
+            # build_gaps). Calling stamp_library_candidates(None) here would
+            # "stamp" nothing and make the name a lie at this call site.
+            gaps = gap_enrichment.pop_stash(gaps)
         # Auto planning is DETERMINISTIC, so it runs over whatever gaps we ended up
-        # with: enriched gaps carry library candidates (KB/library autos), and
-        # mirror_wording gaps plan their exact-token skills add even unenriched
-        # (enrich=False or enrichment failure) — the token, not the LLM, is the fix.
+        # with: candidates are now stamped UNCONDITIONALLY above (not only when
+        # enrichment ran), and mirror_wording gaps plan their exact-token skills
+        # add even unenriched (enrich=False or enrichment failure) — the token,
+        # not the LLM, is the fix.
         auto_resolutions = [
             resolution
             for resolution in (

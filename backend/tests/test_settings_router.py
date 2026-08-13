@@ -359,6 +359,58 @@ def test_quick_tailor_round_trip_merges_defaults(db_session, tmp_path, monkeypat
     assert mirrored["instruction"] == "keep bullets terse"
 
 
+def test_mcp_workflow_defaults_to_hints_on(db_session, tmp_path, monkeypatch):
+    monkeypatch.setattr(text_settings.settings, "settings_dir", tmp_path)
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        response = TestClient(app).get("/api/settings/mcp-workflow")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["key"] == "mcp_workflow"
+    assert body["value"] == {"hints": True}
+
+
+def test_mcp_workflow_put_roundtrips(db_session, tmp_path, monkeypatch):
+    monkeypatch.setattr(text_settings.settings, "settings_dir", tmp_path)
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        client = TestClient(app)
+        client.put("/api/settings/mcp-workflow", json={"value": {"hints": False}})
+        get_response = client.get("/api/settings/mcp-workflow")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert get_response.json()["value"]["hints"] is False
+
+
+def test_mcp_workflow_round_trip_merges_defaults(db_session, tmp_path, monkeypatch):
+    # A PUT that omits "hints" and carries an unknown key proves the merge-OVER-
+    # defaults behaviour, not just that a stored value round-trips: if the
+    # service ever stored/returned the raw payload instead of merging it over
+    # DEFAULTS, "hints" would be missing from the response entirely.
+    monkeypatch.setattr(text_settings.settings, "settings_dir", tmp_path)
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        client = TestClient(app)
+        put_response = client.put(
+            "/api/settings/mcp-workflow",
+            json={"value": {"unknown_key": "ignored"}},
+        )
+        get_response = client.get("/api/settings/mcp-workflow")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert put_response.status_code == 200
+    value = get_response.json()["value"]
+    assert value["hints"] is True  # default filled in — stored payload had no "hints" key
+    assert value["unknown_key"] == "ignored"
+    mirrored = json.loads((tmp_path / "mcp_workflow.json").read_text(encoding="utf-8"))
+    assert mirrored == {"unknown_key": "ignored"}  # file mirrors the stored (pre-merge) payload
+
+
 def test_gemini_35_flash_lite_is_a_valid_fast_model(db_session):
     app.dependency_overrides[get_db] = _override_db(db_session)
     try:

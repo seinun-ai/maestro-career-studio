@@ -119,7 +119,7 @@ export function ExperienceEditor({
                   />
                   <Field
                     label="Start date"
-                    value={entry.start_date}
+                    value={entry.start_date ?? ""}
                     onChange={(v) => update(i, { start_date: v })}
                     placeholder="Jan 2023"
                   />

@@ -101,8 +101,16 @@ def _ask(
     approved: dict[UUID, int],
 ) -> dict:
     labels = role_categories.labels()
-    prompt = Template(prompts.get_prompt("base_from_kb_plan", session)).safe_substitute(
+    description = role_categories.description_for(role_category)
+    description_line = f"ROLE DESCRIPTION: {description}\n" if description else ""
+    prompt_text = prompts.get_prompt("base_from_kb_plan", session).replace(
+        "TARGET ROLE: $role_label\n",
+        "TARGET ROLE: $role_label\n${role_description_line}",
+        1,
+    )
+    prompt = Template(prompt_text).safe_substitute(
         role_label=labels.get(role_category, role_category),
+        role_description_line=description_line,
         instruction=(instruction or "").strip() or "(none given)",
         entities=_render_entities(entities, approved),
     )

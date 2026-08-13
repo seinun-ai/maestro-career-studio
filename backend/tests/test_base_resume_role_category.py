@@ -151,10 +151,10 @@ def test_free_text_tag_unmapped_projects_to_other(client):
         json={
             "slug": "fde",
             "data": SAMPLE,
-            "role_label": "Forward Deployed Engineer",
+            "role_label": "Customer Deployment Specialist",
         },
     ).json()
-    assert body["role_label"] == "Forward Deployed Engineer"
+    assert body["role_label"] == "Customer Deployment Specialist"
     assert body["role_category"] == "other"
 
 
@@ -222,9 +222,9 @@ def test_label_only_patch_on_a_mapped_row_demotes_the_stale_mapping(client):
     )
     body = client.patch(
         "/api/base-resumes/fde2/identity",
-        json={"role_label": "Forward Deployed Engineer"},
+        json={"role_label": "Customer Deployment Specialist"},
     ).json()
-    assert body["role_label"] == "Forward Deployed Engineer"
+    assert body["role_label"] == "Customer Deployment Specialist"
     assert body["role_category"] == "other"
 
 
@@ -275,7 +275,7 @@ def test_identity_patch_can_set_and_clear_the_label(client):
     )
     body = client.patch(
         "/api/base-resumes/sw/identity",
-        json={"role_label": "Forward Deployed Engineer"},
+        json={"role_label": "Customer Deployment Specialist"},
     ).json()
     assert body["role_category"] == "other"
     body = client.patch(
@@ -291,7 +291,7 @@ def test_identity_patch_category_only_preserves_the_custom_label(client):
         json={
             "slug": "fde_mapped",
             "data": SAMPLE,
-            "role_label": "Forward Deployed Engineer",
+            "role_label": "Customer Deployment Specialist",
         },
     )
 
@@ -300,7 +300,7 @@ def test_identity_patch_category_only_preserves_the_custom_label(client):
         json={"role_category": "software_engineer"},
     ).json()
 
-    assert body["role_label"] == "Forward Deployed Engineer"
+    assert body["role_label"] == "Customer Deployment Specialist"
     assert body["role_category"] == "software_engineer"
 
 

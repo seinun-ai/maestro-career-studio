@@ -287,7 +287,7 @@ def test_l3_title_adjacent():
     cfg = load_config()
     profile = normalize_jd(SAMPLE_JD)  # role_category "data_scientist"
     resume = copy.deepcopy(SAMPLE_RESUME)
-    resume["experience"][0]["role"] = "Applied Scientist"  # family member, not the JD title
+    resume["experience"][0]["role"] = "Machine Learning Scientist"
     resume["summary"] = "Scientist with production ML experience."
     tier, score = layers.l3_title(profile, index_resume(resume, as_of=AS_OF), cfg)
     assert tier == "adjacent" and score == cfg.weights["title_credit"]["adjacent"]

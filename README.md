@@ -1,10 +1,65 @@
-# Maestro Career Studio (Maestro CS)
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/brand/maestro_lockup_dark.svg">
+    <img src="docs/assets/brand/maestro_lockup_light.svg" alt="Maestro Career Studio" width="460">
+  </picture>
+</p>
+[![CI](https://github.com/seinun-ai/maestro-career-studio/actions/workflows/ci.yml/badge.svg)](https://github.com/seinun-ai/maestro-career-studio/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/seinun-ai/maestro-career-studio/actions/workflows/codeql.yml/badge.svg)](https://github.com/seinun-ai/maestro-career-studio/actions/workflows/codeql.yml)
+[![Tests](https://img.shields.io/badge/tests-2%2C763%20passing-brightgreen)](https://github.com/seinun-ai/maestro-career-studio/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+<!-- TODO(P5): after the first v* tag publishes images, add a ghcr.io image badge here,
+     e.g. https://img.shields.io/badge/ghcr.io-multi--arch-blue linking to the packages page.
+     Also refresh the static test-count badge above at each release. -->
 
-A **local-first, single-user** job-application copilot built to run entirely on your own machine. Maestro CS ingests job descriptions, scores your resumes against them with a deterministic hybrid ATS engine, closes skill gaps through a guided tailoring workflow, consolidates your professional experience into a unified Career Knowledge Base, and compiles customized LaTeX and Typst PDF applications.
+**A job-application studio that runs entirely on your machine — and shows you
+a diff of every change the AI makes.**
 
-It covers the whole loop — build the career record, target it at a role, capture the job, tailor, render, apply, track — across three surfaces that share one backend: a web app, a companion browser extension, and an **MCP server** so the assistant you already use can drive any of it.
+Most resume checkers score the same resume differently every run, because they
+ask an LLM to guess. Maestro's ATS engine is deterministic and LLM-free: same
+resume, same job, same score, every time. Tailoring composes from a **Career
+Knowledge Base** of things you actually did — approved evidence lands verbatim,
+every AI edit is a reviewable, revertible diff, and the output is a real
+**LaTeX** or **Typst** PDF compiled locally.
 
-> **Not a SaaS, not multi-tenant, and nothing phones home.** It runs on your computer, for you alone. Even the browser extension's autofill telemetry posts strictly to your own local backend, and its schema records zero form field values.
+<!-- TODO(P4) hero.gif — THE launch asset. ~25s screen capture, synthetic demo data
+     only (throwaway DB): score a base resume against a JD (shows e.g. 61) →
+     Quick Tailor → rescore (shows the lift, e.g. 78) → open the tailoring diff,
+     revert one hunk → open the rendered PDF. Save to docs/assets/hero.gif and
+     uncomment the line below. -->
+<!-- ![Score, tailor, diff of every AI edit, typeset PDF — end to end](docs/assets/hero.gif) -->
+
+**73 MCP tools** to drive it from Claude Desktop/Code · **works with zero API
+keys** (scoring, rendering and tracking never call a model) · **3 containers,
+localhost-only, nothing phones home** · **leaves with you** — your whole record
+exports to one `career.md`
+
+```bash
+git clone https://github.com/seinun-ai/maestro-career-studio.git
+cd maestro-career-studio && cp .env.example .env && docker compose up -d --build
+```
+
+> **Single-user and local-first by design.** No login, no tenancy, no server
+> holding your career history — every port binds to `127.0.0.1`, and even the
+> browser extension's telemetry posts only to your own local backend (its
+> schema records zero form-field values). One rule follows: **never expose it
+> to a network.** [`SECURITY.md`](SECURITY.md) has the threat model.
+
+**Contents:** [Why Maestro CS?](#why-maestro-cs) ·
+[Prerequisites](#prerequisites) · [Quickstart](#quickstart) ·
+[Using it well](#using-it-well) ·
+[Driving it from Claude (MCP)](#driving-it-from-claude-mcp) ·
+[The rest of the toolkit](#the-rest-of-the-toolkit) ·
+[Execution modes](#execution-modes--docker-compose-stack) ·
+[Directory layout](#project--runtime-directory-layout) ·
+[Community & contributing](#community-documentation--contributing) ·
+[Licensing](#licensing) ·
+[Troubleshooting](#troubleshooting--common-questions)
+
+It covers the whole loop — build the career record, target it at a role,
+capture the job, tailor, render, apply, track — across three surfaces that
+share one backend: a web app, a companion browser extension, and an **MCP
+server** so the assistant you already use can drive any of it.
 
 ---
 
@@ -48,6 +103,21 @@ That whole cycle — evidence → base resume → application → typeset PDF �
 part other tools cannot reproduce. A resume builder gives you the last step with
 no evidence base behind it; a matcher scores a document it did not compose. Here
 the document and the evidence stay connected end to end.
+
+### How it compares
+
+Only checkable claims — verify any row yourself:
+
+| | Typical AI resume builders | CLI skill frameworks (e.g. career-ops) | **Maestro CS** |
+|---|---|---|---|
+| ATS scoring | LLM or black-box — same input, different score per run | LLM judgment | **Deterministic & LLM-free** — same input, same score, always |
+| Measured tailoring lift | Static score only | Not scored as a lift | **Base → tailored delta, per application** |
+| See what the AI changed | No audit trail | No | **Per-hunk diff, revertible** |
+| Typeset output | House web templates | HTML → PDF | **Real LaTeX and Typst, bring your own template** |
+| Career record | None (per-document) | Flat markdown/YAML files | **Structured, versioned KB — exports to one `career.md`** |
+| Agent access | No | CLI skill files | **MCP server (73 tools) against your own machine** |
+| Auto-submits for you | N/A | Never (stated) | **Never — consent ledger, enforced** |
+| Cost | $15–75/month | Free + tokens | **Free (Apache 2.0) + your own tokens** |
 
 ### 🌟 Featured: Career KB Onboarding (Drop in your resumes, get a knowledge base)
 The most powerful feature you can experience in your first ten minutes is automated Career KB consolidation. When you add multiple existing versions of your resume (as `.json` files in `base_resumes/`), on startup the app runs `seeding.seed_career_kb` to automatically consolidate *every* base resume into a unified **Career Knowledge Base**. It performs intelligent entity resolution across your diverse resumes, deduplication, bullet clustering, and profile synthesis into a single structured record of your work history, projects, and skills.
@@ -111,6 +181,16 @@ Then open **http://localhost:3000**.
 > in `.env` and the same compose file *pulls* `amd64`/`arm64` images instead —
 > `docker compose up -d`, no build step.
 
+### Try it before you bring a key (No-Key Mode)
+
+Maestro CS is fully operational even with **zero API keys configured** — rare
+in this category, and deliberate:
+- **What works immediately:** Deterministic ATS scoring across all base resumes, gap diagnostics, full manual tailoring, raw LaTeX/Typst document editors, PDF compilation, application tracking, and analytics dashboards.
+- **What degrades or defers cleanly:**
+  - *Career KB Seeding:* Defers execution without errors and retries on subsequent bootups.
+  - *Job Ingestion:* Automatic structured field extraction from pasted text defaults to manual entry or unparsed text blocks.
+  - *AI Generation:* Guided automated gap resolution, cover letter generation, interview Q&A generation, and interactive Career Chat will prompt you to configure an API key in Settings before executing LLM calls.
+
 ### Run it fully offline
 
 Point the OpenAI-compatible client at any local server and no resume text
@@ -136,14 +216,6 @@ On first boot, Docker will:
 3. Seed demonstration base resumes, compile initial PDF previews, seed default AI prompts, and build your initial demo Career KB (if an API key is present).
 4. Serve the UI on **http://127.0.0.1:3000** and backend API on **http://127.0.0.1:8001**.
 
-### Operation Without an LLM API Key (No-Key Mode)
-Maestro CS is fully operational even with **zero API keys configured**:
-- **What works immediately:** Deterministic ATS scoring across all base resumes, gap diagnostics, full manual tailoring, raw LaTeX/Typst document editors, PDF compilation, application tracking, and analytics dashboards.
-- **What degrades or defers cleanly:**
-  - *Career KB Seeding:* Defers execution without errors and retries on subsequent bootups.
-  - *Job Ingestion:* Automatic structured field extraction from pasted text defaults to manual entry or unparsed text blocks.
-  - *AI Generation:* Guided automated gap resolution, cover letter generation, interview Q&A generation, and interactive Career Chat will prompt you to configure an API key in Settings before executing LLM calls.
-
 ---
 
 ## Using it well
@@ -154,6 +226,11 @@ employers now filter for resumes that read as machine-written — so the leverag
 is in depth per application, not count. The workflow below reflects that.
 
 ### 1. Feed the Career KB first (once)
+
+<!-- TODO(P4) kb-onboarding.gif — ~20s, synthetic data: drop 3 resume JSONs →
+     KB consolidation runs → inbox shows imported points → approve a few.
+     Save to docs/assets/kb-onboarding.gif and uncomment: -->
+<!-- ![Drop in your resumes, get a knowledge base](docs/assets/kb-onboarding.gif) -->
 
 Drop **every** resume variant you have into the upload dialog — old ones,
 role-specific ones, the too-long one. Maestro CS resolves duplicate entities
@@ -192,7 +269,11 @@ evidence, so closing a gap once improves every future application.
 
 > **A note on the score.** It is *our* score: deterministic, versioned and
 > reproducible. It is **not** a prediction of what any real ATS shows you — no
-> consumer tool can offer that. Use it to compare your own drafts against one
+> consumer tool can offer that, and independent tests keep proving the point:
+> the same resume has scored [66–99 across 100 runs](https://danunparsed.com/p/hackerrank-open-source-ats)
+> on a popular LLM-judged checker, and an
+> [18-point spread](https://resumeoptimizerpro.com/blog/ats-resume-checker-tools-compared)
+> across five commercial ones. Use ours to compare your own drafts against one
 > another, and to catch parsing and coverage problems. Chasing 100 produces
 > keyword-stuffed resumes that modern screens flag.
 >
@@ -227,6 +308,12 @@ Maestro CS ships an **MCP server** so you can run the whole pipeline
 conversationally — extract a JD, score it, walk the gaps, render the PDF —
 without leaving your assistant. Unlike SaaS-backed job-search MCP servers, it
 runs on **your machine** against **your** database. Nothing is uploaded.
+
+<!-- TODO(P4) mcp-claude.gif — ~20s: Claude Desktop session — ask "score my
+     data-scientist resume against this posting", tool calls visible, score +
+     gap list returned, then "render the PDF". Synthetic data only.
+     Save to docs/assets/mcp-claude.gif and uncomment: -->
+<!-- ![Claude driving the pipeline over MCP](docs/assets/mcp-claude.gif) -->
 
 With the backend already running, one command sets it up:
 
@@ -315,6 +402,12 @@ in your skills list, never as an invented experience bullet.
 
 ### The browser extension
 
+<!-- TODO(P4) extension.png — static screenshot: the widget open on a job page
+     showing the state dots and the "Fast tailor 61 → 78" lift moment.
+     Synthetic data / throwaway job page. Save to docs/assets/extension.png
+     and uncomment: -->
+<!-- ![The extension widget on a job page](docs/assets/extension.png) -->
+
 A floating in-page widget: capture a posting from the board you are already
 reading, and fill application forms from your **Autofill Profile**. Its telemetry
 records *which* fields it met and whether they filled — label, kind, rule,
@@ -335,6 +428,11 @@ government IDs sit on a deny-list that both write paths consult, so they are
 never filled and never shown to a model. Those stay human-only, always.
 
 ### Analytics: what the market keeps asking you for
+
+<!-- TODO(P4) analytics.png — static screenshot: Gaps & growth view (gap
+     frequency classified vs the KB) or the skill heatmap, seeded with
+     synthetic jobs. Save to docs/assets/analytics.png and uncomment: -->
+<!-- ![Gap frequency classified against your Career KB](docs/assets/analytics.png) -->
 
 Every captured job builds a picture of the market you are actually applying into
 — top skills, a skill heatmap, role mix over time — filterable by role category,
@@ -460,6 +558,12 @@ host you control.
 ---
 
 ## Community, Documentation & Contributing
+
+**Contribution fast-path:** docs fixes, resume/cover-letter templates and
+extension job-board adapters go straight to PR — no issue needed. Features and
+architecture changes: open an issue first. Every PR gets a human first
+response within 48 hours, and every PR is read by a human — we don't merge
+AI slop.
 
 - **Known Issues & Where Help Is Wanted:** [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md) — **Start here.** What is solid, what is rough, what is a deliberate limitation rather than a bug, and the specific gaps worth picking up. This project is early and that file says so plainly.
 - **Architecture Source of Truth:** [`docs/SYSTEM.md`](docs/SYSTEM.md) — The living reference for how the system fits together. Long, and meant to be searched rather than read front to back; the code cites its section numbers directly. Read the relevant part before altering behaviour.

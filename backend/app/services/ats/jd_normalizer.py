@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 from typing import Any
 
+from app.services import role_categories
 from app.services.ats.matching import normalize_term
 
 _LEVEL_RANK = {"required": 2, "preferred": 1, "mentioned": 0}
@@ -64,7 +65,7 @@ def normalize_jd(extracted_json: dict[str, Any]) -> JdProfile:
     skills = list(by_canonical.values())
     return JdProfile(
         title=str(extracted_json.get("title") or ""),
-        role_category=extracted_json.get("role_category"),
+        role_category=role_categories.normalize(extracted_json.get("role_category")),
         years_experience_min=extracted_json.get("years_experience_min"),
         years_experience_max=extracted_json.get("years_experience_max"),
         skills=skills,

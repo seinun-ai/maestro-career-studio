@@ -248,9 +248,12 @@ def get_application_resume_diff(
 def coherence_check_application(
     application_id: UUID, db: Annotated[Session, Depends(get_db)]
 ):
-    """Read-only coherence lint over the tailored resume's changed loci
-    (design §4.4). Returns proposals only; applying one is a normal studio
-    edit. Best-effort: LLM failure returns zero flags, never an error."""
+    """Read-only coherence lint over the tailored resume (design §4.4,
+    2026-08-12). Three groups: ``flags`` (LLM, changed loci only),
+    ``hygiene`` (deterministic resume_lint rules, base-inherited defects
+    suppressed), ``gates`` (structural gates against the tailored artifact).
+    Returns proposals only; applying one is a normal studio edit. Best-effort
+    per group: a failure degrades that group to empty, never an error."""
     application = db.get(Application, application_id)
     if application is None:
         raise HTTPException(status_code=404, detail="Application not found")
@@ -263,7 +266,7 @@ def coherence_check_application(
         base = base_resume_data.load_base_resume(application.base_resume, session=db)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
-    return coherence_check.run(base, application.customized_json, db)
+    return coherence_check.run(base, application.customized_json, db, application.template_id)
 
 
 @router.get("/{application_id}", response_model=ApplicationDetail)

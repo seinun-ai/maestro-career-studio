@@ -3,12 +3,15 @@ import type { ReactNode } from "react";
 /**
  * The resume studio's option bar, as an ordered set of slots.
  *
- * Both studios carry the same three controls — the view toggle, the health
- * status, and History — and before this they appeared in three different
- * positions each, because each toolbar was assembled by hand in the order its
- * features happened to be added. The base studio additionally led with its
- * RAREST action (Import from Career KB, disabled whenever there are unsaved
+ * Both studios carry the view toggle and History, and before this they appeared
+ * in different positions each, because each toolbar was assembled by hand in the
+ * order its features happened to be added. The base studio additionally led with
+ * its RAREST action (Import from Career KB, disabled whenever there are unsaved
  * edits) and had no overflow at all, while the tailored studio had one.
+ *
+ * `status` is base-only now: a tailored resume's health score is inherited from
+ * its base, so the tailored studio checks structure through the post-tailoring
+ * review instead and leaves this slot empty.
  *
  * Slots exist rather than a `children` array so the order is a property of this
  * file and not of each call site. Reading left to right the bar answers, in

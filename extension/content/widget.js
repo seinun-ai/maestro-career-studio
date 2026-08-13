@@ -707,6 +707,37 @@ label.toggle input { margin: 2px 0 0; accent-color: var(--cs-primary); }
   }
   // ---- end chooseEvasion ----
 
+  /** Where the dock goes for a pointer mid-drag. Pure, for the same reason as
+   * the two above: this is a decision, and it was wrong in a way no amount of
+   * reading the drag handler revealed.
+   *
+   * The grab offsets MUST be measured against the DOCK, never the bubble. The
+   * dock is a flex column with the bubble right-aligned in it (`align-items:
+   * flex-end`) and the card above it, so `bubble.left === dock.left` holds
+   * only while the card is CLOSED and the dock is exactly bubble-wide. With
+   * the card open the dock is ~340px wide, so anchoring it by an offset taken
+   * inside the bubble moved the whole widget (dockWidth - BUBBLE_SIZE)px
+   * sideways on the first pointermove — and with the bubble already docked
+   * right, that threw the card clean off the right edge.
+   *
+   * Vertical never showed the fault and never will: the bubble is the LAST
+   * child of the column, so `bubble.bottom === dock.bottom` in both states.
+   * That asymmetry is why the symptom was purely lateral.
+   *
+   * The horizontal clamp is separate insurance. Release snaps to a side, so an
+   * out-of-bounds drag was always transient — but "I cannot see the thing I am
+   * dragging" is not a state worth passing through. */
+  function dragPlacement({
+    pointerX, pointerY, grabLeft, grabBottom, dockWidth, viewport, margin,
+  }) {
+    const maxLeft = Math.max(margin, viewport.width - dockWidth - margin);
+    return {
+      left: Math.round(Math.min(Math.max(pointerX - grabLeft, margin), maxLeft)),
+      bottom: Math.round(viewport.height - pointerY - grabBottom),
+    };
+  }
+  // ---- end dragPlacement ----
+
   const clamp = (offset) =>
     clampOffset(offset, window.innerHeight, BUBBLE_SIZE, EDGE_MARGIN);
 
@@ -1347,14 +1378,19 @@ label.toggle input { margin: 2px 0 0; accent-color: var(--cs-primary); }
     bubbleEl.addEventListener("pointerdown", (event) => {
       if (event.button !== 0) return;
       pointerId = event.pointerId;
-      const rect = bubbleEl.getBoundingClientRect();
-      // Where inside the bubble the pointer grabbed it, so the bubble does not
-      // jump to centre itself under the cursor on the first move.
+      // The DOCK's rect, not the bubble's — `dragPlacement` positions the dock,
+      // and the two rects only coincide while the card is closed. Measured once
+      // per gesture: the dock's width cannot change mid-drag, and re-reading it
+      // per move would be a layout read per frame.
+      const rect = dockEl.getBoundingClientRect();
+      // Where inside the dock the pointer grabbed it, so nothing jumps to
+      // centre itself under the cursor on the first move.
       start = {
         x: event.clientX,
         y: event.clientY,
         grabLeft: event.clientX - rect.left,
         grabBottom: rect.bottom - event.clientY,
+        width: rect.width,
       };
       moved = false;
       // setPointerCapture (design §4.1): the drag keeps receiving moves even
@@ -1375,9 +1411,18 @@ label.toggle input { margin: 2px 0 0; accent-color: var(--cs-primary); }
       // Free-dragged in the SAME bottom-anchored model the docked state uses,
       // so nothing re-anchors mid-gesture and the card above the bubble does
       // not flip to the other side of it.
+      const at = dragPlacement({
+        pointerX: event.clientX,
+        pointerY: event.clientY,
+        grabLeft: start.grabLeft,
+        grabBottom: start.grabBottom,
+        dockWidth: start.width,
+        viewport: { width: window.innerWidth, height: window.innerHeight },
+        margin: EDGE_MARGIN,
+      });
       dockEl.style.right = "auto";
-      dockEl.style.left = `${Math.round(event.clientX - start.grabLeft)}px`;
-      dockEl.style.bottom = `${Math.round(window.innerHeight - event.clientY - start.grabBottom)}px`;
+      dockEl.style.left = `${at.left}px`;
+      dockEl.style.bottom = `${at.bottom}px`;
     });
 
     const end = (event) => {

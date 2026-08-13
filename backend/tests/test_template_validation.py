@@ -185,3 +185,33 @@ def test_sample_resume_is_valid_resumedata():
 
     # Must not raise
     ResumeData.model_validate(tv.SAMPLE_RESUME)
+
+
+def test_validate_returns_parse_report_detail(db_session, tmp_path, monkeypatch):
+    monkeypatch.setattr(tv.settings, "base_resumes_dir", tmp_path)
+    reg.ensure_seed_templates(db_session, validate=False)
+    out = tv.validate_template("default", db_session)
+    assert out["ok"] is True
+    assert out["parse_report"]["extra_sections_supported"] is True
+    assert out["parse_report"]["missing"] == []
+
+
+def test_template_detail_exposes_parse_report(db_session, tmp_path, monkeypatch):
+    from app.db import get_db
+    from app.main import app
+    from fastapi.testclient import TestClient
+
+    monkeypatch.setattr(tv.settings, "base_resumes_dir", tmp_path)
+    reg.ensure_seed_templates(db_session, validate=False)
+
+    def _override():
+        yield db_session
+
+    app.dependency_overrides[get_db] = _override
+    try:
+        client = TestClient(app)
+        assert client.post("/api/templates/default/validate").status_code == 200
+        detail = client.get("/api/templates/default").json()
+    finally:
+        app.dependency_overrides.clear()
+    assert detail["parse_report"]["extra_sections_supported"] is True

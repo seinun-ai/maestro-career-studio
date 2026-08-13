@@ -425,6 +425,23 @@ export function patchKbPoint(pointId: UUID, payload: KBPointPatch) {
   });
 }
 
+export function bulkKbPointState(
+  ids: UUID[],
+  state: "approved" | "retired",
+) {
+  return apiFetch<{
+    results: {
+      id: UUID;
+      ok: boolean;
+      state: string | null;
+      detail: string | null;
+    }[];
+  }>("/api/kb/points/bulk-state", {
+    method: "POST",
+    body: JSON.stringify({ ids, state }),
+  });
+}
+
 export function deleteKbPoint(pointId: UUID) {
   return apiFetch<void>(`/api/kb/points/${pointId}`, { method: "DELETE" });
 }

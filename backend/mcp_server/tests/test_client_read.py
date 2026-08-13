@@ -63,6 +63,46 @@ def test_get_job_uses_detail_endpoint():
 
 
 @respx.mock
+def test_get_quick_tailor_profile_unwraps_value():
+    respx.get(f"{BASE}/api/settings/quick-tailor").mock(
+        return_value=httpx.Response(
+            200, json={"key": "quick_tailor_profile", "value": {"role_category": "data"}}
+        )
+    )
+    # equality (not just a membership check) catches a method that forgets to
+    # unwrap and returns the {key, value} envelope instead of value alone
+    assert BackendClient(BASE).get_quick_tailor_profile() == {"role_category": "data"}
+
+
+@respx.mock
+def test_get_mcp_workflow_settings_reads_the_setting():
+    respx.get(f"{BASE}/api/settings/mcp-workflow").mock(
+        return_value=httpx.Response(200, json={"key": "mcp_workflow", "value": {"hints": True}})
+    )
+    assert BackendClient(BASE).get_mcp_workflow_settings() == {"hints": True}
+
+
+@respx.mock
+def test_get_setup_status_returns_the_body_unwrapped():
+    # SetupStatus has no {key, value} envelope — a copy-pasted `.get("value", {})`
+    # would silently return {} here (the field doesn't exist), so asserting a
+    # real field is present catches that mistake instead of vacuously passing.
+    body = {
+        "import_resumes": {"done": True, "detail": {}},
+        "autofill": {"done": False, "readiness": 0.5, "groups": {}, "blocking": []},
+        "job_preferences": {"done": True, "detail": {}},
+        "persona": {"done": False, "detail": {}},
+        "template": {"done": True, "detail": {}},
+        "suggested_bases": [],
+        "complete": False,
+    }
+    respx.get(f"{BASE}/api/setup/status").mock(return_value=httpx.Response(200, json=body))
+    out = BackendClient(BASE).get_setup_status()
+    assert out == body
+    assert out["complete"] is False
+
+
+@respx.mock
 def test_error_maps_to_backend_error():
     respx.get(f"{BASE}/api/base-resumes/missing").mock(
         return_value=httpx.Response(404, json={"detail": "not found"})

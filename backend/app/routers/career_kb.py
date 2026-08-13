@@ -10,6 +10,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile
+from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
@@ -17,9 +18,12 @@ from app.config import settings
 from app.db import get_db
 from app.models.base_resume import BaseResume
 from app.models.career_kb import KBDocument, KBEntity, KBPoint, KBPortLog, KBProfile
+from app.models.setting import Setting
 from app.schemas.career_kb import (
     ImportReport,
     ImportedBaseRead,
+    IngestParsedReport,
+    IngestParsedRequest,
     SkippedFileRead,
     ConsolidationReport,
     KBAdaptApplyRequest,
@@ -35,6 +39,8 @@ from app.schemas.career_kb import (
     KBEntityPatch,
     KBEntitySummary,
     KBInboxPoint,
+    KBPointBulkResponse,
+    KBPointBulkState,
     KBPointCreate,
     KBPointOut,
     KBPointPatch,
@@ -277,6 +283,40 @@ def list_points(
     return inbox
 
 
+def _apply_point_state(point: KBPoint, new_state: str) -> None:
+    """Mirror the single-PATCH approved_at contract for bulk-state too."""
+    if new_state == "approved":
+        if point.approved_at is None:
+            point.approved_at = datetime.now(UTC)
+    else:
+        # Leaving 'approved' invalidates the approval: approved_at means
+        # "when the CURRENT text was approved", and an MCP edit demotes.
+        point.approved_at = None
+    point.state = new_state
+
+
+@router.post("/points/bulk-state", response_model=KBPointBulkResponse)
+def bulk_point_state(
+    payload: KBPointBulkState,
+    db: Annotated[Session, Depends(get_db)],
+):
+    """Mass approve or retire. Per-id honest results; unknown ids do not
+    abort the rest of the batch. draft is not a legal target."""
+    results = []
+    # One result row per unique id, in first-occurrence order: a repeated id is
+    # one point, and echoing it twice would misreport the batch size.
+    for pid in dict.fromkeys(payload.ids):
+        point = db.get(KBPoint, pid)
+        if point is None:
+            results.append({"id": pid, "ok": False, "state": None, "detail": "not found"})
+            continue
+        _apply_point_state(point, payload.state)
+        results.append({"id": pid, "ok": True, "state": point.state, "detail": None})
+    db.commit()
+    career_exports.best_effort_refresh(db)
+    return KBPointBulkResponse(results=results)
+
+
 @router.patch("/points/{point_id}", response_model=KBPointOut)
 def patch_point(
     point_id: UUID,
@@ -293,15 +333,7 @@ def patch_point(
             raise HTTPException(status_code=404, detail="Target entity not found")
         point.entity_id = data["entity_id"]
     if data.get("state") is not None:
-        new_state = data["state"]
-        if new_state == "approved":
-            if point.approved_at is None:
-                point.approved_at = datetime.now(UTC)
-        else:
-            # Leaving 'approved' invalidates the approval: approved_at means
-            # "when the CURRENT text was approved", and an MCP edit demotes.
-            point.approved_at = None
-        point.state = new_state
+        _apply_point_state(point, data["state"])
     if data.get("text") is not None:
         point.text = data["text"]
     if data.get("tags") is not None:
@@ -533,6 +565,97 @@ def _parse_consolidation_slugs(raw: str | None) -> list[str]:
     return list(dict.fromkeys(slug.strip() for slug in parsed))
 
 
+def _source_error(index: int, path: tuple, msg: str, err_type: str) -> dict:
+    """One validation error for one source, in FastAPI's own {loc, msg, type}
+    shape. The handler shares this endpoint's 422 with FastAPI's request-model
+    errors, so a bespoke {key, error} dialect would make the same status code
+    carry two incompatible detail shapes."""
+    return {"loc": ["body", "sources", index, *path], "msg": msg, "type": err_type}
+
+
+@router.post("/ingest-parsed", response_model=IngestParsedReport)
+def ingest_parsed(
+    payload: IngestParsedRequest,
+    db: Annotated[Session, Depends(get_db)],
+    write_origin: Annotated[WriteOrigin, Depends(get_write_origin)],
+):
+    """Caller-parsed resume intake: persist into the Career KB, mint no bases.
+
+    Strict and atomic — every source is validated as ResumeData before any
+    write; one failure 422s the batch with per-source detail and persists
+    nothing. Re-runs merge. Points land as DRAFTS: an agent transcribed them,
+    so POST /api/kb/points/bulk-state (or the /career inbox) is the gate that
+    puts them in front of composed resumes.
+    """
+    errors: list[dict] = []
+    sources: list[tuple[str, dict]] = []
+    first_use: dict[str, int] = {}
+    for index, src in enumerate(payload.sources):
+        if src.key in first_use:
+            # Duplicate keys corrupt merge_sources provenance and make the
+            # last-source-wins profile seed depend on list order.
+            errors.append(_source_error(
+                index, ("key",),
+                f"duplicate source key {src.key!r} (first used at index {first_use[src.key]})",
+                "value_error",
+            ))
+            continue
+        first_use[src.key] = index
+        try:
+            data = ResumeData.model_validate(src.data).model_dump(mode="json")
+        except ValidationError as exc:
+            # Project each error onto exactly {loc, msg, type}, and ask
+            # pydantic for nothing else: a ResumeData validator that raises
+            # ValueError puts the exception OBJECT in `ctx`, and json.dumps on
+            # an HTTPException detail carrying it turns this 422 into a 500.
+            errors.extend(
+                _source_error(
+                    index,
+                    ("data", *err.get("loc", ())),
+                    err.get("msg") or "invalid value",
+                    err.get("type") or "value_error",
+                )
+                for err in exc.errors(
+                    include_url=False, include_context=False, include_input=False
+                )
+            )
+            continue
+        sources.append((src.key, data))
+    if errors:
+        raise HTTPException(status_code=422, detail=errors)
+
+    report = kb_consolidation.consolidate_deterministic(
+        db, sources,
+        origin=write_origin.origin,
+        origin_detail=write_origin.detail,
+        commit=False,
+    )
+    # Only a run that actually landed something may burn the one-shot seed
+    # flag — a content-free ingest would otherwise permanently disable the
+    # startup base-resume seed.
+    landed = report.entities_created or report.points_created
+    if landed and db.get(Setting, kb_import.KB_SEEDED_FLAG) is None:
+        db.add(Setting(key=kb_import.KB_SEEDED_FLAG, value="1"))
+    db.commit()
+    career_exports.best_effort_refresh(db)
+    return IngestParsedReport(
+        entities=[
+            {"id": e.id, "kind": e.kind, "title": e.title, "org": e.org, "created": e.created}
+            for e in report.entities
+        ],
+        points=[
+            {"id": p.id, "entity_id": p.entity_id, "text": p.text}
+            for p in report.points
+        ],
+        entities_created=report.entities_created,
+        entities_matched=report.entities_matched,
+        points_created=report.points_created,
+        duplicates_skipped=report.duplicates_skipped,
+        skills_merged=report.skills_merged,
+        warnings=report.warnings,
+    )
+
+
 # Sync def (not async): extract_text + parse_resume_text + consolidate() do
 # blocking CPU + multi-second LLM work — FastAPI runs sync handlers in a
 # threadpool, so this keeps a consolidate run from stalling the event loop.
@@ -582,6 +705,7 @@ def consolidate_endpoint(
     files: list[UploadFile] = File(default=[]),
 ):
     sources: list[tuple[str, dict]] = []
+    parse_warnings: list[str] = []
 
     # slug sources
     slug_list = _parse_consolidation_slugs(slugs)
@@ -609,17 +733,19 @@ def consolidate_endpoint(
         except Exception as exc:  # noqa: BLE001 — parser libraries raise their own error types
             raise HTTPException(status_code=400, detail=f"{safe_name}: {exc}") from exc
         try:
-            parsed = kb_consolidation.parse_resume_text(db, text)
+            parsed, warnings = kb_consolidation.parse_resume_text(db, text)
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=f"{safe_name}: {exc}") from exc
         except RuntimeError as exc:
             # Upstream LLM outage — retryable, not a bad file.
             raise HTTPException(status_code=502, detail=f"{safe_name}: {exc}") from exc
         sources.append((safe_name, parsed))
+        parse_warnings.extend(f"{safe_name}: {warning}" for warning in warnings)
 
     if not sources:
         raise HTTPException(status_code=400, detail="Provide at least one slug or file")
 
     report = kb_consolidation.consolidate(db, sources)
+    report.warnings.extend(parse_warnings)
     career_exports.best_effort_refresh(db)
     return report

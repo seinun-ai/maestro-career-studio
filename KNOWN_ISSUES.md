@@ -27,7 +27,7 @@ These have real coverage and are unlikely to move under you.
 - **The Career KB → resume → application chain.** Approved evidence composes
   verbatim; rewriting is a separate, consented step. Resume versions are
   recorded, so nothing is one-way.
-- **The MCP server.** 65 tools across six profiles, cold-install tested in CI
+- **The MCP server.** 73 tools across six profiles, cold-install tested in CI
   against the exact command the README gives you.
 - **Data stays local.** No telemetry leaves your machine — see the extension
   section of the README for what the one telemetry endpoint stores and how to

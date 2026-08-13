@@ -161,12 +161,25 @@ session for the same job+base was created — e.g. "Start over") | `abandoned`
 (`POST /tailoring-sessions/{id}/close` — e.g. after "use base as-is").
 `gaps_json` is FROZEN at creation; resolutions accumulate against it.
 
-**KB-grounded auto-resolution.** At creation, enrichment receives a structured
-Career-KB snapshot + the base's disabled entries; `kb_resolver` SELF-NOMINATES
-every library item per missing-skills gap and gates all proposals
-deterministically (`verify_candidate`: approved point + literal `term_in_text`
-containment + canonical target ⇒ `auto`; else suggestion chip — LLM proposals
-are additive only, unreliable even for literal hits). Verified candidates stamp
+**KB-grounded auto-resolution.** At creation, `gap_enrichment.stamp_library_candidates`
+receives a structured Career-KB snapshot + the base's disabled entries;
+it SELF-NOMINATES every library item per missing-skills gap and gates all
+proposals deterministically (`kb_resolver.verify_candidate`: approved point +
+literal `term_in_text` containment + canonical target ⇒ `auto`; else suggestion
+chip — LLM proposals are additive only, unreliable even for literal hits).
+**This gating pass is LLM-FREE and runs unconditionally** — whether or not
+enrichment ran, and whether or not it failed. It used to sit downstream of
+`llm.call_openai` INSIDE `enrich_gaps`, which meant `enrich=false` or a provider
+outage silently cost KB coverage detection; that was code placement, not design.
+`enrich_gaps` now only merges prose and stashes its raw, ungated nominations
+under the private `_LLM_PROPOSALS_KEY`, which the gating pass consumes and pops.
+The pop is what keeps that private key out of the frozen `gaps_json`: both the
+stash and the pop are gated on the same `kb_snapshot is None` test, and
+`create_session` re-scrubs via `_pop_stash` if gating raises. A failure in the
+gating pass DEGRADES (warn + ungated gaps), matching the snapshot-load and
+enrichment branches either side of it — KB library evidence is an enhancement,
+and session creation has already paid for a full engine run.
+Verified candidates stamp
 `library_candidates`; auto-eligible ones pre-store resolutions with
 `payload.provenance` (`library_auto`/`kb_auto`/`kb_profile` — system-planned,
 NOT user work; quick tailor's in-progress guard ignores them). `enable_entry`
@@ -181,8 +194,9 @@ exact token into the enrichment-suggested skills group (else "Additional
 Skills"), provenance `wording_auto`. Deliberately NOT extended to `dual_place`
 (the fix is prose corroboration) or `absent` (honesty rule — user consent
 required). Auto planning runs AFTER the enrichment try-block, so wording autos
-survive `enrich=false` and enrichment failure; KB/library autos still require
-the enrichment pass. Quick tailor's `mirror_wording` switch governs wording
+survive `enrich=false` and enrichment failure — and so do KB/library autos,
+since the gating pass above is unconditional. Only the LLM's *additive*
+proposals depend on `enrich=true`. Quick tailor's `mirror_wording` switch governs wording
 autos, `keywords_into_skills` governs `kb_profile` autos; the diff endpoint
 collapses `wording_auto` into the `kb_auto` label.
 
@@ -377,10 +391,12 @@ transaction.
   MCP `list_base_resumes`). Score rows outlive the base they scored;
   `latest_scores` filters only `base_resume` targets, never `application` ones.
   **`role_category`** (NOT NULL, default `'unknown'`) is the role the resume
-  targets, drawn from the SAME vocabulary as `Job.role_category`
-  (`services/role_categories` ← `ats/data/role_categories.yaml`), so the two
-  axes cross-tab with `=`; roles nested under a category are picker-only, never
-  storable and never in `adjacent:` (they would tie `propose_from_resume`).
+  targets, drawn from the SAME 25-family, industry-wide vocabulary as
+  `Job.role_category` (`services/role_categories` ←
+  `ats/data/role_categories.yaml`), so the axes cross-tab with `=`. The family
+  expansion is additive: existing keys remain stable. Optional one-line
+  descriptions clarify ambiguous/emerging families; nested roles are
+  picker/search aliases only, never storable or in `adjacent:`.
   **`role_label`** (nullable) holds a free-text tag's words, `role_category`
   becoming its projection — mapping, `other` if unmapped, `unknown` untagged
   (still the visible "Role not set" state). Catalog text typed verbatim
@@ -402,7 +418,15 @@ transaction.
 - **ResumeData `extra_sections`** (custom sections): the resume is fixed core
   (contact/summary/skills/experience/projects/education/certifications) PLUS an
   ordered `extra_sections` list — a discriminated union on `type`: `entries`
-  (structured) or `bullets` (flat); never both. `key` is the stable slug
+  (structured) or `bullets` (flat); never both. Two core fields are optional by
+  design: `ExperienceEntry.start_date` and `EducationEntry.degree` — an undated
+  role earns no recency credit, fails no S3 gate, and enters no employment-gap
+  math (only a non-empty unparseable date is a defect); both bundled templates
+  guard the empty cases. The canonical common-section vocabulary (publications,
+  licenses, clearance, …) is `services/extra_section_presets.py` — the ONE
+  catalog, substituted into the `kb_resume_parse` prompt as
+  `$extra_section_presets` BEFORE `$resume_text` (resume text is data and must
+  not be able to inject the catalog position; order pinned by test). `key` is the stable slug
   identity (references pass `section_key`; unique case-insensitively; must not
   shadow a core field name), `title` is editable display text; list order is
   render order. Every write path normalizes through `ResumeData` so base PUT,
@@ -426,7 +450,10 @@ transaction.
 - **Template**: resume templates with `default_formatting` and an `engine`
   column (`'latex'` default | `'typst'`, **immutable after creation** — 400 on
   change); status draft→ready via validation, which dispatches by engine but
-  runs the SAME pdfplumber certification gate on the produced PDF. LaTeX:
+  runs the SAME pdfplumber certification gate on the produced PDF; the validate
+  response and `TemplateDetail.parse_report` carry the full probe report
+  (`missing`, `headers_missing`, `extra_sections_supported/missing`) so a
+  failing gate is actionable through web, chat, and MCP alike. LaTeX:
   Jinja source → pdflatex subprocess (incl. the interword-space pre-input).
   Typst: the `source` IS the .typ text — no Jinja/escape layer; data flows via
   typst-py `sys_inputs` as JSON strings, compile is in-process,
@@ -459,9 +486,11 @@ transaction.
   `years_experience` (one number, comparable to extracted JD year bounds),
   employment types, locations, remote, salary, notes. Catalog labels are
   DERIVED and **`role_categories` is a COMPUTED PROJECTION** of the parents, so
-  consumers needed no change. Invalid keys 422, never `normalize()`d. Setup
-  status uses it for missing-role suggestions (an unmapped custom role
-  deliberately drives none); persona drafting uses it as a goals signal.
+  consumers needed no change. Writes 422 invalid keys, never `normalize()`ing
+  them; reads degrade a stale favored-role per item to label-preserving free
+  text (or skip it when no usable label exists), preserving every other valid
+  preference field. Setup status uses it for missing-role suggestions (an
+  unmapped custom role drives none); persona drafting uses it as a goals signal.
 - **Career KB** (`models/career_kb.py`, `/career` pages): the durable record
   of experience/projects/education/certs + facts; deliberately a sidecar —
   tailoring does NOT read KB context. Its web UI is view-first: profile/entity
@@ -492,22 +521,44 @@ transaction.
   each base commits as it is minted, render is best-effort (`render_error` in
   the report), a failed file is skipped with a reason, and a re-run is a merge,
   not a 409 storm. `.json` short-circuits to `ResumeData` validation (no LLM).
-  The consolidation source key is the MINTED SLUG, not the filename —
-  `KBPortLog.resume_key` means a slug everywhere else. Slug collisions append a
-  counter (REST create 409s permanently on a soft-deleted slug). A successful
-  import sets `kb.seeded`. Role is proposed DETERMINISTICALLY and only when
-  exactly one category matches (`role_categories.propose_from_resume`); ties
-  return `unknown`. Imported points keep auto-approve — a documented exception
-  to the review-first rule, because they are verbatim from a resume the user
-  already wrote. `seed_career_kb` EXCLUDES the shipped `example` base:
-  `_seed_profile` is non-clobbering, so seeding the demo would make the demo
-  person the user's permanent KBProfile contact. **This seed is the ONBOARDING
-  path, not migration scaffolding.** `kb_consolidation.consolidate(session,
-  sources)` is generic over any `(resume_key, ResumeData)` list;
-  `seed_career_kb` feeds it every active base behind the one-shot `kb.seeded`
-  flag. A candidate for EXTENSION, never for removal. `_seed_profile` takes
-  contact/summary from the LAST source (sources are ordered oldest-updated
-  first, so the newest resume wins). `compose_resume_data(session, *,
+  The parse prompt is extras-aware: non-core sections route into
+  `extra_sections` (preset catalog keys when a heading matches) and are never
+  silently dropped; validation failures salvage per-entry — only the rejected
+  list rows are dropped (never contact/summary errors), each drop reported in
+  `parse_warnings`. The consolidation source key is the MINTED SLUG, not the
+  filename — `KBPortLog.resume_key` means a slug everywhere else. Slug
+  collisions append a counter (REST create 409s permanently on a soft-deleted
+  slug). A successful import sets `kb.seeded`. Role is proposed
+  DETERMINISTICALLY and only when exactly one category matches
+  (`role_categories.propose_from_resume`); ties return `unknown`. Imported
+  points keep auto-approve — a documented exception to the review-first rule,
+  because they are verbatim from a file the user already wrote.
+  **Caller-parsed ingest** (`POST /api/kb/ingest-parsed`): JSON
+  `{sources:[{key,data}]}`, provenance via the standard write-origin headers —
+  atomic `ResumeData` validation (any failure 422s the batch in FastAPI's
+  `{loc,msg,type}` shape, nothing persisted; ≤20 sources, unique slug keys),
+  then `consolidate_deterministic` (identity-key entity match, verbatim one
+  point per bullet with port-log rows, no LLM), no base minting. Points land
+  as DRAFTS (`origin="mcp"`) — agent transcription is NOT the verbatim-file
+  exception; `kb_approve_points` is the review gate. Re-runs merge, but only
+  within this path: the LLM resolver may canonicalize names this path matches
+  literally. Retired text is never resurrected; archived-entity landings and
+  dropped `extra_sections` surface in `warnings`; `kb.seeded` is set only when
+  content actually landed. `consolidate_deterministic` is a NEW entry point;
+  `consolidate()` (LLM resolve+cluster) is unchanged for import/seed. **Batch
+  point state** (`POST /api/kb/points/bulk-state`): `{ids, state:
+  approved|retired}` (deduped, 1–500) → per-id `{id, ok, state, detail}`;
+  unknown ids do not abort the rest; `approved_at` mirrors single PATCH. The
+  `/career` draft inbox has a confirm-gated "Approve all shown" over the
+  listed set (unsaved row edits are excluded, never silently approved). `seed_career_kb` EXCLUDES the shipped `example`
+  base: `_seed_profile` is non-clobbering, so seeding the demo would make the
+  demo person the user's permanent KBProfile contact. **This seed is the
+  ONBOARDING path, not migration scaffolding.** `kb_consolidation.consolidate`
+  is generic over any `(resume_key, ResumeData)` list; `seed_career_kb` feeds
+  it every active base behind the one-shot `kb.seeded` flag. A candidate for
+  EXTENSION, never for removal. `_seed_profile` takes contact/summary from the
+  LAST source (sources are ordered oldest-updated first, so the newest resume
+  wins). `compose_resume_data(session, *,
   entity_ids=None)`: `None` composes the WHOLE KB (`/kb/compose`,
   `/kb/context`, chat grounding); a list narrows it for `POST
   /api/base-resumes/from-kb`. The check is `is not None` — an EMPTY selection
@@ -554,7 +605,14 @@ transaction.
 - **ResumeLintReport** (health check, framework v2): gates are `tier:
   "fatal"|"serious"` × `status: "pass"|"fail"|"not_assessed"`
   (`health_gates.py:3`), scored by `health_score.py`; a failing fatal, unwaived
-  gate BLOCKS tailoring-session creation. Bullet classification overrides (with
+  gate BLOCKS tailoring-session creation. The evidence ladder covers summary +
+  experience/projects/**custom-section** bullets (locations `extra:<key>`), so
+  an extras-heavy resume (academic CV, licenses) scores on its real content
+  instead of 0/F; extras are never hot zones and never get rewrite
+  suggestions — no bullet-scoped `/edits` op exists for them (§11 item 20), so
+  both frontend cards render extras suggestions copy-only. Stale `extra:`
+  locations (section renamed/deleted between runs) degrade to empty text, never
+  raise. Bullet classification overrides (with
   reason) let the user overrule an evidence tier from the health report page.
   **Attention zones are a SCORING input, not a UI layer** (owner decision).
   `health_zones.hot_locations` returns the summary plus whichever ONE section
@@ -876,7 +934,9 @@ transaction.
   (run/get + waivers), the full tailoring workflow (session tools take
   **`tailoring_session_id`** — breaking rename, no legacy alias; `resolve_gaps`
   accepts six actions incl. the evidence-carrying
-  `enable_entry`/`port_kb_point`, evidence-gated server-side — see §4), render
+  `enable_entry`/`port_kb_point`, evidence-gated server-side — see §4;
+  `quick_tailor` is the profile-driven fast path, see the guided-workflow
+  block below), render
   + slim PDF inspection (`get_rendered_pdf` returns
   metadata/paths/`artifact_dir` — **no** `page_images_b64`;
   `get_rendered_pdf_page_image` is the opt-in one-page visual;
@@ -884,19 +944,28 @@ transaction.
   `.playwright-mcp/uploads/` — pair with Playwright `--output-dir` on
   `.playwright-mcp` and pass `upload_path` as-is), application tracking, the
   apply package (QA answers, cover letter), templates (draft/validate only;
-  `create_template_draft` accepts optional `engine`), explore analytics,
+  `create_template_draft` accepts optional `engine`, and its docstring carries
+  the Typst constraints — `sys_inputs` read pattern, the pre-compile
+  `@preview` package rejection, the vendored-XCharter-plus-embedded font roster
+  with silent substitution, server-applied `date_format`, and the required
+  `extra_sections` block; `validate_template` returns `parse_report`), explore analytics,
   `get_autofill_profile` (`profile.eeo` consent-gated), and
   `get_career_context` (read-only composed resume + beyond-the-resume memory;
   anti-fabrication rule in the docstring). The Career KB is writable via MCP
   (`career` profile): reads `kb_list_entities` / `kb_get_entity` /
   `kb_list_points` carry IDs that `get_career_context`'s prose does not; writes
   are `kb_capture`, `kb_edit_point`, `kb_create_entity`, `kb_edit_entity`,
-  `kb_edit_profile`. **No write tool has a `state` parameter** — approving from
-  MCP is unrepresentable — and a `kb_edit_point` text change forces
-  `state="draft"`, so an MCP rewording leaves `/kb/compose`, `/kb/context` and
-  `career.md` until re-approved at `/career`. Entity/profile writes land
-  directly, gated by a `record_consent`-style docstring convention. No delete
-  tool exists; document upload stays web-only. **Scoped profiles**
+  `kb_edit_profile`, plus the onboarding tools `kb_ingest_resume` /
+  `kb_approve_points` / `create_base_resume_from_kb` (with `list_base_resumes`
+  / `get_base_resume` / `render_pdf` / `get_rendered_pdf`, so the arc finishes
+  with a PDF). `kb_edit_point` still has no `state` param — a text change
+  forces `state="draft"`. `kb_approve_points` is the ONE approval path from
+  MCP (`approved|retired` only; per-id honest results), and its gate is a
+  DOCSTRING convention, not server enforcement — call ONLY after the user
+  explicitly approved the listed points (`record_consent` precedent). Ingest
+  lands drafts, so nothing an agent writes reaches composed resumes without
+  that step. Entity/profile writes land directly, same convention. No delete
+  tool; document upload stays web-only. **Scoped profiles**
   (`MAESTRO_CS_MCP_PROFILE`, default `full`): same binary registers a filtered
   tool set — `hunt` / `apply` / `explore` / `templates` / `career` — so
   apply+Playwright sessions do not load explore/template CRUD; allowlists in
@@ -911,6 +980,60 @@ transaction.
   the Companion can autofill/attach when it mounts (§11 item 19); direct
   Maestro CS MCP + browser fill/upload is the supported fallback. Never
   headless / stealth / CAPTCHA bypass.
+- **Guided tailoring workflow** (`mcp_server/workflow.py`): wrapped tools carry a
+  `next` envelope (`state`/`blocking`/`offer`/`ask_user`/`options`/`call`) that
+  walks §5's arc — score all bases → recommend → quick|custom → tailor → render
+  → apply readiness — unnarrated. `workflow.py` is PURE (no httpx/DB/LLM), a
+  **deliberate exception to the thin-wrapper rule**: the sequence must live
+  somewhere and FastMCP `instructions=` is surfaced inconsistently across
+  clients; purity is what keeps it testable under DB-free `mcp_server/tests`.
+  - **Server ranks, agent narrates.** `rank_bases` is deterministic (composite
+    desc, slug tie-break), so identical scores always yield the same pick and
+    only prose differs. `close_call` (< `CLOSE_CALL_MARGIN` 3.0) means present a
+    CHOICE, not a verdict — NOT `auto_apply.auto_pick_margin`, which means "pick
+    without asking" in the hunt lane. `coverage_warning` comes off the
+    RECOMMENDED row, not the table: `_calc_coverage_signal` compares each
+    resume's OWN matched ratio, so bases can disagree; only
+    `extracted_count == 0` is uniform.
+  - **`offer` ≠ `ask_user`.** `score_ats` emits only a non-blocking `offer` —
+    mass JD capture scores twenty postings in a loop and a question on each
+    would derail it; `ask_user` appears only mid-arc, after the user commits.
+    **A hint never names a tool the active profile did not register** (`hunt`
+    has `score_ats`, no tailoring tools) — options filter through
+    `profiles.allowed_tools()`.
+  - **Two controls.** `mcp_workflow` `{hints: bool}` (`GET/PUT
+    /api/settings/mcp-workflow` + Settings card) is the USER's master switch;
+    `brief=true` on `score_ats` is the AGENT's, for triage loops, checked FIRST
+    so a loop pays no settings read. Tools **always wrap** (`next: null` when
+    suppressed) — one tool must not return two shapes per runtime flag.
+  - **LLM-free arc.** MCP `create_tailoring_session` defaults `enrich=False`;
+    `quick_tailor` = create + `POST .../apply-profile` (deterministic fill) →
+    agent authors ops → `tailor_session(ops=…)` skips the backend LLM pass.
+    Filling precedes authoring so saved resolutions and applied ops cannot
+    disagree (§11 item 13). `apply-profile` discards
+    `fill_checkpoint_session`'s standing-instruction return (persisting it would
+    break the web path's transience), so the hint carries it as the
+    `tailor_session` option's `user_prompt`, ONLY when the session has no note
+    of its own — else quick tailor over MCP ignores a setting the web obeys.
+    **The caller-ops honesty rule is enforced by DOCSTRING, not the server**:
+    `apply_edits` has no honesty gate, keyword-survival is LLM-path only. The
+    server-side evidence gates (`save_resolutions` re-running
+    `enable_entry`/`port_kb_point`) still hold.
+  - **Apply readiness** reads `setup/status`'s `autofill` block. There is no
+    cross-server introspection, so the server cannot know whether the client
+    holds Playwright — the offer is conditional and points at the playbook
+    rather than asserting a capability.
+- **Onboarding workflow** (`workflow.py`): `kb_ingest_resume` (drafts) →
+  `kb_approve_points` (the user's gate) → `create_base_resume_from_kb` →
+  `render_pdf` walks ingest-several → KB → role-targeted bases with zero
+  in-house LLM (the client agent parses/authors; ingest the CURRENT resume
+  first — over single-source MCP calls `_seed_profile` is first-write-wins).
+  Ingest hints are offer-only (multi-resume loop, same mass-capture lesson as
+  `score_ats`); `brief=true` suppresses before any settings read. Hint options
+  carry only verbatim-callable args or none at all, offer prose is derived
+  from the filtered options, and composers take the requested state explicitly
+  rather than inferring intent from results. Scoring is mentioned in prose,
+  never as an option — it needs a `job_id` no composer can know.
 - **In-app chat** (`services/chat_agent.py` + `chat_tools.py`): a distinct
   toolset (resume edit, KB capture, template admin including the mutations MCP
   deliberately lacks). Its resume-edit tool runs the SAME pipeline as the REST
@@ -1322,7 +1445,11 @@ review fixes referenced throughout this file) → 2026-07-15 parallel delegation
 tasks (MCP apply-package tools; health-check-v2 override UI) → 2026-07-16 UI
 polish (Career KB + extension Q&A) → **2026-07-16 custom resume sections
 (`extra_sections`) phases 1-2** (fixed-core-plus-typed-extras, then versioned
-ATS evidence + stable-key gap placement).
+ATS evidence + stable-key gap placement) → MCP guided tailoring (caller-authored
+ops, hint envelope) → MCP onboarding: reversed "approving from MCP is
+unrepresentable" — a draft gate needs an approver wherever review happens, and
+agent transcription is NOT the verbatim-file exception, so ingest lands drafts
+and consent-gated `kb_approve_points` is the one approval path from MCP.
 
 ## 11. Known deferred items (priority order)
 
@@ -1363,10 +1490,14 @@ ATS evidence + stable-key gap placement).
 15. Typst phase 2 (the LaTeX retirement itself is §13): `typst query` AST
     introspection over source-text capability heuristics; web engine picker;
     in-product .tex→Typst conversion (expose `scripts/template_parity.py
-    --compare` as a backend tool; add a Typst section to `chat_system.txt`).
+    --compare` as a backend tool).
 16. Onboarding intake: entity resolution ACROSS kinds (a certificate merges
     into its experience entity, not a sibling); a re-runnable "import more";
-    bounding LLM cost (file cap of 10 in `services/kb_import`).
+    bounding LLM cost (file cap of 10 in `services/kb_import`); KB entity
+    kinds for extras content — ingest now captures Publications/Licenses/etc.
+    into `extra_sections`, but consolidation still mints only
+    experience/project/education/certification entities, so extras never
+    reach the Career KB.
 17. ATS follow-ups: (a) alias/adjacency vocabulary via an OFFLINE human-gated
     miner over stored `extracted_json`, guarded by
     `SkillMatcher._tokens_contained` — until then the JD side is unenforced;
@@ -1385,6 +1516,13 @@ ATS evidence + stable-key gap placement).
 20. `extra_sections` remainder: calibrate the `extra_only` multiplier; nested
     edit ops sit behind item 1; KB-to-custom-section porting stays OPTIONAL
     (`compose_resume_data()` emits `extra_sections: []`).
+21. MCP onboarding follow-ups: `near_duplicate_of` hints in the ingest report
+    (normalized-distance vs existing points, so the agent can retire one copy
+    without the LLM clusterer); a batch `sources` variant of
+    `kb_ingest_resume` (single-source calls make profile seeding
+    order-dependent); a consent story for `_seed_profile`/`_merge_skills` —
+    profile contact and skills have no draft state yet compose onto EVERY
+    base; `enabled: false` entries still ingest (LLM-path parity, revisit).
 
 ## 12. Gotchas that have bitten before
 
@@ -1424,6 +1562,13 @@ ATS evidence + stable-key gap placement).
   raises `CapabilityMissing`; unprobed models are never blocked). `run_turn` is
   a generator — anything it raises fires after the SSE headers are out and
   reaches the browser as a truncated stream.
+- **A probe must issue the SAME call as the surface it measures**: same client,
+  same provider routing (`llm._is_gemini_model` — Gemini never reaches the
+  OpenAI client), and the same per-model kwargs from `llm.completion_extras`
+  (the one site for rules like gpt-5.6 needing `reasoning_effort="none"` before
+  it accepts function tools). A probe that re-implements the call measures a
+  call the app never makes, and its stored row then SHADOWS reality: a false
+  tools=No 422'd every chat message for a model whose chat worked.
 - **LLM provider outages are ONE exception type**: `llm.py` normalizes every
   provider failure to `llm.LLMProviderError`; `app.main` maps it to **502 + the
   provider's message** for EVERY router. Never catch `openai.*` in routers, and

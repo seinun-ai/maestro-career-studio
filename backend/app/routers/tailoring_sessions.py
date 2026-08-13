@@ -15,7 +15,7 @@ from app.schemas.tailoring_session import (
     TailorRequest,
     TailorResponse,
 )
-from app.services import ats_score, quick_tailor, tailoring_session
+from app.services import application_render, ats_score, quick_tailor, tailoring_session
 
 logger = logging.getLogger(__name__)
 
@@ -101,6 +101,47 @@ def close_tailoring_session(session_id: UUID, db: Annotated[Session, Depends(get
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
+@router.post("/{session_id}/apply-profile", response_model=TailoringSessionRead)
+def apply_profile(session_id: UUID, db: Annotated[Session, Depends(get_db)]):
+    """Fill every UNRESOLVED gap from the saved quick-tailor profile, then stop.
+
+    Deterministic and LLM-free: quick_tailor.plan_resolutions over the frozen
+    gaps, routed through save_resolutions so the honesty gate holds. This is
+    the agent-facing half of quick tailor — the MCP path calls this, reads
+    what was planned, and authors its own typed ops, so the saved resolutions
+    and the applied ops cannot disagree (SYSTEM.md §11 item 13, the weakness
+    that made a combined fill+tailor call unsafe for an agent caller). The
+    /tailor route's apply_profile flag is unchanged and still serves the web
+    app's one-call path.
+
+    The discarded return value is DELIBERATE, and incurs a debt the MCP
+    workflow layer must pay: fill_checkpoint_session returns the profile's
+    standing-instruction fallback, which both other quick-tailor paths pass
+    into tailor() as user_prompt. Persisting it here is wrong — the web path
+    keeps it transient on purpose — so the MCP caller must read the profile
+    and pass the instruction into its own tailor_session call. Left unpaid,
+    quick tailor over MCP would ignore a setting the web app obeys, which is
+    the "one saved setting must not mean two things" trap §4 warns about.
+    """
+    row = _get_or_404(db, session_id)
+    try:
+        quick_tailor.fill_checkpoint_session(row, session=db)
+    except (
+        tailoring_session.StaleSessionError,
+        tailoring_session.SessionNotOpenError,
+    ) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        # Same mapping patch_resolutions uses for this service's plain
+        # ValueErrors (unknown gap_id, bad placement target, an unloadable
+        # base on a legacy row with no base_content_hash, which staleness
+        # treats as fresh). Without it those surface as a 500 to an agent
+        # caller, which reads as "the server is broken" rather than "your
+        # session is unusable".
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return row
+
+
 @router.post("/{session_id}/tailor", response_model=TailorResponse)
 def tailor_session(
     session_id: UUID,
@@ -145,16 +186,37 @@ def tailor_session(
     # exists from session creation; the tailored row was just written. A compare
     # failure here (e.g. engine/config version mismatch with a stale base row)
     # must not mask the already-committed tailor — report success with the error.
+    compare = None
+    compare_error = None
     try:
         compare = ats_score.compare(row.application_id, session=db)
     except ValueError as exc:
         logger.warning("post-tailor compare failed for session %s: %s", session_id, exc)
-        return {
-            "session": row,
-            "compare": None,
-            "compare_error": (
-                f"tailoring succeeded; scores not comparable: {exc} — re-run scoring "
-                f"and GET /api/applications/{row.application_id}/ats-compare"
-            ),
-        }
-    return {"session": row, "compare": compare}
+        compare_error = (
+            f"tailoring succeeded; scores not comparable: {exc} — re-run scoring "
+            f"and GET /api/applications/{row.application_id}/ats-compare"
+        )
+
+    # Render, exactly as the one-shot path does (quick_tailor.run_for_job).
+    # These are the same pipeline reached two ways, and only that one rendered:
+    # in the app a tailored draft arrived with no PDF, so seeing it meant
+    # pressing Save on an unedited draft purely to trigger a compile.
+    #
+    # Deliberately AFTER the compare and outside its failure branch — a compare
+    # failure must not also cost the PDF, which is why compare no longer returns
+    # early. Same degrade-not-fail policy as the one-shot: the tailor is already
+    # committed, and render_resume persists `application.render_error` itself,
+    # which is where the studio reads the reason.
+    pdf_ready = True
+    try:
+        application_render.render_resume(db, row.application_id)
+    except Exception as exc:
+        logger.warning("post-tailor render failed for session %s: %s", session_id, exc)
+        pdf_ready = False
+
+    return {
+        "session": row,
+        "compare": compare,
+        "compare_error": compare_error,
+        "pdf_ready": pdf_ready,
+    }

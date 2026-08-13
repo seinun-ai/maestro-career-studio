@@ -333,6 +333,52 @@ class BackendClient:
             headers=_origin_headers(origin_detail),
         )
 
+    def kb_ingest_resume(
+        self,
+        resume_key: str,
+        data: dict[str, Any],
+        origin_detail: str | None = None,
+    ) -> Any:
+        return self._request(
+            "POST",
+            "/api/kb/ingest-parsed",
+            json={"sources": [{"key": resume_key, "data": data}]},
+            headers=_origin_headers(origin_detail),
+        )
+
+    def kb_approve_points(
+        self,
+        point_ids: list[str],
+        state: str = "approved",
+    ) -> Any:
+        return self._request(
+            "POST",
+            "/api/kb/points/bulk-state",
+            json={"ids": point_ids, "state": state},
+        )
+
+    def create_base_resume_from_kb(
+        self,
+        entity_ids: list[str],
+        role_category: str | None = None,
+        role_label: str | None = None,
+        display_name: str | None = None,
+        include_summary: bool = False,
+        summary: str | None = None,
+    ) -> Any:
+        return self._request(
+            "POST",
+            "/api/base-resumes/from-kb",
+            json=_drop_none(
+                entity_ids=entity_ids,
+                role_category=role_category,
+                role_label=role_label,
+                display_name=display_name,
+                include_summary=include_summary,
+                summary=summary,
+            ),
+        )
+
     def get_autofill_context(
         self, application_id: str | None = None, base: str | None = None
     ) -> Any:
@@ -422,6 +468,16 @@ class BackendClient:
         return self._request(
             "DELETE", f"/api/resume-lint/{kind}/{key}/gates/{gate_id}/waive"
         )
+
+    # ---- settings & setup ----
+    def get_quick_tailor_profile(self) -> Any:
+        return self._request("GET", "/api/settings/quick-tailor").get("value", {})
+
+    def get_mcp_workflow_settings(self) -> Any:
+        return self._request("GET", "/api/settings/mcp-workflow").get("value", {})
+
+    def get_setup_status(self) -> Any:
+        return self._request("GET", "/api/setup/status")
 
     # ---- write ----
     def store_extracted_jd(
@@ -795,6 +851,11 @@ class BackendClient:
 
     def close_tailoring_session(self, session_id: str) -> Any:
         return self._request("POST", f"/api/tailoring-sessions/{session_id}/close")
+
+    def apply_quick_tailor_profile(self, tailoring_session_id: str) -> Any:
+        return self._request(
+            "POST", f"/api/tailoring-sessions/{tailoring_session_id}/apply-profile"
+        )
 
     def resolve_gaps(self, session_id: str, resolutions: list[dict]) -> Any:
         return self._request(

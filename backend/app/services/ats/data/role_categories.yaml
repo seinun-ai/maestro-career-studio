@@ -19,7 +19,7 @@
 # `data_scientist` instead of falling to `other`.
 #
 # A role label that restates a string already in its OWN category's `adjacent`
-# list is intentional, not duplication — 16 of them do. The two lists are read
+# list is intentional, not duplication. The two lists are read
 # by different machinery: `adjacent` is matched against resume/JD titles by the
 # ATS engine and is hashed into `config_version`; `roles` is shown to a human in
 # a picker. Deduplicating them would move `config_version` and invalidate every
@@ -39,23 +39,22 @@
 categories:
   - key: data_scientist
     label: Data Scientist
-    adjacent: [data scientist, machine learning scientist, applied scientist, research scientist]
-    aliases: [ds, data science]
+    # Applied/research scientist titles belong to the dedicated research family;
+    # leaving them here too made exact adjacent phrases tie by construction.
+    adjacent: [data scientist, machine learning scientist]
+    # Niche scientist variants remain searchable without occupying picker rows.
+    aliases: [ds, data science, decision scientist, experimentation scientist, ab testing scientist, marketing data scientist]
     roles:
       - {key: product_data_scientist, label: Product Data Scientist, aliases: [product ds]}
-      - {key: decision_scientist, label: Decision Scientist}
-      - {key: experimentation_scientist, label: Experimentation Scientist, aliases: [ab testing scientist]}
-      - {key: marketing_data_scientist, label: Marketing Data Scientist}
 
   - key: data_analyst
     label: Data Analyst
     adjacent: [data analyst, business intelligence analyst, analytics consultant, reporting analyst]
-    aliases: [analyst, data analytics]
+    # Reporting and growth are contexts for analysis, not durable job families.
+    aliases: [analyst, data analytics, reporting analyst, growth analyst]
     roles:
       - {key: marketing_analyst, label: Marketing Analyst}
       - {key: financial_analyst, label: Financial Analyst}
-      - {key: growth_analyst, label: Growth Analyst}
-      - {key: reporting_analyst, label: Reporting Analyst}
       # A BI Analyst reads dashboards; a BI Developer builds them. This one
       # belongs with the analysts, matching `business intelligence analyst`
       # in the adjacent list above.
@@ -63,28 +62,31 @@ categories:
 
   - key: data_engineer
     label: Data Engineer
-    adjacent: [data engineer, analytics engineer, etl developer, data platform engineer]
-    aliases: [de, data engineering]
+    # Analytics Engineer now owns its exact title; Data Engineer remains here.
+    adjacent: [data engineer, etl developer, data platform engineer]
+    # Streaming names an architecture specialization, so keep it as an alias.
+    aliases: [de, data engineering, streaming data engineer]
     roles:
       - {key: etl_developer, label: ETL Developer}
       - {key: data_platform_engineer, label: Data Platform Engineer}
       - {key: big_data_engineer, label: Big Data Engineer}
-      - {key: streaming_data_engineer, label: Streaming Data Engineer}
 
   - key: ai_ml_engineer
     label: AI/ML Engineer
-    adjacent: [machine learning engineer, ml engineer, ai engineer, mlops engineer, deep learning engineer]
-    aliases: [ml_engineer, machine_learning_engineer, ai_engineer, mle, ai/ml engineer, ai ml engineer]
+    # MLOps has its own stored family, so its exact title lives there alone.
+    adjacent: [machine learning engineer, ml engineer, ai engineer, deep learning engineer]
+    # NLP, computer vision and prompt work remain searchable specializations;
+    # the picker stays at the broader AI/ML career-family level.
+    aliases: [ml_engineer, machine_learning_engineer, ai_engineer, mle, ai/ml engineer, ai ml engineer, nlp engineer, natural language processing engineer, computer vision engineer, cv engineer, prompt engineer]
     roles:
       - {key: machine_learning_engineer, label: Machine Learning Engineer}
       - {key: deep_learning_engineer, label: Deep Learning Engineer}
-      - {key: nlp_engineer, label: NLP Engineer, aliases: [natural language processing engineer]}
-      - {key: computer_vision_engineer, label: Computer Vision Engineer, aliases: [cv engineer]}
       - {key: generative_ai_engineer, label: Generative AI Engineer, aliases: [genai engineer, llm engineer]}
 
   - key: analytics_engineer
     label: Analytics Engineer
-    adjacent: [analytics engineer, data engineer, bi developer, dbt developer]
+    description: Builds analytics-ready data models and the transformation layer between data engineering and BI.
+    adjacent: [analytics engineer, bi developer, dbt developer]
     aliases: [ae]
     roles:
       - {key: dbt_developer, label: dbt Developer}
@@ -104,26 +106,19 @@ categories:
   - key: bi_developer
     label: BI Developer
     adjacent: [business intelligence developer, bi engineer, tableau developer, power bi developer]
-    aliases: [bi_engineer, business_intelligence_developer]
-    roles:
-      - {key: tableau_developer, label: Tableau Developer}
-      - {key: power_bi_developer, label: Power BI Developer}
-      - {key: looker_developer, label: Looker Developer}
+    # Dashboard products are tools rather than separate jobs; all three legacy
+    # picker rows remain searchable aliases of the BI Developer family.
+    aliases: [bi_engineer, business_intelligence_developer, tableau developer, power bi developer, looker developer]
+    roles: []
 
   - key: research_scientist
     label: Research Scientist
     adjacent: [research scientist, applied scientist, research engineer]
     aliases: [researcher]
     roles:
-      # `applied scientist` and `research engineer` are DELIBERATELY parented
-      # here even though they are genuinely ambiguous — "applied scientist"
-      # sits in `data_scientist.adjacent` as well, and is the example
-      # `propose_from_resume` cites for why it refuses to break ties. A picker
-      # has no such luxury: every entry must name exactly one parent. So the
-      # two disagree on purpose. `normalize("Applied Scientist")` answers
-      # `research_scientist` because a human picked it from a list, while
-      # `propose_from_resume` still answers `unknown` and asks. Do not
-      # "fix" that by adding these to `adjacent` — that moves `config_version`.
+      # Applied Scientist and Research Engineer stay nested here and their
+      # adjacent titles are owned only by this family. That keeps picker
+      # parenting and deterministic resume proposals aligned.
       - {key: applied_scientist, label: Applied Scientist}
       - {key: research_engineer, label: Research Engineer}
       - {key: quantitative_researcher, label: Quantitative Researcher, aliases: [quant researcher, quant]}
@@ -145,6 +140,7 @@ categories:
 
   - key: mlops_engineer
     label: MLOps Engineer
+    description: Builds and operates the platforms, pipelines, and reliability systems that put ML models into production.
     adjacent: [mlops engineer, machine learning infrastructure engineer, ml platform engineer]
     aliases: [ml_ops, ml_platform_engineer]
     roles:
@@ -161,14 +157,18 @@ categories:
   # and only a category can be suggested by `setup_status`, so nesting them
   # would have left anyone targeting these four with no resume to create.
   - key: security_engineer
-    label: Security Engineer
+    label: Security / Cybersecurity Engineer
     adjacent: [security engineer, application security engineer, cloud security engineer, information security analyst]
-    aliases: [infosec, appsec, security]
+    aliases: [infosec, appsec, security, cybersecurity engineer, cybersecurity analyst]
     roles:
       - {key: application_security_engineer, label: Application Security Engineer}
       - {key: cloud_security_engineer, label: Cloud Security Engineer}
       - {key: detection_engineer, label: Detection Engineer}
       - {key: penetration_tester, label: Penetration Tester, aliases: [pentester]}
+      # Cybersecurity hiring commonly separates monitoring and governance from
+      # security engineering; both still belong to the same stored family.
+      - {key: security_analyst, label: Security Analyst}
+      - {key: grc_analyst, label: GRC Analyst, aliases: [governance risk and compliance analyst]}
 
   - key: platform_engineer
     label: Platform Engineer
@@ -182,8 +182,12 @@ categories:
 
   - key: product_manager
     label: Product Manager
-    adjacent: [product manager, technical product manager, product owner, program manager]
-    aliases: [pm, tpm]
+    # Program Manager moved to the technical-delivery family below; Product
+    # Manager keeps product ownership titles only.
+    adjacent: [product manager, technical product manager, product owner]
+    # `tpm` now belongs to the dedicated technical-program family below; one
+    # abbreviation cannot route to two stored categories by file order.
+    aliases: [pm]
     roles:
       - {key: technical_product_manager, label: Technical Product Manager}
       - {key: data_product_manager, label: Data Product Manager}
@@ -199,6 +203,119 @@ categories:
       - {key: analytics_manager, label: Analytics Manager}
       - {key: director_of_engineering, label: Director of Engineering}
       - {key: head_of_data, label: Head of Data}
+
+  # QA is a first-class engineering track; framework and tool variants stay
+  # nested so the picker does not become a catalog of testing products.
+  - key: qa_engineer
+    label: QA / Test Engineer
+    adjacent: [qa engineer, software development engineer in test, automation test engineer]
+    aliases: [quality assurance engineer, software tester, test engineer]
+    roles:
+      - {key: sdet, label: SDET, aliases: [software development engineer in test]}
+      - {key: automation_test_engineer, label: Automation Test Engineer}
+
+  # Front-line support, systems administration and cloud administration share
+  # the operational career path users search for, without splitting tiny bins.
+  - key: it_support
+    label: IT Support / Systems Administrator
+    adjacent: [it support specialist, help desk specialist, systems administrator, cloud administrator]
+    aliases: [it support specialist, desktop support, sysadmin]
+    roles:
+      - {key: help_desk_specialist, label: Help Desk Specialist}
+      - {key: systems_administrator, label: Systems Administrator, aliases: [system administrator]}
+      - {key: cloud_administrator, label: Cloud Administrator}
+
+  # Networking remains distinct from systems/platform operations because the
+  # target resume evidence and common titles are stable and specific.
+  - key: network_engineer
+    label: Network Engineer
+    adjacent: [network engineer, network architect]
+    aliases: [network administrator]
+    roles:
+      - {key: network_architect, label: Network Architect}
+
+  # Deliberately roleless: DBA is a durable title, but further database-vendor
+  # subdivisions would recreate the niche sub-role problem this round prunes.
+  - key: database_administrator
+    label: Database Administrator
+    adjacent: [database administrator]
+    aliases: [dba]
+    roles: []
+
+  # Solutions, pre-sales and technical-account titles are interchangeable
+  # enough in hiring practice to be one family rather than four small ones.
+  - key: solutions_engineer
+    label: Solutions / Sales Engineer
+    description: Designs customer-facing technical solutions and supports pre-sales or account delivery.
+    adjacent: [solutions engineer, solutions architect, sales engineer, technical account manager]
+    aliases: [presales engineer, pre-sales engineer]
+    roles:
+      - {key: solutions_architect, label: Solutions Architect}
+      - {key: sales_engineer, label: Sales Engineer}
+      - {key: technical_account_manager, label: Technical Account Manager}
+
+  # Enterprise platforms form a consulting/implementation track; product names
+  # are searchable aliases and roles, not separate stored categories.
+  - key: enterprise_apps_consultant
+    label: Enterprise Apps Consultant
+    description: Implements and advises on enterprise platforms such as Salesforce, SAP, and ERP systems.
+    adjacent: [enterprise apps consultant, salesforce consultant, sap consultant, erp consultant]
+    aliases: [salesforce administrator, salesforce developer]
+    roles:
+      - {key: salesforce_consultant, label: Salesforce Consultant}
+      - {key: sap_consultant, label: SAP Consultant}
+      - {key: erp_consultant, label: ERP Consultant}
+
+  # Developer Relations has distinct outward-facing evidence, while advocate
+  # and engineer spellings remain one searchable family.
+  - key: devrel
+    label: Developer Relations
+    description: Connects developers and products through advocacy, technical content, community, and feedback.
+    adjacent: [developer relations, developer advocate]
+    aliases: [developer relations engineer, devrel engineer]
+    roles:
+      - {key: developer_advocate, label: Developer Advocate}
+
+  # FDE is an emerging customer-embedded engineering track. Its adjacent list
+  # intentionally avoids generic software and AI titles to prevent tie storms.
+  - key: forward_deployed_engineer
+    label: Forward Deployed Engineer
+    description: Embeds with customers to adapt and deploy software or AI solutions in real operating environments.
+    adjacent: [forward deployed engineer, forward deployed software engineer]
+    aliases: [forward deployed software engineer, fde]
+    roles:
+      - {key: applied_ai_engineer, label: Applied AI Engineer}
+
+  # Technical delivery leadership is not product management. General Program
+  # Manager remains here for continuity with the former family assignment.
+  - key: technical_program_manager
+    label: Technical Program / Project Manager
+    adjacent: [technical program manager, technical project manager, program manager, it project manager, scrum master]
+    aliases: [tpm]
+    roles:
+      - {key: it_project_manager, label: IT Project Manager}
+      - {key: scrum_master, label: Scrum Master}
+
+  # Supply-chain work is analytically distinct and common enough to warrant a
+  # picker family rather than disappearing into generic business analysis.
+  - key: supply_chain_analyst
+    label: Supply Chain Analyst
+    description: Uses data to improve planning, inventory, logistics, and end-to-end supply-chain operations.
+    adjacent: [supply chain analyst, supply chain manager, logistics analyst]
+    aliases: [supply chain planner]
+    roles:
+      - {key: supply_chain_manager, label: Supply Chain Manager}
+      - {key: logistics_analyst, label: Logistics Analyst}
+
+  # Embedded, firmware and hardware roles share low-level systems evidence and
+  # should not be projected into the broad software-engineer bucket.
+  - key: embedded_engineer
+    label: Embedded / Firmware Engineer
+    adjacent: [embedded engineer, firmware engineer, hardware engineer]
+    aliases: [embedded software engineer]
+    roles:
+      - {key: firmware_engineer, label: Firmware Engineer}
+      - {key: hardware_engineer, label: Hardware Engineer}
 
 # Rank markers: tokens that qualify HOW SENIOR a role is without changing WHAT
 # the role is. Stripping these is what lets the ATS title tier see that

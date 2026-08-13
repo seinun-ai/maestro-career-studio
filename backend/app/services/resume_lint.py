@@ -2,8 +2,8 @@
 
 The LLM only classifies bullets; everything
 here is deterministic. Score is the mean of evidence levels over experience +
-projects bullets, capped by structure/content gates. Attention zones drive
-severity, fix ordering, C1, and UI — never the score.
+projects + custom-section bullets, capped by structure/content gates. Attention
+zones drive severity, fix ordering, C1, and UI — never the score.
 
 See SYSTEM.md §4 (ResumeLintReport) for the report's place in the workflow.
 """
@@ -44,6 +44,7 @@ WEAK_OPENERS = (
 PASSIVE_HINT = re.compile(r"^\s*(was|were)\s+\w+ed\b", re.IGNORECASE)
 MAX_BULLET_WORDS = 34
 MIN_BULLET_WORDS = 8
+MAX_SKILL_ITEM_WORDS = 5  # a skills item longer than this reads as a sentence
 MAX_BULLETS_PER_ENTRY = 7
 
 # Static coaching copy per level (design ladder table). No LLM cost.
@@ -100,7 +101,17 @@ def _finding(ftype: str, location: Location, label: str, issue: str, why: str, h
              content_hash: str | None = None,
              classification_level: str | None = None,
              classification_source: str | None = None,
-             classification_reason: str | None = None) -> dict[str, Any]:
+             classification_reason: str | None = None,
+             rule: str | None = None,
+             subject: str | None = None) -> dict[str, Any]:
+    """`subject`, when set, is the RAW source string this finding is about —
+    unstripped, unnormalized — suitable as an exact-match needle against the
+    resume's own arrays (e.g. `items.index(subject)`). Display copy (label,
+    issue) may use a cleaned-up version of the same text; `subject` must not
+    be that cleaned-up version, or a downstream exact-match lookup silently
+    fails against a padded source item. Absent when the rule has no single
+    source string to point at (e.g. summary.missing, entry.too_many_bullets).
+    """
     finding = {
         "id": _fid(ftype, location, issue),
         "type": ftype,               # gate | fix | ask | note
@@ -124,7 +135,27 @@ def _finding(ftype: str, location: Location, label: str, issue: str, why: str, h
             "classification_source": classification_source,
             "classification_reason": classification_reason,
         })
+    if rule is not None:
+        finding["rule"] = rule
+    if subject is not None:
+        finding["subject"] = subject
     return finding
+
+
+_PUNCT_NAMES = {".": "period", ",": "comma", ";": "semicolon", "…": "ellipsis"}
+
+
+def _punct_note(section: str, label_prefix: str, text: str, raw: str) -> dict:
+    """`text` is the stripped display form (quoted in label/issue); `raw` is
+    the unstripped source string, passed through unchanged as `subject` so it
+    stays a valid exact-match needle against the resume's own array."""
+    name = _PUNCT_NAMES.get(text[-1], "punctuation mark")
+    return _finding(
+        "note", (section, None, None), f"{label_prefix} · {text}",
+        f'"{text}" ends with a stray {name}.',
+        "List items aren't sentences; stray punctuation reads as careless.",
+        "Drop the trailing punctuation.", source="rule",
+        rule=f"{section}.trailing_punct", subject=raw)
 
 
 def _classification_fields(resume: dict, loc: Location, result: dict) -> dict[str, Any]:
@@ -155,10 +186,31 @@ def _entry_label(section: str, entry: dict) -> str:
     return f"{entry.get('institution', '?')} — {entry.get('degree', '?')}"
 
 
+def _extra_section(resume: dict, section_loc: str) -> dict:
+    key = section_loc.removeprefix("extra:")
+    for section in resume.get("extra_sections") or []:
+        if section.get("key") == key:
+            return section
+    return {}
+
+
 def _label_at(resume: dict, location: Location) -> str:
     section, index, bi = location
     if section == "summary":
         return "Summary"
+    if section.startswith("extra:"):
+        # A location may outlive its section (rename/delete between runs, or a
+        # caller of the assemble seam) — degrade like the frontend does, never raise.
+        sec = _extra_section(resume, section)
+        label = str(sec.get("title") or sec.get("key") or "Custom section")
+        if index is not None:
+            entries = sec.get("entries") or []
+            heading = str((entries[index] if index < len(entries) else {}).get("heading") or "")
+            if heading:
+                label += f" — {heading}"
+        if bi is not None:
+            label += f" · bullet {bi + 1}"
+        return label
     entry = (resume.get(section) or [])[index]
     label = _entry_label(section, entry)
     if bi is not None:
@@ -170,6 +222,15 @@ def _text_at(resume: dict, location: Location) -> str:
     section, index, bi = location
     if section == "summary":
         return str(resume.get("summary") or "")
+    if section.startswith("extra:"):
+        # Same stale-location tolerance as _label_at: "" not IndexError.
+        sec = _extra_section(resume, section)
+        if index is None:  # flat bullets section
+            bullets = sec.get("bullets") or []
+            return str(bullets[bi]) if bi < len(bullets) else ""
+        entries = sec.get("entries") or []
+        bullets = (entries[index] if index < len(entries) else {}).get("bullets") or []
+        return str(bullets[bi]) if bi < len(bullets) else ""
     entry = (resume.get(section) or [])[index]
     return str((entry.get("bullets") or [])[bi])
 
@@ -184,7 +245,7 @@ def _classify_hints(text: str) -> list[str]:
 
 
 def _ladder_items(resume: dict) -> list[tuple[Location, str]]:
-    """(location, text) for the summary + every enabled experience/projects bullet.
+    """(location, text) for summary + every enabled experience/projects/custom-section bullet.
     Education/certifications are facts, never on the ladder."""
     items: list[tuple[Location, str]] = []
     summary = (resume.get("summary") or "").strip()
@@ -194,6 +255,19 @@ def _ladder_items(resume: dict) -> list[tuple[Location, str]]:
         for index, entry in health_zones.enabled_entries(resume, section):
             for bi, bullet in enumerate(entry.get("bullets") or []):
                 items.append(((section, index, bi), str(bullet)))
+    for section in resume.get("extra_sections") or []:
+        if not section.get("enabled", True):
+            continue
+        skey = f"extra:{section.get('key')}"
+        if section.get("type") == "bullets":
+            for bi, bullet in enumerate(section.get("bullets") or []):
+                items.append(((skey, None, bi), str(bullet)))
+        else:
+            for ei, entry in enumerate(section.get("entries") or []):
+                if not entry.get("enabled", True):
+                    continue
+                for bi, bullet in enumerate(entry.get("bullets") or []):
+                    items.append(((skey, ei, bi), str(bullet)))
     return items
 
 
@@ -386,7 +460,11 @@ def _ladder_findings(
         label = _label_at(resume, loc)
         copy = LADDER_COPY[_level_name(value)]
         classification = _classification_fields(resume, loc, r)
-        suggestion = rewrite_fn(_text_at(resume, loc)) if (rewrite_fn and i < MAX_REWRITES) else None
+        suggestion = (
+            rewrite_fn(_text_at(resume, loc))
+            if (rewrite_fn and i < MAX_REWRITES and not loc[0].startswith("extra:"))
+            else None
+        )  # extras have no bullet-scoped /edits op yet (SYSTEM.md §11 item 20) — ask, don't offer Apply
         if suggestion:
             findings.append(_finding(
                 "fix", loc, label, copy["issue"], copy["why"], copy["how"],
@@ -446,10 +524,10 @@ def assemble(resume: dict, levels_by_loc: dict[Location, dict], base_gates: list
         levels_by_loc, base_gates, hot, waivers or set(), c2_hit, prior_report
     )
 
-    # Score: mean over experience + projects levels ONLY (summary is not scored),
-    # then capped by gates.
+    # Score: mean over experience + projects + custom-section levels
+    # (summary is not scored), then capped by gates.
     score_levels = [r["value"] for loc, r in levels_by_loc.items()
-                    if loc[0] in ("experience", "projects")]
+                    if loc[0] in ("experience", "projects") or loc[0].startswith("extra:")]
     raw_score = health_score.compute_score(score_levels)
     score = health_score.apply_gates(raw_score, gates)
     grade = health_score.grade_for(score)
@@ -551,6 +629,27 @@ def _shape_notes(resume: dict, levels_by_loc: dict, tier: str, hot: set) -> list
 
 
 _WORD = re.compile(r"\S+")
+_PUNCT_CHARS = re.escape("".join(_PUNCT_NAMES))
+# Derived from _PUNCT_NAMES so the charset and the copy cannot drift apart.
+_TRAILING_PUNCT = re.compile(f"[{_PUNCT_CHARS}]$")
+# \s folded in so a stray space *before* the trailing punctuation (e.g. "Python .")
+# is removed along with it, not left dangling after the punctuation is gone.
+_TRAILING_PUNCT_RUN = re.compile(rf"[{_PUNCT_CHARS}\s]+$")
+
+
+def _norm_item(text: str) -> str:
+    """Canonical form of a list item: casefold, strip a trailing run of
+    punctuation (the same charset _TRAILING_PUNCT flags as stray) and
+    whitespace, then collapse internal whitespace.
+
+    Two callers, two comparison semantics: duplicate detection compares these
+    keys for EQUALITY; the never-demonstrated rule tests one as a SUBSTRING of
+    a bullet blob normalized the same way *minus* the trailing-punctuation
+    strip. Invariant: any folding added here must also be applied to that blob,
+    or a skill that IS in a bullet gets falsely flagged as undemonstrated.
+    """
+    stripped = _TRAILING_PUNCT_RUN.sub("", str(text).strip())
+    return re.sub(r"\s+", " ", stripped).casefold()
 
 
 def _advisories(resume: dict) -> list[dict]:
@@ -559,7 +658,8 @@ def _advisories(resume: dict) -> list[dict]:
         notes.append(_finding(
             "note", ("summary", None, None), "Summary", "No summary.",
             "The summary is the first thing read; without one the resume opens with no positioning.",
-            "Add 2–3 lines: role identity, years, strongest proof points.", source="rule"))
+            "Add 2–3 lines: role identity, years, strongest proof points.", source="rule",
+            rule="summary.missing"))
 
     for section in ("experience", "projects"):
         for index, entry in health_zones.enabled_entries(resume, section):
@@ -570,7 +670,8 @@ def _advisories(resume: dict) -> list[dict]:
                     "note", (section, index, None), label,
                     f"{len(bullets)} bullets in one entry.",
                     "Past ~7 bullets, each extra one dilutes the others.",
-                    "Keep the strongest 4–6.", source="rule"))
+                    "Keep the strongest 4–6.", source="rule",
+                    rule="entry.too_many_bullets"))
             for bi, bullet in enumerate(bullets):
                 words = len(_WORD.findall(str(bullet)))
                 loc = (section, index, bi)
@@ -579,46 +680,97 @@ def _advisories(resume: dict) -> list[dict]:
                         "note", loc, f"{label} · bullet {bi + 1}",
                         f"Long bullet ({words} words).",
                         "Long bullets get skimmed past.",
-                        "Tighten to one line.", source="rule"))
+                        "Tighten to one line.", source="rule",
+                        rule="bullet.too_long", subject=str(bullet)))
                 elif 0 < words < MIN_BULLET_WORDS:
                     notes.append(_finding(
                         "note", loc, f"{label} · bullet {bi + 1}",
                         "Very short bullet.", "A few words rarely carry an accomplishment.",
-                        "Expand with what changed because of your work.", source="rule"))
+                        "Expand with what changed because of your work.", source="rule",
+                        rule="bullet.too_short", subject=str(bullet)))
 
     # duplicate skills across groups
     seen: dict[str, str] = {}
     for group in resume.get("skills") or []:
         cat = str(group.get("category", ""))
         for item in group.get("items") or []:
-            key = str(item).casefold().strip()
+            key = _norm_item(item)
             if key in seen and seen[key] != cat:
                 notes.append(_finding(
                     "note", ("skills", None, None), f"Skills · {item}",
                     f'"{item}" appears in both "{seen[key]}" and "{cat}".',
                     "Duplicate skills read as padding.",
-                    "Keep each skill in one group.", source="rule"))
+                    "Keep each skill in one group.", source="rule",
+                    rule="skills.duplicate_across_groups", subject=str(item)))
             else:
                 seen.setdefault(key, cat)
 
     # skill listed but never demonstrated in a bullet
-    bullet_blob = " ".join(
-        str(b).casefold()
+    # NOTE: this is a substring match, so a short/punctuated token (e.g. "R.",
+    # which normalizes to "r") can match almost any bullet. Bare "R" already
+    # had this hole; a word-boundary fix is out of scope (\b breaks on "C++").
+    bullet_blob = re.sub(r"\s+", " ", " ".join(
+        str(b)
         for section in ("experience", "projects")
         for _, e in health_zones.enabled_entries(resume, section)
         for b in (e.get("bullets") or [])
-    )
+    )).casefold()
     for group in resume.get("skills") or []:
         for item in group.get("items") or []:
-            token = str(item).casefold().strip()
+            token = _norm_item(item)
             if token and token not in bullet_blob:
                 notes.append(_finding(
                     "note", ("skills", None, None), f"Skills · {item}",
                     f'"{item}" is listed but never demonstrated in a bullet.',
                     "Keyword credit only; an LLM screener sees no evidence behind it.",
-                    "Show it in a bullet, or accept it as keyword-only.", source="rule"))
+                    "Show it in a bullet, or accept it as keyword-only.", source="rule",
+                    rule="skills.undemonstrated", subject=str(item)))
+
+    # list-item hygiene: trailing punctuation + sentence-like skills items
+    for group in resume.get("skills") or []:
+        for item in group.get("items") or []:
+            text = str(item).strip()
+            if _TRAILING_PUNCT.search(text):
+                notes.append(_punct_note("skills", "Skills", text, str(item)))
+            if len(_WORD.findall(text)) > MAX_SKILL_ITEM_WORDS:
+                notes.append(_finding(
+                    "note", ("skills", None, None), f"Skills · {text}",
+                    f'"{text}" reads like a sentence, not a skill keyword.',
+                    "Skills lists are keyword-scanned; sentences dilute matching.",
+                    "Shorten to the tool or technique name; put the story in a bullet.",
+                    source="rule", rule="skills.sentence_like", subject=str(item)))
+    for cert in resume.get("certifications") or []:
+        text = str(cert).strip()
+        if _TRAILING_PUNCT.search(text):
+            notes.append(_punct_note("certifications", "Certifications", text, str(cert)))
+
+    # duplicate certifications (punctuation/spacing-blind)
+    seen_certs: set[str] = set()
+    for cert in resume.get("certifications") or []:
+        key = _norm_item(cert)
+        if not key:
+            continue
+        if key in seen_certs:
+            text = str(cert).strip()
+            notes.append(_finding(
+                "note", ("certifications", None, None), f"Certifications · {text}",
+                f'"{text}" appears more than once.',
+                "Duplicate credentials read as padding.",
+                "Keep one copy.", source="rule",
+                rule="certifications.duplicate", subject=str(cert)))
+        seen_certs.add(key)
 
     return notes
+
+
+def rule_notes(resume: dict) -> list[dict]:
+    """Deterministic, JD-independent rule notes for a resume dict.
+
+    Public because the post-tailoring coherence check reuses these rules
+    (design 2026-08-12). Pure — no DB, no LLM, no template. `_shape_notes` is
+    deliberately NOT included: it reads LLM-classified evidence levels.
+    """
+    return _advisories(resume)
 
 
 # --------------------------------------------------------------------------- #

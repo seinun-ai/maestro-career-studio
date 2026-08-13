@@ -11,12 +11,33 @@ The output MUST be a single JSON object matching the ResumeData schema:
   `github`, `website`.
 - `summary`: a string, or null if the resume has no summary/objective.
 - `skills`: array of `{ "category": "...", "items": ["...", ...] }` groups.
-- `experience`: array of `{ "company", "role", "location"?, "start_date", "end_date"?,
-  "bullets": ["...", ...] }`. `end_date` is null or omitted for a current role.
+- `experience`: array of `{ "company", "role", "location"?, "start_date"?, "end_date"?,
+  "bullets": ["...", ...] }`. `end_date` is null or omitted for a current role. Omit
+  `start_date` only when the resume genuinely states no date for the role — never invent one.
 - `projects`: array of `{ "name", "tech"?, "link"?, "date"?, "bullets": ["...", ...] }`.
-- `education`: array of `{ "institution", "degree", "field"?, "location"?, "start_date"?,
+- `education`: array of `{ "institution", "degree"?, "field"?, "location"?, "start_date"?,
   "end_date"?, "graduation_date"?, "gpa"?, "coursework": ["...", ...], "bullets": ["...", ...] }`.
-- `certifications`: array of strings.
+  Omit `degree` for non-degree study (coursework, bootcamps, exchange terms); never invent
+  a degree title.
+- `certifications`: array of strings — plain certifications and course certificates.
+- `extra_sections`: array of custom sections for EVERYTHING ELSE (rules below).
+
+Custom sections (`extra_sections`) — NEVER discard content:
+- Any resume section that does not fit a core section above MUST become an entry in
+  `extra_sections`. Never drop it, and never force it into the wrong core section
+  (clinical rotations are not `experience`; bar admissions are not `education`).
+- Dated employment-like roles (including teaching or research positions) belong in
+  `experience`, not a custom section.
+- Each custom section is exactly ONE of two shapes:
+  - `{ "key": "...", "title": "...", "type": "entries", "entries": [{ "heading": "...",
+    "subheading"?, "location"?, "date"?, "link"?, "bullets": ["..."] }] }` for structured
+    items (publications, volunteer roles, talks, exhibitions, representative matters).
+  - `{ "key": "...", "title": "...", "type": "bullets", "bullets": ["..."] }` for flat
+    lists (awards, languages, licenses, memberships, clearances).
+- `title` is the section heading as the resume writes it. `key` is a lowercase slug,
+  unique across the resume. When the section matches one of these canonical presets, use
+  the preset's key, title, and type; otherwise mint a slug from the resume's own heading:
+$extra_section_presets
 
 Rules:
 - Extract ONLY what is present in the resume text. Never fabricate a name, contact detail,
@@ -26,4 +47,4 @@ Rules:
 - Preserve bullet wording faithfully; do not rewrite or embellish.
 
 Return ONLY a JSON object matching the ResumeData schema above, of this compact shape:
-{"contact": {"name": "...", "email": "...", "phone": "... or omit", "location": "... or omit", "linkedin": "... or omit", "github": "... or omit", "website": "... or omit"}, "summary": "... or null", "skills": [{"category": "...", "items": ["..."]}], "experience": [{"company": "...", "role": "...", "location": "... or omit", "start_date": "...", "end_date": "... or null", "bullets": ["..."]}], "projects": [{"name": "...", "tech": "... or omit", "link": "... or omit", "date": "... or omit", "bullets": ["..."]}], "education": [{"institution": "...", "degree": "...", "field": "... or omit", "location": "... or omit", "start_date": "... or omit", "end_date": "... or omit", "graduation_date": "... or omit", "gpa": "... or omit", "coursework": ["..."], "bullets": ["..."]}], "certifications": ["..."]}
+{"contact": {"name": "...", "email": "...", "phone": "... or omit", "location": "... or omit", "linkedin": "... or omit", "github": "... or omit", "website": "... or omit"}, "summary": "... or null", "skills": [{"category": "...", "items": ["..."]}], "experience": [{"company": "...", "role": "...", "location": "... or omit", "start_date": "... or omit", "end_date": "... or null", "bullets": ["..."]}], "projects": [{"name": "...", "tech": "... or omit", "link": "... or omit", "date": "... or omit", "bullets": ["..."]}], "education": [{"institution": "...", "degree": "... or omit", "field": "... or omit", "location": "... or omit", "start_date": "... or omit", "end_date": "... or omit", "graduation_date": "... or omit", "gpa": "... or omit", "coursework": ["..."], "bullets": ["..."]}], "certifications": ["..."], "extra_sections": [{"key": "...", "title": "...", "type": "entries", "entries": [{"heading": "...", "subheading": "... or omit", "date": "... or omit", "bullets": ["..."]}]}, {"key": "...", "title": "...", "type": "bullets", "bullets": ["..."]}]}

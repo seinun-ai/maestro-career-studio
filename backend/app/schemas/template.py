@@ -2,7 +2,7 @@ import re
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, field_validator, model_validator
+from pydantic import AliasChoices, BaseModel, Field, field_validator, model_validator
 
 _SLUG_RE = re.compile(r"^[a-z0-9_-]+$")
 
@@ -40,6 +40,13 @@ class TemplateDefaultFormatting(BaseModel):
 
 class TemplateDetail(TemplateSummary):
     source: str
+    # Full validation probe report (missing fidelity probes, headers_missing,
+    # extra_sections_supported/missing). None until validated. Detail-only:
+    # the list payload stays slim.
+    parse_report: dict | None = Field(
+        default=None,
+        validation_alias=AliasChoices("parse_report_json", "parse_report"),
+    )
 
 
 class TemplateCreate(BaseModel):

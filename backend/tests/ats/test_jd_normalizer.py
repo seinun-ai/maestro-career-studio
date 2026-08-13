@@ -13,6 +13,16 @@ def test_normalize_jd_extracts_profile():
     assert len(required) == 3
 
 
+def test_normalize_jd_degrades_an_unrecognized_stored_role_category_to_other():
+    profile = normalize_jd({
+        "title": "Data Wizard",
+        "role_category": "retired_family",
+        "skills": [{"skill_name": "Python", "requirement_level": "required"}],
+    })
+
+    assert profile.role_category == "other"
+
+
 def test_normalize_jd_dedupes_and_defaults_level():
     jd = {"title": "X", "skills": [
         {"skill_name": "Python", "requirement_level": "required"},

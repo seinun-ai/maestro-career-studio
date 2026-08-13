@@ -137,9 +137,9 @@ def test_a_catalog_label_is_derived_not_trusted():
     # The catalog owns display names. A client-supplied label for a catalog role
     # is overwritten, so editing the YAML can never leave a stale copy behind.
     prefs = JobPreferences(
-        favored_roles=[FavoredRole(role="nlp_engineer", label="whatever the client sent")]
+        favored_roles=[FavoredRole(role="llmops_engineer", label="whatever the client sent")]
     )
-    assert prefs.favored_roles[0].label == "NLP Engineer"
+    assert prefs.favored_roles[0].label == "LLMOps Engineer"
 
 
 def test_legacy_role_categories_only_payload_upgrades():
@@ -231,7 +231,7 @@ def test_projection_dedupes_categories_in_first_seen_order():
     prefs = JobPreferences(favored_roles=[
         FavoredRole(role="deep_learning_engineer"),
         FavoredRole(role="data_scientist"),
-        FavoredRole(role="nlp_engineer"),
+        FavoredRole(role="generative_ai_engineer"),
     ])
     assert prefs.role_categories == ["ai_ml_engineer", "data_scientist"]
 
@@ -252,3 +252,42 @@ def test_favored_roles_round_trip_through_the_file_mirror(db_session):
         (None, "Underwater Basket Weaver", None),
     ]
     assert loaded.role_categories == ["data_scientist", "research_scientist"]
+
+
+def test_stale_stored_favored_role_degrades_per_item_without_blanket_data_loss(
+    db_session,
+):
+    from app.services import text_settings
+
+    text_settings.set_text(
+        job_preferences.JOB_PREFERENCES_KEY,
+        job_preferences.JOB_PREFERENCES_FILE,
+        """{
+          "favored_roles": [
+            {"role": "retired_role", "label": "Legacy Data Wizard", "category": "retired_family"},
+            {"role": "data_engineer", "label": "Stale Client Label", "category": "data_engineer"}
+          ],
+          "role_categories": ["retired_family", "data_engineer"],
+          "years_experience": 9,
+          "employment_types": ["full_time"],
+          "locations": ["Chicago", "Remote"],
+          "remote": "hybrid",
+          "min_salary": "150000",
+          "notes": "Keep every unrelated preference."
+        }""",
+        db_session,
+    )
+
+    prefs = job_preferences.get_preferences(db_session)
+
+    assert [(role.role, role.label, role.category) for role in prefs.favored_roles] == [
+        (None, "Legacy Data Wizard", None),
+        ("data_engineer", "Data Engineer", "data_engineer"),
+    ]
+    assert prefs.role_categories == ["data_engineer"]
+    assert prefs.years_experience == 9
+    assert prefs.employment_types == ["full_time"]
+    assert prefs.locations == ["Chicago", "Remote"]
+    assert prefs.remote == "hybrid"
+    assert prefs.min_salary == "150000"
+    assert prefs.notes == "Keep every unrelated preference."

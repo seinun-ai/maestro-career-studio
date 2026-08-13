@@ -79,3 +79,8 @@ class TailorResponse(BaseModel):
     # tailoring itself succeeded — compare_error says how to recover.
     compare: AtsCompareRead | None = None
     compare_error: str | None = None
+    # False when the post-tailor render failed. Named and shaped like
+    # QuickTailorOutcome.pdf_ready deliberately: the one-shot path and this one
+    # are the same pipeline, so they report the same fact the same way. The
+    # failure detail lands on `application.render_error`, which the studio reads.
+    pdf_ready: bool = True

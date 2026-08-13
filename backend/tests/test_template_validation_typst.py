@@ -53,6 +53,7 @@ def test_validate_template_dispatches_by_engine(db_session, tmp_path, monkeypatc
     )
     result = tv.validate_template("tval", db_session)
     assert result["ok"] is True
+    assert result["parse_report"]["extra_sections_supported"] is False
     row = reg.get(db_session, "tval")
     assert row.status == "ready"
     # name+email only -> experience/education probes missing -> honestly NOT certified
@@ -68,5 +69,6 @@ def test_validate_bad_typst_source_stays_draft(db_session, tmp_path, monkeypatch
     )
     result = tv.validate_template("tbad", db_session)
     assert result["ok"] is False and result["error"]
+    assert result["parse_report"] is None
     row = reg.get(db_session, "tbad")
     assert row.status == "draft" and row.last_error

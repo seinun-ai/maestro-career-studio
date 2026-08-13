@@ -32,6 +32,7 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { buttonVariants } from "@/components/ui/button";
+import { MaestroMark } from "@/components/brand-logo";
 import { cn } from "@/lib/utils";
 
 type NavItem = { href: string; label: string; icon: LucideIcon };
@@ -75,7 +76,10 @@ export function AppSidebar() {
   return (
     <Sidebar>
       <SidebarHeader className="flex flex-row items-center justify-between gap-2">
-        <div className="px-2 py-1.5 text-sm font-semibold">Maestro CS</div>
+        <div className="flex items-center gap-2 px-2 py-1.5">
+          <MaestroMark aria-hidden="true" className="h-5 w-auto shrink-0" />
+          <span className="text-sm font-semibold">Maestro CS</span>
+        </div>
         <SidebarTrigger className="shrink-0" />
       </SidebarHeader>
       <SidebarContent>

@@ -60,6 +60,16 @@ def test_close_tailoring_session_posts_close():
 
 
 @respx.mock
+def test_apply_quick_tailor_profile_posts_to_the_session():
+    route = respx.post(f"{BASE}/api/tailoring-sessions/s1/apply-profile").mock(
+        return_value=httpx.Response(200, json={"id": "s1", "status": "open"})
+    )
+    assert BackendClient(BASE).apply_quick_tailor_profile("s1")["id"] == "s1"
+    assert route.called
+    assert route.calls.last.request.method == "POST"
+
+
+@respx.mock
 def test_resolve_gaps_patches_resolutions():
     route = respx.patch(f"{BASE}/api/tailoring-sessions/s1").mock(
         return_value=httpx.Response(200, json={"id": "s1"})

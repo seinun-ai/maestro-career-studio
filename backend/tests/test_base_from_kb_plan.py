@@ -144,6 +144,80 @@ def test_plan_excludes_archived_entities_from_the_prompt(db_session, monkeypatch
     assert "Old Role" not in fake.prompt
 
 
+def test_plan_prompt_includes_one_line_of_context_for_a_described_role(
+    db_session, monkeypatch
+):
+    _entity(db_session, "experience", "Forward Deployed Engineer")
+    db_session.commit()
+    fake = _llm({"include": [], "exclude": [], "summary": ""})
+    monkeypatch.setattr("app.services.llm.call_openai", fake)
+    monkeypatch.setattr(
+        base_from_kb_plan.prompts,
+        "get_prompt",
+        lambda *args: "TARGET ROLE: $role_label\nUSER INSTRUCTION: $instruction\n$entities",
+    )
+
+    base_from_kb_plan.plan(db_session, "forward_deployed_engineer", "")
+
+    assert (
+        "TARGET ROLE: Forward Deployed Engineer\n"
+        "ROLE DESCRIPTION: Embeds with customers to adapt and deploy software or AI "
+        "solutions in real operating environments.\n"
+        "USER INSTRUCTION"
+    ) in fake.prompt
+
+
+def test_plan_prompt_has_no_description_artifact_for_an_obvious_role(
+    db_session, monkeypatch
+):
+    _entity(db_session, "experience", "QA Engineer")
+    db_session.commit()
+    fake = _llm({"include": [], "exclude": [], "summary": ""})
+    monkeypatch.setattr("app.services.llm.call_openai", fake)
+    monkeypatch.setattr(
+        base_from_kb_plan.prompts,
+        "get_prompt",
+        lambda *args: "TARGET ROLE: $role_label\nUSER INSTRUCTION: $instruction\n$entities",
+    )
+
+    base_from_kb_plan.plan(db_session, "qa_engineer", "")
+
+    assert "TARGET ROLE: QA / Test Engineer\nUSER INSTRUCTION" in fake.prompt
+    assert "ROLE DESCRIPTION:" not in fake.prompt
+
+
+@pytest.mark.parametrize(
+    "template,expected",
+    [
+        (
+            "Plan for $role_label today.",
+            "Plan for Forward Deployed Engineer today.",
+        ),
+        (
+            "TARGET ROLE: $role_label\nCompare with $role_label",
+            "TARGET ROLE: Forward Deployed Engineer\n"
+            "ROLE DESCRIPTION: Embeds with customers to adapt and deploy software or AI "
+            "solutions in real operating environments.\n"
+            "Compare with Forward Deployed Engineer",
+        ),
+    ],
+)
+def test_custom_prompt_keeps_role_label_pure_and_injects_context_once(
+    db_session, monkeypatch, template, expected
+):
+    _entity(db_session, "experience", "Forward Deployed Engineer")
+    db_session.commit()
+    fake = _llm({"include": [], "exclude": [], "summary": ""})
+    monkeypatch.setattr("app.services.llm.call_openai", fake)
+    monkeypatch.setattr(
+        base_from_kb_plan.prompts, "get_prompt", lambda *args: template
+    )
+
+    base_from_kb_plan.plan(db_session, "forward_deployed_engineer", "")
+
+    assert fake.prompt == expected
+
+
 def test_plan_on_an_empty_kb_is_a_value_error(db_session):
     with pytest.raises(ValueError, match="Career KB"):
         base_from_kb_plan.plan(db_session, "data_scientist", "")

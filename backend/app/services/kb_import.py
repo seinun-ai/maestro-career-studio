@@ -64,6 +64,7 @@ class ImportedBase:
     role_category: str
     proposed: bool          # True = the system guessed; the UI must ask to confirm
     render_error: str | None = None
+    parse_warnings: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -112,7 +113,14 @@ def _free_slug(session: Session, desired: str) -> str:
     return candidate
 
 
-def _mint_base(session: Session, *, slug: str, display_name: str, data: dict) -> ImportedBase:
+def _mint_base(
+    session: Session,
+    *,
+    slug: str,
+    display_name: str,
+    data: dict,
+    parse_warnings: list[str],
+) -> ImportedBase:
     """Create one base resume. Commits before touching the filesystem."""
     proposed_role = role_categories.propose_from_resume(data)
     row = BaseResume(
@@ -136,6 +144,7 @@ def _mint_base(session: Session, *, slug: str, display_name: str, data: dict) ->
         # An unambiguous proposal still needs confirming; "unknown" is not a
         # proposal at all, it is the visible undeclared state.
         proposed=proposed_role != role_categories.UNKNOWN,
+        parse_warnings=parse_warnings,
     )
 
     # Render is best-effort: a pdflatex failure must not lose the base.
@@ -171,17 +180,24 @@ def import_resumes(
             if len(blob) > MAX_BYTES:
                 raise ValueError("file exceeds the 10 MB limit")
 
+            parse_warnings: list[str] = []
             if _is_json(safe, mime):
                 # The README's own file-drop format. No extraction, no LLM call.
                 parsed = ResumeData.model_validate(json.loads(blob)).model_dump(mode="json")
             else:
                 text = extract_text(safe, mime, blob)
-                parsed = kb_consolidation.parse_resume_text(session, text)
+                parsed, parse_warnings = kb_consolidation.parse_resume_text(session, text)
 
             slug = _free_slug(session, _slugify(safe))
             display = Path(safe).stem.replace("_", " ").strip() or slug
             result.bases.append(
-                _mint_base(session, slug=slug, display_name=display, data=parsed)
+                _mint_base(
+                    session,
+                    slug=slug,
+                    display_name=display,
+                    data=parsed,
+                    parse_warnings=parse_warnings,
+                )
             )
             # Provenance key is the MINTED SLUG, not the filename: KBPortLog and
             # KBEntity.merge_sources_json store this as `resume_key`, and

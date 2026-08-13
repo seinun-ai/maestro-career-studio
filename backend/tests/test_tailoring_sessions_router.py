@@ -214,6 +214,12 @@ def test_create_session_stamps_candidates_and_prestores_autos(
     autos = [item for item in created.resolutions_json if item["action"] != "skip"]
     assert autos
     assert autos[0]["payload"]["provenance"]["source"] == "library_auto"
+    # The private llm_library_proposals stash (enrich_gaps -> stamp_library_
+    # candidates handoff) must never survive into the persisted, publicly-
+    # served gaps_json — sweep every gap in every category, not just kafka's.
+    for category in created.gaps_json["categories"]:
+        for gap in category["gaps"]:
+            assert "llm_library_proposals" not in gap, gap
 
 
 def test_create_session_enrich_false_skips_llm(db_session, tmp_path, monkeypatch):
@@ -230,14 +236,16 @@ def test_create_session_enrich_false_skips_llm(db_session, tmp_path, monkeypatch
     assert response.status_code == 200
     assert calls == []
     assert all(gap["enrichment"] is None for gap in _all_gaps(response.json()["gaps_json"]))
-    # Auto planning is deterministic, so enrich=False still pre-stores the
-    # mirror_wording exact-token add (SAMPLE fixtures: AWS) — but never a
-    # KB/library auto, which needs the enrichment pass to nominate candidates.
+    # Auto planning is deterministic, and candidate gating now runs
+    # UNCONDITIONALLY (stamp_library_candidates, hoisted out from under the LLM
+    # call): enrich=False still pre-stores the mirror_wording exact-token add
+    # (SAMPLE fixtures: AWS) AND the library auto that self-nomination finds
+    # with no LLM involved at all (SAMPLE_RESUME's disabled HiddenCo entry
+    # literally says "Salesforce admin work.").
     stored = response.json()["resolutions_json"]
     assert stored
-    assert all(
-        item["payload"]["provenance"]["source"] == "wording_auto" for item in stored
-    )
+    sources = {item["payload"]["provenance"]["source"] for item in stored}
+    assert sources == {"wording_auto", "library_auto"}
 
 
 def test_create_session_enrichment_failure_still_creates(db_session, tmp_path, monkeypatch):
@@ -256,11 +264,14 @@ def test_create_session_enrichment_failure_still_creates(db_session, tmp_path, m
     assert body["status"] == "open"
     assert all(gap["enrichment"] is None for gap in _all_gaps(body["gaps_json"]))
     # Enrichment failure degrades to unenriched gaps, but the deterministic
-    # wording autos are planned AFTER that try-block, so they still land.
-    assert all(
-        item["payload"]["provenance"]["source"] == "wording_auto"
-        for item in body["resolutions_json"]
-    )
+    # auto planning is unaffected: stamp_library_candidates runs outside the
+    # enrichment try-block, so both the wording auto (AWS) AND the library
+    # auto that self-nomination finds without any LLM (SAMPLE_RESUME's
+    # disabled HiddenCo entry says "Salesforce admin work.") still land.
+    sources = {
+        item["payload"]["provenance"]["source"] for item in body["resolutions_json"]
+    }
+    assert sources == {"wording_auto", "library_auto"}
     assert body["resolutions_json"]
 
 
@@ -1813,10 +1824,21 @@ def test_tailor_without_apply_profile_leaves_resolutions_alone(
 
 
 def test_apply_profile_with_nothing_actionable_400s(db_session, tmp_path, monkeypatch):
-    """Profile off + nothing addressed: the fill plans only skips, so tailor()
-    raises its existing guard. The UI maps this to 'use base resume as-is'."""
+    """Profile off + nothing addressed + no self-nominable evidence: the fill
+    plans only skips, so tailor() raises its existing guard. The UI maps this
+    to 'use base resume as-is'.
+
+    Strips SAMPLE_RESUME's disabled-HiddenCo Salesforce mention: stamp_library_
+    candidates' self-nomination now runs UNCONDITIONALLY (Task: hoist the KB
+    pass out from under the LLM call), and an enable_entry/port_kb_point auto
+    bypasses the profile toggles entirely (see _plan_gap) — so with that
+    mention left in, this scenario would no longer be "nothing actionable".
+    """
+    resume = json.loads(json.dumps(SAMPLE_RESUME))
+    hidden_co = next(e for e in resume["experience"] if e["company"] == "HiddenCo")
+    hidden_co["bullets"] = ["Handled internal admin tooling."]
     job = _seed_job(db_session)
-    slug = _seed_base(db_session, tmp_path, monkeypatch)
+    slug = _seed_base(db_session, tmp_path, monkeypatch, resume_json=resume)
     _mock_tailor_llm(monkeypatch)
     monkeypatch.setattr(
         "app.routers.tailoring_sessions.quick_tailor.get_profile",
@@ -1841,6 +1863,103 @@ def test_apply_profile_with_nothing_actionable_400s(db_session, tmp_path, monkey
 
     assert response.status_code == 400
     assert response.json()["detail"] == "No actionable resolutions to tailor"
+
+
+# --- POST /{id}/apply-profile ------------------------------------------------
+# The MCP quick path's fill-only step: same fill_checkpoint_session the /tailor
+# route's apply_profile flag uses, but stopping before tailor() so the agent can
+# read what was planned and author its own ops (SYSTEM.md §11 item 13).
+
+
+def test_apply_profile_fills_resolutions_without_tailoring(db_session, tmp_path, monkeypatch):
+    job = _seed_job(db_session)
+    slug = _seed_base(db_session, tmp_path, monkeypatch)
+    # Proves the route stops at the fill: a stray call into tailor() (LLM ops,
+    # application, render) fails the test outright rather than merely going
+    # unasserted.
+    monkeypatch.setattr(
+        tailoring_session,
+        "tailor",
+        lambda *a, **k: pytest.fail("apply-profile must not tailor"),
+    )
+
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        client = TestClient(app)
+        # _create_clean wipes the pre-stored autos so resolutions_json starts at
+        # [] — a no-op fill would leave it empty, so the non-empty assertion
+        # below is a real delta, not an artifact of pre-seeded state.
+        created = _create_clean(client, job, slug)
+        assert created["resolutions_json"] == []
+
+        response = client.post(f"/api/tailoring-sessions/{created['id']}/apply-profile")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "open"
+    # NOT `assert body["resolutions_json"]`: plan_resolutions emits an entry for
+    # EVERY gap, undecided ones as "skip", so a non-empty list only proves the
+    # fill ran — it stays non-empty when the profile plans nothing actionable, a
+    # state test_apply_profile_with_nothing_actionable_400s proves is reachable.
+    # Assert on the actionable subset, which is what the endpoint exists to add.
+    planned = [r for r in body["resolutions_json"] if r["action"] != "skip"]
+    assert planned, "profile planned nothing actionable"
+
+
+def test_apply_profile_maps_plain_value_errors_to_400(db_session, tmp_path, monkeypatch):
+    """A plain ValueError out of the fill is a bad-session 400, not a 500.
+
+    save_resolutions raises bare ValueErrors for an unknown gap_id, a
+    disallowed action, or a base resume that will not load (reachable on a
+    legacy row with no base_content_hash, which staleness treats as fresh).
+    patch_resolutions already maps them; an agent caller reading a 500 would
+    conclude the server is broken rather than that its session is unusable.
+    """
+    job = _seed_job(db_session)
+    slug = _seed_base(db_session, tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        quick_tailor,
+        "fill_checkpoint_session",
+        lambda *a, **k: (_ for _ in ()).throw(ValueError("base resume not found: ghost")),
+    )
+
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        client = TestClient(app)
+        created = _create_clean(client, job, slug)
+        response = client.post(f"/api/tailoring-sessions/{created['id']}/apply-profile")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 400
+    assert "ghost" in response.json()["detail"]
+
+
+def test_apply_profile_409s_on_a_closed_session_and_404s_on_a_missing_one(
+    db_session, tmp_path, monkeypatch
+):
+    job = _seed_job(db_session)
+    slug = _seed_base(db_session, tmp_path, monkeypatch)
+
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        client = TestClient(app)
+        created = _create_clean(client, job, slug)
+        closed = client.post(f"/api/tailoring-sessions/{created['id']}/close")
+        assert closed.status_code == 200
+
+        on_closed = client.post(f"/api/tailoring-sessions/{created['id']}/apply-profile")
+        # Same call shape against an id that was never created: must land on the
+        # 404 branch, not fall through to the same 409 the closed session hits.
+        on_missing = client.post(f"/api/tailoring-sessions/{uuid4()}/apply-profile")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert on_closed.status_code == 409
+    assert "not open" in on_closed.json()["detail"]
+    assert on_missing.status_code == 404
 
 
 def test_tailor_happy_path(db_session, tmp_path, monkeypatch):
@@ -2026,6 +2145,102 @@ def test_tailor_prompt_excludes_skipped_gaps_from_mandate(db_session, tmp_path, 
     assert "Docker" in skipped_section.split("Edit op JSON schemas")[0]
     # the diagnostic evidence travels with the actionable resolution
     assert '"diagnostic"' in resolutions_section
+
+
+def _mock_session_render(monkeypatch, error=None):
+    """Stub the render the tailor endpoint now runs. Returns the call log so a
+    test can prove it fired for the right application rather than trusting a
+    green run — the endpoint degrades on failure, so an un-called render and a
+    successful one are otherwise indistinguishable from the response."""
+    calls = []
+
+    def fake_render(db, application_id, *, template_id=None):
+        calls.append(application_id)
+        if error is not None:
+            raise error
+        return ("/tmp/x.tex", "/tmp/x.pdf")
+
+    monkeypatch.setattr(
+        "app.routers.tailoring_sessions.application_render.render_resume", fake_render
+    )
+    return calls
+
+
+def test_tailor_renders_the_pdf(db_session, tmp_path, monkeypatch):
+    """The in-app tailor renders, like the one-shot path already did. Without
+    it a tailored draft reached the studio with no PDF, so seeing it meant
+    pressing Save on an unedited draft purely to trigger a compile."""
+    job = _seed_job(db_session)
+    slug = _seed_base(db_session, tmp_path, monkeypatch)
+    _mock_tailor_llm(monkeypatch)
+    renders = _mock_session_render(monkeypatch)
+
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        client = TestClient(app)
+        created = _open_session(client, job, slug, resolutions=[SALESFORCE_RESOLUTION])
+        response = _tailor(client, created["id"])
+    finally:
+        app.dependency_overrides.clear()
+
+    body = response.json()
+    assert body["pdf_ready"] is True
+    # Fired exactly once, for the application the tailor just produced.
+    assert renders == [UUID(body["session"]["application_id"])]
+
+
+def test_tailor_render_failure_only_degrades(db_session, tmp_path, monkeypatch):
+    """Same policy as the one-shot path: the tailor is already committed, so a
+    render failure reports pdf_ready=False rather than failing the request."""
+    job = _seed_job(db_session)
+    slug = _seed_base(db_session, tmp_path, monkeypatch)
+    _mock_tailor_llm(monkeypatch)
+    _mock_session_render(monkeypatch, error=RuntimeError("typst exploded"))
+
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        client = TestClient(app)
+        created = _open_session(client, job, slug, resolutions=[SALESFORCE_RESOLUTION])
+        response = _tailor(client, created["id"])
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["session"]["status"] == "tailored"
+    assert body["pdf_ready"] is False
+    # The tailor still landed.
+    assert db_session.get(Application, UUID(body["session"]["application_id"])) is not None
+
+
+def test_tailor_renders_even_when_compare_fails(db_session, tmp_path, monkeypatch):
+    """A compare failure must not also cost the PDF. The compare branch used to
+    return early, which would have skipped the render entirely — this is the
+    test that pins why it no longer does."""
+    job = _seed_job(db_session)
+    slug = _seed_base(db_session, tmp_path, monkeypatch)
+    _mock_tailor_llm(monkeypatch)
+    renders = _mock_session_render(monkeypatch)
+
+    def boom(*args, **kwargs):
+        raise ValueError("scores were produced by different engine/config versions")
+
+    monkeypatch.setattr(tailoring_session.ats_score, "compare", boom)
+
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        client = TestClient(app)
+        created = _open_session(client, job, slug, resolutions=[SALESFORCE_RESOLUTION])
+        response = _tailor(client, created["id"])
+    finally:
+        app.dependency_overrides.clear()
+
+    body = response.json()
+    assert body["compare"] is None
+    assert "tailoring succeeded" in body["compare_error"]
+    # …and the PDF was still produced.
+    assert body["pdf_ready"] is True
+    assert renders == [UUID(body["session"]["application_id"])]
 
 
 def test_tailor_compare_failure_still_reports_success(db_session, tmp_path, monkeypatch):

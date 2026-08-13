@@ -95,7 +95,7 @@ export function EducationEditor({
                   />
                   <Field
                     label="Degree"
-                    value={entry.degree}
+                    value={entry.degree ?? ""}
                     onChange={(v) => update(i, { degree: v })}
                   />
                   <Field

@@ -20,12 +20,38 @@ def test_gate_dates_passes_clean_resume():
     assert gate_dates(OK)["status"] == "pass"
 
 
-def test_gate_dates_fails_on_missing_or_garbage():
-    bad = {"experience": [{"company": "A", "start_date": "", "end_date": "Present", "bullets": []}]}
-    g = gate_dates(bad)
-    assert g["status"] == "fail" and g["id"] == "S3"
+def test_gate_dates_fails_on_garbage():
     garbage = {"experience": [{"company": "A", "start_date": "whenever", "end_date": "Present", "bullets": []}]}
-    assert gate_dates(garbage)["status"] == "fail"
+    g = gate_dates(garbage)
+    assert g["status"] == "fail" and g["id"] == "S3"
+    # An undated START does not excuse a non-empty unparseable END.
+    bad_end = {"experience": [{"company": "A", "end_date": "whenever", "bullets": []}]}
+    assert gate_dates(bad_end)["status"] == "fail"
+
+
+def test_gate_dates_accepts_an_undated_role():
+    """An ABSENT start date is a legal representation, not a defect: the role
+    earns no recency credit and no tenure, and that is the whole penalty. Only
+    a NON-EMPTY unparseable string still fails S3."""
+    missing = {"experience": [{"company": "A", "role": "R", "bullets": []}]}
+    assert gate_dates(missing)["status"] == "pass"
+    blank = {"experience": [{"company": "A", "start_date": "", "end_date": "", "bullets": []}]}
+    assert gate_dates(blank)["status"] == "pass"
+    # Undated start, "Present" end — the editor's shape for an ongoing undated role.
+    ongoing = {"experience": [{"company": "A", "start_date": "", "end_date": "Present", "bullets": []}]}
+    assert gate_dates(ongoing)["status"] == "pass"
+
+
+def test_detect_gaps_declines_to_guess_around_an_undated_role():
+    """An undated role could cover any apparent gap, so the sweep bails rather
+    than accusing the reader of a gap it cannot see."""
+    resume = {
+        "experience": [
+            {"company": "A", "start_date": "Jan 2015", "end_date": "Jan 2016", "bullets": []},
+            {"company": "B", "bullets": []},
+        ]
+    }
+    assert detect_gaps(resume) == []
 
 
 def test_gate_dates_ignores_disabled_entries():

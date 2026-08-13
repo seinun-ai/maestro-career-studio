@@ -1605,3 +1605,118 @@ def test_every_backend_path_the_card_calls_exists_in_the_api():
 
     missing = sorted(path for path in called if not matches(path))
     assert missing == [], f"the card calls paths the API does not serve: {missing}"
+
+
+# ---------- the drag placement, executed ----------
+
+_DRAG_DRIVER_JS = r"""
+const dragPlacement = extract("dragPlacement", "\n  // ---- end dragPlacement ----");
+
+main(async () => {
+  const placed = {};
+  for (const [name, args] of Object.entries(spec.cases)) {
+    placed[name] = dragPlacement({
+      pointerX: args.pointerX,
+      pointerY: args.pointerY,
+      grabLeft: args.grabLeft,
+      grabBottom: args.grabBottom,
+      dockWidth: args.dockWidth,
+      viewport: spec.viewport,
+      margin: spec.margin,
+    });
+  }
+  emit({ placed });
+});
+"""
+
+# The reported shape: bubble docked bottom-right, card OPEN. In a 1280 viewport
+# with a 340px card at margin 16, the dock spans 924..1264 and the 44px bubble
+# sits right-aligned at 1220..1264. Grabbing the bubble's centre means a pointer
+# at 1242 — which is 318px inside the DOCK but only 22px inside the BUBBLE.
+_OPEN_DOCK_WIDTH = 340
+_OPEN_DOCK_LEFT = 1280 - MARGIN - _OPEN_DOCK_WIDTH  # 924
+_GRAB_X = 1242  # bubble centre
+
+
+@pytest.fixture(scope="module")
+def dragged(tmp_path_factory) -> dict:
+    return run_node(
+        _DRAG_DRIVER_JS,
+        {
+            "viewport": VIEWPORT,
+            "margin": MARGIN,
+            "cases": {
+                # Card open, pointer has not moved yet: the widget must not
+                # have gone anywhere. This is the regression — measuring the
+                # grab inside the BUBBLE put dock.left at 1220 instead of 924,
+                # a 296px lateral teleport that threw the card off-screen.
+                "openCardNoMovement": {
+                    "pointerX": _GRAB_X, "pointerY": 760,
+                    "grabLeft": _GRAB_X - _OPEN_DOCK_LEFT, "grabBottom": 24,
+                    "dockWidth": _OPEN_DOCK_WIDTH,
+                },
+                # Same grab, dragged 100px left: the dock follows by exactly 100.
+                "openCardDraggedLeft": {
+                    "pointerX": _GRAB_X - 100, "pointerY": 760,
+                    "grabLeft": _GRAB_X - _OPEN_DOCK_LEFT, "grabBottom": 24,
+                    "dockWidth": _OPEN_DOCK_WIDTH,
+                },
+                # Card closed: dock IS the bubble, so the old and new maths agree.
+                "closedCardNoMovement": {
+                    "pointerX": _GRAB_X, "pointerY": 760,
+                    "grabLeft": _GRAB_X - 1220, "grabBottom": 24,
+                    "dockWidth": SIZE,
+                },
+                # Shoved at the right edge with the card open: clamped so the
+                # card stays reachable rather than hanging off the viewport.
+                "openCardShovedRight": {
+                    "pointerX": 1279, "pointerY": 760,
+                    "grabLeft": 10, "grabBottom": 24,
+                    "dockWidth": _OPEN_DOCK_WIDTH,
+                },
+                "shovedLeft": {
+                    "pointerX": 2, "pointerY": 760,
+                    "grabLeft": 10, "grabBottom": 24,
+                    "dockWidth": _OPEN_DOCK_WIDTH,
+                },
+            },
+        },
+        tmp_path_factory.mktemp("drag"),
+        source=WIDGET_JS,
+    )
+
+
+def test_open_card_does_not_teleport_sideways_on_grab(dragged):
+    """The reported bug: with the card open, the first pointermove jumped the
+    whole widget ~296px right and pushed the card off-screen.
+
+    The cause is that the dock is a flex column with the bubble RIGHT-aligned
+    (`align-items: flex-end`), so bubble.left === dock.left only while the card
+    is closed. Measuring the grab inside the bubble and applying it to the dock
+    therefore mis-anchors by exactly (dockWidth - bubbleSize).
+    """
+    assert dragged["placed"]["openCardNoMovement"]["left"] == _OPEN_DOCK_LEFT
+    # The old behaviour, named so a regression is recognisable: 1220.
+    assert dragged["placed"]["openCardNoMovement"]["left"] != 1220
+
+
+def test_drag_translates_by_the_pointer_delta(dragged):
+    """100px of pointer travel is 100px of widget travel — open or closed."""
+    assert dragged["placed"]["openCardDraggedLeft"]["left"] == _OPEN_DOCK_LEFT - 100
+    assert dragged["placed"]["closedCardNoMovement"]["left"] == 1220
+
+
+def test_drag_cannot_park_the_card_out_of_bounds(dragged):
+    """Release snaps to a side, so this was always transient — but a card you
+    cannot see is not a state to drag through."""
+    placed = dragged["placed"]
+    assert placed["openCardShovedRight"]["left"] == VIEWPORT["width"] - _OPEN_DOCK_WIDTH - MARGIN
+    assert placed["shovedLeft"]["left"] == MARGIN
+
+
+def test_vertical_anchoring_is_unchanged(dragged):
+    """The bubble is the LAST child of the column, so bubble.bottom ===
+    dock.bottom in both states — which is why the symptom was purely lateral.
+    Pinned so a later 'symmetry' fix does not invent a vertical bug."""
+    for name in ("openCardNoMovement", "closedCardNoMovement"):
+        assert dragged["placed"][name]["bottom"] == VIEWPORT["height"] - 760 - 24

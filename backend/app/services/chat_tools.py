@@ -394,6 +394,7 @@ def tool_get_template(ctx: ToolContext, template_id: str) -> dict[str, Any]:
         "id": t.id,
         "display_name": t.display_name,
         "status": t.status,
+        "engine": t.engine,
         "source": t.source,
         "supported_fmt_keys": template_registry.supported_fmt_keys(t.source or "", t.engine),
     }
@@ -673,7 +674,10 @@ TOOL_SPECS: list[dict[str, Any]] = [
     {
         "name": "create_template_draft",
         "description": (
-            "Create a new draft template. engine defaults to latex; typst requires explicit source."
+            "Create a new draft template. engine defaults to latex; typst requires "
+            "explicit source. After editing, call validate_template and read "
+            "parse_report (missing / headers_missing / extra_sections_missing) "
+            "to fix what the PDF dropped."
         ),
         "parameters": {
             "type": "object",
@@ -700,7 +704,12 @@ TOOL_SPECS: list[dict[str, Any]] = [
     },
     {
         "name": "validate_template",
-        "description": "Test-compile a template against sample data; marks it ready on success.",
+        "description": (
+            "Test-compile a template against sample data; marks it ready on success. "
+            "Returns ok/error/parse_certified/parse_report — parse_report.missing "
+            "lists the exact sample phrases the PDF dropped; extra_sections_missing "
+            "non-empty means the template does not render custom sections."
+        ),
         "parameters": {
             "type": "object",
             "properties": {"template_id": {"type": "string"}},

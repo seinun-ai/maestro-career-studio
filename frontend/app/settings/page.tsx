@@ -11,6 +11,7 @@ import {
 } from "@/components/settings/llm-endpoint";
 import { ModelCatalogPanel } from "@/components/settings/model-catalog-panel";
 import { AppearanceSection } from "@/components/settings/appearance-section";
+import { McpWorkflowSection } from "@/components/settings/mcp-workflow-section";
 import { QuickTailorSection } from "@/components/settings/quick-tailor-section";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardSection } from "@/components/ui/card";
@@ -72,6 +73,7 @@ export default function SettingsPage() {
       />
       <PromptsSection />
       <QuickTailorSection />
+      <McpWorkflowSection />
       <AutoApplySection />
       <OpenAISection />
       <AppearanceSection />

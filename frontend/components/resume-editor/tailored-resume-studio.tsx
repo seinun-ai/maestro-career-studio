@@ -20,6 +20,7 @@ import { useUnsavedChangesWarning } from "@/hooks/use-unsaved-changes-warning";
 import { PageHeader } from "@/components/page-shell";
 import { ContactForm } from "@/components/resume-editor/contact-form";
 import {
+  type ApplicableCoherenceProposal,
   applyCoherenceProposal,
   type CoherenceState,
   DiffReviewPanel,
@@ -36,7 +37,6 @@ import { PdfPagesPreview } from "@/components/resume-editor/pdf-pages-preview";
 import { ProjectEditor } from "@/components/resume-editor/project-editor";
 import { RawJsonToggle } from "@/components/resume-editor/raw-json-toggle";
 import { SkillsEditor } from "@/components/resume-editor/skills-editor";
-import { HealthBadges } from "@/components/resume-health/health-badges";
 import { VersionHistorySheet } from "@/components/resume-versions/version-history-sheet";
 import {
   DEFAULT_TEMPLATE,
@@ -69,7 +69,7 @@ import { resumeDataSchema } from "@/lib/resume-schema";
 import type {
   Application,
   BaseResumeDetail,
-  CoherenceFlag,
+  HygieneFlag,
   ResumeData,
   ResumeDiffHunk,
 } from "@/lib/types";
@@ -433,14 +433,19 @@ function StudioEditor({
         checked: true,
         loading: false,
         flags: result.flags,
+        hygiene: result.hygiene,
+        gates: result.gates,
         appliedKeys: new Set(),
       });
     } catch {
-      toast.error("Coherence check failed — try again.");
+      toast.error("Review checks failed — try again.");
       setCoherence((prev) => ({ ...prev, loading: false }));
     }
   };
-  const handleApplyProposal = (flag: CoherenceFlag, key: string) => {
+  const handleApplyProposal = (
+    flag: ApplicableCoherenceProposal,
+    key: string,
+  ) => {
     const next = applyCoherenceProposal(data, flag);
     if (!next) {
       toast.error(
@@ -453,6 +458,13 @@ function StudioEditor({
       ...prev,
       appliedKeys: new Set(prev.appliedKeys).add(key),
     }));
+  };
+  // Hygiene notes reuse the proposal apply path, but only the mechanical ones
+  // carry a proposal — the render guards the button on `proposal !== null`,
+  // which TS can't narrow across the JSX closure, so re-check it here.
+  const handleApplyHygiene = (flag: HygieneFlag, key: string) => {
+    if (flag.proposal === null) return;
+    handleApplyProposal({ ...flag, proposal: flag.proposal }, key);
   };
 
   // Dirty-state: the local working copy differs from the last-saved server
@@ -647,13 +659,6 @@ function StudioEditor({
                       {rawMode ? "Form view" : "Raw JSON"}
                     </Button>
                   }
-                  status={
-                    <HealthBadges
-                      kind="application"
-                      resumeKey={applicationId}
-                      reportHref={`/applications/${applicationId}/health`}
-                    />
-                  }
                   tools={
                     <>
                       <Button
@@ -805,6 +810,7 @@ function StudioEditor({
                     coherence={coherence}
                     onCheckCoherence={handleCheckCoherence}
                     onApplyProposal={handleApplyProposal}
+                    onApplyHygiene={handleApplyHygiene}
                   />
                 )}
                 <div className="grid gap-1.5 rounded-md">

@@ -20,6 +20,10 @@ class QuickTailorProfilePayload(BaseModel):
     value: dict[str, Any]
 
 
+class McpWorkflowPayload(BaseModel):
+    value: dict[str, Any]
+
+
 class JobPreferencesPayload(BaseModel):
     value: JobPreferences
 

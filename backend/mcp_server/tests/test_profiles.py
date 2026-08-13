@@ -84,6 +84,28 @@ def test_career_profile_has_kb_writes_and_no_job_tools():
     assert "list_jobs" not in CAREER_TOOLS
 
 
+def test_career_profile_registers_onboarding_tools_and_hunt_does_not():
+    from mcp_server.profiles import CAREER_TOOLS, HUNT_TOOLS
+
+    new_tools = {
+        "kb_ingest_resume",
+        "kb_approve_points",
+        "create_base_resume_from_kb",
+    }
+    assert new_tools <= CAREER_TOOLS
+    assert {"list_base_resumes", "get_base_resume"} <= CAREER_TOOLS
+    assert new_tools.isdisjoint(HUNT_TOOLS)
+
+
+def test_career_profile_can_finish_the_arc_it_starts():
+    """Onboarding ends with a PDF in hand — a profile that composes a base but
+    cannot render it dead-ends at a JSON blob. Scoring/tailoring stay out."""
+    from mcp_server.profiles import CAREER_TOOLS
+
+    assert {"render_pdf", "get_rendered_pdf"} <= CAREER_TOOLS
+    assert {"score_ats", "tailor_session", "create_tailoring_session"}.isdisjoint(CAREER_TOOLS)
+
+
 def test_scoped_profiles_stay_read_only_on_the_kb():
     for allowlist in (HUNT_TOOLS, APPLY_TOOLS, EXPLORE_TOOLS, TEMPLATES_TOOLS):
         assert not {tool for tool in allowlist if tool.startswith("kb_")}

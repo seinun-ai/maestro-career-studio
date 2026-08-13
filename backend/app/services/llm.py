@@ -52,6 +52,23 @@ def get_gemini_key() -> str | None:
     return model_settings.get_gemini_api_key() or settings.gemini_api_key or None
 
 
+def completion_extras(model: str) -> dict[str, Any]:
+    """Per-model kwargs for chat.completions.create, for every caller of it.
+
+    The GPT-5.6 family rejects function tools on /v1/chat/completions unless
+    reasoning_effort is "none" (400 otherwise); older models like gpt-4o reject
+    the reasoning_effort parameter entirely, so it must stay conditional.
+
+    This lives here, next to the client, because the chat agent is not the only
+    caller that passes tools: the capability probe does too, and when it carried
+    its own copy of the rule (it carried none) it measured a call the app never
+    makes and reported a working chat model as tool-incapable.
+    """
+    if model.startswith("gpt-5.6"):
+        return {"reasoning_effort": "none"}
+    return {}
+
+
 def _get_client() -> OpenAI:
     global _client, _client_key
     current_key = get_openai_key()

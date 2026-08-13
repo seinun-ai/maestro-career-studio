@@ -33,14 +33,39 @@ def test_catalog_is_additive_for_existing_consumers(client):
     assert "product_data_scientist" not in keys
     # Both reserved entries carry `roles: []`, never null — so Task 5's TS type
     # needs no optionality and no null-guard at every use site.
-    assert body[-2] == {"key": "other", "label": "Other", "reserved": True, "roles": []}
-    assert body[-1] == {"key": "unknown", "label": "Unknown", "reserved": True, "roles": []}
+    assert body[-2] == {
+        "key": "other",
+        "label": "Other",
+        "description": None,
+        "reserved": True,
+        "roles": [],
+    }
+    assert body[-1] == {
+        "key": "unknown",
+        "label": "Unknown",
+        "description": None,
+        "reserved": True,
+        "roles": [],
+    }
 
 
 def test_catalog_nests_roles(client):
     body = client.get("/api/role-categories").json()
     ds = next(row for row in body if row["key"] == "data_scientist")
-    assert {"key": "decision_scientist", "label": "Decision Scientist"} in ds["roles"]
+    assert {"key": "product_data_scientist", "label": "Product Data Scientist"} in ds["roles"]
+    assert all(role["key"] != "decision_scientist" for role in ds["roles"])
+
+
+def test_catalog_exposes_optional_category_descriptions(client):
+    body = client.get("/api/role-categories").json()
+    described = next(row for row in body if row["key"] == "forward_deployed_engineer")
+    obvious = next(row for row in body if row["key"] == "qa_engineer")
+
+    assert described["description"] == (
+        "Embeds with customers to adapt and deploy software or AI solutions "
+        "in real operating environments."
+    )
+    assert obvious["description"] is None
 
 
 def test_match_endpoint(client):
@@ -100,10 +125,10 @@ def test_match_endpoint_on_absent_or_blank_input(client):
 
 
 def test_match_endpoint_keeps_the_role_on_an_alias_hit(client):
-    # `cv engineer` is an alias declared FOR computer_vision_engineer, so the
+    # `genai engineer` is an alias declared FOR generative_ai_engineer, so the
     # suggestion must name that role and not just its coarse parent — otherwise
     # the picker offers "AI/ML Engineer" for a term that names a specific job.
-    body = client.get("/api/role-categories/match", params={"q": "cv engineer"}).json()
-    assert body["role"] == "computer_vision_engineer"
+    body = client.get("/api/role-categories/match", params={"q": "genai engineer"}).json()
+    assert body["role"] == "generative_ai_engineer"
     assert body["category"] == "ai_ml_engineer"
-    assert body["label"] == "cv engineer"
+    assert body["label"] == "genai engineer"

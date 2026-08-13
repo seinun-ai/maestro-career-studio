@@ -508,6 +508,16 @@ def test_get_template_returns_engine_specific_supported_formatting_keys(db_sessi
     )
 
     assert result["supported_fmt_keys"] == ["date_format", "font_size"]
+    assert result["engine"] == "typst"
+
+
+def test_validate_template_tool_spec_mentions_parse_report():
+    specs = {spec["function"]["name"]: spec["function"] for spec in openai_tool_specs()}
+    desc = specs["validate_template"]["description"]
+    assert "parse_report" in desc
+    assert "extra_sections_missing" in desc
+    create_desc = specs["create_template_draft"]["description"]
+    assert "parse_report" in create_desc
 
 
 def test_create_template_draft_accepts_engine_and_requires_source_for_typst(db_session):
@@ -596,7 +606,18 @@ def test_delete_template_guards_default(db_session):
     assert template_registry.get(db_session, "throwaway") is None
 
 
-# --- chat system prompt: social posts section ------------------------------
+# --- chat system prompt contracts -----------------------------------------
+
+
+def test_chat_system_default_has_typst_data_contract():
+    from app.services import prompts
+
+    text = (prompts.PROMPT_DIR / "chat_system.txt").read_text(encoding="utf-8")
+    assert "Typst templates" in text
+    assert "sys.inputs.resume" in text
+    assert "@preview" in text
+    assert "XCharter" in text
+    assert "extra_sections" in text
 
 
 def test_chat_system_default_has_social_posts_section():

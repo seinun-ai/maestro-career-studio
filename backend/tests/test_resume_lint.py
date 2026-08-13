@@ -37,18 +37,20 @@ FULL_HOT = {("summary", None, None), ("experience", 0, 0),
             ("experience", 0, 1), ("experience", 0, 2)}
 
 
-def test_score_is_mean_over_exp_and_projects_only():
+def test_score_is_mean_over_exp_projects_and_extras_not_summary():
     resume = _resume()
     levels = {
         ("summary", None, None): _lv(0.0),          # summary is NOT scored
         ("experience", 0, 0): _lv(1.0),
         ("experience", 0, 1): _lv(0.5),
         ("experience", 0, 2): _lv(0.5),
+        ("extra:awards", None, 0): _lv(0.0),        # extras ARE scored
     }
     out = rl.assemble(resume, levels, PASS_GATES, "experienced", FULL_HOT)
-    # mean(1.0, 0.5, 0.5) = 0.667 → 67 ; the 0.0 summary does not drag it down
-    assert out["report"]["score"] == 67
-    assert out["report"]["grade"] == "C"
+    # mean(1.0, 0.5, 0.5, 0.0) = 0.5 → 50 ; the 0.0 summary does not drag it
+    # down, the 0.0 extras bullet does — extras are in the mean.
+    assert out["report"]["score"] == 50
+    assert out["report"]["grade"] == "D"
 
 
 def test_fatal_gate_caps_at_54():
@@ -267,9 +269,9 @@ def test_run_report_skips_verifier_without_llm(db_session, monkeypatch):
     assert row.features_json["verifier"] == {}
 
 
-def test_ladder_items_excludes_extra_sections():
-    # Phase-1 ATS-neutral: classification/evidence scoring stays experience/
-    # projects-only. Custom-section text must NOT become a scored ladder item.
+def test_ladder_items_includes_extra_sections():
+    # Custom-section bullets join the evidence ladder and score (Tier 1 Task 5).
+    # Extras stay out of hot zones and get no rewrite suggestions.
     resume = _resume()
     resume["extra_sections"] = [
         {"key": "awards", "title": "Awards", "type": "bullets", "enabled": True,
@@ -279,10 +281,11 @@ def test_ladder_items_excludes_extra_sections():
                       "bullets": ["Bullet inside an extra section."]}]},
     ]
     items = rl._ladder_items(resume)
-    assert {loc[0] for loc, _ in items} <= {"summary", "experience", "projects"}
+    assert {loc[0] for loc, _ in items} == {
+        "summary", "experience", "extra:awards", "extra:pubs"}
     texts = [t for _, t in items]
-    assert "Bullet inside an extra section." not in texts
-    assert "First place, 2025" not in texts
+    assert "Bullet inside an extra section." in texts
+    assert "First place, 2025" in texts
 
 
 def test_run_report_scans_extras_without_crashing(db_session, monkeypatch):
@@ -313,8 +316,10 @@ def test_run_report_reads_waivers_from_db(db_session, monkeypatch):
     bad = [dict(g, status="fail") if g["id"] == "S3" else g for g in PASS_GATES]
     monkeypatch.setattr(rl, "structure_gates", lambda db, tid, r: [g for g in bad if g["id"] in
                         ("S1", "S2", "S4")])
-    # gate_dates/gate_placeholders run for real; make S3 fail via a bad date, then waive it
-    resume["experience"][0]["start_date"] = ""      # S3 fails
+    # gate_dates/gate_placeholders run for real; make S3 fail via a bad date, then waive it.
+    # It must be a NON-EMPTY unparseable string: an absent start date is a legal
+    # undated role and no longer fails S3.
+    resume["experience"][0]["start_date"] = "whenever"      # S3 fails
     monkeypatch.setattr(
         rl.bullet_classify, "classify_items",
         lambda db, items: {rl.bullet_classify.content_hash(i["text"]): _lv(1.0) for i in items})
@@ -326,3 +331,326 @@ def test_run_report_reads_waivers_from_db(db_session, monkeypatch):
     db_session.commit()
     waived = rl.run_report(db_session, "base", "k-waive", resume, template_id=None)
     assert next(g for g in waived.report_json["gates"] if g["id"] == "S3")["status"] == "waived"
+
+
+def test_trailing_punctuation_flagged_on_skills_and_certs():
+    resume = _resume()
+    resume["skills"] = [{"category": "Languages", "items": ["Python.", "SQL"]}]
+    resume["certifications"] = ["AWS Certified AI Practitioner (AIF-C01).",
+                                "IBM Data Science Professional Certificate"]
+    notes = rl._advisories(resume)
+    punct = [n for n in notes if "ends with a stray" in n["issue"]]
+    assert len(punct) == 2
+    assert any(n["location"]["section"] == "skills" and "Python." in n["label"] for n in punct)
+    assert any(n["location"]["section"] == "certifications" and "(AIF-C01)." in n["label"] for n in punct)
+
+
+def test_clean_items_emit_no_punctuation_notes():
+    resume = _resume()
+    resume["skills"] = [{"category": "Languages", "items": ["Python", "SQL"]}]
+    resume["certifications"] = ["AWS Certified AI Practitioner (AIF-C01)"]
+    assert not [n for n in rl._advisories(resume) if "ends with a stray" in n["issue"]]
+
+
+def test_punctuation_note_names_the_actual_character():
+    resume = _resume()
+    resume["skills"] = [{"category": "Languages", "items": ["Python.", "SQL,", "Go…"]}]
+    notes = rl._advisories(resume)
+    punct = {n["label"]: n["issue"] for n in notes if "ends with a stray" in n["issue"]}
+    assert "a stray period" in punct["Skills · Python."]
+    assert "a stray comma" in punct["Skills · SQL,"]
+    assert "a stray ellipsis" in punct["Skills · Go…"]
+
+
+def test_duplicate_detection_ignores_trailing_punct_and_spacing():
+    resume = _resume()
+    resume["skills"] = [
+        {"category": "Languages", "items": ["Python"]},
+        {"category": "Tools", "items": [" python . "]},
+    ]
+    notes = rl._advisories(resume)
+    assert any("appears in both" in n["issue"] for n in notes)
+
+
+def test_certification_duplicates_flagged_punctuation_blind():
+    resume = _resume()
+    resume["certifications"] = [
+        "AWS Certified AI Practitioner (AIF-C01)",
+        "AWS  Certified AI Practitioner (AIF-C01).",
+    ]
+    notes = rl._advisories(resume)
+    assert any(n["location"]["section"] == "certifications"
+               and "more than once" in n["issue"] for n in notes)
+
+
+def test_distinct_certifications_not_flagged_as_duplicates():
+    resume = _resume()
+    resume["certifications"] = [
+        "AWS Certified AI Practitioner (AIF-C01)",
+        "AWS Certified AI Practitioner (AIF-C02)",  # differs only in the code
+    ]
+    assert not any("more than once" in n["issue"] for n in rl._advisories(resume))
+
+
+def test_punctuated_skill_matched_against_bullet_evidence():
+    resume = _resume()
+    resume["experience"][0]["bullets"] = ["Built things in Python daily."]
+    resume["skills"] = [{"category": "Languages", "items": ["Python."]}]
+    notes = rl._advisories(resume)
+    assert not any("never demonstrated" in n["issue"] for n in notes)
+
+
+def test_certification_duplicate_with_space_before_trailing_punctuation():
+    # "_norm_item" must not leave a trailing space after stripping the
+    # punctuation — a space *before* the punctuation (e.g. from "(X) .")
+    # is the exact case that reopens the false positive this round fixes.
+    resume = _resume()
+    resume["certifications"] = [
+        "AWS Certified AI Practitioner (AIF-C01)",
+        "AWS Certified AI Practitioner (AIF-C01) .",
+    ]
+    notes = rl._advisories(resume)
+    assert any(n["location"]["section"] == "certifications"
+               and "more than once" in n["issue"] for n in notes)
+
+
+def test_skill_with_space_before_punctuation_matched_against_bullet():
+    # The bullet ends right after "Python" — no trailing text that would let a
+    # leftover trailing space in the token accidentally still match.
+    resume = _resume()
+    resume["experience"][0]["bullets"] = ["Built things in Python."]
+    resume["skills"] = [{"category": "Languages", "items": ["Python ."]}]
+    notes = rl._advisories(resume)
+    assert not any("never demonstrated" in n["issue"] for n in notes)
+
+
+def test_bullet_blob_whitespace_normalized_for_never_demonstrated_check():
+    # Pins the OTHER half of the never-demonstrated fix: the blob itself must
+    # also have its whitespace collapsed, not just the skills token, or a
+    # multi-word skill won't match a bullet where the words are separated by
+    # something other than a single plain space (here, a newline).
+    resume = _resume()
+    resume["experience"][0]["bullets"] = ["Built systems using data\nmodeling techniques."]
+    resume["skills"] = [{"category": "Languages", "items": ["data modeling"]}]
+    notes = rl._advisories(resume)
+    assert not any("never demonstrated" in n["issue"] for n in notes)
+
+
+def test_sentence_like_skills_item_flagged():
+    resume = _resume()
+    resume["skills"] = [{"category": "GenAI", "items": [
+        "built RAG pipelines with pgvector for semantic retrieval",  # 8 tokens
+        "led the pgvector retrieval pipeline",  # 5 tokens (== MAX_SKILL_ITEM_WORDS) — must NOT flag
+        "led the pgvector retrieval pipeline today",  # 6 tokens — one over the line, must flag
+        "RAG pipelines",
+    ]}]
+    notes = rl._advisories(resume)
+    hits = {n["label"] for n in notes if "reads like a sentence" in n["issue"]}
+    assert hits == {
+        "Skills · built RAG pipelines with pgvector for semantic retrieval",
+        "Skills · led the pgvector retrieval pipeline today",
+    }
+
+
+def test_sentence_like_skills_items_have_distinct_ids():
+    # Regression guard for the id-collision bug: the sentence-like rule's
+    # location and old constant issue string made every hit share one id,
+    # which collides as a React key on the health report page.
+    resume = _resume()
+    resume["skills"] = [{"category": "GenAI", "items": [
+        "built RAG pipelines with pgvector for semantic retrieval",
+        "designed distributed systems for high throughput workloads",
+    ]}]
+    notes = rl._advisories(resume)
+    hits = [n for n in notes if "reads like a sentence" in n["issue"]]
+    assert len(hits) == 2
+    assert hits[0]["id"] != hits[1]["id"]
+
+
+def test_long_certifications_not_flagged_as_sentences():
+    resume = _resume()
+    resume["certifications"] = [
+        "Award: 1st Place, UTA Business Analytics Symposium AWS GenAI Hackathon (Mar 2026)"]
+    assert not any("reads like a sentence" in n["issue"] for n in rl._advisories(resume))
+
+
+def test_norm_item_folding_stays_in_sync_with_the_bullet_blob():
+    # Guards _norm_item's stated invariant. Separator folding added for dedup
+    # alone would falsely flag "Scikit-Learn" as never demonstrated.
+    resume = _resume()
+    resume["experience"][0]["bullets"] = ["Built models with Scikit-Learn in production."]
+    resume["skills"] = [{"category": "ML", "items": ["Scikit-Learn"]}]
+    assert not any("never demonstrated" in n["issue"] for n in rl._advisories(resume))
+
+
+ALL_ADVISORY_RULE_CODES = {
+    "summary.missing",
+    "entry.too_many_bullets",
+    "bullet.too_long",
+    "bullet.too_short",
+    "skills.duplicate_across_groups",
+    "skills.undemonstrated",
+    "skills.sentence_like",
+    "skills.trailing_punct",
+    "certifications.trailing_punct",
+    "certifications.duplicate",
+}
+
+
+def _resume_tripping_every_advisory_rule():
+    # One resume that trips all ten deterministic rules, so the rule-code
+    # test pins the exact slug set rather than a subset a smaller fixture
+    # would happen to cover.
+    resume = _resume()
+    resume["summary"] = ""  # summary.missing
+    resume["experience"] = [{
+        "company": "Acme", "role": "DS", "start_date": "Jan 2023", "end_date": "Present",
+        "bullets": [
+            "Managed onboarding docs.",       # 3 words -> bullet.too_short
+            "word " * 40,                     # 40 words -> bullet.too_long
+            "filler word " * 5,
+            "filler word " * 5,
+            "filler word " * 5,
+            "filler word " * 5,
+            "filler word " * 5,
+            "filler word " * 5,
+        ],  # 8 bullets total (> MAX_BULLETS_PER_ENTRY) -> entry.too_many_bullets
+    }]
+    resume["skills"] = [
+        {"category": "Languages", "items": ["Python."]},  # skills.trailing_punct
+        {"category": "Tools", "items": ["python"]},        # dup of "Python." across groups
+        {"category": "GenAI", "items": [
+            "built RAG pipelines with pgvector for semantic retrieval",  # skills.sentence_like
+        ]},
+    ]  # none of these appear in any bullet -> skills.undemonstrated too
+    resume["certifications"] = ["AWS (X).", "AWS (X)"]  # trailing_punct + duplicate
+    return resume
+
+
+def test_every_advisory_note_carries_a_rule_code():
+    resume = _resume_tripping_every_advisory_rule()
+    rules = {note.get("rule") for note in rl._advisories(resume)}
+    assert rules == ALL_ADVISORY_RULE_CODES
+
+
+def test_rule_codes_identify_trailing_punctuation_by_section():
+    resume = _resume()
+    resume["skills"] = [{"category": "L", "items": ["Python."]}]
+    resume["certifications"] = ["AWS (X)."]
+    rules = {n["rule"] for n in rl._advisories(resume)}
+    assert "skills.trailing_punct" in rules
+    assert "certifications.trailing_punct" in rules
+
+
+def test_rule_code_does_not_change_finding_ids():
+    # _fid hashes type|location|issue — adding a field must not perturb ids.
+    resume = _resume()
+    resume["skills"] = [{"category": "L", "items": ["Python."]}]
+    note = next(n for n in rl._advisories(resume) if n["rule"] == "skills.trailing_punct")
+    assert note["id"] == rl._fid("note", ("skills", None, None), note["issue"])
+
+
+def test_rule_notes_is_public_and_matches_advisories():
+    resume = _resume()
+    resume["skills"] = [{"category": "L", "items": ["built RAG pipelines with pgvector for retrieval"]}]
+    assert rl.rule_notes(resume) == rl._advisories(resume)
+
+
+def test_trailing_punctuation_notes_carry_the_offending_raw_text():
+    # Task 2 (post-tailoring coherence check) needs the exact raw item text
+    # for a trailing-punctuation note to compute a mechanical fix and use it
+    # as an exact-match needle — not by parsing the label or issue prose.
+    resume = _resume()
+    resume["skills"] = [{"category": "L", "items": ["Python."]}]
+    resume["certifications"] = ["AWS (X)."]
+    notes = {n["rule"]: n for n in rl._advisories(resume) if n.get("rule", "").endswith(".trailing_punct")}
+    assert notes["skills.trailing_punct"]["subject"] == "Python."
+    assert notes["certifications.trailing_punct"]["subject"] == "AWS (X)."
+
+
+def test_trailing_punctuation_subject_is_raw_not_stripped_for_padded_items():
+    # subject is the exact-match needle a downstream consumer uses against
+    # `items.index(subject)` / list membership on the resume's own array.
+    # Regression: subject used to come from the already-.strip()'d local, so
+    # a padded source item ("  Padded Skill.  ") yielded a subject that no
+    # longer matched the raw array element.
+    resume = _resume()
+    padded_skill = "  Padded Skill.  "
+    padded_cert = "  AWS (X).  "
+    resume["skills"] = [{"category": "L", "items": [padded_skill]}]
+    resume["certifications"] = [padded_cert]
+
+    notes = {n["rule"]: n for n in rl._advisories(resume) if n.get("rule", "").endswith(".trailing_punct")}
+    skill_note = notes["skills.trailing_punct"]
+    cert_note = notes["certifications.trailing_punct"]
+
+    # the needle is the exact, unstripped source string ...
+    assert skill_note["subject"] == padded_skill
+    assert cert_note["subject"] == padded_cert
+    # ... which is what makes it findable in the resume's own arrays.
+    assert skill_note["subject"] in resume["skills"][0]["items"]
+    assert cert_note["subject"] in resume["certifications"]
+
+    # the mechanical fix (strip a trailing run of punctuation-or-whitespace,
+    # then strip the leading side) still derives the clean proposal.
+    proposal = rl._TRAILING_PUNCT_RUN.sub("", skill_note["subject"]).strip()
+    assert proposal == "Padded Skill"
+
+
+def _extras_only_resume():
+    return {
+        "contact": {"name": "A", "email": "a@b.c"},
+        "extra_sections": [
+            {"key": "publications", "title": "Publications", "type": "entries",
+             "entries": [{"heading": "Paper X", "enabled": True,
+                          "bullets": ["Improved retrieval accuracy 12% on benchmark Y"]}]},
+            {"key": "awards", "title": "Awards & Honors", "type": "bullets",
+             "bullets": ["Dean's list 2019"]},
+        ],
+    }
+
+
+def test_ladder_items_include_extras_bullets():
+    items = rl._ladder_items(_extras_only_resume())
+    locs = [loc for loc, _ in items]
+    assert ("extra:publications", 0, 0) in locs
+    assert ("extra:awards", None, 0) in locs
+
+
+def test_extras_only_resume_scores_nonzero():
+    resume = _extras_only_resume()
+    levels = {("extra:publications", 0, 0): {"value": 0.8, "level": "analogue"},
+              ("extra:awards", None, 0): {"value": 0.5, "level": "adjacent"}}
+    out = rl.assemble(resume, levels, [], "experienced", set())
+    assert out["report"]["score"] == 65  # mean of 0.8, 0.5
+
+
+def test_extras_fix_candidates_never_get_rewrite_suggestions():
+    resume = _extras_only_resume()
+    levels = {("extra:publications", 0, 0): {"value": 0.0, "level": "unaddressed"}}
+    out = rl.assemble(
+        resume, levels, [], "experienced", set(), rewrite_fn=lambda t: "REWRITTEN")
+    ladder = [f for f in out["report"]["findings"]
+              if f["location"]["section"] == "extra:publications"]
+    assert ladder and all(f["type"] == "ask" and f["suggestion"] is None for f in ladder)
+
+
+def test_labels_and_text_resolve_for_extras():
+    resume = _extras_only_resume()
+    assert "Publications" in rl._label_at(resume, ("extra:publications", 0, 0))
+    assert rl._text_at(resume, ("extra:awards", None, 0)) == "Dean's list 2019"
+
+
+def test_stale_extras_locations_degrade_instead_of_raising():
+    """A location can outlive its section (rename/delete between runs); the
+    frontend returns null there — the backend must not IndexError."""
+    resume = _extras_only_resume()
+    for loc in [
+        ("extra:gone", 0, 0),            # section deleted/renamed
+        ("extra:gone", None, 0),         # flat section deleted/renamed
+        ("extra:publications", 9, 0),    # entry index out of range
+        ("extra:publications", 0, 9),    # bullet index out of range
+        ("extra:awards", None, 9),       # flat bullet out of range
+    ]:
+        assert isinstance(rl._label_at(resume, loc), str)
+        assert rl._text_at(resume, loc) == ""

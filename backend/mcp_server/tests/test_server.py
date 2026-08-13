@@ -12,6 +12,8 @@ KB_TOOL_NAMES = {
     "kb_create_entity",
     "kb_edit_entity",
     "kb_edit_profile",
+    "kb_ingest_resume",
+    "kb_approve_points",
 }
 
 
@@ -31,6 +33,7 @@ def test_all_tools_registered():
         "update_base_resume",
         "edit_base_resume",
         "create_base_resume",
+        "create_base_resume_from_kb",
         "duplicate_base_resume",
         "tailor_application",
         "render_pdf",
@@ -41,6 +44,7 @@ def test_all_tools_registered():
         "list_applications",
         "export_jobs",
         "create_tailoring_session",
+        "quick_tailor",
         "get_tailoring_session",
         "list_tailoring_sessions",
         "close_tailoring_session",
@@ -191,9 +195,49 @@ def test_render_pdf_dispatches_on_target_type(monkeypatch):
     calls = {}
     monkeypatch.setattr(srv._client, "render_base_resume", lambda slug, template_id=None: (calls.__setitem__("base", slug), {"ok": "base"})[1])
     monkeypatch.setattr(srv._client, "render_application", lambda app_id, template_id=None: (calls.__setitem__("app", app_id), {"ok": "app"})[1])
-    assert srv.render_pdf("base_resume", "master") == {"ok": "base"}
-    assert srv.render_pdf("application", "a1") == {"ok": "app"}
+    monkeypatch.setattr(srv._client, "get_mcp_workflow_settings", lambda: {"hints": False})
+    assert srv.render_pdf("base_resume", "master") == {"ok": "base", "next": None}
+    assert srv.render_pdf("application", "a1") == {"ok": "app", "next": None}
     assert calls == {"base": "master", "app": "a1"}
+
+
+def test_render_pdf_base_resume_never_fetches_setup_status(monkeypatch):
+    # Base-resume previews are not part of the score->tailor->render arc, so
+    # the (extra, HTTP) setup-status fetch that backs the application hint
+    # must never happen for this target_type — not even to build a null hint.
+    monkeypatch.setattr(srv._client, "render_base_resume", lambda slug, template_id=None: {"ok": "base"})
+
+    def _boom():
+        raise AssertionError("get_setup_status must not be called for base_resume renders")
+
+    monkeypatch.setattr(srv._client, "get_setup_status", _boom)
+    out = srv.render_pdf("base_resume", "master")
+    assert out == {"ok": "base", "next": None}
+
+
+def test_render_pdf_application_composes_the_terminal_hint(monkeypatch):
+    monkeypatch.setattr(srv._client, "render_application", lambda app_id, template_id=None: {"ok": "app"})
+    monkeypatch.setattr(srv._client, "get_mcp_workflow_settings", lambda: {"hints": True})
+    monkeypatch.setattr(
+        srv._client,
+        "get_setup_status",
+        lambda: {"autofill": {"done": True, "readiness": 1.0, "groups": {}, "blocking": []}},
+    )
+    out = srv.render_pdf("application", "a1")
+    assert out["next"]["state"] == "rendered"
+    assert out["next"]["readiness"]["autofill_ready"] is True
+
+
+def test_render_pdf_application_skips_setup_status_when_hints_off(monkeypatch):
+    monkeypatch.setattr(srv._client, "render_application", lambda app_id, template_id=None: {"ok": "app"})
+    monkeypatch.setattr(srv._client, "get_mcp_workflow_settings", lambda: {"hints": False})
+
+    def _boom():
+        raise AssertionError("get_setup_status must not be called when hints are off")
+
+    monkeypatch.setattr(srv._client, "get_setup_status", _boom)
+    out = srv.render_pdf("application", "a1")
+    assert out == {"ok": "app", "next": None}
 
 
 def test_render_pdf_invalid_target_raises():
@@ -243,6 +287,7 @@ def test_render_pdf_application_template_id(monkeypatch):
     seen = {}
     monkeypatch.setattr(srv._client, "render_application",
                         lambda app_id, template_id=None: seen.update(a=app_id, t=template_id) or {"ok": 1})
+    monkeypatch.setattr(srv._client, "get_mcp_workflow_settings", lambda: {"hints": False})
     srv.render_pdf("application", "a1", template_id="modern")
     assert seen == {"a": "a1", "t": "modern"}
 
@@ -450,6 +495,7 @@ async def test_resolve_gaps_accepts_cowork_style_kwargs(monkeypatch):
         )
         or {"id": session_id},
     )
+    monkeypatch.setattr(srv._client, "get_mcp_workflow_settings", lambda: {"hints": False})
 
     await srv.mcp.call_tool(
         "resolve_gaps",
@@ -545,6 +591,33 @@ def test_health_waiver_docstrings_require_explicit_human_decision():
 def test_validate_template_docstring_documents_parse_certified():
     doc = srv.validate_template.__doc__ or ""
     assert "parse_certified" in doc
+    assert "parse_report" in doc
+    assert "extra_sections_missing" in doc
+    assert "LaTeX error" not in doc
+    assert "file:line:col" in doc
+
+
+def test_list_templates_docstring_covers_both_engines():
+    doc = srv.list_templates.__doc__ or ""
+    assert "LaTeX templates" not in doc
+    assert "engine" in doc
+    assert "both engines" in doc.lower() or "latex | typst" in doc.lower() or "engines" in doc
+
+
+def test_get_template_docstring_covers_both_engines():
+    doc = srv.get_template.__doc__ or ""
+    assert "engine" in doc
+    assert "typst" in doc.lower()
+    assert "supported_fmt_keys" in doc
+
+
+def test_create_template_draft_docstring_states_typst_constraints():
+    doc = srv.create_template_draft.__doc__ or ""
+    assert "@preview" in doc
+    assert "XCharter" in doc
+    assert "extra_sections" in doc
+    assert "PRE-FORMATTED" in doc  # "date_format" alone matched the OLD LaTeX fmt list too
+    assert "silently" in doc.lower() or "substitut" in doc.lower()
 
 
 def test_tailor_session_tool_docstring_restates_honesty_rules():

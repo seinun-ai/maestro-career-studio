@@ -1,11 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useCallback, useMemo, useState } from "react";
+import {
+  useIsMutating,
+  useMutation,
+  useQueryClient,
+  type QueryClient,
+} from "@tanstack/react-query";
 import { Check, Inbox, Pencil, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 
+import { useConfirm } from "@/components/confirm-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,14 +25,40 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
-import { deleteKbPoint, patchKbPoint } from "@/lib/api";
-import type { KBEntitySummary, KBInboxPoint, KBPointPatch } from "@/lib/types";
+import { deleteKbPoint, patchKbPoint, bulkKbPointState } from "@/lib/api";
+import type { KBEntitySummary, KBInboxPoint, KBPointPatch, UUID } from "@/lib/types";
 
 type DraftGroup = {
   entityId: string;
   entityTitle: string;
   points: KBInboxPoint[];
 };
+
+// Every write in this panel — bulk approve, per-row approve/save/reassign,
+// discard — carries this key, so `useIsMutating` over it gives the panel ONE
+// pending flag covering all of them. Without a shared flag the bulk call and a
+// per-row control ran concurrently: approve-all followed by an instant Discard
+// deleted a point the bulk request had just approved, or reported a spurious
+// "not found" for a row the server had already moved.
+const KB_POINT_MUTATION_KEY = ["kb", "point-write"] as const;
+
+// Approving, editing, reassigning and discarding a draft all move the same
+// three lists. This was copy-pasted at three call sites; kept in one place so
+// they cannot drift apart.
+const KB_POINT_QUERY_KEYS = [
+  ["kb", "drafts"],
+  ["kb", "entities"],
+  ["kb", "entity"],
+] as const;
+
+/** Resolves once the affected lists have actually refetched. */
+function invalidateKbPoints(queryClient: QueryClient) {
+  return Promise.all(
+    KB_POINT_QUERY_KEYS.map((queryKey) =>
+      queryClient.invalidateQueries({ queryKey }),
+    ),
+  );
+}
 
 export function InboxPanel({
   drafts,
@@ -55,16 +87,107 @@ export function InboxPanel({
     return [...grouped.values()];
   }, [drafts]);
 
+  const queryClient = useQueryClient();
+  const confirm = useConfirm();
+
+  // Rows own their editor text, so the panel only tracks WHICH rows hold an
+  // unsaved edit. Bulk approve sends ids alone, and the server approves the
+  // stored text — so a row whose open editor fixes a transcription typo would
+  // be approved with the wrong wording and the correction silently dropped.
+  // Those rows are excluded from the bulk call instead (chosen over flushing
+  // them first: excluding needs one boolean per row, flushing would mean
+  // lifting every editor's text into this component).
+  const [dirtyIds, setDirtyIds] = useState<ReadonlySet<string>>(() => new Set());
+  const setRowDirty = useCallback((id: UUID, dirty: boolean) => {
+    setDirtyIds((prev) => {
+      if (prev.has(id) === dirty) return prev;
+      const next = new Set(prev);
+      if (dirty) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }, []);
+
+  const approvableIds = useMemo(
+    () => drafts.filter((draft) => !dirtyIds.has(draft.id)).map((d) => d.id),
+    [drafts, dirtyIds],
+  );
+  const skipped = drafts.length - approvableIds.length;
+
+  // Shared by every control in the panel, bulk and per-row alike.
+  const pending = useIsMutating({ mutationKey: KB_POINT_MUTATION_KEY }) > 0;
+
+  const approveAll = useMutation({
+    mutationKey: KB_POINT_MUTATION_KEY,
+    mutationFn: async (ids: UUID[]) => {
+      const ok = await confirm({
+        title: `Approve ${ids.length} ${ids.length === 1 ? "point" : "points"}?`,
+        description:
+          skipped > 0
+            ? `They join your career record. ${skipped} draft${skipped === 1 ? "" : "s"} with unsaved edits ${skipped === 1 ? "is" : "are"} not included.`
+            : "They join your career record. You can still edit them there afterwards.",
+        confirmLabel: "Approve",
+      });
+      if (!ok) return null;
+      return bulkKbPointState(ids, "approved");
+    },
+    onSuccess: async (body, ids) => {
+      if (!body) return;
+      // Counted against the ids SENT, not against results.length: a response
+      // that omits an id entirely is a failure, and results.length arithmetic
+      // reported it as a success.
+      const approved = body.results.filter((row) => row.ok).length;
+      const failed = ids.length - approved;
+      if (failed === 0) {
+        toast.success(
+          `Approved ${approved} ${approved === 1 ? "point" : "points"}`,
+        );
+      } else {
+        const detail =
+          body.results.find((row) => !row.ok)?.detail ?? "no reason given";
+        toast.error(
+          `Approved ${approved} of ${ids.length} — ${failed} failed: ${detail}`,
+        );
+      }
+      // Awaited, not fire-and-forget. react-query holds the mutation pending
+      // until this resolves, so the button stays disabled until the list has
+      // refetched and a double click cannot re-submit the same ids.
+      await invalidateKbPoints(queryClient);
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
   return (
     <Card id="inbox" className="scroll-mt-6 border-0 bg-muted/45 shadow-none ring-0">
       <CardHeader className="pb-1">
-        <CardTitle className="flex items-center gap-2">
-          <span className="flex size-8 items-center justify-center rounded-full bg-background/80">
-            <Inbox className="text-primary size-4" aria-hidden="true" />
-          </span>
-          Draft inbox
-          {!isLoading && <Badge className="rounded-full" variant="secondary">{drafts.length}</Badge>}
-        </CardTitle>
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <CardTitle className="flex items-center gap-2">
+            <span className="flex size-8 items-center justify-center rounded-full bg-background/80">
+              <Inbox className="text-primary size-4" aria-hidden="true" />
+            </span>
+            Draft inbox
+            {!isLoading && <Badge className="rounded-full" variant="secondary">{drafts.length}</Badge>}
+          </CardTitle>
+          {drafts.length > 0 && !isLoading && !error && (
+            <div className="flex flex-col items-end gap-1">
+              <Button
+                className="rounded-full px-4"
+                size="sm"
+                onClick={() => approveAll.mutate(approvableIds)}
+                disabled={pending || approvableIds.length === 0}
+              >
+                <Check aria-hidden="true" />
+                {approveAll.isPending ? "Approving…" : "Approve all shown"}
+              </Button>
+              {skipped > 0 && (
+                <p className="text-muted-foreground text-xs">
+                  {skipped} with unsaved edits skipped — save or discard them
+                  first.
+                </p>
+              )}
+            </div>
+          )}
+        </div>
         <p className="text-muted-foreground text-sm">
           Review AI-written points before they become part of your career record.
         </p>
@@ -109,7 +232,13 @@ export function InboxPanel({
               </div>
               <div className="space-y-2">
                 {group.points.map((point) => (
-                  <DraftRow key={point.id} point={point} entities={entities} />
+                  <DraftRow
+                    key={point.id}
+                    point={point}
+                    entities={entities}
+                    pending={pending}
+                    onDirtyChange={setRowDirty}
+                  />
                 ))}
               </div>
             </section>
@@ -123,45 +252,54 @@ export function InboxPanel({
 function DraftRow({
   point,
   entities,
+  pending,
+  onDirtyChange,
 }: {
   point: KBInboxPoint;
   entities: KBEntitySummary[];
+  /** Panel-wide flag: true while ANY draft write is in flight, bulk or row. */
+  pending: boolean;
+  onDirtyChange: (id: UUID, dirty: boolean) => void;
 }) {
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState(point.text);
 
-  const invalidate = () => {
-    void queryClient.invalidateQueries({ queryKey: ["kb", "drafts"] });
-    void queryClient.invalidateQueries({ queryKey: ["kb", "entities"] });
-    void queryClient.invalidateQueries({ queryKey: ["kb", "entity"] });
-  };
-
   const update = useMutation({
+    mutationKey: KB_POINT_MUTATION_KEY,
     mutationFn: ({ payload }: { payload: KBPointPatch; success: string }) =>
       patchKbPoint(point.id, payload),
-    onSuccess: (updated, variables) => {
+    onSuccess: async (updated, variables) => {
       setText(updated.text);
       setEditing(false);
+      onDirtyChange(point.id, false);
       toast.success(variables.success);
-      invalidate();
+      await invalidateKbPoints(queryClient);
     },
     onError: (error: Error) => toast.error(error.message),
   });
 
   const discard = useMutation({
+    mutationKey: KB_POINT_MUTATION_KEY,
     mutationFn: () => deleteKbPoint(point.id),
-    onSuccess: () => {
+    onSuccess: async () => {
+      onDirtyChange(point.id, false);
       toast.success("Draft discarded");
-      invalidate();
+      await invalidateKbPoints(queryClient);
     },
     onError: (error: Error) => toast.error(error.message),
   });
 
-  const pending = update.isPending || discard.isPending;
   const selectedEntity = entities.find((entity) => entity.id === point.entity_id);
+  // The panel excludes dirty rows from "Approve all shown", so every path that
+  // changes or resets the editor has to report the row's state.
+  const changeText = (value: string) => {
+    setText(value);
+    onDirtyChange(point.id, value.trim() !== point.text);
+  };
   const cancelEdit = () => {
     setText(point.text);
+    onDirtyChange(point.id, false);
     setEditing(false);
   };
   const saveText = () => {
@@ -194,7 +332,7 @@ function DraftRow({
           <Textarea
             id={`draft-text-${point.id}`}
             value={text}
-            onChange={(event) => setText(event.target.value)}
+            onChange={(event) => changeText(event.target.value)}
             onKeyDown={(event) => {
               if (event.key === "Escape") {
                 event.preventDefault();

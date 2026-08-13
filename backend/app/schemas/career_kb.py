@@ -1,7 +1,7 @@
 """Pydantic schemas for the Career Knowledge Base."""
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -147,6 +147,25 @@ class KBPointPatch(BaseModel):
         if not stripped:
             raise ValueError("text must be non-empty")
         return stripped
+
+
+class KBPointBulkState(BaseModel):
+    """Mass approve/retire. draft is not bulk-legal — un-reviewing in bulk
+    makes no sense, same narrowness as proposals bulk-transition."""
+
+    ids: list[UUID] = Field(min_length=1, max_length=500)
+    state: Literal["approved", "retired"]
+
+
+class KBPointBulkResult(BaseModel):
+    id: UUID
+    ok: bool
+    state: str | None = None
+    detail: str | None = None
+
+
+class KBPointBulkResponse(BaseModel):
+    results: list[KBPointBulkResult]
 
 
 # --- Read models -----------------------------------------------------------
@@ -401,6 +420,7 @@ class ImportedBaseRead(BaseModel):
     # the user to confirm. False means "unknown" — undeclared, not guessed.
     proposed: bool
     render_error: str | None = None
+    parse_warnings: list[str] = Field(default_factory=list)
 
 
 class SkippedFileRead(BaseModel):
@@ -419,6 +439,58 @@ class ImportReport(BaseModel):
     bases: list[ImportedBaseRead] = Field(default_factory=list)
     skipped: list[SkippedFileRead] = Field(default_factory=list)
     kb: ConsolidationReport | None = None
+
+
+class IngestParsedSource(BaseModel):
+    """One caller-parsed resume. `data` is validated as ResumeData in the
+    handler so a mixed batch can return per-source 422 detail atomically."""
+
+    # The repo's base-resume slug charset (routers/base_resumes.SLUG_RE), here
+    # rather than in the handler so it shows up in OpenAPI — and so no
+    # unanchored .match can let "my resume!" through.
+    key: str = Field(pattern=r"^[a-z0-9][a-z0-9_]*$")
+    data: dict[str, Any]
+
+
+class IngestParsedRequest(BaseModel):
+    # Forbid extras for the same reason _ExtraSectionBase does: a miswired key
+    # (origin_detail, say — provenance is a header now) must be a hard error,
+    # not a silent drop.
+    model_config = ConfigDict(extra="forbid")
+
+    sources: list[IngestParsedSource] = Field(min_length=1, max_length=20)
+
+
+class IngestParsedEntity(BaseModel):
+    id: UUID
+    kind: str
+    title: str
+    org: str | None = None
+    created: bool
+
+
+class IngestParsedPoint(BaseModel):
+    id: UUID
+    entity_id: UUID
+    text: str
+
+
+class IngestParsedReport(BaseModel):
+    """POST /api/kb/ingest-parsed — ids-bearing, no base-resume minting.
+
+    ``points_created`` counts DRAFT rows written; nothing on this path is
+    approved. ``duplicates_skipped`` counts source bullets that did not become
+    a point (collapsed in the batch, or already on the entity in any state).
+    """
+
+    entities: list[IngestParsedEntity] = Field(default_factory=list)
+    points: list[IngestParsedPoint] = Field(default_factory=list)
+    entities_created: int = 0
+    entities_matched: int = 0
+    points_created: int = 0
+    duplicates_skipped: int = 0
+    skills_merged: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
 
 
 class KBContextResponse(BaseModel):

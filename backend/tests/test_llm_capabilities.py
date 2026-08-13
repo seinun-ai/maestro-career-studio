@@ -1,3 +1,4 @@
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -99,3 +100,66 @@ def test_require_names_the_missing_capability(db_session):
     assert "streamed no tool call" in message
     # Points at the way out: the three models are configured separately.
     assert "configured separately" in message
+
+
+class _RecordingClient:
+    """Records the kwargs of each create() call.
+
+    The MagicMock clients above accept any kwargs silently, so they cannot tell
+    the probe's call apart from the chat agent's — which is exactly how the
+    divergence these tests pin down went unnoticed.
+    """
+
+    def __init__(self, stream):
+        self.calls: list[dict] = []
+        self.chat = SimpleNamespace(completions=SimpleNamespace(create=self._create))
+
+    def _create(self, **kwargs):
+        self.calls.append(kwargs)
+        return iter(_tool_call_stream())
+
+
+def test_tools_probe_sends_the_same_per_model_kwargs_as_the_chat_agent(monkeypatch):
+    """gpt-5.6 400s on function tools unless reasoning_effort is "none".
+
+    The chat agent has always sent it; the probe did not, so the probe recorded
+    tools=False for a model whose chat works — and `require` then 422'd chat.
+    """
+    client = _RecordingClient(_tool_call_stream())
+    monkeypatch.setattr(llm_capabilities.llm, "_get_client", lambda: client)
+
+    llm_capabilities._probe_tools("gpt-5.6-luna")
+
+    assert client.calls[0]["reasoning_effort"] == "none"
+
+
+def test_tools_probe_omits_reasoning_effort_for_models_that_reject_it(monkeypatch):
+    client = _RecordingClient(_tool_call_stream())
+    monkeypatch.setattr(llm_capabilities.llm, "_get_client", lambda: client)
+
+    llm_capabilities._probe_tools("gpt-4o")
+
+    assert "reasoning_effort" not in client.calls[0]
+
+
+def test_tools_probe_does_not_ask_the_openai_client_about_a_gemini_model(monkeypatch):
+    """Gemini inference goes over llm._call_gemini, not the OpenAI client.
+
+    Sending the id to the OpenAI client made the report say the model "does not
+    exist", which is both untrue and the wrong reason for the (correct) No.
+    """
+    client = _RecordingClient(_tool_call_stream())
+    monkeypatch.setattr(llm_capabilities.llm, "_get_client", lambda: client)
+    monkeypatch.setattr(llm_capabilities.llm, "get_base_url", lambda: None)
+    monkeypatch.setattr(
+        llm_capabilities.llm,
+        "call_openai",
+        lambda **kw: "ok" if kw["response_format"] == "text" else {"ok": True},
+    )
+
+    report = llm_capabilities.probe("gemini-3.5-flash-lite")
+
+    assert client.calls == []
+    assert (report.text, report.json, report.tools) == (True, True, False)
+    assert "does not exist" not in report.errors["tools"]
+    assert "Gemini" in report.errors["tools"]

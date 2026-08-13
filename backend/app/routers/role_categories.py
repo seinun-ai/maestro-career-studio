@@ -27,6 +27,7 @@ class CatalogRole(BaseModel):
 class RoleCategory(BaseModel):
     key: str
     label: str
+    description: str | None = None
     reserved: bool = False
     # Additive on purpose: RoleCategoryPicker sets the BASE-RESUME role, which
     # must stay coarse because it is a stored, validated column. That component
@@ -56,6 +57,7 @@ def list_role_categories():
         RoleCategory(
             key=key,
             label=labels[key],
+            description=role_categories.description_for(key),
             roles=[CatalogRole(**role) for role in role_categories.roles_for(key)],
         )
         for key in role_categories.keys()

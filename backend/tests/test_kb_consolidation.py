@@ -447,6 +447,27 @@ def test_consolidate_endpoint_from_file(client, db_session, monkeypatch):
     assert [e.title for e in ents] == ["P"]
 
 
+def test_consolidate_endpoint_surfaces_salvage_warnings(client, monkeypatch):
+    """The router prefixes per-file salvage warnings with the filename and
+    extends report.warnings — deleting that plumbing must go red here."""
+    with_bad_entry = {
+        **_VALID_RESUME_DICT,
+        "experience": [{"company": "Bad Co"}],  # missing role -> salvage drops it
+    }
+    monkeypatch.setattr(
+        "app.services.llm.call_openai", _file_llm(with_bad_entry)
+    )
+    r = client.post(
+        "/api/kb/consolidate",
+        files={"files": ("r.md", b"# Resume\nBad Co entry", "text/markdown")},
+    )
+    assert r.status_code == 200, r.text
+    warnings = r.json()["warnings"]
+    assert any(
+        w.startswith("r.md: ") and "experience" in w for w in warnings
+    ), warnings
+
+
 def test_consolidate_endpoint_unparseable_file_422(client, monkeypatch):
     def fake(*, prompt, model, response_format="json", **kw):
         if "ResumeData" in prompt:
@@ -492,9 +513,10 @@ def test_consolidate_endpoint_empty_request_400(client):
 
 def test_parse_resume_text_valid(db_session, monkeypatch):
     monkeypatch.setattr("app.services.llm.call_openai", lambda **kw: dict(_VALID_RESUME_DICT))
-    out = parse_resume_text(db_session, "raw resume text")
+    out, warnings = parse_resume_text(db_session, "raw resume text")
     assert out["contact"]["name"] == "A"
     assert out["projects"][0]["name"] == "P"
+    assert warnings == []
 
 
 def test_parse_resume_text_invalid_raises(db_session, monkeypatch):

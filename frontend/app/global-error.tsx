@@ -1,5 +1,7 @@
 "use client";
 
+import { MaestroMark } from "@/components/brand-logo";
+
 /**
  * Last-resort boundary for a throw in the ROOT layout itself, where
  * `app/error.tsx` cannot render because the shell it lives inside is the thing
@@ -30,6 +32,13 @@ export default function GlobalError({
           font: "16px/1.5 system-ui, sans-serif",
         }}
       >
+        {/* brand-logo is safe here: pure inline SVG, no Tailwind, no providers.
+            Inline style, not className, for the same reason as everything else
+            in this file. aria-hidden — the h1 already names the app. */}
+        <MaestroMark
+          aria-hidden="true"
+          style={{ height: "2.75rem", width: "auto" }}
+        />
         <h1 style={{ fontSize: "1.125rem", fontWeight: 500, margin: 0 }}>
           Maestro CS failed to start
         </h1>

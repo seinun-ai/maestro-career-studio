@@ -1,0 +1,19 @@
+/* Maestro Career Studio — Brand Tokens v1 */
+:root {
+  --maestro-blue: #2563EB;
+  --maestro-blue-facet: #1D4ED8;
+  --maestro-yellow: #FBBF24;
+  --maestro-yellow-facet: #D99A00;
+  --maestro-navy: #0F172A;
+  --maestro-grey: #64748B;
+  --maestro-white: #FFFFFF;
+  --maestro-dark-tagline: #CBD5E1;
+}
+
+/* Light surfaces */
+.maestro-wordmark { color: var(--maestro-navy); }
+.maestro-tagline { color: var(--maestro-grey); }
+
+/* Dark surfaces */
+[data-theme="dark"] .maestro-wordmark { color: var(--maestro-white); }
+[data-theme="dark"] .maestro-tagline { color: var(--maestro-dark-tagline); }

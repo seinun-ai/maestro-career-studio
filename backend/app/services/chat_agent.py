@@ -27,22 +27,11 @@ from app.models.chat import ChatAttachment, ChatMessage, ChatSession
 from app.services import model_settings, persona as persona_service, prompts
 from app.services.chat_tools import ToolContext, execute_tool, openai_tool_specs
 from app.services.llm import _get_client  # shared configured OpenAI client
+from app.services.llm import completion_extras
 
 logger = logging.getLogger(__name__)
 
 MAX_TOOL_ROUNDS = 8
-
-
-def _completion_extras(model: str) -> dict[str, Any]:
-    """Per-model kwargs for chat.completions.create.
-
-    The GPT-5.6 family rejects function tools on /v1/chat/completions unless
-    reasoning_effort is "none" (400 otherwise); older models like gpt-4o reject
-    the reasoning_effort parameter entirely, so it must stay conditional.
-    """
-    if model.startswith("gpt-5.6"):
-        return {"reasoning_effort": "none"}
-    return {}
 
 
 def _system_prompt(db: Session) -> str:
@@ -184,7 +173,7 @@ def run_turn(
                 messages=messages,
                 tools=openai_tool_specs(),
                 stream=True,
-                **_completion_extras(model),
+                **completion_extras(model),
             )
             final: dict[str, Any] = {}
             for event in _accumulate_stream(stream):

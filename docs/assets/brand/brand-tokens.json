@@ -1,0 +1,22 @@
+{
+  "brand": {
+    "blue": "#2563EB",
+    "blueFacet": "#1D4ED8",
+    "yellow": "#FBBF24",
+    "yellowFacet": "#D99A00",
+    "navy": "#0F172A",
+    "grey": "#64748B",
+    "white": "#FFFFFF",
+    "darkTagline": "#CBD5E1"
+  },
+  "usage": {
+    "markBlue": "{brand.blue}",
+    "markBlueFacet": "{brand.blueFacet}",
+    "markYellow": "{brand.yellow}",
+    "markYellowFacet": "{brand.yellowFacet}",
+    "wordmarkLight": "{brand.navy}",
+    "taglineLight": "{brand.grey}",
+    "wordmarkDark": "{brand.white}",
+    "taglineDark": "{brand.darkTagline}"
+  }
+}

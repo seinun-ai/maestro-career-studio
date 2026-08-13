@@ -1,10 +1,10 @@
 {
   "structure": {
     "root": "backend",
-    "modules": 365,
-    "total_loc": 84874,
-    "src_loc": 32443,
-    "test_loc": 52431,
+    "modules": 379,
+    "total_loc": 93291,
+    "src_loc": 35442,
+    "test_loc": 57849,
     "orphan_modules": [],
     "test_only_reachable": [],
     "orphan_loc": 0,
@@ -18,12 +18,28 @@
         "lines": 97
       },
       {
+        "file": "app/services/resume_lint.py",
+        "line": 655,
+        "name": "_advisories",
+        "complexity": 39,
+        "params": 1,
+        "lines": 109
+      },
+      {
+        "file": "app/services/role_categories.py",
+        "line": 56,
+        "name": "_load",
+        "complexity": 36,
+        "params": 0,
+        "lines": 136
+      },
+      {
         "file": "app/services/kb_consolidation.py",
-        "line": 371,
+        "line": 508,
         "name": "_cluster_points_for_entity",
-        "complexity": 37,
+        "complexity": 35,
         "params": 6,
-        "lines": 119
+        "lines": 111
       },
       {
         "file": "app/services/quick_tailor.py",
@@ -48,14 +64,6 @@
         "complexity": 32,
         "params": 7,
         "lines": 63
-      },
-      {
-        "file": "app/services/gap_enrichment.py",
-        "line": 133,
-        "name": "enrich_gaps",
-        "complexity": 31,
-        "params": 5,
-        "lines": 102
       },
       {
         "file": "app/services/proposals.py",
@@ -91,7 +99,7 @@
       },
       {
         "file": "app/services/tailoring_session.py",
-        "line": 846,
+        "line": 876,
         "name": "_live_text_fragments",
         "complexity": 28,
         "params": 1,
@@ -99,7 +107,7 @@
       },
       {
         "file": "app/services/health_gates.py",
-        "line": 52,
+        "line": 61,
         "name": "_iter_texts",
         "complexity": 27,
         "params": 1,
@@ -112,14 +120,6 @@
         "complexity": 26,
         "params": 1,
         "lines": 68
-      },
-      {
-        "file": "app/services/resume_lint.py",
-        "line": 556,
-        "name": "_advisories",
-        "complexity": 26,
-        "params": 1,
-        "lines": 66
       },
       {
         "file": "app/services/ats/layers.py",
@@ -139,7 +139,7 @@
       },
       {
         "file": "app/services/kb_consolidation.py",
-        "line": 495,
+        "line": 624,
         "name": "_merge_skills",
         "complexity": 25,
         "params": 3,
@@ -203,7 +203,7 @@
       },
       {
         "file": "app/services/kb_consolidation.py",
-        "line": 279,
+        "line": 397,
         "name": "_resolve_family",
         "complexity": 23,
         "params": 6,
@@ -211,7 +211,7 @@
       },
       {
         "file": "app/services/tailoring_session.py",
-        "line": 1062,
+        "line": 1092,
         "name": "tailor",
         "complexity": 23,
         "params": 4,
@@ -250,8 +250,32 @@
         "lines": 46
       },
       {
+        "file": "tests/test_kb_consolidation_deterministic.py",
+        "line": 38,
+        "name": "test_identity_merge_experience_and_projects_across_sources",
+        "complexity": 21,
+        "params": 2,
+        "lines": 31
+      },
+      {
+        "file": "tests/test_kb_ingest_parsed.py",
+        "line": 50,
+        "name": "test_ingest_parsed_happy_path_returns_ids",
+        "complexity": 21,
+        "params": 3,
+        "lines": 39
+      },
+      {
+        "file": "tests/test_kb_ingest_parsed.py",
+        "line": 254,
+        "name": "test_onboarding_round_trip_ingest_approve_compose",
+        "complexity": 21,
+        "params": 4,
+        "lines": 53
+      },
+      {
         "file": "tests/test_tailoring_sessions_router.py",
-        "line": 1846,
+        "line": 1965,
         "name": "test_tailor_happy_path",
         "complexity": 21,
         "params": 3,
@@ -259,7 +283,7 @@
       },
       {
         "file": "app/services/tailoring_session.py",
-        "line": 758,
+        "line": 788,
         "name": "_write_back_elicited_points",
         "complexity": 21,
         "params": 3,
@@ -307,11 +331,11 @@
       },
       {
         "file": "app/services/health_gates.py",
-        "line": 117,
+        "line": 126,
         "name": "detect_gaps",
         "complexity": 20,
         "params": 2,
-        "lines": 50
+        "lines": 54
       },
       {
         "file": "app/services/ats/resume_indexer.py",
@@ -331,7 +355,7 @@
       },
       {
         "file": "scripts/template_parity.py",
-        "line": 324,
+        "line": 335,
         "name": "_align_logical_lines",
         "complexity": 19,
         "params": 2,
@@ -339,7 +363,7 @@
       },
       {
         "file": "scripts/template_parity.py",
-        "line": 478,
+        "line": 489,
         "name": "run_corpus",
         "complexity": 19,
         "params": 1,
@@ -384,33 +408,9 @@
         "complexity": 19,
         "params": 5,
         "lines": 92
-      },
-      {
-        "file": "tests/test_kb_port.py",
-        "line": 142,
-        "name": "test_port_creates_project_entry_disabled",
-        "complexity": 18,
-        "params": 3,
-        "lines": 49
-      },
-      {
-        "file": "app/routers/applications.py",
-        "line": 278,
-        "name": "patch_application",
-        "complexity": 18,
-        "params": 3,
-        "lines": 110
-      },
-      {
-        "file": "app/services/attachment_extract.py",
-        "line": 126,
-        "name": "extract_text",
-        "complexity": 18,
-        "params": 3,
-        "lines": 33
       }
     ],
-    "hotspot_count": 310,
+    "hotspot_count": 339,
     "error_masking": [
       {
         "file": "tests/test_tracing.py",
@@ -419,7 +419,7 @@
       },
       {
         "file": "app/routers/templates.py",
-        "line": 127,
+        "line": 140,
         "kind": "swallowed_exception"
       },
       {
@@ -459,7 +459,7 @@
       }
     ],
     "error_masking_count": 9,
-    "internal_import_edges": 1516,
+    "internal_import_edges": 1573,
     "imports_per_module": 4.15,
     "entry_points_used": [
       "app.main",
@@ -478,13 +478,17 @@
       "mode": "weak"
     },
     "percentage": 1.01,
-    "duplicated_lines": 401,
-    "clones": 42,
+    "duplicated_lines": 436,
+    "clones": 45,
     "allowlisted_clones": 0,
     "worst_files": [
       [
         "app/models/application.py",
         9
+      ],
+      [
+        "mcp_server/client.py",
+        7
       ],
       [
         "app/services/resume_edit.py",
@@ -495,16 +499,8 @@
         6
       ],
       [
-        "mcp_server/client.py",
-        6
-      ],
-      [
         "app/models/application_proposal.py",
         5
-      ],
-      [
-        "app/models/chat.py",
-        4
       ],
       [
         "app/routers/applications.py",
@@ -523,7 +519,19 @@
         3
       ],
       [
+        "app/models/base_resume.py",
+        3
+      ],
+      [
+        "app/models/chat.py",
+        3
+      ],
+      [
         "app/schemas/job.py",
+        3
+      ],
+      [
+        "app/services/kb_consolidation.py",
         3
       ],
       [
@@ -531,15 +539,7 @@
         3
       ],
       [
-        "app/models/base_resume.py",
-        2
-      ],
-      [
         "app/models/career_kb.py",
-        2
-      ],
-      [
-        "app/routers/base_resumes.py",
         2
       ]
     ]
@@ -582,7 +582,7 @@
     {
       "rank": "P2",
       "signal": "complexity_concentration",
-      "detail": "310 function(s) over threshold. worst: app/services/explore_build_areas.py:162 cc=39",
+      "detail": "339 function(s) over threshold. worst: app/services/explore_build_areas.py:162 cc=39",
       "why": "Complexity mass concentrating in few functions is the erosion signature.",
       "action": "Decompose the top 3. Do not touch the tail."
     },
@@ -595,15 +595,15 @@
     }
   ],
   "metrics": {
-    "total_loc": 84874,
-    "src_loc": 32443,
-    "test_loc": 52431,
-    "modules": 365,
+    "total_loc": 93291,
+    "src_loc": 35442,
+    "test_loc": 57849,
+    "modules": 379,
     "orphan_loc": 0,
     "duplication_pct": 1.01,
-    "duplicated_lines": 401,
-    "clone_count": 42,
-    "complexity_hotspots": 310,
+    "duplicated_lines": 436,
+    "clone_count": 45,
+    "complexity_hotspots": 339,
     "error_masking": 9,
     "imports_per_module": 4.15
   }

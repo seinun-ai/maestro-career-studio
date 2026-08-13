@@ -58,6 +58,7 @@ APPLY_TOOLS = frozenset({
     "close_tailoring_session",
     "resolve_gaps",
     "tailor_session",
+    "quick_tailor",
     "tailor_application",
     "edit_application",
     "update_application",
@@ -113,8 +114,12 @@ TEMPLATES_TOOLS = frozenset({
     "get_health_report",
 })
 
-# Curate the Career KB itself: read with IDs, then capture/correct. The only
+# Curate the Career KB itself: read with IDs, then capture/correct, plus the
+# LLM-free onboarding arc (ingest → approve → base-from-kb → PDF). The only
 # profile with KB writes — hunt/apply/explore/templates stay read-only there.
+# render_pdf/get_rendered_pdf are here so the arc this profile starts can
+# finish with a document in hand; scoring and tailoring still belong to
+# apply/full.
 CAREER_TOOLS = frozenset({
     "get_career_context",
     "get_career_export",
@@ -126,6 +131,13 @@ CAREER_TOOLS = frozenset({
     "kb_create_entity",
     "kb_edit_entity",
     "kb_edit_profile",
+    "kb_ingest_resume",
+    "kb_approve_points",
+    "create_base_resume_from_kb",
+    "list_base_resumes",
+    "get_base_resume",
+    "render_pdf",
+    "get_rendered_pdf",
 })
 
 # None => register every decorated tool (today's default).

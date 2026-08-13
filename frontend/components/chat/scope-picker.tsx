@@ -86,7 +86,7 @@ function buildSections(data: ResumeData): SectionSpec[] {
       section: "education",
       title: "Education",
       items: data.education.map((e) => ({
-        label: `${e.institution} — ${e.degree}`,
+        label: e.degree ? `${e.institution} — ${e.degree}` : e.institution,
         bullets: e.bullets,
       })),
     },

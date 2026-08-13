@@ -14,7 +14,9 @@ export const experienceSchema = z.object({
   company: z.string().min(1),
   role: z.string().min(1),
   location: z.string().nullable().optional(),
-  start_date: z.string().min(1),
+  // Optional, mirroring backend ExperienceEntry: a resume that states no date
+  // for a role is legal (it just earns no recency credit).
+  start_date: z.string().nullable().optional(),
   end_date: z.string().nullable().optional(),
   enabled: z.boolean().default(true),
   bullets: z.array(z.string()).default([]),
@@ -22,7 +24,9 @@ export const experienceSchema = z.object({
 
 export const educationSchema = z.object({
   institution: z.string().min(1),
-  degree: z.string().min(1),
+  // Optional, mirroring backend EducationEntry: non-degree study (coursework,
+  // bootcamps, exchange terms) has no degree title to state.
+  degree: z.string().nullable().optional(),
   field: z.string().nullable().optional(),
   location: z.string().nullable().optional(),
   start_date: z.string().nullable().optional(),

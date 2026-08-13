@@ -5,7 +5,13 @@ import { SpellCheck, Undo2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { resumeDataSchema } from "@/lib/resume-schema";
-import type { CoherenceFlag, ResumeData, ResumeDiffHunk } from "@/lib/types";
+import type {
+  CoherenceFlag,
+  HealthGate,
+  HygieneFlag,
+  ResumeData,
+  ResumeDiffHunk,
+} from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 /**
@@ -305,14 +311,25 @@ export function revertHunk(
 }
 
 /**
- * Apply one coherence proposal into the working copy (design §4.4): replace the
- * flagged text — located by exact match on the locus's `after` needle — with the
- * proposal. Same contract as revertHunk: a locus that no longer matches the
- * draft returns null instead of writing something arbitrary.
+ * The `applyCoherenceProposal` contract needs only a locus + a guaranteed-
+ * string proposal — both a `CoherenceFlag` and a `HygieneFlag` whose
+ * `proposal` isn't null satisfy that shape. A narrow union rather than `any`,
+ * so the compiler still enforces `proposal: string` at every call site.
+ */
+export type ApplicableCoherenceProposal =
+  | CoherenceFlag
+  | (HygieneFlag & { proposal: string });
+
+/**
+ * Apply one coherence or hygiene proposal into the working copy (design §4.4):
+ * replace the flagged text — located by exact match on the locus's `after`
+ * needle — with the proposal. Same contract as revertHunk: a locus that no
+ * longer matches the draft returns null instead of writing something
+ * arbitrary.
  */
 export function applyCoherenceProposal(
   data: ResumeData,
-  flag: CoherenceFlag,
+  flag: ApplicableCoherenceProposal,
 ): ResumeData | null {
   const doc = cloneLoose(data);
   const { section, index, after } = flag.locus;
@@ -343,6 +360,24 @@ export function applyCoherenceProposal(
       if (at !== -1) {
         doc.certifications[at] = flag.proposal;
         ok = true;
+      }
+    }
+  } else if (section === "skills" && typeof after === "string") {
+    const groups = doc.skills;
+    if (Array.isArray(groups)) {
+      // index is the skills GROUP index when the backend could resolve it;
+      // fall back to a scan so a group reorder between check and apply
+      // doesn't silently no-op.
+      const search = typeof index === "number" ? [groups[index], ...groups] : groups;
+      for (const group of search) {
+        if (isRecord(group) && Array.isArray(group.items)) {
+          const at = group.items.indexOf(after);
+          if (at !== -1) {
+            group.items[at] = flag.proposal;
+            ok = true;
+            break;
+          }
+        }
       }
     }
   }
@@ -428,8 +463,19 @@ export interface CoherenceState {
   checked: boolean;
   loading: boolean;
   flags: CoherenceFlag[];
-  /** `coherenceFlagKey`s already applied into the working copy. */
+  /** Deterministic resume_lint findings, scoped to loci the tailoring changed.
+   *  Optional so existing call sites built before this group existed still
+   *  satisfy the type — absent is treated the same as empty. */
+  hygiene?: HygieneFlag[];
+  /** Structural gates run against the tailored document. Same optionality
+   *  rationale as `hygiene`. */
+  gates?: HealthGate[];
+  /** `coherenceFlagKey`/`hygieneFlagKey`s already applied into the working copy. */
   appliedKeys: Set<string>;
+}
+
+export function hygieneFlagKey(flag: HygieneFlag, position: number): string {
+  return `${position}:${flag.rule}:${flag.locus.section ?? ""}:${flag.locus.index ?? ""}`;
 }
 
 function CoherenceFlags({
@@ -439,13 +485,6 @@ function CoherenceFlags({
   coherence: CoherenceState;
   onApply: (flag: CoherenceFlag, key: string) => void;
 }) {
-  if (coherence.flags.length === 0) {
-    return (
-      <p className="text-muted-foreground text-xs">
-        Coherence check found nothing to flag.
-      </p>
-    );
-  }
   return (
     <ul className="divide-y">
       {coherence.flags.map((flag, position) => {
@@ -479,6 +518,147 @@ function CoherenceFlags({
   );
 }
 
+/** Gate row for the coherence panel — same accent language as
+ *  `resume-health/finding-cards.tsx`'s `FailedGate`, minus the waive
+ *  affordance: these gates are read-only status on the tailored document,
+ *  not a persisted, waivable health-report gate. */
+function GateRow({ gate }: { gate: HealthGate }) {
+  const notAssessed = gate.status === "not_assessed";
+  const accent = notAssessed
+    ? "border-border bg-muted/40"
+    : gate.tier === "fatal"
+      ? "border-red-500/50 bg-red-500/5"
+      : "border-amber-500/50 bg-amber-500/5";
+  const badgeStyle = notAssessed
+    ? "bg-muted text-muted-foreground"
+    : gate.tier === "fatal"
+      ? "bg-red-500/10 text-red-600 dark:text-red-400"
+      : "bg-amber-500/10 text-amber-700 dark:text-amber-400";
+  const badgeLabel = notAssessed
+    ? "Not assessed"
+    : gate.tier === "fatal"
+      ? "Blocker"
+      : "Serious";
+  return (
+    <div className={cn("rounded-md border px-3 py-2 text-sm", accent)}>
+      <div className="flex items-center gap-2">
+        <Badge variant="secondary" className={cn("shrink-0 text-xs", badgeStyle)}>
+          {badgeLabel}
+        </Badge>
+        <span className="font-medium">{gate.label}</span>
+      </div>
+      {gate.detail && (
+        <p className="text-muted-foreground mt-1">{gate.detail}</p>
+      )}
+    </div>
+  );
+}
+
+function GatesGroup({ gates }: { gates: HealthGate[] }) {
+  const nonPassing = gates.filter((gate) => gate.status !== "pass");
+  if (nonPassing.length === 0) return null;
+  return (
+    <div className="space-y-1.5">
+      <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
+        Structural gates
+      </p>
+      <div className="space-y-1.5">
+        {nonPassing.map((gate) => (
+          <GateRow key={gate.id} gate={gate} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function HygieneGroup({
+  hygiene,
+  appliedKeys,
+  onApply,
+}: {
+  hygiene: HygieneFlag[];
+  appliedKeys: Set<string>;
+  onApply?: (flag: HygieneFlag, key: string) => void;
+}) {
+  if (hygiene.length === 0) return null;
+  return (
+    <div className="space-y-1.5">
+      <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
+        Hygiene
+      </p>
+      <ul className="divide-y">
+        {hygiene.map((flag, position) => {
+          const key = hygieneFlagKey(flag, position);
+          const applied = appliedKeys.has(key);
+          return (
+            <li key={key} className="flex items-start gap-2 p-2 text-sm">
+              <div className="min-w-0 flex-1 space-y-0.5">
+                <p className="break-words">{flag.issue}</p>
+                <p className="text-muted-foreground text-xs">{flag.how}</p>
+              </div>
+              {flag.proposal !== null && onApply && (
+                <Button
+                  size="sm"
+                  variant={applied ? "ghost" : "outline"}
+                  disabled={applied}
+                  onClick={() => onApply(flag, key)}
+                >
+                  {applied ? "Applied" : "Apply"}
+                </Button>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+/**
+ * The three post-tailor review groups, most serious first: structural gates,
+ * then hygiene (deterministic resume_lint findings), then the LLM coherence
+ * flags. Each group renders only when non-empty; if all three are empty a
+ * single line replaces three empty headers.
+ */
+function CoherenceResults({
+  coherence,
+  onApply,
+  onApplyHygiene,
+}: {
+  coherence: CoherenceState;
+  onApply?: (flag: CoherenceFlag, key: string) => void;
+  onApplyHygiene?: (flag: HygieneFlag, key: string) => void;
+}) {
+  const gates = coherence.gates ?? [];
+  const hygiene = coherence.hygiene ?? [];
+  const nonPassingGates = gates.filter((gate) => gate.status !== "pass");
+  const hasAny =
+    nonPassingGates.length > 0 ||
+    hygiene.length > 0 ||
+    coherence.flags.length > 0;
+  if (!hasAny) {
+    return <p className="text-muted-foreground text-xs">No issues found.</p>;
+  }
+  return (
+    <div className="space-y-3">
+      <GatesGroup gates={gates} />
+      <HygieneGroup
+        hygiene={hygiene}
+        appliedKeys={coherence.appliedKeys}
+        onApply={onApplyHygiene}
+      />
+      {coherence.flags.length > 0 && onApply && (
+        <div className="space-y-1.5">
+          <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
+            Coherence
+          </p>
+          <CoherenceFlags coherence={coherence} onApply={onApply} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function DiffReviewPanel({
   hunks,
   revertedKeys,
@@ -487,6 +667,7 @@ export function DiffReviewPanel({
   coherence,
   onCheckCoherence,
   onApplyProposal,
+  onApplyHygiene,
 }: {
   hunks: ResumeDiffHunk[];
   /** `hunkKey`s already reverted in the working copy but not yet saved. */
@@ -497,6 +678,7 @@ export function DiffReviewPanel({
   coherence?: CoherenceState;
   onCheckCoherence?: () => void;
   onApplyProposal?: (flag: CoherenceFlag, key: string) => void;
+  onApplyHygiene?: (flag: HygieneFlag, key: string) => void;
 }) {
   if (hunks.length === 0) {
     return (
@@ -524,25 +706,21 @@ export function DiffReviewPanel({
           <ProvenanceChip value="kb_auto" />
           <ProvenanceChip value="user" />
           <ProvenanceChip value="llm" />
-          {/* Design §4.4 trigger: offer the lint only when deterministic
-              injections happened — pure-AI drafts were written in one pass. */}
-          {onCheckCoherence &&
-            coherence &&
-            hunks.some((hunk) => hunk.provenance !== "llm") && (
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={coherence.loading}
-                onClick={onCheckCoherence}
-              >
-                <SpellCheck aria-hidden />
-                {coherence.loading
-                  ? "Checking…"
-                  : coherence.checked
-                    ? "Re-check coherence"
-                    : "Check coherence"}
-              </Button>
-            )}
+          {onCheckCoherence && coherence && (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={coherence.loading}
+              onClick={onCheckCoherence}
+            >
+              <SpellCheck aria-hidden />
+              {coherence.loading
+                ? "Checking…"
+                : coherence.checked
+                  ? "Re-run review checks"
+                  : "Run review checks"}
+            </Button>
+          )}
         </div>
       </header>
       {dirty && (
@@ -550,8 +728,12 @@ export function DiffReviewPanel({
           This list describes the last saved version. Save to refresh it.
         </p>
       )}
-      {coherence?.checked && !coherence.loading && onApplyProposal && (
-        <CoherenceFlags coherence={coherence} onApply={onApplyProposal} />
+      {coherence?.checked && !coherence.loading && (
+        <CoherenceResults
+          coherence={coherence}
+          onApply={onApplyProposal}
+          onApplyHygiene={onApplyHygiene}
+        />
       )}
       {groups.map((group) => (
         <div key={group.section}>

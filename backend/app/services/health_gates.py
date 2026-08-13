@@ -29,14 +29,23 @@ def _gate(gate_id: str, tier: str, status: str, label: str, detail: str = "") ->
 
 
 def gate_dates(resume: dict) -> dict:
-    """S3 — every enabled experience role has a parseable start and end."""
+    """S3 — every DATED enabled experience role has a parseable start and end.
+
+    An absent start date is a legal representation (schemas/resume.py:
+    ``ExperienceEntry.start_date`` is optional), so an undated role is not a
+    defect here — it simply earns no recency credit and no tenure. Only a
+    NON-EMPTY unparseable string still fails.
+    """
     bad: list[str] = []
     for _, entry in enabled_entries(resume, "experience"):
         name = f"{entry.get('company', '?')} — {entry.get('role', '?')}"
-        start = parse_ym(entry.get("start_date"))
-        end = parse_ym(entry.get("end_date"))
-        if start in (None, "present"):
-            bad.append(f"{name}: start date missing or unparseable")
+        raw_start = str(entry.get("start_date") or "").strip()
+        raw_end = str(entry.get("end_date") or "").strip()
+        if not raw_start and not raw_end:
+            continue  # wholly undated role
+        end = parse_ym(raw_end)
+        if raw_start and parse_ym(raw_start) in (None, "present"):
+            bad.append(f"{name}: start date unparseable")
         if end is None:
             bad.append(f"{name}: end date missing or unparseable")
     status = "fail" if bad else "pass"
@@ -127,7 +136,11 @@ def detect_gaps(resume: dict, now=None) -> list[dict]:
     for _, entry in enabled_entries(resume, "experience"):
         start, end = parse_ym(entry.get("start_date")), parse_ym(entry.get("end_date"))
         if start in (None, "present") or end is None:
-            return []  # unparseable → S3's problem
+            # Undated or unparseable: no sweep at all, not a skipped span. An
+            # undated role could cover any apparent gap, so dropping it would
+            # manufacture a gap finding out of a date the resume never claimed.
+            # (Unparseable is S3's problem; undated is nobody's.)
+            return []
         end_ym = now if end == "present" else end
         spans.append((to_index(start), to_index(end_ym), entry.get("company") or "?"))
     if not spans:

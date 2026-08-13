@@ -146,10 +146,13 @@ def run_typst_compile(
         # family and italic bit let filesystem order decide the letterforms.
         #
         # Consequence worth knowing: a USER template naming a font we do not
-        # vendor now fails loudly instead of silently substituting. That is the
-        # better failure — silent substitution is how a resume goes out in a
-        # typeface its author never saw. To support more families, vendor them
-        # and extend settings.typst_font_paths.
+        # vendor still compiles — typst SILENTLY substitutes its embedded
+        # defaults, with no error and no warning (tests/test_user_templates.py
+        # pins this; upstream warning is typst#2818, open). The only detection
+        # today is inspecting the compiled PDF's fontnames, as the parity
+        # harness does. To support more families, vendor them and extend
+        # settings.typst_font_paths; the agent-facing docstrings and
+        # chat_system.txt state the substitution behavior explicitly.
         "ignore_system_fonts": True,
         "sys_inputs": sys_inputs,
         # Defense in depth only (the package gate already rejected @-imports):

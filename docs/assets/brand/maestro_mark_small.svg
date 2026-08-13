@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" fill="none">
+  <title>Maestro Career Studio — Small-size flat mark</title>
+  <desc>Symmetrical blue and yellow lightning M optimized for 32px and below.</desc>
+
+  <!-- Locked palette -->
+  <!-- Blue #2563EB | Yellow #FBBF24 -->
+
+  <!-- Left stem/bolt -->
+  <path d="M34 211
+           L61 48
+           Q63 39 70 47
+           L116 97
+           Q120 102 115 108
+           L94 128
+           L114 130
+           L54 216
+           Q43 229 34 211Z"
+        fill="#2563EB"/>
+
+  <!-- Right stem/bolt; exact mirror -->
+  <path d="M222 211
+           L195 48
+           Q193 39 186 47
+           L140 97
+           Q136 102 141 108
+           L162 128
+           L142 130
+           L202 216
+           Q213 229 222 211Z"
+        fill="#FBBF24"/>
+</svg>

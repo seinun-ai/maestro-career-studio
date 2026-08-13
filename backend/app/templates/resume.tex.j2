@@ -91,7 +91,7 @@
 ((* for exp in resume.experience *))
 
 \resumeSubheading
-  {((( exp.company|latex_escape )))}{((( exp.start_date|format_date(fmt.date_format)|latex_escape )))((* if exp.end_date *)) -- ((( exp.end_date|format_date(fmt.date_format)|latex_escape )))((* endif *))}
+  {((( exp.company|latex_escape )))}{((* if exp.start_date *))((( exp.start_date|format_date(fmt.date_format)|latex_escape )))((* if exp.end_date *)) -- ((( exp.end_date|format_date(fmt.date_format)|latex_escape )))((* endif *))((* elif exp.end_date *))((( exp.end_date|format_date(fmt.date_format)|latex_escape )))((* endif *))}
   {((( exp.role|latex_escape )))}{((( exp.location|latex_escape )))}
   \resumeItemListStart
 ((* for bullet in exp.bullets *))
@@ -200,9 +200,12 @@
 ((* set edu_date = edu.start_date|format_date(fmt.date_format)|latex_escape if edu.start_date else edu.graduation_date|format_date(fmt.date_format)|latex_escape *))
 ((* set edu_date_range = edu_date ~ (" -- " ~ (edu.end_date|format_date(fmt.date_format)|latex_escape)) if (edu.start_date and edu.end_date) else edu_date *))
 ((* set edu_gpa = edu.gpa|latex_escape *))
-((* set edu_degree = edu.degree|latex_escape *))
+((* set edu_degree = edu.degree|latex_escape if edu.degree else "" *))
 ((* set edu_institution = edu.institution|latex_escape ~ ((", " ~ edu.location|latex_escape) if edu.location else "") *))
-((* if fmt.education_order == "institution_first" *))
+((# Non-degree study has no degree title to lead with, so it always renders
+    institution-first: the degree-first branch would otherwise open the entry
+    with an empty line carrying the dates. #))
+((* if fmt.education_order == "institution_first" or not edu.degree *))
 \resumeSubheading
   {((( edu_institution )))}{((( edu_date_range )))}
   {((( edu_degree )))}{((( edu_gpa )))}

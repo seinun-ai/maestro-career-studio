@@ -1754,7 +1754,9 @@ def test_coherence_check_409_when_not_tailored_and_flags_pass_through(
         monkeypatch.setattr(
             coherence_service,
             "run",
-            lambda base, customized, session: {"flags": [{"issue": "tense"}]},
+            lambda base, customized, session, template_id=None: {
+                "flags": [{"issue": "tense"}]
+            },
         )
         monkeypatch.setattr(
             "app.routers.applications.base_resume_data.load_base_resume",

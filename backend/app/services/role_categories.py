@@ -58,6 +58,7 @@ def _load() -> dict[str, Any]:
     entries = raw.get("categories") or []
 
     labels: dict[str, str] = {}
+    descriptions: dict[str, str] = {}
     families: dict[str, list[str]] = {}
     alias_to_key: dict[str, str] = {}
 
@@ -80,6 +81,13 @@ def _load() -> dict[str, Any]:
         if not key or key in RESERVED:
             continue
         labels[key] = str(entry.get("label") or key.replace("_", " ").title())
+        description = str(entry.get("description") or "").strip()
+        if description:
+            descriptions[key] = description
+        # No loader guard checks `adjacent` for cross-family duplication — that
+        # invariant lives ONLY in test_normalized_adjacent_phrases_are_owned_by
+        # _exactly_one_family. Deleting that test would let a duplicated phrase
+        # load silently and turn propose_from_resume into a tie machine.
         families[key] = [str(t) for t in (entry.get("adjacent") or [])]
         roles[key] = []
         # A key is its own alias, plus its label and any declared aliases.
@@ -180,6 +188,7 @@ def _load() -> dict[str, Any]:
 
     return {
         "labels": labels,
+        "descriptions": descriptions,
         "families": families,
         "roles": roles,
         "role_index": role_index,
@@ -204,6 +213,11 @@ def all_keys() -> list[str]:
 def labels() -> dict[str, str]:
     """key -> display label, including `other`/`unknown`."""
     return {**_load()["labels"], **RESERVED}
+
+
+def description_for(key: str | None) -> str | None:
+    """Optional one-line context for an ambiguous or emerging category."""
+    return _load()["descriptions"].get(key or "")
 
 
 def roles_for(key: str | None) -> list[dict[str, str]]:
@@ -238,8 +252,8 @@ def label_for(key: str | None) -> str:
     """Display label for a stored value.
 
     Resolves specific roles too, because humanizing a role key mangles the very
-    labels the YAML curates: `nlp_engineer` renders as "NLP Engineer", not
-    "Nlp Engineer".
+    labels the YAML curates: `llmops_engineer` renders as "LLMOps Engineer",
+    not "Llmops Engineer".
 
     Never raises and never returns an empty string: an unrecognized value is
     humanized (`bi_developer` -> `Bi Developer`) rather than dropped, so a row
@@ -450,12 +464,12 @@ def prompt_options() -> str:
 def propose_from_resume(data: dict) -> str:
     """Propose a role from resume content — or `unknown` when unsure.
 
-    Deliberately deterministic and deliberately timid. An earlier design wanted
-    an LLM inference pass here; it was rejected with proof: the `adjacent` lists
-    are one-directional and overlap (``data engineer`` appears under both
-    ``data_engineer`` and ``analytics_engineer``; ``research scientist`` under
-    both ``data_scientist`` and ``research_scientist``), so any single-winner
-    scheme decides ties by YAML file order.
+    Deliberately deterministic and deliberately timid. Adjacent phrases are
+    uniquely owned, but substring matches, compound titles, and two-role career
+    paths can still hit multiple families. Any single-winner scheme would decide
+    those ties by YAML file order. Exact catalog ownership is a veto only: a
+    nested role or alias may prevent a different-family proposal, never create
+    one without an adjacent hit.
 
     So this only proposes when the answer is UNAMBIGUOUS — exactly one category
     matches the most recent role title. Anything else returns ``unknown``, which
@@ -466,6 +480,12 @@ def propose_from_resume(data: dict) -> str:
     titles = [str((e or {}).get("role") or "") for e in experience[:2]]
     if not any(titles):
         return UNKNOWN
+
+    catalog_categories = {
+        match["category"]
+        for title in titles
+        if (match := match_free_text(title))["category"] is not None
+    }
 
     loaded = _load()
     haystack = " ".join(_slug(t).replace("_", " ") for t in titles if t)
@@ -479,5 +499,9 @@ def propose_from_resume(data: dict) -> str:
                 hits.add(key)
                 break
 
-    # Exactly one category, or nothing. Never a tie-break.
-    return next(iter(hits)) if len(hits) == 1 else UNKNOWN
+    # Exactly one adjacent category, or nothing. Never a tie-break. A catalog
+    # role/alias owned elsewhere vetoes a confidently wrong substring match.
+    if len(hits) != 1:
+        return UNKNOWN
+    proposed = next(iter(hits))
+    return proposed if catalog_categories <= {proposed} else UNKNOWN

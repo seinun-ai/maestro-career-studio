@@ -1,8 +1,10 @@
-"""LLM enrichment pass over the deterministic gap list (display-only helper text).
+"""Gap enrichment: an LLM prose pass (enrich_gaps, display-only helper text)
+plus a deterministic KB/library candidate gate (stamp_library_candidates, NO
+LLM) whose output drives pre-stored auto-resolutions — not display-only.
 
-This module does NOT catch its own exceptions: enrichment is best-effort, and the
-try/except lives in the caller (tailoring session creation), which falls back to
-the unenriched gaps.
+Neither function catches its own exceptions: both are best-effort, and the
+try/except for each lives in the caller (tailoring session creation), which
+falls back to unenriched / ungated gaps respectively.
 """
 import copy
 from typing import Any
@@ -11,6 +13,11 @@ from sqlalchemy.orm import Session
 
 from app.db import SessionLocal
 from app.services import kb_resolver, llm, model_settings, placement_targets, prompt_assembly
+
+# The private handoff key enrich_gaps stashes raw LLM library_candidates under
+# and stamp_library_candidates always pops: a shared constant so a one-sided
+# rename can't silently degrade to "LLM proposals are dropped" with no error.
+_LLM_PROPOSALS_KEY = "llm_library_proposals"
 
 # Only these gap fields are sent to the LLM (plus the category key, the
 # diagnostic's fix_hint, and the diagnostic evidence sub-fields below). The full
@@ -130,6 +137,91 @@ def _self_proposals(
     return proposals
 
 
+def pop_stash(gaps: dict[str, Any]) -> dict[str, Any]:
+    """Deep-copy ``gaps`` and pop the private ``_LLM_PROPOSALS_KEY`` stash off
+    every missing_skills gap, writing no ``library_candidates`` — there is
+    nothing to gate. This is stamp_library_candidates' own "no KB snapshot"
+    shape, and also tailoring_session's safe re-call when the gated path
+    raises: this has no ``kb_resolver.verify_candidate`` calls in it (the
+    shared prefix — deepcopy, category/gap iteration, the pop itself — is all
+    that's left), so it cannot fail the way a malformed KB entity just did.
+    """
+    stamped = copy.deepcopy(gaps)
+    for category in stamped.get("categories", []):
+        if category.get("key") != "missing_skills":
+            continue
+        for gap in category["gaps"]:
+            gap.pop(_LLM_PROPOSALS_KEY, None)
+    return stamped
+
+
+def stamp_library_candidates(
+    gaps: dict[str, Any],
+    resume_json: dict[str, Any],
+    kb_snapshot: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Gate KB/library evidence onto missing-skills gaps. NO LLM.
+
+    Runs whether or not enrichment did, so enrich=False and a provider outage
+    keep deterministic coverage detection — it used to sit downstream of
+    llm.call_openai and died with it, which was code placement, not design.
+
+    Always pops the private ``_LLM_PROPOSALS_KEY`` stash off every
+    missing_skills gap, even when kb_snapshot is None (nothing to gate, so no
+    ``library_candidates`` key gets written either): there is then no
+    reachable state where enrich_gaps writes the stash and nothing ever runs
+    to pop it. gaps_json is frozen at session creation and served raw to the
+    web UI, MCP, and the resolver — a leaked private key would persist
+    forever.
+
+    Self-nomination is blind enumeration over the library, so only its LEXICAL
+    hits survive: a semantic demotion there is noise, not a plausible
+    suggestion. LLM proposals (present only when enrichment ran) were chosen
+    FOR the gap, so their semantic hits stay. On duplicates keep the
+    auto-eligible variant — either side may carry a placement target the other
+    could not derive.
+    """
+    if kb_snapshot is None:
+        return pop_stash(gaps)
+
+    stamped = copy.deepcopy(gaps)
+    disabled_entries = _disabled_entries(resume_json)
+    self_proposals = _self_proposals(kb_snapshot, disabled_entries, resume_json)
+
+    for category in stamped.get("categories", []):
+        if category.get("key") != "missing_skills":
+            continue
+        for gap in category["gaps"]:
+            merged: dict[tuple[Any, ...], dict[str, Any]] = {}
+            order: list[tuple[Any, ...]] = []
+
+            def _consider(proposal: Any, *, lexical_only: bool) -> None:
+                candidate = kb_resolver.verify_candidate(
+                    proposal, kb_snapshot, resume_json, gap.get("jd_skill") or ""
+                )
+                if candidate is None:
+                    return
+                if lexical_only and candidate.get("match_form") == "semantic":
+                    return
+                key = _candidate_key(candidate)
+                if key not in merged:
+                    merged[key] = candidate
+                    order.append(key)
+                elif candidate.get("auto") and not merged[key].get("auto"):
+                    merged[key] = candidate
+
+            for proposal in self_proposals:
+                _consider(proposal, lexical_only=True)
+            raw = gap.pop(_LLM_PROPOSALS_KEY, None)
+            for proposal in raw if isinstance(raw, list) else []:
+                _consider(proposal, lexical_only=False)
+
+            autos = [merged[k] for k in order if merged[k].get("auto")]
+            suggestions = [merged[k] for k in order if not merged[k].get("auto")]
+            gap["library_candidates"] = (autos + suggestions)[:5]
+    return stamped
+
+
 def enrich_gaps(
     gaps: dict[str, Any],
     resume_json: dict[str, Any],
@@ -185,49 +277,21 @@ def enrich_gaps(
             if isinstance(entry, dict) and entry.get("gap_id")
         }
         enriched = copy.deepcopy(gaps)
-        self_proposals = (
-            _self_proposals(kb_snapshot, disabled_entries, resume_json)
-            if kb_snapshot is not None
-            else []
-        )
         for category in enriched.get("categories", []):
             for gap in category["gaps"]:
                 if gap["gap_id"] in by_id:
                     gap["enrichment"] = by_id[gap["gap_id"]]
-                if kb_snapshot is None or category.get("key") != "missing_skills":
+                if category.get("key") != "missing_skills":
                     continue
-                llm_proposals = raw_by_id.get(gap["gap_id"])
-                # Gate everything; on duplicates keep the auto-eligible variant
-                # (an LLM proposal may carry a placement target the enumeration
-                # couldn't derive, or vice versa). Self-nominations are blind
-                # enumeration, so only their LEXICAL hits survive — a semantic
-                # demotion there is noise, not a plausible suggestion. LLM
-                # proposals were chosen for the gap, so semantic ones stay.
-                merged: dict[tuple[Any, ...], dict[str, Any]] = {}
-                order: list[tuple[Any, ...]] = []
-
-                def _consider(proposal: Any, *, lexical_only: bool) -> None:
-                    candidate = kb_resolver.verify_candidate(
-                        proposal, kb_snapshot, resume_json, gap.get("jd_skill") or ""
-                    )
-                    if candidate is None:
-                        return
-                    if lexical_only and candidate.get("match_form") == "semantic":
-                        return
-                    key = _candidate_key(candidate)
-                    if key not in merged:
-                        merged[key] = candidate
-                        order.append(key)
-                    elif candidate.get("auto") and not merged[key].get("auto"):
-                        merged[key] = candidate
-
-                for proposal in self_proposals:
-                    _consider(proposal, lexical_only=True)
-                for proposal in llm_proposals if isinstance(llm_proposals, list) else []:
-                    _consider(proposal, lexical_only=False)
-                autos = [merged[k] for k in order if merged[k].get("auto")]
-                suggestions = [merged[k] for k in order if not merged[k].get("auto")]
-                gap["library_candidates"] = (autos + suggestions)[:5]
+                # Raw, UNGATED nominations. stamp_library_candidates ALWAYS
+                # gates and pops this key for every missing_skills gap — even
+                # when kb_snapshot is None, in which case it pops without
+                # gating anything — so there is no reachable state where it
+                # is written here and nothing ever pops it. gating cannot
+                # live here regardless, or it dies with the LLM call above.
+                proposals = raw_by_id.get(gap["gap_id"])
+                if isinstance(proposals, list):
+                    gap[_LLM_PROPOSALS_KEY] = proposals
         return enriched
     finally:
         if owns_session:

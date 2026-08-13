@@ -241,6 +241,15 @@ export function textAtLocation(
 ): string | null {
   const { section, index, bullet_index } = finding.location;
   if (section === "summary") return data.summary ?? "";
+  if (section.startsWith("extra:")) {
+    const key = section.slice("extra:".length);
+    const sec = data.extra_sections?.find((s) => s.key === key);
+    if (!sec) return null;
+    if (sec.type === "bullets")
+      return bullet_index != null ? (sec.bullets?.[bullet_index] ?? null) : null;
+    if (index == null || bullet_index == null) return null;
+    return sec.entries?.[index]?.bullets?.[bullet_index] ?? null;
+  }
   if (index == null || bullet_index == null) return null;
   const entries =
     section === "experience"
@@ -251,6 +260,61 @@ export function textAtLocation(
           ? data.education
           : null;
   return entries?.[index]?.bullets?.[bullet_index] ?? null;
+}
+
+/** One suggestion presentation chooser: extras have no bullet-scoped /edits
+ * op, so their suggestions render copy-only instead of applyable. */
+function SuggestionBlock({
+  finding,
+  currentText,
+  suggestion,
+  kind,
+  resumeKey,
+  onApplied,
+}: {
+  finding: LintFinding;
+  currentText: string;
+  suggestion: string;
+  kind: "base" | "application";
+  resumeKey: string;
+  onApplied: () => void;
+}) {
+  if (finding.location.section.startsWith("extra:")) {
+    return (
+      <SuggestionCopyOnly currentText={currentText} suggestion={suggestion} />
+    );
+  }
+  return (
+    <SuggestionEditor
+      finding={finding}
+      currentText={currentText}
+      suggestion={suggestion}
+      kind={kind}
+      resumeKey={resumeKey}
+      onApplied={onApplied}
+    />
+  );
+}
+
+/** Diff + copy hint when Apply is unavailable (extras have no bullet-scoped edit op). */
+function SuggestionCopyOnly({
+  currentText,
+  suggestion,
+}: {
+  currentText: string;
+  suggestion: string;
+}) {
+  return (
+    <div className="mt-2 space-y-2 border-t pt-2">
+      <div className="bg-muted/40 rounded-md p-2">
+        <DiffText oldText={currentText} newText={suggestion} />
+      </div>
+      <p className="text-muted-foreground text-xs">
+        Custom-section bullets can&apos;t be applied from health yet — copy the
+        rewrite into the editor.
+      </p>
+    </div>
+  );
 }
 
 /**
@@ -451,7 +515,7 @@ export function FixCard({
         onChanged={onClassificationChanged}
       />
       {finding.suggestion != null && currentText != null && (
-        <SuggestionEditor
+        <SuggestionBlock
           finding={finding}
           currentText={currentText}
           suggestion={finding.suggestion}
@@ -518,7 +582,7 @@ export function AskCard({
       />
 
       {suggestion != null && currentText != null ? (
-        <SuggestionEditor
+        <SuggestionBlock
           finding={finding}
           currentText={currentText}
           suggestion={suggestion}
