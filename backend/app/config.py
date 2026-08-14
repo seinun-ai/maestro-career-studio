@@ -66,10 +66,10 @@ class Settings(BaseSettings):
     # setting (llm.base_url) overrides this env default.
     openai_base_url: str = ""
     database_url: str = "postgresql://app:app@postgres:5432/maestro_cs"
-    fast_model: str = "gpt-4o-mini"
-    smart_model: str = "gpt-4o"
-    # Chat agent needs the OpenAI tools loop; must stay an OpenAI-provider model.
-    chat_model: str = "gpt-4o"
+    fast_model: str = "gemini-3.5-flash-lite"
+    smart_model: str = "gpt-5.6-luna"
+    # Chat agent needs streaming tool calls; eligibility is the tools probe.
+    chat_model: str = "gpt-5.6-luna"
 
     # Langfuse LLM tracing — off unless both keys are set. No Langfuse stack
     # ships with this repo (a bundled one meant publishing its session-signing

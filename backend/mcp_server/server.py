@@ -311,7 +311,7 @@ def get_career_export() -> str:
 def kb_list_entities(kind: str | None = None, status: str | None = None) -> Any:
     """List Career KB entities with their IDs (get_career_context returns prose
     with no IDs, so start here before editing anything). Optionally filter by
-    kind (experience|project|education|certification) or status
+    kind (experience|project|education|certification|extra) or status
     (ongoing|completed|archived). Each item carries point_count and draft_count."""
     return _client.list_kb_entities(kind=kind, status=status)
 
@@ -328,8 +328,8 @@ def kb_get_entity(entity_id: str) -> Any:
 @_guard
 def kb_list_points(state: str | None = None) -> Any:
     """List Career KB points across all entities, optionally by state
-    (draft|approved|retired). Use state='draft' to show what is waiting for the
-    user's approval in the web UI — including anything written this session."""
+    (draft|approved|retired). Filter here instead of client-side so you don't
+    pull hundreds of retired points."""
     return _client.list_kb_points(state=state)
 
 
@@ -392,7 +392,7 @@ def kb_create_entity(
     ctx: Context | None = None,
 ) -> Any:
     """Create a Career KB entity — kind is experience|project|education|
-    certification. Writes immediately and is NOT draft-gated: call it only after
+    certification|extra. Writes immediately and is NOT draft-gated: call it only after
     the user has actually asked for this entity, with their own dates and
     wording. A certificate PDF still has to be uploaded from the web UI."""
     return _client.create_kb_entity(

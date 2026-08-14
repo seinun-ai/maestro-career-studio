@@ -49,18 +49,6 @@
 #let PRE_AFTER_PARA(base) = base + 1.1 * dsize
 #let PRE_AFTER_LIST(base) = base + 2.2 * dsize
 #let POST(base) = base + 1.0 * dsize
-// Each PRE_* is the MEASURED gap on that section's native adjacency, not a
-// derivable function of the predecessor's shape. That distinction was tested,
-// not assumed: re-deriving these from the LaTeX trailing-\vspace ladder (so a
-// reordered section could inherit its new predecessor's gap) moved the
-// extras-bearing render from 1.9pt total off LaTeX to 12.5pt off, because the
-// list-end glue differs per section (\resumeItemListEnd's -5pt, the presence or
-// absence of \resumeSubHeadingListEnd) and does not reduce to the two families
-// the slopes model. So the constants stay keyed by SECTION, the dispatch loop
-// carries no spacing state, and `fmt.section_order` reorders sections that each
-// keep their own calibrated gap. The residual cost is honest and bounded: in a
-// NON-native order a section carries the gap measured for its old neighbour,
-// which is a fraction of a line and is only calibrated at all in native order.
 #let PRE_DEFAULT = PRE_AFTER_LIST(4pt)
 #let POST_DEFAULT = POST(0pt)
 #let PRE_SUMMARY = PRE_AFTER_PARA(6.9pt)
@@ -140,20 +128,6 @@
   v(after)
 }
 
-// Section order: requested members first, then this template's remaining native
-// sections in native order. The APPEND is load-bearing: a partial or stale
-// stored list reorders what it names and can never drop what it omits. Names
-// this template does not render are absent from `native` and fall out here,
-// which is why render never has to validate the list (the write gate does).
-#let ordered_sections(requested, native) = {
-  if requested == none or requested.len() == 0 {
-    native
-  } else {
-    let ordered = requested.filter(key => key in native)
-    ordered + native.filter(key => not (key in ordered))
-  }
-}
-
 #let has_date(value) = value != none and value.trim() != ""
 
 #let date_range(start, end, ongoing: false) = {
@@ -187,13 +161,13 @@
 ]
 
 // Summary.
-#let section_summary() = if r.summary != none {
+#if r.summary != none {
   section("Summary", before: PRE_SUMMARY, after: POST_SUMMARY)
   par(r.summary)
 }
 
 // Experience.
-#let section_experience() = if r.experience.len() > 0 {
+#if r.experience.len() > 0 {
   section("Experience", before: PRE_EXPERIENCE, after: POST_EXPERIENCE)
   for (i, job) in r.experience.enumerate() {
     if i > 0 { v(ENTRY_GAP + fmt.entry_spacing * 1pt) }
@@ -212,7 +186,7 @@
 }
 
 // Projects.
-#let section_projects() = if r.projects.len() > 0 {
+#if r.projects.len() > 0 {
   section("Projects", before: PRE_PROJECTS, after: POST_PROJECTS)
   for (i, p) in r.projects.enumerate() {
     if i > 0 { v(PROJECT_GAP + fmt.entry_spacing * 1pt) }
@@ -229,13 +203,9 @@
   }
 }
 
-// Custom sections (extra_sections). Default position: after Projects, before
-// Technical Skills, matching the documented XCharter layout. That is a default
-// since fmt.section_order moves the whole run as one unit. The run is several
-// headings, all of which take PRE_DEFAULT (an extra section can follow an extra
-// section, so no single adjacency is privileged).
-#let section_extra_sections() = {
-  for sec in r.extra_sections {
+// Custom sections (extra_sections). Anchor: after Projects, before
+// Technical Skills, matching the documented XCharter layout.
+#for sec in r.extra_sections {
   if sec.type == "entries" and sec.entries.len() > 0 {
     section(sec.title)
     for (i, e) in sec.entries.enumerate() {
@@ -268,11 +238,10 @@
       - #b
     ]
   }
-  }
 }
 
 // Technical Skills and Certifications.
-#let section_skills() = if r.skills.len() > 0 or r.certifications.len() > 0 {
+#if r.skills.len() > 0 or r.certifications.len() > 0 {
   section("Technical Skills", before: PRE_SKILLS, after: POST_SKILLS)
   if fmt.skills_layout == "bulleted" {
     [
@@ -303,7 +272,7 @@
 }
 
 // Education.
-#let section_education() = if r.education.len() > 0 {
+#if r.education.len() > 0 {
   section("Education", before: PRE_EDUCATION, after: POST_EDUCATION)
   for (i, edu) in r.education.enumerate() {
     if i > 0 { v(ENTRY_GAP + fmt.entry_spacing * 1pt) }
@@ -326,22 +295,5 @@
     for b in edu.bullets [
       - #b
     ]
-  }
-}
-
-// Dispatch. Stateless on purpose (see the PRE_* block): each section owns its
-// calibrated pre-heading gap, so reordering moves a section together with its
-// gap and native order reproduces the calibrated render exactly.
-#{
-  let native = (
-    "summary", "experience", "projects", "extra_sections", "skills", "education",
-  )
-  for key in ordered_sections(fmt.section_order, native) {
-    if key == "summary" { section_summary() }
-    else if key == "experience" { section_experience() }
-    else if key == "projects" { section_projects() }
-    else if key == "extra_sections" { section_extra_sections() }
-    else if key == "skills" { section_skills() }
-    else if key == "education" { section_education() }
   }
 }

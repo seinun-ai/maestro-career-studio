@@ -3,8 +3,8 @@
 // dates already formatted server-side per fmt.date_format), sys.inputs.fmt =
 // merged formatting JSON. Honors: font_size, side_margins, top_bottom_margin,
 // section_spacing, entry_spacing, line_spacing, bullet_icon, hide_divider,
-// header_align, justify, education_order, skills_layout, fmt.section_order,
-// fmt.date_format (applied server-side before serialization).
+// header_align, justify, education_order, skills_layout, fmt.date_format
+// (applied server-side before serialization).
 #let r = json(bytes(sys.inputs.resume))
 #let fmt = json(bytes(sys.inputs.fmt))
 
@@ -40,22 +40,6 @@
   v(2pt)
 }
 
-// Section order. `native` is this template's own order; `fmt.section_order` (a
-// list of section names, or none) reorders it. The load-bearing rule is the
-// APPEND: requested members first, then whatever native sections the list did
-// not name, in native order. That append is what stops a partial or stale
-// stored list from dropping a section. Names this template does not render fall
-// out because they are not in `native`; that is also why render never has to
-// validate the list (the write gate does).
-#let ordered_sections(requested, native) = {
-  if requested == none or requested.len() == 0 {
-    native
-  } else {
-    let ordered = requested.filter(key => key in native)
-    ordered + native.filter(key => not (key in ordered))
-  }
-}
-
 #let has_date(value) = value != none and value.trim() != ""
 
 #let date_range(start, end, ongoing: false) = {
@@ -78,13 +62,13 @@
 ]
 
 // ---- Summary
-#let section_summary() = if r.summary != none [
+#if r.summary != none [
   #section("Summary")
   #r.summary
 ]
 
 // ---- Experience
-#let section_experience() = if r.experience.len() > 0 {
+#if r.experience.len() > 0 {
   section("Experience")
   for (i, job) in r.experience.enumerate() {
     if i > 0 { v(fmt.entry_spacing * 1pt) }
@@ -101,7 +85,7 @@
 }
 
 // ---- Projects
-#let section_projects() = if r.projects.len() > 0 {
+#if r.projects.len() > 0 {
   section("Projects")
   for (i, p) in r.projects.enumerate() {
     if i > 0 { v(fmt.entry_spacing * 1pt) }
@@ -116,12 +100,10 @@
   }
 }
 
-// ---- Custom sections (extra_sections). Default position: after Projects,
-// before Technical Skills. That is a default now, not a fixed anchor, since
-// fmt.section_order moves the whole extras run as one unit (move_extra_section
-// still orders them among themselves). resume_for_render already dropped
-// disabled sections/entries; empty sections render nothing.
-#let section_extra_sections() = for sec in r.extra_sections {
+// ---- Custom sections (extra_sections). Documented anchor: after Projects,
+// before Technical Skills. resume_for_render already dropped disabled
+// sections/entries; empty sections render nothing.
+#for sec in r.extra_sections {
   if sec.type == "entries" and sec.entries.len() > 0 {
     section(sec.title)
     for (i, e) in sec.entries.enumerate() {
@@ -148,7 +130,7 @@
 }
 
 // ---- Technical Skills (+ Certifications, matching the Classic layout)
-#let section_skills() = if r.skills.len() > 0 or r.certifications.len() > 0 {
+#if r.skills.len() > 0 or r.certifications.len() > 0 {
   section("Technical Skills")
   if fmt.skills_layout == "bulleted" {
     for g in r.skills [
@@ -168,7 +150,7 @@
 }
 
 // ---- Education
-#let section_education() = if r.education.len() > 0 {
+#if r.education.len() > 0 {
   section("Education")
   for (i, edu) in r.education.enumerate() {
     if i > 0 { v(fmt.entry_spacing * 1pt) }
@@ -200,23 +182,5 @@
     for b in edu.bullets [
       - #b
     ]
-  }
-}
-
-// ---- Dispatch. Every gap in this template is emitted by `section()` BEFORE its
-// heading, so the sections are self-contained and reordering them needs no
-// spacing state (unlike the XCharter port, whose gaps are calibrated per
-// adjacency).
-#{
-  let native = (
-    "summary", "experience", "projects", "extra_sections", "skills", "education",
-  )
-  for key in ordered_sections(fmt.section_order, native) {
-    if key == "summary" { section_summary() }
-    else if key == "experience" { section_experience() }
-    else if key == "projects" { section_projects() }
-    else if key == "extra_sections" { section_extra_sections() }
-    else if key == "skills" { section_skills() }
-    else if key == "education" { section_education() }
   }
 }

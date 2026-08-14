@@ -268,14 +268,47 @@ def test_duplicates_skipped_counts_bullets_already_on_the_entity(db_session, no_
     assert report.duplicates_skipped == 1
 
 
-def test_extra_sections_are_reported_as_not_stored(db_session, no_llm):
+def test_extra_sections_are_stored(db_session, no_llm):
     r = _resume(
         projects=[{"name": "Orbit", "bullets": ["Built Orbit"]}],
-        extra_sections=[{"type": "bullets", "key": "publications",
-                         "title": "Publications", "bullets": ["A paper"]}],
+        extra_sections=[
+            {
+                "type": "bullets",
+                "key": "publications",
+                "title": "Publications",
+                "bullets": ["A paper"],
+            },
+            {
+                "type": "entries",
+                "key": "volunteer",
+                "title": "Volunteer Experience",
+                "entries": [
+                    {
+                        "heading": "Habitat for Humanity",
+                        "subheading": "Volunteer Builder",
+                        "bullets": ["Built houses."],
+                    }
+                ],
+            },
+        ],
     )
     report = consolidate_deterministic(db_session, [("ds", r)])
-    assert any("extra_sections" in w and w.startswith("ds:") for w in report.warnings)
+    assert not any("extra_sections" in w for w in report.warnings)
+    assert report.entities_created == 3  # Orbit (project) + publications (extra) + volunteer (extra)
+    entities = db_session.scalars(select(KBEntity).where(KBEntity.kind == "extra")).all()
+    assert len(entities) == 2
+    pub_ent = next(e for e in entities if e.detail_json.get("section_key") == "publications")
+    assert pub_ent.title == "Publications"
+    assert pub_ent.detail_json["section_type"] == "bullets"
+    assert len(pub_ent.points) == 1
+    assert pub_ent.points[0].text == "A paper"
+
+    vol_ent = next(e for e in entities if e.detail_json.get("section_key") == "volunteer")
+    assert vol_ent.title == "Habitat for Humanity"
+    assert vol_ent.org == "Volunteer Builder"
+    assert vol_ent.detail_json["section_type"] == "entries"
+    assert len(vol_ent.points) == 1
+    assert vol_ent.points[0].text == "Built houses."
 
 
 def test_no_warning_when_there_are_no_extra_sections(db_session, no_llm):

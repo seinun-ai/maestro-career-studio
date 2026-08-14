@@ -15,6 +15,7 @@ from app.services import pdf_render
 
 ROOT = Path(__file__).resolve().parents[1]
 VERSIONS = ROOT / "migrations" / "versions"
+PRE_SECTION_ORDER = ROOT / "tests" / "fixtures" / "templates_pre_section_order"
 BUNDLED = {
     "default": "resume.tex.j2",
     "typst-classic": "typst_classic.typ",
@@ -102,9 +103,17 @@ def _migration_module():
 
 
 def _base_source(filename: str) -> str:
-    """Reverse known date-branch changes and verify the exact old bytes."""
-    current = (pdf_render.TEMPLATE_DIR / filename).read_text(encoding="utf-8")
-    old_source = current
+    """Reverse known date-branch changes and verify the exact old bytes.
+
+    Reads the FROZEN pre-`section_order` snapshot, not the live template. This
+    reconstruction used to start from `pdf_render.TEMPLATE_DIR`, which made it a
+    hostage of every later template edit: the `section_order` refactor changed
+    the bundled sources without touching a single date branch, and all three
+    tests in this file went red. The snapshot is pinned to a migration and never
+    moves, so these assertions now test the date migration and nothing else.
+    See `tests/fixtures/templates_pre_section_order/README.md`.
+    """
+    old_source = (PRE_SECTION_ORDER / filename).read_text(encoding="utf-8")
     for reversal in _DATE_BRANCH_REVERSALS[filename]:
         present_branch, old_branch, *count = reversal
         expected_count = count[0] if count else 1

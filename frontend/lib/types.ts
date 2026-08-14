@@ -409,7 +409,8 @@ export type KBEntityKind =
   | "experience"
   | "project"
   | "education"
-  | "certification";
+  | "certification"
+  | "extra";
 
 export type KBEntityStatus = "ongoing" | "completed" | "archived";
 export type KBPointState = "draft" | "approved" | "retired";
@@ -430,6 +431,9 @@ export interface KBEntityCreate {
   status?: KBEntityStatus;
   detail?: Record<string, unknown>;
   notes?: string | null;
+  section_key?: string | null;
+  section_type?: "entries" | "bullets" | null;
+  section_title?: string | null;
 }
 
 export interface KBEntityPatch {
@@ -441,6 +445,9 @@ export interface KBEntityPatch {
   status?: KBEntityStatus;
   detail?: Record<string, unknown> | null;
   notes?: string | null;
+  section_key?: string | null;
+  section_type?: "entries" | "bullets" | null;
+  section_title?: string | null;
 }
 
 export interface KBPointCreate {
@@ -529,6 +536,9 @@ export interface KBEntitySummary {
   draft_count: number;
   document_count: number;
   last_activity: string;
+  section_key?: string | null;
+  section_type?: "entries" | "bullets" | null;
+  section_title?: string | null;
 }
 
 export interface KBEntityDetail extends KBEntitySummary {
@@ -553,6 +563,7 @@ export interface KBCaptureResponse {
 interface KBPortItem {
   entity_id: UUID;
   point_ids?: UUID[];
+  section_key?: string | null;
 }
 
 export interface KBPortRequest {

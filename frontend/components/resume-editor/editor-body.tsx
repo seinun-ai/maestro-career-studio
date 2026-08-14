@@ -300,7 +300,7 @@ export function EditorBody({
                     slug={slug}
                     roleCategory={live?.role_category ?? initial.role_category}
                     roleLabel={live?.role_label ?? initial.role_label}
-                    className="h-6 min-h-6 text-xs"
+                    className="inline-flex h-6 min-h-6 w-fit flex-nowrap gap-0 px-1 py-0 text-xs leading-none"
                   />
                 </span>
               }

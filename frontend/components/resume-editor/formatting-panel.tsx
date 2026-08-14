@@ -1,7 +1,12 @@
 "use client";
 
-import { useId, useState, type ReactNode } from "react";
-import { ChevronDown, RotateCcw, SlidersHorizontal } from "lucide-react";
+import { useId, useRef, useState, type ReactNode } from "react";
+import {
+  ChevronDown,
+  ChevronUp,
+  RotateCcw,
+  SlidersHorizontal,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -25,12 +30,15 @@ import {
   FONT_SIZE_OPTIONS,
   FORMATTING_DEFAULTS,
   HEADER_ALIGN_OPTIONS,
+  SECTION_ORDER_FALLBACK,
+  SECTION_ORDER_LABELS,
   SKILLS_LAYOUT_OPTIONS,
   SLIDER_RANGES,
   diffFrom,
   type ResumeFormatting,
+  type SectionKey,
 } from "@/lib/formatting";
-import { cn } from "@/lib/utils";
+import { cn, move } from "@/lib/utils";
 
 const UNSUPPORTED = "Selected template doesn't support this";
 
@@ -70,6 +78,8 @@ export function FormattingPanel({
   // Namespaces this panel's label ids — the studio renders it beside another
   // copy in the base-resume editor, so bare `${key}-label` would collide.
   const uid = useId();
+  // Drag source index for the section-order list (chip-input's drag pattern).
+  const sectionDragFrom = useRef<number | null>(null);
 
   const effective: ResumeFormatting = { ...baseline, ...(value ?? {}) };
   const customized = value != null && Object.keys(value).length > 0;
@@ -198,6 +208,75 @@ export function FormattingPanel({
     );
   };
 
+  // A fourth control shape: an ordered list, reordered with up/down buttons
+  // rather than drag-and-drop (no new dependency, and it is keyboard-reachable
+  // by construction). `null` means "the template's own order", so the rows show
+  // the inherited order and the first move stores the whole explicit list —
+  // there is no half-specified state to reason about.
+  const sectionOrderRow = () => {
+    const key: keyof ResumeFormatting = "section_order";
+    const disabled = isDisabled(key);
+    const labelId = rowLabelId(key);
+    const order: SectionKey[] = effective.section_order ?? SECTION_ORDER_FALLBACK;
+    return (
+      <div className={cn("grid gap-1", disabled && "opacity-50")}>
+        <span id={labelId} className="text-sm">
+          Section order
+        </span>
+        {withTooltip(
+          disabled,
+          <ul className="border-input grid gap-0.5 rounded-md border p-1">
+            {order.map((section, index) => (
+              <li
+                key={section}
+                draggable={!disabled}
+                onDragStart={() => (sectionDragFrom.current = index)}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  const from = sectionDragFrom.current;
+                  sectionDragFrom.current = null;
+                  if (from !== null && from !== index) {
+                    setKey(key, move(order, from, index));
+                  }
+                }}
+                className={cn(
+                  "flex items-center justify-between gap-2 rounded px-1.5 py-0.5 text-xs",
+                  !disabled && "cursor-grab active:cursor-grabbing",
+                )}
+              >
+                <span className="min-w-0 truncate">
+                  {SECTION_ORDER_LABELS[section] ?? section}
+                </span>
+                <span className="flex shrink-0 items-center">
+                  {(
+                    [
+                      ["up", ChevronUp, index - 1, index > 0],
+                      ["down", ChevronDown, index + 1, index < order.length - 1],
+                    ] as const
+                  ).map(([direction, Icon, target, enabled]) => (
+                    <button
+                      key={direction}
+                      type="button"
+                      disabled={disabled || !enabled}
+                      aria-label={`Move ${
+                        SECTION_ORDER_LABELS[section] ?? section
+                      } ${direction}`}
+                      onClick={() => setKey(key, move(order, index, target))}
+                      className="text-muted-foreground hover:text-foreground rounded p-0.5 transition-colors disabled:pointer-events-none disabled:opacity-30"
+                    >
+                      <Icon className="size-3.5" />
+                    </button>
+                  ))}
+                </span>
+              </li>
+            ))}
+          </ul>,
+        )}
+      </div>
+    );
+  };
+
   const showContent = collapsible ? open : true;
 
   return (
@@ -306,6 +385,7 @@ export function FormattingPanel({
           </Group>
 
           <Group title="Layout">
+            {sectionOrderRow()}
             {choiceRow(
               "header_align",
               "Header alignment",

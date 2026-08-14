@@ -32,8 +32,15 @@ class LLMProviderError(RuntimeError):
 # tokens}. None when the provider response has no usable counts (e.g. mocks).
 Usage = dict[str, int] | None
 
+# Google's OpenAI-compatible chat completions URL. Code-owned constant — never
+# a user-set base_url (that value decides where the OpenAI key is sent).
+GEMINI_OPENAI_COMPAT_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
+
 _client: OpenAI | None = None
 _client_key: tuple[str | None, str | None] | None = None
+# Chat-scoped clients keyed by (provider, key). Separate from `_client` so a
+# Gemini chat turn cannot repoint the JSON-services client.
+_chat_clients: dict[tuple[str, str], OpenAI] = {}
 
 
 def get_openai_key() -> str | None:
@@ -91,6 +98,31 @@ def _get_client() -> OpenAI:
         _client = OpenAI(api_key=current_key or "local", base_url=base_url)
         _client_key = cache_key
     return _client
+
+
+def get_chat_client(model: str) -> OpenAI:
+    """OpenAI-SDK client for the chat/tools surface.
+
+    Custom endpoints win first so a locally served `gemini-*` id is not
+    hijacked to Google. Hosted Gemini ids go to Google's OpenAI-compat URL
+    with the Gemini key. Everything else shares `_get_client()`. Never
+    mutates the global `_client` — that client is shared by every JSON service.
+    """
+    from app.services import model_settings
+
+    if model_settings.using_custom_endpoint():
+        return _get_client()
+    if _is_gemini_model(model):
+        gemini_key = get_gemini_key()
+        if not gemini_key:
+            raise LLMProviderError("GEMINI_API_KEY is required for Gemini models")
+        cache_key = ("gemini", gemini_key)
+        cached = _chat_clients.get(cache_key)
+        if cached is None:
+            cached = OpenAI(api_key=gemini_key, base_url=GEMINI_OPENAI_COMPAT_URL)
+            _chat_clients[cache_key] = cached
+        return cached
+    return _get_client()
 
 
 def _message_content(response: Any) -> str:

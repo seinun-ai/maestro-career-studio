@@ -49,6 +49,7 @@ from app.schemas.career_kb import (
     KBPortResponse,
     KBProfileOut,
     KBProfilePatch,
+    ExtraSectionPreset,
 )
 from app.schemas.resume import ResumeData
 from app.services import base_resume_data, kb_import, career_kb as svc
@@ -175,6 +176,14 @@ def patch_entity(
     if data.get("detail") is not None:
         entity.detail_json = data["detail"]
     data.pop("detail", None)
+    section_updates = {}
+    for sk in ("section_key", "section_type", "section_title"):
+        if sk in data:
+            section_updates[sk] = data.pop(sk)
+    if section_updates:
+        current_detail = dict(entity.detail_json or {})
+        current_detail.update(section_updates)
+        entity.detail_json = current_detail
     for key, value in data.items():
         setattr(entity, key, value)
     db.commit()
@@ -772,3 +781,11 @@ def consolidate_endpoint(
     report.warnings.extend(parse_warnings)
     career_exports.best_effort_refresh(db)
     return report
+
+
+@router.get("/extra-section-presets", response_model=list[ExtraSectionPreset])
+def list_extra_section_presets():
+    """Canonical extra-section presets shared between studio and Career KB."""
+    from app.services.extra_section_presets import PRESETS
+
+    return PRESETS

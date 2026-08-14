@@ -21,11 +21,26 @@ _FORMATTING_TS = (
 )
 
 
+_VALUE_RE = re.compile(
+    r"""(\w+)\s*:\s*(              # key, then one value:
+          \[[^\]]*\]               #   a list literal (section_order's shape)
+        | "[^"]*" | '[^']*'        #   a quoted string
+        | [^,\n}]+                 #   a number / bool / null
+    )""",
+    re.VERBOSE,
+)
+
+
 def _parse_formatting_defaults(text: str) -> dict:
     """Extract the FORMATTING_DEFAULTS object literal from the TS source.
 
     The object is a plain JSON-ish literal (unquoted keys, trailing comma,
-    numeric/boolean/string values). Normalise it to JSON and parse.
+    numeric/string/boolean/null/list values). Normalise it to JSON and parse.
+
+    The list branch is not hypothetical: `section_order` is a `string[] | null`,
+    and the original `[^,\\n}]+` value pattern stopped at the first comma INSIDE
+    the brackets, so a non-null list default would have parsed as a fragment and
+    failed this test with a message about the wrong thing.
     """
     m = re.search(
         r"export const FORMATTING_DEFAULTS[^=]*=\s*(\{.*?\})\s*;",
@@ -36,13 +51,15 @@ def _parse_formatting_defaults(text: str) -> dict:
     body = m.group(1)
 
     out: dict = {}
-    # Match `key: value` pairs (value is a number, quoted string, or bool).
-    for key, raw in re.findall(r"(\w+)\s*:\s*([^,\n}]+)", body):
+    for key, raw in _VALUE_RE.findall(body):
         raw = raw.strip()
         if raw in ("true", "false"):
             out[key] = raw == "true"
         elif raw.startswith(('"', "'")):
             out[key] = ast.literal_eval(raw)
+        elif raw.startswith("["):
+            # ast, not json: the TS literal may use single-quoted members.
+            out[key] = list(ast.literal_eval(raw))
         else:
             out[key] = json.loads(raw)
     return out

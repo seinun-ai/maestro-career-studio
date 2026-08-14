@@ -19,7 +19,23 @@ export type ResumeFormatting = {
   date_format: "verbatim" | "short_month" | "long_month" | "numeric";
   education_order: "degree_first" | "institution_first";
   skills_layout: "inline" | "bulleted";
+  /**
+   * Render order of the resume's sections. `null` means "the template's own
+   * order" — the backend never rewrites it to an explicit list, so an
+   * untouched resume keeps inheriting whatever order its template ships with.
+   * A partial list orders its members first and the template appends the rest.
+   */
+  section_order: SectionKey[] | null;
 };
+
+export type SectionKey =
+  | "summary"
+  | "experience"
+  | "projects"
+  | "extra_sections"
+  | "skills"
+  | "education"
+  | "certifications";
 
 export const FORMATTING_DEFAULTS: ResumeFormatting = {
   font_size: 11,
@@ -35,7 +51,43 @@ export const FORMATTING_DEFAULTS: ResumeFormatting = {
   date_format: "verbatim",
   education_order: "degree_first",
   skills_layout: "inline",
+  section_order: null,
 };
+
+/**
+ * Row labels for the section-order control. "Custom sections" names the whole
+ * `extra_sections` RUN: this knob moves the block, while the editor's
+ * move-section buttons order the custom sections among themselves — two
+ * mechanisms, and the label is what keeps the split legible.
+ */
+export const SECTION_ORDER_LABELS: Record<SectionKey, string> = {
+  summary: "Summary",
+  experience: "Experience",
+  projects: "Projects",
+  extra_sections: "Custom sections",
+  skills: "Skills",
+  education: "Education",
+  certifications: "Certifications",
+};
+
+/**
+ * What the control shows when nothing is stored (`section_order: null`).
+ *
+ * Deliberately NOT every key in {@link SECTION_ORDER_LABELS}: `certifications`
+ * is a standalone section in only one bundled template, and listing a row the
+ * selected template folds into Skills would promise a move that does nothing.
+ * A template that renders certs standalone ships an explicit `section_order` in
+ * its `default_formatting`, which arrives here as the panel baseline and brings
+ * the row with it.
+ */
+export const SECTION_ORDER_FALLBACK: SectionKey[] = [
+  "summary",
+  "experience",
+  "projects",
+  "extra_sections",
+  "skills",
+  "education",
+];
 
 /** Option labels for the choice-style knobs. */
 export const DATE_FORMAT_OPTIONS: { value: ResumeFormatting["date_format"]; label: string }[] = [
@@ -101,11 +153,30 @@ export function diffFrom(
   const out: Partial<ResumeFormatting> = {};
   for (const key of Object.keys(FORMATTING_DEFAULTS) as (keyof ResumeFormatting)[]) {
     const v = value[key];
-    if (v !== undefined && v !== baseline[key]) {
+    if (v !== undefined && !sameFormattingValue(v, baseline[key])) {
       (out as Record<string, unknown>)[key] = v;
     }
   }
   return Object.keys(out).length ? out : null;
+}
+
+/**
+ * Value equality for one knob. Every knob but `section_order` is a primitive,
+ * where `===` is equality; a list compares element-wise AND order-sensitively,
+ * because for this knob the order IS the value. Reference `!==` would report
+ * every freshly-built array as an override and store a redundant copy of the
+ * inherited order on every render.
+ */
+function sameFormattingValue(a: unknown, b: unknown): boolean {
+  if (Array.isArray(a) || Array.isArray(b)) {
+    return (
+      Array.isArray(a) &&
+      Array.isArray(b) &&
+      a.length === b.length &&
+      a.every((item, index) => item === b[index])
+    );
+  }
+  return a === b;
 }
 
 /** Diff against the plain defaults — the base-editor case. */

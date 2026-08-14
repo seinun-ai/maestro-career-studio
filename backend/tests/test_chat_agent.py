@@ -227,3 +227,23 @@ def test_gpt4o_does_not_send_reasoning_effort(db_session, monkeypatch, tmp_path)
     client = FakeClient([[_delta_chunk("ok")]])
     list(chat_agent.run_turn(db_session, session, "hi", None, client=client, model="gpt-4o"))
     assert "reasoning_effort" not in client.calls[0]
+
+
+def test_run_turn_asks_factory_for_gemini_model(db_session, monkeypatch, tmp_path):
+    """Without an injected client, a Gemini id must go through get_chat_client."""
+    session = _seed(db_session, monkeypatch, tmp_path)
+    client = FakeClient([[_delta_chunk("ok")]])
+    factory_calls: list[str] = []
+
+    def factory(model: str):
+        factory_calls.append(model)
+        return client
+
+    monkeypatch.setattr(chat_agent, "get_chat_client", factory)
+    list(
+        chat_agent.run_turn(
+            db_session, session, "hi", None, model="gemini-3.5-flash-lite"
+        )
+    )
+    assert factory_calls == ["gemini-3.5-flash-lite"]
+    assert client.calls, "factory client must be the one run_turn uses"

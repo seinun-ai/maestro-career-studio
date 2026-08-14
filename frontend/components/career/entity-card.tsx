@@ -29,6 +29,7 @@ const KIND_LABELS: Record<KBEntitySummary["kind"], string> = {
   project: "Project",
   education: "Education",
   certification: "Certification",
+  extra: "Custom section",
 };
 
 export function EntityCard({ entity }: { entity: KBEntitySummary }) {
@@ -49,7 +50,9 @@ export function EntityCard({ entity }: { entity: KBEntitySummary }) {
         <CardHeader className="grid grid-cols-[minmax(0,1fr)_auto] gap-3">
           <div className="min-w-0">
             <p className="text-muted-foreground mb-1 text-[0.7rem] font-medium uppercase tracking-[0.14em]">
-              {KIND_LABELS[entity.kind]}
+              {entity.kind === "extra" && entity.section_title
+                ? entity.section_title
+                : KIND_LABELS[entity.kind]}
             </p>
             <CardTitle className="truncate">{entity.title}</CardTitle>
             <p className="text-muted-foreground mt-0.5 truncate text-sm">

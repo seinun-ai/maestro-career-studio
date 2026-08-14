@@ -339,7 +339,7 @@ export function RolePicker(props: RolePickerProps) {
         {selected.map((entry) => (
           <Combobox.Chip
             key={roleIdentity(entry)}
-            className="bg-muted text-foreground/90 inline-flex items-center gap-1 rounded-md px-2 py-0.5"
+            className="bg-muted text-foreground/90 inline-flex h-5 max-h-full items-center gap-1 rounded-md px-1.5 leading-none"
           >
             {entry.label}
             {/* Only for a custom entry the user has since mapped: without
@@ -378,6 +378,10 @@ export function RolePicker(props: RolePickerProps) {
           id={props.id}
           disabled={props.disabled}
           maxLength={MAX_ROLE_LABEL_CHARS}
+          // Native inputs default to size=20 (~20ch). min-w-0 does not override
+          // that preferred width, so a single-mode chip sat in a wide empty
+          // box and a compact h-6 header field could not hug its chip.
+          size={1}
           placeholder={
             props.placeholder ??
             (selected.length === 0 ? "Search roles, or type your own…" : "")
@@ -388,8 +392,8 @@ export function RolePicker(props: RolePickerProps) {
           // second line. The selection is the content there; the input only
           // needs to exist for replace-by-typing, so it shrinks instead.
           className={
-            props.mode === "single" && props.value
-              ? "placeholder:text-muted-foreground min-w-0 flex-1 bg-transparent outline-none"
+            props.mode === "single" && props.value && !query
+              ? "placeholder:text-muted-foreground h-full min-h-0 w-px min-w-0 shrink-0 bg-transparent p-0 leading-none outline-none"
               : "placeholder:text-muted-foreground min-w-40 flex-1 bg-transparent outline-none"
           }
           onKeyDown={(event) => {

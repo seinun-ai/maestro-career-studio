@@ -1,10 +1,10 @@
 {
   "structure": {
     "root": "backend",
-    "modules": 380,
-    "total_loc": 94523,
-    "src_loc": 35701,
-    "test_loc": 58822,
+    "modules": 381,
+    "total_loc": 95386,
+    "src_loc": 36149,
+    "test_loc": 59237,
     "orphan_modules": [],
     "test_only_reachable": [],
     "orphan_loc": 0,
@@ -15,7 +15,15 @@
         "name": "_kb_evidence",
         "complexity": 39,
         "params": 3,
-        "lines": 97
+        "lines": 98
+      },
+      {
+        "file": "app/services/career_kb.py",
+        "line": 629,
+        "name": "_compose_extra_item_ops",
+        "complexity": 39,
+        "params": 5,
+        "lines": 144
       },
       {
         "file": "app/services/resume_lint.py",
@@ -34,8 +42,16 @@
         "lines": 145
       },
       {
+        "file": "app/services/career_kb.py",
+        "line": 204,
+        "name": "compose_resume_data",
+        "complexity": 37,
+        "params": 2,
+        "lines": 148
+      },
+      {
         "file": "app/services/kb_consolidation.py",
-        "line": 508,
+        "line": 604,
         "name": "_cluster_points_for_entity",
         "complexity": 35,
         "params": 6,
@@ -51,7 +67,7 @@
       },
       {
         "file": "app/services/kb_adapt.py",
-        "line": 259,
+        "line": 263,
         "name": "apply_adapted",
         "complexity": 32,
         "params": 2,
@@ -91,7 +107,7 @@
       },
       {
         "file": "app/services/kb_adapt.py",
-        "line": 161,
+        "line": 165,
         "name": "_coerce_proposal",
         "complexity": 28,
         "params": 4,
@@ -139,7 +155,7 @@
       },
       {
         "file": "app/services/kb_consolidation.py",
-        "line": 624,
+        "line": 720,
         "name": "_merge_skills",
         "complexity": 25,
         "params": 3,
@@ -160,6 +176,14 @@
         "complexity": 24,
         "params": 5,
         "lines": 95
+      },
+      {
+        "file": "app/services/career_kb.py",
+        "line": 775,
+        "name": "_compose_item_ops",
+        "complexity": 24,
+        "params": 5,
+        "lines": 120
       },
       {
         "file": "app/services/health_verify.py",
@@ -194,16 +218,8 @@
         "lines": 63
       },
       {
-        "file": "app/services/career_kb.py",
-        "line": 572,
-        "name": "_compose_item_ops",
-        "complexity": 23,
-        "params": 5,
-        "lines": 115
-      },
-      {
         "file": "app/services/kb_consolidation.py",
-        "line": 397,
+        "line": 493,
         "name": "_resolve_family",
         "complexity": 23,
         "params": 6,
@@ -235,15 +251,7 @@
       },
       {
         "file": "app/services/career_kb.py",
-        "line": 204,
-        "name": "compose_resume_data",
-        "complexity": 22,
-        "params": 2,
-        "lines": 95
-      },
-      {
-        "file": "app/services/career_kb.py",
-        "line": 524,
+        "line": 581,
         "name": "_build_entry",
         "complexity": 22,
         "params": 3,
@@ -267,7 +275,7 @@
       },
       {
         "file": "tests/test_kb_ingest_parsed.py",
-        "line": 254,
+        "line": 271,
         "name": "test_onboarding_round_trip_ingest_approve_compose",
         "complexity": 21,
         "params": 4,
@@ -291,10 +299,18 @@
       },
       {
         "file": "app/services/kb_ingest.py",
-        "line": 187,
+        "line": 209,
         "name": "ingest_document",
         "complexity": 21,
         "params": 4,
+        "lines": 102
+      },
+      {
+        "file": "app/services/kb_ingest.py",
+        "line": 317,
+        "name": "capture",
+        "complexity": 21,
+        "params": 5,
         "lines": 102
       },
       {
@@ -354,6 +370,14 @@
         "lines": 65
       },
       {
+        "file": "tests/test_kb_extra_sections.py",
+        "line": 165,
+        "name": "test_extra_sections_round_trip_compose",
+        "complexity": 19,
+        "params": 3,
+        "lines": 63
+      },
+      {
         "file": "scripts/template_parity.py",
         "line": 335,
         "name": "_align_logical_lines",
@@ -384,33 +408,9 @@
         "complexity": 19,
         "params": 0,
         "lines": 41
-      },
-      {
-        "file": "app/services/typst_compiler.py",
-        "line": 30,
-        "name": "strip_typst_comments",
-        "complexity": 19,
-        "params": 1,
-        "lines": 53
-      },
-      {
-        "file": "app/services/resume_versions.py",
-        "line": 332,
-        "name": "diff_versions",
-        "complexity": 19,
-        "params": 2,
-        "lines": 39
-      },
-      {
-        "file": "app/services/kb_ingest.py",
-        "line": 295,
-        "name": "capture",
-        "complexity": 19,
-        "params": 5,
-        "lines": 92
       }
     ],
-    "hotspot_count": 341,
+    "hotspot_count": 354,
     "error_masking": [
       {
         "file": "tests/test_tracing.py",
@@ -459,8 +459,8 @@
       }
     ],
     "error_masking_count": 9,
-    "internal_import_edges": 1586,
-    "imports_per_module": 4.17,
+    "internal_import_edges": 1596,
+    "imports_per_module": 4.19,
     "entry_points_used": [
       "app.main",
       "mcp_server.server",
@@ -477,9 +477,9 @@
       "min_tokens": 50,
       "mode": "weak"
     },
-    "percentage": 1.0,
-    "duplicated_lines": 436,
-    "clones": 45,
+    "percentage": 1.03,
+    "duplicated_lines": 457,
+    "clones": 47,
     "allowlisted_clones": 0,
     "worst_files": [
       [
@@ -500,6 +500,10 @@
       ],
       [
         "app/models/application_proposal.py",
+        5
+      ],
+      [
+        "app/services/kb_consolidation.py",
         5
       ],
       [
@@ -528,10 +532,6 @@
       ],
       [
         "app/schemas/job.py",
-        3
-      ],
-      [
-        "app/services/kb_consolidation.py",
         3
       ],
       [
@@ -582,7 +582,7 @@
     {
       "rank": "P2",
       "signal": "complexity_concentration",
-      "detail": "341 function(s) over threshold. worst: app/services/explore_build_areas.py:162 cc=39",
+      "detail": "354 function(s) over threshold. worst: app/services/explore_build_areas.py:162 cc=39",
       "why": "Complexity mass concentrating in few functions is the erosion signature.",
       "action": "Decompose the top 3. Do not touch the tail."
     },
@@ -595,16 +595,16 @@
     }
   ],
   "metrics": {
-    "total_loc": 94523,
-    "src_loc": 35701,
-    "test_loc": 58822,
-    "modules": 380,
+    "total_loc": 95386,
+    "src_loc": 36149,
+    "test_loc": 59237,
+    "modules": 381,
     "orphan_loc": 0,
-    "duplication_pct": 1.0,
-    "duplicated_lines": 436,
-    "clone_count": 45,
-    "complexity_hotspots": 341,
+    "duplication_pct": 1.03,
+    "duplicated_lines": 457,
+    "clone_count": 47,
+    "complexity_hotspots": 354,
     "error_masking": 9,
-    "imports_per_module": 4.17
+    "imports_per_module": 4.19
   }
 }

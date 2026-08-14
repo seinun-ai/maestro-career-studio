@@ -136,8 +136,8 @@ def test_put_openai_rejects_a_bad_base_url_with_400(db_session):
         response = TestClient(app).put(
             "/api/settings/openai",
             json={
-                "fast_model": "gpt-4o-mini",
-                "smart_model": "gpt-4o",
+                "fast_model": "gemini-3.5-flash-lite",
+                "smart_model": "gpt-5.6-luna",
                 "base_url": "file:///etc/passwd",
             },
         )

@@ -119,24 +119,13 @@
     ((* if resume.contact.location *))((( pipe() ))) \faMapMarker* \hspace{2pt}\texttt{((( resume.contact.location|latex_escape )))}((* endif *))
     \\ \vspace{-3pt}
 ((* if fmt.header_align == "left" *))\end{flushleft}((* elif fmt.header_align == "right" *))\end{flushright}((* else *))\end{center}((* endif *))
-((#
-  Section bodies are MACROS, emitted by the dispatch loop just before
-  \end{document} so `fmt.section_order` can reorder them. Definitions are
-  adjacent on purpose: a blank line between two macro definitions is
-  template-level text and would be emitted ahead of the first section.
-  This is the one bundled template that renders CERTIFICATIONS as its own
-  section, so `certifications` is an orderable unit here (templates that fold
-  certs into Skills leave the token out of their native list and ignore it).
-  It has no extras block, so `extra_sections` is likewise not in the list.
-#))
-((* macro section_summary() *))
+
 ((* if resume.summary *))
 %-----------SUMMARY-----------
 \section{SUMMARY}
   \small{((( resume.summary|latex_escape )))}
 ((* endif *))
-((* endmacro *))
-((* macro section_experience() *))
+
 ((* if resume.experience *))
 %-----------EXPERIENCE-----------
 \section{EXPERIENCE}
@@ -155,8 +144,7 @@
     ((* endfor *))
   \resumeSubHeadingListEnd
 ((* endif *))
-((* endmacro *))
-((* macro section_projects() *))
+
 ((* if resume.projects *))
 %-----------PROJECTS-----------
 \section{PROJECTS}
@@ -174,8 +162,7 @@
       ((* endfor *))
     \resumeSubHeadingListEnd
 ((* endif *))
-((* endmacro *))
-((* macro section_education() *))
+
 ((* if resume.education *))
 %-----------EDUCATION-----------
 \section{EDUCATION}
@@ -207,8 +194,7 @@
     ((* endfor *))
   \resumeSubHeadingListEnd
 ((* endif *))
-((* endmacro *))
-((* macro section_certifications() *))
+
 ((* if resume.certifications *))
 %-----------CERTIFICATIONS-----------
 \section{CERTIFICATIONS}
@@ -224,8 +210,7 @@
     ((* endfor *))
   \resumeSubHeadingListEnd
 ((* endif *))
-((* endmacro *))
-((* macro section_skills() *))
+
 ((* if resume.skills *))
 %-----------SKILLS-----------
 \section{SKILLS}
@@ -245,12 +230,6 @@
  \end{itemize}
 ((* endif *))
 ((* endif *))
-((* endmacro *))
-((* set native_sections = ["summary", "experience", "projects", "education", "certifications", "skills"] *))
-((* for section_key in fmt.section_order|ordered_sections(native_sections) *))
-
-((* if section_key == "summary" *))((( section_summary() )))((* elif section_key == "experience" *))((( section_experience() )))((* elif section_key == "projects" *))((( section_projects() )))((* elif section_key == "education" *))((( section_education() )))((* elif section_key == "certifications" *))((( section_certifications() )))((* elif section_key == "skills" *))((( section_skills() )))((* endif *))
-((* endfor *))
 
 %-------------------------------------------
 \end{document}

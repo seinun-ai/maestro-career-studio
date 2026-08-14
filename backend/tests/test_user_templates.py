@@ -650,7 +650,7 @@ def test_bundled_latex_escapes_contact_url_targets(tmp_path):
     assert "github.com/c" in text
 
 
-def test_bundled_latex_supports_all_13_knobs():
+def test_bundled_latex_supports_every_knob():
     source = (USER_DIR / "xcharter_serif.tex.j2").read_text()
     keys = template_registry.supported_fmt_keys(source, "latex")
     assert set(keys) == set(ResumeFormatting.model_fields)
@@ -663,7 +663,7 @@ def test_typst_port_source_invariants_and_supports_extra_sections():
     assert pdf_render.typst_source_references_extras(source)
 
 
-def test_typst_port_supports_all_13_knobs():
+def test_typst_port_supports_every_knob():
     source = (USER_DIR / "xcharter_serif.typ").read_text()
     keys = template_registry.supported_fmt_keys(source, "typst")
     assert set(keys) == set(ResumeFormatting.model_fields)

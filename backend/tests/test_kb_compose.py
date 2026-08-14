@@ -198,15 +198,88 @@ def test_compose_endpoint_returns_valid_resume_data(client, db_session):
     assert "Draft bullet" not in ongoing_exp["bullets"]
 
 
-def test_compose_emits_empty_extra_sections(client, db_session):
-    # KB has no model for arbitrary custom sections yet, so compose emits [] —
-    # it never maps cert/project entities into extras by display title.
+def test_compose_emits_empty_extra_sections_when_none(client, db_session):
     profile = career_kb.get_or_create_profile(db_session)
     profile.contact_json = {"name": "Riley", "email": "a@b.com"}
     db_session.commit()
 
     body = client.get("/api/kb/compose").json()
     assert body["extra_sections"] == []
+
+
+def test_compose_emits_extra_sections_for_extra_entities(client, db_session):
+    profile = career_kb.get_or_create_profile(db_session)
+    profile.contact_json = {"name": "Riley", "email": "a@b.com"}
+
+    # entries-type extra entity
+    pub_entity = KBEntity(
+        kind="extra",
+        title="Attention Is All You Need",
+        org="NeurIPS",
+        status="completed",
+        detail_json={
+            "section_key": "publications",
+            "section_type": "entries",
+            "section_title": "Publications",
+            "date": "2017",
+        },
+    )
+    db_session.add(pub_entity)
+    db_session.flush()
+    db_session.add(
+        KBPoint(
+            entity_id=pub_entity.id,
+            text="Co-authored transformer architecture.",
+            state="approved",
+            origin="manual",
+        )
+    )
+    db_session.add(
+        KBPoint(
+            entity_id=pub_entity.id,
+            text="Draft idea not yet approved.",
+            state="draft",
+            origin="manual",
+        )
+    )
+
+    # bullets-type extra entity
+    awards_entity = KBEntity(
+        kind="extra",
+        title="Awards & Honors",
+        status="completed",
+        detail_json={
+            "section_key": "awards",
+            "section_type": "bullets",
+            "section_title": "Awards & Honors",
+        },
+    )
+    db_session.add(awards_entity)
+    db_session.flush()
+    db_session.add(
+        KBPoint(
+            entity_id=awards_entity.id,
+            text="Best Paper Award at NeurIPS 2017.",
+            state="approved",
+            origin="manual",
+        )
+    )
+    db_session.commit()
+
+    body = client.get("/api/kb/compose").json()
+    assert len(body["extra_sections"]) == 2
+    pub_sec = next(s for s in body["extra_sections"] if s["key"] == "publications")
+    assert pub_sec["title"] == "Publications"
+    assert pub_sec["type"] == "entries"
+    assert len(pub_sec["entries"]) == 1
+    assert pub_sec["entries"][0]["heading"] == "Attention Is All You Need"
+    assert pub_sec["entries"][0]["subheading"] == "NeurIPS"
+    assert pub_sec["entries"][0]["bullets"] == ["Co-authored transformer architecture."]
+
+    awards_sec = next(s for s in body["extra_sections"] if s["key"] == "awards")
+    assert awards_sec["title"] == "Awards & Honors"
+    assert awards_sec["type"] == "bullets"
+    assert awards_sec["bullets"] == ["Best Paper Award at NeurIPS 2017."]
 
 
 def test_gap_tailor_prompt_has_no_memory_param():

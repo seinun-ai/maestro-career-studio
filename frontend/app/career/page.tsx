@@ -27,6 +27,7 @@ const ENTITY_TABS: { kind: KBEntityKind; value: string; title: string; singular:
   { kind: "project", value: "project", title: "Projects", singular: "project" },
   { kind: "education", value: "education", title: "Education", singular: "education" },
   { kind: "certification", value: "certification", title: "Certifications", singular: "certification" },
+  { kind: "extra", value: "extra", title: "Custom sections", singular: "custom section" },
 ];
 
 export default function CareerPage() {
@@ -122,15 +123,25 @@ export default function CareerPage() {
 
         {ENTITY_TABS.map((tab) => (
           <TabsContent key={tab.value} value={tab.value}>
-            <EntityTab
-              title={tab.title}
-              singular={tab.singular}
-              items={(entities.data ?? []).filter((entity) => entity.kind === tab.kind)}
-              isLoading={entities.isLoading}
-              error={entities.error}
-              onRetry={() => void entities.refetch()}
-              onAdd={() => openNewEntity(tab.kind)}
-            />
+            {tab.kind === "extra" ? (
+              <CustomSectionsTab
+                items={(entities.data ?? []).filter((entity) => entity.kind === tab.kind)}
+                isLoading={entities.isLoading}
+                error={entities.error}
+                onRetry={() => void entities.refetch()}
+                onAdd={() => openNewEntity("extra")}
+              />
+            ) : (
+              <EntityTab
+                title={tab.title}
+                singular={tab.singular}
+                items={(entities.data ?? []).filter((entity) => entity.kind === tab.kind)}
+                isLoading={entities.isLoading}
+                error={entities.error}
+                onRetry={() => void entities.refetch()}
+                onAdd={() => openNewEntity(tab.kind)}
+              />
+            )}
           </TabsContent>
         ))}
       </Tabs>
@@ -143,6 +154,98 @@ export default function CareerPage() {
       />
       <UploadDialog open={importOpen} onOpenChange={setImportOpen} />
     </PageShell>
+  );
+}
+
+function CustomSectionsTab({
+  items,
+  isLoading,
+  error,
+  onRetry,
+  onAdd,
+}: {
+  items: KBEntitySummary[];
+  isLoading: boolean;
+  error: Error | null;
+  onRetry: () => void;
+  onAdd: () => void;
+}) {
+  const groups: { key: string; title: string; type: string; entities: KBEntitySummary[] }[] = [];
+  const groupMap = new Map<string, (typeof groups)[0]>();
+
+  for (const item of items) {
+    const sKey = item.section_key || "other";
+    const sTitle = item.section_title || sKey;
+    const sType = item.section_type || "entries";
+    let g = groupMap.get(sKey);
+    if (!g) {
+      g = { key: sKey, title: sTitle, type: sType, entities: [] };
+      groupMap.set(sKey, g);
+      groups.push(g);
+    }
+    g.entities.push(item);
+  }
+
+  return (
+    <section className="space-y-6">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-muted-foreground text-sm">
+          Custom sections (publications, awards, volunteer work, certifications) and the career facts connected to them.
+        </p>
+        <Button className="rounded-full" size="sm" variant="secondary" onClick={onAdd}>
+          <Plus aria-hidden="true" /> Add custom section
+        </Button>
+      </div>
+
+      {isLoading ? (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3" aria-label="Loading custom sections">
+          {Array.from({ length: 3 }).map((_, index) => (
+            <Skeleton key={index} className="h-40 w-full" />
+          ))}
+        </div>
+      ) : error ? (
+        <div role="alert" className="rounded-2xl bg-destructive/10 p-5">
+          <p className="text-sm font-medium">Couldn&apos;t load custom sections.</p>
+          <p className="text-muted-foreground mt-1 text-xs">{error.message}</p>
+          <Button className="mt-3" size="sm" variant="outline" onClick={onRetry}>
+            Try again
+          </Button>
+        </div>
+      ) : items.length === 0 ? (
+        <div className="rounded-2xl bg-muted/45 p-10 text-center">
+          <p className="text-sm font-medium">No custom sections yet</p>
+          <p className="text-muted-foreground mx-auto mt-1 max-w-md text-xs">
+            Add custom sections like publications, awards, presentations, or clearances to your Career Knowledge Base.
+          </p>
+          <Button className="mt-4 rounded-full" size="sm" onClick={onAdd}>
+            <Plus aria-hidden="true" /> Add custom section
+          </Button>
+        </div>
+      ) : (
+        <div className="space-y-6">
+          {groups.map((group) => (
+            <div key={group.key} className="space-y-3">
+              <div className="flex items-center gap-2 border-b pb-1.5">
+                <h3 className="text-sm font-semibold tracking-tight text-foreground">
+                  {group.title}
+                </h3>
+                <Badge variant="outline" className="text-[11px] font-normal uppercase tracking-wider">
+                  {group.type}
+                </Badge>
+                <span className="text-xs text-muted-foreground ml-auto">
+                  {group.entities.length} {group.entities.length === 1 ? "item" : "items"}
+                </span>
+              </div>
+              <div className="animate-fade-rise grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {group.entities.map((entity) => (
+                  <EntityCard key={entity.id} entity={entity} />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 

@@ -485,39 +485,104 @@ def test_port_entity_not_found_404(db_session, tmp_path, monkeypatch):
     assert res.status_code == 404
 
 
-def test_port_rejects_custom_section_key_target(db_session, tmp_path, monkeypatch):
-    # Phase-1 guard: KB porting is core-only. A user-supplied section_key that
-    # would target a custom (extra) section is rejected cleanly, not dropped.
+def test_port_extra_section_entries_and_bullets(db_session, tmp_path, monkeypatch):
     _stub_render(monkeypatch, tmp_path)
     _seed(db_session, slug="data_scientist", data_json=SAMPLE_DATA)
-    entity, _ = _make_entity(
-        db_session, kind="project", title="Proj", points=[("Did A.", "approved")]
-    )
 
-    res = _post_port(
+    # 1. Port a bullets-type extra entity
+    awards_ent, _ = _make_entity(
         db_session,
-        {
-            "target_slug": "data_scientist",
-            "items": [{"entity_id": str(entity.id), "section_key": "publications"}],
+        kind="extra",
+        title="Awards & Honors",
+        detail={
+            "section_key": "awards",
+            "section_type": "bullets",
+            "section_title": "Awards & Honors",
         },
+        points=[("First Place Hackathon", "approved")],
     )
 
-    assert res.status_code == 422
-    assert "custom (extra) section" in res.text
-    # Nothing ported: the resume is untouched.
-    assert db_session.get(BaseResume, "data_scientist").data_json["projects"] == []
+    res1 = _post_port(
+        db_session,
+        {"target_slug": "data_scientist", "items": [{"entity_id": str(awards_ent.id)}]},
+    )
+    assert res1.status_code == 200, res1.text
+    row1 = db_session.get(BaseResume, "data_scientist")
+    extras1 = row1.data_json["extra_sections"]
+    assert len(extras1) == 1
+    assert extras1[0]["key"] == "awards"
+    assert extras1[0]["type"] == "bullets"
+    assert extras1[0]["bullets"] == ["First Place Hackathon"]
+
+    # 2. Port an entries-type extra entity into a new section
+    pub_ent, _ = _make_entity(
+        db_session,
+        kind="extra",
+        title="Deep Learning at Scale",
+        org="ICML",
+        detail={
+            "section_key": "publications",
+            "section_type": "entries",
+            "section_title": "Publications",
+            "date": "2024",
+        },
+        points=[("Presented oral paper.", "approved")],
+    )
+
+    res2 = _post_port(
+        db_session,
+        {"target_slug": "data_scientist", "items": [{"entity_id": str(pub_ent.id)}]},
+    )
+    assert res2.status_code == 200, res2.text
+    row2 = db_session.get(BaseResume, "data_scientist")
+    extras2 = row2.data_json["extra_sections"]
+    assert len(extras2) == 2
+    pub_sec = next(s for s in extras2 if s["key"] == "publications")
+    assert pub_sec["type"] == "entries"
+    assert pub_sec["entries"][0]["heading"] == "Deep Learning at Scale"
+    assert pub_sec["entries"][0]["subheading"] == "ICML"
+    assert pub_sec["entries"][0]["bullets"] == ["Presented oral paper."]
+
+    # 3. Port a second entry into existing entries-type section
+    pub_ent2, _ = _make_entity(
+        db_session,
+        kind="extra",
+        title="Attention Models in Practice",
+        org="NeurIPS",
+        detail={
+            "section_key": "publications",
+            "section_type": "entries",
+            "section_title": "Publications",
+            "date": "2025",
+        },
+        points=[("Poster presentation.", "approved")],
+    )
+
+    res3 = _post_port(
+        db_session,
+        {"target_slug": "data_scientist", "items": [{"entity_id": str(pub_ent2.id)}]},
+    )
+    assert res3.status_code == 200, res3.text
+    row3 = db_session.get(BaseResume, "data_scientist")
+    pub_sec3 = next(s for s in row3.data_json["extra_sections"] if s["key"] == "publications")
+    assert len(pub_sec3["entries"]) == 2
 
 
-def test_kb_port_item_model_rejects_section_key():
+def test_kb_port_item_model_validates_section_key():
     import pytest
     from pydantic import ValidationError
 
     from app.schemas.career_kb import KBPortItem
 
-    KBPortItem(entity_id=uuid.uuid4())  # no section_key -> fine
+    item1 = KBPortItem(entity_id=uuid.uuid4())
+    assert item1.section_key is None
+
+    item2 = KBPortItem(entity_id=uuid.uuid4(), section_key="publications")
+    assert item2.section_key == "publications"
+
     with pytest.raises(ValidationError) as exc:
-        KBPortItem(entity_id=uuid.uuid4(), section_key="publications")
-    assert "custom (extra) section" in str(exc.value)
+        KBPortItem(entity_id=uuid.uuid4(), section_key="experience")
+    assert "collides with the core" in str(exc.value)
 
 
 def test_port_include_profile_summary(db_session, tmp_path, monkeypatch):

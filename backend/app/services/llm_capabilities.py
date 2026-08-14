@@ -13,10 +13,9 @@ Hosted OpenAI models clear all three. A 3B model served by Ollama often clears
 tailoring run is the bad outcome, so we probe when the model is SAVED and let
 each surface ask whether its own requirement is met.
 
-This is not a new idea in this codebase — `set_models` already refuses a Gemini
-chat model because that path cannot stream a tools loop. The probe generalizes
-that from a hardcoded provider rule to a measured property of the served model,
-which is the only thing that works once the endpoint is arbitrary.
+`set_models` gates chat on the stored tools probe (unprobed is allowed through,
+matching `require()`). The tools probe must issue the same call as chat —
+including `get_chat_client` routing — or its stored row shadows reality.
 """
 
 import json
@@ -103,21 +102,11 @@ def _probe_tools(model: str) -> None:
     """Tool calling AND streaming — the chat agent needs both together.
 
     Every argument here must match what `chat_agent.run_turn` sends: the same
-    client, and the same per-model kwargs from `llm.completion_extras`. A probe
-    of a call the app never makes measures nothing.
+    client (`llm.get_chat_client`), and the same per-model kwargs from
+    `llm.completion_extras`. A probe of a call the app never makes measures
+    nothing.
     """
-    if llm._is_gemini_model(model):
-        # Gemini inference goes over `llm._call_gemini` (raw REST), which has no
-        # tool-calling path at all — asking the OpenAI client about a Gemini id
-        # only ever answered "model does not exist", which is the wrong reason
-        # for the right No. `set_models` refuses a Gemini chat model for this.
-        raise RuntimeError(
-            "Gemini models are served over the Gemini REST path, which does not "
-            "implement streaming tool calls — they cannot drive the chat agent"
-        )
-    # Same client the chat agent uses (it imports `_get_client` too) so the
-    # probe exercises the exact transport the capability is needed on.
-    stream = llm._get_client().chat.completions.create(
+    stream = llm.get_chat_client(model).chat.completions.create(
         model=model,
         messages=[{"role": "user", "content": "Call report_ok with ok=true."}],
         tools=_PROBE_TOOL,

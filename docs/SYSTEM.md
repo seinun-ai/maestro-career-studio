@@ -465,9 +465,30 @@ transaction.
   templates render a non-empty start plus blank end as `Present` without
   mutating resume JSON; migration `c84a19d2e7f0` resyncs only untouched stored
   seed sources.
-  `ResumeFormatting` has 13 knobs. The four live user templates are bundled at
+  `ResumeFormatting` has 14 knobs. The newest is **`section_order`**
+  (`list[str] | None`): every bundled template defines its own native list and
+  dispatches through it, so **absent/None = that template's order, byte-for-byte
+  what it rendered before the knob existed**. A partial list orders its members
+  first and the template APPENDS its remaining native sections — the rule that
+  stops a stale stored list from silently dropping a section. Order is
+  presentation: `ResumeData` and stored resumes are untouched. Tokens are
+  `summary, experience, projects, extra_sections, skills, education,
+  certifications`; a template simply omits from its native list what it does not
+  render standalone (`certifications` is a section only in harshibar, which
+  therefore ships an explicit `default_formatting.section_order`; carlito has no
+  extras block). **Render is tolerant and the WRITE GATE is strict**: the model's
+  field validator silently drops unknown/duplicate tokens so stored data written
+  by another version still renders, while `validate_formatting` rejects them
+  (400, the same as any invalid override) so a typo cannot be saved. Extras keep
+  their documented anchor as a *default* position; `section_order` moves the
+  whole extras run, `move_extra_section` orders them among themselves.
+  The four live user templates are bundled at
   `app/templates/user/`; `scripts/apply_template_sources` is their update
-  path. Engine migration state: **§13** `typst-default-flip` /
+  path, and a hash-guarded migration is what reaches installed rows.
+  **Pre-change template sources are frozen per migration** at
+  `tests/fixtures/templates_pre_section_order/`: reconstructing old bytes from
+  the LIVE templates (what the date-resync test did) breaks on the next template
+  edit, and did. Engine migration state: **§13** `typst-default-flip` /
   `latex-render-path` / `texlive-layer`.
 - **QAEntry**: per-application Q&A / cover letter rows (+ PDFs).
 - **Setup status** (`GET /api/setup/status`): a derived, **read-only**
@@ -553,8 +574,8 @@ transaction.
   as DRAFTS (`origin="mcp"`) — agent transcription is NOT the verbatim-file
   exception; `kb_approve_points` is the review gate. Re-runs merge, but only
   within this path: the LLM resolver may canonicalize names this path matches
-  literally. Retired text is never resurrected; archived-entity landings and
-  dropped `extra_sections` surface in `warnings`; `kb.seeded` is set only when
+  literally. Retired text is never resurrected; archived-entity landings surface in `warnings`;
+  extra sections ingest into `kind="extra"` entities; `kb.seeded` is set only when
   content actually landed. `consolidate_deterministic` is a NEW entry point;
   `consolidate()` (LLM resolve+cluster) is unchanged for import/seed. **Batch
   point state** (`POST /api/kb/points/bulk-state`): `{ids, state:
@@ -1093,7 +1114,9 @@ transaction.
   claim one PDF while sending the other. `dev/preview.html` is the way to
   view the widget without loading unpacked — the shadow root is
   `mode: "closed"`, so drive it through the harness's scenario selects.
-- **Streaming chat** needs an OpenAI-compatible model (settings page).
+- **Streaming chat** needs an endpoint that speaks the OpenAI streaming
+  tool-call wire shape (OpenAI, or Gemini via Google's OpenAI-compat URL).
+  Eligibility is the tools probe, not the provider label.
 
 ## 8. Frontend conventions
 
@@ -1187,6 +1210,14 @@ transaction.
   `aria-labelledby` at the caption alone for the name. Helpers that render both
   label and control (`choiceRow`/`sliderRow` in `formatting-panel.tsx`) pass a
   label id down rather than repeating the string.
+- **Reordering is up/down buttons, not drag-and-drop** (`move()` from
+  `lib/utils`, as in `editor-scaffold.tsx` and the formatting panel's
+  `section_order` list). No dependency, and it is keyboard- and
+  screen-reader-reachable by construction rather than by extra work; each button
+  carries an `aria-label` naming the row AND the direction, because the icon
+  alone announces nothing. A list-shaped knob also needs an order-sensitive
+  equality in `lib/formatting.ts` `diffFrom` — `!==` on a rebuilt array is always
+  true, so reference compare stores a redundant "override" on every render.
 - **Form-control ids come from `useId()`, never from the label text.**
   Several resume entry cards are open at once, so a text-derived id repeats
   across them and clicking one entry's label focuses another's input; a caller
@@ -1507,11 +1538,10 @@ and consent-gated `kb_approve_points` is the one approval path from MCP.
     --compare` as a backend tool).
 16. Onboarding intake: entity resolution ACROSS kinds (a certificate merges
     into its experience entity, not a sibling); a re-runnable "import more";
-    bounding LLM cost (file cap of 10 in `services/kb_import`); KB entity
-    kinds for extras content — ingest now captures Publications/Licenses/etc.
-    into `extra_sections`, but consolidation still mints only
-    experience/project/education/certification entities, so extras never
-    reach the Career KB.
+    bounding LLM cost (file cap of 10 in `services/kb_import`); Career KB
+    custom sections delivered (`kind="extra"` entities with section identity in
+    `detail_json`, consolidation mints them, `compose_resume_data` groups them,
+    round-trip complete).
 17. ATS follow-ups: (a) alias/adjacency vocabulary via an OFFLINE human-gated
     miner over stored `extracted_json`, guarded by
     `SkillMatcher._tokens_contained` — until then the JD side is unenforced;
@@ -1528,8 +1558,9 @@ and consent-gated `kb_approve_points` is the one approval path from MCP.
     backend CORS must never admit ATS/web origins); Playwright `--extension`
     mounting (detection can pass while the widget fails to mount — see §7).
 20. `extra_sections` remainder: calibrate the `extra_only` multiplier; nested
-    edit ops sit behind item 1; KB-to-custom-section porting stays OPTIONAL
-    (`compose_resume_data()` emits `extra_sections: []`).
+    edit ops sit behind item 1; Career KB custom section round-trip + porting
+    delivered (`kind="extra"` entities, direct porting with `add_extra_section` /
+    `replace_extra_section` ops, and shared 8-preset catalog).
 21. MCP onboarding follow-ups: `near_duplicate_of` hints in the ingest report
     (normalized-distance vs existing points, so the agent can retire one copy
     without the LLM clusterer); a batch `sources` variant of
@@ -1566,8 +1597,9 @@ and consent-gated `kb_approve_points` is the one approval path from MCP.
 - **Model catalog is seeds ∪ extras** (`MODEL_OPTIONS` ∪ `llm.extra_models`):
   `GET /api/settings/openai` returns the merge (`source: seed|extra`); sync
   discovery is ephemeral; deleting an id a role still uses is 400; hosted
-  `set_models` validates against the usable set; hosted chat needs
-  `provider=openai` (tools streaming).
+  `set_models` validates against the usable set; hosted chat is probe-gated
+  (stored tools=false blocks; unprobed is allowed through, matching
+  `require()`).
 - **JSON mode is capability-gated**: `response_format=json_object` is sent only
   when `llm._json_mode_supported()` (default OpenAI only — other servers may
   hard-400 on the field); `llm._extract_json_object` salvages fenced JSON.
@@ -1576,13 +1608,14 @@ and consent-gated `kb_approve_points` is the one approval path from MCP.
   raises `CapabilityMissing`; unprobed models are never blocked). `run_turn` is
   a generator — anything it raises fires after the SSE headers are out and
   reaches the browser as a truncated stream.
-- **A probe must issue the SAME call as the surface it measures**: same client,
-  same provider routing (`llm._is_gemini_model` — Gemini never reaches the
-  OpenAI client), and the same per-model kwargs from `llm.completion_extras`
-  (the one site for rules like gpt-5.6 needing `reasoning_effort="none"` before
-  it accepts function tools). A probe that re-implements the call measures a
-  call the app never makes, and its stored row then SHADOWS reality: a false
-  tools=No 422'd every chat message for a model whose chat worked.
+- **A probe must issue the SAME call as the surface it measures**: same client
+  (`llm.get_chat_client` — hosted Gemini chat goes to Google's OpenAI-compat
+  URL; JSON/text still use native Gemini REST), and the same per-model kwargs
+  from `llm.completion_extras` (the one site for rules like gpt-5.6 needing
+  `reasoning_effort="none"` before it accepts function tools). A probe that
+  re-implements or short-circuits the call measures a call the app never
+  makes, and its stored row then SHADOWS reality: a false tools=No 422'd
+  every chat message for a model whose chat worked.
 - **LLM provider outages are ONE exception type**: `llm.py` normalizes every
   provider failure to `llm.LLMProviderError`; `app.main` maps it to **502 + the
   provider's message** for EVERY router. Never catch `openai.*` in routers, and

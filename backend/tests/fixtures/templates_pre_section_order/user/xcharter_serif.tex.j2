@@ -100,18 +100,7 @@
     ((* if contact.website *))((( sep() )))\href{https://((( contact.website|latex_escape_url )))}{\underline{((( contact.website|latex_escape )))}}((* endif *))
     \vspace{-8pt}
 ((* if fmt.header_align == "left" *))\end{flushleft}((* elif fmt.header_align == "right" *))\end{flushright}((* else *))\end{center}((* endif *))
-((#
-  Section bodies are MACROS, emitted by the dispatch loop just before
-  \end{document} so `fmt.section_order` can reorder them. Each macro keeps its
-  own trailing \vspace, which is what makes "knob absent = the previous output"
-  hold byte-for-byte. Definitions are adjacent on purpose: a blank line between
-  two macro definitions is template-level text and would be emitted ahead of the
-  first section. NOTE for the Typst twin: the gap a reader sees before a heading
-  is this template's PREDECESSOR trailing \vspace plus titlesec's pre-title
-  space, so xcharter_serif.typ has to derive its pre-gap from the section that
-  just ended, not from the one about to start.
-#))
-((* macro section_summary() *))
+
 ((* if resume.summary *))
 %-----------SUMMARY-----------
 \section{Summary}
@@ -122,8 +111,7 @@
 {\small ((( resume.summary|latex_escape )))\par}
 \vspace{-8pt}
 ((* endif *))
-((* endmacro *))
-((* macro section_experience() *))
+
 ((* if resume.experience *))
 %-----------EXPERIENCE-----------
 \section{Experience}
@@ -141,8 +129,7 @@
   \resumeSubHeadingListEnd
 \vspace{-16pt}
 ((* endif *))
-((* endmacro *))
-((* macro section_projects() *))
+
 ((* if resume.projects and resume.projects|length > 0 *))
 %-----------PROJECTS-----------
 \section{Projects}
@@ -163,8 +150,7 @@
     \resumeSubHeadingListEnd
 \vspace{-3pt}
 ((* endif *))
-((* endmacro *))
-((* macro section_extra_sections() *))
+
 ((* for section in resume.extra_sections *))
 ((* if section.type == "entries" and section.entries *))
 \section{((( section.title|latex_escape )))}
@@ -196,8 +182,7 @@
 \vspace{-12pt}
 ((* endif *))
 ((* endfor *))
-((* endmacro *))
-((* macro section_skills() *))
+
 ((* if resume.skills or resume.certifications *))
 %-----------TECHNICAL SKILLS-----------
 \section{Technical Skills}
@@ -224,8 +209,7 @@
 ((* endif *))
  \vspace{-16pt}
 ((* endif *))
-((* endmacro *))
-((* macro section_education() *))
+
 ((* if resume.education *))
 %-----------EDUCATION-----------
 \section{Education}
@@ -259,11 +243,5 @@
   \resumeSubHeadingListEnd
 
 ((* endif *))
-((* endmacro *))
-((* set native_sections = ["summary", "experience", "projects", "extra_sections", "skills", "education"] *))
-((* for section_key in fmt.section_order|ordered_sections(native_sections) *))
-
-((* if section_key == "summary" *))((( section_summary() )))((* elif section_key == "experience" *))((( section_experience() )))((* elif section_key == "projects" *))((( section_projects() )))((* elif section_key == "extra_sections" *))((( section_extra_sections() )))((* elif section_key == "skills" *))((( section_skills() )))((* elif section_key == "education" *))((( section_education() )))((* endif *))
-((* endfor *))
 
 \end{document}

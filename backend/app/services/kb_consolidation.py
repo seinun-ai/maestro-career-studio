@@ -87,6 +87,7 @@ class DeterministicConsolidationReport:
 
 
 ENTRY_SECTIONS = ("experience", "projects", "education", "certifications")
+ALL_SECTIONS = ("experience", "projects", "education", "certifications", "extra")
 
 
 def collect_entries(sources: list[tuple[str, dict]]) -> list[SourceEntry]:
@@ -104,6 +105,52 @@ def collect_entries(sources: list[tuple[str, dict]]) -> list[SourceEntry]:
                 continue
             for index, entry in enumerate(items):
                 out.append(SourceEntry(resume_key=resume_key, section=section, index=index, entry=entry))
+        extra_sections = data.get("extra_sections")
+        if isinstance(extra_sections, list):
+            for sec_idx, sec in enumerate(extra_sections):
+                if not isinstance(sec, dict):
+                    continue
+                sec_type = sec.get("type")
+                sec_key = sec.get("key")
+                sec_title = sec.get("title")
+                if not sec_key or not sec_type:
+                    continue
+                if sec_type == "entries":
+                    entries = sec.get("entries")
+                    if isinstance(entries, list):
+                        for entry_idx, entry in enumerate(entries):
+                            if isinstance(entry, dict):
+                                entry_dict = {
+                                    **entry,
+                                    "section_key": sec_key,
+                                    "section_type": "entries",
+                                    "section_title": sec_title,
+                                }
+                                out.append(
+                                    SourceEntry(
+                                        resume_key=resume_key,
+                                        section="extra",
+                                        index=entry_idx,
+                                        entry=entry_dict,
+                                    )
+                                )
+                elif sec_type == "bullets":
+                    entry_dict = {
+                        "section_key": sec_key,
+                        "section_type": "bullets",
+                        "section_title": sec_title,
+                        "title": sec_title,
+                        "bullets": sec.get("bullets", []) if isinstance(sec.get("bullets"), list) else [],
+                        "enabled": sec.get("enabled", True),
+                    }
+                    out.append(
+                        SourceEntry(
+                            resume_key=resume_key,
+                            section="extra",
+                            index=sec_idx,
+                            entry=entry_dict,
+                        )
+                    )
     return out
 
 
@@ -120,6 +167,13 @@ def identity_key(section: str, entry: Any) -> tuple:
         return (_norm(e.get("institution")), _norm(e.get("degree")))
     if section == "certifications":
         return (_norm(entry),)   # entry is a string
+    if section == "extra":
+        e = entry if isinstance(entry, dict) else {}
+        sec_key = _norm(e.get("section_key"))
+        sec_type = e.get("section_type")
+        if sec_type == "entries":
+            return ("extra", sec_key, _norm(e.get("heading") or e.get("title")))
+        return ("extra", sec_key)
     raise ValueError(f"unknown section {section!r}")
 
 
@@ -303,6 +357,36 @@ def _make_cert_entity(group: Group) -> KBEntity:
                     org=org, status="completed", detail_json={})
 
 
+def _make_extra_entity(group: Group) -> KBEntity:
+    m = _richest_member(group.members)
+    e = m.entry if isinstance(m.entry, dict) else {}
+    sec_key = e.get("section_key") or "section"
+    sec_type = e.get("section_type") or "entries"
+    sec_title = e.get("section_title") or sec_key.title()
+    detail: dict[str, Any] = {
+        "section_key": sec_key,
+        "section_type": sec_type,
+        "section_title": sec_title,
+    }
+    if sec_type == "entries":
+        title = (e.get("heading") or "").strip() or (e.get("title") or "").strip() or "(untitled)"
+        org = (e.get("subheading") or "").strip() or None
+        for k in ("subheading", "location", "date", "link"):
+            if e.get(k):
+                detail[k] = e[k]
+    else:  # bullets
+        title = (e.get("section_title") or e.get("title") or sec_key.title() or "").strip()
+        org = None
+
+    return KBEntity(
+        kind="extra",
+        title=title,
+        org=org,
+        status="completed",
+        detail_json=detail,
+    )
+
+
 # --- existing-entity identity indexes (no-LLM matching) --------------------
 #
 # An index key MUST equal the ``identity_key`` of the source entry that would
@@ -367,6 +451,18 @@ def _existing_exp_index(session: Session) -> dict[tuple, KBEntity]:
 
 def _existing_proj_index(session: Session) -> dict[tuple, KBEntity]:
     return _identity_index(session, "project", lambda e: (_identity_title(e),))
+
+
+def _existing_extra_index(session: Session) -> dict[tuple, KBEntity]:
+    def _key(e: KBEntity) -> tuple:
+        detail = e.detail_json or {}
+        sec_key = _norm(detail.get("section_key"))
+        sec_type = detail.get("section_type")
+        if sec_type == "entries":
+            return ("extra", sec_key, _identity_title(e))
+        return ("extra", sec_key)
+
+    return _identity_index(session, "extra", _key)
 
 
 def _match_or_create_identity(
@@ -801,7 +897,7 @@ def consolidate(
     """
     report = ConsolidationReport()
     groups = group_by_identity(collect_entries(sources))
-    by_section: dict[str, list[Group]] = {s: [] for s in ENTRY_SECTIONS}
+    by_section: dict[str, list[Group]] = {s: [] for s in ALL_SECTIONS}
     for g in groups:
         by_section[g.section].append(g)
 
@@ -816,7 +912,7 @@ def consolidate(
     def _register(ent: KBEntity, group: Group, _created: bool = False) -> None:
         entity_groups.setdefault(ent, []).append(group)
 
-    # Stage B — education / certifications (identity-key match, no LLM)
+    # Stage B — education / certifications / extras (identity-key match, no LLM)
     _match_or_create_identity(
         session, by_section["education"], _existing_edu_index(session),
         _make_education_entity, report, _register,
@@ -824,6 +920,10 @@ def consolidate(
     _match_or_create_identity(
         session, by_section["certifications"], _existing_cert_index(session),
         _make_cert_entity, report, _register,
+    )
+    _match_or_create_identity(
+        session, by_section["extra"], _existing_extra_index(session),
+        _make_extra_entity, report, _register,
     )
 
     # Stage B — experience + projects (kb_entity_resolve, one call per family)
@@ -931,19 +1031,6 @@ def _write_verbatim_points(
     return created
 
 
-def _extra_section_warnings(sources: list[tuple[str, dict]]) -> list[str]:
-    """This path stores no extra sections — say so per source rather than
-    dropping them silently (the caller can still put them on a base resume)."""
-    out: list[str] = []
-    for resume_key, data in sources:
-        if data.get("extra_sections"):
-            out.append(
-                f"{resume_key}: extra_sections are not stored in the Career KB — "
-                "add them to the base resume after creation"
-            )
-    return out
-
-
 def consolidate_deterministic(
     session: Session,
     sources: list[tuple[str, dict]],
@@ -965,9 +1052,8 @@ def consolidate_deterministic(
     /career entity timeline, which only reports agent-written rows.
     """
     report = DeterministicConsolidationReport()
-    report.warnings.extend(_extra_section_warnings(sources))
     groups = group_by_identity(collect_entries(sources))
-    by_section: dict[str, list[Group]] = {s: [] for s in ENTRY_SECTIONS}
+    by_section: dict[str, list[Group]] = {s: [] for s in ALL_SECTIONS}
     for g in groups:
         by_section[g.section].append(g)
 
@@ -989,6 +1075,10 @@ def consolidate_deterministic(
     _match_or_create_identity(
         session, by_section["certifications"], _existing_cert_index(session),
         _make_cert_entity, report, _register,
+    )
+    _match_or_create_identity(
+        session, by_section["extra"], _existing_extra_index(session),
+        _make_extra_entity, report, _register,
     )
     _match_or_create_identity(
         session, by_section["experience"], _existing_exp_index(session),

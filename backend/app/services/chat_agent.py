@@ -1,8 +1,9 @@
 """Multi-turn, tool-calling, streaming chat agent.
 
 Separate from `llm.call_openai` (single-shot, JSON-mode, Gemini-capable): chat
-needs a message array, an OpenAI tools loop, and token streaming. Chat therefore
-requires an OpenAI-compatible model.
+needs a message array, a tools loop, and token streaming. Chat therefore
+requires an endpoint that speaks the OpenAI streaming tool-call wire shape
+(OpenAI or Gemini's compat layer).
 
 `run_turn` is a sync generator of event dicts; the router formats them as SSE:
   {"type": "delta", "text": ...}                    streamed assistant tokens
@@ -26,8 +27,7 @@ from sqlalchemy.orm import Session
 from app.models.chat import ChatAttachment, ChatMessage, ChatSession
 from app.services import model_settings, persona as persona_service, prompts
 from app.services.chat_tools import ToolContext, execute_tool, openai_tool_specs
-from app.services.llm import _get_client  # shared configured OpenAI client
-from app.services.llm import completion_extras
+from app.services.llm import completion_extras, get_chat_client
 
 logger = logging.getLogger(__name__)
 
@@ -144,8 +144,8 @@ def run_turn(
     client: Any = None,
     model: str | None = None,
 ) -> Iterator[dict[str, Any]]:
-    client = client or _get_client()
     model = model or model_settings.get_chat_model(db)
+    client = client or get_chat_client(model)
 
     user_msg = _persist(
         db, session_row, role="user", content=user_content, meta_json=context or None

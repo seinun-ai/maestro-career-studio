@@ -107,6 +107,7 @@ export function RoleCategoryPicker({
 
   return (
     <div
+      className="inline-flex max-w-full align-middle"
       title={guessing ? "Suggested — click to confirm or pick another" : undefined}
       onClick={() => {
         if (guessing) setConfirmed(true);

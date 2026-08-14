@@ -182,13 +182,12 @@ def _kb_evidence(
             select(KBPortLog.point_id).where(KBPortLog.point_id.is_not(None)).distinct()
         ).all()
     )
-    # Certification ports log point_id=None (the cert is the payload); their
-    # provenance lives on entity_id, so collect those separately or cert
-    # evidence could never reach "ported".
-    ported_cert_entity_ids = set(
+    # Certification & extra-section ports without points log point_id=None;
+    # their provenance lives on entity_id, so collect those separately.
+    ported_entity_only_ids = set(
         db.scalars(
             select(KBPortLog.entity_id)
-            .where(KBPortLog.point_id.is_(None), KBPortLog.section == "certifications")
+            .where(KBPortLog.point_id.is_(None))
             .distinct()
         ).all()
     )
@@ -197,9 +196,11 @@ def _kb_evidence(
     entity_extra: list[tuple[Any, str]] = []
     for entity in entities.values():
         tech = str((entity.detail_json or {}).get("tech") or "")
-        text = f"{entity.title or ''} {entity.org or ''}" if (
-            entity.kind == "certification"
-        ) else tech
+        text = (
+            f"{entity.title or ''} {entity.org or ''}"
+            if (entity.kind in ("certification", "extra"))
+            else tech
+        )
         if text.strip():
             entity_extra.append((entity, normalize_term(text)))
 
@@ -244,7 +245,7 @@ def _kb_evidence(
         if not has_evidence:
             status = "missing"
         elif any(point.id in ported_point_ids for point in matched_points) or any(
-            entity.kind == "certification" and entity.id in ported_cert_entity_ids
+            entity.kind in ("certification", "extra") and entity.id in ported_entity_only_ids
             for entity in matched_entities
         ):
             status = "ported"

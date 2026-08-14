@@ -10,7 +10,7 @@ from jinja2 import FileSystemLoader
 from jinja2.sandbox import SandboxedEnvironment
 
 from app.config import settings
-from app.schemas.formatting import merge_formatting
+from app.schemas.formatting import merge_formatting, resolve_section_order
 from app.schemas.resume import ResumeData
 from app.services import typst_compiler
 from app.services.date_format import format_date
@@ -208,6 +208,12 @@ def _environment() -> SandboxedEnvironment:
     env.filters["latex_escape"] = latex_escape
     env.filters["latex_escape_url"] = latex_escape_url
     env.filters["format_date"] = format_date
+    # `fmt.section_order|ordered_sections(NATIVE)` -> the keys to dispatch on.
+    # A filter, not six copies of the same select/reject chain in six templates:
+    # the append-remainder rule is the one thing that keeps a stale stored list
+    # from dropping a section, so it lives in ONE place (the Typst path carries
+    # its own `#let` because a .typ has no Jinja layer).
+    env.filters["ordered_sections"] = resolve_section_order
     return env
 
 

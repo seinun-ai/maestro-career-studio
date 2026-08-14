@@ -78,8 +78,18 @@ export default function TemplateEditorPage() {
 
   const recompileM = useMutation({
     // Single round trip: save + validate. The returned row's status/last_error
-    // carry the compile result.
+    // carry the compile result. With NOTHING to save, validate alone — the PUT
+    // is gated by allow_default_edit, so recompiling the default template with
+    // an unchanged source would 403 on the save half it doesn't need (this is
+    // also the recovery path after a resync migration clears parse evidence).
     mutationFn: async (): Promise<TemplateValidationResult> => {
+      if (!dirty) {
+        const res = await apiFetch<{ ok: boolean; error: string | null }>(
+          `/api/templates/${id}/validate`,
+          { method: "POST" },
+        );
+        return { ok: res.ok, error: res.error };
+      }
       const row = await apiFetch<TemplateDetail>(
         `/api/templates/${id}?validate=true`,
         {

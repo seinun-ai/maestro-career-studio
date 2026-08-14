@@ -64,6 +64,7 @@ const KIND_LABELS: Record<KBEntitySummary["kind"], string> = {
   project: "Project",
   education: "Education",
   certification: "Certification",
+  extra: "Custom section",
 };
 
 type Plan = {

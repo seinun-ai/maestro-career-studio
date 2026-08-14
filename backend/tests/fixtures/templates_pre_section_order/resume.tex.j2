@@ -77,24 +77,14 @@
 
 ((* set contact = resume.contact *))
 ((* include '_header.tex.j2' *))
-((#
-  Section bodies are MACROS, emitted by the dispatch loop just before
-  \end{document} so `fmt.section_order` can reorder them. Each macro keeps its
-  own trailing \vspace exactly as the linear version had it, which is what makes
-  "knob absent = the previous output" hold byte-for-byte rather than only
-  visually. The definitions are adjacent on purpose: a blank line BETWEEN two
-  macro definitions is template-level text and would be emitted right here,
-  ahead of the first section.
-#))
-((* macro section_summary() *))
+
 ((* if resume.summary *))
 \section{Summary}
 \small
 ((( resume.summary|latex_escape )))
 \vspace{((( fmt.section_spacing - 12 )))pt}
 ((* endif *))
-((* endmacro *))
-((* macro section_experience() *))
+
 ((* if resume.experience *))
 \section{Experience}
 \resumeSubHeadingListStart
@@ -113,8 +103,7 @@
 \resumeSubHeadingListEnd
 \vspace{((( fmt.section_spacing - 18 )))pt}
 ((* endif *))
-((* endmacro *))
-((* macro section_projects() *))
+
 ((* if resume.projects and resume.projects|length > 0 *))
 \section{Projects}
 \resumeSubHeadingListStart
@@ -132,14 +121,10 @@
 \resumeSubHeadingListEnd
 \vspace{((( fmt.section_spacing - 18 )))pt}
 ((* endif *))
-((* endmacro *))
-((* macro section_extra_sections() *))
+
 ((#
-  Custom (extra) resume sections. Their DEFAULT position is the documented
-  phase-1 anchor — after Projects, before Technical Skills — which is now the
-  default rather than the only option: `fmt.section_order` moves the whole
-  extras run as one unit (`move_extra_section` still orders them among
-  themselves). resume_for_render() has already
+  Custom (extra) resume sections. Rendered here — the documented phase-1 anchor:
+  after Projects, before Technical Skills. resume_for_render() has already
   dropped disabled sections and disabled entries, so we only iterate visible
   content; empty sections (a title with no entries/bullets) are skipped so no
   lone header or empty itemize (a LaTeX error) is emitted. The heading layout is
@@ -180,8 +165,7 @@
 \vspace{((( fmt.section_spacing - 18 )))pt}
 ((* endif *))
 ((* endfor *))
-((* endmacro *))
-((* macro section_skills() *))
+
 ((* if resume.skills or resume.certifications *))
 \section{Technical Skills}
 ((* if fmt.skills_layout == "bulleted" *))
@@ -207,8 +191,7 @@
 ((* endif *))
 \vspace{((( fmt.section_spacing - 18 )))pt}
 ((* endif *))
-((* endmacro *))
-((* macro section_education() *))
+
 ((* if resume.education *))
 \section{Education}
 \resumeSubHeadingListStart
@@ -245,20 +228,5 @@
 
 \resumeSubHeadingListEnd
 ((* endif *))
-((* endmacro *))
-((#
-  Dispatch. `ordered_sections` puts the requested sections first and APPENDS
-  this template's remaining native ones, so a partial or stale `section_order`
-  reorders what it names and never drops what it omits. A token this template
-  has no macro for (e.g. `certifications`, which it folds into Skills) is absent
-  from the native list and therefore ignored — no per-token guard needed.
-  The blank line inside the loop is the one-newline separator the linear version
-  emitted before every section block.
-#))
-((* set native_sections = ["summary", "experience", "projects", "extra_sections", "skills", "education"] *))
-((* for section_key in fmt.section_order|ordered_sections(native_sections) *))
-
-((* if section_key == "summary" *))((( section_summary() )))((* elif section_key == "experience" *))((( section_experience() )))((* elif section_key == "projects" *))((( section_projects() )))((* elif section_key == "extra_sections" *))((( section_extra_sections() )))((* elif section_key == "skills" *))((( section_skills() )))((* elif section_key == "education" *))((( section_education() )))((* endif *))
-((* endfor *))
 
 \end{document}

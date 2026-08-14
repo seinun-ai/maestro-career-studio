@@ -57,9 +57,13 @@ def _entity_and_section(session: Session, entity_id) -> tuple[KBEntity, str]:
     if entity is None:
         raise LookupError(f"entity {entity_id} not found")
     section = _KIND_TO_SECTION.get(entity.kind)
-    if section is None:
+    if section is None or entity.kind == "certification":
         raise ValueError(
             "certification entities port verbatim; there is nothing to adapt"
+        )
+    if entity.kind == "extra":
+        raise ValueError(
+            "custom section entities port directly; there is nothing to adapt"
         )
     return entity, section
 

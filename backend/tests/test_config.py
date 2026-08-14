@@ -8,7 +8,7 @@ def test_settings_reads_env(monkeypatch):
 
     assert s.openai_api_key == "sk-test"
     assert s.database_url == "postgresql+psycopg://x/y"
-    assert s.fast_model == "gpt-4o-mini"
+    assert s.fast_model == "gemini-3.5-flash-lite"
 
 
 def test_typst_font_paths_default_and_env_override(monkeypatch):

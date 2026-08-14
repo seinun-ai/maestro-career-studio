@@ -116,12 +116,9 @@ def test_openai_endpoint_returns_config(db_session, monkeypatch):
     assert body["api_key_configured"] is True
     assert body["gemini_api_key_configured"] is True
     assert {option["id"] for option in body["model_options"]} >= {
-        "gpt-4o-mini",
-        "gpt-4o",
+        "gemini-3.5-flash-lite",
+        "gemini-3.7-flash",
         "gpt-5.6-luna",
-        "gemini-3.1-flash-lite-preview",
-        "gemini-3.1-pro-preview",
-        "gemini-3-flash-preview",
     }
 
 
@@ -143,8 +140,8 @@ def test_openai_endpoint_updates_models(db_session):
         response = TestClient(app).put(
             "/api/settings/openai",
             json={
-                "fast_model": "gemini-3.1-flash-lite-preview",
-                "smart_model": "gemini-3.1-pro-preview",
+                "fast_model": "gemini-3.5-flash-lite",
+                "smart_model": "gemini-3.7-flash",
                 "openai_api_key": "sk-custom-openai-key",
                 "gemini_api_key": "custom-gemini-key",
             },
@@ -154,16 +151,16 @@ def test_openai_endpoint_updates_models(db_session):
 
     assert response.status_code == 200
     body = response.json()
-    assert body["fast_model"] == "gemini-3.1-flash-lite-preview"
-    assert body["smart_model"] == "gemini-3.1-pro-preview"
+    assert body["fast_model"] == "gemini-3.5-flash-lite"
+    assert body["smart_model"] == "gemini-3.7-flash"
     # Key material must never come back over this unauthenticated API — only
     # the booleans. Persisted values are asserted against the DB instead.
     assert "openai_api_key" not in body
     assert "gemini_api_key" not in body
     assert body["api_key_configured"] is True
     assert body["gemini_api_key_configured"] is True
-    assert db_session.get(Setting, "llm.fast_model").value == "gemini-3.1-flash-lite-preview"
-    assert db_session.get(Setting, "llm.smart_model").value == "gemini-3.1-pro-preview"
+    assert db_session.get(Setting, "llm.fast_model").value == "gemini-3.5-flash-lite"
+    assert db_session.get(Setting, "llm.smart_model").value == "gemini-3.7-flash"
     assert db_session.get(Setting, "llm.openai_api_key").value == "sk-custom-openai-key"
     assert db_session.get(Setting, "llm.gemini_api_key").value == "custom-gemini-key"
 
@@ -202,8 +199,8 @@ def test_model_only_update_preserves_stored_keys(db_session):
         response = TestClient(app).put(
             "/api/settings/openai",
             json={
-                "fast_model": "gemini-3.1-flash-lite-preview",
-                "smart_model": "gemini-3.1-pro-preview",
+                "fast_model": "gemini-3.5-flash-lite",
+                "smart_model": "gemini-3.7-flash",
             },
         )
     finally:
@@ -224,8 +221,8 @@ def test_explicit_null_clears_stored_key(db_session):
         response = TestClient(app).put(
             "/api/settings/openai",
             json={
-                "fast_model": "gemini-3.1-flash-lite-preview",
-                "smart_model": "gemini-3.1-pro-preview",
+                "fast_model": "gemini-3.5-flash-lite",
+                "smart_model": "gemini-3.7-flash",
                 "openai_api_key": None,
             },
         )
@@ -241,7 +238,7 @@ def test_openai_endpoint_rejects_unknown_model(db_session):
     try:
         response = TestClient(app).put(
             "/api/settings/openai",
-            json={"fast_model": "bogus", "smart_model": "gpt-4o"},
+            json={"fast_model": "bogus", "smart_model": "gpt-5.6-luna"},
         )
     finally:
         app.dependency_overrides.clear()
@@ -268,48 +265,73 @@ def test_chat_model_defaults_and_roundtrip(db_session):
         client = TestClient(app)
 
         body = client.get("/api/settings/openai").json()
-        assert body["chat_model"] == "gpt-4o"  # config default until set
+        assert body["chat_model"] == "gpt-5.6-luna"  # config default until set
 
         resp = client.put(
             "/api/settings/openai",
             json={
-                "fast_model": "gpt-4o-mini",
-                "smart_model": "gemini-3.1-pro-preview",
+                "fast_model": "gemini-3.5-flash-lite",
+                "smart_model": "gemini-3.7-flash",
                 "chat_model": "gpt-5.6-luna",
             },
         )
         assert resp.status_code == 200
         body = resp.json()
         assert body["chat_model"] == "gpt-5.6-luna"
-        assert body["smart_model"] == "gemini-3.1-pro-preview"
+        assert body["smart_model"] == "gemini-3.7-flash"
         assert db_session.get(Setting, "llm.chat_model").value == "gpt-5.6-luna"
 
         # Omitting chat_model leaves the stored value untouched (older clients).
         resp = client.put(
             "/api/settings/openai",
-            json={"fast_model": "gpt-4o-mini", "smart_model": "gpt-4o"},
+            json={"fast_model": "gemini-3.5-flash-lite", "smart_model": "gpt-5.6-luna"},
         )
         assert resp.json()["chat_model"] == "gpt-5.6-luna"
     finally:
         app.dependency_overrides.clear()
 
 
-def test_chat_model_rejects_non_openai(db_session):
+def test_chat_model_rejects_tools_false_row(db_session):
+    from app.services import llm_capabilities
+
     app.dependency_overrides[get_db] = _override_db(db_session)
     try:
+        llm_capabilities.save(
+            db_session,
+            llm_capabilities.CapabilityReport(
+                model="gemini-3.7-flash",
+                text=True,
+                json=True,
+                tools=False,
+                errors={"tools": "model streamed no tool call"},
+            ),
+        )
         resp = TestClient(app).put(
             "/api/settings/openai",
             json={
-                "fast_model": "gpt-4o-mini",
-                "smart_model": "gpt-4o",
-                "chat_model": "gemini-3.1-pro-preview",
+                "fast_model": "gemini-3.5-flash-lite",
+                "smart_model": "gpt-5.6-luna",
+                "chat_model": "gemini-3.7-flash",
             },
         )
+        assert resp.status_code == 400
+        assert "streaming tool-call test" in resp.json()["detail"]
+
+        # No capability row → allowed through (require() doctrine).
+        db_session.delete(db_session.get(Setting, "llm.capabilities.gemini-3.7-flash"))
+        db_session.commit()
+        resp = TestClient(app).put(
+            "/api/settings/openai",
+            json={
+                "fast_model": "gemini-3.5-flash-lite",
+                "smart_model": "gpt-5.6-luna",
+                "chat_model": "gemini-3.7-flash",
+            },
+        )
+        assert resp.status_code == 200
+        assert resp.json()["chat_model"] == "gemini-3.7-flash"
     finally:
         app.dependency_overrides.clear()
-
-    assert resp.status_code == 400
-    assert "OpenAI" in resp.json()["detail"]
 
 
 def test_quick_tailor_defaults_when_unset(db_session, tmp_path, monkeypatch):
@@ -424,3 +446,30 @@ def test_gemini_35_flash_lite_is_a_valid_fast_model(db_session):
     assert response.status_code == 200
     assert response.json()["fast_model"] == "gemini-3.5-flash-lite"
     assert db_session.get(Setting, "llm.fast_model").value == "gemini-3.5-flash-lite"
+
+
+def test_stale_stored_role_put_returns_400_carrying_the_id(db_session):
+    """A trimmed-out stored id is visible on GET and 400s on PUT — never remapped."""
+    db_session.add(Setting(key="llm.fast_model", value="gpt-4o-mini"))
+    db_session.add(Setting(key="llm.smart_model", value="gpt-5.6-luna"))
+    db_session.add(Setting(key="llm.chat_model", value="gpt-5.6-luna"))
+    db_session.commit()
+
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        client = TestClient(app)
+        body = client.get("/api/settings/openai").json()
+        assert body["fast_model"] == "gpt-4o-mini"
+        resp = client.put(
+            "/api/settings/openai",
+            json={
+                "fast_model": body["fast_model"],
+                "smart_model": body["smart_model"],
+                "chat_model": body["chat_model"],
+            },
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert resp.status_code == 400
+    assert "gpt-4o-mini" in resp.json()["detail"]

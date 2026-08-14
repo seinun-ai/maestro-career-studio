@@ -75,6 +75,7 @@ const KIND_LABELS: Record<KBEntityKind, string> = {
   project: "Project",
   education: "Education",
   certification: "Certification",
+  extra: "Custom section",
 };
 
 export function EntityDetail({ entityId }: { entityId: string }) {
@@ -354,7 +355,9 @@ function EntityHeader({ entity }: { entity: KBEntityDetailType }) {
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <span className="bg-background/80 text-muted-foreground inline-flex h-6 items-center rounded-full px-2.5 text-xs font-medium">
-              {KIND_LABELS[entity.kind]}
+              {entity.kind === "extra" && entity.section_title
+                ? entity.section_title
+                : KIND_LABELS[entity.kind]}
             </span>
             <EntityStatusChip
               status={entity.status}

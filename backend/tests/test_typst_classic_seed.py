@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from app.schemas.formatting import ResumeFormatting, validate_formatting
 from app.services import pdf_render, template_registry as reg, template_validation as tv
 from app.services.template_validation import SAMPLE_RESUME
 
@@ -128,15 +129,17 @@ def test_typst_classic_source_invariants():
     assert "—" not in source  # no em-dashes anywhere, comments included
     assert "(((" not in source and "((*" not in source  # no Jinja layer
     assert pdf_render.typst_source_references_extras(source)
-    # all 13 knobs visible to the comment/string-aware typst fmt-key scan.
+    # EVERY knob visible to the comment/string-aware typst fmt-key scan.
     # date_format lives only in a header COMMENT (dates are pre-formatted
     # server-side) but is credited because the typst path applies it for every
-    # template; the other 12 are live fmt.<key> references.
-    assert set(reg.supported_fmt_keys(source, "typst")) == {
-        "font_size", "side_margins", "top_bottom_margin", "section_spacing",
-        "entry_spacing", "line_spacing", "bullet_icon", "hide_divider",
-        "header_align", "justify", "date_format", "education_order", "skills_layout",
-    }
+    # template; the rest are live fmt.<key> references.
+    #
+    # Derived from the schema, not spelled out: the hand-written list here went
+    # stale the moment a 14th knob landed, and a list that only ever fails by
+    # being out of date teaches you to update it rather than to look.
+    assert set(reg.supported_fmt_keys(source, "typst")) == set(
+        ResumeFormatting.model_fields
+    )
 
 
 def test_typst_classic_knobs_alter_output(tmp_path):
@@ -291,7 +294,32 @@ def test_the_four_bundled_designs_seed(db_session):
     reg.reset_seed_validation_attempts()
     reg.ensure_seed_templates(db_session)
     ids = {t.id for t in reg.list_all(db_session)}
-    for template_id, _name, _engine, _file in reg.BUNDLED_TEMPLATES:
+    for template_id, _name, _engine, _file, _formatting in reg.BUNDLED_TEMPLATES:
         assert template_id in ids, f"{template_id} did not seed"
     # and nothing arrives archived
     assert all(t.archived_at is None for t in reg.list_all(db_session))
+
+
+def test_harshibar_seeds_its_native_section_order(db_session):
+    """Its order differs from every other bundled template's AND it is the only
+    one with a standalone Certifications section, so the panel can only show the
+    truth if the row carries the order explicitly."""
+    reg.reset_seed_validation_attempts()
+    reg.ensure_seed_templates(db_session)
+    row = reg.get(db_session, "harshibar")
+    assert row.default_formatting == reg.HARSHIBAR_DEFAULT_FORMATTING
+    assert row.default_formatting["section_order"] == [
+        "summary",
+        "experience",
+        "projects",
+        "education",
+        "certifications",
+        "skills",
+    ]
+    # The seeded value must be a valid override, not just a dict that happens
+    # to round-trip: it flows through the same merge as a user's.
+    assert validate_formatting(row.default_formatting) == row.default_formatting
+    # ...and no OTHER bundled template pins an order (they mean "native").
+    for template_id, _name, _engine, _file, formatting in reg.BUNDLED_TEMPLATES:
+        if template_id != "harshibar":
+            assert formatting is None, template_id

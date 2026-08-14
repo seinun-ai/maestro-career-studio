@@ -151,26 +151,48 @@ def store_document(
     return document
 
 
+def _clean_extra_identity(raw_entity: dict, raw_detail: dict | None) -> tuple[str, str, str] | None:
+    detail = raw_detail if isinstance(raw_detail, dict) else {}
+    s_key = detail.get("section_key") or raw_entity.get("section_key")
+    s_type = detail.get("section_type") or raw_entity.get("section_type")
+    s_title = detail.get("section_title") or raw_entity.get("section_title")
+    if not isinstance(s_key, str) or not isinstance(s_type, str) or not isinstance(s_title, str):
+        return None
+    try:
+        from app.schemas.career_kb import _validate_extra_identity
+
+        return _validate_extra_identity(s_key.strip(), s_type.strip(), s_title.strip())
+    except ValueError:
+        return None
+
+
 def _build_entity_from_doc(new_entity: dict) -> KBEntity:
     """Coerce the LLM's proposed entity; never trust output."""
     title = new_entity.get("title")
     if not isinstance(title, str) or not title.strip():
         raise ValueError("document ingest proposed an entity without a valid title")
     kind = new_entity.get("kind")
-    if kind not in KB_KINDS:  # untrusted LLM output; fall back rather than persist junk
+    detail_raw = new_entity.get("detail")
+    extra_identity = None
+    if kind == "extra":
+        extra_identity = _clean_extra_identity(new_entity, detail_raw)
+        if extra_identity is None:
+            kind = "project"
+    elif kind not in KB_KINDS:  # untrusted LLM output; fall back rather than persist junk
         kind = "project"
 
     def _clean(key: str) -> str | None:
         value = new_entity.get(key)
         return value.strip() if isinstance(value, str) and value.strip() else None
 
-    detail_raw = new_entity.get("detail")
     detail: dict = {}
     if isinstance(detail_raw, dict):
         for key in _DETAIL_KEYS:
             value = detail_raw.get(key)
             if isinstance(value, str) and value.strip():
                 detail[key] = value.strip()
+    if extra_identity is not None:
+        detail["section_key"], detail["section_type"], detail["section_title"] = extra_identity
     # Documents usually describe finished things (certs especially), unlike a
     # live capture dump — hence "completed" where capture defaults "ongoing".
     return KBEntity(
@@ -351,7 +373,16 @@ def capture(
             if not isinstance(title, str) or not title.strip():
                 raise ValueError("capture proposed an entity without a valid title")
             kind = new_entity.get("kind")
-            if kind not in KB_KINDS:  # untrusted LLM output; fall back rather than persist junk
+            detail_raw = new_entity.get("detail")
+            extra_identity = None
+            detail: dict = {}
+            if kind == "extra":
+                extra_identity = _clean_extra_identity(new_entity, detail_raw)
+                if extra_identity is None:
+                    kind = "project"
+                else:
+                    detail["section_key"], detail["section_type"], detail["section_title"] = extra_identity
+            elif kind not in KB_KINDS:  # untrusted LLM output; fall back rather than persist junk
                 kind = "project"
             org = new_entity.get("org")
             org = org.strip() if isinstance(org, str) and org.strip() else None
@@ -360,6 +391,7 @@ def capture(
                 title=title.strip(),
                 org=org,
                 status="ongoing",
+                detail_json=detail,
                 origin=origin if origin != "manual" else None,
                 origin_detail=origin_detail,
             )

@@ -579,15 +579,9 @@ function OpenAISection() {
                 onChange={(value) => updateModel("smart_model", value)}
               />
               <ModelField
-                label={
-                  info.data.custom_endpoint
-                    ? "Chat model · needs streaming tool calls, so test it"
-                    : "Chat model · OpenAI only, needs streaming tool calls"
-                }
+                label="Chat model · needs streaming tool calls, so test it"
                 value={info.data.chat_model}
-                options={info.data.model_options.filter(
-                  (option) => option.provider === "openai",
-                )}
+                options={info.data.model_options}
                 custom={info.data.custom_endpoint}
                 disabled={save.isPending}
                 onChange={(value) => updateModel("chat_model", value)}
@@ -773,6 +767,7 @@ function ModelSelect({
   onChange: (value: string | null) => void;
 }) {
   const selected = options.find((option) => option.id === value);
+  const stale = Boolean(value) && selected === undefined;
   const labelId = useId();
   const groups = [
     {
@@ -794,9 +789,14 @@ function ModelSelect({
       </span>
       <Select value={value} onValueChange={onChange} disabled={disabled}>
         <SelectTrigger className="w-full" aria-labelledby={labelId}>
-          <SelectValue>{selected?.label}</SelectValue>
+          <SelectValue>{stale ? value : selected?.label}</SelectValue>
         </SelectTrigger>
         <SelectContent>
+          {stale ? (
+            <SelectItem value={value} disabled>
+              «{value}» · unavailable
+            </SelectItem>
+          ) : null}
           {groups.map((group) => (
             <SelectGroup key={group.key}>
               <SelectLabel>{group.title}</SelectLabel>

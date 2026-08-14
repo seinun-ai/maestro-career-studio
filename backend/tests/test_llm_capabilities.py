@@ -142,14 +142,32 @@ def test_tools_probe_omits_reasoning_effort_for_models_that_reject_it(monkeypatc
     assert "reasoning_effort" not in client.calls[0]
 
 
-def test_tools_probe_does_not_ask_the_openai_client_about_a_gemini_model(monkeypatch):
-    """Gemini inference goes over llm._call_gemini, not the OpenAI client.
+def _compat_client_recording(constructed: list[dict], stream=None):
+    """OpenAI-SDK stand-in that records constructor kwargs. No kwargs-swallowing."""
 
-    Sending the id to the OpenAI client made the report say the model "does not
-    exist", which is both untrue and the wrong reason for the (correct) No.
-    """
-    client = _RecordingClient(_tool_call_stream())
-    monkeypatch.setattr(llm_capabilities.llm, "_get_client", lambda: client)
+    class _CompatClient:
+        def __init__(self, **kwargs):
+            constructed.append(dict(kwargs))
+            self.api_key = kwargs["api_key"]
+            self.base_url = kwargs["base_url"]
+            chunks = stream if stream is not None else _tool_call_stream()
+            self.chat = SimpleNamespace(
+                completions=SimpleNamespace(create=lambda **kw: iter(chunks))
+            )
+
+    return _CompatClient
+
+
+def test_tools_probe_routes_gemini_through_compat_client(monkeypatch):
+    """Hosted Gemini chat uses Google's OpenAI-compat URL, not the global client."""
+    constructed: list[dict] = []
+    monkeypatch.setattr(
+        llm_capabilities.llm, "OpenAI", _compat_client_recording(constructed)
+    )
+    monkeypatch.setattr(llm_capabilities.llm, "get_gemini_key", lambda: "gem-test-key")
+    monkeypatch.setattr(
+        "app.services.model_settings.using_custom_endpoint", lambda session=None: False
+    )
     monkeypatch.setattr(llm_capabilities.llm, "get_base_url", lambda: None)
     monkeypatch.setattr(
         llm_capabilities.llm,
@@ -157,9 +175,47 @@ def test_tools_probe_does_not_ask_the_openai_client_about_a_gemini_model(monkeyp
         lambda **kw: "ok" if kw["response_format"] == "text" else {"ok": True},
     )
 
+    def boom_global():
+        raise AssertionError("tools probe must not use the global OpenAI client")
+
+    monkeypatch.setattr(llm_capabilities.llm, "_get_client", boom_global)
+    llm_capabilities.llm._chat_clients.clear()
+
     report = llm_capabilities.probe("gemini-3.5-flash-lite")
 
-    assert client.calls == []
-    assert (report.text, report.json, report.tools) == (True, True, False)
-    assert "does not exist" not in report.errors["tools"]
-    assert "Gemini" in report.errors["tools"]
+    assert constructed == [
+        {
+            "api_key": "gem-test-key",
+            "base_url": llm_capabilities.llm.GEMINI_OPENAI_COMPAT_URL,
+        }
+    ]
+    assert report.tools is True
+    assert report.errors.get("tools") is None
+
+
+def test_tools_probe_custom_endpoint_does_not_hijack_gemini_id(monkeypatch):
+    """A local Ollama model named gemini-* must stay on the custom endpoint."""
+    client = _RecordingClient(_tool_call_stream())
+    monkeypatch.setattr(llm_capabilities.llm, "_get_client", lambda: client)
+    monkeypatch.setattr(
+        "app.services.model_settings.using_custom_endpoint", lambda session=None: True
+    )
+    monkeypatch.setattr(
+        llm_capabilities.llm, "get_base_url", lambda: "http://localhost:11434/v1"
+    )
+    monkeypatch.setattr(
+        llm_capabilities.llm,
+        "call_openai",
+        lambda **kw: "ok" if kw["response_format"] == "text" else {"ok": True},
+    )
+
+    def boom_compat(**kwargs):
+        raise AssertionError(f"must not construct Google compat client: {kwargs}")
+
+    monkeypatch.setattr(llm_capabilities.llm, "OpenAI", boom_compat)
+    llm_capabilities.llm._chat_clients.clear()
+
+    report = llm_capabilities.probe("gemini-3.5-flash-lite")
+
+    assert client.calls, "custom-endpoint Gemini id must use the global client"
+    assert report.tools is True

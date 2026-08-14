@@ -84,8 +84,8 @@ export function SendToResumeDialog({
   const [editingKey, setEditingKey] = useState<number | null>(null);
   const [editText, setEditText] = useState("");
 
-  // Certifications port as a single string — there is nothing to adapt.
-  const adaptable = entity.kind !== "certification";
+  // Certifications and custom sections port directly — there is nothing to adapt.
+  const adaptable = entity.kind !== "certification" && entity.kind !== "extra";
 
   const resumes = useQuery({
     queryKey: ["base-resumes"],
@@ -128,6 +128,14 @@ export function SendToResumeDialog({
           {
             entity_id: entity.id,
             point_ids: [...selected],
+            ...(entity.kind === "extra"
+              ? {
+                  section_key:
+                    entity.section_key ??
+                    (entity.detail?.section_key as string | undefined) ??
+                    undefined,
+                }
+              : {}),
           },
         ],
       }),

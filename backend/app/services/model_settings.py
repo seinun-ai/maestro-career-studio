@@ -25,36 +25,15 @@ class ModelOption:
 
 
 MODEL_OPTIONS = [
-    ModelOption("gpt-4o-mini", "OpenAI GPT-4o Mini", "openai", "fast"),
-    ModelOption("gpt-4o", "OpenAI GPT-4o", "openai", "smart"),
-    ModelOption("gpt-4.1-mini", "OpenAI GPT-4.1 Mini", "openai", "fast"),
-    ModelOption("gpt-4.1", "OpenAI GPT-4.1", "openai", "smart"),
-    ModelOption("gpt-4-turbo", "OpenAI GPT-4 Turbo", "openai", "smart"),
-    ModelOption("o3-mini", "OpenAI o3 Mini", "openai", "fast"),
-    # GPT-5.6 family speed/cost tier (released 2026-07-09): 1.05M context,
-    # 128k max output, $1/$6 per 1M tokens, tools + streaming supported.
-    ModelOption("gpt-5.6-luna", "OpenAI GPT-5.6 Luna", "openai", "fast"),
-    ModelOption("gpt-5.6", "OpenAI GPT-5.6", "openai", "smart"),
-    ModelOption(
-        "gemini-3.1-flash-lite-preview",
-        "Gemini 3.1 Flash-Lite Preview",
-        "gemini",
-        "fast",
-    ),
     # Released 2026-07: current lightweight Gemini tier (user's preferred fast
     # model). Live-verified against a real JD extraction on 2026-07-22.
     ModelOption("gemini-3.5-flash-lite", "Gemini 3.5 Flash-Lite", "gemini", "fast"),
-    ModelOption("gemini-3.1-pro-preview", "Gemini 3.1 Pro Preview", "gemini", "smart"),
-    ModelOption("gemini-3-flash-preview", "Gemini 3 Flash Preview", "gemini", "fast"),
-    ModelOption("gemini-2.5-flash", "Gemini 2.5 Flash", "gemini", "fast"),
-    ModelOption("gemini-2.5-pro", "Gemini 2.5 Pro", "gemini", "smart"),
+    ModelOption("gemini-3.7-flash", "Gemini 3.7 Flash", "gemini", "fast"),
+    # GPT-5.6 family (released 2026-07-09): 1.05M context, tools + streaming.
+    ModelOption("gpt-5.6-luna", "OpenAI GPT-5.6 Luna", "openai", "smart"),
 ]
 
 VALID_MODEL_IDS = {option.id for option in MODEL_OPTIONS}
-
-# The chat agent streams through the OpenAI SDK with a tools loop; the Gemini
-# raw-HTTP path in llm.py can't do that, so the chat model is OpenAI-only.
-OPENAI_MODEL_IDS = {option.id for option in MODEL_OPTIONS if option.provider == "openai"}
 
 
 def _get_value(session: Session, key: str, default: str) -> str:
@@ -268,12 +247,6 @@ def usable_ids(session: Session) -> set[str]:
     return {opt.id for opt in get_usable_options(session)}
 
 
-def openai_usable_ids(session: Session) -> set[str]:
-    return {
-        opt.id for opt in get_usable_options(session) if opt.provider == "openai"
-    }
-
-
 def add_extra_model(
     session: Session,
     model_id: str,
@@ -338,14 +311,16 @@ def set_models(
         if custom and not model.strip():
             raise ValueError("Model id must not be empty")
     if chat_model is not None:
-        # Gemini is excluded because its raw-HTTP path in llm.py cannot stream a
-        # tools loop at all. A custom endpoint speaks the OpenAI wire protocol,
-        # so tool calling is a property of the served MODEL, not the transport —
-        # that is what the capability probe decides, not this allowlist.
-        if not custom and chat_model not in openai_usable_ids(session):
+        if not custom and chat_model not in allowed:
+            raise ValueError(f"Unsupported model: {chat_model}")
+        if custom and not chat_model.strip():
+            raise ValueError("Model id must not be empty")
+        from app.services import llm_capabilities
+
+        report = llm_capabilities.load(session, chat_model)
+        if report is not None and not report.supports("tools"):
             raise ValueError(
-                f"Unsupported chat model: {chat_model}. The chat agent requires an "
-                "OpenAI model (streaming tool-calling is not implemented for Gemini)."
+                "chat needs a model that passes the streaming tool-call test — run Test"
             )
         _set_value(session, CHAT_MODEL_KEY, chat_model)
     fast = _set_value(session, FAST_MODEL_KEY, fast_model)

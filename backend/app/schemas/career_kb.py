@@ -7,11 +7,40 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.schemas.base_resume import BaseResumeDetail
-from app.schemas.resume import ContactInfo, SkillGroup
+from app.schemas.resume import (
+    CORE_SECTION_KEYS,
+    CORE_SECTION_TITLES,
+    TITLE_COLLISION_MESSAGE,
+    _SECTION_KEY_RE,
+    ContactInfo,
+    SkillGroup,
+)
 
-KB_KINDS = {"experience", "project", "education", "certification"}
+KB_KINDS = {"experience", "project", "education", "certification", "extra"}
 KB_STATUSES = {"ongoing", "completed", "archived"}
 KB_POINT_STATES = {"draft", "approved", "retired"}
+
+
+def _validate_extra_identity(
+    section_key: str | None,
+    section_type: str | None,
+    section_title: str | None,
+) -> tuple[str, str, str]:
+    if not section_key or not _SECTION_KEY_RE.match(section_key):
+        raise ValueError(
+            "section_key must be a lowercase slug (alphanumeric, '_' or '-'), e.g. 'publications'"
+        )
+    if section_key.casefold() in CORE_SECTION_KEYS:
+        raise ValueError(
+            f"section_key {section_key!r} collides with the core '{section_key.casefold()}' section"
+        )
+    if section_type not in ("entries", "bullets"):
+        raise ValueError("section_type must be either 'entries' or 'bullets'")
+    if not section_title or not section_title.strip():
+        raise ValueError("section_title must be non-empty")
+    if section_title.strip().casefold() in CORE_SECTION_TITLES:
+        raise ValueError(TITLE_COLLISION_MESSAGE)
+    return section_key, section_type, section_title.strip()
 
 
 # --- Entity write models ---------------------------------------------------
@@ -26,6 +55,9 @@ class KBEntityCreate(BaseModel):
     status: str = "completed"
     detail: dict[str, Any] = Field(default_factory=dict)
     notes: str | None = None
+    section_key: str | None = None
+    section_type: Literal["entries", "bullets"] | None = None
+    section_title: str | None = None
 
     @field_validator("kind")
     @classmethod
@@ -49,6 +81,30 @@ class KBEntityCreate(BaseModel):
             raise ValueError("title must be non-empty")
         return stripped
 
+    @model_validator(mode="after")
+    def _validate_extra_fields(self) -> "KBEntityCreate":
+        if self.kind == "extra":
+            s_key = self.section_key or self.detail.get("section_key")
+            s_type = self.section_type or self.detail.get("section_type")
+            s_title = self.section_title or self.detail.get("section_title")
+            k, t, title_ = _validate_extra_identity(s_key, s_type, s_title)
+            self.section_key = k
+            self.section_type = t  # type: ignore[assignment]
+            self.section_title = title_
+            self.detail["section_key"] = k
+            self.detail["section_type"] = t
+            self.detail["section_title"] = title_
+        else:
+            if (
+                self.section_key is not None
+                or self.section_type is not None
+                or self.section_title is not None
+            ):
+                raise ValueError(
+                    "section_key, section_type, and section_title are only valid when kind == 'extra'"
+                )
+        return self
+
 
 class KBEntityPatch(BaseModel):
     kind: str | None = None
@@ -59,6 +115,9 @@ class KBEntityPatch(BaseModel):
     status: str | None = None
     detail: dict[str, Any] | None = None
     notes: str | None = None
+    section_key: str | None = None
+    section_type: Literal["entries", "bullets"] | None = None
+    section_title: str | None = None
 
     @field_validator("kind")
     @classmethod
@@ -88,6 +147,33 @@ class KBEntityPatch(BaseModel):
         if not stripped:
             raise ValueError("title must be non-empty")
         return stripped
+
+    @model_validator(mode="after")
+    def _validate_extra_patch(self) -> "KBEntityPatch":
+        if self.kind is not None and self.kind != "extra":
+            if (
+                self.section_key is not None
+                or self.section_type is not None
+                or self.section_title is not None
+            ):
+                raise ValueError(
+                    "section_key, section_type, and section_title are only valid when kind == 'extra'"
+                )
+        if self.section_key is not None:
+            if not _SECTION_KEY_RE.match(self.section_key):
+                raise ValueError("section_key must be a lowercase slug")
+            if self.section_key.casefold() in CORE_SECTION_KEYS:
+                raise ValueError(
+                    f"section_key {self.section_key!r} collides with core section"
+                )
+        if self.section_type is not None and self.section_type not in ("entries", "bullets"):
+            raise ValueError("section_type must be either 'entries' or 'bullets'")
+        if self.section_title is not None:
+            if not self.section_title.strip():
+                raise ValueError("section_title must be non-empty")
+            if self.section_title.strip().casefold() in CORE_SECTION_TITLES:
+                raise ValueError(TITLE_COLLISION_MESSAGE)
+        return self
 
 
 # --- Point write models ----------------------------------------------------
@@ -227,6 +313,9 @@ class KBEntitySummary(BaseModel):
     draft_count: int
     document_count: int
     last_activity: datetime
+    section_key: str | None = None
+    section_type: str | None = None
+    section_title: str | None = None
 
 
 class KBEntityDetail(KBEntitySummary):
@@ -284,21 +373,18 @@ class KBDocumentIngestResponse(BaseModel):
 class KBPortItem(BaseModel):
     entity_id: UUID
     point_ids: list[UUID] = Field(default_factory=list)  # empty = all approved points
-    # Reserved for a future "send approved points to a custom section" target.
-    # KB porting is core-sections-only today, so a supplied section_key is
-    # REJECTED here rather than silently ignored: a caller who names a section
-    # and gets a 200 back has no way to learn the points went somewhere else.
-    # See SYSTEM.md §11 (custom resume sections) for the remaining slice.
     section_key: str | None = None
 
     @field_validator("section_key")
     @classmethod
-    def _reject_custom_section_target(cls, v: str | None) -> str | None:
+    def _validate_section_key(cls, v: str | None) -> str | None:
         if v is not None:
-            raise ValueError(
-                "porting Career KB points into a custom (extra) section is not "
-                "supported yet; KB entities port to core resume sections only"
-            )
+            if not _SECTION_KEY_RE.match(v):
+                raise ValueError("section_key must be a lowercase slug")
+            if v.casefold() in CORE_SECTION_KEYS:
+                raise ValueError(
+                    f"section_key {v!r} collides with the core '{v.casefold()}' section"
+                )
         return v
 
 
@@ -511,3 +597,13 @@ class KBContextResponse(BaseModel):
 
     resume: dict[str, Any]
     memory: str
+
+
+class ExtraSectionPreset(BaseModel):
+    """Canonical extra section preset schema."""
+
+    key: str
+    title: str
+    type: Literal["entries", "bullets"]
+    match: list[str] = Field(default_factory=list)
+

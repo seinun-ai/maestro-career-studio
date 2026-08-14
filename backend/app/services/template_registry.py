@@ -242,6 +242,7 @@ def _bootstrap_seeded(
     display_name: str,
     engine: str,
     source_path,
+    default_formatting: dict | None = None,
     validate: bool = True,
 ) -> Template:
     """Insert a seeded template as a draft, then earn `ready` by validating.
@@ -269,6 +270,11 @@ def _bootstrap_seeded(
         engine=engine,
         status="draft",
         origin="seed",
+        # Only set on INSERT. An existing row's default_formatting is the
+        # user's (the templates API lets them edit it), so re-seeding must
+        # never reach it; the migration applies the same rule to installs that
+        # predate this field.
+        default_formatting=default_formatting,
     )
     try:
         with session.begin_nested():
@@ -295,11 +301,37 @@ def _bootstrap_seeded(
 # scripts/apply_template_sources.py, a maintainer script no installer runs. So
 # every user downloaded four finished templates and saw two.
 _USER_TEMPLATE_DIR = pdf_render.TEMPLATE_DIR / "user"
+
+# Harshibar is the one bundled template whose native order is not the common
+# one, AND the one that renders Certifications as its own section. Seeding the
+# order explicitly costs nothing at render time (it IS the native order, so the
+# output is unchanged) and buys the formatting panel the truth: the control
+# shows the template's real order, including the Certifications row that no
+# other bundled template has. Every other template leaves the knob unset, which
+# means "native order" and keeps the panel on its generic fallback list.
+HARSHIBAR_DEFAULT_FORMATTING = {
+    "section_order": [
+        "summary",
+        "experience",
+        "projects",
+        "education",
+        "certifications",
+        "skills",
+    ]
+}
+
 BUNDLED_TEMPLATES = (
-    ("xcharter_serif", "XCharter Serif", "latex", "xcharter_serif.tex.j2"),
-    ("xcharter_serif_typst", "XCharter Serif (Typst)", "typst", "xcharter_serif.typ"),
-    ("carlito_dense", "Carlito Dense", "latex", "carlito_dense.tex.j2"),
-    ("harshibar", "Harshibar", "latex", "harshibar.tex.j2"),
+    ("xcharter_serif", "XCharter Serif", "latex", "xcharter_serif.tex.j2", None),
+    (
+        "xcharter_serif_typst",
+        "XCharter Serif (Typst)",
+        "typst",
+        "xcharter_serif.typ",
+        None,
+    ),
+    ("carlito_dense", "Carlito Dense", "latex", "carlito_dense.tex.j2", None),
+    ("harshibar", "Harshibar", "latex", "harshibar.tex.j2",
+     HARSHIBAR_DEFAULT_FORMATTING),
 )
 
 
@@ -315,13 +347,14 @@ def _bootstrap_typst_classic(session: Session, *, validate: bool = True) -> Temp
 
 
 def _bootstrap_bundled(session: Session, *, validate: bool = True) -> None:
-    for template_id, display_name, engine, filename in BUNDLED_TEMPLATES:
+    for template_id, display_name, engine, filename, formatting in BUNDLED_TEMPLATES:
         _bootstrap_seeded(
             session,
             template_id=template_id,
             display_name=display_name,
             engine=engine,
             source_path=_USER_TEMPLATE_DIR / filename,
+            default_formatting=formatting,
             validate=validate,
         )
 

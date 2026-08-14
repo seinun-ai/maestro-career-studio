@@ -23,7 +23,7 @@ def test_openai_info_includes_source_on_options(db_session):
         app.dependency_overrides.clear()
 
     assert all(opt["source"] == "seed" for opt in body["model_options"])
-    assert "gpt-4.1" in {opt["id"] for opt in body["model_options"]}
+    assert "gemini-3.7-flash" in {opt["id"] for opt in body["model_options"]}
 
 
 def test_add_and_remove_catalog_model(db_session):
@@ -63,8 +63,8 @@ def test_remove_in_use_returns_400(db_session):
             "/api/settings/openai",
             json={
                 "fast_model": "gpt-custom",
-                "smart_model": "gpt-4o",
-                "chat_model": "gpt-4o",
+                "smart_model": "gpt-5.6-luna",
+                "chat_model": "gpt-5.6-luna",
             },
         )
         resp = client.delete("/api/settings/openai/models/gpt-custom")
@@ -77,7 +77,7 @@ def test_remove_in_use_returns_400(db_session):
 def test_sync_openai_marks_in_catalog(db_session, monkeypatch):
     def fake_list():
         return [
-            {"id": "gpt-4o", "label": "gpt-4o", "provider": "openai"},
+            {"id": "gpt-5.6-luna", "label": "gpt-5.6-luna", "provider": "openai"},
             {"id": "gpt-brand-new", "label": "gpt-brand-new", "provider": "openai"},
             {"id": "text-embedding-3-small", "label": "emb", "provider": "openai"},
         ]
@@ -99,7 +99,7 @@ def test_sync_openai_marks_in_catalog(db_session, monkeypatch):
 
     assert resp.status_code == 200
     by_id = {row["id"]: row for row in resp.json()["models"]}
-    assert by_id["gpt-4o"]["in_catalog"] is True
+    assert by_id["gpt-5.6-luna"]["in_catalog"] is True
     assert by_id["gpt-brand-new"]["in_catalog"] is False
 
 

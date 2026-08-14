@@ -207,18 +207,35 @@ def test_ingest_parsed_caps_the_batch_at_twenty_sources(client, no_llm):
     assert r.status_code == 422, r.text
 
 
-def test_ingest_parsed_warns_that_extra_sections_are_dropped(client, no_llm):
-    r = client.post("/api/kb/ingest-parsed", json={"sources": [{
-        "key": "ds",
-        "data": _resume(
-            projects=[{"name": "Orbit", "bullets": ["Built Orbit"]}],
-            extra_sections=[{"type": "bullets", "key": "publications",
-                             "title": "Publications", "bullets": ["A paper"]}],
-        ),
-    }]})
+def test_ingest_parsed_stores_extra_sections(client, no_llm):
+    r = client.post(
+        "/api/kb/ingest-parsed",
+        json={
+            "sources": [
+                {
+                    "key": "ds",
+                    "data": _resume(
+                        projects=[{"name": "Orbit", "bullets": ["Built Orbit"]}],
+                        extra_sections=[
+                            {
+                                "type": "bullets",
+                                "key": "publications",
+                                "title": "Publications",
+                                "bullets": ["A paper"],
+                            }
+                        ],
+                    ),
+                }
+            ]
+        },
+    )
     assert r.status_code == 200, r.text
-    warnings = r.json()["warnings"]
-    assert any("extra_sections" in w for w in warnings), warnings
+    data = r.json()
+    warnings = data["warnings"]
+    assert not any("extra_sections" in w for w in warnings), warnings
+    assert data["entities_created"] == 2
+    pub = next(e for e in data["entities"] if e["title"] == "Publications")
+    assert pub["kind"] == "extra"
 
 
 def test_ingest_parsed_registered_in_openapi(client):

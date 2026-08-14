@@ -99,16 +99,21 @@ export interface SectionPreset {
 
 /**
  * Presets only prefill title + type; the stored shape is identical to a
- * hand-built section (design: "presets ... only prefill title, type, and field
- * labels — the stored shape stays the same").
+ * hand-built section. Synchronized with backend/app/services/extra_section_presets.py.
  */
 export const SECTION_PRESETS: SectionPreset[] = [
   { id: "publications", label: "Publications", title: "Publications", type: "entries" },
-  { id: "awards", label: "Awards", title: "Awards", type: "bullets" },
-  { id: "volunteer", label: "Volunteer Work", title: "Volunteer Work", type: "entries" },
+  { id: "presentations", label: "Presentations & Talks", title: "Presentations & Talks", type: "entries" },
+  { id: "volunteer", label: "Volunteer Experience", title: "Volunteer Experience", type: "entries" },
+  { id: "awards", label: "Awards & Honors", title: "Awards & Honors", type: "bullets" },
+  { id: "languages", label: "Languages", title: "Languages", type: "bullets" },
+  { id: "licenses", label: "Licenses", title: "Licenses", type: "bullets" },
+  { id: "clearance", label: "Security Clearance", title: "Security Clearance", type: "bullets" },
+  { id: "memberships", label: "Professional Affiliations", title: "Professional Affiliations", type: "bullets" },
 ];
 
 export function isEnabled(value: { enabled?: boolean }): boolean {
   return value.enabled !== false;
 }
+
 

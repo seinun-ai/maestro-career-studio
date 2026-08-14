@@ -84,23 +84,14 @@
     \href{https://((( contact.github|latex_escape )))}{((( contact.github|latex_escape )))}((* if contact.website *)) $|$
     \href{https://((( contact.website|latex_escape )))}{((( contact.website|latex_escape )))}((* endif *))
 ((* if fmt.header_align == "left" *))\end{flushleft}((* elif fmt.header_align == "right" *))\end{flushright}((* else *))\end{center}((* endif *))
-((#
-  Section bodies are MACROS, emitted by the dispatch loop just before
-  \end{document} so `fmt.section_order` can reorder them. Definitions are
-  adjacent on purpose: a blank line between two macro definitions is
-  template-level text and would be emitted ahead of the first section.
-  This template has NO extras block, so `extra_sections` is simply not in its
-  native list — its extras hard-fail contract is unchanged.
-#))
-((* macro section_summary() *))
+
 ((* if resume.summary *))
 %-----------SUMMARY-----------
 \section{Summary}
 \small ((( resume.summary|latex_escape )))
 \vspace{-4pt}
 ((* endif *))
-((* endmacro *))
-((* macro section_experience() *))
+
 ((* if resume.experience *))
 %-----------EXPERIENCE-----------
 \section{Experience}
@@ -117,8 +108,7 @@
 ((* endfor *))
   \resumeSubHeadingListEnd
 ((* endif *))
-((* endmacro *))
-((* macro section_projects() *))
+
 ((* if resume.projects and resume.projects|length > 0 *))
 %-----------PROJECTS-----------
 \section{Projects}
@@ -134,8 +124,7 @@
 ((* endfor *))
     \resumeSubHeadingListEnd
 ((* endif *))
-((* endmacro *))
-((* macro section_skills() *))
+
 ((* if resume.skills or resume.certifications *))
 %-----------TECHNICAL SKILLS-----------
 \section{Technical Skills}
@@ -161,8 +150,7 @@
  \end{itemize}
 ((* endif *))
 ((* endif *))
-((* endmacro *))
-((* macro section_education() *))
+
 ((* if resume.education *))
 %-----------EDUCATION-----------
 \section{Education}
@@ -201,11 +189,5 @@
 ((* endfor *))
   \resumeSubHeadingListEnd
 ((* endif *))
-((* endmacro *))
-((* set native_sections = ["summary", "experience", "projects", "skills", "education"] *))
-((* for section_key in fmt.section_order|ordered_sections(native_sections) *))
-
-((* if section_key == "summary" *))((( section_summary() )))((* elif section_key == "experience" *))((( section_experience() )))((* elif section_key == "projects" *))((( section_projects() )))((* elif section_key == "skills" *))((( section_skills() )))((* elif section_key == "education" *))((( section_education() )))((* endif *))
-((* endfor *))
 
 \end{document}

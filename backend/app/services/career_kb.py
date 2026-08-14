@@ -36,13 +36,13 @@ logger = logging.getLogger(__name__)
 _LABEL_MAX = 60
 
 # KB entity kinds map to (plural) resume section keys.
-_KIND_TO_SECTION = {"experience": "experience", "project": "projects", "education": "education"}
+_KIND_TO_SECTION = {
+    "experience": "experience",
+    "project": "projects",
+    "education": "education",
+    "extra": "extra_sections",
+}
 
-# Phase 1: KB porting targets are FIXED CORE sections only — custom (extra)
-# sections are not a KB port destination yet (2026-07-16 custom-sections design:
-# "optional composition is NOT phase 1"). Guards the resolved destination so a
-# future _KIND_TO_SECTION change can't silently route KB points into an extra
-# section, complementing the request-schema rejection of a supplied section_key.
 _CORE_PORT_SECTIONS = frozenset({"experience", "projects", "education"})
 
 
@@ -243,6 +243,75 @@ def compose_resume_data(
             if p.state == "approved"
         ]
 
+    extra_sections_list: list[dict] = []
+    extra_sections_by_key: dict[str, dict] = {}
+
+    for e in entities:
+        if e.kind != "extra":
+            continue
+        detail = e.detail_json or {}
+        s_key = detail.get("section_key")
+        s_type = detail.get("section_type")
+        s_title = detail.get("section_title")
+        if not s_key or not s_type or not s_title or s_type not in ("entries", "bullets"):
+            logger.warning(
+                "compose_resume_data skipping extra entity %s with invalid section identity",
+                e.id,
+            )
+            continue
+        folded_key = s_key.casefold()
+        if s_type == "entries":
+            entry = {
+                "heading": e.title,
+                "subheading": detail.get("subheading") or e.org or None,
+                "location": detail.get("location"),
+                "date": detail.get("date"),
+                "link": detail.get("link"),
+                "enabled": detail.get("enabled", True),
+                "bullets": approved_bullets(e),
+            }
+            if folded_key in extra_sections_by_key:
+                sec = extra_sections_by_key[folded_key]
+                if sec["type"] == "entries":
+                    sec["entries"].append(entry)
+                else:
+                    logger.warning(
+                        "compose_resume_data skipping extra entity %s: section key %r "
+                        "already composed as type %r, entity is type 'entries'",
+                        e.id, s_key, sec["type"],
+                    )
+            else:
+                sec = {
+                    "key": s_key,
+                    "title": s_title,
+                    "type": "entries",
+                    "enabled": True,
+                    "entries": [entry],
+                }
+                extra_sections_by_key[folded_key] = sec
+                extra_sections_list.append(sec)
+        elif s_type == "bullets":
+            if folded_key in extra_sections_by_key:
+                sec = extra_sections_by_key[folded_key]
+                if sec["type"] == "bullets":
+                    sec["bullets"].extend(approved_bullets(e))
+                else:
+                    logger.warning(
+                        "compose_resume_data skipping extra entity %s: section key %r "
+                        "already composed as type %r, entity is type 'bullets'",
+                        e.id, s_key, sec["type"],
+                    )
+            else:
+                sec = {
+                    "key": s_key,
+                    "title": s_title,
+                    "type": "bullets",
+                    "enabled": detail.get("enabled", True),
+                    "bullets": approved_bullets(e),
+                }
+                extra_sections_by_key[folded_key] = sec
+                extra_sections_list.append(sec)
+
     data = {
         "contact": profile.contact_json or {"name": "", "email": ""},
         "summary": profile.summary or None,
@@ -289,11 +358,7 @@ def compose_resume_data(
             for e in entities
             if e.kind == "certification"
         ],
-        # The KB has no model for arbitrary custom sections yet, so it composes
-        # none. Emit the field explicitly (the ResumeData round-trip would add
-        # it anyway) to document that KB->extra composition is deliberately NOT
-        # phase 1; do not map cert/project entities to extras by display title.
-        "extra_sections": [],
+        "extra_sections": extra_sections_list,
     }
     return ResumeData.model_validate(data).model_dump(mode="json")
 
@@ -420,6 +485,7 @@ def entity_summary(session: Session, entity: KBEntity) -> KBEntitySummary:
         last_activity = max(last_activity, max(p.updated_at for p in points))
     if documents:
         last_activity = max(last_activity, max(d.created_at for d in documents))
+    detail = entity.detail_json or {}
     return KBEntitySummary(
         id=entity.id,
         kind=entity.kind,
@@ -434,6 +500,9 @@ def entity_summary(session: Session, entity: KBEntity) -> KBEntitySummary:
         draft_count=sum(1 for p in points if p.state == "draft"),
         document_count=len(documents),
         last_activity=last_activity,
+        section_key=detail.get("section_key") if entity.kind == "extra" else None,
+        section_type=detail.get("section_type") if entity.kind == "extra" else None,
+        section_title=detail.get("section_title") if entity.kind == "extra" else None,
     )
 
 
@@ -569,6 +638,152 @@ def _build_entry(entity: KBEntity, section: str, points: Sequence[KBPoint]) -> d
     return entry
 
 
+def _compose_extra_item_ops(
+    entity: KBEntity,
+    points: Sequence[KBPoint],
+    working: dict,
+    report_items: list[KBPortItemReport],
+    port_log_rows: list[dict],
+) -> list[dict]:
+    detail = entity.detail_json or {}
+    section_key = detail.get("section_key")
+    section_type = detail.get("section_type")
+    section_title = detail.get("section_title") or section_key or "Custom Section"
+    if not section_key or not section_type:
+        raise ValueError(f"extra entity {entity.id} has missing section identity")
+
+    ops: list[dict] = []
+    extra_sections = working.get("extra_sections") or []
+    found_idx = None
+    for i, s in enumerate(extra_sections):
+        if isinstance(s, dict) and s.get("key", "").casefold() == section_key.casefold():
+            found_idx = i
+            break
+
+    if found_idx is not None:
+        sec_dict = copy.deepcopy(extra_sections[found_idx])
+        if section_type == "entries":
+            entries = sec_dict.setdefault("entries", [])
+            entry_idx = None
+            for ei, ent in enumerate(entries):
+                if isinstance(ent, dict) and _norm(ent.get("heading")) == _norm(entity.title):
+                    entry_idx = ei
+                    break
+            if entry_idx is not None:
+                target_entry = entries[entry_idx]
+                existing_norms = {_norm(b) for b in (target_entry.get("bullets") or [])}
+                new_points = [p for p in points if _norm(p.text) not in existing_norms]
+                skipped = [p for p in points if _norm(p.text) in existing_norms]
+                target_entry.setdefault("bullets", []).extend([p.text for p in new_points])
+                created_entry = False
+            else:
+                new_points = list(points)
+                skipped = []
+                new_entry = {
+                    "heading": entity.title,
+                    "subheading": detail.get("subheading") or entity.org or None,
+                    "location": detail.get("location"),
+                    "date": detail.get("date"),
+                    "link": detail.get("link"),
+                    "enabled": detail.get("enabled", True),
+                    "bullets": [p.text for p in points],
+                }
+                entries.append(new_entry)
+                created_entry = True
+        else:  # bullets
+            existing_bullets = sec_dict.setdefault("bullets", [])
+            existing_norms = {_norm(b) for b in existing_bullets}
+            new_points = [p for p in points if _norm(p.text) not in existing_norms]
+            skipped = [p for p in points if _norm(p.text) in existing_norms]
+            existing_bullets.extend([p.text for p in new_points])
+            created_entry = False
+
+        ops.append(
+            {
+                "kind": "replace_extra_section",
+                "section_key": section_key,
+                "value": sec_dict,
+            }
+        )
+        for p in new_points:
+            port_log_rows.append(
+                {
+                    "entity_id": entity.id,
+                    "point_id": p.id,
+                    "section": f"extra:{section_key}",
+                    "ported_text": p.text,
+                }
+            )
+        report_items.append(
+            KBPortItemReport(
+                entity_id=entity.id,
+                ported_point_ids=[p.id for p in new_points],
+                skipped_duplicate_point_ids=[p.id for p in skipped],
+                created_entry=created_entry,
+            )
+        )
+    else:
+        if section_type == "entries":
+            new_entry = {
+                "heading": entity.title,
+                "subheading": detail.get("subheading") or entity.org or None,
+                "location": detail.get("location"),
+                "date": detail.get("date"),
+                "link": detail.get("link"),
+                "enabled": detail.get("enabled", True),
+                "bullets": [p.text for p in points],
+            }
+            new_sec = {
+                "key": section_key,
+                "title": section_title,
+                "type": "entries",
+                "enabled": True,
+                "entries": [new_entry],
+            }
+        else:  # bullets
+            new_sec = {
+                "key": section_key,
+                "title": section_title,
+                "type": "bullets",
+                "enabled": detail.get("enabled", True),
+                "bullets": [p.text for p in points],
+            }
+        ops.append(
+            {
+                "kind": "add_extra_section",
+                "value": new_sec,
+            }
+        )
+        if points:
+            for p in points:
+                port_log_rows.append(
+                    {
+                        "entity_id": entity.id,
+                        "point_id": p.id,
+                        "section": f"extra:{section_key}",
+                        "ported_text": p.text,
+                    }
+                )
+        else:
+            port_log_rows.append(
+                {
+                    "entity_id": entity.id,
+                    "point_id": None,
+                    "section": f"extra:{section_key}",
+                    "ported_text": "",
+                }
+            )
+        report_items.append(
+            KBPortItemReport(
+                entity_id=entity.id,
+                ported_point_ids=[p.id for p in points],
+                skipped_duplicate_point_ids=[],
+                created_entry=True,
+            )
+        )
+    return ops
+
+
 def _compose_item_ops(
     entity: KBEntity,
     points: Sequence[KBPoint],
@@ -602,6 +817,11 @@ def _compose_item_ops(
                 }
             )
         return ops
+
+    if entity.kind == "extra":
+        return _compose_extra_item_ops(
+            entity, points, working, report_items, port_log_rows
+        )
 
     section = _KIND_TO_SECTION.get(entity.kind)
     if section not in _CORE_PORT_SECTIONS:
