@@ -132,7 +132,7 @@
   \resumeSubHeadingListStart
     ((* for e in resume.experience *))
     \resumeSubheading
-      {((( e.company|latex_escape )))}{((( e.start_date|format_date(fmt.date_format)|latex_escape )))((* if e.end_date *)) -- ((( e.end_date|format_date(fmt.date_format)|latex_escape )))((* endif *))}
+      {((( e.company|latex_escape )))}{((* if e.start_date and (e.start_date|string|trim) *))((( e.start_date|format_date(fmt.date_format)|latex_escape )))((* if e.end_date and (e.end_date|string|trim) *)) -- ((( e.end_date|format_date(fmt.date_format)|latex_escape )))((* else *)) -- Present((* endif *))((* elif e.end_date and (e.end_date|string|trim) *))((( e.end_date|format_date(fmt.date_format)|latex_escape )))((* endif *))}
       {((( e.role|latex_escape )))}{((( e.location|latex_escape )))}
       ((* if e.bullets *))
       \resumeItemListStart
@@ -168,8 +168,8 @@
 \section{EDUCATION}
   \resumeSubHeadingListStart
     ((* for edu in resume.education *))
-((* set edu_date = edu.start_date|format_date(fmt.date_format)|latex_escape if edu.start_date else "" *))
-((* set edu_end = edu.end_date|format_date(fmt.date_format)|latex_escape if edu.end_date else (edu.graduation_date|format_date(fmt.date_format)|latex_escape if edu.graduation_date else "") *))
+((* set edu_date = edu.start_date|format_date(fmt.date_format)|latex_escape if (edu.start_date and (edu.start_date|string|trim)) else "" *))
+((* set edu_end = edu.end_date|format_date(fmt.date_format)|latex_escape if (edu.end_date and (edu.end_date|string|trim)) else (edu.graduation_date|format_date(fmt.date_format)|latex_escape if (edu.graduation_date and (edu.graduation_date|string|trim)) else "") *))
 ((* set edu_date_range = edu_date ~ (" -- " ~ edu_end) if (edu_date and edu_end) else (edu_date or edu_end) *))
 ((* set edu_degree_line = edu.degree|latex_escape ~ ((" in " ~ edu.field|latex_escape) if edu.field else "") *))
 ((* if fmt.education_order == "institution_first" *))

@@ -17,6 +17,8 @@ from fastapi.testclient import TestClient
 from app.db import get_db
 from app.main import app
 from app.models.base_resume import BaseResume
+from app.models.career_kb import KBEntity, KBPoint, KBPortLog, KBProfile
+from app.models.resume_version import ResumeVersion
 from app.models.setting import Setting
 from app.services import kb_consolidation, kb_import, prompts, seeding
 
@@ -290,12 +292,36 @@ def test_ambiguous_role_stays_unknown_and_is_not_a_proposal(db_session, tmp_path
     """A compound title hits two families — never tie-break on YAML order."""
     _stub_pipeline(monkeypatch, tmp_path)
     doc = json.loads(json.dumps(RESUME))
+    doc["summary"] = ""
     doc["experience"][0]["role"] = "Data Engineer / Analytics Engineer"
     body = _client(db_session).post(
-        "/api/kb/import", files=[_json_upload("de.json", doc)]
+        "/api/kb/import", files=[_json_upload("compound.json", doc)]
     ).json()
     assert body["bases"][0]["role_category"] == "unknown"
     assert body["bases"][0]["proposed"] is False
+
+
+def test_filename_beats_analyst_history(db_session, tmp_path, monkeypatch):
+    _stub_pipeline(monkeypatch, tmp_path)
+    doc = json.loads(json.dumps(RESUME))
+    doc["summary"] = ""
+    doc["experience"][0]["role"] = "Business Analyst"
+    body = _client(db_session).post(
+        "/api/kb/import", files=[_json_upload("data_engineer.json", doc)]
+    ).json()
+    assert body["bases"][0]["role_category"] == "data_engineer"
+    assert body["bases"][0]["proposed"] is True
+
+
+def test_imported_base_carries_role_label(db_session, tmp_path, monkeypatch):
+    """Frontend types already declare role_label; a missing field was a silent lie."""
+    _stub_pipeline(monkeypatch, tmp_path)
+    body = _client(db_session).post(
+        "/api/kb/import", files=[_json_upload("resume.json")]
+    ).json()
+    assert "role_label" in body["bases"][0]
+    # "Senior Data Scientist" is an alias hit (rank-strip), so the user's words stay.
+    assert body["bases"][0]["role_label"] == "Senior Data Scientist"
 
 
 # --- the kb.seeded flag ---------------------------------------------------
@@ -306,6 +332,112 @@ def test_import_sets_kb_seeded(db_session, tmp_path, monkeypatch):
     assert db_session.get(Setting, kb_import.KB_SEEDED_FLAG) is None
     _client(db_session).post("/api/kb/import", files=[_json_upload("seed.json")])
     assert db_session.get(Setting, kb_import.KB_SEEDED_FLAG).value == "1"
+
+
+def test_consolidate_false_mints_without_touching_the_kb(db_session, tmp_path, monkeypatch):
+    seen = _stub_pipeline(monkeypatch, tmp_path)
+    body = _client(db_session).post(
+        "/api/kb/import?consolidate=false",
+        files=[_json_upload("solo.json")],
+    ).json()
+    assert seen == []
+    assert body["kb"] is None
+    assert db_session.get(BaseResume, "solo") is not None
+    assert db_session.get(Setting, kb_import.KB_SEEDED_FLAG) is None
+
+
+def test_one_bad_file_does_not_abort_remaining_when_not_consolidating(
+    db_session, tmp_path, monkeypatch
+):
+    _stub_pipeline(monkeypatch, tmp_path)
+    bad = ("files", ("broken.json", io.BytesIO(b"{not json"), "application/json"))
+    body = _client(db_session).post(
+        "/api/kb/import?consolidate=false",
+        files=[_json_upload("good.json"), bad],
+    ).json()
+    assert [b["slug"] for b in body["bases"]] == ["good"]
+    assert [s["filename"] for s in body["skipped"]] == ["broken.json"]
+    assert db_session.get(BaseResume, "good") is not None
+
+
+def _deterministic_llm(*, prompt, model, response_format="json", **kw):
+    if "group_indices" in prompt or "bullet_indices" in prompt:
+        return {"clusters": []}
+    raise AssertionError("unexpected prompt")
+
+
+def _kb_fingerprint(session):
+    from sqlalchemy import select
+
+    ents = sorted(
+        (e.kind, e.title, e.org or "")
+        for e in session.scalars(select(KBEntity)).all()
+    )
+    pts = sorted((p.text, p.state) for p in session.scalars(select(KBPoint)).all())
+    logs = sorted(
+        (r.resume_key, r.section, r.ported_text)
+        for r in session.scalars(select(KBPortLog)).all()
+    )
+    profile = session.scalars(select(KBProfile)).first()
+    skills = profile.skills_json if profile is not None else None
+    summary = profile.summary if profile is not None else None
+    return ents, pts, logs, skills, summary
+
+
+def _wipe_import_state(session, tmp_path):
+    from sqlalchemy import select
+
+    for model in (KBPortLog, KBPoint, KBEntity, KBProfile, ResumeVersion, BaseResume):
+        for row in session.scalars(select(model)).all():
+            session.delete(row)
+    flag = session.get(Setting, kb_import.KB_SEEDED_FLAG)
+    if flag is not None:
+        session.delete(flag)
+    session.commit()
+    for path in tmp_path.glob("*"):
+        path.unlink()
+
+
+def test_per_file_then_consolidate_matches_batched_kb_state(
+    db_session, tmp_path, monkeypatch
+):
+    """The honest test of the split: delayed consolidate == the batched terminal pass."""
+    monkeypatch.setattr(kb_import.base_resume_data.settings, "base_resumes_dir", tmp_path)
+    monkeypatch.setattr(kb_import.kb_consolidation, "prefetch_prompts", lambda s: None)
+    monkeypatch.setattr(
+        kb_import.base_resume_render, "render_base_resume", lambda slug, db, **kw: None
+    )
+    monkeypatch.setattr("app.services.llm.call_openai", _deterministic_llm)
+
+    r1 = json.loads(json.dumps(RESUME))
+    r2 = json.loads(json.dumps(RESUME))
+    r2["summary"] = "Later summary."
+    r2["projects"] = [{"name": "Orbit", "bullets": ["Shipped it."]}]
+    client = _client(db_session)
+
+    batched = client.post(
+        "/api/kb/import",
+        files=[_json_upload("first.json", r1), _json_upload("second.json", r2)],
+    )
+    assert batched.status_code == 200
+    expected = _kb_fingerprint(db_session)
+
+    _wipe_import_state(db_session, tmp_path)
+
+    a = client.post("/api/kb/import?consolidate=false", files=[_json_upload("first.json", r1)])
+    b = client.post("/api/kb/import?consolidate=false", files=[_json_upload("second.json", r2)])
+    assert a.status_code == 200 and b.status_code == 200
+    assert a.json()["kb"] is None and b.json()["kb"] is None
+    from sqlalchemy import select
+    assert db_session.scalars(select(KBEntity)).all() == []
+
+    follow = client.post(
+        "/api/kb/import/consolidate",
+        json={"slugs": [a.json()["bases"][0]["slug"], b.json()["bases"][0]["slug"]]},
+    )
+    assert follow.status_code == 200
+    assert _kb_fingerprint(db_session) == expected
+    assert db_session.get(Setting, kb_import.KB_SEEDED_FLAG) is not None
 
 
 # --- the demo resume must not become the user's identity ------------------

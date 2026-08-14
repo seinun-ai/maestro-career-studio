@@ -7,10 +7,12 @@ CURRENT role by the engine and simultaneously failed health gate S3 (tier
 `serious`) for an unparseable end date — same document, opposite readings.
 """
 
+from datetime import date
+
 import pytest
 
 from app.services import resume_dates
-from app.services.ats.resume_indexer import parse_month_year
+from app.services.ats.resume_indexer import index_resume, parse_month_year
 from app.services.health_zones import parse_ym
 
 
@@ -32,6 +34,90 @@ def test_current_is_a_whole_string_match_not_a_prefix():
     matched on the first whitespace token, which would have accepted it."""
     assert resume_dates.is_current("Present day rotation") is False
     assert parse_ym("Present day rotation") is None
+
+
+@pytest.mark.parametrize(
+    "raw_end, expected",
+    [
+        (None, True), ("   ", True), (" Present ", True), ("garbage", False),
+        (0, False), (False, False),
+    ],
+)
+def test_is_open_ended_normalizes_missing_and_whitespace(raw_end, expected):
+    """Only absent or blank end dates become ongoing after normalization."""
+    assert resume_dates.is_open_ended(raw_end) is expected
+
+
+@pytest.mark.parametrize(
+    "raw_end, expected_open_ended, expected_gate_failure",
+    [
+        ("", True, False),
+        ("Present", True, False),
+        ("Ongoing", True, False),
+        ("garbage", False, True),
+        ("2024-01", False, False),
+    ],
+)
+def test_blank_or_current_end_dates_have_one_ats_and_s3_contract(
+    raw_end, expected_open_ended, expected_gate_failure
+):
+    """Changing the shared open-ended branch must break this cross-subsystem contract."""
+    from app.services.health_gates import gate_dates
+
+    resume = {
+        "experience": [{
+            "company": "Acme", "role": "Analyst", "start_date": "Jan 2020",
+            "end_date": raw_end, "bullets": [],
+        }]
+    }
+
+    assert resume_dates.is_open_ended(raw_end) is expected_open_ended
+    indexed = index_resume(resume, as_of=date(2026, 7, 6)).entries[0]
+    assert indexed.is_current is expected_open_ended
+    assert (gate_dates(resume)["status"] == "fail") is expected_gate_failure
+
+
+def test_gate_dates_passes_a_filled_start_with_a_blank_end_as_ongoing():
+    """Removing the open-ended S3 branch must make this valid ongoing role fail."""
+    from app.services.health_gates import gate_dates
+
+    resume = {"experience": [{
+        "company": "Acme", "role": "Analyst", "start_date": "Jan 2020", "end_date": "",
+    }]}
+
+    assert gate_dates(resume)["status"] == "pass"
+
+
+def test_gate_dates_passes_a_wholly_undated_role():
+    """Treating absent dates as malformed must make an undated role fail S3."""
+    from app.services.health_gates import gate_dates
+
+    assert gate_dates({"experience": [{"company": "Acme", "role": "Analyst"}]})["status"] == "pass"
+
+
+@pytest.mark.parametrize("raw_end", ["Present", "Ongoing"])
+def test_gate_dates_accepts_explicit_ongoing_end_tokens(raw_end):
+    """Bypassing the shared current-token predicate must make these tokens fail S3."""
+    from app.services.health_gates import gate_dates
+
+    resume = {"experience": [{
+        "company": "Acme", "role": "Analyst", "start_date": "Jan 2020", "end_date": raw_end,
+    }]}
+
+    assert gate_dates(resume)["status"] == "pass"
+
+
+def test_gate_dates_reports_only_an_unparseable_nonempty_end_date():
+    """Restoring the old missing-or-unparseable wording must break this detail."""
+    from app.services.health_gates import gate_dates
+
+    resume = {"experience": [{
+        "company": "Acme", "role": "Analyst", "start_date": "Jan 2020", "end_date": "garbage",
+    }]}
+
+    result = gate_dates(resume)
+    assert result["status"] == "fail"
+    assert result["detail"] == "Acme — Analyst: end date unparseable"
 
 
 @pytest.mark.parametrize(

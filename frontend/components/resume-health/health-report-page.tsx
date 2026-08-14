@@ -111,8 +111,12 @@ export function HealthReportPage({
   const noReportYet =
     report.isError && report.error instanceof ApiError && report.error.status === 404;
 
-  const refetchReport = () => {
-    qc.invalidateQueries({ queryKey: ["resume-lint", kind, resumeKey] });
+  const reanalyzeReport = async () => {
+    const result = await runLintReport(kind, resumeKey);
+    qc.setQueryData(["resume-lint", kind, resumeKey], result);
+    await qc.invalidateQueries({
+      queryKey: ["resume-lint", kind, resumeKey],
+    });
   };
 
   const overrideClassification = async (
@@ -258,7 +262,7 @@ export function HealthReportPage({
             gates={gates}
             kind={kind}
             resumeKey={resumeKey}
-            onChanged={refetchReport}
+            onChanged={reanalyzeReport}
           />
 
           {!hasAnything && (

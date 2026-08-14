@@ -128,8 +128,10 @@
   v(after)
 }
 
-#let date_range(start, end) = {
-  if start != none and end != none [#start -- #end] else if start != none [#start] else if end != none [#end]
+#let has_date(value) = value != none and value.trim() != ""
+
+#let date_range(start, end, ongoing: false) = {
+  if has_date(start) and has_date(end) [#start -- #end] else if has_date(start) and ongoing [#start #sym.dash.en Present] else if has_date(start) [#start] else if has_date(end) [#end]
 }
 
 // LaTeX-\underline-style link: the LaTeX original draws a continuous 0.4pt
@@ -173,7 +175,7 @@
       columns: (1fr, auto),
       align: (left, right),
       row-gutter: leading,
-      [*#job.company*], [*#date_range(job.start_date, job.end_date)*],
+      [*#job.company*], [*#date_range(job.start_date, job.end_date, ongoing: true)*],
       emph(job.role), emph(job.location),
     )
     v(BULLET_LEAD)

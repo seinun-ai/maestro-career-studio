@@ -330,35 +330,44 @@ function SourceQuote({ text }: { text: string }) {
   );
 }
 
-function DetailsDisclosure({ finding }: { finding: LintFinding }) {
+function DetailsDisclosure({
+  why,
+  how,
+  label = "Why this matters & how to improve",
+}: {
+  why: string;
+  how: string;
+  label?: string;
+}) {
   const [open, setOpen] = useState(false);
-  if (!finding.why && !finding.how) return null;
+  if (!why && !how) return null;
   return (
     <>
       <button
         type="button"
         className="text-muted-foreground hover:text-foreground mt-1 flex items-center gap-1 text-xs"
         onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
       >
         {open ? (
           <ChevronDown className="size-3" />
         ) : (
           <ChevronRight className="size-3" />
         )}
-        Why this matters & how to improve
+        {label}
       </button>
       {open && (
         <div className="text-muted-foreground mt-1 space-y-1 text-xs">
-          {finding.why && (
+          {why && (
             <p>
               <span className="text-foreground font-medium">Why: </span>
-              {finding.why}
+              {why}
             </p>
           )}
-          {finding.how && (
+          {how && (
             <p>
               <span className="text-foreground font-medium">How: </span>
-              {finding.how}
+              {how}
             </p>
           )}
         </div>
@@ -509,7 +518,7 @@ export function FixCard({
       <CardHeader finding={finding} meta={meta} />
       {showQuote && <SourceQuote text={currentText} />}
       <p className="mt-1.5 text-sm">{finding.issue}</p>
-      <DetailsDisclosure finding={finding} />
+      <DetailsDisclosure why={finding.why} how={finding.how} />
       <ClassificationOverride
         finding={finding}
         onChanged={onClassificationChanged}
@@ -575,7 +584,7 @@ export function AskCard({
           {finding.question}
         </p>
       )}
-      <DetailsDisclosure finding={finding} />
+      <DetailsDisclosure why={finding.why} how={finding.how} />
       <ClassificationOverride
         finding={finding}
         onChanged={onClassificationChanged}
@@ -678,16 +687,18 @@ function FailedGate({
   gate: LintGate;
   kind: "base" | "application";
   resumeKey: string;
-  onChanged: () => void;
+  onChanged: () => Promise<void>;
 }) {
   const [showReason, setShowReason] = useState(false);
   const [reason, setReason] = useState("");
 
   const waive = useMutation({
-    mutationFn: () => waiveGate(kind, resumeKey, gate.id, reason),
+    mutationFn: async () => {
+      await waiveGate(kind, resumeKey, gate.id, reason);
+      await onChanged();
+    },
     onSuccess: () => {
       toast.success("Gate waived");
-      onChanged();
     },
     onError: (err: Error) =>
       toast.error(err instanceof ApiError ? err.message : String(err)),
@@ -715,9 +726,18 @@ function FailedGate({
         <span className="text-sm font-medium">{gate.label}</span>
       </div>
       {gate.detail && <p className="mt-1 text-sm">{gate.detail}</p>}
+      <DetailsDisclosure
+        why={gate.why}
+        how={gate.fix_hint}
+        label="Why this matters & how to fix"
+      />
 
       {showReason ? (
         <div className="mt-2 space-y-2">
+          <p className="text-muted-foreground text-xs">
+            Waiving lifts this gate&apos;s score cap for this resume. It doesn&apos;t change the
+            resume. The gate stays waived across future edits until you unwaive it here.
+          </p>
           <Textarea
             rows={2}
             aria-label="Reason for waiving this gate"
@@ -764,29 +784,45 @@ function WaivedGate({
   gate: LintGate;
   kind: "base" | "application";
   resumeKey: string;
-  onChanged: () => void;
+  onChanged: () => Promise<void>;
 }) {
   const unwaive = useMutation({
-    mutationFn: () => unwaiveGate(kind, resumeKey, gate.id),
+    mutationFn: async () => {
+      await unwaiveGate(kind, resumeKey, gate.id);
+      await onChanged();
+    },
     onSuccess: () => {
       toast.success("Waiver removed");
-      onChanged();
     },
     onError: (err: Error) =>
       toast.error(err instanceof ApiError ? err.message : String(err)),
   });
 
   return (
-    <div className="text-muted-foreground bg-muted/40 flex items-center justify-between gap-2 rounded-md border px-3 py-2">
-      <span className="min-w-0 truncate text-sm">{gate.label} (waived)</span>
-      <Button
-        size="sm"
-        variant="ghost"
-        disabled={unwaive.isPending}
-        onClick={() => unwaive.mutate()}
-      >
-        {unwaive.isPending ? "…" : "Unwaive"}
-      </Button>
+    <div className="text-muted-foreground bg-muted/40 rounded-md border px-3 py-2">
+      <div className="flex items-center justify-between gap-2">
+        <span className="min-w-0 truncate text-sm">{gate.label} (waived)</span>
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={unwaive.isPending}
+          onClick={() => unwaive.mutate()}
+        >
+          {unwaive.isPending ? "…" : "Unwaive"}
+        </Button>
+      </div>
+      {gate.detail && <p className="mt-1 text-sm">{gate.detail}</p>}
+      <DetailsDisclosure
+        why={gate.why}
+        how={gate.fix_hint}
+        label="Why this matters & how to fix"
+      />
+      {gate.waiver_reason && (
+        <p className="mt-1 text-xs">
+          <span className="text-foreground font-medium">Waiver reason: </span>
+          {gate.waiver_reason}
+        </p>
+      )}
     </div>
   );
 }
@@ -800,7 +836,7 @@ export function GateBanner({
   gates: LintGate[];
   kind: "base" | "application";
   resumeKey: string;
-  onChanged: () => void;
+  onChanged: () => Promise<void>;
 }) {
   const failed = gates.filter((g) => g.status === "fail");
   const waived = gates.filter((g) => g.status === "waived");

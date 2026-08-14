@@ -455,29 +455,66 @@ def test_propose_from_resume_over_a_realistic_title_corpus(title, category):
 @pytest.mark.parametrize(
     "titles,category",
     [
-        # An IC who became a manager: BOTH families match the joined haystack,
-        # so the answer is `unknown` and the user picks. Adding the manager
-        # categories made this whole shape ambiguous — measured at 12 of 22
-        # realistic two-role paths — and that is the intended outcome, not a
-        # regression to fix. An Engineering Manager is not a senior Software
-        # Engineer, so the old confident `software_engineer` was the wrong
-        # answer; this module's rule is that a visible blank beats a plausible
-        # wrong one, and `kb_import` surfaces it as "Role not set" with a
-        # one-click picker.
-        (["Engineering Manager", "Software Engineer"], "unknown"),
-        (["Data Science Manager", "Senior Data Scientist"], "unknown"),
-        # Still unambiguous when both titles sit in ONE family — proof the rule
-        # above is about genuine ambiguity and not merely about having two jobs.
+        # Recency: the current title is one family, so an older different
+        # family no longer poisons the guess (the joined-haystack rule did).
+        (["Engineering Manager", "Software Engineer"], "engineering_manager"),
+        (["Data Science Manager", "Senior Data Scientist"], "engineering_manager"),
+        # Still unambiguous when both titles sit in ONE family.
         (["Senior Data Scientist", "Data Scientist"], "data_scientist"),
     ],
 )
-def test_propose_from_resume_reads_the_two_most_recent_titles_together(titles, category):
-    # `propose_from_resume` joins `experience[:2]` into a single haystack, so a
-    # corpus of single titles cannot see any of this. That gap is exactly how
-    # the career-path ambiguity above went unnoticed until review.
+def test_propose_from_resume_reads_the_two_most_recent_titles_independently(titles, category):
     assert role_categories.propose_from_resume(
         {"experience": [{"role": t} for t in titles]}
     ) == category
+
+
+@pytest.mark.parametrize(
+    "display_name,summary,titles,expected",
+    [
+        # Filename is the user's own statement of the target; it beats history.
+        ("data engineer", "", ["Business Analyst", "Data Analyst"], "data_engineer"),
+        # SUMMARY usually names the role; it beats older titles.
+        (None, "Data Scientist with 5 years in analytics.", ["Business Analyst"], "data_scientist"),
+        # An ambiguous summary (two families) falls through to a clear title.
+        (
+            None,
+            "Mentored a data engineer and a data analyst across the org.",
+            ["Data Scientist", "Business Analyst"],
+            "data_scientist",
+        ),
+        # Recency: the current title wins over an older different family.
+        (None, "", ["Data Scientist", "Business Analyst"], "data_scientist"),
+        # Two families in the only signal: stay unknown. Never YAML-order.
+        (None, "", ["Data Engineer / Analytics Engineer"], "unknown"),
+        # Every signal empty or ambiguous: the honesty property.
+        (
+            None,
+            "Mentored a data engineer and a data analyst across the org.",
+            ["Data Engineer / Analytics Engineer"],
+            "unknown",
+        ),
+        # Word-boundary: a substring of "analyst" must not mint the analyst family.
+        (None, "", ["Analystics"], "unknown"),
+        # Word-boundary, the DISCRIMINATING case: "data analyst" is a plain
+        # substring of "Data Analystics" (…analyst|ics…), so a naive `in`
+        # check proposes data_analyst here — only \b-anchored matching stays
+        # unknown. Review-added after a mutation check showed the row above
+        # passes under substring matching too (no family phrase is a
+        # substring of bare "Analystics" either way).
+        (None, "", ["Data Analystics Platform Lead"], "unknown"),
+        # No signals at all.
+        (None, "", [], "unknown"),
+    ],
+)
+def test_propose_from_resume_priority_cascade(
+    display_name, summary, titles, expected
+):
+    data = {
+        "summary": summary,
+        "experience": [{"role": t} for t in titles],
+    }
+    assert role_categories.propose_from_resume(data, display_name=display_name) == expected
 
 
 def test_two_categories_may_not_claim_one_alias(vocabulary):

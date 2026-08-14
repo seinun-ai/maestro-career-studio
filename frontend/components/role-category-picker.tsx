@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
@@ -10,6 +11,7 @@ import {
 } from "@/components/role-picker";
 import { Badge } from "@/components/ui/badge";
 import { apiFetch } from "@/lib/api";
+import { cn } from "@/lib/utils";
 import type { BaseResumeDetail, FavoredRole, RoleCategory } from "@/lib/types";
 
 /** The vocabulary, fetched once. Deliberately NOT duplicated client-side: it
@@ -70,15 +72,20 @@ export function RoleCategoryPicker({
   slug,
   roleCategory,
   roleLabel: label = null,
+  proposed = false,
   className,
 }: {
   slug: string;
   roleCategory: string;
   roleLabel?: string | null;
+  /** True when the import pipeline guessed this role; the chip must look like a guess. */
+  proposed?: boolean;
   className?: string;
 }) {
   const qc = useQueryClient();
   const { data: options } = useRoleCategories();
+  const [confirmed, setConfirmed] = useState(!proposed);
+  const guessing = proposed && !confirmed;
 
   const save = useMutation({
     mutationFn: (entry: FavoredRole | null) =>
@@ -99,27 +106,36 @@ export function RoleCategoryPicker({
   const value = favoredRoleFromTag(roleCategory, label, options);
 
   return (
-    <RolePicker
-      mode="single"
-      value={value}
-      onValueChange={(next) => {
-        // Skip no-ops so a remount / same chip does not PATCH.
-        const prev = identityFromFavoredRole(value);
-        const nextBody = identityFromFavoredRole(next);
-        if (
-          prev.role_label === nextBody.role_label &&
-          (prev.role_category ?? null) === (nextBody.role_category ?? null)
-        ) {
-          return;
-        }
-        save.mutate(next);
+    <div
+      title={guessing ? "Suggested — click to confirm or pick another" : undefined}
+      onClick={() => {
+        if (guessing) setConfirmed(true);
       }}
-      disabled={save.isPending || !options}
-      className={
-        className ??
-        "border-input focus-within:ring-ring/50 flex min-h-9 flex-wrap items-center gap-1.5 rounded-md border bg-transparent px-2 py-1.5 text-sm focus-within:ring-2"
-      }
-      placeholder={roleCategory === "unknown" && !label ? "Set role…" : ""}
-    />
+    >
+      <RolePicker
+        mode="single"
+        value={value}
+        onValueChange={(next) => {
+          setConfirmed(true);
+          // Skip no-ops so a remount / same chip does not PATCH.
+          const prev = identityFromFavoredRole(value);
+          const nextBody = identityFromFavoredRole(next);
+          if (
+            prev.role_label === nextBody.role_label &&
+            (prev.role_category ?? null) === (nextBody.role_category ?? null)
+          ) {
+            return;
+          }
+          save.mutate(next);
+        }}
+        disabled={save.isPending || !options}
+        className={cn(
+          "border-input focus-within:ring-ring/50 flex min-h-9 flex-wrap items-center gap-1.5 rounded-md border bg-transparent px-2 py-1.5 text-sm focus-within:ring-2",
+          className,
+          guessing && "border-dashed",
+        )}
+        placeholder={roleCategory === "unknown" && !label ? "Set role…" : ""}
+      />
+    </div>
   );
 }

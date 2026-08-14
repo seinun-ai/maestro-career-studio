@@ -14,12 +14,6 @@ _MONTHS = {
     "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
     "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12,
 }
-# Shared with the health gate — see services/resume_dates. Two definitions of
-# "still here" previously disagreed, so the ATS engine scored a role as current
-# while gate S3 called the same end date unparseable.
-_CURRENT_TOKENS = resume_dates.CURRENT_TOKENS
-
-
 def parse_month_year(value: str | None) -> date | None:
     """Parse "Jul 2023" → date(2023, 7, 1). "Present"/None/garbage → None.
 
@@ -125,14 +119,10 @@ def _index_experience(
         if exp.get("enabled") is False:
             continue
         start = parse_month_year(exp.get("start_date"))
-        # Currency comes from the RAW end_date field: only a missing/empty value
-        # or an explicit "Present"-style token means current. A non-empty
-        # end_date that fails to parse is a data problem, not a current role.
+        # Currency comes from the shared RAW end_date rule. A non-empty end date
+        # that fails to parse is a data problem, not a current role.
         raw_end = exp.get("end_date")
-        raw_end_text = str(raw_end).strip() if raw_end else ""
-        # Whole-string match, not first-token: "Present" is current, but a value
-        # that merely STARTS with one of these words is not.
-        raw_says_current = not raw_end_text or resume_dates.is_current(raw_end_text)
+        raw_says_current = resume_dates.is_open_ended(raw_end)
         if raw_says_current:
             is_current = start is not None
             last = as_of if is_current else None

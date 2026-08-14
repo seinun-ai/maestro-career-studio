@@ -1,10 +1,10 @@
 {
   "structure": {
     "root": "backend",
-    "modules": 379,
-    "total_loc": 93291,
-    "src_loc": 35442,
-    "test_loc": 57849,
+    "modules": 380,
+    "total_loc": 94523,
+    "src_loc": 35701,
+    "test_loc": 58822,
     "orphan_modules": [],
     "test_only_reachable": [],
     "orphan_loc": 0,
@@ -19,7 +19,7 @@
       },
       {
         "file": "app/services/resume_lint.py",
-        "line": 655,
+        "line": 668,
         "name": "_advisories",
         "complexity": 39,
         "params": 1,
@@ -29,9 +29,9 @@
         "file": "app/services/role_categories.py",
         "line": 56,
         "name": "_load",
-        "complexity": 36,
+        "complexity": 38,
         "params": 0,
-        "lines": 136
+        "lines": 145
       },
       {
         "file": "app/services/kb_consolidation.py",
@@ -107,7 +107,7 @@
       },
       {
         "file": "app/services/health_gates.py",
-        "line": 61,
+        "line": 108,
         "name": "_iter_texts",
         "complexity": 27,
         "params": 1,
@@ -147,7 +147,7 @@
       },
       {
         "file": "app/services/chat_agent.py",
-        "line": 149,
+        "line": 138,
         "name": "run_turn",
         "complexity": 25,
         "params": 6,
@@ -331,7 +331,7 @@
       },
       {
         "file": "app/services/health_gates.py",
-        "line": 126,
+        "line": 173,
         "name": "detect_gaps",
         "complexity": 20,
         "params": 2,
@@ -339,7 +339,7 @@
       },
       {
         "file": "app/services/ats/resume_indexer.py",
-        "line": 180,
+        "line": 170,
         "name": "_index_extra_sections",
         "complexity": 20,
         "params": 2,
@@ -410,7 +410,7 @@
         "lines": 92
       }
     ],
-    "hotspot_count": 339,
+    "hotspot_count": 341,
     "error_masking": [
       {
         "file": "tests/test_tracing.py",
@@ -459,8 +459,8 @@
       }
     ],
     "error_masking_count": 9,
-    "internal_import_edges": 1573,
-    "imports_per_module": 4.15,
+    "internal_import_edges": 1586,
+    "imports_per_module": 4.17,
     "entry_points_used": [
       "app.main",
       "mcp_server.server",
@@ -477,7 +477,7 @@
       "min_tokens": 50,
       "mode": "weak"
     },
-    "percentage": 1.01,
+    "percentage": 1.0,
     "duplicated_lines": 436,
     "clones": 45,
     "allowlisted_clones": 0,
@@ -582,7 +582,7 @@
     {
       "rank": "P2",
       "signal": "complexity_concentration",
-      "detail": "339 function(s) over threshold. worst: app/services/explore_build_areas.py:162 cc=39",
+      "detail": "341 function(s) over threshold. worst: app/services/explore_build_areas.py:162 cc=39",
       "why": "Complexity mass concentrating in few functions is the erosion signature.",
       "action": "Decompose the top 3. Do not touch the tail."
     },
@@ -595,16 +595,16 @@
     }
   ],
   "metrics": {
-    "total_loc": 93291,
-    "src_loc": 35442,
-    "test_loc": 57849,
-    "modules": 379,
+    "total_loc": 94523,
+    "src_loc": 35701,
+    "test_loc": 58822,
+    "modules": 380,
     "orphan_loc": 0,
-    "duplication_pct": 1.01,
+    "duplication_pct": 1.0,
     "duplicated_lines": 436,
     "clone_count": 45,
-    "complexity_hotspots": 339,
+    "complexity_hotspots": 341,
     "error_masking": 9,
-    "imports_per_module": 4.15
+    "imports_per_module": 4.17
   }
 }

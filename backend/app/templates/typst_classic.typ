@@ -40,8 +40,10 @@
   v(2pt)
 }
 
-#let date_range(start, end) = {
-  if start != none and end != none [#start #sym.dash.en #end] else if start != none [#start] else if end != none [#end]
+#let has_date(value) = value != none and value.trim() != ""
+
+#let date_range(start, end, ongoing: false) = {
+  if has_date(start) and has_date(end) [#start #sym.dash.en #end] else if has_date(start) and ongoing [#start #sym.dash.en Present] else if has_date(start) [#start] else if has_date(end) [#end]
 }
 
 // ---- Header
@@ -73,7 +75,7 @@
     grid(
       columns: (1fr, auto),
       [*#job.company* #if job.location != none [#sym.dash.en #job.location]],
-      [*#date_range(job.start_date, job.end_date)*],
+      [*#date_range(job.start_date, job.end_date, ongoing: true)*],
     )
     emph(job.role)
     for b in job.bullets [

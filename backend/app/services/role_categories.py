@@ -461,47 +461,57 @@ def prompt_options() -> str:
     return "|".join([*keys(), OTHER])
 
 
-def propose_from_resume(data: dict) -> str:
-    """Propose a role from resume content — or `unknown` when unsure.
+def _families_in_signal(text: str) -> set[str]:
+    """Families named by one signal, via exact/alias match plus word-boundary phrases.
 
-    Deliberately deterministic and deliberately timid. Adjacent phrases are
-    uniquely owned, but substring matches, compound titles, and two-role career
-    paths can still hit multiple families. Any single-winner scheme would decide
-    those ties by YAML file order. Exact catalog ownership is a veto only: a
-    nested role or alias may prevent a different-family proposal, never create
-    one without an adjacent hit.
+    ``match_free_text`` and adjacent-phrase hits share one set so a catalog-owned
+    title that also contains a different family's phrase is *ambiguous* (the
+    exact-alias veto) rather than a wrong proposal. Word-boundary matching is
+    the point: ``analyst`` must not fire inside ``Analystics``.
+    """
+    hits: set[str] = set()
+    raw = str(text or "")
+    if not raw.strip():
+        return hits
+    match = match_free_text(raw)
+    if match["category"] is not None:
+        hits.add(match["category"])
+    for key, members in _load()["families"].items():
+        for member in members:
+            if member and re.search(rf"\b{re.escape(member)}\b", raw, re.IGNORECASE):
+                hits.add(key)
+                break
+    return hits
 
-    So this only proposes when the answer is UNAMBIGUOUS — exactly one category
-    matches the most recent role title. Anything else returns ``unknown``, which
-    the UI shows as "Role not set" with a one-click picker. A visible blank beats
-    a plausible wrong answer; the user confirms either way.
+
+def propose_from_resume(data: dict, display_name: str | None = None) -> str:
+    """Propose a role from resume signals — or `unknown` when unsure.
+
+    Signals are evaluated independently in priority order: display name (the
+    filename the user gave the file), then summary, then the two most recent
+    job titles. The FIRST signal that yields exactly one family wins. A signal
+    that names two or more families is ambiguous and falls through; only when
+    every signal is empty or ambiguous does this return ``unknown``. A visible
+    blank beats a plausible wrong answer; the user confirms either way.
+
+    Phrase matching is word-boundary (``\\b``), never a raw substring. Exact
+    catalog ownership is a veto *within* a signal: a nested role or alias may
+    prevent a different-family proposal from that same text, never create a
+    tie-break across signals.
+    """
+    for signal in signal_texts(data, display_name):
+        families = _families_in_signal(signal)
+        if len(families) == 1:
+            return next(iter(families))
+    return UNKNOWN
+
+
+def signal_texts(data: dict, display_name: str | None = None) -> list[str]:
+    """The guess signals in cascade priority order — shared with kb_import.
+
+    One definition so `propose_from_resume` and `_alias_label_for` cannot
+    disagree about what counts as a signal or which order they rank in.
     """
     experience = data.get("experience") or []
     titles = [str((e or {}).get("role") or "") for e in experience[:2]]
-    if not any(titles):
-        return UNKNOWN
-
-    catalog_categories = {
-        match["category"]
-        for title in titles
-        if (match := match_free_text(title))["category"] is not None
-    }
-
-    loaded = _load()
-    haystack = " ".join(_slug(t).replace("_", " ") for t in titles if t)
-    if not haystack.strip():
-        return UNKNOWN
-
-    hits: set[str] = set()
-    for key, members in loaded["families"].items():
-        for member in members:
-            if member and member.lower() in haystack:
-                hits.add(key)
-                break
-
-    # Exactly one adjacent category, or nothing. Never a tie-break. A catalog
-    # role/alias owned elsewhere vetoes a confidently wrong substring match.
-    if len(hits) != 1:
-        return UNKNOWN
-    proposed = next(iter(hits))
-    return proposed if catalog_categories <= {proposed} else UNKNOWN
+    return [display_name or "", str(data.get("summary") or ""), *titles]

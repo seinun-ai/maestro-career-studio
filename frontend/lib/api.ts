@@ -469,6 +469,23 @@ export function kbIngestDocument(file: File) {
   );
 }
 
+export function kbImportResume(file: File, consolidate = true) {
+  const form = new FormData();
+  form.append("files", file);
+  const q = consolidate ? "" : "?consolidate=false";
+  return apiFetch<import("@/lib/types").ImportReport>(`/api/kb/import${q}`, {
+    method: "POST",
+    body: form,
+  });
+}
+
+export function kbImportConsolidate(slugs: string[]) {
+  return apiFetch<{ entities_created: number; points_approved: number }>(
+    "/api/kb/import/consolidate",
+    { method: "POST", body: JSON.stringify({ slugs }) },
+  );
+}
+
 export function remintKbDocument(documentId: UUID) {
   return apiFetch<KBDocumentOut>(`/api/kb/documents/${documentId}/mint`, {
     method: "POST",

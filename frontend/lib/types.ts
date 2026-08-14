@@ -1518,6 +1518,9 @@ export interface LintGate {
   status: LintGateStatus;
   label: string;
   detail: string;
+  why: string;
+  fix_hint: string;
+  waiver_reason?: string;
 }
 
 export interface LintReport {

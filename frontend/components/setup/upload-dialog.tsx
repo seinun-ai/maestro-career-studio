@@ -2,10 +2,9 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { CircleCheck, CircleX, Loader2 } from "lucide-react";
-
 import { ResumeImportPanel } from "@/components/career/resume-import-dialog";
 import { Dropzone } from "@/components/setup/dropzone";
+import { RowIcon } from "@/components/setup/row-icon";
 import { useDocumentQueue } from "@/components/setup/use-document-queue";
 import { Button } from "@/components/ui/button";
 import {
@@ -21,23 +20,6 @@ const DOC_ACCEPT = ".pdf,.docx,.md,.txt,.tex,.png,.jpg,.jpeg,.webp";
 const DOC_MAX_FILES = 10;
 /** The backend's own cap (career_kb.ingest_document_first). */
 const DOC_MAX_BYTES = 10 * 1024 * 1024;
-
-function RowIcon({ state }: { state: string }) {
-  if (state === "done")
-    return <CircleCheck aria-hidden className="text-primary size-4 shrink-0" />;
-  if (state === "failed")
-    return <CircleX aria-hidden className="text-destructive size-4 shrink-0" />;
-  if (state === "uploading")
-    return (
-      <Loader2 aria-hidden className="text-muted-foreground size-4 shrink-0 animate-spin" />
-    );
-  return (
-    <span
-      aria-hidden
-      className="border-muted-foreground/40 size-4 shrink-0 rounded-full border"
-    />
-  );
-}
 
 /** Cover letters, certifications, reports — anything that is evidence about you
  *  but is not itself a resume. */

@@ -19,7 +19,11 @@ class ExperienceEntry(BaseModel):
     (functional and academic resumes routinely do): that is a legal
     representation, not a defect. Renderers must guard it, the ATS indexer
     treats the entry as undated (no recency credit, no tenure span), and health
-    gate S3 skips it — only a NON-EMPTY unparseable date string is a defect."""
+    gate S3 skips it — only a NON-EMPTY unparseable date string is a defect.
+    A blank/missing ``end_date`` on a role WITH a start date means the role is
+    ongoing (``resume_dates.is_open_ended`` is the one definition): the indexer
+    grants current-role credit, S3 passes it, and the bundled templates render
+    "start – Present"."""
 
     company: str
     role: str

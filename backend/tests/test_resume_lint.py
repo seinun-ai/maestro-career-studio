@@ -124,6 +124,20 @@ def test_waiver_suppresses_gate_cap():
     assert next(g for g in waived["report"]["gates"] if g["id"] == "S3")["status"] == "waived"
 
 
+def test_failed_gate_finding_reuses_its_gate_coaching_copy():
+    """Generic gate coaching would hide the specific remedy the gate contract owns."""
+    resume = _resume()
+    levels = {("experience", 0, 0): _lv(1.0)}
+    bad = [dict(g, status="fail") if g["id"] == "S3" else g for g in PASS_GATES]
+
+    out = rl.assemble(resume, levels, bad, "experienced", {("experience", 0, 0)})
+    gate = next(g for g in out["report"]["gates"] if g["id"] == "S3")
+    finding = next(f for f in out["report"]["findings"] if f["type"] == "gate")
+
+    assert finding["why"] == gate["why"]
+    assert finding["how"] == gate["fix_hint"]
+
+
 def test_fix_when_rewrite_exists_else_ask():
     resume = _resume()
     resume["experience"][0]["bullets"] = ["Responsible for stuff", "Responsible for things", "ok"]
@@ -330,7 +344,11 @@ def test_run_report_reads_waivers_from_db(db_session, monkeypatch):
                                     gate_id="S3", reason="present role, dates implied"))
     db_session.commit()
     waived = rl.run_report(db_session, "base", "k-waive", resume, template_id=None)
-    assert next(g for g in waived.report_json["gates"] if g["id"] == "S3")["status"] == "waived"
+    waived_s3 = next(g for g in waived.report_json["gates"] if g["id"] == "S3")
+    ordinary_s5 = next(g for g in waived.report_json["gates"] if g["id"] == "S5")
+    assert waived_s3["status"] == "waived"
+    assert waived_s3["waiver_reason"] == "present role, dates implied"
+    assert "waiver_reason" not in ordinary_s5
 
 
 def test_trailing_punctuation_flagged_on_skills_and_certs():

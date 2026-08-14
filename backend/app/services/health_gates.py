@@ -7,6 +7,7 @@ resume JSON alone.
 """
 import re
 
+from app.services import resume_dates
 from app.services.health_zones import (
     enabled_entries,
     now_ym,
@@ -24,33 +25,79 @@ CLAIM_SLACK_YEARS = 1.0
 GAP_THRESHOLD_MONTHS = 6
 
 
+# Static gate coaching is part of the report contract. Keep it here so every
+# gate serializer and the agent-facing findings use the same explanation.
+GATE_COPY: dict[str, dict[str, str]] = {
+    "S1": {
+        "why": "If the PDF drops or changes content, automated screeners and recruiters evaluate a different resume than the one you wrote. This blocks tailoring until fixed or waived.",
+        "fix_hint": "Use a template that preserves every section and bullet in extracted PDF text, then validate it again.",
+    },
+    "S2": {
+        "why": "A resume that loses its email address in the PDF gives recruiters no reliable way to contact you. This blocks tailoring until fixed or waived.",
+        "fix_hint": "Add a valid email address and use a template that keeps it readable in extracted PDF text.",
+    },
+    "S3": {
+        "why": "Automated screeners read your dates to compute tenure and recency; a date they can't parse can erase that credit.",
+        "fix_hint": "Write dates like 'Jan 2022' or '2022'. For your current role, leave the end date blank or write 'Present'. Both are understood.",
+    },
+    "S4": {
+        "why": "Standard section headings help screeners classify your experience, education, and skills instead of merging or skipping them.",
+        "fix_hint": "Use recognizable headings such as 'Experience', 'Education', and 'Technical Skills', then validate the template again.",
+    },
+    "S5": {
+        "why": "Placeholder text makes the resume look unfinished and can expose drafting notes to employers.",
+        "fix_hint": "Replace every TODO, TBD, bracketed prompt, or sample value with final text, or remove it.",
+    },
+    "C1": {
+        "why": "The summary and most recent role carry extra weight; weak evidence there can hide stronger work farther down the resume.",
+        "fix_hint": "Strengthen the summary or newest relevant role with specific actions and outcomes.",
+    },
+    "C2": {
+        "why": "A years-of-experience claim that exceeds the dated work history can undermine trust in the rest of the resume.",
+        "fix_hint": "Add the missing dated role, correct the summary's years claim, or waive the gate with a recorded reason if the dates intentionally omit work.",
+    },
+}
+
+def gate_copy(gate_id: str) -> dict[str, str]:
+    """Return the report-contract coaching copy for one known health gate."""
+    return GATE_COPY[gate_id]
+
+
 def _gate(gate_id: str, tier: str, status: str, label: str, detail: str = "") -> dict:
-    return {"id": gate_id, "tier": tier, "status": status, "label": label, "detail": detail}
+    return {
+        "id": gate_id,
+        "tier": tier,
+        "status": status,
+        "label": label,
+        "detail": detail,
+        **gate_copy(gate_id),
+    }
 
 
 def gate_dates(resume: dict) -> dict:
-    """S3 — every DATED enabled experience role has a parseable start and end.
+    """S3 — every dated enabled experience role has readable dates.
 
     An absent start date is a legal representation (schemas/resume.py:
     ``ExperienceEntry.start_date`` is optional), so an undated role is not a
-    defect here — it simply earns no recency credit and no tenure. Only a
-    NON-EMPTY unparseable string still fails.
+    defect here — it simply earns no recency credit and no tenure. The shared
+    ``resume_dates.is_open_ended`` rule treats blank/missing ends and explicit
+    current tokens as ongoing. A non-empty, non-ongoing unparseable end fails.
     """
     bad: list[str] = []
     for _, entry in enabled_entries(resume, "experience"):
         name = f"{entry.get('company', '?')} — {entry.get('role', '?')}"
         raw_start = str(entry.get("start_date") or "").strip()
-        raw_end = str(entry.get("end_date") or "").strip()
-        if not raw_start and not raw_end:
+        raw_end = entry.get("end_date")
+        open_ended = resume_dates.is_open_ended(raw_end)
+        if not raw_start and open_ended:
             continue  # wholly undated role
-        end = parse_ym(raw_end)
         if raw_start and parse_ym(raw_start) in (None, "present"):
             bad.append(f"{name}: start date unparseable")
-        if end is None:
-            bad.append(f"{name}: end date missing or unparseable")
+        if not open_ended and parse_ym(raw_end) is None:
+            bad.append(f"{name}: end date unparseable")
     status = "fail" if bad else "pass"
     return _gate("S3", "serious", status, "Dates parseable",
-                 "; ".join(bad) or "Every role has a parseable start and end.")
+                 "; ".join(bad) or "No unparseable experience dates found.")
 
 
 def _extra_sections(resume: dict) -> list:

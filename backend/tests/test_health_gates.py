@@ -1,4 +1,6 @@
+from app.services import health_gates, resume_lint as rl
 from app.services.health_gates import (
+    GATE_COPY,
     detect_claim_overstatement,
     detect_gaps,
     gate_dates,
@@ -42,6 +44,14 @@ def test_gate_dates_accepts_an_undated_role():
     assert gate_dates(ongoing)["status"] == "pass"
 
 
+def test_gate_dates_passing_detail_does_not_claim_absent_dates_exist():
+    """A passing wholly undated role must get factual, non-invented detail."""
+    result = gate_dates({"experience": [{"company": "A", "role": "R"}]})
+
+    assert result["status"] == "pass"
+    assert result["detail"] == "No unparseable experience dates found."
+
+
 def test_detect_gaps_declines_to_guess_around_an_undated_role():
     """An undated role could cover any apparent gap, so the sweep bails rather
     than accusing the reader of a gap it cannot see."""
@@ -74,6 +84,36 @@ def test_gate_placeholders_checks_summary_too():
 
 def test_gate_placeholders_passes_clean():
     assert gate_placeholders(OK)["status"] == "pass"
+
+
+def test_gate_contract_covers_every_valid_id_with_coaching_copy():
+    """Removing copy from either gate serializer must break the API contract."""
+    from app.routers.resume_lint import VALID_GATE_IDS
+
+    assert set(GATE_COPY) == VALID_GATE_IDS
+    for gate_id in VALID_GATE_IDS:
+        for gate in (
+            rl._gate_dict(gate_id, "serious", "pass", "Test", "A factual detail."),
+            health_gates._gate(
+                gate_id, "serious", "pass", "Test", "A factual detail."
+            ),
+        ):
+            assert gate["why"].strip()
+            assert gate["fix_hint"].strip()
+
+
+def test_s3_gate_uses_the_explainable_date_copy():
+    """A date-gate copy regression must be visible in its serialized result."""
+    gate = gate_dates(OK)
+
+    assert gate["why"] == (
+        "Automated screeners read your dates to compute tenure and recency; a date they can't "
+        "parse can erase that credit."
+    )
+    assert gate["fix_hint"] == (
+        "Write dates like 'Jan 2022' or '2022'. For your current role, leave the end date "
+        "blank or write 'Present'. Both are understood."
+    )
 
 
 def test_claim_overstatement_fires_beyond_slack():

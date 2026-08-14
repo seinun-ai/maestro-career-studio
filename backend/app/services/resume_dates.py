@@ -7,9 +7,9 @@ resume saying "Ongoing" was scored as a CURRENT role by the ATS engine and
 simultaneously flagged by health gate S3 (tier `serious`) as having an
 unparseable end date. Same document, two subsystems, opposite readings.
 
-Kept as a token set rather than a regex so both consumers can use it in their
-own way — the indexer matches the first whitespace-split token, the health
-parser matches the whole trimmed string.
+Kept as a token set rather than a regex so both consumers share the same
+whole-string match. The indexer splits ordinary dates only after current-token
+recognition; the health parser also checks the whole trimmed string.
 
 `to date` / `till date` are here because they are ordinary in UK and Indian
 CVs, which are inside the English-language scope this project declares. They
@@ -45,3 +45,14 @@ def is_current(value: object) -> bool:
     marker and must not be treated as one.
     """
     return str(value or "").strip().lower() in CURRENT_TOKENS
+
+
+def is_open_ended(raw_end: object) -> bool:
+    """Whether an end-date value means the role is still ongoing.
+
+    This is the one shared definition for the ATS resume indexer and health
+    gate S3: a blank or missing end date, or a whole-string current token, is
+    open-ended.
+    """
+    text = "" if raw_end is None else str(raw_end).strip()
+    return not text or is_current(text)

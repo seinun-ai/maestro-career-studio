@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile
 from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
@@ -22,6 +22,7 @@ from app.models.setting import Setting
 from app.schemas.career_kb import (
     ImportReport,
     ImportedBaseRead,
+    ImportConsolidateRequest,
     IngestParsedReport,
     IngestParsedRequest,
     SkippedFileRead,
@@ -663,6 +664,7 @@ def ingest_parsed(
 def import_resumes_endpoint(
     db: Annotated[Session, Depends(get_db)],
     files: list[UploadFile] = File(default=[]),
+    consolidate: bool = Query(True),
 ):
     """Onboarding: uploaded resumes become base resumes AND Career KB content.
 
@@ -671,6 +673,10 @@ def import_resumes_endpoint(
     of the `kb.seeded` startup flag as a GATE (so it can be re-run whenever the
     user adds more resumes) while still SETTING it, so the next restart does not
     re-consolidate what was just imported.
+
+    ``consolidate=false`` mints bases and skips the KB pass so the UI can show
+    per-file progress, then call ``POST /api/kb/import/consolidate``. Default
+    True is the batched contract; MCP and external callers must not notice.
     """
     if not files:
         raise HTTPException(status_code=400, detail="Provide at least one file")
@@ -683,7 +689,7 @@ def import_resumes_endpoint(
         except OSError as exc:
             raise HTTPException(status_code=400, detail=f"{name}: could not read upload") from exc
 
-    result = kb_import.import_resumes(db, uploads)
+    result = kb_import.import_resumes(db, uploads, consolidate=consolidate)
     if not result.bases and result.skipped:
         # Nothing landed — surface the first reason rather than a silent 200.
         raise HTTPException(
@@ -696,6 +702,23 @@ def import_resumes_endpoint(
         skipped=[SkippedFileRead(**vars(s)) for s in result.skipped],
         kb=result.kb,
     )
+
+
+@router.post("/import/consolidate", response_model=ConsolidationReport)
+def import_consolidate_endpoint(
+    db: Annotated[Session, Depends(get_db)],
+    payload: ImportConsolidateRequest | None = None,
+):
+    """Run the import pipeline's consolidation pass over minted bases not yet in the KB."""
+    slugs = payload.slugs if payload is not None else None
+    if slugs:
+        allowed = set(base_resume_data.active_base_resume_slugs(db))
+        for slug in slugs:
+            if slug not in allowed:
+                raise HTTPException(status_code=404, detail=f"Unknown base resume: {slug}")
+    report = kb_import.consolidate_imported(db, slugs)
+    career_exports.best_effort_refresh(db)
+    return report
 
 
 @router.post("/consolidate", response_model=ConsolidationReport)

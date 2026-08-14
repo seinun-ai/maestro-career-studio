@@ -416,6 +416,9 @@ class ImportedBaseRead(BaseModel):
     slug: str
     display_name: str
     role_category: str
+    # Free-text tag when the guess used an alias of the user's own words;
+    # null means the tag IS role_category (a catalog pick).
+    role_label: str | None = None
     # True = the system proposed this from resume content and the UI must ask
     # the user to confirm. False means "unknown" — undeclared, not guessed.
     proposed: bool
@@ -439,6 +442,15 @@ class ImportReport(BaseModel):
     bases: list[ImportedBaseRead] = Field(default_factory=list)
     skipped: list[SkippedFileRead] = Field(default_factory=list)
     kb: ConsolidationReport | None = None
+
+
+class ImportConsolidateRequest(BaseModel):
+    """POST /api/kb/import/consolidate — optional slugs of just-minted bases.
+
+    Omit slugs to consolidate every active base that has no port-log row yet.
+    """
+
+    slugs: list[str] | None = None
 
 
 class IngestParsedSource(BaseModel):

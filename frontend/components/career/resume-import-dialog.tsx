@@ -1,11 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
+import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { RoleCategoryPicker } from "@/components/role-category-picker";
 import { Dropzone } from "@/components/setup/dropzone";
+import { RowIcon } from "@/components/setup/row-icon";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -14,12 +16,21 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { apiFetch } from "@/lib/api";
+import { Skeleton } from "@/components/ui/skeleton";
+import { kbImportConsolidate, kbImportResume } from "@/lib/api";
 import type { ImportReport } from "@/lib/types";
 
 const ACCEPT = ".json,.pdf,.docx,.md,.txt,.tex";
 const MAX_FILES = 10;
 const MAX_BYTES = 10 * 1024 * 1024;
+
+type FileRow =
+  | { file: File; state: "queued" }
+  | { file: File; state: "parsing" }
+  | { file: File; state: "done" }
+  | { file: File; state: "failed"; reason: string };
+
+type ConsolidateState = "idle" | "queued" | "running" | "done" | "failed";
 
 /** The resume lane's body, without dialog chrome.
  *
@@ -36,31 +47,67 @@ export function ResumeImportPanel({ onClose }: { onClose: () => void }) {
   const [files, setFiles] = useState<File[]>([]);
   const [rejected, setRejected] = useState<{ file: File; reason: string }[]>([]);
   const [report, setReport] = useState<ImportReport | null>(null);
+  const [rows, setRows] = useState<FileRow[]>([]);
+  const [consolidate, setConsolidate] = useState<ConsolidateState>("idle");
+  const [busy, setBusy] = useState(false);
 
-  const runImport = useMutation({
-    mutationFn: async (picked: File[]) => {
-      const form = new FormData();
-      picked.forEach((f) => form.append("files", f));
-      return apiFetch<ImportReport>("/api/kb/import", { method: "POST", body: form });
-    },
-    onSuccess: (result) => {
-      setReport(result);
-      setFiles([]);
-      qc.invalidateQueries({ queryKey: ["base-resumes"] });
-      qc.invalidateQueries({ queryKey: ["kb"] });
-      qc.invalidateQueries({ queryKey: ["setup-status"] });
-    },
-    onError: (err: Error) => toast.error(err.message),
-  });
+  const runImport = async (picked: File[]) => {
+    setBusy(true);
+    setRows(picked.map((file) => ({ file, state: "queued" as const })));
+    setConsolidate(picked.length ? "queued" : "idle");
+    const bases: ImportReport["bases"] = [];
+    const skipped: ImportReport["skipped"] = [];
+
+    for (let i = 0; i < picked.length; i++) {
+      const file = picked[i];
+      setRows((prev) => prev.map((r, idx) => (idx === i ? { file, state: "parsing" } : r)));
+      try {
+        const result = await kbImportResume(file, false);
+        bases.push(...result.bases);
+        skipped.push(...result.skipped);
+        setRows((prev) => prev.map((r, idx) => (idx === i ? { file, state: "done" } : r)));
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : String(err);
+        skipped.push({ filename: file.name, reason });
+        setRows((prev) =>
+          prev.map((r, idx) => (idx === i ? { file, state: "failed", reason } : r)),
+        );
+      }
+    }
+
+    let kb: ImportReport["kb"] = null;
+    if (bases.length > 0) {
+      setConsolidate("running");
+      try {
+        kb = await kbImportConsolidate(bases.map((b) => b.slug));
+        setConsolidate("done");
+      } catch (err) {
+        setConsolidate("failed");
+        toast.error(err instanceof Error ? err.message : String(err));
+      }
+    } else {
+      setConsolidate("idle");
+    }
+
+    setReport({ bases, skipped, kb });
+    setFiles([]);
+    qc.invalidateQueries({ queryKey: ["base-resumes"] });
+    qc.invalidateQueries({ queryKey: ["kb"] });
+    qc.invalidateQueries({ queryKey: ["setup-status"] });
+    setBusy(false);
+  };
 
   const reset = () => {
     setFiles([]);
     setRejected([]);
     setReport(null);
-    runImport.reset();
+    setRows([]);
+    setConsolidate("idle");
+    setBusy(false);
   };
 
   const pointsAdded = report?.kb?.points_approved ?? 0;
+  const showQueue = busy || (rows.length > 0 && !report);
 
   return (
     <>
@@ -70,22 +117,64 @@ export function ResumeImportPanel({ onClose }: { onClose: () => void }) {
               accept={ACCEPT}
               maxFiles={MAX_FILES}
               maxBytes={MAX_BYTES}
-              disabled={runImport.isPending}
+              disabled={busy}
               hint={`PDF, DOCX, Markdown, text, or the app’s own JSON · up to ${MAX_FILES} files, 10 MB each`}
-              onFiles={(picked, skipped) => {
+              onFiles={(picked, skippedFiles) => {
                 setFiles(picked);
-                setRejected(skipped);
+                setRejected(skippedFiles);
               }}
             />
 
-            {files.length > 0 && (
-              <ul className="space-y-1 text-sm">
-                {files.map((f) => (
-                  <li key={f.name} className="text-muted-foreground truncate">
-                    {f.name}
+            {showQueue ? (
+              <ul className="space-y-1.5 text-sm">
+                {rows.map((row, i) => (
+                  <li key={`${row.file.name}-${i}`} className="flex items-start gap-2">
+                    <RowIcon state={row.state} />
+                    <span className="min-w-0 flex-1">
+                      {/* block, not inline: truncate is inert on inline spans
+                          (overflow doesn't apply) — SYSTEM.md §8's recurring
+                          min-w-0/truncate family. */}
+                      <span className="block truncate">{row.file.name}</span>
+                      {row.state === "failed" && (
+                        <span className="text-muted-foreground block text-xs">
+                          {row.reason}
+                        </span>
+                      )}
+                    </span>
                   </li>
                 ))}
+                {consolidate !== "idle" && (
+                  <li className="flex items-start gap-2">
+                    <RowIcon
+                      state={
+                        consolidate === "running"
+                          ? "running"
+                          : consolidate === "queued"
+                            ? "queued"
+                            : consolidate
+                      }
+                    />
+                    <span className="text-sm">Building your Career KB…</span>
+                  </li>
+                )}
               </ul>
+            ) : (
+              files.length > 0 && (
+                <ul className="space-y-1 text-sm">
+                  {files.map((f) => (
+                    <li key={f.name} className="text-muted-foreground truncate">
+                      {f.name}
+                    </li>
+                  ))}
+                </ul>
+              )
+            )}
+
+            {consolidate === "running" && (
+              <div className="space-y-2">
+                <Skeleton className="h-3 w-64" />
+                <Skeleton className="h-8 w-full" />
+              </div>
             )}
 
             {rejected.length > 0 && (
@@ -99,26 +188,22 @@ export function ResumeImportPanel({ onClose }: { onClose: () => void }) {
             )}
 
             <div className="flex justify-end gap-2">
-              <Button variant="ghost" onClick={onClose}>
+              <Button variant="ghost" onClick={onClose} disabled={busy}>
                 Cancel
               </Button>
               <Button
-                disabled={!files.length || runImport.isPending}
-                onClick={() => runImport.mutate(files)}
+                disabled={!files.length || busy}
+                className="gap-2"
+                onClick={() => runImport(files)}
               >
-                {runImport.isPending
+                {busy && <Loader2 className="size-4 animate-spin" />}
+                {busy
                   ? "Importing…"
                   : files.length
                     ? `Import ${files.length} resume${files.length === 1 ? "" : "s"}`
                     : "Import resumes"}
               </Button>
             </div>
-            {runImport.isPending && (
-              <p className="text-muted-foreground text-xs">
-                Reading each file and merging shared history. This can take a
-                minute for several resumes.
-              </p>
-            )}
           </div>
         ) : (
           <div className="space-y-4">
@@ -140,7 +225,7 @@ export function ResumeImportPanel({ onClose }: { onClose: () => void }) {
             {report.bases.length > 0 && (
               <div className="space-y-2">
                 <p className="text-muted-foreground text-xs">
-                  Confirm the target role for each. We only guess when it is unambiguous.
+                  Confirm the target role for each — suggestions are guesses.
                 </p>
                 <ul className="space-y-2">
                   {report.bases.map((b) => (
@@ -150,6 +235,7 @@ export function ResumeImportPanel({ onClose }: { onClose: () => void }) {
                         slug={b.slug}
                         roleCategory={b.role_category}
                         roleLabel={b.role_label}
+                        proposed={b.proposed}
                         className="w-48 shrink-0"
                       />
                     </li>

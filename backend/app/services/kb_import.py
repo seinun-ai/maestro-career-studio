@@ -33,10 +33,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.base_resume import BaseResume
+from app.models.career_kb import KBPortLog
 from app.models.setting import Setting
+from app.schemas.career_kb import ConsolidationReport
 from app.schemas.resume import ResumeData
 from app.services import (
     base_resume_data,
@@ -63,6 +66,7 @@ class ImportedBase:
     display_name: str
     role_category: str
     proposed: bool          # True = the system guessed; the UI must ask to confirm
+    role_label: str | None = None
     render_error: str | None = None
     parse_warnings: list[str] = field(default_factory=list)
 
@@ -113,6 +117,17 @@ def _free_slug(session: Session, desired: str) -> str:
     return candidate
 
 
+def _alias_label_for(proposed: str, display_name: str, data: dict) -> str | None:
+    """Keep the user's own words when the winning guess was an alias hit."""
+    if proposed == role_categories.UNKNOWN:
+        return None
+    for text in role_categories.signal_texts(data, display_name):
+        match = role_categories.match_free_text(text)
+        if match["category"] == proposed and match["confidence"] == "alias":
+            return match["label"] or None
+    return None
+
+
 def _mint_base(
     session: Session,
     *,
@@ -122,12 +137,14 @@ def _mint_base(
     parse_warnings: list[str],
 ) -> ImportedBase:
     """Create one base resume. Commits before touching the filesystem."""
-    proposed_role = role_categories.propose_from_resume(data)
+    proposed_role = role_categories.propose_from_resume(data, display_name=display_name)
+    role_label = _alias_label_for(proposed_role, display_name, data)
     row = BaseResume(
         slug=slug,
         display_name=display_name,
         data_json=data,
         role_category=proposed_role,
+        role_label=role_label,
     )
     session.add(row)
     record_version(session, "base", slug, data, source="import")
@@ -141,6 +158,7 @@ def _mint_base(
         slug=slug,
         display_name=display_name,
         role_category=proposed_role,
+        role_label=role_label,
         # An unambiguous proposal still needs confirming; "unknown" is not a
         # proposal at all, it is the visible undeclared state.
         proposed=proposed_role != role_categories.UNKNOWN,
@@ -159,11 +177,18 @@ def _mint_base(
 def import_resumes(
     session: Session,
     uploads: list[tuple[str, str | None, bytes]],
+    *,
+    consolidate: bool = True,
 ) -> ImportResult:
-    """Mint a base resume per file, then consolidate them all into the KB.
+    """Mint a base resume per file, then optionally consolidate them into the KB.
 
     `uploads` is (filename, mime, bytes). Partial success is normal: a file that
     cannot be parsed is skipped and reported, never fatal to the batch.
+
+    ``consolidate=False`` skips the final ``kb_consolidation.consolidate`` pass
+    of THIS same function — not a second import implementation. Call
+    ``consolidate_imported`` later over the minted slugs. Default True keeps
+    the batched contract for MCP and any external caller.
     """
     result = ImportResult()
     sources: list[tuple[str, dict]] = []
@@ -218,13 +243,53 @@ def import_resumes(
                 )
             )
 
-    if sources:
+    if sources and consolidate:
         result.kb = kb_consolidation.consolidate(session, sources)
-        # Mark the one-time startup seed done. Without this an import that
-        # yields no entities leaves the flag unset and the next restart
-        # re-consolidates every base, including the ones just imported.
-        if session.get(Setting, KB_SEEDED_FLAG) is None:
-            session.add(Setting(key=KB_SEEDED_FLAG, value="1"))
-            session.commit()
+        _mark_kb_seeded(session)
 
     return result
+
+
+def _mark_kb_seeded(session: Session) -> None:
+    # Without this an import that yields no entities leaves the flag unset and
+    # the next restart re-consolidates every base, including the ones just
+    # imported.
+    if session.get(Setting, KB_SEEDED_FLAG) is None:
+        session.add(Setting(key=KB_SEEDED_FLAG, value="1"))
+        session.commit()
+
+
+def _sources_pending_consolidation(
+    session: Session, slugs: list[str] | None = None
+) -> list[tuple[str, dict]]:
+    """Minted bases that have not yet produced a port-log row.
+
+    ``consolidate()`` is NOT safe to re-run on experience/projects when the
+    LLM fails to return existing ids (it would mint duplicate entities and
+    points). Filtering to slugs with no port log is what makes a retry of
+    ``POST /api/kb/import/consolidate`` equivalent to a no-op after success.
+    """
+    logged = set(session.scalars(select(KBPortLog.resume_key)).all())
+    wanted = slugs if slugs is not None else list(base_resume_data.active_base_resume_slugs(session))
+    sources: list[tuple[str, dict]] = []
+    for slug in wanted:
+        if slug in logged:
+            continue
+        row = session.get(BaseResume, slug)
+        if row is None or row.deleted_at is not None:
+            continue
+        sources.append((slug, row.data_json))
+    return sources
+
+
+def consolidate_imported(
+    session: Session, slugs: list[str] | None = None
+) -> ConsolidationReport:
+    """Run the same consolidate pass import_resumes would have, over pending sources."""
+    kb_consolidation.prefetch_prompts(session)
+    sources = _sources_pending_consolidation(session, slugs)
+    if not sources:
+        return ConsolidationReport()
+    report = kb_consolidation.consolidate(session, sources)
+    _mark_kb_seeded(session)
+    return report

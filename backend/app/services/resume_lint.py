@@ -10,6 +10,7 @@ See SYSTEM.md §4 (ResumeLintReport) for the report's place in the workflow.
 import hashlib
 import logging
 import re
+from collections.abc import Mapping
 from typing import Any, Callable
 
 from sqlalchemy import select
@@ -169,7 +170,14 @@ def _classification_fields(resume: dict, loc: Location, result: dict) -> dict[st
 
 
 def _gate_dict(gate_id: str, tier: str, status: str, label: str, detail: str) -> dict[str, Any]:
-    return {"id": gate_id, "tier": tier, "status": status, "label": label, "detail": detail}
+    return {
+        "id": gate_id,
+        "tier": tier,
+        "status": status,
+        "label": label,
+        "detail": detail,
+        **health_gates.gate_copy(gate_id),
+    }
 
 
 def _prior_gate(prior_report: dict | None, gate_id: str) -> dict | None:
@@ -351,10 +359,13 @@ def structure_gates(db: Session, template_id: str | None, resume: dict) -> list[
 
 def _final_gates(
     levels_by_loc: dict[Location, dict], base_gates: list[dict], hot: set,
-    waivers: set[str], c2_hit: dict | None, prior_report: dict | None,
+    waivers: set[str] | Mapping[str, str], c2_hit: dict | None, prior_report: dict | None,
 ) -> tuple[list[dict], float | None]:
     """Base gates + the two assembled-here gates (C1/C2), waivers applied."""
-    gates = [dict(g) for g in base_gates]  # copy; we mutate status for waivers
+    gates = [
+        {**g, **health_gates.gate_copy(g["id"])}
+        for g in base_gates
+    ]  # copy; we mutate status for waivers
 
     # C1 — hot-zone evidence floor (serious). E_hot spans hot locations incl. the summary.
     hot_values = [levels_by_loc[loc]["value"] for loc in hot if loc in levels_by_loc]
@@ -378,6 +389,8 @@ def _final_gates(
     for g in gates:
         if g["id"] in waivers and g["status"] == "fail":
             g["status"] = "waived"
+            if isinstance(waivers, Mapping):
+                g["waiver_reason"] = waivers[g["id"]]
     return gates, e_hot
 
 
@@ -388,8 +401,7 @@ def _gate_findings(gates: list[dict]) -> list[dict]:
         if g["status"] == "fail":
             findings.append(_finding(
                 "gate", ("gate", None, None), g["label"], g["detail"],
-                "Non-compensatory: this caps your grade until fixed or waived.",
-                "Fix it, or waive it with a reason if it doesn't apply.",
+                g["why"], g["fix_hint"],
                 severity="critical", source="rule"))
         elif g["status"] == "ask" and g["id"] == "C2":
             findings.append(_finding(
@@ -508,7 +520,8 @@ def _gap_findings(gap_hits: list[dict]) -> list[dict]:
 
 def assemble(resume: dict, levels_by_loc: dict[Location, dict], base_gates: list[dict],
              tier: str, hot: set, *, prior_report: dict | None = None,
-             waivers: set[str] | None = None, gap_hits: list[dict] | None = None,
+             waivers: set[str] | Mapping[str, str] | None = None,
+             gap_hits: list[dict] | None = None,
              c2_hit: dict | None = None,
              rewrite_fn: Callable[[str], str | None] | None = None) -> dict[str, Any]:
     """Turn classified levels + gates into a scored report with typed findings.
@@ -801,7 +814,7 @@ def run_report(db: Session, kind: str, key: str, resume: dict, *,
     waiver_rows = db.scalars(
         select(HealthGateWaiver).where(
             HealthGateWaiver.resume_kind == kind, HealthGateWaiver.resume_key == key)).all()
-    waivers = {w.gate_id for w in waiver_rows}
+    waivers = {w.gate_id: w.reason for w in waiver_rows}
 
     prior = latest_report(db, kind, key)
 

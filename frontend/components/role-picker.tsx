@@ -210,6 +210,11 @@ export function RolePicker(props: RolePickerProps) {
   // Base UI scrolls the selected item into view when the popup opens, which
   // presents a mid-list, cut-off view to someone who just clicked to browse.
   const popupRef = useRef<HTMLDivElement | null>(null);
+  // The visible chips box, not the collapsed <input>. Without an explicit
+  // anchor, @base-ui falls through to the input — which this component
+  // shrinks when a value is set in single mode, so the popup paints over
+  // the page title in the editor header.
+  const chipsRef = useRef<HTMLDivElement | null>(null);
 
   const requestMatch = (label: string) => {
     pendingMatch.current = label;
@@ -329,6 +334,7 @@ export function RolePicker(props: RolePickerProps) {
 
   const list = (
     <>
+      <div ref={chipsRef}>
       <Combobox.Chips className={chipsClassName}>
         {selected.map((entry) => (
           <Combobox.Chip
@@ -413,8 +419,13 @@ export function RolePicker(props: RolePickerProps) {
           }}
         />
       </Combobox.Chips>
+      </div>
       <Combobox.Portal>
-        <Combobox.Positioner sideOffset={4} className="isolate z-50">
+        <Combobox.Positioner
+          anchor={chipsRef}
+          sideOffset={4}
+          className="isolate z-50"
+        >
           <Combobox.Popup
             ref={popupRef}
             className="bg-popover text-popover-foreground ring-foreground/10 max-h-72 w-(--anchor-width) overflow-y-auto overscroll-contain rounded-lg p-1 shadow-md ring-1"

@@ -280,12 +280,11 @@ warning (`services/ats/degrees.py`) outside the composite, because every ATS
 platform surveyed enforces education via an application-form question.
 
 **"Still in this role" is single-source** (`services/resume_dates`). The ATS
-indexer and `health_zones.parse_ym` BOTH import `resume_dates.CURRENT_TOKENS`
-(`present`/`current`/`now`/`ongoing` plus `currently`/`to date`/`till date`/
-`to present`, ordinary in UK and Indian CVs) — two divergent definitions once
-scored "Ongoing" as a CURRENT role while simultaneously failing health gate S3
-for an unparseable end date. Matching is WHOLE-STRING: "Present" is current,
-"Present day rotation" is not.
+indexer and health gate S3 both call `resume_dates.is_open_ended`: a blank or
+missing end date, or a whole-string current token, means the role is ongoing.
+The tokens are `present`/`current`/`now`/`ongoing` plus `currently`/`to date`/
+`till date`/`to present`, ordinary in UK and Indian CVs. Matching is
+WHOLE-STRING: "Present" is current, "Present day rotation" is not.
 
 **Readable-for-the-gate is not creditable-for-the-score.**
 `health_zones.parse_ym` reads seasonal (`Summer 2022`), quarter (`Q3 2021`),
@@ -462,8 +461,11 @@ transaction.
   engine produced, and compile errors surface through the same RuntimeError
   contract. `template_id` persists per base resume AND per application; render
   falls back tolerantly when stale. Formatting is a 4-layer merge: template
-  default ← base-resume partial ← application partial ← render call.
-  `ResumeFormatting` has 13 knobs. The two live user templates are bundled at
+  default ← base-resume partial ← application partial ← render call. Bundled
+  templates render a non-empty start plus blank end as `Present` without
+  mutating resume JSON; migration `c84a19d2e7f0` resyncs only untouched stored
+  seed sources.
+  `ResumeFormatting` has 13 knobs. The four live user templates are bundled at
   `app/templates/user/`; `scripts/apply_template_sources` is their update
   path. Engine migration state: **§13** `typst-default-flip` /
   `latex-render-path` / `texlive-layer`.
@@ -529,8 +531,17 @@ transaction.
   filename — `KBPortLog.resume_key` means a slug everywhere else. Slug
   collisions append a counter (REST create 409s permanently on a soft-deleted
   slug). A successful import sets `kb.seeded`. Role is proposed
-  DETERMINISTICALLY and only when exactly one category matches
-  (`role_categories.propose_from_resume`); ties return `unknown`. Imported
+  DETERMINISTICALLY by a priority cascade — display name (filename), then
+  summary, then the two most recent titles, each independently, word-boundary
+  matched (`role_categories.propose_from_resume`). The first signal that names
+  exactly one family wins; a signal naming two or more falls through; only
+  when every signal is empty or ambiguous does it return `unknown` ("a visible
+  blank beats a plausible wrong answer"). `ImportedBaseRead.role_label` carries
+  an alias's own words when the guess used one. The web UI imports one file
+  per `POST /api/kb/import?consolidate=false` (per-row progress) then
+  `POST /api/kb/import/consolidate` over the minted slugs. Default
+  `consolidate=true` keeps the batched contract for MCP and external callers.
+  Imported
   points keep auto-approve — a documented exception to the review-first rule,
   because they are verbatim from a file the user already wrote.
   **Caller-parsed ingest** (`POST /api/kb/ingest-parsed`): JSON
@@ -612,7 +623,10 @@ transaction.
   suggestions — no bullet-scoped `/edits` op exists for them (§11 item 20), so
   both frontend cards render extras suggestions copy-only. Stale `extra:`
   locations (section renamed/deleted between runs) degrade to empty text, never
-  raise. Bullet classification overrides (with
+  raise. Each gate carries backend-owned static `why` and `fix_hint` separately
+  from factual per-run `detail`; failed and waived cards disclose that coaching,
+  and waived gates include the stored reason when available. Static gate
+  findings remain for verbatim MCP report consumers. Bullet classification overrides (with
   reason) let the user overrule an evidence tier from the health report page.
   **Attention zones are a SCORING input, not a UI layer** (owner decision).
   `health_zones.hot_locations` returns the summary plus whichever ONE section
