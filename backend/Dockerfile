@@ -1,4 +1,4 @@
-FROM python:3.12-slim
+FROM python:3.14-slim
 
 # Minimal TeX Live: scheme-basic + exactly the packages the bundled templates
 # use (grep usepackage over app/templates/**.tex.j2 before changing this list).
