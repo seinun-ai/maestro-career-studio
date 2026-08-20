@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Sparkles, X } from "lucide-react";
 
 import { ResumeImportDialog } from "@/components/career/resume-import-dialog";
+import { LoadErrorState } from "@/components/load-error-state";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { apiFetch } from "@/lib/api";
@@ -34,8 +35,22 @@ export function FirstRunImportCard() {
     queryFn: () => apiFetch<KBEntitySummary[]>("/api/kb/entities"),
   });
 
-  // Never flash the card while loading, and never show it once the KB has content.
-  if (dismissed || entities.isLoading || (entities.data?.length ?? 0) > 0) return null;
+  // Never flash the card while loading, never show it as empty on a failed
+  // fetch (that would tell someone with a full KB they have never imported),
+  // and never show it once the KB has content.
+  if (dismissed) return null;
+  if (entities.isError) {
+    return (
+      <LoadErrorState
+        className="py-8"
+        title="Couldn't check your career data."
+        detail={(entities.error as Error)?.message}
+        retrying={entities.isFetching}
+        onRetry={() => void entities.refetch()}
+      />
+    );
+  }
+  if (entities.isLoading || (entities.data?.length ?? 0) > 0) return null;
 
   return (
     <>

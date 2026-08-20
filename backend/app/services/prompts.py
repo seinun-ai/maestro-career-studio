@@ -30,6 +30,7 @@ VALID_PROMPTS = {
     "kb_resume_parse",
     "base_from_kb_plan",
     "persona_draft",
+    "autofill_choose",
     # NOTE: every key here must have a prompt file: seed_prompts() and
     # GET /api/settings/prompts read PROMPT_DIR/<key>.txt for each key, so
     # registering a fileless name would break startup seeding and the settings UI.

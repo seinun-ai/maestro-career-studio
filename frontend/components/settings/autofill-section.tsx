@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
+import { LoadErrorState } from "@/components/load-error-state";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardSection } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -194,6 +195,7 @@ const GROUPS: GroupDef[] = [
         key: "over_18",
         label: "Are you 18 years of age or older?",
         type: "select",
+        boolean: true,
         options: YES_NO,
         optional: true,
       },
@@ -201,6 +203,7 @@ const GROUPS: GroupDef[] = [
         key: "previously_employed_here",
         label: "Previously employed by the company you are applying to?",
         type: "select",
+        boolean: true,
         options: YES_NO,
         optional: true,
       },
@@ -208,6 +211,7 @@ const GROUPS: GroupDef[] = [
         key: "non_compete",
         label: "Subject to a non-compete or restrictive covenant?",
         type: "select",
+        boolean: true,
         options: YES_NO,
         optional: true,
       },
@@ -224,6 +228,7 @@ const GROUPS: GroupDef[] = [
         key: "willing_to_relocate",
         label: "Willing to relocate?",
         type: "select",
+        boolean: true,
         options: YES_NO,
       },
       { key: "how_heard", label: "How did you hear about us?", placeholder: "e.g. Job board" },
@@ -288,6 +293,23 @@ const BOOLEAN_WORK_AUTH_KEYS = [
   "sponsorship_future",
 ];
 
+/** A yes/no answer from whatever is actually in the profile.
+ *
+ * THREE WRITERS reach these keys and they do not agree on a type, which is why
+ * this is a coercion rather than a read: this form writes booleans, the profile
+ * JSON is documented as hand-editable, and the extension's PAUSE ROW writes the
+ * user's answer AS TYPED — "Yes", "yes", "No" — because the fill engine's
+ * `yesNo` passes a string straight through and its option matcher lower-cases
+ * before comparing.
+ *
+ * So the trimming and lower-casing here are load-bearing for a field that
+ * declares `boolean: true`, and NOT declaring it is what made this a defect:
+ * `fieldValue` then returns the raw string, "Yes" matches no `YES_NO` option
+ * value, and the select renders EMPTY. The user opens Settings and the answer
+ * they gave in the panel is simply not there — while the engine, which reads
+ * the same profile, fills the field correctly. A value stored must render in
+ * every reader, and this form is the reader the extension cannot test.
+ */
 function booleanAnswer(value: unknown): boolean | undefined {
   if (typeof value === "boolean") return value;
   if (typeof value !== "string") return undefined;
@@ -431,7 +453,21 @@ export function AutofillSection() {
         </p>
       </CardHeader>
       <CardContent>
-        {query.isLoading || !query.data || consentQuery.isLoading || !consentQuery.data ? (
+        {query.isError || consentQuery.isError ? (
+          <LoadErrorState
+            className="py-8"
+            title="Couldn't load your autofill profile."
+            detail={
+              (query.error as Error)?.message ??
+              (consentQuery.error as Error)?.message
+            }
+            retrying={query.isFetching || consentQuery.isFetching}
+            onRetry={() => {
+              void query.refetch();
+              void consentQuery.refetch();
+            }}
+          />
+        ) : query.isLoading || !query.data || consentQuery.isLoading || !consentQuery.data ? (
           <Skeleton className="h-40 w-full" />
         ) : (
           <AutofillEditor

@@ -191,6 +191,9 @@ function CatalogRow({
   onRemove: () => void;
 }) {
   const isExtra = option.source === "extra";
+  // Never call a configured-only id a seed: it is in this list because a role
+  // names it, not because we ship it.
+  const isConfigured = option.source === "configured";
   return (
     <li className="flex items-center gap-2">
       <span className="min-w-0 flex-1 truncate">
@@ -199,7 +202,7 @@ function CatalogRow({
       </span>
       <span className="text-muted-foreground shrink-0 capitalize">
         {option.provider}
-        {isExtra ? "" : " · seed"}
+        {isExtra ? "" : isConfigured ? " · in use" : " · seed"}
       </span>
       {isExtra ? (
         <Button

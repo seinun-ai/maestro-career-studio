@@ -24,6 +24,7 @@ import {
   OutputTab,
   useApplicationMutations,
 } from "@/components/application-panel";
+import { LoadErrorState } from "@/components/load-error-state";
 import { QATab } from "@/components/qa-tab";
 import { AtsScorePanel } from "@/components/ats-score-panel";
 import { CompanyMonogram } from "@/components/company-monogram";
@@ -109,7 +110,7 @@ export default function JobDetailPage({
   const confirm = useConfirm();
   const proposalActions = useProposalActions();
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error, isFetching, refetch } = useQuery({
     queryKey: ["job-detail", id],
     queryFn: () => apiFetch<JobDetail>(`/api/jobs/${id}/detail`),
   });
@@ -194,6 +195,28 @@ export default function JobDetailPage({
     ),
     [confirm, reExtract],
   );
+
+  // Before the loading gate: `data` stays undefined after a failure, so the
+  // gate below would hold the skeleton on screen for good.
+  if (isError) {
+    return (
+      <main className="mx-auto w-full max-w-6xl flex-1 space-y-4 p-6">
+        <LoadErrorState
+          title="Couldn't load this job."
+          detail={(error as Error)?.message}
+          retrying={isFetching}
+          onRetry={() => void refetch()}
+          action={
+            <Button
+              variant="outline"
+              nativeButton={false}
+              render={<Link href="/applications">Back to Applications</Link>}
+            />
+          }
+        />
+      </main>
+    );
+  }
 
   if (isLoading || !data) {
     return (

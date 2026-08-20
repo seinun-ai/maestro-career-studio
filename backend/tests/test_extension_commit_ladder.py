@@ -19,6 +19,7 @@ from tests.extension_harness import (
     extension_source,
     outcome_for,
     run_ai_fill,
+    run_guided_write,
     run_profile_fill,
 )
 
@@ -96,7 +97,7 @@ def test_a_write_that_cannot_be_verified_does_not_hang_the_run(tmp_path):
     timeout the promise never settles and the Fill button hangs forever."""
     result = _run_scenario(tmp_path, profile=_PROFILE, freeze_frames=True,
                            fields=[{"label": "First Name", "kind": "text"}])
-    assert _outcomes(result)["First Name"] == "not_stuck"
+    assert _outcomes(result)["First Name"] == "filled_unverified"
 
 
 def test_combobox_that_cannot_snap_is_blurred_and_reported_as_unfilled(tmp_path):
@@ -308,6 +309,41 @@ def test_a_detached_node_is_not_rescued_by_the_normalization_branch(tmp_path):
     assert outcome_for(result, "Phone") == "not_stuck"
 
 
+def test_every_copy_of_the_label_normaliser_stays_identical():
+    """`norm` exists four times, and one CHAIN runs through three of them.
+
+    `shared/profile-fields.js` publishes it as `ns.normLabel`;
+    `collectOpenQuestions` normalises the label it stamps onto a collected
+    question with its own copy; `fillFormFromProfile` normalises the label it
+    matches a rule against with a third; `fillAnswersByQid` carries a fourth
+    for the reason the commit ladder below carries two — it is injected and
+    must be self-contained.
+
+    THE CHAIN IS WHY THIS IS PINNED RATHER THAN LEFT ALONE. The pause row's
+    learn walks it end to end: a label normalised by the collector, deduped
+    against the stored `custom` list by `ns.normLabel`, matched by the engine on
+    the NEXT application. A copy that drifted would not throw and would not fail
+    a match loudly — it would append a near-duplicate question, and the engine
+    takes the FIRST match, so the user's newer answer would be dead on arrival
+    with every other test green.
+
+    ONE SITE WAS CONVERGED rather than pinned: autofill.js's custom-rule builder
+    reads `ns.normLabel` directly, because that is the site the dedup's
+    correctness actually depends on. The definitions stay pinned because the
+    rest of each file uses its own copy — the collector for the label it stamps,
+    `fillFormFromProfile` for the one it hands `createEeoContext` — and "the
+    same three transforms" is a property nothing else enforces.
+    """
+    src = extension_source()
+    copies = re.findall(
+        r'const norm = \(s\) => [^;]+;', src)
+    assert len(copies) == 4, (
+        f"expected four label normalisers, found {len(copies)}: a new copy "
+        "needs a reason, and a deleted one needs this count updated")
+    assert len(set(copies)) == 1, (
+        f"the label normalisers have diverged — fix all four or none: {copies}")
+
+
 def test_both_copies_of_the_commit_ladder_stay_identical():
     """The ladder exists twice: injected functions cannot close over panel
     scope, so fillAnswersByQid carries its own copy. Nothing but this test
@@ -335,3 +371,322 @@ def test_both_copies_of_the_commit_ladder_stay_identical():
         return re.sub(r"\s+", " ", re.sub(r"//[^\n]*", "", s)).strip()
     assert strip(copies[0]) == strip(copies[1]), \
         "the two commit ladders have diverged — fix both or neither"
+
+
+# ---------- the commit GESTURE: the visit every other writer owes ----------
+#
+# The ladder above is the TEXT path, and it has focused before it blurred since
+# it was written. Everything else in the engine did not, and the section below
+# is that gap pinned shut.
+#
+# THE LIVE SYMPTOM (Workday wizard walk, 2026-08-18): fields the engine filled
+# kept showing "required and must have a value" until the user clicked into each
+# one and back out. The write had landed — the value was on screen — but the
+# page had never seen the control VISITED, because a `<select>` set through the
+# native setter and a radio driven by `element.click()` fire no focus events at
+# all, and the two option writers focused to open their popup and returned on
+# the success path without ever leaving.
+#
+# WHY THE EVENT LIST IS THE ASSERTION and not the value: every one of these
+# writers already landed its value before this change, so a test that checked
+# `values` would have been green on the broken engine. What was missing was a
+# pair of events, so a pair of events is what is pinned.
+
+
+def _events(result: dict, label: str) -> list:
+    return result["events"][label]
+
+
+def _visited(events: list) -> bool:
+    """Did this control see a real focus/blur cycle, in that order?
+
+    `focus:preventScroll` and not `focus`, because the option matters: focus()
+    scrolls into view by default and a 25-field fill would visibly walk the
+    page (see `visitControl`). A writer that focused WITHOUT it would pass a
+    laxer test and fail the user.
+    """
+    return ("focus:preventScroll" in events
+            and "blur" in events
+            and events.index("focus:preventScroll") < events.index("blur"))
+
+
+_COUNTRY = "country | country--country"
+
+
+def test_a_select_is_visited_around_the_write_not_merely_set(tmp_path):
+    """A native select set through the value setter fires input and change and
+    NOTHING else — so a form that clears its required-field error on focusout
+    keeps showing it over a field the user can see is full."""
+    label = "state | state--state"
+    result = run_profile_fill(
+        tmp_path,
+        fields=[{"label": label, "kind": "select",
+                 "options": [{"value": "ca", "textContent": "California"},
+                             {"value": "ny", "textContent": "New York"}]}],
+        profile={"personal": {"state": "California"}},
+    )
+    events = _events(result, label)
+    # The option's VALUE, which is what a select holds — the harness reports
+    # `.value`, and the visible text is the option's.
+    assert result["values"][label] == "ca"
+    assert _visited(events), events
+    # The ORDER against the write, not merely presence: a focus that landed
+    # after `change` would be a visit the page's validation has already run
+    # past, which is the same nothing.
+    assert events.index("focus:preventScroll") < events.index("change") < events.index("blur")
+
+
+def test_a_radio_the_engine_clicks_is_focused_and_left(tmp_path):
+    """`element.click()` dispatches a click event and does NOT move focus,
+    which is exactly where it differs from the gesture it stands in for."""
+    label = "are you legally authorized to work in the united states?"
+    result = run_profile_fill(
+        tmp_path,
+        fields=[{"label": label, "kind": "radio", "options": ["Yes", "No"]}],
+        profile={"work_auth": {"authorized_now": True}},
+    )
+    assert result["values"][label] == "Yes"
+    # The GROUP's events, flattened by the harness: the button that was clicked
+    # is the one that carries the cycle.
+    events = _events(result, label)
+    assert _visited(events), events
+    assert events.index("focus:preventScroll") < events.index("click") < events.index("blur")
+
+
+def test_a_derived_checkbox_tick_takes_the_same_gesture(tmp_path):
+    """The `tickWhenYes` box — the one checkbox the engine is authorized to
+    tick — is clicked, and a click is not a visit."""
+    label = ("i currently work here | currentlyworkhere "
+             "| workexperience-192--currentlyworkhere")
+    result = run_profile_fill(
+        tmp_path,
+        fields=[{"label": label, "kind": "checkbox"}],
+        profile={"personal": {"first_name": "Sample"}},
+        # `current: true` is what the derivation reads — see
+        # test_extension_current_job.py for the shape's provenance.
+        employment=[{"employer": "Northwind Traders", "title": "Senior DS",
+                     "start_date": "March 2021", "end_date": None,
+                     "current": True}],
+    )
+    assert result["checked"][label] is True
+    events = _events(result, label)
+    assert _visited(events), events
+    assert events.index("focus:preventScroll") < events.index("click") < events.index("blur")
+
+
+def test_a_radio_the_widget_re_rendered_away_is_not_reported_filled(tmp_path):
+    """A STATE THE COMMIT GESTURE CREATED, and the reason these verdicts needed
+    a guard they never had: before the writers blurred, a click writer could not
+    trigger a re-render, so the node a verdict is read off was always the node
+    that was clicked. Blur is the classic trigger — so `radio.checked` can now
+    be read off a button the page has already replaced, which keeps our answer
+    forever precisely because nothing is rendering it.
+
+    `valueHolds` has taken `isConnected` FIRST since it was written, for exactly
+    this reason; the click writers simply had no need of it until now.
+    """
+    label = "are you legally authorized to work in the united states?"
+    result = run_profile_fill(
+        tmp_path,
+        fields=[{"label": label, "kind": "radio", "options": ["Yes", "No"],
+                 "detaches": True}],
+        profile={"work_auth": {"authorized_now": True}},
+    )
+    # NOTHING IS CLAIMED, which is the whole assertion: the button really was
+    # checked (the detach happens on the blur, after the click), so a readback
+    # that only asked `checked` would report this as filled. There is no
+    # telemetry row either way — a radio that did not take emits no frozen
+    # outcome, which is pre-existing and not this guard's business.
+    assert result["filled"] == []
+
+
+def test_a_derived_checkbox_the_widget_re_rendered_away_is_not_claimed(tmp_path):
+    """The same guard on the box whose answer the engine DERIVED — the one place
+    a false "filled" is a false statement about a job's end date rather than a
+    miscount."""
+    label = ("i currently work here | currentlyworkhere "
+             "| workexperience-192--currentlyworkhere")
+    result = run_profile_fill(
+        tmp_path,
+        fields=[{"label": label, "kind": "checkbox", "detaches": True}],
+        profile={"personal": {"first_name": "Sample"}},
+        employment=[{"employer": "Northwind Traders", "title": "Senior DS",
+                     "start_date": "March 2021", "end_date": None,
+                     "current": True}],
+    )
+    assert _outcomes(result)[label] == "not_stuck"
+    assert [item["note"] for item in result["filled"]] == [
+        "may not have registered, check the box"]
+
+
+def test_a_listbox_button_that_committed_still_ends_blurred(tmp_path):
+    """The success path was the ONLY path out of this writer that never left
+    the control — so whether a Workday dropdown got validated depended on
+    whether the fill happened to match an option, which is backwards."""
+    result = run_profile_fill(
+        tmp_path,
+        fields=[{"label": _COUNTRY, "kind": "listboxButton",
+                 "listbox": ["United States", "Canada"]}],
+        profile={"personal": {"country": "United States"}},
+    )
+    assert result["values"][_COUNTRY] == "United States"
+    events = _events(result, _COUNTRY)
+    assert _visited(events), events
+    # The blur is LAST: it comes after the option click, so it closes the popup
+    # and commits rather than interrupting the write.
+    assert events[-1] == "blur", events
+
+
+def test_a_combobox_that_snapped_an_option_still_ends_blurred(tmp_path):
+    """The typed-search twin of the button above, and it had the same hole."""
+    label = "country | phonenumber--countryphonecode"
+    result = run_profile_fill(
+        tmp_path,
+        fields=[{"label": label, "kind": "text", "workdaySearch": True,
+                 "listbox": ["United States", "Canada"]}],
+        profile={"personal": {"country": "United States"}},
+    )
+    events = _events(result, label)
+    assert _visited(events), events
+    assert events[-1] == "blur", events
+
+
+def test_an_identity_correction_is_visited_like_every_other_write(tmp_path):
+    """The one text write in the rule loop that does not go through
+    `commitValue`, and therefore the one that had no visit of its own. It is
+    also the case that most needs one: the field arrived PREFILLED, so the
+    page's own validation has already run over the value being replaced."""
+    label = "first name | firstname"
+    result = run_profile_fill(
+        tmp_path,
+        fields=[{"label": label, "kind": "text", "value": "Jordan"}],
+        profile={"personal": {"first_name": "Sample"}},
+    )
+    assert result["values"][label] == "Sample"
+    events = _events(result, label)
+    assert _visited(events), events
+    assert events.index("focus:preventScroll") < events.index("change") < events.index("blur")
+
+
+def test_every_field_a_run_wrote_ends_blurred(tmp_path):
+    """THE RUN-LEVEL PROPERTY, and the one the Goal Card names: the last field
+    written must end blurred rather than holding focus. Asserted over a mixed
+    page so it is a property of the loop rather than of whichever branch a
+    single-field fixture happened to take."""
+    labels = {
+        "text": "first name | firstname",
+        "select": "state | state--state",
+        "radio": "are you legally authorized to work in the united states?",
+    }
+    result = run_profile_fill(
+        tmp_path,
+        fields=[
+            {"label": labels["text"], "kind": "text"},
+            {"label": labels["select"], "kind": "select",
+             "options": [{"value": "ca", "textContent": "California"}]},
+            {"label": labels["radio"], "kind": "radio", "options": ["Yes", "No"]},
+        ],
+        profile={"personal": {"first_name": "Sample", "state": "California"},
+                 "work_auth": {"authorized_now": True}},
+    )
+    for name, label in labels.items():
+        events = _events(result, label)
+        assert events, f"{name} wrote nothing at all"
+        assert events[-1] == "blur", f"{name} ended holding focus: {events}"
+
+
+# ---------- the same gesture, on the other two writers ----------
+
+
+def test_the_guided_select_and_radio_writers_take_the_gesture(tmp_path):
+    """`guided_write` is the second-pass writer and its non-text limbs had the
+    identical gap — `guidedTextWrite` already focused and blurred, which is why
+    only the others move."""
+    result = run_guided_write(
+        tmp_path,
+        fields=[
+            {"qid": "q-state", "label": "State", "kind": "select",
+             "options": [{"value": "ca", "textContent": "California"}]},
+            # `legend` so each button's own text is just "Yes"/"No", which is
+            # what `guidedControlLabel` reads and what the model answers with.
+            {"qid": "q-auth", "label": "Authorized", "kind": "radio",
+             "legend": "Authorized", "options": ["Yes", "No"]},
+        ],
+        items=[
+            {"qid": "q-state", "kind": "select", "answer": "California"},
+            {"qid": "q-auth", "kind": "radio", "answer": "Yes"},
+        ],
+    )
+    assert [row["outcome"] for row in result["results"]] == ["filled", "filled"]
+    for label in ("State", "Authorized"):
+        assert _visited(_events(result, label)), _events(result, label)
+
+
+def test_the_guided_listbox_writer_leaves_the_control(tmp_path):
+    result = run_guided_write(
+        tmp_path,
+        fields=[{"qid": "q-country", "label": "Country", "kind": "listboxButton",
+                 "listbox": ["United States", "Canada"]}],
+        items=[{"qid": "q-country", "kind": "combobox", "answer": "Canada"}],
+    )
+    assert [row["outcome"] for row in result["results"]] == ["filled"]
+    events = _events(result, "Country")
+    assert _visited(events), events
+    assert events[-1] == "blur", events
+
+
+def test_the_ai_paths_select_and_radio_limbs_take_the_gesture(tmp_path):
+    """`fillAnswersByQid` carries its own copy of everything for the injection
+    reason, so its select and radio limbs are a third place the gesture has to
+    exist — and a third place it could be forgotten."""
+    result = run_ai_fill(
+        tmp_path,
+        fields=[
+            {"qid": "q-state", "label": "State", "kind": "select",
+             "options": [{"value": "ca", "textContent": "California"}]},
+            # `legend` so each button's own text is just "Yes"/"No", which is
+            # what `guidedControlLabel` reads and what the model answers with.
+            {"qid": "q-auth", "label": "Authorized", "kind": "radio",
+             "legend": "Authorized", "options": ["Yes", "No"]},
+        ],
+        pairs=[
+            {"qid": "q-state", "kind": "select", "answer": "California"},
+            {"qid": "q-auth", "kind": "radio", "answer": "Yes"},
+        ],
+    )
+    assert set(result["filled"]) == {"q-state", "q-auth"}
+    for label in ("State", "Authorized"):
+        assert _visited(_events(result, label)), _events(result, label)
+
+
+def test_the_eeo_writers_take_the_gesture_too(tmp_path):
+    """The voluntary-disclosure module writes its own select and radio limbs,
+    so it is the FOURTH place the gesture has to exist — and the section a user
+    is least likely to go back and re-check by hand, because it is the one they
+    were never asked to fill in themselves.
+
+    Nothing about the consent semantics moves here: this control is on screen
+    at all only because the backend's standing consent said so, and the visit
+    is the same two events every other control gets.
+    """
+    result = run_profile_fill(
+        tmp_path,
+        fields=[{"label": "Gender", "kind": "select",
+                 "options": [{"value": "f", "textContent": "Female"},
+                             {"value": "m", "textContent": "Male"}]}],
+        eeo_enabled=True,
+        profile={"eeo": {"gender": "female"}},
+    )
+    assert result["values"]["Gender"] == "f"
+    events = _events(result, "Gender")
+    assert _visited(events), events
+    assert events.index("focus:preventScroll") < events.index("change") < events.index("blur")
+
+
+# THE DEFERRED BLUR IS PINNED NEXT DOOR, deliberately not re-pinned here.
+# `tests/test_extension_split_date.py` owns the one place a blur is withheld on
+# purpose — `test_a_section_is_not_blurred_while_its_sibling_is_empty` and
+# `test_the_last_date_on_the_page_is_still_blurred` are the two halves — and a
+# second copy of that assertion in this file would be a second answer to a
+# question that already has one. The visit seam above touches no text write, so
+# `commitValue`'s `blur: false` and `pendingBlur` are reached exactly as before.

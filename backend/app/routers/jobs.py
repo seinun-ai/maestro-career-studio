@@ -193,12 +193,26 @@ def _find_existing(
         return existing
     url = (source_url or "").strip()
     if url_fallback and url:
-        return db.scalar(
-            select(Job)
-            .where(Job.source_url == url)
+        # Posting equality, not string equality (SYSTEM.md §11 item 9): a
+        # re-capture arriving through a referral link (?gh_src=, ?utm_*) or
+        # from the posting's /apply sub-path names the job that is already
+        # captured, and exact matching was how the library filled with
+        # duplicates of the same role. Same projected scan and the same
+        # directional containment as GET /api/jobs/match below.
+        stmt = (
+            select(Job.id, Job.source_url)
+            .where(Job.source_url.is_not(None))
             .order_by(Job.created_at.desc())
-            .limit(1)
         )
+        matched_id = next(
+            (
+                job_id
+                for job_id, stored_url in db.execute(stmt)
+                if job_url_match.is_same_posting(stored_url, url)
+            ),
+            None,
+        )
+        return db.get(Job, matched_id) if matched_id is not None else None
     return None
 
 

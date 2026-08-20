@@ -350,10 +350,10 @@ def test_quick_tailor_defaults_when_unset(db_session, tmp_path, monkeypatch):
             "mirror_wording": True,
             "summary_rename": False,
             "project_keyword_injection": False,
-            "default_base_resume": "",
             "instruction": "",
         },
     }
+    assert "default_base_resume" not in response.json()["value"]
 
 
 def test_quick_tailor_round_trip_merges_defaults(db_session, tmp_path, monkeypatch):
@@ -363,8 +363,7 @@ def test_quick_tailor_round_trip_merges_defaults(db_session, tmp_path, monkeypat
         client = TestClient(app)
         put_response = client.put(
             "/api/settings/quick-tailor",
-            json={"value": {"keywords_into_skills": False, "instruction": "keep bullets terse",
-                            "default_base_resume": "data_scientist"}},
+            json={"value": {"keywords_into_skills": False, "instruction": "keep bullets terse"}},
         )
         get_response = client.get("/api/settings/quick-tailor")
     finally:
@@ -375,10 +374,43 @@ def test_quick_tailor_round_trip_merges_defaults(db_session, tmp_path, monkeypat
     assert value["keywords_into_skills"] is False           # stored override
     assert value["mirror_wording"] is True                  # default shows through
     assert value["instruction"] == "keep bullets terse"
-    assert value["default_base_resume"] == "data_scientist"
+    assert "default_base_resume" not in value
     import json
     mirrored = json.loads((tmp_path / "quick_tailor.json").read_text(encoding="utf-8"))
     assert mirrored["instruction"] == "keep bullets terse"
+
+
+def test_quick_tailor_loads_when_stored_profile_still_has_removed_key(
+    db_session, tmp_path, monkeypatch
+):
+    """Hand-edited profiles that still carry default_base_resume must load.
+
+    The field is consulted by nothing and is gone from DEFAULTS; dropping it
+    from an extra=forbid model would 422 those files. get_profile is a dict
+    merge, so the stored key is dropped on read rather than rejected.
+    """
+    monkeypatch.setattr(text_settings.settings, "settings_dir", tmp_path)
+    (tmp_path / "quick_tailor.json").write_text(
+        json.dumps(
+            {
+                "keywords_into_skills": False,
+                "default_base_resume": "data_scientist",
+                "instruction": "keep it short",
+            }
+        ),
+        encoding="utf-8",
+    )
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        response = TestClient(app).get("/api/settings/quick-tailor")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    value = response.json()["value"]
+    assert value["keywords_into_skills"] is False
+    assert value["instruction"] == "keep it short"
+    assert "default_base_resume" not in value
 
 
 def test_mcp_workflow_defaults_to_hints_on(db_session, tmp_path, monkeypatch):
@@ -448,8 +480,21 @@ def test_gemini_35_flash_lite_is_a_valid_fast_model(db_session):
     assert db_session.get(Setting, "llm.fast_model").value == "gemini-3.5-flash-lite"
 
 
-def test_stale_stored_role_put_returns_400_carrying_the_id(db_session):
-    """A trimmed-out stored id is visible on GET and 400s on PUT — never remapped."""
+def test_a_trimmed_out_stored_id_survives_a_round_trip_and_is_never_remapped(db_session):
+    """A trimmed-out stored id is visible on GET and saves back unchanged.
+
+    Was `test_stale_stored_role_put_returns_400_carrying_the_id`, written by the
+    seed trim (2d61352) to pin NEVER REMAPPED — the app must not silently swap a
+    model behind the user's back. That principle is what this still asserts: the
+    id comes back verbatim, not rewritten to a seed.
+
+    What changed is the 400. It was the consequence of that principle, not the
+    goal, and it was a dead end: on any install predating the trim (`.env.example`
+    shipped FAST_MODEL=gpt-4o-mini) the first action a user takes — saving an API
+    key — failed, naming a model they had not touched, with no in-app way back.
+    Admitting the configured id to the catalog keeps it verbatim AND lets the
+    save through.
+    """
     db_session.add(Setting(key="llm.fast_model", value="gpt-4o-mini"))
     db_session.add(Setting(key="llm.smart_model", value="gpt-5.6-luna"))
     db_session.add(Setting(key="llm.chat_model", value="gpt-5.6-luna"))
@@ -471,5 +516,76 @@ def test_stale_stored_role_put_returns_400_carrying_the_id(db_session):
     finally:
         app.dependency_overrides.clear()
 
-    assert resp.status_code == 400
-    assert "gpt-4o-mini" in resp.json()["detail"]
+    assert resp.status_code == 200, resp.text
+    # Verbatim, not remapped onto a surviving seed.
+    assert resp.json()["fast_model"] == "gpt-4o-mini"
+
+
+def _configure(db_session, key: str, value: str) -> None:
+    db_session.add(Setting(key=key, value=value))
+    db_session.commit()
+
+
+def test_a_model_the_seed_trim_orphaned_can_still_be_saved(db_session):
+    """The catalog must admit what the install is ALREADY configured with.
+
+    `.env.example` shipped FAST_MODEL=gpt-4o-mini until the seed trim cut
+    MODEL_OPTIONS to three ids, so every install predating it names a model the
+    catalog no longer lists. Rejecting that value bricked the first thing a new
+    user does — save an API key — with no in-app way out.
+    """
+    _configure(db_session, "llm.fast_model", "gpt-4o-mini")
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        response = TestClient(app).put(
+            "/api/settings/openai",
+            json={"fast_model": "gpt-4o-mini", "smart_model": "gpt-5.6-luna"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200, response.text
+    assert response.json()["fast_model"] == "gpt-4o-mini"
+
+
+def test_an_orphaned_configured_model_is_listed_so_the_dropdown_is_honest(db_session):
+    # The select showed a value absent from its own option list. Surfacing it as
+    # `configured` keeps the list truthful without pretending it is a seed.
+    _configure(db_session, "llm.smart_model", "gpt-4o")
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        body = TestClient(app).get("/api/settings/openai").json()
+    finally:
+        app.dependency_overrides.clear()
+
+    row = next(o for o in body["model_options"] if o["id"] == "gpt-4o")
+    assert row["source"] == "configured"
+    assert row["provider"] == "openai"
+
+
+def test_an_orphaned_gemini_id_is_attributed_to_gemini(db_session):
+    _configure(db_session, "llm.fast_model", "gemini-2.0-flash")
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        body = TestClient(app).get("/api/settings/openai").json()
+    finally:
+        app.dependency_overrides.clear()
+
+    row = next(o for o in body["model_options"] if o["id"] == "gemini-2.0-flash")
+    assert row["provider"] == "gemini"
+
+
+def test_admitting_the_configured_id_does_not_admit_arbitrary_ones(db_session):
+    # The escape hatch is scoped to what is already in use. Switching TO an
+    # unknown id is still a 400 — otherwise the guard would be gone entirely.
+    _configure(db_session, "llm.fast_model", "gpt-4o-mini")
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        response = TestClient(app).put(
+            "/api/settings/openai",
+            json={"fast_model": "bogus-not-configured", "smart_model": "gpt-5.6-luna"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 400

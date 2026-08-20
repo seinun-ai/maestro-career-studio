@@ -26,7 +26,8 @@
   // shape the EEO opt-in already has, and stored in the same record.
   //
   // Why this stopped being absolute: it is the user's application and their
-  // consent, the card never submits anything, and every competitor ticks these.
+  // consent, this extension never submits anything, and every competitor ticks
+  // these.
   // What makes it defensible is that the permission is explicit, recorded with
   // a timestamp and a policy version, and revocable — not that the wording
   // happened to look harmless.

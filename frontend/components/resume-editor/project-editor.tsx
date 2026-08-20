@@ -6,7 +6,7 @@ import { EditableCard } from "@/components/resume-editor/editable-card";
 import {
   ActiveArchivedCount,
   AddEntryButton,
-  cardReorderProps,
+  useEntryEditing,
   createEnableAction,
   isEntryEnabled,
 } from "@/components/resume-editor/editor-scaffold";
@@ -38,8 +38,11 @@ export function ProjectEditor({
 }) {
   const [portIndex, setPortIndex] = useState<number | null>(null);
 
-  const update = (i: number, patch: Partial<ProjectEntry>) =>
-    onChange(value.map((p, idx) => (idx === i ? { ...p, ...patch } : p)));
+  const { setEditingIndex, entryEditingProps, update } = useEntryEditing(
+    value,
+    onChange,
+    (e) => !e.name,
+  );
 
   return (
     <div className="flex flex-col gap-2">
@@ -53,8 +56,7 @@ export function ProjectEditor({
           <EditableCard
             key={i}
             muted={!enabled}
-            initialEditing={!entry.name}
-            {...cardReorderProps(value, i, onChange)}
+            {...entryEditingProps(i)}
             extraActions={[
               createEnableAction(enabled, () => update(i, { enabled: !enabled })),
               ...(sourceSlug
@@ -144,7 +146,10 @@ export function ProjectEditor({
       })}
       <AddEntryButton
         label="Add project"
-        onClick={() => onChange([...value, EMPTY])}
+        onClick={() => {
+          onChange([...value, EMPTY]);
+          setEditingIndex(value.length);
+        }}
       />
 
       {sourceSlug && portIndex !== null && (

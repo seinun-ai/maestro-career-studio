@@ -8,10 +8,12 @@ while chasing an unrelated bug — a readonly ATS field that ought to be filled,
 say — would have taken the whole promise with it, silently, on a page where the
 next thing the writer does is press keys into controls.
 
-`test_extension_widget.py::test_the_widget_never_submits_a_form` is the other
-half: the UI holds a selector naming every submit control on the page (for the
-collision observer) and may only ever read through it. This file is the engine's
-side — that the fill loop does not write, click, or even focus one.
+THIS FILE IS THE WHOLE OF THE PROMISE NOW. It used to be half: the floating
+card held a selector naming every submit control on the page (for its collision
+observer) and was pinned to only ever READ through it. R-C deleted the card and
+the only code that knows what a submit control looks like is the engine again,
+so the rule has one home and this file is it — the fill loop does not write,
+click, or even focus one.
 
 The shapes are declared as FIELD SPECS rather than captured markup, per the
 corpus convention: the fixture PII guard rejects raw HTML outright, and a submit

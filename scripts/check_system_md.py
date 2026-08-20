@@ -33,6 +33,26 @@ import re
 import sys
 from pathlib import Path
 
+# RAISED to 2000 on 2026-08-19 by owner decision, OVERRULING the paragraph at
+# the bottom of this comment, which says in as many words that the honest
+# response at this size is a grooming pass and not another raise. Recording the
+# overrule rather than deleting the argument: the next person to read this is
+# owed both, and a comment that no longer matches the constant below is exactly
+# the failure this round spent its time fixing elsewhere.
+#
+# What actually happened: the 2026-08-19 security round documented six controls
+# at the browser boundary and landed the file at 1800 of 1800 — every remaining
+# line spent, after ~20 lines of genuine grooming (shipped §11 items deleted, a
+# user-facing limitation moved to KNOWN_ISSUES) had already been reclaimed. The
+# wall was reached by writing true things down, which is the case the raise
+# below exists to serve.
+#
+# What is traded away: the standing debt is now further from being paid, not
+# closer. The <1,400 pass is still owed, and the file is 600 lines above it.
+# If 2000 is reached the same way, the answer is that pass — a fourth raise
+# would confirm the ceiling is decorative.
+#
+# The 1800 raise's own reasoning, kept because it still holds:
 # RAISED to 1800 on 2026-08-09, deliberately, after the ceiling stopped
 # working as a budget and started working as a tripwire.
 #
@@ -56,12 +76,15 @@ from pathlib import Path
 # rule was never the number — it is "integrate, don't append", and the
 # per-section growth check below is a better read on whether that is happening.
 #
-# NOTE that the per-section check only WARNS (exit 0). So between here and 1800
-# nothing hard-stops accretion; that is a deliberate trade for editability, not
-# an oversight. If this file reaches ~1750 the honest response is another
-# grooming pass, not another raise — and the standing debt main recorded still
-# stands: a pass that takes the whole file back under 1,400.
-MAX_TOTAL_LINES = 1800
+# NOTE that the per-section check only WARNS (exit 0). So between here and the
+# ceiling nothing hard-stops accretion; that is a deliberate trade for
+# editability, not an oversight. If this file reaches ~1750 the honest response
+# is another grooming pass, not another raise — and the standing debt main
+# recorded still stands: a pass that takes the whole file back under 1,400.
+# (That threshold was passed, and the raise above was taken instead. The
+# sentence stays because the reasoning is still correct; see the top of this
+# comment for why it was overruled and what it cost.)
+MAX_TOTAL_LINES = 2000
 GROWTH_WARN_RATIO = 1.25
 DATE_RE = re.compile(r"\(20\d\d-\d\d-\d\d")
 SHIPPED_RE = re.compile(r"\b(SHIPPED|shipped|DONE)\b")

@@ -49,7 +49,15 @@ NON_FORM_KINDS = frozenset({"signal"})
 # has no answer" and "we correctly declined to write this" are not rule
 # failures, and scoring them as ones would tell the user to go fix rules that
 # are working.
-SUCCESS_OUTCOMES = frozenset({"filled", "corrected", "filled_normalized"})
+#
+# retry_filled and match_recovered are the second pass's successes: a value
+# that landed on a later attempt, or a known value the model mapped onto a
+# rendered option, count exactly like a first-attempt fill for this rate.
+# ai_abstained and filled_unverified are NOT here — both are neutral by
+# omission, picked up by the derived NEUTRAL_OUTCOMES below.
+SUCCESS_OUTCOMES = frozenset(
+    {"filled", "corrected", "filled_normalized", "retry_filled", "match_recovered"}
+)
 FAILURE_OUTCOMES = frozenset(
     {
         "no_rule",

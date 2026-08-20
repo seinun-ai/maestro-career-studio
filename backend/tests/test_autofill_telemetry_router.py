@@ -190,79 +190,40 @@ def test_missing_source_is_an_accepted_outcome(db_session):
     assert row.rule_id == "salary"
 
 
-def _payload_of_every_send_telemetry_call(src: str) -> list[str]:
-    """The OBSERVATIONS argument of every `sendTelemetry(action, obs)` call.
-
-    Paren-balanced rather than regex, because the calls this exists to read span
-    several lines and nest three deep:
-
-        sendTelemetry("ai_fill",
-          batch.map((question) => observationFor(question,
-            produced ? "ai_unaligned" : "ai_unanswered")));
-
-    The first argument is dropped, and that is not cosmetic: it holds the ACTION
-    (`"ai_fill"`, `"profile_fill"`, `"applied_detection"`), which is a different
-    vocabulary — `TelemetryBatch.action` — and would be posted as an outcome by
-    the test below and 422.
-    """
-    payloads = []
-    for match in re.finditer(r"\bsendTelemetry\(", src):
-        depth, i = 1, match.end()
-        while i < len(src) and depth:
-            depth += (src[i] == "(") - (src[i] == ")")
-            i += 1
-        # Everything after the first TOP-LEVEL comma: the observations argument
-        # and any that follow it.
-        args, comma = src[match.end() : i - 1], None
-        depth = 0
-        for j, ch in enumerate(args):
-            depth += (ch in "([{") - (ch in ")]}")
-            if ch == "," and depth == 0:
-                comma = j
-                break
-        if comma is not None:
-            payloads.append(args[comma + 1 :])
-    return payloads
-
-
 def _outcomes_emitted_by_the_extension() -> set[str]:
     """String literals the extension source can actually put in an observation.
 
     SCANNED, not listed. A hand-maintained list is exactly how `eeo_disabled`
     stayed missing from the contract: someone adds an emitter, nobody
-    remembers the roster. Four emission shapes, because there are four:
+    remembers the roster. Three emission shapes, because there are three:
 
       1. `observe(input, kind, label, rule, <expr>)` — a literal or a ternary.
       2. The value that BECOMES an observation's outcome, whether written as an
          object key (`outcome: <expr>,`) or bound to a name first
-         (`const outcome = <expr>;`). Both forms, because the AI path shares one
-         observation builder between its two call sites and passes the outcome
-         in as an argument — with only the `outcome:` form scanned, this
-         function silently went from 14 literals to 12 and the floor below is
-         what caught it. Matching the NAME rather than the syntax is what keeps
-         the roster honest across that kind of refactor.
+         (`const outcome = <expr>;`). Both forms, because a shared observation
+         builder passes the outcome in as an argument — with only the
+         `outcome:` form scanned, this function silently went from 14 literals
+         to 12 and the floor below is what caught it. Matching the NAME rather
+         than the syntax is what keeps the roster honest across that kind of
+         refactor.
       3. `valueHolds`, whose resolved string is passed straight to `observe`
          as a variable, so site 1 sees no literal for it at all.
-      4. The observations argument of a `sendTelemetry(...)` call. Added at Task
-         19 and MEASURED there: the widget's builder takes the outcome as a
-         parameter and stores it with shorthand (`outcome,`), and its four call
-         sites pass a ternary inline without ever binding a name — so shapes 1-3
-         see nothing at all in `content/widget.js`. Scanning the payload finds
-         them wherever inside it they are written, which is the property that
-         survives the next refactor of the same kind. It is also the shape that
-         found `applied_detected`/`applied_dismissed` while the applied-
-         detection watcher lived, invisible to every earlier scan.
 
-    Shapes 1-3 are kept rather than replaced: `agent.js` builds observations and
-    RETURNS them to the widget, so its emitters never appear inside a
-    `sendTelemetry(` call at all.
+    THERE WAS A FOURTH, and R-C deleted it with its only subject. It read the
+    observations argument of every `sendTelemetry(...)` call, paren-balanced,
+    because the floating card's builder took the outcome as a parameter and
+    stored it with shorthand (`outcome,`) while its call sites passed a ternary
+    inline without ever binding a name — invisible to all three shapes above.
+    With the card gone that scan was MEASURED at zero unique literals and zero
+    total, so it was removed rather than left as machinery that reads as
+    load-bearing. If an emitter is ever written that way again, `git log` has
+    the function; the floor below is what will tell you to go and get it.
     """
     src = extension_source()
     regions = [
         *re.findall(r"\bobserve\([^()]*?,\s*([^()]*?)\)", src),
         *re.findall(r"\boutcome\s*[:=]\s*(.*?)(?:;\n|,\n|\n\s*\})", src, re.S),
         *re.findall(r"const valueHolds = .*?\n  \}\);", src, re.S),
-        *_payload_of_every_send_telemetry_call(src),
     ]
     return {lit for region in regions for lit in re.findall(r'"([a-z_]+)"', region)}
 
@@ -284,23 +245,40 @@ def test_outcomes_the_extension_already_emits_are_all_accepted(db_session):
     # slack, deliberately — raise it whenever a real emitter is added, never to
     # accommodate one the scan stopped seeing.
     #
-    # 16 before Task 19, when the AI vocabulary was read out of `sidepanel.js`.
-    # Deleting the panel took those four away and adding `content/widget.js` to
-    # EXTENSION_SOURCES did NOT bring them back — measured, 12 either way —
-    # because the widget writes them in a shape shapes 1-3 cannot see. Shape 4
-    # restored the four and found the applied-detection pair on top: 18.
-    # Retiring the applied-detection watcher took its pair back out: 16.
-    assert len(emitted) >= 16, emitted
+    # 15, MEASURED at R-C and down from 19 by exactly the four the floating
+    # card emitted: `ai_answered`, `ai_no_stick`, `ai_unaligned`,
+    # `ai_unanswered`. That is a re-baseline DOWNWARD, which is normally the
+    # move this comment forbids, so the evidence is written out: the AI
+    # write-back path was the card's alone. The panel's QnA drawer renders an
+    # answer and hands it to the clipboard — it never writes one into a page —
+    # so there is no code left that could emit one. The four stay in the
+    # backend's Literal because stored rows carry them and a contract that
+    # stopped accepting its own history would reject a replayed batch.
+    assert len(emitted) >= 15, emitted
     assert {
         "eeo_disabled",
         "missing_source",
         "filled_normalized",
-        "ai_no_stick",
-        # The misalignment guard, emitted ONLY from `content/widget.js`, whose
-        # emitters are the ones shapes 1-3 are blind to — so this membership
-        # check is what keeps shape 4 from being quietly deleted as redundant.
-        "ai_unaligned",
+        # Shape 3's only unique find: `valueHolds` resolves it and passes it to
+        # `observe` as a variable, so shape 1 sees no literal. Named here so
+        # that scan cannot be quietly deleted as redundant.
+        "filled_unverified",
+        # Shape 2's, and the pair that motivated matching the NAME rather than
+        # the `outcome:` syntax.
+        "retry_filled",
+        "match_recovered",
     } <= set(emitted), emitted
+    # …and the CARD's four are really gone rather than merely unscanned. Named
+    # one by one instead of matched on an `ai_` prefix, which is what this
+    # said first and was wrong about: `ai_abstained` is LIVE — `shared/
+    # choose.js` emits it from `buildRestFillObservations` — and the only
+    # reason it is absent from `emitted` above is that it is pushed
+    # positionally (`push(row.qid, "ai_abstained", row)`), which none of the
+    # three scan shapes can see. A prefix assertion would start failing the day
+    # somebody improves the scan, which is the wrong incentive to attach to a
+    # correct change.
+    assert not ({"ai_answered", "ai_no_stick", "ai_unanswered", "ai_unaligned"}
+                & set(emitted)), emitted
     try:
         resp = client.post(
             "/api/autofill/telemetry",

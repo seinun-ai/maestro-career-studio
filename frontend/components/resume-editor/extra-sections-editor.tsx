@@ -18,6 +18,7 @@ import { EditableCard } from "@/components/resume-editor/editable-card";
 import {
   AddEntryButton,
   cardReorderProps,
+  useEntryEditing,
   createEnableAction,
 } from "@/components/resume-editor/editor-scaffold";
 import { Badge } from "@/components/ui/badge";
@@ -41,7 +42,6 @@ import {
   isEnabled,
   newSection,
 } from "@/lib/extra-sections";
-import { move } from "@/lib/utils";
 import { Field } from "@/components/resume-editor/field";
 import type {
   ExtraSection,
@@ -299,28 +299,11 @@ function EntriesEditor({
   entries: ExtraSectionEntry[];
   onChange: (next: ExtraSectionEntry[]) => void;
 }) {
-  const update = (i: number, patch: Partial<ExtraSectionEntry>) =>
-    onChange(entries.map((e, idx) => (idx === i ? { ...e, ...patch } : e)));
-
-  // Edit-mode lives HERE, not inside the cards: cards are keyed by index, so
-  // internal state would stay glued to a POSITION and jump to the wrong entry
-  // on move/delete (review finding). Follow the entry across reorders.
-  const [editingIndex, setEditingIndex] = useState<number | null>(() => {
-    const blank = entries.findIndex((e) => !e.heading);
-    return blank === -1 ? null : blank;
-  });
-  const moveEntry = (from: number, to: number) => {
-    onChange(move(entries, from, to));
-    setEditingIndex((cur) =>
-      cur === from ? to : cur === to ? from : cur,
-    );
-  };
-  const deleteEntry = (i: number) => {
-    onChange(entries.filter((_, idx) => idx !== i));
-    setEditingIndex((cur) =>
-      cur === null || cur === i ? null : cur > i ? cur - 1 : cur,
-    );
-  };
+  const { setEditingIndex, entryEditingProps, update } = useEntryEditing(
+    entries,
+    onChange,
+    (e) => !e.heading,
+  );
 
   return (
     <div className="flex flex-col gap-2">
@@ -330,13 +313,7 @@ function EntriesEditor({
           <EditableCard
             key={i}
             muted={!enabled}
-            editing={editingIndex === i}
-            onEditingChange={(next) => setEditingIndex(next ? i : null)}
-            onMoveUp={i > 0 ? () => moveEntry(i, i - 1) : undefined}
-            onMoveDown={
-              i < entries.length - 1 ? () => moveEntry(i, i + 1) : undefined
-            }
-            onDelete={() => deleteEntry(i)}
+            {...entryEditingProps(i)}
             extraActions={[
               createEnableAction(enabled, () => update(i, { enabled: !enabled })),
             ]}
@@ -430,7 +407,10 @@ function EntriesEditor({
       })}
       <AddEntryButton
         label="Add entry"
-        onClick={() => onChange([...entries, emptyEntry()])}
+        onClick={() => {
+          onChange([...entries, emptyEntry()]);
+          setEditingIndex(entries.length);
+        }}
       />
     </div>
   );

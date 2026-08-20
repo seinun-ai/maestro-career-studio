@@ -8,6 +8,7 @@ import { Check, Loader2, RefreshCw, Wand2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { useConfirm } from "@/components/confirm-dialog";
+import { LoadErrorState } from "@/components/load-error-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -290,6 +291,17 @@ export function AtsScorePanel({ jobId }: { jobId: string }) {
           ))}
         </div>
       </div>
+    );
+  }
+
+  if (scores.isError) {
+    return (
+      <LoadErrorState
+        title="Couldn't load ATS scores."
+        detail={(scores.error as Error)?.message}
+        retrying={scores.isFetching}
+        onRetry={() => void scores.refetch()}
+      />
     );
   }
 

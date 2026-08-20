@@ -605,12 +605,23 @@ def test_both_copies_of_the_policy_deny_list_stay_identical():
     ladder is deliberately different: its two injected-context copies remain
     identity-pinned by test_both_copies_of_the_commit_ladder_stay_identical.
     """
-    module = ROOT / "extension" / "content" / "policy.js"
+    # `shared/`, not `content/`, since Task 13: the SIDE PANEL consults this
+    # policy too — a pause row may not render an input for a password — and a
+    # content script is a file a panel document can never load. Single-source is
+    # the property under test and it is unchanged; only the address moved.
+    module = ROOT / "extension" / "shared" / "policy.js"
     assert module.is_file(), "the shared policy module has not been created"
-    sources = "\n".join(
-        path.read_text(encoding="utf-8")
-        for path in sorted((ROOT / "extension" / "content").glob("*.js"))
-    )
+    # ALL THREE directories, because "exactly once across everything that loads"
+    # is what the counts below mean. Globbing `content/` alone after the move
+    # would have counted the lists zero times and passed — and `panel/` is here
+    # for the next version of the same mistake: the panel consults the policy
+    # now, so a deny-list copy pasted into a stage body is exactly the drift
+    # this test exists to catch and exactly the directory it could not see.
+    extension = ROOT / "extension"
+    everything = (sorted((extension / "content").glob("*.js"))
+                  + sorted((extension / "shared").glob("*.js"))
+                  + sorted((extension / "panel").glob("*.js")))
+    sources = "\n".join(path.read_text(encoding="utf-8") for path in everything)
     # The deny list is now TWO lists with different standing, and the split is
     # the point: NEVER_FILLED is absolute — signatures, passwords, government
     # identifiers — while CONSENT_FORMS is refused by default and unlocked by a

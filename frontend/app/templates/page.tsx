@@ -8,6 +8,7 @@ import { toast } from "sonner";
 
 import { useConfirm } from "@/components/confirm-dialog";
 import { TemplateGallery } from "@/components/templates/template-gallery";
+import { LoadErrorState } from "@/components/load-error-state";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -184,7 +185,14 @@ export default function TemplatesListPage() {
         }
       />
 
-      {templates.isLoading ? (
+      {templates.isError ? (
+        <LoadErrorState
+          title="Couldn't load templates."
+          detail={(templates.error as Error)?.message}
+          retrying={templates.isFetching}
+          onRetry={() => void templates.refetch()}
+        />
+      ) : templates.isLoading ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 3 }).map((_, i) => (
             <Skeleton key={i} className="h-40 w-full" />

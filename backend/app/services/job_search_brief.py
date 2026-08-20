@@ -28,6 +28,27 @@ LEDGER_DAYS = 30
 MAX_BRIEF_JOBS = 25
 
 
+def _yes_no_or_text(value: Any) -> str | None:
+    """A yes/no profile answer as the word, whichever type it is stored as.
+
+    The Settings form writes these as BOOLEANS, the extension's pause row writes
+    the user's answer as a string, and the profile JSON is hand-editable — so
+    one key legitimately arrives as `True`, `"yes"` or `"Yes"`. `_str_or_none`
+    alone renders the first of those as `"True"`, which is not wrong so much as
+    it is a different vocabulary from the other two: this value goes into a
+    brief the model reads beside `work_auth`'s own yes/no answers, and one field
+    answering in Python's booleans is the kind of inconsistency that costs a
+    little accuracy and can never be traced back.
+
+    Non-boolean values pass through untouched. "Open to relocating for the right
+    role" is a real answer somebody has typed into that box, and narrowing it to
+    a yes/no would be this function deciding what they meant.
+    """
+    if isinstance(value, bool):
+        return "yes" if value else "no"
+    return _str_or_none(value)
+
+
 def _str_or_none(value: Any) -> str | None:
     # The autofill profile is intentionally loose JSON; coerce scalars so a
     # bool/number in a hand-edited profile can't 500 the response model.
@@ -142,7 +163,9 @@ def build_brief(db: Session) -> dict[str, Any]:
             "city": _str_or_none(personal.get("city")),
             "state": _str_or_none(personal.get("state")),
             "country": _str_or_none(personal.get("country")),
-            "willing_to_relocate": _str_or_none(preferences.get("willing_to_relocate")),
+            "willing_to_relocate": _yes_no_or_text(
+                preferences.get("willing_to_relocate")
+            ),
             "work_auth": work_auth,
         },
         "persona": persona.get_persona(db),

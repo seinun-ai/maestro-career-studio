@@ -65,6 +65,10 @@ class CapabilityReport:
     # than only marking it red.
     errors: dict[str, str] = field(default_factory=dict)
     checked_at: str = ""
+    # False when a probe never reached the model (bad key, refused connection,
+    # rate limit). Such a report measures the CONNECTION, not the model, and is
+    # deliberately not persisted — see `probe` and `probe_and_save`.
+    reachable: bool = True
 
     def supports(self, capability: str) -> bool:
         return bool(getattr(self, capability, False))
@@ -128,9 +132,47 @@ def _probe_tools(model: str) -> None:
 
 _PROBES = {"text": _probe_text, "json": _probe_json, "tools": _probe_tools}
 
+# Failures that say NOTHING about the model. An invalid key, a refused
+# connection, a rate limit or a provider 5xx never got far enough to exercise a
+# capability, so scoring them as "No" is a false measurement — and a false No is
+# worse than no record, because `require` and `set_models` trust what is stored.
+# (An invalid key pasted into a fresh install recorded text/json/tools all
+# false for a model that does all three, and the UI then blamed the model.)
+_UNREACHABLE_SIGNS = (
+    "error code: 401",
+    "error code: 403",
+    "error code: 429",
+    "error code: 500",
+    "error code: 502",
+    "error code: 503",
+    "error code: 504",
+    "incorrect api key",
+    "invalid api key",
+    "invalid_api_key",
+    "unauthorized",
+    "authentication",
+    "connection",
+    "timed out",
+    "timeout",
+    "name or service not known",
+    "temporary failure in name resolution",
+)
+
+
+def _never_reached_the_model(exc: Exception) -> bool:
+    text = str(exc).lower()
+    return any(sign in text for sign in _UNREACHABLE_SIGNS)
+
 
 def probe(model: str) -> CapabilityReport:
-    """Run all three probes. Never raises — a dead endpoint is a report of Nos."""
+    """Run all three probes. Never raises.
+
+    A failure that never reached the model (bad key, dead endpoint, 429) still
+    reports Nos — the caller may want to show them — but flips `reachable`, and
+    `probe_and_save` refuses to persist such a report. Conservative on purpose:
+    ONE unreachable leg discards the whole run rather than risk storing a No
+    that describes the network.
+    """
     report = CapabilityReport(
         model=model,
         base_url=llm.get_base_url(),
@@ -140,8 +182,10 @@ def probe(model: str) -> CapabilityReport:
         try:
             run(model)
             setattr(report, capability, True)
-        except Exception as exc:  # noqa: BLE001 — every failure is a "No", not a crash
+        except Exception as exc:  # noqa: BLE001 — a failure is a report, not a crash
             report.errors[capability] = str(exc)[:500]
+            if _never_reached_the_model(exc):
+                report.reachable = False
     return report
 
 
@@ -169,7 +213,13 @@ def load(session: Session, model: str) -> CapabilityReport | None:
 
 
 def probe_and_save(session: Session, model: str) -> CapabilityReport:
-    return save(session, probe(model))
+    report = probe(model)
+    if not report.reachable:
+        # Nothing about the model was measured. Persisting would both write a
+        # false No and overwrite an earlier good record — and the stored row
+        # outlives the cause, so the model stays "broken" after the key is fixed.
+        return report
+    return save(session, report)
 
 
 class CapabilityMissing(RuntimeError):

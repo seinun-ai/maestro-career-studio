@@ -153,6 +153,11 @@ def validate_template_endpoint(template_id: str, db: Annotated[Session, Depends(
         return tv.validate_template(template_id, db)
     except LookupError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
+    except ValueError as e:
+        # A row whose id predates the registry's slug gate (see
+        # validate_template_id): refusing it is correct, but it must read as a
+        # 400 about the id, not an unhandled 500.
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 @router.get("/{template_id}/preview.pdf")

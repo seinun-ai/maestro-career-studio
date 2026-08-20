@@ -10,6 +10,31 @@
 (() => {
   const ns = (window.careerStudioCompanion ??= {});
 
+  // react-select / select2 / plain ARIA comboboxes: a text input that opens a
+  // filtered option list instead of accepting free text. Published because
+  // collection must classify a RELEASED input with this exact same predicate;
+  // open-questions.js loads later and reads it from the namespace at call time.
+  const isCombobox = (input) =>
+    input instanceof HTMLInputElement &&
+    (input.getAttribute("role") === "combobox" ||
+      input.hasAttribute("aria-autocomplete") ||
+      // Workday's select/search inputs carry NO combobox ARIA at all — no
+      // role, no aria-autocomplete, nothing on an ancestor the selector below
+      // names. The one signal is the vendor's own widget-type attribute, read
+      // off a live form (bah.wd1, 2026-08-08): <input id="phoneNumber--
+      // countryPhoneCode" data-uxi-widget-type="selectinput"
+      // placeholder="Search">. That miss is why 55 not_stuck events carried a
+      // rule_id: the profile HAD the answer and it was typed into a box that
+      // takes no free text. The telemetry label's "| search |" segment is the
+      // placeholder and is deliberately NOT the signal — a label pattern would
+      // reroute every site's honest search box. The multiselect variant is
+      // matched on the same family; both open a [role="option"] popup.
+      /^(multi)?selectinput$/.test(
+        input.getAttribute("data-uxi-widget-type") ?? "") ||
+      !!input.closest(
+        '[role="combobox"], [class*="select__" i], [class*="select2" i], [class*="autocomplete" i]'
+      ));
+
 
 /** Runs IN THE PAGE (all frames). Best-effort fill of form fields from the
  * autofill profile. Handles text inputs, native selects, radios, and
@@ -31,6 +56,23 @@
 async function fillFormFromProfile(
   profile, employment, eeoEnabled = false, skills = [], consentForms = false
 ) {
+  // The second pass's known_value feeder: what a rule TRIED and could not
+  // land, keyed by the same normalized label collection uses. Reset per run.
+  // In-memory ONLY — never a DOM attribute (a frame's own scripts can read
+  // those) and never telemetry (values are structurally banned there).
+  const ruleAttempts = new Map();
+  ns.lastRuleAttempts = ruleAttempts;
+  // Separate facts, separate stores. A release means the rule REFUSED to
+  // write because its value is wrong for this control; an attempt means the
+  // value is right and the page missed the delivery, so guided_write may retry
+  // that SAME value. Releases carry element identity only — never a value.
+  const ruleReleases = new WeakSet();
+  ns.lastRuleReleases = ruleReleases;
+  const releaseRule = (input) => ruleReleases.add(input);
+  const noteAttempt = (labelText, value) => {
+    const v = String(value ?? "").trim();
+    if (v) ruleAttempts.set(labelText, v.slice(0, 300));
+  };
   const p = profile.personal ?? {};
   // Work authorization: the same dual-read the backend's `get_work_auth`
   // performs (services/autofill_profile.py). The extension reads the profile
@@ -261,16 +303,27 @@ async function fillFormFromProfile(
   };
 
   const fullName = [p.first_name, p.last_name].filter(Boolean).join(" ");
-  // Present-tense sponsorship, and ONLY present-tense. "now or in the future"
-  // is the standard US knockout: it reads like a "now" question and is answered
-  // by the FUTURE flag, because any future need means yes — hence the lookahead
-  // that stops a bare "now" from claiming it. The gap is [^|] because labelFor
-  // joins up to eight label sources with "|", and the time qualifier has to
-  // come from the SAME source as "sponsor" to qualify it (same reasoning as the
-  // shared policy patterns).
-  const NOW_WORDS = "currently|presently|at this time|\\bnow\\b(?!\\s+or\\b)";
-  const SPONSORSHIP_NOW_RE = new RegExp(
-    `(${NOW_WORDS})[^|]*sponsor|sponsor[^|]*(${NOW_WORDS})`, "i");
+  /** One entry's LABEL PATTERN from `shared/profile-fields.js`, spread into the
+   * rule that fills it. `{re}` or `{all}` and nothing else — the path is the
+   * router's business, not this table's.
+   *
+   * THROWS on an unknown id, which is the only behaviour that fails visibly. A
+   * typo returning `{}` would build a rule with no pattern at all: `matchRule`
+   * tests `rule.re` and `rule.all`, finds neither, and scans past it — so the
+   * field would report `no_rule` on every ATS and the profile key it is meant
+   * to fill would look like one nobody ever wrote a rule for.
+   */
+  const pf = (id) => {
+    const field = (ns.profileFields ?? []).find((entry) => entry.id === id);
+    if (!field) throw new Error(`autofill: no profile field rule ${id}`);
+    return field.all ? { all: field.all } : { re: field.re };
+  };
+  const SPONSORSHIP_NOW_RE = pf("sponsorship-now").re;
+  // These words turn a geographic noun into a QUESTION ABOUT ELIGIBILITY or
+  // attendance. A home city/country is then the wrong answer even when the
+  // label happens to contain "city" or "country".
+  const LOCATION_QUESTION_GUARD =
+    /authoriz|sponsor|visa|willing(?:\s+and\s+able)?\s+to/i;
   // Ordered: first matching rule wins for a given field.
   const RULES = [
     { id: "first-name", re: /first\s*name|given\s*name/i, value: p.first_name, identity: true },
@@ -298,10 +351,23 @@ async function fillFormFromProfile(
       re: /(address|street).*(line\s*)?\b2\b|line\s*2|\bapt\b|apartment|\bsuite\b|\bste\b|\bunit\s*(no\.?|number|#)/i,
       ...(p.address_2 ? { value: p.address_2 } : { skip: true }) },
     { id: "address", re: /address\s*line|street|^address\b/i, value: p.address },
-    { id: "city", re: /\bcity\b|locality/i, value: p.city },
-    { id: "state", re: /\bstate\b|province|region/i, value: p.state },
+    // Eligibility comes before the broad geography family. The `not:` guards
+    // below still make the predicates disjoint: matchRule scans past a rule
+    // with no source, so order alone cannot protect an unanswered knockout.
+    { id: "sponsorship-now", ...pf("sponsorship-now"),
+      releaseWhenMissing: true, value: yesNo(w.sponsorship_now), kind: "yesno" },
+    { id: "sponsorship-future", ...pf("sponsorship-future"),
+      not: SPONSORSHIP_NOW_RE, releaseWhenMissing: true,
+      value: yesNo(w.sponsorship_future), kind: "yesno" },
+    { id: "work-auth", ...pf("work-auth"), value: yesNo(w.authorized_now),
+      kind: "yesno", releaseWhenMissing: true },
+    { id: "city", re: /\bcity\b|locality/i, not: LOCATION_QUESTION_GUARD,
+      releaseWhenGuarded: true, value: p.city },
+    { id: "state", re: /\bstate\b|province|region/i, not: LOCATION_QUESTION_GUARD,
+      releaseWhenGuarded: true, value: p.state },
     { id: "postal-code", re: /zip|postal/i, value: p.postal_code },
-    { id: "country", re: /country/i, value: p.country },
+    { id: "country", re: /country/i, not: LOCATION_QUESTION_GUARD,
+      releaseWhenGuarded: true, value: p.country },
     { id: "linkedin", re: /linked\s*in/i, value: p.linkedin },
     { id: "github", re: /git\s*hub/i, value: p.github },
     { id: "website", re: /website|portfolio|personal\s*site|blog/i, value: p.website },
@@ -343,7 +409,8 @@ async function fillFormFromProfile(
     // The `not:` handles the compounds that DO name themselves first.
     { id: "emp-employer",
       re: /employer(\s*name)?\b|company\s*name|^[^|]*\bcompany\b/i,
-      not: /parent\s*company|company\s*(website|url|size|information|details)/i,
+      not: /parent\s*company|company\s*(website|url|size|information|details)|^[^|]*(tell us more|experience|interests you)/i,
+      releaseWhenGuarded: true,
       values: emp.map((x) => x.employer) },
     { id: "emp-title", re: /job\s*title|position\s*title|role\s*title|title.*(position|role)/i, values: emp.map((x) => x.title) },
     // A conjunction because neither half is safe alone: "location" is also the
@@ -457,54 +524,42 @@ async function fillFormFromProfile(
     // default: an absent answer reports missing_source and the field is left
     // blank, which is the whole point of storing them rather than guessing.
     //
-    // "Are you 18 years of age or older?" — the wording is remarkably stable,
-    // but the number has to be bounded on both sides. `\b18\b` alone matches
-    // "18 months of experience" and a 2018 date fragment; requiring the age
-    // noun beside it is what keeps this off every other field with an 18 in it.
-    { id: "over-18",
-      re: /\b(?:are|am)\s+you\b[^?|]{0,40}\b18\b|\b18\s*(?:\+|years?|yrs?)\b[^?|]{0,20}\b(?:of\s*age|old(?:er)?)\b|\bat\s*least\s*18\b|\blegal\s*working\s*age\b/i,
-      value: yesNo(el.over_18), kind: "yesno" },
-    // "Have you previously been employed by <this employer>?" — the single most
-    // common unanswered question in the corpus, seen on six hosts and worded
-    // differently on every one: "have you worked with us before", "are you
-    // currently or have you previously been employed by Doosan", "do you
-    // currently work for PwC", plus Workday's own `candidateIsPreviousWorker`.
-    //
-    // A conjunction, not an alternation, and that is what makes it safe. It
-    // needs the employment word, a time marker AND a question addressed to the
-    // applicant — so "I currently work here" (the work-history tick box, which
-    // has its own rule and its own derived answer) is missing the third and
-    // cannot be captured. Getting that wrong would tick a box about a past job
-    // using an answer about this employer.
-    { id: "previously-employed-here",
-      all: [/\b(?:employ|work)/i,
-        /\b(?:previously|formerly|ever|before|current\s+or\s+former|currently|past)\b|previousworker/i,
-        /\b(?:have|has|are|did|do)\s+you\b|candidateispreviousworker|previousworker/i],
+    // THE PATTERNS ARE `shared/profile-fields.js`'s, spread in by id — read
+    // that file for what each one is and why it is shaped the way it is. They
+    // moved at Task 13 because the SIDE PANEL needs the same question answered
+    // from the other end: a pause row that learns an answer has to store it
+    // where these rules will find it next time, and a second table agreeing
+    // with this one today is how "pause once, learn forever" quietly stops
+    // being true. What did NOT move is everything about FILLING — the value
+    // lookup, `kind`, and the `not:` guards below — because none of it changes
+    // where an answer is stored.
+    { id: "over-18", ...pf("over-18"), value: yesNo(el.over_18), kind: "yesno" },
+    { id: "previously-employed-here", ...pf("previously-employed-here"),
       value: yesNo(el.previously_employed_here), kind: "yesno" },
-    // Non-competes and the family of agreements asked about in the same breath.
-    { id: "non-compete",
-      re: /non-?\s?compete|non-?\s?solicit|restrictive\s+(?:covenant|employment\s+agreement)/i,
+    { id: "non-compete", ...pf("non-compete"),
       value: yesNo(el.non_compete), kind: "yesno" },
-    { id: "sponsorship-now", re: SPONSORSHIP_NOW_RE, value: yesNo(w.sponsorship_now), kind: "yesno" },
-    { id: "sponsorship-future", re: /sponsor/i, not: SPONSORSHIP_NOW_RE, value: yesNo(w.sponsorship_future), kind: "yesno" },
-    { id: "work-auth", re: /authoriz|legally\s.*work|eligible\s.*work|right to work/i, value: yesNo(w.authorized_now), kind: "yesno" },
     ...(eeoEnabled ? EEO_RULES : []),
-    // The SAME pattern the never-fill policy uses to admit this field, read
-    // from it rather than restated. They are one decision — "this asks what you
-    // want, not what you earn" — and the copy that lived here had already
-    // drifted from the policy's: "what is your desired annual base salary or
+    // The preferences, patterns from `shared/profile-fields.js` for the reason
+    // given at the eligibility block above. The salary one is doubly indirect
+    // and deliberately so: that table reads it from `shared/policy.js`, because
+    // admitting the field and matching it are ONE decision ("this asks what you
+    // want, not what you earn") and the copy that used to live here had already
+    // drifted from the policy's — "what is your desired annual base salary or
     // hourly rate?" was blocked by the policy AND unmatched here, so the field
     // was refused twice for the same missing wording.
-    { id: "salary", re: ns.salaryExpectationRe, value: pref.desired_salary },
-    { id: "notice-period", re: /notice\s*period/i, value: pref.notice_period },
+    { id: "salary", ...pf("salary"), value: pref.desired_salary },
+    { id: "notice-period", ...pf("notice-period"), value: pref.notice_period },
     // `not:` for the same reason as the employment date rules above, and it
     // matters more here: this one matches on "start date" alone, so iCIMS's
     // "icims_0_startdate_date" day select is squarely inside it, and an
-    // availability date written there is a claim about a past job.
-    { id: "earliest-start-date", re: /start\s*date|available.*start|availability date/i,
+    // availability date written there is a claim about a past job. It stays
+    // HERE rather than travelling with the pattern: it is about which controls
+    // a rule may capture, and the save router has no controls.
+    { id: "earliest-start-date", ...pf("earliest-start-date"),
       not: ANY_DATE_PART_RE, value: pref.earliest_start_date },
-    { id: "willing-to-relocate", re: /relocat/i, value: pref.willing_to_relocate, kind: "yesno" },
-    { id: "how-heard", re: /hear(d)?\s*about/i, value: pref.how_heard },
+    { id: "willing-to-relocate", ...pf("willing-to-relocate"),
+      value: pref.willing_to_relocate, kind: "yesno" },
+    { id: "how-heard", ...pf("how-heard"), value: pref.how_heard },
     // The application's own agreement boxes, and ONLY while the standing
     // consent is on — the rule does not exist otherwise, so there is nothing
     // for a later edit to accidentally enable.
@@ -518,9 +573,18 @@ async function fillFormFromProfile(
     ...(consentForms
       ? [{ id: "consent-forms", re: ns.consentFormRe, tickWhenYes: true, value: "yes" }]
       : []),
+    // `ns.normLabel` and not the local `norm`, even though they are the same
+    // three transforms today. This is the ONE site where the normalisation is
+    // shared with another file rather than local: the panel's pause row dedupes
+    // the `custom` list on `ns.normLabel` before writing it back, so if that
+    // function and this one ever disagree the list grows a near-duplicate on
+    // every application and the FIRST match — the stale answer — keeps winning.
+    // Reading the same function makes that structural instead of a claim; the
+    // remaining copies are held byte-identical by test.
     ...custom
       .filter((c) => c.question && c.answer)
-      .map((c) => ({ id: "custom", re: null, question: norm(c.question), value: c.answer })),
+      .map((c) => ({ id: "custom", re: null,
+                     question: ns.normLabel(c.question), value: c.answer })),
     // A rule with no answer behind it is TAGGED, not dropped. This used to
     // .filter(), which is what collapsed missing_source into no_rule — see the
     // ObservationOutcome Literal in schemas/autofill_telemetry.py.
@@ -562,8 +626,8 @@ async function fillFormFromProfile(
   // scanning: it is the answer only when nothing else can fill.
   const matchRule = (labelText) => {
     let missing = null;
+    let release = false;
     for (const rule of RULES) {
-      if (rule.not && rule.not.test(labelText)) continue;
       // `all` is a conjunction, where `re` is a single alternation. A date PART
       // control is only identifiable from two independent signals — which
       // section it sits in and which part it wants — and neither is safe alone:
@@ -574,11 +638,89 @@ async function fillFormFromProfile(
         || (rule.all && rule.all.every((re) => re.test(labelText)))
         || (rule.question && labelText.includes(rule.question));
       if (!hit) continue;
-      if (!rule.missingSource) return rule;
+      if (rule.not && rule.not.test(labelText)) {
+        release ||= rule.releaseWhenGuarded === true;
+        continue;
+      }
+      if (!rule.missingSource) return { rule, release };
+      release ||= rule.releaseWhenMissing === true;
       missing ??= rule;
     }
-    return missing;
+    return { rule: missing, release };
   };
+
+  /** The VISIT — the pair of events a page's own validation actually watches
+   * for, around a write that is not a text commit.
+   *
+   * WHAT THE BUG WAS NOT. The obvious reading — "the writers call `blur()` on
+   * an element they never focused, which is a no-op" — is false here and was
+   * checked before anything below was written: `commitValue` focuses on its
+   * first line and `guidedTextWrite` on its second, so the text ladder has
+   * fired focusin/focusout since it was written. Reporting that reading as the
+   * diagnosis would have produced a fix for a path that already worked.
+   *
+   * WHAT IT IS. Every OTHER writer in this file changes a control without ever
+   * focusing it. A `<select>` and an identity correction go through
+   * `setNativeValue` alone; a radio and a checkbox are driven by
+   * `element.click()`, which dispatches a click event and — unlike the user
+   * gesture it stands in for — does NOT move focus; and the two option writers
+   * (`fillCombobox`, `fillListboxButton`) focus to open the popup and then
+   * return on the SUCCESS path without ever leaving, so the one event the page
+   * is waiting for is the one that never arrives. The control ends up holding
+   * the right answer having never been focusout'd, which is exactly what
+   * Workday reports as "required and must have a value" over a field the user
+   * can see is full — and is why clicking into each filled field and out again
+   * cleared it by hand (live wizard walk, 2026-08-18).
+   *
+   * TWO functions rather than one wrapper. The writers in between are shaped
+   * three different ways — one sets a value, one clicks, one opens a popup and
+   * awaits an option list — so a wrapper would have to take a callback and
+   * would then own the await semantics of all three. Two statements at the
+   * edges of a branch are legible where that would not be.
+   *
+   * `preventScroll` for `commitValue`'s reason: focus() scrolls the element
+   * into view by default, so a 25-field fill would visibly walk the page.
+   *
+   * `isConnected` ON THE WAY OUT ONLY. A widget that re-rendered under the
+   * write has replaced the node, and blurring a detached input does nothing
+   * anyway — `flushPendingBlur` takes the same guard for the same reason. On
+   * the way IN there is nothing to guard: a node we are about to write to is
+   * the node the writer already holds.
+   *
+   * THE LAST FIELD ENDS BLURRED, which is the property the run as a whole owes
+   * the page: every branch that visits also leaves, `commitValue` blurs unless
+   * a date widget deferred it, and `flushPendingBlur` at the end of the loop is
+   * what settles that one. Page focus is a separate world from the panel's own
+   * — the side panel is an extension document and this runs in the tab's — so
+   * none of this can take the caret out of anything the user is typing into up
+   * there. Verified by the shape of the thing rather than by measurement: a
+   * `focus()` call cannot cross a document boundary.
+   */
+  const visitControl = (el) => el?.focus?.({ preventScroll: true });
+  const leaveControl = (el) => { if (el?.isConnected) el.blur(); };
+
+  /** The click a page sees as a real gesture: visit, press, leave.
+   *
+   * ONE function for the click writers where the value writers take the two
+   * separately, and the reason is that a click is ATOMIC where a write is not:
+   * `setNativeValue` and its readback sit between the visit and the leave, and
+   * a wrapper there would have to own their await semantics. `element.click()`
+   * owns nothing — so the three statements are one gesture and were written out
+   * four times before the duplication gate said so.
+   */
+  const clickControl = (el) => { visitControl(el); el.click(); leaveControl(el); };
+
+  /** Did the control really end up carrying the answer?
+   *
+   * `isConnected` FIRST and then `checked`, which is `valueHolds`' own opening
+   * check and the same argument in a place that did not have it: a detached
+   * node keeps whatever we set on it forever, so `checked` alone reports a
+   * button the user sees unselected. This became reachable when the writers
+   * started BLURRING — blur is a classic re-render trigger, so the node a
+   * verdict is read off may have been replaced between the click and the read,
+   * a state that could not arise before the commit gesture existed.
+   */
+  const stillChecked = (el) => el?.isConnected === true && el.checked === true;
 
   // KEEP IN SYNC with fillAnswersByQid's copy, from here through commitValue —
   // injected functions are self-contained, so all three blocks exist twice.
@@ -624,24 +766,26 @@ async function fillFormFromProfile(
   // A controlled input (React/Angular) that rejects or normalizes our value
   // does not revert in the tick that wrote it; it reverts on a later render.
   // Reading back on the same tick therefore reads back our own write and says
-  // "stuck" almost always. Two clean animation frames means `filled` reports a
-  // value that survived the re-render, not one we merely assigned.
+  // "stuck" almost always. Two spaced timer samples means `filled` reports a
+  // value that survived the re-render, not one we merely assigned. Timers keep
+  // running in a hidden tab where requestAnimationFrame is not serviced.
   //
   // Resolves the telemetry outcome rather than a boolean, because that readback
   // sees three genuinely different endings and only one of them is a failure:
   // empty (rejected), byte-equal (filled), reformatted (filled_normalized).
   // Collapsing the last two inflates not_stuck with sites that worked.
   const valueHolds = (input, value) => new Promise((resolve) => {
-    let frames = 0;
-    // rAF is not serviced in a backgrounded tab. If the user switches tabs
-    // mid-fill this would never settle and the Fill button would hang until the
-    // panel is reloaded, so an unverifiable write is reported not-stuck instead.
-    // Not a hard bound: a backgrounded tab also throttles setTimeout to ≥1s,
-    // and to once a minute under intensive throttling — this bounds the wait,
-    // it does not promise 1s.
-    const timer = setTimeout(() => resolve("not_stuck"), 1000);
-    const settle = (outcome) => { clearTimeout(timer); resolve(outcome); };
-    const check = () => {
+    let samples = 0;
+    let settled = false;
+    const timers = [];
+    const hidden = document.visibilityState === "hidden";
+    const settle = (outcome) => {
+      if (settled) return;
+      settled = true;
+      for (const timer of timers) clearTimeout(timer);
+      resolve(outcome);
+    };
+    const check = (last) => {
       // isConnected, not just the value: querySelectorAll handed us a static
       // snapshot, and a widget that re-renders (blur is a classic trigger)
       // replaces the nodes of fields still ahead in the loop. A detached node
@@ -655,10 +799,13 @@ async function fillFormFromProfile(
           ? "filled_normalized"
           : "not_stuck");
       }
-      if (++frames >= 2) return settle("filled");
-      requestAnimationFrame(check);
+      samples += 1;
+      if (!hidden && samples >= 2) return settle("filled");
+      if (last) return settle("filled_unverified");
     };
-    requestAnimationFrame(check);
+    [50, 150, 400, 1000].forEach((delay, index, delays) => {
+      timers.push(setTimeout(() => check(index === delays.length - 1), delay));
+    });
   });
 
   // The full write → commit → verify ladder for a text field.
@@ -705,8 +852,8 @@ async function fillFormFromProfile(
   // A token widget takes what is in its box, turns it into a chip, and clears
   // itself. `valueHolds` asks the opposite question and would call every
   // successful tokenization not_stuck. The 1s bound is the same as its, for the
-  // same reason: rAF is not serviced in a backgrounded tab, so an unverifiable
-  // write is reported unstuck instead of hanging the Fill button forever.
+  // same reason: timer sampling still runs in a backgrounded tab, where rAF
+  // would starve. A hidden-tab bound is neutral rather than a claimed failure.
   //
   // There is deliberately NO isConnected branch, which is the one place this
   // departs from valueHolds. A chip lives in a different node from the box, so
@@ -717,22 +864,27 @@ async function fillFormFromProfile(
   // by the valueHolds call below, before Enter is ever pressed.
   const tokenCommitted = (input) => new Promise((resolve) => {
     let waiting = true;
-    const timer = setTimeout(() => { waiting = false; resolve("not_stuck"); }, 1000);
-    const check = () => {
+    const timers = [];
+    const hidden = document.visibilityState === "hidden";
+    const settle = (outcome) => {
+      if (!waiting) return;
+      waiting = false;
+      for (const timer of timers) clearTimeout(timer);
+      resolve(outcome);
+    };
+    const check = (last) => {
       // The timeout has already answered, so stop RE-ARMING. Unlike valueHolds,
       // which settles after two clean frames either way, this one waits for a
       // change that may never come — so without this the callback would go on
       // rescheduling itself every frame for the life of the page, long after
       // the promise it belongs to resolved.
       if (!waiting) return;
-      if (input.value === "") {
-        waiting = false;
-        clearTimeout(timer);
-        return resolve("filled");
-      }
-      requestAnimationFrame(check);
+      if (input.value === "") return settle("filled");
+      if (last) return settle(hidden ? "filled_unverified" : "not_stuck");
     };
-    requestAnimationFrame(check);
+    [50, 150, 400, 1000].forEach((delay, index, delays) => {
+      timers.push(setTimeout(() => check(index === delays.length - 1), delay));
+    });
   });
 
   // One value into a token input: type it, prove it landed, then commit it.
@@ -881,29 +1033,6 @@ async function fillFormFromProfile(
     return true;
   };
 
-  // react-select / select2 / plain ARIA comboboxes: a text input that opens a
-  // filtered option list instead of accepting free text.
-  const isCombobox = (input) =>
-    input instanceof HTMLInputElement &&
-    (input.getAttribute("role") === "combobox" ||
-      input.hasAttribute("aria-autocomplete") ||
-      // Workday's select/search inputs carry NO combobox ARIA at all — no
-      // role, no aria-autocomplete, nothing on an ancestor the selector below
-      // names. The one signal is the vendor's own widget-type attribute, read
-      // off a live form (bah.wd1, 2026-08-08): <input id="phoneNumber--
-      // countryPhoneCode" data-uxi-widget-type="selectinput"
-      // placeholder="Search">. That miss is why 55 not_stuck events carried a
-      // rule_id: the profile HAD the answer and it was typed into a box that
-      // takes no free text. The telemetry label's "| search |" segment is the
-      // placeholder and is deliberately NOT the signal — a label pattern would
-      // reroute every site's honest search box. The multiselect variant is
-      // matched on the same family; both open a [role="option"] popup.
-      /^(multi)?selectinput$/.test(
-        input.getAttribute("data-uxi-widget-type") ?? "") ||
-      !!input.closest(
-        '[role="combobox"], [class*="select__" i], [class*="select2" i], [class*="autocomplete" i]'
-      ));
-
   // Workday's dropdowns are BUTTONS, not selects or inputs: <button
   // aria-haspopup="listbox" type="button" id="country--country"> whose visible
   // text is the committed value ("Select One" until one commits). Verified
@@ -970,14 +1099,13 @@ async function fillFormFromProfile(
 
   const fillCombobox = async (input, rule) => {
     input.focus({ preventScroll: true }); // see commitValue — don't walk the page
-    if (rule.kind) {
-      // Canonical values ("not_veteran") are not typeable — open the full
-      // list and pick by keywords instead.
-      fireMouseSequence(input);
-      input.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
-    } else {
-      setNativeValue(input, String(rule.value));
-    }
+    // Open the REAL list before writing anything. Generic values used to be
+    // typed as a search first, which left "United States" sitting in a Yes/No
+    // combobox when no option matched — precisely the wrong scalar write this
+    // preflight exists to prevent.
+    fireMouseSequence(input);
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+    let optionMismatch = false;
     // Options may load async (remote school lists etc.) — poll briefly.
     for (let waited = 0; waited < 1600; waited += 200) {
       await sleep(200);
@@ -990,8 +1118,16 @@ async function fillFormFromProfile(
       if (best) {
         fireMouseSequence(best.el);
         await sleep(100);
+        // AFTER the option click and its settle, never before: the choice is
+        // already in the widget by here, so this closes the popup and fires the
+        // focusout the page validates on rather than interrupting the write.
+        // See `visitControl` — the success path used to be the only one that
+        // never left, which made "did this field get validated" depend on
+        // whether the fill happened to match an option.
+        leaveControl(input);
         return { ok: true, text: best.text.trim().slice(0, 60) };
       }
+      optionMismatch = true;
       break; // options visible but nothing matches — don't guess
     }
     input.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
@@ -1001,7 +1137,7 @@ async function fillFormFromProfile(
     // Blur here so the note we record describes what the user will actually
     // find — an empty control, not free text sitting in the box.
     input.blur();
-    return { ok: false, text: String(rule.value) };
+    return { ok: false, optionMismatch, text: String(rule.value) };
   };
 
   // A button dropdown, driven the only way it can be: open the popup, read the
@@ -1019,6 +1155,7 @@ async function fillFormFromProfile(
     // Same ladder as the combobox's keyboard open: some builds render the
     // popup on ArrowDown rather than on the click alone.
     button.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+    let optionMismatch = false;
     for (let waited = 0; waited < 1600; waited += 200) {
       await sleep(200);
       const nodes = listboxOptions(button);
@@ -1027,12 +1164,19 @@ async function fillFormFromProfile(
         // A placeholder row is not an offer — see isPlaceholderOption.
         .filter((o) => o.text.trim() && !isPlaceholderOption(o.text));
       const best = bestOption(options, rule);
-      if (!best) break; // options visible but nothing matches — don't guess
+      if (!best) {
+        optionMismatch = true;
+        break; // options visible but nothing matches — don't guess
+      }
       fireMouseSequence(best.el);
       await sleep(100);
       // The option click is only a request; the widget decides. Text that did
       // not change is a write that did not land.
       const after = listboxButtonText(button);
+      // AFTER the readback, which is the ordering that keeps both honest: the
+      // verdict above is read off the button's own committed text, and the
+      // focusout the page needs is owed either way. See `visitControl`.
+      leaveControl(button);
       return after !== before
         ? { ok: true, text: after.slice(0, 60) }
         : { ok: false, text: best.text.trim().slice(0, 60) };
@@ -1041,7 +1185,7 @@ async function fillFormFromProfile(
     // on a wizard step it covers the page's own Continue button.
     button.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     button.blur();
-    return { ok: false, text: String(rule.value) };
+    return { ok: false, optionMismatch, text: String(rule.value) };
   };
 
   /** Which split-date WIDGET this control is a section of, or null.
@@ -1166,7 +1310,7 @@ async function fillFormFromProfile(
     // fight: everything the walk newly reaches is decided in one place.
     if (input instanceof HTMLButtonElement) return !isListboxButton(input);
     return input.type === "hidden"
-      // `password` is on the never-fill policy (content/policy.js), but that
+      // `password` is on the never-fill policy (shared/policy.js), but that
       // list matches LABEL TEXT — so a password box labelled in another
       // language, or mislabelled "Email", was protected only by no rule
       // happening to match it. The type is the fact; the label is a
@@ -1261,7 +1405,8 @@ async function fillFormFromProfile(
       observe(input, kind, labelText, null, "policy_blocked");
       continue;
     }
-    const rule = matchRule(labelText);
+    const matched = matchRule(labelText);
+    const rule = matched.rule;
     // labelFor() is composite: an ordinary Skills control can inherit a nearby
     // "Gender" heading. A matched token rule is intrinsically multi-value and
     // cannot be a scalar protected-class disclosure, so its explicit shape
@@ -1294,10 +1439,19 @@ async function fillFormFromProfile(
       }
       continue;
     }
-    if (!rule) { observe(input, kind, labelText, null, "no_rule"); continue; }
+    if (!rule) {
+      if (matched.release) releaseRule(input);
+      observe(input, kind, labelText, null, "no_rule");
+      continue;
+    }
     if (rule.skip) { observe(input, kind, labelText, rule, "skip_rule"); continue; }
     // Recognised the field, have no answer for it. Never write, always report.
     if (rule.missingSource) {
+      // Only an explicitly opted-in rule may release for a missing source.
+      // Work-auth does because asking is the only way to obtain the answer;
+      // identity rules stay excluded. A guarded later rule can independently
+      // release because its candidate belongs to a different question.
+      if (matched.release) releaseRule(input);
       observe(input, kind, labelText, rule, "missing_source");
       continue;
     }
@@ -1390,8 +1544,38 @@ async function fillFormFromProfile(
         doneRadioGroups,
         fillCombobox,
         commitValue,
+        // Handed over for the same reason `setNativeValue` is: the EEO module
+        // writes its own select and radio limbs, so without these it would be
+        // the one writer left with no visit — and a voluntary-disclosure
+        // dropdown showing a required-field error is the same defect on the
+        // section a user is least likely to re-check. See `visitControl`.
+        visitControl,
+        leaveControl,
+        clickControl,
+        stillChecked,
         commitOk: COMMIT_OK,
       });
+      // EEO NEVER releases: a protected-characteristic value stays on the
+      // consented delivery lane. If the scalar option control is still empty,
+      // record a mechanical miss for guided_write instead of asking /choose.
+      const eeoUnanswered = isSelect ? !input.value
+        : isListboxButton(input) ? listboxButtonEmpty(input)
+        : isCombobox(input) ? !input.value
+        : input.type === "radio" && input.name
+          ? ![...document.querySelectorAll(
+            `input[type="radio"][name="${CSS.escape(input.name)}"]`)]
+            .some((radio) => radio.checked)
+          : false;
+      if (eeoUnanswered && !rule.optionList?.length) {
+        noteAttempt(labelText, res.value);
+      }
+      continue;
+    }
+    // A QUESTIONY textarea wants authored prose, not one scalar whose noun
+    // happened to match. Leave it untouched for the shared essay router.
+    if (kind === "textarea" && !rule.values && !rule.tokens
+      && ns.QUESTIONY.test(labelText)) {
+      releaseRule(input);
       continue;
     }
     // A `tokens` rule holds a LIST for one control, and only a token input can
@@ -1447,39 +1631,56 @@ async function fillFormFromProfile(
         .map((o) => ({ el: o, text: o.textContent ?? "" }));
       const best = bestOption(options, res);
       if (best && input.value !== best.el.value) {
+        // The visit around the write — see `visitControl`. A native select set
+        // through the value setter alone is never focused, so a form that
+        // clears its required-field error on focusout keeps showing it.
+        visitControl(input);
         setNativeValue(input, best.el.value);
+        leaveControl(input);
         recordFilled({ label, value: best.text.trim().slice(0, 60) });
         observe(input, kind, labelText, rule, "filled");
       } else if (best && input.value === best.el.value) {
         // Already at the option we would pick — a re-run, or an agreeing ATS
         // prefill. Without this the strip said "0 filled" over a full form.
         already.push({ label, value: best.text.trim().slice(0, 60) });
+      } else {
+        releaseRule(input);
       }
       // Select-no-match: no frozen outcome — emit nothing.
     } else if (input.type === "radio") {
       const groupKey = `${input.name}::${res.value}`;
       if (doneRadioGroups.has(groupKey)) continue;
-      const words = optionWordsFor(res.kind, String(res.value));
       // Spread: querySelectorAll returns a NodeList, which has no .some().
       const group = [...(input.name
         ? document.querySelectorAll(`input[type="radio"][name="${CSS.escape(input.name)}"]`)
         : [input])];
-      for (const radio of group) {
-        const rl = labelFor(radio);
-        if (words.some((wre) => wre.test(rl))) {
-          if (radio.checked) {
+      const best = bestOption(group.map((radio) => ({
+        el: radio, text: labelFor(radio),
+      })), res);
+      if (!best) {
+        for (const radio of group) releaseRule(radio);
+      } else {
+        const radio = best.el;
+        const rl = best.text;
+        if (radio.checked) {
             // The matching button is already selected. Before this branch the
             // checked button was clicked AGAIN and reported `filled`, so a
             // re-run inflated the count with writes that wrote nothing.
             already.push({ label, value: rl.slice(0, 40) });
-          } else {
-            radio.click();
+        } else {
+          // `click()` dispatches a click event and does NOT move focus, which
+          // is where it differs from the user gesture it stands in for — see
+          // `visitControl`. The visit is what a grouped required question
+          // validates on.
+          clickControl(radio);
+          if (stillChecked(radio)) {
             recordFilled({ label, value: rl.slice(0, 40) });
             observe(input, kind, labelText, rule, "filled");
+          } else {
+            noteAttempt(labelText, res.value);
           }
-          doneRadioGroups.add(groupKey);
-          break;
         }
+        doneRadioGroups.add(groupKey);
       }
     } else if (input.type === "checkbox") {
       // The second exception, and the only other one: a box whose answer we
@@ -1494,8 +1695,9 @@ async function fillFormFromProfile(
         // ended in 2021 is a false statement on a record employers verify,
         // rather than an omission.
         if (!input.checked) {
-          input.click();
-          const ticked = input.checked === true;
+          // The radio branch's reason, unchanged: `click()` moves no focus.
+          clickControl(input);
+          const ticked = stillChecked(input);
           observe(input, kind, labelText, rule, ticked ? "filled" : "not_stuck");
           recordFilled({
             label,
@@ -1528,6 +1730,11 @@ async function fillFormFromProfile(
         continue;
       }
       const popup = await fillListboxButton(input, res);
+      if (popup.optionMismatch) {
+        releaseRule(input);
+        continue;
+      }
+      if (!popup.ok) noteAttempt(labelText, res.value);
       observe(input, kind, labelText, rule, popup.ok ? "filled" : "combobox_snap_failed");
       recordFilled({
         label,
@@ -1547,6 +1754,11 @@ async function fillFormFromProfile(
         continue;
       }
       const combo = await fillCombobox(input, res);
+      if (combo.optionMismatch) {
+        releaseRule(input);
+        continue;
+      }
+      if (!combo.ok) noteAttempt(labelText, res.value);
       observe(input, kind, labelText, rule, combo.ok ? "filled" : "combobox_snap_failed");
       recordFilled({
         label,
@@ -1576,6 +1788,7 @@ async function fillFormFromProfile(
         outcome = "filled_normalized";
       }
       const ok = COMMIT_OK.has(outcome);
+      if (!ok) noteAttempt(labelText, res.value);
       observe(input, kind, labelText, rule, outcome);
       recordFilled({
         label,
@@ -1613,7 +1826,14 @@ async function fillFormFromProfile(
       // with the profile gets overwritten, loudly — silently keeping a
       // wrong prefill is how "Jordan Example" became "Jordan".
       const was = input.value.slice(0, 40);
+      // The one text write in this loop that does NOT go through
+      // `commitValue`, and therefore the one that had no visit of its own —
+      // see `visitControl`. A corrected identity field is a field the ATS
+      // prefilled and its own validation has already run over, so a silent
+      // overwrite is precisely the case where the page has to be told.
+      visitControl(input);
       setNativeValue(input, String(res.value));
+      leaveControl(input);
       corrected.push({ label, was, value: String(res.value) });
       observe(input, kind, labelText, rule, "corrected");
     }
@@ -1629,6 +1849,307 @@ async function fillFormFromProfile(
 // executes this module's published function directly.
 // ---- end fillFormFromProfile ----
 
+  const guidedNorm = (value) => String(value ?? "")
+    .toLowerCase().replace(/\s+/g, " ").trim();
+
+  const guidedListboxOptions = (control) => {
+    for (const attr of ["aria-controls", "aria-owns"]) {
+      const id = control.getAttribute(attr);
+      const list = id ? document.getElementById(id) : null;
+      const nodes = list ? [...list.querySelectorAll('[role="option"]')] : [];
+      if (nodes.length) return nodes;
+    }
+    return [...document.querySelectorAll('[role="option"]')]
+      .filter((node) => !node.closest(
+        '[data-automation-id="selectedItemList"], [data-automation-id="selectedItem"]'));
+  };
+
+  const guidedWaitForOptions = (control) => {
+    const present = guidedListboxOptions(control);
+    if (present.length) return Promise.resolve(present);
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = (nodes) => {
+        if (settled) return;
+        settled = true;
+        observer.disconnect();
+        clearTimeout(timer);
+        resolve(nodes);
+      };
+      const observer = new MutationObserver(() => {
+        const nodes = guidedListboxOptions(control);
+        if (nodes.length) finish(nodes);
+      });
+      observer.observe(document.documentElement, { childList: true, subtree: true });
+      const timer = setTimeout(() => finish([]), 1600);
+    });
+  };
+
+  const guidedOptionMatch = (nodes, answer, knownValue) => {
+    const options = nodes.map((node) => ({
+      node,
+      text: String(node.innerText ?? node.textContent ?? "").trim(),
+    })).filter(({ text }) => text && !/^(select( one)?|choose( one)?|—|-)$/i.test(text));
+    return guidedCandidateMatch(options, answer, knownValue);
+  };
+
+  const guidedCandidateMatch = (options, answer, knownValue) => {
+    const find = (value) => {
+      const raw = String(value ?? "").trim();
+      if (!raw) return null;
+      return options.find(({ text }) => text === raw)
+        ?? options.find(({ text }) => guidedNorm(text) === guidedNorm(raw))
+        ?? null;
+    };
+    const answerMatch = find(answer);
+    if (answerMatch) return { ...answerMatch, outcome: "filled" };
+    const knownMatch = find(knownValue);
+    return knownMatch
+      ? { ...knownMatch, outcome: "match_recovered" }
+      : null;
+  };
+
+  /** The guided pass's own `visitControl`/`leaveControl`, and it is a COPY for
+   * the reason every `guided`-prefixed helper in this block is one: the rule
+   * pass's pair is declared inside `fillFormFromProfile`, which is a closure
+   * this block is not in. `guidedSetNativeValue`, `guidedSameIgnoringFormat`
+   * and `guidedReadback` sit here for exactly the same reason. The reasoning
+   * lives once, on `visitControl`; fix both or neither.
+   */
+  const guidedVisitControl = (element) => element?.focus?.({ preventScroll: true });
+  const guidedLeaveControl = (element) => { if (element?.isConnected) element.blur(); };
+  const guidedClickControl = (element) => {
+    guidedVisitControl(element); element.click(); guidedLeaveControl(element);
+  };
+  // `stillChecked`'s twin — see it for the reasoning; a copy for the closure
+  // reason every `guided`-prefixed helper here is one.
+  const guidedStillChecked = (element) =>
+    element?.isConnected === true && element.checked === true;
+
+  const guidedSetNativeValue = (element, value) => {
+    const proto = element instanceof HTMLTextAreaElement
+      ? window.HTMLTextAreaElement.prototype
+      : element instanceof HTMLSelectElement
+        ? window.HTMLSelectElement.prototype
+        : window.HTMLInputElement.prototype;
+    const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
+    if (setter) setter.call(element, value);
+    else element.value = value;
+    element.dispatchEvent(new Event("input", { bubbles: true }));
+    element.dispatchEvent(new Event("change", { bubbles: true }));
+  };
+
+  const guidedSameIgnoringFormat = (actual, wrote) => {
+    const strip = (value) => String(value).normalize("NFKD").replace(/\p{M}/gu, "")
+      .toLowerCase().replace(/[^a-z0-9]/g, "");
+    const left = strip(actual);
+    return left !== "" && left === strip(wrote);
+  };
+
+  const guidedReadback = (element, value) => new Promise((resolve) => {
+    let samples = 0;
+    let settled = false;
+    const timers = [];
+    const hidden = document.visibilityState === "hidden";
+    const finish = (outcome) => {
+      if (settled) return;
+      settled = true;
+      for (const timer of timers) clearTimeout(timer);
+      resolve(outcome);
+    };
+    const sample = (last) => {
+      if (!element.isConnected) return finish("not_stuck");
+      if (element.value !== value) {
+        return finish(guidedSameIgnoringFormat(element.value, value)
+          ? "filled"
+          : "not_stuck");
+      }
+      samples += 1;
+      if (!hidden && samples >= 2) return finish("filled");
+      if (last) return finish("filled_unverified");
+    };
+    [50, 150, 400, 1000].forEach((delay, index, delays) => {
+      timers.push(setTimeout(() => sample(index === delays.length - 1), delay));
+    });
+  });
+
+  const guidedTextWrite = async (element, item) => {
+    const value = String(item.answer);
+    element.focus({ preventScroll: true });
+    guidedSetNativeValue(element, value);
+    element.dispatchEvent(new KeyboardEvent(
+      "keydown", { key: "Unidentified", bubbles: true }));
+    element.dispatchEvent(new KeyboardEvent(
+      "keyup", { key: "Unidentified", bubbles: true }));
+    element.blur();
+    return guidedReadback(element, value);
+  };
+
+  const guidedSelectWrite = async (element, item) => {
+    const candidates = [...element.options]
+      .filter((option) => option.value !== "")
+      .map((option) => ({
+        node: option,
+        text: String(option.textContent ?? "").trim(),
+      }));
+    const match = guidedCandidateMatch(candidates, item.answer, item.knownValue);
+    if (!match) return "not_stuck";
+    // The visit, `visitControl`'s rule applied to the guided writers: this
+    // block is the second-pass twin of the rule pass's select branch and had
+    // exactly the same gap. `guidedTextWrite` above already focused and
+    // blurred, which is why only the non-text limbs change here.
+    guidedVisitControl(element);
+    guidedSetNativeValue(element, match.node.value);
+    guidedLeaveControl(element);
+    await Promise.resolve();
+    // `isConnected` for `stillChecked`'s reason: the blur above can re-render
+    // the widget, and a detached select keeps the value we set it to.
+    return element.isConnected && element.value === match.node.value
+      ? match.outcome : "not_stuck";
+  };
+
+  const guidedControlLabel = (element) => {
+    const wrapped = element.closest("label");
+    if (wrapped?.innerText?.trim()) return wrapped.innerText.trim();
+    const byFor = element.id
+      ? document.querySelector(`label[for="${CSS.escape(element.id)}"]`)
+      : null;
+    return String(byFor?.innerText
+      ?? element.getAttribute("aria-label")
+      ?? element.value
+      ?? "").trim();
+  };
+
+  const guidedRadioWrite = async (element, item) => {
+    const group = element.name
+      ? [...document.querySelectorAll(
+        `input[type="radio"][name="${CSS.escape(element.name)}"]`)]
+      : [element];
+    const match = guidedCandidateMatch(group.map((radio) => ({
+      node: radio,
+      text: guidedControlLabel(radio),
+    })), item.answer, item.knownValue);
+    if (!match) return "not_stuck";
+    if (!match.node.checked) {
+      guidedClickControl(match.node); // see `visitControl` — click() moves no focus
+    }
+    await Promise.resolve();
+    return guidedStillChecked(match.node) ? match.outcome : "not_stuck";
+  };
+
+  const guidedCheckboxWrite = async (element, item) => {
+    const desired = (value) => {
+      const normalized = guidedNorm(value);
+      if (["yes", "true", "checked", "1"].includes(normalized)) return true;
+      if (["no", "false", "unchecked", "0"].includes(normalized)) return false;
+      return null;
+    };
+    let wanted = desired(item.answer);
+    let outcome = "filled";
+    if (wanted === null) {
+      wanted = desired(item.knownValue);
+      outcome = "match_recovered";
+    }
+    if (wanted === null) return "not_stuck";
+    if (element.checked !== wanted) {
+      guidedClickControl(element); // see `visitControl` — click() moves no focus
+    }
+    await Promise.resolve();
+    return element.isConnected && element.checked === wanted
+      ? outcome : "not_stuck";
+  };
+
+  const guidedFireMouseSequence = (element) => {
+    for (const type of ["pointerdown", "mousedown", "mouseup", "click"]) {
+      element.dispatchEvent(new MouseEvent(
+        type, { bubbles: true, cancelable: true, view: window }));
+    }
+  };
+
+  const guidedIsListboxButton = (element) =>
+    element instanceof HTMLButtonElement
+    && element.getAttribute("aria-haspopup") === "listbox";
+
+  const guidedComboboxWrite = async (element, item, alternate = false) => {
+    const before = guidedIsListboxButton(element)
+      ? String(element.innerText ?? element.textContent ?? "").trim()
+      : null;
+    element.focus({ preventScroll: true });
+    if (guidedIsListboxButton(element)) {
+      const openWithKeyboard = () => element.dispatchEvent(new KeyboardEvent(
+        "keydown", { key: "ArrowDown", bubbles: true }));
+      if (alternate) {
+        openWithKeyboard();
+        guidedFireMouseSequence(element);
+      } else {
+        guidedFireMouseSequence(element);
+        openWithKeyboard();
+      }
+    } else if (alternate) {
+      guidedFireMouseSequence(element);
+      element.dispatchEvent(new KeyboardEvent(
+        "keydown", { key: "ArrowDown", bubbles: true }));
+    } else {
+      guidedSetNativeValue(element, String(item.answer));
+    }
+    const match = guidedOptionMatch(
+      await guidedWaitForOptions(element), item.answer, item.knownValue);
+    if (!match) {
+      element.dispatchEvent(new KeyboardEvent(
+        "keydown", { key: "Escape", bubbles: true }));
+      element.blur();
+      return "not_stuck";
+    }
+    guidedFireMouseSequence(match.node);
+    await Promise.resolve();
+    if (before !== null) {
+      const after = String(element.innerText ?? element.textContent ?? "").trim();
+      // Blurred on BOTH endings, and read back before either — the widget's own
+      // text is the verdict, and the focusout is owed whether the click landed
+      // or not. `fillListboxButton` takes the same shape; see `visitControl`.
+      guidedLeaveControl(element);
+      if (after === before) return "not_stuck";
+      return match.outcome;
+    }
+    guidedLeaveControl(element);
+    return match.outcome;
+  };
+
+  const guidedWriteOne = async (element, item, alternate = false) => {
+    if (!element) return "not_stuck";
+    if (item.kind === "text" || item.kind === "textarea") {
+      return guidedTextWrite(element, item);
+    }
+    if (item.kind === "select") return guidedSelectWrite(element, item);
+    if (item.kind === "radio") return guidedRadioWrite(element, item);
+    if (item.kind === "checkbox") return guidedCheckboxWrite(element, item);
+    if (item.kind === "combobox") {
+      return guidedComboboxWrite(element, item, alternate);
+    }
+    return "not_stuck";
+  };
+
+  const guidedWrite = async (items) => {
+    const results = [];
+    for (const item of items) {
+      const liveElement = () => item.el?.isConnected
+        ? item.el
+        : document.querySelector(
+          `[data-rt-qid="${CSS.escape(String(item.qid))}"]`);
+      let outcome = await guidedWriteOne(liveElement(), item);
+      if (outcome === "not_stuck") {
+        const retryOutcome = await guidedWriteOne(liveElement(), item, true);
+        outcome = retryOutcome === "filled" || retryOutcome === "match_recovered"
+          ? "retry_filled"
+          : retryOutcome;
+      }
+      results.push({ qid: item.qid, outcome });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    return results;
+  };
 
   ns.fillFormFromProfile = fillFormFromProfile;
+  ns.isCombobox = isCombobox;
+  ns.guidedWrite = guidedWrite;
 })();

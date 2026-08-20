@@ -1,6 +1,8 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
+import { allowedHostsFromEnv, isAllowedHost } from "@/lib/allowed-hosts.mjs";
+
 export const dynamic = "force-dynamic";
 
 /**
@@ -14,6 +16,19 @@ const BACKEND = (
 ).replace(/\/$/, "");
 
 async function proxy(req: NextRequest, pathSegments: string[]) {
+  // The SECOND Host check, and the one that actually guards the data.
+  // `proxy.ts` covers every route including this one, so in a correctly wired
+  // build this branch is unreachable — which is exactly why it is here. This
+  // handler rebuilds the outbound request and deletes the inbound Host below,
+  // so if the file-convention check ever stops running (a Next rename, a
+  // matcher someone adds, a refactor that moves this route), the failure is
+  // silent and the whole zero-auth API is behind it. A defence against a
+  // rebinding attack must not rest on one framework filename.
+  const allowed = allowedHostsFromEnv(process.env);
+  if (!isAllowedHost(req.headers.get("host"), allowed)) {
+    return NextResponse.json({ detail: "Host not allowed." }, { status: 400 });
+  }
+
   const suffix = pathSegments.join("/");
   const search = req.nextUrl.search;
   const url = `${BACKEND}/api/${suffix}${search}`;

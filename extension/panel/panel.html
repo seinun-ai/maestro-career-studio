@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Maestro CS</title>
+<link rel="stylesheet" href="panel.css">
+</head>
+<body>
+<!-- The three regions, and the whole of the document's structure: the render
+     loop below rebuilds each one from the store on every render. Two are
+     constant chrome (job identity, footer); the rail is the one dynamic
+     region. See the design doc's "Constant chrome vs dynamic stage area".
+
+     THERE WAS A FOURTH, `#head`, and its deletion is the point rather than a
+     tidy-up: it was a brand row — a mark, the words "Maestro CS", and the deep
+     link — sitting directly under Chrome's own side-panel title bar, which
+     already reads "Maestro CS Companion" and cannot be removed. The panel
+     therefore said its own name twice in the first 60 pixels of a 400px-wide
+     surface. The NATIVE bar is the one title; the brand row's only load-bearing
+     part was the link, and the link now renders as `#identity`'s last child, on
+     a line of its own — beside the match chip was tried first and measured out,
+     because there the link and the job title fight over one axis. -->
+<div id="identity" class="identity"></div>
+<!-- An ordered list because that is what it is — five numbered steps in order
+     — so the row count and position are announced without the render loop
+     having to say them. `role="list"` is belt and braces: `list-style: none`
+     is documented to strip list semantics in some browsers, and the rail is
+     styled rows either way. -->
+<ol id="rail" class="rail" role="list"></ol>
+<div id="foot" class="p-foot">
+  <!-- The note is a STATIC child, written by textContent and never replaced.
+       A live region has to be in the document before its text changes; one
+       created fresh on each render is a new region every time, and a new
+       region announces nothing. It is also the only feedback any control on
+       this surface produces, which is why it is announced at all. -->
+  <div id="note" class="note" aria-live="polite"></div>
+  <div id="foot-controls" class="foot-controls"></div>
+</div>
+<!-- decisions.js FIRST: panel.js destructures `ns.decisions` at the top of its
+     IIFE, so the module has to have published by then. The content scripts get
+     the same guarantee from the manifest's injection order; this document has
+     to state it here, in tag order, because nothing else will.
+
+     choose.js and guided-run.js are the OTHER two shared modules, and they
+     arrive together at Task 12 because neither is any use without the other:
+     the runner reads `ns.routeOpenQuestions`, `ns.requestChoose` and
+     `ns.buildRestFillObservations` off the namespace when it runs, and until
+     the split those three lived in a content script this document may never
+     load. choose.js first for that reason; both before the actions file whose
+     Start-fill calls the runner.
+
+     policy.js is the FOURTH, and it arrives at Task 13 for choose.js's exact
+     reason: the pause row must refuse a policy-blocked field — no input for a
+     password, no save path behind it — and the deny list is single-source by
+     test, so the panel consults `ns.isPolicyBlocked` rather than carrying a
+     second opinion about what may be filled. profile-fields.js beside it: the
+     label patterns that name a TYPED home in the autofill profile, read by the
+     fill engine's rule table and by the pause row's save router, which is one
+     table with two readers rather than two tables that agree today.
+
+     THE TWO DIRECTORIES AND THEIR ROSTERS come next, for the same reason and
+     in the same direction. Each `stages/*.js` publishes one stage body and each
+     `actions/*.js` publishes one concern's actions; `stages.js` and `actions.js`
+     are the tiny ROSTERS that gather them into the two things panel.js reads at
+     LOAD — `ns.panelStages` is the rail's bodies, `ns.panelActions` is the
+     factory panel.js hands its store handle to. So each part precedes its own
+     roster, both rosters precede panel.js, and the two families do not read
+     each other, which is why their order relative to one another is free.
+
+     `actions/during.js` FIRST INSIDE ITS FAMILY, and that one is not free:
+     `duringAction` is the `busy` span, every concern file reads it off the
+     namespace at load, and it exists in exactly one place because per-concern
+     copies are how the next round trip lands outside the span (see its own
+     header). `actions/fill.js` before `actions/pause.js` is a READING
+     order rather than a load one — the pause row reads `ns.panelFillFinished`
+     when it RUNS, not when it loads, so the two would work in either order;
+     the document states it because the last pause row closing has to mark the
+     page done exactly as a clean run would, and that is easier to find when
+     the file publishing the predicate is read first. `actions/pick.js` after
+     `actions/job.js` is the same kind of pin: the picker is a Job-stage
+     concern, and it sits next to Add job so the two writers of that stage
+     are read together.
+
+     A MISSING TAG IS LOUD, which is what makes this list the document's own
+     fact rather than a thing to keep in step by hand: both rosters throw on a
+     part that did not publish itself, naming the file and this document.
+
+     This is the whole dependency graph of the document, and these files are
+     the whole of its script.
+
+     Nothing here is remote. MV3's CSP would refuse a remote script anyway, and
+     the panel has to work with the backend down — it is the surface that has
+     to SAY the backend is down. -->
+<script src="../shared/decisions.js"></script>
+<script src="../shared/choose.js"></script>
+<script src="../shared/guided-run.js"></script>
+<script src="../shared/policy.js"></script>
+<script src="../shared/profile-fields.js"></script>
+<script src="stages/job.js"></script>
+<script src="stages/score.js"></script>
+<script src="stages/resume.js"></script>
+<script src="stages/fill.js"></script>
+<script src="stages/track.js"></script>
+<script src="stages.js"></script>
+<script src="actions/during.js"></script>
+<script src="actions/job.js"></script>
+<script src="actions/pick.js"></script>
+<script src="actions/score.js"></script>
+<script src="actions/resume.js"></script>
+<script src="actions/fill.js"></script>
+<script src="actions/pause.js"></script>
+<script src="actions/qna.js"></script>
+<script src="actions/track.js"></script>
+<script src="actions.js"></script>
+<script src="panel.js"></script>
+</body>
+</html>

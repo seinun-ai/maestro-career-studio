@@ -8,6 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.template import Template
+from app.schemas.template import validate_template_id
 from app.services import pdf_render, typst_compiler
 
 logger = logging.getLogger(__name__)
@@ -419,6 +420,9 @@ def create_draft(
     session: Session, *, id: str, display_name: str, source: str | None, origin: str,
     engine: str = "latex",
 ) -> Template:
+    # Validated HERE, not only in the REST schema: chat and MCP reach this
+    # function directly, and an id is also a filename (see validate_template_id).
+    validate_template_id(id)
     if session.get(Template, id) is not None:
         raise ValueError(f"Template already exists: {id}")
     tmpl = Template(
@@ -465,6 +469,7 @@ def duplicate(
     Raises LookupError if the source is missing, ValueError if `new_id` collides.
     The copy always starts as a draft (must be re-validated before use).
     """
+    validate_template_id(new_id)
     src = session.get(Template, source_id)
     if src is None:
         raise LookupError(f"Template not found: {source_id}")

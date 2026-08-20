@@ -8,32 +8,21 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { LoadErrorState } from "@/components/load-error-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { apiFetch } from "@/lib/api";
-import type { BaseResumeSummary } from "@/lib/types";
 
 type QuickTailorProfile = {
   keywords_into_skills: boolean;
   mirror_wording: boolean;
   summary_rename: boolean;
   project_keyword_injection: boolean;
-  default_base_resume: string;
   instruction: string;
 };
 
 type QuickTailorSetting = { key: string; value: QuickTailorProfile };
-type BooleanPreference = Exclude<
-  keyof QuickTailorProfile,
-  "default_base_resume" | "instruction"
->;
+type BooleanPreference = Exclude<keyof QuickTailorProfile, "instruction">;
 
 const SWITCH_ROWS: {
   key: BooleanPreference;
@@ -74,7 +63,15 @@ export function QuickTailorSection() {
         </p>
       </CardHeader>
       <CardContent>
-        {profile.isLoading || !profile.data ? (
+        {profile.isError ? (
+          <LoadErrorState
+            className="py-8"
+            title="Couldn't load your quick-tailor profile."
+            detail={(profile.error as Error)?.message}
+            retrying={profile.isFetching}
+            onRetry={() => void profile.refetch()}
+          />
+        ) : profile.isLoading || !profile.data ? (
           <Skeleton className="h-48 w-full" />
         ) : (
           <QuickTailorEditor initial={profile.data.value} />
@@ -90,19 +87,10 @@ function QuickTailorEditor({ initial }: { initial: QuickTailorProfile }) {
   const [dirty, setDirty] = useState(false);
   const [lastInitial, setLastInitial] = useState(initial);
 
-  const baseResumes = useQuery({
-    queryKey: ["base-resumes"],
-    queryFn: () => apiFetch<BaseResumeSummary[]>("/api/base-resumes"),
-  });
-
   if (!dirty && initial !== lastInitial) {
     setLastInitial(initial);
     setProfile(initial);
   }
-
-  const selectedBase = baseResumes.data?.find(
-    (resume) => resume.slug === profile.default_base_resume,
-  );
 
   const setField = <K extends keyof QuickTailorProfile>(
     key: K,
@@ -147,33 +135,6 @@ function QuickTailorEditor({ initial }: { initial: QuickTailorProfile }) {
             </div>
           );
         })}
-      </div>
-
-      <div className="grid gap-1.5">
-        <Label htmlFor="quick-tailor-base" className="text-xs">
-          Default base resume
-        </Label>
-        <Select
-          value={profile.default_base_resume || undefined}
-          onValueChange={(value) =>
-            setField("default_base_resume", value ?? "")
-          }
-        >
-          <SelectTrigger id="quick-tailor-base" className="w-full">
-            <SelectValue placeholder="Choose a base resume">
-              {selectedBase
-                ? (selectedBase.display_name ?? selectedBase.slug)
-                : undefined}
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            {(baseResumes.data ?? []).map((resume) => (
-              <SelectItem key={resume.slug} value={resume.slug}>
-                {resume.display_name ?? resume.slug}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
       </div>
 
       <div className="grid gap-1.5">

@@ -1,7 +1,7 @@
 "use client";
 
 import { EditableCard } from "@/components/resume-editor/editable-card";
-import { AddEntryButton, cardReorderProps } from "@/components/resume-editor/editor-scaffold";
+import { AddEntryButton, useEntryEditing } from "@/components/resume-editor/editor-scaffold";
 import { ChipListInput } from "@/components/ui/chip-input";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,15 +14,18 @@ export function SkillsEditor({
   value: SkillGroup[];
   onChange: (next: SkillGroup[]) => void;
 }) {
-  const update = (i: number, patch: Partial<SkillGroup>) =>
-    onChange(value.map((g, idx) => (idx === i ? { ...g, ...patch } : g)));
+  const { setEditingIndex, entryEditingProps, update } = useEntryEditing(
+    value,
+    onChange,
+    (g) => !g.category,
+  );
 
   return (
     <div className="flex flex-col">
       {value.map((group, i) => (
         <EditableCard
           key={i}
-          {...cardReorderProps(value, i, onChange)}
+          {...entryEditingProps(i)}
           read={
             <div className="grid grid-cols-[10rem_1fr] items-baseline gap-4 pr-16">
               <span className="text-muted-foreground text-sm font-medium">
@@ -73,7 +76,10 @@ export function SkillsEditor({
       ))}
       <AddEntryButton
         label="Add skill group"
-        onClick={() => onChange([...value, { category: "", items: [] }])}
+        onClick={() => {
+          onChange([...value, { category: "", items: [] }]);
+          setEditingIndex(value.length);
+        }}
       />
     </div>
   );

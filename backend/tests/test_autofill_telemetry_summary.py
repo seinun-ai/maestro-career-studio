@@ -6,7 +6,8 @@ from fastapi.testclient import TestClient
 from app.db import get_db
 from app.main import app
 from app.models.autofill_field_observation import AutofillFieldObservation
-from app.schemas.autofill_telemetry import ObservationKind, ObservationOutcome
+from app.schemas.autofill_telemetry import ObservationKind, ObservationOutcome, TelemetryBatch
+from app.services import autofill_telemetry
 from app.services.autofill_telemetry import (
     FAILURE_OUTCOMES,
     NEUTRAL_OUTCOMES,
@@ -349,3 +350,22 @@ def test_summary_endpoint_returns_contract(db_session):
             "share": 1.0,
         }
     ]
+
+
+def test_second_pass_recoveries_are_successes_and_abstention_is_neutral():
+    """ai_abstained sits with missing_source: "the profile has no answer" is a
+    fact about the profile, not a failure of the fill engine, and scoring it as
+    one would tell the user to go fix rules that are working."""
+    assert "retry_filled" in autofill_telemetry.SUCCESS_OUTCOMES
+    assert "match_recovered" in autofill_telemetry.SUCCESS_OUTCOMES
+    assert "ai_abstained" in autofill_telemetry.NEUTRAL_OUTCOMES
+    assert "ai_abstained" not in autofill_telemetry.FAILURE_OUTCOMES
+    assert "filled_unverified" in autofill_telemetry.NEUTRAL_OUTCOMES
+    assert "filled_unverified" not in autofill_telemetry.FAILURE_OUTCOMES
+
+
+def test_rest_fill_is_an_accepted_action():
+    batch = TelemetryBatch(
+        page_host="boards.greenhouse.io", action="rest_fill", observations=[]
+    )
+    assert batch.action == "rest_fill"

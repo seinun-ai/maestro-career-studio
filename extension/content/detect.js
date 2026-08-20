@@ -2,13 +2,13 @@
 //
 // Shared dependency modules run first but only publish functions. This is the
 // extension's first decision point and, on the overwhelming majority of pages,
-// the last code the widget calls. It runs IN EVERY FRAME, before any UI exists,
+// the last code that runs at all. It runs IN EVERY FRAME, before any UI exists,
 // and answers one question: is there anything here this extension can help with.
 //
-// The negative answer is the important one. On a miss the caller mounts
-// nothing, observes nothing, and constructs no telemetry observation — not
-// even a dot. That is not politeness; it is the whole difference between this
-// widget and the category. A competitor's experimental job detection was
+// The negative answer is the important one. On a miss the caller offers
+// nothing, observes nothing, and constructs no telemetry observation. That is
+// not politeness; it is the whole difference between this extension and the
+// category. A competitor's experimental job detection was
 // injected "into multiple webpages rather than only job application sites" and
 // broke a video site's own buttons; another is reported maxing CPU
 // "regardless of if it can fill out anything" and breaking a chat client.
@@ -32,7 +32,7 @@
  * re-derive it from `score` — the threshold lives here.
  *
  * `signals` is everything that fired, tier boundaries ignored, so the caller
- * can combine this with Tier C (`GET /api/jobs/match?url=`, which the widget
+ * can combine this with Tier C (`GET /api/jobs/match?url=`, which the panel
  * asks for and which short-circuits both tiers below it) and still see what
  * the page itself offered. An ATS host arrives as `ats:<vendor>`; that vendor
  * is what selects the per-ATS field map later.
@@ -106,8 +106,8 @@ function detectPage() {
 
   // The strongest single signal, and every clause is scoped to a FILE input on
   // purpose. Unscoped, `[name*="cv" i]` matches `cardCvv`/`cvc` and
-  // `[name*="resume" i]` matches an `<a name="resume">` bookmark — which put
-  // this widget on payment pages and personal sites. The `accept` clause is
+  // `[name*="resume" i]` matches an `<a name="resume">` bookmark — which had
+  // this extension offering to help on payment pages and personal sites. The `accept` clause is
   // separate because a drag-and-drop uploader often declares no `accept` at
   // all, and the name is the only thing left saying what it wants.
   if (present('input[type="file"][accept*="pdf" i], input[type="file"][name*="resume" i], '
@@ -156,8 +156,8 @@ function detectPage() {
     : "";
 
   // Two strengths, because these phrases are not equally informative and
-  // treating them alike put the widget on every page of a company that carries
-  // one line in its footer.
+  // treating them alike made every page of a company that carries one line in
+  // its footer look like an application form.
   //
   // The self-identification block is near-certain and decisive on its own: a
   // page asking whether you are a protected veteran, or how you would describe
@@ -168,8 +168,8 @@ function detectPage() {
   // boilerplate that follows a job description, sits in a corporate footer and
   // fills a blog post explaining the law, so they say something true about the
   // page and nothing about whether there is a form on it. At weight 1 they
-  // reached the threshold in company with any single weak partner, which put
-  // the widget on a careers site's contact page. They are never load-bearing
+  // reached the threshold in company with any single weak partner, which made
+  // a careers site's contact page read as an application form. They are never load-bearing
   // for a real application form, which arrives at the threshold three other
   // ways: an upload plus an identity cluster, a vendor marker plus an apply
   // control, or the self-identification block by itself.

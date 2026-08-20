@@ -26,6 +26,11 @@ export default function NewApplicationPage() {
     setSavedJob(null);
   }
 
+  function onSourceUrlChange(value: string) {
+    setSourceUrl(value);
+    setSavedJob(null);
+  }
+
   async function ensureJob(): Promise<Job> {
     if (savedJob) return savedJob;
     const job = await ingestJob({
@@ -86,7 +91,7 @@ export default function NewApplicationPage() {
             id="source_url"
             placeholder="https://boards.example.com/job/123"
             value={sourceUrl}
-            onChange={(e) => setSourceUrl(e.target.value)}
+            onChange={(e) => onSourceUrlChange(e.target.value)}
           />
         </div>
       </div>

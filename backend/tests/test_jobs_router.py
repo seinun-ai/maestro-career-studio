@@ -949,3 +949,40 @@ def test_list_jobs_filters_by_source(db_session):
     assert res_invalid.status_code == 422
 
 
+
+
+def test_ingest_url_fallback_matches_the_posting_not_the_string(db_session):
+    """SYSTEM.md §11 item 9: the no-raw-text capture path dedupes by POSTING,
+    not by string equality. A re-capture arriving through a referral link
+    (?gh_src=, ?utm_*) or from the posting's /apply sub-path is the job
+    already captured; a different posting on the same board is not."""
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        client = TestClient(app)
+        first_extraction = _valid_extraction()
+        first = client.post("/api/jobs/ingest", json={
+            "extracted_json": first_extraction,
+            "source_url": "https://job-boards.greenhouse.io/acme/jobs/123",
+        })
+        # A DIFFERENT extraction (different hash — hash dedup must not be the
+        # thing passing this test) of the same posting, via a referral link
+        # onto the apply sub-path.
+        second_extraction = _valid_extraction()
+        second_extraction["title"] = "Data Scientist II"
+        second = client.post("/api/jobs/ingest", json={
+            "extracted_json": second_extraction,
+            "source_url": "https://job-boards.greenhouse.io/acme/jobs/123/apply?gh_src=2wwdc8go3us&utm_source=linkedin",
+        })
+        # A sibling posting shares every leading segment but one — a new row.
+        third_extraction = _valid_extraction()
+        third_extraction["title"] = "Data Engineer"
+        third = client.post("/api/jobs/ingest", json={
+            "extracted_json": third_extraction,
+            "source_url": "https://job-boards.greenhouse.io/acme/jobs/456?gh_src=2wwdc8go3us",
+        })
+    finally:
+        app.dependency_overrides.clear()
+
+    assert first.status_code == second.status_code == third.status_code == 200
+    assert second.json()["id"] == first.json()["id"]
+    assert third.json()["id"] != first.json()["id"]

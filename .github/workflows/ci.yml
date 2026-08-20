@@ -134,17 +134,17 @@ jobs:
         run: python3 scripts/check_system_md.py
 
   frontend:
-    name: Frontend Build & Type Check (Node 20)
+    name: Frontend Build & Type Check (Node 24)
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - name: Setup Node.js 20
+      - name: Setup Node.js 24
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: "20"
+          node-version: "24"
           cache: "npm"
           cache-dependency-path: "frontend/package-lock.json"
 
@@ -181,10 +181,10 @@ jobs:
           pip install pip-audit
           pip-audit -r backend/requirements.lock --disable-pip
 
-      - name: Setup Node.js 20
+      - name: Setup Node.js 24
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: "20"
+          node-version: "24"
 
       # Dev-only advisories do not ship to users, so they do not block a merge.
       - name: Audit npm dependencies

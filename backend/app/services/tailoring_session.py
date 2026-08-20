@@ -117,8 +117,16 @@ def create_session(
         health = resume_lint.latest_report(session, "base", base_resume)
         if health is not None:
             rj = health.report_json
+            # Waivers come off the TABLE, never off the report's own statuses:
+            # waiving writes a row and nothing else, so the stored snapshot
+            # still reads "fail" until the next health-check RUN folds waivers
+            # in. Reading statuses alone left MCP's documented escape hatch shut
+            # — waive, retry, same 409 — while the web path only worked because
+            # its waive button re-runs the check.
+            waived = resume_lint.gate_waivers(session, "base", base_resume)
             failed_fatal = [g for g in rj.get("gates", [])
-                            if g.get("tier") == "fatal" and g.get("status") == "fail"]
+                            if g.get("tier") == "fatal" and g.get("status") == "fail"
+                            and g.get("id") not in waived]
             if failed_fatal:
                 raise HealthGateBlockedError(
                     "Base resume has failing structural gate(s): "

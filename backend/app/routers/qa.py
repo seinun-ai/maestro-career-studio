@@ -43,6 +43,28 @@ def run_qa(payload: QARequest, db: Annotated[Session, Depends(get_db)]):
             detail="questions or cover_letter is required",
         )
 
+    # Two shapes of "the caller named something unusable", mapped like
+    # `regenerate_entry` below — ORDER IS THE CONTRACT (§12): the narrow
+    # subclass first, the generic ValueError second, and ValidationError (also a
+    # ValueError) never reaches here because nothing in `_run_qa` validates a
+    # model.
+    #
+    # 400: the resume a JOB-level answer is written from could not be read — an
+    # unknown `base`, or an install with no data file for the default. What
+    # shipped was a bare FileNotFoundError out of the disk read.
+    #
+    # 404: the id resolved to no row ("Application not found", "Job not found or
+    # missing extracted data"). That left this handler as an unexplained 500
+    # while the sibling answered the same shape with a 404.
+    try:
+        return _run_qa(payload, db)
+    except qa_service.BaseResumeUnavailable as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+def _run_qa(payload: QARequest, db: Session) -> QAResponse:
     response = QAResponse()
     if payload.questions:
         if payload.application_id is not None:
@@ -51,7 +73,7 @@ def run_qa(payload: QARequest, db: Annotated[Session, Depends(get_db)]):
             )
         else:
             response.answers = qa_service.answer_questions_for_job(
-                payload.job_id, payload.questions, db
+                payload.job_id, payload.questions, db, payload.base
             )
 
     if payload.cover_letter is not None:
@@ -72,7 +94,7 @@ def run_qa(payload: QARequest, db: Annotated[Session, Depends(get_db)]):
             )
         else:
             response.cover_letter = qa_service.generate_cover_letter_for_job(
-                payload.job_id, tone, db
+                payload.job_id, tone, db, payload.base
             )
 
     return response

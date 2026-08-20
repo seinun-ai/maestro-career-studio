@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
+import { LoadErrorState } from "@/components/load-error-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { apiFetch } from "@/lib/api";
@@ -60,7 +61,15 @@ export function McpWorkflowSection() {
         </p>
       </CardHeader>
       <CardContent>
-        {setting.isLoading || !setting.data ? (
+        {setting.isError ? (
+          <LoadErrorState
+            className="py-8"
+            title="Couldn't load this setting."
+            detail={(setting.error as Error)?.message}
+            retrying={setting.isFetching}
+            onRetry={() => void setting.refetch()}
+          />
+        ) : setting.isLoading || !setting.data ? (
           <Skeleton className="h-11 w-full" />
         ) : (
           /* Same row geometry as the quick-tailor switches and Appearance. */

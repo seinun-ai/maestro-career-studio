@@ -235,6 +235,99 @@ def test_job_only_question_generation_does_not_persist(db_session, monkeypatch):
     assert db_session.query(QAEntry).count() == 0
 
 
+def test_job_answers_are_written_from_the_base_the_caller_names(db_session, monkeypatch):
+    """`base` is threaded to the READ, which is the whole of the fix.
+
+    The job path used to hardcode the generic "hybrid" resume, so a job-level
+    answer was written from a document the caller never picked — and the side
+    panel's own sentence about it ("Answered from your base resume and this
+    posting") was false. A named slug goes through `load_base_resume`, so the
+    base_resumes table gate applies exactly as it does everywhere else.
+    """
+    application = _application(db_session)
+    _patch_context(monkeypatch)
+    monkeypatch.setattr(
+        qa.prompt_assembly,
+        "build_qa_prompt",
+        lambda resume_json, jd_json, memory, questions, persona="": f"qa {resume_json}",
+    )
+    read = {}
+
+    def fake_load(slug, session=None):
+        read["gated"] = slug
+        return {"summary": "Picked"}
+
+    monkeypatch.setattr(qa.base_resume_data, "load_base_resume", fake_load)
+    # The DEFAULT read must not happen at all when a slug was named — a fallback
+    # that still fired would ground the answer on the resume this fixes away.
+    monkeypatch.setattr(
+        qa.base_resume_data, "_read_base_resume_data",
+        lambda slug: pytest.fail(f"the default {slug} resume was read anyway"))
+    captured = {}
+
+    def fake_call(**kwargs):
+        captured["prompt"] = kwargs.get("prompt")
+        return "1. Yes."
+
+    monkeypatch.setattr(qa.llm, "call_openai", fake_call)
+
+    answers = qa.answer_questions_for_job(
+        application.job_id, ["Can you work hybrid?"], db_session, "data_scientist")
+
+    assert answers == ["Yes."]
+    assert read["gated"] == "data_scientist"
+    assert "Picked" in captured["prompt"]
+
+
+def test_a_job_answer_with_no_base_named_still_uses_the_default(db_session, monkeypatch):
+    """The absent-`base` path is unchanged behaviour, pinned because the fix
+    could have moved it: every caller that never sends a slug — the web app, an
+    agent over MCP — keeps the generic default it has always had."""
+    application = _application(db_session)
+    _patch_context(monkeypatch)
+    monkeypatch.setattr(
+        qa.prompt_assembly,
+        "build_qa_prompt",
+        lambda resume_json, jd_json, memory, questions, persona="": "qa prompt",
+    )
+    read = {}
+
+    def fake_default(slug):
+        read["slug"] = slug
+        return {"summary": "Hybrid"}
+
+    monkeypatch.setattr(qa.base_resume_data, "_read_base_resume_data", fake_default)
+    monkeypatch.setattr(qa.llm, "call_openai", lambda **kwargs: "1. Yes.")
+
+    assert qa.answer_questions_for_job(
+        application.job_id, ["Can you work hybrid?"], db_session) == ["Yes."]
+    assert read["slug"] == qa.DEFAULT_JOB_RESUME_SLUG
+
+
+def test_a_resume_that_cannot_be_read_is_a_caller_error_and_never_a_crash(db_session):
+    """BOTH reads can fail on an ordinary install, and neither may be a 500.
+
+    The default is the likelier one: this repo ships a single example base
+    resume, so `hybrid.json` need not exist at all — and the disk read behind it
+    bypasses the table gate, which is why nothing else was catching it. The
+    named slug fails through `load_base_resume`'s own ValueError. Both arrive as
+    `BaseResumeUnavailable`, and the message names the slug and never the path.
+    """
+    application = _application(db_session)
+    with pytest.raises(qa.BaseResumeUnavailable) as missing_default:
+        qa.context_from_job(db_session, application.job_id)
+    assert qa.DEFAULT_JOB_RESUME_SLUG in str(missing_default.value)
+    assert "/" not in str(missing_default.value)
+
+    with pytest.raises(qa.BaseResumeUnavailable) as unknown_slug:
+        qa.context_from_job(db_session, application.job_id, "no_such_resume")
+    assert "no_such_resume" in str(unknown_slug.value)
+
+    # A ValueError either way, so a caller that only knows the old contract
+    # still fails loudly rather than silently answering from nothing.
+    assert issubclass(qa.BaseResumeUnavailable, ValueError)
+
+
 def test_answer_questions_passes_referral_context(db_session, monkeypatch):
     application = _application(db_session)
     referral = Referral(

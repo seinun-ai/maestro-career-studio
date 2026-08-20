@@ -245,6 +245,39 @@ def build_cover_letter_prompt(
     return f"{_persona_block(persona)}{body}"
 
 
+# CODE-LEVEL immutable output contract for the second fill pass's chooser
+# (Task 5). Prepended — never $-substituted — for the same reason as
+# QA_OUTPUT_CONTRACT above: it must survive any user-customized prompt.
+# autofill_choose Setting row, and it carries the one rule this endpoint exists
+# to enforce — abstain is the default, not an error.
+CHOOSE_OUTPUT_CONTRACT = """NON-NEGOTIABLE RULES (these override anything below):
+- You are FILLING A FORM FIELD, not writing prose. Never explain, never add a sentence around an answer.
+- Answer ONLY from the profile and career context provided. If they do not contain the answer, return null. Returning null is the correct, expected outcome for most fields — it is never a failure.
+- Never invent an employer, date, credential, number, skill, or preference that is not in the provided context.
+- When a field lists options, your answer MUST be one of those option strings copied EXACTLY, character for character. Never paraphrase an option, never combine two, never invent a seventh.
+- When a field has a known_value, the profile ALREADY holds the answer and your only job is to say which listed option means the same thing. If none of them does, return null.
+- Return a single JSON object: {"choices": {"<qid>": {"answer": <string or null>, "reason": "matched" or "abstained"}}}. Include every qid you were given, exactly once."""
+
+
+def build_autofill_choose_prompt(
+    profile: dict[str, Any],
+    memory: str,
+    fields: list[dict[str, Any]],
+    persona: str = "",
+) -> str:
+    body = _render_template(
+        "autofill_choose",
+        {
+            "profile": _json_block(profile),
+            "memory": memory,
+            # fields is a LIST (one dict per qid), not the dict _json_block
+            # expects — same json.dumps call, sorted+indented to match.
+            "fields": json.dumps(fields, indent=2, sort_keys=True),
+        },
+    )
+    return f"{CHOOSE_OUTPUT_CONTRACT}\n\n---\n\n{_persona_block(persona)}{body}"
+
+
 def _referral_section(referral: dict[str, Any] | None) -> str:
     if not referral:
         return ""

@@ -169,6 +169,15 @@
     observe,
     bestOption,
     setNativeValue,
+    // The visit around a write that is not a text commit — autofill.js's
+    // `visitControl` carries the whole reasoning, and it is handed in here for
+    // the reason every other writer on this object is: one engine, one set of
+    // gestures, so a voluntary-disclosure control is committed exactly the way
+    // an ordinary one is.
+    visitControl,
+    leaveControl,
+    clickControl,
+    stillChecked,
     optionWordsFor,
     labelFor,
     doneRadioGroups,
@@ -197,7 +206,9 @@
       const best = bestOption(options, res);
       // Any existing answer, including decline-to-identify, belongs to the user.
       if (best && !input.value) {
+        visitControl(input);
         setNativeValue(input, best.el.value);
+        leaveControl(input);
         record({ label, value: best.text.trim().slice(0, 60) });
         observe(input, kind, labelText, rule, "filled");
       }
@@ -220,9 +231,13 @@
       for (const radio of group) {
         const radioLabel = labelFor(radio);
         if (!matches(radioLabel)) continue;
-        radio.click();
-        record({ label, value: radioLabel.slice(0, 40) });
-        observe(input, kind, labelText, rule, "filled");
+        clickControl(radio);
+        // The verdict, not the attempt — see `stillChecked` (autofill.js). A
+        // disclosure the page threw away must not be recorded as one the user
+        // made, which matters more here than anywhere else in the engine.
+        const stuck = stillChecked(radio);
+        record({ label, value: radioLabel.slice(0, 40) }, stuck);
+        observe(input, kind, labelText, rule, stuck ? "filled" : "not_stuck");
         doneRadioGroups.add(groupKey);
         break;
       }
@@ -267,8 +282,8 @@
       }
       // click() toggles, so an existing answer must never be cleared.
       if (!input.checked) {
-        input.click();
-        const ticked = input.checked === true;
+        clickControl(input);
+        const ticked = stillChecked(input);
         observe(input, kind, labelText, rule,
           ticked ? "filled" : "not_stuck");
         record({

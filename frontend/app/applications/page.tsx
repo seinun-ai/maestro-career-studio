@@ -18,6 +18,7 @@ import { toast } from "sonner";
 import { CompanyMonogram } from "@/components/company-monogram";
 import { EmptyState, TableFrame } from "@/components/empty-state";
 import { IconButton } from "@/components/icon-button";
+import { LoadErrorState } from "@/components/load-error-state";
 import { GettingStartedCard } from "@/components/setup/getting-started-card";
 import {
   SourceToggle,
@@ -322,6 +323,10 @@ function ApplicationsContent() {
   }, [sourceScopedRows, filter, q, sortKey, sortDir]);
 
   const loading = apps.isLoading || savedJobs.isLoading;
+  // Checked BEFORE the empty state, which is the whole bug: with `data`
+  // undefined after a failure, `filtered.length === 0` is true and the branch
+  // below hands a user with a full pipeline the brand-new-user onboarding card.
+  const loadFailed = apps.isError || savedJobs.isError;
 
   const writeUrl = (nextFilter: Filter, nextSource: SourceFilter) => {
     const params = new URLSearchParams();
@@ -463,6 +468,20 @@ function ApplicationsContent() {
           <Skeleton className="animate-shimmer h-12 w-full" />
           <Skeleton className="animate-shimmer h-12 w-full" />
         </div>
+      ) : loadFailed ? (
+        <LoadErrorState
+          title="Couldn't load your applications."
+          detail={
+            (apps.error as Error)?.message ??
+            (savedJobs.error as Error)?.message ??
+            undefined
+          }
+          retrying={apps.isFetching || savedJobs.isFetching}
+          onRetry={() => {
+            void apps.refetch();
+            void savedJobs.refetch();
+          }}
+        />
       ) : filtered.length === 0 ? (
         <div className="space-y-5">
           {allRows.length === 0 ? <GettingStartedCard /> : null}

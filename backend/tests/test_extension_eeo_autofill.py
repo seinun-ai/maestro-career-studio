@@ -1,9 +1,10 @@
 """EEO autofill is opt-in AND requires a control the user can actually see.
 
 Standing consent is backend-owned (`eeo_consent.enabled` from
-`/api/autofill/context`). The widget maps that flag onto the `eeoEnabled`
-argument exercised here; chrome.storage.sync.eeoAutofillEnabled is not the
-source of truth for fill decisions.
+`/api/autofill/context`). The panel's Fill stage maps that flag onto the
+`eeoEnabled` argument exercised here, and it holds no control that could set it
+— `chrome.storage.sync.eeoAutofillEnabled` is legacy and is not the source of
+truth for any fill decision.
 
 Protected-class disclosures are the one place where filling a hidden field is a
 harm rather than a convenience, so the visibility bar is higher here than for
@@ -18,8 +19,12 @@ protected-class question is worse than a blank one, so the value must come from
 an exact category the user supplied, or nothing is written.
 """
 
+import re
+
 from tests.extension_harness import (
+    CONTENT,
     FORM_MODULE_SOURCES,
+    js_code,
     outcome_for,
     outcome_pairs,
     run_node,
@@ -944,3 +949,77 @@ def test_a_token_rule_with_an_eeo_word_in_its_composite_label_stays_tokens(tmp_p
     assert result["tokens"][label] == ["Python"]
     assert result["eeoFilled"] == []
     assert all(item["value"] != "undefined" for item in result["filled"])
+
+
+# ---------- the ownership seam: who is allowed to know about EEO ------------
+#
+# ORPHANED BY R-C AND RE-HOMED HERE. This was pinned in
+# `test_extension_widget.py`, and a reviewer proved what that cost: re-inlining
+# the EEO orchestration back into `autofill.js` left the suite green at 875,
+# because every behavioural test above drives `fillFormFromProfile` and does not
+# care WHICH file answered.
+#
+# WHY THE SEAM IS WORTH A TEST OF ITS OWN, when the behaviour is already covered
+# thirty times over: `content/eeo.js` is a small file that one reviewer can hold
+# in their head, and `content/autofill.js` is two thousand lines of general
+# field matching. Protected-class disclosures are the one place in this codebase
+# where a wrong answer is a legal statement about a person, so the rule is that
+# they live somewhere a human will actually re-read. A merge back into the
+# engine does not change one outcome and destroys that property silently.
+
+EEO_JS = (CONTENT / "eeo.js").read_text(encoding="utf-8")
+AUTOFILL_JS_SRC = (CONTENT / "autofill.js").read_text(encoding="utf-8")
+
+# The three doors, and there are exactly three: build the context, decide
+# whether to touch a control at all, and drive one.
+EEO_SEAM = ("createEeoContext", "shouldSkipEeoControl", "handleEeoControl")
+
+
+def test_every_eeo_decision_is_defined_in_eeo_js_and_published_once():
+    for name in EEO_SEAM:
+        assert len(re.findall(rf"\bfunction {name}\(", EEO_JS)) == 1, name
+        assert f"ns.{name} = {name};" in EEO_JS, name
+
+
+def test_the_engine_reaches_eeo_only_through_the_namespace():
+    """`autofill.js` may CALL the seam and may not re-implement it.
+
+    EXPLOIT THIS PIN EXISTS FOR: moving `handleEeoControl`'s body back into
+    `autofill.js` left the suite green. Nothing behavioural notices, because the
+    answers are identical — which is exactly why the boundary needs a pin rather
+    than trusting a test to feel it.
+    """
+    engine = js_code(AUTOFILL_JS_SRC)
+    for name in EEO_SEAM:
+        assert f"ns.{name}(" in engine, f"{name} is no longer reached at all"
+        assert not re.search(rf"\bfunction {name}\(", engine), (
+            f"{name} was re-implemented inside autofill.js")
+    # One call site each: the engine asks once per fill (context), once per
+    # candidate field (skip), and once per EEO field (handle). A second call
+    # site for any of them is a second place that decides what EEO means.
+    assert engine.count("ns.handleEeoControl(") == 1
+
+
+def test_the_protected_class_vocabulary_never_leaks_into_the_engine():
+    """The category names and the answer-matching patterns are eeo.js's alone.
+
+    This is the half a re-inline would take first and the half that matters
+    most: `/not a protected veteran/` unanchored is what once had the extension
+    declare a user a veteran who had said they were not (deluxe.wd5,
+    2026-08-08). A pattern like that living in the general field matcher is one
+    nobody will re-read with the care it needs.
+
+    Through `js_code`, because `autofill.js` legitimately QUOTES a Workday
+    option label in a comment ("3-Asian (Not Hispanic or Latino) …") while
+    explaining an unrelated numbering quirk. A raw scan would fail a file that
+    is exactly right.
+    """
+    engine = js_code(AUTOFILL_JS_SRC)
+    for term in ("Hispanic", "Latino", "veteran", "disability", "protected"):
+        assert term.lower() not in engine.lower(), (
+            f"the engine grew its own idea of {term!r} — EEO vocabulary "
+            "belongs in content/eeo.js")
+    # …and it really is in the file that owns it, so the assertion above cannot
+    # pass by the vocabulary having been deleted everywhere.
+    for term in ("veteran", "disability"):
+        assert term in js_code(EEO_JS), term

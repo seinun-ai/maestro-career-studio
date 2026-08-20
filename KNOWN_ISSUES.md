@@ -58,6 +58,106 @@ Honest list. None of these are secret; most are §11 items with a number.
 - **Onboarding import is capped at 10 files** and does not resolve entities
   across kinds, so a certificate can land as a sibling of the job it belongs
   to. (§11.16)
+- **Résumé attach is narrower than the fill.** A page with more than one upload
+  box is refused with a sentence rather than resolved, and the offer is counted
+  in the top frame only — so a Greenhouse or Lever form inside a subframe never
+  gets offered an attach, even though the fan-out would reach it. (§11.22)
+
+### Where the product is still confusing
+
+From the 2026-08-19 usage audit. These are not bugs in the sense that something
+throws; they are places where the app is operable by someone who already knows
+the domain model and not yet self-explanatory to someone who does not.
+
+- **Two things are called "Profile".** Career KB → Profile holds your identity
+  and is the source of truth. The sidebar Profile page holds persona, job
+  preferences and a separate autofill copy of your contact details. "Fill from
+  resume" copies once into blank fields and never syncs again, so the two can
+  drift with nothing telling you.
+- **Re-importing the same résumé creates a second base.** The slug comes from
+  the filename, so an updated copy of the same document lands as `resume_2`
+  with its own KB evidence, instead of being offered as an update.
+- **Delete, archive and retire do not add up to one safety model.** The
+  base-résumé dialog warns that deletion cannot be undone, while the backend
+  actually soft-deletes and keeps the files — and Career KB entities and points
+  have genuinely destructive deletes next to reversible ones. There is no trash
+  and no restore.
+- **Neither library searches.** Career KB and Base Résumés filter by kind or
+  archived-ness only, and the KB import picker has no search either, so finding
+  one fact among a hundred means scrolling.
+- **There are three ways to move KB evidence into a résumé** — create a base
+  from selected entities, "Send to resume" from an entity, and "Import from
+  Career KB" hidden under the editor's overflow menu — and they do not share a
+  picker or a result summary. The overflow one omits custom sections.
+- **A role-targeted base still inherits every global skill.** Narrowing which
+  entities compose does not narrow `KBProfile.skills`, so a résumé built for one
+  role can arrive carrying unrelated skill groups.
+- **Render failures are recorded but not shown.** `render_error` is persisted
+  and the Output tab does not display it, so a failed PDF reads as a generic
+  "regenerate" rather than naming the template or compiler cause.
+- **Career KB points have provenance but no history.** Editing a point
+  overwrites its text; there is no revision list and no restore, unlike résumés,
+  which snapshot every write. Bases also do not summarise "the KB changed since
+  this was assembled".
+- **The tracker records state but does not manage follow-through.** No next
+  action, due date, reminder, status history, or snapshot of the exact artifact
+  you actually submitted.
+- **Import auto-approves more than the docs imply.** Unchanged verbatim bullets
+  from a file you wrote are approved on import; only merged or AI-generated
+  points land in the review inbox. Defensible, but the result dialog does not
+  say so.
+
+### Operational gaps
+
+- **A backup is two things and nothing joins them.** Postgres holds the
+  relational state; `base_resumes/`, `applications/`, `kb_documents/`,
+  `exports/`, `settings/` and `logs/` hold the rest. A database dump alone is
+  not a restore, a directory copy alone is not either, and there is no bundle
+  command or tested restore path.
+- **A stored ATS score cannot be exactly reproduced.** Scoring is deterministic
+  given its inputs, but the row does not record `as_of`, the résumé/JD content
+  hashes, or the embedding model — and recency is computed against *today* —
+  so the same document can score differently on a different day with nothing
+  saying why.
+- **Two moderate npm advisories** ride in through Monaco's bundled DOMPurify.
+  CI gates at high-and-above, so they do not fail the build; whether any
+  app-controlled HTML reaches that sanitiser has not been established.
+
+### Security work this release deliberately did not do
+
+The 2026-08-19 audits produced more than one release could honestly absorb.
+What landed is in `SECURITY.md` §3; what did not is here, so nobody has to
+reverse-engineer the gap. None of these is reachable from the network — they
+matter to the extent that something already running as you, or a page you have
+open, is hostile.
+
+- **LaTeX rendering is bounded, not isolated.** Paranoid file access stops a
+  template reading outside its staging directory, but the compiler still runs
+  in the backend process's world, with its environment and its mounts. The real
+  fix is a disposable, networkless render worker holding no secrets and no PII
+  mounts. Until then: do not render a template you have not read.
+- **No CSRF capability token.** A disallowed `Origin` is now refused outright,
+  which closes the practical version of this, but there is no per-install token
+  binding a state-changing request to the app that issued it.
+- **Mutating chat tools are not individually confirmed.** Resume edits arrive
+  as approval cards; template administration does not. A successful prompt
+  injection in a job description could try to reach those tools.
+- **No upload, request-size, token or spend ceilings.** A large or malicious
+  document can consume memory, CPU and model budget; nothing caps the daily
+  spend.
+- **Cross-object links are not verified.** Nothing enforces that an
+  application's job matches the proposal's job, so a mislinked record is
+  possible.
+- **`DELETE` does not always erase.** Base-resume deletion is a soft delete
+  that keeps files and version history; deleting a KB entity can leave its
+  document directory behind. There is no purge, and no inventory of every copy.
+- **Chat attachments are resolved by id without checking the session** they
+  were uploaded to.
+- **No Content-Security-Policy on the frontend**, and detailed compiler and
+  provider errors (including absolute paths) can cross the API boundary.
+
+Help is genuinely wanted on all of these; the render worker and the resource
+ceilings are the two with the best effort-to-value ratio.
 
 ## Limitations by design
 

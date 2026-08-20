@@ -219,26 +219,72 @@ def _save_extra_models(session: Session, extras: list[ModelOption]) -> None:
     _set_raw_value(session, EXTRA_MODELS_KEY, json.dumps(payload))
 
 
+def _provider_for(model_id: str) -> str:
+    """Best-effort provider for an id nobody registered.
+
+    Gemini ids carry the prefix; everything else takes the OpenAI-compatible
+    path, which is also where a custom endpoint's models go.
+    """
+    return "gemini" if model_id.removeprefix("models/").startswith("gemini-") else "openai"
+
+
+def configured_options(session: Session) -> list[ModelOption]:
+    """Whatever the three roles currently point at, as catalog entries.
+
+    THE CATALOG MUST ADMIT WHAT THE INSTALL IS ALREADY USING. `MODEL_OPTIONS`
+    is a curated list that shrinks as models age out, and an id it drops does
+    not disappear from installs configured with it — `.env.example` shipped
+    FAST_MODEL=gpt-4o-mini until the seed trim. Leaving those ids out made
+    `set_models` reject a value the user was not even changing, so saving an
+    API key (the first thing a new install does) failed with no in-app way
+    back. Self-healing on read rather than a migration: nothing is written,
+    and the entry disappears the moment the role points elsewhere.
+    """
+    out: list[ModelOption] = []
+    for role, model_id in (
+        ("fast", get_fast_model(session)),
+        ("smart", get_smart_model(session)),
+        ("smart", get_chat_model(session)),
+    ):
+        cleaned = (model_id or "").strip()
+        if cleaned and cleaned not in {opt.id for opt in out}:
+            out.append(ModelOption(cleaned, cleaned, _provider_for(cleaned), role))
+    return out
+
+
 def get_usable_options(session: Session) -> list[ModelOption]:
-    """Seeds plus user-added extras. Seed wins on id collision."""
+    """Seeds, user-added extras, and the ids the roles point at right now.
+
+    Seed wins on id collision, then extras, then configured — so a curated
+    label is never overwritten by the bare-id fallback.
+    """
     by_id = {opt.id: opt for opt in MODEL_OPTIONS}
     for extra in get_extra_models(session):
         by_id.setdefault(extra.id, extra)
-    # Stable order: seeds first (MODEL_OPTIONS order), then extras alphabetically.
+    for configured in configured_options(session):
+        by_id.setdefault(configured.id, configured)
+    # Stable order: seeds first (MODEL_OPTIONS order), then the rest alphabetically.
     seed_ids = {opt.id for opt in MODEL_OPTIONS}
-    extras = sorted(
+    rest = sorted(
         (opt for opt in by_id.values() if opt.id not in seed_ids),
         key=lambda opt: opt.id,
     )
-    return [*MODEL_OPTIONS, *extras]
+    return [*MODEL_OPTIONS, *rest]
 
 
 def usable_option_dicts(session: Session) -> list[dict[str, str]]:
-    seed_ids = VALID_MODEL_IDS
+    extra_ids = {opt.id for opt in get_extra_models(session)}
     out: list[dict[str, str]] = []
     for opt in get_usable_options(session):
         row = asdict(opt)
-        row["source"] = "seed" if opt.id in seed_ids else "extra"
+        if opt.id in VALID_MODEL_IDS:
+            row["source"] = "seed"
+        elif opt.id in extra_ids:
+            row["source"] = "extra"
+        else:
+            # Not seeded and not added on purpose — it is here only because a
+            # role still names it. Labelled so the UI can say so.
+            row["source"] = "configured"
         out.append(row)
     return out
 

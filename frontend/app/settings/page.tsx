@@ -511,11 +511,22 @@ function OpenAISection() {
     onSuccess: (report) => {
       qc.invalidateQueries({ queryKey: ["settings", "openai"] });
       const missing = (["text", "json", "tools"] as const).filter((c) => !report[c]);
-      if (missing.length === 0) toast.success(`${report.model} supports everything`);
-      else
+      if (report.reachable === false) {
+        // The call never reached the model, so this says nothing about it —
+        // and nothing was recorded. Blaming the model here is what sent the
+        // author hunting a model bug that was a mistyped key.
+        const why = Object.values(report.errors ?? {})[0] ?? "the request failed";
+        toast.error(
+          `Could not reach the API, so ${report.model} was not tested: ${why}. ` +
+            `Check the API key and endpoint, then test again.`,
+        );
+      } else if (missing.length === 0) {
+        toast.success(`${report.model} supports everything`);
+      } else {
         toast.warning(
           `${report.model} cannot do: ${missing.join(", ")}. Other surfaces still work.`,
         );
+      }
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -554,6 +565,14 @@ function OpenAISection() {
         <p className="text-muted-foreground text-xs">
           Fast / Smart / Chat roles, provider keys, and a catalog you can grow
           with Sync.
+        </p>
+        <p className="text-muted-foreground text-xs">
+          What the author runs today: Gemini 3.5 Flash-Lite for Fast (it handles
+          JD ingestion fine), Gemini 3.7 Flash for Smart if you only hold a
+          Gemini key — capable, a little pricey. On OpenAI, GPT-5.6 Luna is the
+          value pick: cheap, slower. Model prices and tiers move constantly, so
+          treat this as a starting point, not a recommendation with a shelf
+          life.
         </p>
       </CardHeader>
       <CardContent>

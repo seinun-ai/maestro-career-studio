@@ -13,6 +13,11 @@ class QARequest(BaseModel):
 
     application_id: UUID | None = None
     job_id: UUID | None = None
+    #: Which base resume a JOB-level answer is written from. Ignored when
+    #: `application_id` is given — an application already names the resume it
+    #: was tailored from, and a second opinion about that is not the caller's to
+    #: hold. Absent, the job path falls back to its generic default.
+    base: str | None = None
     questions: list[str] | None = None
     cover_letter: CoverLetterRequest | None = None
 

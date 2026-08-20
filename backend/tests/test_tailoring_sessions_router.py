@@ -12,6 +12,7 @@ from app.models.application import Application
 from app.models.ats_score import AtsScore
 from app.models.base_resume import BaseResume
 from app.models.career_kb import KBEntity, KBPoint, KBPortLog
+from app.models.health_gate_waiver import HealthGateWaiver
 from app.models.job import Job
 from app.models.qa_entry import QAEntry
 from app.models.resume_lint_report import ResumeLintReport
@@ -460,6 +461,131 @@ def test_create_session_waived_fatal_gate_not_blocked(db_session, tmp_path, monk
     assert body["status"] == "open"
     # score 70 is above the warn floor, so no warning either
     assert body["health_warning"] is None
+
+
+def test_create_session_unblocked_by_a_waiver_row_the_stored_report_predates(
+    db_session, tmp_path, monkeypatch
+):
+    """The waiver TABLE is the authority, not the snapshot beside it.
+
+    `POST /gates/{id}/waive` writes a `HealthGateWaiver` row and nothing else —
+    the stored report keeps saying "fail" until a health check RUNS again, which
+    is where waivers are folded into gate statuses. The gate read here used the
+    stored statuses alone, so the documented escape hatch did not open: MCP's
+    `waive_health_gate` says it clears this 409, and an agent that waived and
+    retried got the same 409 forever. The web path only worked because its
+    waive button re-runs the check afterwards.
+    """
+    job = _seed_job(db_session)
+    slug = _seed_base(db_session, tmp_path, monkeypatch)
+    _seed_health_report(
+        db_session,
+        slug,
+        {
+            "score": 70,
+            "grade": "C",
+            "gates": [
+                {
+                    "id": "S1",
+                    "tier": "fatal",
+                    "status": "fail",
+                    "label": "Parse fidelity",
+                    "detail": "The template's PDF drops text under a strict extractor.",
+                }
+            ],
+        },
+    )
+    db_session.add(
+        HealthGateWaiver(
+            resume_kind="base", resume_key=slug, gate_id="S1", reason="Known extractor quirk"
+        )
+    )
+    db_session.commit()
+
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        response = _create(TestClient(app), job, slug, enrich=False)
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "open"
+
+
+def test_create_session_stays_blocked_when_the_waiver_names_another_gate(
+    db_session, tmp_path, monkeypatch
+):
+    """A waiver is per-gate: waiving S1 must not release S2."""
+    job = _seed_job(db_session)
+    slug = _seed_base(db_session, tmp_path, monkeypatch)
+    _seed_health_report(
+        db_session,
+        slug,
+        {
+            "score": 70,
+            "grade": "C",
+            "gates": [
+                {"id": "S2", "tier": "fatal", "status": "fail", "label": "Contact block"},
+            ],
+        },
+    )
+    db_session.add(
+        HealthGateWaiver(
+            resume_kind="base", resume_key=slug, gate_id="S1", reason="A different gate"
+        )
+    )
+    db_session.commit()
+
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        response = _create(TestClient(app), job, slug, enrich=False)
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 409
+    assert "S2" in response.json()["detail"]
+
+
+def test_create_session_waiver_does_not_travel_to_another_base_resume(
+    db_session, tmp_path, monkeypatch
+):
+    """A waiver belongs to the resume it was filed against.
+
+    Reading waivers by gate id alone (or by kind alone) would let one waived
+    resume release the gate for every other one — the whole suite stayed green
+    under exactly that mutation until this test existed.
+    """
+    job = _seed_job(db_session)
+    slug = _seed_base(db_session, tmp_path, monkeypatch)
+    _seed_health_report(
+        db_session,
+        slug,
+        {
+            "score": 70,
+            "grade": "C",
+            "gates": [
+                {"id": "S1", "tier": "fatal", "status": "fail", "label": "Parse fidelity"},
+            ],
+        },
+    )
+    db_session.add(
+        HealthGateWaiver(
+            resume_kind="base",
+            resume_key="some_other_resume",
+            gate_id="S1",
+            reason="Waived over there, not here",
+        )
+    )
+    db_session.commit()
+
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        response = _create(TestClient(app), job, slug, enrich=False)
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 409
+    assert "S1" in response.json()["detail"]
 
 
 def test_create_session_warns_when_health_under_55(db_session, tmp_path, monkeypatch):

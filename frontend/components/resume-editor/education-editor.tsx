@@ -4,7 +4,7 @@ import { Trash2 } from "lucide-react";
 
 import { BulletList } from "@/components/resume-editor/bullet-list";
 import { EditableCard } from "@/components/resume-editor/editable-card";
-import { AddEntryButton, cardReorderProps } from "@/components/resume-editor/editor-scaffold";
+import { AddEntryButton, useEntryEditing } from "@/components/resume-editor/editor-scaffold";
 import { Button } from "@/components/ui/button";
 import { ChipListInput } from "@/components/ui/chip-input";
 import { Label } from "@/components/ui/label";
@@ -31,8 +31,11 @@ export function EducationEditor({
   value: EducationEntry[];
   onChange: (next: EducationEntry[]) => void;
 }) {
-  const update = (i: number, patch: Partial<EducationEntry>) =>
-    onChange(value.map((e, idx) => (idx === i ? { ...e, ...patch } : e)));
+  const { setEditingIndex, entryEditingProps, update } = useEntryEditing(
+    value,
+    onChange,
+    (e) => !e.institution && !e.degree,
+  );
 
   return (
     <div className="flex flex-col gap-2">
@@ -47,8 +50,7 @@ export function EducationEditor({
         return (
           <EditableCard
             key={i}
-            initialEditing={!entry.institution && !entry.degree}
-            {...cardReorderProps(value, i, onChange)}
+            {...entryEditingProps(i)}
             read={
               <div className="flex flex-col gap-2 pr-16">
                 <div className="flex items-baseline justify-between gap-4">
@@ -162,7 +164,10 @@ export function EducationEditor({
       })}
       <AddEntryButton
         label="Add education"
-        onClick={() => onChange([...value, EMPTY])}
+        onClick={() => {
+          onChange([...value, EMPTY]);
+          setEditingIndex(value.length);
+        }}
       />
     </div>
   );

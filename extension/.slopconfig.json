@@ -7,9 +7,7 @@
   "allowed_clones": [
     {"a": "content/autofill.js", "b": "content/open-questions.js",
      "reason": "Deliberate page-context self-copy: the setNativeValue→commitValue ladder exists in both fillFormFromProfile and fillAnswersByQid because each writer must remain self-contained; pinned by test_both_copies_of_the_commit_ladder_stay_identical."},
-    {"a": "content/autofill.js", "b": "content/widget.js",
-     "reason": "The all-frame autofill engine and top-frame widget are separate IIFEs and intentionally carry isolated DOM/message helper fragments; neither can depend on the other's private scope."},
-    {"a": "content/open-questions.js", "b": "content/widget.js",
-     "reason": "Commit-ladder family fragment: open-questions carries the page-injected fillAnswersByQid ladder (formerly in agent.js — the pre-split allowlist pair was agent.js<->widget.js); widget keeps its own isolated fragment for the same page-context self-containment reason."}
+    {"a": "content/open-questions.js", "b": "shared/decisions.js",
+     "reason": "EXPIRES when fillAnswersByQid stops being injected. (Prose, not a key: _allowed() reads only `a` and `b`, which is why every expiry in this file lives in its reason — a lifetime the scanner enforced would be a different feature, and one nobody has asked for.) Page-context self-copy, the commit ladder's category exactly: `fillAnswersByQid` is INJECTED into the page, where window.careerStudioCompanion does not exist, so it cannot read `ns.decisions.sanitizeAnswer` and carries the same six-`.replace` chain inline. Registered at Task 14 with the honest cost (8 lines) rather than re-baselined, and PINNED IDENTICAL by test_the_injected_copy_of_the_sanitizer_stays_identical_to_the_shared_one — a registration says a copy is allowed, only the pin says the two still agree. CAVEAT: _allowed() matches by SUBSTRING on both sides, so this entry also suppresses decisions.js<->decisions.js self-clones; it is not a licence for duplication inside the shared module, and a round that finds one there should fix it."}
   ]
 }

@@ -1,0 +1,541 @@
+/* Maestro CS Companion — side panel styles.
+ *
+ * Lifted from the approved mockup
+ * (docs/plans/2026-08-17-extension-panel-redesign-mockup.html) with the
+ * mockup-only scaffolding dropped: the scenario switcher, the fake page, the
+ * stage frame and the in-page pill were how the mockup showed a panel inside a
+ * browser it did not have. This file styles the real document.
+ *
+ * NOTHING HERE IS UNUSED. A selector lands when the render loop starts
+ * building it, not when the mockup happened to have one — the stage bodies
+ * (the job preview grid, the ranked base rows, the resume fork, the fill mode
+ * control) arrive with the tasks that render them.
+ *
+ * The panel is a full-height document, ~360-400px wide when docked: identity
+ * and footer are fixed and the rail is the only thing that scrolls. There was a
+ * `head` band above the identity and it is gone — see the identity section.
+ */
+
+:root {
+  --cs-font: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --cs-surface: oklch(1 0 0);
+  --cs-surface-2: oklch(0.97 0 0);
+  --cs-text: oklch(0.145 0 0);
+  --cs-muted: oklch(0.51 0 0);
+  --cs-line: oklch(0.92 0 0);
+  --cs-primary: oklch(0.55 0.17 259);
+  --cs-primary-tonal: oklch(0.95 0.03 259);
+  --cs-on-primary: oklch(0.985 0 0);
+  --cs-good: oklch(0.62 0.15 151);
+  --cs-good-tonal: oklch(0.95 0.04 151);
+  --cs-warn-tonal: oklch(0.97 0.05 85);
+  /* The mockup wrote this one as a literal beside its tonal background. It is
+   * a token here because it is the only colour that has to move in the dark
+   * scheme without its background moving with it. */
+  --cs-warn-text: oklch(0.5 0.13 75);
+  --cs-danger-text: oklch(0.51 0.19 27);
+  --cs-shadow: 0 2px 6px oklch(0.145 0 0 / 10%), 0 10px 28px oklch(0.145 0 0 / 12%);
+}
+/* Only the tokens that MOVE are restated. A panel is browser chrome, so it
+ * follows the browser's scheme rather than the page's. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --cs-surface: oklch(0.205 0 0);
+    --cs-surface-2: oklch(0.26 0 0);
+    --cs-text: oklch(0.985 0 0);
+    --cs-muted: oklch(0.72 0 0);
+    --cs-line: oklch(0.32 0 0);
+    --cs-primary: oklch(0.62 0.16 259);
+    --cs-primary-tonal: oklch(0.3 0.06 259);
+    --cs-good-tonal: oklch(0.3 0.05 151);
+    --cs-warn-tonal: oklch(0.32 0.06 85);
+    --cs-warn-text: oklch(0.85 0.12 85);
+    --cs-danger-text: oklch(0.78 0.14 27);
+    --cs-shadow: 0 2px 6px oklch(0 0 0 / 40%), 0 10px 28px oklch(0 0 0 / 34%);
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font: 400 14px/1.5 var(--cs-font);
+  color: var(--cs-text);
+  background: var(--cs-surface-2);
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* The panel owns its own document, so focus is ours to make visible — the
+ * mockup had no keyboard user to serve and this does. */
+:focus-visible {
+  outline: 2px solid var(--cs-primary);
+  outline-offset: 2px;
+}
+
+/* ------- identity: what job this is, what the ATS says, the one way out -----
+ *
+ * THERE WAS A `.p-head` ABOVE THIS, and its rules are deleted rather than
+ * hidden: a 50px band carrying a mark, the words "Maestro CS" and the deep
+ * link, immediately under Chrome's own side-panel title bar, which says the
+ * extension's name and cannot be turned off. Two bands of chrome, two hairline
+ * borders and one name twice, before the panel said anything about the page.
+ * The link moved down into the block below and the band went; the identity is
+ * now the panel's whole header, which is also 50px of rail bought back on a
+ * surface whose scarcity is vertical.
+ *
+ * `.linkish` OUTLIVED THE BAND because it was never the band's: `.qna` styles a
+ * BUTTON with it (see its own note), so it stays a free-standing rule. */
+
+.linkish {
+  font: 600 12px/1 var(--cs-font); color: var(--cs-primary);
+  text-decoration: none; padding: 7px 8px; border-radius: 8px;
+}
+.linkish:hover { background: var(--cs-primary-tonal); }
+
+.identity {
+  flex: none; padding: 14px 14px 12px; background: var(--cs-surface);
+  border-bottom: 1px solid var(--cs-line);
+}
+.identity .row1 { display: flex; align-items: flex-start; gap: 10px; }
+/* min-width on a flex child, because `flex: 1` alone does not let it shrink
+ * below its content and a long job title then pushes the chip off the panel. */
+.identity .who { flex: 1; min-width: 0; }
+.identity .title { font: 700 15px/1.3 var(--cs-font); overflow-wrap: anywhere; }
+.identity .co { color: var(--cs-muted); font-size: 12.5px; margin-top: 2px; }
+/* The deep link: the block's LAST child, on its own line, pushed right by the
+ * auto margin. Not in `.row1` beside the chip, which is where it first went and
+ * where measuring killed it — `.who` and a nowrap link share one axis there, so
+ * at 400px the job title got 104px and wrapped five times. Nothing shares this
+ * line, so nothing has to give. Its own 8px of padding is the hover target and
+ * leaves the text 22px off the edge, exactly as it sat in the band this
+ * replaced. */
+.identity .linkish {
+  display: block; width: fit-content; white-space: nowrap;
+  margin: 10px 0 0 auto;
+}
+.chip {
+  font: 700 10.5px/1 var(--cs-font); border-radius: 999px; padding: 5px 9px;
+  flex: none; margin-top: 2px; letter-spacing: .02em;
+}
+.chip.new { background: var(--cs-warn-tonal); color: var(--cs-warn-text); }
+.chip.lib { background: var(--cs-primary-tonal); color: var(--cs-primary); }
+.chip.app { background: var(--cs-good-tonal); color: var(--cs-good); }
+
+.ats { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
+/* The arc is `--v` percent of the ring; the hole is the surface punched back
+ * out of it. Both come from the store, and the panel computes neither: every
+ * number is the backend's (design §4.2). */
+.ring {
+  width: 44px; height: 44px; border-radius: 50%; flex: none;
+  display: grid; place-items: center; font: 800 13px/1 var(--cs-font);
+  background:
+    radial-gradient(closest-side, var(--cs-surface) 74%, transparent 75% 100%),
+    conic-gradient(var(--ring-color, var(--cs-primary)) calc(var(--v, 0) * 1%), var(--cs-line) 0);
+}
+.ring.empty { color: var(--cs-muted); font-weight: 600; }
+.ats .arrow { color: var(--cs-muted); }
+.ats .lbl { font-size: 11px; color: var(--cs-muted); text-align: center; margin-top: 3px; }
+.ats .delta {
+  font: 700 12px/1 var(--cs-font); color: var(--cs-good);
+  background: var(--cs-good-tonal); border-radius: 999px;
+  padding: 5px 9px; margin-left: auto;
+}
+.ats .hint { color: var(--cs-muted); font-size: 12px; margin-left: 4px; }
+
+/* ------- the rail: the one dynamic region, and the only one that scrolls ---- */
+
+.rail {
+  flex: 1; overflow-y: auto; padding: 10px 10px 12px; margin: 0;
+  list-style: none;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.stg {
+  background: var(--cs-surface); border: 1px solid var(--cs-line);
+  border-radius: 14px; overflow: hidden;
+}
+.stg-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; }
+/* A DONE ROW THAT REOPENS is the same line rendered as a real `<button>` (see
+ * `renderRail`), so this is the reset that keeps a control looking like the row
+ * it replaced: the UA gives a button its own font, its own background, its own
+ * border and a centred, narrow box, and every one of those would show.
+ *
+ * `width: 100%` and `text-align: left` are the two that are easy to forget and
+ * loud when missed — the whole line is the target, and the numeral has to stay
+ * where the `<div>` rows put it or the rail's left edge zig-zags by state.
+ *
+ * `:disabled` is spelled out for the reason `.fork button:disabled` and
+ * `.seg button:disabled` are (fourth time in this file): this block sets
+ * `background`, `color` and `cursor: pointer` explicitly, an author declaration
+ * beats the UA stylesheet's disabled defaults, and a row that looked pressable
+ * while a fill was running would swallow every click. */
+button.stg-row {
+  width: 100%; text-align: left; cursor: pointer;
+  font: inherit; color: inherit; background: none; border: none;
+}
+button.stg-row:disabled { opacity: .6; cursor: default; }
+/* THE RING GOES INSIDE, and without this line a keyboard user tabbing onto a
+ * done row sees NOTHING at all. `.stg` is `overflow: hidden` (it clips the
+ * body's corners to the card's radius) and has no padding, so with
+ * `box-sizing: border-box` this button's border box coincides exactly with the
+ * card's padding box — which puts the global `:focus-visible` ring, drawn at
+ * `outline-offset: 2px`, wholly outside the clip. A negative offset draws it
+ * just inside the same edge: same ring, same colour, on the visible side of the
+ * boundary. It is a WCAG 2.4.7 failure on this feature's own headline control,
+ * which is why it is spelled out rather than left to the global rule. */
+button.stg-row:focus-visible { outline-offset: -2px; }
+/* The open/closed mark, and it earns its place by being the only thing on a
+ * done row that says the row opens at all. Muted and small: it is an
+ * affordance, not a control of its own. */
+.stg-caret { color: var(--cs-muted); font-size: 11px; flex: none; }
+/* The numeral sits in a 22px circle. `display:grid; place-items:center`
+ * plus `font: 700 11px/1` sat the glyph low in some font stacks and clipped
+ * it — line-height 1 sizes the inline box to the font-size, and a glyph
+ * that sits low in that box overflows the circle and `.stg { overflow:
+ * hidden }`. Matching line-height to the box and flex-centering is the
+ * reason, not a pixel nudge. The caret shares `.stg-row`'s
+ * `align-items: center`, so the two stay on one axis. */
+.stg-num {
+  width: 22px; height: 22px; border-radius: 50%; flex: none;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 11px; line-height: 22px; font-family: var(--cs-font);
+  background: var(--cs-surface-2); color: var(--cs-muted);
+}
+.stg.done .stg-num { background: var(--cs-good-tonal); color: var(--cs-good); }
+.stg.active { border-color: var(--cs-primary); box-shadow: 0 0 0 1px var(--cs-primary); }
+.stg.active .stg-num { background: var(--cs-primary); color: var(--cs-on-primary); }
+/* Two greyed states that must not look alike. `locked` is "not yet"; `skipped`
+ * is "not required on the path you took" — it is dashed rather than solid so a
+ * glance never reads it as a step that is still coming, and it is never a tick.
+ * The mockup had no skipped scenario; the honesty rule is decisions.js's. */
+.stg.locked { opacity: .55; }
+.stg.skipped { opacity: .7; border-style: dashed; }
+.stg-name { font-weight: 700; font-size: 13px; }
+.stg-sum { color: var(--cs-muted); font-size: 12px; margin-left: auto; text-align: right; max-width: 55%; }
+/* The active row's body. Indented past the numeral rather than under it, so the
+   step's content reads as belonging to the step. */
+.stg-body { padding: 2px 12px 12px 44px; font-size: 13px; }
+
+/* The Job stage's editable preview: label beside field, three rows. */
+.kv { display: grid; grid-template-columns: 76px 1fr; gap: 6px 10px; margin: 6px 0 10px; }
+.kv label { color: var(--cs-muted); font-size: 12px; padding-top: 7px; }
+.kv input {
+  font: 500 13px/1.2 var(--cs-font); color: var(--cs-text);
+  background: var(--cs-surface-2); border: 1px solid var(--cs-line);
+  border-radius: 8px; padding: 7px 9px; width: 100%; min-width: 0;
+}
+
+/* The Score stage's ranked list: one row per base resume, best first.
+ *
+ * A BUTTON where the mockup drew a div, because the row is the control — so
+ * the first four declarations are the button reset the mockup never needed
+ * (a UA button brings its own font, its centred text and its own background).
+ * The radio dot and the selected tint are the mockup's unchanged. */
+.baserow {
+  width: 100%; text-align: left; font: 400 14px/1.5 var(--cs-font); color: var(--cs-text);
+  display: flex; align-items: center; gap: 9px; padding: 8px 10px;
+  border: 1px solid var(--cs-line); border-radius: 10px; margin-bottom: 6px;
+  background: var(--cs-surface); cursor: pointer;
+}
+.baserow.sel { border-color: var(--cs-primary); background: var(--cs-primary-tonal); }
+.baserow .r {
+  width: 14px; height: 14px; border-radius: 50%;
+  border: 2px solid var(--cs-muted); flex: none;
+}
+.baserow.sel .r {
+  border-color: var(--cs-primary); background: var(--cs-primary);
+  box-shadow: inset 0 0 0 2.5px var(--cs-primary-tonal);
+}
+.baserow b { font-size: 13px; }
+/* The composite, as the backend computed it. `good` marks the top of the
+ * RANKING and never merely the top of the list — an all-unscored library has
+ * no best, and a green chip on the first row would invent one.
+ *
+ * Namespaced under `.baserow` like its siblings, and here that is more than
+ * tidiness: "score" is also a STAGE key, so a bare `.score` would be inherited
+ * by whatever Task 12 or 15 happens to call a class of that name — silently,
+ * and looking like a chip. */
+.baserow .score {
+  margin-left: auto; font: 700 12px/1 var(--cs-font); border-radius: 999px;
+  padding: 5px 8px; background: var(--cs-surface-2); color: var(--cs-muted);
+}
+.baserow .score.good { background: var(--cs-good-tonal); color: var(--cs-good); }
+
+/* The Job-stage application picker: recent drafts, a native select.
+ *
+ * Replaced the stacked `.approw` buttons: four-plus drafts overflowed the
+ * Job body, and a select scrolls and is keyboard-accessible for free. The
+ * label is the offer in words; the
+ * placeholder is disabled so it is a prompt, not a dead draft.
+ */
+.appick { margin: 10px 0 2px; }
+.appick label { display: block; margin-bottom: 6px; }
+.appick select {
+  width: 100%; font: 400 13px/1.4 var(--cs-font); color: var(--cs-text);
+  background: var(--cs-surface-2); border: 1px solid var(--cs-line);
+  border-radius: 8px; padding: 7px 9px; min-width: 0;
+}
+.unpick {
+  display: block; width: 100%; margin-top: 8px; text-align: left;
+  font: 600 12px/1.3 var(--cs-font); color: var(--cs-muted);
+  background: none; border: none; padding: 6px 0; cursor: pointer;
+}
+.unpick:disabled { opacity: .6; cursor: default; }
+
+/* The Resume stage's fork: two limbs a row, one row per level.
+ *
+ * The mockup's `.fork button` rules, with the anchor added to the selector —
+ * one limb LEAVES for the web app and a real `<a href>` is the only honest way
+ * to say so (it middle-clicks, it copies, it shows its destination). The three
+ * declarations after `cursor` are what an anchor needs to look like the button
+ * beside it: a UA link brings its own colour and underline and does not lay
+ * itself out as a box. */
+.fork { display: flex; gap: 8px; margin: 8px 0 2px; }
+.fork button, .fork a {
+  flex: 1; font: 700 13px/1 var(--cs-font); padding: 11px 10px; border-radius: 10px;
+  border: 1px solid var(--cs-line); background: var(--cs-surface);
+  color: var(--cs-text); cursor: pointer;
+  text-align: center; text-decoration: none; min-width: 0;
+}
+.fork button.sel { border-color: var(--cs-primary); background: var(--cs-primary-tonal); color: var(--cs-primary); }
+/* A limb that is out of reach while an action runs, and this rule is what says
+ * so — `disabled` alone does NOT. The block above sets `background`, `color`
+ * and `cursor: pointer` explicitly, and an author declaration beats the UA
+ * stylesheet's disabled defaults: without this the limb renders at full
+ * contrast under a pointer cursor while swallowing every click, which is the
+ * exact failure `actingLimb` was added to prevent. `.cta:disabled`'s idiom,
+ * because they are the same state on the same surface — and, for the Quick
+ * limb, on the button's own twin in the footer. */
+.fork button:disabled { opacity: .6; cursor: default; }
+
+/* The Fill stage's mode control: two segments, one of them on.
+ *
+ * The mockup's `.seg` rules, with two additions the mockup did not need. The
+ * segments are a real radiogroup here, so `:disabled` has to LOOK disabled —
+ * the block below sets `background`, `color` and `cursor` explicitly and an
+ * author declaration beats the UA stylesheet's disabled defaults, which is the
+ * same trap `.fork button:disabled` was written for (third time in this file,
+ * and the reason it is spelled out again rather than cross-referenced: the
+ * selector that would share it does not exist). */
+.seg {
+  display: flex; background: var(--cs-surface-2); border-radius: 10px;
+  padding: 3px; gap: 3px; margin: 4px 0 10px;
+}
+.seg button {
+  flex: 1; border: none; border-radius: 8px; font: 600 12px/1 var(--cs-font);
+  padding: 8px 6px; background: none; color: var(--cs-muted); cursor: pointer;
+}
+.seg button.on {
+  background: var(--cs-surface); color: var(--cs-text);
+  box-shadow: 0 1px 3px oklch(0 0 0 / 12%);
+}
+.seg button:disabled { opacity: .6; cursor: default; }
+
+/* One progress row per thing the fill has something true to say about. The
+ * mockup's `.prog` rules unchanged — the mark, the name, and the counts pushed
+ * to the right by `margin-left: auto`. */
+.prog {
+  display: flex; align-items: center; gap: 8px; padding: 7px 0;
+  border-bottom: 1px solid var(--cs-line); font-size: 12.5px;
+}
+.prog:last-of-type { border-bottom: none; }
+.prog .st { flex: none; width: 18px; text-align: center; }
+.prog .n { color: var(--cs-muted); margin-left: auto; font-size: 12px; }
+
+/* The still-open list, styled as what it is: labels that jump to a control,
+ * which is a link's job even though it is a button (it goes nowhere; it asks a
+ * frame to scroll). So the button reset first, then the link's own colour and
+ * rule. The mockup's `.needs` box hangs off it below. */
+.resid { list-style: none; margin: 8px 0 0; padding: 0; }
+.resid li { margin-top: 5px; font-size: 12px; }
+.resid button {
+  border: none; background: none; padding: 0; text-align: left;
+  font: 600 12px/1.4 var(--cs-font); color: var(--cs-primary);
+  cursor: pointer; text-decoration: underline; text-underline-offset: 2px;
+}
+.resid .kindmark { color: var(--cs-muted); }
+/* The essay row's handoff into the drawer below, and NOT a second underlined
+   link: the two buttons in that row go to different places — one asks the page
+   to scroll, one fills the composer — and two identical links would read as two
+   ways to the same one. */
+.resid .ask {
+  color: var(--cs-muted); text-decoration: none; margin-left: 6px;
+}
+.resid .ask:hover { color: var(--cs-primary); }
+
+/* THE PAUSE ROW, lifted from the mockup (docs/plans/…redesign-mockup.html) now
+ * that something renders it. Warn-tonal rather than the surface: this is the
+ * one thing on the stage still asking the user for something, and it has to
+ * read as an open question rather than as another report row.
+ *
+ * NOT rendered for every residue row — a combobox cannot be written by
+ * `fill_answers`, and a policy-blocked label may not be offered an input at
+ * all — so a row without one keeps the jump button and nothing else. That is a
+ * rule the body enforces; what this stylesheet says is only what the box looks
+ * like when there is one.
+ *
+ * The input is full-width and `box-sizing` is the page's (border-box, set on
+ * `*` at the top of this file), so the padding and border do not push it past
+ * the box it sits in — the 574px overflow this project has already paid for
+ * once. */
+.needs {
+  background: var(--cs-warn-tonal); border-radius: 10px;
+  padding: 9px 10px; margin-top: 8px;
+}
+/* SHARED WITH THE DRAWER'S TEXTAREA, for the reason the `.save` rule below is:
+ * the pause row's box and the composer's are the same control family in the
+ * same stage body — a place to type an answer — and two rules agreeing on seven
+ * declarations is how they drift on the eighth. What is NOT shared is what
+ * makes them different controls, and that is `.qna textarea`'s own three lines
+ * (a paragraph's height, a vertical resize, a looser leading). */
+.needs input[type="text"], .qna textarea {
+  width: 100%; margin-top: 7px;
+  font: 500 13px/1.2 var(--cs-font);
+  border: 1px solid var(--cs-line); border-radius: 8px; padding: 8px 9px;
+  background: var(--cs-surface); color: var(--cs-text);
+}
+/* The options a select or radio group will accept, verbatim. The writer matches
+ * the typed answer against them, so a user who cannot see them is guessing at a
+ * closed list. */
+.needs .opts { margin-top: 6px; font-size: 11.5px; color: var(--cs-muted); }
+.needs .learn {
+  display: flex; align-items: center; gap: 6px; margin-top: 7px;
+  font-size: 11.5px; color: var(--cs-muted);
+}
+/* The row's own submit. Smaller than the footer's `.cta` and deliberately so:
+ * there is one primary on this surface and it is the footer's, and a second
+ * button of the same weight beside it would be two.
+ *
+ * SHARED WITH THE DRAWER'S "Ask" and the ATTACH's own button rather than copied
+ * for them: all three are the same control in the same body — a secondary
+ * submit inside a box on the Fill stage — and two rules that agreed on nine
+ * declarations would drift on the tenth. The attach's was written as a fourth
+ * copy first and the duplication gate caught it, which is this comment's whole
+ * claim demonstrated. */
+.needs .save, .qna .save, .attach .save {
+  margin-top: 7px; font: 700 12px/1 var(--cs-font);
+  background: var(--cs-primary); color: var(--cs-on-primary);
+  border: none; border-radius: 9px; padding: 8px 12px; cursor: pointer;
+}
+.needs .save:disabled, .qna .save:disabled, .attach .save:disabled {
+  opacity: .6; cursor: default;
+}
+
+/* THE ATTACH OFFER — a sentence and a secondary submit, which is the pause
+ * row's shape with nothing to type into. It takes the pause row's BOX so the
+ * two read as the same kind of thing (something in this stage is asking you to
+ * press), and the surface tint rather than the warn one because a pause row is
+ * a field that NEEDS the user and this is an offer they may decline: colouring
+ * an optional upload as an outstanding problem would make a finished form look
+ * unfinished. Its button is `.save`, shared above. */
+.attach {
+  background: var(--cs-surface-2); border: 1px solid var(--cs-line);
+  border-radius: 10px; padding: 9px 10px; margin-top: 8px;
+}
+
+/* THE QnA DRAWER, the mockup's `.qna` line with the closed state's flex moved
+ * onto the row it describes: the mockup only ever drew the collapsed teaser, and
+ * an open drawer is a column. The dashed rule above it is what separates a
+ * composer from the report it sits under.
+ *
+ * `.linkish` on a BUTTON is what the trigger needs beyond the mockup's anchor:
+ * this one discloses rather than navigates, and a bare `<a href="#">` on a
+ * surface whose every other anchor really leaves would be the dead link this
+ * panel refuses everywhere else. So the three declarations a UA button brings
+ * of its own are reset, and `.linkish`'s colour, weight and hover carry over. */
+.qna {
+  border-top: 1px dashed var(--cs-line); margin-top: 10px; padding-top: 9px;
+  color: var(--cs-muted); font-size: 12.5px;
+}
+.qna .row { display: flex; align-items: center; gap: 8px; }
+.qna .linkish {
+  border: none; background: none; cursor: pointer;
+  padding: 4px 6px; margin-left: auto;
+}
+/* Only what makes it a TEXTAREA rather than the pause row's input — the rest of
+ * the box is the shared rule above. A pasted question can be a paragraph, so it
+ * starts three lines tall and is resizable; `vertical` only, because the rail is
+ * a fixed 400px and a wider box can only overflow it (`box-sizing: border-box`
+ * is the page's, set on `*` at the top of this file — the 574px overflow this
+ * project has already paid for once). */
+.qna textarea { min-height: 62px; resize: vertical; line-height: 1.35; }
+/* The answer, and `pre-wrap` is the load-bearing declaration: `sanitizeAnswer`
+ * strips markdown and KEEPS the paragraph breaks, so a block that collapsed
+ * whitespace would show a three-paragraph answer as one — and the user copies
+ * what they read. */
+.qna .ans {
+  margin-top: 9px; background: var(--cs-surface-2); border-radius: 10px;
+  padding: 9px 10px;
+}
+.qna .ans .q { font-size: 11.5px; color: var(--cs-muted); }
+.qna .ans .a {
+  margin-top: 5px; white-space: pre-wrap; overflow-wrap: anywhere;
+  color: var(--cs-text); font-size: 12.5px;
+}
+/* Says what it DID in the control that did it, which is why it is a button that
+ * changes its own label rather than a sentence in the footer: the note slot
+ * holds one sentence about the page, and "Copied" is feedback about a press. */
+.qna .copy {
+  margin-top: 8px; font: 700 11.5px/1 var(--cs-font);
+  border: 1px solid var(--cs-line); border-radius: 999px;
+  background: var(--cs-surface); color: var(--cs-text);
+  padding: 6px 10px; cursor: pointer;
+}
+
+/* The Track stage's evidence line: what this application has to show for
+   itself. Lifted from the mockup unchanged. A flex row because the paperclip is
+   a decoration beside the text rather than part of it — it is `aria-hidden`, so
+   the sentence has to stand on its own, and it does. Rendered only when there
+   IS evidence, which is why there is no empty state here to style. */
+.evi {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 12.5px; color: var(--cs-muted); padding: 6px 0;
+}
+
+/* ------- footer: status, the last thing that happened, one primary ------- */
+
+.p-foot {
+  flex: none; padding: 12px 14px; background: var(--cs-surface);
+  border-top: 1px solid var(--cs-line);
+  display: flex; align-items: center; gap: 10px;
+}
+.sub { color: var(--cs-muted); font-size: 12px; min-width: 0; }
+/* The footer's one sentence, and two kinds of it. A backend that cannot be
+ * reached must not read like "that button is coming": same slot, different
+ * weight and colour. `--cs-danger-text` sits on the panel's own surface rather
+ * than on a tonal chip, so it is picked for contrast against `--cs-surface` in
+ * each scheme — darkened in light, lightened in dark — the same reason
+ * `--cs-warn-text` is a token at all. */
+.note { color: var(--cs-muted); font-size: 12px; min-width: 0; }
+.note.error { color: var(--cs-danger-text); font-weight: 600; }
+.foot-controls { display: flex; align-items: center; gap: 10px; margin-left: auto; }
+.status-seg { display: flex; gap: 6px; }
+.status-seg button {
+  font: 700 12px/1 var(--cs-font); padding: 8px 12px; border-radius: 999px;
+  border: 1px solid var(--cs-line); background: var(--cs-surface);
+  color: var(--cs-muted); cursor: pointer;
+}
+.status-seg button.on { background: var(--cs-good-tonal); color: var(--cs-good); border-color: transparent; }
+.status-seg button.draft-on { background: var(--cs-warn-tonal); color: var(--cs-warn-text); border-color: transparent; }
+.cta {
+  margin-left: auto; font: 700 13.5px/1 var(--cs-font);
+  background: var(--cs-primary); color: var(--cs-on-primary);
+  border: none; border-radius: 12px; padding: 12px 18px; cursor: pointer;
+  box-shadow: var(--cs-shadow);
+}
+/* An action is running. The button is out of reach either way — `disabled` is
+   the real guard — and this is what says so before the user presses it again. */
+.cta:disabled { opacity: .6; cursor: default; box-shadow: none; }
+/* One spinner for every busy button on this surface, so a user who has waited
+   once recognises the wait. */
+.spin::after {
+  content: "";
+  display: inline-block;
+  width: 9px; height: 9px; margin-left: 6px;
+  border: 2px solid currentColor; border-right-color: transparent;
+  border-radius: 50%; vertical-align: -1px;
+  animation: cs-spin 700ms linear infinite;
+}
+@keyframes cs-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spin::after { animation: none; } }

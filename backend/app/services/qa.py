@@ -19,6 +19,19 @@ from app.services import (
 )
 
 
+class BaseResumeUnavailable(ValueError):
+    """A job-level answer was asked for and the resume to write it FROM could
+    not be read — an unknown slug, or a slug whose data file is not on disk.
+
+    Subclasses ValueError so the fail-loud intent stands, and exists so the
+    router can map it to a 400 (the caller named something we do not have, or
+    the install is missing its default resume data) rather than letting a
+    FileNotFoundError out as a 500. `UnsupportedQAEntryKind` below is the same
+    pattern for the same reason; where a handler catches the generic ValueError
+    too, both must be caught BEFORE it (§12 ordering).
+    """
+
+
 class UnsupportedQAEntryKind(ValueError):
     """Regenerate was requested for a QA entry whose kind cannot be regenerated
     (e.g. a retired ``cold_message``). Subclasses ValueError so the fail-loud
@@ -43,14 +56,53 @@ def _application_context(
     return application, job, resume_json
 
 
-def context_from_job(session: Session, job_id: UUID) -> tuple[Job, dict[str, Any]]:
+#: What a job-level answer is grounded in when the caller names no base resume.
+#: `hybrid` is not a tailorable/scoreable base (no `base_resumes` row), so it
+#: bypasses the table gate and reads its disk data directly — which is also why
+#: an install without that file gets the guarded 400 below rather than a 500.
+DEFAULT_JOB_RESUME_SLUG = "hybrid"
+
+
+def context_from_job(
+    session: Session, job_id: UUID, base_slug: str | None = None
+) -> tuple[Job, dict[str, Any]]:
+    """The job and the resume a job-level answer is written FROM.
+
+    `base_slug` is the caller's own pick — the side panel sends the base the
+    Score stage selected, which is the same resume its fill would have used —
+    and it goes through `load_base_resume`, so the table gate applies exactly as
+    it does everywhere else. Without one, the generic default above stands.
+
+    EITHER READ CAN FAIL ON AN ORDINARY INSTALL, which is why both are guarded
+    and neither is allowed to be a 500: an unknown slug is a caller error, and a
+    missing data file is a configuration the user can fix — this repo ships one
+    example base resume, so the DEFAULT is the read most likely to be absent.
+    The detail names the slug and never the path (`load_base_resume`'s rule).
+
+    ONE ASYMMETRY, KNOWN: a file that EXISTS but holds broken JSON raises
+    `json.JSONDecodeError` from the same two reads, and only the named-slug path
+    turns it into a 400 (it is a ValueError subclass, so `load_base_resume`'s
+    `except ValueError` above already catches it); the default path lets it out
+    as a 500. Left as it is — a corrupt file the user hand-edited is a different
+    failure from one they never had, and widening the default's `except` to
+    ValueError would swallow whatever else that read grows.
+    """
     job = session.get(Job, job_id)
     if job is None or not job.extracted_json:
         raise ValueError(f"Job not found or missing extracted data: {job_id}")
-    # Job-level QA/cover-letter uses the generic "hybrid" resume as a default.
-    # `hybrid` is not a tailorable/scoreable base (no base_resumes row), so it
-    # bypasses the table gate and reads its disk data directly.
-    return job, base_resume_data._read_base_resume_data("hybrid")
+    if base_slug:
+        try:
+            return job, base_resume_data.load_base_resume(base_slug, session)
+        except ValueError as exc:
+            raise BaseResumeUnavailable(str(exc)) from exc
+    try:
+        return job, base_resume_data._read_base_resume_data(DEFAULT_JOB_RESUME_SLUG)
+    except FileNotFoundError as exc:
+        raise BaseResumeUnavailable(
+            f"No resume data for job-level answers: this install has no "
+            f"'{DEFAULT_JOB_RESUME_SLUG}' base resume. Name one with `base`, or "
+            f"add its data file."
+        ) from exc
 
 
 def _referral_context(session: Session, application: Application) -> dict[str, Any] | None:
@@ -207,8 +259,9 @@ def answer_questions_for_job(
     job_id: UUID,
     questions: list[str],
     session: Session,
+    base_slug: str | None = None,
 ) -> list[str]:
-    job, resume_json = context_from_job(session, job_id)
+    job, resume_json = context_from_job(session, job_id, base_slug)
     prompt = prompt_assembly.build_qa_prompt(
         resume_json=resume_json,
         jd_json=job.extracted_json or {},
@@ -295,8 +348,14 @@ def regenerate_entry(
             session.close()
 
 
-def generate_cover_letter_for_job(job_id: UUID, tone: str, session: Session) -> str:
-    job, resume_json = context_from_job(session, job_id)
+def generate_cover_letter_for_job(
+    job_id: UUID, tone: str, session: Session, base_slug: str | None = None
+) -> str:
+    # Threaded here too, though today's only sender of `base` is the panel's QnA
+    # drawer (questions, not cover letters). One request key honoured on one
+    # branch of `run_qa` and silently dropped on the other is the half-wired API
+    # this repo pins against — and both branches ground on the same read.
+    job, resume_json = context_from_job(session, job_id, base_slug)
     prompt = prompt_assembly.build_cover_letter_prompt(
         resume_json=resume_json,
         jd_json=job.extracted_json or {},

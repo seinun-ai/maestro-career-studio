@@ -811,10 +811,7 @@ def run_report(db: Session, kind: str, key: str, resume: dict, *,
             if r is not None:
                 levels_by_loc[loc] = r
 
-    waiver_rows = db.scalars(
-        select(HealthGateWaiver).where(
-            HealthGateWaiver.resume_kind == kind, HealthGateWaiver.resume_key == key)).all()
-    waivers = {w.gate_id: w.reason for w in waiver_rows}
+    waivers = gate_waivers(db, kind, key)
 
     prior = latest_report(db, kind, key)
 
@@ -856,6 +853,24 @@ def run_report(db: Session, kind: str, key: str, resume: dict, *,
     db.commit()
     db.refresh(row)
     return row
+
+
+def gate_waivers(db: Session, kind: str, key: str) -> dict[str, str]:
+    """Waived gate ids → reason, for one resume.
+
+    THE TABLE IS THE AUTHORITY, not the gate statuses stored beside it.
+    `POST /{kind}/{key}/gates/{id}/waive` writes a row and nothing else; the
+    status only becomes `waived` when a report is BUILT again (`assemble`
+    applies this mapping). So any reader that must honour a waiver reads here,
+    not off a stored `report_json` — a snapshot always predates the waivers
+    filed after it.
+    """
+    rows = db.scalars(
+        select(HealthGateWaiver).where(
+            HealthGateWaiver.resume_kind == kind, HealthGateWaiver.resume_key == key
+        )
+    ).all()
+    return {w.gate_id: w.reason for w in rows}
 
 
 def latest_report(db: Session, kind: str, key: str) -> ResumeLintReport | None:

@@ -1,10 +1,10 @@
 {
   "structure": {
     "root": "backend",
-    "modules": 381,
-    "total_loc": 95386,
-    "src_loc": 36149,
-    "test_loc": 59237,
+    "modules": 401,
+    "total_loc": 109557,
+    "src_loc": 36768,
+    "test_loc": 72789,
     "orphan_modules": [],
     "test_only_reachable": [],
     "orphan_loc": 0,
@@ -19,7 +19,7 @@
       },
       {
         "file": "app/services/career_kb.py",
-        "line": 629,
+        "line": 641,
         "name": "_compose_extra_item_ops",
         "complexity": 39,
         "params": 5,
@@ -47,7 +47,7 @@
         "name": "compose_resume_data",
         "complexity": 37,
         "params": 2,
-        "lines": 148
+        "lines": 160
       },
       {
         "file": "app/services/kb_consolidation.py",
@@ -115,7 +115,7 @@
       },
       {
         "file": "app/services/tailoring_session.py",
-        "line": 876,
+        "line": 884,
         "name": "_live_text_fragments",
         "complexity": 28,
         "params": 1,
@@ -170,6 +170,14 @@
         "lines": 132
       },
       {
+        "file": "tests/test_extension_panel.py",
+        "line": 469,
+        "name": "test_the_panel_document_is_self_contained_and_joins_the_namespace",
+        "complexity": 24,
+        "params": 0,
+        "lines": 73
+      },
+      {
         "file": "app/services/explore_build_areas.py",
         "line": 65,
         "name": "build_areas",
@@ -179,7 +187,7 @@
       },
       {
         "file": "app/services/career_kb.py",
-        "line": 775,
+        "line": 787,
         "name": "_compose_item_ops",
         "complexity": 24,
         "params": 5,
@@ -195,7 +203,7 @@
       },
       {
         "file": "app/services/autofill_telemetry.py",
-        "line": 82,
+        "line": 90,
         "name": "summarize_rows",
         "complexity": 24,
         "params": 1,
@@ -227,7 +235,7 @@
       },
       {
         "file": "app/services/tailoring_session.py",
-        "line": 1092,
+        "line": 1100,
         "name": "tailor",
         "complexity": 23,
         "params": 4,
@@ -243,15 +251,23 @@
       },
       {
         "file": "tests/test_extension_eeo_autofill.py",
-        "line": 141,
+        "line": 146,
         "name": "test_eeo_fill_requires_opt_in_and_visible_control",
         "complexity": 22,
         "params": 1,
         "lines": 38
       },
       {
+        "file": "tests/test_extension_panel_resume.py",
+        "line": 303,
+        "name": "test_quick_tailor_creates_the_application_and_the_rings_say_so",
+        "complexity": 22,
+        "params": 1,
+        "lines": 70
+      },
+      {
         "file": "app/services/career_kb.py",
-        "line": 581,
+        "line": 593,
         "name": "_build_entry",
         "complexity": 22,
         "params": 3,
@@ -283,7 +299,7 @@
       },
       {
         "file": "tests/test_tailoring_sessions_router.py",
-        "line": 1965,
+        "line": 2091,
         "name": "test_tailor_happy_path",
         "complexity": 21,
         "params": 3,
@@ -291,7 +307,7 @@
       },
       {
         "file": "app/services/tailoring_session.py",
-        "line": 788,
+        "line": 796,
         "name": "_write_back_elicited_points",
         "complexity": 21,
         "params": 3,
@@ -331,7 +347,7 @@
       },
       {
         "file": "tests/extension_harness.py",
-        "line": 1152,
+        "line": 1375,
         "name": "read_detect_fixture",
         "complexity": 20,
         "params": 1,
@@ -371,7 +387,7 @@
       },
       {
         "file": "tests/test_kb_extra_sections.py",
-        "line": 165,
+        "line": 164,
         "name": "test_extra_sections_round_trip_compose",
         "complexity": 19,
         "params": 3,
@@ -392,25 +408,9 @@
         "complexity": 19,
         "params": 1,
         "lines": 133
-      },
-      {
-        "file": "tests/ats/test_layers.py",
-        "line": 38,
-        "name": "test_evidence_placements",
-        "complexity": 19,
-        "params": 0,
-        "lines": 24
-      },
-      {
-        "file": "tests/ats/test_golden.py",
-        "line": 24,
-        "name": "test_engine_output_matches_golden",
-        "complexity": 19,
-        "params": 0,
-        "lines": 41
       }
     ],
-    "hotspot_count": 354,
+    "hotspot_count": 380,
     "error_masking": [
       {
         "file": "tests/test_tracing.py",
@@ -459,8 +459,8 @@
       }
     ],
     "error_masking_count": 9,
-    "internal_import_edges": 1596,
-    "imports_per_module": 4.19,
+    "internal_import_edges": 1652,
+    "imports_per_module": 4.12,
     "entry_points_used": [
       "app.main",
       "mcp_server.server",
@@ -477,7 +477,7 @@
       "min_tokens": 50,
       "mode": "weak"
     },
-    "percentage": 1.03,
+    "percentage": 1.02,
     "duplicated_lines": 457,
     "clones": 47,
     "allowlisted_clones": 0,
@@ -582,7 +582,7 @@
     {
       "rank": "P2",
       "signal": "complexity_concentration",
-      "detail": "354 function(s) over threshold. worst: app/services/explore_build_areas.py:162 cc=39",
+      "detail": "380 function(s) over threshold. worst: app/services/explore_build_areas.py:162 cc=39",
       "why": "Complexity mass concentrating in few functions is the erosion signature.",
       "action": "Decompose the top 3. Do not touch the tail."
     },
@@ -595,16 +595,16 @@
     }
   ],
   "metrics": {
-    "total_loc": 95386,
-    "src_loc": 36149,
-    "test_loc": 59237,
-    "modules": 381,
+    "total_loc": 109557,
+    "src_loc": 36768,
+    "test_loc": 72789,
+    "modules": 401,
     "orphan_loc": 0,
-    "duplication_pct": 1.03,
+    "duplication_pct": 1.02,
     "duplicated_lines": 457,
     "clone_count": 47,
-    "complexity_hotspots": 354,
+    "complexity_hotspots": 380,
     "error_masking": 9,
-    "imports_per_module": 4.19
+    "imports_per_module": 4.12
   }
 }

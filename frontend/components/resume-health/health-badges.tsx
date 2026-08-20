@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { HeartPulse } from "lucide-react";
 
-import { apiFetch } from "@/lib/api";
+import { ApiError, apiFetch } from "@/lib/api";
 
 const COUNTS = [
   { key: "gate", label: "gate", className: "bg-red-500/15 text-red-600 dark:text-red-400" },
@@ -36,7 +36,7 @@ export function HealthBadges({
   /** Href of the full-page health report. */
   reportHref: string;
 }) {
-  const { data } = useQuery({
+  const { data, isError, error, isFetching, refetch } = useQuery({
     queryKey: ["resume-lint", kind, resumeKey],
     queryFn: () =>
       apiFetch<LintReport>(`/api/resume-lint/${kind}/${resumeKey}`),
@@ -50,6 +50,23 @@ export function HealthBadges({
   const shell =
     "hover:bg-muted/60 hover:border-border flex items-center gap-1.5 rounded-md " +
     "border border-transparent bg-muted/40 px-2 py-1 transition-colors";
+
+  const missing =
+    error instanceof ApiError && error.status === 404;
+  if (isError && !missing) {
+    return (
+      <button
+        type="button"
+        className={`${shell} text-muted-foreground hover:text-foreground text-sm`}
+        title="Couldn't check this resume's health. Try again."
+        onClick={() => void refetch()}
+        disabled={isFetching}
+      >
+        <HeartPulse className="size-4" />
+        {isFetching ? "Retrying…" : "Couldn't check health"}
+      </button>
+    );
+  }
 
   if (!data) {
     return (

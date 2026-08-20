@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from app.config import settings as app_settings
+from app.origin_guard import OriginGuardMiddleware
 
 from app.routers import (
     role_categories,
@@ -59,6 +60,18 @@ def _log_llm_config() -> None:
         )
     else:
         logger.info("LLM endpoint %s, api key from %s", endpoint, key_source)
+    if app_settings.llm_log_content:
+        # Loud on purpose. This writes resumes, job descriptions, work-auth
+        # answers and generated screening answers to disk in cleartext, and the
+        # person who turned it on to debug one prompt is exactly the person who
+        # will forget it is on.
+        logger.warning(
+            "LLM_LOG_CONTENT is on: every prompt and response is being written "
+            "in full to %s/llm_calls, including resume and job-description "
+            "text. This is a debugging mode — turn it off when you are done, "
+            "and delete the files.",
+            app_settings.logs_dir,
+        )
     if config.SCRUBBED_ENV:
         # `VAR: ${VAR:-}` in docker-compose injects empty strings, which SDKs
         # that read os.environ directly treat as configured. See scrub_empty_env.
@@ -86,26 +99,39 @@ if not _extension_origins:
         "repo. The web UI is unaffected."
     )
 
+# ONE definition, two readers: CORSMiddleware decides what may be READ, and
+# OriginGuardMiddleware below decides what may RUN. Letting those lists drift
+# apart would mean an origin the guard admits but CORS will not answer, or
+# worse, the reverse.
+ALLOWED_ORIGINS = [
+    *app_settings.allowed_web_origins,
+    *_extension_origins,
+]
+
 app.add_middleware(
     CORSMiddleware,
     # The browser extension (extension/) calls the API directly from its
     # chrome-extension:// origin. Listed by EXACT id: the previous
     # `allow_origin_regex=r"chrome-extension://.*"` trusted every extension the
     # user had installed, and any one of them could read the whole zero-auth API.
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        *_extension_origins,
-    ],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Added AFTER CORS, so it wraps it and runs FIRST: a forged Host is rejected
+# Added AFTER CORS and BEFORE TrustedHost, which puts it in the middle of the
+# stack: Host → Origin → CORS. CORS alone leaves a cross-origin POST's side
+# effect intact and withholds only the reply, which against a zero-auth API is
+# the whole attack. See app/origin_guard.py.
+app.add_middleware(OriginGuardMiddleware, allowed_origins=ALLOWED_ORIGINS)
+
+# Added LAST, so it wraps everything and runs FIRST: a forged Host is rejected
 # before any handler, and the 400 deliberately carries no CORS headers.
 # This is the DNS-rebinding defence — see config.allowed_hosts for why CORS
-# alone cannot provide it.
+# alone cannot provide it. Starlette's add_middleware PREPENDS, so the order
+# these three calls appear in is the reverse of the order they run in; the
+# order is pinned by test_the_host_check_outranks_the_origin_check.
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=app_settings.allowed_hosts)
 
 

@@ -87,7 +87,7 @@ def test_post_qa_runs_cover_letter_for_job(db_session, monkeypatch):
     monkeypatch.setattr(
         qa.qa_service,
         "generate_cover_letter_for_job",
-        lambda job_id, tone, session=None: f"Cover letter: {tone}",
+        lambda job_id, tone, session=None, base_slug=None: f"Cover letter: {tone}",
     )
 
     app.dependency_overrides[get_db] = _override_db(db_session)
@@ -101,6 +101,94 @@ def test_post_qa_runs_cover_letter_for_job(db_session, monkeypatch):
 
     assert response.status_code == 200
     assert response.json()["cover_letter"] == "Cover letter: formal"
+
+
+def test_post_qa_threads_the_named_base_to_the_job_answer(db_session, monkeypatch):
+    """`base` is a request key, so the route has to carry it — a schema field
+    the handler drops is the half-wired API this repo pins against."""
+    application = _application(db_session)
+    seen = {}
+
+    def fake_answers(job_id, questions, session=None, base_slug=None):
+        seen["base"] = base_slug
+        return ["Answered."]
+
+    monkeypatch.setattr(qa.qa_service, "answer_questions_for_job", fake_answers)
+
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        response = TestClient(app).post(
+            "/api/qa",
+            json={"job_id": str(application.job_id), "questions": ["Why us?"],
+                  "base": "data_scientist"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert seen["base"] == "data_scientist"
+
+
+def test_post_qa_threads_the_named_base_to_the_job_cover_letter_too(db_session, monkeypatch):
+    """The twin of the test above, and it earns its place rather than mirroring
+    it for symmetry's sake.
+
+    `base` is ONE request key, and `run_qa` has TWO job branches. A key honoured
+    on the questions branch and silently dropped on the cover-letter one is the
+    half-wired API this repo pins against — the caller names a resume, gets an
+    answer written from a different one, and nothing anywhere says so. Both
+    branches ground on the same read, so both carry it.
+    """
+    application = _application(db_session)
+    seen = {}
+
+    def fake_cover(job_id, tone, session=None, base_slug=None):
+        seen["base"] = base_slug
+        return "Cover letter."
+
+    monkeypatch.setattr(qa.qa_service, "generate_cover_letter_for_job", fake_cover)
+
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        response = TestClient(app).post(
+            "/api/qa",
+            json={"job_id": str(application.job_id), "cover_letter": {"tone": "warm"},
+                  "base": "data_scientist"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert seen["base"] == "data_scientist"
+
+
+def test_post_qa_answers_an_unreadable_base_with_a_reason_not_a_500(db_session, monkeypatch):
+    """The guard's outward face.
+
+    What shipped was a bare `FileNotFoundError` out of the disk read — an
+    unexplained 500 for what is really "that resume has no data file", on an
+    install that need not carry the default at all. The caller gets a 400 and a
+    detail naming the slug, which is what the side panel renders in its note.
+    """
+    application = _application(db_session)
+
+    def refuse(job_id, questions, session=None, base_slug=None):
+        raise qa.qa_service.BaseResumeUnavailable("Base resume 'ghost' has no data file")
+
+    monkeypatch.setattr(qa.qa_service, "answer_questions_for_job", refuse)
+
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        response = TestClient(app).post(
+            "/api/qa",
+            json={"job_id": str(application.job_id), "questions": ["Why us?"],
+                  "base": "ghost"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Base resume 'ghost' has no data file"
 
 
 def test_post_qa_requires_target_and_work(db_session):
@@ -440,3 +528,27 @@ def test_get_qa_lists_entries(db_session):
     assert len(body) == 1
     assert body[0]["prompt"] == "Question?"
     assert body[0]["answer"] == "Answer."
+
+
+def test_post_qa_answers_an_unknown_application_id_with_404_not_500(db_session):
+    """A wrong id is "not found", not "the server broke".
+
+    `answer_questions` raises a plain `ValueError` for an id that resolves to no
+    row. Only `BaseResumeUnavailable` (its SUBCLASS) was mapped, so the id case
+    fell through as an unexplained 500 while the sibling `regenerate_entry`
+    answered the same shape with a 404. The detail carries the service's own
+    message so the caller can see WHICH id missed.
+    """
+    missing = uuid.uuid4()
+
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        response = TestClient(app).post(
+            "/api/qa",
+            json={"application_id": str(missing), "questions": ["Why us?"]},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 404
+    assert str(missing) in response.json()["detail"]

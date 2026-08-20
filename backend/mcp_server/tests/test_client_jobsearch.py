@@ -36,33 +36,36 @@ def test_get_job_search_brief():
 
 @respx.mock
 def test_find_job_by_url_found_with_application():
-    list_route = respx.get(f"{BASE}/api/jobs").mock(
-        return_value=httpx.Response(200, json=[{"id": "j1", "company": "Acme"}])
-    )
-    respx.get(f"{BASE}/api/jobs/j1/detail").mock(
-        return_value=httpx.Response(
-            200, json={"job": {"id": "j1"}, "application": {"id": "a1", "status": "applied"}}
-        )
+    # ONE request now: /api/jobs/match answers job + newest application
+    # together, with posting-equality semantics (SYSTEM.md §11 item 9) —
+    # the detail round-trip is gone.
+    match_route = respx.get(f"{BASE}/api/jobs/match").mock(
+        return_value=httpx.Response(200, json={
+            "match": "exact",
+            "job": {"id": "j1", "company": "Acme"},
+            "application": {"id": "a1", "status": "applied"},
+        })
     )
     client = BackendClient(BASE)
-    out = client.find_job_by_url("https://x.test/jobs/1")
+    out = client.find_job_by_url("https://x.test/jobs/1?gh_src=referral")
     assert out == {
         "found": True,
         "job": {"id": "j1", "company": "Acme"},
         "application_exists": True,
         "application_id": "a1",
     }
-    params = list_route.calls.last.request.url.params
-    assert params["source_url"] == "https://x.test/jobs/1"
+    params = match_route.calls.last.request.url.params
+    # The URL passes through UNSTRIPPED of its tracking params: the server
+    # owns posting equality; stripping is not the client's job either.
+    assert params["url"] == "https://x.test/jobs/1?gh_src=referral"
 
 
 @respx.mock
 def test_find_job_by_url_found_without_application():
-    respx.get(f"{BASE}/api/jobs").mock(
-        return_value=httpx.Response(200, json=[{"id": "j2"}])
-    )
-    respx.get(f"{BASE}/api/jobs/j2/detail").mock(
-        return_value=httpx.Response(200, json={"job": {"id": "j2"}, "application": None})
+    respx.get(f"{BASE}/api/jobs/match").mock(
+        return_value=httpx.Response(200, json={
+            "match": "exact", "job": {"id": "j2"}, "application": None,
+        })
     )
     out = BackendClient(BASE).find_job_by_url("https://x.test/jobs/2")
     assert out["found"] is True
@@ -72,7 +75,9 @@ def test_find_job_by_url_found_without_application():
 
 @respx.mock
 def test_find_job_by_url_not_found():
-    respx.get(f"{BASE}/api/jobs").mock(return_value=httpx.Response(200, json=[]))
+    respx.get(f"{BASE}/api/jobs/match").mock(
+        return_value=httpx.Response(200, json={"match": "none", "job": None, "application": None})
+    )
     out = BackendClient(BASE).find_job_by_url("https://x.test/jobs/none")
     assert out == {
         "found": False,
@@ -84,15 +89,14 @@ def test_find_job_by_url_not_found():
 
 @respx.mock
 def test_find_job_by_url_strips_before_building_params():
-    # Defense in depth: the client strips the URL so the exact-match filter
-    # (which stores stripped URLs) can't miss on trailing whitespace.
-    list_route = respx.get(f"{BASE}/api/jobs").mock(
-        return_value=httpx.Response(200, json=[{"id": "j9"}])
-    )
-    respx.get(f"{BASE}/api/jobs/j9/detail").mock(
-        return_value=httpx.Response(200, json={"job": {"id": "j9"}, "application": None})
+    # Defense in depth: the client strips WHITESPACE (tracking params are the
+    # server's job, whitespace would defeat even the server).
+    match_route = respx.get(f"{BASE}/api/jobs/match").mock(
+        return_value=httpx.Response(200, json={
+            "match": "exact", "job": {"id": "j9"}, "application": None,
+        })
     )
     out = BackendClient(BASE).find_job_by_url("  https://x.test/jobs/9\n")
     assert out["found"] is True
-    params = list_route.calls.last.request.url.params
-    assert params["source_url"] == "https://x.test/jobs/9"
+    params = match_route.calls.last.request.url.params
+    assert params["url"] == "https://x.test/jobs/9"

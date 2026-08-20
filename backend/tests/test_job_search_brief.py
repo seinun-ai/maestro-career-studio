@@ -31,6 +31,39 @@ def test_search_brief_not_captured_by_job_id_route(db_session, tmp_path, monkeyp
     assert _get_brief(db_session).status_code == 200
 
 
+def test_a_boolean_relocation_answer_reads_as_the_word(db_session, tmp_path, monkeypatch):
+    """The Settings form writes this key as a BOOLEAN; the brief must not say
+    "True".
+
+    Three writers reach it and they do not agree on a type: the form writes
+    `true`/`false`, the extension's pause row writes the user's answer as typed,
+    and the profile JSON is hand-editable. This value lands in a brief the model
+    reads beside `work_auth`'s own yes/no answers, so one field replying in
+    Python's booleans is an inconsistency that costs a little accuracy and can
+    never be traced back to anything.
+
+    `False` is the case worth having a test for: it is a real answer, and the
+    two failure shapes it invites are "False" (the old coercion) and dropping it
+    as falsy.
+    """
+    monkeypatch.setattr(text_settings.settings, "settings_dir", tmp_path)
+    autofill_profile.set_profile(
+        {"preferences": {"willing_to_relocate": False}}, db_session)
+    assert _get_brief(db_session).json()["profile"]["willing_to_relocate"] == "no"
+
+    autofill_profile.set_profile(
+        {"preferences": {"willing_to_relocate": True}}, db_session)
+    assert _get_brief(db_session).json()["profile"]["willing_to_relocate"] == "yes"
+
+    # Anything else passes through as written. "Open to relocating for the right
+    # role" is a real answer somebody has typed into that box, and narrowing it
+    # to a yes/no would be the brief deciding what they meant.
+    autofill_profile.set_profile(
+        {"preferences": {"willing_to_relocate": "for the right role"}}, db_session)
+    assert _get_brief(db_session).json()["profile"]["willing_to_relocate"] == (
+        "for the right role")
+
+
 def test_search_brief_aggregation_shape(db_session, tmp_path, monkeypatch):
     monkeypatch.setattr(text_settings.settings, "settings_dir", tmp_path)
     autofill_profile.set_profile(

@@ -17,6 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { LoadErrorState } from "@/components/load-error-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { apiFetch } from "@/lib/api";
@@ -62,7 +63,15 @@ export function JobPreferencesSection() {
         </p>
       </CardHeader>
       <CardContent>
-        {preferences.isLoading || !preferences.data ? (
+        {preferences.isError ? (
+          <LoadErrorState
+            className="py-8"
+            title="Couldn't load your job preferences."
+            detail={(preferences.error as Error)?.message}
+            retrying={preferences.isFetching}
+            onRetry={() => void preferences.refetch()}
+          />
+        ) : preferences.isLoading || !preferences.data ? (
           <Skeleton className="h-56 w-full" />
         ) : (
           <JobPreferencesEditor

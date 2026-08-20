@@ -1,0 +1,16 @@
+Pick each field's answer from the candidate's profile and career context below, or decline.
+
+CANDIDATE PROFILE:
+${profile}
+
+CAREER CONTEXT (memory):
+${memory}
+
+FIELDS:
+${fields}
+
+For each field:
+- Answer only from the profile and career context above.
+- When the field lists options, your answer must be one of those option strings, copied exactly.
+- When a field has a known_value, the profile already holds the answer — pick the listed option that means the same thing, or return null if none does.
+- When nothing above answers the field, return null. This is the expected outcome for most fields, not a failure.

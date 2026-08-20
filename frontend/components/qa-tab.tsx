@@ -26,6 +26,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { LoadErrorState } from "@/components/load-error-state";
 import { apiFetch, apiUrlForBrowserPdf } from "@/lib/api";
 import type { QAEntry, QAResponse } from "@/lib/types";
 
@@ -45,7 +46,7 @@ const KIND_LABELS: Record<string, string> = {
 export function QATab({ applicationId }: { applicationId: string }) {
   const qc = useQueryClient();
   const confirm = useConfirm();
-  const { data: entries } = useQuery({
+  const { data: entries, isError, error, isFetching, refetch } = useQuery({
     queryKey: ["qa", applicationId],
     queryFn: () =>
       apiFetch<QAEntry[]>(
@@ -195,7 +196,15 @@ export function QATab({ applicationId }: { applicationId: string }) {
 
       <div className="space-y-3">
         <h3 className="text-sm font-semibold">History</h3>
-        {!entries || entries.length === 0 ? (
+        {isError ? (
+          <LoadErrorState
+            className="py-8"
+            title="Couldn't load Q&A."
+            detail={(error as Error)?.message}
+            retrying={isFetching}
+            onRetry={() => void refetch()}
+          />
+        ) : !entries || entries.length === 0 ? (
           <p className="text-muted-foreground text-sm">No Q&amp;A entries yet.</p>
         ) : (
           entries.map((entry, i) => {

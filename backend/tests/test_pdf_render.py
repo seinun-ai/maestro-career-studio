@@ -32,9 +32,16 @@ def test_pdflatex_argv_enables_interword_spaces(tmp_path):
     assert f"-output-directory={tmp_path}" in argv
     assert "-jobname=resume" in argv
     # The final arg is TeX code: enable interword spaces, then \input the file.
+    #
+    # The input is the BARE FILENAME, not the absolute path it used to be, and
+    # the caller sets cwd to the file's directory (_compile_cwd). Under
+    # kpathsea paranoid mode an ABSOLUTE input is only readable if it sits
+    # under TEXMFOUTPUT, and the base-resume path stages its .tex and its .pdf
+    # in two different directories — so the absolute form made pdflatex refuse
+    # the app's own source. A relative name inside the cwd is always readable.
     assert argv[-1] == (
         r"\pdfmapline{+dummy-space <dummy-space}\pdfinterwordspaceon"
-        r"\input{" + str(tex) + "}"
+        r"\input{" + tex.name + "}"
     )
     # There is no opt-out. The cover-letter compile used to pass
     # no_shell_escape=False, handing `\write18` (arbitrary host commands) to a

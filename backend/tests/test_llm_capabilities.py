@@ -219,3 +219,75 @@ def test_tools_probe_custom_endpoint_does_not_hijack_gemini_id(monkeypatch):
 
     assert client.calls, "custom-endpoint Gemini id must use the global client"
     assert report.tools is True
+
+
+def _fail_with(monkeypatch, message: str):
+    def boom(**kwargs):
+        raise RuntimeError(message)
+
+    monkeypatch.setattr(llm_capabilities.llm, "get_base_url", lambda: None)
+    monkeypatch.setattr(llm_capabilities.llm, "call_openai", boom)
+    return boom
+
+
+def test_a_bad_key_is_not_evidence_about_the_model(monkeypatch):
+    """A 401 measures the KEY. Recording it as "the model cannot" is a lie.
+
+    A key pasted wrong into a fresh install made the probe store
+    text/json/tools all false for a model that does all three, the UI announced
+    "gpt-5.6-luna cannot do: text, json, tools", and the stored row outlived the
+    bad key — so the model stayed "broken" after the key was fixed.
+    """
+    boom = _fail_with(
+        monkeypatch,
+        "OpenAI API request failed: Error code: 401 - Incorrect API key provided",
+    )
+    with patch("app.services.llm._get_client") as get_client:
+        get_client.return_value.chat.completions.create.side_effect = boom
+        report = llm_capabilities.probe("gpt-5.6-luna")
+
+    assert report.reachable is False
+
+
+def test_an_unreachable_probe_is_never_persisted(db_session, monkeypatch):
+    boom = _fail_with(monkeypatch, "Error code: 401 - Incorrect API key provided")
+    with patch("app.services.llm._get_client") as get_client:
+        get_client.return_value.chat.completions.create.side_effect = boom
+        llm_capabilities.probe_and_save(db_session, "gpt-5.6-luna")
+
+    assert llm_capabilities.load(db_session, "gpt-5.6-luna") is None
+
+
+def test_an_unreachable_probe_does_not_clobber_an_earlier_good_record(
+    db_session, monkeypatch
+):
+    good = llm_capabilities.CapabilityReport(
+        model="gpt-5.6-luna", text=True, json=True, tools=True
+    )
+    llm_capabilities.save(db_session, good)
+
+    boom = _fail_with(monkeypatch, "Connection refused")
+    with patch("app.services.llm._get_client") as get_client:
+        get_client.return_value.chat.completions.create.side_effect = boom
+        llm_capabilities.probe_and_save(db_session, "gpt-5.6-luna")
+
+    kept = llm_capabilities.load(db_session, "gpt-5.6-luna")
+    assert (kept.text, kept.json, kept.tools) == (True, True, True)
+
+
+def test_a_real_capability_refusal_is_still_recorded(db_session, monkeypatch):
+    # The guard must not swallow genuine Nos: a model that answers but cannot
+    # stream a tool call is exactly what this probe exists to catch.
+    monkeypatch.setattr(llm_capabilities.llm, "get_base_url", lambda: None)
+    monkeypatch.setattr(llm_capabilities.llm, "call_openai", lambda **kw: "ok")
+
+    def no_tool_call(**kwargs):
+        raise RuntimeError("model streamed no tool call")
+
+    with patch("app.services.llm._get_client") as get_client:
+        get_client.return_value.chat.completions.create.side_effect = no_tool_call
+        report = llm_capabilities.probe_and_save(db_session, "some-local-model")
+
+    assert report.reachable is True
+    stored = llm_capabilities.load(db_session, "some-local-model")
+    assert stored is not None and stored.tools is False

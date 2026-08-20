@@ -13,6 +13,7 @@ import {
 import type { ReactNode } from "react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { LoadErrorState } from "@/components/load-error-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch } from "@/lib/api";
 import { formatAbsoluteDateTime } from "@/lib/format-date";
@@ -24,11 +25,30 @@ import type { ProposalDetail } from "@/lib/types";
  * in JobExtractedFields. Do not duplicate them here.
  */
 export function ProposalAgentPanel({ proposalId }: { proposalId: string }) {
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error, isFetching, refetch } = useQuery({
     queryKey: ["proposal", proposalId],
     queryFn: () =>
       apiFetch<ProposalDetail>(`/api/proposals/${proposalId}`),
   });
+
+  if (isError) {
+    return (
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle>Agent proposal</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <LoadErrorState
+            className="py-8"
+            title="Couldn't load the agent proposal."
+            detail={(error as Error)?.message}
+            retrying={isFetching}
+            onRetry={() => void refetch()}
+          />
+        </CardContent>
+      </Card>
+    );
+  }
 
   if (isLoading || !data) {
     return (

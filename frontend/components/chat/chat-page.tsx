@@ -23,6 +23,7 @@ import { KbCaptureCard } from "@/components/chat/kb-capture-card";
 import { ChatMarkdown } from "@/components/chat/markdown";
 import { ProposalCard } from "@/components/chat/proposal-card";
 import { ScopePickerDialog, SelectionChip } from "@/components/chat/scope-picker";
+import { LoadErrorState } from "@/components/load-error-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -611,7 +612,16 @@ export function ChatPage() {
             <History className="size-4" />
           </Button>
         </div>
-        {hasThread ? (
+        {sessionId !== null && detail.isError ? (
+          <div className="flex flex-1 flex-col items-center justify-center px-4">
+            <LoadErrorState
+              title="Couldn't load this conversation."
+              detail={(detail.error as Error)?.message}
+              retrying={detail.isFetching}
+              onRetry={() => void detail.refetch()}
+            />
+          </div>
+        ) : hasThread ? (
           <>
             <div className="flex-1 overflow-y-auto pr-1">
               <div className="mx-auto w-full max-w-3xl space-y-4 py-2">

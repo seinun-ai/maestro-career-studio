@@ -69,6 +69,29 @@ ObservationOutcome = Literal[
     # charged up to eight rule failures and moved a per-kind rate the summary
     # module declares frozen. The fill path did nothing wrong; it declined.
     "ai_unaligned",
+    # The second pass re-attempted a control the profile pass could not drive,
+    # through the writer its shape actually needs, and the value held. A
+    # SUCCESS: same value, same source, later attempt. The profile pass's own
+    # combobox_snap_failed / not_stuck row stands beside it on purpose — that
+    # pass did fail, and hiding it would make a retry look like the first
+    # attempt got better.
+    "retry_filled",
+    # The listbox HAD rendered and bestOption refused to guess, so the fast
+    # model mapped the known profile value onto one of the option texts the
+    # page actually showed ("United States" → "USA (US)"). A SUCCESS, and the
+    # one outcome that says the model was useful without it having chosen an
+    # ANSWER — the answer was always the profile's.
+    "match_recovered",
+    # The model was asked and declined: nothing in the profile sourced this
+    # field. Neutral by omission, with missing_source and for the same reason —
+    # it is fixed by filling in the profile, not by writing a rule.
+    "ai_abstained",
+    # The write was issued and the readback could not confirm it landed within
+    # budget — NOT the same claim as not_stuck, which means the value was
+    # watched to revert. Neutral by omission: an unconfirmed write is not proof
+    # of failure, and the rAF-vs-hidden-tab finding (Task 9) showed the readback
+    # itself can be the thing that's wrong, not the write.
+    "filled_unverified",
     # The applied-detection prompt, whose EMITTER WAS RETIRED 2026-07-28 (the
     # extension no longer watches for a submitted application). The pair stays
     # for the reason at the top of this file: this contract is additive-only —
@@ -132,5 +155,9 @@ class TelemetryBatch(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     page_host: str = Field(max_length=MAX_HOST)
-    action: Literal["profile_fill", "ai_fill", "applied_detection"]
+    # rest_fill is the second pass in its entirety (Task 3): comboboxes and
+    # checkboxes the profile pass could not drive, dispatched by shape, some of
+    # them through a model choice. Not ai_fill — part of this pass runs no model
+    # at all, so a single action label has to cover both.
+    action: Literal["profile_fill", "ai_fill", "rest_fill", "applied_detection"]
     observations: list[TelemetryObservation] = Field(max_length=MAX_OBSERVATIONS)

@@ -37,9 +37,16 @@ DEFAULTS: dict[str, Any] = {
     "mirror_wording": True,
     "summary_rename": False,
     "project_keyword_injection": False,
-    "default_base_resume": "",
     "instruction": "",
 }
+
+# Removed from the live profile; still dropped on read so a hand-edited
+# quick_tailor.json that carries the old key continues to load.
+_REMOVED_KEYS = ("default_base_resume",)
+
+
+def _without_removed(profile: dict[str, Any]) -> dict[str, Any]:
+    return {key: value for key, value in profile.items() if key not in _REMOVED_KEYS}
 
 
 def get_profile(session: Session | None = None) -> dict[str, Any]:
@@ -52,14 +59,15 @@ def get_profile(session: Session | None = None) -> dict[str, Any]:
             data = None
         if isinstance(data, dict):
             stored = data
-    return {**DEFAULTS, **stored}
+    return _without_removed({**DEFAULTS, **stored})
 
 
 def set_profile(profile: dict[str, Any], session: Session | None = None) -> dict[str, Any]:
+    cleaned = _without_removed(profile)
     text_settings.set_text(
-        QUICK_TAILOR_KEY, QUICK_TAILOR_FILE, json.dumps(profile, indent=2, sort_keys=True), session
+        QUICK_TAILOR_KEY, QUICK_TAILOR_FILE, json.dumps(cleaned, indent=2, sort_keys=True), session
     )
-    return {**DEFAULTS, **profile}
+    return {**DEFAULTS, **cleaned}
 
 
 def plan_resolutions(

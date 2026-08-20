@@ -315,3 +315,57 @@ def test_context_withholds_eeo_when_the_consent_section_fails(db_session, tmp_pa
 
     assert body["eeo_consent"] is None
     assert "eeo" not in body["profile"]
+
+
+# ---------- POST /choose — the second fill pass's one model ask ----------
+
+
+def _post_choose(db_session, payload):
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        return TestClient(app).post("/api/autofill/choose", json=payload)
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_choose_returns_a_choice_for_every_qid(db_session, monkeypatch):
+    from app.schemas.autofill_choose import Choice
+    from app.services import autofill_choose
+
+    monkeypatch.setattr(
+        autofill_choose, "choose",
+        lambda fields, application_id, session: {
+            "a-0": Choice(answer="Yes", reason="matched")
+        },
+    )
+    response = _post_choose(db_session, {
+        "fields": [{"qid": "a-0", "label": "Relocate?", "kind": "radio",
+                    "options": ["Yes", "No"]}]})
+    assert response.status_code == 200
+    assert response.json()["choices"]["a-0"] == {"answer": "Yes", "reason": "matched"}
+
+
+def test_choose_works_with_no_application(db_session, monkeypatch):
+    """An untracked form is exactly when you most want this, so application_id
+    stays optional — unlike /api/qa, which refuses without one."""
+    from app.services import autofill_choose
+
+    monkeypatch.setattr(
+        autofill_choose, "choose", lambda fields, application_id, session: {}
+    )
+    response = _post_choose(db_session, {
+        "fields": [{"qid": "a-0", "label": "x", "kind": "text"}]})
+    assert response.status_code == 200
+
+
+def test_an_unknown_application_is_a_404_not_a_silent_ungrounded_answer(db_session):
+    from uuid import uuid4
+
+    response = _post_choose(db_session, {
+        "fields": [{"qid": "a-0", "label": "x", "kind": "text"}],
+        "application_id": str(uuid4())})
+    assert response.status_code == 404
+
+
+def test_an_empty_field_list_is_a_422(db_session):
+    assert _post_choose(db_session, {"fields": []}).status_code == 422

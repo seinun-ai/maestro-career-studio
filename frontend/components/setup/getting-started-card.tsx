@@ -7,6 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Circle, CircleCheck, X } from "lucide-react";
 
 import { NewBaseResumeDialog } from "@/components/base-resumes/new-base-resume-dialog";
+import { LoadErrorState } from "@/components/load-error-state";
 import { buildSetupSteps } from "@/components/setup/setup-steps";
 import { UploadDialog } from "@/components/setup/upload-dialog";
 import { Button } from "@/components/ui/button";
@@ -45,7 +46,19 @@ export function GettingStartedCard() {
   });
 
   const status = setupStatus.data;
-  if (dismissed || setupStatus.isLoading || !status || status.complete) return null;
+  if (dismissed) return null;
+  if (setupStatus.isError) {
+    return (
+      <LoadErrorState
+        className="py-8"
+        title="Couldn't load setup progress."
+        detail={(setupStatus.error as Error)?.message}
+        retrying={setupStatus.isFetching}
+        onRetry={() => void setupStatus.refetch()}
+      />
+    );
+  }
+  if (setupStatus.isLoading || !status || status.complete) return null;
 
   const rows = buildSetupSteps(status, pathname);
   return (

@@ -24,8 +24,15 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.models.application import Application
 from app.models.autofill_field_observation import AutofillFieldObservation
+from app.schemas.autofill_choose import ChooseRequest, ChooseResponse
 from app.schemas.autofill_telemetry import TelemetryBatch, TelemetryObservation
-from app.services import autofill_profile, autofill_telemetry, base_resume_data, eeo_consent
+from app.services import (
+    autofill_choose,
+    autofill_profile,
+    autofill_telemetry,
+    base_resume_data,
+    eeo_consent,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -347,3 +354,24 @@ def get_autofill_context(
     if not consented and isinstance(sections.get("profile"), dict):
         sections["profile"].pop("eeo", None)
     return sections
+
+
+@router.post("/choose", response_model=ChooseResponse)
+def post_choose(
+    payload: ChooseRequest,
+    db: Annotated[Session, Depends(get_db)],
+) -> ChooseResponse:
+    """One fast-model pass over the fields the profile fill could not settle.
+
+    application_id is optional and NOT the grounding: the profile is. A job
+    sharpens an answer where one exists; its absence must never turn into a
+    refusal, because a form you have not tracked yet is the common case for
+    this pass. An application_id that IS passed and does not exist stays a
+    404 — that is a caller bug, not an absent option.
+    """
+    application_id = UUID(payload.application_id) if payload.application_id else None
+    if application_id is not None and db.get(Application, application_id) is None:
+        raise HTTPException(status_code=404, detail="Application not found")
+    return ChooseResponse(
+        choices=autofill_choose.choose(payload.fields, application_id, db)
+    )

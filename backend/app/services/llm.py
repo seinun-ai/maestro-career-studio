@@ -1,5 +1,7 @@
 import base64
+import hashlib
 import json
+import os
 from datetime import UTC, datetime
 from json import JSONDecodeError
 from pathlib import Path
@@ -304,18 +306,51 @@ def _call_model(
 
 
 def _log_call(prompt: str, model: str, response_text: str, attempt: int) -> None:
+    """Record that a call happened. Record WHAT WAS SAID only if asked to.
+
+    This used to write the full prompt and response every time, and because it
+    sits outside the `tracing.generation` block it ran whether or not Langfuse
+    was configured. The result was a second permanent copy of every resume, job
+    description, work-authorization answer and generated screening answer, with
+    no rotation, no retention, no owner-only permissions and no way to purge it
+    (SEC-08, 2026-08-19 audit).
+
+    The default now keeps what debugging actually needs — which model, which
+    attempt, how big, and a hash that proves two calls sent the same prompt
+    without keeping either. `settings.llm_log_content` opts back into content,
+    announced at startup.
+
+    Files are created 0600 in both modes: even metadata says which models you
+    call and how often, and this is a machine with other accounts on it.
+
+    NOT here, on purpose: rotation, retention limits, and a purge control.
+    Those are P2. Flipping the default and closing the file mode are what make
+    the shipped default honest, and they are small enough to land before the
+    open-source publish.
+    """
     log_dir = Path(settings.logs_dir) / "llm_calls"
     log_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
     path = log_dir / f"{timestamp}_{uuid4().hex}.json"
-    payload = {
+
+    payload: dict[str, Any] = {
         "timestamp": datetime.now(UTC).isoformat(),
         "model": model,
         "attempt": attempt,
-        "prompt": prompt,
-        "response": response_text,
+        "prompt_chars": len(prompt),
+        "response_chars": len(response_text),
+        "prompt_sha256": hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
+        "response_sha256": hashlib.sha256(response_text.encode("utf-8")).hexdigest(),
     }
-    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    if settings.llm_log_content:
+        payload["prompt"] = prompt
+        payload["response"] = response_text
+
+    # Open with the mode set rather than chmod-ing after: a write-then-chmod
+    # leaves the content world-readable for the window in between.
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        json.dump(payload, handle, indent=2)
 
 
 def call_openai(

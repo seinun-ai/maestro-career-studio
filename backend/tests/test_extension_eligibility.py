@@ -14,7 +14,72 @@ the control alone rather than guessing.
 
 import pytest
 
-from tests.extension_harness import outcome_for, run_profile_fill
+from tests.extension_harness import (
+    FORM_MODULE_SOURCES,
+    ROOT,
+    outcome_for,
+    run_node,
+    run_profile_fill,
+)
+
+
+_WIRING_DRIVER_JS = r"""
+// The two ways the shared pattern table can be WIRED WRONG, driven rather than
+// read. Both are load-order/roster faults — the class of bug that ships green,
+// because a missing pattern does not throw on its own: it simply never matches,
+// and a rule that never matches reports `missing_source` on every ATS while
+// every behavioural test that supplies a value keeps passing.
+main(async () => {
+  let loadOrder = null;
+  try {
+    // `shared/profile-fields.js` ALONE, with no `shared/policy.js` before it —
+    // exactly what a document that lists the two the wrong way round gives it.
+    vm.runInThisContext(spec.profileFieldsOnly);
+    loadOrder = "loaded anyway";
+  } catch (err) {
+    loadOrder = String(err.message);
+  }
+
+  // …and the roster fault from the other end: the engine asks for an id the
+  // table does not carry.
+  const ns = loadModules();
+  ns.profileFields = ns.profileFields.filter((field) => field.id !== "notice-period");
+  let unknownId = null;
+  try {
+    await ns.fillFormFromProfile({}, [], false, [], false);
+    unknownId = "filled anyway";
+  } catch (err) {
+    unknownId = String(err.message);
+  }
+  emit({ loadOrder, unknownId });
+});
+"""
+
+
+def test_the_shared_pattern_table_fails_loudly_when_it_is_wired_wrong(tmp_path):
+    """Two wiring faults, and neither of them throws on its own.
+
+    A pattern that is `undefined` does not error — it never matches. So a
+    document that loads `shared/profile-fields.js` before `shared/policy.js`
+    would build the salary row with `re: undefined`, and the only symptom would
+    be every desired-salary field on every ATS reporting `missing_source` while
+    the pause row quietly learned salary expectations into the `custom` list
+    instead of `preferences.desired_salary`. Same shape for an id the table does
+    not carry: `matchRule` tests `rule.re` and `rule.all`, finds neither, and
+    scans past — so the rule is simply absent.
+
+    Both are therefore made LOUD at the point the wiring is wrong rather than
+    where the symptom appears, and this is what pins that they still are.
+    """
+    out = run_node(_WIRING_DRIVER_JS, {
+        "profileFieldsOnly": (ROOT / "extension" / "shared" / "profile-fields.js")
+        .read_text(encoding="utf-8"),
+    }, tmp_path, source="\n".join(
+        path.read_text(encoding="utf-8") for path in FORM_MODULE_SOURCES))
+    assert out["loadOrder"] == "profile-fields: shared/policy.js must load first"
+    # BY NAME, which is the whole value of the throw: "no profile field rule"
+    # with no id in it would send the next author to the wrong file.
+    assert out["unknownId"] == "autofill: no profile field rule notice-period"
 
 
 _ELIGIBLE = {"eligibility": {

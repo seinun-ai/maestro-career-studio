@@ -121,10 +121,43 @@ class Settings(BaseSettings):
         "pjmfonfapjdabkoicnelpflpjojdjgan"
     ]
 
-    @field_validator("allowed_hosts", "maestro_cs_extension_ids", mode="before")
+    # Web origins allowed to call the API from a browser. Two readers, one list
+    # (app/main.py ALLOWED_ORIGINS): CORS decides what may be READ, and
+    # OriginGuardMiddleware decides what may RUN — a cross-origin POST's side
+    # effect lands whether or not CORS lets the page read the answer.
+    #
+    # This is the ORIGIN twin of `allowed_hosts` and the two move together: if
+    # you front the app with a reverse proxy and add a hostname there, add the
+    # matching scheme+host+port here or the browser's calls will 403. A host is
+    # `studio.lan`; an origin is `http://studio.lan`. Extension origins are NOT
+    # configured here — they come from `maestro_cs_extension_ids` above, so the
+    # exact-id rule cannot be widened by editing an origin list.
+    allowed_web_origins: Annotated[list[str], NoDecode] = [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ]
+
+    @field_validator(
+        "allowed_hosts", "maestro_cs_extension_ids", "allowed_web_origins",
+        mode="before",
+    )
     @classmethod
     def _parse_str_list(cls, value):
         return _split_env_list(value)
+
+    # Write the FULL prompt and response of every LLM call to logs/llm_calls.
+    #
+    # Off by default since the 2026-08-19 audit (SEC-08). It used to be
+    # unconditional — outside the Langfuse tracing block, so it ran whether or
+    # not tracing was configured — which made a permanent second copy of every
+    # resume, job description, work-authorization answer and generated
+    # screening answer, in a directory any backup sweeps up. For a local-first
+    # privacy product that was the loudest contradiction in the repo.
+    #
+    # Turn it on to debug a prompt, then turn it off: the metadata log (model,
+    # duration, outcome, sizes, sha256) is enough to see WHAT happened, and
+    # this is only for seeing what was SAID. Files are 0600 either way.
+    llm_log_content: bool = False
 
     app_root: Path = Path("/app")
     applications_dir: Path = Path("/app/applications")

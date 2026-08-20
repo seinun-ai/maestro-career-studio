@@ -312,3 +312,54 @@ def test_build_qa_prompt_carries_numbering_requirement(monkeypatch):
 
     assert "numbered list" in result
     assert re.search(r"never[^.\n]*\bnumber", result) is None
+
+
+def test_the_choose_contract_is_prepended_and_demands_abstention(db_session):
+    # Uses the real prompts.get_prompt (no monkeypatch); db_session guarantees
+    # the test DB is available so the autofill_choose key lazy-seeds from its
+    # file, same pattern as test_gap_tailor_prompt_prepends_skill_doc above.
+    prompt = prompt_assembly.build_autofill_choose_prompt(
+        profile={"personal": {"first_name": "Sample"}},
+        memory="",
+        fields=[
+            {
+                "qid": "a-0",
+                "label": "Notice period",
+                "kind": "text",
+                "options": [],
+                "known_value": None,
+            }
+        ],
+    )
+    assert prompt.startswith(prompt_assembly.CHOOSE_OUTPUT_CONTRACT)
+    assert "null" in prompt.lower()
+
+
+def test_options_and_known_value_reach_the_prompt_verbatim(db_session):
+    """The model sees the strings the PAGE rendered, not a normalized form."""
+    prompt = prompt_assembly.build_autofill_choose_prompt(
+        profile={},
+        memory="",
+        fields=[
+            {
+                "qid": "a-0",
+                "label": "Country",
+                "kind": "combobox",
+                "options": ["USA (US)", "United Kingdom (UK)"],
+                "known_value": "United States",
+            }
+        ],
+    )
+    assert "USA (US)" in prompt and "United States" in prompt
+
+
+def test_every_qid_appears_so_the_model_can_key_its_reply(db_session):
+    prompt = prompt_assembly.build_autofill_choose_prompt(
+        profile={},
+        memory="",
+        fields=[
+            {"qid": "a-0", "label": "x", "kind": "text", "options": [], "known_value": None},
+            {"qid": "a-1", "label": "y", "kind": "text", "options": [], "known_value": None},
+        ],
+    )
+    assert "a-0" in prompt and "a-1" in prompt

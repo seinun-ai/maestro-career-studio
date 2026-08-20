@@ -1,4 +1,5 @@
 import json
+import os
 import re
 import subprocess
 from dataclasses import dataclass
@@ -113,6 +114,13 @@ def _pdflatex_argv(tex_path: Path, out_dir: Path, jobname: str) -> list[str]:
     ``_header.tex.j2`` partial could drop without knowing the flag existed.
     The cover-letter compile used to pass ``no_shell_escape=False`` for no
     recorded reason; it does not need it.
+
+    The input is the BARE FILENAME and the caller runs pdflatex with ``cwd``
+    set to the file's directory (see ``_compile_cwd``). An absolute ``\\input``
+    is what paranoid mode judges against ``TEXMFOUTPUT``, and the base-resume
+    path writes its source and its PDF into two DIFFERENT directories — so an
+    absolute path there made kpathsea refuse the app's own staged source.
+    A plain relative name inside the working directory is always readable.
     """
     argv = ["pdflatex", "-no-shell-escape"]
     argv += [
@@ -120,7 +128,7 @@ def _pdflatex_argv(tex_path: Path, out_dir: Path, jobname: str) -> list[str]:
         "-halt-on-error",
         f"-output-directory={out_dir}",
         f"-jobname={jobname}",
-        f"{_INTERWORD_SPACE}\\input{{{tex_path}}}",
+        f"{_INTERWORD_SPACE}\\input{{{tex_path.name}}}",
     ]
     return argv
 
@@ -258,6 +266,53 @@ def render_tex_from_source(
     return template.render(resume=resume, fmt=fmt)
 
 
+def _compile_env(out_dir: Path) -> dict[str, str]:
+    """Environment for pdflatex: paranoid file access, staged dir as the root.
+
+    ``-no-shell-escape`` stops a document RUNNING commands. It does nothing
+    about TeX READING files: ``\\input``, ``\\include`` and ``\\verbatiminput``
+    open anything the process can open, and Jinja's SandboxedEnvironment is no
+    help because those primitives live in the .tex Jinja has already produced.
+    Template source is writable from the web editor, chat and MCP, and this
+    process has every PII directory bind-mounted — so before this, a hostile or
+    prompt-injected template could read a resume, a settings file or a log and
+    hand it back inside a downloadable PDF. That was confirmed by the 2026-08-19
+    audit and reproduced twice.
+
+    kpathsea's ``openin_any=p`` ("paranoid") refuses dotfiles, parent-directory
+    traversal, and absolute paths outside ``TEXMFOUTPUT``. ``openout_any=p``
+    does the same for writes.
+
+    **TEXMFOUTPUT must be the staging directory**, because paranoid mode judges
+    absolute input paths against it and ``_pdflatex_argv`` passes an absolute
+    ``\\input{...}`` of the staged file. Point it elsewhere and every bundled
+    template stops compiling.
+
+    This BOUNDS the damage; it is not isolation. The real answer is a
+    disposable, networkless render worker holding no secrets and no PII mounts,
+    tracked as post-publish work in KNOWN_ISSUES.
+    """
+    return {
+        **os.environ,
+        "openin_any": "p",
+        "openout_any": "p",
+        "TEXMFOUTPUT": str(out_dir),
+    }
+
+
+def _compile_cwd(source_path: Path) -> Path:
+    """Working directory for a pdflatex run: the directory holding the source.
+
+    Paired with `_pdflatex_argv` passing a bare filename. Under paranoid mode a
+    relative name inside the working directory is readable, while an ABSOLUTE
+    path is only readable if it sits under `TEXMFOUTPUT` — and the base-resume
+    path stages its `.tex` and its `.pdf` in two different directories, so no
+    single `TEXMFOUTPUT` can cover both. Reading from the cwd and writing to
+    `TEXMFOUTPUT` covers them without widening either.
+    """
+    return source_path.parent
+
+
 def compile_pdf(
     tex_text: str, out_dir: Path, stem: str = "resume", *, document: str = ""
 ) -> Path:
@@ -280,6 +335,8 @@ def compile_pdf(
         text=True,
         timeout=60,
         check=False,
+        env=_compile_env(out_dir),
+        cwd=_compile_cwd(tex_path),
     )
     if result.returncode != 0 or not pdf_path.exists():
         label = f"pdflatex failed ({document})" if document else "pdflatex failed"
@@ -510,12 +567,20 @@ def render_and_compile(
         _compile_typst_file(source_path, out_pdf_path, doc.sys_inputs)
         return source_path
 
+    # SECOND pdflatex call site. `_compile_env` is not optional here: this is
+    # the BASE-RESUME render path (POST /api/base_resumes/{slug}/render, MCP
+    # `render_base_resume`, resume_versions, resume_ops, career_kb, kb_import),
+    # and it compiles a DB-stored template `source` that chat, MCP and the web
+    # editor can all write. Hardening only `compile_pdf` left this one reading
+    # files exactly as before — see `_compile_env` for what that allowed.
     result = subprocess.run(
         _pdflatex_argv(source_path, out_pdf_path.parent, out_pdf_path.stem),
         capture_output=True,
         text=True,
         timeout=60,
         check=False,
+        env=_compile_env(out_pdf_path.parent),
+        cwd=_compile_cwd(source_path),
     )
     if result.returncode != 0 or not out_pdf_path.exists():
         raise RuntimeError(

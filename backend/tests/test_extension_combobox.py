@@ -9,7 +9,12 @@ what that loop finds, so "a rendered list can be snapped to" has to be pinned
 before either is expressible.
 """
 
-from tests.extension_harness import outcome_for, run_profile_fill
+from tests.extension_harness import (
+    collected_labels,
+    outcome_for,
+    run_open_questions,
+    run_profile_fill,
+)
 
 
 def test_a_rendered_listbox_lets_the_profile_pass_snap(tmp_path):
@@ -33,18 +38,16 @@ def test_a_listbox_that_never_renders_is_a_snap_failure(tmp_path):
     assert outcome_for(result, "Country") == "combobox_snap_failed"
 
 
-def test_a_listbox_whose_options_do_not_match_is_also_a_snap_failure(tmp_path):
-    """Pinned now because the second pass sends exactly these fields to the
-    model with the rendered options attached — "nothing rendered" and "nothing
-    matched" have to be distinguishable before anything depends on the
-    difference."""
-    result = run_profile_fill(
+def test_a_listbox_whose_options_do_not_match_is_released(tmp_path):
+    """Visible non-matching options make this an abstention, not a retry."""
+    result = run_open_questions(
         tmp_path,
         fields=[{"label": "Country", "kind": "combobox",
                  "listbox": ["USA (US)", "United Kingdom (UK)"]}],
         profile={"personal": {"country": "United States"}},
     )
-    assert outcome_for(result, "Country") == "combobox_snap_failed"
+    assert collected_labels(result) == ["country"]
+    assert result["collected"]["retryables"] == []
 
 
 def test_options_that_arrive_late_are_still_found(tmp_path):

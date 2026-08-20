@@ -412,27 +412,30 @@ class BackendClient:
         return ctx
 
     def find_job_by_url(self, source_url: str) -> Any:
-        # Exact-match dedupe lookup, answered server-side: the list endpoint's
-        # source_url filter (newest-first) plus the detail endpoint's joined
-        # application. Lets a browsing agent skip an extraction spend on a
-        # posting that is already captured.
+        # POSTING-equality lookup, answered server-side by GET /api/jobs/match
+        # — the same directional containment the extension's widget uses
+        # (services/job_url_match.py), and the atomic lookup SYSTEM.md §11
+        # item 9 asked for. A referral link (?gh_src=, ?utm_*) or the
+        # posting's /apply sub-path now finds the captured job instead of
+        # prompting a duplicate extraction; tracking-param stripping is not
+        # the agent's job. One request: match carries the newest-first job
+        # AND its newest application summary.
         # Strip before building params (defense in depth): every write path
         # stores a stripped source_url, so a trailing-whitespace URL would
         # otherwise miss its own captured job. The server strips too.
         source_url = source_url.strip()
-        matches = self._request(
-            "GET", "/api/jobs", params={"source_url": source_url, "limit": 5}
+        match = self._request(
+            "GET", "/api/jobs/match", params={"url": source_url}
         )
-        if not matches:
+        job = (match or {}).get("job")
+        if (match or {}).get("match") != "exact" or not job:
             return {
                 "found": False,
                 "job": None,
                 "application_exists": False,
                 "application_id": None,
             }
-        job = matches[0]  # list endpoint orders created_at desc — newest wins
-        detail = self._request("GET", f"/api/jobs/{job['id']}/detail")
-        application = (detail or {}).get("application")
+        application = match.get("application")
         return {
             "found": True,
             "job": job,

@@ -231,7 +231,9 @@ export interface ModelOption {
   provider: string;
   tier: string;
   /** Built-in seed vs user-added via Sync +. Absent on older payloads = seed. */
-  source?: "seed" | "extra";
+  // "configured" = not seeded and not added on purpose; it is listed only
+  // because a role still points at it (see model_settings.configured_options).
+  source?: "seed" | "extra" | "configured";
 }
 
 /** One model's measured capabilities. Written by POST /api/settings/openai/probe. */
@@ -243,6 +245,9 @@ export interface CapabilityReport {
   tools: boolean;
   errors: Record<string, string>;
   checked_at: string;
+  // false = the probe never reached the model (bad key, dead endpoint,
+  // rate limit); nothing was recorded, so this is not a verdict on the model.
+  reachable?: boolean;
 }
 
 export interface DiscoveredModel {

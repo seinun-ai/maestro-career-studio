@@ -7,6 +7,31 @@ from pydantic import AliasChoices, BaseModel, Field, field_validator, model_vali
 _SLUG_RE = re.compile(r"^[a-z0-9_-]+$")
 
 
+def validate_template_id(value: str) -> str:
+    """The ONE definition of what a template id may be. Returns it, or raises.
+
+    Three readers: `TemplateCreate.id` below, `template_registry.create_draft` /
+    `duplicate`, and `template_validation._preview_path`.
+
+    It used to be one — this pydantic validator — which guarded the REST door
+    and no other. Chat's `create_template_draft` / `duplicate_template` pass an
+    id straight to the registry, the registry did not check, and `Template.id`
+    is a bare `Text` primary key with no CHECK constraint, so `../../logs/pwned`
+    persisted as a legitimate id and `_preview_path` then interpolated it into
+    a real `shutil.copy` destination (SEC-05, 2026-08-19 audit).
+
+    Lives in the schema module because it imports nothing from `app` — a
+    service can depend on it without a cycle. The alphabet is deliberately
+    narrow: an id names a row AND a filename, so anything that means something
+    to a filesystem is excluded rather than escaped.
+    """
+    if not isinstance(value, str) or not _SLUG_RE.fullmatch(value):
+        raise ValueError(
+            "template id must be lowercase letters, digits, hyphen, or underscore"
+        )
+    return value
+
+
 class TemplateSummary(BaseModel):
     id: str
     display_name: str | None = None
@@ -67,9 +92,7 @@ class TemplateCreate(BaseModel):
     @field_validator("id")
     @classmethod
     def _valid_slug(cls, v: str) -> str:
-        if not _SLUG_RE.fullmatch(v):
-            raise ValueError("id must be lowercase letters, digits, hyphen, or underscore")
-        return v
+        return validate_template_id(v)
 
 
 class TemplateUpdate(BaseModel):

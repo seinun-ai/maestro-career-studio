@@ -7,6 +7,7 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { LoadErrorState } from "@/components/load-error-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { apiFetch } from "@/lib/api";
@@ -35,7 +36,23 @@ export function TextSettingSection({
 
   return (
     <Card id={anchorId}>
-      {query.isLoading || !query.data ? (
+      {query.isError ? (
+        <>
+          <CardHeader>
+            <CardTitle>{title}</CardTitle>
+            <p className="text-muted-foreground text-xs">{description}</p>
+          </CardHeader>
+          <CardContent>
+            <LoadErrorState
+              className="py-8"
+              title="Couldn't load this setting."
+              detail={(query.error as Error)?.message}
+              retrying={query.isFetching}
+              onRetry={() => void query.refetch()}
+            />
+          </CardContent>
+        </>
+      ) : query.isLoading || !query.data ? (
         <>
           <CardHeader>
             <CardTitle>{title}</CardTitle>

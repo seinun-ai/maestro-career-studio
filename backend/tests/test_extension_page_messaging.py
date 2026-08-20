@@ -7,14 +7,16 @@ targeted every frame in ONE call and handed back an array of per-frame results,
 while `chrome.tabs.sendMessage` addresses ONE frame. So the caller enumerates
 the frames itself and rebuilds that array.
 
-**Task 19 moved WHERE that caller lives, not what it does.** The side panel's
-`callFrame`/`callAllFrames`/`noFrameAnswered` are gone with the panel; the
-fan-out is now `broadcastToFrames` in `extension/sw.js` — the widget runs inside
-a page and cannot hold the `tabs` permission, so the service worker does it —
-and the "did anybody answer" half is now `reconcileFill().reached` plus three
-inline `frame.result !== undefined` checks in `extension/content/widget.js`.
-This file follows the behaviour rather than the file, which is why the tests
-below read `sw.js` and `widget.js` and the assertions are almost unchanged.
+**WHERE the caller lives has moved three times; what it does has not.** The
+first side panel's `callFrame`/`callAllFrames`/`noFrameAnswered` went with that
+panel; the floating card that replaced it went at R-C. The fan-out itself is
+`broadcastToFrames` in `extension/sw.js` and always was — a caller that runs in
+a page cannot hold the `tabs` permission, and an extension page has no tab, so
+either way the service worker does it. The "did anybody answer" half is
+`reconcileFill().reached` plus the inline `frame.result !== undefined` checks at
+the remaining call sites, which now live in `extension/panel/` and
+`extension/shared/guided-run.js`. This file follows the BEHAVIOUR rather than
+the file, which is why the assertions barely moved while the sources did.
 
 **The fan-out.** Everything downstream of it is unchanged engine-era code —
 `frames.flatMap((f) => f.result?.filled ?? [])`, the `frameId -> host` Map, the
@@ -48,18 +50,39 @@ import re
 
 import pytest
 
-from tests.extension_harness import ROOT, page_runtime_source, run_node
+from tests.extension_harness import (
+    ROOT,
+    js_code,
+    page_runtime_source,
+    run_node,
+)
 
 AGENT_JS = (ROOT / "extension" / "content" / "agent.js").read_text(encoding="utf-8")
 AUTOFILL_JS = (ROOT / "extension" / "content" / "autofill.js").read_text(encoding="utf-8")
-# The widget is the caller and the service worker is the fan-out. Both are read
-# here because the boundary this file tests now runs through both of them.
-WIDGET_JS = (ROOT / "extension" / "content" / "widget.js").read_text(encoding="utf-8")
 SW_JS = (ROOT / "extension" / "sw.js").read_text(encoding="utf-8")
+# THE CALLER IS THE SIDE PANEL, and since R-C deleted the floating card it is
+# the only one. Every file of the panel document is read, not a chosen few: the
+# reachability scan below is over CALLERS, and half a caller is a handler that
+# reads as dead code because the file naming it was left out of the scan. That
+# is not hypothetical — the per-concern split moved `profile_fill` into
+# `actions/fill.js` and `fill_answers` into `actions/pause.js`, so a scan of
+# `panel.js` alone would now report both as dead.
+PANEL_JS = "\n".join(
+    path.read_text(encoding="utf-8")
+    for path in sorted((ROOT / "extension" / "panel").rglob("*.js")))
+# `reconcileFill` lives in the module the panel and the content scripts share.
+DECISIONS_JS = (ROOT / "extension" / "shared" / "decisions.js").read_text(encoding="utf-8")
+# Round B Task 11: the guided runner is the second caller, and the one that
+# took two fan-outs with it — `collect_open_questions` and `guided_write` are
+# sent from here, from a module loaded by both worlds. A scan over callers
+# that does not read it reports two live page handlers as dead code.
+GUIDED_RUN_JS = (ROOT / "extension" / "shared" / "guided-run.js").read_text(encoding="utf-8")
 
-# Neither file is in EXTENSION_SOURCES' job — `sw.js` never runs in a page, and
-# the two are concatenated here only so `extract` can slice both.
-_FANOUT_SOURCE = SW_JS + "\n" + WIDGET_JS
+# `sw.js` is not in EXTENSION_SOURCES' job — it never runs in a page — and is
+# read here on its own so `extract` can slice the fan-out out of it. decisions.js
+# is deliberately NOT here: it is a loadable module, so it is driven with
+# `loadModules` in its own run (see `_REACHED_DRIVER_JS`) rather than sliced.
+_FANOUT_SOURCE = SW_JS
 
 
 _PAGE_RUNTIME_DRIVER_JS = r"""
@@ -123,6 +146,7 @@ def test_real_split_modules_dispatch_through_the_agent_message_boundary(tmp_path
         "data": {
             "questions": [],
             "excluded": [],
+            "retryables": [],
             "host": "jobs.example.test",
         },
     }
@@ -138,12 +162,16 @@ def test_real_split_modules_dispatch_through_the_agent_message_boundary(tmp_path
 _FANOUT_DRIVER_JS = r"""
 const broadcastToFrames = extract(
   "broadcastToFrames", "\n// ---- end broadcastToFrames ----");
-// The widget's half of the pair. `reached` is the successor to the panel's
-// `noFrameAnswered`, and reading it HERE — off what broadcastToFrames actually
-// returned, rather than off a hand-written array — is what keeps the seam
-// between the two files honest.
-const reconcileFill = extract("reconcileFill", "\n  // ---- end reconcileFill ----");
-
+// The reading of agent.js's `{ok, data}` / `{ok: false, error}` envelope moved
+// into `unwrapPageReply`, shared with `panel_frame0` so one contract with the
+// page has one implementation. The slice reaches it as a free variable, so it
+// binds on `global` — see the same note in test_extension_panel.py's fanout
+// driver. Worth knowing how this fails if it is ever forgotten: the
+// ReferenceError lands INSIDE broadcastToFrames' per-frame catch, so every
+// frame reports "unwrapPageReply is not defined" and the fan-out returns
+// nothing — loud, but as a wall of frame errors rather than a missing symbol.
+global.unwrapPageReply = extract(
+  "unwrapPageReply", "\n// ---- end unwrapPageReply ----");
 // broadcastToFrames warns on a frame that did not answer. Recorded rather than
 // silenced: the warning is the diagnostic that tells three different failures
 // apart during a browser check, so it is part of what this file pins.
@@ -178,7 +206,6 @@ main(async () => {
   // what broadcastToFrames returns.
   const filled = frames.flatMap((f) => f.result?.filled ?? []);
   const hosts = frames.map((f) => [f.frameId, f.result?.host]);
-  const reachedNobody = !reconcileFill(frames).reached;
 
   // Per-frame, which is what the four failure shapes below are about: one
   // frame's reply becomes either a `result` or an `error`, never both.
@@ -187,18 +214,45 @@ main(async () => {
     { data: f.result === undefined ? null : f.result, error: f.error ?? null },
   ]));
 
-  emit({ frames, filled, hosts, perFrame, addressed, reachedNobody, warnings });
+  emit({ frames, filled, hosts, perFrame, addressed, warnings });
+});
+"""
+
+# The widget's half of the pair. `reached` is the successor to the panel's
+# `noFrameAnswered`, and it is read off what broadcastToFrames ACTUALLY
+# returned — the `frames` the driver above emitted — rather than off a
+# hand-written array, which is what keeps the seam between the two files
+# honest. A frame that could not answer carries no `result` key at all, and
+# JSON drops the key rather than inventing one, so `result === undefined`
+# survives the hand-off intact.
+_REACHED_DRIVER_JS = r"""
+const { reconcileFill } = loadModules().decisions;
+
+main(async () => {
+  emit({ reachedNobody: !reconcileFill(spec.frames).reached });
 });
 """
 
 
 def run_fanout(tmp_path, frames, tab_id=7) -> dict:
-    return run_node(
+    out = run_node(
         _FANOUT_DRIVER_JS,
         {"tabId": tab_id, "frames": frames},
         tmp_path,
         source=_FANOUT_SOURCE,
     )
+    # `reconcileFill` moved into extension/shared/decisions.js, which is a real
+    # loadable module — so it is RUN (`loadModules` evaluates the file, its
+    # namespace join and its publication) instead of being sliced out of the
+    # text. That needs its own node run: this driver's source is sw.js plus
+    # widget.js and neither is executable in this harness.
+    out["reachedNobody"] = run_node(
+        _REACHED_DRIVER_JS,
+        {"frames": out["frames"]},
+        tmp_path,
+        source=DECISIONS_JS,
+    )["reachedNobody"]
+    return out
 
 
 # A Greenhouse-shaped tab: a marketing top frame that matches nothing, the
@@ -352,26 +406,51 @@ def test_every_consumer_of_the_fan_out_asks_whether_it_reached_anybody():
     found", "N could not be written" — and each is a lie when nothing answered.
     So the rule is: every fan-out call site consults reachedness.
 
-    FOUR consumers, every one reporting. (The applied-detection watcher was
-    the fifth, the one that reported nothing; it is retired, and every fan-out
+    FIVE consumers, every one reporting. (The applied-detection watcher was
+    the sixth, the one that reported nothing; it is retired, and every fan-out
     left ends in a sentence a dead page would make false.)
+
+    `scroll_to_field` is deliberately NOT one of them, and the pattern below
+    excludes it by shape rather than by name: it travels inside a
+    `page_broadcast` envelope instead of through the `broadcast(...)` door, and
+    it is the one fan-out that reports NOTHING — a jump to a control, whose
+    failure is a `console.warn` and no sentence to the user. There is nothing
+    for it to lie about, so there is no reachedness for it to consult.
+
+    THE SCAN IS OVER CALL SITES, NOT FILES, which is why it reads the whole
+    panel document plus the shared runner. The call sites have moved three
+    times without the rule changing: out of the first side panel, out of the
+    floating card R-C deleted, and across the panel's own per-concern split.
+    Naming files here rather than the rule is how this ends up asserting a
+    subset of itself, blind to whichever guard moved last.
     """
     # `\s*` spans newlines without re.S, which is what makes one pattern cover
-    # both the one-line and the multi-line message literals.
-    fanned = set(re.findall(r'await broadcast\(\{\s*type: "([a-z_]+)"', WIDGET_JS))
-    fanned |= set(re.findall(r'await ask\("(attach_pdf)"', WIDGET_JS))
+    # both the one-line and the multi-line message literals. Through `js_code`
+    # because this counts CODE: a comment naming `!result.reached` next to a
+    # call site would otherwise be counted as an extra guard.
+    callers = js_code(PANEL_JS + GUIDED_RUN_JS)
+    fanned = set(re.findall(r'broadcast\(\{\s*type: "([a-z_]+)"', callers))
+    fanned |= set(re.findall(r'ask\("(attach_pdf)"', callers))
     assert fanned == {
         "profile_fill", "collect_open_questions", "fill_answers", "attach_pdf",
+        "guided_write",
     }, f"a fan-out consumer was renamed or removed: {sorted(fanned)}"
 
-    # One guard per REPORTING consumer. `reconcileFill` holds profile_fill's
-    # (its `reached`), and the other three are written inline at the call site.
+    # One guard per REPORTING consumer. profile_fill's is `!result.reached` —
+    # `reconcileFill` computes it — and the others are written inline at
+    # the call site. reconcileFill's own `frame.result !== undefined` lives in
+    # decisions.js, which is not in `callers`, so what is counted here is
+    # exactly the call sites.
     reported = len(fanned)
     guards = (
-        len(re.findall(r"!result\.reached", WIDGET_JS))
-        + len(re.findall(r"frame\.result !== undefined", WIDGET_JS))
-        - 1  # reconcileFill's own, which `!result.reached` already counts
+        len(re.findall(r"!result\.reached", callers))
+        + len(re.findall(r"frame\.result !== undefined", callers))
     )
+    # …and the thing `!result.reached` reads still exists, in the module it
+    # moved to. Without this the count above would stay satisfied by a
+    # `reached` that nobody computes.
+    assert len(re.findall(r"frame\.result !== undefined", DECISIONS_JS)) == 1, (
+        "reconcileFill no longer decides reachedness from the per-frame array")
     assert guards == reported, (
         f"{reported} reporting fan-out consumers but {guards} reachedness "
         "checks — a fan-out result is being reported as a finding about the "
@@ -400,28 +479,41 @@ def test_every_type_a_caller_sends_is_a_type_the_page_handles():
     Both lists, not a subset check in one direction — a handler with no sender
     is dead code and a sender with no handler is a dead button.
 
-    TWO ways to reach a handler, and the second is why this is not just a scan
-    for `type:` strings. Four of the five travel as messages, from the widget
-    or (for `attach_resume_pdf`) from the service worker, which fetches the
-    bytes and fans the page message out itself so they never cross the content
-    script's frame. `extract_job_posting` travels no distance at all: the
-    posting's JSON-LD is in the top document, the widget runs there, and it
-    calls `ns.pageHandlers.extract_job_posting()` directly. Scanning only for
-    message types would report that handler as dead code while it is the whole
-    of the Save Job button.
+    EVERY HANDLER TRAVELS AS A MESSAGE NOW, which is new at R-C and is the
+    reason this test lost a whole half. `ns.pageHandlers.X()` used to be a
+    second route: the floating card ran in the top document, so it called
+    `extract_job_posting` directly rather than sending it anywhere, and a scan
+    for `type:` strings alone reported that handler as dead code while it was
+    the whole of the Save Job button. The card is gone and the panel runs in no
+    page at all, so it reaches the same handler through `panel_frame0` like
+    everything else — one route, and the in-frame-call scan has nothing left to
+    find. Kept as an assertion rather than deleted: `called` being EMPTY is now
+    the claim, and a new in-page caller should have to come and change it.
+
+    The scan reads every caller: both the panel's files and
+    `shared/guided-run.js`, which is where two of these messages are sent from.
+    A typo in any `type:` string is a feature that is silently dead.
     """
-    sent = set(re.findall(r'\btype:\s*"([a-z_]+)"', WIDGET_JS + SW_JS))
-    called = set(re.findall(r"ns\.pageHandlers\.([a-z_]+)\(", WIDGET_JS))
+    sent = set(re.findall(
+        r'\btype:\s*"([a-z_]+)"', SW_JS + PANEL_JS + GUIDED_RUN_JS))
+    called = set(re.findall(r"ns\.pageHandlers\.([a-z_]+)\(", PANEL_JS + GUIDED_RUN_JS))
     handled = set(_page_handler_keys())
 
     reachable = sent | called
     assert reachable & handled == handled, (
         f"page handlers nobody reaches: {sorted(handled - reachable)}")
     assert handled == {
-        "extract_job_posting", "profile_fill", "collect_open_questions",
-        "fill_answers", "attach_resume_pdf",
+        "extract_job_posting", "detect_page", "profile_fill",
+        "collect_open_questions", "fill_answers", "guided_write",
+        "attach_resume_pdf",
+        # R-B Task 12. The panel's residue rows are jumps, and the panel runs in
+        # no page — so the scroll is a message, fanned out because the control
+        # can be in the application's subframe.
+        "scroll_to_field",
     }
-    assert called == {"extract_job_posting"}
+    assert called == set(), (
+        "something calls a page handler in-frame again — see this test's "
+        f"docstring before widening the roster: {sorted(called)}")
 
 
 def test_the_profile_fill_arguments_keep_their_identity_across_the_wire():
@@ -434,8 +526,10 @@ def test_the_profile_fill_arguments_keep_their_identity_across_the_wire():
     a real ATS — while every engine test stays green, because every one of
     them calls the function directly.
 
-    Checked in both directions: the widget sends keys named after the
-    parameters, and the handler reads them back in the declared order.
+    Checked in both directions: the sender writes keys named after the
+    parameters, and the handler reads them back in the declared order. The
+    sender is `panel/actions/fill.js` — the rule pass's own fan-out, which is
+    where the message literal landed when R-C deleted the card's copy of it.
     """
     declared = re.search(r"async function fillFormFromProfile\(([^)]*)\)", AUTOFILL_JS)
     assert declared, "fillFormFromProfile's signature is not where this test expects it"
@@ -458,7 +552,9 @@ def test_the_profile_fill_arguments_keep_their_identity_across_the_wire():
         f"the handler passes {passed} into a signature declaring {params} — "
         "a swap here writes one field's value into another's")
 
-    literal = re.search(r'type: "profile_fill",(.*?)\n    \}\);', WIDGET_JS, re.S)
+    fill_js = (ROOT / "extension" / "panel" / "actions" / "fill.js").read_text(
+        encoding="utf-8")
+    literal = re.search(r'type: "profile_fill",(.*?)\n    \}\);', fill_js, re.S)
     assert literal, "the profile_fill message literal is not where this test expects it"
     assert re.findall(r"^      (\w+):", literal.group(1), re.M) == params
 

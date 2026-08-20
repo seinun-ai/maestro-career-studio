@@ -35,7 +35,9 @@ client that can reach the port can read and write everything. Consequences:
 - **Never bind these services to `0.0.0.0`, a LAN interface, or the public
   internet.** If you must reach the app from another machine, put it behind a
   reverse proxy that terminates TLS and enforces authentication itself, and add
-  that proxy's hostname to `ALLOWED_HOSTS` (§3).
+  that proxy's hostname to **both** `ALLOWED_HOSTS` and `FRONTEND_ALLOWED_HOSTS`,
+  plus its origin to `ALLOWED_WEB_ORIGINS` (§3). All three, or one of the layers
+  refuses the traffic.
 - **Keep MCP on the STDIO transport.** The HTTP transport means exposing an
   unauthenticated backend holding your full employment history.
 - Anything else running as your user on the same machine can reach the API. This
@@ -46,19 +48,46 @@ client that can reach the port can read and write everything. Consequences:
 
 ## 3. Controls you should know about
 
-Four controls are the boundary between a zero-auth local API and the browser.
+Six controls are the boundary between a zero-auth local API and the browser.
 None is optional; if you change one, understand what it was doing.
 
-### `ALLOWED_HOSTS` — the DNS-rebinding defence
+### Host validation — the DNS-rebinding defence, on **both** servers
 
-The backend rejects any request whose `Host` header is not on this list, before
-routing. Binding to `127.0.0.1` does **not** by itself make a local service
-private: a malicious page can point its own domain at `127.0.0.1`, at which point
-your browser treats the app as same-origin, CORS is never consulted, and the page
-can read every endpoint. Host validation is what stops that.
+Binding to `127.0.0.1` does **not** by itself make a local service private: a
+malicious page can point its own domain at `127.0.0.1`, at which point your
+browser treats the app as same-origin, CORS is never consulted, and the page can
+read every endpoint. Rejecting a `Host` header you do not serve on is what stops
+that.
 
-Default: `localhost,127.0.0.1,backend`. Add hostnames only when you actually
-serve on them.
+It has to happen on both listening servers, and until 2026-08-19 it only
+happened on one. The backend checked (`ALLOWED_HOSTS`), but you open the app on
+Next at :3000, and Next's `/api` route proxies to the backend while rebuilding
+the request — so the backend saw a trusted `Host` no matter which authority the
+page used, and the check it was doing could not see the attacker. The frontend
+now performs the same check first, in `frontend/proxy.ts` and again inside the
+`/api` route itself.
+
+- `ALLOWED_HOSTS` (backend) — default `localhost,127.0.0.1,backend`.
+- `FRONTEND_ALLOWED_HOSTS` (Next) — default `localhost,127.0.0.1,[::1]`.
+
+Add hostnames only when you actually serve on them, and add them to both.
+
+### `ALLOWED_WEB_ORIGINS` — what may RUN, as opposed to what may be READ
+
+CORS is often mistaken for a request filter. It is not one: it decides whether a
+page may **read** a response. A form-encoded or multipart `POST` is a "simple
+request", which a browser sends cross-origin with no preflight — so against an
+API with no authentication the write lands and the browser merely withholds the
+reply. Reading the answer was never the attack.
+
+So an `Origin` header that is present and not on the allowlist is refused
+outright, before routing. A request with **no** `Origin` is allowed: MCP over
+stdio-to-HTTP, `curl`, and the container healthcheck send none, and none of them
+is a browser. Browsers are the only clients that attach the header, and they
+attach it truthfully.
+
+Default: `http://localhost:3000,http://127.0.0.1:3000`. A host is `studio.lan`;
+an origin is `http://studio.lan` — this list and `ALLOWED_HOSTS` move together.
 
 ### `MAESTRO_CS_EXTENSION_IDS` — one extension, not all of them
 
@@ -68,13 +97,40 @@ CORS admits those origins **by exact id**. Set it to the id shown on
 widen this to a pattern — every extension you have installed would then be able
 to read your entire career record.
 
-### Template rendering is sandboxed
+### Template rendering is sandboxed, and the compiler's file access is restricted
 
 Resume templates are Jinja source stored in the database and editable from the
 web editor, the chat agent and MCP. They render in a `SandboxedEnvironment`, so a
-template body cannot reach Python internals and execute code. **Treat a template
-file from someone else as untrusted input** — the sandbox is what makes importing
-one merely unwise rather than dangerous.
+template body cannot reach Python internals and execute code.
+
+**That sandbox constrains the template language, not the compiler.** This file
+used to say the sandbox made importing someone else's template "merely unwise
+rather than dangerous", and that was wrong. Jinja finishes its work and hands
+LaTeX to `pdflatex`, and TeX has its own file primitives: `\input`,
+`\include` and `\verbatiminput` read whatever the backend process can read.
+`-no-shell-escape` does not touch them — it blocks `\write18`, which is command
+execution, a different thing. The 2026-08-19 audit demonstrated a template
+reading a file outside its working directory and embedding the contents in the
+produced PDF.
+
+The compiler now runs under kpathsea's paranoid mode (`openin_any=p`,
+`openout_any=p`, with `TEXMFOUTPUT` pinned to the per-render staging directory),
+which refuses dotfiles, parent-directory traversal, and absolute paths outside
+that directory.
+
+**This bounds the damage; it is not isolation.** A render worker that holds no
+secrets, no PII mounts and no network is the real answer, and it is not built
+yet — see KNOWN_ISSUES. Until it is: **treat a template from someone else as
+untrusted code, and do not render one you have not read.**
+
+### Template ids are slugs, and previews stay in the preview directory
+
+A template's id is also a filename. It is validated (lowercase letters, digits,
+hyphen, underscore) in the registry that every surface crosses — REST, chat,
+MCP and seeding — rather than at one door, and the preview path is separately
+checked to resolve inside the preview directory. Before 2026-08-19 the id was
+validated only by the REST schema, so a chat-authored id of `../../logs/pwned`
+persisted and wrote a PDF outside that directory.
 
 ### PDF compilation cannot run shell commands
 
@@ -146,6 +202,13 @@ Postgres volume. Never commit any of it.
 - **Langfuse traces contain your prompts**, i.e. your resume text. No Langfuse
   stack ships with this repo; if you enable tracing, point it at an instance you
   control.
+- **The LLM call log keeps metadata, not content, by default.** `logs/llm_calls`
+  records one file per call — model, attempt, sizes, and a sha256 of the prompt
+  and the response — written `0600`. Setting `LLM_LOG_CONTENT=true` adds the
+  full text, which means a second permanent copy of your resume and every
+  generated answer; the backend warns at startup while it is on. It was
+  unconditional before 2026-08-19. There is not yet a rotation policy or an
+  in-app purge: if you enable it, delete the files yourself afterwards.
 - The browser extension's telemetry records *which* fields it encountered and
   whether they filled — never a value you typed. The schema has no column for
   one.

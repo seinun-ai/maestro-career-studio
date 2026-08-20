@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models.template import Template
+from app.schemas.template import validate_template_id
 from app.services import pdf_render
 
 SAMPLE_RESUME: dict = {
@@ -112,7 +113,26 @@ SAMPLE_RESUME: dict = {
 
 
 def _preview_path(template_id: str) -> Path:
-    return Path(settings.base_resumes_dir) / "template_previews" / f"{template_id}.pdf"
+    """Where this template's preview PDF is written. Never outside that folder.
+
+    The caller mkdir's this path's parent and `shutil.copy`s into it, so before
+    the id was validated anywhere but the REST schema, a stored id of
+    `../../logs/pwned` wrote a PDF outside the preview root (SEC-05).
+
+    Two checks, and the second is not redundant: `validate_template_id` says the
+    id is a slug, and the `relative_to` says the resolved path is still under
+    the root. If the alphabet ever widens, the containment check is what keeps
+    holding — it is the same resolve-then-`relative_to` that
+    `template_registry._resolve_partial` uses for bundled partials.
+    """
+    validate_template_id(template_id)
+    root = (Path(settings.base_resumes_dir) / "template_previews").resolve()
+    candidate = (root / f"{template_id}.pdf").resolve()
+    try:
+        candidate.relative_to(root)
+    except ValueError as exc:  # pragma: no cover - unreachable while the slug holds
+        raise ValueError(f"preview path escapes its directory: {template_id!r}") from exc
+    return candidate
 
 
 # Multi-word phrases from SAMPLE_RESUME's CORE sections (contact name,

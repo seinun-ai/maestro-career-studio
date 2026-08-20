@@ -63,6 +63,12 @@ services:
       # own browser -- binding to 127.0.0.1 does not, because the browser is
       # already inside. Add your own hostname if you front this with a proxy.
       ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1,backend}
+      # Browser origins allowed to call the API. CORS governs what a page may
+      # READ; this governs what it may RUN, because a cross-origin form POST
+      # needs no preflight and its write lands whether or not the reply is
+      # readable. Moves together with ALLOWED_HOSTS: a host is `studio.lan`,
+      # an origin is `http://studio.lan`.
+      ALLOWED_WEB_ORIGINS: ${ALLOWED_WEB_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
       # Exact extension ids allowed through CORS (chrome://extensions shows it).
       # Unset = the companion extension cannot reach the API; the web UI is
       # unaffected. Never widen this to all extensions.
@@ -87,6 +93,11 @@ services:
     environment:
       # Server-side proxy target (browser uses same-origin /api via Next route handler).
       API_PROXY_BACKEND: http://backend:8000
+      # Host allowlist for THIS server. The backend has its own (ALLOWED_HOSTS)
+      # but cannot enforce it for traffic arriving here: the /api route rebuilds
+      # the request and drops the inbound Host, so a DNS-rebinding page reaches
+      # a zero-auth API unless Next refuses it first. Empty reads as unset.
+      FRONTEND_ALLOWED_HOSTS: ${FRONTEND_ALLOWED_HOSTS:-}
     ports:
       # Bound strictly to localhost for security. Only the HOST side moves —
       # Next.js keeps serving on 3000 inside the container, and the browser

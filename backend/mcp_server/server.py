@@ -628,11 +628,14 @@ def get_autofill_profile(application_id: str | None = None, base: str | None = N
 @_guard
 def find_job_by_url(source_url: str) -> Any:
     """Answer "is this posting already captured?" BEFORE spending an extraction:
-    exact-match source_url lookup returning {found, job, application_exists,
-    application_id}. found=False means the URL is new — extract the posting and
-    call store_extracted_jd (which still dedupes authoritatively via
-    already_existed). Exact match only: pass the posting's canonical URL, not a
-    prefix or search-results URL."""
+    posting-equality source_url lookup returning {found, job,
+    application_exists, application_id}. Matching ignores query strings and
+    fragments (?utm_*, ?gh_src=, #apply) and treats the posting's own
+    sub-paths (/apply, /application) as the same posting — pass the URL you
+    are on; no need to strip tracking parameters first. A search-results or
+    employer-index URL still matches nothing. found=False means the posting
+    is new — extract it and call store_extracted_jd (which still dedupes
+    authoritatively via already_existed)."""
     return _client.find_job_by_url(source_url)
 
 

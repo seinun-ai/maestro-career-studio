@@ -8,6 +8,7 @@ import { toast } from "sonner";
 
 import { BaseResumeGallery } from "@/components/base-resumes/base-resume-gallery";
 import { FirstRunImportCard } from "@/components/career/first-run-import-card";
+import { LoadErrorState } from "@/components/load-error-state";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -133,7 +134,14 @@ export default function BaseResumesListPage() {
 
       <FirstRunImportCard />
 
-      {resumes.isLoading ? (
+      {resumes.isError ? (
+        <LoadErrorState
+          title="Couldn't load your base resumes."
+          detail={(resumes.error as Error)?.message}
+          retrying={resumes.isFetching}
+          onRetry={() => void resumes.refetch()}
+        />
+      ) : resumes.isLoading ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 3 }).map((_, i) => (
             <Skeleton key={i} className="h-40 w-full" />

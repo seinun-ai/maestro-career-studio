@@ -31,6 +31,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { LoadErrorState } from "@/components/load-error-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -183,7 +184,7 @@ function filterProposals(
 }
 
 export function ProposalsSection() {
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error, isFetching, refetch } = useQuery({
     queryKey: PROPOSALS_KEY,
     queryFn: () =>
       apiFetch<ProposalListResponse>("/api/proposals?limit=500"),
@@ -362,6 +363,20 @@ export function ProposalsSection() {
         <Skeleton className="h-10 w-full" />
         <Skeleton className="h-20 w-full" />
         <Skeleton className="h-20 w-full" />
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="flex flex-col gap-5">
+        <FunnelStrip />
+        <LoadErrorState
+          title="Couldn't load agent proposals."
+          detail={(error as Error)?.message}
+          retrying={isFetching}
+          onRetry={() => void refetch()}
+        />
       </div>
     );
   }

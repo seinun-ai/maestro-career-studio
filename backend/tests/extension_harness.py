@@ -46,27 +46,82 @@ ROOT = Path(__file__).resolve().parents[2]
 # Phase 2 split the two writers and question collector into namespace-published
 # modules and shared the JSON-LD walk; agent.js retains the extraction wrapper,
 # attach operation, and stable PAGE_HANDLERS front door.
-# Task 19 deleted sidepanel.js and added content/widget.js, which is where the
-# AI path's four outcomes (`ai_answered`, `ai_no_stick`, `ai_unaligned`,
-# `ai_unanswered`) live — it carries no page function at all, and belongs here
-# purely as an emitter.
+#
+# R-C deleted `content/widget.js`, the one entry that was here as an EMITTER
+# and not as a page function. Its four AI-path outcomes (`ai_answered`,
+# `ai_no_stick`, `ai_unaligned`, `ai_unanswered`) went with it — the backend
+# still accepts them because stored rows carry them, but nothing in the
+# extension emits one any more. See
+# `test_outcomes_the_extension_already_emits_are_all_accepted`, which records
+# the drop.
+#
+# Task 12 split `content/open-questions.js`: the routing, the /choose batching
+# and the `rest_fill` shaping are `shared/choose.js` now, so the panel document
+# can load them and the page-DOM writers stay behind. It is on this list for the
+# rule's SECOND half — it holds `ai_abstained`, and a telemetry emitter missing
+# from here makes the outcome roster silently shorter.
 #
 # All are concatenated for source scans — see `extension_source`. Runtime
 # drivers use the dependency-ordered subsets below and execute their IIFEs.
-EXTENSION_SOURCES = [
-    ROOT / "extension" / "content" / "job-posting.js",
-    ROOT / "extension" / "content" / "policy.js",
-    ROOT / "extension" / "content" / "eeo.js",
-    ROOT / "extension" / "content" / "autofill.js",
-    ROOT / "extension" / "content" / "open-questions.js",
-    ROOT / "extension" / "content" / "detect.js",
-    ROOT / "extension" / "content" / "agent.js",
-    ROOT / "extension" / "content" / "widget.js",
-]
+#
+# READ FROM THE MANIFEST, which is sw.js's own rule (`contentScriptFiles`)
+# applied to the test side, and it is a correction rather than a tidy-up. The
+# list used to be typed out here, and it was WRONG in a way nothing could
+# report: `shared/decisions.js` and `shared/guided-run.js` are injected into
+# every page by `manifest.json` and were missing from it, so "everything a
+# source scan must see" was a claim this file could not keep. A hand-kept
+# mirror of a list the browser reads from a file is a mirror that drifts, and
+# the drift is invisible precisely because the tests still pass — they scan a
+# smaller world and find nothing wrong with it.
+#
+# ORDER COMES WITH IT, and that is the other half of the win: the manifest's
+# order IS the injection order, so a driver now executes the modules in the
+# sequence the browser does rather than in the sequence somebody typed. Each
+# file publishes onto the namespace the next one reads, so that has always
+# mattered and was previously kept by hand too.
+SHARED = ROOT / "extension" / "shared"
+CONTENT = ROOT / "extension" / "content"
 
-FORM_MODULE_SOURCES = EXTENSION_SOURCES[1:5]
-DETECTION_MODULE_SOURCES = [EXTENSION_SOURCES[0], EXTENSION_SOURCES[5]]
-PAGE_RUNTIME_SOURCES = EXTENSION_SOURCES[:-1]
+_MANIFEST = json.loads(
+    (ROOT / "extension" / "manifest.json").read_text(encoding="utf-8"))
+
+EXTENSION_SOURCES = [
+    ROOT / "extension" / relative
+    for entry in _MANIFEST["content_scripts"]
+    for relative in entry["js"]
+]
+assert EXTENSION_SOURCES, "manifest.json declares no content scripts"
+
+FORM_MODULE_SOURCES = [
+    SHARED / "choose.js",
+    SHARED / "policy.js",
+    SHARED / "profile-fields.js",
+    CONTENT / "eeo.js",
+    CONTENT / "autofill.js",
+    CONTENT / "open-questions.js",
+]
+DETECTION_MODULE_SOURCES = [CONTENT / "job-posting.js", CONTENT / "detect.js"]
+
+# The two lists COINCIDE since R-C, and that is a fact about today rather than a
+# rule: `EXTENSION_SOURCES` is "everything a source scan must see" and this is
+# "everything a runtime driver may execute", and they agreed the moment the one
+# file that was scannable-but-not-runnable (`content/widget.js`, an emitter with
+# no page function) was deleted. Two names for one list, because the next file
+# added answers the two questions separately again — and when that happens this
+# becomes a written-out list, NOT a slice of the other.
+#
+# NEVER A SLICE, and the assertion below is what enforces it rather than a
+# comment asking nicely. This line used to read `EXTENSION_SOURCES[:-1]`, one
+# index away from silently dropping `agent.js` — which publishes
+# `PAGE_HANDLERS`, so every driver would have gone on running against a world
+# with no message boundary in it, reporting handlers as unreachable and page
+# functions as absent. An index range re-points itself when a file is added,
+# which is exactly how a driver ends up executing a set nobody chose.
+PAGE_RUNTIME_SOURCES = list(EXTENSION_SOURCES)
+assert PAGE_RUNTIME_SOURCES == EXTENSION_SOURCES, (
+    "PAGE_RUNTIME_SOURCES has diverged from EXTENSION_SOURCES. That is allowed "
+    "— but write the paths out, do not slice: a range silently re-points when "
+    "the manifest gains a file, and this assertion is the reminder to choose.")
 
 
 def _content_source(paths: list[Path]) -> str:
@@ -82,6 +137,34 @@ def extension_source() -> str:
 def page_runtime_source() -> str:
     """Real dependency-ordered modules through the agent message boundary."""
     return _content_source(PAGE_RUNTIME_SOURCES)
+
+
+def js_code(source: str) -> str:
+    """`source` with its comment-only lines dropped, for source-scan pins.
+
+    A raw-source pin on a string the comments NARRATE asserts nothing, and this
+    repo's extension comments narrate deleted machinery on purpose — they are
+    the record of what a control used to do. Both directions are traps:
+
+    * a positive (`"openPanelOnActionClick: true" in SW_JS`) passes on the
+      comment that explains the call long after the call itself is gone, which
+      is exactly the "green for the wrong reason" failure this repo has hit
+      repeatedly;
+    * a negative (`"chrome.action.onClicked.addListener" not in SW_JS`) fails
+      the day someone quotes the deleted listener in full while explaining why
+      it was deleted — a test that forbids honest prose.
+
+    So every pin that means "the CODE says this" runs through here. Line
+    oriented, matching the idiom these tests already used inline: a line whose
+    first non-space characters open or continue a comment is not code. That
+    misses a trailing `// …` after real code and the tail of a `/* … */` whose
+    continuation lines are unprefixed, and it is deliberately not a JS parser —
+    a pin that needs more precision than this wants to be a behavioural test.
+    """
+    return "\n".join(
+        line for line in source.splitlines()
+        if not line.lstrip().startswith(("//", "*", "/*"))
+    )
 
 
 FIXTURE_DIR = Path(__file__).resolve().parent / "fixtures" / "autofill"
@@ -130,6 +213,18 @@ const extract = (name, endMarker) => {
   // the property is what matters — keep this through any comment reflow.
   return vm.runInThisContext(`(${source.slice(match.index, end)}\n)`);
 };
+
+const mutationObservers = new Set();
+const notifyMutation = () => {
+  for (const observer of [...mutationObservers]) observer._callback([]);
+};
+class FakeMutationObserver {
+  constructor(callback) { this._callback = callback; }
+  observe() { mutationObservers.add(this); }
+  disconnect() { mutationObservers.delete(this); }
+}
+
+const eventLog = [];
 
 class FakeEvent {
   constructor(type, init = {}) {
@@ -185,6 +280,7 @@ class FakeElement {
     checked = false,
     clickCancelled = false,
     reverts = false,
+    revertsTimes = null,
     detaches = false,
     normalizesTo = null,
     disabled = false,
@@ -193,10 +289,12 @@ class FakeElement {
     listbox = null,
     listboxDelay = 0,
     listboxVia = null,
+    optionFailures = 0,
     workdaySearch = false,
     haspopup = null,
     automationId = null,
     dateWidget = null,
+    select2Ancestor = false,
   } = {}) {
     // A section of a split date widget, modelled from the live Workday shape
     // (deluxe.wd5, 2026-08-08): role="spinbutton", an id of
@@ -216,6 +314,9 @@ class FakeElement {
     // exactly the discriminator the walk uses.
     this._haspopup = haspopup;
     this._automationId = automationId;
+    // A react-select/select2 input whose own node carries no combobox ARIA.
+    // The production predicate recognizes the surrounding widget class.
+    this._select2Ancestor = select2Ancestor;
     this.tagName = "INPUT";
     this._label = label;
     this._value = value;
@@ -223,6 +324,7 @@ class FakeElement {
     this._role = role;
     this._clickCancelled = clickCancelled;
     this._reverts = reverts;
+    this._revertsRemaining = revertsTimes;
     this._detaches = detaches;
     this._normalizesTo = normalizesTo;
     this._tokenizes = tokenizes;
@@ -255,6 +357,7 @@ class FakeElement {
       : new FakeOption(entry.text, this, entry.chosenChip === true)));
     this._listboxDelay = listboxDelay;
     this._listboxVia = listboxVia;
+    this._optionFailures = optionFailures;
     this._listboxId = `lb-${(listboxIds += 1)}`;
     this._listboxOpen = false;
     this._listboxTimer = null;
@@ -266,6 +369,7 @@ class FakeElement {
     // user ends up with, and the box is empty precisely BECAUSE they exist.
     this.tokens = [];
     this.events = [];
+    this.writeCount = 0;
     this.isConnected = true;
     this.id = "";
     this.name = "";
@@ -319,9 +423,14 @@ class FakeElement {
     if (!this._listbox.length || this._listboxOpen || this._listboxTimer) return;
     this._listboxTimer = setTimeout(() => {
       this._listboxOpen = true;
+      notifyMutation();
     }, this._listboxDelay);
   }
   takeOption(text) {
+    if (this._optionFailures > 0) {
+      this._optionFailures -= 1;
+      return;
+    }
     this.selectedOption = text;
     // A button dropdown prints its committed choice as its own text; an input
     // combobox keeps whatever was typed (the real ones render the choice in a
@@ -330,11 +439,15 @@ class FakeElement {
   }
   get value() { return this._value; }
   set value(value) {
+    this.writeCount += 1;
     this._value = value;
     if (value !== "") this.openListbox();
     // A controlled input that rejects the write reverts on a LATER tick, never
     // in the tick that wrote it — a same-tick readback always sees the write.
-    if (this._reverts) queueMicrotask(() => { this._value = ""; });
+    if (this._reverts || (this._revertsRemaining ?? 0) > 0) {
+      if (this._revertsRemaining !== null) this._revertsRemaining -= 1;
+      queueMicrotask(() => { this._value = ""; });
+    }
     // A widget that re-renders swaps this node out for a fresh one. The node we
     // hold keeps our value forever precisely because nothing is rendering it.
     if (this._detaches) queueMicrotask(() => { this.isConnected = false; });
@@ -378,6 +491,9 @@ class FakeElement {
   }
   hasAttribute() { return false; }
   closest(selector) {
+    if (this._select2Ancestor && /select2|select__|autocomplete/.test(selector)) {
+      return { className: "select2-container" };
+    }
     // No tree: a field declares its own ancestors (see `_fieldset`), and a
     // field that declares none has no ancestors at all. Matched on the tag as
     // a whole selector token, so '[class*="label" i]' is not a <label>.
@@ -393,6 +509,7 @@ class FakeElement {
   }
   dispatchEvent(event) {
     this.events.push(event.type);
+    eventLog.push(`${this._label}:${event.type}`);
     // The kind-driven combobox open (fireMouseSequence + ArrowDown) and the
     // button writer's click both engage the popup without typing.
     if (event.type === "click" || event.type === "keydown") this.openListbox();
@@ -417,6 +534,7 @@ class FakeElement {
   // a writer has to look before it clicks.
   click() {
     this.events.push("click");
+    eventLog.push(`${this._label}:click`);
     // A framework that calls preventDefault() on the click cancels the default
     // action, and for a tick box the default action IS the state change — so
     // the click is dispatched and the box stays exactly as it was.
@@ -437,6 +555,19 @@ class FakeElement {
   }
   blur() {
     this.events.push("blur");
+    // A WIDGET THAT RE-RENDERS ON BLUR, which is the classic trigger — and the
+    // reason `detaches` had to reach past the value setter it lived on: the
+    // click writers (radio, checkbox) never set a value, so before the commit
+    // gesture existed there was no way for one of them to be blurred at all,
+    // and no way to model the node being replaced under the verdict that is
+    // about to be read off it.
+    //
+    // SYNCHRONOUS HERE, where the value setter's copy queues a microtask, and
+    // the difference is the DOM's rather than a convenience: `el.blur()`
+    // dispatches focusout synchronously, so a framework that re-renders in its
+    // blur handler has already replaced the node by the time `blur()` returns.
+    // That is precisely the window a click writer's verdict is read in.
+    if (this._detaches) this.isConnected = false;
     // The measured behaviour, and the whole point of this flag. A split date
     // validates when focus leaves the WIDGET: if any sibling section of the
     // same widget is still empty, the date is incomplete and the widget throws
@@ -494,6 +625,7 @@ global.CSS = { escape: (value) => value };
 global.Event = FakeEvent;
 global.MouseEvent = FakeEvent;
 global.KeyboardEvent = FakeEvent;
+global.MutationObserver = FakeMutationObserver;
 global.location = { hostname: "jobs.example.test" };
 global.getComputedStyle = (element) => element._style;
 // vm has no rAF. A setTimeout shim keeps the readback on the macrotask queue,
@@ -506,6 +638,8 @@ global.requestAnimationFrame = spec.freezeFrames === true
 let currentElements = [];
 const setElements = (elements) => { currentElements = elements; };
 global.document = {
+  documentElement: {},
+  visibilityState: spec.freezeFrames === true ? "hidden" : "visible",
   querySelector: (selector) => {
     const match = /^\[data-rt-qid="(.*)"\]$/.exec(selector);
     if (!match) return null;
@@ -573,12 +707,13 @@ const main = (run) => run().catch((error) => {
 _DRIVER_JS = r"""
 const ns = loadModules();
 
-const makeElement = (field, label) => new (
-  field.kind === "textarea" ? HTMLTextAreaElement
-    : field.kind === "select" ? HTMLSelectElement
-      : field.kind === "listboxButton" ? HTMLButtonElement
-        : HTMLInputElement)({
-  label,
+const makeElement = (field, label) => {
+  const element = new (
+    field.kind === "textarea" ? HTMLTextAreaElement
+      : field.kind === "select" ? HTMLSelectElement
+        : field.kind === "listboxButton" ? HTMLButtonElement
+          : HTMLInputElement)({
+    label,
   // A listboxButton's "value" is its visible text, "Select One" until an
   // option commits — the live Workday placeholder (bah.wd1, 2026-08-08).
   value: field.value ?? (field.kind === "listboxButton" ? "Select One" : ""),
@@ -600,6 +735,7 @@ const makeElement = (field, label) => new (
   disabled: field.disabled === true,
   clickCancelled: field.clickCancelled === true,
   reverts: field.reverts === true,
+  revertsTimes: field.revertsTimes ?? null,
   detaches: field.detaches === true,
   normalizesTo: field.normalizesTo ?? null,
   tokenizes: field.tokenizes === true,
@@ -607,6 +743,7 @@ const makeElement = (field, label) => new (
   listbox: field.listbox ?? null,
   listboxDelay: field.listboxDelay ?? 0,
   listboxVia: field.listboxVia ?? null,
+  optionFailures: field.optionFailures ?? 0,
   workdaySearch: field.workdaySearch === true,
   // A listboxButton defaults to the live Workday shape: haspopup="listbox",
   // no automation id. `automationId` lets a test model the header's utility
@@ -614,7 +751,17 @@ const makeElement = (field, label) => new (
   haspopup: field.haspopup ?? (field.kind === "listboxButton" ? "listbox" : null),
   automationId: field.automationId ?? null,
   dateWidget: field.dateWidget ?? null,
-});
+  select2Ancestor: field.select2Ancestor === true,
+  });
+  if (field.trackedValue === true) {
+    Object.defineProperty(element, "value", {
+      configurable: true,
+      get() { return this._value; },
+      set() { this.events.push("tracked-set"); },
+    });
+  }
+  return element;
+};
 
 // A radio GROUP is one logical field rendered as N buttons, so one field spec
 // expands to N elements — `{kind: "radio", options: ["Yes", "No"]}` declares
@@ -667,12 +814,56 @@ spec.fields.forEach((field, i) => {
 });
 setElements(elements);
 
+if (spec.rerenderAfterOption) {
+  const source = elements.find(
+    (element) => element._qid === spec.rerenderAfterOption.sourceQid);
+  const targetIndex = spec.fields.findIndex(
+    (field) => field.qid === spec.rerenderAfterOption.targetQid);
+  if (!source || targetIndex < 0) throw new Error("invalid rerenderAfterOption spec");
+  const originalTakeOption = source.takeOption.bind(source);
+  source.takeOption = (text) => {
+    originalTakeOption(text);
+    const old = groups[targetIndex][0];
+    old.isConnected = false;
+    const field = spec.fields[targetIndex];
+    const replacement = makeElement(field, field.label);
+    replacement.id = old.id;
+    replacement.name = old.name;
+    groups[targetIndex][0] = replacement;
+    const elementIndex = elements.indexOf(old);
+    elements.splice(elementIndex, 1, replacement);
+    notifyMutation();
+  };
+}
+
 main(async () => {
-  const out = { events: {}, values: {}, checked: {}, tokens: {}, qids: {} };
+  const out = {
+    events: {}, values: {}, checked: {}, tokens: {}, qids: {}, attempts: {}, order: eventLog,
+  };
   if (spec.mode === "questions") {
+    // With a profile, the rule pass runs FIRST — the production order for
+    // guided fill, and the only way ns.lastRuleAttempts (the known_value
+    // feeder) carries real entries into collection.
+    if (spec.profile) {
+      await ns.fillFormFromProfile(
+        spec.profile, spec.employment ?? [], spec.eeoEnabled === true,
+        spec.skills ?? []);
+    }
+    if (spec.releasedLabels?.length) {
+      const wanted = new Set(spec.releasedLabels);
+      ns.lastRuleReleases = new WeakSet(spec.fields.flatMap((field, i) =>
+        wanted.has(field.label) ? groups[i] : []));
+    }
     out.collected = ns.collectOpenQuestions();
+    out.routed = ns.routeOpenQuestions(
+      out.collected.questions, spec.knownValues ?? {});
   } else if (spec.mode === "ai") {
     out.filled = await ns.fillAnswersByQid(spec.pairs);
+  } else if (spec.mode === "guided") {
+    out.results = await ns.guidedWrite(spec.items.map((item) => ({
+      ...item,
+      el: elements.find((element) => element._qid === item.qid) ?? null,
+    })));
   } else {
     const result = await ns.fillFormFromProfile(
       spec.profile, spec.employment, spec.eeoEnabled === true, spec.skills,
@@ -685,6 +876,7 @@ main(async () => {
   spec.fields.forEach((field, i) => {
     const group = groups[i];
     out.events[field.label] = group.flatMap((el) => el.events);
+    out.attempts[field.label] = group.reduce((count, el) => count + el.writeCount, 0);
     // A radio group's "value" is the option that ended up selected — "" when
     // none did, which is the same "nothing was written" a text field reports.
     out.values[field.label] = field.kind === "radio"
@@ -808,7 +1000,26 @@ def run_ai_fill(
     return _run(tmp_path, "ai", fields, pairs=pairs)
 
 
-def run_open_questions(tmp_path: Path, *, fields: list[dict]) -> dict:
+def run_guided_write(
+    tmp_path: Path, *, fields: list[dict], items: list[dict],
+    rerender_after_option: dict | None = None,
+    freeze_frames: bool = False,
+) -> dict:
+    """Run the public value-directed, sequential write contract."""
+    return _run(
+        tmp_path,
+        "guided",
+        fields,
+        items=items,
+        rerenderAfterOption=rerender_after_option,
+        freezeFrames=freeze_frames,
+    )
+
+
+def run_open_questions(
+    tmp_path: Path, *, fields: list[dict], known_values: dict | None = None,
+    profile: dict | None = None, harness: dict | None = None,
+) -> dict:
     """Run collectOpenQuestions — the AI path's gate, one step before the LLM.
 
     `collected` is what it returned: `questions` (what is sent to the model),
@@ -816,11 +1027,23 @@ def run_open_questions(tmp_path: Path, *, fields: list[dict]) -> dict:
     `host`. `qids` reports the data-rt-qid actually stamped on each field, so a
     test can assert a control was never even made addressable.
 
+    `routed` is the essay / ChooseField split (`routeOpenQuestions`).
+    `known_values` is an optional qid-or-label map of profile candidates that
+    failed the rule pass, forwarded onto matching ChooseFields.
+
     A field may declare `legend`, which wraps it in a <fieldset> carrying that
     text — the shape where a radio button's own label ("Yes") and the question
     it answers are different strings.
     """
-    return _run(tmp_path, "questions", fields)
+    controls = harness or {}
+    extra = {} if not known_values else {"knownValues": known_values}
+    if profile is not None:
+        extra["profile"] = profile
+        extra["eeoEnabled"] = controls.get("eeo_enabled", False)
+        extra["employment"] = controls.get("employment", [])
+    if controls.get("released_labels"):
+        extra["releasedLabels"] = controls["released_labels"]
+    return _run(tmp_path, "questions", fields, **extra)
 
 
 def collected_labels(result: dict) -> list[str]:

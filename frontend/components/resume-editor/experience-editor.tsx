@@ -3,7 +3,7 @@ import { EditableCard } from "@/components/resume-editor/editable-card";
 import {
   ActiveArchivedCount,
   AddEntryButton,
-  cardReorderProps,
+  useEntryEditing,
   createEnableAction,
   isEntryEnabled,
 } from "@/components/resume-editor/editor-scaffold";
@@ -29,8 +29,11 @@ export function ExperienceEditor({
   onChange: (next: ExperienceEntry[]) => void;
   /** Location keys of the recruiter/ATS "hot zone" (from lib/health-zones). */
 }) {
-  const update = (i: number, patch: Partial<ExperienceEntry>) =>
-    onChange(value.map((e, idx) => (idx === i ? { ...e, ...patch } : e)));
+  const { setEditingIndex, entryEditingProps, update } = useEntryEditing(
+    value,
+    onChange,
+    (e) => !e.company && !e.role,
+  );
 
   return (
     <div className="flex flex-col gap-2">
@@ -44,8 +47,7 @@ export function ExperienceEditor({
           <EditableCard
             key={i}
             muted={!enabled}
-            initialEditing={!entry.company && !entry.role}
-            {...cardReorderProps(value, i, onChange)}
+            {...entryEditingProps(i)}
             extraActions={[
               createEnableAction(enabled, () => update(i, { enabled: !enabled })),
             ]}
@@ -141,7 +143,10 @@ export function ExperienceEditor({
       })}
       <AddEntryButton
         label="Add experience"
-        onClick={() => onChange([...value, EMPTY])}
+        onClick={() => {
+          onChange([...value, EMPTY]);
+          setEditingIndex(value.length);
+        }}
       />
     </div>
   );
