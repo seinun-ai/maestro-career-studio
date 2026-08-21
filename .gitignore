@@ -72,6 +72,12 @@ frontend/.npm-cache/
 /tmp/
 /.playwright-mcp/
 
+# Launch capture staging — real-data screenshots, never commit
+final_visuals/
+
+# Personal Obsidian vault that lives under docs/ — notes, not project docs
+docs/mcs/
+
 # Internal audit backlog: roadmap and engineering direction distilled from
 # the 2026-08-19 audits. The user-facing half of those findings lives in
 # KNOWN_ISSUES.md; this file is deliberately NOT part of the published repo.

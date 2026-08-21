@@ -6,7 +6,7 @@
 </p>
 [![CI](https://github.com/seinun-ai/maestro-career-studio/actions/workflows/ci.yml/badge.svg)](https://github.com/seinun-ai/maestro-career-studio/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/seinun-ai/maestro-career-studio/actions/workflows/codeql.yml/badge.svg)](https://github.com/seinun-ai/maestro-career-studio/actions/workflows/codeql.yml)
-[![Tests](https://img.shields.io/badge/tests-2%2C763%20passing-brightgreen)](https://github.com/seinun-ai/maestro-career-studio/actions/workflows/ci.yml)
+[![Tests](https://img.shields.io/badge/tests-3%2C807%20passing-brightgreen)](https://github.com/seinun-ai/maestro-career-studio/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 <!-- TODO(P5): after the first v* tag publishes images, add a ghcr.io image badge here,
      e.g. https://img.shields.io/badge/ghcr.io-multi--arch-blue linking to the packages page.
@@ -22,12 +22,15 @@ Knowledge Base** of things you actually did — approved evidence lands verbatim
 every AI edit is a reviewable, revertible diff, and the output is a real
 **LaTeX** or **Typst** PDF compiled locally.
 
-<!-- TODO(P4) hero.gif — THE launch asset. ~25s screen capture, synthetic demo data
-     only (throwaway DB): score a base resume against a JD (shows e.g. 61) →
-     Quick Tailor → rescore (shows the lift, e.g. 78) → open the tailoring diff,
-     revert one hunk → open the rendered PDF. Save to docs/assets/hero.gif and
-     uncomment the line below. -->
-<!-- ![Score, tailor, diff of every AI edit, typeset PDF — end to end](docs/assets/hero.gif) -->
+<!-- P4 hero.gif — CLEARED for publish 2026-08-20. Recorded on the mock instance:
+     contact header scrubbed (ajey@seinun.com, placeholder phone), lift
+     49.2 -> 70.8 is a real deterministic score. Two items reviewed and
+     accepted by the owner rather than fixed: the real Visa posting stays (an
+     employer-published public document), and the "Liberty Hill, TX" experience
+     location stays (already the contact city on the public resume).
+     1000px / 10fps / 64 colors, 1.8 MB; re-encode any replacement to match. -->
+
+![Score, tailor, diff of every AI edit, typeset PDF — end to end](docs/assets/hero.gif)
 
 **73 MCP tools** to drive it from Claude Desktop/Code · **works with zero API
 keys** (scoring, rendering and tracking never call a model) · **3 containers,
@@ -227,10 +230,7 @@ is in depth per application, not count. The workflow below reflects that.
 
 ### 1. Feed the Career KB first (once)
 
-<!-- TODO(P4) kb-onboarding.gif — ~20s, synthetic data: drop 3 resume JSONs →
-     KB consolidation runs → inbox shows imported points → approve a few.
-     Save to docs/assets/kb-onboarding.gif and uncomment: -->
-<!-- ![Drop in your resumes, get a knowledge base](docs/assets/kb-onboarding.gif) -->
+![Drop in your resumes, get a knowledge base](docs/assets/kb-onboarding.png)
 
 Drop **every** resume variant you have into the upload dialog — old ones,
 role-specific ones, the too-long one. Maestro CS resolves duplicate entities
@@ -248,6 +248,8 @@ true about your work is usable evidence later.
 
 ### 2. Build a base resume per career track
 
+![One base resume per track, with its health grade and live typeset preview](docs/assets/base-resume.png)
+
 One base per track you actually target (e.g. *Data Scientist*, *ML Engineer*) —
 not one per job. **New base resume → From Career KB** proposes which entries
 belong, with a reason for each one it leaves off, plus a drafted summary.
@@ -258,6 +260,8 @@ rewritten at this step** — approved KB points compose verbatim. That is
 deliberate: it is what keeps a generated resume defensible.
 
 ### 3. Capture the job, then close the gaps
+
+![Every job you have captured, from saved to signed](docs/assets/applications.png)
 
 Paste the JD or capture it with the browser extension. Score it against your
 bases — the ATS engine is deterministic and runs with **no LLM at all**, so the
@@ -309,11 +313,16 @@ conversationally — extract a JD, score it, walk the gaps, render the PDF —
 without leaving your assistant. Unlike SaaS-backed job-search MCP servers, it
 runs on **your machine** against **your** database. Nothing is uploaded.
 
-<!-- TODO(P4) mcp-claude.gif — ~20s: Claude Desktop session — ask "score my
-     data-scientist resume against this posting", tool calls visible, score +
-     gap list returned, then "render the PDF". Synthetic data only.
-     Save to docs/assets/mcp-claude.gif and uncomment: -->
-<!-- ![Claude driving the pipeline over MCP](docs/assets/mcp-claude.gif) -->
+![Claude pulling the whole pipeline over MCP and building its own view of it](docs/assets/mcp-dashboard.png)
+
+<!-- TODO(P4) mcp-chat.png — a SECOND shot for this section is still open: a
+     Claude conversation answering a real question over the explore tools
+     ("what keeps coming up in the jobs I'm saving that I'm not showing well?"
+     -> surface vs build tiers). Two candidates exist and both need work: the
+     gap-query capture reports `kb_points: 0` / "your Career KB is nearly
+     empty", which argues against §1's own advice, and the base-resume-listing
+     capture is one tool call ending on a question with no result. Re-capture
+     against a scored instance, then save here and add below the dashboard. -->
 
 With the backend already running, one command sets it up:
 
@@ -373,6 +382,8 @@ discard; nothing lands silently.
 
 ### Health Report — is this resume sound at all?
 
+![A job-independent grade, and what each defect is costing you](docs/assets/health-report.png)
+
 A gap needs a job. A **Health Report** does not: it is the deterministic,
 job-independent check on one resume — parseability, dates, evidence quality,
 format gates — and a failing fatal gate **blocks** tailoring outright, because
@@ -381,6 +392,8 @@ Run it per base resume, and overrule a finding deliberately (with a reason on th
 record) if you disagree.
 
 ### Templates you actually own
+
+![LaTeX and Typst templates, compiled locally](docs/assets/templates.png)
 
 Two engines, both compiled locally: **LaTeX** (pdflatex) and **Typst**. A
 template carries its own default formatting, layered under per-resume and
@@ -402,11 +415,15 @@ in your skills list, never as an invented experience bullet.
 
 ### The browser extension
 
-<!-- TODO(P4) extension.png — static screenshot: the widget open on a job page
-     showing the state dots and the "Fast tailor 61 → 78" lift moment.
-     Synthetic data / throwaway job page. Save to docs/assets/extension.png
-     and uncomment: -->
-<!-- ![The extension widget on a job page](docs/assets/extension.png) -->
+<!-- P4 extension.gif — CLEARED for publish 2026-08-20. Contact header scrubbed;
+     the Job/Score/Resume/Fill/Track ladder and the multi-base scoring panel
+     ("4 base resumes scored against this JD") are the feature moments. The Fill
+     step is never executed in this take, so NO autofill values are ever on
+     screen — preserve that if re-recording. Real employer careers page and the
+     "Liberty Hill, TX" experience location reviewed and accepted by the owner.
+     1000px / 10fps / 64 colors, 2.6 MB; re-encode any replacement to match. -->
+
+![The extension widget on a job page](docs/assets/extension.gif)
 
 A floating in-page widget: capture a posting from the board you are already
 reading, and fill application forms from your **Autofill Profile**. Its telemetry
@@ -429,10 +446,7 @@ never filled and never shown to a model. Those stay human-only, always.
 
 ### Analytics: what the market keeps asking you for
 
-<!-- TODO(P4) analytics.png — static screenshot: Gaps & growth view (gap
-     frequency classified vs the KB) or the skill heatmap, seeded with
-     synthetic jobs. Save to docs/assets/analytics.png and uncomment: -->
-<!-- ![Gap frequency classified against your Career KB](docs/assets/analytics.png) -->
+![The market you are actually applying into, quantified](docs/assets/analytics.png)
 
 Every captured job builds a picture of the market you are actually applying into
 — top skills, a skill heatmap, role mix over time — filterable by role category,
@@ -446,6 +460,8 @@ tailoring is doing anything at all for you.
 
 ### Hunt with the agent you already use
 
+![A scheduled hunt reporting back — and stopping at your review](docs/assets/hunt-digest.png)
+
 The MCP server is more than a remote control. `get_job_search_brief` hands an
 agent a composed brief — your stated preferences, your work-authorization answers
 verbatim, and the guardrails you configured — so a Claude or Codex session can go
@@ -454,6 +470,14 @@ your bases and hand back a ranked shortlist. There is no board integration to be
 locked into and no scraper to break: the agent reads what you would have read.
 
 ### Going all the way: the proposal ledger
+
+<!-- TODO(P4) proposals.png — the /proposals view: the Captured/Proposed/
+     Accepted/Approved/Submitted counters, the daily cap chip, and the queued
+     proposals with their ATS scores. It shows this section's core claim -- the
+     lane stops before submitting -- in the app's own words ("What the hunt
+     found. Submitting still needs your approval."). Captured but not yet saved
+     to a file; drop it at docs/assets/proposals.png and uncomment: -->
+<!-- ![What the hunt found. Submitting still needs your approval.](docs/assets/proposals.png) -->
 
 Maestro CS can carry an application to the point of submission. This is the
 part to read rather than skim.
