@@ -472,6 +472,10 @@ find postings on whatever boards it can read, capture them, score them against
 your bases and hand back a ranked shortlist. There is no board integration to be
 locked into and no scraper to break: the agent reads what you would have read.
 
+The author's own daily prompts — a scheduled hunt and two apply-session
+variants, with the personal parts turned into placeholders — are in
+[`docs/agent-prompts/`](docs/agent-prompts/) as starting points to adapt.
+
 ### Going all the way: the proposal ledger
 
 <!-- TODO(P4) proposals.png — the /proposals view: the Captured/Proposed/
