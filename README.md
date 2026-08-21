@@ -35,7 +35,7 @@ every AI edit is a reviewable, revertible diff, and the output is a real
 
 ![Score, tailor, diff of every AI edit, typeset PDF — end to end](docs/assets/hero.gif)
 
-**73 MCP tools** to drive it from Claude Desktop/Code · **works with zero API
+**77 MCP tools** to drive it from Claude, Codex, or the ChatGPT desktop app · **works with zero API
 keys** (scoring, rendering and tracking never call a model) · **3 containers,
 localhost-only, nothing phones home** · **leaves with you** — your whole record
 exports to one `career.md`
@@ -54,7 +54,7 @@ cd maestro-career-studio && cp .env.example .env && docker compose up -d --build
 **Contents:** [Why Maestro CS?](#why-maestro-cs) ·
 [Prerequisites](#prerequisites) · [Quickstart](#quickstart) ·
 [Using it well](#using-it-well) ·
-[Driving it from Claude (MCP)](#driving-it-from-claude-mcp) ·
+[Driving it from Claude, Codex, or ChatGPT (MCP)](#driving-it-from-claude-codex-or-chatgpt-mcp) ·
 [The rest of the toolkit](#the-rest-of-the-toolkit) ·
 [Execution modes](#execution-modes--docker-compose-stack) ·
 [Directory layout](#project--runtime-directory-layout) ·
@@ -121,7 +121,7 @@ Only checkable claims — verify any row yourself:
 | See what the AI changed | No audit trail | No | **Per-hunk diff, revertible** |
 | Typeset output | House web templates | HTML → PDF | **Real LaTeX and Typst, bring your own template** |
 | Career record | None (per-document) | Flat markdown/YAML files | **Structured, versioned KB — exports to one `career.md`** |
-| Agent access | No | CLI skill files | **MCP server (73 tools) against your own machine** |
+| Agent access | No | CLI skill files | **MCP server (77 tools) against your own machine** |
 | Auto-submits for you | N/A | Never (stated) | **Never — consent ledger, enforced** |
 | Cost | $15–75/month | Free + tokens | **Free (Apache 2.0) + your own tokens** |
 
@@ -154,9 +154,8 @@ makes it so. [`SECURITY.md`](SECURITY.md) has the detail and the threat model.
 - **Docker Desktop** (or Docker Engine + Compose v2)
 - **~4 GB of disk space** for the three images (backend ~1.9 GB, frontend
   ~1.6 GB, PostgreSQL ~0.4 GB). The backend carries a minimal TeX Live
-  (`scheme-basic` plus exactly the packages the bundled templates use, ~660 MB —
-  not the ~2.9 GB of Debian `texlive` metapackages), Typst, and the pinned
-  embedding model.
+  (`scheme-basic` plus exactly the packages the bundled templates use, ~660 MB),
+  Typst, and the pinned embedding model.
 - **An LLM.** Either an **OpenAI** or **Gemini** API key, *or* a local
   OpenAI-compatible server (Ollama, LM Studio, vLLM) — see
   [Run it fully offline](#run-it-fully-offline). Without one, the deterministic
@@ -309,11 +308,12 @@ Press **Test** on each to measure what it actually does. Because the tiers are
 separate, running Fast and Smart locally while Chat points at a hosted model is
 a supported — and often optimal — setup.
 
-### Driving it from Claude (MCP)
+### Driving it from Claude, Codex, or ChatGPT (MCP)
 
 Maestro CS ships an **MCP server** so you can run the whole pipeline
 conversationally — extract a JD, score it, walk the gaps, render the PDF —
-without leaving your assistant. Unlike SaaS-backed job-search MCP servers, it
+without leaving your assistant, whether that is Claude (Desktop or Code), the
+ChatGPT desktop app, or the Codex CLI. Unlike SaaS-backed job-search MCP servers, it
 runs on **your machine** against **your** database. Nothing is uploaded.
 
 ![Claude pulling the whole pipeline over MCP and building its own view of it](docs/assets/mcp-dashboard.png)
@@ -349,7 +349,7 @@ with Cmd+Q after pasting; a window close is not enough.
 not the container's internal `8000`. The script resolves this for you from
 `BACKEND_HOST_PORT`.
 
-Six profiles keep the tool list relevant per chat: `full` (73 tools), `hunt`,
+Six profiles keep the tool list relevant per chat: `full` (77 tools), `hunt`,
 `apply`, `explore`, `templates`, `career`. Enable one at a time — `full`
 alongside a scoped profile registers each shared tool twice.
 
@@ -593,7 +593,7 @@ response within 48 hours, and every PR is read by a human — we don't merge
 AI slop.
 
 - **Known Issues & Where Help Is Wanted:** [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md) — **Start here.** What is solid, what is rough, what is a deliberate limitation rather than a bug, and the specific gaps worth picking up. This project is early and that file says so plainly.
-- **Architecture Source of Truth:** [`docs/SYSTEM.md`](docs/SYSTEM.md) — The living reference for how the system fits together. Long, and meant to be searched rather than read front to back; the code cites its section numbers directly. Read the relevant part before altering behaviour.
+- **Architecture Source of Truth:** [`SYSTEM.md`](SYSTEM.md) — The living reference for how the system fits together, at the repo root so every agent tool finds it. It holds the orientation tier — layout, architecture, invariants, environment, workflow, and the three ledgers — and indexes the reference tier it delegates to: per-entity lifecycles in [`docs/entities/`](docs/entities/) and UI rules in [`docs/frontend-conventions.md`](docs/frontend-conventions.md). Meant to be searched rather than read front to back; the code cites its section numbers and invariant ids directly. Read the relevant part before altering behaviour.
 - **Domain Glossary:** [`UBIQUITOUS_LANGUAGE.md`](UBIQUITOUS_LANGUAGE.md) — The vocabulary of the domain, and the words to avoid. Worth ten minutes before your first issue or PR.
 - **Contributing Guide:** [`CONTRIBUTING.md`](CONTRIBUTING.md) — Learn how to run automated unit tests, set up dev virtual environments, and file deprecation rows.
 - **Security & Privacy Policy:** [`SECURITY.md`](SECURITY.md) — Understand localhost network guidelines and vulnerability reporting protocols.
@@ -651,7 +651,19 @@ product most:
 
 If you use Maestro CS in published work, cite it via
 [`CITATION.cff`](CITATION.cff) — GitHub turns that file into a **"Cite this
-repository"** button with ready-made APA and BibTeX.
+repository"** button with ready-made APA and BibTeX. Or take the BibTeX
+directly:
+
+```bibtex
+@software{maestro_career_studio,
+  author   = {Dhayashanker Loganathan, Ajey},
+  title    = {Maestro Career Studio: a local-first, evidence-backed
+              job-application copilot},
+  url      = {https://github.com/seinun-ai/maestro-career-studio},
+  license  = {Apache-2.0},
+  year     = {2026}
+}
+```
 
 ---
 

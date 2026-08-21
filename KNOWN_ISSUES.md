@@ -9,7 +9,7 @@ Read it before you file a bug — several things below look like defects and are
 recorded decisions. Read it before you pick up work — the last section is the
 part that needs other people.
 
-For the engineering detail behind any item, `docs/SYSTEM.md` §11 is the deferred
+For the engineering detail behind any item, `SYSTEM.md` §11 is the deferred
 list and §13 is the migration ledger. This file is the map; that one is the
 territory.
 
@@ -27,7 +27,7 @@ These have real coverage and are unlikely to move under you.
 - **The Career KB → resume → application chain.** Approved evidence composes
   verbatim; rewriting is a separate, consented step. Resume versions are
   recorded, so nothing is one-way.
-- **The MCP server.** 73 tools across six profiles, cold-install tested in CI
+- **The MCP server.** 77 tools across six profiles, cold-install tested in CI
   against the exact command the README gives you.
 - **Data stays local.** No telemetry leaves your machine — see the extension
   section of the README for what the one telemetry endpoint stores and how to
@@ -52,9 +52,23 @@ Honest list. None of these are secret; most are §11 items with a number.
   cover-letter path does not, so its output is less constrained. (§11.11)
 - **Chat-attached documents do not become KB sources.** Only their extracted
   text is kept, so provenance stops at the chat message. (§11.6)
-- **The extension does not handle every ATS.** Workday, Greenhouse, Lever and
-  iCIMS get the most attention because those are what the author meets. Expect
-  gaps elsewhere, and see §11.12 and §11.18.
+- **The extension does not handle every ATS — and autofill is not
+  first-try-clean even on the ones it does.** Workday, Greenhouse, Lever and
+  iCIMS get the most attention because those are what the author meets; expect
+  gaps elsewhere (§11.12, §11.18). Even on covered platforms a first run
+  rarely fills everything: unusual widget kinds (multi-step button dropdowns,
+  custom comboboxes) and less-common field domains fall through to you, by
+  design — the fill engine abstains rather than guesses.
+- **Unusual resume shapes import unevenly.** Ingest is most confident on
+  conventionally structured resumes. Content that does not map cleanly onto
+  the structured model — nonstandard sections, merged entries, heavily
+  designed layouts — can land in the wrong place or need manual rearranging
+  after import.
+- **Adding a Typst template is finicky.** The bundled Typst templates work,
+  but bringing a new one in through the in-app chat or MCP is rougher than
+  the LaTeX path: depending on the template it can take source-level
+  adjustment, or extra package installation, before validation passes. The
+  web "New template" flow starts from a LaTeX starter only today.
 - **Onboarding import is capped at 10 files** and does not resolve entities
   across kinds, so a certificate can land as a sibling of the job it belongs
   to. (§11.16)
@@ -182,7 +196,7 @@ disagree, open a discussion rather than a PR.
 
 ## Migrations in flight
 
-Two things are deliberately live in two forms at once. `docs/SYSTEM.md` §13
+Two things are deliberately live in two forms at once. `SYSTEM.md` §13
 carries the full ledger with removal triggers.
 
 - **Two render engines.** LaTeX and Typst are both first-class and both
@@ -234,7 +248,7 @@ gap, not busy-work invented for contributors.
 - Read `CONTRIBUTING.md`. It is short, and it names the two things that will
   get a PR sent back: adding a GPL/AGPL dependency, and claiming the ATS score
   predicts a real system.
-- Read the relevant part of `docs/SYSTEM.md` §6 (cross-cutting invariants).
+- Read the relevant part of `SYSTEM.md` §6 (cross-cutting invariants).
   Most review comments on this codebase are invariants, not style.
 - Open an issue before a large change. Several items above have a decided
   approach that is not obvious from the code.

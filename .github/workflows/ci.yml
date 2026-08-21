@@ -123,9 +123,12 @@ jobs:
     name: SYSTEM.md Header-Contract Gate
     runs-on: ubuntu-latest
 
-    # docs/SYSTEM.md's header says "integrate, don't append" and "ledgers must
-    # shrink". This is the machine half of that contract, mirroring how
-    # .slopledger.json machine-checks the §13 migration ledger. Stdlib only.
+    # SYSTEM.md's header says "integrate, don't append", "ledgers must shrink"
+    # and "caps are earned". This is the machine half of that contract,
+    # mirroring how .slopledger.json machine-checks the §13 migration ledger.
+    # It also fails when a §6 invariant loses the test or module pinned in
+    # .system_md_enforcement.json — the doc promising what the code no longer
+    # does is the failure this repo has actually shipped. Stdlib only.
     steps:
       - name: Checkout repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4

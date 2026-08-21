@@ -5,9 +5,9 @@ Briefly summarize what this pull request accomplishes and why the changes are ne
 Closes # (issue number)
 
 ### SYSTEM.md & Architectural Compliance
-- [ ] I have read `docs/SYSTEM.md` and verified my changes comply with existing architectural invariants.
-- [ ] I have updated `docs/SYSTEM.md` to reflect any new endpoints, models, entities, or frontend/backend behaviors introduced in this PR.
-- [ ] **Deprecation Ledger (§13):** If this change supersedes existing functionality without deleting it, I have added a tracking row in `docs/SYSTEM.md` Section 13 defining an explicit removal trigger.
+- [ ] I have read `SYSTEM.md` and verified my changes comply with existing architectural invariants.
+- [ ] I have updated `SYSTEM.md` to reflect any new endpoints, models, entities, or frontend/backend behaviors introduced in this PR.
+- [ ] **Deprecation Ledger (§13):** If this change supersedes existing functionality without deleting it, I have added a tracking row in `SYSTEM.md` Section 13 defining an explicit removal trigger.
 
 ### Verification & Testing
 Describe how you tested this PR and confirm automated tests pass cleanly:

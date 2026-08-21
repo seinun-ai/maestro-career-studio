@@ -1,5 +1,5 @@
 {
-  "_readme": "Machine-checkable removal triggers for docs/SYSTEM.md §13 (Active migrations & deprecation ledger). SYSTEM.md remains the source of truth for WHY each row exists and its traps; this file only encodes the triggers that can be evaluated mechanically. Run: python3 ~/.claude/skills/ai-slop-detector/scripts/ledger_check.py .  (add --strict for a non-zero exit on drift). Rows without triggers are prose/DB/build conditions — verify those by hand per SYSTEM.md. Keep row ids identical to §13.",
+  "_readme": "Machine-checkable removal triggers for SYSTEM.md \u00a713 (Active migrations & deprecation ledger). SYSTEM.md remains the source of truth for WHY each row exists and its traps; this file only encodes the triggers that can be evaluated mechanically. Run: python3 ~/.claude/skills/ai-slop-detector/scripts/ledger_check.py .  (add --strict for a non-zero exit on drift). Rows without triggers are prose/DB/build conditions \u2014 verify those by hand per SYSTEM.md. Keep row ids identical to \u00a713.",
   "rows": [
     {
       "id": "typst-default-flip",
@@ -56,7 +56,7 @@
           ]
         }
       ],
-      "hand_check": "job_search_brief's identically named response fields are a frozen outward projection, NOT a legacy reader — deliberately outside the trigger paths. Also requires the Settings editor legacy bridge gone and GET /api/settings/autofill clean. Trigger path widened to extension/content/ 2026-08-02 after the phase-2 split moved the dual-read from agent.js to autofill.js:51,56 — a file-pinned path would go green on the next rename without the reader dying."
+      "hand_check": "job_search_brief's identically named response fields are a frozen outward projection, NOT a legacy reader \u2014 deliberately outside the trigger paths. Also requires the Settings editor legacy bridge gone and GET /api/settings/autofill clean. Trigger path widened to extension/content/ 2026-08-02 after the phase-2 split moved the dual-read from agent.js to autofill.js:51,56 \u2014 a file-pinned path would go green on the next rename without the reader dying."
     },
     {
       "id": "job-location-raw",
@@ -70,21 +70,23 @@
     }
   ],
   "system_md_baselines": {
-    "total": 1595,
+    "total": 929,
     "sections": {
-      "1": 9,
-      "2": 34,
-      "3": 19,
-      "4": 591,
-      "5": 67,
-      "6": 137,
-      "7": 152,
-      "8": 272,
-      "9": 76,
-      "10": 18,
-      "11": 66,
-      "12": 45,
-      "13": 72
-    }
+      "(preamble)": 58,
+      "1. What this is": 9,
+      "2. Repo layout": 34,
+      "3. Architecture at a glance": 19,
+      "4. Core entities and their lifecycles": 16,
+      "5. The application workflow, end to end (web)": 67,
+      "6. Cross-cutting invariants (do not break these)": 182,
+      "7. Agent surfaces": 207,
+      "8. Frontend conventions": 9,
+      "9. Dev & test environment": 101,
+      "10. Design-decision record": 22,
+      "11. Known deferred items (priority order)": 79,
+      "12. Gotchas that have bitten before": 54,
+      "13. Active migrations & deprecation ledger": 72
+    },
+    "reason": "2026-08-20 restructure: moved to repo root, extracted the reference tier (entities -> docs/entities/, frontend conventions -> docs/frontend-conventions.md), 1809 -> 929 lines. Section budgets are now measured against the cap rather than the current total, because extraction shrinks the denominator and would otherwise fail sections that never grew."
   }
 }

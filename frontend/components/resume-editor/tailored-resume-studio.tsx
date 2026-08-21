@@ -174,7 +174,7 @@ export function TailoredResumeStudio({
       ? ""
       : JSON.stringify(application.customized_json);
 
-  // Dirty-guard (docs/SYSTEM.md §12): the editor is keyed on the ADOPTED server
+  // Dirty-guard (SYSTEM.md §12): the editor is keyed on the ADOPTED server
   // snapshot, not the live `customizedKey`, so a foreign edit (chat/MCP) to the
   // same application no longer remounts StudioEditor and silently discards
   // in-progress studio edits. A newer server key is adopted (→ remount) only

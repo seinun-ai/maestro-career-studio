@@ -4,10 +4,10 @@ Thank you for your interest in improving Maestro CS! This guide covers how to se
 
 ## 1. Living Architecture Reference (SYSTEM.md)
 
-Before touching code or proposing changes, **read [`docs/SYSTEM.md`](docs/SYSTEM.md) first**. It is the absolute, living source of truth for repository layout, entity lifecycles, end-to-end application workflows, cross-cutting invariants, agent surfaces, frontend conventions, and historical gotchas.
+Before touching code or proposing changes, **read [`SYSTEM.md`](SYSTEM.md) first** (repo root). It is the absolute, living source of truth for repository layout, end-to-end application workflows, cross-cutting invariants, agent surfaces, and historical gotchas. Two reference sections are extracted and indexed from it — entity lifecycles in [`docs/entities/`](docs/entities/) and frontend conventions in [`docs/frontend-conventions.md`](docs/frontend-conventions.md) — and carry the same contract. `CLAUDE.md` and `AGENTS.md` at the root are one-line shims pointing here, so agent tools that auto-load a context file land on the real document.
 
 ### The Deprecation Ledger (§13)
-When contributing features or refactorings, adhere strictly to **`docs/SYSTEM.md` Section 13 (Active migrations & deprecation ledger)**:
+When contributing features or refactorings, adhere strictly to **`SYSTEM.md` Section 13 (Active migrations & deprecation ledger)**:
 - Whenever your work **supersedes** an existing design, code path, or schema without simultaneously deleting the old implementation, **you must file a new row in §13**.
 - Every row must define an explicit **removal trigger**: an observable condition (e.g., specific SQL query count or grep check) under which the legacy path will be eradicated.
 - When an existing removal trigger is met, prune the legacy code and delete the row from the ledger. Never leave satisfied green rows in §13.
@@ -77,7 +77,7 @@ that is a judgement call about whether the increase is earned, which is exactly
 why it is not automated.
 
 `.slopledger.json` is the one to leave alone most carefully: it mirrors the
-removal triggers in `docs/SYSTEM.md` §13, and the two are checked against each
+removal triggers in `SYSTEM.md` §13, and the two are checked against each
 other. Editing one without the other creates the drift the check exists to
 catch.
 
@@ -195,4 +195,4 @@ When submitting a pull request:
    and nothing to sign — see §3.)
 2. Ensure `pytest` passes cleanly across all backend and MCP tests.
 3. Ensure `tsc --noEmit` and `npm run build` succeed for the frontend.
-4. Verify that any updates or architectural changes are reflected directly in `docs/SYSTEM.md`.
+4. Verify that any updates or architectural changes are reflected directly in `SYSTEM.md`.

@@ -119,7 +119,7 @@ identifier is noted — see *Recommended renames* for the ones worth changing.
 - **"Explore" vs "Analytics".** The UI says Analytics; the API prefix and seven MCP tool names still say `explore` and are deliberately frozen. Say *Analytics* in prose; treat `explore` as an identifier, not a word.
 - **"Lint" vs "health".** `ResumeLintReport` is the class; the domain concept is a *Health Report*. Linting is a programming metaphor that means nothing to someone assessing a resume.
 - **"Point" vs "bullet" are genuinely different.** A *KB Point* is a durable claim in the career record; a bullet is rendered text in one resume. A point becomes a bullet by being ported. Using them interchangeably erases the sidecar boundary.
-- **"Resume Tailor" vs "Maestro CS".** The product was renamed. The server correctly reports `maestro-career-studio`, but the local MCP client still registers it as `resume-tailor` and the checkout directory is still `~/Projects/resume-tailor`. Neither is repo state; both will read as the product's name to anyone who sees them.
+- **"Resume Tailor" vs "Maestro CS".** The product was renamed; the MCP server reports `maestro-career-studio`. If you carry an MCP client registration or a checkout directory under the old name, rename it — either one will read as the product's name to anyone who sees it.
 
 ## Recommended renames
 
@@ -129,4 +129,4 @@ Opinionated, ordered by value. The first three are prose-only and free.
 2. **"Role Category", never "family"** — the ATS config still exposes a derived `title_families` mapping, which is fine as an internal index, but the word should not appear in prose or UI.
 3. **Qualify every "preview" and every "score"** at first use in any document or comment.
 4. **`Port` → `Copy to resume` in user-facing text.** "Port" is opaque outside the codebase; nothing in a resume tool suggests it means "copy these points across". Keep `KBPortLog` and the endpoints — the rename is for labels and help text.
-5. **Rename the MCP client registration `resume-tailor` → `maestro-career-studio`**, matching what the server already reports. One line in the local client config; it is the last place the old product name is visible in daily use.
+5. **Register the MCP server as `maestro-career-studio` in your client**, matching what the server reports. A registration carried over from before the rename is one line in the client config — and the last place the old product name stays visible in daily use.

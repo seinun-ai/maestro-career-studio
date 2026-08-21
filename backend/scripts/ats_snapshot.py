@@ -1,7 +1,7 @@
 """Score every active base resume against every stored job; print a ranking table.
 
 Usage (from backend/, dev DB running):
-    DATABASE_URL=postgresql://app:app@127.0.0.1:55432/resume_auto python scripts/ats_snapshot.py
+    DATABASE_URL=postgresql://app:app@127.0.0.1:55432/maestro_cs python scripts/ats_snapshot.py
 
 For a machine-readable before/after comparison, use scripts/ats_calibration.py.
 """

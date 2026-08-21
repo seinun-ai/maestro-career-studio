@@ -3,7 +3,7 @@
 Usage (review-time, against the dev DB), run from ``backend/``::
 
     unset TEST_DATABASE_URL   # app.db PREFERS it over DATABASE_URL; see main()
-    DATABASE_URL=postgresql://app:app@127.0.0.1:55432/resume_auto \
+    DATABASE_URL=postgresql://app:app@127.0.0.1:55432/maestro_cs \
     BASE_RESUMES_DIR=../base_resumes \
     PATH="/Library/TeX/texbin:$PATH" \
     TYPST_FONT_PATHS=... python -m scripts.apply_template_sources

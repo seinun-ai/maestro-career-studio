@@ -1553,7 +1553,7 @@ def attach_evidence_file(
     --output-dir and reports the path). Pass the ABSOLUTE path exactly as the
     browser tool reported it — with the standard setup that is under the repo's
     .playwright-mcp/ tree (e.g.
-    /Users/<user>/Projects/resume-tailor/.playwright-mcp/<name>.png). Do not
+    /Users/<user>/Projects/maestro-career-studio/.playwright-mcp/<name>.png). Do not
     invent screenshot-dir paths or pass relative paths. The bytes are read and
     uploaded server-side so they never enter the model context.
     PNG/JPEG only, 5 MB max. kind must be step | final_review | submission_receipt."""

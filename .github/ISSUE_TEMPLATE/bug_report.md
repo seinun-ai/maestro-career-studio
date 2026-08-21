@@ -29,4 +29,4 @@ Paste relevant backend or frontend console logs here
 ```
 
 ### SYSTEM.md & Architecture Impact
-Does this bug violate a known invariant in `docs/SYSTEM.md`? If so, which section?
+Does this bug violate a known invariant in `SYSTEM.md`? If so, which section?

@@ -1,0 +1,51 @@
+{
+  "_readme": "Enforcement points for the invariants in SYSTEM.md §6. Key = the {#inv-...} id carried by the invariant's bullet. Each pin names a file that must exist and a symbol that must still appear in it, so `scripts/check_system_md.py` fails when a documented invariant loses the test or module that enforces it — the 'docs promise what code no longer does' class. A rule with no pin is a wish; see the unpinned list at the bottom, and add pins rather than removing this file.",
+  "invariants": {
+    "inv-browser-boundary": [
+      {"path": "backend/tests/test_security_boundaries.py", "symbol": "test_template_source_cannot_reach_python_internals"},
+      {"path": "backend/tests/test_frontend_host_guard.py", "symbol": "allowed-hosts"},
+      {"path": "backend/tests/test_template_id_containment.py", "symbol": "test_the_preview_path_cannot_leave_the_preview_directory"},
+      {"path": "frontend/lib/allowed-hosts.mjs", "symbol": "export"},
+      {"path": "backend/app/origin_guard.py", "symbol": "Origin"}
+    ],
+    "inv-empty-env-unset": [
+      {"path": "backend/tests/test_config.py", "symbol": "scrub_empty_env"},
+      {"path": "backend/app/config.py", "symbol": "SCRUBBED_ENV"}
+    ],
+    "inv-staged-artifact-removal": [
+      {"path": "backend/app/services/application_writes.py", "symbol": "stage_resume_update"}
+    ],
+    "inv-stable-artifact-dir": [
+      {"path": "backend/tests/test_application_artifacts.py", "symbol": "test_get_dir_allocates_collision_safe_folder_once"},
+      {"path": "backend/app/services/application_artifacts.py", "symbol": "def get_dir"}
+    ],
+    "inv-placement-validation-twins": [
+      {"path": "backend/tests/test_placement_targets.py", "symbol": "test_canonicalize_raises_where_coerce_returns_none"},
+      {"path": "backend/app/services/placement_targets.py", "symbol": "canonicalize"}
+    ],
+    "inv-mcp-controls": [
+      {"path": "backend/mcp_server/tests/test_server.py", "symbol": "def test_"}
+    ],
+    "inv-frame-earns-data": [
+      {"path": "backend/tests/test_extension_frame_gate.py", "symbol": "test_a_subframe_without_form_evidence_is_refused"}
+    ],
+    "inv-policy-deny-list-single-source": [
+      {"path": "extension/shared/policy.js", "symbol": "NEVER_FILLED"}
+    ],
+    "inv-one-label-pattern-table": [
+      {"path": "backend/tests/test_extension_eligibility.py", "symbol": "test_the_shared_pattern_table_fails_loudly_when_it_is_wired_wrong"},
+      {"path": "extension/shared/profile-fields.js", "symbol": "profile"}
+    ]
+  },
+  "unpinned": {
+    "_note": "Invariants stated in §6 with no machine-checkable enforcement point yet. Each is a rule the gate cannot defend; add a pin above when you next touch the area, or demote the rule to a convention note. Tracked as a §11 deferred item.",
+    "ids": [
+      "inv-honesty",
+      "inv-tailor-vs-edit",
+      "inv-autofill-telemetry-no-values",
+      "inv-em-dash",
+      "inv-eeo-standing-consent",
+      "inv-pdf-word-spacing"
+    ]
+  }
+}

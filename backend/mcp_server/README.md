@@ -1,7 +1,8 @@
 # Maestro CS MCP Server
 
 A thin [MCP](https://modelcontextprotocol.io) wrapper around the Maestro CS
-FastAPI backend, so Claude Desktop can drive the app directly. Claude is the
+FastAPI backend, so Claude Desktop — or another stdio MCP client, such as the
+ChatGPT desktop app / Codex CLI — can drive the app directly. Claude is the
 brain — it extracts job descriptions, compares them to your resumes, and does
 the profile-coaching analysis. The app stays the system of record: it stores the
 structured data, renders the LaTeX PDFs, and serves everything back. The tools
@@ -21,8 +22,9 @@ below are just typed entry points into the existing backend HTTP API.
   with `docker compose ps` (or your Docker dashboard) and don't confuse it with an
   unrelated app on `8000`.
 
-- A Python environment with the backend installed (this is what Claude Desktop
-  launches as a subprocess). The MCP server was tested with `mcp` 1.26.
+- A Python environment with the backend installed (this is what Claude Desktop,
+  the ChatGPT desktop app, or Codex CLI launches as a subprocess). The MCP
+  server was tested with `mcp` 1.26.
 
 ## Install
 
@@ -58,19 +60,20 @@ Prerequisites).
 ## Scoped profiles (`MAESTRO_CS_MCP_PROFILE`)
 
 By default the server registers **all** tools (`full`). For workflow-specific
-Claude sessions (especially apply + Playwright), set
-`MAESTRO_CS_MCP_PROFILE` so unused domains never appear in the tool list:
+sessions (especially apply + Playwright) in Claude, the ChatGPT desktop app, or
+Codex CLI, set `MAESTRO_CS_MCP_PROFILE` so unused domains never appear in the
+tool list:
 
 | Profile | Use when | Approx tools |
 | --- | --- | --- |
-| `full` | Mixed / default | all (73) |
+| `full` | Mixed / default | all (77) |
 | `hunt` | Job search + propose (no browser fill) | 19 |
-| `apply` | Tailor → PDF → autofill → evidence/consent/submit | 45 |
+| `apply` | Tailor → PDF → autofill → evidence/consent/submit | 46 |
 | `explore` | Analytics (`explore_*`) | ~11 |
 | `templates` | Template draft/validate/render | ~12 |
-| `career` | Career KB read/write (`kb_*`, career context/export) | ~10 |
+| `career` | Career KB read/write (`kb_*`, career context/export) | 17 |
 
-Same binary; Claude Desktop entries differ only by `env`. Example apply entry
+Same binary; each client's entries differ only by `env`. Example apply entry
 alongside Playwright — **share one folder tree** so staged PDFs are already
 inside Playwright’s output dir (no agent-side copy, no per-apply folder grant):
 
@@ -124,13 +127,43 @@ staging.
 | `get_job(job_id)` | Fetch one job's extracted fields. |
 | `get_application(application_id)` | Fetch one application's full detail — its job and the full `customized_json` (plus any legacy LLM fit scores kept for history). The detail counterpart to the slim `list_applications`. For the before/after ATS view, use `compare_ats`. |
 | `get_career_export()` | Return the exact generated `career.md` body. Use `get_career_context()` when structured resume and memory fields are preferable. This is a portable Markdown view, not a tailoring input. |
+| `get_career_context()` | Read the full composed Career KB view — the approved-points resume plus the beyond-the-resume `memory` text — for grounding outreach or social writing. |
 | `list_referrals` | List referral contacts (company, careers URL, contact name, notes, applications count). |
+| `list_qa_entries(application_id)` | List the generated screening answers and cover letters for an application, newest first. |
+| `get_job_search_brief()` | Read the server-composed job-search brief (profile constraints, persona, base-resume summaries, role mix, top skills, referral pages) — call first in an agentic search session. |
+| `get_autofill_profile(application_id?, base?)` | Read the user's stored application-form autofill data (contact, work-authorization, preferences, consented EEO) — the same feed the Chrome extension's deterministic fill uses. |
+| `find_job_by_url(source_url)` | Check whether a posting is already captured, by URL, before spending an extraction on it. |
 
 **JD ingest**
 
 | Tool | Description |
 | --- | --- |
 | `store_extracted_jd(extracted_json, raw_text?, source_url?)` | Store a JD that Claude extracted. `extracted_json` must match the `JobExtraction` schema (company, title, role_category, level, employment_type, work_mode, city/state/country, location_raw, salary_min/max, salary_period, work_authorization, opt_accepted, years_experience_min/max, `skills[{skill_name, skill_category, requirement_level}]`, responsibilities[], qualifications[]). |
+
+**Health check**
+
+| Tool | Description |
+| --- | --- |
+| `run_health_check(kind, key)` | Run the JD-independent resume health check on a base resume or application — classifies every bullet on the evidence ladder and returns a score, grade, gates, and ranked findings. Run this before `create_tailoring_session`. |
+| `get_health_report(kind, key)` | Fetch the most recently stored health report without re-running it. |
+| `waive_health_gate(kind, key, gate_id, reason)` | Bypass a failing fatal health gate — call only when the user has explicitly said to waive it. |
+| `unwaive_health_gate(kind, key, gate_id)` | Remove a health-gate waiver and restore the gate's protection. |
+
+**Career KB**
+
+| Tool | Description |
+| --- | --- |
+| `kb_list_entities(kind?, status?)` | List Career KB entities with their IDs — start here before editing anything, since `get_career_context` returns prose with no IDs. |
+| `kb_get_entity(entity_id)` | Full detail for one Career KB entity: dates, notes, points, attached documents, activity timeline. |
+| `kb_list_points(state?)` | List Career KB points across all entities, optionally filtered by state (draft/approved/retired). |
+| `kb_capture(text, entity_id?)` | Capture free-text career news into DRAFT points for the user to approve at `/career`. |
+| `kb_edit_point(point_id, text?, tags?)` | Reword or retag a Career KB point; changing the text sends it back to DRAFT. |
+| `kb_create_entity(kind, title, org?, start_date?, end_date?, status?, notes?, detail?)` | Create a Career KB entity (experience/project/education/certification/extra). Writes immediately, not draft-gated. |
+| `kb_edit_entity(entity_id, title?, org?, start_date?, end_date?, status?, notes?, detail?)` | Fix an entity's dates, title, org, notes, or lifecycle status. Writes immediately, not draft-gated. |
+| `kb_edit_profile(contact?, summary?, skills?, notes?)` | Update the Career KB profile (contact, summary, skills, notes). Writes immediately; each supplied field replaces its stored value wholesale. |
+| `kb_ingest_resume(resume_key, data, brief?)` | Persist one caller-parsed resume into the Career KB as DRAFT points, merging by identity key across resumes. No in-house LLM. |
+| `kb_approve_points(point_ids, state?)` | Batch-approve or retire Career KB points — the gate that puts a point on composed resumes. Call only after the user has approved. |
+| `create_base_resume_from_kb(entity_ids, role_category?, role_label?, display_name?, include_summary?, summary?)` | Compose a new base resume from selected, approved Career KB entities. LLM-free. |
 
 **Base resume writes**
 
@@ -146,6 +179,8 @@ staging.
 | Tool | Description |
 | --- | --- |
 | `tailor_application(job_id, base_resume, ops)` | Create an application by applying typed edit `ops` to a base resume server-side. Read the base with `get_base_resume`, then send only the changed fields as `ops` (same op kinds as `edit_base_resume`). The server inherits every untouched field from the stored base and validates the result. No backend LLM call. |
+| `edit_application(application_id, ops)` | Apply typed edit `ops` on top of an application's *current* tailored resume, preserving every prior edit — the right tool for an incremental fix after a PDF preview. Contrast with `tailor_application`, which rebuilds from the base and discards existing tailored edits. |
+| `update_application(application_id, status?, applied_at?, notes?, referral_id?)` | Update an application's tracking fields (status, applied_at, notes, referral_id). Only the arguments passed are sent — omitting one leaves it untouched, so this cannot clear a field to null. |
 | `render_pdf(target_type, target_id)` | Render a PDF. `target_type` is `"base_resume"` (`target_id` = slug) or `"application"` (`target_id` = application id). |
 | `get_rendered_pdf(target_type, target_id)` | Save a local PDF inspection copy plus per-page PNG paths and return slim metadata. No image base64 is included. |
 | `get_rendered_pdf_page_image(target_type, target_id, page_number)` | Explicitly fetch one 1-based page preview, including only that page's `page_image_b64`. |
@@ -181,6 +216,23 @@ includes the upload path, byte count, SHA-256 digest, page count, and em-dash
 findings. This prepares a browser attachment only; it does not authorize or
 submit an application.
 
+**Apply package**
+
+| Tool | Description |
+| --- | --- |
+| `generate_qa_answers(application_id, questions)` | Generate a batch of screening-question answers for an application, grounded in the resume and any linked referral contact. |
+| `generate_cover_letter(application_id, tone)` | Generate a cover letter for an application in the requested tone, replacing any prior generated one. |
+
+**Templates**
+
+| Tool | Description |
+| --- | --- |
+| `list_templates()` | List resume templates across both engines — id, display name, status (draft/ready), engine, default flag. |
+| `get_template(template_id)` | Get a template's full source (Jinja2+LaTeX, or raw Typst) plus engine and supported format keys. |
+| `create_template_draft(id, display_name, source?, validate?, engine?)` | Create a DRAFT template (`engine` defaults to `latex`; pass `engine="typst"` with required raw `.typ` source). Pass `validate=true` to test-compile in the same call. |
+| `update_template_draft(template_id, source?, display_name?, validate?)` | Edit a draft template; changing the source resets it to draft. The active default template cannot be edited here. |
+| `validate_template(template_id)` | Test-compile a template against a sample resume; becomes `ready` on success, or returns the compile error to fix. |
+
 **ATS scoring + gap tailoring**
 
 Scoring is deterministic — a hybrid engine of deterministic lexical layers
@@ -207,6 +259,8 @@ transport-session collision this rename avoids.
 | `score_ats(job_id, target_type?, target_id?)` | Deterministic ATS score (replaces the old `score_fit` LLM scorer). Omit the target to score **all** base resumes (fast, no LLM calls); or target one `"base_resume"` (`target_id` = slug) / `"application"` (`target_id` = id). Returns a 0–100 composite, per-layer subscores, gate warnings, and a per-skill diagnostic table with fix hints. |
 | `compare_ats(application_id)` | Before/after ATS comparison for an application: composite and per-layer deltas plus a per-skill diff (absent→matched, skills-list-only→dual, decayed→recent). Computes any missing phase row on demand. |
 | `create_tailoring_session(job_id, base_resume, enrich?)` | Start the gap-analysis workflow: scores the base (persisted as the "before" score) and returns the session's gap list in fix-cost order. `enrich=true` (default) runs one LLM pass adding display-only helper text and elicitation questions per gap — narrative never feeds the score. |
+| `quick_tailor(job_id, base_resume)` | Fast-path tailoring: fills the gap session from the user's saved quick-tailor profile instead of walking gaps one by one. Makes no in-house LLM call of its own. |
+| `list_tailoring_sessions(job_id)` | List all tailoring sessions for a job, newest first, so you can resume an open one instead of spawning a duplicate. |
 | `get_tailoring_session(tailoring_session_id)` | Resume a half-done gap walkthrough: the frozen gap list, resolutions saved so far, and status (`open`/`tailored`). |
 | `close_tailoring_session(tailoring_session_id)` | Abandon an open tailoring session without tailoring it. |
 | `resolve_gaps(tailoring_session_id, resolutions)` | Save `{gap_id, action, payload}` resolutions (merged by gap_id, idempotent). Actions: `add_keyword` (wording/placement fixes where evidence already exists), `user_input` (the user's real experience, for missing skills), `attach_project`, `skip`. |
@@ -220,8 +274,33 @@ transport-session collision this rename avoids.
 | `explore_skill_heatmap(limit?)` | Skill-frequency heatmap. |
 | `explore_role_mix_over_time()` | Role mix of collected jobs over time. |
 | `explore_fit_distribution()` | How each base resume's ATS composites (deterministic engine, not LLM fit scores) are distributed across jobs. |
+| `explore_gap_frequency(role_category?, level?, employment_type?, limit?)` | Skills that recur as gaps across saved JDs, ranked by how many jobs want them and their ATS point headroom — recurring demand, not a "you lack this" list. |
+| `explore_ats_over_time(role_category?, level?, employment_type?)` | Average ATS composite over time (weekly), split by phase (base vs tailored) and role category. |
+| `explore_tailoring_lift(role_category?, level?, employment_type?)` | How much tailoring lifts the ATS score (base→tailored), averaged per role category, plus an overall row. |
 | `list_applications(status?, role_category?, limit?, offset?)` | List applications as a **thin summary array, paginated** (limit + offset; carries each row's legacy `verdict` + `gap_summary` where present, but no `customized_json` — use `get_application` for detail), optionally filtered. |
 | `export_jobs(role_category?, level?, since?, skill?)` | Export filtered job rows for analysis. |
+
+**Proposal ledger**
+
+Agent-hunted applications route through a proposal ledger with an explicit
+human consent gate before anything is submitted — these tools file, triage,
+and carry a proposal through that lifecycle.
+
+| Tool | Description |
+| --- | --- |
+| `propose_application(job_id, fit?, plan?, application_id?, referral_id?)` | File an agent-hunted application proposal for user review; idempotent if one is already open for the job. Refused for a blocklisted company or a previously declined posting. |
+| `list_proposals(status?)` | List application proposals, optionally filtered by status. Apply runs execute `status="accepted"` proposals only. |
+| `get_proposal(proposal_id)` | Get proposal detail: job facts, application summary, QA entries, evidence manifest. |
+| `record_decision(proposal_id, fit, application_id?)` | Record the user's decision on a proposal in `needs_decision`, resolving it back to `pending_review`. |
+| `request_decision(proposal_id, reason)` | Escalate an unlinked or ambiguous proposal to `needs_decision`. |
+| `resume_proposal(proposal_id)` | Return a `needs_human` proposal to `pending_review` so preparation can continue. |
+| `get_final_review(proposal_id)` | Compact final-review bundle — job summary, chosen base/ATS delta, PDF readiness, QA answers, EEO consent flag, blocked items, evidence manifest — read before asking for consent. |
+| `record_consent(proposal_id, action, channel, note?)` | Record the user's explicit approve/reject decision. Call only after the user has actually said yes or no; writes an append-only audit row. |
+| `attach_evidence(proposal_id, step, label, image_base64, kind?)` | Attach step evidence as base64 image bytes. Prefer `attach_evidence_file` whenever the screenshot already exists as a file. |
+| `attach_evidence_file(proposal_id, step, label, file_path, kind?)` | Attach evidence from an image file already on disk (e.g. a Playwright screenshot); bytes are read and uploaded server-side. |
+| `mark_submitted(proposal_id, user_attested?, channel?, note?)` | Flip an approved proposal to submitted, linking the application to applied. Normally requires submission-receipt evidence. |
+| `record_triage(proposal_ids, action, channel?, note?, reason?)` | Record the user's accept/decline triage decision over one or many proposals; accept queues them for the next apply run. |
+| `report_failure(proposal_id, reason)` | Report execution failure, transitioning a proposal to `needs_human` (or the terminal `submission_uncertain` status). |
 
 ## Add to Claude Desktop
 
@@ -407,12 +486,14 @@ the whole point — stay on it.
 
 ## How it works
 
-Claude Desktop launches this server as a stdio subprocess. Each tool call is
-turned into an HTTP request to the FastAPI backend, which owns persistence and
-rendering. Claude does the reasoning; the app does the storage and the LaTeX.
+Claude Desktop (or another stdio MCP client — the ChatGPT desktop app, Codex
+CLI, Cursor, etc.) launches this server as a stdio subprocess. Each tool call
+is turned into an HTTP request to the FastAPI backend, which owns persistence
+and rendering. Claude does the reasoning; the app does the storage and the
+LaTeX.
 
 ```
-Claude Desktop --stdio--> maestro-career-studio-mcp --HTTP--> FastAPI (:8000) --> Postgres + LaTeX
+MCP client --stdio--> maestro-career-studio-mcp --HTTP--> FastAPI (:8000) --> Postgres + LaTeX
 ```
 
 ### List responses are a single JSON array (audit #10)
