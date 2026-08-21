@@ -526,10 +526,13 @@ files behind them.
 ### Leave with everything
 
 `career.md` is your whole career record as one deterministic Markdown file — no
-model involved — downloadable from the Career KB page or over MCP. The database
-is yours, the resumes are files on your disk, and nothing about leaving is
-engineered to be difficult, because nothing here was ever monetized by making it
-so.
+model involved — downloadable from the Career KB page or over MCP. Tailored
+output is filed the same way: every application render lands in
+`applications/` in its own company-and-role-named folder holding the typeset
+source and the exact PDF, so going back to verify what you actually sent is
+opening a folder, not querying a database. The database is yours, the resumes
+are files on your disk, and nothing about leaving is engineered to be
+difficult, because nothing here was ever monetized by making it so.
 
 ---
 

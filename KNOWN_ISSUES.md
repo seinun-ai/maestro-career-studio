@@ -69,6 +69,17 @@ Honest list. None of these are secret; most are §11 items with a number.
   the LaTeX path: depending on the template it can take source-level
   adjustment, or extra package installation, before validation passes. The
   web "New template" flow starts from a LaTeX starter only today.
+- **Formatting knobs on conversationally created templates need hand-tuning.**
+  A template brought in through chat or MCP often compiles before its knobs
+  (margins, spacing, fonts) are actually wired to the layered override
+  system — expect a pass of source-level work before per-resume and
+  per-application overrides behave on it.
+- **Local models are supported but not battle-tested.** The OpenAI-compatible
+  path (Ollama, LM Studio, vLLM) is a supported setup, but it has not been
+  exercised hard against the app's heavier demands — long tailoring prompts,
+  strict JSON output, streaming tool calls for chat. Expect model-dependent
+  rough edges, and use the per-model **Test** button in Settings to measure
+  what your model can actually do before relying on it.
 - **Onboarding import is capped at 10 files** and does not resolve entities
   across kinds, so a certificate can land as a sibling of the job it belongs
   to. (§11.16)

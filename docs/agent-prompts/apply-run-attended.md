@@ -1,9 +1,8 @@
-# Apply run — attended, with a channel in the loop
+# Apply run — attended, whole queue
 
 > For a session where the agent works the whole accepted queue while you are
-> reachable (at your desk or on a channel like Slack). Fill in `<CHANNEL>`,
-> or delete the channel lines to keep everything in the session. See
-> [README.md](README.md) for setup.
+> at the keyboard; everything — progress lines, questions, consent — stays in
+> the session. See [README.md](README.md) for setup.
 
 ---
 
@@ -23,18 +22,16 @@ Tailor only where the playbook says: when the linked application or its PDF
 is absent or stale. Never re-tailor or overwrite a current draft — if I
 tailored one myself, that IS the current version.
 
-Comms via <CHANNEL>: post one line when you start each application
-(company · role), and IMMEDIATELY when anything needs me, saying exactly
-what's needed and where. When an application reaches its final review, post
-the consolidated summary there too (company, role, PDF filename, key
-answers, any `duplicate_submitted` warning).
+Post one line here when you start each application (company · role), and
+IMMEDIATELY when anything needs me, saying exactly what's needed and where.
+When an application reaches its final review, present the consolidated
+summary here (company, role, PDF filename, key answers, any
+`duplicate_submitted` warning).
 
 I'm present. Before any submit: one consolidated final review, then wait for
-my explicit yes — given either here in the session or as a reply to that
-summary on <CHANNEL>. Check the channel for my reply before proceeding, and
-record consent with the channel I actually used. One application, one
-consent — a yes never carries over to the next. If my answer is no or
-unclear, don't click; ask or park it.
+my explicit yes here in the session, and record consent as coming from this
+session. One application, one consent — a yes never carries over to the
+next. If my answer is no or unclear, don't click; ask or park it.
 
-End with a short digest here and on <CHANNEL>: submitted / needs-me /
-declined-dead / remaining in queue.
+End with a short digest: submitted / needs-me / declined-dead / remaining in
+queue.

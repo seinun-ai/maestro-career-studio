@@ -19,7 +19,7 @@ cannot relax what the playbook forbids.
 | File | What it is | How it runs |
 | --- | --- | --- |
 | [`scheduled-hunt.md`](scheduled-hunt.md) | Daily job hunt: source postings, gate them, capture + score, propose up to your ceiling. Capture/score/propose **only**. | On a schedule, unattended |
-| [`apply-run-attended.md`](apply-run-attended.md) | Work the accepted-proposal queue with a browser while you are reachable; comms and consent can flow through a chat channel. | Attended session |
+| [`apply-run-attended.md`](apply-run-attended.md) | Work the whole accepted-proposal queue with a browser while you are at the keyboard; consent per application, in the session. | Attended session |
 | [`apply-run-interactive.md`](apply-run-interactive.md) | Same queue, but nothing starts until you pick an application from a numbered list, and consent is given in the session itself. | Attended session, fully hands-on |
 
 There is also a skill version of the interactive flow at
@@ -30,10 +30,6 @@ for clients that support skills.
 
 Each prompt marks its personal placeholders in `<ANGLE_BRACKETS>`. Fill in:
 
-- **`<CHANNEL>`** — a Slack (or other) channel your agent can post to, if you
-  want out-of-session digests and consent. No channel? Delete those lines;
-  the agent's final message becomes the digest and consent happens in the
-  session.
 - **`<TARGET_MARKET>`** — the location scope for sourcing (e.g. "United
   States"). Role keywords, work authorization and per-run ceilings are NOT
   placeholders: they come from your Job Search Brief

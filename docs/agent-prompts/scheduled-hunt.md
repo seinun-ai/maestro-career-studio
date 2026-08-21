@@ -1,8 +1,9 @@
 # Scheduled hunt — capture, score, and propose only
 
-> Fill in `<TARGET_MARKET>` and `<CHANNEL>` (or delete the channel line),
-> swap the two sourcing examples for whatever job sources your agent has,
-> and schedule it daily. See [README.md](README.md) for setup.
+> Fill in `<TARGET_MARKET>`, swap the two sourcing examples for whatever job
+> sources your agent has, and schedule it daily. The run's final message is
+> the digest — read it wherever your client surfaces scheduled-run results.
+> See [README.md](README.md) for setup.
 
 ---
 
@@ -70,7 +71,7 @@ and from Maestro CS: `get_job_search_brief`, `find_job_by_url`,
    what the company is/does, direct vs staffing (whose client if known), any
    vet doubt — reused per company}`.
 
-6. DIGEST (final message; also post to <CHANNEL> if you use one): per-source
+6. DIGEST (final message): per-source
    pull counts; tallies for blocklisted / no-JD / easy-apply / duplicate /
    suspicious-company / captured / scored-but-not-proposed / proposed; top 5
    proposals (title, company, score, source_url); a "suggested blocklist
