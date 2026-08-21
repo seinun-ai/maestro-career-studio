@@ -4,10 +4,13 @@
     <img src="docs/assets/brand/maestro_lockup_light.svg" alt="Maestro Career Studio" width="460">
   </picture>
 </p>
-[![CI](https://github.com/seinun-ai/maestro-career-studio/actions/workflows/ci.yml/badge.svg)](https://github.com/seinun-ai/maestro-career-studio/actions/workflows/ci.yml)
-[![CodeQL](https://github.com/seinun-ai/maestro-career-studio/actions/workflows/codeql.yml/badge.svg)](https://github.com/seinun-ai/maestro-career-studio/actions/workflows/codeql.yml)
-[![Tests](https://img.shields.io/badge/tests-3%2C807%20passing-brightgreen)](https://github.com/seinun-ai/maestro-career-studio/actions/workflows/ci.yml)
-[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+
+<p align="center">
+  <a href="https://github.com/seinun-ai/maestro-career-studio/actions/workflows/ci.yml"><img src="https://github.com/seinun-ai/maestro-career-studio/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/seinun-ai/maestro-career-studio/actions/workflows/codeql.yml"><img src="https://github.com/seinun-ai/maestro-career-studio/actions/workflows/codeql.yml/badge.svg" alt="CodeQL"></a>
+  <a href="https://github.com/seinun-ai/maestro-career-studio/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/tests-3%2C807%20passing-brightgreen" alt="Tests"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="License"></a>
+</p>
 <!-- TODO(P5): after the first v* tag publishes images, add a ghcr.io image badge here,
      e.g. https://img.shields.io/badge/ghcr.io-multi--arch-blue linking to the packages page.
      Also refresh the static test-count badge above at each release. -->
