@@ -22,9 +22,8 @@ authors:
   # Matches the copyright line in NOTICE ("Copyright 2026 Seinun LLC — Ajey
   # Dhayashanker Loganathan"), which is the owner-directed attribution of
   # record. It moved out of LICENSE when that became the verbatim Apache text.
-  - given-names: Ajey
+  - given-names: Ajey Dhayashanker
     family-names: Loganathan
-    name-particle: Dhayashanker
     email: ajey@seinun.com
     affiliation: "Seinun LLC"
 license: Apache-2.0

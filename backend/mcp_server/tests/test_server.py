@@ -1085,12 +1085,25 @@ _DOCSTRING_CLIENT_BUDGET = 2000
 
 
 async def test_registered_tool_docstrings_fit_client_truncation_budget():
+    import ast
     import inspect
+    import pathlib
+
+    # Python 3.13+ dedents __doc__ at compile time, so a runtime-only measure
+    # under-counts what 3.12 (CI, the shipped image) actually publishes.
+    # Measure the SOURCE docstring too, or a 3.13-green can be a 3.12-red.
+    src_lens: dict[str, int] = {}
+    tree = ast.parse(pathlib.Path(srv.__file__).read_text())
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            doc = ast.get_docstring(node, clean=False)
+            if doc:
+                src_lens[node.name] = len(doc)
 
     over: dict[str, int] = {}
     for tool in await srv.mcp.list_tools():
         raw = tool.description or ""
-        n = max(len(raw), len(inspect.cleandoc(raw)))
+        n = max(len(raw), len(inspect.cleandoc(raw)), src_lens.get(tool.name, 0))
         if n > _DOCSTRING_CLIENT_BUDGET:
             over[tool.name] = n
     assert not over, (

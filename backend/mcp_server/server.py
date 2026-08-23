@@ -527,26 +527,25 @@ def kb_ingest_resume(
     company+role+start_date; projects: name; education: institution+degree;
     certs: the string), then a near-identity pass for experience/projects/certs
     (token-subset; projects allow ≤2 extra tokens). Education and extra are
-    identity-key-only. Different spellings can merge on that second pass —
-    you need not normalize names for the near cases it covers, but everything
-    outside them still forks.
+    identity-key-only. Different spellings can merge on the second pass;
+    names outside its coverage still fork.
 
     Re-running the same resume_key is a merge: no duplicate entities; a bullet
-    already on the entity (any state, including retired) is not re-created.
+    already on the entity (even retired) is not re-created.
     resume_key must match ^[a-z0-9][a-z0-9_]*$.
 
     `data` is ResumeData (only contact.name and contact.email required).
     Sections: contact, summary, skills[{category, items}], experience, projects,
     education, certifications[str], extra_sections. Experience:
     {company, role, location?, start_date?, end_date?, bullets[str]}.
-    extra_sections are NOT stored in the Career KB (report warns); add them
-    after the base is created. skills/contact/summary go to the KB profile
+    extra_sections are NOT stored in the KB (report warns); add them after
+    the base exists. skills/contact/summary go to the KB profile
     (no draft state). Profile seeding is first-write-wins — ingest the CURRENT
     resume first.
 
     Response {report, next}. report: created/matched entity ids, DRAFT point
-    ids, counts, warnings. next is a hint (null when suppressed). brief=True
-    in a multi-resume loop suppresses next before any settings read. 422 if
+    ids, counts, warnings. next is a hint (null when suppressed); brief=True
+    (multi-resume loops) suppresses it before any settings read. 422 if
     any source fails ResumeData validation or on a duplicate source key
     (atomic: nothing persisted); fix and resend.
     """
@@ -1334,11 +1333,10 @@ def create_tailoring_session(job_id: str, base_resume: str, enrich: bool = False
     enrichment.elicitation_question / suggested_wording / suggested_placement).
     KB coverage detection does NOT depend on it: the deterministic self-nomination
     and evidence-verification pass that used to sit downstream of the LLM call now
-    runs unconditionally, so KB autos still get stamped with enrich=False and even
-    if a provider outage would have broken the LLM pass. Pass enrich=True to
-    additionally pay for one fast-model call that adds those display-only
-    explanations and elicitation questions to each gap — it never changes scores
-    or which gaps exist.
+    runs unconditionally, so KB autos still get stamped with enrich=False, and
+    even during a provider outage. enrich=True pays for one fast-model call
+    adding those display-only explanations and elicitation questions per gap —
+    it never changes scores or which gaps exist.
 
     Response is the session plus a `next` next-step hint (null when the user's
     Settings switch has hints off)."""
@@ -1494,8 +1492,7 @@ def tailor_session(
     to the skills list (an add_skill_item op into a skills category) — never as an
     experience or project bullet asserting the candidate did the work. Every edit
     should trace back to a resolution or the candidate's real material; the
-    before/after compare view is the audit surface for any edit that goes beyond
-    the saved resolutions, so keep your ops honest and reviewable.
+    compare view audits any edit beyond the saved resolutions.
 
     Optional user_prompt adds free-form tailoring guidance. Creates the application
     from the base resume plus the ops, scores the result, and returns

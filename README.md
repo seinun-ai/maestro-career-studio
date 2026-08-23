@@ -685,7 +685,7 @@ directly:
 
 ```bibtex
 @software{maestro_career_studio,
-  author   = {Dhayashanker Loganathan, Ajey},
+  author   = {Loganathan, Ajey Dhayashanker},
   title    = {Maestro Career Studio: a local-first, evidence-backed
               job-application copilot},
   url      = {https://github.com/seinun-ai/maestro-career-studio},
