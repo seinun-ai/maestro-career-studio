@@ -12,6 +12,16 @@ When contributing features or refactorings, adhere strictly to **`SYSTEM.md` Sec
 - Every row must define an explicit **removal trigger**: an observable condition (e.g., specific SQL query count or grep check) under which the legacy path will be eradicated.
 - When an existing removal trigger is met, prune the legacy code and delete the row from the ledger. Never leave satisfied green rows in §13.
 
+### If the SYSTEM.md size check fails on your PR
+
+CI runs `scripts/check_system_md.py`, which caps the doc's size so it stays a
+reference agents and humans actually read, not an append-only changelog. If it
+goes red on your PR, **don't fight the doc into passing** — either leave
+`SYSTEM.md` untouched and describe the doc impact in your PR description, or
+write the addition naturally and say so. The maintainer integrates the doc
+change and re-baselines (with the auditable `--reason`) at review; a red on
+this one check will not sink an otherwise good PR.
+
 ---
 
 ## 2. Project Scope
