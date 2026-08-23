@@ -245,7 +245,12 @@ def fit_distribution(db: Annotated[Session, Depends(get_db)]):
         buckets_by_resume[row.base_resume][row.bucket] = row.n
 
     return [
-        {"base_resume": base_resume, "buckets": buckets}
+        {
+            "base_resume": base_resume,
+            "buckets": buckets,
+            "n": sum(buckets.values()),
+            "low_sample": sum(buckets.values()) < 5,
+        }
         for base_resume, buckets in sorted(buckets_by_resume.items())
     ]
 

@@ -196,6 +196,32 @@ def test_fit_distribution_buckets_scores(db_session):
     assert rows["data_scientist"]["80-100"] == 1
 
 
+def test_fit_distribution_flags_low_sample_and_reports_n(db_session):
+    jobs = [
+        _seed_job(db_session, raw_hash=f"fit-ls-{i}", role_category="data_scientist")
+        for i in range(6)
+    ]
+    db_session.add_all(
+        [_ats_base_row(jobs[i].id, "hybrid", 15.0 + i) for i in range(5)]
+        + [_ats_base_row(jobs[5].id, "thin", 88.0)]
+    )
+    db_session.commit()
+
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        response = TestClient(app).get("/api/explore/fit-distribution")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    rows = {item["base_resume"]: item for item in response.json()}
+    assert rows["hybrid"]["n"] == 5
+    assert rows["hybrid"]["low_sample"] is False
+    assert rows["thin"]["n"] == 1
+    assert rows["thin"]["low_sample"] is True
+    assert rows["hybrid"]["buckets"]["0-20"] == 5
+
+
 def test_overview_aggregates(db_session):
     j1 = _seed_job(db_session, raw_hash="o1", role_category="data_scientist", level="entry")
     j2 = _seed_job(db_session, raw_hash="o2", role_category="data_scientist", level="mid")

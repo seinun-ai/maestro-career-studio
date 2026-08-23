@@ -1,14 +1,22 @@
 {
   "structure": {
     "root": "backend",
-    "modules": 401,
-    "total_loc": 109557,
-    "src_loc": 36768,
-    "test_loc": 72789,
+    "modules": 423,
+    "total_loc": 118645,
+    "src_loc": 39181,
+    "test_loc": 79464,
     "orphan_modules": [],
     "test_only_reachable": [],
     "orphan_loc": 0,
     "complexity_hotspots": [
+      {
+        "file": "mcp_server/tests/test_server.py",
+        "line": 532,
+        "name": "test_audit_one_sentence_docstring_fixes",
+        "complexity": 42,
+        "params": 0,
+        "lines": 50
+      },
       {
         "file": "app/services/explore_build_areas.py",
         "line": 162,
@@ -19,7 +27,7 @@
       },
       {
         "file": "app/services/career_kb.py",
-        "line": 641,
+        "line": 763,
         "name": "_compose_extra_item_ops",
         "complexity": 39,
         "params": 5,
@@ -43,7 +51,7 @@
       },
       {
         "file": "app/services/career_kb.py",
-        "line": 204,
+        "line": 206,
         "name": "compose_resume_data",
         "complexity": 37,
         "params": 2,
@@ -51,15 +59,15 @@
       },
       {
         "file": "app/services/kb_consolidation.py",
-        "line": 604,
+        "line": 953,
         "name": "_cluster_points_for_entity",
         "complexity": 35,
         "params": 6,
-        "lines": 111
+        "lines": 114
       },
       {
         "file": "app/services/quick_tailor.py",
-        "line": 91,
+        "line": 99,
         "name": "_plan_gap",
         "complexity": 34,
         "params": 3,
@@ -82,16 +90,8 @@
         "lines": 63
       },
       {
-        "file": "app/services/proposals.py",
-        "line": 283,
-        "name": "get_final_review",
-        "complexity": 31,
-        "params": 2,
-        "lines": 89
-      },
-      {
         "file": "tests/test_explore_router.py",
-        "line": 199,
+        "line": 225,
         "name": "test_overview_aggregates",
         "complexity": 29,
         "params": 1,
@@ -115,11 +115,19 @@
       },
       {
         "file": "app/services/tailoring_session.py",
-        "line": 884,
+        "line": 1093,
         "name": "_live_text_fragments",
         "complexity": 28,
         "params": 1,
         "lines": 43
+      },
+      {
+        "file": "app/services/proposals.py",
+        "line": 298,
+        "name": "get_final_review",
+        "complexity": 28,
+        "params": 2,
+        "lines": 89
       },
       {
         "file": "app/services/health_gates.py",
@@ -131,7 +139,7 @@
       },
       {
         "file": "app/services/career_kb.py",
-        "line": 134,
+        "line": 136,
         "name": "compose_context",
         "complexity": 26,
         "params": 1,
@@ -155,11 +163,11 @@
       },
       {
         "file": "app/services/kb_consolidation.py",
-        "line": 720,
+        "line": 1072,
         "name": "_merge_skills",
         "complexity": 25,
         "params": 3,
-        "lines": 56
+        "lines": 68
       },
       {
         "file": "app/services/chat_agent.py",
@@ -171,7 +179,7 @@
       },
       {
         "file": "tests/test_extension_panel.py",
-        "line": 469,
+        "line": 586,
         "name": "test_the_panel_document_is_self_contained_and_joins_the_namespace",
         "complexity": 24,
         "params": 0,
@@ -187,7 +195,7 @@
       },
       {
         "file": "app/services/career_kb.py",
-        "line": 787,
+        "line": 909,
         "name": "_compose_item_ops",
         "complexity": 24,
         "params": 5,
@@ -227,19 +235,27 @@
       },
       {
         "file": "app/services/kb_consolidation.py",
-        "line": 493,
+        "line": 826,
         "name": "_resolve_family",
         "complexity": 23,
         "params": 6,
-        "lines": 76
+        "lines": 92
       },
       {
         "file": "app/services/tailoring_session.py",
-        "line": 1100,
+        "line": 954,
+        "name": "_write_back_elicited_points",
+        "complexity": 23,
+        "params": 3,
+        "lines": 112
+      },
+      {
+        "file": "app/services/tailoring_session.py",
+        "line": 1309,
         "name": "tailor",
         "complexity": 23,
         "params": 4,
-        "lines": 182
+        "lines": 189
       },
       {
         "file": "app/services/explore_base_summaries.py",
@@ -259,7 +275,7 @@
       },
       {
         "file": "tests/test_extension_panel_resume.py",
-        "line": 303,
+        "line": 343,
         "name": "test_quick_tailor_creates_the_application_and_the_rings_say_so",
         "complexity": 22,
         "params": 1,
@@ -267,7 +283,7 @@
       },
       {
         "file": "app/services/career_kb.py",
-        "line": 593,
+        "line": 715,
         "name": "_build_entry",
         "complexity": 22,
         "params": 3,
@@ -306,28 +322,20 @@
         "lines": 53
       },
       {
-        "file": "app/services/tailoring_session.py",
-        "line": 796,
-        "name": "_write_back_elicited_points",
-        "complexity": 21,
-        "params": 3,
-        "lines": 61
-      },
-      {
         "file": "app/services/kb_ingest.py",
-        "line": 209,
+        "line": 217,
         "name": "ingest_document",
         "complexity": 21,
-        "params": 4,
-        "lines": 102
+        "params": 6,
+        "lines": 113
       },
       {
         "file": "app/services/kb_ingest.py",
-        "line": 317,
+        "line": 336,
         "name": "capture",
         "complexity": 21,
         "params": 5,
-        "lines": 102
+        "lines": 103
       },
       {
         "file": "tests/test_kb_adapt.py",
@@ -394,23 +402,15 @@
         "lines": 63
       },
       {
-        "file": "scripts/template_parity.py",
-        "line": 335,
-        "name": "_align_logical_lines",
-        "complexity": 19,
-        "params": 2,
-        "lines": 66
-      },
-      {
-        "file": "scripts/template_parity.py",
-        "line": 489,
-        "name": "run_corpus",
+        "file": "tests/test_extension_panel_job.py",
+        "line": 2155,
+        "name": "test_stop_using_this_draft_unbinds_the_page_and_rewrites_the_bridge",
         "complexity": 19,
         "params": 1,
-        "lines": 133
+        "lines": 40
       }
     ],
-    "hotspot_count": 380,
+    "hotspot_count": 401,
     "error_masking": [
       {
         "file": "tests/test_tracing.py",
@@ -459,8 +459,8 @@
       }
     ],
     "error_masking_count": 9,
-    "internal_import_edges": 1652,
-    "imports_per_module": 4.12,
+    "internal_import_edges": 1759,
+    "imports_per_module": 4.16,
     "entry_points_used": [
       "app.main",
       "mcp_server.server",
@@ -477,9 +477,9 @@
       "min_tokens": 50,
       "mode": "weak"
     },
-    "percentage": 1.02,
-    "duplicated_lines": 457,
-    "clones": 47,
+    "percentage": 0.9,
+    "duplicated_lines": 435,
+    "clones": 46,
     "allowlisted_clones": 0,
     "worst_files": [
       [
@@ -491,16 +491,16 @@
         7
       ],
       [
+        "app/models/application_proposal.py",
+        6
+      ],
+      [
         "app/services/resume_edit.py",
         6
       ],
       [
         "app/services/tailoring_session.py",
         6
-      ],
-      [
-        "app/models/application_proposal.py",
-        5
       ],
       [
         "app/services/kb_consolidation.py",
@@ -523,10 +523,6 @@
         3
       ],
       [
-        "app/models/base_resume.py",
-        3
-      ],
-      [
         "app/models/chat.py",
         3
       ],
@@ -537,6 +533,10 @@
       [
         "app/services/kb_ingest.py",
         3
+      ],
+      [
+        "app/models/base_resume.py",
+        2
       ],
       [
         "app/models/career_kb.py",
@@ -582,7 +582,7 @@
     {
       "rank": "P2",
       "signal": "complexity_concentration",
-      "detail": "380 function(s) over threshold. worst: app/services/explore_build_areas.py:162 cc=39",
+      "detail": "401 function(s) over threshold. worst: mcp_server/tests/test_server.py:532 cc=42",
       "why": "Complexity mass concentrating in few functions is the erosion signature.",
       "action": "Decompose the top 3. Do not touch the tail."
     },
@@ -595,16 +595,16 @@
     }
   ],
   "metrics": {
-    "total_loc": 109557,
-    "src_loc": 36768,
-    "test_loc": 72789,
-    "modules": 401,
+    "total_loc": 118645,
+    "src_loc": 39181,
+    "test_loc": 79464,
+    "modules": 423,
     "orphan_loc": 0,
-    "duplication_pct": 1.02,
-    "duplicated_lines": 457,
-    "clone_count": 47,
-    "complexity_hotspots": 380,
+    "duplication_pct": 0.9,
+    "duplicated_lines": 435,
+    "clone_count": 46,
+    "complexity_hotspots": 401,
     "error_masking": 9,
-    "imports_per_module": 4.12
+    "imports_per_module": 4.16
   }
 }

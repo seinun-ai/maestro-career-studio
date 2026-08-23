@@ -44,7 +44,9 @@
   this column (`base_resume_data.declared_role` →
   `role_titles.generic_role_title`), never from the slug. No slug is reserved
   (the pre-KB `master` profile is gone): every base resume is listable,
-  editable, portable and tailorable.
+  editable, portable and tailorable. `last_kb_synced_at` stamps the last
+  successful one-click base→KB sync (`GET/POST
+  /api/base-resumes/{slug}/kb-sync-status` / `kb-sync`; MCP `kb_sync_base`).
 - **ResumeData `extra_sections`** (custom sections): the resume is fixed core
   (contact/summary/skills/experience/projects/education/certifications) PLUS an
   ordered `extra_sections` list — a discriminated union on `type`: `entries`
@@ -200,8 +202,9 @@
   `{sources:[{key,data}]}`, provenance via the standard write-origin headers —
   atomic `ResumeData` validation (any failure 422s the batch in FastAPI's
   `{loc,msg,type}` shape, nothing persisted; ≤20 sources, unique slug keys),
-  then `consolidate_deterministic` (identity-key entity match, verbatim one
-  point per bullet with port-log rows, no LLM), no base minting. Points land
+  then `consolidate_deterministic` (identity-key entity match — with the
+  near-identity second pass below — verbatim one point per bullet with port-log
+  rows, no LLM), no base minting. Points land
   as DRAFTS (`origin="mcp"`) — agent transcription is NOT the verbatim-file
   exception; `kb_approve_points` is the review gate. Re-runs merge, but only
   within this path: the LLM resolver may canonicalize names this path matches
@@ -256,12 +259,46 @@
   outline. MCP: read-only `get_career_export()` in the full profile;
   `get_career_context()` remains structured grounding. Out of scope: Autofill,
   EEO, analytics, re-importing `career.md`, backend tailoring prompt
-  consumption. **Write provenance**: `KBPoint.origin` includes `mcp`;
-  `kb_points` and `kb_entities` carry a nullable `origin_detail` naming the MCP
-  client. It arrives on `X-Maestro-CS-Origin` / `-Origin-Detail` headers
-  (`app/write_origin.py`, allowlisted so a header cannot invent an origin).
-  NULL means web-written or predates provenance — no backfill, because
-  inventing an origin for historic rows would fabricate an audit trail.
+  consumption.   **Write provenance**: `KBPoint.origin` is a closed set including `mcp` and
+  `base_sync`; `kb_points` and `kb_entities` carry a nullable `origin_detail`
+  naming the MCP client. It arrives on `X-Maestro-CS-Origin` /
+  `-Origin-Detail` headers (`app/write_origin.py`, allowlisted so a header
+  cannot invent an origin). NULL origin means web-written or predates the
+  header — no backfill, because inventing an origin for historic rows would
+  fabricate an audit trail. **Groundedness** is a separate nullable column
+  `KBPoint.provenance`
+  (`user_authored|user_stated|derived_unverified|user_cannot_confirm`); NULL
+  renders as "unlabeled", is never a trusted UI state, and is never backfilled.
+  Verbatim user text is `user_authored` or `user_stated`; machine-merged
+  wording is `derived_unverified`. `KBPortLog.direction` is
+  `to_resume|from_source` (NULL = legacy; `from_source` is excluded from
+  usage). **Base→KB sync** classifies without an LLM and drafts new bullets
+  (`origin=base_sync`, `provenance=user_authored`). `classify` loads the same
+  recorded-drift seen-set `apply` does, so drift the KB already documents
+  classifies as tier `recorded` (`counts.recorded_drift`) and is never
+  actionable; the toolbar pill's N is new + `skills_new` + UNRECORDED drift.
+  Apply reports `skills_added` (item-level, not categories), `renamed` and
+  `titles_upgraded`, and stamps `last_kb_synced_at`.
+  **Near-identity entity matching** (`kb_consolidation.find_near_identity`,
+  shared by `consolidate`, `consolidate_deterministic` and sync) runs ONLY
+  after an exact identity-key miss and is deliberately conservative — a false
+  merge loses evidence, a false fork costs one manual merge. Experience: same
+  company AND a PRESENT, equal `start_date` AND one role's token set contained
+  in the other's (dateless never matches). Certifications: token-set EQUALITY
+  after stripping noise words, a LEADING vendor token and code-shaped
+  parentheticals; a named issuer on both sides that disagrees vetoes, and an
+  exam code must carry a hyphen, so code-shaped issuers (ISC2, 3M, O2) stay
+  identity. Projects: containment within `PROJECT_MAX_EXTRA_TOKENS` extra
+  tokens. Education and extra sections are exact-only. Two distinct candidates
+  matching is ambiguity → None. Write paths upgrade a stored role title to a
+  strictly richer incoming one (`upgrade_experience_title`); the LLM
+  `consolidate` path applies near-identity to certs only, because experience
+  goes through `_resolve_family`, which never renames. **Manual merge** (`POST
+  /api/kb/entities/{id}/merge` `{target_id}`, web-only — no MCP tool, per the
+  MCP no-destructive-surface rule): re-points points/documents/port-logs onto
+  the target, absorbs only fields the target left empty, deletes the source.
+  Guards: same kind, same extra-section key, no archived target, an ongoing
+  target keeps its open end date, 409 on a concurrent race.
   `entity_timeline` emits `point_captured` **only** for `mcp`/`chat` points (a
   hand-typed KB grows no timeline entry per bullet). `patch_point` clears
   `approved_at` when a point leaves `approved`.

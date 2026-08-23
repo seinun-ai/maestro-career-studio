@@ -475,7 +475,7 @@ def render_application(
     the pipeline and persists ``application.render_error`` on failure — this
     function only maps exception types to statuses."""
     try:
-        source_path, pdf_path = application_render.render_resume(
+        source_path, pdf_path, doc = application_render.render_resume(
             db, application_id, template_id=template_id
         )
     # ValidationError MUST stay above the ValueError clause: pydantic v2's
@@ -502,7 +502,15 @@ def render_application(
             status_code=500,
             detail=_truncate_detail(str(e)),
         ) from e
-    return RenderResult(tex_path=str(source_path), pdf_path=str(pdf_path))
+    return RenderResult(
+        tex_path=str(source_path),
+        pdf_path=str(pdf_path),
+        resolved_template_id=doc.resolved_template_id,
+        resolved_engine=doc.engine,
+        template_fallback=(
+            template_id is not None and doc.resolved_template_id != template_id
+        ),
+    )
 
 
 @router.get("/{application_id}/preview/pages")

@@ -44,7 +44,7 @@ def test_build_gaps_categorizes_and_orders():
     assert missing["gaps"][0]["gap_id"] == "skill:salesforce"
     assert set(missing["gaps"][0]["actions"]) == {
         "add_keyword", "user_input", "attach_project", "skip",
-        "enable_entry", "port_kb_point",
+        "enable_entry", "port_kb_point", "cannot_confirm",
     }
 
     wording = next(c for c in gaps["categories"] if c["key"] == "mirror_wording")
@@ -83,6 +83,7 @@ def test_missing_skills_gaps_allow_library_actions():
         "skip",
         "enable_entry",
         "port_kb_point",
+        "cannot_confirm",
     }
 
 
@@ -141,7 +142,7 @@ def test_weak_coverage_gap_emitted_below_threshold_only():
         "requirement_level": "preferred",
         "detail": "Resume prose does not clearly cover this responsibility",
         "diagnostic": {"coverage_score": 0.2},
-        "actions": ["user_input", "skip"],
+        "actions": ["user_input", "skip", "cannot_confirm"],
         "enrichment": None,
     }
 

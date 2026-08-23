@@ -133,13 +133,24 @@ def _split_numbered_answers(text: str, expected: int) -> list[str]:
 _HR_RE = re.compile(r"^\s*(?:-{3,}|\*{3,}|_{3,})\s*$")
 _HEADING_RE = re.compile(r"^\s*#{1,6}\s+")
 _BULLET_RE = re.compile(r"^(\s*)[-*•]\s+")
+# Adjacent word chars: 2020–2023, client—server. Spaced dashes are clause breaks.
+_RANGE_DASH_RE = re.compile(r"(?<=[\w])[\u2013\u2014](?=[\w])")
+_CLAUSE_DASH_RE = re.compile(r"\s*[\u2013\u2014]\s*")
+
+
+def scrub_typographic_dashes(text: str) -> str:
+    """Replace U+2013/U+2014 in generated prose. Ranges become ASCII hyphen;
+    clause dashes become a comma+space. Idempotent on ASCII-only text."""
+    text = _RANGE_DASH_RE.sub("-", text)
+    return _CLAUSE_DASH_RE.sub(", ", text)
 
 
 def _plain_text(text: str) -> str:
     """Normalize an LLM answer to form-field-safe plain text: strip markdown
     bold/heading/backtick syntax, leading bullet markers, and horizontal rules;
-    collapse 3+ newlines to a blank line; PRESERVE genuine line breaks.
-    Idempotent — safe to run over already-plain stored answers.
+    collapse 3+ newlines to a blank line; PRESERVE genuine line breaks;
+    scrub U+2013/U+2014 via scrub_typographic_dashes. Idempotent — safe to run
+    over already-plain stored answers.
 
     Deliberately does NOT strip __double-underscore__ emphasis: LLM bold is **,
     __ emphasis is rare, and stripping it corrupts dunder identifiers like
@@ -155,7 +166,7 @@ def _plain_text(text: str) -> str:
     out = re.sub(r"\*\*(.+?)\*\*", r"\1", out, flags=re.DOTALL)
     out = out.replace("`", "")
     out = re.sub(r"\n{3,}", "\n\n", out)
-    return out.strip()
+    return scrub_typographic_dashes(out).strip()
 
 
 def answer_questions(
@@ -239,6 +250,7 @@ def generate_cover_letter(
                 trace_name="cover-letter",
             )
         )
+        response = scrub_typographic_dashes(response)
         session.add(
             QAEntry(
                 application_id=application_id,
@@ -332,6 +344,8 @@ def regenerate_entry(
             answers = _split_numbered_answers(response, expected=1)
             response = answers[0] if answers else response
             response = _plain_text(response)
+        else:
+            response = scrub_typographic_dashes(response)
 
         entry.answer = response
         if entry.pdf_path:
@@ -363,11 +377,13 @@ def generate_cover_letter_for_job(
         tone=tone,
         persona=persona.get_persona(session),
     )
-    return str(
-        llm.call_openai(
-            prompt=prompt,
-            model=model_settings.get_smart_model(session),
-            response_format="text",
-            trace_name="cover-letter",
+    return scrub_typographic_dashes(
+        str(
+            llm.call_openai(
+                prompt=prompt,
+                model=model_settings.get_smart_model(session),
+                response_format="text",
+                trace_name="cover-letter",
+            )
         )
     )

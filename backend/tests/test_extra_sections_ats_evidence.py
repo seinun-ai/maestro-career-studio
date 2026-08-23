@@ -249,7 +249,7 @@ def test_extra_only_skill_surfaces_as_a_resurface_gap():
     by_cat = {c["key"]: c for c in build_gaps(result)["categories"]}
     assert "resurface_recent" in by_cat
     kafka_gap = next(g for g in by_cat["resurface_recent"]["gaps"] if g["jd_skill"] == "Kafka")
-    assert kafka_gap["actions"] == ["add_keyword", "user_input", "skip"]
+    assert kafka_gap["actions"] == ["add_keyword", "user_input", "skip", "cannot_confirm"]
     assert kafka_gap["diagnostic"]["fix_hint"] == "extra_only"
 
 

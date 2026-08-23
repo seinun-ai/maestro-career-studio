@@ -28,6 +28,21 @@ export function roleIdentity(entry: FavoredRole) {
 }
 
 /**
+ * The single-mode "Clear role" row, shaped as an ordinary item so it rides the
+ * ordinary path: Base UI closes the popup and fires `onValueChange`, and
+ * `commitRoles` maps it back to no selection. A plain button in the popup
+ * would have to close the popup itself, and a role key can never collide with
+ * this one — the catalog is slugs from role_categories.yaml.
+ */
+const CLEAR_ROLE: FavoredRole = {
+  role: "__clear__",
+  label: "Clear role",
+  category: null,
+};
+
+const isClearRole = (entry: FavoredRole) => entry.role === CLEAR_ROLE.role;
+
+/**
  * Map a stored base-resume tag (`role_label` + `role_category`) onto the
  * FavoredRole shape the shared picker speaks. `unknown` with no label is empty.
  */
@@ -232,7 +247,9 @@ export function RolePicker(props: RolePickerProps) {
       .catch(() => undefined);
   };
 
-  const commitRoles = (next: FavoredRole[]) => {
+  const commitRoles = (incoming: FavoredRole[]) => {
+    // "Clear role" arrives as a selection and means the absence of one.
+    const next = incoming.filter((entry) => !isClearRole(entry));
     if (props.mode === "multiple") {
       props.onValueChange(next);
     } else {
@@ -350,27 +367,21 @@ export function RolePicker(props: RolePickerProps) {
                 · {catalogLabel(entry.category)}
               </span>
             )}
-            {props.mode === "multiple" ? (
+            {/* Multiple selection only. Single mode had an X here and it
+                cleared the role by accident: the remove target expands 8px in
+                every direction, which inside a 20px-tall chip puts a slab of
+                it on top of the label, so clicking the chip to OPEN the picker
+                removed the role instead. There is nothing to remove in single
+                mode anyway — a role is replaced by picking another, and
+                cleared from the "Clear role" row or Backspace on the empty
+                input. Removing one of several chips has no such equivalent. */}
+            {props.mode === "multiple" && (
               <Combobox.ChipRemove
                 aria-label={`Remove ${entry.label}`}
                 className="text-muted-foreground hover:text-foreground relative -mr-0.5 rounded-sm after:absolute after:-inset-2 after:content-['']"
               >
                 <XIcon className="size-3" />
               </Combobox.ChipRemove>
-            ) : (
-              // NOT ChipRemove: Base UI's chips model removal as filtering the
-              // multiple-selection ARRAY, so in single mode the press lands in
-              // a handler with no array to filter and nothing happens — the
-              // "X doesn't delete" report from live use. A plain button wired
-              // straight to the value is deterministic in both worlds.
-              <button
-                type="button"
-                aria-label={`Remove ${entry.label}`}
-                className="text-muted-foreground hover:text-foreground relative -mr-0.5 rounded-sm after:absolute after:-inset-2 after:content-['']"
-                onClick={() => commitRoles([])}
-              >
-                <XIcon className="size-3" />
-              </button>
             )}
           </Combobox.Chip>
         ))}
@@ -432,7 +443,12 @@ export function RolePicker(props: RolePickerProps) {
         >
           <Combobox.Popup
             ref={popupRef}
-            className="bg-popover text-popover-foreground ring-foreground/10 max-h-72 w-(--anchor-width) overflow-y-auto overscroll-contain rounded-lg p-1 shadow-md ring-1"
+            /* min-w: the anchor is the CHIPS BOX, which in the base-resume
+               header is a compact w-fit chip — about 100px, that being the
+               width of the word it holds. Sized to that, every role in the
+               list truncated to two syllables and the list was unreadable,
+               which matters more now that clearing a role is a row in it. */
+            className="bg-popover text-popover-foreground ring-foreground/10 max-h-72 w-(--anchor-width) min-w-56 overflow-y-auto overscroll-contain rounded-lg p-1 shadow-md ring-1"
           >
             <Combobox.List>
               <Combobox.Collection>
@@ -474,6 +490,16 @@ export function RolePicker(props: RolePickerProps) {
                 alreadyAdded={alreadyAdded}
                 isCatalogLabel={isCatalogLabel}
               />
+              {/* The only way to un-set a role with the mouse, so it is
+                  offered whatever is typed — a filter that could hide it
+                  would make the state unreachable. */}
+              {props.mode === "single" && props.value && (
+                <Combobox.Item value={CLEAR_ROLE} className={ROLE_ITEM_CLASS}>
+                  <span className="text-muted-foreground truncate">
+                    {CLEAR_ROLE.label}
+                  </span>
+                </Combobox.Item>
+              )}
             </Combobox.List>
             {/* Must stay mounted to announce reliably, so the message is
                 what is conditional — and the padding rides on the message,

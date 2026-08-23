@@ -46,6 +46,23 @@ class TemplateMissingExtraSectionsError(ValueError):
 _LATEX_COMMENT_RE = re.compile(r"(?<!\\)((?:\\\\)*)%[^\n]*")
 
 
+def extract_render_error(text: str, limit: int = 2000) -> str:
+    """Keep the actionable LaTeX error and its context within ``limit`` chars.
+
+    pdflatex normally places the diagnostic line (starting with ``!``) after
+    noisy preamble output. When no such line exists, the tail is still more
+    useful than the beginning of a long compiler log.
+    """
+    if not text:
+        return ""
+
+    lines = text.splitlines(keepends=True)
+    for index, line in enumerate(lines):
+        if line.startswith("!"):
+            return "".join(lines[index:])[:limit]
+    return text[-limit:]
+
+
 def _strip_latex_comments(source: str) -> str:
     """Drop LaTeX line comments so a token that appears only inside a comment
     does not read as live template code. Preserves escaped ``\\%`` and any
@@ -488,6 +505,7 @@ class RenderedDoc:
     engine: str  # "latex" | "typst"
     source_text: str
     sys_inputs: dict[str, str] | None = None
+    resolved_template_id: str | None = None
 
     @property
     def source_suffix(self) -> str:
@@ -521,12 +539,15 @@ def render_document(
         sys_inputs = build_typst_sys_inputs(
             tmpl.source, resume_data, merged, enforce_extras_support=True
         )
-        return RenderedDoc("typst", tmpl.source, sys_inputs)
+        return RenderedDoc(
+            "typst", tmpl.source, sys_inputs, resolved_template_id=tmpl.id
+        )
     return RenderedDoc(
         "latex",
         render_tex_from_source(
             tmpl.source, resume_data, formatting=merged, enforce_extras_support=True
         ),
+        resolved_template_id=tmpl.id,
     )
 
 
@@ -550,11 +571,12 @@ def render_and_compile(
     template_id: str | None = None,
     session=None,
     formatting: dict[str, Any] | None = None,
-) -> Path:
+) -> tuple[Path, RenderedDoc]:
     """Render + compile to explicit paths. Returns the ACTUAL source-artifact
-    path: `out_tex_path` for latex, `out_tex_path.with_suffix('.typ')` for
-    typst — callers persist it in their existing tex_path column (the column
-    stores whichever source artifact the engine produced; no schema change)."""
+    path and resolved document metadata. The path is `out_tex_path` for latex
+    and `out_tex_path.with_suffix('.typ')` for typst; callers persist it in
+    their existing tex_path column (the column stores whichever source artifact
+    the engine produced; no schema change)."""
     doc = render_document(
         resume_data, template_id=template_id, session=session, formatting=formatting
     )
@@ -565,7 +587,7 @@ def render_and_compile(
 
     if doc.engine == "typst":
         _compile_typst_file(source_path, out_pdf_path, doc.sys_inputs)
-        return source_path
+        return source_path, doc
 
     # SECOND pdflatex call site. `_compile_env` is not optional here: this is
     # the BASE-RESUME render path (POST /api/base_resumes/{slug}/render, MCP
@@ -588,7 +610,7 @@ def render_and_compile(
             f"stdout:\n{result.stdout}\n"
             f"stderr:\n{result.stderr}"
         )
-    return source_path
+    return source_path, doc
 
 
 def render_cover_letter_tex(

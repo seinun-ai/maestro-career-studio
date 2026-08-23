@@ -48,19 +48,28 @@ export function FitDistributionChart() {
   }
 
   const resumeKeys = data.map((d) => resumeLabel(d.base_resume));
+  const anyLow = data.some((d) => d.low_sample);
 
   return (
-    <ResponsiveContainer width="100%" height={320}>
-      <BarChart data={chartData}>
-        <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
-        <XAxis dataKey="bucket" />
-        <YAxis allowDecimals={false} />
-        <Tooltip contentStyle={TOOLTIP_CONTENT_STYLE} labelStyle={TOOLTIP_LABEL_STYLE} itemStyle={TOOLTIP_ITEM_STYLE} />
-        <Legend />
-        {resumeKeys.map((key, i) => (
-          <Bar key={key} dataKey={key} fill={COLORS[i % COLORS.length]} />
-        ))}
-      </BarChart>
-    </ResponsiveContainer>
+    <div>
+      {anyLow ? (
+        <p className="text-muted-foreground mb-2 text-xs">
+          Some resumes have fewer than 5 scores · those series are directional
+          only.
+        </p>
+      ) : null}
+      <ResponsiveContainer width="100%" height={320}>
+        <BarChart data={chartData}>
+          <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+          <XAxis dataKey="bucket" />
+          <YAxis allowDecimals={false} />
+          <Tooltip contentStyle={TOOLTIP_CONTENT_STYLE} labelStyle={TOOLTIP_LABEL_STYLE} itemStyle={TOOLTIP_ITEM_STYLE} />
+          <Legend />
+          {resumeKeys.map((key, i) => (
+            <Bar key={key} dataKey={key} fill={COLORS[i % COLORS.length]} />
+          ))}
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
   );
 }

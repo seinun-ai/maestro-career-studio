@@ -9,7 +9,6 @@ import {
   ExternalLink,
   GitCompare,
   Loader2,
-  MoreHorizontal,
   RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -28,6 +27,7 @@ import {
   sectionChangeCounts,
 } from "@/components/resume-editor/diff-review";
 import { EditorShell } from "@/components/resume-editor/editor-shell";
+import { StudioOverflowMenu } from "@/components/resume-editor/studio-overflow";
 import { StudioToolbar } from "@/components/resume-editor/studio-toolbar";
 import { EducationEditor } from "@/components/resume-editor/education-editor";
 import { ExperienceEditor } from "@/components/resume-editor/experience-editor";
@@ -48,12 +48,7 @@ import {
 } from "@/components/templates/template-select";
 import { Button } from "@/components/ui/button";
 import { ChipListInput } from "@/components/ui/chip-input";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
@@ -650,24 +645,8 @@ function StudioEditor({
               subtitle={jobLabel}
               actions={
                 <StudioToolbar
-                  view={
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setRawMode((r) => !r)}
-                    >
-                      {rawMode ? "Form view" : "Raw JSON"}
-                    </Button>
-                  }
                   tools={
                     <>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setHistoryOpen(true)}
-                      >
-                        History
-                      </Button>
                       {/* Same slot as the base studio's picker. Both studios
                           now auto-render on Save, so the template belongs with
                           the document tools rather than beside a render
@@ -729,28 +708,19 @@ function StudioEditor({
                     </Button>
                   }
                   overflow={
-                    <DropdownMenu>
-                      <DropdownMenuTrigger
-                        render={
-                          <Button
-                            variant="ghost"
-                            size="icon-sm"
-                            aria-label="More resume actions"
-                            disabled={busy}
-                          >
-                            <MoreHorizontal />
-                          </Button>
-                        }
-                      />
-                      <DropdownMenuContent align="end">
-                        {/* The recovery path, and the only job "Generate PDF"
+                    <StudioOverflowMenu
+                      rawMode={rawMode}
+                      onToggleRaw={() => setRawMode((r) => !r)}
+                      onHistory={() => setHistoryOpen(true)}
+                    >
+                      {/* The recovery path, and the only job "Generate PDF"
                             ever really had: Save auto-renders, so the one case
                             a manual trigger covers is a render that FAILED —
                             without this, a failed render with nothing left to
                             edit would leave no way to retry (Save is disabled
                             when not dirty). */}
                         <DropdownMenuItem
-                          disabled={render.isPending || dirty}
+                          disabled={busy || render.isPending || dirty}
                           onClick={() => render.mutate()}
                         >
                           <RefreshCw />
@@ -784,8 +754,7 @@ function StudioEditor({
                             ? "Rebuilding…"
                             : "Rebuild from base"}
                         </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                    </StudioOverflowMenu>
                   }
                 />
               }

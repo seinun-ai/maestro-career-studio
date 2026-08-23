@@ -263,6 +263,8 @@ class KBUsageOut(BaseModel):
     ported_text: str
     ported_at: datetime
     drifted: bool
+    # to_resume | from_source | None (legacy rows, treated as placements)
+    direction: str | None = None
 
 
 class KBPointOut(BaseModel):
@@ -272,6 +274,7 @@ class KBPointOut(BaseModel):
     state: str
     origin: str
     origin_detail: str | None = None
+    provenance: str | None = None
     source_document_id: UUID | None = None
     tags: list[str] = Field(default_factory=list)
     merge_sources: list[Any] | None = None
@@ -324,6 +327,23 @@ class KBEntityDetail(KBEntitySummary):
     points: list[KBPointOut] = Field(default_factory=list)
     documents: list[KBDocumentOut] = Field(default_factory=list)
     timeline: list[KBTimelineEvent] = Field(default_factory=list)
+
+
+class KBEntityDuplicateHint(BaseModel):
+    id: UUID
+    title: str
+    org: str | None = None
+
+
+class KBEntityCreateResponse(KBEntityDetail):
+    possible_duplicates: list[KBEntityDuplicateHint] = Field(default_factory=list)
+
+
+class KBEntityMergeRequest(BaseModel):
+    """Fold the path entity into `target_id`. Web-only on purpose — the MCP
+    surface gains no destructive tools, so there is no `kb_merge_entities`."""
+
+    target_id: UUID
 
 
 class KBInboxPoint(KBPointOut):
@@ -494,7 +514,23 @@ class ConsolidationReport(BaseModel):
     points_approved: int = 0
     points_draft: int = 0
     duplicates_skipped: int = 0
+    # CATEGORY names, one per category written. Not a skill count: two new
+    # items in the same category append this once.
     skills_merged: list[str] = Field(default_factory=list)
+    # The individual skills that landed in the profile — count these.
+    skills_items_added: list[str] = Field(default_factory=list)
+    # Entities RENAMED to a richer role title because a near-identity match said
+    # the incoming entry was the fuller variant. Changing an entity the user
+    # already has is a write that must be reportable, unlike the create/match
+    # this path does quietly.
+    #
+    # RESERVED on this shape — not symmetric with the deterministic one. Only
+    # experience renames, and this path resolves experience in
+    # ``_resolve_family``, which cannot reach the upgrade, so consolidate()
+    # leaves this empty today. The field exists so it is already here if that
+    # ever changes; the shape that actually populates it is
+    # DeterministicConsolidationReport.titles_upgraded.
+    titles_upgraded: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
 
 
@@ -606,4 +642,3 @@ class ExtraSectionPreset(BaseModel):
     title: str
     type: Literal["entries", "bullets"]
     match: list[str] = Field(default_factory=list)
-

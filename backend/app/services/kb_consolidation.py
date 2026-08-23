@@ -82,7 +82,20 @@ class DeterministicConsolidationReport:
     entities_matched: int = 0
     points_created: int = 0
     duplicates_skipped: int = 0
+    # Two different questions, two fields. ``skills_merged`` names the
+    # CATEGORIES touched (one entry per category written), which is the shape
+    # the port report has always had and which tests assert. It cannot answer
+    # "how many skills did this add" — two new items in one category append it
+    # once — so ``skills_items_added`` names the ITEMS that actually landed in
+    # the profile.
     skills_merged: list[str] = field(default_factory=list)
+    skills_items_added: list[str] = field(default_factory=list)
+    # Entities this run RENAMED to a richer role title on a near-identity hit.
+    # THIS is the shape that fills it: experience resolves here through
+    # ``_match_or_create_identity``, which is where the upgrade happens. The
+    # same field on ConsolidationReport is reserved and stays empty — see the
+    # comment there.
+    titles_upgraded: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
 
 
@@ -190,6 +203,222 @@ def group_by_identity(entries: list[SourceEntry]) -> list[Group]:
             groups.append(g)
         g.members.append(se)
     return groups
+
+
+# ===========================================================================
+# Conservative near-identity matching (second pass, on exact-key MISS only)
+# ===========================================================================
+#
+# Why it is deliberately mean: a false merge fuses two real entities and the
+# evidence of one of them is gone; a false fork costs the user one click in the
+# entity-merge UI. So every rule below prefers to say None.
+#
+# It compares identity KEY TUPLES, not stored columns. The keys in an
+# ``_existing_*_index`` dict are already built to line up with
+# ``identity_key`` (see ``_identity_title``); reading the KBEntity columns
+# again here would re-open exactly that divergence. The dict values are opaque
+# — whatever matched is handed straight back.
+
+#: Words that say nothing about WHICH certification this is.
+CERT_NOISE_TOKENS = frozenset({"certified", "certificate", "certification", "professional"})
+#: Vendors droppable only as the FIRST remaining token ("AWS Certified X" == "X"),
+#: never mid-title where the word is doing real work ("Amazon AWS Practitioner").
+CERT_VENDOR_TOKENS = frozenset({"aws", "microsoft", "google", "ibm", "oracle"})
+#: Projects have no company/date to corroborate a subset, so the bar is a cap.
+PROJECT_MAX_EXTRA_TOKENS = 2
+
+_TOKEN_RE = re.compile(r"[a-z0-9]+")
+_PARENTHETICAL_RE = re.compile(r"\([^()]*\)")
+#: An exam code is an unspaced, HYPHENATED run of letters/digits: AIF-C01,
+#: AZ-900, DP-203I, SAA-C03. Case-insensitive by construction — an identity
+#: key arrives ``_norm``ed, so casing is long gone by here.
+_EXAM_CODE_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)+$")
+
+
+def _tokens(s: Any) -> set[str]:
+    return set(_TOKEN_RE.findall(str(s or "").lower()))
+
+
+def _is_exam_code(text: str) -> bool:
+    """True for a code-shaped parenthetical, which is noise, not an issuer.
+
+    The two misreadings are NOT symmetric. Mistaking a code for an issuer only
+    ever forks — two entities where one belonged, one click to merge. Mistaking
+    an ISSUER for a code drops the only thing telling two certifications apart
+    and fuses them, destroying evidence. So the test is built to fail toward
+    "issuer".
+
+    Hence three requirements: no spaces, a mix of letters and digits, and a
+    hyphen. The hyphen is what separates the real codes above from code-shaped
+    ISSUERS — ISC2, 3M, O2, A10, E5, V2 are all unhyphenated and stay identity.
+    Plain words ("AWS", "Amazon Web Services") and bare years ("2023", no
+    letter) fall through to issuer as well.
+
+    Accepted cost: an unhyphenated code like "AZ900" reads as an issuer, so
+    "(AZ900)" and "(DP900)" fork instead of matching — the safe direction, and
+    such titles usually differ anyway.
+    """
+    s = text.strip().lower()
+    if not _EXAM_CODE_RE.match(s):
+        return False
+    return any(c.isdigit() for c in s) and any(c.isalpha() for c in s)
+
+
+def _cert_signature(raw: Any) -> tuple[frozenset[str], str | None, str | None]:
+    """(comparable token set, leading vendor token, issuing org) for a cert.
+
+    A cert identity key is ``_cert_string`` — ``f"{title} ({org})"`` — so the
+    ISSUER lives inside a trailing parenthetical. Treating every parenthetical
+    as noise made "AI Practitioner (AWS)" and "AI Practitioner (Google)" the
+    same cert; the leading-vendor guard cannot save that, because the org is
+    never a leading token. So the trailing parenthetical is parsed with
+    ``_split_cert`` — the same parser that wrote it — and classified: code-
+    shaped is noise, anything else is an org the caller must compare.
+
+    Any code-shaped parenthetical still standing inside the remaining title is
+    dropped too, so a code is noise wherever it sits. A non-code one is left
+    as residue and simply becomes tokens, which forks rather than fuses.
+
+    Noise tokens go next, from anywhere in the title. Only then is the FIRST
+    surviving token tested against the vendor list, so "AWS Certified X" and
+    "Certified AWS X" reduce alike.
+    """
+    title, parenthetical = _split_cert(str(raw or ""))
+    org: str | None = None
+    if parenthetical is not None and not _is_exam_code(parenthetical):
+        org = _norm(parenthetical)
+    # `_split_cert` hands back the whole (stripped) string when there is no
+    # trailing parenthetical, so `title` is already the right text either way.
+    text = title
+    text = _PARENTHETICAL_RE.sub(
+        lambda m: " " if _is_exam_code(m.group(0)[1:-1]) else m.group(0), text
+    )
+    ordered = [t for t in _TOKEN_RE.findall(text.lower()) if t not in CERT_NOISE_TOKENS]
+    vendor: str | None = None
+    if ordered and ordered[0] in CERT_VENDOR_TOKENS:
+        vendor = ordered[0]
+        ordered = ordered[1:]
+    return frozenset(ordered), vendor, org
+
+
+def _near_experience(incoming: tuple, candidate: tuple) -> bool:
+    """Same company, same start date, and one role title contained in the other.
+
+    The start date must be PRESENT, not merely equal on both sides. Two dateless
+    entries at the same company with subset roles would otherwise match on the
+    company alone — the loosest path in the whole matcher, and the one most
+    likely to fuse a promotion into the role it succeeded. An empty start on the
+    incoming side refuses; a dateless duplicate costs one manual merge, which is
+    the cheap direction.
+    """
+    company_a, role_a, start_a = incoming
+    company_b, role_b, start_b = candidate
+    if not start_a:
+        return False
+    if not company_a or company_a != company_b or start_a != start_b:
+        return False
+    tokens_a, tokens_b = _tokens(role_a), _tokens(role_b)
+    if not tokens_a or not tokens_b:
+        return False
+    return tokens_a <= tokens_b or tokens_b <= tokens_a
+
+
+def _near_certification(incoming: tuple, candidate: tuple) -> bool:
+    """Equal token sets after the noise/vendor/parenthetical strip.
+
+    Design §4b writes the rule as "equality OR subset", but the strip is what
+    makes a subset legitimate: once the noise words are gone, any remaining
+    extra token is a real one. "azure fundamentals" vs "azure data
+    fundamentals" (AZ-900 vs DP-900) differ by "data", and a plain subset test
+    would fuse them. So the surviving rule is equality — the subset case is
+    the one normalization has already turned into equality.
+    """
+    sig_a, vendor_a, org_a = _cert_signature(incoming[0])
+    sig_b, vendor_b, org_b = _cert_signature(candidate[0])
+    if not sig_a or not sig_b:
+        return False
+    if org_a and org_b and org_a != org_b:
+        # Two named issuers that disagree are two certifications. Only a
+        # two-sided clash vetoes: one side routinely omits the org, and an
+        # absent org is no evidence of anything.
+        return False
+    if vendor_a and vendor_b and vendor_a != vendor_b:
+        # Both shed a leading vendor; without this the remainders of
+        # "AWS Certified AI Practitioner" and "Google Certified AI
+        # Practitioner" are identical.
+        return False
+    return sig_a == sig_b
+
+
+def _near_project(incoming: tuple, candidate: tuple) -> bool:
+    """One name's tokens contained in the other's, by at most two extra tokens."""
+    tokens_a, tokens_b = _tokens(incoming[0]), _tokens(candidate[0])
+    if not tokens_a or not tokens_b:
+        return False
+    if tokens_a <= tokens_b:
+        return len(tokens_b - tokens_a) <= PROJECT_MAX_EXTRA_TOKENS
+    if tokens_b <= tokens_a:
+        return len(tokens_a - tokens_b) <= PROJECT_MAX_EXTRA_TOKENS
+    return False
+
+
+_NEAR_MATCHERS = {
+    "experience": _near_experience,
+    "certifications": _near_certification,
+    "projects": _near_project,
+}
+
+
+def find_near_identity(section: str, entry: Any, candidates: dict[tuple, Any]) -> Any:
+    """The one near-duplicate candidate for ``entry``, or None.
+
+    Call ONLY after an exact ``identity_key`` lookup missed — this function
+    does not check for an exact hit and, handed an exactly-equal entry, simply
+    returns that candidate (equality is the degenerate subset).
+
+    A near-hit, unlike an exact hit, may mean the incoming entry is the RICHER
+    variant — the experience callers upgrade the entity title; a poorer variant
+    never renames.
+
+    ``entry`` is a source entry (dict for experience/projects, str for
+    certifications) or an already-computed identity key tuple, which is what
+    callers holding a ``Group.key`` have. ``candidates`` is an
+    ``_existing_*_index`` dict — ``{identity_key_tuple: KBEntity}``. Matching
+    reads only the keys, so any value type works; the values are compared by
+    IDENTITY (``is``) for the ambiguity gate below, and one value reached
+    through two keys is therefore still one candidate.
+
+    Handles experience, certifications and projects. ``education`` and
+    ``extra`` are exact-identity only and always return None: a degree and an
+    extra-section heading have no second signal to corroborate a fuzzy hit.
+
+    Two or more distinct candidates matching is ambiguity, not a match, and
+    returns None — otherwise the answer would depend on dict order. Never
+    compares two existing entities against each other; fusing those is the
+    human merge action's job.
+
+    That gate is ONE-DIRECTIONAL: it covers many candidates for one incoming
+    entry, not many incoming entries converging on one candidate. Two sibling
+    engagements in the same import that both near-hit the same entity all land
+    on it, and for experience the first one seen in group order wins the
+    rename. The callers' re-verification is what keeps that from thrashing —
+    once the title is upgraded the next sibling is no longer strictly richer,
+    so it renames nothing. Deliberate: those siblings genuinely are the one
+    stored role until a human splits them.
+
+    Deterministic. No DB, no LLM. O(len(candidates)) per call with regex work
+    per pair; called only on an exact-key miss, so the common path never
+    reaches it.
+    """
+    matcher = _NEAR_MATCHERS.get(section)
+    if matcher is None:
+        return None
+    key = entry if isinstance(entry, tuple) else identity_key(section, entry)
+    hits: list[Any] = []
+    for candidate_key, value in candidates.items():
+        if matcher(key, candidate_key) and not any(value is seen for seen in hits):
+            hits.append(value)
+    return hits[0] if len(hits) == 1 else None
 
 
 # ===========================================================================
@@ -304,7 +533,14 @@ def _entity_ctx_line(entity: KBEntity) -> str:
 # --- entity construction ---------------------------------------------------
 
 
-def _make_entity(section: str, canonical: dict, groups_in: list[Group]) -> KBEntity:
+def _make_entity(
+    section: str,
+    canonical: dict,
+    groups_in: list[Group],
+    *,
+    origin: str | None = None,
+    origin_detail: str | None = None,
+) -> KBEntity:
     """Build a new KBEntity for an experience/project cluster from canonical +
     richest-member fallbacks."""
     kb_kind = _SECTION_KIND[section]
@@ -331,10 +567,13 @@ def _make_entity(section: str, canonical: dict, groups_in: list[Group]) -> KBEnt
         kind=kb_kind, title=title, org=org,
         start_date=start or None, end_date=end or None,
         status=_derive_status(section, members), detail_json=detail,
+        origin=origin, origin_detail=origin_detail,
     )
 
 
-def _make_education_entity(group: Group) -> KBEntity:
+def _make_education_entity(
+    group: Group, *, origin: str | None = None, origin_detail: str | None = None
+) -> KBEntity:
     m = _richest_member(group.members)
     e = m.entry if isinstance(m.entry, dict) else {}
     detail: dict[str, Any] = {}
@@ -347,17 +586,23 @@ def _make_education_entity(group: Group) -> KBEntity:
         kind="education", title=title, org=org,
         start_date=(e.get("start_date") or None), end_date=(e.get("end_date") or None),
         status=_derive_status("education", group.members), detail_json=detail,
+        origin=origin, origin_detail=origin_detail,
     )
 
 
-def _make_cert_entity(group: Group) -> KBEntity:
+def _make_cert_entity(
+    group: Group, *, origin: str | None = None, origin_detail: str | None = None
+) -> KBEntity:
     rep = next((str(m.entry).strip() for m in group.members if str(m.entry or "").strip()), "")
     title, org = _split_cert(rep)
     return KBEntity(kind="certification", title=title or rep or "(certification)",
-                    org=org, status="completed", detail_json={})
+                    org=org, status="completed", detail_json={},
+                    origin=origin, origin_detail=origin_detail)
 
 
-def _make_extra_entity(group: Group) -> KBEntity:
+def _make_extra_entity(
+    group: Group, *, origin: str | None = None, origin_detail: str | None = None
+) -> KBEntity:
     m = _richest_member(group.members)
     e = m.entry if isinstance(m.entry, dict) else {}
     sec_key = e.get("section_key") or "section"
@@ -384,10 +629,16 @@ def _make_extra_entity(group: Group) -> KBEntity:
         org=org,
         status="completed",
         detail_json=detail,
+        origin=origin,
+        origin_detail=origin_detail,
     )
 
 
 # --- existing-entity identity indexes (no-LLM matching) --------------------
+#
+# These dicts are also the CANDIDATE SETS handed to ``find_near_identity`` on
+# an exact-key miss, which is the second reason their keys must equal what
+# ``identity_key`` builds.
 #
 # An index key MUST equal the ``identity_key`` of the source entry that would
 # create the same row, or a re-run forks a second entity forever. The catch is
@@ -412,7 +663,13 @@ def _identity_title(entity: KBEntity) -> str:
     return title
 
 
-def _identity_index(session: Session, kind: str, key: Any) -> dict[tuple, KBEntity]:
+def _identity_index(
+    session: Session,
+    kind: str,
+    key: Any,
+    *,
+    incoming_org: str | None = None,
+) -> dict[tuple, KBEntity]:
     """Identity key -> entity for one kind, oldest row winning a tie.
 
     Ordered because when two rows share an identity key the SAME one has to win
@@ -421,39 +678,72 @@ def _identity_index(session: Session, kind: str, key: Any) -> dict[tuple, KBEnti
     logs, so it is the right thing to merge onto.
     """
     out: dict[tuple, KBEntity] = {}
+    normalized_incoming_org = _norm(incoming_org)
     entities = session.scalars(
         select(KBEntity)
         .where(KBEntity.kind == kind)
         .order_by(KBEntity.created_at, KBEntity.id)
     )
     for e in entities:
+        candidate_org = _norm(e.org)
+        if (
+            normalized_incoming_org
+            and candidate_org
+            and normalized_incoming_org != candidate_org
+        ):
+            continue
         out.setdefault(key(e), e)
     return out
 
 
-def _existing_edu_index(session: Session) -> dict[tuple, KBEntity]:
+def _existing_edu_index(
+    session: Session, *, incoming_org: str | None = None
+) -> dict[tuple, KBEntity]:
     # institution=org, degree=title
     return _identity_index(
-        session, "education", lambda e: (_norm(e.org), _identity_title(e))
+        session,
+        "education",
+        lambda e: (_norm(e.org), _identity_title(e)),
+        incoming_org=incoming_org,
     )
 
 
-def _existing_cert_index(session: Session) -> dict[tuple, KBEntity]:
-    return _identity_index(session, "certification", lambda e: (_norm(_cert_string(e)),))
-
-
-def _existing_exp_index(session: Session) -> dict[tuple, KBEntity]:
+def _existing_cert_index(
+    session: Session, *, incoming_org: str | None = None
+) -> dict[tuple, KBEntity]:
     return _identity_index(
-        session, "experience",
-        lambda e: (_norm(e.org), _identity_title(e), e.start_date or ""),
+        session,
+        "certification",
+        lambda e: (_norm(_cert_string(e)),),
+        incoming_org=incoming_org,
     )
 
 
-def _existing_proj_index(session: Session) -> dict[tuple, KBEntity]:
-    return _identity_index(session, "project", lambda e: (_identity_title(e),))
+def _existing_exp_index(
+    session: Session, *, incoming_org: str | None = None
+) -> dict[tuple, KBEntity]:
+    return _identity_index(
+        session,
+        "experience",
+        lambda e: (_norm(e.org), _identity_title(e), e.start_date or ""),
+        incoming_org=incoming_org,
+    )
 
 
-def _existing_extra_index(session: Session) -> dict[tuple, KBEntity]:
+def _existing_proj_index(
+    session: Session, *, incoming_org: str | None = None
+) -> dict[tuple, KBEntity]:
+    return _identity_index(
+        session,
+        "project",
+        lambda e: (_identity_title(e),),
+        incoming_org=incoming_org,
+    )
+
+
+def _existing_extra_index(
+    session: Session, *, incoming_org: str | None = None
+) -> dict[tuple, KBEntity]:
     def _key(e: KBEntity) -> tuple:
         detail = e.detail_json or {}
         sec_key = _norm(detail.get("section_key"))
@@ -462,28 +752,71 @@ def _existing_extra_index(session: Session) -> dict[tuple, KBEntity]:
             return ("extra", sec_key, _identity_title(e))
         return ("extra", sec_key)
 
-    return _identity_index(session, "extra", _key)
+    return _identity_index(session, "extra", _key, incoming_org=incoming_org)
+
+
+def richer_experience_title(stored: str, incoming: Any) -> str | None:
+    """The incoming role title, when it is strictly richer than ``stored``.
+
+    A near-hit says the two titles are variants of one role; it does not say
+    which variant to keep. The rule is one-directional: the incoming title wins
+    only when its token set is a proper SUPERSET of the stored one — "Data
+    Analyst" becoming "Data Analyst, British Airways Account". A poorer or equal
+    variant returns None, so re-importing an older, terser resume can never
+    strip detail the KB already has.
+
+    Read-only, so the read-only sync classifier can PROPOSE a rename that only
+    the writing path performs. Certifications and projects never rename at all:
+    a cert's title carries its exam code and issuer, and a project name has no
+    company or date corroborating which form is the real one.
+    """
+    title = str(incoming or "").strip()
+    tokens = _tokens(title)
+    if not tokens or not (_tokens(stored) < tokens):
+        return None
+    return title
+
+
+def upgrade_experience_title(entity: KBEntity, incoming_title: Any) -> bool:
+    """Apply ``richer_experience_title`` to ``entity``; True when it renamed."""
+    title = richer_experience_title(entity.title, incoming_title)
+    if title is None:
+        return False
+    entity.title = title
+    return True
 
 
 def _match_or_create_identity(
     session: Session,
+    section: str,
     groups: list[Group],
     index: dict[tuple, KBEntity],
     make: Any,
     report: Any,
     on_entity: Any,
 ) -> None:
-    """Identity-key match-or-create used by both consolidation entry points."""
+    """Identity-key match-or-create used by both consolidation entry points.
+
+    Second pass on an exact-key MISS only: ``find_near_identity`` gets a look
+    before a new entity is created, so a re-imported "AWS Certified AI
+    Practitioner (AIF-C01)" lands on the "AWS Certified AI Practitioner"
+    already in the KB instead of forking. A near-matched entity is filed under
+    the incoming key too, so a later group with the same key hits exactly.
+    """
     for g in groups:
         ent = index.get(g.key)
+        if ent is None:
+            ent = find_near_identity(section, g.key, index)
         created = ent is None
         if created:
             ent = make(g)
             session.add(ent)
             report.entities_created += 1
-            index[g.key] = ent
         else:
             report.entities_matched += 1
+            if section == "experience" and upgrade_experience_title(ent, _group_repr(g)["title"]):
+                report.titles_upgraded.append(ent.title)
+        index[g.key] = ent
         on_entity(ent, g, created)
 
 
@@ -499,6 +832,17 @@ def _resolve_family(
     Returns id(group) -> KBEntity for every group. Never loses a group: unknown
     LLM indices are dropped (warned), omitted groups become singletons, and an
     unusable response falls back to one-entity-per-group.
+
+    THIS PATH NEVER RENAMES an existing entity. Matching here is the LLM
+    picking an ``existing_entity_id`` out of a list it was shown, which is a
+    different act from the deterministic near-identity hit that
+    ``_match_or_create_identity`` upgrades a title on: there the two titles are
+    provably token-subsets, here the model asserted the match and its
+    ``canonical`` title is its own invention. So a cluster that matches keeps
+    the stored title untouched, and ``ConsolidationReport.titles_upgraded``
+    stays empty on this path by construction, not by accident. Anything added
+    here that renames on a match needs its own justification and its own tests
+    — do not reach for ``upgrade_experience_title`` because it is nearby.
     """
     result: dict[int, KBEntity] = {}
     if not family_groups:
@@ -521,7 +865,7 @@ def _resolve_family(
         report.warnings.append(f"entity_resolve LLM failed for {kb_kind}: {exc}")
 
     def _new_singleton(g: Group) -> None:
-        ent = _make_entity(section, {}, [g])
+        ent = _make_entity(section, {}, [g], origin="consolidated")
         session.add(ent)
         report.entities_created += 1
         result[id(g)] = ent
@@ -555,7 +899,12 @@ def _resolve_family(
             report.entities_matched += 1
         else:
             canonical = cluster.get("canonical")
-            ent = _make_entity(section, canonical if isinstance(canonical, dict) else {}, groups_in)
+            ent = _make_entity(
+                section,
+                canonical if isinstance(canonical, dict) else {},
+                groups_in,
+                origin="consolidated",
+            )
             session.add(ent)
             report.entities_created += 1
         for g in groups_in:
@@ -638,7 +987,8 @@ def _cluster_points_for_entity(
 
     def _new_approved(idx: int) -> None:
         p = KBPoint(entity_id=entity.id, text=candidates[idx]["rep_text"],
-                    state="approved", origin="consolidated", approved_at=now)
+                    state="approved", origin="consolidated",
+                    provenance="user_authored", approved_at=now)
         session.add(p)
         report.points_approved += 1
         candidate_point[idx] = p
@@ -678,7 +1028,8 @@ def _cluster_points_for_entity(
                     for i in idxs for sb in candidates[i]["sources"]
                 ]
                 p = KBPoint(entity_id=entity.id, text=merged, state="draft",
-                            origin="consolidated", merge_sources_json=srcs)
+                            origin="consolidated", provenance="derived_unverified",
+                            merge_sources_json=srcs)
                 session.add(p)
                 report.points_draft += 1
                 for i in idxs:
@@ -711,6 +1062,7 @@ def _cluster_points_for_entity(
             session.add(KBPortLog(
                 entity_id=entity.id, point_id=pid, resume_kind="base",
                 resume_key=sb["resume_key"], section=sb["section"], ported_text=sb["text"],
+                direction="from_source",
             ))
 
 
@@ -722,6 +1074,11 @@ def _merge_skills(session: Session, sources: list[tuple[str, dict]], report: Con
 
     Categories union by normalized name (first-seen name wins); items dedup by
     normalized text. Existing profile categories are extended, never removed.
+
+    Reports both granularities: ``skills_merged`` (categories touched) and
+    ``skills_items_added`` (the individual skills that landed). See
+    ConsolidationReport — a summary that counts the former reads "1 skill" when
+    two arrived in the same category.
     """
     unioned: list[dict] = []
     cat_index: dict[str, dict] = {}
@@ -753,6 +1110,10 @@ def _merge_skills(session: Session, sources: list[tuple[str, dict]], report: Con
     by_norm: dict[str, dict] = {
         _norm(g["category"]): g for g in skills if isinstance(g, dict) and isinstance(g.get("category"), str)
     }
+    # This loop is the PROFILE write — the union above only decides what the
+    # sources collectively claim. An item counts as added here and nowhere
+    # else: in the source union it may well be something the profile already
+    # has.
     for entry in unioned:
         target = by_norm.get(_norm(entry["category"]))
         if target is None:
@@ -760,18 +1121,21 @@ def _merge_skills(session: Session, sources: list[tuple[str, dict]], report: Con
             skills.append(new_grp)
             by_norm[_norm(entry["category"])] = new_grp
             report.skills_merged.append(entry["category"])
+            # Brand-new category: every item in it is new to the profile.
+            report.skills_items_added.extend(entry["items"])
         else:
             have = {_norm(x) for x in (target.get("items") or []) if isinstance(x, str)}
             items = list(target.get("items") or [])
-            added = False
+            newly_added: list[str] = []
             for it in entry["items"]:
                 if _norm(it) not in have:
                     items.append(it)
                     have.add(_norm(it))
-                    added = True
-            if added:
+                    newly_added.append(it)
+            if newly_added:
                 target["items"] = items
                 report.skills_merged.append(target.get("category", entry["category"]))
+                report.skills_items_added.extend(newly_added)
     profile.skills_json = skills
 
 
@@ -888,8 +1252,10 @@ def consolidate(
     """Consolidate resume sources into the Career KB.
 
     ``sources`` is a list of (resume_key, ResumeData-dict). Runs entity
-    resolution (identity-key for education/certs, ``kb_entity_resolve`` for
-    experience/projects), bullet clustering + point writing
+    resolution (identity key for education/certs/extras — the near-identity
+    second pass is effective only for certifications, the one of the three
+    with a matcher — and ``kb_entity_resolve`` for experience/projects),
+    bullet clustering + point writing
     (``kb_cluster_points``), port-log backfill, a code-only skills union, and a
     non-clobbering profile seed. Commits by default and returns a
     ``ConsolidationReport``; callers may pass ``commit=False`` to own the
@@ -912,18 +1278,20 @@ def consolidate(
     def _register(ent: KBEntity, group: Group, _created: bool = False) -> None:
         entity_groups.setdefault(ent, []).append(group)
 
-    # Stage B — education / certifications / extras (identity-key match, no LLM)
+    # Stage B — education / certifications / extras (no LLM: identity key,
+    # then near-identity on a miss, so a re-imported cert that grew an exam
+    # code lands on the cert already there)
     _match_or_create_identity(
-        session, by_section["education"], _existing_edu_index(session),
-        _make_education_entity, report, _register,
+        session, "education", by_section["education"], _existing_edu_index(session),
+        lambda g: _make_education_entity(g, origin="consolidated"), report, _register,
     )
     _match_or_create_identity(
-        session, by_section["certifications"], _existing_cert_index(session),
-        _make_cert_entity, report, _register,
+        session, "certifications", by_section["certifications"], _existing_cert_index(session),
+        lambda g: _make_cert_entity(g, origin="consolidated"), report, _register,
     )
     _match_or_create_identity(
-        session, by_section["extra"], _existing_extra_index(session),
-        _make_extra_entity, report, _register,
+        session, "extra", by_section["extra"], _existing_extra_index(session),
+        lambda g: _make_extra_entity(g, origin="consolidated"), report, _register,
     )
 
     # Stage B — experience + projects (kb_entity_resolve, one call per family)
@@ -995,6 +1363,7 @@ def _write_verbatim_points(
             state="draft",
             origin=origin,
             origin_detail=origin_detail,
+            provenance="user_authored",
             merge_sources_json=[
                 {"resume_key": s["resume_key"], "section": s["section"], "text": s["text"]}
                 for s in cand["sources"]
@@ -1027,6 +1396,7 @@ def _write_verbatim_points(
             session.add(KBPortLog(
                 entity_id=entity.id, point_id=point.id, resume_kind="base",
                 resume_key=sb["resume_key"], section=sb["section"], ported_text=sb["text"],
+                direction="from_source",
             ))
     return created
 
@@ -1039,13 +1409,21 @@ def consolidate_deterministic(
     origin_detail: str | None = None,
     commit: bool = True,
 ) -> DeterministicConsolidationReport:
-    """LLM-free consolidation: identity-key entity match, verbatim draft points.
+    """LLM-free consolidation: identity match, verbatim draft points.
 
-    Experience/projects match the way education/certs already do — by
-    ``identity_key`` only. The caller is responsible for normalizing entity
-    names across resumes. Near-duplicate bullets that do not share a
+    Experience/projects match by ``identity_key`` first, then — like every
+    section with a matcher (experience, certifications, projects) — by the
+    conservative near-identity second pass on a miss (``find_near_identity``);
+    education/extras stay identity-key only. The caller no longer has to normalize entity
+    names across resumes for the near cases that pass covers, but everything
+    outside them still forks. Near-duplicate bullets that do not share a
     normalized-text key both land; that is accepted. New points land as
     ``draft``; approval is a separate, explicit step.
+
+    This path can RENAME an existing entity: an experience near-hit whose
+    incoming role title is strictly richer upgrades the stored title, and every
+    rename is named in ``report.titles_upgraded``. It is the only entity write
+    here that touches a row the run did not create.
 
     ``origin``/``origin_detail`` come from the request's write origin. An
     ``mcp`` write stamps its points ``origin="mcp"`` so they show up in the
@@ -1069,24 +1447,29 @@ def consolidate_deterministic(
                 ent.origin_detail = origin_detail
 
     _match_or_create_identity(
-        session, by_section["education"], _existing_edu_index(session),
-        _make_education_entity, report, _register,
+        session, "education", by_section["education"], _existing_edu_index(session),
+        lambda g: _make_education_entity(g, origin=origin, origin_detail=origin_detail),
+        report, _register,
     )
     _match_or_create_identity(
-        session, by_section["certifications"], _existing_cert_index(session),
-        _make_cert_entity, report, _register,
+        session, "certifications", by_section["certifications"], _existing_cert_index(session),
+        lambda g: _make_cert_entity(g, origin=origin, origin_detail=origin_detail),
+        report, _register,
     )
     _match_or_create_identity(
-        session, by_section["extra"], _existing_extra_index(session),
-        _make_extra_entity, report, _register,
+        session, "extra", by_section["extra"], _existing_extra_index(session),
+        lambda g: _make_extra_entity(g, origin=origin, origin_detail=origin_detail),
+        report, _register,
     )
     _match_or_create_identity(
-        session, by_section["experience"], _existing_exp_index(session),
-        lambda g: _make_entity("experience", {}, [g]), report, _register,
+        session, "experience", by_section["experience"], _existing_exp_index(session),
+        lambda g: _make_entity("experience", {}, [g], origin=origin, origin_detail=origin_detail),
+        report, _register,
     )
     _match_or_create_identity(
-        session, by_section["projects"], _existing_proj_index(session),
-        lambda g: _make_entity("projects", {}, [g]), report, _register,
+        session, "projects", by_section["projects"], _existing_proj_index(session),
+        lambda g: _make_entity("projects", {}, [g], origin=origin, origin_detail=origin_detail),
+        report, _register,
     )
 
     session.flush()
@@ -1129,4 +1512,3 @@ def consolidate_deterministic(
     if commit:
         session.commit()
     return report
-

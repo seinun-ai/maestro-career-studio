@@ -623,3 +623,41 @@ def test_policy_keywords_into_skills_off_gates_profile_auto():
     resolutions, _ = quick_tailor.plan_resolutions(gaps, quick_tailor.DEFAULTS)
     assert resolutions[0]["action"] == "add_keyword"
     assert resolutions[0]["payload"]["provenance"] == {"source": "kb_profile"}
+
+
+def test_quick_tailor_preserves_prestored_cannot_confirm(db_session, tmp_path, monkeypatch):
+    """A standing "I can't confirm this" must survive the profile plan's
+    replace=True save — the plan must not resurrect the disconfirmed keyword.
+    Pins the suppression-preservation guard in run_for_job."""
+    from app.models.career_kb import KBEntity, KBPoint
+
+    ent = KBEntity(kind="extra", title="Unconfirmed claims", status="archived",
+                   origin="gap_elicitation")
+    db_session.add(ent)
+    db_session.flush()
+    db_session.add(KBPoint(
+        entity_id=ent.id, text="Docker", state="retired",
+        origin="gap_elicitation", provenance="user_cannot_confirm",
+    ))
+    db_session.commit()
+
+    job = _seed_job(db_session)
+    slug = _seed_base(db_session, tmp_path, monkeypatch)
+    _mock_llm(monkeypatch)
+    _mock_render(monkeypatch)
+
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        response = _quick_tailor(TestClient(app), job, slug)
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    row = db_session.get(TailoringSession, UUID(response.json()["session_id"]))
+    docker_actions = [
+        item["action"]
+        for item in row.resolutions_json
+        if "docker" in json.dumps(item).lower()
+    ]
+    assert "cannot_confirm" in docker_actions, docker_actions
+    assert "add_keyword" not in docker_actions, docker_actions

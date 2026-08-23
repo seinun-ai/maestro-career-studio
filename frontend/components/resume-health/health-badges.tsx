@@ -4,14 +4,11 @@ import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { HeartPulse } from "lucide-react";
 
+import { GRADE_STYLES } from "@/components/resume-health/finding-cards";
 import { ApiError, apiFetch } from "@/lib/api";
 
-const COUNTS = [
-  { key: "gate", label: "gate", className: "bg-red-500/15 text-red-600 dark:text-red-400" },
-  { key: "critical", label: "critical", className: "bg-amber-500/15 text-amber-600 dark:text-amber-400" },
-  { key: "ask", label: "ask", className: "bg-violet-500/15 text-violet-600 dark:text-violet-400" },
-  { key: "note", label: "note", className: "bg-slate-500/15 text-slate-600 dark:text-slate-400" },
-] as const;
+/** Severity keys, worst first — they double as the tooltip's labels. */
+const SEVERITIES = ["gate", "critical", "ask", "note"] as const;
 
 type LintReport = {
   score: number;
@@ -21,10 +18,23 @@ type LintReport = {
 };
 
 /**
+ * "2 gate · 8 ask", worst first, skipping severities with nothing in them —
+ * or "no findings" when a report came back with every severity at zero.
+ */
+function summarizeCounts(counts: Record<string, number> | undefined): string {
+  const parts = SEVERITIES.flatMap((key) => {
+    const count = counts?.[key] ?? 0;
+    return count === 0 ? [] : [`${count} ${key}`];
+  });
+  return parts.length === 0 ? "no findings" : parts.join(" · ");
+}
+
+/**
  * The editor header's single health entry point: a link to the full-page
- * report. When a report exists it shows the grade + count chips; otherwise a
- * compact "Check health" link keeps the report (and its Analyze CTA)
- * discoverable.
+ * report. When a report exists it shows one grade chip — the per-severity
+ * counts live in its tooltip, and in full on the report it links to, rather
+ * than as a row of chips camped in the header. Otherwise a compact "Check
+ * health" link keeps the report (and its Analyze CTA) discoverable.
  */
 export function HealthBadges({
   kind,
@@ -80,28 +90,32 @@ export function HealthBadges({
     );
   }
 
+  // The counts only live in the tooltip now, and a tooltip is mouse-only —
+  // aria-label carries the same sentence to screen readers and touch.
+  const summary =
+    `Grade ${data.grade} · score ${data.score} · ` +
+    `${summarizeCounts(data.counts)} — open report`;
+
   return (
     <Link
       href={reportHref}
       className={shell}
-      title={`Grade ${data.grade} · score ${data.score}. Open health report`}
+      title={summary}
+      aria-label={summary}
     >
       <HeartPulse className="text-muted-foreground size-3.5" />
-      <span className="bg-primary/10 text-primary rounded px-1.5 py-0.5 text-xs font-semibold">
+      {/* The word makes the grade legible: a bare letter beside the KB pill
+          read as noise, and only hover/AT channels said "health". */}
+      <span className="text-muted-foreground text-sm">Health</span>
+      {/* Same grade palette as the report page: the chip is the header's only
+          severity signal now, so an F must not read like an A. */}
+      <span
+        className={`rounded px-1.5 py-0.5 text-xs font-semibold ${
+          GRADE_STYLES[data.grade] ?? GRADE_STYLES.C
+        }`}
+      >
         {data.grade}
       </span>
-      {COUNTS.map(({ key, label, className }) => {
-        const count = data.counts?.[key] ?? 0;
-        if (count === 0) return null;
-        return (
-          <span
-            key={key}
-            className={`rounded px-1.5 py-0.5 text-xs font-medium tabular-nums ${className}`}
-          >
-            {count} {label}
-          </span>
-        );
-      })}
     </Link>
   );
 }

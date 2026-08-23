@@ -28,7 +28,10 @@
   template that opens the gallery dialog (a template is a LOOK; the grid shows
   rendered page-1 previews). "Use the default template" lives inside the
   dialog. Never a `<Select>` + "Browse" pair — two controls for one job pushed
-  both studio toolbars past their pane.
+  both studio toolbars past their pane. The button carries a visible muted
+  "Template:" prefix: a template's display name is a look's name ("XCharter
+  Serif"), which bare reads as a font picker — a category word only in the
+  accessible name is invisible to sighted users.
 - **One page shell: `PageShell` + `PageHeader`** (`components/page-shell.tsx`).
   Every top-level route renders `PageShell` — `max-w-6xl`, `p-6`, `gap-6` —
   and `PageHeader` for its title block. Never assign per-page widths or
@@ -36,10 +39,42 @@
   **A narrow reading measure is a BODY concern (`PageMeasure`), never a shell
   concern.** `PageHeader` owns the type scale; call sites pass
   `title`/`subtitle`/`actions`/`leading` and do not restate classes; its
-  actions cluster is `ml-auto` in a wrapping row so a long title never
-  squeezes the title block to zero width. Still on the old pattern:
+  actions cluster sits in a wrapping row under `justify-between` so a long
+  title never squeezes the title block to zero width, and so a toolbar that
+  wraps aligns with the title instead of floating against the right edge with
+  a void beside it (`ml-auto` did the first job and not the second). **`subtitle` renders in a `<div>`,
+  not a `<p>`** — it is a NODE slot, and a caller may put a control in it; the
+  base-resume header did, and a `<div>` inside a `<p>` is invalid HTML that
+  React reported as a hydration error on every load of that page. Still on the old
+  pattern:
   detail/editor routes (`jobs/[id]`, both studios, health reports,
   `entity-detail`) and Chat (no page header by design).
+- **The base-resume studio header is the NAME, nothing else.** Display name is
+  the title (`EditableTitle`, instant PATCH `/identity`); the slug is the URL
+  plus a "Copy slug" item; the target role is the ⋯ menu's FIRST item, which
+  names its own value ("Role: Data Scientist" / "Role not set") and opens
+  `RoleCategoryDialog`. Three identity lines used to stack in the header
+  saying the same words, because the slug derives from the name and the name
+  from the role. A menu item that names a value goes in `StudioOverflowMenu`'s
+  `leading` slot, above the shared raw-JSON/History pair; ordinary
+  studio-specific actions stay in `children`, below it.
+- **A picker that belongs to a menu goes in a DIALOG, not inside the menu.**
+  `RolePicker` is itself a popup, and a combobox popup nested in a menu popup
+  fights the menu for focus and dismissal — and the free-text mapping strip
+  ("Count 'X' as Y?") has nowhere to render inside a menu.
+- **A single-selection chip carries no X; a multi-selection chip does.**
+  `RolePicker` (`components/role-picker.tsx`) is both. In single mode the chip
+  IS the value: it is replaced by picking another, cleared from the "Clear
+  role" row at the foot of the popup or Backspace on the empty input. The X it
+  used to carry cleared the role by accident — a remove target expands 8px in
+  every direction, which inside a 20px-tall chip puts part of it over the
+  label, so clicking the chip to OPEN the picker removed the value instead.
+  Multi-selection keeps `Combobox.ChipRemove`: removing one of several entries
+  has no other gesture. The clear row rides in as an ordinary item with a
+  sentinel value so Base UI closes the popup and commits through the same
+  `onValueChange` path. Popups are `w-(--anchor-width) min-w-56` — a compact
+  header chip is ~100px wide, and a list sized to it truncated every role to
+  two syllables.
 - **A failed fetch is a THIRD state, never the empty one.** react-query leaves
   `data` undefined after an error, so `if (isLoading || !data)` holds its
   skeleton forever and any `data ?? []` list renders its EMPTY branch — the
@@ -153,7 +188,11 @@
   `PreviewThumbnail` rounds only its top corners. `Card`'s own
   `has-[>img:first-child]:pt-0` wants a BARE `<img>` first child, which ours
   is not — assert full-bleed on the component that IS the image-first card,
-  not via a child selector.
+  not via a child selector. `pt-0` is that default, not a universal: the Career
+  KB's `career/entity-card.tsx` is TEXT-first and reuses `GalleryCard` purely
+  for the z-10-link/z-20-actions layering, overriding `pt-0` with `pt-4`. Reach
+  for this shell whenever a card's whole face is a link AND it carries an
+  actions menu — that pairing is the invariant, a preview image is not.
 - Sidebar: a tonal "New application" pill CTA, then labeled `SidebarGroup`s
   **Job search** (Applications, Referrals), **Career library** (Career KB,
   Base Resumes, Templates), **Tools** (Chat, Analytics); Profile + Settings

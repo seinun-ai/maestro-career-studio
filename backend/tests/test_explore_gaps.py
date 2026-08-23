@@ -7,6 +7,7 @@ from app.main import app
 from app.models.application import Application
 from app.models.ats_score import AtsScore
 from app.models.job import Job
+from app.services import explore_gaps
 
 
 def _override_db(db_session):
@@ -207,6 +208,47 @@ def test_gap_frequency_ranks_by_distinct_jobs(db_session):
     assert by_skill["kubernetes"]["avg_potential_points"] == 5.0
     assert by_skill["kubernetes"]["category"] == "missing_skills"
     assert by_skill["kubernetes"]["requirement_level"] == "required"
+
+
+def test_gap_frequency_flags_low_sample_below_five_jobs(db_session):
+    jobs = [
+        _seed_job(db_session, raw_hash=f"gf-ls-{i}", role_category="data_engineer")
+        for i in range(5)
+    ]
+    db_session.add_all(
+        [
+            _base_row(
+                jobs[i].id,
+                "de_track",
+                40.0,
+                gaps_json=_gaps_json(
+                    missing_skill_gaps=[_skill_gap("kubernetes", potential_points=4.0)]
+                ),
+            )
+            for i in range(4)
+        ]
+        + [
+            _base_row(
+                jobs[4].id,
+                "de_track",
+                40.0,
+                gaps_json=_gaps_json(
+                    missing_skill_gaps=[
+                        _skill_gap("kubernetes", potential_points=4.0),
+                        _skill_gap("spark", potential_points=2.0),
+                    ]
+                ),
+            )
+        ]
+    )
+    db_session.commit()
+
+    rows = explore_gaps.gap_frequency(db_session)
+    by_skill = {r["skill"]: r for r in rows}
+    assert by_skill["kubernetes"]["n_jobs"] == 5
+    assert by_skill["kubernetes"]["low_sample"] is False
+    assert by_skill["spark"]["n_jobs"] == 1
+    assert by_skill["spark"]["low_sample"] is True
 
 
 def test_gap_frequency_counts_only_best_base_per_job(db_session):
@@ -549,6 +591,7 @@ def test_ats_over_time_buckets_weekly_by_phase_and_role(db_session):
         "role_category": "data_scientist",
         "avg_composite": 50.0,
         "n": 2,
+        "low_sample": True,
     } in rows
     assert {
         "week_start": "2026-04-27",
@@ -556,6 +599,7 @@ def test_ats_over_time_buckets_weekly_by_phase_and_role(db_session):
         "role_category": "data_scientist",
         "avg_composite": 80.0,
         "n": 1,
+        "low_sample": True,
     } in rows
     assert {
         "week_start": "2026-04-20",
@@ -563,6 +607,7 @@ def test_ats_over_time_buckets_weekly_by_phase_and_role(db_session):
         "role_category": "data_engineer",
         "avg_composite": 30.0,
         "n": 1,
+        "low_sample": True,
     } in rows
 
 
@@ -653,3 +698,46 @@ def test_tailoring_lift_uses_latest_tailored_row_per_application(db_session):
     assert rows["data_engineer"]["avg_lift"] == 20.0
     assert rows["all"]["n"] == 1
     assert rows["all"]["avg_lift"] == 20.0
+
+
+def test_ats_over_time_flags_low_sample_buckets(db_session):
+    jobs = [
+        _seed_job(db_session, raw_hash=f"aot-ls-{i}", role_category="data_scientist")
+        for i in range(5)
+    ]
+    db_session.add_all(
+        [
+            _base_row(jobs[i].id, "a", 40.0 + i, created_at=datetime(2026, 4, 21, tzinfo=UTC))
+            for i in range(5)
+        ]
+        + [
+            _tailored_row(
+                jobs[0].id, "app-1", 80.0, created_at=datetime(2026, 4, 21, tzinfo=UTC)
+            )
+        ]
+    )
+    db_session.commit()
+
+    rows = {(r["phase"], r["n"]): r for r in explore_gaps.ats_over_time(db_session)}
+    assert rows[("base", 5)]["low_sample"] is False
+    assert rows[("tailored", 1)]["low_sample"] is True
+
+
+def test_tailoring_lift_flags_low_sample_including_all_row(db_session):
+    job = _seed_job(db_session, raw_hash="tl-ls", role_category="data_engineer")
+    app_row = Application(job_id=job.id, base_resume="de_track")
+    db_session.add(app_row)
+    db_session.flush()
+    db_session.add_all(
+        [
+            _base_row(job.id, "de_track", 40.0),
+            _tailored_row(job.id, str(app_row.id), 60.0, application_id=app_row.id),
+        ]
+    )
+    db_session.commit()
+
+    rows = {r["role_category"]: r for r in explore_gaps.tailoring_lift(db_session)}
+    assert rows["data_engineer"]["n"] == 1
+    assert rows["data_engineer"]["low_sample"] is True
+    assert rows["all"]["n"] == 1
+    assert rows["all"]["low_sample"] is True

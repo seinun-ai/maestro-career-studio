@@ -8,7 +8,7 @@
 <p align="center">
   <a href="https://github.com/seinun-ai/maestro-career-studio/actions/workflows/ci.yml"><img src="https://github.com/seinun-ai/maestro-career-studio/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://github.com/seinun-ai/maestro-career-studio/actions/workflows/codeql.yml"><img src="https://github.com/seinun-ai/maestro-career-studio/actions/workflows/codeql.yml/badge.svg" alt="CodeQL"></a>
-  <a href="https://github.com/seinun-ai/maestro-career-studio/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/tests-3%2C807%20passing-brightgreen" alt="Tests"></a>
+  <a href="https://github.com/seinun-ai/maestro-career-studio/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/tests-4%2C023%20passing-brightgreen" alt="Tests"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="License"></a>
 </p>
 <!-- TODO(P5): after the first v* tag publishes images, add a ghcr.io image badge here,
@@ -35,7 +35,7 @@ every AI edit is a reviewable, revertible diff, and the output is a real
 
 ![Score, tailor, diff of every AI edit, typeset PDF — end to end](docs/assets/hero.gif)
 
-**77 MCP tools** to drive it from Claude, Codex, or the ChatGPT desktop app · **works with zero API
+**83 MCP tools** to drive it from Claude, Codex, or the ChatGPT desktop app · **works with zero API
 keys** (scoring, rendering and tracking never call a model) · **3 containers,
 localhost-only, nothing phones home** · **leaves with you** — your whole record
 exports to one `career.md`
@@ -121,7 +121,7 @@ Only checkable claims — verify any row yourself:
 | See what the AI changed | No audit trail | No | **Per-hunk diff, revertible** |
 | Typeset output | House web templates | HTML → PDF | **Real LaTeX and Typst, bring your own template** |
 | Career record | None (per-document) | Flat markdown/YAML files | **Structured, versioned KB — exports to one `career.md`** |
-| Agent access | No | CLI skill files | **MCP server (77 tools) against your own machine** |
+| Agent access | No | CLI skill files | **MCP server (83 tools) against your own machine** |
 | Auto-submits for you | N/A | Never (stated) | **Never — consent ledger, enforced** |
 | Cost | $15–75/month | Free + tokens | **Free (Apache 2.0) + your own tokens** |
 
@@ -250,11 +250,21 @@ true about your work is usable evidence later.
 
 ### 2. Build a base resume per career track
 
+<!-- base-resume.png refreshed 2026-08-23 (post UI-clarity round). Contact
+     header is the approved public set (sanitized +1-999-999-9999,
+     ajey@seinun.com); "Liberty Hill, TX" experience location previously
+     reviewed and accepted. 1400px wide to match the asset set. -->
+
 ![One base resume per track, with its health grade and live typeset preview](docs/assets/base-resume.png)
 
 One base per track you actually target (e.g. *Data Scientist*, *ML Engineer*) —
 not one per job. **New base resume → From Career KB** proposes which entries
 belong, with a reason for each one it leaves off, plus a drafted summary.
+
+<!-- kb-import.png captured 2026-08-23: the editor's Import from Career KB
+     drawer; background contact panel deliberately blurred at capture time. -->
+
+![Importing KB evidence is explicit and versioned — the drawer even tells you what is already in the resume](docs/assets/kb-import.png)
 
 The optional instruction box steers *shape*, not facts: "lead with pipeline and
 cloud work, keep it mid-level, leave off teaching." **Bullets are never
@@ -268,6 +278,18 @@ deliberate: it is what keeps a generated resume defensible.
 Paste the JD or capture it with the browser extension. Score it against your
 bases — the ATS engine is deterministic and runs with **no LLM at all**, so the
 same resume and JD always produce the same number and the same diagnostics.
+
+<!-- job-overview.png captured 2026-08-23: real Lightning AI posting kept on
+     the same precedent as the Visa posting (employer-published public
+     document); the "your profile states 2" line matches the years already
+     public in the shipped resume captures. -->
+
+![Extracted fields, and a knock-out pre-scan of the posting's stated requirements against your profile — including the mismatches](docs/assets/job-overview.png)
+
+Every capture also gets a **knock-out pre-scan**: the posting's *stated*
+requirements — work authorization, OPT policy, salary, years of experience —
+checked against your profile before you spend any effort on it, with
+mismatches said out loud rather than discovered at the screening call.
 
 Then work the **gap workflow** rather than accepting a rewrite. It asks targeted
 questions to surface things that are true but unwritten. Answers become new KB
@@ -349,7 +371,7 @@ with Cmd+Q after pasting; a window close is not enough.
 not the container's internal `8000`. The script resolves this for you from
 `BACKEND_HOST_PORT`.
 
-Six profiles keep the tool list relevant per chat: `full` (77 tools), `hunt`,
+Six profiles keep the tool list relevant per chat: `full` (83 tools), `hunt`,
 `apply`, `explore`, `templates`, `career`. Enable one at a time — `full`
 alongside a scoped profile registers each shared tool twice.
 

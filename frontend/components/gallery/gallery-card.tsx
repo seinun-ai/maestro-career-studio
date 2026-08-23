@@ -39,15 +39,17 @@ export function GalleryCard({
   children: ReactNode;
 }) {
   return (
-    // `pt-0` because this card always leads with a preview image and the image
-    // is full-bleed. `Card` carries `py-4` plus a `has-[>img:first-child]`
-    // rule meant to strip the top pad for exactly this case, but that selector
-    // wants a BARE <img> as the first child — ours is wrapped in
-    // PreviewThumbnail's aspect-ratio box, and on template cards the default
-    // star sits before it. So the rule never fired and the image ended up
-    // inset 16px at the top while running flush to both sides. Full-bleed is
-    // the convention for an image-first card; asserting it here, on the one
-    // component that IS the image-first card, beats a fragile child selector.
+    // `pt-0` is the image-first DEFAULT, not a universal: a card leading with a
+    // preview runs it full-bleed. `Card` carries `py-4` plus a
+    // `has-[>img:first-child]` rule meant to strip the top pad for exactly this
+    // case, but that selector wants a BARE <img> as the first child — ours is
+    // wrapped in PreviewThumbnail's aspect-ratio box, and on template cards the
+    // default star sits before it. So the rule never fired and the image ended
+    // up inset 16px at the top while running flush to both sides. Asserting
+    // full-bleed here beats a fragile child selector.
+    //
+    // A TEXT-first consumer overrides it with `pt-4`: `career/entity-card.tsx`
+    // has no preview and reuses this shell purely for the link layering below.
     <Card className={cn("relative pt-0", className)}>
       {href && (
         <Link

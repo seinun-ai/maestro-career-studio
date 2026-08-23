@@ -27,7 +27,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { deleteKbPoint, patchKbPoint } from "@/lib/api";
-import type { KBPointOut, KBPointPatch, KBPointState } from "@/lib/types";
+import type { KBPointOut, KBPointPatch, KBPointProvenance, KBPointState } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 const STATES: { value: KBPointState; label: string; chip: string; dot: string }[] = [
@@ -58,6 +58,14 @@ const ORIGIN_LABELS: Record<KBPointOut["origin"], string> = {
   consolidated: "Consolidated",
   mcp: "Agent",
   gap_elicitation: "Gap answer",
+  base_sync: "Base sync",
+};
+
+const PROVENANCE_LABELS: Record<KBPointProvenance, string> = {
+  user_authored: "Authored",
+  user_stated: "Stated",
+  derived_unverified: "Derived",
+  user_cannot_confirm: "Can't confirm",
 };
 
 const STATE_ORDER: Record<KBPointState, number> = {
@@ -146,7 +154,7 @@ function PointRow({ entityId, point }: { entityId: string; point: KBPointOut }) 
   });
 
   const pending = update.isPending || remove.isPending;
-  const usageKeys = point.usage.map((usage) => usage.resume_key);
+  const usageKeys = [...new Set(point.usage.map((usage) => usage.resume_key))];
   const hasDrift = point.usage.some((usage) => usage.drifted);
 
   const cancelEdit = () => {
@@ -304,7 +312,7 @@ function PointRow({ entityId, point }: { entityId: string; point: KBPointOut }) 
             className="text-muted-foreground inline-flex h-6 items-center rounded-full bg-primary/10 px-2 text-xs"
             title={`Used in: ${usageKeys.join(", ")}`}
           >
-            in {point.usage.length} {point.usage.length === 1 ? "resume" : "resumes"}
+            in {usageKeys.length} {usageKeys.length === 1 ? "resume" : "resumes"}
           </span>
         ) : null}
         {hasDrift ? (
@@ -320,6 +328,18 @@ function PointRow({ entityId, point }: { entityId: string; point: KBPointOut }) 
             {tag}
           </Badge>
         ))}
+        <span
+          className="text-muted-foreground inline-flex h-6 items-center rounded-full bg-muted/70 px-2 text-xs"
+          title={
+            point.provenance
+              ? undefined
+              : "This point predates groundedness labels"
+          }
+        >
+          {point.provenance
+            ? (PROVENANCE_LABELS[point.provenance] ?? "unlabeled")
+            : "unlabeled"}
+        </span>
       </div>
     </article>
   );

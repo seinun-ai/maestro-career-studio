@@ -1,5 +1,6 @@
 import json
 import shutil
+import subprocess
 from copy import deepcopy
 from datetime import UTC, datetime
 from pathlib import Path
@@ -11,14 +12,69 @@ from fastapi.testclient import TestClient
 from app.db import get_db
 from app.main import app
 from app.models.base_resume import BaseResume
+from app.models.template import Template
 from app.routers import base_resumes as router_module
-from app.services import base_resume_render
+from app.services import base_resume_render, pdf_render
 from app.services.template_validation import SAMPLE_RESUME
 
 
 def _write_valid_pdf(path: Path, pages: int = 1) -> None:
     """Write a real (rasterizable) PDF so the preview page-image step works."""
     write_blank_pdf(path, pages)
+
+
+def _stub_render_compilers(monkeypatch) -> None:
+    def fake_run(argv, **kwargs):
+        out_dir = Path(
+            next(
+                arg.removeprefix("-output-directory=")
+                for arg in argv
+                if arg.startswith("-output-directory=")
+            )
+        )
+        jobname = next(
+            arg.removeprefix("-jobname=")
+            for arg in argv
+            if arg.startswith("-jobname=")
+        )
+        _write_valid_pdf(out_dir / f"{jobname}.pdf")
+        return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(pdf_render.subprocess, "run", fake_run)
+
+    def fake_typst_compile(**kwargs):
+        _write_valid_pdf(Path(kwargs["output"]))
+
+    monkeypatch.setattr(pdf_render.typst_compiler, "compile_typst", fake_typst_compile)
+
+
+def _seed_render_templates(db_session) -> None:
+    source = (pdf_render.TEMPLATE_DIR / pdf_render.RESUME_TEMPLATE).read_text(
+        encoding="utf-8"
+    )
+    db_session.add_all(
+        [
+            Template(
+                id="default",
+                display_name="Classic",
+                source=source,
+                engine="latex",
+                status="ready",
+                is_default=True,
+                origin="seed",
+            ),
+            Template(
+                id="observed_template",
+                display_name="Observed",
+                source='#text("observed")',
+                engine="typst",
+                status="ready",
+                is_default=False,
+                origin="frontend",
+            ),
+        ]
+    )
+    db_session.commit()
 
 
 SAMPLE_DATA = {
@@ -372,6 +428,29 @@ def test_render_endpoint_triggers_render(db_session, tmp_path, monkeypatch):
     assert response.json()["pdf_rendered_at"] is not None
 
 
+def test_render_endpoint_returns_compile_failure_detail(
+    db_session, monkeypatch
+):
+    _seed(db_session, slug="data_scientist")
+
+    def compile_failure(slug, db, *, template_id=None):
+        raise RuntimeError("pdflatex compile failed: missing package")
+
+    monkeypatch.setattr(base_resume_render, "render_base_resume", compile_failure)
+    monkeypatch.setattr(router_module.base_resume_render, "render_base_resume", compile_failure)
+
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        response = TestClient(app, raise_server_exceptions=False).post(
+            "/api/base-resumes/data_scientist/render"
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 500
+    assert "pdflatex compile failed: missing package" in response.json()["detail"]
+
+
 def test_edits_render_failure_sets_render_error_then_clears(
     db_session, tmp_path, monkeypatch
 ):
@@ -429,6 +508,50 @@ def test_render_falls_back_for_unknown_template(db_session, tmp_path, monkeypatc
         app.dependency_overrides.clear()
     assert r.status_code == 200
     assert r.json()["render_error"] is None
+
+
+def test_render_reports_explicit_resolved_template(db_session, tmp_path, monkeypatch):
+    monkeypatch.setattr(router_module.settings, "base_resumes_dir", tmp_path)
+    monkeypatch.setattr(base_resume_render.settings, "base_resumes_dir", tmp_path)
+    _stub_render_compilers(monkeypatch)
+    _seed_render_templates(db_session)
+    _seed(db_session, slug="data_scientist", data_json=SAMPLE_DATA)
+
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        response = TestClient(app).post(
+            "/api/base-resumes/data_scientist/render"
+            "?template_id=observed_template"
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200, response.text
+    assert response.json()["resolved_template_id"] == "observed_template"
+    assert response.json()["resolved_engine"] == "typst"
+    assert response.json()["template_fallback"] is False
+
+
+def test_render_reports_explicit_template_fallback(db_session, tmp_path, monkeypatch):
+    monkeypatch.setattr(router_module.settings, "base_resumes_dir", tmp_path)
+    monkeypatch.setattr(base_resume_render.settings, "base_resumes_dir", tmp_path)
+    _stub_render_compilers(monkeypatch)
+    _seed_render_templates(db_session)
+    _seed(db_session, slug="data_scientist", data_json=SAMPLE_DATA)
+
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        response = TestClient(app).post(
+            "/api/base-resumes/data_scientist/render"
+            "?template_id=bogus_template"
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200, response.text
+    assert response.json()["resolved_template_id"] == "default"
+    assert response.json()["resolved_engine"] == "latex"
+    assert response.json()["template_fallback"] is True
 
 
 def test_render_falls_back_for_draft_template(db_session, tmp_path, monkeypatch):
@@ -724,10 +847,10 @@ def _real_tex_render(monkeypatch, tmp_path):
     ):
         tex_path.parent.mkdir(parents=True, exist_ok=True)
         pdf_path.parent.mkdir(parents=True, exist_ok=True)
-        tex = pdf_render.render_document(data, formatting=formatting).source_text
-        tex_path.write_text(tex, encoding="utf-8")
+        doc = pdf_render.render_document(data, formatting=formatting)
+        tex_path.write_text(doc.source_text, encoding="utf-8")
         write_blank_pdf(pdf_path)
-        return tex_path
+        return tex_path, doc
 
     monkeypatch.setattr(
         base_resume_render.pdf_render, "render_and_compile", fake_render_and_compile
@@ -888,13 +1011,20 @@ def test_put_persists_template_id_and_render_uses_it(db_session, tmp_path, monke
     monkeypatch.setattr(router_module.settings, "base_resumes_dir", tmp_path)
     monkeypatch.setattr(base_resume_render.settings, "base_resumes_dir", tmp_path)
 
-    def fake_render_and_compile(data, tex_path, pdf_path, *, template_id=None, session=None, formatting=None):
-        tex = pdf_render.render_document(data, template_id=template_id, session=session, formatting=formatting).source_text
+    def fake_render_and_compile(
+        data, tex_path, pdf_path, *, template_id=None, session=None, formatting=None
+    ):
+        doc = pdf_render.render_document(
+            data,
+            template_id=template_id,
+            session=session,
+            formatting=formatting,
+        )
         tex_path.parent.mkdir(parents=True, exist_ok=True)
         pdf_path.parent.mkdir(parents=True, exist_ok=True)
-        tex_path.write_text(tex, encoding="utf-8")
+        tex_path.write_text(doc.source_text, encoding="utf-8")
         _write_valid_pdf(pdf_path)
-        return tex_path
+        return tex_path, doc
 
     monkeypatch.setattr(pdf_render, "render_and_compile", fake_render_and_compile)
 

@@ -103,3 +103,6 @@ class ApplicationDetail(ApplicationRead):
 class RenderResult(BaseModel):
     tex_path: str
     pdf_path: str
+    resolved_template_id: str | None = None
+    resolved_engine: str | None = None
+    template_fallback: bool | None = None

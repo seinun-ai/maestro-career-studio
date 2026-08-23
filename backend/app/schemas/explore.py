@@ -15,6 +15,7 @@ class TopSkillRow(BaseModel):
     rank_percentile: float
     tier: Literal["top", "below"]
     bucket: Literal["core", "preferred_top", "below_threshold"]
+    low_sample: bool = False
 
 
 class TopSkillsMeta(BaseModel):

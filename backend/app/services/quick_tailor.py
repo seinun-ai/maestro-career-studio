@@ -307,7 +307,19 @@ def run_for_job(
     health_warning = getattr(created, "health_warning", None)
 
     resolutions, applied = plan_resolutions(created.gaps_json, profile)
-    if not any(item["action"] != "skip" for item in resolutions):
+    # A pre-stored cannot_confirm is the user's standing "I can't confirm this"
+    # — the profile plan must not resurrect the claim it suppresses, and the
+    # replace=True save below would otherwise wipe it.
+    suppressed = {
+        r["gap_id"]: r
+        for r in (created.resolutions_json or [])
+        if r.get("action") == "cannot_confirm"
+    }
+    if suppressed:
+        resolutions = [suppressed.get(item["gap_id"], item) for item in resolutions]
+    if not any(
+        item["action"] not in ("skip", "cannot_confirm") for item in resolutions
+    ):
         return QuickTailorOutcome(
             session_id=created.id,
             nothing_to_tailor=True,

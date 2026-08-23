@@ -5,19 +5,22 @@ import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
+  Copy,
   Download,
   ExternalLink,
-  MoreHorizontal,
   Pencil,
+  Tag,
 } from "lucide-react";
 import { toast } from "sonner";
 
 import { IconButton } from "@/components/icon-button";
+import { KbSyncPill } from "@/components/kb-sync-pill";
 import { useUnsavedChangesWarning } from "@/hooks/use-unsaved-changes-warning";
 import { PageHeader } from "@/components/page-shell";
 import { ContactForm } from "@/components/resume-editor/contact-form";
 import { EditableTitle } from "@/components/resume-editor/editable-title";
 import { EditorShell } from "@/components/resume-editor/editor-shell";
+import { StudioOverflowMenu } from "@/components/resume-editor/studio-overflow";
 import { StudioToolbar } from "@/components/resume-editor/studio-toolbar";
 import { EducationEditor } from "@/components/resume-editor/education-editor";
 import { ExperienceEditor } from "@/components/resume-editor/experience-editor";
@@ -38,13 +41,12 @@ import {
   useTemplateDefaults,
 } from "@/components/templates/template-select";
 import { Button } from "@/components/ui/button";
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { RoleCategoryPicker } from "@/components/role-category-picker";
+  RoleCategoryDialog,
+  roleMenuLabel,
+  useRoleCategories,
+} from "@/components/role-category-picker";
 import { ChipListInput } from "@/components/ui/chip-input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -68,6 +70,9 @@ export function EditorBody({
   const [rawMode, setRawMode] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [roleOpen, setRoleOpen] = useState(false);
+  // Same shared vocabulary query the picker uses, for the menu item's label.
+  const { data: roleCategories } = useRoleCategories();
   const [templateId, setTemplateId] = useState(
     templateIdFromApi(initial.template_id),
   );
@@ -290,52 +295,34 @@ export function EditorBody({
                   onChange={setDisplayName}
                 />
               }
-              /* Slug is an identifier, not prose — mono is the signal. Role
-                 sits beside it because both are metadata ABOUT the document,
-                 and both write through PATCH /identity rather than Save. */
-              subtitle={
-                <span className="flex flex-wrap items-center gap-2">
-                  <span className="font-mono text-xs">{slug}</span>
-                  <RoleCategoryPicker
-                    slug={slug}
-                    roleCategory={live?.role_category ?? initial.role_category}
-                    roleLabel={live?.role_label ?? initial.role_label}
-                    className="inline-flex h-6 min-h-6 w-fit flex-nowrap gap-0 px-1 py-0 text-xs leading-none"
-                  />
-                </span>
-              }
+              /* No subtitle. The header carried three identity lines saying
+                 the same words for any resume whose name, slug and role agree
+                 — the common case, since the slug is derived from the name
+                 and the name from the role. The name is the title; the slug
+                 is in the URL and on "Copy slug"; the role is the ⋯ menu's
+                 first item, which NAMES its current value so it is still read
+                 without opening anything. All three still write through PATCH
+                 /identity rather than Save. */
               actions={
                 <StudioToolbar
-                  view={
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setRawMode((r) => !r)}
-                    >
-                      {rawMode ? "Form view" : "Raw JSON"}
-                    </Button>
-                  }
                   status={
-                    <HealthBadges
-                      kind="base"
-                      resumeKey={slug}
-                      reportHref={`/base-resumes/${slug}/health`}
-                    />
+                    <>
+                      <HealthBadges
+                        kind="base"
+                        resumeKey={slug}
+                        reportHref={`/base-resumes/${slug}/health`}
+                      />
+                      {/* Was a full-width card above the editor. Both of these
+                          answer "is this document in good standing", so they
+                          belong to the same slot rather than to two rows. */}
+                      <KbSyncPill slug={slug} />
+                    </>
                   }
                   tools={
-                    <>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setHistoryOpen(true)}
-                      >
-                        History
-                      </Button>
-                      <TemplateSelect
-                        value={templateId}
-                        onChange={setTemplateId}
-                      />
-                    </>
+                    <TemplateSelect
+                      value={templateId}
+                      onChange={setTemplateId}
+                    />
                   }
                   primary={
                     <Button
@@ -346,31 +333,53 @@ export function EditorBody({
                     </Button>
                   }
                   overflow={
-                    <DropdownMenu>
-                      <DropdownMenuTrigger
-                        render={
-                          <Button
-                            variant="ghost"
-                            size="icon-sm"
-                            aria-label="More resume actions"
-                          >
-                            <MoreHorizontal />
-                          </Button>
-                        }
-                      />
-                      <DropdownMenuContent align="end">
-                        {/* Moved out of the inline bar: it is the rarest thing
-                            here and it is disabled whenever there are unsaved
-                            edits, yet it used to sit first and most prominent. */}
-                        <DropdownMenuItem
-                          disabled={hasUnsavedChanges}
-                          onClick={() => setImportOpen(true)}
-                        >
-                          <Download />
-                          Import from Career KB
+                    <StudioOverflowMenu
+                      rawMode={rawMode}
+                      onToggleRaw={() => setRawMode((r) => !r)}
+                      onHistory={() => setHistoryOpen(true)}
+                      /* First, and labelled with its value: this is the only
+                         place the role is legible now that the header shows
+                         the name alone, so it is read as often as the two
+                         shared items are used. */
+                      leading={
+                        <DropdownMenuItem onClick={() => setRoleOpen(true)}>
+                          <Tag />
+                          {roleMenuLabel(
+                            live?.role_category ?? initial.role_category,
+                            live?.role_label ?? initial.role_label,
+                            roleCategories,
+                          )}
                         </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                      }
+                    >
+                      {/* Moved out of the inline bar: it is the rarest thing
+                          here and it is disabled whenever there are unsaved
+                          edits, yet it used to sit first and most prominent. */}
+                      <DropdownMenuItem
+                        disabled={hasUnsavedChanges}
+                        onClick={() => setImportOpen(true)}
+                      >
+                        <Download />
+                        Import from Career KB
+                      </DropdownMenuItem>
+                      {/* The slug left the header; MCP tools and the on-disk
+                          filename still speak it, so it stays one click away
+                          rather than something to retype off the URL. Named
+                          with its value, like the Role item above: "slug" is
+                          developer vocabulary, and showing the value is what
+                          tells a reader what they would be copying. */}
+                      <DropdownMenuItem
+                        onClick={() => {
+                          navigator.clipboard
+                            .writeText(slug)
+                            .then(() => toast.success(`Copied ${slug}`))
+                            .catch(() => toast.error("Could not copy slug"));
+                        }}
+                      >
+                        <Copy />
+                        {`Copy slug: ${slug}`}
+                      </DropdownMenuItem>
+                    </StudioOverflowMenu>
                   }
                 />
               }
@@ -384,7 +393,7 @@ export function EditorBody({
               />
             ) : (
               <>
-                {/* Identity (display name, slug, role) lives in the header now
+                {/* Identity (display name, role) lives in the header now
                     — it names the document rather than being content inside it,
                     and it was the source of the duplicate "Display name" field
                     that used to sit here. */}
@@ -488,6 +497,13 @@ export function EditorBody({
         onRestored={() =>
           qc.invalidateQueries({ queryKey: ["base-resumes", slug] })
         }
+      />
+      <RoleCategoryDialog
+        slug={slug}
+        roleCategory={live?.role_category ?? initial.role_category}
+        roleLabel={live?.role_label ?? initial.role_label}
+        open={roleOpen}
+        onOpenChange={setRoleOpen}
       />
       <KbImportDrawer
         open={importOpen}

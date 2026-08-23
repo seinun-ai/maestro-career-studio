@@ -44,6 +44,12 @@ from app.services.base_resume_data import load_base_resume
 
 logger = logging.getLogger(__name__)
 
+# Archived KB entity that holds user_cannot_confirm claims with no matching
+# entity. Archived on purpose: invisible to compose_resume_data, the resolver
+# snapshot, and consolidation's non-archived surfaces, yet queryable so the
+# suppression lookup (and the user, via the KB page's archived view) can see it.
+CANNOT_CONFIRM_HOLDER_TITLE = "Unconfirmed claims"
+
 
 def _content_hash(data) -> str:
     canonical = json.dumps(data, sort_keys=True, default=str)
@@ -95,6 +101,41 @@ class StaleSessionError(ValueError):
 class HealthGateBlockedError(ValueError):
     """A fatal, unwaived health gate is failing on the base resume — tailoring
     reweights a healthy document; it cannot repair a broken one."""
+
+
+def _plan_auto_resolutions(session: Session, gaps: dict) -> list[dict]:
+    """Deterministic auto-resolutions for a fresh session, two passes in order.
+
+    Pass 1 — evidence autos: candidates are stamped UNCONDITIONALLY (not only
+    when enrichment ran), and mirror_wording gaps plan their exact-token skills
+    add even unenriched — the token, not the LLM, is the fix.
+    Pass 2 — "I can't confirm this" suppression (inv-provenance-no-decay's user
+    face): a claim the user disconfirmed before arrives pre-resolved as
+    cannot_confirm instead of being re-asked. Runs AFTER the evidence autos and
+    only over gaps they left open — real evidence the resolver verified always
+    beats an old "don't know".
+    """
+    every_gap = [
+        gap
+        for category in gaps.get("categories", [])
+        for gap in category.get("gaps", [])
+    ]
+    autos = [
+        resolution
+        for gap in every_gap
+        if (resolution := kb_resolver.auto_resolution_for_gap(gap)) is not None
+    ]
+    suppressed = kb_resolver.cannot_confirm_texts(session)
+    if suppressed:
+        resolved_ids = {r["gap_id"] for r in autos}
+        autos.extend(
+            resolution
+            for gap in every_gap
+            if gap.get("gap_id") not in resolved_ids
+            and (resolution := kb_resolver.cannot_confirm_resolution(gap, suppressed))
+            is not None
+        )
+    return autos
 
 
 def create_session(
@@ -219,20 +260,7 @@ def create_session(
             # build_gaps). Calling stamp_library_candidates(None) here would
             # "stamp" nothing and make the name a lie at this call site.
             gaps = gap_enrichment.pop_stash(gaps)
-        # Auto planning is DETERMINISTIC, so it runs over whatever gaps we ended up
-        # with: candidates are now stamped UNCONDITIONALLY above (not only when
-        # enrichment ran), and mirror_wording gaps plan their exact-token skills
-        # add even unenriched (enrich=False or enrichment failure) — the token,
-        # not the LLM, is the fix.
-        auto_resolutions = [
-            resolution
-            for resolution in (
-                kb_resolver.auto_resolution_for_gap(gap)
-                for category in gaps.get("categories", [])
-                for gap in category.get("gaps", [])
-            )
-            if resolution is not None
-        ]
+        auto_resolutions = _plan_auto_resolutions(session, gaps)
 
         tailoring = TailoringSession(
             job_id=job_id,
@@ -480,6 +508,12 @@ def _assert_actions_allowed(
         if gap is None:
             raise ValueError(f"Unknown gap_id: {item['gap_id']}")
         actions = set(gap["actions"])
+        # cannot_confirm is legal wherever a claim question was asked. Frozen
+        # pre-Phase-C sessions never list it in their actions, so it piggybacks
+        # on user_input (the question-asking action) for those.
+        if item["action"] == "cannot_confirm":
+            if "cannot_confirm" in actions or "user_input" in actions:
+                continue
         if item["action"] not in actions:
             raise ValueError(
                 f"Action {item['action']!r} is not allowed for gap {item['gap_id']!r} "
@@ -605,6 +639,123 @@ def _assert_resolution_valid(
             )
 
 
+def _claim_for_gap(gap: dict[str, Any]) -> str:
+    """The claim/skill a cannot_confirm answer disconfirms — the same field the
+    suppression lookup in create_session normalizes against."""
+    return str(gap.get("jd_skill") or gap.get("detail") or "").strip()
+
+
+def _entity_for_entry_ref(
+    db_session: Session, base: dict[str, Any], target: dict[str, Any]
+) -> Any:
+    """Resolve a placement_target entry reference to a KB entity by title —
+    the same case-insensitive, non-archived match the flywheel write-back uses.
+    None for anything that is not a valid experience/projects entry ref."""
+    from sqlalchemy import func as sa_func
+
+    from app.models.career_kb import KBEntity
+
+    section = target.get("section")
+    index = target.get("index_or_category")
+    if section not in ("experience", "projects") or isinstance(index, bool) or not isinstance(index, int):
+        return None
+    entries = base.get(section) or []
+    if index < 0 or index >= len(entries) or not isinstance(entries[index], dict):
+        return None
+    entry = entries[index]
+    title = str(
+        entry.get("name") or entry.get("role") or entry.get("company") or ""
+    ).strip()
+    if not title:
+        return None
+    return db_session.scalar(
+        select(KBEntity).where(
+            sa_func.lower(KBEntity.title) == title.lower(),
+            KBEntity.status != "archived",
+        )
+    )
+
+
+def _cannot_confirm_holder(db_session: Session) -> Any:
+    """The archived holder entity for entity-less cannot_confirm claims,
+    created on first use."""
+    from app.models.career_kb import KBEntity
+
+    holder = db_session.scalar(
+        select(KBEntity).where(
+            KBEntity.kind == "extra",
+            KBEntity.title == CANNOT_CONFIRM_HOLDER_TITLE,
+        )
+    )
+    if holder is None:
+        holder = KBEntity(
+            kind="extra",
+            title=CANNOT_CONFIRM_HOLDER_TITLE,
+            status="archived",
+            origin="gap_elicitation",
+            detail_json={"holder": "cannot_confirm"},
+        )
+        db_session.add(holder)
+        db_session.flush()
+    return holder
+
+
+def _record_cannot_confirm(
+    db_session: Session,
+    tailoring: "TailoringSession",
+    resolutions: list[dict[str, Any]],
+    gaps: dict[str, dict[str, Any]],
+    resume_json: dict[str, Any] | None,
+) -> None:
+    """Stage the durable suppression record for each incoming cannot_confirm.
+
+    Written at SAVE time (not tailor time, unlike the flywheel): "saved so you
+    won't be asked again" must hold even when the session is later abandoned.
+    Idempotent by normalized claim text, so autosave's replace=true re-sends
+    are no-ops. Bound to the entity a placement_target names when one matches;
+    otherwise to the archived holder entity — never skipped, or the web flow
+    (which sends no placement) would produce no record at all. Undoing the
+    resolution does NOT delete the point; the KB page is the management surface.
+    """
+    items = [i for i in resolutions if i.get("action") == "cannot_confirm"]
+    if not items:
+        return
+    existing = {
+        normalize_term(text)
+        for text in db_session.scalars(
+            select(KBPoint.text).where(KBPoint.provenance == "user_cannot_confirm")
+        )
+        if text
+    }
+    for item in items:
+        gap = gaps.get(item["gap_id"]) or {}
+        claim = _claim_for_gap(gap)
+        if not claim:
+            continue
+        key = normalize_term(claim)
+        if not key or key in existing:
+            continue
+        entity = None
+        target = (item.get("payload") or {}).get("placement_target")
+        if isinstance(target, dict):
+            if resume_json is None:
+                resume_json = load_base_resume(tailoring.base_resume, db_session)
+            entity = _entity_for_entry_ref(db_session, resume_json, target)
+        if entity is None:
+            entity = _cannot_confirm_holder(db_session)
+        db_session.add(
+            KBPoint(
+                entity_id=entity.id,
+                text=claim,
+                state="retired",
+                origin="gap_elicitation",
+                origin_detail=f"tailoring_session:{tailoring.id}",
+                provenance="user_cannot_confirm",
+            )
+        )
+        existing.add(key)
+
+
 def save_resolutions(
     session_id: UUID,
     resolutions: list[dict[str, Any]],
@@ -670,6 +821,11 @@ def save_resolutions(
 
         for item in resolutions:
             _assert_resolution_valid(item, ctx, session)
+
+        # Durable "I can't confirm this" records ride this same commit. The
+        # incoming batch is enough: every cannot_confirm passes through a save
+        # at least once, and the write is idempotent by normalized claim text.
+        _record_cannot_confirm(session, tailoring, resolutions, gaps, resume_json)
 
         # `projected` IS the stored set — see _project_resolutions.
         tailoring.resolutions_json = list(projected.values())
@@ -769,7 +925,9 @@ def _resolution_bundle(
     for item in tailoring.resolutions_json:
         # save_resolutions validated every gap_id against gaps_json; .get() is defensive
         gap = gaps_by_id.get(item["gap_id"], {})
-        if item["action"] == "skip":
+        # cannot_confirm is a skip for the DOCUMENT (its KB record was already
+        # written at save time); the LLM must leave the gap untouched.
+        if item["action"] in ("skip", "cannot_confirm"):
             skipped.append(gap.get("jd_skill") or gap.get("detail") or item["gap_id"])
             continue
         if item["action"] in ("enable_entry", "port_kb_point"):
@@ -795,16 +953,39 @@ _WRITE_BACK_DEDUP_COSINE = 0.90
 
 def _write_back_elicited_points(
     db_session: Session, tailoring: TailoringSession, base: dict[str, Any]
-) -> None:
+) -> list[dict[str, Any]]:
     """The flywheel (design §4.6): a substantive user_input answer targeting a
     dated entry becomes a DRAFT KB point on the matching entity, so the next
     session's resolver can surface it. Draft state means suggest-only until the
     user approves it in the KB. Rows are STAGED only — they ride score_target's
-    single commit; a failed tailor writes nothing. No entity match → skip and
-    log, never guess."""
+    single commit; a failed tailor writes nothing. No entity match → skip,
+    never guess.
+
+    Returns the SKIP list `[{gap_id, skill, reason, detail}]` (Phase C Task
+    11): every drop travels up through the tailor response instead of dying in
+    a backend log. Only claim-carrying gaps (skill/requirement) are reported —
+    a summary/title rewrite is presentation, not evidence, and flagging every
+    one as "not saved to your Career KB" would drown the real drops.
+    """
     from sqlalchemy import func as sa_func
 
     from app.models.career_kb import KBEntity
+
+    gaps_by_id = _gap_index(tailoring.gaps_json)
+    skips: list[dict[str, Any]] = []
+
+    def _skip(item: dict[str, Any], reason: str, detail: str) -> None:
+        gap = gaps_by_id.get(item["gap_id"]) or {}
+        if gap.get("kind") not in ("skill", "requirement"):
+            return
+        skips.append(
+            {
+                "gap_id": item["gap_id"],
+                "skill": gap.get("jd_skill"),
+                "reason": reason,
+                "detail": detail,
+            }
+        )
 
     for item in tailoring.resolutions_json:
         if item.get("action") != "user_input":
@@ -812,20 +993,41 @@ def _write_back_elicited_points(
         payload = item.get("payload") or {}
         text = (payload.get("text") or "").strip()
         if len(text) < _WRITE_BACK_MIN_CHARS:
+            _skip(
+                item,
+                "too_short",
+                f"the answer is under {_WRITE_BACK_MIN_CHARS} characters — "
+                "too short to keep as evidence",
+            )
             continue
         target = payload.get("placement_target") or {}
         section = target.get("section")
         index = target.get("index_or_category")
         if section not in ("experience", "projects") or isinstance(index, bool) or not isinstance(index, int):
+            _skip(
+                item,
+                "wrong_section",
+                "the answer isn't attached to an experience or project entry",
+            )
             continue
         entries = base.get(section) or []
         if index < 0 or index >= len(entries) or not isinstance(entries[index], dict):
+            _skip(
+                item,
+                "wrong_section",
+                "the answer isn't attached to an experience or project entry",
+            )
             continue
         entry = entries[index]
         title = str(
             entry.get("name") or entry.get("role") or entry.get("company") or ""
         ).strip()
         if not title:
+            _skip(
+                item,
+                "no_entity_match",
+                "the target entry has no title to match a Career KB entity",
+            )
             continue
         entity = db_session.scalar(
             select(KBEntity).where(
@@ -834,16 +1036,21 @@ def _write_back_elicited_points(
             )
         )
         if entity is None:
-            logger.info(
-                "gap write-back: no KB entity titled %r; skipping (session %s)",
-                title,
-                tailoring.id,
+            _skip(
+                item,
+                "no_entity_match",
+                f"no Career KB entity titled “{title}”",
             )
             continue
         existing_texts = [
             point.text for point in entity.points if point.state != "retired"
         ]
         if _is_duplicate_point(text, existing_texts):
+            _skip(
+                item,
+                "duplicate",
+                f"an equivalent point already exists on “{title}”",
+            )
             continue
         db_session.add(
             KBPoint(
@@ -852,8 +1059,10 @@ def _write_back_elicited_points(
                 state="draft",
                 origin="gap_elicitation",
                 origin_detail=f"tailoring_session:{tailoring.id}",
+                provenance="user_stated",
             )
         )
+    return skips
 
 
 def _is_duplicate_point(text: str, existing_texts: list[str]) -> bool:
@@ -974,7 +1183,7 @@ def _reject_stale_placements(tailoring: TailoringSession, base: dict[str, Any]) 
     current_targets = placement_targets.build_targets(base)
     stale_gap_ids: list[str] = []
     for item in tailoring.resolutions_json:
-        if item.get("action") in ("skip", "enable_entry"):
+        if item.get("action") in ("skip", "cannot_confirm", "enable_entry"):
             continue
         placement_target = (item.get("payload") or {}).get("placement_target")
         if not placement_target:
@@ -1253,11 +1462,13 @@ def tailor(
                     # Model contract (career_kb.py): NULL = verbatim port, where
                     # ported_text doubles as the snapshot; set only when adapted.
                     source_text=None if payload["wording"] == point.text else point.text,
+                    direction="to_resume",
                 )
             )
 
         # Flywheel write-back: staged here so it rides the same single commit.
-        _write_back_elicited_points(session, tailoring, base)
+        # The skip list travels up on the response (transient attribute below).
+        writeback_skips = _write_back_elicited_points(session, tailoring, base)
 
         # Stage the session transition BEFORE scoring, then commit ONCE:
         # application + session update + score row land in one transaction.
@@ -1274,6 +1485,11 @@ def tailor(
         session.commit()
 
         session.refresh(tailoring)
+        # Non-persisted, transient instance attribute (same pattern as
+        # create_session's health_warning): the router folds it into
+        # TailorResponse.kb_writeback_skips. Set AFTER refresh so the reload
+        # doesn't clear it.
+        tailoring.kb_writeback_skips = writeback_skips
         artifacts.remove_files(stale)
         return tailoring
     finally:

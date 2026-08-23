@@ -219,4 +219,8 @@ def tailor_session(
         "compare": compare,
         "compare_error": compare_error,
         "pdf_ready": pdf_ready,
+        # Transient attribute set by tailor() (same pattern as health_warning):
+        # gap answers the KB write-back skipped, with reasons — surfaced as a
+        # quiet note so flywheel drops are never silent (Phase C Task 11).
+        "kb_writeback_skips": getattr(row, "kb_writeback_skips", []),
     }

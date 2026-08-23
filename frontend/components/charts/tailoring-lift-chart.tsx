@@ -39,6 +39,8 @@ export function TailoringLiftChart({ filters }: { filters: TopSkillsFilters }) {
         role: r.role_category,
         Base: r.avg_base,
         Tailored: r.avg_tailored,
+        n: r.n,
+        low_sample: r.low_sample,
       }));
     return { chartData, overall };
   }, [data]);
@@ -62,7 +64,14 @@ export function TailoringLiftChart({ filters }: { filters: TopSkillsFilters }) {
             ({overall.avg_lift >= 0 ? "+" : ""}
             {overall.avg_lift.toFixed(1)})
           </span>{" "}
-          across {overall.n} application{overall.n === 1 ? "" : "s"}.
+          across {overall.n} application{overall.n === 1 ? "" : "s"}
+          {overall.low_sample ? " · directional only" : ""}.
+        </p>
+      ) : null}
+      {chartData.some((r) => r.low_sample) && !overall?.low_sample ? (
+        <p className="text-muted-foreground mb-2 text-xs">
+          Some roles have fewer than 5 applications · those bars are directional
+          only.
         </p>
       ) : null}
       {chartData.length === 0 ? (

@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch } from "@/lib/api";
 import type { ExploreCountRow, ExploreOverview } from "@/lib/types";
+import { LowSampleCaption } from "@/components/explore/low-sample-hint";
 
 type Filters = {
   role_category?: string | null;
@@ -122,6 +123,7 @@ export function ExploreOverview({ filters }: { filters: Filters }) {
 
   return (
     <div className="flex flex-col gap-4">
+      <LowSampleCaption n={total} lowSample={total < 5} unit="jobs" />
       <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-5">
         <StatTile
           label="total JDs"

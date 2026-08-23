@@ -17,6 +17,10 @@ class ResolutionItem(BaseModel):
         "skip",
         "enable_entry",
         "port_kb_point",
+        # "I can't confirm this": skip-for-the-document plus a durable
+        # user_cannot_confirm KB record so the claim is never re-asked and
+        # never laundered into evidence (SYSTEM.md inv-provenance-no-decay).
+        "cannot_confirm",
     ]
     payload: dict[str, Any] = Field(default_factory=dict)
 
@@ -73,6 +77,19 @@ class TailorRequest(BaseModel):
     apply_profile: bool = False
 
 
+class KBWritebackSkip(BaseModel):
+    """One substantive gap answer the flywheel could NOT save to the Career KB,
+    with why — returned on the tailor response so the drop is never silent."""
+
+    gap_id: str
+    # The gap's JD skill / requirement line, for the UI note.
+    skill: str | None = None
+    reason: Literal["too_short", "wrong_section", "no_entity_match", "duplicate"]
+    # Human sentence composed server-side (e.g. "no Career KB entity titled
+    # 'Acme Corp'") so every surface words the drop the same way.
+    detail: str
+
+
 class TailorResponse(BaseModel):
     session: TailoringSessionRead
     # None when the post-tailor compare failed (e.g. version mismatch): the
@@ -84,3 +101,6 @@ class TailorResponse(BaseModel):
     # are the same pipeline, so they report the same fact the same way. The
     # failure detail lands on `application.render_error`, which the studio reads.
     pdf_ready: bool = True
+    # Gap answers the KB write-back skipped, with reasons (Phase C Task 11):
+    # rendered as a quiet, non-blocking note so flywheel drops are never silent.
+    kb_writeback_skips: list[KBWritebackSkip] = Field(default_factory=list)

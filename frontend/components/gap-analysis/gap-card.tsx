@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Check, Library, Undo2 } from "lucide-react";
+import { Ban, Check, Library, Undo2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,7 @@ import {
   ActionSegment,
   AddKeywordControls,
   AttachProjectControls,
+  CANNOT_CONFIRM_EXPLANATION,
   LibraryCandidateChips,
   UserInputControls,
   candidateKey,
@@ -190,6 +191,9 @@ function resolutionSummary(
     return label
       ? `add “${wording}” from your Career KB → ${label}`
       : `add “${wording}” from your Career KB`;
+  }
+  if (resolution.action === "cannot_confirm") {
+    return "can't confirm";
   }
   return "skipped";
 }
@@ -461,6 +465,14 @@ export function GapCard({
     commit("user_input", userInputPayload(snippet, nextTarget));
   };
 
+  // Shared by the resolved-state rows: reopen the gap for editing. The KB
+  // record a cannot_confirm wrote stays — the Career KB page manages it.
+  const reopenGap = () => {
+    clear();
+    setAction(null);
+    setEditing(true);
+  };
+
   const title = gapTitle(gap);
   const isSummary = gap.kind === "summary";
   const potentialPointsLabel =
@@ -472,19 +484,35 @@ export function GapCard({
     ? null
     : targets?.filter((t) => t.section !== "skills") ?? null;
 
+  // Can't-confirm: deliberately DISTINCT from the dashed "skipped" row — a
+  // solid border, an icon, and the standing explanation. The KB record was
+  // written on save; Undo reopens the gap here but the record stays (the
+  // Career KB page is where it's managed).
+  if (!editing && resolution?.action === "cannot_confirm") {
+    return (
+      <div className="text-muted-foreground flex items-center justify-between gap-2 rounded-xl border py-2 pr-1.5 pl-4 text-sm">
+        <span className="flex min-w-0 items-start gap-2">
+          <Ban className="mt-0.5 size-4 shrink-0" />
+          <span className="min-w-0">
+            <span className="block truncate">
+              <span className="text-foreground font-medium">{title}</span> — can&apos;t
+              confirm
+            </span>
+            <span className="block text-xs">{CANNOT_CONFIRM_EXPLANATION}</span>
+          </span>
+        </span>
+        <Button variant="ghost" size="xs" onClick={reopenGap}>
+          <Undo2 /> Undo
+        </Button>
+      </div>
+    );
+  }
+
   if (!editing && resolution?.action === "skip") {
     return (
       <div className="text-muted-foreground flex items-center justify-between gap-2 rounded-xl border border-dashed py-1.5 pr-1.5 pl-4 text-sm">
         <span className="truncate">{title} — skipped</span>
-        <Button
-          variant="ghost"
-          size="xs"
-          onClick={() => {
-            clear();
-            setAction(null);
-            setEditing(true);
-          }}
-        >
+        <Button variant="ghost" size="xs" onClick={reopenGap}>
           <Undo2 /> Undo
         </Button>
       </div>
@@ -592,6 +620,25 @@ export function GapCard({
           </p>
         )}
         <ActionSegment actions={gap.actions} value={action} onSelect={selectAction} />
+        {gap.actions.includes("cannot_confirm") && (
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="outline"
+              size="xs"
+              className="text-muted-foreground"
+              onClick={() => {
+                setAction("cannot_confirm");
+                setEditing(false);
+                commit("cannot_confirm", {});
+              }}
+            >
+              <Ban /> I can&apos;t confirm this
+            </Button>
+            <span className="text-muted-foreground text-xs">
+              {CANNOT_CONFIRM_EXPLANATION}
+            </span>
+          </div>
+        )}
         <LibraryCandidateChips
           candidates={libraryCandidates}
           selectedKey={selectedCandidateKey(resolution, libraryCandidates)}

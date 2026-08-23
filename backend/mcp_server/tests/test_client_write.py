@@ -188,3 +188,51 @@ def test_update_application_sends_all_fields_when_given():
         "notes": "Recruiter call scheduled",
         "referral_id": "r1",
     }
+
+
+@respx.mock
+def test_list_resume_versions_hits_kind_key_collection():
+    route = respx.get(f"{BASE}/api/resume-versions/base/master").mock(
+        return_value=httpx.Response(200, json=[{"number": 1}])
+    )
+    assert BackendClient(BASE).list_resume_versions("base", "master") == [{"number": 1}]
+    assert route.called
+
+
+@respx.mock
+def test_get_resume_version_hits_kind_key_number():
+    route = respx.get(f"{BASE}/api/resume-versions/application/a1/3").mock(
+        return_value=httpx.Response(200, json={"number": 3, "diff": []})
+    )
+    out = BackendClient(BASE).get_resume_version("application", "a1", 3)
+    assert out["number"] == 3
+    assert route.called
+
+
+@respx.mock
+def test_restore_resume_version_posts_restore():
+    route = respx.post(f"{BASE}/api/resume-versions/base/master/2/restore").mock(
+        return_value=httpx.Response(200, json={"number": 3})
+    )
+    assert BackendClient(BASE).restore_resume_version("base", "master", 2) == {
+        "number": 3
+    }
+    assert route.called
+
+
+@respx.mock
+def test_archive_base_resume_posts_archive():
+    route = respx.post(f"{BASE}/api/base-resumes/other/archive").mock(
+        return_value=httpx.Response(200, json={"slug": "other", "archived_at": "t"})
+    )
+    assert BackendClient(BASE).archive_base_resume("other")["slug"] == "other"
+    assert route.called
+
+
+@respx.mock
+def test_unarchive_base_resume_posts_unarchive():
+    route = respx.post(f"{BASE}/api/base-resumes/other/unarchive").mock(
+        return_value=httpx.Response(200, json={"slug": "other", "archived_at": None})
+    )
+    assert BackendClient(BASE).unarchive_base_resume("other")["archived_at"] is None
+    assert route.called

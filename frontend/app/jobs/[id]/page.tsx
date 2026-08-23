@@ -33,6 +33,7 @@ import {
   JobExtractedFields,
   formatSalary,
 } from "@/components/job-extracted-fields";
+import { JobKnockoutCard } from "@/components/job-knockout-card";
 import { JobTrackingUrlField } from "@/components/job-tracking-url-field";
 import { ProposalAgentPanel } from "@/components/proposals/proposal-agent-panel";
 import {
@@ -57,14 +58,27 @@ import type { Job, JobDetail, ProposalStatus } from "@/lib/types";
 const JOB_TABS = ["jd", "fit", "output", "qa"] as const;
 
 function JobTabsList({ hasApp }: { hasApp: boolean }) {
+  // A greyed tab with no stated reason is a dead end for a first-time user
+  // (StudioToolbar's rule: a "not yet, because…" message lives on the disabled
+  // control's tooltip). The base trigger styles set pointer-events-none while
+  // disabled, which suppresses even native title tooltips — re-enable them on
+  // the locked pair only; the disabled attribute still swallows the click.
+  const lockedProps = hasApp
+    ? {}
+    : {
+        disabled: true,
+        title: "Unlocks after you tailor a resume for this job",
+        className:
+          "disabled:pointer-events-auto aria-disabled:pointer-events-auto",
+      };
   return (
     <TabsList>
       <TabsTrigger value="jd">Overview</TabsTrigger>
       <TabsTrigger value="fit">Score &amp; Tailor</TabsTrigger>
-      <TabsTrigger value="output" disabled={!hasApp}>
+      <TabsTrigger value="output" {...lockedProps}>
         Resume
       </TabsTrigger>
-      <TabsTrigger value="qa" disabled={!hasApp}>
+      <TabsTrigger value="qa" {...lockedProps}>
         Q&amp;A
       </TabsTrigger>
     </TabsList>
@@ -444,12 +458,14 @@ export default function JobDetailPage({
         >
           {/* "Edit resume" is promoted OUT of the Resume tab (design §4.5): once a
               tailored draft exists the studio is reachable from every tab, not
-              just the one you have to remember to open first. */}
+              just the one you have to remember to open first. It is filled,
+              not outlined: promoting a control to every tab and then styling
+              it like the row's furniture buries it again — this is what you
+              came to the job for once a draft exists. */}
           <div className="flex flex-wrap items-center justify-between gap-2">
             <JobTabsList hasApp={hasApp} />
             {application?.customized_json ? (
               <Button
-                variant="outline"
                 size="sm"
                 nativeButton={false}
                 render={
@@ -464,6 +480,7 @@ export default function JobDetailPage({
 
           <TabsContent value="jd" className="mt-0 space-y-4">
             {proposalId ? <ProposalAgentPanel proposalId={proposalId} /> : null}
+            <JobKnockoutCard scan={data?.knockout} />
             <JobExtractedFields
               job={job}
               hideTitle

@@ -15,6 +15,12 @@ from app.models.application import Application
 from app.models.ats_score import AtsScore
 from app.models.job import Job
 
+LOW_SAMPLE_THRESHOLD = 5
+
+
+def _low_sample(n: int) -> bool:
+    return n < LOW_SAMPLE_THRESHOLD
+
 
 def _apply_job_filters(stmt, role_category, level, employment_type):
     if role_category:
@@ -173,6 +179,7 @@ def gap_frequency(
             else 0.0,
             "category": _most_common(categories[skill]),
             "requirement_level": _most_common(req_levels[skill]),
+            "low_sample": _low_sample(len(ids)),
         }
         for skill, ids in job_ids.items()
     ]
@@ -212,6 +219,7 @@ def ats_over_time(
             "role_category": row.role_category,
             "avg_composite": round(float(row.avg_composite), 1),
             "n": int(row.n),
+            "low_sample": _low_sample(int(row.n)),
         }
         for row in db.execute(stmt).all()
     ]
@@ -291,6 +299,7 @@ def tailoring_lift(
             "avg_base": round(avg_base, 1),
             "avg_tailored": round(avg_tailored, 1),
             "avg_lift": round(avg_lift, 1),
+            "low_sample": _low_sample(n),
         }
 
     rows = [

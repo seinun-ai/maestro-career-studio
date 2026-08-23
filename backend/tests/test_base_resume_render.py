@@ -24,12 +24,20 @@ SAMPLE_DATA = {
 def test_render_base_resume_writes_files_and_updates_row(db_session, tmp_path, monkeypatch):
     monkeypatch.setattr(base_resume_render.settings, "base_resumes_dir", tmp_path)
 
-    def fake_render_and_compile(data, tex_path: Path, pdf_path: Path, *, template_id=None, session=None, formatting=None):
+    def fake_render_and_compile(
+        data,
+        tex_path: Path,
+        pdf_path: Path,
+        *,
+        template_id=None,
+        session=None,
+        formatting=None,
+    ):
         tex_path.parent.mkdir(parents=True, exist_ok=True)
         pdf_path.parent.mkdir(parents=True, exist_ok=True)
         tex_path.write_text("tex", encoding="utf-8")
         _write_valid_pdf(pdf_path)
-        return tex_path
+        return tex_path, pdf_render.RenderedDoc("latex", "tex")
 
     monkeypatch.setattr(pdf_render, "render_and_compile", fake_render_and_compile)
 

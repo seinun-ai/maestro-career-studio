@@ -29,6 +29,7 @@ from app.schemas.base_resume import (
 )
 from app.schemas.formatting import validate_formatting
 from app.schemas.job_preferences import MAX_LABEL_CHARS
+from app.schemas.kb_sync import SyncResult, SyncStatus
 from app.schemas.resume import ResumeData
 from app.schemas.resume_edit import ResumeEditRequest
 from app.services import (
@@ -36,6 +37,7 @@ from app.services import (
     base_resume_data,
     base_resume_render,
     career_kb,
+    kb_base_sync,
     pdf_preview,
     role_categories,
 )
@@ -49,6 +51,12 @@ router = APIRouter(prefix="/api/base-resumes", tags=["base-resumes"])
 
 
 SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9_]*$")
+
+
+def _truncate_detail(text: str, limit: int = 12000) -> str:
+    if len(text) <= limit:
+        return text
+    return text[:limit] + "\n...(truncated)"
 
 
 def _validated_role(value: str | None) -> str:
@@ -137,7 +145,14 @@ def _next_role_slug(role_category: str, db: Session) -> str:
     return f"{role_category}_{suffix}"
 
 
-def _detail(row: BaseResume, *, applied: list[dict] | None = None) -> BaseResumeDetail:
+def _detail(
+    row: BaseResume,
+    *,
+    applied: list[dict] | None = None,
+    resolved_template_id: str | None = None,
+    resolved_engine: str | None = None,
+    template_fallback: bool | None = None,
+) -> BaseResumeDetail:
     return BaseResumeDetail(
         slug=row.slug,
         display_name=row.display_name,
@@ -149,6 +164,9 @@ def _detail(row: BaseResume, *, applied: list[dict] | None = None) -> BaseResume
         pdf_rendered_at=row.pdf_rendered_at,
         formatting=row.formatting_json,
         template_id=row.template_id,
+        resolved_template_id=resolved_template_id,
+        resolved_engine=resolved_engine,
+        template_fallback=template_fallback,
         pdf_pages=row.pdf_pages,
         render_error=row.render_error,
         updated_at=row.updated_at,
@@ -636,10 +654,56 @@ def render_base_resume_endpoint(
     if row is None:
         raise HTTPException(status_code=404, detail="Base resume not found")
     try:
-        base_resume_render.render_base_resume(slug, db, template_id=template_id)
+        rendered = base_resume_render.render_base_resume(
+            slug, db, template_id=template_id
+        )
     except LookupError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=_truncate_detail(str(e))) from e
     db.refresh(row)
-    return _detail(row)
+    resolved_template_id = getattr(rendered, "resolved_template_id", None)
+    return _detail(
+        row,
+        resolved_template_id=resolved_template_id,
+        resolved_engine=getattr(rendered, "resolved_engine", None),
+        template_fallback=(
+            template_id is not None and resolved_template_id != template_id
+        ),
+    )
+
+
+@router.get("/{slug}/kb-sync-status", response_model=SyncStatus)
+def kb_sync_status(slug: str, db: Annotated[Session, Depends(get_db)]):
+    try:
+        report = kb_base_sync.classify(db, slug)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    return SyncStatus(
+        items=[
+            {
+                "tier": item.tier,
+                "section": item.section,
+                "entity_id": item.entity_id,
+                "entity_proposal": item.entity_proposal,
+                "matched_point_id": item.matched_point_id,
+                "text": item.text,
+            }
+            for item in report["items"]
+        ],
+        skills_new=report["skills_new"],
+        counts=report["counts"],
+        last_kb_synced_at=report["last_kb_synced_at"],
+    )
+
+
+@router.post("/{slug}/kb-sync", response_model=SyncResult)
+def kb_sync_apply(slug: str, db: Annotated[Session, Depends(get_db)]):
+    try:
+        result = kb_base_sync.apply(db, slug)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    db.commit()
+    return result

@@ -17,6 +17,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { statusLabel } from "@/components/status-chip";
 import { apiFetch } from "@/lib/api";
+import { LowSampleBadge } from "@/components/explore/low-sample-hint";
 import type {
   ActivityResponse,
   BuildAreaRow,
@@ -154,8 +155,13 @@ export function AnalyticsOverview({
               (gaps.data ?? []).map((row) => (
                 <div key={row.skill} className="flex items-center justify-between gap-3">
                   <span className="min-w-0 truncate text-sm">{row.skill}</span>
-                  <span className="text-muted-foreground shrink-0 text-xs">
+                  <span className="text-muted-foreground flex shrink-0 items-center gap-1.5 text-xs">
                     {row.n_jobs} {row.n_jobs === 1 ? "job" : "jobs"}
+                    <LowSampleBadge
+                      n={row.n_jobs}
+                      lowSample={row.low_sample}
+                      unit="jobs"
+                    />
                   </span>
                 </div>
               ))

@@ -343,6 +343,21 @@ def test_apply_hint_reports_readiness_and_conditions_the_offer():
     assert "browser tools" in hint["offer"]
 
 
+def test_apply_hint_names_upload_and_consent_tools_not_the_playbook():
+    hint = workflow.next_after_render(
+        setup_status=_autofill_setup_status(ready=True),
+        allowed_tools=None, hints_enabled=True,
+    )
+    offer = hint["offer"]
+    assert "prepare_application_pdf_upload" in offer
+    assert "record_consent" in offer
+    assert "mark_submitted" in offer
+    assert "agent-apply.md" not in offer
+    assert "headless" in offer.lower()
+    assert "stealth" in offer.lower()
+    assert "captcha" in offer.lower()
+
+
 def test_apply_hint_reports_ready_when_setup_is_complete():
     hint = workflow.next_after_render(
         setup_status=_autofill_setup_status(ready=True),

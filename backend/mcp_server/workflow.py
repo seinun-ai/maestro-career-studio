@@ -376,9 +376,10 @@ def next_after_render(
     There is no cross-server introspection: this process cannot see whether
     the calling MCP client also holds Playwright/browser tools, so the offer
     is worded conditionally ("if this session also holds browser tools") and
-    points at the playbook rather than asserting a capability we cannot
-    confirm. No tool `options` are emitted for the handoff itself — the
-    browser tools are not ours to name or filter through `allowed_tools`.
+    names prepare_application_pdf_upload plus the consent rules on
+    record_consent / mark_submitted rather than asserting a capability we
+    cannot confirm. No tool `options` are emitted for the handoff itself —
+    the browser tools are not ours to name or filter through `allowed_tools`.
     """
     if _suppressed(hints_enabled, brief):
         return None
@@ -399,9 +400,12 @@ def next_after_render(
         "blocking": False,
         "offer": (
             "If — and only if — this session also holds browser tools, it may "
-            "offer to walk the apply handoff per docs/playbooks/agent-apply.md. "
-            "There is no way to confirm browser tools are present from here, so "
-            "check before offering rather than assuming."
+            "offer to walk the apply handoff: stage the PDF with "
+            "prepare_application_pdf_upload, then record_consent / "
+            "mark_submitted per those tools' consent rules. Never headless, "
+            "stealth, or CAPTCHA bypass. There is no way to confirm browser "
+            "tools are present from here, so check before offering rather "
+            "than assuming."
         ),
         "ask_user": None,
         "options": [],

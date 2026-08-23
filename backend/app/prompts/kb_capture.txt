@@ -17,6 +17,7 @@ Rules:
     - `kind`: one of experience | project | education | certification
     - `title`: a concise title for the entity
     - `org`: the organization/company/school, or null if none applies or is unknown
+- When the dump starts in a leading "Label: ..." form, do not echo the label in the title; title the work described instead.
 - Exactly ONE of `entity_id` / `new_entity` is non-null. When `entity_id` is provided,
   `new_entity` MUST be null; when `new_entity` is provided, `entity_id` MUST be null.
 - Do not force a weak match. If no existing entity clearly fits, propose a new entity.

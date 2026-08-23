@@ -10,6 +10,15 @@ import {
   RolePicker,
 } from "@/components/role-picker";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 import { apiFetch } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import type { BaseResumeDetail, FavoredRole, RoleCategory } from "@/lib/types";
@@ -96,8 +105,14 @@ export function RoleCategoryPicker({
     onSuccess: (updated) => {
       qc.setQueryData(["base-resumes", slug], updated);
       qc.invalidateQueries({ queryKey: ["base-resumes"] });
+      // Clearing reports itself as clearing. Routed through the same success
+      // path, it used to announce "Role set to Unknown" — the storage sentinel
+      // read back as if it were a role someone had chosen.
+      const cleared = updated.role_category === "unknown" && !updated.role_label;
       toast.success(
-        `Role set to ${displayRoleTag(updated.role_category, updated.role_label, options)}`,
+        cleared
+          ? "Role cleared"
+          : `Role set to ${displayRoleTag(updated.role_category, updated.role_label, options)}`,
       );
     },
     onError: (err: Error) => toast.error(err.message),
@@ -138,5 +153,69 @@ export function RoleCategoryPicker({
         placeholder={roleCategory === "unknown" && !label ? "Set role…" : ""}
       />
     </div>
+  );
+}
+
+
+/** Menu-item wording for the role, e.g. "Role: Data Scientist". `unknown` with
+ *  no label reads as an invitation, matching RoleBadge. */
+export function roleMenuLabel(
+  roleCategory: string,
+  label: string | null | undefined,
+  options?: RoleCategory[],
+) {
+  if (roleCategory === "unknown" && !label) return "Role not set";
+  return `Role: ${displayRoleTag(roleCategory, label, options)}`;
+}
+
+/**
+ * The picker in a dialog, for surfaces that keep the role OFF the page and
+ * behind a menu.
+ *
+ * A dialog rather than the picker nested straight into the dropdown: the
+ * picker is itself a popup, and a combobox popup inside a menu popup fights
+ * the menu for focus and dismissal. The dialog also gives the free-text
+ * mapping strip ("Count 'X' as Y?") somewhere to appear — inside a menu it
+ * would be clipped.
+ *
+ * The write still lands on blur-free instant PATCH, so there is nothing to
+ * save here; the footer button only closes.
+ */
+export function RoleCategoryDialog({
+  slug,
+  roleCategory,
+  roleLabel: label = null,
+  open,
+  onOpenChange,
+}: {
+  slug: string;
+  roleCategory: string;
+  roleLabel?: string | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Target role</DialogTitle>
+          <DialogDescription>
+            What this resume is for. It labels generated files and tells the
+            tracker which roles you already have a base resume for.
+          </DialogDescription>
+        </DialogHeader>
+        <RoleCategoryPicker
+          slug={slug}
+          roleCategory={roleCategory}
+          roleLabel={label}
+          className="w-full"
+        />
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Done
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

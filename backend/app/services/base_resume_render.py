@@ -25,7 +25,7 @@ def render_base_resume(slug: str, db: Session, *, template_id: str | None = None
         template_id = row.template_id
 
     tex_path, pdf_path = _paths(slug)
-    source_path = pdf_render.render_and_compile(
+    source_path, doc = pdf_render.render_and_compile(
         row.data_json,
         tex_path,
         pdf_path,
@@ -41,4 +41,6 @@ def render_base_resume(slug: str, db: Session, *, template_id: str | None = None
     row.render_error = None
     db.commit()
     db.refresh(row)
+    row.resolved_template_id = doc.resolved_template_id
+    row.resolved_engine = doc.engine
     return row

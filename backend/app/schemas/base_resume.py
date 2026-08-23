@@ -34,6 +34,9 @@ class BaseResumeDetail(BaseModel):
     pdf_rendered_at: datetime | None = None
     formatting: dict | None = None
     template_id: str | None = None
+    resolved_template_id: str | None = None
+    resolved_engine: str | None = None
+    template_fallback: bool | None = None
     pdf_pages: int | None = None
     render_error: str | None = None
     updated_at: datetime

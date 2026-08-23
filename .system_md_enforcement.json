@@ -35,6 +35,14 @@
     "inv-one-label-pattern-table": [
       {"path": "backend/tests/test_extension_eligibility.py", "symbol": "test_the_shared_pattern_table_fails_loudly_when_it_is_wired_wrong"},
       {"path": "extension/shared/profile-fields.js", "symbol": "profile"}
+    ],
+    "inv-em-dash": [
+      {"path": "backend/app/services/qa.py", "symbol": "scrub_typographic_dashes"},
+      {"path": "backend/tests/test_qa.py", "symbol": "test_scrub_typographic_dashes_turns_clause_dashes_into_commas"}
+    ],
+    "inv-provenance-no-decay": [
+      {"path": "backend/tests/test_kb_provenance_stamping.py", "symbol": "test_no_writer_flips_user_cannot_confirm"},
+      {"path": "backend/tests/test_gap_cannot_confirm.py", "symbol": "test_nothing_upgrades_user_cannot_confirm"}
     ]
   },
   "unpinned": {
@@ -43,7 +51,6 @@
       "inv-honesty",
       "inv-tailor-vs-edit",
       "inv-autofill-telemetry-no-values",
-      "inv-em-dash",
       "inv-eeo-standing-consent",
       "inv-pdf-word-spacing"
     ]

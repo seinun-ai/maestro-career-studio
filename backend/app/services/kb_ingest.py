@@ -94,6 +94,7 @@ def mint_document(session: Session, document: KBDocument) -> KBDocument:
                 text=text,
                 state="draft",
                 origin="ingested",
+                provenance="user_authored",
                 source_document_id=document.id,
             )
         )
@@ -166,7 +167,12 @@ def _clean_extra_identity(raw_entity: dict, raw_detail: dict | None) -> tuple[st
         return None
 
 
-def _build_entity_from_doc(new_entity: dict) -> KBEntity:
+def _build_entity_from_doc(
+    new_entity: dict,
+    *,
+    origin: str | None = None,
+    origin_detail: str | None = None,
+) -> KBEntity:
     """Coerce the LLM's proposed entity; never trust output."""
     title = new_entity.get("title")
     if not isinstance(title, str) or not title.strip():
@@ -203,10 +209,20 @@ def _build_entity_from_doc(new_entity: dict) -> KBEntity:
         end_date=_clean("end_date"),
         status="completed",
         detail_json=detail,
+        origin=origin,
+        origin_detail=origin_detail,
     )
 
 
-def ingest_document(session: Session, filename: str | None, mime: str | None, data: bytes):
+def ingest_document(
+    session: Session,
+    filename: str | None,
+    mime: str | None,
+    data: bytes,
+    *,
+    origin: str | None = None,
+    origin_detail: str | None = None,
+):
     """Document-first ingest: one LLM call matches/proposes the entity AND mints points.
 
     Returns (entity, document, points, created_entity). Raises
@@ -257,7 +273,9 @@ def ingest_document(session: Session, filename: str | None, mime: str | None, da
         if target is None or target.status == "archived":
             raise ValueError(f"document ingest chose unknown entity id {raw_id!r}")
     elif isinstance(new_entity, dict):
-        target = _build_entity_from_doc(new_entity)
+        target = _build_entity_from_doc(
+            new_entity, origin=origin, origin_detail=origin_detail
+        )
         session.add(target)
         session.flush()
         created = True
@@ -297,6 +315,7 @@ def ingest_document(session: Session, filename: str | None, mime: str | None, da
             text=body,
             state="draft",
             origin="ingested",
+            provenance="user_authored",
             source_document_id=document.id,
         )
         session.add(point)
@@ -411,6 +430,7 @@ def capture(
             state="draft",
             origin=origin,
             origin_detail=origin_detail,
+            provenance="user_stated",
         )
         session.add(p)
         points.append(p)

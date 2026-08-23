@@ -96,14 +96,77 @@ def test_get_rendered_pdf_page_image_returns_only_requested_page(tmp_path, monke
     assert out["target_id"] == "a1"
     assert out["page_number"] == 2
     assert out["page_count"] == 2
-    assert out["filename"] == "a1.p2.png"
-    assert Path(out["path"]).name == "a1.p2.png"
+    assert out["filename"] == "a1.p2.w1024.png"
+    assert Path(out["path"]).name == "a1.p2.w1024.png"
     image = base64.b64decode(out["page_image_b64"])
     assert image == Path(out["path"]).read_bytes()
     assert out["size_bytes"] == len(image)
     assert out["mime_type"] == "image/png"
     assert "page_images" not in out
     assert "page_images_b64" not in out
+
+
+@respx.mock
+def test_get_rendered_pdf_page_image_defaults_to_1024px_cap(tmp_path, monkeypatch):
+    from PIL import Image
+    import io
+
+    monkeypatch.setenv("MAESTRO_CS_PDF_DIR", str(tmp_path))
+    pdf = multipage_text_pdf_bytes(["Page one", "Dense page two"])
+    respx.get(f"{BASE}/api/applications/a1/pdf").mock(return_value=_pdf_response(pdf))
+    _mock_application_detail()
+
+    out = BackendClient(BASE).get_rendered_pdf_page_image("application", "a1", 2)
+    image = Image.open(io.BytesIO(base64.b64decode(out["page_image_b64"])))
+    assert max(image.size) <= 1024
+
+
+@respx.mock
+def test_get_rendered_pdf_page_image_honors_caller_max_dimension(tmp_path, monkeypatch):
+    from PIL import Image
+    import io
+
+    monkeypatch.setenv("MAESTRO_CS_PDF_DIR", str(tmp_path))
+    pdf = multipage_text_pdf_bytes(["Page one"])
+    respx.get(f"{BASE}/api/applications/a1/pdf").mock(return_value=_pdf_response(pdf))
+    _mock_application_detail()
+
+    out = BackendClient(BASE).get_rendered_pdf_page_image(
+        "application", "a1", 1, max_dimension_px=2000
+    )
+    image = Image.open(io.BytesIO(base64.b64decode(out["page_image_b64"])))
+    assert max(image.size) == 2000
+
+
+@respx.mock
+def test_get_rendered_pdf_page_image_does_not_rewrite_preview_pngs(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("MAESTRO_CS_PDF_DIR", str(tmp_path))
+    pdf = multipage_text_pdf_bytes(["Page one"])
+    respx.get(f"{BASE}/api/applications/a1/pdf").mock(return_value=_pdf_response(pdf))
+    _mock_application_detail()
+
+    client = BackendClient(BASE)
+    slim = client.get_rendered_pdf("application", "a1")
+    preview = Path(slim["page_images"][0])
+    before = preview.read_bytes()
+    client.get_rendered_pdf_page_image("application", "a1", 1, max_dimension_px=64)
+    assert preview.read_bytes() == before
+
+
+@respx.mock
+def test_get_rendered_pdf_page_image_hard_caps_encoded_payload(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("MAESTRO_CS_PDF_DIR", str(tmp_path))
+    monkeypatch.setattr(client_module, "_PAGE_IMAGE_B64_CAP", 50)
+    pdf = multipage_text_pdf_bytes(["Page one"])
+    respx.get(f"{BASE}/api/applications/a1/pdf").mock(return_value=_pdf_response(pdf))
+    _mock_application_detail()
+
+    with pytest.raises(BackendError, match=r"lower max_dimension_px"):
+        BackendClient(BASE).get_rendered_pdf_page_image("application", "a1", 1)
 
 
 @pytest.mark.parametrize("page_number", [0, -1, 3])
@@ -122,21 +185,19 @@ def test_get_rendered_pdf_page_image_rejects_out_of_bounds(
         )
 
 
-def test_get_rendered_pdf_page_image_rejects_unavailable_preview(monkeypatch):
+def test_get_rendered_pdf_page_image_rejects_unreadable_pdf(monkeypatch):
     client = BackendClient(BASE)
     monkeypatch.setattr(
         client,
         "get_rendered_pdf",
         lambda _target_type, _target_id: {
             "page_count": 1,
+            "path": "/no/such/file.pdf",
             "page_images": [],
         },
     )
 
-    with pytest.raises(
-        BackendError,
-        match=r"preview unavailable.*render dependencies",
-    ):
+    with pytest.raises(BackendError):
         client.get_rendered_pdf_page_image("application", "a1", 1)
 
 

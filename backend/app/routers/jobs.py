@@ -528,9 +528,18 @@ def get_job_detail(job_id: UUID, db: Annotated[Session, Depends(get_db)]):
         job.proposal_status = None
     else:
         job.proposal_id, job.proposal_status = newest_prop
+    from app.services import autofill_profile, job_preferences, knockout
+
+    scan = knockout.scan_job(
+        job,
+        autofill_profile.get_work_auth(db),
+        autofill_profile.get_profile(db).get("preferences"),
+        years_experience=job_preferences.get_preferences(db).years_experience,
+    )
     return JobDetail(
         job=JobRead.model_validate(job),
         application=ApplicationRead.model_validate(application) if application else None,
+        knockout=scan,
     )
 
 

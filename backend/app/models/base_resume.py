@@ -44,6 +44,7 @@ class BaseResume(Base):
     # application that already references it. See
     # services/base_resume_data.active_ vs selectable_base_resume_slugs.
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_kb_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

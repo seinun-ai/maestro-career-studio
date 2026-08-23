@@ -27,7 +27,7 @@ These have real coverage and are unlikely to move under you.
 - **The Career KB → resume → application chain.** Approved evidence composes
   verbatim; rewriting is a separate, consented step. Resume versions are
   recorded, so nothing is one-way.
-- **The MCP server.** 77 tools across six profiles, cold-install tested in CI
+- **The MCP server.** 83 tools across six profiles, cold-install tested in CI
   against the exact command the README gives you.
 - **Data stays local.** No telemetry leaves your machine — see the extension
   section of the README for what the one telemetry endpoint stores and how to
@@ -39,17 +39,18 @@ Honest list. None of these are secret; most are §11 items with a number.
 
 - **The tracker does not paginate server-side.** The client caps at 500 rows.
   Past that, the page gets slow. (§11.5)
-- **No "ready to apply" gate.** Health, page-count, em-dash and contact checks
-  exist, but nothing runs them against the *exact rendered PDF* in one pass, so
-  it is still possible to send something a check would have caught. (§11.2)
+- **No post-render "ready to apply" gate.** A knock-out pre-scan now compares
+  the posting's stated requirements (work authorization, OPT policy, salary)
+  against your profile on the job Overview and in the agent final review — but
+  health, page-count, em-dash and contact checks still don't run against the
+  *exact rendered PDF* in one pass, so it is still possible to send something
+  a check would have caught. (§11.2)
 - **Score staleness.** Scores derived from a base resume are not re-scored when
   that base resume changes, so a score can quietly describe an older document.
   (§11.3)
 - **Job description fields are not correctable after extraction.** Only
   `source_url` can be edited; a mis-extracted title or seniority is stuck.
   (§11.4)
-- **Cover letters have no immutable safety block.** The Q&A path has one; the
-  cover-letter path does not, so its output is less constrained. (§11.11)
 - **Chat-attached documents do not become KB sources.** Only their extracted
   text is kept, so provenance stops at the chat message. (§11.6)
 - **The extension does not handle every ATS — and autofill is not
@@ -113,7 +114,11 @@ the domain model and not yet self-explanatory to someone who does not.
 - **There are three ways to move KB evidence into a résumé** — create a base
   from selected entities, "Send to resume" from an entity, and "Import from
   Career KB" hidden under the editor's overflow menu — and they do not share a
-  picker or a result summary. The overflow one omits custom sections.
+  picker or a result summary. The overflow one omits custom sections. The
+  one-click path that moves the other way is NOT a fourth member of that set:
+  base→KB sync (`GET/POST /api/base-resumes/{slug}/kb-sync-status` / `kb-sync`,
+  surfaced as the base studio's `KB sync (N)` toolbar pill) is the deliberate
+  reverse direction, drafting new and drifted résumé items into the Career KB.
 - **A role-targeted base still inherits every global skill.** Narrowing which
   entities compose does not narrow `KBProfile.skills`, so a résumé built for one
   role can arrive carrying unrelated skill groups.
@@ -228,31 +233,27 @@ gap, not busy-work invented for contributors.
    a real slowdown.
 2. **URL canonicalization server-side** (§11.9). Tracking-parameter stripping is
    currently every caller's job, which means it is done inconsistently.
-3. **Cover-letter safety block** (§11.11). Mirror `QA_OUTPUT_CONTRACT` from
-   `prompt_assembly`; the pattern to copy already exists.
-4. **`latex_escape_url`** (§11.7). Contact URLs go through the wrong escaper and
+3. **`latex_escape_url`** (§11.7). Contact URLs go through the wrong escaper and
    `~` corrupts. The fix touches both templates, so it needs cover-letter
    regression tests — which is most of the work.
 
 **Bigger, and genuinely useful**
 
-5. **The "ready to apply" gate** (§11.2). High user value. The metadata path it
+4. **The "ready to apply" gate** (§11.2). High user value. The metadata path it
    needs already ships.
-6. **Typed op vocabulary across chat, REST and MCP** (§11.1). Custom-section ops
-   are hand-coded per surface today and every new op multiplies the drift.
-7. **Extension coverage for more ATS platforms.** The most valuable contribution
+5. **Extension coverage for more ATS platforms.** The most valuable contribution
    anyone could make, and the hardest to fake: it requires meeting a real form.
    The fixture corpus in `backend/tests/fixtures/autofill/` shows how to add a
    control shape **without** pasting captured DOM.
-8. **Token-cost visibility.** Show what a tailoring run cost. Makes the
+6. **Token-cost visibility.** Show what a tailoring run cost. Makes the
    local-model argument concrete at the moment it is felt.
 
 **Wanted, but talk to us first**
 
-9. **Sanctioned job ingest** via an official API. This closes the one real
+7. **Sanctioned job ingest** via an official API. This closes the one real
    functional gap versus paid tools without taking on scraping.
-10. **Provider-aware model routing** — cheap or local models for mechanical
-    steps, a frontier model for tailoring.
+8. **Provider-aware model routing** — cheap or local models for mechanical
+   steps, a frontier model for tailoring.
 
 ## Before you start
 

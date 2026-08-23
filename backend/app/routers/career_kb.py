@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Respon
 from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm.exc import ObjectDeletedError, StaleDataError
 
 from app.config import settings
 from app.db import get_db
@@ -36,7 +37,10 @@ from app.schemas.career_kb import (
     KBDocumentIngestResponse,
     KBDocumentOut,
     KBEntityCreate,
+    KBEntityCreateResponse,
     KBEntityDetail,
+    KBEntityDuplicateHint,
+    KBEntityMergeRequest,
     KBEntityPatch,
     KBEntitySummary,
     KBInboxPoint,
@@ -110,6 +114,54 @@ def patch_profile(
 # --- Entities --------------------------------------------------------------
 
 
+def _possible_duplicate_hints(
+    db: Session, payload: KBEntityCreate
+) -> list[KBEntityDuplicateHint]:
+    """Return the existing exact/near identity for this kind, if unambiguous."""
+    if payload.kind == "experience":
+        section = "experience"
+        entry = {
+            "company": payload.org,
+            "role": payload.title,
+            "start_date": payload.start_date,
+        }
+        index = kb_consolidation._existing_exp_index(db, incoming_org=payload.org)
+    elif payload.kind == "project":
+        section = "projects"
+        entry = {"name": payload.title}
+        index = kb_consolidation._existing_proj_index(db, incoming_org=payload.org)
+    elif payload.kind == "education":
+        section = "education"
+        entry = {"institution": payload.org, "degree": payload.title}
+        index = kb_consolidation._existing_edu_index(db, incoming_org=payload.org)
+    elif payload.kind == "certification":
+        section = "certifications"
+        entry = payload.title if not payload.org else f"{payload.title} ({payload.org})"
+        index = kb_consolidation._existing_cert_index(db, incoming_org=payload.org)
+    else:
+        section = "extra"
+        entry = {
+            "section_key": payload.detail.get("section_key"),
+            "section_type": payload.detail.get("section_type"),
+            "heading": payload.title,
+        }
+        index = kb_consolidation._existing_extra_index(db, incoming_org=payload.org)
+
+    key = kb_consolidation.identity_key(section, entry)
+    candidate = index.get(key)
+    if candidate is None:
+        candidate = kb_consolidation.find_near_identity(section, key, index)
+    if candidate is None:
+        return []
+    incoming_org = kb_consolidation._norm(payload.org)
+    candidate_org = kb_consolidation._norm(candidate.org)
+    if incoming_org and candidate_org and incoming_org != candidate_org:
+        return []
+    return [
+        KBEntityDuplicateHint(id=candidate.id, title=candidate.title, org=candidate.org)
+    ]
+
+
 @router.get("/entities", response_model=list[KBEntitySummary])
 def list_entities(
     db: Annotated[Session, Depends(get_db)],
@@ -128,12 +180,13 @@ def list_entities(
     return [svc.entity_summary(db, entity) for entity in db.scalars(stmt).all()]
 
 
-@router.post("/entities", response_model=KBEntityDetail)
+@router.post("/entities", response_model=KBEntityCreateResponse)
 def create_entity(
     payload: KBEntityCreate,
     db: Annotated[Session, Depends(get_db)],
     write_origin: Annotated[WriteOrigin, Depends(get_write_origin)],
 ):
+    possible_duplicates = _possible_duplicate_hints(db, payload)
     entity = KBEntity(
         kind=payload.kind,
         title=payload.title,
@@ -150,7 +203,10 @@ def create_entity(
     db.commit()
     db.refresh(entity)
     career_exports.best_effort_refresh(db)
-    return svc.entity_detail(db, entity)
+    detail = svc.entity_detail(db, entity)
+    return KBEntityCreateResponse(
+        **detail.model_dump(), possible_duplicates=possible_duplicates
+    )
 
 
 @router.get("/entities/{entity_id}", response_model=KBEntityDetail)
@@ -192,6 +248,36 @@ def patch_entity(
     return svc.entity_detail(db, entity)
 
 
+@router.post("/entities/{entity_id}/merge", response_model=KBEntityDetail)
+def merge_entity(
+    entity_id: UUID,
+    payload: KBEntityMergeRequest,
+    db: Annotated[Session, Depends(get_db)],
+):
+    """Fold `entity_id` into `target_id` and return the surviving target's detail.
+
+    Web-only: the MCP surface deliberately gains no destructive merge tool.
+    """
+    try:
+        target = svc.merge_entities(db, entity_id, payload.target_id)
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except (ObjectDeletedError, StaleDataError) as e:
+        # Merge takes no row locks (see svc.merge_entities): a CONCURRENT merge
+        # of the same source is a race whose loser lands here. A sequential
+        # double-submit is not a race and gets the clean 404 above.
+        raise HTTPException(
+            status_code=409,
+            detail="This entity was merged by another request; refresh and retry",
+        ) from e
+    db.commit()
+    db.refresh(target)
+    career_exports.best_effort_refresh(db)
+    return svc.entity_detail(db, target)
+
+
 @router.delete("/entities/{entity_id}", status_code=204)
 def delete_entity(entity_id: UUID, db: Annotated[Session, Depends(get_db)]):
     entity = db.get(KBEntity, entity_id)
@@ -220,6 +306,7 @@ def create_point(
         text=payload.text,
         state="approved",
         origin="manual",
+        provenance="user_stated",
         approved_at=datetime.now(UTC),
         tags_json=payload.tags,
     )
@@ -262,14 +349,16 @@ def capture_points(
 def list_points(
     db: Annotated[Session, Depends(get_db)],
     state: str | None = None,
+    limit: Annotated[int, Query(ge=1, le=500)] = 500,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ):
     stmt = (
         select(KBPoint)
         .options(selectinload(KBPoint.entity))
-        .order_by(KBPoint.created_at)
     )
     if state:
         stmt = stmt.where(KBPoint.state == state)
+    stmt = stmt.order_by(KBPoint.created_at, KBPoint.id).offset(offset).limit(limit)
     points = db.scalars(stmt).all()
 
     ids = [p.id for p in points]
@@ -379,6 +468,7 @@ def _to_document_out(document: KBDocument) -> KBDocumentOut:
 def ingest_document_first(
     file: UploadFile,
     db: Annotated[Session, Depends(get_db)],
+    write_origin: Annotated[WriteOrigin, Depends(get_write_origin)],
 ):
     """Document-first entity creation: no pre-filled fields required.
 
@@ -391,7 +481,12 @@ def ingest_document_first(
         raise HTTPException(status_code=413, detail="Document exceeds 10 MB limit")
     try:
         entity, document, points, created = kb_ingest.ingest_document(
-            db, file.filename, file.content_type, data
+            db,
+            file.filename,
+            file.content_type,
+            data,
+            origin=write_origin.origin,
+            origin_detail=write_origin.detail,
         )
     except kb_ingest.DocumentTextError as e:
         raise HTTPException(

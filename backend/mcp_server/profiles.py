@@ -133,6 +133,7 @@ CAREER_TOOLS = frozenset({
     "kb_edit_profile",
     "kb_ingest_resume",
     "kb_approve_points",
+    "kb_sync_base",
     "create_base_resume_from_kb",
     "list_base_resumes",
     "get_base_resume",

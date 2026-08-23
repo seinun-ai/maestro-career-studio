@@ -6,7 +6,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from app.models.career_kb import KBEntity, KBProfile
+from app.models.career_kb import KBEntity, KBPoint, KBProfile
 from app.services import placement_targets
 from app.services.ats import SkillMatcher, load_config, normalize_term
 
@@ -60,6 +60,37 @@ def load_kb_snapshot(session: Session) -> dict[str, Any]:
             }
             for entity in entities
         ],
+    }
+
+
+def cannot_confirm_texts(session: Session) -> set[str]:
+    """Normalized claim texts of every user_cannot_confirm point.
+
+    Session-independent and entity-independent by design: the suppression that
+    keeps a disconfirmed claim from being re-asked matches on normalized skill
+    text alone, wherever (and whenever) the point was recorded."""
+    return {
+        normalized
+        for text in session.scalars(
+            select(KBPoint.text).where(KBPoint.provenance == "user_cannot_confirm")
+        )
+        if text and (normalized := normalize_term(text))
+    }
+
+
+def cannot_confirm_resolution(gap: dict[str, Any], suppressed: set[str]) -> dict[str, Any] | None:
+    """Pre-resolve a gap as cannot_confirm when its claim was disconfirmed
+    before. Only gaps that would ASK (user_input in actions) are suppressed —
+    evidenced-skill hygiene gaps ask nothing and stay untouched."""
+    if not suppressed or "user_input" not in (gap.get("actions") or []):
+        return None
+    claim = str(gap.get("jd_skill") or gap.get("detail") or "").strip()
+    if not claim or normalize_term(claim) not in suppressed:
+        return None
+    return {
+        "gap_id": gap.get("gap_id"),
+        "action": "cannot_confirm",
+        "payload": {"provenance": {"source": "cannot_confirm_auto"}},
     }
 
 

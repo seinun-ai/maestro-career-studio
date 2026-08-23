@@ -23,6 +23,8 @@ import type {
   KBPortResponse,
   KBProfileOut,
   KBProfilePatch,
+  SyncResult,
+  SyncStatus,
   Resolution,
   CoherenceCheckResult,
   ResumeDiff,
@@ -411,6 +413,20 @@ export function deleteKbEntity(entityId: UUID) {
   return apiFetch<void>(`/api/kb/entities/${entityId}`, { method: "DELETE" });
 }
 
+/**
+ * Fold `entityId` into `targetId` and return the SURVIVING target's detail.
+ *
+ * The server refuses a cross-kind merge, an `extra` section-key mismatch, and
+ * an archived target with a 400 carrying a human sentence; a lost race returns
+ * 409. Callers get those verbatim through `ApiError.message`.
+ */
+export function mergeKbEntity(entityId: UUID, targetId: UUID) {
+  return apiFetch<KBEntityDetail>(`/api/kb/entities/${entityId}/merge`, {
+    method: "POST",
+    body: JSON.stringify({ target_id: targetId }),
+  });
+}
+
 export function createKbPoint(entityId: UUID, payload: KBPointCreate) {
   return apiFetch<KBPointOut>(`/api/kb/entities/${entityId}/points`, {
     method: "POST",
@@ -521,6 +537,16 @@ export function kbAdaptApply(payload: KBAdaptApplyRequest) {
   return apiFetch<KBPortResponse>("/api/kb/port/adapt/apply", {
     method: "POST",
     body: JSON.stringify(payload),
+  });
+}
+
+export function getKbSyncStatus(slug: string) {
+  return apiFetch<SyncStatus>(`/api/base-resumes/${slug}/kb-sync-status`);
+}
+
+export function applyKbSync(slug: string) {
+  return apiFetch<SyncResult>(`/api/base-resumes/${slug}/kb-sync`, {
+    method: "POST",
   });
 }
 

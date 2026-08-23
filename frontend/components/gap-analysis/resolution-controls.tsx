@@ -56,7 +56,12 @@ export const ACTION_LABELS: Record<GapAction, string> = {
   skip: "Skip",
   enable_entry: "Enable entry",
   port_kb_point: "Use KB evidence",
+  cannot_confirm: "I can't confirm this",
 };
+
+/** One-line explanation shown wherever the cannot_confirm affordance appears. */
+export const CANNOT_CONFIRM_EXPLANATION =
+  "Saved so you won't be asked again; never used as evidence.";
 
 /**
  * The actions the segmented control may offer. `enable_entry` and

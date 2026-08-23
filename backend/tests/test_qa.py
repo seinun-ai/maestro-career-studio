@@ -439,3 +439,111 @@ def test_answer_questions_persists_normalized_plain_text(db_session, monkeypatch
     stored = {e.prompt: e.answer for e in db_session.query(QAEntry).all()}
     assert stored["Tell me about SQL."] == "I use SQL daily."
     assert stored["Tell me about dashboards."] == "I build dashboards."
+
+
+def test_scrub_typographic_dashes_turns_clause_dashes_into_commas():
+    # Spaced em/en dashes are clause breaks, not ranges.
+    assert (
+        qa.scrub_typographic_dashes("I shipped the model — then we scaled it.")
+        == "I shipped the model, then we scaled it."
+    )
+    assert (
+        qa.scrub_typographic_dashes("I shipped the model – then we scaled it.")
+        == "I shipped the model, then we scaled it."
+    )
+
+
+def test_scrub_typographic_dashes_turns_range_dashes_into_hyphens():
+    assert qa.scrub_typographic_dashes("2020–2023") == "2020-2023"
+    assert qa.scrub_typographic_dashes("client—server") == "client-server"
+
+
+def test_scrub_typographic_dashes_is_idempotent_on_ascii():
+    plain = "I shipped the model, then we scaled it in 2020-2023."
+    assert qa.scrub_typographic_dashes(plain) == plain
+    dashed = "Shipped — 2020–2023"
+    once = qa.scrub_typographic_dashes(dashed)
+    assert qa.scrub_typographic_dashes(once) == once
+    assert "—" not in once and "–" not in once
+
+
+def test_plain_text_scrubs_typographic_dashes():
+    assert (
+        qa._plain_text("I use SQL — daily, years 2020–2023.")
+        == "I use SQL, daily, years 2020-2023."
+    )
+
+
+def test_generate_cover_letter_scrubs_dashes_before_store(db_session, monkeypatch):
+    application = _application(db_session)
+    _patch_context(monkeypatch)
+    monkeypatch.setattr(
+        qa.prompt_assembly,
+        "build_cover_letter_prompt",
+        lambda resume_json, jd_json, memory, tone, persona="": f"cover prompt {tone}",
+    )
+    monkeypatch.setattr(
+        qa.llm,
+        "call_openai",
+        lambda **kwargs: "I led the team — then we shipped 2020–2023.",
+    )
+
+    result = qa.generate_cover_letter(application.id, "balanced", db_session)
+
+    assert result == "I led the team, then we shipped 2020-2023."
+    assert db_session.query(QAEntry).one().answer == result
+    assert "—" not in result and "–" not in result
+
+
+def test_regenerate_cover_letter_scrubs_dashes(db_session, monkeypatch):
+    application = _application(db_session)
+    entry = QAEntry(
+        application_id=application.id,
+        kind="cover_letter",
+        prompt=None,
+        answer="old letter",
+    )
+    db_session.add(entry)
+    db_session.commit()
+    db_session.refresh(entry)
+    _patch_context(monkeypatch)
+    monkeypatch.setattr(
+        qa.prompt_assembly,
+        "build_cover_letter_prompt",
+        lambda resume_json, jd_json, memory, tone, persona="": "cover prompt",
+    )
+    monkeypatch.setattr(
+        qa.llm,
+        "call_openai",
+        lambda **kwargs: "Excited to join — years 2019–2021.",
+    )
+
+    updated = qa.regenerate_entry(entry.id, tone="formal", session=db_session)
+
+    assert updated.answer == "Excited to join, years 2019-2021."
+    assert "—" not in updated.answer and "–" not in updated.answer
+
+
+def test_job_only_cover_letter_scrubs_dashes(db_session, monkeypatch):
+    application = _application(db_session)
+    _patch_context(monkeypatch)
+    monkeypatch.setattr(
+        qa.prompt_assembly,
+        "build_cover_letter_prompt",
+        lambda resume_json, jd_json, memory, tone, persona="": "cover prompt",
+    )
+    monkeypatch.setattr(
+        qa.base_resume_data, "_read_base_resume_data", lambda slug: {"summary": "Hybrid"}
+    )
+    monkeypatch.setattr(
+        qa.llm,
+        "call_openai",
+        lambda **kwargs: "I built the pipeline — 2021–2024.",
+    )
+
+    result = qa.generate_cover_letter_for_job(
+        application.job_id, "balanced", db_session
+    )
+
+    assert result == "I built the pipeline, 2021-2024."
+    assert "—" not in result and "–" not in result

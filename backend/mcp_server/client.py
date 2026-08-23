@@ -17,6 +17,12 @@ DEFAULT_BASE_URL = "http://localhost:8000"
 
 logger = logging.getLogger(__name__)
 
+# Opt-in page images: default longest side, and a hard cap on the base64 payload
+# the MCP client will accept. The live audit blew a ~617K-char tool result at
+# the hardcoded 120 dpi; 1024px is legible and the 1MB encoded cap is the backstop.
+_PAGE_IMAGE_MAX_DIMENSION_DEFAULT = 1024
+_PAGE_IMAGE_B64_CAP = 1_000_000
+
 
 def _drop_none(**kwargs: Any) -> dict[str, Any]:
     return {k: v for k, v in kwargs.items() if v is not None}
@@ -103,6 +109,40 @@ def _render_pdf_previews(pdf_path: Path, target_id: str) -> dict[str, Any]:
         "em_dash_found": metadata["em_dash_found"],
         "em_dash_pages": metadata["em_dash_pages"],
     }
+
+
+def _render_pdf_page_at_cap(pdf_path: Path, page_number: int, max_dimension_px: int) -> bytes:
+    """Rasterize one 1-based page so its longest side equals max_dimension_px."""
+    try:
+        import pypdfium2 as pdfium
+    except Exception as exc:
+        raise BackendError(
+            "page preview unavailable; ensure the MCP PDF render dependencies "
+            "(pypdfium2 and Pillow) are installed, then retry"
+        ) from exc
+    if max_dimension_px < 1:
+        raise BackendError("max_dimension_px must be >= 1")
+    try:
+        doc = pdfium.PdfDocument(str(pdf_path))
+        try:
+            page = doc[page_number - 1]
+            longest = max(page.get_width(), page.get_height())
+            scale = max_dimension_px / longest if longest else 1.0
+            image = page.render(scale=scale).to_pil()
+        finally:
+            doc.close()
+    except BackendError:
+        raise
+    except Exception as exc:
+        raise BackendError(
+            "page preview unavailable; ensure the MCP PDF render dependencies "
+            "(pypdfium2 and Pillow) are installed, then retry"
+        ) from exc
+    from io import BytesIO
+
+    buf = BytesIO()
+    image.save(buf, format="PNG")
+    return buf.getvalue()
 
 
 def _safe_filename(filename: str | None, fallback: str) -> str:
@@ -255,8 +295,17 @@ class BackendClient:
     def get_kb_entity(self, entity_id: str) -> Any:
         return self._request("GET", f"/api/kb/entities/{entity_id}")
 
-    def list_kb_points(self, state: str | None = None) -> Any:
-        return self._request("GET", "/api/kb/points", params=_drop_none(state=state))
+    def list_kb_points(
+        self,
+        state: str | None = None,
+        limit: int = 500,
+        offset: int = 0,
+    ) -> Any:
+        return self._request(
+            "GET",
+            "/api/kb/points",
+            params=_drop_none(state=state, limit=limit, offset=offset),
+        )
 
     # ---- Career KB writes ----
     def kb_capture(
@@ -356,6 +405,9 @@ class BackendClient:
             "/api/kb/points/bulk-state",
             json={"ids": point_ids, "state": state},
         )
+
+    def kb_sync_base(self, slug: str) -> Any:
+        return self._request("POST", f"/api/base-resumes/{slug}/kb-sync")
 
     def create_base_resume_from_kb(
         self,
@@ -524,6 +576,23 @@ class BackendClient:
             payload["new_display_name"] = new_display_name
         return self._request("POST", f"/api/base-resumes/{slug}/duplicate", json=payload)
 
+    def list_resume_versions(self, kind: str, key: str) -> Any:
+        return self._request("GET", f"/api/resume-versions/{kind}/{key}")
+
+    def get_resume_version(self, kind: str, key: str, number: int) -> Any:
+        return self._request("GET", f"/api/resume-versions/{kind}/{key}/{number}")
+
+    def restore_resume_version(self, kind: str, key: str, number: int) -> Any:
+        return self._request(
+            "POST", f"/api/resume-versions/{kind}/{key}/{number}/restore"
+        )
+
+    def archive_base_resume(self, slug: str) -> Any:
+        return self._request("POST", f"/api/base-resumes/{slug}/archive")
+
+    def unarchive_base_resume(self, slug: str) -> Any:
+        return self._request("POST", f"/api/base-resumes/{slug}/unarchive")
+
     def tailor_application(
         self, job_id: str, base_resume: str, ops: list[dict], application_id: str | None = None
     ) -> Any:
@@ -664,7 +733,11 @@ class BackendClient:
         return result
 
     def get_rendered_pdf_page_image(
-        self, target_type: str, target_id: str, page_number: int
+        self,
+        target_type: str,
+        target_id: str,
+        page_number: int,
+        max_dimension_px: int = _PAGE_IMAGE_MAX_DIMENSION_DEFAULT,
     ) -> Any:
         pdf = self.get_rendered_pdf(target_type, target_id)
         page_count = pdf["page_count"]
@@ -674,25 +747,27 @@ class BackendClient:
             raise BackendError(
                 f"page_number must be between 1 and {page_count}; got {page_number}"
             )
-
-        page_images = pdf.get("page_images") or []
-        if page_number > len(page_images):
+        pdf_path = Path(pdf["path"])
+        image = _render_pdf_page_at_cap(pdf_path, page_number, max_dimension_px)
+        encoded = base64.b64encode(image).decode("ascii")
+        if len(encoded) > _PAGE_IMAGE_B64_CAP:
             raise BackendError(
-                "page preview unavailable; ensure the MCP PDF render dependencies "
-                "(pypdfium2 and Pillow) are installed, then retry"
+                f"encoded page image is {len(encoded)} chars "
+                f"(cap {_PAGE_IMAGE_B64_CAP}); lower max_dimension_px and retry"
             )
-        page_path = Path(page_images[page_number - 1])
-        image = page_path.read_bytes()
+        out_name = f"{pdf_path.stem}.p{page_number}.w{max_dimension_px}.png"
+        out_path = pdf_path.parent / out_name
+        out_path.write_bytes(image)
         return {
             "target_type": target_type,
             "target_id": target_id,
             "page_number": page_number,
             "page_count": page_count,
-            "filename": page_path.name,
-            "path": str(page_path),
+            "filename": out_name,
+            "path": str(out_path),
             "size_bytes": len(image),
             "mime_type": "image/png",
-            "page_image_b64": base64.b64encode(image).decode("ascii"),
+            "page_image_b64": encoded,
         }
 
     def prepare_application_pdf_upload(self, application_id: str) -> Any:

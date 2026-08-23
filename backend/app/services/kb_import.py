@@ -45,6 +45,7 @@ from app.services import (
     base_resume_data,
     base_resume_render,
     kb_consolidation,
+    pdf_render,
     role_categories,
 )
 from app.services.attachment_extract import extract_text
@@ -170,7 +171,7 @@ def _mint_base(
         base_resume_render.render_base_resume(slug, session)
     except Exception as exc:  # noqa: BLE001 — any renderer failure degrades
         logger.warning("import: render failed for %s: %s", slug, exc)
-        imported.render_error = str(exc)[:500]
+        imported.render_error = pdf_render.extract_render_error(str(exc))
     return imported
 
 

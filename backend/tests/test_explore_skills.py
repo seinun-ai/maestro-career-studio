@@ -47,3 +47,18 @@ def test_classify_assigns_rank_percentile():
     assert result[0]["rank"] == 1
     assert result[0]["rank_percentile"] == 100.0
     assert result[-1]["rank_percentile"] == 33.33
+
+
+def test_classify_flags_low_sample_when_skill_n_below_five():
+    rows = [_row("Python", 10), _row("Rare", 2), _row("Once", 1)]
+    result = classify_skill_rows(rows, total_jobs=10)
+    by_name = {row["skill_name"]: row for row in result}
+    assert by_name["Python"]["low_sample"] is False
+    assert by_name["Rare"]["low_sample"] is True
+    assert by_name["Once"]["low_sample"] is True
+
+
+def test_classify_flags_every_row_when_corpus_is_below_five():
+    rows = [_row("Python", 3), _row("SQL", 2)]
+    result = classify_skill_rows(rows, total_jobs=3)
+    assert all(row["low_sample"] is True for row in result)

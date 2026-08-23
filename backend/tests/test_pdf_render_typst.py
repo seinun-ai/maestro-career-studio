@@ -149,7 +149,7 @@ def test_render_document_merges_template_default_formatting(db_session):
 
 def test_render_and_compile_typst_writes_typ_and_returns_path(db_session, tmp_path):
     _ready_typst_template(db_session, "t3")
-    src = pdf_render.render_and_compile(
+    src, _ = pdf_render.render_and_compile(
         SAMPLE_RESUME,
         tmp_path / "tex" / "x.tex",
         tmp_path / "pdfs" / "x.pdf",
@@ -162,7 +162,7 @@ def test_render_and_compile_typst_writes_typ_and_returns_path(db_session, tmp_pa
 
 @pytest.mark.skipif(shutil.which("pdflatex") is None, reason="pdflatex not installed")
 def test_render_and_compile_latex_returns_tex_path(db_session, tmp_path):
-    src = pdf_render.render_and_compile(
+    src, _ = pdf_render.render_and_compile(
         SAMPLE_RESUME, tmp_path / "x.tex", tmp_path / "x.pdf",
         template_id=None, session=db_session,
     )

@@ -264,6 +264,16 @@ export default function TailorSessionPage({
       } else {
         toast.success("Resume tailored");
       }
+      // Quiet, non-blocking note: gap answers the Career KB write-back
+      // skipped, with the server-composed reasons — a flywheel drop must
+      // never be silent (the page navigates away, so the toast IS the note).
+      const skips = result.kb_writeback_skips ?? [];
+      if (skips.length > 0) {
+        toast.message(
+          `${skips.length} ${skips.length === 1 ? "answer was" : "answers were"} not saved to your Career KB`,
+          { description: skips.map((skip) => skip.detail).join(" · ") },
+        );
+      }
       // Review-first (design §4.5): land in the studio's diff mode, where every
       // change is listed with its provenance and can be reverted one at a time —
       // the consent surface for everything the resolver auto-applied. The job's
@@ -398,8 +408,11 @@ export default function TailorSessionPage({
   for (const gap of gaps) {
     const resolution = resolutionMap.get(gap.gap_id);
     if (!resolution) continue;
-    if (resolution.action === "skip") skipped += 1;
-    else addressed += 1;
+    // cannot_confirm is a skip for the DOCUMENT (its KB record is durable):
+    // it must not count as "addressed" or Tailor would run with nothing to do.
+    if (resolution.action === "skip" || resolution.action === "cannot_confirm") {
+      skipped += 1;
+    } else addressed += 1;
   }
   const total = gaps.length;
   const open = total - addressed - skipped;

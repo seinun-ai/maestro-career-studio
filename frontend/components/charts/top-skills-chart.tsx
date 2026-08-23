@@ -12,6 +12,7 @@ import { buildQuery } from "@/components/charts/chart-kit";
 import { cn } from "@/lib/utils";
 import { apiFetch } from "@/lib/api";
 import type { TopSkillRow, TopSkillsResponse } from "@/lib/types";
+import { LowSampleBadge } from "@/components/explore/low-sample-hint";
 
 export interface TopSkillsFilters {
   role_category?: string | null;
@@ -32,7 +33,9 @@ function SkillPill({
   skill: TopSkillRow;
   pillClass: string;
 }) {
-  const tooltip = `${jobCountLabel(skill.n)} · Rank #${skill.rank}`;
+  const tooltip = skill.low_sample
+    ? `${jobCountLabel(skill.n)} · Rank #${skill.rank} · directional only`
+    : `${jobCountLabel(skill.n)} · Rank #${skill.rank}`;
 
   return (
     <Tooltip>
@@ -49,6 +52,7 @@ function SkillPill({
               #{skill.rank}
             </span>
             {skill.skill_name}
+            <LowSampleBadge n={skill.n} lowSample={skill.low_sample} unit="jobs" />
           </span>
         }
       />

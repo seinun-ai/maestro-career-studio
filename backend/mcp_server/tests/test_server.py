@@ -14,6 +14,7 @@ KB_TOOL_NAMES = {
     "kb_edit_profile",
     "kb_ingest_resume",
     "kb_approve_points",
+    "kb_sync_base",
 }
 
 
@@ -35,6 +36,11 @@ def test_all_tools_registered():
         "create_base_resume",
         "create_base_resume_from_kb",
         "duplicate_base_resume",
+        "list_resume_versions",
+        "get_resume_version",
+        "restore_resume_version",
+        "archive_base_resume",
+        "unarchive_base_resume",
         "tailor_application",
         "render_pdf",
         "explore_top_skills",
@@ -69,6 +75,122 @@ def test_all_tools_registered():
     }
     expected |= KB_TOOL_NAMES
     assert expected <= names
+
+
+def test_resume_version_tools_forward_to_client(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(
+        srv._client,
+        "list_resume_versions",
+        lambda kind, key: seen.update(op="list", kind=kind, key=key) or [{"number": 1}],
+    )
+    monkeypatch.setattr(
+        srv._client,
+        "get_resume_version",
+        lambda kind, key, number: seen.update(
+            op="get", kind=kind, key=key, number=number
+        )
+        or {"number": number},
+    )
+    monkeypatch.setattr(
+        srv._client,
+        "restore_resume_version",
+        lambda kind, key, number: seen.update(
+            op="restore", kind=kind, key=key, number=number
+        )
+        or {"number": number + 1},
+    )
+    assert srv.list_resume_versions("base", "master") == [{"number": 1}]
+    assert seen["op"] == "list"
+    assert srv.get_resume_version("application", "a1", 3)["number"] == 3
+    assert seen["op"] == "get"
+    assert srv.restore_resume_version("base", "master", 2) == {"number": 3}
+    assert seen == {"op": "restore", "kind": "base", "key": "master", "number": 2}
+
+
+def test_archive_base_resume_tools_forward_to_client(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(
+        srv._client,
+        "archive_base_resume",
+        lambda slug: seen.update(op="archive", slug=slug) or {"slug": slug},
+    )
+    monkeypatch.setattr(
+        srv._client,
+        "unarchive_base_resume",
+        lambda slug: seen.update(op="unarchive", slug=slug) or {"slug": slug},
+    )
+    assert srv.archive_base_resume("other") == {"slug": "other"}
+    assert srv.unarchive_base_resume("other") == {"slug": "other"}
+    assert seen == {"op": "unarchive", "slug": "other"}
+
+
+def test_archive_base_resume_docstrings_are_reversible_not_delete():
+    archive_doc = (srv.archive_base_resume.__doc__ or "").lower()
+    unarchive_doc = (srv.unarchive_base_resume.__doc__ or "").lower()
+    assert "list_base_resumes" in archive_doc
+    assert "archived" in archive_doc
+    assert "unarchive" in archive_doc
+    assert "list_base_resumes" in unarchive_doc
+    assert "delete" not in "archive_base_resume"
+    assert "delete" not in "unarchive_base_resume"
+
+
+def test_resume_version_docstrings_state_kind_and_restore_is_a_new_version():
+    list_doc = srv.list_resume_versions.__doc__ or ""
+    get_doc = srv.get_resume_version.__doc__ or ""
+    restore_doc = srv.restore_resume_version.__doc__ or ""
+    for doc in (list_doc, get_doc, restore_doc):
+        assert '"base"' in doc or "base" in doc
+        assert "application" in doc
+        assert "slug" in doc
+    assert "new version" in restore_doc.lower() or "append" in restore_doc.lower()
+    assert "delete" not in "list_resume_versions"
+    assert "delete" not in "get_resume_version"
+    assert "delete" not in "restore_resume_version"
+
+
+def test_kb_sync_base_docstring_is_draft_only_and_deterministic():
+    doc = srv.kb_sync_base.__doc__ or ""
+    lower = doc.lower()
+    assert "deterministic" in lower
+    assert "draft" in lower
+    assert "never edits" in lower
+    assert "rerun" in lower or "rerun-safe" in lower or "safe to rerun" in lower
+
+
+def test_kb_list_points_forwards_pagination(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(
+        srv._client,
+        "list_kb_points",
+        lambda state=None, limit=500, offset=0: seen.update(
+            state=state, limit=limit, offset=offset
+        )
+        or [],
+    )
+    assert srv.kb_list_points(state="draft", limit=20, offset=5) == []
+    assert seen == {"state": "draft", "limit": 20, "offset": 5}
+
+
+def test_kb_list_points_docstring_warns_unfiltered_is_bounded():
+    doc = srv.kb_list_points.__doc__ or ""
+    assert "limit" in doc
+    assert "offset" in doc
+    assert "first" in doc.lower()
+
+
+def test_kb_ingest_resume_docstring_states_two_pass_matching():
+    """Matching is exact identity-key THEN near-identity for experience/
+    projects/certs; education/extra stay identity-key-only. The old wording
+    ('identity-key only… Different spellings will not merge') was false.
+    """
+    doc = srv.kb_ingest_resume.__doc__ or ""
+    lower = doc.lower()
+    assert "near-identity" in lower or "near identity" in lower
+    assert "education" in lower
+    assert "identity-key" in lower
+    assert "will not merge" not in lower
 
 
 async def test_tailoring_session_tools_expose_complete_input_schemas():
@@ -109,6 +231,7 @@ async def test_tailoring_session_tools_expose_complete_input_schemas():
                                 "skip",
                                 "enable_entry",
                                 "port_kb_point",
+                                "cannot_confirm",
                             ],
                             "type": "string",
                         },
@@ -124,6 +247,7 @@ async def test_tailoring_session_tools_expose_complete_input_schemas():
             "properties": {
                 "tailoring_session_id": {"type": "string"},
                 "resolutions": {
+                    "description": srv._RESOLUTIONS_FIELD.description,
                     "items": {"$ref": "#/$defs/GapResolution"},
                     "type": "array",
                 },
@@ -174,11 +298,26 @@ async def test_resolve_gaps_contract_lists_every_backend_action():
         "skip",
         "enable_entry",
         "port_kb_point",
+        "cannot_confirm",
     }
 
     assert all(action in tool.description for action in actions)
     action_schema = tool.inputSchema["$defs"]["GapResolution"]["properties"]["action"]
     assert set(action_schema["enum"]) == actions
+    resolutions_desc = tool.inputSchema["properties"]["resolutions"].get("description", "")
+    assert "ONE unit" in resolutions_desc
+    assert "NOTHING" in resolutions_desc
+    for action in actions:
+        assert action in resolutions_desc
+
+
+async def test_kb_ingest_resume_data_field_states_atomicity():
+    tools = {tool.name: tool for tool in await srv.mcp.list_tools()}
+    desc = tools["kb_ingest_resume"].inputSchema["properties"]["data"].get(
+        "description", ""
+    )
+    assert "atomic" in desc.lower()
+    assert "nothing persisted" in desc.lower()
 
 
 def test_list_base_resumes_tool_calls_client(monkeypatch):
@@ -304,21 +443,23 @@ def test_get_rendered_pdf_page_image_tool_forwards_all_args(monkeypatch):
     monkeypatch.setattr(
         srv._client,
         "get_rendered_pdf_page_image",
-        lambda target_type, target_id, page_number: seen.update(
+        lambda target_type, target_id, page_number, max_dimension_px=1024: seen.update(
             target_type=target_type,
             target_id=target_id,
             page_number=page_number,
+            max_dimension_px=max_dimension_px,
         )
         or {"page_number": page_number},
     )
 
-    out = srv.get_rendered_pdf_page_image("application", "a1", 2)
+    out = srv.get_rendered_pdf_page_image("application", "a1", 2, max_dimension_px=640)
 
     assert out == {"page_number": 2}
     assert seen == {
         "target_type": "application",
         "target_id": "a1",
         "page_number": 2,
+        "max_dimension_px": 640,
     }
 
 
@@ -351,6 +492,9 @@ async def test_pdf_delivery_tools_expose_expected_input_schemas():
     assert tools["get_rendered_pdf_page_image"].inputSchema["properties"][
         "page_number"
     ]["type"] == "integer"
+    assert tools["get_rendered_pdf_page_image"].inputSchema["properties"][
+        "max_dimension_px"
+    ]["default"] == 1024
     assert tools["prepare_application_pdf_upload"].inputSchema["required"] == [
         "application_id"
     ]
@@ -377,6 +521,64 @@ async def test_store_extracted_jd_exposes_source_enum_and_requirement_levels():
     assert enum_vals == ["user", "agent"]
     doc = tool.description or ""
     assert "required" in doc and "preferred" in doc and "mentioned" in doc
+    assert "sponsorship_available" in doc
+    assert "no_sponsorship" in doc
+    assert "citizen_or_gc_required" in doc
+    assert "stem_opt_ok" in doc
+    assert "unstated" in doc
+    assert "silently" in doc.lower() or "normaliz" in doc.lower()
+
+
+def test_audit_one_sentence_docstring_fixes():
+    """Pins the 2026-08-22 audit's one-sentence docstring corrections (T4)."""
+    rg = srv.resolve_gaps.__doc__ or ""
+    assert "ONE unit" in rg
+    assert "NOTHING" in rg
+
+    ts = srv.tailor_session.__doc__ or ""
+    assert "kb_writeback_skips" in ts
+    assert "placement_target" in ts
+
+    for fn in (srv.create_tailoring_session, srv.quick_tailor):
+        doc = fn.__doc__ or ""
+        assert "SUPERSEDE" in doc.upper()
+        assert "list_tailoring_sessions" in doc
+
+    base = srv.create_base_resume_from_kb.__doc__ or ""
+    assert '"other"' in base or "role_category \"other\"" in base
+    assert "display_name" in base
+    assert "base.slug" in base or "slug" in base
+
+    ent = srv.kb_create_entity.__doc__ or ""
+    assert "section_key" in ent
+    assert "section_type" in ent
+    assert "section_title" in ent
+    assert "detail" in ent
+
+    assert "render_error" in (srv.edit_base_resume.__doc__ or "")
+
+    ea = srv.edit_application.__doc__ or ""
+    assert "pdf_path" in ea
+    assert "render_pdf" in ea
+
+    rp = srv.render_pdf.__doc__ or ""
+    assert "selects a LaTeX template" not in rp
+    assert "resolved_template_id" in rp
+    assert "template_fallback" in rp
+
+    gp = srv.get_rendered_pdf.__doc__ or ""
+    assert "artifact_dir" in gp
+    assert "prepare_application_pdf_upload" in gp
+
+    gt = srv.get_template.__doc__ or ""
+    assert "date_format" in gt
+    assert "even if the source" in gt.lower() or "always includes" in gt.lower()
+
+    lt = srv.list_templates.__doc__ or ""
+    assert "parse_certified" in lt
+
+    fr = srv.get_final_review.__doc__ or ""
+    assert "propose_application" in fr
 
 
 def test_prepare_application_pdf_upload_docstring_forbids_manual_copy():
@@ -710,7 +912,7 @@ def test_close_tailoring_session_name_has_no_delete():
     assert "delete" not in "close_tailoring_session"
 
 
-def test_edit_op_docstrings_advertise_extra_section_ops():
+async def test_edit_op_docstrings_advertise_extra_section_ops():
     # The custom-section op contract must be discoverable on the edit tools so an
     # agent is never taught a stale (fixed-section-only) op enumeration.
     base_doc = srv.edit_base_resume.__doc__ or ""
@@ -725,6 +927,18 @@ def test_edit_op_docstrings_advertise_extra_section_ops():
     # tailor_application + edit_application reference the same op family.
     assert "extra_section" in (srv.tailor_application.__doc__ or "")
     assert "extra_section" in (srv.edit_application.__doc__ or "")
+    # The ExtraSection discriminated-union shape must live on the ops param
+    # schema — immune to the ~2048-char tool-description truncation that hid
+    # it in the live audit.
+    tools = {tool.name: tool for tool in await srv.mcp.list_tools()}
+    ops_desc = tools["edit_base_resume"].inputSchema["properties"]["ops"].get(
+        "description", ""
+    )
+    assert "add_extra_section" in ops_desc
+    assert "replace_extra_section" in ops_desc
+    assert "entries" in ops_desc and "bullets" in ops_desc
+    assert "never both" in ops_desc
+    assert "forbid" in ops_desc
 
 
 def test_tailor_application_and_edit_application_docstrings_are_distinguishable():
@@ -862,3 +1076,24 @@ async def test_ops_parameter_schema_names_every_op_kind():
         missing = {k for k in schema_kinds if k not in described}
         assert not missing, f"{name} ops schema omits: {sorted(missing)}"
         assert "replace_entry" in described, name
+
+
+# Live MCP clients (Claude Desktop-class) truncate tool descriptions at ~2048
+# dedented chars. Facts past that cutoff are invisible. Keep a margin under
+# the observed cutoff so a later one-sentence fix cannot silently re-break.
+_DOCSTRING_CLIENT_BUDGET = 2000
+
+
+async def test_registered_tool_docstrings_fit_client_truncation_budget():
+    import inspect
+
+    over: dict[str, int] = {}
+    for tool in await srv.mcp.list_tools():
+        raw = tool.description or ""
+        n = max(len(raw), len(inspect.cleandoc(raw)))
+        if n > _DOCSTRING_CLIENT_BUDGET:
+            over[tool.name] = n
+    assert not over, (
+        "tool descriptions exceed the ~2048-char client truncation budget "
+        f"(cap {_DOCSTRING_CLIENT_BUDGET}): {over}"
+    )

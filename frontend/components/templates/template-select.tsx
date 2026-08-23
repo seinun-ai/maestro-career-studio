@@ -132,21 +132,24 @@ export function TemplateSelect({
 
   const current = ready.find((t) => t.id === value);
   const label =
-    value === DEFAULT_TEMPLATE
-      ? "Default template"
-      : (current?.display_name ?? value);
+    value === DEFAULT_TEMPLATE ? "Default" : (current?.display_name ?? value);
 
   return (
     <>
+      {/* The visible "Template:" prefix is load-bearing: a template's display
+          name is a look's name ("XCharter Serif"), which without the category
+          word reads as a font picker — the accessible name said "Template"
+          while the visible label never did. */}
       <Button
         type="button"
         variant="outline"
         size="sm"
         aria-label={`Template: ${label}. Choose a different one`}
         onClick={() => setBrowseOpen(true)}
-        className={cn("max-w-52 justify-start font-normal", className)}
+        className={cn("max-w-64 justify-start font-normal", className)}
       >
         <LayoutGrid className="size-3.5 shrink-0 opacity-70" />
+        <span className="text-muted-foreground shrink-0">Template:</span>
         <span className="truncate">{label}</span>
       </Button>
       <Dialog open={browseOpen} onOpenChange={setBrowseOpen}>

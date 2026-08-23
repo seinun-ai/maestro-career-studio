@@ -164,12 +164,22 @@ the table says which file to open.
    `?from=proposals` flips Back + prev/next onto `cs-proposals-seq`;
    otherwise they use `cs-tracker-seq`. Overview mounts an Agent proposal
    block when `proposal_id` is present; job list/detail derive
-   `proposal_status`/`proposal_id` from the newest proposal.
+   `proposal_status`/`proposal_id` from the newest proposal. Overview also
+   renders the **knock-out pre-scan** (`services/knockout.scan_job`, embedded
+   in `GET /jobs/{id}/detail` and in `get_final_review` as `knockout`):
+   stated JD requirements (work auth, OPT policy, salary) vs the autofill
+   profile, recomputed on every read. Verdicts are `conflict` /
+   `clear` / `incomplete_profile` / `unstated` — unstated is NEVER a pass,
+   and salary only warns (pay is negotiable). Informational like G11 tier 2:
+   it flags; the consent/submit decision stays human.
 4. **Score** — Score & Tailor tab auto-scores all active bases on first visit;
    per-base cards → "Analyze gaps & tailor" creates a session.
 5. **Gap analysis** — `/jobs/[id]/tailor/[sessionId]`: per-gap resolutions
    (add_keyword / user_input / attach_project / skip + enable_entry /
-   port_kb_point — see §4) autosaved debounced with replace=true semantics
+   port_kb_point — see §4; plus cannot_confirm on claim-asking gaps: skip for
+   the document + a durable `user_cannot_confirm` KB record written at SAVE
+   time, so the claim is never re-asked — see §6 inv-provenance-no-decay)
+   autosaved debounced with replace=true semantics
    (omitted gap_ids are deleted server-side); KB-auto-resolved gaps arrive
    pre-selected with provenance + Undo and a counting banner; optional
    per-session note (`user_prompt`, falls back into tailor()). "Use base
@@ -181,7 +191,10 @@ the table says which file to open.
    resolutions → smart-model LLM → typed edit ops → apply → keyword-survival
    check (one retry, then add_skill_item fallback — LLM path only) →
    reuse-or-insert application → version row → draft-KBPoint write-back of
-   substantive user_input answers (origin=gap_elicitation) → session
+   substantive user_input answers (origin=gap_elicitation; every skipped
+   write-back returns on the response as `kb_writeback_skips` with a reason —
+   too_short / wrong_section / no_entity_match / duplicate — and the gap page
+   toasts a quiet note, so flywheel drops are never silent) → session
    `tailored` → tailored score — one transaction (tailor() commits once at
    its end; score_target stages on the same session). A pre-op-only session tailors with zero LLM calls; MCP can
    pass caller ops to skip the backend LLM. Post-tailor the UI lands in
@@ -200,6 +213,9 @@ the table says which file to open.
    generator); the QA prompt injects the application's linked referral contact.
 9. **Track to terminal** — StatusChip anywhere (tracker row or job header):
    draft → applied → interviewing → offered → accepted / rejected / withdrawn.
+   A base résumé grown past the Career KB shows a `Sync to KB (N)` toolbar pill
+   (N excludes already-recorded drift); its **Sync now** drafts new and drifted
+   items with no LLM, near-matching entities instead of forking duplicates.
 
 ## 6. Cross-cutting invariants (do not break these)
 
@@ -365,8 +381,10 @@ the table says which file to open.
   `shared/policy.js` has not run (it borrows `salaryExpectationRe`), and
   `autofill.js`'s `pf()` throws on an unknown id — an undefined pattern does not
   error, it just never matches.
-- **Em-dash rule** `{#inv-em-dash}`: rendered PDFs must not contain em-dashes (ATS parsers);
-  enforced in the MCP client's slim `get_rendered_pdf` scan (metadata + page
+- **Em-dash rule** `{#inv-em-dash}`: generated Q&A answers and cover letters are
+  scrubbed of U+2014/U+2013 at store time (`qa.scrub_typographic_dashes`);
+  rendered PDFs must not contain em-dashes (ATS parsers). The MCP client's
+  slim `get_rendered_pdf` scan remains a resume-PDF backstop (metadata + page
   paths; no `page_images_b64` — use `get_rendered_pdf_page_image` for one page).
 - **EEO standing consent is enforced at the ENDPOINT.** `{#inv-eeo-standing-consent}` Profile standing
   consent (`settings/eeo_consent.json`; `eeo_consent` on
@@ -382,35 +400,58 @@ the table says which file to open.
   `pdfinterwordspaceon` + the parse_certified gate protect this — see the
   shared header partial `_header.tex.j2`, which BOTH resume and cover-letter
   templates include (format/scanner changes must handle both).
+- **`user_cannot_confirm` is durable.** `{#inv-provenance-no-decay}` No code
+  path upgrades that provenance to anything else — including the gap flow that
+  writes it: a "cannot confirm" gap outcome stores a retired
+  `user_cannot_confirm` point (on the entity its placement names, else the
+  archived "Unconfirmed claims" holder) and future sessions pre-resolve the
+  claim instead of re-asking (normalized-text match, evidence autos win).
+  Base-sync of the same claim drafts a NEW `user_authored` point and leaves
+  the record untouched — new first-party evidence beats an old "don't know";
+  the draft queue is where the user reconciles. Pinned by
+  `tests/test_kb_provenance_stamping.py`
+  (`test_no_writer_flips_user_cannot_confirm`) and
+  `tests/test_gap_cannot_confirm.py`
+  (`test_nothing_upgrades_user_cannot_confirm`).
 
 ## 7. Agent surfaces
 
 - **MCP server** (`backend/mcp_server/`): thin wrappers (`@_guard` →
   `ToolError`) over REST via httpx (`BACKEND_URL`, default localhost:8000;
   compose maps host 8001). **The docstring is the API** — per-tool parameter
-  traps live in the tools' own docstrings, not here. Coverage: jobs
-  (ingest/list/get/export; `get_job_search_brief` with verbatim work-auth,
+  traps live in the tools' own docstrings, not here. A fact an agent needs
+  must survive ~2048-dedented-char client truncation or live in a param
+  `Field(description=…)` (`_EDIT_OPS_FIELD` precedent); ratchet
+  `test_registered_tool_docstrings_fit_client_truncation_budget`. Coverage:
+  jobs (ingest/list/get/export; `get_job_search_brief` with verbatim work-auth,
   typed `job_preferences` and the `auto_apply` guardrail block;
   `find_job_by_url` posting-equality lookup; `store_extracted_jd` takes
   `source="agent"`; playbook in docs/agentic-job-search.md, capture-and-score
   only), the proposal-ledger family (consent-gated propose/decide/triage/
   resume/final-review/evidence/mark_submitted/report_failure;
   `record_consent` is called ONLY after the user actually said yes/no), base
-  resumes, health (run/get + waivers), the full tailoring workflow (session
-  tools take **`tailoring_session_id`** — breaking rename, no legacy alias;
+  resumes (`list_resume_versions`/`get_resume_version`/`restore_resume_version`
+  — kind is REST `base`|`application`, a restore is a new version;
+  `archive_base_resume`/`unarchive_base_resume` hide from `list_base_resumes`
+  without deleting; those five are **full-profile only** this round), health
+  (run/get + waivers), the full tailoring workflow (session tools take
+  **`tailoring_session_id`** — breaking rename, no legacy alias;
   `resolve_gaps`' evidence-carrying actions are gated server-side — §4;
   `quick_tailor` is the profile-driven fast path), render + slim PDF
   inspection (`get_rendered_pdf` has **no** `page_images_b64`;
-  `get_rendered_pdf_page_image` is the opt-in one-page visual;
+  `get_rendered_pdf_page_image` is the opt-in one-page visual,
+  `max_dimension_px` default 1024 with a ~1MB encoded cap;
   `prepare_application_pdf_upload` stages a disposable Playwright copy under
   `.playwright-mcp/uploads/`), application tracking, the apply package,
-  templates (draft/validate only; the Typst constraints live in
-  `create_template_draft`'s docstring), explore analytics,
+  templates (draft/validate only; Typst constraints in
+  `create_template_draft`'s docstring, `fmt.*` knobs on `get_template`),
+  explore analytics,
   `get_autofill_profile` (`profile.eeo` consent-gated), and
   `get_career_context` (read-only; anti-fabrication rule in the docstring).
   The Career KB is writable via MCP: reads carry IDs the context prose does
   not; entity/profile writes land directly, but POINTS go through the user's
-  gate — ingest lands drafts, and `kb_approve_points` is the ONE approval
+  gate — ingest lands drafts, `kb_sync_base` drafts new/drifted base-resume
+  items (no LLM, no auto-approve), and `kb_approve_points` is the ONE approval
   path (`approved|retired`), its gate a DOCSTRING convention, not server
   enforcement — call ONLY after the user explicitly approved the listed
   points (`record_consent` precedent). `kb_edit_point` has no `state` param;
@@ -731,12 +772,21 @@ and consent-gated `kb_approve_points` is the one approval path from MCP.
 items are deleted in place — renumbering silently invalidates every
 citation. Priority lives in the item text, not in the ordinal.
 
-1. Chat/REST/MCP typed-op **vocabulary** consolidation. Custom-section ops are
-   hand-coded per surface (REST pydantic union, MCP docstrings); every new op
-   multiplies the drift. (SCOPE is consolidated on `schemas/resume_edit.op_scope`.)
+1. Extra-section op **payloads** stay loosely typed. Op *kinds* are a single
+   source (`schemas/resume_edit.py`: 16-kind discriminated union with
+   `op_kinds()` / `op_scope()` / `render_ops_brief()` / `render_ops_shapes()`;
+   chat imports those, MCP builds `edit_base_resume` from `render_ops_shapes()`
+   at import, parity tests in `test_resume_edit_reference.py`). Residual:
+   `add_extra_section` / `replace_extra_section` `value` is `dict[str, Any]`
+   and ExtraSection validation lives in the service
+   (`resume_edit._validate_extra_section`), same pattern as `AddEntry` — a bad
+   extras payload is a 400, not a schema 422. Nested extra-section
+   entry/bullet ops remain item 20.
 2. One post-render readiness pipeline ("Ready to apply" gate: health, em-dash,
    pages, contact checks on the exact rendered artifact), consuming the shared
-   rasterized preview + slim MCP `get_rendered_pdf` metadata.
+   rasterized preview + slim MCP `get_rendered_pdf` metadata. (The JD-level
+   half — stated requirements vs profile — shipped as the knock-out pre-scan,
+   §5 step 3; this item is now only the post-render artifact pipeline.)
 3. Base-score staleness on from-base: re-score only when the base resume's
    updated_at is newer than the score row — never unconditional re-scoring.
 4. JD promoted-field correction before gap freezing (today only source_url is
@@ -753,8 +803,6 @@ citation. Priority lives in the item text, not in the ordinal.
 10. Work-auth warning CODES: `services/job_search_brief` still reads the two
     legacy keys and pattern-matches loose strings in `warnings[]`; it should
     understand the typed `WorkAuth` shape.
-11. An immutable safety/context block for cover letters — the qa equivalent
-    (`QA_OUTPUT_CONTRACT` in prompt_assembly) exists; cover_letter has none.
 12. Extension identity-combobox reconciliation (ARIA-widget overwrite is
     riskier), and block-scoped education-vs-employment rule matching (`not:`
     label guards miss unheaded education containers).
@@ -782,7 +830,7 @@ citation. Priority lives in the item text, not in the ordinal.
     Telegram consent channel (rejected for v1); extension-less CDP fill (HARD
     constraint: backend CORS must never admit ATS/web origins).
 20. `extra_sections` remainder: calibrate the `extra_only` multiplier; nested
-    edit ops sit behind item 1.
+    extra-section entry/bullet ops are still unbuilt.
 21. MCP onboarding follow-ups: `near_duplicate_of` hints in the ingest report
     (normalized-distance vs existing points, so the agent can retire one copy
     without the LLM clusterer); a batch `sources` variant of
@@ -796,12 +844,15 @@ citation. Priority lives in the item text, not in the ordinal.
     auto-advance toggle; per-ATS selector blueprints; the essay path onto
     qid-keyed `/choose`; `guidedIsListboxButton` stays looser than the two
     pinned strict discriminators (it rechecks vetted elements only).
-23. **Six §6 invariants have no enforcement pin** — `inv-honesty`,
-   `inv-tailor-vs-edit`, `inv-autofill-telemetry-no-values`, `inv-em-dash`,
+23. **Five §6 invariants have no enforcement pin** — `inv-honesty`,
+   `inv-tailor-vs-edit`, `inv-autofill-telemetry-no-values`,
    `inv-eeo-standing-consent`, `inv-pdf-word-spacing` (listed under `unpinned`
    in `.system_md_enforcement.json`). Each is a rule the gate cannot defend:
    it survives only as long as everyone remembers it. When next working in one
    of those areas, either add the pin or demote the rule to a convention note.
+24. Surface enum-coercion warnings from `schemas/job_extraction._coerce_enum`
+   through the jobs-ingest response, so `store_extracted_jd` callers see that
+   input X was stored as `unstated` (audit 2026-08-22, finding A1).
 
 ## 12. Gotchas that have bitten before
 
@@ -820,6 +871,13 @@ citation. Priority lives in the item text, not in the ordinal.
   auto-adopt only when clean; while dirty, an amber banner with explicit
   reload. Save flags the next server key (`onSaved` → `adoptNextServerKey`)
   so Save→render→re-score adopts banner-free.
+- **An expanded hit target can cover its own label** (2026-08-22): the role
+  chip's X used `after:-inset-2` inside an `h-5` chip, so part of the remove
+  target sat over the chip text and clicking to OPEN the picker cleared the
+  role. Expanded targets need room around them, not just under them.
+- **MCP clients truncate tool descriptions at ~2048 dedented chars** (2026-08-22):
+  ExtraSection/`fmt.*` past the cutoff never reached agents. Keep `__doc__`
+  ≤2000 (ratchet test) or put the fact on a param `Field(description=…)`.
 - **Worktree subagents**: agents may edit the MAIN checkout instead of the
   worktree — always hand them absolute worktree paths and verify with
   `git -C <worktree> status`.
@@ -856,6 +914,14 @@ citation. Priority lives in the item text, not in the ordinal.
   never add a blanket `RuntimeError → 502` — plain `RuntimeError` means a LOCAL
   render/compile failure and must stay a 500 (`career_kb`'s local
   `except RuntimeError → 502` still runs first and keeps its richer wording).
+- **2026-08-21 — Explore charts live under Analytics.** `/explore` is a 307 to
+  `/analytics`; gap/fit/lift charts are `frontend/components/charts/` and
+  `frontend/components/analytics/`, not `frontend/app/explore/`.
+- **2026-08-22 — `delete-orphan` cascade vs bulk re-point.** A bulk
+  `update()` that moves children off a parent does NOT clear that parent's
+  already-loaded collection, so a following `session.delete(parent)` cascades
+  delete-orphan and deletes the rows just moved. Expire the parent between the
+  two (`career_kb.merge_entities`).
 
 ## 13. Active migrations & deprecation ledger
 
@@ -924,8 +990,8 @@ evidence live in `git log SYSTEM.md`, not here.
 rejected): the 4-way application-status vocabulary and the 3-way
 `quick_tailor_profile` shape are hand-synced by design; the `/api/explore`
 prefix and 7 MCP tool names are a deliberately frozen public surface after the UI
-rename; the 5-copy typed-op vocabulary is §11 item 1 (not-yet-built), not a
-completed migration. Cross-boundary duplication (a Python enum and its TypeScript
+rename; the typed-op vocabulary lives in `schemas/resume_edit.py` (item 1 tracks
+only the extras-payload residual) and is not a migration. Cross-boundary duplication (a Python enum and its TypeScript
 mirror) is never a ledger row — it needs a contract test, not a deletion. The two
 seniority lists are NOT a subset relation and must not be merged — see §4
 AtsScore, "Rank markers are domain data"; merging them would be a scoring bug.

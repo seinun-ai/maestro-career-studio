@@ -90,6 +90,7 @@ def test_career_profile_registers_onboarding_tools_and_hunt_does_not():
     new_tools = {
         "kb_ingest_resume",
         "kb_approve_points",
+        "kb_sync_base",
         "create_base_resume_from_kb",
     }
     assert new_tools <= CAREER_TOOLS

@@ -2,6 +2,7 @@ import shutil
 
 import pytest
 
+from app.services import pdf_render
 from app.services.pdf_render import compile_pdf, latex_escape
 from app.services.template_validation import SAMPLE_RESUME
 
@@ -18,6 +19,22 @@ building and shipping Solutions Architect grade machine learning systems on AWS,
 with deep Technical Skills across data engineering and applied research work.
 \end{document}
 """
+
+
+def test_extract_render_error_keeps_latex_error_after_preamble():
+    """Catches the mutation that restores head truncation before a LaTeX error."""
+    log = "preamble noise\n" * 200 + "! Undefined control sequence.\nl.42 \\badcommand\n"
+
+    assert pdf_render.extract_render_error(log) == (
+        "! Undefined control sequence.\nl.42 \\badcommand\n"
+    )
+
+
+def test_extract_render_error_keeps_tail_when_log_has_no_latex_error():
+    """Catches the mutation that stores the first limit characters of a non-LaTeX log."""
+    log = "preamble noise " * 200 + "tail context"
+
+    assert pdf_render.extract_render_error(log, limit=12) == "tail context"
 
 
 def test_pdflatex_argv_enables_interword_spaces(tmp_path):

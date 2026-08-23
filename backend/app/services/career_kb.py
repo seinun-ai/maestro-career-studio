@@ -9,6 +9,7 @@ from collections.abc import Sequence
 import uuid
 
 from sqlalchemy import select
+from sqlalchemy import update as sa_update
 from sqlalchemy.orm import Session, selectinload
 
 from app.models.base_resume import BaseResume
@@ -27,6 +28,7 @@ from app.schemas.career_kb import (
 from app.schemas.resume_edit import ResumeEditRequest
 from app.services import base_resume_render
 from app.services import base_resume_data
+from app.services import pdf_render
 from app.services.base_resume_data import write_base_resume_json
 from app.services.resume_edit import apply_edits
 from app.services.resume_versions import record_version
@@ -364,7 +366,10 @@ def compose_resume_data(
 
 
 def _usage_from_logs(logs: Sequence[KBPortLog], point: KBPoint) -> list[KBUsageOut]:
-    # Drift means "the KB point changed after the port". Adapted ports rewrite
+    # Drift means "the two sides no longer say the same thing". For to_resume
+    # (and legacy NULL) rows the snapshot is the point at port time; for
+    # from_source rows it is the source document's wording — either way,
+    # snapshot != current point text is drift. Adapted ports rewrite
     # the text on purpose, so compare against source_text (the point snapshot
     # at port time) when present; verbatim ports (source_text NULL) keep the
     # original ported_text comparison — there the two are the same snapshot.
@@ -378,6 +383,7 @@ def _usage_from_logs(logs: Sequence[KBPortLog], point: KBPoint) -> list[KBUsageO
                 (log.source_text if log.source_text is not None else log.ported_text) or ""
             ).strip()
             != (point.text or "").strip(),
+            direction=log.direction,
         )
         for log in logs
     ]
@@ -402,6 +408,7 @@ def _to_point_out(
         state=point.state,
         origin=point.origin,
         origin_detail=point.origin_detail,
+        provenance=point.provenance,
         source_document_id=point.source_document_id,
         tags=point.tags_json or [],
         merge_sources=point.merge_sources_json,
@@ -529,6 +536,121 @@ def entity_detail(session: Session, entity: KBEntity) -> KBEntityDetail:
         documents=[KBDocumentOut.model_validate(d) for d in documents],
         timeline=entity_timeline(entity, points, documents, port_logs),
     )
+
+
+# ---------------------------------------------------------------------------
+# Manual merge (the cure for wording-variant duplicates)
+
+
+# Blank-fill only, and deliberately NOT the whole column list:
+#   origin/origin_detail — they describe how the SURVIVING row was created, and
+#     entity_timeline renders them as a PAIR on the "created" event; absorbing
+#     either would mis-attribute the target's creation to the source's writer.
+#   created_at — target-wins: the target's own age is what its timeline claims.
+#   status — not a blank-fill field; see the ongoing guard in merge_entities.
+#   title — the target keeps its own by design; picking the target IS picking
+#     the title to keep.
+_ABSORBED_FIELDS = ("org", "start_date", "end_date", "notes")
+
+
+def _is_blank(value: str | None) -> bool:
+    """Empty string counts as blank, same as NULL — the UI writes "" for cleared."""
+    return not (value or "").strip()
+
+
+def _section_key(entity: KBEntity) -> str:
+    """Strip + casefold — deliberately NOT `kb_consolidation._norm`, which
+    also collapses internal whitespace. The looser match here can only
+    over-refuse (400 on a whitespace variant), never wrongly merge."""
+    return ((entity.detail_json or {}).get("section_key") or "").strip().casefold()
+
+
+def merge_entities(session: Session, source_id: uuid.UUID, target_id: uuid.UUID) -> KBEntity:
+    """Fold `source` into `target` and delete the source row.
+
+    The target keeps its own title/dates; it only ABSORBS fields the source has
+    and it does not (see _ABSORBED_FIELDS, plus detail_json keys). Duplicate
+    points are deliberately not collapsed — the approval queue and the Drifted
+    badges are where a human sees them.
+
+    The order is load-bearing: absorb -> re-point -> expire(source) -> delete ->
+    flush -> expire(target). Each step's reason is commented below.
+
+    No row locks: the repo has no `with_for_update` precedent, and a merge is a
+    human-initiated, rare, explicitly-confirmed action. Two concurrent merges of
+    the same source therefore race at the DB, and the loser surfaces as
+    ObjectDeletedError/StaleDataError -> 409 in the router. A SEQUENTIAL double
+    submit is not a race at all: the source is already gone, so it gets the
+    clean 404.
+
+    Commit-free: flushes, leaves the transaction to the caller.
+
+    Raises LookupError (404) for unknown ids, ValueError (400) for a same-id
+    merge, a cross-kind merge, an `extra` section-key mismatch, or an archived
+    target.
+    """
+    if source_id == target_id:
+        raise ValueError("Cannot merge an entity into itself")
+    source = session.get(KBEntity, source_id)
+    if source is None:
+        raise LookupError("Source entity not found")
+    target = session.get(KBEntity, target_id)
+    if target is None:
+        raise LookupError("Target entity not found")
+    if source.kind != target.kind:
+        raise ValueError(
+            f"Cannot merge a {source.kind} entity into a {target.kind} entity; "
+            "merge only works within one kind"
+        )
+    if source.kind == "extra" and _section_key(source) != _section_key(target):
+        # `extra` entities are section-scoped: folding one section into another
+        # would silently relabel every point it carries.
+        raise ValueError(
+            f"Cannot merge extra section {_section_key(source)!r} into "
+            f"{_section_key(target)!r}; merge only works within one section"
+        )
+    if target.status == "archived":
+        # An archived SOURCE is fine — that is how a duplicate holder is retired.
+        raise ValueError("Target entity is archived; unarchive it first, then merge")
+
+    for field in _ABSORBED_FIELDS:
+        if field == "end_date" and target.status == "ongoing":
+            # A blank end_date IS the "present" value for an ongoing entity —
+            # _end_sort_key ranks blank as newest and _fmt_dates renders
+            # "start–present". Filling it from a completed source would silently
+            # end a current role.
+            continue
+        if _is_blank(getattr(target, field)) and not _is_blank(getattr(source, field)):
+            setattr(target, field, getattr(source, field))
+    merged_detail = dict(target.detail_json or {})
+    for key, value in (source.detail_json or {}).items():
+        merged_detail.setdefault(key, value)
+    target.detail_json = merged_detail
+
+    # Re-point BEFORE the delete. KBEntity.points/.documents cascade
+    # "all, delete-orphan", so a source still owning rows at delete time would
+    # take them with it; after the bulk updates it owns none and the cascade is
+    # a no-op.
+    # `synchronize_session=False`: this UPDATE does NOT refresh already-loaded
+    # KBPoint/KBDocument/KBPortLog objects, so any the caller is holding keep a
+    # stale entity_id until it commits or expires them. Only the two ENTITY rows
+    # are left honest here (expire(source) below, expire(target) after the
+    # flush) — that is enough for this function's own contract, and the router
+    # commits immediately afterwards.
+    for model in (KBPoint, KBDocument, KBPortLog):
+        session.execute(
+            sa_update(model)
+            .where(model.entity_id == source_id)
+            .values(entity_id=target_id)
+            .execution_options(synchronize_session=False)
+        )
+    session.expire(source)  # so the delete cascade re-reads now-empty collections
+    session.delete(source)
+    session.flush()
+    # Only AFTER the flush: expire() discards un-flushed attribute changes, so
+    # expiring the target any earlier would throw the absorbed fields away.
+    session.expire(target)
+    return target
 
 
 # ---------------------------------------------------------------------------
@@ -1005,7 +1127,7 @@ def _persist_port(
     target.data_json = working
     record_version(session, "base", target.slug, working, source="import", summary=summary)
     for row in port_log_rows:
-        session.add(KBPortLog(**row, resume_kind="base", resume_key=target.slug))
+        session.add(KBPortLog(**row, resume_kind="base", resume_key=target.slug, direction="to_resume"))
     session.commit()
 
     write_base_resume_json(target.slug, working)
@@ -1024,7 +1146,7 @@ def _persist_port(
         )
         session.rollback()
         target = session.get(BaseResume, target.slug)
-        target.render_error = str(e)[:2000]
+        target.render_error = pdf_render.extract_render_error(str(e))
         session.commit()
     session.refresh(target)
     return target

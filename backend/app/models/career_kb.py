@@ -60,7 +60,12 @@ class KBPoint(Base):
     )  # draft|approved|retired
     origin: Mapped[str] = mapped_column(
         Text, nullable=False
-    )  # manual|ingested|chat|consolidated|mcp|gap_elicitation
+    )  # manual|ingested|chat|consolidated|mcp|gap_elicitation|base_sync
+    # How well-grounded the claim is; orthogonal to origin (how the row was written).
+    # NULL = pre-provenance rows; UI renders as unlabeled, never as trusted.
+    provenance: Mapped[str | None] = mapped_column(
+        Text
+    )  # user_authored|user_stated|derived_unverified|user_cannot_confirm
     # Which client wrote it, when origin is an agent: "Claude Desktop", "ChatGPT".
     origin_detail: Mapped[str | None] = mapped_column(Text)
     source_document_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -123,6 +128,8 @@ class KBPortLog(Base):
     # rewritten resume bullet there). NULL = verbatim port, where ported_text
     # doubles as the snapshot. Drift compares the snapshot to the current point.
     source_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # NULL = pre-direction rows; readers keep today's behavior for NULL.
+    direction: Mapped[str | None] = mapped_column(Text)  # to_resume|from_source
     ported_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

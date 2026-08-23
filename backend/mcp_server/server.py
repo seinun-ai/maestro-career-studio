@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import functools
+import inspect
 import os
 from typing import Annotated, Any, Literal, NotRequired, TypedDict
 
@@ -32,7 +33,11 @@ _EDIT_OPS_FIELD = Field(
         "To change a field ON an entry — dates, title, company, project name, link, "
         "tech — use replace_entry with that entry's index and the full edited entry "
         "object; it is scoped to that one entry. Never reach for a whole-resume "
-        "replace to change one field. See the tool description for each op's shape."
+        "replace to change one field. See the tool description for each op's shape. "
+        "add_extra_section/replace_extra_section `value` is "
+        '{key,title,enabled,type:"entries"|"bullets"} plus EITHER '
+        "entries:[{heading,subheading?,location?,date?,link?,enabled,bullets:[str]}] "
+        "OR bullets:[str] — never both; unknown keys are rejected (400, extra=\"forbid\")."
     )
 )
 EditOps = Annotated[list[dict], _EDIT_OPS_FIELD]
@@ -49,8 +54,38 @@ class GapResolution(TypedDict):
         "skip",
         "enable_entry",
         "port_kb_point",
+        "cannot_confirm",
     ]
     payload: NotRequired[dict[str, Any]]
+
+
+# Immune to the ~2048-char tool-description truncation: lives on the param schema.
+_RESOLUTIONS_FIELD = Field(
+    description=(
+        "Batch of {gap_id, action, payload}. Actions: add_keyword | user_input | "
+        "attach_project | skip | enable_entry | port_kb_point | cannot_confirm. "
+        "Validated as ONE unit — one invalid item saves NOTHING (existing saved "
+        "resolutions untouched); fix and resend. Merge-by-gap_id; omit never "
+        "deletes — resend skip to retract. Payloads: add_keyword needs "
+        "placement_target {section, index_or_category} (+ optional wording); "
+        "a MISSING skill may use add_keyword ONLY with section=skills. "
+        "user_input {text}. attach_project {project_name}. enable_entry "
+        "{section: experience|projects, index}. port_kb_point {kb_point_id, "
+        "kb_entity_id, placement_target, wording}. skip/cannot_confirm {} "
+        "(cannot_confirm also stores a durable user_cannot_confirm KB record; "
+        "only legal on gaps that ask a question, i.e. where user_input is allowed)."
+    )
+)
+GapResolutions = Annotated[list[GapResolution], _RESOLUTIONS_FIELD]
+
+_INGEST_DATA_FIELD = Field(
+    description=(
+        "ResumeData. Only contact.name and contact.email are required. 422 if "
+        "any source fails validation or on a duplicate SOURCE key (re-running "
+        "the same resume_key is a merge, not an error); atomic either way — "
+        "nothing persisted; fix the payload and resend."
+    )
+)
 
 
 def _guard(fn):
@@ -252,11 +287,15 @@ def store_extracted_jd(
 
     extracted_json must match the app's JobExtraction schema: company, title,
     role_category, level, employment_type, work_mode, city/state/country,
-    location_raw, salary_min/max, salary_period, work_authorization, opt_accepted,
+    location_raw, salary_min/max, salary_period,
+    work_authorization: "sponsorship_available"|"no_sponsorship"|"citizen_or_gc_required"|"unstated",
+    opt_accepted: "yes"|"stem_opt_ok"|"no"|"unstated",
     years_experience_min/max, skills[{skill_name, skill_category,
     requirement_level: "required"|"preferred"|"mentioned"}],
-    responsibilities[], qualifications[]. source is "user" or "agent"
-    (agent-hunted jobs must use source="agent"). Returns the stored job.
+    responsibilities[], qualifications[]. ANY other work_authorization or
+    opt_accepted value silently normalizes to "unstated" with no error.
+    source is "user" or "agent" (agent-hunted jobs must use source="agent").
+    Returns the stored job.
     """
     return _client.store_extracted_jd(extracted_json, raw_text=raw_text, source_url=source_url, source=source)
 
@@ -326,11 +365,14 @@ def kb_get_entity(entity_id: str) -> Any:
 
 @mcp.tool()
 @_guard
-def kb_list_points(state: str | None = None) -> Any:
+def kb_list_points(
+    state: str | None = None, limit: int = 500, offset: int = 0
+) -> Any:
     """List Career KB points across all entities, optionally by state
-    (draft|approved|retired). Filter here instead of client-side so you don't
-    pull hundreds of retired points."""
-    return _client.list_kb_points(state=state)
+    (draft|approved|retired). An unfiltered call is bounded to the first
+    `limit` points (default 500); page with `offset`. Filter by `state`
+    and page rather than pulling the whole table."""
+    return _client.list_kb_points(state=state, limit=limit, offset=offset)
 
 
 # ---------- Career KB: write ----------
@@ -394,7 +436,11 @@ def kb_create_entity(
     """Create a Career KB entity — kind is experience|project|education|
     certification|extra. Writes immediately and is NOT draft-gated: call it only after
     the user has actually asked for this entity, with their own dates and
-    wording. A certificate PDF still has to be uploaded from the web UI."""
+    wording. `detail` is a free-form dict (conventional keys: `tech` list[str]|str,
+    `link`, `field`); kind="extra" REQUIRES `section_key` (lowercase slug),
+    `section_type` ("entries"|"bullets"), and `section_title` nested inside
+    `detail` — no top-level params exist. A certificate PDF still has to be
+    uploaded from the web UI."""
     return _client.create_kb_entity(
         kind=kind,
         title=title,
@@ -464,47 +510,45 @@ def kb_edit_profile(
 @_guard
 def kb_ingest_resume(
     resume_key: str,
-    data: dict[str, Any],
+    data: Annotated[dict[str, Any], _INGEST_DATA_FIELD],
     brief: bool = False,
     ctx: Context | None = None,
 ) -> Any:
     """Persist one caller-parsed resume into the Career KB. No in-house LLM.
 
-    Points land as DRAFTS, so this call is safe once you have shown the user
-    what you extracted. It puts nothing on a resume: the explicit user-consent
-    gate is kb_approve_points, which you call ONLY after the user has actually
-    approved these points (record_consent convention).
+    Points land as DRAFTS — safe once you have shown the user what you extracted.
+    Puts nothing on a resume: the consent gate is kb_approve_points, called ONLY
+    after the user actually approved these points (record_consent convention).
 
     HONESTY: transcribe the user's resume text exactly — no embellishment, no
-    rewording, no invented metrics. Same honesty model as caller-authored
-    tailor ops: the server stores what you send.
+    rewording, no invented metrics. Same honesty model as caller-authored tailor ops.
 
-    ENTITY NAMES: normalize company/role/project wording across resumes
-    yourself. Matching is identity-key only (experience: company+role+start_date;
-    projects: name; education: institution+degree; certs: the string). Different
-    spellings will not merge.
+    ENTITY NAMES: matching is two-pass. Exact identity-key first (experience:
+    company+role+start_date; projects: name; education: institution+degree;
+    certs: the string), then a near-identity pass for experience/projects/certs
+    (token-subset; projects allow ≤2 extra tokens). Education and extra are
+    identity-key-only. Different spellings can merge on that second pass —
+    you need not normalize names for the near cases it covers, but everything
+    outside them still forks.
 
-    Re-running the same resume_key is a merge: no duplicate entities, and a
-    bullet already on the entity (in ANY state, including retired) is not
-    re-created. resume_key must match ^[a-z0-9][a-z0-9_]*$.
+    Re-running the same resume_key is a merge: no duplicate entities; a bullet
+    already on the entity (any state, including retired) is not re-created.
+    resume_key must match ^[a-z0-9][a-z0-9_]*$.
 
-    `data` is ResumeData. Only contact.name and contact.email are required.
+    `data` is ResumeData (only contact.name and contact.email required).
     Sections: contact, summary, skills[{category, items}], experience, projects,
-    education, certifications[str], extra_sections. Nested experience example:
+    education, certifications[str], extra_sections. Experience:
     {company, role, location?, start_date?, end_date?, bullets[str]}.
-    extra_sections are NOT stored in the Career KB — the report warns per
-    source; add them to the base resume after it is created. skills and
-    contact/summary go to the KB profile, which has no draft state. Profile
-    seeding is non-clobbering, so across single-resume calls the FIRST ingest
-    wins: ingest the user's most CURRENT resume first.
+    extra_sections are NOT stored in the Career KB (report warns); add them
+    after the base is created. skills/contact/summary go to the KB profile
+    (no draft state). Profile seeding is first-write-wins — ingest the CURRENT
+    resume first.
 
-    Response is {report, next}. report carries created/matched entity ids
-    ({id, kind, title, org, created}), the created DRAFT point ids, counts
-    (points_created, duplicates_skipped) and warnings. next is a hint (null
-    when suppressed). Pass brief=True in a multi-resume ingest loop — it
-    suppresses next before any settings read. 422 if any source fails
-    ResumeData validation, or on a duplicate source key (atomic: nothing
-    persisted); fix the payload and resend.
+    Response {report, next}. report: created/matched entity ids, DRAFT point
+    ids, counts, warnings. next is a hint (null when suppressed). brief=True
+    in a multi-resume loop suppresses next before any settings read. 422 if
+    any source fails ResumeData validation or on a duplicate source key
+    (atomic: nothing persisted); fix and resend.
     """
     report = _client.kb_ingest_resume(
         resume_key, data, origin_detail=_client_label(ctx),
@@ -554,6 +598,18 @@ def kb_approve_points(
 
 @mcp.tool()
 @_guard
+def kb_sync_base(slug: str) -> Any:
+    """Sync one base resume into the Career KB.
+
+    Deterministic: zero LLM calls. New material lands as DRAFT points
+    (origin=base_sync) for the user to approve at /career. Never edits
+    resumes. Safe to rerun — a second call is a no-op when already in sync.
+    """
+    return _client.kb_sync_base(slug)
+
+
+@mcp.tool()
+@_guard
 def create_base_resume_from_kb(
     entity_ids: list[str],
     role_category: str | None = None,
@@ -568,7 +624,9 @@ def create_base_resume_from_kb(
     deliberate; omitting the argument is not allowed because it would have to
     mean "the whole KB". A role_label or role_category is required (no slug
     argument). role_category is strict: an unknown value 422s, no
-    normalization. Only APPROVED points under the selected entities compose —
+    normalization. An unmatched role_label maps to role_category "other" and
+    slug `other`/`other_2`…; display_name never affects the slug — read
+    `base.slug` off the response. Only APPROVED points under the selected entities compose —
     points from kb_ingest_resume are DRAFTS and contribute nothing until
     kb_approve_points (or the user, at /career) approves them.
     skills and contact arrive in full from the KB profile regardless of entity
@@ -652,34 +710,24 @@ def update_base_resume(slug: str, data: dict, display_name: str | None = None) -
 # the schema-side registry (a hand-copied block once listed 8 of 16 kinds).
 # Set via __doc__ before decoration: _guard's functools.wraps propagates it to
 # what FastMCP registers; an f-string literal would not be a docstring at all.
-_EDIT_BASE_RESUME_DOC = f"""Apply typed edit ops to a base resume (read-then-edit; the server keeps all
-    untouched fields). THIS is the tool for essentially every base-resume change,
-    including ones no op names directly: to fix an entry's dates, title, company,
-    project name, link or tech list, send replace_entry for that one entry.
-    update_base_resume is a LAST RESORT — it PUTs the whole resume and puts every
-    untouched field at risk to change one value.
+_EDIT_BASE_RESUME_DOC = f"""Apply typed edit ops to a base resume (read-then-edit). For dates, title,
+    company, project name, link or tech, send replace_entry. update_base_resume
+    is a LAST RESORT (whole-resume PUT). ExtraSection shape is on `ops` (ATS-neutral).
 
-    First call get_base_resume to pick indices/categories, then send only the
-    changes. Indices are 0-based into the FULL JSON array for that section
-    (experience/projects/education), including entries with enabled:false — do not
-    use PDF display order (render omits disabled rows). Response includes `applied`
-    echoing which entry/name each op touched. Each op has a `kind`:
+    get_base_resume first. Indices 0-based into the FULL array (incl. enabled:false,
+    never PDF order). Response `applied` echoes each op. Kinds:
 {render_ops_shapes()}
-    <sec> is "experience"|"projects"|"education" (toggle_entry and add_bullet take
-    experience|projects only — `enabled` and bullet-append do not exist on education).
-    Custom (extra) sections — Publications, Awards, Volunteer Work — are edited whole
-    (phase 1 is section-level only; `section_key` resolves the stored ExtraSection.key).
-    An ExtraSection is {{"key":slug,"title":str,"type":"entries"|"bullets","enabled":bool,
-    ...}} carrying either `entries` or `bullets`, never both. Custom sections are ATS-neutral.
-    Out-of-range indices, an unknown/ambiguous skills category, or an unknown
-    section_key return an error. Re-renders the PDF."""
+    <sec>=experience|projects|education (toggle_entry/add_bullet: experience|projects).
+    section_key is ExtraSection.key. Bad index/category/key → error. Re-renders PDF.
+    If auto re-render fails, `render_error` is non-null and the old PDF is stale —
+    check it every call, not just `applied[]`."""
 
 
 def _doc(text: str):
     """Attach a generated docstring before _guard/mcp.tool() read it."""
 
     def deco(fn):
-        fn.__doc__ = text
+        fn.__doc__ = inspect.cleandoc(text)
         return fn
 
     return deco
@@ -704,6 +752,69 @@ def create_base_resume(slug: str, display_name: str, data: dict) -> Any:
 def duplicate_base_resume(slug: str, new_slug: str, new_display_name: str | None = None) -> Any:
     """Clone an existing base resume into a new slug."""
     return _client.duplicate_base_resume(slug, new_slug, new_display_name=new_display_name)
+
+
+@mcp.tool()
+@_guard
+def list_resume_versions(kind: Literal["base", "application"], key: str) -> Any:
+    """List append-only resume snapshots for one target, newest last.
+
+    kind is "base" (key = base-resume slug) or "application" (key = application
+    id). This is NOT render_pdf's target_type vocabulary — there is no
+    "base_resume" kind here. Each row is a version summary (number, label,
+    created_at); use get_resume_version for the snapshot and diff.
+    """
+    return _client.list_resume_versions(kind, key)
+
+
+@mcp.tool()
+@_guard
+def get_resume_version(
+    kind: Literal["base", "application"], key: str, number: int
+) -> Any:
+    """Fetch one resume version including its snapshot and the diff vs its parent.
+
+    kind/key as on list_resume_versions: "base"+slug or "application"+id.
+    number is the version number from that list.
+    """
+    return _client.get_resume_version(kind, key, number)
+
+
+@mcp.tool()
+@_guard
+def restore_resume_version(
+    kind: Literal["base", "application"], key: str, number: int
+) -> Any:
+    """Copy a past version's snapshot into the live resume.
+
+    Restore goes through the standard versioned write path — it is itself a
+    new version (history is append-only; nothing is deleted). kind/key as on
+    list_resume_versions: "base"+slug or "application"+id. For applications,
+    the old PDF is cleared; call render_pdf before attaching.
+    """
+    return _client.restore_resume_version(kind, key, number)
+
+
+@mcp.tool()
+@_guard
+def archive_base_resume(slug: str) -> Any:
+    """Hide a base resume from pickers without deleting it.
+
+    Sets archived_at (reversible timestamp, not a delete). Archived bases drop
+    out of list_base_resumes' default view; JSON, PDF, TEX and version history
+    stay. Undo with unarchive_base_resume.
+    """
+    return _client.archive_base_resume(slug)
+
+
+@mcp.tool()
+@_guard
+def unarchive_base_resume(slug: str) -> Any:
+    """Restore an archived base resume to list_base_resumes' default view.
+
+    Clears archived_at. The resume is again selectable; nothing else changes.
+    """
+    return _client.unarchive_base_resume(slug)
 
 
 # ---------- tailor + render ----------
@@ -762,6 +873,8 @@ def edit_application(application_id: str, ops: EditOps) -> Any:
     Index is 0-based into the full customized_json array (including enabled:false);
     resolve indices from get_application, never PDF ordinals. Response `applied`
     echoes which entry name/index each op touched so a mismatch is obvious.
+    Clears pdf_path/tex_path (old PDF is now stale) — call render_pdf before
+    using or attaching the PDF.
     """
     return _client.edit_application(application_id, ops)
 
@@ -828,12 +941,16 @@ def generate_cover_letter(application_id: str, tone: str) -> Any:
 def render_pdf(target_type: Literal["base_resume", "application"], target_id: str,
                template_id: str | None = None) -> Any:
     """Render a PDF. target_type is 'base_resume' (target_id=slug) or 'application'
-    (target_id=application id). Optional template_id selects a LaTeX template (must be
-    a 'ready' template; omit for the default). Returns the render result incl. pdf_path,
-    plus a `next` key: for an 'application' render this is the terminal apply-readiness
-    hint (autofill_ready, incomplete/blocking groups, a conditional browser-handoff
-    offer); for a 'base_resume' render it is always null — a base-resume preview isn't
-    part of the score->tailor->render arc, so there is nothing to offer."""
+    (target_id=application id). Optional template_id selects a template (either
+    engine; must be 'ready'; omit for the default). Response reports
+    resolved_template_id / resolved_engine (the template actually used);
+    template_fallback=true means the requested id was unusable and the default
+    was silently substituted. Returns the render result incl.
+    pdf_path, plus a `next` key: for an 'application' render this is the terminal
+    apply-readiness hint (autofill_ready, incomplete/blocking groups, a conditional
+    browser-handoff offer); for a 'base_resume' render it is always null — a
+    base-resume preview isn't part of the score->tailor->render arc, so there is
+    nothing to offer."""
     if target_type == "base_resume":
         result = _client.render_base_resume(target_id, template_id=template_id)
         return {**result, "next": None}
@@ -860,8 +977,9 @@ def get_rendered_pdf(target_type: Literal["base_resume", "application", "templat
     """Save a rendered PDF locally and render one PNG per page without inlining images.
     target_type 'base_resume'(slug)/'application'(id) returns the last rendered resume
     PDF; 'template'(id) returns the sample preview PDF. Returns {filename, path,
-    size_bytes, mime_type, page_count, page_images, em_dash_found, em_dash_pages}.
-    The PDF and per-page PNGs ({id}.pN.png, ~120 dpi) are written under
+    size_bytes, mime_type, page_count, page_images, em_dash_found, em_dash_pages,
+    artifact_dir?}. Paths are local to where the backend/MCP server run — for
+    browser upload use prepare_application_pdf_upload. The PDF and per-page PNGs ({id}.pN.png, ~120 dpi) are written under
     $MAESTRO_CS_PDF_DIR (or a temp dir). This slim response never includes image
     base64; call get_rendered_pdf_page_image for exactly one page when visual bytes
     are required. em_dash_found flags the STANDING RULE that a rendered resume must
@@ -877,13 +995,18 @@ def get_rendered_pdf_page_image(
     target_type: Literal["base_resume", "application", "template"],
     target_id: str,
     page_number: int,
+    max_dimension_px: int = 1024,
 ) -> Any:
     """Return one rendered PDF page as an explicit opt-in visual payload.
-    page_number is 1-based. Returns target_type, target_id, page_number,
-    page_count, filename/path/size/mime metadata, and page_image_b64 for only
-    the requested PNG. Out-of-range page numbers are rejected."""
+    page_number is 1-based. max_dimension_px (default 1024) is the longest
+    side of the re-rendered PNG — only exceed 1024 when you ask. Encoded
+    payloads over ~1MB are rejected; lower max_dimension_px and retry.
+    Returns target_type, target_id, page_number, page_count, filename/path/
+    size/mime metadata, and page_image_b64 for only the requested PNG.
+    Out-of-range page numbers are rejected. Does not change get_rendered_pdf's
+    pre-rendered preview PNGs."""
     return _client.get_rendered_pdf_page_image(
-        target_type, target_id, page_number
+        target_type, target_id, page_number, max_dimension_px=max_dimension_px
     )
 
 
@@ -909,14 +1032,27 @@ def prepare_application_pdf_upload(application_id: str) -> Any:
 @mcp.tool()
 @_guard
 def list_templates() -> Any:
-    """List resume templates — both engines (id, display_name, status['draft'|'ready'], engine, is_default, last_error)."""
+    """List resume templates — both engines (id, display_name, status['draft'|'ready'],
+    engine, is_default, last_error). parse_certified false = a 'ready' template that
+    still loses word boundaries under strict extraction — see validate_template."""
     return _client.list_templates()
 
 
 @mcp.tool()
 @_guard
 def get_template(template_id: str) -> Any:
-    """Get a template incl. its full source (Jinja2+LaTeX for engine='latex'; raw .typ text for engine='typst') plus engine and supported_fmt_keys."""
+    """Get a template incl. its full source (Jinja2+LaTeX for engine='latex';
+    raw .typ text for engine='typst') plus engine and supported_fmt_keys.
+    A template of either engine opts into look knobs by referencing `fmt.*`
+    (LaTeX via the Jinja namespace, Typst via sys.inputs.fmt; defaults
+    reproduce Classic): font_size (11), side_margins (0.4in),
+    top_bottom_margin (0.3in), line_spacing (1.0), section_spacing (6pt),
+    entry_spacing (0pt), justify (false), hide_divider (false), bullet_icon
+    ("bullet"|"dash"), header_align ("center"|"left"|"right"), skills_layout
+    ("inline"|"bulleted"), education_order ("degree_first"|"institution_first"),
+    date_format ("verbatim"; feeds |format_date). For engine='typst',
+    supported_fmt_keys always includes date_format (applied server-side) even
+    if the source never names it."""
     return _client.get_template(template_id)
 
 
@@ -930,48 +1066,34 @@ def create_template_draft(
     engine: str = "latex",
 ) -> Any:
     """Create a DRAFT template. `engine` defaults to 'latex'. Pass
-    `engine='typst'` for a Typst template — then `source` is REQUIRED and is the
-    raw `.typ` text verbatim (no Jinja delimiters, no escape filters; read data
-    via `json(bytes(sys.inputs.resume))` / `json(bytes(sys.inputs.fmt))`; engine
-    is immutable after creation).
-    Typst constraints (engine='typst'): the `resume` JSON uses the SAME field
-    names as the resume.* list below (read as r.contact.name etc.; optional
-    fields arrive as `none` — guard with `!= none`). Dates arrive PRE-FORMATTED
-    server-side per fmt.date_format — do not reference fmt.date_format in the
-    source. Package imports (`#import "@preview/..."` or any `@...` import) are
-    REJECTED before compile — inline the functionality instead. Fonts: only the
-    vendored XCharter faces plus typst's embedded defaults (e.g. Libertinus
-    Serif) exist; any other family compiles WITHOUT error and silently
-    substitutes. The source MUST render r.extra_sections (both the `entries`
-    and `bullets` shapes) or rendering a resume that has custom sections
-    hard-fails — copy the block from get_template('typst-classic').
-    For LaTeX, omit `source` to start from the
-    server's canonical starter (a minimal document that already compiles).
-    When given, `source` must be a complete, self-contained, compilable LaTeX
-    document (its own \\documentclass + preamble) written as a Jinja2 template
-    using the same delimiters as the default: blocks ((* *)), variables ((( ))),
-    comments ((# #)).
-    Render data is under `resume.*` (resume.contact.name, resume.summary,
-    resume.skills[].{category,items}, resume.experience[].bullets,
-    resume.projects[], resume.education[], resume.certifications) — escape every value
-    with the |latex_escape filter. Write raw LaTeX, NOT HTML entities: use a bare
-    `&` for tabular column separators and `\\&` for a literal ampersand — never the
-    HTML entity `&amp;` (it renders as the literal text "amp;"). The bundled partial
-    is includable: ((* include '_header.tex.j2' *)). A structured formatting
-    namespace `fmt.*` is also available so users can adjust the look from a controls
-    panel without editing LaTeX; a template opts into a knob by referencing it
-    (defaults reproduce the Classic look): fmt.font_size (11), fmt.side_margins
-    (0.4in), fmt.top_bottom_margin (0.3in), fmt.line_spacing (1.0),
-    fmt.section_spacing (6pt), fmt.entry_spacing (0pt), fmt.justify (false),
-    fmt.hide_divider (false), fmt.bullet_icon ("bullet"|"dash"), fmt.header_align
-    ("center"|"left"|"right"), fmt.skills_layout ("inline"|"bulleted"),
-    fmt.education_order ("degree_first"|"institution_first"), fmt.date_format
-    ("verbatim"; feeds |format_date). Wire the preamble/spacing to `fmt.*` rather
-    than hard-coded values so the panel controls apply. Tip: for a full-featured
-    base, start from get_template('default') and adapt.
-    Pass validate=True to test-compile in the same call (the returned row's
-    status/last_error show the result). The template is NOT usable until validation
-    succeeds. `id` must be a slug: lowercase letters, digits, hyphen, underscore."""
+    `engine='typst'` for Typst — then `source` is REQUIRED: raw `.typ` text
+    (no Jinja, no escape filters; read via `json(bytes(sys.inputs.resume))` /
+    `json(bytes(sys.inputs.fmt))`; engine is immutable after creation).
+
+    Both engines consume the same resume JSON (contact, summary,
+    skills[].{category,items}, experience/projects/education, certifications,
+    extra_sections). Typst reads r.contact.name etc.; optional fields arrive
+    as `none` — guard with `!= none`. LaTeX uses resume.* with |latex_escape
+    on every value.
+
+    Typst constraints: dates arrive PRE-FORMATTED server-side — do not
+    reference fmt.date_format. Package imports (`#import "@preview/..."` or
+    any `@...` import) are REJECTED — inline instead. Fonts: only vendored
+    XCharter plus typst's embedded defaults (e.g. Libertinus Serif); any
+    other family compiles WITHOUT error and silently substitutes. MUST render
+    r.extra_sections (both `entries` and `bullets` shapes) or a resume with
+    custom sections hard-fails — copy the block from get_template('typst-classic').
+
+    LaTeX: omit `source` to start from the canonical starter. Given source
+    must be a complete compilable document (\\documentclass + preamble) as
+    Jinja2 with blocks ((* *)), variables ((( ))), comments ((# #)). Write
+    raw LaTeX not HTML entities: bare `&` for tabular, `\\&` for a literal
+    ampersand — never `&amp;`. Includable: ((* include '_header.tex.j2' *)).
+    Wire spacing/look to `fmt.*` (full knob list on get_template) rather than
+    hard-coded values. Tip: start from get_template('default') and adapt.
+
+    Pass validate=True to test-compile in the same call (status/last_error).
+    Not usable until validation succeeds. `id` is a slug: [a-z0-9_-]."""
     return _client.create_template_draft(
         id, display_name, source, validate=validate, engine=engine
     )
@@ -1190,6 +1312,10 @@ def compare_ats(application_id: str) -> Any:
 def create_tailoring_session(job_id: str, base_resume: str, enrich: bool = False) -> Any:
     """Start the gap-analysis tailoring workflow for a job + base resume.
 
+    Calling again for the same job+base SUPERSEDES the open session (saved
+    resolutions become unreachable) — check list_tailoring_sessions first
+    when resuming.
+
     Scores the base (deterministic ATS engine, persisted as the 'before' score) and
     returns a session whose gaps_json.categories list every gap in fix-cost order:
     missing skills, wording mismatches, placement upgrades, stale evidence, adjacent
@@ -1226,40 +1352,36 @@ def quick_tailor(job_id: str, base_resume: str) -> Any:
     """Start Quick Tailor over MCP: the fast path that fills gaps from the
     user's saved quick-tailor profile instead of walking them one by one.
 
-    Composes create_tailoring_session(enrich=False) — deterministic scoring
-    and KB/wording autos, no LLM — with the profile fill
-    (POST .../apply-profile: deterministic, routed through the same
-    honesty-gated save path resolve_gaps uses) and returns the filled session.
+    Calling again for the same job+base SUPERSEDES the open session (saved
+    resolutions become unreachable) — check list_tailoring_sessions first
+    when resuming.
 
-    This tool makes NO in-house LLM call of its own. That is the point of the
-    whole MCP arc: sessions rely on the CALLING agent's own model, not the
-    backend's. The saved profile only plans mechanical, evidence-respecting
-    moves (verified KB/skills autos, mirrored JD wording, an optional
-    unverified-skill-into-skills-list add) — it does NOT write resume prose.
-    Your job after this call: read the returned resolutions_json (it may
-    already resolve every gap, including system-planned entries whose payload
-    carries `provenance`), author typed edit ops that implement each one
-    yourself, then call tailor_session(tailoring_session_id=..., ops=[...]) —
-    supplying `ops` skips the backend's own LLM pass entirely, so this whole
-    arc stays LLM-free end to end.
+    Composes create_tailoring_session(enrich=False) with POST .../apply-profile
+    (deterministic, same honesty-gated save path as resolve_gaps) and returns
+    the filled session.
 
-    Honesty rule (same one tailor_session states, restated because this is the
-    path most likely to tempt a shortcut): never fabricate skills, experience,
-    metrics, or dates. An unverified or absent skill may ONLY be added to a
-    skills category (an add_skill_item op) — never as an experience or project
-    bullet asserting the candidate did the work.
+    This tool makes NO in-house LLM call of its own. Sessions rely on the
+    CALLING agent's own model, not the backend's. The saved profile only plans
+    mechanical, evidence-respecting moves — it does NOT write resume prose.
+    After this call: read resolutions_json (may already resolve every gap,
+    including system-planned entries with payload.provenance), author typed
+    edit ops yourself, then tailor_session(tailoring_session_id=..., ops=[...])
+    — supplying `ops` skips the backend LLM pass.
 
-    A returned session whose resolutions_json contains no planned action
-    beyond "skip" means the saved profile was not ALLOWED to add anything to
-    THIS session (e.g. every profile switch is off, or every gap needed a
-    placement the profile doesn't cover) — it is not an error. Walk the gaps
-    yourself with resolve_gaps instead of assuming quick tailor failed.
+    Honesty: never fabricate skills, experience, metrics, or dates. An
+    unverified or absent skill may ONLY be added to a skills category
+    (add_skill_item) — never as an experience or project bullet asserting
+    the candidate did the work.
 
-    Raises (409, message says which): a failing fatal health gate on the base
-    resume blocks session creation; a stale or no-longer-open session blocks
-    the profile fill. Response is the filled session plus a `next` next-step
-    hint suggesting tailor_session (carrying the profile's standing
-    instruction as user_prompt when the session has no note of its own)."""
+    A session whose resolutions_json contains no planned action beyond
+    "skip" means the profile was not ALLOWED to add anything to THIS
+    session — it is not an error. Walk the gaps with resolve_gaps instead.
+
+    Raises (409, message says which): a failing fatal health gate on the
+    base blocks session creation; a stale or no-longer-open session blocks
+    the profile fill. Response is the filled session plus a `next` hint
+    suggesting tailor_session (profile standing instruction as user_prompt
+    when the session has no note of its own)."""
     session = _client.create_tailoring_session(job_id, base_resume, enrich=False)
     filled = _client.apply_quick_tailor_profile(session["id"])
     if not _hints_enabled():
@@ -1322,41 +1444,27 @@ def close_tailoring_session(tailoring_session_id: str) -> Any:
 
 @mcp.tool()
 @_guard
-def resolve_gaps(tailoring_session_id: str, resolutions: list[GapResolution]) -> Any:
+def resolve_gaps(
+    tailoring_session_id: str, resolutions: GapResolutions
+) -> Any:
     """Save gap resolutions on a tailoring session (merge by gap_id, idempotent).
+    The batch is validated as ONE unit — one invalid item saves NOTHING
+    (existing saved resolutions untouched); fix and resend.
 
-    `tailoring_session_id` is the id returned by create_tailoring_session.
-    Each item is {gap_id, action, payload}. Payload schema per action:
-    - add_keyword: {placement_target: {section: "skills"|"experience"|"projects",
-      index_or_category: <skills category name, or 0-based full-array entry index>},
-      wording?} — for wording/placement gaps where the resume already has real
-      evidence of the skill. A MISSING skill may also use add_keyword, but ONLY with
-      section="skills": it adds an unverified keyword to a skills category (existing,
-      or a new "Additional Skills" bucket), never a fabricated bullet — use this only
-      when the candidate genuinely has the skill but won't add a project/bullet. Same
-      shape the web UI writes, so either surface can finish the other's session.
-    - user_input: {text} — the user's own words about their real experience; the
-      evidence-backed path for missing skills, after asking the elicitation question.
-    - attach_project: {project_name} — surface an existing project as evidence.
-    - enable_entry: {section: "experience"|"projects", index: <0-based full-array
-      entry index>, name?, provenance?} — enable verified evidence already present in
-      the base resume.
-    - port_kb_point: {kb_point_id, kb_entity_id, placement_target: {section,
-      index_or_category}, wording, provenance?} — port a verified Career KB point to
-      a real resume destination.
-    - skip: {} — the user doesn't have it; leave the gap unaddressed.
-    enable_entry and port_kb_point carry verified evidence and are therefore exempt
-    from the add_keyword missing-skill rule that restricts unverified additions to
-    the skills section.
-    Re-sending a gap_id overwrites that gap's earlier resolution; other saved
-    resolutions are kept — including any system-planned auto-resolutions stamped
-    at session creation (payload.provenance set; see get_tailoring_session).
-    Call as many times as needed, then tailor_session.
-    Merge-only: omitting a gap_id never removes its saved resolution — to
-    retract one, resend that gap_id with action "skip".
+    `tailoring_session_id` is the id from create_tailoring_session. Each item
+    is {gap_id, action, payload}. Actions: add_keyword, user_input,
+    attach_project, skip, enable_entry, port_kb_point, cannot_confirm.
+    Payload shapes live on the `resolutions` parameter schema.
 
-    Response is the session plus a `next` next-step hint (null when the user's
-    Settings switch has hints off)."""
+    enable_entry and port_kb_point carry verified evidence and are exempt
+    from the add_keyword missing-skill rule (unverified additions stay in
+    skills). Re-sending a gap_id overwrites that gap; other saved resolutions
+    stay — including system-planned autos (payload.provenance; see
+    get_tailoring_session). Call as many times as needed, then tailor_session.
+    Merge-only: omitting a gap_id never removes its saved resolution — resend
+    that gap_id with action "skip" to retract.
+
+    Response is the session plus a `next` hint (null when hints are off)."""
     session = _client.resolve_gaps(tailoring_session_id, resolutions)
     return {**session, "next": _session_hint(session)}
 
@@ -1394,8 +1502,11 @@ def tailor_session(
     {session, compare, compare_error, next}. compare holds the before/after ATS
     deltas; it may be null with compare_error set if the scores weren't comparable
     — the tailor still succeeded in that case, so relay the application and the
-    error note to the user rather than retrying. `next` is a next-step hint
-    naming render_pdf for the new application (null when suppressed)."""
+    error note to the user rather than retrying. `kb_writeback_skips` derives
+    from each user_input resolution's STORED placement_target from resolve_gaps,
+    not from your ops — keep them aligned or expect a spurious wrong_section
+    skip. `next` is a next-step hint naming render_pdf for the new application
+    (null when suppressed)."""
     result = _client.tailor_session(tailoring_session_id, user_prompt=user_prompt, ops=ops)
     application_id = (result.get("session") or {}).get("application_id")
     next_hint = (
@@ -1505,8 +1616,11 @@ def resume_proposal(proposal_id: str) -> Any:
 def get_final_review(proposal_id: str) -> Any:
     """Compact final-review bundle: job summary, chosen base/ATS delta, PDF readiness,
     QA answers, EEO consent flag (no values), blocked/manual items, evidence manifest.
-    duplicate_submitted=true means a same-company+title proposal was already
-    submitted — surface this to the user LOUDLY before asking for consent."""
+    Requires an existing proposal — a 404 usually means propose_application was
+    never called (it accepts application_id to late-link) or an application id
+    was passed where a proposal id belongs. duplicate_submitted=true means a
+    same-company+title proposal was already submitted — surface this to the user
+    LOUDLY before asking for consent."""
     return _client.get_final_review(proposal_id)
 
 

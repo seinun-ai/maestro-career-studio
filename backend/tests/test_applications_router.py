@@ -1,4 +1,5 @@
 import shutil
+import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -11,6 +12,7 @@ from app.db import get_db
 from app.main import app
 from app.models.application import Application
 from app.models.job import Job
+from app.models.template import Template
 from app.routers import applications
 from app.services import pdf_render
 
@@ -18,6 +20,60 @@ from app.services import pdf_render
 def _write_valid_pdf(path: Path, pages: int = 1) -> None:
     """Write a real (rasterizable) PDF so the render path's page-image step works."""
     write_blank_pdf(path, pages)
+
+
+def _stub_render_compilers(monkeypatch) -> None:
+    def fake_run(argv, **kwargs):
+        out_dir = Path(
+            next(
+                arg.removeprefix("-output-directory=")
+                for arg in argv
+                if arg.startswith("-output-directory=")
+            )
+        )
+        jobname = next(
+            arg.removeprefix("-jobname=")
+            for arg in argv
+            if arg.startswith("-jobname=")
+        )
+        _write_valid_pdf(out_dir / f"{jobname}.pdf")
+        return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(pdf_render.subprocess, "run", fake_run)
+
+    def fake_typst_compile(**kwargs):
+        _write_valid_pdf(Path(kwargs["output"]))
+
+    monkeypatch.setattr(pdf_render.typst_compiler, "compile_typst", fake_typst_compile)
+
+
+def _seed_render_templates(db_session) -> None:
+    source = (pdf_render.TEMPLATE_DIR / pdf_render.RESUME_TEMPLATE).read_text(
+        encoding="utf-8"
+    )
+    db_session.add_all(
+        [
+            Template(
+                id="default",
+                display_name="Classic",
+                source=source,
+                engine="latex",
+                status="ready",
+                is_default=True,
+                origin="seed",
+            ),
+            Template(
+                id="observed_template",
+                display_name="Observed",
+                source='#text("observed")',
+                engine="typst",
+                status="ready",
+                is_default=False,
+                origin="frontend",
+            ),
+        ]
+    )
+    db_session.commit()
 
 
 def _override_db(db_session):
@@ -348,6 +404,72 @@ def test_render_falls_back_for_unknown_template(db_session, tmp_path, monkeypatc
         app.dependency_overrides.clear()
 
     assert response.status_code == 200
+
+
+def test_render_application_reports_explicit_resolved_template(
+    db_session, tmp_path, monkeypatch
+):
+    job = _job(db_session)
+    application = Application(
+        job_id=job.id,
+        base_resume="data_scientist",
+        status="draft",
+        customized_json=_FULL_RESUME,
+    )
+    db_session.add(application)
+    db_session.commit()
+    db_session.refresh(application)
+
+    monkeypatch.setattr(app_settings, "applications_dir", tmp_path)
+    _stub_render_compilers(monkeypatch)
+    _seed_render_templates(db_session)
+
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        response = TestClient(app).post(
+            f"/api/applications/{application.id}/render"
+            "?template_id=observed_template"
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200, response.text
+    assert response.json()["resolved_template_id"] == "observed_template"
+    assert response.json()["resolved_engine"] == "typst"
+    assert response.json()["template_fallback"] is False
+
+
+def test_render_application_reports_explicit_template_fallback(
+    db_session, tmp_path, monkeypatch
+):
+    job = _job(db_session)
+    application = Application(
+        job_id=job.id,
+        base_resume="data_scientist",
+        status="draft",
+        customized_json=_FULL_RESUME,
+    )
+    db_session.add(application)
+    db_session.commit()
+    db_session.refresh(application)
+
+    monkeypatch.setattr(app_settings, "applications_dir", tmp_path)
+    _stub_render_compilers(monkeypatch)
+    _seed_render_templates(db_session)
+
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        response = TestClient(app).post(
+            f"/api/applications/{application.id}/render"
+            "?template_id=bogus_template"
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200, response.text
+    assert response.json()["resolved_template_id"] == "default"
+    assert response.json()["resolved_engine"] == "latex"
+    assert response.json()["template_fallback"] is True
 
 
 def test_render_400_failure_persists_render_error(db_session, tmp_path, monkeypatch):

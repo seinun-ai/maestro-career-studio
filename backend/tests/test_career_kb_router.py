@@ -1,9 +1,10 @@
 import uuid
+from datetime import UTC, datetime
 
 import pytest
 from fastapi.testclient import TestClient
 
-from app.models.career_kb import KBDocument, KBPoint, KBProfile
+from app.models.career_kb import KBDocument, KBEntity, KBPoint, KBProfile
 
 
 @pytest.fixture
@@ -60,6 +61,176 @@ def test_create_and_list_entities(client):
     assert body[0]["point_count"] == 0 and body[0]["draft_count"] == 0
 
 
+def test_create_entity_surfaces_same_identity_as_possible_duplicate(client, db_session):
+    existing = client.post(
+        "/api/kb/entities",
+        json={
+            "kind": "experience",
+            "title": "Data Analyst",
+            "org": "TCS",
+            "start_date": "2021-06",
+            "status": "completed",
+        },
+    ).json()
+
+    response = client.post(
+        "/api/kb/entities",
+        json={
+            "kind": "experience",
+            "title": "Data Analyst",
+            "org": "TCS",
+            "start_date": "2021-06",
+            "status": "ongoing",
+        },
+    )
+
+    assert response.status_code == 200
+    created = response.json()
+    assert created["id"] != existing["id"]
+    assert created["title"] == "Data Analyst"
+    assert created["org"] == "TCS"
+    assert created["status"] == "ongoing"
+    assert created["possible_duplicates"] == [
+        {"id": existing["id"], "title": "Data Analyst", "org": "TCS"}
+    ]
+    assert db_session.query(KBEntity).filter_by(kind="experience").count() == 2
+
+
+def test_create_entity_returns_no_hint_for_unrelated_same_kind(client):
+    client.post("/api/kb/entities", json={"kind": "project", "title": "Resume Tailor"})
+
+    response = client.post(
+        "/api/kb/entities",
+        json={"kind": "project", "title": "Warehouse Forecasting"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["possible_duplicates"] == []
+
+
+def test_create_entity_returns_no_hint_for_same_title_in_another_kind(client):
+    client.post(
+        "/api/kb/entities",
+        json={"kind": "certification", "title": "Data Platform"},
+    )
+
+    response = client.post(
+        "/api/kb/entities",
+        json={"kind": "project", "title": "Data Platform"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["possible_duplicates"] == []
+
+
+def test_create_entity_surfaces_valid_near_identity(client):
+    existing = client.post(
+        "/api/kb/entities",
+        json={"kind": "project", "title": "Resume Tailor Platform"},
+    ).json()
+
+    response = client.post(
+        "/api/kb/entities",
+        json={"kind": "project", "title": "Resume Tailor"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["possible_duplicates"] == [
+        {"id": existing["id"], "title": "Resume Tailor Platform", "org": None}
+    ]
+
+
+@pytest.mark.parametrize("incoming_title", ["Resume Tailor Platform", "Resume Tailor"])
+def test_create_project_rejects_exact_or_near_hint_when_orgs_conflict(
+    client, incoming_title
+):
+    client.post(
+        "/api/kb/entities",
+        json={
+            "kind": "project",
+            "title": "Resume Tailor Platform",
+            "org": "Northwind Labs",
+        },
+    )
+
+    response = client.post(
+        "/api/kb/entities",
+        json={
+            "kind": "project",
+            "title": incoming_title,
+            "org": "Contoso Labs",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["possible_duplicates"] == []
+
+
+def test_create_project_finds_compatible_exact_after_older_org_conflict(client):
+    client.post(
+        "/api/kb/entities",
+        json={"kind": "project", "title": "Atlas", "org": "Org A"},
+    )
+    compatible = client.post(
+        "/api/kb/entities",
+        json={"kind": "project", "title": "Atlas", "org": "Org B"},
+    ).json()
+
+    response = client.post(
+        "/api/kb/entities",
+        json={"kind": "project", "title": "Atlas", "org": "Org B"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["possible_duplicates"] == [
+        {"id": compatible["id"], "title": "Atlas", "org": "Org B"}
+    ]
+
+
+def test_create_project_finds_compatible_near_after_conflicting_exact(client):
+    client.post(
+        "/api/kb/entities",
+        json={"kind": "project", "title": "Resume Tailor", "org": "Org A"},
+    )
+    compatible = client.post(
+        "/api/kb/entities",
+        json={
+            "kind": "project",
+            "title": "Resume Tailor Platform",
+            "org": "Org B",
+        },
+    ).json()
+
+    response = client.post(
+        "/api/kb/entities",
+        json={"kind": "project", "title": "Resume Tailor", "org": "Org B"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["possible_duplicates"] == [
+        {
+            "id": compatible["id"],
+            "title": "Resume Tailor Platform",
+            "org": "Org B",
+        }
+    ]
+
+
+def test_create_entity_keeps_conflicting_certification_orgs_distinct(client):
+    client.post(
+        "/api/kb/entities",
+        json={"kind": "certification", "title": "AI Practitioner", "org": "AWS"},
+    )
+
+    response = client.post(
+        "/api/kb/entities",
+        json={"kind": "certification", "title": "AI Practitioner", "org": "Google"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["possible_duplicates"] == []
+
+
 def test_manual_point_born_approved(client):
     eid = client.post("/api/kb/entities", json={"kind": "project", "title": "X"}).json()["id"]
     r = client.post(f"/api/kb/entities/{eid}/points", json={"text": "Did a thing"})
@@ -94,6 +265,76 @@ def test_draft_inbox_lists_across_entities(client, db_session):
     kinds = {row["entity_kind"] for row in rows}
     assert titles == {"Alpha", "Beta"}
     assert kinds == {"project", "experience"}
+
+
+def test_list_points_caps_default_page_at_500(client, db_session):
+    entity = KBEntity(kind="project", title="Pagination")
+    db_session.add(entity)
+    db_session.flush()
+    created_at = datetime(2024, 1, 1, tzinfo=UTC)
+    for number in range(1, 502):
+        db_session.add(
+            KBPoint(
+                id=uuid.UUID(int=number),
+                entity_id=entity.id,
+                text=f"Point {number}",
+                state="draft",
+                origin="ingested",
+                created_at=created_at,
+            )
+        )
+    db_session.commit()
+
+    response = client.get("/api/kb/points")
+
+    assert response.status_code == 200
+    rows = response.json()
+    assert len(rows) == 500
+    assert rows[0]["id"] == "00000000-0000-0000-0000-000000000001"
+    assert rows[-1]["id"] == "00000000-0000-0000-0000-0000000001f4"
+
+
+def test_list_points_offset_pages_keep_stable_order_and_state_filter(client, db_session):
+    entity = KBEntity(kind="project", title="Stable pages")
+    db_session.add(entity)
+    db_session.flush()
+    created_at = datetime(2024, 1, 1, tzinfo=UTC)
+    db_session.add(
+        KBPoint(
+            id=uuid.UUID("00000000-0000-0000-0000-000000000009"),
+            entity_id=entity.id,
+            text="Retired point",
+            state="retired",
+            origin="ingested",
+            created_at=created_at,
+        )
+    )
+    for number in range(10, 14):
+        db_session.add(
+            KBPoint(
+                id=uuid.UUID(int=number),
+                entity_id=entity.id,
+                text=f"Draft point {number}",
+                state="draft",
+                origin="ingested",
+                created_at=created_at,
+            )
+        )
+    db_session.commit()
+
+    page_one = client.get("/api/kb/points?state=draft&limit=2&offset=0")
+    page_two = client.get("/api/kb/points?state=draft&limit=2&offset=2")
+
+    assert page_one.status_code == 200
+    assert page_two.status_code == 200
+    assert [row["id"] for row in page_one.json()] == [
+        "00000000-0000-0000-0000-00000000000a",
+        "00000000-0000-0000-0000-00000000000b",
+    ]
+    assert [row["id"] for row in page_two.json()] == [
+        "00000000-0000-0000-0000-00000000000c",
+        "00000000-0000-0000-0000-00000000000d",
+    ]
 
 
 def test_entity_detail_includes_points_documents_timeline(client, db_session):

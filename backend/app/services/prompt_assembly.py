@@ -226,6 +226,17 @@ def build_qa_prompt(
     return f"{QA_OUTPUT_CONTRACT}\n\n---\n\n{_persona_block(persona)}{body}"
 
 
+# CODE-LEVEL immutable output contract for cover letters. Prepended — never
+# $-substituted — so it survives ANY user-customized prompt.cover_letter
+# Setting row, same reason as QA_OUTPUT_CONTRACT above.
+COVER_LETTER_OUTPUT_CONTRACT = """NON-NEGOTIABLE COVER LETTER RULES (these override anything below):
+- Never state skills, achievements, numbers, dates, credentials, or employer facts that are absent from the provided resume, career context, and job description.
+- Never fabricate enthusiasm about facts not in evidence.
+- Respect the requested tone.
+- Output PLAIN PROSE only: no markdown headers, no heading markers, no fenced code.
+- Never use em-dashes (—) or en-dashes (–); write commas or hyphens instead."""
+
+
 def build_cover_letter_prompt(
     resume_json: dict[str, Any],
     jd_json: dict[str, Any],
@@ -242,7 +253,7 @@ def build_cover_letter_prompt(
             "tone": tone,
         },
     )
-    return f"{_persona_block(persona)}{body}"
+    return f"{COVER_LETTER_OUTPUT_CONTRACT}\n\n---\n\n{_persona_block(persona)}{body}"
 
 
 # CODE-LEVEL immutable output contract for the second fill pass's chooser

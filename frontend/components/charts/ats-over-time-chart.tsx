@@ -83,10 +83,15 @@ export function AtsOverTimeChart({ filters }: { filters: TopSkillsFilters }) {
     return <p className="text-muted-foreground text-sm">No data yet.</p>;
   }
 
+  const anyLow = (data ?? []).some((r) => r.low_sample);
+
   return (
     <div>
       <p className="text-muted-foreground mb-2 text-xs">
         Solid = tailored · dashed = base. Weekly average ATS composite (0–100).
+        {anyLow
+          ? " Weeks with fewer than 5 scores are directional only."
+          : ""}
       </p>
       <ResponsiveContainer width="100%" height={320}>
         <LineChart data={chartData}>

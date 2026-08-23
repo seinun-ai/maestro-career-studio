@@ -57,6 +57,7 @@ def classify_skill_rows(
                 "rank_percentile": rank_percentile,
                 "tier": "top" if in_top_tier else "below",
                 "bucket": bucket,
+                "low_sample": n < 5,
             }
         )
 

@@ -280,6 +280,22 @@ def require_open_proposal(
     return prop
 
 
+def _knockout_scan(session: Session, job: Job | None) -> dict | None:
+    """Stated-JD-requirements vs profile — the loud check the user (or agent)
+    must see BEFORE consenting. Informational like G11 tier 2: it flags, the
+    consent gate stays with the human."""
+    if job is None:
+        return None
+    from app.services import autofill_profile, job_preferences, knockout
+
+    return knockout.scan_job(
+        job,
+        autofill_profile.get_work_auth(session),
+        autofill_profile.get_profile(session).get("preferences"),
+        years_experience=job_preferences.get_preferences(session).years_experience,
+    )
+
+
 def get_final_review(session: Session, prop: ApplicationProposal) -> dict:
     from pathlib import Path
 
@@ -345,8 +361,8 @@ def get_final_review(session: Session, prop: ApplicationProposal) -> dict:
             "id": str(job.id) if job else None,
             "company": job.company if job else None,
             "title": job.title if job else None,
-            "warnings": (job.extracted_json or {}).get("warnings") if job and job.extracted_json else None,
         },
+        "knockout": _knockout_scan(session, job),
         "fit": {
             "chosen_base": chosen,
             "scores": scores or None,

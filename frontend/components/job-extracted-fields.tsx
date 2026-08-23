@@ -103,25 +103,19 @@ function formatLocationLine(job: Job): string | null {
   return job.location_raw ?? job.location ?? null;
 }
 
+/** Stored enum → label where plain capitalization reads wrong. */
+const ENUM_LABELS: Record<string, string> = {
+  full_time: "Full-time",
+  part_time: "Part-time",
+  on_site: "On-site",
+};
+
 function humanizeEnum(value: string | null | undefined): string | null {
   if (!value) return null;
-  return value.replaceAll("_", " ");
-}
-
-function ChipOrMuted({
-  value,
-}: {
-  value: string | null | undefined;
-}) {
-  if (value) return <Badge variant="outline">{value}</Badge>;
-  return (
-    <Badge
-      variant="outline"
-      className="text-muted-foreground/60 border-dashed"
-    >
-      —
-    </Badge>
-  );
+  const mapped = ENUM_LABELS[value];
+  if (mapped) return mapped;
+  const words = value.replaceAll("_", " ");
+  return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
 function StatLine({
@@ -238,6 +232,14 @@ export function JobExtractedFields({
   const yearsLine = formatYears(job.years_experience_min, job.years_experience_max);
   const workAuthLine = humanizeEnum(job.work_authorization);
   const optLine = humanizeEnum(job.opt_accepted);
+  const roleChips = (
+    [
+      ["Role family", humanizeEnum(job.role_category)],
+      ["Level", humanizeEnum(job.level)],
+      ["Employment type", humanizeEnum(job.employment_type)],
+      ["Work mode", humanizeEnum(job.work_mode)],
+    ] as [field: string, value: string | null][]
+  ).filter((pair): pair is [string, string] => pair[1] !== null);
 
   return (
     <>
@@ -258,13 +260,19 @@ export function JobExtractedFields({
           {actionsSlot}
         </CardHeader>
         <CardContent className="space-y-5">
-          <div className="flex items-center gap-2 flex-wrap">
-            <Briefcase className="text-muted-foreground size-4" />
-            <ChipOrMuted value={job.role_category} />
-            <ChipOrMuted value={job.level} />
-            <ChipOrMuted value={job.employment_type} />
-            <ChipOrMuted value={job.work_mode} />
-          </div>
+          {/* Only present values render: the chips carry no visible field
+              names, so an empty dashed chip cannot say WHICH field is missing
+              (the labelled StatLines below keep the — convention). */}
+          {roleChips.length > 0 && (
+            <div className="flex items-center gap-2 flex-wrap">
+              <Briefcase className="text-muted-foreground size-4" />
+              {roleChips.map(([field, value]) => (
+                <Badge key={field} variant="outline" title={`${field}: ${value}`}>
+                  {value}
+                </Badge>
+              ))}
+            </div>
+          )}
 
           <dl className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
             <StatLine icon={<MapPin />} label="Location" value={locationLine} />

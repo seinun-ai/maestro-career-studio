@@ -66,12 +66,12 @@ tool list:
 
 | Profile | Use when | Approx tools |
 | --- | --- | --- |
-| `full` | Mixed / default | all (77) |
+| `full` | Mixed / default | all (83) |
 | `hunt` | Job search + propose (no browser fill) | 19 |
 | `apply` | Tailor → PDF → autofill → evidence/consent/submit | 46 |
 | `explore` | Analytics (`explore_*`) | ~11 |
 | `templates` | Template draft/validate/render | ~12 |
-| `career` | Career KB read/write (`kb_*`, career context/export) | 17 |
+| `career` | Career KB read/write (`kb_*`, career context/export) | 18 |
 
 Same binary; each client's entries differ only by `env`. Example apply entry
 alongside Playwright — **share one folder tree** so staged PDFs are already
@@ -163,6 +163,7 @@ staging.
 | `kb_edit_profile(contact?, summary?, skills?, notes?)` | Update the Career KB profile (contact, summary, skills, notes). Writes immediately; each supplied field replaces its stored value wholesale. |
 | `kb_ingest_resume(resume_key, data, brief?)` | Persist one caller-parsed resume into the Career KB as DRAFT points, merging by identity key across resumes. No in-house LLM. |
 | `kb_approve_points(point_ids, state?)` | Batch-approve or retire Career KB points — the gate that puts a point on composed resumes. Call only after the user has approved. |
+| `kb_sync_base(slug)` | Deterministic sync of one base resume into the Career KB. Draft-only; never edits resumes; safe to rerun. |
 | `create_base_resume_from_kb(entity_ids, role_category?, role_label?, display_name?, include_summary?, summary?)` | Compose a new base resume from selected, approved Career KB entities. LLM-free. |
 
 **Base resume writes**
@@ -173,6 +174,16 @@ staging.
 | `update_base_resume(slug, data, display_name?)` | Replace a base resume. `data` is **required** — it's a full `ResumeData` replacement, not a patch. |
 | `create_base_resume(slug, display_name, data)` | Create a new base resume from full `ResumeData`. |
 | `duplicate_base_resume(slug, new_slug, new_display_name?)` | Copy an existing base resume to a new slug. |
+| `archive_base_resume(slug)` | Hide a base resume from pickers without deleting it — a reversible `archived_at` timestamp; JSON, PDF, TEX and version history all stay. |
+| `unarchive_base_resume(slug)` | Restore an archived base resume to `list_base_resumes`' default view; nothing else changes. |
+
+**Resume versions**
+
+| Tool | Description |
+| --- | --- |
+| `list_resume_versions(kind, key)` | List the append-only resume snapshots for one target, newest last. `kind` is `"base"` (key = slug) or `"application"` (key = application id) — note this is not `render_pdf`'s `target_type` vocabulary. |
+| `get_resume_version(kind, key, number)` | Fetch one version including its snapshot and the diff vs its parent. |
+| `restore_resume_version(kind, key, number)` | Copy a past version's snapshot into the live resume — the restore is itself a new version; history is append-only and nothing is deleted. |
 
 **Tailor + render**
 

@@ -43,6 +43,11 @@ _ACTIONS = {
     # the skills list (the frontend restricts placement to skills; the tailor prompt
     # forbids inventing any bullet/experience for them). Evidence-backed adds use the
     # other categories below.
+    # cannot_confirm rides along wherever a CLAIM question is asked (skill and
+    # requirement gaps): distinct from skip, it writes a durable
+    # user_cannot_confirm record so the claim is never re-asked. Deliberately
+    # absent from mirror_wording/dual_place (the skill is already evidenced on
+    # the resume) and from title/summary/format gaps (no claim to disconfirm).
     "missing_skills": [
         "add_keyword",
         "user_input",
@@ -50,11 +55,12 @@ _ACTIONS = {
         "skip",
         "enable_entry",
         "port_kb_point",
+        "cannot_confirm",
     ],
     "mirror_wording": ["add_keyword", "skip"],
     "dual_place": ["add_keyword", "skip"],
-    "resurface_recent": ["add_keyword", "user_input", "skip"],
-    "adjacent": ["add_keyword", "user_input", "skip"],
+    "resurface_recent": ["add_keyword", "user_input", "skip", "cannot_confirm"],
+    "adjacent": ["add_keyword", "user_input", "skip", "cannot_confirm"],
     "title_structure": ["user_input", "skip"],
 }
 
@@ -162,7 +168,7 @@ def build_gaps(result: AtsResult) -> dict[str, Any]:
                 "jd_skill": line["line"], "requirement_level": "preferred",
                 "detail": "Resume prose does not clearly cover this responsibility",
                 "diagnostic": {"coverage_score": line["score"]},
-                "actions": ["user_input", "skip"], "enrichment": None,
+                "actions": ["user_input", "skip", "cannot_confirm"], "enrichment": None,
             })
 
     if result.title_tier != "direct":

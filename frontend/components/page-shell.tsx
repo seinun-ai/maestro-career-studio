@@ -85,16 +85,30 @@ export function PageHeader({
   className?: string;
 }) {
   return (
-    <header className={cn("flex flex-wrap items-start gap-3", className)}>
+    <header
+      className={cn("flex flex-wrap items-start justify-between gap-3", className)}
+    >
       {leading}
       <div className="min-w-0 grow basis-[16rem]">
         <h1 className="text-[22px] font-medium tracking-tight">{title}</h1>
+        {/* A div, not a <p>: the subtitle slot takes NODES, and the base
+            resume header puts an interactive role chip in it. A <div> inside
+            a <p> is invalid HTML, and React reported it as a hydration error
+            on every load of that page. Prose subtitles render identically. */}
         {subtitle ? (
-          <p className="text-muted-foreground text-sm">{subtitle}</p>
+          <div className="text-muted-foreground text-sm">{subtitle}</div>
         ) : null}
       </div>
+      {/* Right-aligned by the header's justify-between, NOT by ml-auto here.
+          Both hold the cluster at the right edge while it shares the title's
+          line — but when it wraps (the studios' toolbar cannot fit beside a
+          title under ~660px, which is every width with the PDF preview open)
+          ml-auto held it against the right edge of its OWN line, leaving a
+          void under the title. A lone item on a wrapped line sits at the line
+          START under space-between, so it aligns with the title instead. The
+          unwrapped layout is identical either way. */}
       {actions ? (
-        <div className="ml-auto flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {actions}
         </div>
       ) : null}

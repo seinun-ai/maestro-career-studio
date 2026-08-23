@@ -104,9 +104,31 @@ export interface ApplicationSummary {
   job_location: string | null;
 }
 
+export type KnockoutStatus =
+  | "conflict"
+  | "clear"
+  | "incomplete_profile"
+  | "unstated";
+
+export interface KnockoutCheck {
+  kind: "work_authorization" | "opt" | "salary" | "experience";
+  result: "pass" | "conflict" | "warning" | "job_unstated" | "profile_missing";
+  job_value: string | null;
+  profile_value: string | null;
+  message: string | null;
+}
+
+/** Stated-JD-requirements vs profile pre-scan. `unstated` is NOT a pass —
+ * the posting simply states nothing this scan can screen on. */
+export interface KnockoutScan {
+  status: KnockoutStatus;
+  checks: KnockoutCheck[];
+}
+
 export interface JobDetail {
   job: Job;
   application: Application | null;
+  knockout: KnockoutScan | null;
 }
 
 export interface ContactInfo {
@@ -425,7 +447,14 @@ type KBPointOrigin =
   | "chat"
   | "consolidated"
   | "mcp"
-  | "gap_elicitation";
+  | "gap_elicitation"
+  | "base_sync";
+
+export type KBPointProvenance =
+  | "user_authored"
+  | "user_stated"
+  | "derived_unverified"
+  | "user_cannot_confirm";
 
 export interface KBEntityCreate {
   kind: KBEntityKind;
@@ -478,6 +507,7 @@ interface KBUsageOut {
   ported_text: string;
   ported_at: string;
   drifted: boolean;
+  direction?: "to_resume" | "from_source" | null;
 }
 
 export interface KBPointOut {
@@ -487,6 +517,7 @@ export interface KBPointOut {
   state: KBPointState;
   origin: KBPointOrigin;
   origin_detail?: string | null;
+  provenance: KBPointProvenance | null;
   source_document_id: UUID | null;
   tags: string[];
   merge_sources: KBMergeSource[] | null;
@@ -754,6 +785,49 @@ export interface KBProfileOut {
   updated_at: string;
 }
 
+export interface SyncItemOut {
+  tier: string;
+  section: string;
+  entity_id: UUID | null;
+  entity_proposal: Record<string, unknown> | null;
+  matched_point_id: UUID | null;
+  text: string;
+}
+
+export interface SyncStatus {
+  items: SyncItemOut[];
+  skills_new: string[];
+  /** Tier tallies. The backend owns the vocabulary (the wire shape is an open
+   *  map), so the index signature stays for keys it may grow later — but these
+   *  five are REQUIRED: `kb_base_sync.classify` builds the dict with all five
+   *  literal keys on every call, zero-filled. Marking them optional would be a
+   *  lie that forces a `?? 0` at every read site.
+   *
+   *  `recorded_drift` (drift the KB already documents) is always present but
+   *  is NOT actionable, and must never be added into the pill's count. */
+  counts: {
+    in_sync: number;
+    drift: number;
+    recorded_drift: number;
+    new: number;
+    skills_new: number;
+  } & Record<string, number>;
+  /** Null until the first sync. */
+  last_kb_synced_at: string | null;
+}
+
+export interface SyncResult {
+  created: number;
+  drifted: number;
+  skipped: Record<string, unknown>[];
+  /** CATEGORY names, one per category written. NEVER count these — two new
+   *  skills in one category appear here once. Use `skills_added`. */
+  skills: string[];
+  /** The individual skills that landed in the profile. */
+  skills_added: string[];
+  last_kb_synced_at: string | null;
+}
+
 export interface KBProfilePatch {
   contact?: ContactInfo;
   summary?: string;
@@ -778,6 +852,7 @@ export interface TopSkillRow {
   rank_percentile: number;
   tier: "top" | "below";
   bucket: "core" | "preferred_top" | "below_threshold";
+  low_sample: boolean;
 }
 
 interface TopSkillsMeta {
@@ -802,6 +877,8 @@ export interface HeatmapRow {
 export interface FitDistributionRow {
   base_resume: string;
   buckets: Record<string, number>;
+  n: number;
+  low_sample: boolean;
 }
 
 export interface RoleMixRow {
@@ -817,6 +894,7 @@ export interface GapFrequencyRow {
   avg_potential_points: number;
   category: string | null;
   requirement_level: string | null;
+  low_sample: boolean;
 }
 
 /** `/api/explore/ats-over-time` — weekly avg composite split by phase + role. */
@@ -826,6 +904,7 @@ export interface AtsOverTimeRow {
   role_category: string;
   avg_composite: number;
   n: number;
+  low_sample: boolean;
 }
 
 /**
@@ -838,6 +917,7 @@ export interface TailoringLiftRow {
   avg_base: number;
   avg_tailored: number;
   avg_lift: number;
+  low_sample: boolean;
 }
 
 /** @deprecated Base resumes are user-created; there is no fixed list.
@@ -1011,7 +1091,12 @@ export type GapAction =
   | "attach_project"
   | "skip"
   | "enable_entry"
-  | "port_kb_point";
+  | "port_kb_point"
+  /**
+   * "I can't confirm this": skip for the document plus a durable
+   * user_cannot_confirm Career-KB record — never re-asked, never evidence.
+   */
+  | "cannot_confirm";
 
 /** A concrete, server-canonical place on the resume a resolution can target. */
 export type PlacementRef =
@@ -1294,11 +1379,22 @@ export interface CoherenceCheckResult {
   gates: HealthGate[];
 }
 
+/** One gap answer the KB write-back skipped, with why (never silent). */
+export interface KBWritebackSkip {
+  gap_id: string;
+  skill: string | null;
+  reason: "too_short" | "wrong_section" | "no_entity_match" | "duplicate";
+  /** Server-composed sentence, e.g. "no Career KB entity titled “Acme Corp”". */
+  detail: string;
+}
+
 export interface TailorResult {
   session: TailoringSession;
   /** Null when the post-tailor compare failed — tailoring itself succeeded; see compare_error. */
   compare: AtsCompare | null;
   compare_error: string | null;
+  /** Gap answers not saved to the Career KB, rendered as a quiet note. */
+  kb_writeback_skips: KBWritebackSkip[];
 }
 
 export interface ExploreCountRow {

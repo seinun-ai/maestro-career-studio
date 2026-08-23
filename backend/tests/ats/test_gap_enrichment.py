@@ -107,6 +107,7 @@ def test_enrich_gaps_sends_trimmed_gap_payload(db_session, monkeypatch):
         "skip",
         "enable_entry",
         "port_kb_point",
+        "cannot_confirm",
     }
     # token thrift: the heavy diagnostic row and the empty enrichment slot stay home
     assert "diagnostic" not in skill

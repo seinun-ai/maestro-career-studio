@@ -294,6 +294,34 @@ def test_qa_prompt_prepends_immutable_output_contract(monkeypatch):
     assert "1. Why us?" in result
 
 
+def test_cover_letter_prompt_prepends_immutable_output_contract(monkeypatch):
+    monkeypatch.setattr(
+        prompt_assembly.prompts,
+        "get_prompt",
+        lambda key: "Tone=${tone}\nWrite the letter.",
+    )
+
+    result = prompt_assembly.build_cover_letter_prompt(
+        {}, {}, "", "balanced", persona="Voice: direct."
+    )
+
+    assert result.startswith(prompt_assembly.COVER_LETTER_OUTPUT_CONTRACT)
+    assert result.index(prompt_assembly.COVER_LETTER_OUTPUT_CONTRACT) < result.index(
+        "CANDIDATE PERSONA"
+    )
+    assert "Tone=balanced" in result
+
+
+def test_cover_letter_output_contract_forbids_fabrication_and_dashes():
+    contract = prompt_assembly.COVER_LETTER_OUTPUT_CONTRACT.lower()
+    assert "never" in contract
+    assert "fabricat" in contract or "absent" in contract
+    assert "em-dash" in contract or "em dash" in contract
+    assert "en-dash" in contract or "en dash" in contract
+    assert "plain" in contract
+    assert "tone" in contract
+
+
 def test_qa_output_contract_requires_numbering_without_number_prohibition():
     # The contract must REQUIRE the numbered-answer format that qa.py's
     # _split_numbered_answers relies on for multi-question batches — and must

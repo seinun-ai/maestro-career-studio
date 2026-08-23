@@ -39,16 +39,16 @@ def _persist_render_error(db: Session, application_id: UUID, exc: Exception) -> 
     db.rollback()
     application = db.get(Application, application_id)
     if application is not None:
-        application.render_error = str(exc)[:2000]
+        application.render_error = pdf_render.extract_render_error(str(exc))
         db.commit()
 
 
 def render_resume(
     db: Session, application_id: UUID, *, template_id: str | None = None
-) -> tuple[Path, Path]:
+) -> tuple[Path, Path, pdf_render.RenderedDoc]:
     """Render the application's tailored draft (or its base, when no draft is
     stored yet) to PDF and persist the artifact paths. Returns
-    ``(source_path, pdf_path)``; commits on success."""
+    ``(source_path, pdf_path, rendered_doc)``; commits on success."""
     application = db.get(Application, application_id)
     if application is None:
         raise LookupError("Application not found")
@@ -112,7 +112,7 @@ def render_resume(
         application.render_error = None
         db.commit()
 
-        return source_path, pdf_path
+        return source_path, pdf_path, doc
     except Exception as e:
         _persist_render_error(db, application_id, e)
         raise
