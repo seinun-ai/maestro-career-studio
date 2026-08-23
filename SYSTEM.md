@@ -867,61 +867,49 @@ citation. Priority lives in the item text, not in the ordinal.
 - **score_target(result=...)**: passes a precomputed engine result to persist;
   the double-run it replaced was audit finding C18 — don't re-add a second run.
 - **Studio external-edit dirty-guard**: StudioEditor keys on the *adopted*
-  server snapshot (`adoptedKey`), not live `customized_json` — external edits
-  auto-adopt only when clean; while dirty, an amber banner with explicit
-  reload. Save flags the next server key (`onSaved` → `adoptNextServerKey`)
-  so Save→render→re-score adopts banner-free.
-- **An expanded hit target can cover its own label** (2026-08-22): the role
-  chip's X used `after:-inset-2` inside an `h-5` chip, so part of the remove
-  target sat over the chip text and clicking to OPEN the picker cleared the
-  role. Expanded targets need room around them, not just under them.
-- **MCP clients truncate tool descriptions at ~2048 dedented chars** (2026-08-22):
-  ExtraSection/`fmt.*` past the cutoff never reached agents. Keep `__doc__`
-  ≤2000 (ratchet test) or put the fact on a param `Field(description=…)`.
+  server snapshot, not live `customized_json`; external edits auto-adopt only
+  when clean, and Save flags the next server key so Save→render→re-score
+  adopts banner-free.
+- **An expanded hit target can cover its own label**: `after:-inset-2` inside
+  an `h-5` chip put the remove target over the chip's own text, so clicking to
+  open cleared instead. Expanded targets need room around them, not just
+  under them.
+- **MCP clients truncate tool descriptions at ~2048 dedented chars**: keep
+  `__doc__` ≤2000 (ratchet test) or put the fact on a param
+  `Field(description=…)`.
 - **Worktree subagents**: agents may edit the MAIN checkout instead of the
   worktree — always hand them absolute worktree paths and verify with
   `git -C <worktree> status`.
 - **Ports**: 8000/8001 may be squatted by unrelated apps or stale servers —
   verify identity via `GET /openapi.json` `info.title == "Maestro CS API"`.
-- **The LLM endpoint is configurable** (2026-08-03): `OPENAI_BASE_URL` /
-  `llm.base_url` points the OpenAI-compatible client at Ollama, LM Studio,
-  vLLM or OpenRouter; with a custom endpoint, role model ids stay free text.
 - **Model catalog is seeds ∪ extras** (`MODEL_OPTIONS` ∪ `llm.extra_models`):
-  `GET /api/settings/openai` returns the merge (`source: seed|extra`); sync
-  discovery is ephemeral; deleting an id a role still uses is 400; hosted
-  `set_models` validates against the usable set; hosted chat is probe-gated
-  (stored tools=false blocks; unprobed is allowed through, matching
-  `require()`).
-- **JSON mode is capability-gated**: `response_format=json_object` is sent only
-  when `llm._json_mode_supported()` (default OpenAI only — other servers may
-  hard-400 on the field); `llm._extract_json_object` salvages fenced JSON.
-- **Check model capability in the ROUTER, never inside `run_turn`**: text/json/
-  tools are probed separately (`llm_capabilities.probe()` on save; `require()`
-  raises `CapabilityMissing`; unprobed models are never blocked). `run_turn` is
-  a generator — anything it raises fires after the SSE headers are out and
-  reaches the browser as a truncated stream.
+  `GET /api/settings/openai` returns the merge; deleting an id a role still
+  uses is 400; hosted chat is probe-gated (stored tools=false blocks; unprobed
+  is allowed through, matching `require()`).
+- **JSON mode is capability-gated**: `response_format=json_object` goes out
+  only when `llm._json_mode_supported()` (other servers may hard-400 on the
+  field); `llm._extract_json_object` salvages fenced JSON.
+- **Check model capability in the ROUTER, never inside `run_turn`**: `run_turn`
+  is a generator — anything it raises fires after the SSE headers are out and
+  reaches the browser as a truncated stream. Capabilities are probed on save
+  (`llm_capabilities.probe()`); `require()` raises `CapabilityMissing`;
+  unprobed models are never blocked.
 - **A probe must issue the SAME call as the surface it measures**: same client
-  (`llm.get_chat_client` — hosted Gemini chat goes to Google's OpenAI-compat
-  URL; JSON/text still use native Gemini REST), and the same per-model kwargs
-  from `llm.completion_extras` (the one site for rules like gpt-5.6 needing
-  `reasoning_effort="none"` before it accepts function tools). A probe that
-  re-implements or short-circuits the call measures a call the app never
-  makes, and its stored row then SHADOWS reality: a false tools=No 422'd
-  every chat message for a model whose chat worked.
-- **LLM provider outages are ONE exception type**: `llm.py` normalizes every
-  provider failure to `llm.LLMProviderError`; `app.main` maps it to **502 + the
-  provider's message** for EVERY router. Never catch `openai.*` in routers, and
-  never add a blanket `RuntimeError → 502` — plain `RuntimeError` means a LOCAL
-  render/compile failure and must stay a 500 (`career_kb`'s local
-  `except RuntimeError → 502` still runs first and keeps its richer wording).
-- **2026-08-21 — Explore charts live under Analytics.** `/explore` is a 307 to
-  `/analytics`; gap/fit/lift charts are `frontend/components/charts/` and
-  `frontend/components/analytics/`, not `frontend/app/explore/`.
-- **2026-08-22 — `delete-orphan` cascade vs bulk re-point.** A bulk
-  `update()` that moves children off a parent does NOT clear that parent's
-  already-loaded collection, so a following `session.delete(parent)` cascades
-  delete-orphan and deletes the rows just moved. Expire the parent between the
-  two (`career_kb.merge_entities`).
+  (`llm.get_chat_client`) and the same per-model kwargs from
+  `llm.completion_extras` (the one site for such rules). A probe that
+  re-implements the call measures one the app never makes, and its stored row
+  then SHADOWS reality — a false tools=No once 422'd every chat message.
+- **LLM provider outages are ONE exception type**: `llm.py` normalizes them to
+  `llm.LLMProviderError`; `app.main` maps it to 502 + the provider's message
+  for every router. Never catch `openai.*` in routers; plain `RuntimeError`
+  means a LOCAL render/compile failure and must stay a 500.
+- **Explore charts live under Analytics**: `/explore` is a 307 to `/analytics`;
+  the charts live in `frontend/components/charts/` and `…/analytics/`, not an
+  `app/explore/` route.
+- **`delete-orphan` cascade vs bulk re-point**: a bulk `update()` that moves
+  children off a parent does not refresh the parent's already-loaded
+  collection, so a following `session.delete(parent)` cascades away the rows
+  just moved — expire the parent between the two (`career_kb.merge_entities`).
 
 ## 13. Active migrations & deprecation ledger
 
