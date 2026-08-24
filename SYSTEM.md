@@ -856,6 +856,10 @@ citation. Priority lives in the item text, not in the ordinal.
 
 ## 12. Gotchas that have bitten before
 
+- **The FAST model quietly caps score honesty** (2026-08-24): flash-lite
+  extractions missed conceptual JD skills → base ATS scores inflated ~9 pts vs
+  fuller extractors. Fast tier drives coverage/honesty/latency; Smart barely
+  moves outcomes — re-benchmark FAST before changing model defaults.
 - **`autoflush=False` sessions**: two `session.merge`s that canonicalize to the
   same PK in one flush both INSERT (no dedup) → IntegrityError. Dedupe in
   Python first (see `_insert_skills`).

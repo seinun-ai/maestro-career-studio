@@ -25,11 +25,16 @@ class ModelOption:
 
 
 MODEL_OPTIONS = [
-    # Released 2026-07: current lightweight Gemini tier (user's preferred fast
-    # model). Live-verified against a real JD extraction on 2026-07-22.
+    # Benchmarked 2026-08 (Langfuse-traced, real JDs): its extractions miss
+    # requirements the other two catch, which quietly inflates base ATS
+    # scores. Kept for existing installs; no longer a recommended default.
     ModelOption("gemini-3.5-flash-lite", "Gemini 3.5 Flash-Lite", "gemini", "fast"),
+    # The Gemini-key-only "fast" profile: near flash-lite speed with far
+    # better extraction coverage. Promo pricing doubles 2027-01-01.
     ModelOption("gemini-3.7-flash", "Gemini 3.7 Flash", "gemini", "fast"),
     # GPT-5.6 family (released 2026-07-09): 1.05M context, tools + streaming.
+    # DEFAULT for every tier (same 2026-08 benchmark): the most complete
+    # extraction measured and the cheapest per application; the slowest.
     ModelOption("gpt-5.6-luna", "OpenAI GPT-5.6 Luna", "openai", "smart"),
 ]
 

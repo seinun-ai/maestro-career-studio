@@ -567,12 +567,14 @@ function OpenAISection() {
           with Sync.
         </p>
         <p className="text-muted-foreground text-xs">
-          What the author runs today: Gemini 3.5 Flash-Lite for Fast (it handles
-          JD ingestion fine), Gemini 3.7 Flash for Smart if you only hold a
-          Gemini key — capable, a little pricey. On OpenAI, GPT-5.6 Luna is the
-          value pick: cheap, slower. Model prices and tiers move constantly, so
-          treat this as a starting point, not a recommendation with a shelf
-          life.
+          Two measured profiles, one per key: GPT-5.6 Luna on every tier (the
+          default — most thorough JD extraction we tested, about a penny per
+          application, slower) or Gemini 3.7 Flash on every tier (fastest,
+          under 3¢ per application, promo pricing doubles Jan 2027). In our
+          tests the Fast model decided extraction coverage and score honesty;
+          the Smart choice barely moved the result. Prices and tiers move
+          constantly — treat this as a starting point, not a recommendation
+          with a shelf life.
         </p>
       </CardHeader>
       <CardContent>

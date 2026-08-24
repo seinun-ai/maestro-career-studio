@@ -66,7 +66,7 @@ class Settings(BaseSettings):
     # setting (llm.base_url) overrides this env default.
     openai_base_url: str = ""
     database_url: str = "postgresql://app:app@postgres:5432/maestro_cs"
-    fast_model: str = "gemini-3.5-flash-lite"
+    fast_model: str = "gpt-5.6-luna"
     smart_model: str = "gpt-5.6-luna"
     # Chat agent needs streaming tool calls; eligibility is the tools probe.
     chat_model: str = "gpt-5.6-luna"

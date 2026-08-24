@@ -55,7 +55,7 @@ Honest list. None of these are secret; most are §11 items with a number.
   text is kept, so provenance stops at the chat message. (§11.6)
 - **The extension does not handle every ATS — and autofill is not
   first-try-clean even on the ones it does.** Workday, Greenhouse, Lever and
-  iCIMS get the most attention because those are what the author meets; expect
+  iCIMS get the most attention because those are what I meet in my own search; expect
   gaps elsewhere (§11.12, §11.18). Even on covered platforms a first run
   rarely fills everything: unusual widget kinds (multi-step button dropdowns,
   custom comboboxes) and less-common field domains fall through to you, by
@@ -75,9 +75,9 @@ Honest list. None of these are secret; most are §11 items with a number.
   (margins, spacing, fonts) are actually wired to the layered override
   system — expect a pass of source-level work before per-resume and
   per-application overrides behave on it.
-- **Local models are supported but not battle-tested.** The OpenAI-compatible
-  path (Ollama, LM Studio, vLLM) is a supported setup, but it has not been
-  exercised hard against the app's heavier demands — long tailoring prompts,
+- **Local models are configurable but untested.** The OpenAI-compatible path
+  (Ollama, LM Studio, vLLM) can be pointed at with `OPENAI_BASE_URL`, but it has
+  not been exercised against the app's heavier demands — long tailoring prompts,
   strict JSON output, streaming tool calls for chat. Expect model-dependent
   rough edges, and use the per-model **Test** button in Settings to measure
   what your model can actually do before relying on it.

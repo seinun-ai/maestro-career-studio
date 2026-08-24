@@ -10,6 +10,7 @@
   <a href="https://github.com/seinun-ai/maestro-career-studio/actions/workflows/codeql.yml"><img src="https://github.com/seinun-ai/maestro-career-studio/actions/workflows/codeql.yml/badge.svg" alt="CodeQL"></a>
   <a href="https://github.com/seinun-ai/maestro-career-studio/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/tests-4%2C023%20passing-brightgreen" alt="Tests"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="License"></a>
+  <a href="https://maestrocareerstudio.com"><img src="https://img.shields.io/badge/site-maestrocareerstudio.com-1a3a5c" alt="Project site"></a>
 </p>
 <!-- TODO(P5): after the first v* tag publishes images, add a ghcr.io image badge here,
      e.g. https://img.shields.io/badge/ghcr.io-multi--arch-blue linking to the packages page.
@@ -35,15 +36,11 @@ every AI edit is a reviewable, revertible diff, and the output is a real
 
 ![Score, tailor, diff of every AI edit, typeset PDF — end to end](docs/assets/hero.gif)
 
-**83 MCP tools** to drive it from Claude, Codex, or the ChatGPT desktop app · **works with zero API
-keys** (scoring, rendering and tracking never call a model) · **3 containers,
-localhost-only, nothing phones home** · **leaves with you** — your whole record
-exports to one `career.md`
-
-```bash
-git clone https://github.com/seinun-ai/maestro-career-studio.git
-cd maestro-career-studio && cp .env.example .env && docker compose up -d --build
-```
+**83 MCP tools** to drive it from Claude, Codex, or the ChatGPT desktop app ·
+**bring your own model** — OpenAI, Gemini, or any OpenAI-compatible
+endpoint; the deterministic core (scoring, rendering, tracking)
+never calls one · **localhost-only, nothing phones home** · **leaves with
+you** — your whole record exports to one `career.md`
 
 > **Single-user and local-first by design.** No login, no tenancy, no server
 > holding your career history — every port binds to `127.0.0.1`, and even the
@@ -94,15 +91,19 @@ had not written down yet — which then belongs to you permanently — or it sta
 gap. Every edit records a **resume version**, so nothing is lost and nothing is
 one-way.
 
-**The typesetting is yours.** Real LaTeX and Typst templates, compiled on your
-machine. A template owns presentation and nothing else, so switching one never
-touches your content — and you can adapt a design you found or write your own,
-instead of accepting whatever shape a model felt like producing today.
+**The typesetting is yours — without the typesetting headache.** Real LaTeX and
+Typst templates, compiled on your machine. You edit *content* in a structured
+editor — a bullet is a bullet, never a paragraph you re-indent or a `.tex` line
+you hand-patch — and the layout stays the template's job, so changing a word is
+easier than in a Word doc and can never break the formatting. A template owns
+presentation and nothing else, so switching one never touches your content — and
+you can adapt a design you found or write your own, instead of accepting
+whatever shape a model felt like producing today.
 
 **Nothing here is rented.** Apache 2.0 (see [Licensing](#licensing)), runs locally,
 no account, no subscription, no usage tier. The Career KB exports to a single
-`career.md` you can read, diff and take anywhere. Point it at your own models —
-hosted or fully local — and everything keeps working. Tooling for someone's
+`career.md` you can read, diff and take anywhere. Point it at your own choice
+of models and everything keeps working. Tooling for someone's
 career should be infrastructure, not a rental.
 
 That whole cycle — evidence → base resume → application → typeset PDF — is the
@@ -112,7 +113,8 @@ the document and the evidence stay connected end to end.
 
 ### How it compares
 
-Only checkable claims — verify any row yourself:
+Only checkable claims — verify any row yourself (columns describe the
+categories as of August 2026; tell us if a row has gone stale):
 
 | | Typical AI resume builders | CLI skill frameworks (e.g. career-ops) | **Maestro CS** |
 |---|---|---|---|
@@ -123,7 +125,7 @@ Only checkable claims — verify any row yourself:
 | Career record | None (per-document) | Flat markdown/YAML files | **Structured, versioned KB — exports to one `career.md`** |
 | Agent access | No | CLI skill files | **MCP server (83 tools) against your own machine** |
 | Auto-submits for you | N/A | Never (stated) | **Never — consent ledger, enforced** |
-| Cost | $15–75/month | Free + tokens | **Free (Apache 2.0) + your own tokens** |
+| Cost | $15–75/month | Free + tokens | **Free (Apache 2.0) + your own tokens — [≈1¢ per application](#do-you-need-an-api-key)** |
 
 ### 🌟 Featured: Career KB Onboarding (Drop in your resumes, get a knowledge base)
 The most powerful feature you can experience in your first ten minutes is automated Career KB consolidation. When you add multiple existing versions of your resume (as `.json` files in `base_resumes/`), on startup the app runs `seeding.seed_career_kb` to automatically consolidate *every* base resume into a unified **Career Knowledge Base**. It performs intelligent entity resolution across your diverse resumes, deduplication, bullet clustering, and profile synthesis into a single structured record of your work history, projects, and skills.
@@ -133,7 +135,13 @@ The most powerful feature you can experience in your first ten minutes is automa
 ### 🛡️ 100% Deterministic ATS Scoring (No LLM in scoring)
 Unlike typical AI wrappers, **scoring is deterministic and LLM-free**. A hybrid scoring engine blends deterministic lexical layers (keyword coverage, section placement, recency weights, title matches, experience gates, and format linting) with a pinned local embedding model (running offline on CPU via fastembed/ONNX) for semantic evaluation.
 - **Anchored Soft-Matching:** A soft semantic match requires both an overlapping lexical anchor token and embedding proximity. This credits genuine industry synonyms and reformulations (e.g., matching "container orchestration" to Kubernetes) without hallucinating unearned skills.
-- The exact same resume, job description, and versioned config will always produce an identical 0–100 score and diagnostic breakdown.
+- The exact same resume, job description, and versioned config produce an
+  identical 0–100 score and diagnostic breakdown, run after run.
+- **One input does move: recency.** Experience is weighted against *today*, so a
+  document scored months apart can shift as the work in it ages. That is the
+  only thing that changes — no run-to-run variance, no model in the loop.
+  [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md) tracks recording `as_of` alongside the
+  score so a stored number says which day it belongs to.
 
 ### The trade that buys all of this: no authentication
 
@@ -156,15 +164,31 @@ makes it so. [`SECURITY.md`](SECURITY.md) has the detail and the threat model.
   ~1.6 GB, PostgreSQL ~0.4 GB). The backend carries a minimal TeX Live
   (`scheme-basic` plus exactly the packages the bundled templates use, ~660 MB),
   Typst, and the pinned embedding model.
-- **An LLM.** Either an **OpenAI** or **Gemini** API key, *or* a local
-  OpenAI-compatible server (Ollama, LM Studio, vLLM) — see
-  [Run it fully offline](#run-it-fully-offline). Without one, the deterministic
-  parts still work: ATS scoring, PDF rendering and application tracking never
-  call a model.
+- **One API key — OpenAI or Gemini, either alone is a complete setup.** The
+  parts that make Maestro CS fastest day to day run on it: in-app tailoring,
+  the extension's tailor-on-the-go and AI form filling, cover letters and Q&A,
+  KB consolidation, chat. An OpenAI key runs the profile a fresh install ships
+  with (about a penny per application); a Gemini key runs the faster one (under
+  3¢) — see [Choose your models](#5-choose-your-models-deliberately). Without
+  any key you still have the deterministic core, and an MCP client can supply
+  the intelligence itself — see
+  [Do you need an API key?](#do-you-need-an-api-key) (Any OpenAI-compatible
+  endpoint can be configured instead, including local servers — but that path
+  is [untested so far](#local-model-servers-untested).)
 
 ---
 
 ## Quickstart
+
+The whole setup is **four pieces, and only the first is required** — the rest
+attach to it whenever you want them:
+
+| Piece | What it takes |
+|---|---|
+| **1. The stack** | one `docker compose up -d` (below) — three containers, all on localhost |
+| **2. One API key** | paste into `.env` or **Settings → Models**; OpenAI *or* Gemini, [either alone is a complete setup](#5-choose-your-models-deliberately) |
+| **3. MCP for your assistant** | one script — `./scripts/setup-mcp.sh` registers Claude Code and prints paste-ready config for Claude Desktop and the ChatGPT desktop app / Codex CLI ([details](#driving-it-from-claude-codex-or-chatgpt-mcp)) |
+| **4. The browser extension** | `chrome://extensions` → Developer mode → **Load unpacked** → the repo's `extension/` folder. **No ID to copy, nothing to configure**: the extension pins its identity, so the backend already allowlists it out of the box — [full steps](extension/README.md) |
 
 ```bash
 # 1. Clone the repository and copy the environment template
@@ -172,8 +196,8 @@ git clone https://github.com/seinun-ai/maestro-career-studio.git
 cd maestro-career-studio
 cp .env.example .env
 
-# 2. (Optional) Edit .env — paste an OPENAI_API_KEY, or set OPENAI_BASE_URL
-#    to a local model server
+# 2. Recommended: edit .env and paste an OPENAI_API_KEY (or GEMINI_API_KEY) —
+#    the deterministic core runs without one, the AI lanes want one
 # 3. Build and start the stack (first build takes several minutes — it installs
 #    TeX Live and downloads the embedding model)
 docker compose up -d --build
@@ -186,34 +210,85 @@ Then open **http://localhost:3000**.
 > in `.env` and the same compose file *pulls* `amd64`/`arm64` images instead —
 > `docker compose up -d`, no build step.
 
-### Try it before you bring a key (No-Key Mode)
+> **The compose path is the least-tested part of this release.** The stack runs
+> daily on my machine, but the fresh-clone first boot has had little
+> outside testing yet. If it fails on yours, please
+> [open an issue](https://github.com/seinun-ai/maestro-career-studio/issues)
+> with the log — right now that report is one of the most valuable
+> contributions there is.
 
-Maestro CS is fully operational even with **zero API keys configured** — rare
-in this category, and deliberate:
-- **What works immediately:** Deterministic ATS scoring across all base resumes, gap diagnostics, full manual tailoring, raw LaTeX/Typst document editors, PDF compilation, application tracking, and analytics dashboards.
-- **What degrades or defers cleanly:**
-  - *Career KB Seeding:* Defers execution without errors and retries on subsequent bootups.
-  - *Job Ingestion:* Automatic structured field extraction from pasted text defaults to manual entry or unparsed text blocks.
-  - *AI Generation:* Guided automated gap resolution, cover letter generation, interview Q&A generation, and interactive Career Chat will prompt you to configure an API key in Settings before executing LLM calls.
+### Do you need an API key?
 
-### Run it fully offline
+**Recommended: yes.** The parts that make Maestro CS fastest day to day are
+LLM-backed — in-app tailoring (the guided gap workflow and Quick Tailor), the
+extension's tailor-on-the-go and AI-grounded form filling, cover letters and
+screening answers, Career KB consolidation, and chat.
 
-Point the OpenAI-compatible client at any local server and no resume text
-leaves your machine:
+**And it costs far less than people assume — measured, not estimated.** We
+traced real applications end to end with Langfuse (Aug 2026) on the default
+model profile, costed at list price
+([GPT-5.6 Luna](https://developers.openai.com/api/docs/models/gpt-5.6-luna)
+$0.20/M input · $1.20/M output). Your payloads and retries will vary somewhat:
 
-```bash
-ollama pull llama3.2:3b
-# in .env — host.docker.internal reaches the host from inside the container
-OPENAI_BASE_URL=http://host.docker.internal:11434/v1
-```
+| Operation | Typical tokens (in / out) | Cost |
+|---|---|---|
+| JD extraction | ~3k / ~1.5k | ~¼¢ |
+| Gap enrichment | ~7k / ~3k | ~½¢ |
+| Tailoring pass | ~11k / ~0.6k | ~¼¢ |
+| Cover letter + screening answers | ~8k / ~0.9k | ~¼¢ |
+| **Capture → tailored resume → full apply package** | | **≈1.3¢** |
+| Career KB consolidation, per imported resume (one-time) | ~7k / ~1.5k | ~⅓¢ |
 
-Model ids become free text once that is set, because we cannot enumerate what
-your server has pulled. In **Settings → Models**, press **Test** on each model:
-Maestro CS needs three separate things — plain **text**, a **JSON object**,
-and **streaming tool calls** — and only the chat agent needs the third. A model
-that fails it is still fine for everything else, and because the fast, smart and
-chat models are configured independently, keeping chat on a cloud model while
-the rest run locally is a supported setup.
+**And your key never leaves your custody.** It lives on your machine — in
+your `.env` or your local database — and is sent to exactly one place: the
+provider endpoint you configured. The API never echoes a stored key back out
+(the settings endpoint reports only *configured: yes/no*); LLM logs record
+metadata, never prompt content or credentials, unless you explicitly opt in;
+and the app refuses a non-`http(s)` model endpoint outright, because that URL
+decides where your key is sent. There is no vendor server in this
+architecture, so there is nowhere else for a key to go.
+
+**Tailoring an application costs about a penny.** A serious month of
+applications: about fifty cents. For calibration, my entire search to date —
+daily use, every feature — has cost under **$2** total. That is what
+token-metered means against the $15–75/month the hosted tools charge. (Prefer
+speed over depth? The
+[Gemini profile](#5-choose-your-models-deliberately) runs under 3¢ per
+application.)
+
+**No key, but an MCP client? Tailoring and resume upkeep still work.** Over
+MCP, your assistant *is* the model: Claude or Codex extracts the posting,
+authors the tailoring edits, and the server applies them through the same
+honesty gates — the whole capture → score → tailor → render arc, plus Career
+KB and resume maintenance, with zero in-house LLM calls. If you mainly want
+tailoring and a maintained career record driven from the assistant you already
+use, that is a complete setup.
+
+**No key, no MCP? The deterministic core runs regardless:** ATS scoring across
+all bases, gap diagnostics, health reports, full manual tailoring, the raw
+LaTeX/Typst editors, PDF compilation, application tracking, and analytics —
+none of it ever calls a model. Everything else degrades cleanly rather than
+breaking: KB seeding defers and retries on a later boot, pasted-JD extraction
+falls back to manual entry, and the generation features prompt for a key in
+Settings instead of failing.
+
+### Local model servers (untested)
+
+The LLM client speaks to any OpenAI-compatible endpoint, so a local server
+(Ollama, LM Studio, vLLM) can be configured by setting `OPENAI_BASE_URL` in
+`.env` (`http://host.docker.internal:<port>/v1` reaches the host from inside
+the container). Being honest, as everywhere else in this README: **we have not
+validated any local model end to end yet**, and the app's heavier demands —
+long tailoring prompts, strict JSON output, streaming tool calls — are exactly
+where small models struggle, so we make no offline promise until we can stand
+behind one ([`KNOWN_ISSUES.md`](KNOWN_ISSUES.md) tracks this).
+
+If you try it anyway: model ids become free text once a base URL is set
+(we cannot enumerate what your server has pulled), so in **Settings → Models**
+press **Test** on each model — Maestro CS needs plain **text**, a **JSON
+object**, and **streaming tool calls**, and only the chat agent needs the
+third. A report of what worked or broke, with the model name, is a genuinely
+useful contribution — please open an issue.
 
 On first boot, Docker will:
 1. Launch PostgreSQL on host port `55432` (`127.0.0.1:55432`) to prevent collisions with any existing Postgres instance on port 5432.
@@ -244,9 +319,11 @@ approved KB points, so the KB's quality is the ceiling on everything else. Add
 certifications, project write-ups and performance-review notes too — anything
 true about your work is usable evidence later.
 
-> **Review the KB inbox before tailoring.** Imported points arrive needing
-> approval. Only approved points compose into a resume, and duplicates across
-> resume variants are common — fixing them once fixes every future application.
+> **Review the KB inbox before tailoring.** Bullets that arrive unchanged from a
+> file you wrote are approved on import; anything merged across resumes, or
+> written by a model, waits in the review inbox for you. Only approved points
+> compose into a resume, and duplicates across resume variants are common —
+> fixing them once fixes every future application.
 
 ### 2. Build a base resume per career track
 
@@ -318,17 +395,35 @@ goes anywhere — this is your name on it.
 
 ### 5. Choose your models deliberately
 
-Three tiers are configured independently in **Settings → Models**:
+Three tiers are configured independently in **Settings → Models** — **Fast**
+(extraction, classification, bulk KB work), **Smart** (tailoring, gap
+enrichment, planning) and **Chat** (the interactive agent; needs **streaming
+tool calls**). We benchmarked the combinations on real job postings, every
+call traced, and the result was clearer than expected: **the Fast tier decides
+almost everything** — how much of a posting's requirements get extracted, how
+honest your base score is, and most of the wall-clock — while the Smart-tier
+choice barely moved the outcome. So the decision collapses to two measured
+setups, one per API key:
 
-| Tier | Used for | Wants |
+| | **OpenAI** · depth | **Gemini** · speed |
 |---|---|---|
-| **Fast** | extraction, classification, bulk KB work | cheap; a small local model is fine |
-| **Smart** | tailoring, gap enrichment, planning | your best model |
-| **Chat** | the interactive agent | must support **streaming tool calls** |
+| Every tier set to | `gpt-5.6-luna` | `gemini-3.7-flash` |
+| The one key you need | OpenAI | Gemini |
+| JD requirements captured | the most complete extraction we measured | ~¾ of that, strongest on named tools |
+| Capture + tailor feels like | ~40 seconds | ~10 seconds |
+| Cost per application | **about a penny** | **under 3¢** *(Gemini promo pricing doubles Jan 2027)* |
+| Hallucinated skills | zero measured | zero measured |
 
-Press **Test** on each to measure what it actually does. Because the tiers are
-separate, running Fast and Smart locally while Chat points at a hosted model is
-a supported — and often optimal — setup.
+Neither is a tier above the other, and any OpenAI-compatible model can be
+configured instead — these are simply the two we benchmarked, so you can start
+from a known-good setup rather than guessing. A fresh install ships with the
+OpenAI one already set, because honest scoring starts at extraction: a fast
+model that misses requirements quietly *inflates* your fit score — in our tests,
+by around nine points. Holding only a Gemini key, switch all three tiers in
+**Settings → Models** (or set `FAST_MODEL`/`SMART_MODEL`/`CHAT_MODEL` in
+`.env`). Press **Test** on any model to measure what it actually does. Mixing
+tiers across providers is fully supported; in our tests it bought nothing that
+one of these two doesn't already give you.
 
 ### Driving it from Claude, Codex, or ChatGPT (MCP)
 
@@ -405,6 +500,25 @@ role, a certification — to bring its detail into the conversation without lett
 the chat rewrite it. Proposed edits arrive as an approval card you accept or
 discard; nothing lands silently.
 
+### No more `resume_v2_FINAL(3).docx`
+
+Somewhere in that folder of copies is the old resume with the one great bullet
+— and no way to tell which file it is. Here there is no folder of copies:
+every write path — a manual edit, a chat edit, a tailoring run, even a restore
+— records an append-only **resume version**. Open the version history on any
+resume to diff two versions or restore one; nothing is ever lost, and nothing
+is one-way. Old variants you no longer target aren't deleted either — they're
+archived, still there when an unusual role calls for one.
+
+### Tell it how you sound — once
+
+A **persona** is durable context about you as a candidate: vision, strengths,
+goals, working style, how your writing should read. Set it once in Profile
+(or have it drafted from your Career KB, reviewed and saved by you) and every
+generated document — tailoring, cover letters, screening answers — is written
+in that voice, instead of you re-explaining it in every prompt. It shapes tone
+and emphasis only; it is never a source of new factual claims.
+
 ### Health Report — is this resume sound at all?
 
 ![A job-independent grade, and what each defect is costing you](docs/assets/health-report.png)
@@ -420,10 +534,13 @@ record) if you disagree.
 
 ![LaTeX and Typst templates, compiled locally](docs/assets/templates.png)
 
-Two engines, both compiled locally: **LaTeX** (pdflatex) and **Typst**. A
+How many resume templates have you changed in your lifetime? For most people
+the honest answer is one or two — because in a Word or hand-written LaTeX file,
+a redesign means rebuilding the document. Here it stops being a life decision:
+two engines, both compiled locally — **LaTeX** (pdflatex) and **Typst** — and a
 template carries its own default formatting, layered under per-resume and
 per-application overrides, so the same content renders through any of them
-without being touched. Start from a bundled design, adapt one you liked
+without being touched. Switching is a matter of taste and a button. Start from a bundled design, adapt one you liked
 elsewhere, or write your own source in the built-in editor — validation compiles
 a sample PDF and runs the same parse-certification gate either way, so a template
 that would break an ATS parser never reaches `ready`. *(The web "New template"
@@ -494,7 +611,7 @@ find postings on whatever boards it can read, capture them, score them against
 your bases and hand back a ranked shortlist. There is no board integration to be
 locked into and no scraper to break: the agent reads what you would have read.
 
-The author's own daily prompts — a scheduled hunt and two apply-session
+My own daily prompts — a scheduled hunt and two apply-session
 variants, with the personal parts turned into placeholders — are in
 [`docs/agent-prompts/`](docs/agent-prompts/) as starting points to adapt.
 
@@ -576,8 +693,11 @@ To avoid imposing development compilation latency (which can run up to ~1600ms o
 
 Every LLM invocation — prompt, latency, token count, and a feature tag for Q&A,
 JD extraction and tailoring — can be sent to a [Langfuse](https://langfuse.com)
-instance **you** already run, self-hosted or Cloud. Set three variables in
-`.env` and restart the backend:
+instance **you** already run, self-hosted or Cloud. All three variables are
+required, and — deliberately — **the compose stack does not forward them**:
+traces contain your prompts, i.e. your resume text, and a stale key pair
+passed through silently would ship that to a third party. To trace, run the
+backend process yourself (outside compose) with:
 
 ```bash
 LANGFUSE_PUBLIC_KEY=pk-lf-...
@@ -585,9 +705,8 @@ LANGFUSE_SECRET_KEY=sk-lf-...
 LANGFUSE_HOST=https://your-langfuse-host
 ```
 
-Tracing is off whenever either key is unset, and the app never requires it.
-Note that traces contain your prompts, i.e. your resume text — point this at a
-host you control.
+Tracing is off whenever any of the three is unset, and the app never requires
+it. Point it at a host you control.
 
 > We deliberately do **not** ship a Langfuse stack in this repo. Bundling one
 > meant shipping a compose file with fixed default secrets (session-signing keys
@@ -621,6 +740,10 @@ architecture changes: open an issue first. Every PR gets a human first
 response within 48 hours, and every PR is read by a human — we don't merge
 AI slop.
 
+This is an early release. If something doesn't work, please say so — a clear
+bug report is a contribution, and one of the most valuable kinds right now.
+
+- **Project site:** [maestrocareerstudio.com](https://maestrocareerstudio.com) — the tour in five minutes: what it does, what it costs to run, and how the pieces fit, before you clone anything.
 - **Known Issues & Where Help Is Wanted:** [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md) — **Start here.** What is solid, what is rough, what is a deliberate limitation rather than a bug, and the specific gaps worth picking up. This project is early and that file says so plainly.
 - **Architecture Source of Truth:** [`SYSTEM.md`](SYSTEM.md) — The living reference for how the system fits together, at the repo root so every agent tool finds it. It holds the orientation tier — layout, architecture, invariants, environment, workflow, and the three ledgers — and indexes the reference tier it delegates to: per-entity lifecycles in [`docs/entities/`](docs/entities/) and UI rules in [`docs/frontend-conventions.md`](docs/frontend-conventions.md). Meant to be searched rather than read front to back; the code cites its section numbers and invariant ids directly. Read the relevant part before altering behaviour.
 - **Domain Glossary:** [`UBIQUITOUS_LANGUAGE.md`](UBIQUITOUS_LANGUAGE.md) — The vocabulary of the domain, and the words to avoid. Worth ten minutes before your first issue or PR.
