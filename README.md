@@ -462,6 +462,13 @@ binary and GUI apps don't inherit your shell `PATH` — so the alternative is
 hand-substituting four placeholders into a JSON file. Restart Claude Desktop
 with Cmd+Q after pasting; a window close is not enough.
 
+> **Or skip the copy-paste entirely.** If the client is itself a coding agent
+> (Claude Code, Codex CLI), you can hand it the output of
+> `./scripts/setup-mcp.sh --print-only` — or just ask it to register the
+> server from this repo — and it will edit its own config. Check what it
+> wrote before restarting: the usual failure is a relative path or the
+> container's `8000` where the host's `8001` belongs.
+
 `BACKEND_URL` must be the **host** port compose publishes — `8001` by default,
 not the container's internal `8000`. The script resolves this for you from
 `BACKEND_HOST_PORT`.
