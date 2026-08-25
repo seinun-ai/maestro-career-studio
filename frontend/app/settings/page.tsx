@@ -2,7 +2,7 @@
 
 import { useId, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronDownIcon, ChevronRightIcon } from "lucide-react";
+import { BookOpen, ChevronDownIcon, ChevronRightIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -70,6 +70,23 @@ export default function SettingsPage() {
       <PageHeader
         title="Settings"
         subtitle="Models, API keys, prompts, and appearance."
+        actions={
+          <Button
+            variant="outline"
+            size="sm"
+            nativeButton={false}
+            render={
+              <a
+                href="https://github.com/seinun-ai/maestro-career-studio/blob/main/docs/GETTING_STARTED.md"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <BookOpen className="size-4" />
+                Getting started guide
+              </a>
+            }
+          />
+        }
       />
       <PromptsSection />
       <QuickTailorSection />

@@ -180,6 +180,11 @@ makes it so. [`SECURITY.md`](SECURITY.md) has the detail and the threat model.
 
 ## Quickstart
 
+> **New here?** [`docs/GETTING_STARTED.md`](docs/GETTING_STARTED.md) is the
+> hand-holding version of everything below — from installing Docker to your
+> first tailored PDF, in the order that works, including the let-an-AI-agent-
+> set-it-up shortcut.
+
 The whole setup is **four pieces, and only the first is required** — the rest
 attach to it whenever you want them:
 
@@ -582,7 +587,7 @@ in your skills list, never as an invented experience bullet.
 
 ![The extension widget on a job page](docs/assets/extension.gif)
 
-A floating in-page widget: capture a posting from the board you are already
+A browser side panel: capture a posting from the board you are already
 reading, and fill application forms from your **Autofill Profile**. Its telemetry
 records *which* fields it met and whether they filled — label, kind, rule,
 outcome, host — and structurally cannot store a value you typed: the models have
@@ -735,7 +740,7 @@ it. Point it at a host you control.
 
 - `backend/` — FastAPI application, business logic, deterministic ATS engine, database models, and dual-engine PDF renderers (typst + LaTeX).
 - `frontend/` — Next.js 16 (App Router) modern reactive interface with Base UI / Tailwind styling.
-- `extension/` — Companion Chrome extension: a floating in-page widget for one-click JD ingestion from job boards and automated form filling. See [`extension/README.md`](extension/README.md).
+- `extension/` — Companion Chrome extension: a side panel for one-click JD ingestion from job boards and automated form filling. See [`extension/README.md`](extension/README.md).
 - `settings/` — local profile, persona, memory, and autofill runtime state, including `autofill.json`; ignored except for `.gitkeep`, and personal data must never be committed.
 - `base_resumes/` — local runtime repository for base resume JSON payloads and rendered tex/pdf output; ignored except for `.gitkeep` and exactly one synthetic `example.json` shipped as the demo seed. Personal resumes must never be committed.
 - `kb_documents/` — local runtime data directory for supporting knowledge base files and docs; ignored except for `.gitkeep`, and personal documents must never be committed.
@@ -759,6 +764,7 @@ This is an early release. If something doesn't work, please say so — a clear
 bug report is a contribution, and one of the most valuable kinds right now.
 
 - **Project site:** [maestrocareerstudio.com](https://maestrocareerstudio.com) — the tour in five minutes: what it does, what it costs to run, and how the pieces fit, before you clone anything.
+- **Getting Started guide:** [`docs/GETTING_STARTED.md`](docs/GETTING_STARTED.md) — installation to first tailored PDF, step by step, plus the in-app tour and the agent-assisted setup path.
 - **Known Issues & Where Help Is Wanted:** [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md) — **Start here.** What is solid, what is rough, what is a deliberate limitation rather than a bug, and the specific gaps worth picking up. This project is early and that file says so plainly.
 - **Architecture Source of Truth:** [`SYSTEM.md`](SYSTEM.md) — The living reference for how the system fits together, at the repo root so every agent tool finds it. It holds the orientation tier — layout, architecture, invariants, environment, workflow, and the three ledgers — and indexes the reference tier it delegates to: per-entity lifecycles in [`docs/entities/`](docs/entities/) and UI rules in [`docs/frontend-conventions.md`](docs/frontend-conventions.md). Meant to be searched rather than read front to back; the code cites its section numbers and invariant ids directly. Read the relevant part before altering behaviour.
 - **Domain Glossary:** [`UBIQUITOUS_LANGUAGE.md`](UBIQUITOUS_LANGUAGE.md) — The vocabulary of the domain, and the words to avoid. Worth ten minutes before your first issue or PR.
