@@ -3,6 +3,8 @@ node_modules/
 __pycache__/
 *.pyc
 .venv/
+# machine-specific Claude Code project registration written by scripts/setup-mcp.sh
+.mcp.json
 venv/
 
 # build

@@ -450,23 +450,31 @@ With the backend already running, one command sets it up:
 ./scripts/setup-mcp.sh
 ```
 
-That creates the host-side venv, installs the `mcp` extra, reads your backend
-port out of `.env`, registers the server with **Claude Code**, and prints
-ready-to-paste blocks for **Claude Desktop** and the **ChatGPT desktop app /
-Codex CLI** with every path already filled in. Add `--profile hunt` to register
-a scoped profile instead, or `--print-only` to change nothing and just see the
-config.
+That creates the host-side venv (the MCP server runs on your machine, so it
+needs a host **Python 3.12+** — the script says exactly how to get one if
+yours is older), installs the `mcp` extra, reads your backend port out of
+`.env`, registers the server with **Claude Code** two ways — a repo-level
+`.mcp.json` so any session opened in this repo offers it automatically, plus
+a user-wide `claude mcp add` — and prints ready-to-paste blocks for **Claude
+Desktop** and the **ChatGPT desktop app / Codex CLI** with every path already
+filled in. Add `--profile hunt` to register a scoped profile instead, or
+`--print-only` to change nothing and just see the config.
 
 The script exists because MCP clients need an **absolute** path to the server
 binary and GUI apps don't inherit your shell `PATH` — so the alternative is
 hand-substituting four placeholders into a JSON file. Restart Claude Desktop
 with Cmd+Q after pasting; a window close is not enough.
 
-> **Or skip the copy-paste entirely.** If the client is itself a coding agent
-> (Claude Code, Codex CLI), you can hand it the output of
-> `./scripts/setup-mcp.sh --print-only` — or just ask it to register the
-> server from this repo — and it will edit its own config. Check what it
-> wrote before restarting: the usual failure is a relative path or the
+> **Or skip the copy-paste entirely.** Open a coding-agent session (Claude
+> Code, Codex CLI) in this repo and ask it to run `./scripts/setup-mcp.sh` —
+> the script knows it may be driven by an agent: it detects a nested Claude
+> Code session, writes the repo-level `.mcp.json` instead of fighting the
+> CLI, and prints the one command that still needs a plain terminal. If the
+> agent's permission mode refuses to run the script, hand it
+> `./scripts/setup-mcp.sh --print-only` output and let it apply the steps
+> itself. Two checks before restarting anything: edits to Claude Desktop's
+> config only survive if the app was **fully quit first** (it rewrites the
+> file on exit), and the usual config mistake is a relative path or the
 > container's `8000` where the host's `8001` belongs.
 
 `BACKEND_URL` must be the **host** port compose publishes — `8001` by default,

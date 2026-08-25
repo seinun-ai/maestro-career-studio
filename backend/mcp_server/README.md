@@ -22,9 +22,14 @@ below are just typed entry points into the existing backend HTTP API.
   with `docker compose ps` (or your Docker dashboard) and don't confuse it with an
   unrelated app on `8000`.
 
-- A Python environment with the backend installed (this is what Claude Desktop,
-  the ChatGPT desktop app, or Codex CLI launches as a subprocess). The MCP
-  server was tested with `mcp` 1.26.
+- A **host** Python **3.12+** with the backend installed (this is what Claude
+  Desktop, the ChatGPT desktop app, or Codex CLI launches as a subprocess — it
+  runs on your machine, not in Docker, so the container's Python doesn't
+  count). A fresh macOS ships 3.9: get a current one with
+  `brew install python@3.12` (Debian/Ubuntu: `sudo apt install python3.12
+  python3.12-venv`). `scripts/setup-mcp.sh` checks this and tells you the same
+  thing if it finds only an old Python. The MCP server was tested with `mcp`
+  1.26.
 
 ## Install
 
@@ -315,7 +320,9 @@ and carry a proposal through that lifecycle.
 
 ## Add to Claude Desktop
 
-On macOS, edit:
+**Fully quit Claude Desktop first (Cmd+Q — a window close is not enough).**
+The running app rewrites its config from its own memory on exit and will
+silently drop an edit made while it is open. Then, on macOS, edit:
 
 ```
 ~/Library/Application Support/Claude/claude_desktop_config.json
@@ -342,7 +349,11 @@ maestro-career-studio tools appear.
 
 ## Add to Claude Code
 
-No config file needed — one command per profile:
+Easiest: `scripts/setup-mcp.sh` writes a repo-level `.mcp.json` (gitignored —
+it holds this machine's absolute venv path), so any Claude Code session
+opened **in this repo** offers the server automatically; approve it when
+prompted. For sessions outside the repo, register user-wide — one command
+per profile:
 
 ```bash
 claude mcp add maestro-career-studio \
