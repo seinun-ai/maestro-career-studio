@@ -290,6 +290,10 @@ export interface OpenAIInfo {
   api_key_configured: boolean;
   // The API never returns key material — only whether a key is configured.
   gemini_api_key_configured: boolean;
+  /** Where the effective key comes from — one saved in the app ("settings")
+   *  beats one from .env ("env"). */
+  openai_key_source: "settings" | "env" | "none";
+  gemini_key_source: "settings" | "env" | "none";
   model_options: ModelOption[];
   /** The OpenAI-compatible endpoint. A location, not a secret, so it is echoed. */
   base_url: string | null;

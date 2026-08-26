@@ -115,6 +115,9 @@ def test_openai_endpoint_returns_config(db_session, monkeypatch):
     assert body["smart_model"] == "gpt-smart"
     assert body["api_key_configured"] is True
     assert body["gemini_api_key_configured"] is True
+    # No key stored in the app yet, so the env keys are the effective ones.
+    assert body["openai_key_source"] == "env"
+    assert body["gemini_key_source"] == "env"
     assert {option["id"] for option in body["model_options"]} >= {
         "gemini-3.5-flash-lite",
         "gemini-3.7-flash",
@@ -131,7 +134,35 @@ def test_openai_endpoint_reports_missing_key(db_session, monkeypatch):
     finally:
         app.dependency_overrides.clear()
 
-    assert response.json()["api_key_configured"] is False
+    body = response.json()
+    assert body["api_key_configured"] is False
+    assert body["openai_key_source"] == "none"
+
+
+def test_key_source_settings_beats_env(db_session, monkeypatch):
+    # The confusing production state this field exists for: a key saved in the
+    # app is in charge even when .env carries one (or carries none) — the
+    # response must attribute the effective key to "settings", not "env".
+    monkeypatch.setattr(settings.app_settings, "openai_api_key", "sk-env")
+
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        put = TestClient(app).put(
+            "/api/settings/openai",
+            json={
+                "fast_model": "gpt-5.6-luna",
+                "smart_model": "gpt-5.6-luna",
+                "openai_api_key": "sk-stored-in-app",
+            },
+        )
+        assert put.status_code == 200
+        response = TestClient(app).get("/api/settings/openai")
+    finally:
+        app.dependency_overrides.clear()
+
+    body = response.json()
+    assert body["api_key_configured"] is True
+    assert body["openai_key_source"] == "settings"
 
 
 def test_openai_endpoint_updates_models(db_session):

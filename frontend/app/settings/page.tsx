@@ -653,7 +653,14 @@ function OpenAISection() {
                       OpenAI API key
                     </span>
                     {info.data.api_key_configured ? (
-                      <span className="text-emerald-600 font-medium">Configured</span>
+                      // Saying WHERE the key lives matters: one saved here
+                      // beats .env, so a stale in-app key with a blank .env
+                      // still reads "configured" while every call 401s.
+                      <span className="text-emerald-600 font-medium">
+                        {info.data.openai_key_source === "env"
+                          ? "Configured · from .env"
+                          : "Configured · in-app"}
+                      </span>
                     ) : (
                       <span className="text-destructive font-medium">Not configured</span>
                     )}
@@ -679,7 +686,11 @@ function OpenAISection() {
                       Gemini API key
                     </span>
                     {info.data.gemini_api_key_configured ? (
-                      <span className="text-emerald-600 font-medium">Configured</span>
+                      <span className="text-emerald-600 font-medium">
+                        {info.data.gemini_key_source === "env"
+                          ? "Configured · from .env"
+                          : "Configured · in-app"}
+                      </span>
                     ) : (
                       <span className="text-destructive font-medium">Not configured</span>
                     )}

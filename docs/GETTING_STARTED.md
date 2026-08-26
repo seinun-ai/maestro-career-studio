@@ -58,9 +58,9 @@ config — an agent handles, and the repo's own scripts cooperate with it.
 - **~4 GB of disk** for the three images (see the README's
   [Prerequisites](../README.md#prerequisites) for the breakdown).
 - **An LLM API key — optional at this point.** OpenAI or Gemini, or a local
-  OpenAI-compatible server. You can add it before first boot (§2) or later in
-  the app's Settings — and without one, the deterministic core (ATS scoring,
-  PDF rendering, tracking) works fully in
+  OpenAI-compatible server. The place to add it is **inside the app**
+  (Settings → Models, after first boot) — and without one, the deterministic
+  core (ATS scoring, PDF rendering, tracking) works fully in
   [No-Key Mode](../README.md#try-it-before-you-bring-a-key-no-key-mode).
 - **For the MCP server only** (§6): a host **Python 3.12+**. Not needed for
   the app itself.
@@ -73,9 +73,14 @@ cd maestro-career-studio
 cp .env.example .env
 ```
 
-If you already have an API key, open `.env` in any editor now and paste it
-after `OPENAI_API_KEY=` (or `GEMINI_API_KEY=`). If not, skip it — you can add
-the key later in **Settings → Models** inside the app.
+Don't put your API key here yet — the recommended place is **Settings →
+Models inside the app**, after first boot (step 4 of §4). Adding it there
+keeps one source of truth: a key saved in the app **always wins** over one
+in `.env`, so mixing the two is how you end up staring at a stale key you
+forgot about. `.env` keys exist for the cases that need them — headless
+setups, or a fully scripted install — and if that's you, paste it after
+`OPENAI_API_KEY=` (or `GEMINI_API_KEY=`) now and then *don't* also save one
+in Settings.
 
 ```bash
 docker compose up -d --build
@@ -95,8 +100,37 @@ Career KB from it.
 | `Cannot connect to the Docker daemon` | Docker isn't running | Start Docker Desktop, wait for "running", re-run the command |
 | `port is already allocated` | Another app owns 3000/8001/55432 | Change `*_HOST_PORT` in `.env` ([details](../README.md#troubleshooting--common-questions)) |
 | Build sits at TeX Live / model download | Normal on first build | Wait it out; later builds are fast |
-| Page loads but everything errors | Backend still starting | `docker compose ps` until `backend` is healthy, then reload |
-| Added a key to `.env` after starting | Keys are read at process start | `docker compose restart backend` |
+| Page loads but everything errors | Backend still starting | `curl -s localhost:8001/health` answers `{"status":"ok"}` when it's ready (also at `/api/health`); `docker compose ps` shows it `Up` — only postgres reports `healthy` |
+| Added a key to `.env` after starting | Keys are read at process start | `docker compose restart backend` — and remember a key saved in Settings overrides `.env` |
+| LLM calls fail 401 though Settings says "Configured" | A stale key — the label says where it lives (in-app beats `.env`) | Re-enter the key in Settings → Models and press **Test** |
+
+### Starting over (a genuinely clean slate)
+
+Deleting the project folder does **not** delete your data — and neither does
+`docker compose down` or removing containers. The database lives in a Docker
+**volume** stored inside Docker itself, named after the project folder
+(`maestro-career-studio_pgdata`). Two consequences worth knowing before they
+surprise you:
+
+- **A re-clone into a folder with the same name re-attaches the old
+  database.** Your resumes, applications, and even a saved API key are back —
+  which is the right default (an update or an accidental folder deletion
+  never costs you data), but it means "delete the folder and clone again" is
+  *not* a fresh install. To test a truly fresh one, clone into a differently
+  named folder.
+- **Deleting only the folder leaves the two halves of your state out of
+  sync**: the database survives, but the rendered PDFs that lived under
+  `applications/` and `base_resumes/` in the folder are gone, so the app may
+  list documents whose files no longer exist. Re-render them from the UI —
+  the content itself is safe in the database.
+
+When you *want* everything gone — demo data, your data, stored keys, all of
+it — this is the one command, run from the project folder, and it is not
+undoable:
+
+```bash
+docker compose down -v
+```
 
 ## 3. Find your way around
 
@@ -237,8 +271,11 @@ Three things worth knowing before your first update:
 
 - **Your data is not involved.** Your resumes, applications, KB documents and
   settings are files on disk that no update step touches, and the database
-  lives in a Docker volume that survives everything here. The backup the
-  script takes guards the database *migration* specifically.
+  lives in a Docker volume that survives everything here — including folder
+  deletion and re-cloning (see
+  [Starting over](#starting-over-a-genuinely-clean-slate) for when that
+  persistence surprises you). The backup the script takes guards the
+  database *migration* specifically.
 - **Migrations run themselves** when the backend starts, so the first boot
   after an update takes longer than usual. The script tells you it is waiting.
 - **Two things stay manual**, because Docker cannot reach them: reload the

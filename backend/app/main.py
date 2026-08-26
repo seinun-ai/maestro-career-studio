@@ -37,6 +37,34 @@ from app.services.llm import LLMProviderError
 logger = logging.getLogger(__name__)
 
 
+def _ensure_app_log_handler(
+    app_logger: logging.Logger, root_logger: logging.Logger
+) -> bool:
+    """Give `app.*` loggers a real handler when nobody else has.
+
+    Uvicorn configures only its own loggers, so without this every app record
+    below WARNING fell to Python's lastResort handler and was dropped — which
+    kept _log_llm_config()'s one useful line ("api key from settings|env")
+    invisible exactly when a stale settings-stored key was silently overriding
+    a blank .env. Scoped to the `app` hierarchy on purpose: raising the ROOT
+    level to INFO would also turn on per-request noise from libraries (httpx
+    logs every request at INFO). A no-op when either logger already has
+    handlers (pytest, a custom --log-config), so it cannot double-log.
+    """
+    if app_logger.handlers or root_logger.handlers:
+        return False
+    handler = logging.StreamHandler()
+    handler.setFormatter(
+        logging.Formatter("%(levelname)s:     %(name)s - %(message)s")
+    )
+    app_logger.addHandler(handler)
+    app_logger.setLevel(logging.INFO)
+    return True
+
+
+_ensure_app_log_handler(logging.getLogger("app"), logging.getLogger())
+
+
 def _log_llm_config() -> None:
     """State the effective LLM config once, at startup.
 
@@ -176,3 +204,11 @@ app.include_router(version.router)
 @app.get("/health")
 def healthcheck():
     return {"status": "ok"}
+
+
+@app.get("/api/health", include_in_schema=False)
+def healthcheck_api():
+    """Alias. Every other route lives under /api/*, so this is the path both
+    people and agents guess first — and the only one of the two the frontend
+    dev proxy (which forwards /api/* alone) can reach."""
+    return healthcheck()

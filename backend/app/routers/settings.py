@@ -52,6 +52,12 @@ class OpenAIInfo(BaseModel):
     chat_model: str
     api_key_configured: bool
     gemini_api_key_configured: bool
+    # Where the effective key comes from: a key saved in the app ("settings")
+    # BEATS one from .env ("env"). Surfaced because a stale settings-stored
+    # key over a blank .env reads as "configured" while every call 401s —
+    # the source is the fact that explains it.
+    openai_key_source: Literal["settings", "env", "none"]
+    gemini_key_source: Literal["settings", "env", "none"]
     model_options: list[dict[str, str]]
     # Usable catalog (seeds ∪ llm.extra_models), each with source=seed|extra.
     # base_url is a location (not a secret), so it is echoed. When set,
@@ -237,6 +243,14 @@ def get_openai_info(db: Annotated[Session, Depends(get_db)]):
         chat_model=model_settings.get_chat_model(db),
         api_key_configured=bool(db_openai or app_settings.openai_api_key),
         gemini_api_key_configured=bool(db_gemini or app_settings.gemini_api_key),
+        openai_key_source=(
+            "settings" if db_openai
+            else "env" if app_settings.openai_api_key else "none"
+        ),
+        gemini_key_source=(
+            "settings" if db_gemini
+            else "env" if app_settings.gemini_api_key else "none"
+        ),
         model_options=model_settings.usable_option_dicts(db),
         base_url=model_settings.get_base_url(db) or app_settings.openai_base_url or None,
         custom_endpoint=model_settings.using_custom_endpoint(db),

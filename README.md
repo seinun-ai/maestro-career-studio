@@ -8,7 +8,7 @@
 <p align="center">
   <a href="https://github.com/seinun-ai/maestro-career-studio/actions/workflows/ci.yml"><img src="https://github.com/seinun-ai/maestro-career-studio/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://github.com/seinun-ai/maestro-career-studio/actions/workflows/codeql.yml"><img src="https://github.com/seinun-ai/maestro-career-studio/actions/workflows/codeql.yml/badge.svg" alt="CodeQL"></a>
-  <a href="https://github.com/seinun-ai/maestro-career-studio/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/tests-4%2C080%20passing-brightgreen" alt="Tests"></a>
+  <a href="https://github.com/seinun-ai/maestro-career-studio/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/tests-4%2C084%20passing-brightgreen" alt="Tests"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="License"></a>
   <a href="https://maestrocareerstudio.com"><img src="https://img.shields.io/badge/site-maestrocareerstudio.com-1a3a5c" alt="Project site"></a>
 </p>
@@ -205,8 +205,9 @@ git clone https://github.com/seinun-ai/maestro-career-studio.git
 cd maestro-career-studio
 cp .env.example .env
 
-# 2. Recommended: edit .env and paste an OPENAI_API_KEY (or GEMINI_API_KEY) —
-#    the deterministic core runs without one, the AI lanes want one
+# 2. Your API key is added later, INSIDE the app (Settings -> Models) — the
+#    deterministic core runs without one, the AI lanes want one. Only put a
+#    key in .env for headless/scripted setups; a key saved in-app wins over it
 # 3. Build and start the stack (first build takes several minutes — it installs
 #    TeX Live and downloads the embedding model)
 docker compose up -d --build
