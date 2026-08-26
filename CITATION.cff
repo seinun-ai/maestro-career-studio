@@ -1,10 +1,9 @@
 # Citation File Format 1.2.0 — https://citation-file-format.github.io/
-# GitHub renders this as a "Cite this repository" button once the repo is public.
+# GitHub renders this as a "Cite this repository" button.
 #
-# TODO BEFORE PUBLISHING (one placeholder left, marked REPLACE):
-#   date-released / version — set when you cut the first tag. NOTE: cffconvert
-#   validates this file happily with a placeholder date, so it cannot catch a
-#   forgotten one. Check it by eye at tag time.
+# version / date-released track the released tag — bump them at each release
+# (docs/RELEASING.md step 2). NOTE: cffconvert validates this file happily
+# with a stale date, so it cannot catch a forgotten one; check by eye.
 cff-version: 1.2.0
 message: "If you use Maestro Career Studio in your work, please cite it as below."
 title: "Maestro Career Studio: a local-first, evidence-backed job-application copilot"
@@ -31,7 +30,7 @@ repository-code: "https://github.com/seinun-ai/maestro-career-studio"
 url: "https://github.com/seinun-ai/maestro-career-studio"
 # REPLACE when you cut v0.1.0.
 version: "0.1.0"
-date-released: "2026-01-01"
+date-released: "2026-08-26"
 keywords:
   - resume
   - job-application

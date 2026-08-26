@@ -28,6 +28,14 @@ is the same version with the leading `v` removed (`0.1.0`).
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.1.0] — 2026-08-26
+
+**The first public release.** Everything before this point predates the
+changelog, so the entries below cover only the final pre-release round — the
+rest of the product is the baseline this file measures from.
+
 ### Added
 
 - **An update path.** `scripts/update.sh` moves an installed instance to the

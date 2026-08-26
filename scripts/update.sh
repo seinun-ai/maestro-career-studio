@@ -356,6 +356,7 @@ do_update() {
   else
     note "Already up to date (no new commits)."
   fi
+  note "Release notes: https://github.com/${CANONICAL}/releases"
   printf '\n'
   note "Two surfaces Docker cannot update:"
   note "  1. Reload the unpacked extension at chrome://extensions."

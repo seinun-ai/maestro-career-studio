@@ -76,6 +76,21 @@ export function AboutSection() {
               <span className="text-muted-foreground text-sm">Update</span>
               <CopyUpdateCommand />
             </div>
+            <div className="flex items-center justify-between gap-4 px-3 py-2.5">
+              <span className="text-muted-foreground text-sm">
+                What&apos;s new
+              </span>
+              {/* A static link, deliberately: the app itself never asks GitHub
+                  anything — clicking this is the user opening their browser. */}
+              <a
+                href="https://github.com/seinun-ai/maestro-career-studio/releases"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm underline underline-offset-4 hover:no-underline"
+              >
+                Release notes
+              </a>
+            </div>
           </div>
         )}
       </CardContent>

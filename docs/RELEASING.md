@@ -53,6 +53,7 @@ They must agree, and two of them will keep lying silently if you forget:
 |---|---|
 | `backend/pyproject.toml` | `version = "X.Y.Z"` |
 | `extension/manifest.json` | `"version": "X.Y.Z"` |
+| `CITATION.cff` | `version: "X.Y.Z"` + `date-released` (cffconvert cannot catch a stale one — check by eye) |
 | the git tag (step 4) | `vX.Y.Z` |
 
 The published image tag is the version **without** the `v` (`X.Y.Z`) — the
