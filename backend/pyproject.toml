@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "maestro-career-studio-backend"
-version = "0.1.0"
+version = "0.1.1"
 license = { text = "Apache-2.0" }
 classifiers = [
     "License :: OSI Approved :: Apache Software License",

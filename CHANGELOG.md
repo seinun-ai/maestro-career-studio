@@ -30,11 +30,16 @@ is the same version with the leading `v` removed (`0.1.0`).
 
 Nothing yet.
 
-## [0.1.0] — 2026-08-26
+## [0.1.1] — 2026-08-26
 
 **The first public release.** Everything before this point predates the
 changelog, so the entries below cover only the final pre-release round — the
 rest of the product is the baseline this file measures from.
+
+*(A `v0.1.0` tag exists but was never released: it landed on a commit whose
+image workflow could not publish, and the tag ruleset — correctly — refused
+to let it move. No images, no Release, no consumers; this tag supersedes it
+per the policy above.)*
 
 ### Added
 
