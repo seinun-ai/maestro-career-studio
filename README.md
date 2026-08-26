@@ -354,31 +354,40 @@ docker compose exec -T postgres pg_dump --clean --if-exists -U app maestro_cs | 
 git fetch --tags origin
 git merge --ff-only "$(git tag -l 'v*' --sort=-v:refname | head -n1)"
 
-# 3. Bring the images to that same tag — note the tag has NO leading v
-IMAGE_TAG=0.1.0 docker compose pull
-IMAGE_TAG=0.1.0 docker compose up -d --force-recreate --remove-orphans
+# 3. Bring the images to that same tag — note the image tag has NO leading v,
+#    which is why this derives it rather than hardcoding a number that ages
+TAG="$(git describe --tags --abbrev=0)"        # e.g. v0.1.2
+IMAGE_TAG="${TAG#v}" docker compose pull       # e.g. 0.1.2
+IMAGE_TAG="${TAG#v}" docker compose up -d --force-recreate --remove-orphans
 ```
+
+> **`docker compose up -d` alone will not fetch a new release.** Compose only
+> downloads an image tag it does not already have locally, so once you have
+> pulled `latest` it keeps using that copy until something pulls again — which
+> is exactly what `update.sh` (and step 3 above) does explicitly. If you ever
+> wonder why a fresh release did not appear, that is why; `docker compose pull`
+> is the one-line answer.
 
 `-U app` and `maestro_cs` are the compose defaults (`POSTGRES_USER` /
 `POSTGRES_DB`); use your own values if you changed them in `.env`.
 
-**Pinning a version — the `v` is the trap.** The git tag is `v0.1.0`; the
-image tag drops the `v`. Pin with `IMAGE_TAG=0.1.0` — `IMAGE_TAG=v0.1.0` does
+**Pinning a version — the `v` is the trap.** The git tag is `v0.1.2`; the
+image tag drops the `v`. Pin with `IMAGE_TAG=0.1.2` — `IMAGE_TAG=v0.1.2` does
 not exist and the pull 404s. Set it in `.env` to make the pin permanent, or
 pass it inline as above for one command (a shell variable beats `.env` in
 Compose, so the inline form needs no edit to a file you own).
 
-**Build mode or pull mode.** With `IMAGE_REGISTRY` unset — which is every
-install made before prebuilt images shipped — `docker compose` *builds* from
-your checkout, and an update recompiles TeX Live. Once the images are
-published, one line in `.env` switches you to pulling them:
+**Build mode or pull mode.** `.env.example` ships with `IMAGE_REGISTRY` set,
+so a new install *pulls* published images and an update downloads rather than
+recompiling TeX Live. Installs made before that flip have the line commented
+out and keep building from their checkout; to switch, uncomment it:
 
 ```ini
 IMAGE_REGISTRY=ghcr.io/seinun-ai/maestro-career-studio
 ```
 
-That is right for users. Contributors building their own changes should leave
-it unset — see [`CONTRIBUTING.md`](CONTRIBUTING.md).
+That is right for users. Contributors building their own changes comment it
+back out — see [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ### What happens to your data
 
@@ -403,8 +412,8 @@ guarding.
 One recipe: the old git ref, the old images, and the dump — in that order.
 
 ```bash
-git checkout v0.1.0                                     # the version you were on
-IMAGE_TAG=0.1.0 docker compose up -d --force-recreate
+git checkout v0.1.1                                     # the version you were on
+IMAGE_TAG=0.1.1 docker compose up -d --force-recreate
 gunzip -c backups/db-<timestamp>-<version>.sql.gz | docker compose exec -T postgres psql -U app maestro_cs
 ```
 
