@@ -83,11 +83,14 @@ setups, or a fully scripted install — and if that's you, paste it after
 in Settings.
 
 ```bash
-docker compose up -d --build
+docker compose up -d
 ```
 
-The first build takes several minutes (it installs TeX Live and downloads
-the embedding model — one-time). Then open **http://localhost:3000**.
+That downloads prebuilt images (a few minutes on a normal connection). If you
+would rather compile from your own checkout — the contributor path — comment
+out `IMAGE_REGISTRY` in `.env` and run `docker compose up -d --build` instead;
+that takes longer, because it installs TeX Live and downloads the embedding
+model. Either way, then open **http://localhost:3000**.
 
 First boot starts PostgreSQL on port 55432, runs migrations, seeds a demo
 resume with rendered previews, and — if a key is present — builds a demo

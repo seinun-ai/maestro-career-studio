@@ -8,16 +8,15 @@
 <p align="center">
   <a href="https://github.com/seinun-ai/maestro-career-studio/actions/workflows/ci.yml"><img src="https://github.com/seinun-ai/maestro-career-studio/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://github.com/seinun-ai/maestro-career-studio/actions/workflows/codeql.yml"><img src="https://github.com/seinun-ai/maestro-career-studio/actions/workflows/codeql.yml/badge.svg" alt="CodeQL"></a>
-  <a href="https://github.com/seinun-ai/maestro-career-studio/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/tests-4%2C084%20passing-brightgreen" alt="Tests"></a>
+  <a href="https://github.com/seinun-ai/maestro-career-studio/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/tests-4%2C086%20passing-brightgreen" alt="Tests"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="License"></a>
   <a href="https://maestrocareerstudio.com"><img src="https://img.shields.io/badge/site-maestrocareerstudio.com-1a3a5c" alt="Project site"></a>
+  <a href="https://github.com/seinun-ai/maestro-career-studio/pkgs/container/maestro-career-studio-backend"><img src="https://img.shields.io/badge/ghcr.io-multi--arch-blue" alt="Container images"></a>
 </p>
-<!-- TODO(P5): the ghcr.io image badge belongs here, e.g.
-     https://img.shields.io/badge/ghcr.io-multi--arch-blue linking to the packages
-     page. It waits until the first v* tag has actually published both packages
-     AND they have been made public — a badge for a private package renders as a
-     broken promise. Both that step and the static test-count badge above are on
-     the release checklist in docs/RELEASING.md; edit them there, not here. -->
+<!-- The ghcr badge went up with v0.1.1, once both packages were public — a
+     badge for a private package renders as a broken promise. It and the static
+     test-count badge are refreshed from the release checklist in
+     docs/RELEASING.md; edit them there, not here. -->
 
 **A job-application studio that runs entirely on your machine — and shows you
 a diff of every change the AI makes.**
@@ -208,18 +207,20 @@ cp .env.example .env
 # 2. Your API key is added later, INSIDE the app (Settings -> Models) — the
 #    deterministic core runs without one, the AI lanes want one. Only put a
 #    key in .env for headless/scripted setups; a key saved in-app wins over it
-# 3. Build and start the stack (first build takes several minutes — it installs
-#    TeX Live and downloads the embedding model)
-docker compose up -d --build
+# 3. Start the stack — this PULLS prebuilt multi-arch images (a download, not
+#    a build). Add --build to compile from this checkout instead (several
+#    minutes: it installs TeX Live and downloads the embedding model)
+docker compose up -d
 ```
 
 Then open **http://localhost:3000**.
 
-> **This release builds locally.** Prebuilt multi-arch images ship from the
-> first tagged release; once they are up, set `IMAGE_REGISTRY=ghcr.io/seinun-ai/maestro-career-studio`
-> in `.env` and the same compose file *pulls* `amd64`/`arm64` images instead —
-> `docker compose up -d`, no build step. Moving an existing install to a newer
-> version is [one command](#updating) either way.
+> **Pull or build, same compose file.** `.env.example` ships with
+> `IMAGE_REGISTRY` set, so the command above downloads prebuilt `amd64`/`arm64`
+> images. Comment that line out (or run `--build`) to compile from your own
+> checkout instead — the mode contributors want, since it is the only one that
+> runs your code. Moving an existing install to a newer version is
+> [one command](#updating) either way.
 
 > **The compose path is the least-tested part of this release.** The stack runs
 > daily on my machine, but the fresh-clone first boot has had little

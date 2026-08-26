@@ -164,12 +164,13 @@ npm ci
 `docker-compose.yml` is one file in two modes, and which one you get is decided
 by a single variable:
 
-- **Leave `IMAGE_REGISTRY` unset** (the state a fresh `cp .env.example .env`
-  gives you) and `docker compose up -d --build` builds both images **from your
-  working tree**. That is the mode you want: it is the only way your changes
-  reach the running stack.
-- Setting `IMAGE_REGISTRY=ghcr.io/seinun-ai/maestro-career-studio` switches the
-  same file to *pulling* published images. That is the users' path, documented
+- **Comment out `IMAGE_REGISTRY`** in your `.env` — a fresh
+  `cp .env.example .env` now ships it SET, because users pull — and then
+  `docker compose up -d --build` builds both images **from your working
+  tree**. That is the mode you want: it is the only way your changes reach the
+  running stack.
+- Left as shipped (`IMAGE_REGISTRY=ghcr.io/seinun-ai/maestro-career-studio`),
+  the same file *pulls* published images. That is the users' path, documented
   in the [README's Updating section](README.md#updating), and it will happily
   ignore every line you just wrote.
 

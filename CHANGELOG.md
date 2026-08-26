@@ -22,13 +22,25 @@ with the qualification that version 0 actually carries:
 - **Patch releases (`0.1.1`) never change the schema or the `.env` contract.**
   They are safe to take without reading anything.
 
-Version numbers appear in three places that must agree: the git tag (`v0.1.0`),
-`backend/pyproject.toml`, and `extension/manifest.json`. The published image tag
-is the same version with the leading `v` removed (`0.1.0`).
+Version numbers appear in four places that must agree: the git tag (`v0.1.2`),
+`backend/pyproject.toml`, `extension/manifest.json`, and `CITATION.cff`. The
+published image tag is the same version with the leading `v` removed (`0.1.2`).
 
 ## [Unreleased]
 
 Nothing yet.
+
+## [0.1.2] — 2026-08-26
+
+### Changed
+
+- **`.env.example` now ships in pull mode.** `IMAGE_REGISTRY` and
+  `IMAGE_TAG=latest` are set rather than commented, so a fresh
+  `cp .env.example .env && docker compose up -d` DOWNLOADS the published
+  multi-arch images instead of compiling TeX Live. Contributors comment
+  `IMAGE_REGISTRY` out and keep using `--build` — see CONTRIBUTING. Existing
+  installs are unaffected: `update.sh` never edits your `.env`, and it reports
+  the two new keys as drift rather than changing modes under you.
 
 ## [0.1.1] — 2026-08-26
 

@@ -332,7 +332,7 @@ do_update() {
     note "To switch to prebuilt images (users, not contributors) set in .env:"
     note "  IMAGE_REGISTRY=ghcr.io/${CANONICAL}"
     note "  IMAGE_TAG=latest"
-    note "Only after those images have been published. Contributors stay on --build."
+    note "Those images are published from every release. Contributors stay on --build."
     compose build
   fi
 

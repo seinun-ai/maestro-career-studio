@@ -104,6 +104,15 @@
   any wide descendant push the whole page past the viewport instead of
   scrolling inside its own container, and inner `overflow-x-auto` regions can
   never engage. A page-level horizontal scrollbar is the symptom to look for.
+  **A `shrink-0` chip holding USER data is the same bug wearing a disguise** —
+  it looks fine on the data you develop against and blows the row apart on
+  someone else's, so it reads as "broken on that machine" when it is broken on
+  that content. A chip that renders a resume-derived string needs a width cap
+  plus `truncate`, its row's trailing controls need `shrink-0` so they hold
+  their place, and if a heading already names the thing, render only the part
+  the heading does not (`shortFindingLabel`). Also: `truncate` inside a TABLE
+  needs `table-fixed` — auto layout sizes the cell to its longest content, so
+  the cell never shrinks and the ellipsis never engages.
 - **The 768–1023px band is the layout's worst case.** `MOBILE_BREAKPOINT =
   768` (`hooks/use-mobile.ts`), so the sidebar becomes a sheet only BELOW
   768 — at exactly 768 the 256px rail is still pinned and a `max-w-6xl` page
