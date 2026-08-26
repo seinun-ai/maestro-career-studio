@@ -18,6 +18,7 @@ import {
   stripTrailingPunct,
   contentHash16,
   staleFindingIds,
+  shortFindingLabel,
 } from "./health-report.ts";
 
 test("reportIsStale treats missing as false", () => {
@@ -82,11 +83,11 @@ test("hoistBlurb fires only when issue and how are identical", () => {
   ];
   assert.equal(
     hoistBlurb(shared),
-    "2 items here are specific, but carries no number. Add the metric that measures each.",
+    "2 bullets here: specific, but carries no number. Add the metric that measures it.",
   );
   assert.equal(
     hoistBlurb([shared[0]]),
-    "This bullet is specific, but carries no number. Add the metric that measures it.",
+    "Specific, but carries no number. Add the metric that measures it.",
   );
   assert.equal(
     hoistBlurb([
@@ -309,4 +310,42 @@ test("staleFindingIds flags only findings whose text drifted", async () => {
   ];
   const stale = await staleFindingIds(findings as never, data);
   assert.deepEqual([...stale].sort(), ["drifted", "vanished"]);
+});
+
+test("hoistBlurb never conjugates a backend issue sentence", () => {
+  // These three shapes are why count-led phrasing was wrong: the issue is a
+  // full sentence whose subject varies, so "N items here are <issue>" produced
+  // "are a reader can't tell what you did here" / "are has a scale metric".
+  const analogue = {
+    issue: "Has a scale metric, but not a business outcome.",
+    how: "Add the outcome if you have it; otherwise this bullet is already strong.",
+  };
+  assert.equal(
+    hoistBlurb([analogue, analogue, analogue]),
+    "3 bullets here: has a scale metric, but not a business outcome. " +
+      "Add the outcome if you have it; otherwise each bullet is already strong.",
+  );
+  const implied = {
+    issue: "A reader can't tell what you did here.",
+    how: "Rewrite to name the specific action you personally took.",
+  };
+  assert.equal(
+    hoistBlurb([implied, implied]),
+    "2 bullets here: a reader can't tell what you did here. " +
+      "Rewrite to name the specific action you personally took.",
+  );
+  // "it" refers to the metric, never to the bullet — it must survive verbatim.
+  assert.match(hoistBlurb([analogue, analogue])!, /if you have it;/);
+});
+
+test("shortFindingLabel drops the entry name the group header already shows", () => {
+  assert.equal(
+    shortFindingLabel(
+      "Bone Muscle Research Center — Research Assistant - Data Science & Bioinformatics · bullet 1",
+    ),
+    "bullet 1",
+  );
+  assert.equal(shortFindingLabel("Awards & Honors · bullet 2"), "bullet 2");
+  assert.equal(shortFindingLabel("Summary"), "Summary");
+  assert.equal(shortFindingLabel("Trailing · "), "Trailing · ");
 });

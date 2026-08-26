@@ -137,7 +137,17 @@ export function sharedCoaching(
   return null;
 }
 
-/** Group-header blurb when every finding shares issue + how. */
+/**
+ * Group-header blurb when every finding shares issue + how.
+ *
+ * The backend's `issue` strings are complete sentences with varying subjects
+ * ("Has a scale metric…", "A reader can't tell what you did here.") — they
+ * CANNOT be conjugated into a count-led sentence, which is how this shipped
+ * "2 items here are a reader can't tell what you did here". Both copy strings
+ * are therefore reproduced verbatim; the count is introduced with a colon,
+ * which is agreement-free. The rail's jump list already carries counts, so a
+ * plural-shaped sentence buys nothing.
+ */
 export function hoistBlurb(
   findings: { issue: string; how: string }[],
 ): string | null {
@@ -147,20 +157,26 @@ export function hoistBlurb(
   if (!issue && !how) return null;
   if (!findings.every((f) => f.issue === issue && f.how === how)) return null;
   const count = findings.length;
-  const issueCore = issue.replace(/\.$/, "");
-  let howCore = how.replace(/\.$/, "");
-  if (count > 1) {
-    howCore = howCore
-      .replace(/\beach\b/g, "each")
-      .replace(/\bit\b/g, "each")
-      .replace(/\bthis bullet\b/gi, "each");
-  }
-  const lowered =
-    issueCore.charAt(0).toLowerCase() + issueCore.slice(1);
-  if (count === 1) {
-    return `This bullet is ${lowered}. ${howCore}.`;
-  }
-  return `${count} items here are ${lowered}. ${howCore}.`;
+  const how1 =
+    count > 1 ? how.replace(/\bthis bullet\b/gi, "each bullet") : how;
+  const body = [issue, how1].filter(Boolean).join(" ");
+  if (count === 1) return body;
+  const lowered = issue ? issue.charAt(0).toLowerCase() + issue.slice(1) : "";
+  return `${count} bullets here: ${[lowered, how1].filter(Boolean).join(" ")}`;
+}
+
+/**
+ * The part of a finding label that the group header does NOT already say.
+ * Labels arrive as "<entry> · bullet N"; the header names the entry, so the
+ * collapsed row shows only the tail. Without this a long entry name ("Bone
+ * Muscle Research Center — Research Assistant - Data Science & Bioinformatics")
+ * eats the whole row and pushes the chips and action past the card edge.
+ */
+export function shortFindingLabel(label: string): string {
+  const cut = label.lastIndexOf(" · ");
+  if (cut < 0) return label;
+  const tail = label.slice(cut + 3).trim();
+  return tail || label;
 }
 
 export function groupTitle(key: string, data?: ResumeData | null): string {

@@ -89,7 +89,9 @@ def test_close_the_loop_round2_surfaces():
     assert "Condense" in _CARDS
     assert "draftRewrite" in _CARDS
     assert "explainScoreDelta" in _PAGE
-    assert 'This bullet is ${lowered}' in _HELPERS
+    # (The T10 pin here asserted 'This bullet is ${lowered}', which encoded the
+    # broken conjugation — see test_hoist_blurb_does_not_conjugate_backend_copy.)
+    assert "hoistBlurb" in _HELPERS
     assert "Something else" in (
         _FRONTEND / "components/resume-health/metric-ask-input.tsx"
     ).read_text()
@@ -105,3 +107,24 @@ def test_level_values_mirrored_in_health_zones():
     assert "implied: 0.3" in _ZONES
     assert "unaddressed: 0.0" in _ZONES
     assert "direct: 1.0" in _HELPERS
+
+
+def test_collapsed_row_cannot_overflow_on_a_long_entry_label():
+    """A long entry name used to push the chips and action past the card edge.
+
+    Two guards, both required: the badge shows only the label tail (the group
+    header already names the entry) AND it is width-capped + truncating, so a
+    pathological label still cannot grow the row.
+    """
+    assert "shortFindingLabel(finding.label)" in _CARDS
+    assert "max-w-[10rem] shrink-0 truncate" in _CARDS
+    # The action + overflow menu hold their width instead of being squeezed.
+    assert 'className="flex shrink-0 items-center gap-2"' in _CARDS
+
+
+def test_hoist_blurb_does_not_conjugate_backend_copy():
+    helpers = (_FRONTEND / "lib/health-report.ts").read_text()
+    # The count is introduced with a colon; no copula is inserted before the
+    # backend's own sentence ("Has a scale metric…", "A reader can't tell…").
+    assert "bullets here: " in helpers
+    assert "items here are ${" not in helpers  # the old copula template

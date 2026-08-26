@@ -60,6 +60,7 @@ import {
   STALE_APPLY_HINT,
   type StoredAskAnswer,
   textAtLocation,
+  shortFindingLabel,
 } from "@/lib/health-report";
 import { wordDiff } from "@/lib/word-diff";
 import { cn } from "@/lib/utils";
@@ -580,12 +581,13 @@ function CollapsedRow({
         className="flex min-w-0 flex-1 items-center gap-2 text-left"
         onClick={onExpand}
         aria-expanded={false}
+        title={finding.label}
       >
         <Badge
           variant="secondary"
-          className="text-muted-foreground shrink-0 text-xs"
+          className="text-muted-foreground max-w-[10rem] shrink-0 truncate text-xs"
         >
-          {finding.label}
+          {shortFindingLabel(finding.label)}
         </Badge>
         {quote ? (
           <SourceQuote text={quote} truncated />
@@ -604,15 +606,17 @@ function CollapsedRow({
           </Badge>
         )}
         {pts != null && pts > 0 ? (
-        <span className="text-muted-foreground shrink-0 text-xs">
-          +{pts} pts
-        </span>
-      ) : null}
+          <span className="text-muted-foreground shrink-0 text-xs">
+            +{pts} pts
+          </span>
+        ) : null}
       </button>
-      <Button size="xs" variant="outline" onClick={onExpand}>
-        {actionLabel}
-      </Button>
-      {overflow}
+      <div className="flex shrink-0 items-center gap-2">
+        <Button size="xs" variant="outline" onClick={onExpand}>
+          {actionLabel}
+        </Button>
+        {overflow}
+      </div>
     </div>
   );
 }
