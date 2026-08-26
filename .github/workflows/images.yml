@@ -66,7 +66,10 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p /tmp/digests
-          touch "/tmp/digests/${{ matrix.component }}-${{ matrix.arch }}-${DIGEST}"
+          # Strip the "sha256:" prefix — upload-artifact rejects any path
+          # containing a colon, which failed every build job's upload on the
+          # first tag while the pushes themselves had succeeded.
+          touch "/tmp/digests/${{ matrix.component }}-${{ matrix.arch }}-${DIGEST#sha256:}"
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
@@ -103,8 +106,10 @@ jobs:
           IMAGE: ${{ env.REGISTRY }}/${{ github.repository }}-${{ matrix.component }}
         run: |
           set -euo pipefail
-          # Filenames are "<component>-<arch>-sha256:...."; recover the digest.
-          digests=$(ls /tmp/digests | sed 's/.*-\(sha256:.*\)/\1/')
+          # Filenames are "<component>-<arch>-<64 hex chars>" (the sha256:
+          # prefix is stripped at export — colons break upload-artifact);
+          # re-attach it to recover the digest.
+          digests=$(ls /tmp/digests | sed 's/.*-\([0-9a-f]\{64\}\)$/sha256:\1/')
           refs=""
           for d in $digests; do refs="$refs $IMAGE@$d"; done
           if [ "${GITHUB_REF_TYPE:-}" = "tag" ]; then
