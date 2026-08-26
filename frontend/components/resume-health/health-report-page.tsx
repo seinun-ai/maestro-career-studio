@@ -43,6 +43,7 @@ import {
   sharedCoaching,
   hoistBlurb,
   type StreamFilter,
+  staleFindingIds,
 } from "@/lib/health-report";
 import { resumeDataSchema } from "@/lib/resume-schema";
 import { cn } from "@/lib/utils";
@@ -113,6 +114,7 @@ export function HealthReportPage({
     return parsed.success ? parsed.data : null;
   }, [kind, baseQuery.data, appQuery.data]);
 
+
   const templateId =
     kind === "base"
       ? (baseQuery.data?.template_id ?? null)
@@ -136,6 +138,25 @@ export function HealthReportPage({
     retry: (failureCount, error) =>
       !(error instanceof ApiError && error.status === 404) && failureCount < 2,
   });
+
+  const [staleIds, setStaleIds] = useState<Set<string>>(new Set());
+  const reportData = report.data;
+  const reportIsStaleNow = reportIsStale(reportData);
+  useEffect(() => {
+    // A stale report locks only the findings whose own text drifted; every
+    // apply is hash-guarded server-side, so untouched bullets stay actionable.
+    let cancelled = false;
+    void (async () => {
+      const ids =
+        reportIsStaleNow && reportData && resumeData
+          ? await staleFindingIds(reportData.findings, resumeData)
+          : new Set<string>();
+      if (!cancelled) setStaleIds(ids);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [reportIsStaleNow, reportData, resumeData]);
 
   const answers = useQuery({
     queryKey: ["resume-lint", kind, resumeKey, "answers"],
@@ -512,7 +533,7 @@ export function HealthReportPage({
                           onApplied={invalidateAfterApply}
                           onClassificationChanged={overrideClassification}
                           onReanalyze={() => void reanalyzeReport()}
-                          locked={stale}
+                          locked={stale && staleIds.has(finding.id)}
                           nScoreable={nScoreable}
                           hideHow={hideHow}
                           storedAnswer={answers.data?.[finding.id]}
@@ -527,7 +548,7 @@ export function HealthReportPage({
                           onApplied={invalidateAfterApply}
                           onClassificationChanged={overrideClassification}
                           onReanalyze={() => void reanalyzeReport()}
-                          locked={stale}
+                          locked={stale && staleIds.has(finding.id)}
                           nScoreable={nScoreable}
                           hideHow={hideHow}
                         />
@@ -553,7 +574,7 @@ export function HealthReportPage({
                 kind={kind}
                 resumeKey={resumeKey}
                 onApplied={invalidateAfterApply}
-                locked={stale}
+                locked={false}
                 onReanalyze={() => void reanalyzeReport()}
               />
             )}
@@ -589,7 +610,8 @@ export function HealthReportPage({
           data={resumeData}
           kind={kind}
           resumeKey={resumeKey}
-          locked={stale}
+          locked={false}
+          staleIds={staleIds}
           storedAnswers={answers.data}
           onApplied={invalidateAfterApply}
           onReanalyze={() => void reanalyzeReport()}

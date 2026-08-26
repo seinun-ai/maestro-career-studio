@@ -16,6 +16,8 @@ import {
   reportIsStale,
   scoreCompositionLine,
   stripTrailingPunct,
+  contentHash16,
+  staleFindingIds,
 } from "./health-report.ts";
 
 test("reportIsStale treats missing as false", () => {
@@ -273,3 +275,38 @@ test("groupNotesByRule keeps rule-keyed titles for advisory notes", () => {
   assert.equal(groups[0].shapeNote, false);
 });
 
+
+test("contentHash16 matches backend bullet_classify.content_hash", async () => {
+  assert.equal(await contentHash16("Kept the lights on."), "25a0d525ab092b34");
+  assert.equal(await contentHash16("  Kept   the lights on. "), "25a0d525ab092b34");
+  assert.equal(await contentHash16("Built an MCP server."), "c6939498dc73db90");
+});
+
+test("staleFindingIds flags only findings whose text drifted", async () => {
+  const data = {
+    experience: [{ bullets: ["Kept the lights on.", "Built an MCP server."] }],
+  } as never;
+  const findings = [
+    {
+      id: "fresh",
+      content_hash: "25a0d525ab092b34",
+      location: { section: "experience", index: 0, bullet_index: 0 },
+    },
+    {
+      id: "drifted",
+      content_hash: "0000000000000000",
+      location: { section: "experience", index: 0, bullet_index: 1 },
+    },
+    {
+      id: "vanished",
+      content_hash: "25a0d525ab092b34",
+      location: { section: "experience", index: 0, bullet_index: 9 },
+    },
+    {
+      id: "no-hash",
+      location: { section: "experience", index: 0, bullet_index: 0 },
+    },
+  ];
+  const stale = await staleFindingIds(findings as never, data);
+  assert.deepEqual([...stale].sort(), ["drifted", "vanished"]);
+});

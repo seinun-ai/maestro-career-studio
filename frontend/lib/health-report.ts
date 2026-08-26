@@ -28,7 +28,7 @@ export type StreamFilter = "all" | "fix" | "ask" | "note";
 export const CONTENT_CHANGED_PREFIX = "content changed since analysis";
 
 export const STALE_APPLY_HINT =
-  "Re-analyze for current results before applying. This report is from an older resume version.";
+  "This text changed since the analysis — re-analyze before applying.";
 
 export const CONTENT_CHANGED_HINT =
   "This text changed since the analysis — re-analyze to get fresh suggestions";
@@ -490,3 +490,69 @@ export function explainScoreDelta(
   return sentence.charAt(0).toUpperCase() + sentence.slice(1) + ".";
 }
 
+
+export function textAtLocation(
+  data: ResumeData,
+  finding: { location: { section: string; index?: number | null; bullet_index?: number | null } },
+): string | null {
+  const { section, index, bullet_index } = finding.location;
+  if (section === "summary") return data.summary ?? "";
+  if (section.startsWith("extra:")) {
+    const key = section.slice("extra:".length);
+    const sec = data.extra_sections?.find((s) => s.key === key);
+    if (!sec) return null;
+    if (sec.type === "bullets")
+      return bullet_index != null ? (sec.bullets?.[bullet_index] ?? null) : null;
+    if (index == null || bullet_index == null) return null;
+    return sec.entries?.[index]?.bullets?.[bullet_index] ?? null;
+  }
+  if (index == null || bullet_index == null) return null;
+  const entries =
+    section === "experience"
+      ? data.experience
+      : section === "projects"
+        ? data.projects
+        : section === "education"
+          ? data.education
+          : null;
+  return entries?.[index]?.bullets?.[bullet_index] ?? null;
+}
+
+/** Same normalization + sha256[:16] as backend bullet_classify.content_hash. */
+export async function contentHash16(text: string): Promise<string> {
+  const normalized = text.split(/\s+/).filter(Boolean).join(" ");
+  const buf = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(normalized),
+  );
+  return Array.from(new Uint8Array(buf))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("")
+    .slice(0, 16);
+}
+
+/**
+ * Which findings' own text has drifted since the report. Per-op
+ * expected_content_hash makes applies safe server-side regardless; this is
+ * the client-side mirror so a stale REPORT only locks the findings whose
+ * bullets actually changed, instead of the whole page.
+ */
+export async function staleFindingIds<
+  T extends {
+    id: string;
+    content_hash?: string | null;
+    location: { section: string; index?: number | null; bullet_index?: number | null };
+  },
+>(findings: T[], data: ResumeData): Promise<Set<string>> {
+  const stale = new Set<string>();
+  await Promise.all(
+    findings.map(async (finding) => {
+      if (!finding.content_hash) return;
+      const text = textAtLocation(data, finding);
+      if (text == null || (await contentHash16(text)) !== finding.content_hash) {
+        stale.add(finding.id);
+      }
+    }),
+  );
+  return stale;
+}

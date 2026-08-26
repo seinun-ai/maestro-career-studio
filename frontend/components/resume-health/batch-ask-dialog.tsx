@@ -26,7 +26,7 @@ import {
 } from "@/lib/health-report";
 import { toastRewriteError } from "./report-errors";
 import { wordDiff } from "@/lib/word-diff";
-import { textAtLocation } from "@/components/resume-health/finding-cards";
+import { textAtLocation } from "@/lib/health-report";
 import type { LintFinding, ResumeData } from "@/lib/types";
 
 type RowState = {
@@ -64,6 +64,7 @@ export function BatchAskDialog({
   kind,
   resumeKey,
   locked,
+  staleIds,
   storedAnswers,
   onApplied,
   onReanalyze,
@@ -75,6 +76,7 @@ export function BatchAskDialog({
   kind: "base" | "application";
   resumeKey: string;
   locked?: boolean;
+  staleIds?: Set<string>;
   storedAnswers?: Record<string, StoredAskAnswer>;
   onApplied: () => void;
   onReanalyze?: () => void;
@@ -94,11 +96,13 @@ export function BatchAskDialog({
               }
             : emptyMetricAsk(),
           suggestion: fresh ? (stored.suggestion ?? null) : null,
-          error: null,
+          // A finding whose bullet drifted since the report is born in the
+          // stale row state — same rendering as a server 409.
+          error: staleIds?.has(finding.id) ? "409" : null,
           pending: false,
         };
       }),
-    [findings, storedAnswers],
+    [findings, storedAnswers, staleIds],
   );
   const [rows, setRows] = useState<RowState[]>(initial);
   const [drafting, setDrafting] = useState(false);

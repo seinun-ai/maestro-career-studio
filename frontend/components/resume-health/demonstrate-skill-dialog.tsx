@@ -198,7 +198,14 @@ export function DemonstrateSkillDialog({
               </ul>
             </div>
           ))}
-          {picked && (
+        </div>
+        {picked && (
+          <div className="space-y-2 border-t pt-3">
+            <p className="text-muted-foreground truncate text-xs">
+              <span className="font-medium">{picked.label}</span>
+              {" · "}
+              <span className="italic">{picked.text}</span>
+            </p>
             <Textarea
               rows={2}
               aria-label={`How ${skill} shows up in this bullet`}
@@ -208,26 +215,26 @@ export function DemonstrateSkillDialog({
               disabled={locked}
               className="text-sm"
             />
-          )}
-          {draft && picked && (
-            <p className="max-w-[65ch] text-sm leading-relaxed">
-              {wordDiff(picked.text, draft.suggestion).map((token, i) => (
-                <span
-                  key={i}
-                  className={
-                    token.kind === "removed"
-                      ? "bg-red-500/10 text-red-600 line-through dark:text-red-400"
-                      : token.kind === "added"
-                        ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
-                        : undefined
-                  }
-                >
-                  {token.text}{" "}
-                </span>
-              ))}
-            </p>
-          )}
-        </div>
+            {draft && (
+              <p className="max-w-[65ch] text-sm leading-relaxed">
+                {wordDiff(picked.text, draft.suggestion).map((token, i) => (
+                  <span
+                    key={i}
+                    className={
+                      token.kind === "removed"
+                        ? "bg-red-500/10 text-red-600 line-through dark:text-red-400"
+                        : token.kind === "added"
+                          ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+                          : undefined
+                    }
+                  >
+                    {token.text}{" "}
+                  </span>
+                ))}
+              </p>
+            )}
+          </div>
+        )}
         <DialogFooter>
           <Button
             size="sm"

@@ -59,6 +59,7 @@ import {
   sharedCoaching,
   STALE_APPLY_HINT,
   type StoredAskAnswer,
+  textAtLocation,
 } from "@/lib/health-report";
 import { wordDiff } from "@/lib/word-diff";
 import { cn } from "@/lib/utils";
@@ -369,32 +370,6 @@ function DiffText({ oldText, newText }: { oldText: string; newText: string }) {
 }
 
 /** Current text at a finding's location, for the tracked-changes view. */
-export function textAtLocation(
-  data: ResumeData,
-  finding: LintFinding,
-): string | null {
-  const { section, index, bullet_index } = finding.location;
-  if (section === "summary") return data.summary ?? "";
-  if (section.startsWith("extra:")) {
-    const key = section.slice("extra:".length);
-    const sec = data.extra_sections?.find((s) => s.key === key);
-    if (!sec) return null;
-    if (sec.type === "bullets")
-      return bullet_index != null ? (sec.bullets?.[bullet_index] ?? null) : null;
-    if (index == null || bullet_index == null) return null;
-    return sec.entries?.[index]?.bullets?.[bullet_index] ?? null;
-  }
-  if (index == null || bullet_index == null) return null;
-  const entries =
-    section === "experience"
-      ? data.experience
-      : section === "projects"
-        ? data.projects
-        : section === "education"
-          ? data.education
-          : null;
-  return entries?.[index]?.bullets?.[bullet_index] ?? null;
-}
 
 function SuggestionBlock({
   finding,
@@ -458,8 +433,13 @@ function SourceQuote({ text, truncated }: { text: string; truncated?: boolean })
   return (
     <blockquote
       className={cn(
-        "text-muted-foreground border-muted-foreground/30 border-l-2 pl-2 text-sm italic",
-        truncated ? "truncate" : "max-w-[65ch]",
+        "border-muted-foreground/30 border-l-2 pl-2 text-sm",
+        // Truncated one-liners are glanceable labels; keep them quiet. An
+        // expanded quote is body text the user actually reads — regular
+        // posture, near-full contrast, so it can't be mistaken for disabled.
+        truncated
+          ? "text-muted-foreground truncate italic"
+          : "text-foreground/80 max-w-[65ch]",
       )}
     >
       {text}
