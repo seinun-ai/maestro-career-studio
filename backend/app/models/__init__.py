@@ -4,9 +4,11 @@ from app.models.ats_score import AtsScore
 from app.models.autofill_field_observation import AutofillFieldObservation
 from app.models.base_resume import BaseResume
 from app.models.bullet_classification import BulletClassification
+from app.models.bullet_rewrite import BulletRewrite
 from app.models.career_kb import KBDocument, KBEntity, KBPoint, KBPortLog, KBProfile
 from app.models.chat import ChatAttachment, ChatMessage, ChatSession
 from app.models.consent_event import ConsentEvent
+from app.models.health_ask_answer import HealthAskAnswer
 from app.models.health_gate_waiver import HealthGateWaiver
 from app.models.job import Job
 from app.models.job_skill import JobSkill
@@ -24,10 +26,12 @@ __all__ = [
     "AutofillFieldObservation",
     "BaseResume",
     "BulletClassification",
+    "BulletRewrite",
     "ChatAttachment",
     "ChatMessage",
     "ChatSession",
     "ConsentEvent",
+    "HealthAskAnswer",
     "HealthGateWaiver",
     "Job",
     "JobSkill",

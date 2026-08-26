@@ -29,6 +29,7 @@ from app.routers import (
     settings,
     tailoring_sessions,
     templates,
+    version,
 )
 from app.services import seeding, tracing
 from app.services.llm import LLMProviderError
@@ -169,6 +170,7 @@ app.include_router(resume_versions.router)
 app.include_router(resume_lint.router)
 app.include_router(chat.router)
 app.include_router(exports.router)
+app.include_router(version.router)
 
 
 @app.get("/health")

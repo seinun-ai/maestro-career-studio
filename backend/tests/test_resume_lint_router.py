@@ -5,9 +5,11 @@ from app.db import get_db
 from app.main import app
 from app.models.base_resume import BaseResume
 from app.models.bullet_classification import BulletClassification
+from app.models.health_ask_answer import HealthAskAnswer
 from app.models.health_gate_waiver import HealthGateWaiver
 from app.models.resume_lint_report import ResumeLintReport
 from app.routers import resume_lint as lint_router
+from app.services import bullet_classify, resume_versions
 
 SAMPLE_DATA = {
     "contact": {"name": "Sample", "email": "a@example.com"},
@@ -55,6 +57,10 @@ def _waivers(db_session, kind, key, gate_id):
             HealthGateWaiver.gate_id == gate_id,
         )
     ).all()
+
+
+def _unexpected_llm_call(**kwargs):
+    raise AssertionError(f"LLM call should not be reached: {kwargs}")
 
 
 # --------------------------------------------------------------------------- #
@@ -203,6 +209,121 @@ def _seed_report(db_session, slug, findings):
     db_session.commit()
 
 
+def _complete_report_json(*, gates=None, insufficient_evidence=False):
+    return {
+        "score": 69,
+        "grade": "C",
+        "tier": "experienced",
+        "counts": {"gate": 1, "critical": 1, "ask": 0, "note": 0},
+        "gates": gates or [],
+        "findings": [],
+        "insufficient_evidence": insufficient_evidence,
+    }
+
+
+def test_get_latest_lint_surfaces_fresh_score_breakdown(db_session):
+    base = _seed(db_session, slug="data_scientist")
+    version = resume_versions.record_version(
+        db_session, "base", base.slug, base.data_json, source="create"
+    )
+    report = ResumeLintReport(
+        resume_kind="base",
+        resume_key=base.slug,
+        resume_version_number=version.version_number,
+        report_json=_complete_report_json(
+            gates=[{"id": "S3", "tier": "serious", "status": "fail"}],
+            insufficient_evidence=True,
+        ),
+        features_json={
+            "raw_score": 88,
+            "e_hot": 0.75,
+            "n_scoreable": 3,
+            "levels": {"experience:0:0": 1.0},
+        },
+    )
+    db_session.add(report)
+    db_session.commit()
+
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        response = TestClient(app).get("/api/resume-lint/base/data_scientist")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["stale"] is False
+    assert body["insufficient_evidence"] is True
+    assert body["score_breakdown"] == {
+        "raw_score": 88,
+        "e_hot": 0.75,
+        "n_scoreable": 3,
+        "capped_by": "serious",
+    }
+
+
+def test_score_breakdown_omits_unapplied_gate_cap(db_session):
+    base = _seed(db_session, slug="data_scientist")
+    version = resume_versions.record_version(
+        db_session, "base", base.slug, base.data_json, source="create"
+    )
+    report_json = _complete_report_json(
+        gates=[{"id": "S3", "tier": "serious", "status": "fail"}]
+    )
+    report_json["score"] = 30
+    db_session.add(
+        ResumeLintReport(
+            resume_kind="base",
+            resume_key=base.slug,
+            resume_version_number=version.version_number,
+            report_json=report_json,
+            features_json={"raw_score": 30, "e_hot": 0.25, "n_scoreable": 4},
+        )
+    )
+    db_session.commit()
+
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        response = TestClient(app).get("/api/resume-lint/base/data_scientist")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["score_breakdown"]["capped_by"] is None
+
+
+def test_get_latest_lint_marks_report_stale_after_version_bump(db_session):
+    base = _seed(db_session, slug="data_scientist")
+    first = resume_versions.record_version(
+        db_session, "base", base.slug, base.data_json, source="create"
+    )
+    db_session.add(
+        ResumeLintReport(
+            resume_kind="base",
+            resume_key=base.slug,
+            resume_version_number=first.version_number,
+            report_json=_complete_report_json(),
+        )
+    )
+    changed = {**base.data_json, "summary": "Changed after analysis."}
+    resume_versions.record_version(
+        db_session, "base", base.slug, changed, source="form_edit"
+    )
+    db_session.commit()
+
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        response = TestClient(app).get("/api/resume-lint/base/data_scientist")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["stale"] is True
+    assert body["insufficient_evidence"] is False
+    assert body["score_breakdown"] is None
+
+
 def test_answer_ask_returns_suggestion(db_session, monkeypatch):
     _seed(db_session, slug="data_scientist")
     _seed_report(
@@ -212,9 +333,26 @@ def test_answer_ask_returns_suggestion(db_session, monkeypatch):
             "location": {"section": "experience", "index": 0, "bullet_index": 1},
         }],
     )
+    calls = 0
+
+    def fake_call_openai(*, prompt, model, response_format, trace_name):
+        nonlocal calls
+        calls += 1
+        assert "Original bullet: Kept the lights on." in prompt
+        assert (
+            "Additional context from the candidate (may be empty): served 5000 users"
+            in prompt
+        )
+        assert model == "test-model"
+        assert response_format == "json"
+        assert trace_name == "resume_bullet_rewrite"
+        return {"rewrite": "Served 5,000 users with the platform."}
+
+    monkeypatch.setattr(lint_router.health_guards.llm, "call_openai", fake_call_openai)
     monkeypatch.setattr(
-        lint_router.health_guards, "guarded_rewrite",
-        lambda db, text, *, context: "Served 5000 users with the platform.",
+        lint_router.health_guards.model_settings,
+        "get_smart_model",
+        lambda session: "test-model",
     )
 
     app.dependency_overrides[get_db] = _override_db(db_session)
@@ -227,7 +365,124 @@ def test_answer_ask_returns_suggestion(db_session, monkeypatch):
         app.dependency_overrides.clear()
 
     assert r.status_code == 200
-    assert r.json() == {"suggestion": "Served 5000 users with the platform."}
+    assert r.json() == {"suggestion": "Served 5,000 users with the platform."}
+    assert calls == 1
+
+
+def test_answer_ask_matching_content_hash_returns_suggestion(db_session, monkeypatch):
+    _seed(db_session, slug="data_scientist")
+    _seed_report(
+        db_session,
+        "data_scientist",
+        [
+            {
+                "id": "ask-current-bullet",
+                "type": "ask",
+                "content_hash": bullet_classify.content_hash("Kept the lights on."),
+                "location": {
+                    "section": "experience",
+                    "index": 0,
+                    "bullet_index": 1,
+                },
+            }
+        ],
+    )
+
+    def fake_call_openai(*, prompt, model, response_format, trace_name):
+        assert "Original bullet: Kept the lights on." in prompt
+        assert model == "test-model"
+        assert response_format == "json"
+        assert trace_name == "resume_bullet_rewrite"
+        return {"rewrite": "Served 5,000 users with the platform."}
+
+    monkeypatch.setattr(lint_router.health_guards.llm, "call_openai", fake_call_openai)
+    monkeypatch.setattr(
+        lint_router.health_guards.model_settings,
+        "get_smart_model",
+        lambda session: "test-model",
+    )
+
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        response = TestClient(app).post(
+            "/api/resume-lint/base/data_scientist/ask/ask-current-bullet/answer",
+            json={"answer": "served 5000 users"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json() == {"suggestion": "Served 5,000 users with the platform."}
+
+
+def test_answer_ask_content_hash_mismatch_returns_409_without_llm(
+    db_session, monkeypatch
+):
+    _seed(db_session, slug="data_scientist")
+    _seed_report(
+        db_session,
+        "data_scientist",
+        [
+            {
+                "id": "ask-stale-bullet",
+                "type": "ask",
+                "content_hash": bullet_classify.content_hash("Report-time bullet."),
+                "location": {
+                    "section": "experience",
+                    "index": 0,
+                    "bullet_index": 1,
+                },
+            }
+        ],
+    )
+    monkeypatch.setattr(lint_router.health_guards.llm, "call_openai", _unexpected_llm_call)
+
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        response = TestClient(app).post(
+            "/api/resume-lint/base/data_scientist/ask/ask-stale-bullet/answer",
+            json={"answer": "served 5000 users"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 409
+    assert response.json()["detail"].startswith("content changed since analysis")
+
+
+def test_answer_ask_missing_hashed_target_returns_409_without_llm(
+    db_session, monkeypatch
+):
+    _seed(db_session, slug="data_scientist")
+    _seed_report(
+        db_session,
+        "data_scientist",
+        [
+            {
+                "id": "ask-deleted-bullet",
+                "type": "ask",
+                "content_hash": bullet_classify.content_hash("Deleted bullet."),
+                "location": {
+                    "section": "experience",
+                    "index": 0,
+                    "bullet_index": 99,
+                },
+            }
+        ],
+    )
+    monkeypatch.setattr(lint_router.health_guards.llm, "call_openai", _unexpected_llm_call)
+
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        response = TestClient(app).post(
+            "/api/resume-lint/base/data_scientist/ask/ask-deleted-bullet/answer",
+            json={"answer": "served 5000 users"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 409
+    assert response.json()["detail"].startswith("content changed since analysis")
 
 
 def test_answer_ask_missing_finding_returns_404(db_session, monkeypatch):
@@ -239,10 +494,7 @@ def test_answer_ask_missing_finding_returns_404(db_session, monkeypatch):
             "location": {"section": "experience", "index": 0, "bullet_index": 0},
         }],
     )
-    monkeypatch.setattr(
-        lint_router.health_guards, "guarded_rewrite",
-        lambda db, text, *, context: "x",
-    )
+    monkeypatch.setattr(lint_router.health_guards.llm, "call_openai", _unexpected_llm_call)
 
     app.dependency_overrides[get_db] = _override_db(db_session)
     try:
@@ -264,10 +516,7 @@ def test_answer_ask_non_bullet_location_returns_422(db_session, monkeypatch):
             "location": {"section": "experience"},  # no index/bullet_index
         }],
     )
-    monkeypatch.setattr(
-        lint_router.health_guards, "guarded_rewrite",
-        lambda db, text, *, context: "x",
-    )
+    monkeypatch.setattr(lint_router.health_guards.llm, "call_openai", _unexpected_llm_call)
 
     app.dependency_overrides[get_db] = _override_db(db_session)
     try:
@@ -280,7 +529,7 @@ def test_answer_ask_non_bullet_location_returns_422(db_session, monkeypatch):
     assert r.status_code == 422
 
 
-def test_answer_ask_returns_422_when_rewrite_none(db_session, monkeypatch):
+def test_answer_ask_returns_422_when_llm_fabricates(db_session, monkeypatch):
     _seed(db_session, slug="data_scientist")
     _seed_report(
         db_session, "data_scientist",
@@ -289,9 +538,23 @@ def test_answer_ask_returns_422_when_rewrite_none(db_session, monkeypatch):
             "location": {"section": "experience", "index": 0, "bullet_index": 0},
         }],
     )
+    calls = 0
+
+    def fake_call_openai(*, prompt, model, response_format, trace_name):
+        nonlocal calls
+        calls += 1
+        assert "Original bullet: Led an analytics project." in prompt
+        assert "Additional context from the candidate (may be empty): hello" in prompt
+        assert model == "test-model"
+        assert response_format == "json"
+        assert trace_name == "resume_bullet_rewrite"
+        return {"rewrite": "Led an analytics project serving 5000 users."}
+
+    monkeypatch.setattr(lint_router.health_guards.llm, "call_openai", fake_call_openai)
     monkeypatch.setattr(
-        lint_router.health_guards, "guarded_rewrite",
-        lambda db, text, *, context: None,
+        lint_router.health_guards.model_settings,
+        "get_smart_model",
+        lambda session: "test-model",
     )
 
     app.dependency_overrides[get_db] = _override_db(db_session)
@@ -303,6 +566,7 @@ def test_answer_ask_returns_422_when_rewrite_none(db_session, monkeypatch):
     finally:
         app.dependency_overrides.clear()
     assert r.status_code == 422
+    assert calls == 2
 
 
 def test_answer_ask_stale_index_degrades_to_422(db_session, monkeypatch):
@@ -325,11 +589,7 @@ def test_answer_ask_stale_index_degrades_to_422(db_session, monkeypatch):
             "location": {"section": "experience", "index": 0, "bullet_index": 5},
         }],
     )
-    # Would return a string if the extraction ever reached the rewrite.
-    monkeypatch.setattr(
-        lint_router.health_guards, "guarded_rewrite",
-        lambda db, text, *, context: "should not be reached",
-    )
+    monkeypatch.setattr(lint_router.health_guards.llm, "call_openai", _unexpected_llm_call)
 
     app.dependency_overrides[get_db] = _override_db(db_session)
     try:
@@ -387,3 +647,165 @@ def test_answer_ask_no_report_returns_404(db_session):
     finally:
         app.dependency_overrides.clear()
     assert r.status_code == 404
+
+
+def _stored_answer(db_session, finding_id="ask-bullet-1"):
+    return db_session.scalar(
+        select(HealthAskAnswer).where(
+            HealthAskAnswer.resume_kind == "base",
+            HealthAskAnswer.resume_key == "data_scientist",
+            HealthAskAnswer.finding_id == finding_id,
+        )
+    )
+
+
+def test_answer_ask_persists_even_when_rewrite_422s(db_session, monkeypatch):
+    _seed(db_session, slug="data_scientist")
+    _seed_report(
+        db_session, "data_scientist",
+        [{
+            "id": "ask-bullet-1", "type": "ask",
+            "content_hash": bullet_classify.content_hash("Led an analytics project."),
+            "location": {"section": "experience", "index": 0, "bullet_index": 0},
+        }],
+    )
+
+    def fake_call_openai(*, prompt, model, response_format, trace_name):
+        return {"rewrite": "Led an analytics project serving 5000 users."}
+
+    monkeypatch.setattr(lint_router.health_guards.llm, "call_openai", fake_call_openai)
+    monkeypatch.setattr(
+        lint_router.health_guards.model_settings,
+        "get_smart_model",
+        lambda session: "test-model",
+    )
+
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        r = TestClient(app).post(
+            "/api/resume-lint/base/data_scientist/ask/ask-bullet-1/answer",
+            json={"answer": "hello"},
+        )
+        stored = TestClient(app).get("/api/resume-lint/base/data_scientist/answers")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert r.status_code == 422
+    row = _stored_answer(db_session)
+    assert row is not None
+    assert row.answer == "hello"
+    assert row.suggestion is None
+    body = stored.json()
+    assert body["ask-bullet-1"]["answer"] == "hello"
+    assert body["ask-bullet-1"]["suggestion"] is None
+    assert body["ask-bullet-1"]["content_hash"] == bullet_classify.content_hash(
+        "Led an analytics project."
+    )
+
+
+def test_answer_ask_rehydration_round_trip(db_session, monkeypatch):
+    _seed(db_session, slug="data_scientist")
+    _seed_report(
+        db_session, "data_scientist",
+        [{
+            "id": "ask-bullet-1", "type": "ask",
+            "content_hash": bullet_classify.content_hash("Kept the lights on."),
+            "location": {"section": "experience", "index": 0, "bullet_index": 1},
+        }],
+    )
+
+    def fake_call_openai(*, prompt, model, response_format, trace_name):
+        return {"rewrite": "Served 5,000 users with the platform."}
+
+    monkeypatch.setattr(lint_router.health_guards.llm, "call_openai", fake_call_openai)
+    monkeypatch.setattr(
+        lint_router.health_guards.model_settings,
+        "get_smart_model",
+        lambda session: "test-model",
+    )
+
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        r = TestClient(app).post(
+            "/api/resume-lint/base/data_scientist/ask/ask-bullet-1/answer",
+            json={"answer": "served 5000 users"},
+        )
+        stored = TestClient(app).get("/api/resume-lint/base/data_scientist/answers")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert r.status_code == 200
+    body = stored.json()
+    assert body["ask-bullet-1"] == {
+        "answer": "served 5000 users",
+        "suggestion": "Served 5,000 users with the platform.",
+        "content_hash": bullet_classify.content_hash("Kept the lights on."),
+    }
+
+
+def test_draft_rewrite_409_never_calls_llm(db_session, monkeypatch):
+    _seed(db_session, slug="data_scientist")
+    monkeypatch.setattr(
+        lint_router.health_guards.llm, "call_openai", _unexpected_llm_call
+    )
+
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        r = TestClient(app).post(
+            "/api/resume-lint/base/data_scientist/draft-rewrite",
+            json={
+                "location": {
+                    "section": "experience",
+                    "index": 0,
+                    "bullet_index": 1,
+                },
+                "expected_content_hash": bullet_classify.content_hash(
+                    "Report-time bullet."
+                ),
+            },
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert r.status_code == 409
+    assert r.json()["detail"].startswith("content changed since analysis")
+
+
+def test_draft_rewrite_condense_returns_hash_of_source_text(db_session, monkeypatch):
+    _seed(db_session, slug="data_scientist")
+    source = "Kept the lights on."
+    seen = []
+
+    def fake_call_openai(*, prompt, model, response_format, trace_name):
+        seen.append(prompt)
+        return {"rewrite": "Kept the lights on."}
+
+    monkeypatch.setattr(lint_router.health_guards.llm, "call_openai", fake_call_openai)
+    monkeypatch.setattr(
+        lint_router.health_guards.model_settings,
+        "get_smart_model",
+        lambda session: "test-model",
+    )
+
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        r = TestClient(app).post(
+            "/api/resume-lint/base/data_scientist/draft-rewrite",
+            json={
+                "location": {
+                    "section": "experience",
+                    "index": 0,
+                    "bullet_index": 1,
+                },
+                "objective": "condense",
+            },
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert r.status_code == 200
+    assert r.json() == {
+        "suggestion": "Kept the lights on.",
+        "content_hash": bullet_classify.content_hash(source),
+    }
+    assert seen and "CONDENSE OBJECTIVE" in seen[0]

@@ -13,7 +13,8 @@ prior Docker or terminal experience beyond copy-pasting commands.
 [Your first session, in order](#4-your-first-session-in-order) ·
 [The browser extension](#5-the-browser-extension) ·
 [Drive it from your assistant (MCP)](#6-drive-it-from-your-assistant-mcp) ·
-[Where it can go next](#7-where-it-can-go-next)
+[Where it can go next](#7-where-it-can-go-next) ·
+[Keeping it up to date](#8-keeping-it-up-to-date)
 
 ---
 
@@ -217,3 +218,34 @@ as adaptable starting points:
 Whatever the agent does, the consent posture holds: nothing is ever
 submitted without your explicit per-application yes, and everything is
 written down — proposals, consent events, evidence.
+
+## 8. Keeping it up to date
+
+From the folder you cloned:
+
+```bash
+./scripts/update.sh
+```
+
+That is the whole update. It takes a database backup, moves your checkout to
+the newest released version, brings the images to that same version, and
+waits until the stack is healthy again. Run `./scripts/update.sh --check`
+first if you only want to know whether there is anything new — it changes
+nothing.
+
+Three things worth knowing before your first update:
+
+- **Your data is not involved.** Your resumes, applications, KB documents and
+  settings are files on disk that no update step touches, and the database
+  lives in a Docker volume that survives everything here. The backup the
+  script takes guards the database *migration* specifically.
+- **Migrations run themselves** when the backend starts, so the first boot
+  after an update takes longer than usual. The script tells you it is waiting.
+- **Two things stay manual**, because Docker cannot reach them: reload the
+  extension at `chrome://extensions` (and reload any job tab that was already
+  open), and restart your MCP client, re-running `./scripts/setup-mcp.sh`.
+  The script prints both reminders when it finishes.
+
+The [README's Updating section](../README.md#updating) has the rest: the
+manual command-by-command equivalent, how to pin a specific version, and the
+rollback recipe.

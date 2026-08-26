@@ -46,6 +46,19 @@ def test_replace_summary_allows_none_value():
     op = TypeAdapter(ResumeEdit).validate_python({"kind": "replace_summary", "value": None})
     assert isinstance(op, ReplaceSummary)
     assert op.value is None
+    assert op.expected_content_hash is None
+
+
+def test_replace_summary_parses_expected_content_hash():
+    op = TypeAdapter(ResumeEdit).validate_python(
+        {
+            "kind": "replace_summary",
+            "value": "New summary",
+            "expected_content_hash": "0123456789abcdef",
+        }
+    )
+    assert isinstance(op, ReplaceSummary)
+    assert op.expected_content_hash == "0123456789abcdef"
 
 
 def test_toggle_entry_rejects_non_toggleable_section():
@@ -60,6 +73,22 @@ def test_replace_bullet_allows_education_section():
         {"kind": "replace_bullet", "section": "education", "index": 0, "bullet_index": 0, "value": "x"}
     )
     assert isinstance(op, ReplaceBullet)
+    assert op.expected_content_hash is None
+
+
+def test_replace_bullet_parses_expected_content_hash():
+    op = TypeAdapter(ResumeEdit).validate_python(
+        {
+            "kind": "replace_bullet",
+            "section": "experience",
+            "index": 0,
+            "bullet_index": 0,
+            "value": "x",
+            "expected_content_hash": "fedcba9876543210",
+        }
+    )
+    assert isinstance(op, ReplaceBullet)
+    assert op.expected_content_hash == "fedcba9876543210"
 
 
 def test_unknown_kind_rejected():

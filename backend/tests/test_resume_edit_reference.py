@@ -25,7 +25,10 @@ def test_rendered_brief_names_every_kind_with_its_fields():
     for kind in resume_edit.op_kinds():
         assert f"{kind}{{" in brief, f"brief omits {kind}"
     # Spot-check a derived field list so a renamed field surfaces here too.
-    assert "replace_bullet{section,index,bullet_index,value}" in brief
+    assert (
+        "replace_bullet{section,index,bullet_index,value,expected_content_hash}"
+        in brief
+    )
 
 
 def test_rendered_shapes_name_every_kind():

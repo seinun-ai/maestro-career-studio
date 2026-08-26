@@ -7,6 +7,7 @@ import {
   GalleryCardActions,
   GalleryGrid,
 } from "@/components/gallery/gallery-card";
+import { HealthListChip } from "@/components/resume-health/health-badges";
 import { Badge } from "@/components/ui/badge";
 import { CardHeader, CardTitle } from "@/components/ui/card";
 import { formatAbsoluteDateTime, formatLabeledAgo } from "@/lib/format-date";
@@ -60,6 +61,7 @@ function BaseResumeCardBody({
               <span title={formatAbsoluteDateTime(resume.updated_at)}>
                 {formatLabeledAgo(resume.updated_at, "Updated")}
               </span>
+              <HealthListChip slug={resume.slug} />
               {isArchived && <Badge variant="secondary">Archived</Badge>}
               {roleUnset && (
                 <Badge

@@ -1,5 +1,17 @@
 import type { ResumeData } from "@/lib/types";
 
+/**
+ * Mirror of `backend/app/services/health_score.LEVEL_VALUES`. Keep in lockstep
+ * with `lib/health-report.ts` (same map, used for potential-points display).
+ */
+export const LEVEL_VALUES: Record<string, number> = {
+  direct: 1.0,
+  analogue: 0.8,
+  adjacent: 0.5,
+  implied: 0.3,
+  unaddressed: 0.0,
+};
+
 function enabledIndices(
   entries: { enabled?: boolean }[] | undefined | null,
 ): number[] {

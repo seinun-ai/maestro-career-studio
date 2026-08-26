@@ -119,6 +119,36 @@ jobs:
               maestro-career-studio-mcp < /dev/null
           done
 
+  shellcheck:
+    name: Shellcheck
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Install shellcheck
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends shellcheck
+
+      - name: Lint scripts
+        run: shellcheck scripts/*.sh
+
+  update-check:
+    name: update.sh --check (no stack)
+    runs-on: ubuntu-latest
+
+    # The documented answer to "am I up to date?" is a read-only command that
+    # must degrade honestly when the stack is down and still exit 0. This is
+    # that command on a fresh checkout with no compose stack. fetch-depth: 0
+    # because the default shallow clone has no tags.
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Run the documented --check command
+        run: ./scripts/update.sh --check
+
   docs-gate:
     name: SYSTEM.md Header-Contract Gate
     runs-on: ubuntu-latest

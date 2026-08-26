@@ -14,7 +14,7 @@ from app.models.application import Application
 from app.models.job import Job
 from app.models.template import Template
 from app.routers import applications
-from app.services import pdf_render
+from app.services import bullet_classify, pdf_render
 
 
 def _write_valid_pdf(path: Path, pages: int = 1) -> None:
@@ -1174,6 +1174,9 @@ def test_patch_application_edits_updates_customized_json(db_session, monkeypatch
                     {
                         "kind": "replace_summary",
                         "value": "Edited via patch endpoint.",
+                        "expected_content_hash": bullet_classify.content_hash(
+                            "Base summary."
+                        ),
                     }
                 ]
             },
@@ -1182,6 +1185,54 @@ def test_patch_application_edits_updates_customized_json(db_session, monkeypatch
         assert res2.json()["customized_json"]["summary"] == "Edited via patch endpoint."
     finally:
         app.dependency_overrides.clear()
+
+
+def test_patch_application_edits_hash_mismatch_returns_409_without_write(
+    db_session, monkeypatch
+):
+    job = _job(db_session, role_category="content_hash_guard")
+    base = {
+        "contact": {"name": "Riley Quill", "email": "a@example.com"},
+        "summary": "Base summary.",
+        "skills": [],
+        "experience": [],
+        "projects": [],
+        "education": [],
+        "certifications": [],
+    }
+    monkeypatch.setattr(
+        applications.base_resume_data,
+        "load_base_resume",
+        lambda slug, session=None: __import__("copy").deepcopy(base),
+    )
+
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        client = TestClient(app)
+        app_id = _app_from_base(client, job, base)
+        response = client.patch(
+            f"/api/applications/{app_id}/edits",
+            json={
+                "ops": [
+                    {"kind": "replace_summary", "value": "Interim summary."},
+                    {
+                        "kind": "replace_summary",
+                        "value": "Stale rewrite.",
+                        "expected_content_hash": bullet_classify.content_hash(
+                            "Report-time summary."
+                        ),
+                    },
+                ]
+            },
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 409
+    assert response.json()["detail"].startswith("content changed since analysis")
+    db_session.expire_all()
+    row = db_session.get(Application, app_id)
+    assert row.customized_json["summary"] == "Base summary."
 
 
 def _app_from_base(client, job, base):

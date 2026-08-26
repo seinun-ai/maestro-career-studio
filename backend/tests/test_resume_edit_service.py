@@ -4,7 +4,8 @@ from copy import deepcopy
 import pytest
 
 from app.schemas.resume_edit import ResumeEditRequest
-from app.services.resume_edit import apply_edits
+from app.services import bullet_classify
+from app.services.resume_edit import ContentChangedError, apply_edits
 
 
 BASE = {
@@ -55,9 +56,94 @@ def test_replace_bullet_round_trip_only_that_bullet_differs():
     assert base == BASE
 
 
+def test_replace_bullet_matching_expected_content_hash_writes():
+    result = apply_edits(
+        deepcopy(BASE),
+        _ops(
+            {
+                "kind": "replace_bullet",
+                "section": "experience",
+                "index": 0,
+                "bullet_index": 1,
+                "value": "Deployed RAG service.",
+                "expected_content_hash": bullet_classify.content_hash("Shipped model."),
+            }
+        ),
+    )
+    assert result["experience"][0]["bullets"][1] == "Deployed RAG service."
+
+
+def test_replace_bullet_mismatch_raises_without_mutating_input():
+    base = deepcopy(BASE)
+    with pytest.raises(ValueError, match="^content changed since analysis"):
+        apply_edits(
+            base,
+            _ops(
+                {
+                    "kind": "replace_bullet",
+                    "section": "experience",
+                    "index": 0,
+                    "bullet_index": 1,
+                    "value": "Deployed RAG service.",
+                    "expected_content_hash": bullet_classify.content_hash("Different bullet."),
+                }
+            ),
+        )
+    assert base == BASE
+
+
+def test_replace_bullet_missing_target_with_hash_is_content_change():
+    base = deepcopy(BASE)
+    with pytest.raises(ContentChangedError, match="^content changed since analysis"):
+        apply_edits(
+            base,
+            _ops(
+                {
+                    "kind": "replace_bullet",
+                    "section": "experience",
+                    "index": 0,
+                    "bullet_index": 99,
+                    "value": "Deployed RAG service.",
+                    "expected_content_hash": bullet_classify.content_hash("Shipped model."),
+                }
+            ),
+        )
+    assert base == BASE
+
+
 def test_replace_summary_and_none():
     result = apply_edits(deepcopy(BASE), _ops({"kind": "replace_summary", "value": None}))
     assert result["summary"] is None
+
+
+def test_replace_summary_matching_expected_content_hash_writes():
+    result = apply_edits(
+        deepcopy(BASE),
+        _ops(
+            {
+                "kind": "replace_summary",
+                "value": "New summary.",
+                "expected_content_hash": bullet_classify.content_hash("Original summary."),
+            }
+        ),
+    )
+    assert result["summary"] == "New summary."
+
+
+def test_replace_summary_mismatch_raises_without_mutating_input():
+    base = deepcopy(BASE)
+    with pytest.raises(ValueError, match="^content changed since analysis"):
+        apply_edits(
+            base,
+            _ops(
+                {
+                    "kind": "replace_summary",
+                    "value": "New summary.",
+                    "expected_content_hash": bullet_classify.content_hash("Different summary."),
+                }
+            ),
+        )
+    assert base == BASE
 
 
 def test_toggle_entry_flips_enabled():

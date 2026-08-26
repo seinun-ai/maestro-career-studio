@@ -37,6 +37,7 @@ from app.services import (
     prompt_assembly,
     resume_edit,
     resume_lint,
+    resume_versions,
 )
 from app.services.ats import normalize_term, score_resume, term_in_text
 from app.services.resume_projects import extra_entry_live, extra_section_live
@@ -99,8 +100,8 @@ class StaleSessionError(ValueError):
 
 
 class HealthGateBlockedError(ValueError):
-    """A fatal, unwaived health gate is failing on the base resume — tailoring
-    reweights a healthy document; it cannot repair a broken one."""
+    """A fresh fatal, unwaived health gate is failing on the base resume —
+    tailoring reweights a healthy document; it cannot repair a broken one."""
 
 
 def _plan_auto_resolutions(session: Session, gaps: dict) -> list[dict]:
@@ -148,35 +149,57 @@ def create_session(
     owns_session = session is None
     session = session or SessionLocal()
     try:
-        # Health gate FIRST (opt-in): a FAILING FATAL, unwaived gate on the base
-        # resume blocks tailoring outright — tailoring reweights a healthy
-        # document, it cannot repair a broken one. A low health score only
-        # WARNS. It's a cheap DB read, so a block fails fast before any engine
-        # run or enrichment spend (audit C18). No report at all → proceed
-        # silently (health is opt-in).
+        # Health gate FIRST (opt-in): a FRESH failing fatal, unwaived gate on the
+        # base resume blocks tailoring outright — tailoring reweights a healthy
+        # document, it cannot repair a broken one. A stale report behaves like
+        # no report for blocking and carries a re-analyze warning; a fresh low
+        # score only warns. It's a cheap DB read, so a block fails fast before
+        # any engine run or enrichment spend (audit C18). No report at all →
+        # proceed silently (health is opt-in).
         health_warning = None
         health = resume_lint.latest_report(session, "base", base_resume)
         if health is not None:
-            rj = health.report_json
-            # Waivers come off the TABLE, never off the report's own statuses:
-            # waiving writes a row and nothing else, so the stored snapshot
-            # still reads "fail" until the next health-check RUN folds waivers
-            # in. Reading statuses alone left MCP's documented escape hatch shut
-            # — waive, retry, same 409 — while the web path only worked because
-            # its waive button re-runs the check.
-            waived = resume_lint.gate_waivers(session, "base", base_resume)
-            failed_fatal = [g for g in rj.get("gates", [])
-                            if g.get("tier") == "fatal" and g.get("status") == "fail"
-                            and g.get("id") not in waived]
-            if failed_fatal:
-                raise HealthGateBlockedError(
-                    "Base resume has failing structural gate(s): "
-                    + ", ".join(g["id"] for g in failed_fatal)
-                    + ". Fix or waive them in the health check before tailoring.")
-            if rj.get("score", 100) < 55:
+            current_version = resume_versions.latest_version(
+                session, "base", base_resume
+            )
+            current_number = (
+                current_version.version_number if current_version else None
+            )
+            if health.resume_version_number != current_number:
+                report_version = health.resume_version_number
                 health_warning = (
-                    f"Base resume health is {rj.get('score')} ({rj.get('grade')}); "
-                    "tailoring a weak base produces weak output.")
+                    "Health report is stale "
+                    f"(ran against v{report_version if report_version is not None else '?'}; "
+                    f"resume is now v{current_number if current_number is not None else '?'}) "
+                    "— re-analyze."
+                )
+            else:
+                rj = health.report_json
+                # Waivers come off the TABLE, never off the report's own statuses:
+                # waiving writes a row and nothing else, so the stored snapshot
+                # still reads "fail" until the next health-check RUN folds waivers
+                # in. Reading statuses alone left MCP's documented escape hatch shut
+                # — waive, retry, same 409 — while the web path only worked because
+                # its waive button re-runs the check.
+                waived = resume_lint.gate_waivers(session, "base", base_resume)
+                failed_fatal = [
+                    g
+                    for g in rj.get("gates", [])
+                    if g.get("tier") == "fatal"
+                    and g.get("status") == "fail"
+                    and g.get("id") not in waived
+                ]
+                if failed_fatal:
+                    raise HealthGateBlockedError(
+                        "Base resume has failing structural gate(s): "
+                        + ", ".join(g["id"] for g in failed_fatal)
+                        + ". Fix or waive them in the health check before tailoring."
+                    )
+                if rj.get("score", 100) < 55:
+                    health_warning = (
+                        f"Base resume health is {rj.get('score')} ({rj.get('grade')}); "
+                        "tailoring a weak base produces weak output."
+                    )
 
         # Run the engine ONCE: gaps are built from this result and the same
         # result is persisted as the "before" score row (audit C18 — this used

@@ -1,10 +1,10 @@
 {
   "structure": {
     "root": "backend",
-    "modules": 423,
-    "total_loc": 118645,
-    "src_loc": 39181,
-    "test_loc": 79464,
+    "modules": 426,
+    "total_loc": 120410,
+    "src_loc": 39656,
+    "test_loc": 80754,
     "orphan_modules": [],
     "test_only_reachable": [],
     "orphan_loc": 0,
@@ -35,11 +35,11 @@
       },
       {
         "file": "app/services/resume_lint.py",
-        "line": 668,
+        "line": 701,
         "name": "_advisories",
         "complexity": 39,
         "params": 1,
-        "lines": 109
+        "lines": 106
       },
       {
         "file": "app/services/role_categories.py",
@@ -115,7 +115,7 @@
       },
       {
         "file": "app/services/tailoring_session.py",
-        "line": 1093,
+        "line": 1116,
         "name": "_live_text_fragments",
         "complexity": 28,
         "params": 1,
@@ -123,7 +123,7 @@
       },
       {
         "file": "app/services/proposals.py",
-        "line": 298,
+        "line": 299,
         "name": "get_final_review",
         "complexity": 28,
         "params": 2,
@@ -243,7 +243,7 @@
       },
       {
         "file": "app/services/tailoring_session.py",
-        "line": 954,
+        "line": 977,
         "name": "_write_back_elicited_points",
         "complexity": 23,
         "params": 3,
@@ -251,7 +251,7 @@
       },
       {
         "file": "app/services/tailoring_session.py",
-        "line": 1309,
+        "line": 1332,
         "name": "tailor",
         "complexity": 23,
         "params": 4,
@@ -315,7 +315,7 @@
       },
       {
         "file": "tests/test_tailoring_sessions_router.py",
-        "line": 2091,
+        "line": 2154,
         "name": "test_tailor_happy_path",
         "complexity": 21,
         "params": 3,
@@ -410,7 +410,7 @@
         "lines": 40
       }
     ],
-    "hotspot_count": 401,
+    "hotspot_count": 405,
     "error_masking": [
       {
         "file": "tests/test_tracing.py",
@@ -459,8 +459,8 @@
       }
     ],
     "error_masking_count": 9,
-    "internal_import_edges": 1759,
-    "imports_per_module": 4.16,
+    "internal_import_edges": 1792,
+    "imports_per_module": 4.21,
     "entry_points_used": [
       "app.main",
       "mcp_server.server",
@@ -477,8 +477,8 @@
       "min_tokens": 50,
       "mode": "weak"
     },
-    "percentage": 0.9,
-    "duplicated_lines": 435,
+    "percentage": 0.88,
+    "duplicated_lines": 430,
     "clones": 46,
     "allowlisted_clones": 0,
     "worst_files": [
@@ -495,10 +495,6 @@
         6
       ],
       [
-        "app/services/resume_edit.py",
-        6
-      ],
-      [
         "app/services/tailoring_session.py",
         6
       ],
@@ -512,6 +508,10 @@
       ],
       [
         "app/routers/explore.py",
+        4
+      ],
+      [
+        "app/services/resume_edit.py",
         4
       ],
       [
@@ -582,7 +582,7 @@
     {
       "rank": "P2",
       "signal": "complexity_concentration",
-      "detail": "401 function(s) over threshold. worst: mcp_server/tests/test_server.py:532 cc=42",
+      "detail": "405 function(s) over threshold. worst: mcp_server/tests/test_server.py:532 cc=42",
       "why": "Complexity mass concentrating in few functions is the erosion signature.",
       "action": "Decompose the top 3. Do not touch the tail."
     },
@@ -595,16 +595,16 @@
     }
   ],
   "metrics": {
-    "total_loc": 118645,
-    "src_loc": 39181,
-    "test_loc": 79464,
-    "modules": 423,
+    "total_loc": 120410,
+    "src_loc": 39656,
+    "test_loc": 80754,
+    "modules": 426,
     "orphan_loc": 0,
-    "duplication_pct": 0.9,
-    "duplicated_lines": 435,
+    "duplication_pct": 0.88,
+    "duplicated_lines": 430,
     "clone_count": 46,
-    "complexity_hotspots": 401,
+    "complexity_hotspots": 405,
     "error_masking": 9,
-    "imports_per_module": 4.16
+    "imports_per_module": 4.21
   }
 }

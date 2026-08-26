@@ -159,6 +159,38 @@ cd frontend
 npm ci
 ```
 
+### Contributors build; users pull
+
+`docker-compose.yml` is one file in two modes, and which one you get is decided
+by a single variable:
+
+- **Leave `IMAGE_REGISTRY` unset** (the state a fresh `cp .env.example .env`
+  gives you) and `docker compose up -d --build` builds both images **from your
+  working tree**. That is the mode you want: it is the only way your changes
+  reach the running stack.
+- Setting `IMAGE_REGISTRY=ghcr.io/seinun-ai/maestro-career-studio` switches the
+  same file to *pulling* published images. That is the users' path, documented
+  in the [README's Updating section](README.md#updating), and it will happily
+  ignore every line you just wrote.
+
+Two consequences worth internalising before you debug a ghost:
+
+- **A frontend-only change still needs the frontend image rebuilt.** A stale
+  image once made fixed UI look broken for a whole review. For iteration, the
+  dev overlay is faster than rebuilding — it bind-mounts your source:
+  ```bash
+  docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+  ```
+- **`scripts/update.sh` is not for you.** It moves the checkout to the newest
+  released `v*` tag — which is not where you are working. Contributors stay on
+  `main` (or their branch) with `--build`; the script's build-mode branch exists
+  for users who installed before prebuilt images shipped. Locally built images
+  report their version as `dev`, which the app reads as "unknown, do not
+  compare" rather than as a mismatch.
+
+Cutting a release is a separate, maintainer-only checklist:
+[`docs/RELEASING.md`](docs/RELEASING.md).
+
 ---
 
 ## 5. Running Tests and Verification

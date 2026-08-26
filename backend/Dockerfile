@@ -87,6 +87,14 @@ COPY . .
 RUN chown -R $APP_UID:$APP_GID /app
 USER app
 
+# Version identity, last so it invalidates one layer and not the TeX Live
+# install above. "dev" is what a local `docker compose build` gets, and the
+# frontend treats it as "unknown, do not compare".
+ARG APP_VERSION=dev
+ARG APP_GIT_SHA=""
+ENV APP_VERSION=${APP_VERSION}
+ENV APP_GIT_SHA=${APP_GIT_SHA}
+
 ENV PYTHONUNBUFFERED=1
 EXPOSE 8000
 # No --reload: this is the production image. Hot reload is a dev concern and

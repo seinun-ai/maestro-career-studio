@@ -723,6 +723,39 @@ export function answerAsk(
   );
 }
 
+export function getAskAnswers(kind: "base" | "application", key: string) {
+  return apiFetch<Record<string, import("@/lib/health-report").StoredAskAnswer>>(
+    `/api/resume-lint/${kind}/${encodeURIComponent(key)}/answers`,
+  );
+}
+
+export function draftRewrite(
+  kind: "base" | "application",
+  key: string,
+  body: {
+    location: {
+      section: string;
+      index?: number | null;
+      bullet_index?: number | null;
+    };
+    context?: string;
+    objective?: "strengthen" | "condense";
+    expected_content_hash?: string;
+  },
+) {
+  return apiFetch<{ suggestion: string; content_hash: string }>(
+    `/api/resume-lint/${kind}/${encodeURIComponent(key)}/draft-rewrite`,
+    { method: "POST", body: JSON.stringify(body) },
+  );
+}
+
+export function validateTemplate(templateId: string) {
+  return apiFetch(
+    `/api/templates/${encodeURIComponent(templateId)}/validate`,
+    { method: "POST" },
+  );
+}
+
 export function listCareerExports() {
   return apiFetch<CareerExportMetadata[]>("/api/exports");
 }

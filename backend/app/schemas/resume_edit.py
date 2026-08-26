@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field, field_validator
 class ReplaceSummary(BaseModel):
     kind: Literal["replace_summary"]
     value: str | None = None
+    expected_content_hash: str | None = None
 
 
 class ToggleEntry(BaseModel):
@@ -22,6 +23,7 @@ class ReplaceBullet(BaseModel):
     index: int
     bullet_index: int
     value: str
+    expected_content_hash: str | None = None
 
 
 class ReplaceSkillsGroup(BaseModel):
@@ -248,18 +250,21 @@ def render_ops_brief() -> str:
 # semantic annotations an agent needs beyond field names; keys are asserted
 # equal to op_kinds() in tests/test_resume_edit_reference.py.
 OP_SHAPES: dict[str, str] = {
-    "replace_summary": '{"kind":"replace_summary","value": str|null}',
+    "replace_summary": (
+        '{"kind":"replace_summary","value":str|null,"expected_content_hash"?:str}'
+    ),
     "toggle_entry": '{"kind":"toggle_entry","section":"experience"|"projects","index":int,"enabled":bool}',
-    "replace_bullet": '{"kind":"replace_bullet","section":<sec>,"index":int,"bullet_index":int,"value":str}',
+    "replace_bullet": (
+        '{"kind":"replace_bullet","section":<sec>,"index":int,"bullet_index":int,'
+        '"value":str,"expected_content_hash"?:str}'
+    ),
     "replace_skills_group": '{"kind":"replace_skills_group","category":str,"items":[str]}  (case-insensitive)',
     "add_skill_item": '{"kind":"add_skill_item","category":str,"item":str}',
     "add_bullet": '{"kind":"add_bullet","section":"experience"|"projects","index":int,"text":str}',
     "add_entry": '{"kind":"add_entry","section":<sec>,"value":<entry object>}  (appends)',
     "replace_entry": (
-        '{"kind":"replace_entry","section":<sec>,"index":int,"value":<entry object>}\n'
-        "   — the field-level workhorse: replaces ONE entry, scoped to that entry, so\n"
-        "     unrelated entries and sections cannot be touched. Send the entry you read\n"
-        "     with only the fields you meant to change edited."
+        '{"kind":"replace_entry","section":<sec>,"index":int,'
+        '"value":<full edited entry>}  (one indexed entry only)'
     ),
     "remove_entry": '{"kind":"remove_entry","section":<sec>,"index":int}',
     "remove_bullet": '{"kind":"remove_bullet","section":<sec>,"index":int,"bullet_index":int}',

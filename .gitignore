@@ -18,6 +18,9 @@ build/
 .env.*
 !.env.example
 
+# update.sh database dumps and .env copies (PII; never commit)
+/backups/
+
 # os
 .DS_Store
 

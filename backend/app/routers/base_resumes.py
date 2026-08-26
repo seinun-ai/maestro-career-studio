@@ -42,6 +42,7 @@ from app.services import (
     role_categories,
 )
 from app.services import resume_ops
+from app.services.resume_edit import ContentChangedError
 from app.services.resume_versions import record_version
 
 
@@ -310,6 +311,8 @@ def edit_base_resume(
         )
     except LookupError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
+    except ContentChangedError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     return _detail(row, applied=applied)

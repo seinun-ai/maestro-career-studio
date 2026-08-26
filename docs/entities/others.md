@@ -305,7 +305,28 @@
 - **ResumeLintReport** (health check, framework v2): gates are `tier:
   "fatal"|"serious"` × `status: "pass"|"fail"|"not_assessed"`
   (`health_gates.py:3`), scored by `health_score.py`; a failing fatal, unwaived
-  gate BLOCKS tailoring-session creation. **The `HealthGateWaiver` table is the
+  gate BLOCKS tailoring-session creation — but only a FRESH one: a stale report
+  (its `resume_version_number` no longer the latest version) counts as NO
+  report for the block and only sets a re-analyze `health_warning`.
+  Report reads carry `stale`, `insufficient_evidence` (fewer
+  scoreable bullets than `MIN_SCOREABLE_ITEMS = 4` — grade withheld in the UI),
+  and `score_breakdown` (`raw_score`/`e_hot`/`n_scoreable`/`capped_by`, from
+  `features_json`). `replace_bullet`/`replace_summary` ops accept
+  `expected_content_hash` (the classifier hash of the text being replaced);
+  a mismatch — or a vanished target when a hash was sent — is 409 "content
+  changed since analysis", and ask-answer applies the same guard. C2 escalates
+  ask→fail only when the resume CHANGED since the prior report, and
+  `guarded_rewrite` permits numbers the candidate's answer supplies
+  (`guard_violations(..., supplied=)`). Unattended (context="") strengthen
+  rewrites are cached on `bullet_rewrites` by `content_hash` — a row with
+  NULL text is "tried, ask", absence is "never tried"; answered rewrites
+  persist on `health_ask_answers` (written before the LLM call;
+  `GET /api/resume-lint/{kind}/{key}/answers` rehydrates). `POST .../draft-rewrite`
+  is the generic guarded-draft path (`objective=strengthen|condense`, optional
+  `expected_content_hash`, always returns the hash of the text drafted FROM).
+  `skills.undemonstrated` is a token-boundary match (alphanumeric lookarounds,
+  not `\\b`, so C++ still matches; ≤2-char tokens cannot hit inside "for").
+  **The `HealthGateWaiver` table is the
   authority on waivers**, never a stored report's statuses: waiving writes a row
   and nothing else, so a snapshot says `fail` until the next RUN folds waivers
   in. Readers go through `resume_lint.gate_waivers(db, kind, key)` — reading

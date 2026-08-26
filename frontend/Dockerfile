@@ -7,6 +7,10 @@ FROM node:24-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+# Must be in the BUILDER stage: Next inlines NEXT_PUBLIC_* at build time, so
+# setting this in the runner stage would compile to undefined.
+ARG APP_VERSION=dev
+ENV NEXT_PUBLIC_APP_VERSION=${APP_VERSION}
 RUN npm run build
 
 FROM node:24-alpine AS runner

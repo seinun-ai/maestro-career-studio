@@ -50,6 +50,9 @@ jobs:
         with:
           context: ./${{ matrix.component }}
           platforms: ${{ matrix.platform }}
+          build-args: |
+            APP_VERSION=${{ github.ref_type == 'tag' && github.ref_name || format('dev-{0}', github.sha) }}
+            APP_GIT_SHA=${{ github.sha }}
           # Push by digest only; the `merge` job attaches the human-readable
           # tags to the manifest list. Tagging here would leave the last arch
           # to push overwriting the tag with a single-arch image.
@@ -104,10 +107,15 @@ jobs:
           digests=$(ls /tmp/digests | sed 's/.*-\(sha256:.*\)/\1/')
           refs=""
           for d in $digests; do refs="$refs $IMAGE@$d"; done
-          tags="-t $IMAGE:latest"
           if [ "${GITHUB_REF_TYPE:-}" = "tag" ]; then
-            tags="$tags -t $IMAGE:${GITHUB_REF_NAME#v}"
+            tags="-t $IMAGE:latest -t $IMAGE:${GITHUB_REF_NAME#v}"
+          else
+            tags="-t $IMAGE:dev-${GITHUB_SHA::7}"
           fi
           # shellcheck disable=SC2086
           docker buildx imagetools create $tags $refs
-          docker buildx imagetools inspect "$IMAGE:latest"
+          # Inspect a tag that exists on both the tag and dispatch branches —
+          # :latest is no longer created for workflow_dispatch.
+          first_tag="${tags#*-t }"
+          first_tag="${first_tag%% -t *}"
+          docker buildx imagetools inspect "$first_tag"

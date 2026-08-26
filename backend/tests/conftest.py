@@ -36,6 +36,8 @@ from app.models.ats_score import AtsScore
 from app.models.autofill_field_observation import AutofillFieldObservation
 from app.models.base_resume import BaseResume
 from app.models.bullet_classification import BulletClassification
+from app.models.bullet_rewrite import BulletRewrite
+from app.models.health_ask_answer import HealthAskAnswer
 from app.models.career_kb import KBDocument, KBEntity, KBPoint, KBPortLog, KBProfile
 from app.models.chat import ChatAttachment, ChatMessage, ChatSession
 from app.models.consent_event import ConsentEvent
@@ -211,6 +213,7 @@ def _clear_tables(session: Session) -> None:
         ChatMessage,
         ChatAttachment,
         ChatSession,
+        HealthAskAnswer,
         HealthGateWaiver,
         ResumeLintReport,
         ResumeVersion,
@@ -224,6 +227,7 @@ def _clear_tables(session: Session) -> None:
         AutofillFieldObservation,
         BaseResume,
         BulletClassification,
+        BulletRewrite,
         Setting,
         Template,
     ):

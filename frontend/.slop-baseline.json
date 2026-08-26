@@ -22,18 +22,18 @@
       "min_tokens": 50,
       "mode": "weak"
     },
-    "percentage": 1.26,
-    "duplicated_lines": 535,
+    "percentage": 1.2,
+    "duplicated_lines": 537,
     "clones": 45,
     "allowlisted_clones": 1,
     "worst_files": [
       [
         "components/resume-editor/editor-body.tsx",
-        10
+        9
       ],
       [
         "components/resume-editor/tailored-resume-studio.tsx",
-        7
+        6
       ],
       [
         "components/resume-editor/experience-editor.tsx",
@@ -133,8 +133,8 @@
     "test_loc": 0,
     "modules": 0,
     "orphan_loc": 0,
-    "duplication_pct": 1.26,
-    "duplicated_lines": 535,
+    "duplication_pct": 1.2,
+    "duplicated_lines": 537,
     "clone_count": 45,
     "complexity_hotspots": 0,
     "error_masking": 0,

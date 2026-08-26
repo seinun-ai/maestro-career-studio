@@ -10,6 +10,7 @@ import {
   EndpointControls,
 } from "@/components/settings/llm-endpoint";
 import { ModelCatalogPanel } from "@/components/settings/model-catalog-panel";
+import { AboutSection } from "@/components/settings/about-section";
 import { AppearanceSection } from "@/components/settings/appearance-section";
 import { McpWorkflowSection } from "@/components/settings/mcp-workflow-section";
 import { QuickTailorSection } from "@/components/settings/quick-tailor-section";
@@ -94,6 +95,7 @@ export default function SettingsPage() {
       <AutoApplySection />
       <OpenAISection />
       <AppearanceSection />
+      <AboutSection />
     </PageShell>
   );
 }

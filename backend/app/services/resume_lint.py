@@ -35,6 +35,7 @@ logger = logging.getLogger(__name__)
 
 MODEL_VERSION = "health-v2"
 MAX_REWRITES = 5
+MIN_SCOREABLE_ITEMS = 4
 HOT_ZONE_FLOOR = 0.40  # C1: midpoint of 0.30 (learns nothing) and 0.50 (learns what)
 
 # Kept from v1 — now advisory/classifier inputs, not score terms.
@@ -360,6 +361,7 @@ def structure_gates(db: Session, template_id: str | None, resume: dict) -> list[
 def _final_gates(
     levels_by_loc: dict[Location, dict], base_gates: list[dict], hot: set,
     waivers: set[str] | Mapping[str, str], c2_hit: dict | None, prior_report: dict | None,
+    resume_changed_since_prior: bool,
 ) -> tuple[list[dict], float | None]:
     """Base gates + the two assembled-here gates (C1/C2), waivers applied."""
     gates = [
@@ -376,10 +378,14 @@ def _final_gates(
             f"Top-of-resume evidence averages {e_hot:.2f} (floor {HOT_ZONE_FLOOR}); "
             "a dead opening sharply cuts the odds of a deep read."))
 
-    # C2 — claim/date consistency: ask on first detection, cap once ignored.
+    # C2 — claim/date consistency: ask until a resume edit leaves it unresolved.
     if c2_hit:
         prior_c2 = _prior_gate(prior_report, "C2")
-        escalate = prior_c2 is not None and prior_c2.get("status") in ("ask", "fail")
+        escalate = (
+            resume_changed_since_prior
+            and prior_c2 is not None
+            and prior_c2.get("status") in ("ask", "fail")
+        )
         gates.append(_gate_dict(
             "C2", "serious", "fail" if escalate else "ask", "Claim/date consistency",
             f"Summary claims {c2_hit['claimed_years']}+ years; the dates support "
@@ -394,7 +400,7 @@ def _final_gates(
     return gates, e_hot
 
 
-def _gate_findings(gates: list[dict]) -> list[dict]:
+def _gate_findings(gates: list[dict], resume: dict) -> list[dict]:
     """One finding per failing/asking gate (not pass/waived/not_assessed)."""
     findings: list[dict] = []
     for g in gates:
@@ -410,7 +416,8 @@ def _gate_findings(gates: list[dict]) -> list[dict]:
                 "Confirm the number or add the missing role.",
                 severity="critical",
                 question="Is a role missing from your dates, or should the summary say fewer years?",
-                source="rule"))
+                source="rule",
+                content_hash=bullet_classify.content_hash(str(resume.get("summary") or ""))))
     return findings
 
 
@@ -520,6 +527,7 @@ def _gap_findings(gap_hits: list[dict]) -> list[dict]:
 
 def assemble(resume: dict, levels_by_loc: dict[Location, dict], base_gates: list[dict],
              tier: str, hot: set, *, prior_report: dict | None = None,
+             resume_changed_since_prior: bool = True,
              waivers: set[str] | Mapping[str, str] | None = None,
              gap_hits: list[dict] | None = None,
              c2_hit: dict | None = None,
@@ -532,9 +540,16 @@ def assemble(resume: dict, levels_by_loc: dict[Location, dict], base_gates: list
 
     `rewrite_fn(text) -> str | None` produces a guarded rewrite (None = ask). It is
     called for at most MAX_REWRITES fix candidates, ranked by cost.
+    `resume_changed_since_prior` defaults on to preserve existing direct callers.
     """
     gates, e_hot = _final_gates(
-        levels_by_loc, base_gates, hot, waivers or set(), c2_hit, prior_report
+        levels_by_loc,
+        base_gates,
+        hot,
+        waivers or set(),
+        c2_hit,
+        prior_report,
+        resume_changed_since_prior,
     )
 
     # Score: mean over experience + projects + custom-section levels
@@ -547,7 +562,7 @@ def assemble(resume: dict, levels_by_loc: dict[Location, dict], base_gates: list
 
     # 1) gates, 2) per-bullet ladder, 3) employment gaps
     findings = [
-        *_gate_findings(gates),
+        *_gate_findings(gates, resume),
         *_ladder_findings(resume, levels_by_loc, hot, rewrite_fn),
         *_gap_findings(gap_hits or []),
     ]
@@ -583,11 +598,13 @@ def assemble(resume: dict, levels_by_loc: dict[Location, dict], base_gates: list
     report = {
         "score": score, "grade": grade, "tier": tier,
         "gates": gates, "counts": counts, "findings": findings,
+        "insufficient_evidence": len(score_levels) < MIN_SCOREABLE_ITEMS,
     }
     features = {
         "levels": {f"{loc[0]}:{loc[1]}:{loc[2]}": r["value"]
                    for loc, r in levels_by_loc.items()},
         "e_hot": e_hot, "raw_score": raw_score,
+        "n_scoreable": len(score_levels),
         "hot": [f"{loc[0]}:{loc[1]}:{loc[2]}" for loc in sorted(hot, key=str)],
     }
     return {"report": report, "features": features}
@@ -656,13 +673,29 @@ def _norm_item(text: str) -> str:
     whitespace, then collapse internal whitespace.
 
     Two callers, two comparison semantics: duplicate detection compares these
-    keys for EQUALITY; the never-demonstrated rule tests one as a SUBSTRING of
+    keys for EQUALITY; the never-demonstrated rule tests one as a TOKEN of
     a bullet blob normalized the same way *minus* the trailing-punctuation
-    strip. Invariant: any folding added here must also be applied to that blob,
-    or a skill that IS in a bullet gets falsely flagged as undemonstrated.
+    strip (alphanumeric lookarounds — ``\\b`` breaks on "C++"). A skill that
+    normalizes to ≤2 chars is the same exact-token match, so "R." cannot hit
+    the "r" inside "for". Invariant: any folding added here must also be
+    applied to that blob, or a skill that IS in a bullet gets falsely flagged
+    as undemonstrated.
     """
     stripped = _TRAILING_PUNCT_RUN.sub("", str(text).strip())
     return re.sub(r"\s+", " ", stripped).casefold()
+
+
+def _skill_demonstrated(token: str, blob: str) -> bool:
+    """Exact-token match of a normalized skill against the bullet blob.
+
+    Alphanumeric lookarounds, not ``\\b``: word-boundary fails for skills
+    like C++ whose last character is non-word. Short tokens (≤2 chars after
+    normalize) use the same pattern so "R." cannot match the "r" in "for".
+    """
+    if not token:
+        return True
+    escaped = re.escape(token)
+    return re.search(rf"(?<![A-Za-z0-9]){escaped}(?![A-Za-z0-9])", blob) is not None
 
 
 def _advisories(resume: dict) -> list[dict]:
@@ -719,9 +752,6 @@ def _advisories(resume: dict) -> list[dict]:
                 seen.setdefault(key, cat)
 
     # skill listed but never demonstrated in a bullet
-    # NOTE: this is a substring match, so a short/punctuated token (e.g. "R.",
-    # which normalizes to "r") can match almost any bullet. Bare "R" already
-    # had this hole; a word-boundary fix is out of scope (\b breaks on "C++").
     bullet_blob = re.sub(r"\s+", " ", " ".join(
         str(b)
         for section in ("experience", "projects")
@@ -731,7 +761,7 @@ def _advisories(resume: dict) -> list[dict]:
     for group in resume.get("skills") or []:
         for item in group.get("items") or []:
             token = _norm_item(item)
-            if token and token not in bullet_blob:
+            if token and not _skill_demonstrated(token, bullet_blob):
                 notes.append(_finding(
                     "note", ("skills", None, None), f"Skills · {item}",
                     f'"{item}" is listed but never demonstrated in a bullet.',
@@ -789,8 +819,13 @@ def rule_notes(resume: dict) -> list[dict]:
 # --------------------------------------------------------------------------- #
 # orchestration
 
+
 def run_report(db: Session, kind: str, key: str, resume: dict, *,
                template_id: str | None = None, use_llm: bool = True) -> ResumeLintReport:
+    # Anchor provenance before any external call: if an edit lands mid-run,
+    # this report keeps the pre-run version and correctly reads stale later.
+    current_version = _latest_version(db, kind, key)
+
     gates = structure_gates(db, template_id, resume)
     gates.append(health_gates.gate_dates(resume))
     gates.append(health_gates.gate_placeholders(resume))
@@ -814,6 +849,9 @@ def run_report(db: Session, kind: str, key: str, resume: dict, *,
     waivers = gate_waivers(db, kind, key)
 
     prior = latest_report(db, kind, key)
+    resume_changed = prior is not None and prior.resume_version_number != (
+        current_version.version_number if current_version else None
+    )
 
     # Rule detectors allege; the LLM verifier may veto or annotate — never create.
     gap_hits = health_gates.detect_gaps(resume)
@@ -834,6 +872,7 @@ def run_report(db: Session, kind: str, key: str, resume: dict, *,
     result = assemble(
         resume, levels_by_loc, gates, tier, hot,
         prior_report=prior.report_json if prior else None,
+        resume_changed_since_prior=resume_changed,
         waivers=waivers,
         gap_hits=gap_hits,
         c2_hit=c2_hit,
@@ -841,10 +880,9 @@ def run_report(db: Session, kind: str, key: str, resume: dict, *,
     )
     result["features"]["verifier"] = verifier_cache
 
-    latest = _latest_version(db, kind, key)
     row = ResumeLintReport(
         resume_kind=kind, resume_key=key,
-        resume_version_number=latest.version_number if latest else None,
+        resume_version_number=current_version.version_number if current_version else None,
         report_json=result["report"],
         features_json=result["features"],
         model=model, model_version=MODEL_VERSION,

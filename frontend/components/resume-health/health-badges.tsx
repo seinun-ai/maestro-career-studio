@@ -5,7 +5,9 @@ import { useQuery } from "@tanstack/react-query";
 import { HeartPulse } from "lucide-react";
 
 import { GRADE_STYLES } from "@/components/resume-health/finding-cards";
-import { ApiError, apiFetch } from "@/lib/api";
+import { ApiError, apiFetch, getLintReport } from "@/lib/api";
+import { fatalGateFailed } from "@/lib/health-report";
+import { cn } from "@/lib/utils";
 
 /** Severity keys, worst first — they double as the tooltip's labels. */
 const SEVERITIES = ["gate", "critical", "ask", "note"] as const;
@@ -116,6 +118,45 @@ export function HealthBadges({
       >
         {data.grade}
       </span>
+    </Link>
+  );
+}
+
+/**
+ * Compact grade chip for a Base Resumes gallery row. 404 → render nothing
+ * (this base has never been analyzed). A failing fatal gate is "Blocked" —
+ * the state that otherwise first appears as a tailoring 409.
+ */
+export function HealthListChip({ slug }: { slug: string }) {
+  const { data, isError, error } = useQuery({
+    queryKey: ["resume-lint", "base", slug],
+    queryFn: () => getLintReport("base", slug),
+    retry: false,
+    staleTime: 60_000,
+  });
+
+  const missing = error instanceof ApiError && error.status === 404;
+  if ((isError && missing) || isError || !data) return null;
+
+  const blocked = fatalGateFailed(data.gates);
+  const summary = blocked
+    ? `Blocked — a fatal health gate is failing. Open the report.`
+    : `Grade ${data.grade} · score ${data.score} — open report`;
+
+  return (
+    <Link
+      href={`/base-resumes/${slug}/health`}
+      className={cn(
+        "relative z-20 shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold",
+        blocked
+          ? "bg-red-500/15 text-red-600 dark:text-red-400"
+          : (GRADE_STYLES[data.grade] ?? GRADE_STYLES.C),
+      )}
+      title={summary}
+      aria-label={summary}
+      onClick={(event) => event.stopPropagation()}
+    >
+      {blocked ? "Blocked" : data.grade}
     </Link>
   );
 }

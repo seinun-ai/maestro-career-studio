@@ -9,6 +9,8 @@ band edges so a capped resume actually reads as the named grade.
 See SYSTEM.md §4 (ResumeLintReport) for how this fits the wider check.
 """
 
+from typing import Literal
+
 LEVEL_VALUES: dict[str, float] = {
     "direct": 1.0,
     "analogue": 0.8,
@@ -36,14 +38,24 @@ def compute_score(levels: list[float]) -> int:
     return round(100 * sum(levels) / len(levels))
 
 
-def apply_gates(score: int, gates: list[dict]) -> int:
-    """Cap `score` by failed gates. Waived / passed / not_assessed gates never cap."""
+def gate_cap_tier(gates: list[dict]) -> Literal["fatal", "serious"] | None:
+    """The cap tier imposed by failed gates, using the scorer's exact rules."""
     failed = [g for g in gates if g.get("status") == "fail"]
     if any(g.get("tier") == "fatal" for g in failed):
-        return min(score, FATAL_CAP)
+        return "fatal"
     serious = [g for g in failed if g.get("tier") == "serious"]
     if len(serious) >= 2:
-        return min(score, FATAL_CAP)
+        return "fatal"
     if len(serious) == 1:
+        return "serious"
+    return None
+
+
+def apply_gates(score: int, gates: list[dict]) -> int:
+    """Cap `score` by failed gates. Waived / passed / not_assessed gates never cap."""
+    cap_tier = gate_cap_tier(gates)
+    if cap_tier == "fatal":
+        return min(score, FATAL_CAP)
+    if cap_tier == "serious":
         return min(score, SERIOUS_CAP)
     return score

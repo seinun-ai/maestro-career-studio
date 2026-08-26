@@ -10,8 +10,16 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.models.application import Application
 from app.models.base_resume import BaseResume
+from app.models.health_ask_answer import HealthAskAnswer
 from app.models.health_gate_waiver import HealthGateWaiver
-from app.services import bullet_classify, health_guards, resume_lint
+from app.services import (
+    bullet_classify,
+    health_guards,
+    health_score,
+    resume_lint,
+    resume_versions,
+)
+from app.services.health_guards import RewriteObjective
 
 router = APIRouter(prefix="/api/resume-lint", tags=["resume-lint"])
 
@@ -41,8 +49,35 @@ class AnswerBody(BaseModel):
     answer: str
 
 
+class LocationBody(BaseModel):
+    section: str
+    index: int | None = None
+    bullet_index: int | None = None
+
+
+class DraftRewriteBody(BaseModel):
+    location: LocationBody
+    context: str = ""
+    objective: RewriteObjective = "strengthen"
+    expected_content_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{16}$")
+
+
 class AskAnswerRead(BaseModel):
     suggestion: str
+
+
+class StoredAskAnswer(BaseModel):
+    answer: str
+    suggestion: str | None
+    content_hash: str
+
+
+class DraftRewriteRead(BaseModel):
+    suggestion: str
+    content_hash: str
+
+
+CONTENT_CHANGED = "content changed since analysis; re-analyze before answering"
 
 
 def _find_waiver(db: Session, kind: str, key: str, gate_id: str) -> HealthGateWaiver | None:
@@ -51,6 +86,13 @@ def _find_waiver(db: Session, kind: str, key: str, gate_id: str) -> HealthGateWa
         HealthGateWaiver.resume_key == key,
         HealthGateWaiver.gate_id == gate_id,
     ))
+
+
+class ScoreBreakdown(BaseModel):
+    raw_score: int
+    e_hot: float | None = None
+    n_scoreable: int
+    capped_by: Literal["fatal", "serious"] | None = None
 
 
 class LintReportRead(BaseModel):
@@ -64,11 +106,35 @@ class LintReportRead(BaseModel):
     counts: dict[str, int]
     gates: list[dict[str, Any]] = []
     findings: list[dict[str, Any]]
+    stale: bool = False
+    insufficient_evidence: bool = False
+    score_breakdown: ScoreBreakdown | None = None
     model: str | None = None
     created_at: datetime
 
 
-def _read(row) -> LintReportRead:
+def _score_breakdown(row) -> ScoreBreakdown | None:
+    features = row.features_json or {}
+    raw_score = features.get("raw_score")
+    if raw_score is None:
+        return None
+    n_scoreable = features.get("n_scoreable")
+    if n_scoreable is None:
+        levels = features.get("levels") or {}
+        n_scoreable = sum(
+            1 for location in levels if not str(location).startswith("summary:")
+        )
+    cap_tier = health_score.gate_cap_tier(row.report_json.get("gates", []))
+    capped_by = cap_tier if int(row.report_json.get("score", raw_score)) < int(raw_score) else None
+    return ScoreBreakdown(
+        raw_score=int(raw_score),
+        e_hot=features.get("e_hot"),
+        n_scoreable=int(n_scoreable),
+        capped_by=capped_by,
+    )
+
+
+def _read(row, *, stale: bool = False) -> LintReportRead:
     return LintReportRead(
         id=row.id,
         resume_kind=row.resume_kind,
@@ -76,8 +142,18 @@ def _read(row) -> LintReportRead:
         resume_version_number=row.resume_version_number,
         model=row.model,
         created_at=row.created_at,
+        stale=stale,
+        score_breakdown=_score_breakdown(row),
         **row.report_json,
     )
+
+
+def _is_stale(db: Session, row) -> bool:
+    latest = resume_versions.latest_version(
+        db, row.resume_kind, row.resume_key
+    )
+    latest_number = latest.version_number if latest else None
+    return row.resume_version_number != latest_number
 
 
 def _load_resume(db: Session, kind: Kind, key: str) -> tuple[dict, str | None]:
@@ -111,7 +187,7 @@ def get_latest_lint(kind: Kind, key: str, db: Annotated[Session, Depends(get_db)
     row = resume_lint.latest_report(db, kind, key)
     if row is None:
         raise HTTPException(status_code=404, detail="No health report yet")
-    return _read(row)
+    return _read(row, stale=_is_stale(db, row))
 
 
 @router.post("/{kind}/{key}/gates/{gate_id}/waive", status_code=204)
@@ -147,6 +223,105 @@ def override_level(body: OverrideBody, db: Annotated[Session, Depends(get_db)]):
         raise HTTPException(status_code=422, detail=str(e)) from e
 
 
+def _bullet_text(
+    resume: dict,
+    loc: dict,
+    expected_hash: str | None,
+    *,
+    hashless_ok: bool = False,
+) -> str:
+    """Resolve the current bullet/summary text at ``loc``.
+
+    409 when a hash was sent and the target vanished or drifted; 422 when
+    the location cannot map to a rewriteable bullet and no hash was sent.
+    ``hashless_ok`` lets T7 draft from a bullet that carries no finding hash:
+    the response still returns the hash of the text drafted FROM.
+    """
+    section, index, bi = loc.get("section"), loc.get("index"), loc.get("bullet_index")
+    if section == "summary":
+        return str(resume.get("summary") or "")
+    if section in ("experience", "projects") and index is not None and bi is not None:
+        try:
+            return str((resume[section][index].get("bullets") or [])[bi])
+        except (IndexError, KeyError, TypeError, AttributeError) as e:
+            if expected_hash is not None or not hashless_ok:
+                if expected_hash is not None:
+                    raise HTTPException(status_code=409, detail=CONTENT_CHANGED) from e
+                raise HTTPException(
+                    status_code=422, detail="Finding no longer maps to a bullet"
+                ) from e
+            raise HTTPException(
+                status_code=422, detail="Location does not map to a bullet"
+            ) from e
+    raise HTTPException(
+        status_code=422,
+        detail="This question isn't resolved by a bullet rewrite",
+    )
+
+
+def _require_hash(text: str, expected_hash: str | None) -> str:
+    actual = bullet_classify.content_hash(text)
+    if expected_hash is not None and actual != expected_hash:
+        raise HTTPException(status_code=409, detail=CONTENT_CHANGED)
+    return actual
+
+
+def _upsert_ask_answer(
+    db: Session,
+    *,
+    kind: str,
+    key: str,
+    finding_id: str,
+    content_hash: str,
+    answer: str,
+    suggestion: str | None,
+) -> HealthAskAnswer:
+    row = db.scalar(
+        select(HealthAskAnswer).where(
+            HealthAskAnswer.resume_kind == kind,
+            HealthAskAnswer.resume_key == key,
+            HealthAskAnswer.finding_id == finding_id,
+        )
+    )
+    if row is None:
+        row = HealthAskAnswer(
+            resume_kind=kind,
+            resume_key=key,
+            finding_id=finding_id,
+            content_hash=content_hash,
+            answer=answer,
+            suggestion=suggestion,
+        )
+        db.add(row)
+    else:
+        row.content_hash = content_hash
+        row.answer = answer
+        row.suggestion = suggestion
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+@router.get("/{kind}/{key}/answers")
+def list_ask_answers(
+    kind: Kind, key: str, db: Annotated[Session, Depends(get_db)]
+) -> dict[str, StoredAskAnswer]:
+    rows = db.scalars(
+        select(HealthAskAnswer).where(
+            HealthAskAnswer.resume_kind == kind,
+            HealthAskAnswer.resume_key == key,
+        )
+    ).all()
+    return {
+        row.finding_id: StoredAskAnswer(
+            answer=row.answer,
+            suggestion=row.suggestion,
+            content_hash=row.content_hash,
+        )
+        for row in rows
+    }
+
+
 @router.post("/{kind}/{key}/ask/{finding_id}/answer", response_model=AskAnswerRead)
 def answer_ask(kind: Kind, key: str, finding_id: str, body: AnswerBody,
                db: Annotated[Session, Depends(get_db)]):
@@ -159,20 +334,52 @@ def answer_ask(kind: Kind, key: str, finding_id: str, body: AnswerBody,
         raise HTTPException(status_code=404, detail="Finding not found")
     resume, _ = _load_resume(db, kind, key)
     loc = finding.get("location") or {}
-    section, index, bi = loc.get("section"), loc.get("index"), loc.get("bullet_index")
-    if section == "summary":
-        text = str(resume.get("summary") or "")
-    elif section in ("experience", "projects") and index is not None and bi is not None:
-        try:
-            text = str((resume[section][index].get("bullets") or [])[bi])
-        except (IndexError, KeyError, TypeError, AttributeError) as e:
-            raise HTTPException(
-                status_code=422, detail="Finding no longer maps to a bullet") from e
-    else:
-        raise HTTPException(status_code=422,
-                            detail="This question isn't resolved by a bullet rewrite")
+    expected_hash = finding.get("content_hash")
+    text = _bullet_text(resume, loc, expected_hash)
+    content_hash = _require_hash(text, expected_hash)
+    _upsert_ask_answer(
+        db,
+        kind=kind,
+        key=key,
+        finding_id=finding_id,
+        content_hash=content_hash,
+        answer=body.answer,
+        suggestion=None,
+    )
     suggestion = health_guards.guarded_rewrite(db, text, context=body.answer)
     if suggestion is None:
         raise HTTPException(status_code=422,
                             detail="Couldn't produce a safe rewrite from that answer")
+    _upsert_ask_answer(
+        db,
+        kind=kind,
+        key=key,
+        finding_id=finding_id,
+        content_hash=content_hash,
+        answer=body.answer,
+        suggestion=suggestion,
+    )
     return AskAnswerRead(suggestion=suggestion)
+
+
+@router.post("/{kind}/{key}/draft-rewrite", response_model=DraftRewriteRead)
+def draft_rewrite(
+    kind: Kind,
+    key: str,
+    body: DraftRewriteBody,
+    db: Annotated[Session, Depends(get_db)],
+):
+    resume, _ = _load_resume(db, kind, key)
+    loc = body.location.model_dump()
+    text = _bullet_text(
+        resume, loc, body.expected_content_hash, hashless_ok=True
+    )
+    content_hash = _require_hash(text, body.expected_content_hash)
+    suggestion = health_guards.guarded_rewrite(
+        db, text, context=body.context, objective=body.objective
+    )
+    if suggestion is None:
+        raise HTTPException(
+            status_code=422, detail="Couldn't produce a safe rewrite from that answer"
+        )
+    return DraftRewriteRead(suggestion=suggestion, content_hash=content_hash)

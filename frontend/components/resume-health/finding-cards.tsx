@@ -1,25 +1,65 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
+import Link from "next/link";
 import {
   ATTENTION_BADGE,
   ATTENTION_BADGE_LABEL,
 } from "@/components/attention-zone";
 import { useMutation } from "@tanstack/react-query";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { MoreHorizontal } from "lucide-react";
 import { toast } from "sonner";
 
+import { DemonstrateSkillDialog } from "@/components/resume-health/demonstrate-skill-dialog";
+import {
+  emptyMetricAsk,
+  MetricAskInput,
+  metricContextFromValue,
+  type MetricAskValue,
+} from "@/components/resume-health/metric-ask-input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { answerAsk, ApiError, apiFetch, unwaiveGate, waiveGate } from "@/lib/api";
+import { IconButton } from "@/components/icon-button";
+import {
+  answerAsk,
+  ApiError,
+  apiFetch,
+  draftRewrite,
+  unwaiveGate,
+  validateTemplate,
+  waiveGate,
+} from "@/lib/api";
+import { toastContentChanged } from "./report-errors";
+import {
+  answerMatchesFinding,
+  groupNotesByRule,
+  hoistBlurb,
+  isBulletSubjectRule,
+  isContentChangedError,
+  isMechanicalPunctRule,
+  isMetricAsk,
+  levelNameOf,
+  potentialPoints,
+  punctFixOps,
+  sharedCoaching,
+  STALE_APPLY_HINT,
+  type StoredAskAnswer,
+} from "@/lib/health-report";
 import { wordDiff } from "@/lib/word-diff";
 import { cn } from "@/lib/utils";
 import type {
@@ -47,14 +87,82 @@ const EVIDENCE_LABELS = Object.fromEntries(
   EVIDENCE_LEVELS.map(({ value, label }) => [value, label]),
 ) as Record<EvidenceLevel, string>;
 
-function ClassificationOverride({
+const LOCKED_BTN =
+  "disabled:pointer-events-auto aria-disabled:pointer-events-auto";
+
+export type FindingCardShared = {
+  data: ResumeData;
+  kind: "base" | "application";
+  resumeKey: string;
+  onApplied: () => void;
+  onClassificationChanged?: ClassificationOverrideHandler;
+  onReanalyze?: () => void;
+  locked?: boolean;
+  nScoreable?: number | null;
+  hideHow?: boolean;
+  storedAnswer?: StoredAskAnswer;
+};
+
+export type ExpandedFindingChromeProps = {
+  finding: LintFinding;
+  cardClassName: string;
+  overflow: ReactNode;
+  onCollapse: () => void;
+  quote: string | null;
+  how?: string | null;
+  hideHow?: boolean;
+  children: ReactNode;
+};
+
+export function ExpandedFindingChrome({
   finding,
+  cardClassName,
+  overflow,
+  onCollapse,
+  quote,
+  how,
+  hideHow,
+  children,
+}: ExpandedFindingChromeProps) {
+  return (
+    <div className={cn("rounded-md border px-3 py-2", cardClassName)}>
+      <div className="flex items-start justify-between gap-2">
+        <button
+          type="button"
+          className="flex min-w-0 flex-1 items-center gap-2 text-left"
+          onClick={onCollapse}
+          aria-expanded
+        >
+          <Badge
+            variant="secondary"
+            className="text-muted-foreground shrink-0 text-xs"
+          >
+            {finding.label}
+          </Badge>
+          <LevelChip finding={finding} />
+        </button>
+        {overflow}
+      </div>
+      {quote && <SourceQuote text={quote} />}
+      {how && !hideHow && (
+        <p className="mt-1.5 max-w-[65ch] text-sm">{how}</p>
+      )}
+      {children}
+    </div>
+  );
+}
+
+function ClassificationOverrideDialog({
+  finding,
+  open,
+  onOpenChange,
   onChanged,
 }: {
   finding: LintFinding;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
   onChanged?: ClassificationOverrideHandler;
 }) {
-  const [open, setOpen] = useState(false);
   const [level, setLevel] = useState<EvidenceLevel | "automatic">(
     finding.classification_level ?? "automatic",
   );
@@ -72,7 +180,7 @@ function ClassificationOverride({
         reason,
       ),
     onSuccess: () => {
-      setOpen(false);
+      onOpenChange(false);
       toast.success(
         level === "automatic"
           ? "Automatic classification restored"
@@ -92,51 +200,37 @@ function ClassificationOverride({
     level === "automatic" ? "Automatic" : EVIDENCE_LABELS[level];
 
   return (
-    <div className="mt-2 border-t pt-1.5">
-      <button
-        type="button"
-        className="text-muted-foreground hover:text-foreground flex items-center gap-1 text-xs"
-        onClick={() => setOpen((value) => !value)}
-        aria-expanded={open}
-      >
-        {open ? (
-          <ChevronDown className="size-3" />
-        ) : (
-          <ChevronRight className="size-3" />
-        )}
-        {finding.classification_source === "override"
-          ? `Overridden as ${currentLabel}`
-          : `Override classification · ${currentLabel}`}
-      </button>
-      {open && (
-        <div className="mt-2 space-y-2 rounded-md bg-muted/30 p-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <Select
-              value={level}
-              onValueChange={(value) =>
-                setLevel(value as EvidenceLevel | "automatic")
-              }
-              disabled={save.isPending}
-            >
-              <SelectTrigger size="sm" className="w-40" aria-label="Evidence level">
-                <SelectValue>{selectedLabel}</SelectValue>
-              </SelectTrigger>
-              <SelectContent align="start">
-                <SelectItem value="automatic">Automatic</SelectItem>
-                {EVIDENCE_LEVELS.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    <span>{option.label}</span>
-                    <span className="text-muted-foreground text-xs">
-                      {option.detail}
-                    </span>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <span className="text-muted-foreground text-xs">
-              Current: {currentLabel}
-            </span>
-          </div>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Override classification</DialogTitle>
+        </DialogHeader>
+        <div className="grid gap-1.5">
+          <Select
+            value={level}
+            onValueChange={(value) =>
+              setLevel(value as EvidenceLevel | "automatic")
+            }
+            disabled={save.isPending}
+          >
+            <SelectTrigger size="sm" className="w-full" aria-label="Evidence level">
+              <SelectValue>{selectedLabel}</SelectValue>
+            </SelectTrigger>
+            <SelectContent align="start">
+              <SelectItem value="automatic">Automatic</SelectItem>
+              {EVIDENCE_LEVELS.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  <span>{option.label}</span>
+                  <span className="text-muted-foreground text-xs">
+                    {option.detail}
+                  </span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-muted-foreground text-xs">
+            Current: {currentLabel}. Saving re-runs the report.
+          </p>
           {level !== "automatic" && (
             <Textarea
               rows={2}
@@ -144,32 +238,72 @@ function ClassificationOverride({
               value={reason}
               maxLength={500}
               onChange={(event) => setReason(event.target.value)}
-              placeholder="Reason · optional"
+              placeholder="e.g. this metric lives in the next bullet"
               className="text-sm"
               disabled={save.isPending}
             />
           )}
-          <div className="flex justify-end gap-2">
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => setOpen(false)}
-              disabled={save.isPending}
-            >
-              Cancel
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => save.mutate()}
-              disabled={save.isPending}
-            >
-              {save.isPending ? "Re-analyzing…" : "Save override"}
-            </Button>
-          </div>
         </div>
-      )}
-    </div>
+        <DialogFooter>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => onOpenChange(false)}
+            disabled={save.isPending}
+          >
+            Cancel
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => save.mutate()}
+            disabled={save.isPending}
+          >
+            {save.isPending ? "Re-analyzing…" : "Save override"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function FindingOverflow({
+  finding,
+  onClassificationChanged,
+}: {
+  finding: LintFinding;
+  onClassificationChanged?: ClassificationOverrideHandler;
+}) {
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const canOverride = Boolean(
+    finding.content_hash && finding.classification_level && onClassificationChanged,
+  );
+  if (!canOverride) return null;
+  return (
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={
+            <IconButton
+              label="More actions"
+              icon={<MoreHorizontal className="size-4" />}
+              size="icon-xs"
+            />
+          }
+        />
+        <DropdownMenuContent align="end" className="min-w-48">
+          <DropdownMenuItem onClick={() => setDialogOpen(true)}>
+            Override classification
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <ClassificationOverrideDialog
+        finding={finding}
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        onChanged={onClassificationChanged}
+      />
+    </>
   );
 }
 
@@ -216,7 +350,7 @@ export const GRADE_STYLES: Record<string, string> = {
 
 function DiffText({ oldText, newText }: { oldText: string; newText: string }) {
   return (
-    <p className="text-sm leading-relaxed">
+    <p className="max-w-[65ch] text-sm leading-relaxed">
       {wordDiff(oldText, newText).map((token, i) => (
         <span
           key={i}
@@ -262,8 +396,6 @@ export function textAtLocation(
   return entries?.[index]?.bullets?.[bullet_index] ?? null;
 }
 
-/** One suggestion presentation chooser: extras have no bullet-scoped /edits
- * op, so their suggestions render copy-only instead of applyable. */
 function SuggestionBlock({
   finding,
   currentText,
@@ -271,6 +403,8 @@ function SuggestionBlock({
   kind,
   resumeKey,
   onApplied,
+  onReanalyze,
+  locked,
 }: {
   finding: LintFinding;
   currentText: string;
@@ -278,6 +412,8 @@ function SuggestionBlock({
   kind: "base" | "application";
   resumeKey: string;
   onApplied: () => void;
+  onReanalyze?: () => void;
+  locked?: boolean;
 }) {
   if (finding.location.section.startsWith("extra:")) {
     return (
@@ -292,11 +428,12 @@ function SuggestionBlock({
       kind={kind}
       resumeKey={resumeKey}
       onApplied={onApplied}
+      onReanalyze={onReanalyze}
+      locked={locked}
     />
   );
 }
 
-/** Diff + copy hint when Apply is unavailable (extras have no bullet-scoped edit op). */
 function SuggestionCopyOnly({
   currentText,
   suggestion,
@@ -309,7 +446,7 @@ function SuggestionCopyOnly({
       <div className="bg-muted/40 rounded-md p-2">
         <DiffText oldText={currentText} newText={suggestion} />
       </div>
-      <p className="text-muted-foreground text-xs">
+      <p className="text-muted-foreground max-w-[65ch] text-xs">
         Custom-section bullets can&apos;t be applied from health yet — copy the
         rewrite into the editor.
       </p>
@@ -317,69 +454,19 @@ function SuggestionCopyOnly({
   );
 }
 
-/**
- * The text the finding is about, quoted so the card is answerable without
- * hunting through the resume. Rendered only while no diff is on screen —
- * once a suggestion's tracked-changes view appears, that carries the text.
- */
-function SourceQuote({ text }: { text: string }) {
+function SourceQuote({ text, truncated }: { text: string; truncated?: boolean }) {
   return (
-    <blockquote className="text-muted-foreground border-muted-foreground/30 mt-1.5 border-l-2 pl-2 text-sm italic">
+    <blockquote
+      className={cn(
+        "text-muted-foreground border-muted-foreground/30 border-l-2 pl-2 text-sm italic",
+        truncated ? "truncate" : "max-w-[65ch]",
+      )}
+    >
       {text}
     </blockquote>
   );
 }
 
-function DetailsDisclosure({
-  why,
-  how,
-  label = "Why this matters & how to improve",
-}: {
-  why: string;
-  how: string;
-  label?: string;
-}) {
-  const [open, setOpen] = useState(false);
-  if (!why && !how) return null;
-  return (
-    <>
-      <button
-        type="button"
-        className="text-muted-foreground hover:text-foreground mt-1 flex items-center gap-1 text-xs"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-      >
-        {open ? (
-          <ChevronDown className="size-3" />
-        ) : (
-          <ChevronRight className="size-3" />
-        )}
-        {label}
-      </button>
-      {open && (
-        <div className="text-muted-foreground mt-1 space-y-1 text-xs">
-          {why && (
-            <p>
-              <span className="text-foreground font-medium">Why: </span>
-              {why}
-            </p>
-          )}
-          {how && (
-            <p>
-              <span className="text-foreground font-medium">How: </span>
-              {how}
-            </p>
-          )}
-        </div>
-      )}
-    </>
-  );
-}
-
-/**
- * Shared diff + editable + Apply block, used by both `fix` findings and the
- * suggestion an `ask` finding produces once answered. Applies through /edits.
- */
 export function SuggestionEditor({
   finding,
   currentText,
@@ -387,6 +474,9 @@ export function SuggestionEditor({
   kind,
   resumeKey,
   onApplied,
+  onReanalyze,
+  locked,
+  expectedHash,
 }: {
   finding: LintFinding;
   currentText: string;
@@ -394,6 +484,9 @@ export function SuggestionEditor({
   kind: "base" | "application";
   resumeKey: string;
   onApplied: () => void;
+  onReanalyze?: () => void;
+  locked?: boolean;
+  expectedHash?: string | null;
 }) {
   const [draft, setDraft] = useState(suggestion);
   const [applied, setApplied] = useState(false);
@@ -401,15 +494,19 @@ export function SuggestionEditor({
   const apply = useMutation({
     mutationFn: () => {
       const { section, index, bullet_index } = finding.location;
+      const hashValue = expectedHash ?? finding.content_hash;
+      const hash =
+        hashValue != null ? { expected_content_hash: hashValue } : {};
       const op =
         section === "summary"
-          ? { kind: "replace_summary", value: draft }
+          ? { kind: "replace_summary", value: draft, ...hash }
           : {
               kind: "replace_bullet",
               section,
               index,
               bullet_index,
               value: draft,
+              ...hash,
             };
       const path =
         kind === "base"
@@ -425,8 +522,13 @@ export function SuggestionEditor({
       toast.success("Applied and saved as a new version");
       onApplied();
     },
-    onError: (err: Error) =>
-      toast.error(err instanceof ApiError ? err.message : String(err)),
+    onError: (err: Error) => {
+      if (err instanceof ApiError && isContentChangedError(err)) {
+        toastContentChanged(onReanalyze);
+        return;
+      }
+      toast.error(err instanceof ApiError ? err.message : String(err));
+    },
   });
 
   if (applied) {
@@ -447,12 +549,15 @@ export function SuggestionEditor({
         aria-label="Rewritten bullet"
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
-        className="text-sm"
+        className="max-w-[65ch] text-sm"
+        disabled={locked}
       />
       <div className="flex justify-end">
         <Button
           size="sm"
-          disabled={!canApply || apply.isPending}
+          disabled={!canApply || apply.isPending || locked}
+          title={locked ? STALE_APPLY_HINT : undefined}
+          className={locked ? LOCKED_BTN : undefined}
           onClick={() => apply.mutate()}
         >
           {apply.isPending ? "Applying…" : "Apply suggestion"}
@@ -462,29 +567,97 @@ export function SuggestionEditor({
   );
 }
 
-function CardHeader({
+function LevelChip({ finding }: { finding: LintFinding }) {
+  const name = levelNameOf(finding);
+  if (!name) return null;
+  const label = EVIDENCE_LABELS[name as EvidenceLevel] ?? name;
+  return (
+    <Badge variant="secondary" className="shrink-0 text-xs capitalize">
+      {label}
+    </Badge>
+  );
+}
+
+function CollapsedRow({
   finding,
-  meta,
+  quote,
+  actionLabel,
+  pts,
+  onExpand,
+  overflow,
 }: {
   finding: LintFinding;
-  meta: { label: string; chip: string };
+  quote: string | null;
+  actionLabel: string;
+  pts?: number | null;
+  onExpand: () => void;
+  overflow: ReactNode;
 }) {
   return (
-    <div className="flex items-center justify-between gap-2">
-      <div className="flex min-w-0 items-center gap-2">
-        <Badge variant="secondary" className={cn("shrink-0 text-xs", meta.chip)}>
-          {meta.label}
-        </Badge>
-        <span className="truncate text-xs font-medium">{finding.label}</span>
-      </div>
-      {finding.zone === "hot" && (
+    <div className="flex min-w-0 items-center gap-2">
+      <button
+        type="button"
+        className="flex min-w-0 flex-1 items-center gap-2 text-left"
+        onClick={onExpand}
+        aria-expanded={false}
+      >
         <Badge
           variant="secondary"
-          className={`${ATTENTION_BADGE} shrink-0 text-xs`}
+          className="text-muted-foreground shrink-0 text-xs"
         >
-          {ATTENTION_BADGE_LABEL}
+          {finding.label}
         </Badge>
-      )}
+        {quote ? (
+          <SourceQuote text={quote} truncated />
+        ) : (
+          <span className="text-muted-foreground truncate text-sm">
+            {finding.issue}
+          </span>
+        )}
+        <LevelChip finding={finding} />
+        {finding.zone === "hot" && (
+          <Badge
+            variant="secondary"
+            className={`${ATTENTION_BADGE} shrink-0 text-xs`}
+          >
+            {ATTENTION_BADGE_LABEL}
+          </Badge>
+        )}
+        {pts != null && pts > 0 ? (
+        <span className="text-muted-foreground shrink-0 text-xs">
+          +{pts} pts
+        </span>
+      ) : null}
+      </button>
+      <Button size="xs" variant="outline" onClick={onExpand}>
+        {actionLabel}
+      </Button>
+      {overflow}
+    </div>
+  );
+}
+
+export function FindingGroupHeader({
+  title,
+  findings,
+  id,
+}: {
+  title: string;
+  findings: LintFinding[];
+  id: string;
+}) {
+  const blurb = hoistBlurb(findings);
+  const coaching = sharedCoaching(findings);
+  return (
+    <div id={id} className="scroll-mt-6 space-y-1">
+      <h3 className="text-sm font-medium">{title}</h3>
+      {blurb ? (
+        <p className="text-muted-foreground max-w-[65ch] text-sm">{blurb}</p>
+      ) : coaching ? (
+        <p className="text-muted-foreground max-w-[65ch] text-sm">
+          {coaching.why} {coaching.how}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -496,33 +669,52 @@ export function FixCard({
   resumeKey,
   onApplied,
   onClassificationChanged,
-}: {
-  finding: LintFinding;
-  data: ResumeData;
-  kind: "base" | "application";
-  resumeKey: string;
-  onApplied: () => void;
-  onClassificationChanged?: ClassificationOverrideHandler;
-}) {
+  onReanalyze,
+  locked,
+  nScoreable,
+  hideHow,
+}: FindingCardShared & { finding: LintFinding }) {
+  const [expanded, setExpanded] = useState(false);
   const currentText = textAtLocation(data, finding);
   const meta = TYPE_CHIP.fix;
-  // Once a suggestion exists the diff below repeats the current text; the
-  // plain quote is only needed while there is no diff on screen.
+  const pts = potentialPoints(levelNameOf(finding), nScoreable);
+  const overflow = (
+    <FindingOverflow
+      finding={finding}
+      onClassificationChanged={onClassificationChanged}
+    />
+  );
+
+  if (!expanded) {
+    return (
+      <div className={cn("rounded-md border px-3 py-2", meta.card)}>
+        <CollapsedRow
+          finding={finding}
+          quote={currentText}
+          actionLabel="Review"
+          pts={pts}
+          onExpand={() => setExpanded(true)}
+          overflow={overflow}
+        />
+      </div>
+    );
+  }
+
   const showQuote =
     finding.suggestion == null &&
     currentText != null &&
     currentText.trim().length > 0;
 
   return (
-    <div className={cn("rounded-md border px-3 py-2", meta.card)}>
-      <CardHeader finding={finding} meta={meta} />
-      {showQuote && <SourceQuote text={currentText} />}
-      <p className="mt-1.5 text-sm">{finding.issue}</p>
-      <DetailsDisclosure why={finding.why} how={finding.how} />
-      <ClassificationOverride
-        finding={finding}
-        onChanged={onClassificationChanged}
-      />
+    <ExpandedFindingChrome
+      finding={finding}
+      cardClassName={meta.card}
+      overflow={overflow}
+      onCollapse={() => setExpanded(false)}
+      quote={showQuote ? currentText : null}
+      how={finding.how}
+      hideHow={hideHow}
+    >
       {finding.suggestion != null && currentText != null && (
         <SuggestionBlock
           finding={finding}
@@ -531,9 +723,11 @@ export function FixCard({
           kind={kind}
           resumeKey={resumeKey}
           onApplied={onApplied}
+          onReanalyze={onReanalyze}
+          locked={locked}
         />
       )}
-    </div>
+    </ExpandedFindingChrome>
   );
 }
 
@@ -544,28 +738,58 @@ export function AskCard({
   resumeKey,
   onApplied,
   onClassificationChanged,
-}: {
-  finding: LintFinding;
-  data: ResumeData;
-  kind: "base" | "application";
-  resumeKey: string;
-  onApplied: () => void;
-  onClassificationChanged?: ClassificationOverrideHandler;
-}) {
-  const [answer, setAnswer] = useState("");
-  const [suggestion, setSuggestion] = useState<string | null>(null);
+  onReanalyze,
+  locked,
+  nScoreable,
+  hideHow,
+  storedAnswer,
+}: FindingCardShared & { finding: LintFinding }) {
+  const [expanded, setExpanded] = useState(false);
+  const [answerDraft, setAnswerDraft] = useState<string | null>(null);
+  const [metricDraft, setMetricDraft] = useState<MetricAskValue | null>(null);
+  const [localSuggestion, setLocalSuggestion] = useState<
+    string | null | undefined
+  >(undefined);
   const [notRewritable, setNotRewritable] = useState(false);
   const currentText = textAtLocation(data, finding);
   const meta = TYPE_CHIP.ask;
-  // The question refers to this text — quote it so the ask is answerable.
-  // Once a drafted suggestion appears, its diff replaces the quote.
-  const showQuote =
-    suggestion == null && currentText != null && currentText.trim().length > 0;
+  const pts = potentialPoints(levelNameOf(finding), nScoreable);
+  const metricAsk = isMetricAsk(finding.question);
+  const storedFresh = answerMatchesFinding(storedAnswer, finding.content_hash);
+  const staleDraft = Boolean(storedAnswer && !storedFresh);
+  const answer = answerDraft ?? (storedFresh ? storedAnswer.answer : "");
+  const metric =
+    metricDraft ??
+    (storedFresh
+      ? {
+          ...emptyMetricAsk(),
+          somethingElse: true,
+          freeText: storedAnswer.answer,
+        }
+      : emptyMetricAsk());
+  const suggestion =
+    localSuggestion !== undefined
+      ? localSuggestion
+      : storedFresh
+        ? storedAnswer.suggestion
+        : null;
+  const overflow = (
+    <FindingOverflow
+      finding={finding}
+      onClassificationChanged={onClassificationChanged}
+    />
+  );
+
+  const context = metricAsk ? metricContextFromValue(metric) : answer.trim();
 
   const draft = useMutation({
-    mutationFn: () => answerAsk(kind, resumeKey, finding.id, answer),
-    onSuccess: (result) => setSuggestion(result.suggestion),
+    mutationFn: () => answerAsk(kind, resumeKey, finding.id, context),
+    onSuccess: (result) => setLocalSuggestion(result.suggestion),
     onError: (err: Error) => {
+      if (err instanceof ApiError && isContentChangedError(err)) {
+        toastContentChanged(onReanalyze);
+        return;
+      }
       if (err instanceof ApiError && err.status === 422) {
         setNotRewritable(true);
       } else {
@@ -574,21 +798,44 @@ export function AskCard({
     },
   });
 
+  if (!expanded) {
+    return (
+      <div className={cn("rounded-md border px-3 py-2", meta.card)}>
+        <CollapsedRow
+          finding={finding}
+          quote={currentText}
+          actionLabel="Answer"
+          pts={pts}
+          onExpand={() => setExpanded(true)}
+          overflow={overflow}
+        />
+      </div>
+    );
+  }
+
+  const showQuote =
+    suggestion == null && currentText != null && currentText.trim().length > 0;
+
   return (
-    <div className={cn("rounded-md border px-3 py-2", meta.card)}>
-      <CardHeader finding={finding} meta={meta} />
-      {showQuote && <SourceQuote text={currentText} />}
-      <p className="mt-1.5 text-sm">{finding.issue}</p>
+    <ExpandedFindingChrome
+      finding={finding}
+      cardClassName={meta.card}
+      overflow={overflow}
+      onCollapse={() => setExpanded(false)}
+      quote={showQuote ? currentText : null}
+      how={finding.how}
+      hideHow={hideHow}
+    >
       {finding.question && (
-        <p className="text-muted-foreground mt-1 text-sm italic">
+        <p className="text-muted-foreground mt-1 max-w-[65ch] text-sm italic">
           {finding.question}
         </p>
       )}
-      <DetailsDisclosure why={finding.why} how={finding.how} />
-      <ClassificationOverride
-        finding={finding}
-        onChanged={onClassificationChanged}
-      />
+      {staleDraft && (
+        <p className="text-amber-700 dark:text-amber-400 mt-1 text-xs">
+          Saved draft is stale — the bullet changed
+        </p>
+      )}
 
       {suggestion != null && currentText != null ? (
         <SuggestionBlock
@@ -598,27 +845,41 @@ export function AskCard({
           kind={kind}
           resumeKey={resumeKey}
           onApplied={onApplied}
+          onReanalyze={onReanalyze}
+          locked={locked}
         />
       ) : notRewritable || (suggestion != null && currentText == null) ? (
-        <p className="text-muted-foreground mt-2 border-t pt-2 text-xs">
+        <p className="text-muted-foreground mt-2 max-w-[65ch] border-t pt-2 text-xs">
           {suggestion != null && currentText == null
             ? suggestion
             : "There's no single bullet to rewrite here. Add this to your resume directly."}
         </p>
       ) : (
         <div className="mt-2 space-y-2 border-t pt-2">
-          <Textarea
-            rows={2}
-            aria-label="Your answer"
-            value={answer}
-            onChange={(e) => setAnswer(e.target.value)}
-            placeholder="Your answer…"
-            className="text-sm"
-          />
+          {metricAsk ? (
+            <MetricAskInput
+              value={metric}
+              onChange={setMetricDraft}
+              disabled={locked}
+            />
+          ) : (
+            <Textarea
+              rows={2}
+              aria-label="Your answer"
+              value={answer}
+              onChange={(e) => setAnswerDraft(e.target.value)}
+              className="max-w-[65ch] text-sm"
+              disabled={locked}
+            />
+          )}
           <div className="flex justify-end">
             <Button
               size="sm"
-              disabled={answer.trim().length === 0 || draft.isPending}
+              disabled={
+                context.length === 0 || draft.isPending || locked
+              }
+              title={locked ? STALE_APPLY_HINT : undefined}
+              className={locked ? LOCKED_BTN : undefined}
               onClick={() => draft.mutate()}
             >
               {draft.isPending ? "Drafting…" : "Draft rewrite with this"}
@@ -626,58 +887,257 @@ export function AskCard({
           </div>
         </div>
       )}
-    </div>
+    </ExpandedFindingChrome>
   );
 }
 
-export function NoteItem({
-  finding,
+
+export function NotesTable({
+  notes,
   data,
-  onClassificationChanged,
+  kind,
+  resumeKey,
+  onApplied,
+  locked,
+  onReanalyze,
 }: {
-  finding: LintFinding;
-  /** When supplied, an expanded note quotes the bullet it refers to. */
-  data?: ResumeData;
-  onClassificationChanged?: ClassificationOverrideHandler;
+  notes: LintFinding[];
+  data?: ResumeData | null;
+  kind: "base" | "application";
+  resumeKey: string;
+  onApplied: () => void;
+  locked?: boolean;
+  onReanalyze?: () => void;
 }) {
-  const [open, setOpen] = useState(false);
-  // The bullet the note is about, when its location resolves to one. Notes
-  // without a bullet location (e.g. a section-level note) have no quote.
-  const quote = data ? textAtLocation(data, finding) : null;
+  const groups = groupNotesByRule(notes);
+  const [skill, setSkill] = useState<string | null>(null);
+  const [doneSkills, setDoneSkills] = useState<Set<string>>(new Set());
+  const [expandedQuotes, setExpandedQuotes] = useState<Set<string>>(new Set());
+  const [condenseDraft, setCondenseDraft] = useState<{
+    finding: LintFinding;
+    suggestion: string;
+    content_hash: string;
+  } | null>(null);
+
+  const applyOps = useMutation({
+    mutationFn: (ops: Record<string, unknown>[]) => {
+      const path =
+        kind === "base"
+          ? `/api/base-resumes/${resumeKey}/edits`
+          : `/api/applications/${resumeKey}/edits`;
+      return apiFetch(path, {
+        method: "PATCH",
+        body: JSON.stringify({ ops }),
+      });
+    },
+    onSuccess: () => {
+      toast.success("Applied and saved as a new version");
+      onApplied();
+    },
+    onError: (err: Error) => {
+      if (err instanceof ApiError && isContentChangedError(err)) {
+        toastContentChanged(onReanalyze);
+        return;
+      }
+      toast.error(err instanceof ApiError ? err.message : String(err));
+    },
+  });
+
+  const condense = useMutation({
+    mutationFn: (finding: LintFinding) =>
+      draftRewrite(kind, resumeKey, {
+        location: {
+          section: finding.location.section,
+          index: finding.location.index,
+          bullet_index: finding.location.bullet_index,
+        },
+        objective: "condense",
+        expected_content_hash: finding.content_hash ?? undefined,
+      }).then((result) => ({ finding, ...result })),
+    onSuccess: (result) => setCondenseDraft(result),
+    onError: (err: Error) => {
+      if (err instanceof ApiError && isContentChangedError(err)) {
+        toastContentChanged(onReanalyze);
+        return;
+      }
+      toast.error(err instanceof ApiError ? err.message : String(err));
+    },
+  });
+
   return (
-    <div className="text-muted-foreground rounded-md border px-3 py-2">
-      <button
-        type="button"
-        className="flex w-full items-center justify-between gap-2 text-left"
-        onClick={() => setOpen((v) => !v)}
-      >
-        <span className="flex min-w-0 items-center gap-1.5">
-          {open ? (
-            <ChevronDown className="size-3 shrink-0" />
-          ) : (
-            <ChevronRight className="size-3 shrink-0" />
-          )}
-          <span className="truncate text-xs font-medium">{finding.label}</span>
-        </span>
-        <span className="shrink-0 rounded-md bg-slate-500/10 px-1.5 py-0.5 text-[10px]">
-          No score impact
-        </span>
-      </button>
-      {open && <p className="mt-1.5 text-sm">{finding.issue}</p>}
-      {open && quote != null && quote.trim().length > 0 && (
-        <SourceQuote text={quote} />
-      )}
-      {open && (
-        <ClassificationOverride
-          finding={finding}
-          onChanged={onClassificationChanged}
+    <section id="notes" className="scroll-mt-6 space-y-2">
+      <h2 className="text-muted-foreground text-sm font-medium">
+        No score impact ({notes.length})
+      </h2>
+      <div className="overflow-x-auto rounded-md border">
+        <table className="w-full table-fixed text-sm">
+          <tbody>
+            {groups.map((group) => {
+              const ops =
+                data && isMechanicalPunctRule(group.rule)
+                  ? punctFixOps(group.rule, group.subjects, data)
+                  : null;
+              const bulletRows = isBulletSubjectRule(group.rule);
+              const undemonstrated = group.rule === "skills.undemonstrated";
+              const subjectLine =
+                !bulletRows && !undemonstrated && group.subjects.length > 0
+                  ? group.subjects.slice(0, 8).join(", ") +
+                    (group.subjects.length > 8 ? ", …" : "")
+                  : null;
+              return (
+                <tr key={group.rule} className="border-b last:border-b-0">
+                  <td className="px-3 py-2 align-top">
+                    <p className="font-medium">
+                      {group.title} ({group.count})
+                    </p>
+                    {undemonstrated && (
+                      <div className="mt-1.5 flex flex-wrap gap-1">
+                        {group.subjects.map((subject) => {
+                          const done = doneSkills.has(subject);
+                          return (
+                            <button
+                              key={subject}
+                              type="button"
+                              className={cn(
+                                "rounded-full border px-2 py-0.5 text-xs",
+                                done
+                                  ? "text-muted-foreground line-through"
+                                  : "hover:bg-muted",
+                              )}
+                              onClick={() => !done && setSkill(subject)}
+                              disabled={done || locked || !data}
+                            >
+                              {subject}
+                              {done ? " · done" : ""}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {subjectLine && (
+                      <p className="text-muted-foreground mt-0.5 max-w-[65ch] text-xs">
+                        {subjectLine}
+                      </p>
+                    )}
+                    {group.shapeNote &&
+                      group.notes.map((note) => (
+                        <p
+                          key={note.id}
+                          className="text-muted-foreground mt-0.5 max-w-[65ch] text-xs"
+                        >
+                          {note.issue} {note.how}
+                        </p>
+                      ))}
+                    {bulletRows && (
+                      <ul className="mt-1.5 space-y-1">
+                        {group.notes.map((note) => {
+                          const quote = note.subject ?? note.issue;
+                          const open = expandedQuotes.has(note.id);
+                          return (
+                            <li
+                              key={note.id}
+                              className="flex items-start justify-between gap-2"
+                            >
+                              <button
+                                type="button"
+                                className="text-muted-foreground min-w-0 flex-1 text-left text-xs italic"
+                                onClick={() =>
+                                  setExpandedQuotes((s) => {
+                                    const next = new Set(s);
+                                    if (next.has(note.id)) next.delete(note.id);
+                                    else next.add(note.id);
+                                    return next;
+                                  })
+                                }
+                              >
+                                <span className={open ? "whitespace-pre-wrap" : "truncate block"}>
+                                  {quote}
+                                </span>
+                              </button>
+                              {group.rule === "bullet.too_long" && (
+                                <Button
+                                  size="xs"
+                                  variant="outline"
+                                  disabled={locked || condense.isPending}
+                                  title={locked ? STALE_APPLY_HINT : undefined}
+                                  className={locked ? LOCKED_BTN : undefined}
+                                  onClick={() => condense.mutate(note)}
+                                >
+                                  Condense
+                                </Button>
+                              )}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                    {condenseDraft &&
+                      group.notes.some((n) => n.id === condenseDraft.finding.id) &&
+                      data && (
+                        <div className="mt-2">
+                          <SuggestionEditor
+                            finding={condenseDraft.finding}
+                            currentText={
+                              textAtLocation(data, condenseDraft.finding) ??
+                              condenseDraft.finding.subject ??
+                              ""
+                            }
+                            suggestion={condenseDraft.suggestion}
+                            kind={kind}
+                            resumeKey={resumeKey}
+                            onApplied={() => {
+                              setCondenseDraft(null);
+                              onApplied();
+                            }}
+                            onReanalyze={onReanalyze}
+                            locked={locked}
+                            expectedHash={condenseDraft.content_hash}
+                          />
+                        </div>
+                      )}
+                  </td>
+                  <td className="w-28 px-3 py-2 align-top text-right">
+                    {ops ? (
+                      <Button
+                        size="xs"
+                        variant="outline"
+                        disabled={locked || applyOps.isPending}
+                        title={locked ? STALE_APPLY_HINT : undefined}
+                        className={locked ? LOCKED_BTN : undefined}
+                        onClick={() => applyOps.mutate(ops)}
+                      >
+                        Fix all
+                      </Button>
+                    ) : null}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      {skill && data && (
+        <DemonstrateSkillDialog
+          open={Boolean(skill)}
+          onOpenChange={(open) => {
+            if (!open) setSkill(null);
+          }}
+          skill={skill}
+          data={data}
+          kind={kind}
+          resumeKey={resumeKey}
+          locked={locked}
+          onApplied={() => {
+            setDoneSkills((s) => new Set(s).add(skill));
+            onApplied();
+          }}
+          onReanalyze={onReanalyze}
         />
       )}
-    </div>
+    </section>
   );
 }
 
-/** Gate banner — driven by report.gates (only fail + waived render here). */
 function FailedGate({
   gate,
   kind,
@@ -725,16 +1185,16 @@ function FailedGate({
         </Badge>
         <span className="text-sm font-medium">{gate.label}</span>
       </div>
-      {gate.detail && <p className="mt-1 text-sm">{gate.detail}</p>}
-      <DetailsDisclosure
-        why={gate.why}
-        how={gate.fix_hint}
-        label="Why this matters & how to fix"
-      />
+      {gate.detail && <p className="mt-1 max-w-[65ch] text-sm">{gate.detail}</p>}
+      {gate.fix_hint && (
+        <p className="text-muted-foreground mt-1 max-w-[65ch] text-xs">
+          {gate.fix_hint}
+        </p>
+      )}
 
       {showReason ? (
         <div className="mt-2 space-y-2">
-          <p className="text-muted-foreground text-xs">
+          <p className="text-muted-foreground max-w-[65ch] text-xs">
             Waiving lifts this gate&apos;s score cap for this resume. It doesn&apos;t change the
             resume. The gate stays waived across future edits until you unwaive it here.
           </p>
@@ -743,8 +1203,8 @@ function FailedGate({
             aria-label="Reason for waiving this gate"
             value={reason}
             onChange={(e) => setReason(e.target.value)}
-            placeholder="Why is this acceptable? (recorded with the waiver)"
-            className="text-sm"
+            placeholder="e.g. this template is certified elsewhere"
+            className="max-w-[65ch] text-sm"
           />
           <div className="flex justify-end gap-2">
             <Button
@@ -811,12 +1271,7 @@ function WaivedGate({
           {unwaive.isPending ? "…" : "Unwaive"}
         </Button>
       </div>
-      {gate.detail && <p className="mt-1 text-sm">{gate.detail}</p>}
-      <DetailsDisclosure
-        why={gate.why}
-        how={gate.fix_hint}
-        label="Why this matters & how to fix"
-      />
+      {gate.detail && <p className="mt-1 max-w-[65ch] text-sm">{gate.detail}</p>}
       {gate.waiver_reason && (
         <p className="mt-1 text-xs">
           <span className="text-foreground font-medium">Waiver reason: </span>
@@ -827,28 +1282,96 @@ function WaivedGate({
   );
 }
 
+function NotAssessedGate({
+  gate,
+  templateId,
+  onChanged,
+}: {
+  gate: LintGate;
+  templateId?: string | null;
+  onChanged: () => Promise<void>;
+}) {
+  const certify = useMutation({
+    mutationFn: async () => {
+      if (!templateId) throw new Error("No template on this resume");
+      await validateTemplate(templateId);
+      await onChanged();
+    },
+    onSuccess: () => toast.success("Template certified. Re-running the report."),
+    onError: (err: Error) =>
+      toast.error(err instanceof ApiError ? err.message : String(err)),
+  });
+
+  return (
+    <div className="rounded-md border border-border bg-muted/40 px-3 py-2">
+      <div className="flex items-center gap-2">
+        <Badge variant="secondary" className="bg-muted text-muted-foreground shrink-0 text-xs">
+          Not assessed
+        </Badge>
+        <span className="text-sm font-medium">{gate.label}</span>
+      </div>
+      <p className="text-muted-foreground mt-1 max-w-[65ch] text-sm">
+        {gate.label} — not checked. This template hasn&apos;t been certified.
+        {gate.detail ? ` ${gate.detail}` : ""}
+      </p>
+      <div className="mt-2 flex justify-end">
+        {templateId ? (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={certify.isPending}
+            onClick={() => certify.mutate()}
+          >
+            {certify.isPending ? "Certifying…" : "Certify"}
+          </Button>
+        ) : (
+          <Button
+            size="sm"
+            variant="outline"
+            nativeButton={false}
+            render={<Link href="/templates">Open templates</Link>}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function GateBanner({
   gates,
   kind,
   resumeKey,
   onChanged,
+  templateId,
 }: {
   gates: LintGate[];
   kind: "base" | "application";
   resumeKey: string;
   onChanged: () => Promise<void>;
+  templateId?: string | null;
 }) {
   const failed = gates.filter((g) => g.status === "fail");
   const waived = gates.filter((g) => g.status === "waived");
-  if (failed.length === 0 && waived.length === 0) return null;
+  const notAssessed = gates.filter((g) => g.status === "not_assessed");
+  if (failed.length === 0 && waived.length === 0 && notAssessed.length === 0) {
+    return null;
+  }
   return (
-    <div className="space-y-2">
+    <div id="gates" className="scroll-mt-6 space-y-2">
       {failed.map((gate) => (
         <FailedGate
           key={gate.id}
           gate={gate}
           kind={kind}
           resumeKey={resumeKey}
+          onChanged={onChanged}
+        />
+      ))}
+      {notAssessed.map((gate) => (
+        <NotAssessedGate
+          key={gate.id}
+          gate={gate}
+          templateId={templateId}
           onChanged={onChanged}
         />
       ))}
@@ -861,6 +1384,14 @@ export function GateBanner({
           onChanged={onChanged}
         />
       ))}
+    </div>
+  );
+}
+
+export function ResolvedFinding({ finding }: { finding: LintFinding }) {
+  return (
+    <div className="text-muted-foreground rounded-md border border-dashed px-3 py-2 text-sm line-through">
+      Resolved · {finding.label}
     </div>
   );
 }

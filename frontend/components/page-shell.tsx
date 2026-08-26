@@ -13,9 +13,10 @@ import { cn } from "@/lib/utils";
  * left margin than a job list; the variation carried no meaning.
  *
  * **A narrow reading measure is a BODY concern, not a shell concern.** A page
- * whose prose wants ~65 characters wraps its own content in `PageMeasure`; it
- * does not narrow the shell, because that is what moves the header. Keep this
- * split — it is the whole reason the header can no longer drift.
+ * whose prose wants ~65 characters wraps that prose itself (or, for a
+ * scanning layout, applies `max-w-[65ch]` inside cards). `PageMeasure` remains
+ * for a single reading column; the health report is two-pane above 1024px and
+ * does not wrap the page in it.
  */
 export function PageShell({
   children,
@@ -37,9 +38,10 @@ export function PageShell({
 }
 
 /**
- * A reading-measure column for prose-heavy bodies (health reports, long-form
- * results). Sits INSIDE PageShell, under the header, so the header keeps the
- * shared origin while the text stays readable.
+ * A reading-measure column for a single prose column. Sits INSIDE PageShell,
+ * under the header. Do not use it to cap a scanning layout (score cards, jump
+ * lists, tables) — those want the shell width; put `max-w-[65ch]` on the
+ * sentences inside them instead.
  */
 export function PageMeasure({
   children,

@@ -1622,6 +1622,10 @@ export interface LintFinding {
   classification_level?: EvidenceLevel | null;
   classification_source?: "llm" | "cache" | "override" | "deterministic" | null;
   classification_reason?: string | null;
+  /** Raw source string this finding is about — exact-match needle. Backend already sends this. */
+  subject?: string;
+  /** Detector id, e.g. `skills.undemonstrated`. Backend already sends this. */
+  rule?: string;
 }
 
 export interface LintGate {
@@ -1633,6 +1637,13 @@ export interface LintGate {
   why: string;
   fix_hint: string;
   waiver_reason?: string;
+}
+
+export interface LintScoreBreakdown {
+  raw_score: number;
+  e_hot: number | null;
+  n_scoreable: number;
+  capped_by: "fatal" | "serious" | null;
 }
 
 export interface LintReport {
@@ -1648,6 +1659,12 @@ export interface LintReport {
   findings: LintFinding[];
   model: string | null;
   created_at: string;
+  /** Absent until the scoring lane lands — treat missing as false. */
+  stale?: boolean;
+  /** Absent until the scoring lane lands — treat missing as false. */
+  insufficient_evidence?: boolean;
+  /** Absent until the scoring lane lands. */
+  score_breakdown?: LintScoreBreakdown | null;
 }
 
 /** ---- Agent proposal ledger (auto-apply lane) ---- */
@@ -1782,4 +1799,11 @@ export interface MarketSettingResponse {
    * interchangeable between countries.
    */
   offers_eeo: boolean;
+}
+
+/** `GET /api/version` — baked image identity plus the live alembic head. */
+export interface VersionInfo {
+  version: string;
+  git_sha: string | null;
+  schema_revision: string;
 }

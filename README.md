@@ -8,13 +8,16 @@
 <p align="center">
   <a href="https://github.com/seinun-ai/maestro-career-studio/actions/workflows/ci.yml"><img src="https://github.com/seinun-ai/maestro-career-studio/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://github.com/seinun-ai/maestro-career-studio/actions/workflows/codeql.yml"><img src="https://github.com/seinun-ai/maestro-career-studio/actions/workflows/codeql.yml/badge.svg" alt="CodeQL"></a>
-  <a href="https://github.com/seinun-ai/maestro-career-studio/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/tests-4%2C023%20passing-brightgreen" alt="Tests"></a>
+  <a href="https://github.com/seinun-ai/maestro-career-studio/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/tests-4%2C080%20passing-brightgreen" alt="Tests"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="License"></a>
   <a href="https://maestrocareerstudio.com"><img src="https://img.shields.io/badge/site-maestrocareerstudio.com-1a3a5c" alt="Project site"></a>
 </p>
-<!-- TODO(P5): after the first v* tag publishes images, add a ghcr.io image badge here,
-     e.g. https://img.shields.io/badge/ghcr.io-multi--arch-blue linking to the packages page.
-     Also refresh the static test-count badge above at each release. -->
+<!-- TODO(P5): the ghcr.io image badge belongs here, e.g.
+     https://img.shields.io/badge/ghcr.io-multi--arch-blue linking to the packages
+     page. It waits until the first v* tag has actually published both packages
+     AND they have been made public — a badge for a private package renders as a
+     broken promise. Both that step and the static test-count badge above are on
+     the release checklist in docs/RELEASING.md; edit them there, not here. -->
 
 **A job-application studio that runs entirely on your machine — and shows you
 a diff of every change the AI makes.**
@@ -50,6 +53,7 @@ you** — your whole record exports to one `career.md`
 
 **Contents:** [Why Maestro CS?](#why-maestro-cs) ·
 [Prerequisites](#prerequisites) · [Quickstart](#quickstart) ·
+[Updating](#updating) ·
 [Using it well](#using-it-well) ·
 [Driving it from Claude, Codex, or ChatGPT (MCP)](#driving-it-from-claude-codex-or-chatgpt-mcp) ·
 [The rest of the toolkit](#the-rest-of-the-toolkit) ·
@@ -213,7 +217,8 @@ Then open **http://localhost:3000**.
 > **This release builds locally.** Prebuilt multi-arch images ship from the
 > first tagged release; once they are up, set `IMAGE_REGISTRY=ghcr.io/seinun-ai/maestro-career-studio`
 > in `.env` and the same compose file *pulls* `amd64`/`arm64` images instead —
-> `docker compose up -d`, no build step.
+> `docker compose up -d`, no build step. Moving an existing install to a newer
+> version is [one command](#updating) either way.
 
 > **The compose path is the least-tested part of this release.** The stack runs
 > daily on my machine, but the fresh-clone first boot has had little
@@ -300,6 +305,128 @@ On first boot, Docker will:
 2. Run database migrations via Alembic.
 3. Seed demonstration base resumes, compile initial PDF previews, seed default AI prompts, and build your initial demo Career KB (if an API key is present).
 4. Serve the UI on **http://127.0.0.1:3000** and backend API on **http://127.0.0.1:8001**.
+
+---
+
+## Updating
+
+**One command, from the repo you cloned:**
+
+```bash
+./scripts/update.sh
+```
+
+It backs up your database first, moves this checkout to the newest released
+`v*` tag, reports any new `.env` keys without editing your file, pulls (or
+rebuilds) the images for that same tag, waits for the stack to come back
+healthy, and then names the two surfaces Docker cannot update for you.
+
+- `./scripts/update.sh --check` — changes nothing. It answers *am I up to
+  date?*: the running version and schema revision, your checkout, the newest
+  released tag, and any `.env` drift. Every probe says so when it cannot
+  answer (a stopped stack reports "backend: not running" rather than failing).
+- `./scripts/update.sh --force` — proceed even though the working tree is
+  dirty. Without it, local edits stop the update rather than being run over.
+- `./scripts/update.sh --help` — the flags.
+
+It is bash, so on Windows run it under WSL — or use the manual form below.
+
+**Your checkout and your images move together, always.** An install here *is* a
+git checkout: the unpacked extension loads from `extension/` and the MCP
+server's venv sits over `backend/`. A `docker compose pull` on its own updates
+two of the four surfaces and leaves the extension and MCP client running code
+your API no longer has. That is why the script moves the tree to a release tag
+and pins the image pull to that same tag, rather than tracking `main`.
+
+### The manual equivalent
+
+Same thing, in the open, if you would rather see the moving parts:
+
+```bash
+# 1. Back up the database (see "What happens to your data" below)
+mkdir -p backups
+docker compose up -d postgres
+docker compose exec -T postgres pg_dump --clean --if-exists -U app maestro_cs | gzip > backups/db-manual.sql.gz
+
+# 2. Move the checkout to the newest released tag
+git fetch --tags origin
+git merge --ff-only "$(git tag -l 'v*' --sort=-v:refname | head -n1)"
+
+# 3. Bring the images to that same tag — note the tag has NO leading v
+IMAGE_TAG=0.1.0 docker compose pull
+IMAGE_TAG=0.1.0 docker compose up -d --force-recreate --remove-orphans
+```
+
+`-U app` and `maestro_cs` are the compose defaults (`POSTGRES_USER` /
+`POSTGRES_DB`); use your own values if you changed them in `.env`.
+
+**Pinning a version — the `v` is the trap.** The git tag is `v0.1.0`; the
+image tag drops the `v`. Pin with `IMAGE_TAG=0.1.0` — `IMAGE_TAG=v0.1.0` does
+not exist and the pull 404s. Set it in `.env` to make the pin permanent, or
+pass it inline as above for one command (a shell variable beats `.env` in
+Compose, so the inline form needs no edit to a file you own).
+
+**Build mode or pull mode.** With `IMAGE_REGISTRY` unset — which is every
+install made before prebuilt images shipped — `docker compose` *builds* from
+your checkout, and an update recompiles TeX Live. Once the images are
+published, one line in `.env` switches you to pulling them:
+
+```ini
+IMAGE_REGISTRY=ghcr.io/seinun-ai/maestro-career-studio
+```
+
+That is right for users. Contributors building their own changes should leave
+it unset — see [`CONTRIBUTING.md`](CONTRIBUTING.md).
+
+### What happens to your data
+
+**Nothing.** `base_resumes/`, `applications/`, `settings/`, `kb_documents/`,
+`exports/` and `logs/` are your files on disk, git-ignored, and no step of an
+update touches them. Postgres lives in a named Docker volume that survives
+`up`, `down` and `pull` alike (only `docker compose down -v` destroys it, and
+nothing here runs that).
+
+**Database migrations run themselves.** The backend runs `alembic upgrade head`
+at boot, so there is no migration step for you — but the first boot after a
+schema change is genuinely slower, which is why the script says it is waiting
+rather than sitting silent.
+
+**What the pre-update backup actually covers.** The dump in `backups/` guards
+that migration, which is the one irreversible step in the process. It is *not*
+"your career data" — that is the on-disk directories above, which never needed
+guarding.
+
+### Rolling back
+
+One recipe: the old git ref, the old images, and the dump — in that order.
+
+```bash
+git checkout v0.1.0                                     # the version you were on
+IMAGE_TAG=0.1.0 docker compose up -d --force-recreate
+gunzip -c backups/db-<timestamp>-<version>.sql.gz | docker compose exec -T postgres psql -U app maestro_cs
+```
+
+**Never restore a dump into a newer schema, and do not reach for an Alembic
+downgrade.** Downgrade functions exist in the migration files, but they have
+never been a supported or tested path here — rolling the schema back means
+rolling the whole stack back to the version that wrote it.
+
+### The two things you still do by hand
+
+Docker cannot reach either of these:
+
+1. **Reload the browser extension** — `chrome://extensions` → **Reload** on the
+   Maestro CS card. Then reload any job tab that was already open: a reload
+   orphans the content script in every open tab, which shows up as "No job
+   description found on this page" over a visible posting. If your install
+   predates the pinned extension `key`, press **Remove** and **Load unpacked**
+   again instead — reloading never re-derives the id
+   ([details](extension/README.md)).
+2. **Restart your MCP client, and re-run `./scripts/setup-mcp.sh`** — new tools
+   stay invisible to Claude, Codex or the ChatGPT desktop app until the client
+   restarts. Re-run the setup script every time, not only when something looks
+   moved: the editable install picks up new code by itself, but not new
+   dependencies.
 
 ---
 
@@ -769,6 +896,8 @@ bug report is a contribution, and one of the most valuable kinds right now.
 - **Architecture Source of Truth:** [`SYSTEM.md`](SYSTEM.md) — The living reference for how the system fits together, at the repo root so every agent tool finds it. It holds the orientation tier — layout, architecture, invariants, environment, workflow, and the three ledgers — and indexes the reference tier it delegates to: per-entity lifecycles in [`docs/entities/`](docs/entities/) and UI rules in [`docs/frontend-conventions.md`](docs/frontend-conventions.md). Meant to be searched rather than read front to back; the code cites its section numbers and invariant ids directly. Read the relevant part before altering behaviour.
 - **Domain Glossary:** [`UBIQUITOUS_LANGUAGE.md`](UBIQUITOUS_LANGUAGE.md) — The vocabulary of the domain, and the words to avoid. Worth ten minutes before your first issue or PR.
 - **Contributing Guide:** [`CONTRIBUTING.md`](CONTRIBUTING.md) — Learn how to run automated unit tests, set up dev virtual environments, and file deprecation rows.
+- **Changelog:** [`CHANGELOG.md`](CHANGELOG.md) — What changed in each release, and the versioning policy stated honestly for 0.x: before 1.0 a breaking change may land in a minor version, and every one is listed under a `### Breaking changes` heading. Read that heading before [updating](#updating); migrations never go backwards.
+- **Release Checklist (maintainers):** [`docs/RELEASING.md`](docs/RELEASING.md) — How a release is cut, and the two standing constraints it creates: published history is append-only, and `main` stays compatible with the latest released images.
 - **Security & Privacy Policy:** [`SECURITY.md`](SECURITY.md) — Understand localhost network guidelines and vulnerability reporting protocols.
 - **Open Source License:** [`LICENSE`](LICENSE) — Apache License 2.0, plus [`NOTICE`](NOTICE).
 

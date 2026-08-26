@@ -91,12 +91,12 @@ backend/
   mcp_server/          FastMCP server (server.py tools → client.py httpx → REST)
   migrations/          alembic (see §12 for the revision-id gotcha)
   tests/               pytest vs the test DB; mcp_server/tests/ uses respx (no DB)
-frontend/              Next.js 16 (App Router) + React 19 + Tailwind v4 +
-                       Base UI-flavored shadcn. AGENTS.md: read
-                       node_modules/next/dist/docs before writing code.
+frontend/              Next.js 16 (App Router) + React 19 + Tailwind v4 + Base UI-flavored
+                       shadcn. AGENTS.md: read node_modules/next/dist/docs before writing code.
 base_resumes/          on-disk resume data (<slug>.json) + rendered tex/pdf output
 applications/          rendered per-application artifacts (Company_Role_YYYYMMDD_<idprefix>/)
 extension/             browser-capture extension (posts pre-extracted JDs)
+scripts/               setup-mcp.sh (MCP registration), update.sh (user update path, §9)
 ```
 
 ## 3. Architecture at a glance
@@ -647,11 +647,11 @@ and the copy rules, each with the failure mode that bought it. Code citing
   `app`/`mcp_server` to an OLD worktree for anything run outside a repo dir,
   including the Claude Desktop MCP server; reinstall + restart client to fix).
 - Postgres runs in the compose stack's `postgres` service on host port
-  **55432**; nothing on 5432 (the non-default port is deliberate, to dodge any
-  locally installed PostgreSQL). The compose-default dev DB is `maestro_cs`
-  (`POSTGRES_DB` in `.env`); create `maestro_cs_test` beside it for the test
-  suite. If more than one stack or checkout runs on a machine, they differ by
-  host ports (`*_HOST_PORT` in each `.env`) — go by the port, not the name.
+  **55432**, never 5432 (deliberate: dodges any locally installed PostgreSQL).
+  The compose-default dev DB is `maestro_cs` (`POSTGRES_DB` in `.env`); create
+  `maestro_cs_test` beside it for the test suite. If more than one stack or
+  checkout runs on a machine, they differ by host ports (`*_HOST_PORT` in each
+  `.env`) — go by the port, not the name.
 - **ATS calibration** — the engine is corpus-tunable, so measure, don't
   argue. `scripts/ats_snapshot.py` prints a ranking table;
   `scripts/ats_calibration.py` writes a machine-readable snapshot and diffs
@@ -667,11 +667,21 @@ and the copy rules, each with the failure mode that bought it. Code citing
   ANY matcher or tier change, not just a scoring-weight one.
 - Backend tests: `TEST_DATABASE_URL=postgresql://app:app@127.0.0.1:55432/maestro_cs_test`
   then `python -m pytest tests/ -q` from `backend/`. Suite must stay green.
-- **Deploying = rebuilding BOTH images** (from the MAIN checkout): `docker
-  build -t maestro-career-studio-backend backend/` AND `…-frontend frontend/`,
-  then `docker compose up -d --no-build --force-recreate backend frontend`. A
-  frontend-only change still needs the frontend image rebuilt — a stale image
-  once made fixed UI look broken for a whole review.
+- **Deploying a local change = rebuilding BOTH images** (MAINTAINER path, MAIN
+  checkout): `docker build -t maestro-career-studio-backend backend/` AND
+  `…-frontend frontend/`, then `docker compose up -d --no-build
+  --force-recreate backend frontend`. A frontend-only change still needs the
+  frontend image rebuilt — a stale image once made fixed UI look broken for a
+  whole review.
+- **A USER updates instead** — `./scripts/update.sh`: backup → ff-only to the
+  newest `v*` tag → images pinned to that tag → health poll → extension/MCP
+  reminders (README "Updating"; `docs/RELEASING.md` cuts one). The tree is
+  runtime here (unpacked extension, host MCP venv), so checkout and images move
+  TOGETHER — a bare `docker compose pull` skews an install. Contributors build.
+- **Version identity**: the tag bakes into both images as `APP_VERSION`, served
+  by `GET /api/version` with the live alembic revision; the frontend warns when
+  its baked copy disagrees, unless either side STARTS WITH `dev` (local or
+  dispatch build) = do not compare — which also keeps it off contributors.
 - Never verify new code against the docker-compose stack (old images). Launch
   fresh: uvicorn on a free port with data-dir env overrides +
   `/Library/TeX/texbin` on PATH; frontend `API_PROXY_BACKEND=... npm run dev`.
@@ -698,9 +708,9 @@ and the copy rules, each with the failure mode that bought it. Code citing
   invariant whose enforcement pin in `.system_md_enforcement.json` has lost its
   file or its symbol — the "docs promise what the code no longer does" class.
   Re-baselining requires `--update-baselines --reason "<text>"`, recorded in
-  `.slopledger.json`. It anchors on the repo root as the script's own parent
-  directory, deliberately: a walk-up search finds the MAIN checkout's copy when
-  run from a worktree and validates the wrong file.
+  `.slopledger.json`. It anchors the repo root on the script's own parent
+  directory, deliberately: a walk-up search finds the MAIN checkout's copy from
+  a worktree and validates the wrong file.
 - **On merge, re-verify the doc.** Two lanes each update the sections they know
   about, and the merge can produce a file describing neither branch — this file
   is least accurate exactly when the most agents are reading it. After any
@@ -711,32 +721,28 @@ and the copy rules, each with the failure mode that bought it. Code citing
   `.slop-baseline.json` in `backend/`, `frontend/`, `extension/`. After
   changing a surface, the maintainer runs `python3
   ~/.claude/skills/ai-slop-detector/scripts/slop_scan.py check <surface>` from
-  the repo root (maintainer tooling, not shipped here — contributors are not
-  expected to run it; see CONTRIBUTING) — non-zero exit means a metric
-  regressed past baseline; fix or re-baseline deliberately with a reason. **RUN EVERY SURFACE YOU TOUCHED AND
-  NAME EACH ONE IN THE CLAIM.** A change to one surface moves another's numbers
-  routinely — the extension's tests live in `backend/`, so an extension feature
-  is a backend ratchet event — and an unnamed "slop ratchet OK" is the shape of
-  the 2026-08-17 false green: three commit bodies claimed it having checked
-  `extension/` alone while `backend/` was red throughout. **`complexity_hotspots` is a COUNT,
-  and counts move for reasons that are not decay — re-baseline it rather than
-  chasing it.** A function is a hotspot if `cc >= 10` OR `>50 source lines` OR
-  too many params, so the count rises when the codebase GROWS, when you ADD
-  TESTS (`gate_test_loc:false` exempts test LOC but nothing exempts test
-  complexity), and — the trap — when you DECOMPOSE a monster: splitting one
-  cc=46 function into named pieces can move the count UP. Judge erosion by
-  hotspot density per KLOC and the worst offender's cc, not by the count; the
-  count's job is to make you look, not to be driven to zero. The other metrics
-  are honest ratchets — orphan LOC and duplication only move when something
-  really regressed. Scan a SURFACE dir, never the repo root: the analyzer roots
-  module names at the scan path, so a root scan can't resolve `app.*` imports
-  and reports the whole backend as orphaned. jscpd is optional; without it the
-  duplication metric is skipped, the rest still gates. The extension's
-  allowlisted clones are the
-  documented injected twins — R-C removed the four widget→panel pairs, so a NEW
-  clone there is a real finding. Read
-  the reason strings before trusting a green: the matcher pairs FILE NAMES by
-  substring, so a rule naming a file on either side also hides that file's own
+  the repo root (not shipped; see CONTRIBUTING) — non-zero exit means a metric
+  regressed past baseline; fix or re-baseline deliberately with a reason. **RUN
+  EVERY SURFACE YOU TOUCHED AND NAME EACH ONE IN THE CLAIM.** A change to one
+  surface moves another's numbers routinely — the extension's tests live in
+  `backend/`, so an extension feature is a backend ratchet event — and an
+  unnamed "slop ratchet OK" is the shape of the 2026-08-17 false green.
+  **`complexity_hotspots` is a COUNT, and counts move for reasons that are not
+  decay — re-baseline it rather than chasing it.** A function is a hotspot if
+  `cc >= 10` OR `>50 source lines` OR too many params, so the count rises when
+  the codebase GROWS, when you ADD TESTS (`gate_test_loc:false` exempts test
+  LOC but nothing exempts test complexity), and — the trap — when you DECOMPOSE
+  a monster: splitting one cc=46 function into named pieces can move the count
+  UP. Judge erosion by hotspot density per KLOC and the worst offender's cc,
+  not by the count. The other metrics are honest ratchets — orphan LOC and
+  duplication only move when something really regressed. Scan a SURFACE dir,
+  never the repo root: the analyzer roots module names at the scan path, so a
+  root scan can't resolve `app.*` imports and reports the whole backend as
+  orphaned. jscpd is optional; without it the duplication metric is skipped,
+  the rest still gates. The extension's allowlisted clones are the documented
+  injected twins, so a NEW clone there is a real finding. Read the reason
+  strings before trusting a green: the matcher pairs FILE NAMES by substring,
+  so a rule naming a file on either side also hides that file's own
   SELF-clones. `allowlisted_clones` is PRINTED, never gated — a new clone
   landing inside an allowlisted pair raises that number silently while
   `clone_count` stays 0, so check it by eye. Optional graph signals read
@@ -856,6 +862,9 @@ citation. Priority lives in the item text, not in the ordinal.
 
 ## 12. Gotchas that have bitten before
 
+- **A guard test mocked away the guard** (2026-08-25): a green ask/answer suite hid a
+  100%-failing numeric rewrite path because it replaced `guarded_rewrite`. When a guard
+  or validator is the subject, fake `llm.call_openai`, never the guard.
 - **The FAST model quietly caps score honesty** (2026-08-24): flash-lite
   extractions missed conceptual JD skills → base ATS scores inflated ~9 pts vs
   fuller extractors. Fast tier drives coverage/honesty/latency; Smart barely
@@ -957,6 +966,7 @@ evidence live in `git log SYSTEM.md`, not here.
 | `autofill-work-auth-shape` | `work_auth.authorized_to_work` + `requires_sponsorship` (two timeless booleans, stored "yes"/"no") → typed `WorkAuth` (`schemas/autofill_profile.py`: `status`, `authorized_now`, `sponsorship_now`, `sponsorship_future`, `authorization_expires_on`, `countries_authorized`) | both-live | Delete when no raw-profile reader uses either legacy key. Today's storage readers are `services/autofill_profile.py`'s legacy branch, the Settings editor's legacy-on-edit bridge, and the extension's own copy of the dual-read (`content/autofill.js:51,56` in the profile normalizer; moved from agent.js at the phase-2 split). `job_search_brief`'s identically named response fields are a frozen outward compatibility projection from typed `authorized_now` / `sponsorship_future`, not a legacy reader, and do not block removal. ALSO `GET /api/settings/autofill` must return a `work_auth` carrying neither legacy key. Then delete the legacy branch of BOTH `autofill_profile.get_work_auth` and the extension's `w` binding. Per `autofill-education-shape`: cut the frontend first, the extension one release later. | small |
 | `job-location-raw` | `jobs.location` (dual-written) → `location_raw` + city/state/country | both-live | Stage 1 (schema shim + `.location` property) already met. Stage 2: no reader of `jobs.location` remains, then `op.drop_column`. | small |
 | `explore-redirect` | `frontend/app/explore/page.tsx` → `/analytics` | ready-to-cut | Owner overrules the recorded keep-decision. Safe: it is a 307, not a 308 — no browser cached the mapping. | trivial |
+| `health-rewrite-cache` | unattended rewrite always-LLM → `bullet_rewrites` (NULL text = tried-ask) + ephemeral ask answers → `health_ask_answers` | new-is-default | Migration `85a1bb628e28`. The LLM miss path is the intended fallback, not a second product — cut this row when a follow-up deletes either table or the GET `/api/resume-lint/{kind}/{key}/answers` rehydrate. | small |
 
 **Row notes** (only where the trigger hides a trap):
 

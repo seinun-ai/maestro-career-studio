@@ -67,6 +67,11 @@
       "id": "explore-redirect",
       "status": "ready-to-cut",
       "hand_check": "Human trigger: owner must explicitly overrule the recorded keep-decision. Never auto-cut."
+    },
+    {
+      "id": "health-rewrite-cache",
+      "status": "new-is-default",
+      "hand_check": "Migration 85a1bb628e28. Cut when bullet_rewrites or health_ask_answers is dropped, or GET /api/resume-lint/{kind}/{key}/answers goes away. Miss path is fallback, not a competing product."
     }
   ],
   "system_md_baselines": {

@@ -31,6 +31,7 @@ from app.schemas.resume_edit import (
     ResumeEdit,
     ToggleEntry,
 )
+from app.services import bullet_classify
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +45,23 @@ _SECTION_MODELS = {
 # the add/replace ops; produces a normalized dump so stored custom sections
 # always match the Stage-A schema (slug key, exactly one content branch).
 _EXTRA_SECTION_ADAPTER: TypeAdapter[ExtraSection] = TypeAdapter(ExtraSection)
+
+
+class ContentChangedError(ValueError):
+    """An optimistic content hash no longer matches the targeted text."""
+
+
+def _raise_content_changed() -> None:
+    raise ContentChangedError(
+        "content changed since analysis; re-analyze before applying this rewrite"
+    )
+
+
+def _require_expected_content_hash(current: str, expected: str | None) -> None:
+    if expected is None:
+        return
+    if bullet_classify.content_hash(current) != expected:
+        _raise_content_changed()
 
 
 def _validate_entry(section: str, value: dict) -> dict:
@@ -119,6 +137,7 @@ def _entry_name(entry: dict[str, Any], section: str) -> str | None:
 
 def _apply_replace_summary(resume: dict[str, Any], op: ReplaceSummary) -> dict[str, Any]:
     before = resume.get("summary")
+    _require_expected_content_hash(str(before or ""), op.expected_content_hash)
     resume["summary"] = op.value
     return {"kind": "replace_summary", "before": before, "after": op.value}
 
@@ -143,14 +162,21 @@ def _apply_toggle_entry(resume: dict[str, Any], op: ToggleEntry) -> dict[str, An
 
 def _apply_replace_bullet(resume: dict[str, Any], op: ReplaceBullet) -> dict[str, Any]:
     entries = _entries(resume, op.section)
+    if op.expected_content_hash is not None and not (0 <= op.index < len(entries)):
+        _raise_content_changed()
     _check_index(op.section, op.index, len(entries))
     entry = entries[op.index]
     if not isinstance(entry, dict):
+        if op.expected_content_hash is not None:
+            _raise_content_changed()
         raise ValueError(f"{op.section} entry {op.index} is malformed")
     bullets = entry.get("bullets")
     if not isinstance(bullets, list) or not (0 <= op.bullet_index < len(bullets)):
+        if op.expected_content_hash is not None:
+            _raise_content_changed()
         raise ValueError(f"bullet_index {op.bullet_index} out of range")
     before = bullets[op.bullet_index]
+    _require_expected_content_hash(str(before), op.expected_content_hash)
     bullets[op.bullet_index] = op.value
     return {
         "kind": "replace_bullet",

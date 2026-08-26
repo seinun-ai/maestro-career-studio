@@ -4,7 +4,9 @@ Pure `assemble` tests need no DB/LLM (levels + rewrite_fn are passed in).
 `run_report`/`structure_gates` tests use the DB fixture + monkeypatch.
 """
 from copy import deepcopy
+from types import SimpleNamespace
 
+from app.services import bullet_classify, resume_versions
 from app.services import resume_lint as rl
 
 
@@ -62,6 +64,36 @@ def test_fatal_gate_caps_at_54():
     assert out["report"]["grade"] == "D"
 
 
+def test_one_scoreable_item_is_flagged_as_insufficient_evidence():
+    resume = _resume()
+    resume["experience"][0]["bullets"] = ["b0"]
+    levels = {("experience", 0, 0): _lv(1.0)}
+
+    out = rl.assemble(
+        resume,
+        levels,
+        PASS_GATES,
+        "experienced",
+        {("experience", 0, 0)},
+    )
+
+    assert out["report"]["score"] == 100
+    assert out["report"]["grade"] == "A"
+    assert out["report"]["insufficient_evidence"] is True
+    assert out["features"]["n_scoreable"] == 1
+
+
+def test_four_scoreable_items_are_enough_to_grade():
+    resume = _resume()
+    resume["experience"][0]["bullets"] = ["b0", "b1", "b2", "b3"]
+    levels = {("experience", 0, i): _lv(1.0) for i in range(4)}
+
+    out = rl.assemble(resume, levels, PASS_GATES, "experienced", set(levels))
+
+    assert out["report"]["insufficient_evidence"] is False
+    assert out["features"]["n_scoreable"] == 4
+
+
 def test_dead_hot_zone_fires_c1_and_caps_at_69():
     resume = _resume()
     resume["experience"][0]["bullets"] = ["b0", "b1", "b2"] + [f"g{i}" for i in range(20)]
@@ -85,7 +117,7 @@ def test_advisories_are_free():
     assert any(f["type"] == "note" for f in out["report"]["findings"])
 
 
-def test_c2_ask_first_then_cap_on_repeat():
+def test_c2_same_version_rerun_stays_ask():
     resume = _resume()
     levels = {("experience", 0, 0): _lv(1.0)}
     hot = {("experience", 0, 0)}
@@ -93,9 +125,40 @@ def test_c2_ask_first_then_cap_on_repeat():
     first = rl.assemble(resume, levels, PASS_GATES, "experienced", hot, c2_hit=c2)
     assert first["report"]["score"] == 100
     assert next(g for g in first["report"]["gates"] if g["id"] == "C2")["status"] == "ask"
-    assert any(f["type"] == "ask" for f in first["report"]["findings"])
-    second = rl.assemble(resume, levels, PASS_GATES, "experienced", hot,
-                         c2_hit=c2, prior_report=first["report"])
+    finding = next(f for f in first["report"]["findings"] if f["type"] == "ask")
+    assert finding["content_hash"] == bullet_classify.content_hash(resume["summary"])
+
+    second = rl.assemble(
+        resume,
+        levels,
+        PASS_GATES,
+        "experienced",
+        hot,
+        c2_hit=c2,
+        prior_report=first["report"],
+        resume_changed_since_prior=False,
+    )
+    assert second["report"]["score"] == 100
+    assert next(g for g in second["report"]["gates"] if g["id"] == "C2")["status"] == "ask"
+
+
+def test_c2_escalates_after_resume_version_change():
+    resume = _resume()
+    levels = {("experience", 0, 0): _lv(1.0)}
+    hot = {("experience", 0, 0)}
+    c2 = {"claimed_years": 8, "actual_years": 3.0}
+    prior = rl.assemble(resume, levels, PASS_GATES, "experienced", hot, c2_hit=c2)
+
+    second = rl.assemble(
+        resume,
+        levels,
+        PASS_GATES,
+        "experienced",
+        hot,
+        c2_hit=c2,
+        prior_report=prior["report"],
+        resume_changed_since_prior=True,
+    )
     assert second["report"]["score"] == 69
     assert next(g for g in second["report"]["gates"] if g["id"] == "C2")["status"] == "fail"
 
@@ -232,6 +295,93 @@ def test_determinism_same_input_same_report():
 
 # --------------------------------------------------------------------------- #
 # run_report integration (DB + monkeypatched classify/gates)
+
+
+def test_run_report_anchors_resume_version_before_classification(db_session, monkeypatch):
+    resume = _resume()
+    events = []
+    version = SimpleNamespace(version_number=7, snapshot=deepcopy(resume))
+
+    def fake_latest_version(db, kind, key):
+        events.append("version")
+        return version
+
+    def fake_classify(db, items):
+        events.append("classify")
+        return {
+            rl.bullet_classify.content_hash(item["text"]): _lv(1.0)
+            for item in items
+        }
+
+    monkeypatch.setattr(rl, "_latest_version", fake_latest_version)
+    monkeypatch.setattr(rl, "structure_gates", lambda db, tid, data: list(PASS_GATES))
+    monkeypatch.setattr(rl.model_settings, "get_smart_model", lambda db: "test-model")
+    monkeypatch.setattr(rl.bullet_classify, "classify_items", fake_classify)
+    monkeypatch.setattr(
+        rl.health_verify,
+        "verify_detections",
+        lambda db, data, gaps, c2, prior_cache: (gaps, c2, {}),
+    )
+
+    row = rl.run_report(db_session, "base", "version-anchor", resume)
+
+    assert events[:2] == ["version", "classify"]
+    assert row.resume_version_number == 7
+
+
+def test_run_report_same_version_rerun_keeps_c2_as_ask(db_session, monkeypatch):
+    resume = _resume()
+    resume["summary"] = "Data scientist with 10+ years building ML systems."
+    key = "k-c2-same-version"
+    monkeypatch.setattr(
+        rl,
+        "structure_gates",
+        lambda db, template_id, data: [
+            gate for gate in PASS_GATES if gate["id"] in ("S1", "S2", "S4")
+        ],
+    )
+    resume_versions.record_version(db_session, "base", key, resume, source="create")
+    db_session.commit()
+
+    first = rl.run_report(
+        db_session, "base", key, resume, template_id=None, use_llm=False
+    )
+    second = rl.run_report(
+        db_session, "base", key, resume, template_id=None, use_llm=False
+    )
+
+    assert next(g for g in first.report_json["gates"] if g["id"] == "C2")["status"] == "ask"
+    assert next(g for g in second.report_json["gates"] if g["id"] == "C2")["status"] == "ask"
+
+
+def test_run_report_version_bump_escalates_persisting_c2(db_session, monkeypatch):
+    resume = _resume()
+    resume["summary"] = "Data scientist with 10+ years building ML systems."
+    key = "k-c2-version-bump"
+    monkeypatch.setattr(
+        rl,
+        "structure_gates",
+        lambda db, template_id, data: [
+            gate for gate in PASS_GATES if gate["id"] in ("S1", "S2", "S4")
+        ],
+    )
+    resume_versions.record_version(db_session, "base", key, resume, source="create")
+    db_session.commit()
+    first = rl.run_report(
+        db_session, "base", key, resume, template_id=None, use_llm=False
+    )
+
+    changed = deepcopy(resume)
+    changed["skills"] = [{"category": "Core", "items": ["Python"]}]
+    resume_versions.record_version(db_session, "base", key, changed, source="form_edit")
+    db_session.commit()
+    second = rl.run_report(
+        db_session, "base", key, changed, template_id=None, use_llm=False
+    )
+
+    assert next(g for g in first.report_json["gates"] if g["id"] == "C2")["status"] == "ask"
+    assert next(g for g in second.report_json["gates"] if g["id"] == "C2")["status"] == "fail"
+
 
 def test_run_report_persists_features_and_model_version(db_session, monkeypatch):
     resume = _resume()
@@ -672,3 +822,95 @@ def test_stale_extras_locations_degrade_instead_of_raising():
     ]:
         assert isinstance(rl._label_at(resume, loc), str)
         assert rl._text_at(resume, loc) == ""
+
+
+def test_run_report_second_pass_pays_no_rewrite_llm(db_session, monkeypatch):
+    """T1: unattended rewrite cache. Second run_report with unchanged text
+    assertion-bombs the rewrite LLM seam."""
+    from app.services import health_guards as hg
+
+    resume = _resume()
+    resume["summary"] = "Seasoned data scientist."
+    resume["experience"][0]["bullets"] = [
+        "Led the analytics platform.",
+        "Kept the lights on.",
+        "Shipped the model.",
+    ]
+    monkeypatch.setattr(rl, "structure_gates", lambda db, tid, r: list(PASS_GATES))
+    monkeypatch.setattr(
+        rl.bullet_classify, "classify_items",
+        lambda db, items: {
+            rl.bullet_classify.content_hash(i["text"]): _lv(0.0) for i in items
+        },
+    )
+    monkeypatch.setattr(rl.model_settings, "get_smart_model", lambda db: "test-model")
+    monkeypatch.setattr(
+        rl.health_verify, "verify_detections",
+        lambda db, r, g, c, *, prior_cache=None: (g, c, {}),
+    )
+    monkeypatch.setattr(hg.model_settings, "get_smart_model", lambda s: "test-model")
+
+    rewrite_calls = []
+
+    def first_llm(*, prompt, model, response_format, trace_name):
+        if trace_name != "resume_bullet_rewrite":
+            raise AssertionError(f"unexpected LLM: {trace_name}")
+        rewrite_calls.append(prompt)
+        # Identity rewrite always passes the guard (no new numbers, no lost entities).
+        if "Led the analytics platform." in prompt:
+            return {"rewrite": "Led the analytics platform."}
+        if "Kept the lights on." in prompt:
+            return {"rewrite": "Kept the lights on."}
+        if "Shipped the model." in prompt:
+            return {"rewrite": "Shipped the model."}
+        if "Seasoned data scientist." in prompt:
+            return {"rewrite": "Seasoned data scientist."}
+        raise AssertionError(f"unexpected bullet in prompt: {prompt[:200]}")
+
+    monkeypatch.setattr(hg.llm, "call_openai", first_llm)
+    first = rl.run_report(db_session, "base", "k-rewrite-cache", resume, template_id=None)
+    assert rewrite_calls, "first run must pay for unattended rewrites"
+    assert any(f.get("suggestion") for f in first.report_json["findings"])
+
+    def bomb(*, prompt, model, response_format, trace_name):
+        raise AssertionError(f"rewrite LLM should not be reached: {trace_name}")
+
+    monkeypatch.setattr(hg.llm, "call_openai", bomb)
+    second = rl.run_report(db_session, "base", "k-rewrite-cache", resume, template_id=None)
+    assert any(f.get("suggestion") for f in second.report_json["findings"])
+
+
+def test_short_skill_r_does_not_match_inside_for():
+    # Count change vs the old substring matcher: "R." normalized to "r" and
+    # matched nearly any bullet. Token-boundary matching flags it correctly.
+    resume = _resume()
+    resume["experience"][0]["bullets"] = ["Responsible for the reporting pipeline."]
+    resume["skills"] = [{"category": "Languages", "items": ["R."]}]
+    notes = [n for n in rl._advisories(resume) if n.get("rule") == "skills.undemonstrated"]
+    assert any(n["subject"] == "R." for n in notes)
+
+
+def test_short_skill_r_matches_standalone_token():
+    resume = _resume()
+    resume["experience"][0]["bullets"] = ["Used R for statistical analysis."]
+    resume["skills"] = [{"category": "Languages", "items": ["R."]}]
+    notes = [n for n in rl._advisories(resume) if n.get("rule") == "skills.undemonstrated"]
+    assert not any(n["subject"] == "R." for n in notes)
+
+
+def test_cplusplus_skill_matches_despite_nonword_suffix():
+    # \\b would fail here (last char of C++ is non-word). Lookarounds keep it.
+    resume = _resume()
+    resume["experience"][0]["bullets"] = ["Wrote C++ services for the trading desk."]
+    resume["skills"] = [{"category": "Languages", "items": ["C++"]}]
+    notes = [n for n in rl._advisories(resume) if n.get("rule") == "skills.undemonstrated"]
+    assert not any(n["subject"] == "C++" for n in notes)
+
+
+def test_skill_no_longer_matches_as_substring_of_another_word():
+    # "python" used to match "pythonic" via substring. Token match does not.
+    resume = _resume()
+    resume["experience"][0]["bullets"] = ["Wrote pythonic wrappers around the API."]
+    resume["skills"] = [{"category": "Languages", "items": ["Python"]}]
+    notes = [n for n in rl._advisories(resume) if n.get("rule") == "skills.undemonstrated"]
+    assert any(n["subject"] == "Python" for n in notes)

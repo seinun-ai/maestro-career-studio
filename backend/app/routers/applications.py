@@ -41,7 +41,7 @@ from app.services import (
 )
 from app.services import proposals as proposal_svc
 from app.services.application_writes import stage_resume_update
-from app.services.resume_edit import apply_edits
+from app.services.resume_edit import ContentChangedError, apply_edits
 from app.schemas.proposal import AssertOpenProposalBody
 
 
@@ -103,6 +103,8 @@ def create_application_from_base(
 
     try:
         customized = apply_edits(base, payload.ops)
+    except ContentChangedError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 
@@ -412,6 +414,8 @@ def edit_application_resume(
         application, _, applied = resume_ops.edit_application(
             db, application, payload.ops, baseline=baseline, source="edit_ops"
         )
+    except ContentChangedError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     return _detail(application, db, applied=applied)

@@ -7,6 +7,7 @@ positions), size invariance, target sanity, ceiling, monotonicity.
 """
 import random
 
+from app.services import health_score
 from app.services.health_score import (
     FATAL_CAP,
     LEVEL_VALUES,
@@ -86,6 +87,13 @@ def test_one_serious_gate_caps_at_69():
 
 def test_two_serious_gates_cap_at_54():
     assert apply_gates(100, [gate("S3"), gate("C1")]) == FATAL_CAP
+
+
+def test_gate_cap_tier_matches_the_applied_cap():
+    assert health_score.gate_cap_tier([gate("S1", tier="fatal")]) == "fatal"
+    assert health_score.gate_cap_tier([gate("S3"), gate("C1")]) == "fatal"
+    assert health_score.gate_cap_tier([gate("S3")]) == "serious"
+    assert health_score.gate_cap_tier([gate("S3", status="waived")]) is None
 
 
 def test_waived_and_not_assessed_and_passed_gates_do_not_cap():

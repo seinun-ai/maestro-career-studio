@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
 import { AppSidebar } from "@/components/app-sidebar";
+import { VersionBanner } from "@/components/version-banner";
 import {
   SidebarGutter,
   SidebarRevealTrigger,
@@ -54,7 +55,10 @@ export default function RootLayout({
             <AppSidebar />
             <SidebarInset className="relative">
               <SidebarRevealTrigger />
-              <SidebarGutter>{children}</SidebarGutter>
+              <SidebarGutter>
+                <VersionBanner />
+                {children}
+              </SidebarGutter>
             </SidebarInset>
           </SidebarProvider>
         </Providers>

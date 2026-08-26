@@ -14,7 +14,7 @@ from app.main import app
 from app.models.base_resume import BaseResume
 from app.models.template import Template
 from app.routers import base_resumes as router_module
-from app.services import base_resume_render, pdf_render
+from app.services import base_resume_render, bullet_classify, pdf_render
 from app.services.template_validation import SAMPLE_RESUME
 
 
@@ -653,6 +653,7 @@ def test_patch_base_resume_edits_replaces_bullet_only(db_session, monkeypatch, t
                         "index": 0,
                         "bullet_index": 0,
                         "value": "New bullet.",
+                        "expected_content_hash": bullet_classify.content_hash("Old."),
                     }
                 ]
             },
@@ -664,6 +665,52 @@ def test_patch_base_resume_edits_replaces_bullet_only(db_session, monkeypatch, t
     body = response.json()
     assert body["data"]["experience"][0]["bullets"] == ["New bullet.", "Keep."]
     assert rendered == ["data_scientist"]
+
+
+def test_patch_base_resume_edits_hash_mismatch_returns_409_without_write(
+    db_session, monkeypatch, tmp_path
+):
+    data = {
+        **SAMPLE_DATA,
+        "experience": [
+            {
+                "company": "Acme",
+                "role": "DS",
+                "start_date": "2020",
+                "bullets": ["Current bullet."],
+            }
+        ],
+    }
+    row = _seed(db_session, slug="data_scientist", data_json=data)
+    rendered = _stub_render(monkeypatch, tmp_path)
+
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        response = TestClient(app).patch(
+            "/api/base-resumes/data_scientist/edits",
+            json={
+                "ops": [
+                    {
+                        "kind": "replace_bullet",
+                        "section": "experience",
+                        "index": 0,
+                        "bullet_index": 0,
+                        "value": "Wrong target rewrite.",
+                        "expected_content_hash": bullet_classify.content_hash(
+                            "Report-time bullet."
+                        ),
+                    }
+                ]
+            },
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 409
+    assert response.json()["detail"].startswith("content changed since analysis")
+    db_session.refresh(row)
+    assert row.data_json["experience"][0]["bullets"] == ["Current bullet."]
+    assert rendered == []
 
 
 def test_patch_base_resume_edits_out_of_range_returns_400(db_session, monkeypatch, tmp_path):

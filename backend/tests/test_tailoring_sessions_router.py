@@ -1,4 +1,5 @@
 import json
+from copy import deepcopy
 from uuid import UUID, uuid4
 
 import pytest
@@ -25,6 +26,7 @@ from app.services import (
     prompt_assembly,
     prompts,
     quick_tailor,
+    resume_versions,
     tailoring_session,
 )
 from tests.ats.fixtures import SAMPLE_JD, SAMPLE_RESUME
@@ -388,9 +390,16 @@ def test_create_session_422_for_unknown_slug(db_session, tmp_path, monkeypatch):
 # all proceeds silently.
 
 
-def _seed_health_report(db_session, slug, report_json):
+def _seed_health_report(
+    db_session, slug, report_json, *, resume_version_number=None
+):
     db_session.add(
-        ResumeLintReport(resume_kind="base", resume_key=slug, report_json=report_json)
+        ResumeLintReport(
+            resume_kind="base",
+            resume_key=slug,
+            resume_version_number=resume_version_number,
+            report_json=report_json,
+        )
     )
     db_session.commit()
 
@@ -398,6 +407,10 @@ def _seed_health_report(db_session, slug, report_json):
 def test_create_session_blocked_by_failing_fatal_gate(db_session, tmp_path, monkeypatch):
     job = _seed_job(db_session)
     slug = _seed_base(db_session, tmp_path, monkeypatch)
+    version = resume_versions.record_version(
+        db_session, "base", slug, SAMPLE_RESUME, source="create"
+    )
+    db_session.commit()
     _seed_health_report(
         db_session,
         slug,
@@ -414,6 +427,7 @@ def test_create_session_blocked_by_failing_fatal_gate(db_session, tmp_path, monk
                 }
             ],
         },
+        resume_version_number=version.version_number,
     )
 
     app.dependency_overrides[get_db] = _override_db(db_session)
@@ -426,6 +440,55 @@ def test_create_session_blocked_by_failing_fatal_gate(db_session, tmp_path, monk
     assert "S1" in response.json()["detail"]
     # nothing was created — the block fires before the session row is inserted
     assert db_session.scalars(select(TailoringSession)).first() is None
+
+
+def test_create_session_ignores_stale_failing_fatal_report_with_warning(
+    db_session, tmp_path, monkeypatch
+):
+    job = _seed_job(db_session)
+    slug = _seed_base(db_session, tmp_path, monkeypatch)
+    first = resume_versions.record_version(
+        db_session, "base", slug, SAMPLE_RESUME, source="create"
+    )
+    db_session.commit()
+    _seed_health_report(
+        db_session,
+        slug,
+        {
+            "score": 40,
+            "grade": "D",
+            "gates": [
+                {
+                    "id": "S1",
+                    "tier": "fatal",
+                    "status": "fail",
+                    "label": "Parse fidelity",
+                }
+            ],
+        },
+        resume_version_number=first.version_number,
+    )
+    changed = deepcopy(SAMPLE_RESUME)
+    changed["summary"] = "Edited after the health report."
+    base = db_session.get(BaseResume, slug)
+    base.data_json = changed
+    (tmp_path / f"{slug}.json").write_text(json.dumps(changed))
+    second = resume_versions.record_version(
+        db_session, "base", slug, changed, source="form_edit"
+    )
+    db_session.commit()
+
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        response = _create(TestClient(app), job, slug, enrich=False)
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["health_warning"] == (
+        f"Health report is stale (ran against v{first.version_number}; "
+        f"resume is now v{second.version_number}) — re-analyze."
+    )
 
 
 def test_create_session_waived_fatal_gate_not_blocked(db_session, tmp_path, monkeypatch):

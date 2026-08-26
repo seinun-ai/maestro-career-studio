@@ -36,8 +36,12 @@
   Every top-level route renders `PageShell` — `max-w-6xl`, `p-6`, `gap-6` —
   and `PageHeader` for its title block. Never assign per-page widths or
   rhythms: the shell is `mx-auto`, so a narrower cap indents the whole column.
-  **A narrow reading measure is a BODY concern (`PageMeasure`), never a shell
-  concern.** `PageHeader` owns the type scale; call sites pass
+  **A narrow reading measure is a BODY concern (`PageMeasure` or
+  `max-w-[65ch]` on the sentences), never a shell concern.** The health
+  report is two-pane at ≥1024px: a sticky ~300px rail (grade, composition,
+  jump list, filters, batch number-asks, Re-analyze) and a finding stream; the ~65ch measure
+  lives inside card prose, not as `PageMeasure` around the page. Below 1024px
+  the rail stacks above the stream. `PageHeader` owns the type scale; call sites pass
   `title`/`subtitle`/`actions`/`leading` and do not restate classes; its
   actions cluster sits in a wrapping row under `justify-between` so a long
   title never squeezes the title block to zero width, and so a toolbar that
@@ -47,8 +51,8 @@
   base-resume header did, and a `<div>` inside a `<p>` is invalid HTML that
   React reported as a hydration error on every load of that page. Still on the old
   pattern:
-  detail/editor routes (`jobs/[id]`, both studios, health reports,
-  `entity-detail`) and Chat (no page header by design).
+  detail/editor routes (`jobs/[id]`, both studios, `entity-detail`) and Chat
+  (no page header by design).
 - **The base-resume studio header is the NAME, nothing else.** Display name is
   the title (`EditableTitle`, instant PATCH `/identity`); the slug is the URL
   plus a "Copy slug" item; the target role is the ⋯ menu's FIRST item, which
