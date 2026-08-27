@@ -4,15 +4,12 @@ import { useId } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { AutosaveStatus } from "@/components/settings/autosave-status";
+import { AutosaveRow, SettingCard } from "@/components/settings/setting-card";
 import { Label } from "@/components/ui/label";
-import { LoadErrorState } from "@/components/load-error-state";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { apiFetch } from "@/lib/api";
-
-type McpWorkflowSettings = { hints: boolean };
-type McpWorkflowSetting = { key: string; value: McpWorkflowSettings };
+import type { McpWorkflowSetting } from "@/lib/types";
 
 /**
  * The user-held master switch for the MCP server's next-step workflow hints.
@@ -36,8 +33,9 @@ export function McpWorkflowSection() {
   });
 
   // A single boolean saves on toggle rather than behind a Save button: there is
-  // no partial state worth staging, and the quick-tailor card's dirty/save
-  // model exists only because it batches six fields.
+  // no partial state worth staging. It used to do so SILENTLY, which is the
+  // half of the rule that was missing — with no Save button and no indicator,
+  // "nothing happened" and "saved instantly" look identical.
   const save = useMutation({
     mutationFn: (hints: boolean) =>
       apiFetch<McpWorkflowSetting>("/api/settings/mcp-workflow", {
@@ -51,41 +49,33 @@ export function McpWorkflowSection() {
   });
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Agent workflow hints</CardTitle>
-        <p className="text-muted-foreground text-sm">
-          Adds a suggested next step to Career Studio&apos;s MCP tool results, so
-          Claude or Codex can walk the tailoring workflow without being told each
-          step. Turn it off to keep responses minimal.
-        </p>
-      </CardHeader>
-      <CardContent>
-        {setting.isError ? (
-          <LoadErrorState
-            className="py-8"
-            title="Couldn't load this setting."
-            detail={(setting.error as Error)?.message}
-            retrying={setting.isFetching}
-            onRetry={() => void setting.refetch()}
-          />
-        ) : setting.isLoading || !setting.data ? (
-          <Skeleton className="h-11 w-full" />
-        ) : (
-          /* Same row geometry as the quick-tailor switches and Appearance. */
+    <SettingCard
+      id="agent-hints"
+      title="Agent workflow hints"
+      description="Adds a suggested next step to Career Studio's MCP tool results, so Claude or Codex can walk the tailoring workflow without being told each step. Turn it off to keep responses minimal."
+      errorTitle="Couldn't load this setting."
+      skeleton="h-11 w-full"
+      query={setting}
+    >
+      {(data) => (
+        <>
+          <AutosaveRow>
+            <AutosaveStatus pending={save.isPending} />
+          </AutosaveRow>
+          {/* Same row geometry as the quick-tailor switches. */}
           <div className="flex items-center justify-between gap-4 px-3 py-2.5">
             <Label htmlFor={id} className="text-sm">
               Suggest the next step in MCP tool results
             </Label>
             <Switch
               id={id}
-              checked={setting.data.value.hints}
+              checked={data.value.hints}
               disabled={save.isPending}
               onCheckedChange={(checked) => save.mutate(checked)}
             />
           </div>
-        )}
-      </CardContent>
-    </Card>
+        </>
+      )}
+    </SettingCard>
   );
 }

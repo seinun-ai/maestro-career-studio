@@ -5,11 +5,3 @@ export function canApplyAsyncDraft(
 ): boolean {
   return requestRevision === currentRevision;
 }
-
-/** The queue is the latest requested value, or empty when it matches in-flight. */
-export function nextQueuedSave(
-  submittedValue: string | null,
-  requestedValue: string,
-): string | null {
-  return requestedValue === submittedValue ? null : requestedValue;
-}

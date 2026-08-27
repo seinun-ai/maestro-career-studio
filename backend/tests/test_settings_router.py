@@ -264,6 +264,57 @@ def test_explicit_null_clears_stored_key(db_session):
     assert db_session.get(Setting, "llm.openai_api_key") is None
 
 
+def test_key_only_put_leaves_every_model_untouched(db_session):
+    """The API keys card sends ONLY the key it edited.
+
+    The role fields used to be required, so saving a key meant echoing all
+    three models back — a client re-sending state it did not edit, which is how
+    a stale copy overwrites a fresh one. Absent now means "leave it alone" for
+    the models exactly as it already did for the keys.
+    """
+    db_session.add(Setting(key="llm.fast_model", value="gemini-3.7-flash"))
+    db_session.add(Setting(key="llm.smart_model", value="gpt-5.6-luna"))
+    db_session.commit()
+
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        response = TestClient(app).put(
+            "/api/settings/openai",
+            json={"openai_api_key": "sk-new"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["fast_model"] == "gemini-3.7-flash"
+    assert body["smart_model"] == "gpt-5.6-luna"
+    assert db_session.get(Setting, "llm.openai_api_key").value == "sk-new"
+
+
+def test_single_model_put_leaves_the_other_roles_and_keys_untouched(db_session):
+    """And symmetrically: the Models card sends one dropdown, not all of them."""
+    db_session.add(Setting(key="llm.fast_model", value="gemini-3.7-flash"))
+    db_session.add(Setting(key="llm.smart_model", value="gpt-5.6-luna"))
+    db_session.add(Setting(key="llm.openai_api_key", value="sk-keep-me"))
+    db_session.commit()
+
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        response = TestClient(app).put(
+            "/api/settings/openai",
+            json={"fast_model": "gemini-3.5-flash-lite"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["fast_model"] == "gemini-3.5-flash-lite"
+    assert body["smart_model"] == "gpt-5.6-luna"  # untouched
+    assert db_session.get(Setting, "llm.openai_api_key").value == "sk-keep-me"
+
+
 def test_openai_endpoint_rejects_unknown_model(db_session):
     app.dependency_overrides[get_db] = _override_db(db_session)
     try:
@@ -472,10 +523,19 @@ def test_mcp_workflow_put_roundtrips(db_session, tmp_path, monkeypatch):
 
 
 def test_mcp_workflow_round_trip_merges_defaults(db_session, tmp_path, monkeypatch):
-    # A PUT that omits "hints" and carries an unknown key proves the merge-OVER-
-    # defaults behaviour, not just that a stored value round-trips: if the
-    # service ever stored/returned the raw payload instead of merging it over
-    # DEFAULTS, "hints" would be missing from the response entirely.
+    # A PUT that omits "hints" proves the defaults behaviour, not just that a
+    # stored value round-trips: if the service ever stored/returned the raw
+    # payload, "hints" would be missing from the response entirely.
+    #
+    # CHANGED 2026-08-26: mcp_workflow became a typed `JsonSetting`
+    # (`McpWorkflowSettings`) instead of a raw dict merged over a DEFAULTS map.
+    # Defaults still fill in — that was and is the point of this test — but an
+    # unknown key is now DROPPED rather than preserved through the round trip,
+    # and the file mirror holds the validated model rather than the raw body.
+    # That matches every other typed setting here (auto_apply is stricter
+    # still: extra="forbid" resets the whole file). The cost is forward
+    # compatibility: a newer key written by a future build does not survive a
+    # read/write cycle on this one.
     monkeypatch.setattr(text_settings.settings, "settings_dir", tmp_path)
     app.dependency_overrides[get_db] = _override_db(db_session)
     try:
@@ -491,9 +551,9 @@ def test_mcp_workflow_round_trip_merges_defaults(db_session, tmp_path, monkeypat
     assert put_response.status_code == 200
     value = get_response.json()["value"]
     assert value["hints"] is True  # default filled in — stored payload had no "hints" key
-    assert value["unknown_key"] == "ignored"
+    assert "unknown_key" not in value  # dropped by the model, not carried through
     mirrored = json.loads((tmp_path / "mcp_workflow.json").read_text(encoding="utf-8"))
-    assert mirrored == {"unknown_key": "ignored"}  # file mirrors the stored (pre-merge) payload
+    assert mirrored == {"hints": True}  # the validated model, not the raw payload
 
 
 def test_gemini_35_flash_lite_is_a_valid_fast_model(db_session):

@@ -5,9 +5,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
-import { LoadErrorState } from "@/components/load-error-state";
+import { useConfirm } from "@/components/confirm-dialog";
+import { SettingCard } from "@/components/settings/setting-card";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardSection } from "@/components/ui/card";
+import { CardSection } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -17,7 +18,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -26,7 +26,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { apiFetch } from "@/lib/api";
-import type { KBProfileOut } from "@/lib/types";
+import type { EeoConsent, KBProfileOut, SettingEnvelope } from "@/lib/types";
 
 type FieldDef = {
   key: string;
@@ -40,15 +40,6 @@ type FieldDef = {
 
 type GroupDef = { key: string; title: string; fields: FieldDef[] };
 
-type EeoConsent = {
-  enabled: boolean;
-  /** Ticking an application's own agreement boxes — terms, acknowledgements,
-   *  attestations. Separate from `enabled` so opting into EEO fill cannot
-   *  silently also opt into agreeing to terms; one record, two permissions. */
-  consent_forms: boolean;
-  acknowledged_at: string | null;
-  policy_version: string;
-};
 
 const YES_NO = [
   { value: "yes", label: "Yes" },
@@ -436,47 +427,33 @@ export function AutofillSection() {
   const query = useQuery({
     queryKey: ["settings", "autofill"],
     queryFn: () =>
-      apiFetch<{ key: string; value: Profile }>("/api/settings/autofill"),
+      apiFetch<SettingEnvelope<Profile>>("/api/settings/autofill"),
   });
   const consentQuery = useQuery({
     queryKey: ["settings", "eeo-consent"],
     queryFn: () =>
-      apiFetch<{ key: string; value: EeoConsent }>("/api/settings/eeo-consent"),
+      apiFetch<SettingEnvelope<EeoConsent>>("/api/settings/eeo-consent"),
   });
 
   return (
-    <Card id="autofill">
-      <CardHeader>
-        <CardTitle>Autofill profile</CardTitle>
-        <p className="text-muted-foreground text-xs">
-          Preset answers the browser extension uses to fill job-application forms.
-        </p>
-      </CardHeader>
-      <CardContent>
-        {query.isError || consentQuery.isError ? (
-          <LoadErrorState
-            className="py-8"
-            title="Couldn't load your autofill profile."
-            detail={
-              (query.error as Error)?.message ??
-              (consentQuery.error as Error)?.message
-            }
-            retrying={query.isFetching || consentQuery.isFetching}
-            onRetry={() => {
-              void query.refetch();
-              void consentQuery.refetch();
-            }}
-          />
-        ) : query.isLoading || !query.data || consentQuery.isLoading || !consentQuery.data ? (
-          <Skeleton className="h-40 w-full" />
-        ) : (
-          <AutofillEditor
-            initial={query.data.value}
-            initialConsent={consentQuery.data.value}
-          />
-        )}
-      </CardContent>
-    </Card>
+    <SettingCard
+      id="autofill"
+      title="Autofill profile"
+      description="Preset answers the browser extension uses to fill job-application forms."
+      errorTitle="Couldn't load your autofill profile."
+      skeleton="h-40 w-full"
+      query={query}
+      // The consent record gates the EEO switches inside the editor, so the
+      // body genuinely needs both responses before it can render.
+      also={[consentQuery]}
+    >
+      {(data) => (
+        <AutofillEditor
+          initial={data.value}
+          initialConsent={consentQuery.data!.value}
+        />
+      )}
+    </SettingCard>
   );
 }
 
@@ -488,6 +465,7 @@ function AutofillEditor({
   initialConsent: EeoConsent;
 }) {
   const qc = useQueryClient();
+  const confirm = useConfirm();
   const [profile, setProfile] = useState<Profile>(() => profileForEditing(initial));
   const profileRef = useRef<Profile>(profileForEditing(initial));
   const [dirty, setDirty] = useState(false);
@@ -573,7 +551,7 @@ function AutofillEditor({
 
   const saveConsent = useMutation({
     mutationFn: (value: EeoConsent) =>
-      apiFetch<{ key: string; value: EeoConsent }>("/api/settings/eeo-consent", {
+      apiFetch<SettingEnvelope<EeoConsent>>("/api/settings/eeo-consent", {
         method: "PUT",
         body: JSON.stringify({ value }),
       }),
@@ -590,15 +568,18 @@ function AutofillEditor({
     onError: (err: Error) => toast.error(err.message),
   });
 
-  const setEeoConsentEnabled = (enabled: boolean) => {
+  const setEeoConsentEnabled = async (enabled: boolean) => {
     if (enabled) {
-      const acknowledged = window.confirm(
-        "Allow Maestro CS Companion to fill voluntary EEO / self-identification "
-          + "fields (race/ethnicity, gender, veteran status, disability) using only "
-          + "the exact answers stored below?\n\n"
-          + "Answers are never inferred or authored by an AI. WOTC, signatures, and "
-          + "legal attestations stay manual. You can turn this off anytime.",
-      );
+      const acknowledged = await confirm({
+        title: "Let autofill answer voluntary EEO questions?",
+        description:
+          "Maestro CS Companion will fill self-identification fields "
+          + "(race/ethnicity, gender, veteran status, disability) using only the "
+          + "exact answers stored below. Answers are never inferred or authored "
+          + "by an AI. WOTC, signatures, and legal attestations stay manual. You "
+          + "can turn this off anytime.",
+        confirmLabel: "Allow EEO fill",
+      });
       if (!acknowledged) return;
       saveConsent.mutate({
         enabled: true,
@@ -629,17 +610,19 @@ function AutofillEditor({
    *  worth knowing: signatures and initials stay manual (producing your name
    *  is an act, not an agreement), and passwords and government identifiers
    *  are never filled at any setting. */
-  const setConsentFormsEnabled = (consentForms: boolean) => {
+  const setConsentFormsEnabled = async (consentForms: boolean) => {
     if (consentForms) {
-      const acknowledged = window.confirm(
-        "Allow Maestro CS Companion to tick an application's own agreement "
-          + "boxes for you — terms and conditions, acknowledgements and "
-          + "attestations?\n\n"
-          + "It ticks a box; it never signs and never submits. Signature and "
-          + "initials fields stay manual, and passwords and government ID "
-          + "numbers are never filled whatever you choose here. Review every "
-          + "form before you submit it. You can turn this off anytime.",
-      );
+      const acknowledged = await confirm({
+        title: "Let autofill tick agreement boxes?",
+        description:
+          "This covers an application's own terms and conditions, "
+          + "acknowledgements and attestations. It ticks a box; it never signs "
+          + "and never submits. Signature and initials fields stay manual, and "
+          + "passwords and government ID numbers are never filled whatever you "
+          + "choose here. Review every form before you submit it. You can turn "
+          + "this off anytime.",
+        confirmLabel: "Allow ticking boxes",
+      });
       if (!acknowledged) return;
     }
     saveConsent.mutate({
@@ -748,7 +731,15 @@ function AutofillEditor({
               ))}
           </legend>
           {group.key === "eeo" && (
-            <CardSection className="space-y-2 px-3 py-2.5">
+            // Two permissions, not two fields. The accent and the heading are
+            // the whole point: these sit among the answer inputs because they
+            // govern exactly those answers, but granting a standing consent is
+            // a different KIND of act from typing one in, and a row that looks
+            // like every other row does not say so.
+            <CardSection className="border-primary/40 space-y-2 border-l-2 px-3 py-2.5">
+              <p className="text-xs font-medium tracking-wide uppercase">
+                Permissions
+              </p>
               <div className="flex items-center justify-between gap-4">
                 <div className="space-y-0.5">
                   <Label htmlFor="eeo-standing-consent" className="text-sm">
@@ -763,7 +754,7 @@ function AutofillEditor({
                   id="eeo-standing-consent"
                   checked={consent.enabled}
                   disabled={saveConsent.isPending}
-                  onCheckedChange={setEeoConsentEnabled}
+                  onCheckedChange={(next) => void setEeoConsentEnabled(next)}
                 />
               </div>
               {/* The second permission, in the same card and on its own switch.
@@ -786,7 +777,7 @@ function AutofillEditor({
                   id="consent-forms"
                   checked={consent.consent_forms}
                   disabled={saveConsent.isPending}
-                  onCheckedChange={setConsentFormsEnabled}
+                  onCheckedChange={(next) => void setConsentFormsEnabled(next)}
                 />
               </div>
               {(consent.enabled || consent.consent_forms) && consent.acknowledged_at && (
@@ -804,11 +795,8 @@ function AutofillEditor({
               const value = fieldValue(field, rawValue);
               return (
                 <div key={field.key} className="grid gap-1.5">
-                  <Label htmlFor={id} className="text-xs">
+                  <Label htmlFor={id} className="text-xs" optional={field.optional}>
                     {field.label}
-                    {field.optional && (
-                      <span className="text-muted-foreground"> · optional</span>
-                    )}
                   </Label>
                   {field.type === "select" ? (
                     <Select

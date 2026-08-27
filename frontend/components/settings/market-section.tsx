@@ -3,7 +3,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -13,7 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { AutosaveStatus } from "@/components/settings/autosave-status";
-import { Skeleton } from "@/components/ui/skeleton";
+import { AutosaveRow, SettingCard } from "@/components/settings/setting-card";
 import { apiFetch } from "@/lib/api";
 import type { MarketSettingResponse } from "@/lib/types";
 
@@ -53,61 +52,66 @@ export function MarketSection() {
     onError: () => toast.error("Could not save your market"),
   });
 
-  const selected = market.data?.value.market;
-  const current = market.data?.supported.find((m) => m.key === selected);
-
   return (
-    <Card id="market">
-      <CardHeader className="flex flex-row items-start justify-between gap-2">
-        <CardTitle>Market</CardTitle>
-        <AutosaveStatus pending={save.isPending} />
-      </CardHeader>
-      <CardContent className="grid gap-4">
-        {market.isLoading ? (
-          <Skeleton className="h-9 w-full max-w-sm" />
-        ) : market.isError ? (
-          <p className="text-sm text-muted-foreground">Could not load your market.</p>
-        ) : (
-          <div className="grid gap-1.5 max-w-sm">
-            <Label htmlFor="market-select" id="market-select-label">
-              Where you apply
-            </Label>
-            <p id="market-select-hint" className="text-xs text-muted-foreground">
-              Sets the default currency for captured jobs and which voluntary
-              disclosures apply.
-            </p>
-            <Select
-              value={selected}
-              onValueChange={(next) => save.mutate(String(next))}
-            >
-              <SelectTrigger
-                id="market-select"
-                aria-labelledby="market-select-label"
-                aria-describedby="market-select-hint"
-                data-pending={save.isPending ? "" : undefined}
+    <SettingCard
+      id="market"
+      title="Market"
+      // No description: this card has one control, and its label plus the
+      // aria-describedby hint below already say what a subtitle would repeat.
+      errorTitle="Couldn't load your market."
+      skeleton="h-9 w-full max-w-sm"
+      query={market}
+    >
+      {(data) => {
+        const selected = data.value.market;
+        const current = data.supported.find((m) => m.key === selected);
+        return (
+          <div className="grid gap-4">
+            <AutosaveRow>
+              <AutosaveStatus pending={save.isPending} />
+            </AutosaveRow>
+            <div className="grid max-w-sm gap-1.5">
+              <Label htmlFor="market-select" id="market-select-label">
+                Where you apply
+              </Label>
+              <p id="market-select-hint" className="text-muted-foreground text-xs">
+                Sets the default currency for captured jobs and which voluntary
+                disclosures apply.
+              </p>
+              <Select
+                value={selected}
+                onValueChange={(next) => save.mutate(String(next))}
               >
-                <SelectValue>{current ? current.label : selected}</SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {(market.data?.supported ?? []).map((m) => (
-                  <SelectItem key={m.key} value={m.key}>
-                    {m.label} · {m.currency}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        )}
+                <SelectTrigger
+                  id="market-select"
+                  aria-labelledby="market-select-label"
+                  aria-describedby="market-select-hint"
+                  data-pending={save.isPending ? "" : undefined}
+                >
+                  <SelectValue>{current ? current.label : selected}</SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {data.supported.map((m) => (
+                    <SelectItem key={m.key} value={m.key}>
+                      {m.label} · {m.currency}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
-        {current && !current.offers_eeo && (
-          <p className="text-xs text-muted-foreground border-l-2 border-muted pl-3">
-            Maestro CS has no verified voluntary-disclosure question set for{" "}
-            {current.label}, so it does not ask for one. Those categories are not
-            interchangeable between countries, and answering the wrong country&apos;s
-            form would put inaccurate information under your name.
-          </p>
-        )}
-      </CardContent>
-    </Card>
+            {current && !current.offers_eeo && (
+              <p className="text-muted-foreground border-muted border-l-2 pl-3 text-xs">
+                Maestro CS has no verified voluntary-disclosure question set for{" "}
+                {current.label}, so it does not ask for one. Those categories are
+                not interchangeable between countries, and answering the wrong
+                country&apos;s form would put inaccurate information under your
+                name.
+              </p>
+            )}
+          </div>
+        );
+      }}
+    </SettingCard>
   );
 }

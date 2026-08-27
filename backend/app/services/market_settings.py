@@ -1,50 +1,43 @@
-"""Selected-market storage: Setting row + file mirror, like job_preferences.
+"""Selected-market storage, plus the currency rule that reads it."""
 
-A hand-edited file that fails validation reads as the default market rather
-than 500-ing every consumer — but note the asymmetry with the API: a bad value
-arriving from a HUMAN 422s at the schema boundary, while a bad value already on
-disk degrades quietly. Same split job_preferences uses.
-"""
-
-import json
-
-from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.schemas.market_settings import MarketSetting
-from app.services import markets, text_settings
+from app.services import markets
+from app.services.json_settings import JsonSetting
 
-MARKET_KEY = "market"
-MARKET_FILE = "market.json"
-
-
-def _parse(raw: str) -> MarketSetting:
-    if not raw.strip():
-        return MarketSetting()
-    try:
-        return MarketSetting.model_validate(json.loads(raw))
-    except (json.JSONDecodeError, ValidationError):
-        return MarketSetting()
+MARKET = JsonSetting("market", "market.json", MarketSetting)
+# Key/filename stay importable: callers and tests address the setting by
+# name, and the constants are now derived from the one definition above.
+MARKET_KEY = MARKET.key
+MARKET_FILE = MARKET.filename
 
 
 def get_market(session: Session | None = None) -> MarketSetting:
-    return _parse(text_settings.get_text(MARKET_KEY, MARKET_FILE, session))
+    return MARKET.get(session)
 
 
 def peek_market(session: Session | None = None) -> MarketSetting:
     """Non-mutating read — must not lazy-seed a Setting row or file mirror.
 
     `setup_status` reads through this, and a status request that writes would
-    make the derived-not-stored contract a lie (§4 Setup status).
+    make the derived-not-stored contract a lie (SYSTEM.md §4 Setup status).
     """
-    return _parse(text_settings.peek_text(MARKET_KEY, MARKET_FILE, session))
+    return MARKET.peek(session)
 
 
 def set_market(setting: MarketSetting, session: Session | None = None) -> MarketSetting:
-    text_settings.set_text(
-        MARKET_KEY, MARKET_FILE, setting.model_dump_json(indent=2), session
-    )
-    return setting
+    return MARKET.set(setting, session)
+
+
+def is_set(setting: MarketSetting) -> bool:
+    """Whether the user has actually chosen a market.
+
+    A stored value equal to the default is indistinguishable from never having
+    chosen, which is deliberate: both mean "no explicit opinion", and both
+    should let HOME_CURRENCY answer for currency purposes.
+    """
+    return MARKET.is_set(setting)
 
 
 def default_currency_for_capture(session: Session | None = None) -> str:
@@ -65,16 +58,6 @@ def default_currency_for_capture(session: Session | None = None) -> str:
     from app.config import settings
 
     return settings.home_currency
-
-
-def is_set(setting: MarketSetting) -> bool:
-    """Whether the user has actually chosen a market.
-
-    A stored value equal to the default is indistinguishable from never having
-    chosen, which is deliberate: both mean "no explicit opinion", and both
-    should let HOME_CURRENCY answer for currency purposes.
-    """
-    return setting != MarketSetting()
 
 
 def offers_eeo(session: Session | None = None) -> bool:

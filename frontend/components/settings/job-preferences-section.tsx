@@ -1,13 +1,13 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { RolePicker } from "@/components/role-picker";
 import { AutosaveStatus } from "@/components/settings/autosave-status";
+import { AutosaveRow, SettingCard } from "@/components/settings/setting-card";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -17,13 +17,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { LoadErrorState } from "@/components/load-error-state";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { apiFetch } from "@/lib/api";
-import type { FavoredRole, JobPreferences, RoleCategory } from "@/lib/types";
+import { useAutosave } from "@/lib/use-autosave";
+import type {
+  FavoredRole,
+  JobPreferences,
+  RoleCategory,
+  SettingEnvelope,
+} from "@/lib/types";
 
-type JobPreferencesSetting = { key: string; value: JobPreferences };
+type JobPreferencesSetting = SettingEnvelope<JobPreferences>;
 
 const NOT_SPECIFIED = "__not_specified__";
 const REMOTE_OPTIONS = ["remote", "hybrid", "onsite", "any"] as const;
@@ -48,39 +52,29 @@ export function JobPreferencesSection() {
     queryFn: () =>
       apiFetch<JobPreferencesSetting>("/api/settings/job-preferences"),
   });
+  // Not gated through `also`: the picker degrades to free text without the
+  // catalog, so a slow or failed role fetch must not hold up the whole card.
   const roles = useQuery({
     queryKey: ["role-categories"],
     queryFn: () => apiFetch<RoleCategory[]>("/api/role-categories"),
   });
 
   return (
-    <Card id="job-preferences">
-      <CardHeader>
-        <CardTitle>Job preferences</CardTitle>
-        <p className="text-muted-foreground text-xs">
-          Roles and conditions you&apos;re targeting. Drives base-resume
-          suggestions.
-        </p>
-      </CardHeader>
-      <CardContent>
-        {preferences.isError ? (
-          <LoadErrorState
-            className="py-8"
-            title="Couldn't load your job preferences."
-            detail={(preferences.error as Error)?.message}
-            retrying={preferences.isFetching}
-            onRetry={() => void preferences.refetch()}
-          />
-        ) : preferences.isLoading || !preferences.data ? (
-          <Skeleton className="h-56 w-full" />
-        ) : (
-          <JobPreferencesEditor
-            initial={preferences.data.value}
-            roleCategories={roles.data}
-          />
-        )}
-      </CardContent>
-    </Card>
+    <SettingCard
+      id="job-preferences"
+      title="Job preferences"
+      description="Roles and conditions you're targeting. Drives base-resume suggestions."
+      errorTitle="Couldn't load your job preferences."
+      skeleton="h-56 w-full"
+      query={preferences}
+    >
+      {(data) => (
+        <JobPreferencesEditor
+          initial={data.value}
+          roleCategories={roles.data}
+        />
+      )}
+    </SettingCard>
   );
 }
 
@@ -92,10 +86,8 @@ function JobPreferencesEditor({
   roleCategories?: RoleCategory[];
 }) {
   const qc = useQueryClient();
-  const [preferences, setPreferences] = useState(initial);
   const [locationsText, setLocationsText] = useState(initial.locations.join("\n"));
-  const queuedPreferences = useRef(initial);
-  const inFlightPreferences = useRef<JobPreferences | null>(null);
+
   const save = useMutation({
     mutationFn: (next: JobPreferences) => {
       // role_categories is a projection of favored_roles that the server
@@ -108,33 +100,19 @@ function JobPreferencesEditor({
       });
     },
     onSuccess: (result) => {
-      if (queuedPreferences.current === inFlightPreferences.current) {
-        qc.setQueryData(["settings", "job-preferences"], result);
-      }
+      qc.setQueryData(["settings", "job-preferences"], result);
       qc.invalidateQueries({ queryKey: ["setup-status"] });
     },
     // Errors still toast: a FAILED save is exactly the thing you must notice.
     onError: (err: Error) => toast.error(err.message),
-    onSettled: () => {
-      if (queuedPreferences.current !== inFlightPreferences.current) {
-        flush();
-      } else {
-        inFlightPreferences.current = null;
-      }
-    },
   });
 
-  const flush = () => {
-    const next = queuedPreferences.current;
-    inFlightPreferences.current = next;
-    save.mutate(next);
-  };
-  const update = (getNext: (current: JobPreferences) => JobPreferences) => {
-    const next = getNext(queuedPreferences.current);
-    queuedPreferences.current = next;
-    setPreferences(next);
-    if (inFlightPreferences.current === null) flush();
-  };
+  const {
+    value: preferences,
+    update,
+    pending,
+  } = useAutosave(initial, (next) => save.mutateAsync(next));
+
   const toggleEmployment = (value: string) => {
     update((current) => ({
       ...current,
@@ -151,15 +129,12 @@ function JobPreferencesEditor({
 
   return (
     <div className="space-y-5">
-      {/* Status sits with the fields rather than in the card header, because
-          the mutation lives in this component — lifting it would mean syncing
-          state upward through an effect for a cosmetic placement. */}
-      <div className="flex justify-end">
-        <AutosaveStatus pending={save.isPending} />
-      </div>
+      <AutosaveRow>
+        <AutosaveStatus pending={pending} />
+      </AutosaveRow>
       <div className="grid gap-1.5">
-        <Label htmlFor="job-preferences-roles" className="text-xs">
-          Favored roles<span className="text-muted-foreground"> · optional</span>
+        <Label htmlFor="job-preferences-roles" className="text-xs" optional>
+          Favored roles
         </Label>
         <RolePicker
           mode="multiple"
@@ -172,9 +147,8 @@ function JobPreferencesEditor({
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="grid gap-1.5">
-          <Label htmlFor="job-preferences-years" className="text-xs">
+          <Label htmlFor="job-preferences-years" className="text-xs" optional>
             Years of experience
-            <span className="text-muted-foreground"> · optional</span>
           </Label>
           <Input
             id="job-preferences-years"
@@ -201,8 +175,8 @@ function JobPreferencesEditor({
         </div>
 
         <div className="grid gap-1.5">
-          <Label htmlFor="job-preferences-remote" className="text-xs">
-            Remote<span className="text-muted-foreground"> · optional</span>
+          <Label htmlFor="job-preferences-remote" className="text-xs" optional>
+            Remote
           </Label>
           <Select
             value={remote}
@@ -230,8 +204,8 @@ function JobPreferencesEditor({
         </div>
 
         <div className="grid gap-1.5">
-          <Label htmlFor="job-preferences-locations" className="text-xs">
-            Locations<span className="text-muted-foreground"> · optional</span>
+          <Label htmlFor="job-preferences-locations" className="text-xs" optional>
+            Locations
           </Label>
           <Textarea
             id="job-preferences-locations"
@@ -254,8 +228,8 @@ function JobPreferencesEditor({
         </div>
 
         <div className="grid gap-1.5">
-          <Label htmlFor="job-preferences-min-salary" className="text-xs">
-            Min salary<span className="text-muted-foreground"> · optional</span>
+          <Label htmlFor="job-preferences-min-salary" className="text-xs" optional>
+            Min salary
           </Label>
           <Input
             id="job-preferences-min-salary"
@@ -272,8 +246,8 @@ function JobPreferencesEditor({
       </div>
 
       <div className="grid gap-1.5">
-        <Label className="text-xs">
-          Employment types<span className="text-muted-foreground"> · optional</span>
+        <Label className="text-xs" optional>
+          Employment types
         </Label>
         <div className="flex flex-wrap gap-2">
           {EMPLOYMENT_TYPES.map((type) => {

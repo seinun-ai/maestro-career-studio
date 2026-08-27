@@ -9,34 +9,23 @@ This is the USER's switch (Settings page). The per-call `brief` param the
 agent controls is a separate, narrower knob owned by later tasks.
 """
 
-import json
-from typing import Any
-
 from sqlalchemy.orm import Session
 
-from app.services import text_settings
+from app.schemas.mcp_workflow import McpWorkflowSettings
+from app.services.json_settings import JsonSetting
 
-MCP_WORKFLOW_KEY = "mcp_workflow"
-MCP_WORKFLOW_FILE = "mcp_workflow.json"
-
-DEFAULTS: dict[str, Any] = {"hints": True}
-
-
-def get_settings(session: Session | None = None) -> dict[str, Any]:
-    raw = text_settings.get_text(MCP_WORKFLOW_KEY, MCP_WORKFLOW_FILE, session)
-    stored: dict[str, Any] = {}
-    if raw.strip():
-        try:
-            data = json.loads(raw)
-        except json.JSONDecodeError:
-            data = None
-        if isinstance(data, dict):
-            stored = data
-    return {**DEFAULTS, **stored}
+MCP_WORKFLOW = JsonSetting("mcp_workflow", "mcp_workflow.json", McpWorkflowSettings)
+# Key/filename stay importable: callers and tests address the setting by
+# name, and the constants are now derived from the one definition above.
+MCP_WORKFLOW_KEY = MCP_WORKFLOW.key
+MCP_WORKFLOW_FILE = MCP_WORKFLOW.filename
 
 
-def set_settings(value: dict[str, Any], session: Session | None = None) -> dict[str, Any]:
-    text_settings.set_text(
-        MCP_WORKFLOW_KEY, MCP_WORKFLOW_FILE, json.dumps(value, indent=2, sort_keys=True), session
-    )
-    return {**DEFAULTS, **value}
+def get_settings(session: Session | None = None) -> McpWorkflowSettings:
+    return MCP_WORKFLOW.get(session)
+
+
+def set_settings(
+    value: McpWorkflowSettings, session: Session | None = None
+) -> McpWorkflowSettings:
+    return MCP_WORKFLOW.set(value, session)

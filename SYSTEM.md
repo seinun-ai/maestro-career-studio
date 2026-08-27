@@ -813,7 +813,7 @@ citation. Priority lives in the item text, not in the ordinal.
     riskier), and block-scoped education-vs-employment rule matching (`not:`
     label guards miss unheaded education containers).
 13. Quick-tailor: derive `applied` from the committed resume DIFF, not planned
-    intent; employment-blocks v2; typed `quick_tailor_profile` validation.
+    intent; employment-blocks v2.
 14. Telemetry v2: option-set fingerprint + normalization; capture-session
     record for per-site/per-kind saturation; failure-count ranking + Analytics
     drill-down/export; label/option-text redaction; summary pagination.

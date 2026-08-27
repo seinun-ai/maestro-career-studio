@@ -5,6 +5,7 @@ import { Check, Loader2, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -56,21 +57,30 @@ export function EndpointControls({
 }) {
   const [draft, setDraft] = useState<string | null>(null);
   const value = draft ?? info.base_url ?? "";
-  const endpointLabelId = useId();
-  const jsonModeLabelId = useId();
+  const endpointId = useId();
+  const endpointHintId = useId();
+  const jsonModeId = useId();
+  const jsonModeHintId = useId();
 
   return (
     <div className="space-y-3 border-t pt-3">
       <div className="grid gap-3 sm:grid-cols-[2fr_1fr]">
-        <label className="space-y-1.5">
-          <span id={endpointLabelId} className="text-muted-foreground text-xs">
-            OpenAI-compatible endpoint (optional)
+        <div className="grid gap-1.5">
+          <Label
+            htmlFor={endpointId}
+            className="text-muted-foreground text-xs font-normal"
+            optional
+          >
+            OpenAI-compatible endpoint
+          </Label>
+          <span id={endpointHintId} className="text-muted-foreground block text-xs">
+            Point at Ollama, LM Studio, vLLM or OpenRouter and nothing leaves this
+            machine. Leave empty for the OpenAI API.
           </span>
           <div className="flex gap-2">
             <Input
-              // Without this the field's name is the whole wrapping label:
-              // caption + "Save" + the two-sentence help paragraph below it.
-              aria-labelledby={endpointLabelId}
+              id={endpointId}
+              aria-describedby={endpointHintId}
               placeholder="http://host.docker.internal:11434/v1"
               value={value}
               disabled={disabled}
@@ -87,27 +97,30 @@ export function EndpointControls({
               Save
             </Button>
           </div>
-          <span className="text-muted-foreground block text-xs">
-            Point at Ollama, LM Studio, vLLM or OpenRouter and nothing leaves this
-            machine. Leave empty for the OpenAI API.
-          </span>
           {isRemoteEndpoint(value) && (
             <span className="text-xs text-amber-700 dark:text-amber-500">
               Your API key and resume text will be sent to this server. Only point
               it somewhere you trust.
             </span>
           )}
-        </label>
-        <label className="space-y-1.5">
-          <span id={jsonModeLabelId} className="text-muted-foreground text-xs">
+        </div>
+        <div className="grid gap-1.5">
+          <Label
+            htmlFor={jsonModeId}
+            className="text-muted-foreground text-xs font-normal"
+          >
             JSON mode
+          </Label>
+          <span id={jsonModeHintId} className="text-muted-foreground block text-xs">
+            Auto sends <code>response_format</code> only to the OpenAI API. Some
+            servers reject the field outright.
           </span>
           <Select
             value={info.json_mode}
             disabled={disabled}
             onValueChange={(v) => v && onSave({ json_mode: v })}
           >
-            <SelectTrigger aria-labelledby={jsonModeLabelId}>
+            <SelectTrigger id={jsonModeId} aria-describedby={jsonModeHintId}>
               {/* Children, not a bare SelectValue: Base UI renders the raw
                   value otherwise, so this trigger read "auto"/"on"/"off". */}
               <SelectValue>
@@ -126,10 +139,7 @@ export function EndpointControls({
               <SelectItem value="off">Off</SelectItem>
             </SelectContent>
           </Select>
-          <span className="text-muted-foreground block text-xs">
-            Auto sends <code>response_format</code> only to the OpenAI API. Some servers reject the field outright.
-          </span>
-        </label>
+        </div>
       </div>
     </div>
   );

@@ -4,7 +4,7 @@ import { AlertTriangle, CircleCheck, CircleHelp, ShieldAlert } from "lucide-reac
 import Link from "next/link";
 import type { ReactNode } from "react";
 
-import type { KnockoutScan, KnockoutStatus } from "@/lib/types";
+import type { KnockoutCheck, KnockoutScan, KnockoutStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 const STATUS_COPY: Record<
@@ -26,7 +26,7 @@ const STATUS_COPY: Record<
   },
   incomplete_profile: {
     label: "Profile can’t answer a stated requirement",
-    detail: "Fill the missing answer in Settings to screen this posting.",
+    detail: "Fill the missing answer in your profile to screen this posting.",
     icon: <CircleHelp />,
     tone: "border-amber-500/40 bg-amber-500/5 text-amber-700 dark:text-amber-400",
   },
@@ -42,6 +42,29 @@ const STATUS_COPY: Record<
 
 /** Rows worth a line of their own; passes are covered by the headline. */
 const ROW_RESULTS = new Set(["conflict", "warning", "profile_missing"]);
+
+/** Which autofill group answers each knock-out check.
+ *
+ *  `experience` has no autofill field — it is scored off the resume — so it
+ *  maps to nothing and the link falls back to the section. */
+const CHECK_GROUP: Partial<Record<KnockoutCheck["kind"], string>> = {
+  work_authorization: "work_auth",
+  opt: "work_auth",
+  salary: "preferences",
+};
+
+/** Deep-link at the group holding the gap, not the section.
+ *
+ *  Same rule as `setup-steps.ts:112`: landing on a 900-line form and hunting
+ *  for the unanswered question is barely better than landing on the wrong
+ *  page, which is what this link used to do — it pointed at `/settings`, where
+ *  the autofill card has never lived. The `autofill-<group>` ids are the
+ *  fieldsets in `settings/autofill-section.tsx`. */
+function autofillHref(scan: KnockoutScan): string {
+  const missing = scan.checks.find((c) => c.result === "profile_missing");
+  const group = missing ? CHECK_GROUP[missing.kind] : undefined;
+  return group ? `/profile#autofill-${group}` : "/profile#autofill";
+}
 
 export function JobKnockoutCard({ scan }: { scan: KnockoutScan | null | undefined }) {
   if (!scan) return null;
@@ -70,7 +93,7 @@ export function JobKnockoutCard({ scan }: { scan: KnockoutScan | null | undefine
       )}
       {scan.status === "incomplete_profile" && (
         <Link
-          href="/settings"
+          href={autofillHref(scan)}
           className="mt-2 inline-block text-xs underline underline-offset-2"
         >
           Complete your autofill profile

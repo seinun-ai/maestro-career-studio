@@ -1,5 +1,5 @@
 from dataclasses import asdict
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -7,16 +7,17 @@ from sqlalchemy.orm import Session
 
 from app.config import settings as app_settings
 from app.db import get_db
+from app.schemas.auto_apply import AutoApplySettings
+from app.schemas.eeo_consent import EeoConsent
+from app.schemas.job_preferences import JobPreferences
+from app.schemas.market_settings import MarketSetting
+from app.schemas.mcp_workflow import McpWorkflowSettings
 from app.schemas.settings import (
-    AutoApplyPayload,
     AutofillProfilePayload,
-    EeoConsentPayload,
-    JobPreferencesPayload,
-    MarketPayload,
-    McpWorkflowPayload,
     PromptPayload,
-    QuickTailorProfilePayload,
+    SettingEnvelope,
     SettingValue,
+    SettingValueIn,
     TextSettingPayload,
 )
 from app.services import (
@@ -70,9 +71,18 @@ class OpenAIInfo(BaseModel):
 
 
 class ModelSettingsPayload(BaseModel):
-    fast_model: str
-    smart_model: str
-    # Optional so pre-existing clients that omit it keep working.
+    """Every field is a patch: absent means "leave the stored value alone".
+
+    All of them, not just the keys. The role fields used to be required, which
+    forced any caller that wanted to change one thing to echo the other two
+    back — so the Settings page re-sent all three models to save an API key,
+    and re-sent both keys' worth of state to change a dropdown. Echoing state
+    you did not edit is how a stale copy overwrites a fresh one; the client now
+    sends only what the user touched.
+    """
+
+    fast_model: str | None = None
+    smart_model: str | None = None
     chat_model: str | None = None
     # Same absent/null/value tri-state as the key fields below.
     base_url: str | None = None
@@ -117,12 +127,12 @@ def draft_persona(db: Annotated[Session, Depends(get_db)]):
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
-@router.get("/autofill")
+@router.get("/autofill", response_model=SettingEnvelope[dict[str, Any]])
 def get_autofill(db: Annotated[Session, Depends(get_db)]):
     return {"key": "autofill_profile", "value": autofill_profile.get_profile(db)}
 
 
-@router.put("/autofill")
+@router.put("/autofill", response_model=SettingEnvelope[dict[str, Any]])
 def put_autofill(payload: AutofillProfilePayload, db: Annotated[Session, Depends(get_db)]):
     return {
         "key": "autofill_profile",
@@ -130,33 +140,39 @@ def put_autofill(payload: AutofillProfilePayload, db: Annotated[Session, Depends
     }
 
 
-@router.get("/quick-tailor")
+@router.get("/quick-tailor", response_model=SettingEnvelope[dict[str, Any]])
 def get_quick_tailor(db: Annotated[Session, Depends(get_db)]):
     return {"key": "quick_tailor_profile", "value": quick_tailor.get_profile(db)}
 
 
-@router.put("/quick-tailor")
-def put_quick_tailor(payload: QuickTailorProfilePayload, db: Annotated[Session, Depends(get_db)]):
+@router.put("/quick-tailor", response_model=SettingEnvelope[dict[str, Any]])
+def put_quick_tailor(
+    payload: SettingValueIn[dict[str, Any]], db: Annotated[Session, Depends(get_db)]
+):
     return {"key": "quick_tailor_profile", "value": quick_tailor.set_profile(payload.value, db)}
 
 
-@router.get("/mcp-workflow")
+@router.get("/mcp-workflow", response_model=SettingEnvelope[McpWorkflowSettings])
 def get_mcp_workflow(db: Annotated[Session, Depends(get_db)]):
     return {"key": "mcp_workflow", "value": mcp_workflow.get_settings(db)}
 
 
-@router.put("/mcp-workflow")
-def put_mcp_workflow(payload: McpWorkflowPayload, db: Annotated[Session, Depends(get_db)]):
+@router.put("/mcp-workflow", response_model=SettingEnvelope[McpWorkflowSettings])
+def put_mcp_workflow(
+    payload: SettingValueIn[McpWorkflowSettings], db: Annotated[Session, Depends(get_db)]
+):
     return {"key": "mcp_workflow", "value": mcp_workflow.set_settings(payload.value, db)}
 
 
-@router.get("/job-preferences")
+@router.get("/job-preferences", response_model=SettingEnvelope[JobPreferences])
 def get_job_preferences(db: Annotated[Session, Depends(get_db)]):
     return {"key": "job_preferences", "value": job_preferences.get_preferences(db)}
 
 
-@router.put("/job-preferences")
-def put_job_preferences(payload: JobPreferencesPayload, db: Annotated[Session, Depends(get_db)]):
+@router.put("/job-preferences", response_model=SettingEnvelope[JobPreferences])
+def put_job_preferences(
+    payload: SettingValueIn[JobPreferences], db: Annotated[Session, Depends(get_db)]
+):
     return {"key": "job_preferences", "value": job_preferences.set_preferences(payload.value, db)}
 
 
@@ -183,7 +199,7 @@ def get_market(db: Annotated[Session, Depends(get_db)]):
 
 
 @router.put("/market")
-def put_market(payload: MarketPayload, db: Annotated[Session, Depends(get_db)]):
+def put_market(payload: SettingValueIn[MarketSetting], db: Annotated[Session, Depends(get_db)]):
     setting = market_settings.set_market(payload.value, db)
     return {
         "key": "market",
@@ -193,23 +209,27 @@ def put_market(payload: MarketPayload, db: Annotated[Session, Depends(get_db)]):
     }
 
 
-@router.get("/auto-apply")
+@router.get("/auto-apply", response_model=SettingEnvelope[AutoApplySettings])
 def get_auto_apply(db: Annotated[Session, Depends(get_db)]):
     return {"key": "auto_apply", "value": auto_apply_settings.get_settings(db)}
 
 
-@router.put("/auto-apply")
-def put_auto_apply(payload: AutoApplyPayload, db: Annotated[Session, Depends(get_db)]):
+@router.put("/auto-apply", response_model=SettingEnvelope[AutoApplySettings])
+def put_auto_apply(
+    payload: SettingValueIn[AutoApplySettings], db: Annotated[Session, Depends(get_db)]
+):
     return {"key": "auto_apply", "value": auto_apply_settings.set_settings(payload.value, db)}
 
 
-@router.get("/eeo-consent")
+@router.get("/eeo-consent", response_model=SettingEnvelope[EeoConsent])
 def get_eeo_consent(db: Annotated[Session, Depends(get_db)]):
     return {"key": "eeo_consent", "value": eeo_consent.get_consent(db)}
 
 
-@router.put("/eeo-consent")
-def put_eeo_consent(payload: EeoConsentPayload, db: Annotated[Session, Depends(get_db)]):
+@router.put("/eeo-consent", response_model=SettingEnvelope[EeoConsent])
+def put_eeo_consent(
+    payload: SettingValueIn[EeoConsent], db: Annotated[Session, Depends(get_db)]
+):
     return {"key": "eeo_consent", "value": eeo_consent.set_consent(payload.value, db)}
 
 
@@ -275,10 +295,11 @@ def _capability_map(db: Session) -> dict[str, dict]:
 
 @router.put("/openai", response_model=OpenAIInfo)
 def put_openai_info(payload: ModelSettingsPayload, db: Annotated[Session, Depends(get_db)]):
-    # A key field the client did not send must survive this write. `set_models`
+    # A field the client did not send must survive this write. `set_models`
     # passes its key args to `_set_raw_value`, which DELETES the row on
     # None/"" — so we re-supply the stored value for any omitted field rather
-    # than letting a model-only update wipe the key.
+    # than letting a partial update wipe it. The role fields resolve the same
+    # way, which is what makes a key-only or one-dropdown PUT legal.
     sent = payload.model_fields_set
     openai_key = (
         payload.openai_api_key
@@ -290,6 +311,12 @@ def put_openai_info(payload: ModelSettingsPayload, db: Annotated[Session, Depend
         if "gemini_api_key" in sent
         else model_settings.get_gemini_api_key(db)
     )
+    fast_model = payload.fast_model or model_settings.get_fast_model(db)
+    smart_model = payload.smart_model or model_settings.get_smart_model(db)
+    # chat_model keeps its own tri-state: `set_models` treats None as "not
+    # supplied" and skips the streaming-tool-call gate, so an absent field must
+    # arrive as None rather than as the stored value re-validated.
+    chat_model = payload.chat_model if "chat_model" in sent else None
     # The endpoint must land BEFORE set_models: it decides whether model ids are
     # validated against the curated allowlist or accepted as free text, so
     # writing it after would reject the very local model ids it enables.
@@ -305,10 +332,10 @@ def put_openai_info(payload: ModelSettingsPayload, db: Annotated[Session, Depend
             raise HTTPException(status_code=400, detail=str(exc)) from exc
     try:
         model_settings.set_models(
-            payload.fast_model,
-            payload.smart_model,
+            fast_model,
+            smart_model,
             db,
-            chat_model=payload.chat_model,
+            chat_model=chat_model,
             openai_api_key=openai_key,
             gemini_api_key=gemini_key,
         )

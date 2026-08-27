@@ -247,6 +247,36 @@ export interface SettingValue {
   value: string;
 }
 
+/** The envelope every `/api/settings/*` blob endpoint returns. */
+export interface SettingEnvelope<T> {
+  key: string;
+  value: T;
+}
+
+export interface QuickTailorProfile {
+  keywords_into_skills: boolean;
+  mirror_wording: boolean;
+  summary_rename: boolean;
+  project_keyword_injection: boolean;
+  instruction: string;
+}
+export type QuickTailorSetting = SettingEnvelope<QuickTailorProfile>;
+
+export interface McpWorkflowSettings {
+  hints: boolean;
+}
+export type McpWorkflowSetting = SettingEnvelope<McpWorkflowSettings>;
+
+export interface EeoConsent {
+  enabled: boolean;
+  /** Ticking an application's own agreement boxes — terms, acknowledgements,
+   *  attestations. Separate from `enabled` so opting into EEO fill cannot
+   *  silently also opt into agreeing to terms; one record, two permissions. */
+  consent_forms: boolean;
+  acknowledged_at: string | null;
+  policy_version: string;
+}
+
 export interface ModelOption {
   id: string;
   label: string;
@@ -369,6 +399,8 @@ interface SetupStep {
 }
 
 export interface SetupStatus {
+  /** A provider API key is configured (in-app or .env). Blocks everything. */
+  model_key: SetupStep;
   import_resumes: SetupStep;
   autofill: {
     done: boolean;

@@ -20,6 +20,7 @@ const DISMISS_KEY = "maestro-cs:getting-started-dismissed";
 /** Verb for each step's action button. The step list itself lives in
  *  setup-steps.ts — only this presentational wording belongs here. */
 const ACTION_LABELS: Record<string, string> = {
+  model_key: "Add API key",
   import: "Import resumes",
   autofill: "Complete autofill",
   job_preferences: "Set preferences",

@@ -1,45 +1,32 @@
-"""EEO standing-consent storage: Setting row + file mirror.
+"""EEO standing-consent storage.
 
-A hand-edited file that fails validation reads as defaults. Values here are
-consent metadata only — never EEO answers.
+Values here are consent metadata only — never EEO answers.
 """
 
-import json
 from datetime import UTC, datetime
 
-from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.schemas.eeo_consent import CURRENT_POLICY_VERSION, EeoConsent
-from app.services import text_settings
+from app.services.json_settings import JsonSetting
 
-EEO_CONSENT_KEY = "eeo_consent"
-EEO_CONSENT_FILE = "eeo_consent.json"
+EEO_CONSENT = JsonSetting("eeo_consent", "eeo_consent.json", EeoConsent)
+# Key/filename stay importable: callers and tests address the setting by
+# name, and the constants are now derived from the one definition above.
+EEO_CONSENT_KEY = EEO_CONSENT.key
+EEO_CONSENT_FILE = EEO_CONSENT.filename
 
 
 def _now_iso() -> str:
     return datetime.now(UTC).isoformat()
 
 
-def _parse_consent(raw: str) -> EeoConsent:
-    if not raw.strip():
-        return EeoConsent()
-    try:
-        return EeoConsent.model_validate(json.loads(raw))
-    except (json.JSONDecodeError, ValidationError):
-        return EeoConsent()
-
-
 def get_consent(session: Session | None = None) -> EeoConsent:
-    return _parse_consent(
-        text_settings.get_text(EEO_CONSENT_KEY, EEO_CONSENT_FILE, session)
-    )
+    return EEO_CONSENT.get(session)
 
 
 def peek_consent(session: Session | None = None) -> EeoConsent:
-    return _parse_consent(
-        text_settings.peek_text(EEO_CONSENT_KEY, EEO_CONSENT_FILE, session)
-    )
+    return EEO_CONSENT.peek(session)
 
 
 def set_consent(consent: EeoConsent, session: Session | None = None) -> EeoConsent:
@@ -54,10 +41,4 @@ def set_consent(consent: EeoConsent, session: Session | None = None) -> EeoConse
                 "policy_version": CURRENT_POLICY_VERSION,
             }
         )
-    text_settings.set_text(
-        EEO_CONSENT_KEY,
-        EEO_CONSENT_FILE,
-        consent.model_dump_json(indent=2),
-        session,
-    )
-    return consent
+    return EEO_CONSENT.set(consent, session)

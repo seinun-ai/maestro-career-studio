@@ -269,13 +269,35 @@
 - Chat page is Gemini-styled: centered greeting + floating pill composer
   when empty, docked composer with inline pinned-resume picker otherwise;
   user messages are muted tonal bubbles, assistant text plain.
+- **Settings vs Profile — which page does a new setting go on?**
+  `/settings` is how the SYSTEM behaves (API keys, models, quick-tailor
+  permissions, auto-apply guardrails, agent hints, prompts, appearance).
+  `/profile` is who the CANDIDATE is (persona, market, job preferences,
+  autofill answers). Both write `/api/settings/*` and both draw from
+  `components/settings/` — the folder is not the split, this rule is. When a
+  cross-page link points at a setting, deep-link the card id
+  (`/profile#autofill`), never the bare page: sending a user to `/settings`
+  for the autofill profile is a dead end that shipped once already.
+- **Every settings card renders through `SettingCard`**
+  (`components/settings/setting-card.tsx`): it owns the header, the loading
+  skeleton, and the one `LoadErrorState` with retry. Do not hand-roll
+  `Card → isError → isLoading → editor` again — the copies drifted into four
+  different failure behaviours, three of which showed the user nothing.
+  Readiness is `data !== undefined`, never `!isLoading`. Appearance is the
+  one exemption: it fetches nothing.
+- **Two save models, and only two.** A pure preference autosaves through
+  `useAutosave` and reports with `AutosaveStatus` inside `AutosaveRow` at the
+  top of the card body (never the header — the mutation lives in the editor).
+  Anything with a cost or a blast radius keeps a dirty-gated Save, and
+  Save/Discard where a discard is meaningful. Errors always toast; successful
+  autosaves never do. See `autosave-status.tsx` for why.
 - Settings shows four curated user-voice prompts (cover_letter, qa,
   gap_tailor, chat_system); the other internal prompts sit behind an
   "Advanced prompts" disclosure (`ESSENTIAL_PROMPTS` map in
-  app/settings/page.tsx — update it when adding prompt keys).
+  components/settings/prompts-section.tsx — update it when adding prompt keys).
 - **Derived setup guidance**: Profile starts with `SetupStatusStrip`, then
-  Persona (disabled-until-import "Draft from my career"), Job preferences, and
-  Autofill. The empty tracker places `GettingStartedCard` above its
+  Persona (disabled-until-import "Draft from my career"), Market, Job
+  preferences, and Autofill. The empty tracker places `GettingStartedCard` above its
   empty-state copy: same five derived steps, deep links, locally dismissible,
   gone when setup completes. Both surfaces share the `['setup-status']` query
   and always refetch on mount (bypassing the 30-second stale window);
@@ -283,7 +305,9 @@
 - Career KB pages follow the Base Resumes read/edit split: one card per
   section, flat rows, hover-or-touch actions, local Save/Cancel editors with
   Escape. Do not regress these surfaces to always-editable form grids.
-- **Analytics** (was "Explore"): route `/analytics` (`/explore` redirects;
+- **Analytics** (was "Explore"): route `/analytics` (`/explore` is a 307
+  redirect — there is no `app/explore/` route, and the charts live in
+  `components/charts/` and `components/analytics/`;
   the API prefix stays `/api/explore` and the six MCP-wrapped chart endpoints
   keep their paths). Four `?tab=` deep-linkable tabs: Overview (KPI tiles,
   activity, pipeline chips, teasers), Job market, Resume fit, Gaps & growth

@@ -1,27 +1,17 @@
 "use client";
 
-import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { AutosaveStatus } from "@/components/settings/autosave-status";
+import { AutosaveRow, SettingCard } from "@/components/settings/setting-card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { LoadErrorState } from "@/components/load-error-state";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { apiFetch } from "@/lib/api";
+import { useAutosave } from "@/lib/use-autosave";
+import type { QuickTailorProfile, QuickTailorSetting } from "@/lib/types";
 
-type QuickTailorProfile = {
-  keywords_into_skills: boolean;
-  mirror_wording: boolean;
-  summary_rename: boolean;
-  project_keyword_injection: boolean;
-  instruction: string;
-};
-
-type QuickTailorSetting = { key: string; value: QuickTailorProfile };
 type BooleanPreference = Exclude<keyof QuickTailorProfile, "instruction">;
 
 const SWITCH_ROWS: {
@@ -49,73 +39,55 @@ const SWITCH_ROWS: {
 export function QuickTailorSection() {
   const profile = useQuery({
     queryKey: ["settings", "quick-tailor"],
-    queryFn: () =>
-      apiFetch<QuickTailorSetting>("/api/settings/quick-tailor"),
+    queryFn: () => apiFetch<QuickTailorSetting>("/api/settings/quick-tailor"),
   });
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Quick tailor</CardTitle>
-        <p className="text-muted-foreground text-xs">
-          What one-shot tailoring is allowed to change. Used by Quick tailor on the gap
-          analysis page and by the browser extension&apos;s Fast tailor.
-        </p>
-      </CardHeader>
-      <CardContent>
-        {profile.isError ? (
-          <LoadErrorState
-            className="py-8"
-            title="Couldn't load your quick-tailor profile."
-            detail={(profile.error as Error)?.message}
-            retrying={profile.isFetching}
-            onRetry={() => void profile.refetch()}
-          />
-        ) : profile.isLoading || !profile.data ? (
-          <Skeleton className="h-48 w-full" />
-        ) : (
-          <QuickTailorEditor initial={profile.data.value} />
-        )}
-      </CardContent>
-    </Card>
+    <SettingCard
+      id="quick-tailor"
+      title="Quick tailor"
+      description="What one-shot tailoring is allowed to change. Used by Quick tailor on the gap analysis page and by the browser extension's Fast tailor."
+      errorTitle="Couldn't load your quick-tailor profile."
+      skeleton="h-48 w-full"
+      query={profile}
+    >
+      {(data) => <QuickTailorEditor initial={data.value} />}
+    </SettingCard>
   );
 }
 
+/**
+ * Autosaves. These are pure preferences — nothing is spent and nothing runs
+ * when they change; they are read later, at tailor time — so by the rule in
+ * `autosave-status.tsx` they must not sit behind a Save button. They did, and
+ * that made this the one preferences card on the page that staged its edits.
+ */
 function QuickTailorEditor({ initial }: { initial: QuickTailorProfile }) {
   const qc = useQueryClient();
-  const [profile, setProfile] = useState(initial);
-  const [dirty, setDirty] = useState(false);
-  const [lastInitial, setLastInitial] = useState(initial);
-
-  if (!dirty && initial !== lastInitial) {
-    setLastInitial(initial);
-    setProfile(initial);
-  }
-
-  const setField = <K extends keyof QuickTailorProfile>(
-    key: K,
-    value: QuickTailorProfile[K],
-  ) => {
-    setDirty(true);
-    setProfile((current) => ({ ...current, [key]: value }));
-  };
 
   const save = useMutation({
-    mutationFn: () =>
+    mutationFn: (next: QuickTailorProfile) =>
       apiFetch<QuickTailorSetting>("/api/settings/quick-tailor", {
         method: "PUT",
-        body: JSON.stringify({ value: profile }),
+        body: JSON.stringify({ value: next }),
       }),
     onSuccess: (result) => {
       qc.setQueryData(["settings", "quick-tailor"], result);
-      setDirty(false);
-      toast.success("Quick-tailor preferences saved");
     },
+    // Errors still toast: a FAILED save is exactly the thing you must notice.
     onError: (error: Error) => toast.error(error.message),
   });
 
+  const { value: profile, update, pending } = useAutosave(initial, (next) =>
+    save.mutateAsync(next),
+  );
+
   return (
     <div className="space-y-5">
+      <AutosaveRow>
+        <AutosaveStatus pending={pending} />
+      </AutosaveRow>
+
       <div className="space-y-3">
         {SWITCH_ROWS.map((row) => {
           const id = `quick-tailor-${row.key}`;
@@ -130,7 +102,9 @@ function QuickTailorEditor({ initial }: { initial: QuickTailorProfile }) {
               <Switch
                 id={id}
                 checked={profile[row.key]}
-                onCheckedChange={(checked) => setField(row.key, checked)}
+                onCheckedChange={(checked) =>
+                  update((current) => ({ ...current, [row.key]: checked }))
+                }
               />
             </div>
           );
@@ -138,25 +112,17 @@ function QuickTailorEditor({ initial }: { initial: QuickTailorProfile }) {
       </div>
 
       <div className="grid gap-1.5">
-        <Label htmlFor="quick-tailor-instruction" className="text-xs">
+        <Label htmlFor="quick-tailor-instruction" className="text-xs" optional>
           Standing instruction
-          <span className="text-muted-foreground"> · optional</span>
         </Label>
         <Input
           id="quick-tailor-instruction"
           value={profile.instruction}
           placeholder="e.g. keep bullets under two lines"
-          onChange={(event) => setField("instruction", event.target.value)}
+          onChange={(event) =>
+            update((current) => ({ ...current, instruction: event.target.value }))
+          }
         />
-      </div>
-
-      <div className="flex justify-end">
-        <Button
-          onClick={() => save.mutate()}
-          disabled={save.isPending || !dirty}
-        >
-          {save.isPending ? "Saving…" : "Save quick-tailor preferences"}
-        </Button>
       </div>
     </div>
   );

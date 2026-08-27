@@ -26,6 +26,9 @@ class SuggestedBase(BaseModel):
 
 
 class SetupStatus(BaseModel):
+    # First because it blocks everything: with no provider key there is no
+    # extraction, no tailoring and no chat.
+    model_key: SetupStep
     import_resumes: SetupStep
     autofill: AutofillStep
     job_preferences: SetupStep

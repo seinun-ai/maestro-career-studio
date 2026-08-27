@@ -125,17 +125,24 @@
   `latex-render-path` / `texlive-layer`.
 - **QAEntry**: per-application Q&A / cover letter rows (+ PDFs).
 - **Setup status** (`GET /api/setup/status`): a derived, **read-only**
-  five-step onboarding view — no wizard-progress state; guidance is
+  six-step onboarding view — no wizard-progress state; guidance is
   dismissible and recomputed from existing data (the `FirstRunImportCard`
   doctrine). Its service uses non-mutating `peek_*` reads, so a status request
-  never lazy-seeds a Setting row or file mirror. Autofill readiness spans the
+  never lazy-seeds a Setting row or file mirror. The steps span three surfaces
+  — `model_key` → `/settings#api-keys`, `import_resumes` → `/career`,
+  autofill/job-preferences/persona → `/profile`, `template` → `/templates`;
+  readiness is app-wide, not Profile-scoped. `model_key` is `bool(stored key or
+  env key)` for either provider: whether a key WORKS is what the capability
+  probe answers, and storing that verdict would break the derived-only rule. Autofill readiness spans the
   required personal, work-auth, EEO, and preferences groups and means
   **answerable**, not merely filled: `decline` is an answer, optional fields
   are excluded. Work authorization reads typed `WorkAuth`; its four-answer
   knockout core is `status`, `authorized_now`, `sponsorship_now`,
   `sponsorship_future` — status never implies current authorization, and an
   incomplete core is blocking. The backend's required field lists deliberately
-  hand-mirror the frontend autofill groups; update both sides together.
+  hand-mirror the frontend autofill groups; update both sides together —
+  `tests/test_autofill_groups_parity.py` fails when they drift, per the §11
+  rule that cross-boundary duplication needs a contract test, not a deletion.
 - **`job_preferences` setting**: fully typed, file-mirrored at
   `settings/job_preferences.json` (`GET/PUT /api/settings/job-preferences`):
   `favored_roles` (a catalog key, coarse OR specific, or free text),

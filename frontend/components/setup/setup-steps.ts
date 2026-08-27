@@ -6,7 +6,13 @@ export type SetupAction =
   | { kind: "focus"; anchor: string };
 
 export type SetupStepView = {
-  id: "import" | "autofill" | "job_preferences" | "persona" | "template";
+  id:
+    | "model_key"
+    | "import"
+    | "autofill"
+    | "job_preferences"
+    | "persona"
+    | "template";
   /** Pill text — short. */
   label: string;
   /** Card row title — a full imperative phrase. */
@@ -87,6 +93,15 @@ export function buildSetupSteps(
   const starterDefault = defaultOrigin === null || defaultOrigin === "seed";
 
   const steps: Omit<SetupStepView, "action">[] = [
+    {
+      id: "model_key",
+      label: "API key",
+      title: "Add a provider API key",
+      detail: "Nothing extracts, tailors or chats without one.",
+      done: status.model_key.done,
+      home: "/settings",
+      anchor: "api-keys",
+    },
     {
       id: "import",
       label: "Import resumes",

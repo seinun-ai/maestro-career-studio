@@ -3,7 +3,7 @@
 import { useId, useSyncExternalStore } from "react";
 import { useTheme } from "next-themes";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 
@@ -43,15 +43,17 @@ export function AppearanceSection() {
   const isDark = mounted && resolvedTheme === "dark";
 
   return (
-    <Card>
+    // Not a SettingCard: there is nothing to fetch, so it has no loading or
+    // error state to share. It writes to next-themes, never to the API.
+    <Card id="appearance">
       <CardHeader>
         <CardTitle>Appearance</CardTitle>
-        <p className="text-muted-foreground text-sm">
+        <CardDescription>
           Defaults to your system setting until you choose here.
-        </p>
+        </CardDescription>
       </CardHeader>
       <CardContent>
-        {/* Same row geometry as the quick-tailor switches directly above. */}
+        {/* Same row geometry as the quick-tailor and agent-hint switches. */}
         <div className="flex items-center justify-between gap-4 px-3 py-2.5">
           <Label htmlFor={id} className="text-sm">
             Dark mode

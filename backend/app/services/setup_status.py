@@ -28,6 +28,7 @@ from app.services import (
     autofill_profile,
     job_preferences,
     market_settings,
+    model_settings,
     persona,
     role_categories,
 )
@@ -164,7 +165,22 @@ def build_status(db: Session) -> SetupStatus:
     default_tpl = db.scalar(select(Template).where(Template.is_default.is_(True)))
 
     autofill = _autofill_step(db)
+    # Derived like every other step: no probe result is consulted and nothing
+    # is stored. Whether a key WORKS is what `POST /settings/openai/probe`
+    # answers; this is only whether one is configured at all, which is the
+    # difference between "the app cannot run" and "a model might refuse".
+    # It lives on /settings, not /profile — readiness already spans surfaces
+    # (import → /career, template → /templates).
+    from app.config import settings as app_settings
+
+    key_configured = bool(
+        model_settings.get_openai_api_key(db)
+        or app_settings.openai_api_key
+        or model_settings.get_gemini_api_key(db)
+        or app_settings.gemini_api_key
+    )
     steps = SetupStatus(
+        model_key=SetupStep(done=key_configured),
         import_resumes=SetupStep(
             done=kb_entities > 0,
             detail={"kb_entities": kb_entities, "base_resumes": len(active_bases)},
@@ -187,8 +203,8 @@ def build_status(db: Session) -> SetupStatus:
     steps.complete = all(
         s.done
         for s in (
-            steps.import_resumes, steps.autofill, steps.job_preferences,
-            steps.persona, steps.template,
+            steps.model_key, steps.import_resumes, steps.autofill,
+            steps.job_preferences, steps.persona, steps.template,
         )
     )
     return steps

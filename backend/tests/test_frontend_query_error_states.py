@@ -52,10 +52,10 @@ _QUERY_SURFACES: list[tuple[str, str]] = [
     # Original guard set — already correct; ride along so a regression is a fail.
     ("app/applications/page.tsx", "<GettingStartedCard"),
     ("app/jobs/[id]/page.tsx", "isLoading || !data"),
-    ("components/settings/text-setting-section.tsx", "query.isLoading || !query.data"),
-    ("components/settings/mcp-workflow-section.tsx", "setting.isLoading || !setting.data"),
-    ("components/settings/job-preferences-section.tsx", "preferences.isLoading || !preferences.data"),
-    ("components/settings/quick-tailor-section.tsx", "profile.isLoading || !profile.data"),
+    # The settings cards no longer own this branch — `SettingCard` does, and
+    # `test_settings_cards_route_through_the_shared_shell` below pins that none
+    # of them may go back to hand-rolling one.
+    ("components/settings/setting-card.tsx", "<Skeleton"),
     ("components/proposals/proposal-agent-panel.tsx", "isLoading || !data"),
     ("app/base-resumes/[slug]/page.tsx", "query.isLoading || !query.data"),
     ("app/applications/[id]/resume/page.tsx", "query.isLoading || !query.data"),
@@ -73,7 +73,6 @@ _QUERY_SURFACES: list[tuple[str, str]] = [
     ("components/proposals/proposals-section.tsx", "No agent proposals yet"),
     ("app/base-resumes/page.tsx", "No career-track resumes yet."),
     ("app/templates/page.tsx", "No templates yet."),
-    ("components/settings/autofill-section.tsx", "query.isLoading || !query.data"),
     ("components/chat/chat-page.tsx", "What are we working on?"),
     ("components/career/first-run-import-card.tsx", "Start with the resumes you already have"),
     ("components/ats-score-panel.tsx", "No ATS scores yet."),
@@ -113,6 +112,43 @@ def test_query_surface_error_branch_precedes_empty_state(relpath: str, empty_mar
         f"{relpath}: error branch at {error_at} must precede empty-state marker "
         f"{empty_marker!r} at {empty_at}. An isError check after the empty "
         "return is not a fix — the failed fetch still reads as 'you have nothing'."
+    )
+
+
+# Every settings card that reads the API. `appearance-section` is absent on
+# purpose: it fetches nothing, so it has no failure to render.
+_SETTINGS_CARDS = [
+    "about-section.tsx",
+    "auto-apply-section.tsx",
+    "autofill-section.tsx",
+    "job-preferences-section.tsx",
+    "market-section.tsx",
+    "mcp-workflow-section.tsx",
+    "models-section.tsx",
+    "persona-section.tsx",
+    "prompts-section.tsx",
+    "quick-tailor-section.tsx",
+]
+
+
+@pytest.mark.parametrize("filename", _SETTINGS_CARDS)
+def test_settings_cards_route_through_the_shared_shell(filename: str):
+    """No settings card may hand-roll its own load/error scaffold again.
+
+    Pinning the shell alone is not enough: a new card that writes its own
+    `Card → isLoading → editor` never appears in the table above, so it would
+    ship the exact failure this module exists to catch — and four of them did,
+    which is why `SettingCard` was extracted. This is the pin that makes the
+    shell mandatory rather than merely available.
+    """
+    source = (_FRONTEND / "components/settings" / filename).read_text()
+    assert "<SettingCard" in source, (
+        f"{filename} does not render through SettingCard. Every card that reads "
+        "the API must, so its failure state is the shell's, not its own."
+    )
+    assert "<CardHeader" not in source, (
+        f"{filename} builds its own CardHeader — that is the shell's job, and "
+        "hand-rolling it is how the loading and error branches drifted apart."
     )
 
 

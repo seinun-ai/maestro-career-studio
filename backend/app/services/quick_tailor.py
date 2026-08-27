@@ -1,12 +1,11 @@
 """Quick Tailor: the profile-planned tailor and its orchestration seam.
 
 Three parts: the preference profile (which auto-resolution moves quick tailor
-may make, plus a standing instruction — Setting row + file mirror, stored
-values merged OVER DEFAULTS so callers always see the full frozen shape),
+may make, plus a standing instruction — a typed `JsonSetting`, so callers
+always see the full frozen shape),
 the per-gap resolution planner, and the two orchestration entry points the
 routers adapt (one-shot from a job; fill-from-checkpoint on an open session)."""
 
-import json
 import logging
 from dataclasses import dataclass
 from dataclasses import field as dataclasses_field
@@ -18,56 +17,47 @@ from sqlalchemy.orm import Session
 
 from app.models.job import Job
 from app.models.tailoring_session import TailoringSession
+from app.schemas.quick_tailor import QuickTailorProfile
 from app.services import (
     application_render,
     ats_score,
     kb_resolver,
     placement_targets,
     tailoring_session,
-    text_settings,
 )
+from app.services.json_settings import JsonSetting
 
 logger = logging.getLogger(__name__)
 
-QUICK_TAILOR_KEY = "quick_tailor_profile"
-QUICK_TAILOR_FILE = "quick_tailor.json"
-
-DEFAULTS: dict[str, Any] = {
-    "keywords_into_skills": True,
-    "mirror_wording": True,
-    "summary_rename": False,
-    "project_keyword_injection": False,
-    "instruction": "",
-}
-
-# Removed from the live profile; still dropped on read so a hand-edited
-# quick_tailor.json that carries the old key continues to load.
-_REMOVED_KEYS = ("default_base_resume",)
-
-
-def _without_removed(profile: dict[str, Any]) -> dict[str, Any]:
-    return {key: value for key, value in profile.items() if key not in _REMOVED_KEYS}
+QUICK_TAILOR = JsonSetting(
+    "quick_tailor_profile", "quick_tailor.json", QuickTailorProfile
+)
+QUICK_TAILOR_KEY = QUICK_TAILOR.key
+QUICK_TAILOR_FILE = QUICK_TAILOR.filename
+# DERIVED from the model, never a second list. The planner and its tests take a
+# plain dict, and this is the full default profile in that form.
+DEFAULTS: dict[str, Any] = QuickTailorProfile().model_dump()
 
 
 def get_profile(session: Session | None = None) -> dict[str, Any]:
-    raw = text_settings.get_text(QUICK_TAILOR_KEY, QUICK_TAILOR_FILE, session)
-    stored: dict[str, Any] = {}
-    if raw.strip():
-        try:
-            data = json.loads(raw)
-        except json.JSONDecodeError:
-            data = None
-        if isinstance(data, dict):
-            stored = data
-    return _without_removed({**DEFAULTS, **stored})
+    """The stored profile, as a dict.
+
+    Storage and shape are typed (`QuickTailorProfile`); the planner below and
+    its tests still read the profile with `.get(...)`, so the boundary hands
+    back a plain dict rather than rippling a model through the tailoring
+    engine. Field defaults do the work the old DEFAULTS dict did, and
+    pydantic's default `extra="ignore"` drops the retired `default_base_resume`
+    key without a hand-maintained list of removals.
+    """
+    return QUICK_TAILOR.get(session).model_dump()
 
 
-def set_profile(profile: dict[str, Any], session: Session | None = None) -> dict[str, Any]:
-    cleaned = _without_removed(profile)
-    text_settings.set_text(
-        QUICK_TAILOR_KEY, QUICK_TAILOR_FILE, json.dumps(cleaned, indent=2, sort_keys=True), session
-    )
-    return {**DEFAULTS, **cleaned}
+def set_profile(
+    profile: dict[str, Any], session: Session | None = None
+) -> dict[str, Any]:
+    return QUICK_TAILOR.set(
+        QuickTailorProfile.model_validate(profile), session
+    ).model_dump()
 
 
 def plan_resolutions(
