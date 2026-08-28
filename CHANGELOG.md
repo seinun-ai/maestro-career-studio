@@ -22,11 +22,15 @@ with the qualification that version 0 actually carries:
 - **Patch releases (`0.1.1`) never change the schema or the `.env` contract.**
   They are safe to take without reading anything.
 
-Version numbers appear in four places that must agree: the git tag (`v0.1.2`),
+Version numbers appear in four places that must agree: the git tag (`v0.2.0`),
 `backend/pyproject.toml`, `extension/manifest.json`, and `CITATION.cff`. The
-published image tag is the same version with the leading `v` removed (`0.1.2`).
+published image tag is the same version with the leading `v` removed (`0.2.0`).
 
 ## [Unreleased]
+
+Nothing yet.
+
+## [0.2.0] — 2026-08-28
 
 ### Breaking changes
 
