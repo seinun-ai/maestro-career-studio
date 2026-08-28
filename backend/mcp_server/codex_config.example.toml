@@ -7,6 +7,11 @@
 #   <PYTHON>  absolute path to the interpreter the backend is installed into,
 #             e.g. /usr/local/bin/python3 or <REPO>/backend/.venv/bin/python
 #   <REPO>    absolute path to your clone of this repository
+#   <HOME>    your home directory          (playwright block only)
+#   <NODE>    absolute path to node        (playwright block only)
+#
+# `scripts/setup-mcp.sh` prints a ready-made block for the profile you choose,
+# using the console script instead of <PYTHON> -m, so nothing needs replacing.
 #
 # `python -m mcp_server.server` needs the backend importable, so install it
 # first: cd backend && pip install -e ".[dev,mcp]"
@@ -19,7 +24,7 @@
 # model has to guess which to call — use `enabled = false` to park the ones you
 # are not using rather than deleting them.
 
-# Every tool (~73). Includes the Career KB write tools, so this profile alone is
+# Every tool (83). Includes the Career KB write tools, so this profile alone is
 # enough to curate the KB — `career` below just trims the surface.
 [mcp_servers.maestro-career-studio]
 command = "<PYTHON>"
@@ -90,3 +95,21 @@ enabled = false
 [mcp_servers.maestro-career-studio-templates.env]
 BACKEND_URL = "http://localhost:8001"
 MAESTRO_CS_MCP_PROFILE = "templates"
+
+# The apply executor. Not a Maestro CS profile — a SECOND server, the browser
+# the apply lane drives, which is why the apply profile above pins its upload
+# dir to this --output-dir. Enable it alongside `apply`, not instead of it.
+# Headed real Chrome only: never headless, never stealth, never CAPTCHA bypass.
+[mcp_servers.playwright]
+command = "<NODE>"
+args = [
+  "<HOME>/.maestro-cs/mcp/node_modules/@playwright/mcp/cli.js",
+  "--browser=chrome",
+  "--user-data-dir=<HOME>/.maestro-cs/apply-profile",
+  "--output-dir=<REPO>/.playwright-mcp",
+]
+enabled = false
+
+[mcp_servers.playwright.env]
+HOME = "<HOME>"
+npm_config_cache = "<HOME>/.npm"

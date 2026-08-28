@@ -152,6 +152,38 @@ def test_settings_cards_route_through_the_shared_shell(filename: str):
     )
 
 
+def test_query_client_never_pauses_requests_for_being_offline():
+    """A local API is reachable whether or not the machine has a network.
+
+    react-query's default `networkMode: "online"` parks a query in
+    `fetchStatus: "paused"` / `status: "pending"` when it believes the browser
+    is offline. `isError` never flips, so every error branch pinned in this
+    module becomes unreachable and the surface renders its pending state — a
+    skeleton, or a confirmed-empty list — indefinitely.
+
+    That default assumes a remote API. This one is FastAPI on the same machine:
+    `navigator.onLine` says nothing about whether it is listening, and a laptop
+    with the wifi off can still use every page here. `always` asks the only
+    question that matters — did the request succeed.
+
+    Demonstrated: with `navigator.onLine` forced false and an `offline` event
+    dispatched, an `online`-mode query against `/api/version` parked at
+    pending/paused and never ran, while an `always`-mode one succeeded — the
+    local API listening throughout.
+
+    SCOPE, so nobody over-reads this pin: it addresses the OFFLINE pause only.
+    react-query separately pauses RETRIES while the window is unfocused, which
+    is deliberate upstream behaviour and is not a bug — with a focused window a
+    failed fetch surfaces the error state normally.
+    """
+    source = (_FRONTEND / "app/providers.tsx").read_text()
+    assert source.count('networkMode: "always"') >= 2, (
+        "app/providers.tsx must set networkMode 'always' for BOTH queries and "
+        "mutations. Without it a failed request can pause instead of failing, "
+        "and the error states pinned in this file become unreachable."
+    )
+
+
 def test_application_detail_distinguishes_missing_from_retryable():
     """A 500 / timeout is not a deletion. 404 keeps the existing copy; anything
     else must offer retry via LoadErrorState."""

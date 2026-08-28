@@ -33,6 +33,43 @@ export function Providers({ children }: { children: ReactNode }) {
             // never staleness for it.
             gcTime: 30 * 60_000,
             refetchOnWindowFocus: false,
+            // Never PAUSE a request for being "offline" — fail it instead.
+            //
+            // react-query's default `networkMode: "online"` parks a query in
+            // `fetchStatus: "paused"` / `status: "pending"` when it believes
+            // the browser is offline. It never becomes `error`, so `isError`
+            // stays false and every surface renders its pending state — a
+            // skeleton, or worse a confirmed-empty list — indefinitely.
+            //
+            // That default assumes a remote API. "Offline" is not a meaningful
+            // state here: the API is FastAPI on this same machine, so
+            // `navigator.onLine` says nothing about whether it is listening,
+            // and a laptop with the wifi off can still use every page. The only
+            // useful question is "did the request succeed", and `always` is the
+            // mode that asks exactly it.
+            //
+            // Demonstrated, not theorised. With `navigator.onLine` forced
+            // false and an `offline` event dispatched — exactly what pulling
+            // the wifi does — two identical queries against `/api/version`:
+            // `networkMode: "online"` parked at pending/paused and never ran;
+            // `networkMode: "always"` succeeded. The API was listening the
+            // whole time. So the default would freeze every page on skeletons
+            // for a user working offline on a laptop, which this app otherwise
+            // fully supports.
+            //
+            // It does NOT address react-query pausing RETRIES while the window
+            // is unfocused — separate, deliberate upstream behaviour that
+            // `always` does not bypass, and not a bug: with a focused window a
+            // failed fetch surfaces the error state normally (verified against
+            // a stopped backend in a real browser).
+            //
+            // Pinned by backend/tests/test_frontend_query_error_states.py.
+            networkMode: "always",
+          },
+          mutations: {
+            // Same reasoning: a paused mutation reports neither success nor
+            // failure, so a Save button spins forever instead of toasting.
+            networkMode: "always",
           },
         },
       }),

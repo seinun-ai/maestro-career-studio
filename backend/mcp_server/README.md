@@ -320,9 +320,47 @@ and carry a proposal through that lifecycle.
 
 ## Add to Claude Desktop
 
+> **Claude Desktop and Claude Code are separate surfaces.** A server
+> registered with Claude Code — in `.mcp.json` or via `claude mcp add` — gives
+> Desktop chats nothing, and the reverse is equally true. Each has to be set
+> up on its own.
+
+### Route 1 — let the setup script do it
+
+```bash
+./scripts/setup-mcp.sh --write-desktop-config
+```
+
+Opt-in, because that file is shared with your other MCP servers. It **refuses
+to run while Claude Desktop is open** (the app writes this file too), backs the
+file up first, merges a single `mcpServers` key, and leaves every other server
+and top-level key exactly as it found them. It touches **only** this file —
+`~/.codex/config.toml` is printed for you to paste and is never written, so a
+Codex or ChatGPT desktop setup cannot be affected. Runs fine from inside a
+Claude Code session. Other Maestro profiles already in
+the file are reported and left alone — Claude Desktop can toggle servers per
+chat, so having several registered is fine.
+
+### Route 2 — the app's Connectors UI
+
+**Settings → Connectors → Add custom connector** (older builds put this under
+**Settings → Developer**), then:
+
+| Field | Value |
+| --- | --- |
+| **Name** | `maestro-career-studio` |
+| **Type / transport** | **STDIO** (see [Keep the transport STDIO](#keep-the-transport-stdio)) |
+| **Command** | absolute path to the console script, e.g. `<REPO>/backend/.venv/bin/maestro-career-studio-mcp` |
+| **Environment variables** | `BACKEND_URL` = `http://localhost:8001`<br>`MAESTRO_CS_MCP_PROFILE` = `full`<br>`MAESTRO_CS_MCP_CLIENT` = `Claude Desktop` |
+
+`scripts/setup-mcp.sh` prints these exact values with every placeholder
+already resolved.
+
+### Route 3 — editing `claude_desktop_config.json` by hand
+
 **Fully quit Claude Desktop first (Cmd+Q — a window close is not enough).**
-The running app rewrites its config from its own memory on exit and will
-silently drop an edit made while it is open. Then, on macOS, edit:
+The app writes this file too, so an edit made while it is running can be
+discarded when it exits. Then, on macOS, edit:
 
 ```
 ~/Library/Application Support/Claude/claude_desktop_config.json
@@ -344,32 +382,57 @@ script. For example:
 The console script resolves the installed package directly, so this form does
 not need a `cwd` entry.
 
-Restart Claude Desktop (Cmd+Q, not just closing the window), then the
-maestro-career-studio tools appear.
+Restart Claude Desktop, then **verify under Settings → Connectors that the
+server is actually listed**. This route does work — a normal install carries
+all six profiles in this file indefinitely — but verify rather than assume, and
+if a block does go missing after a relaunch, use Route 1 or 2 instead of
+editing the file a third time.
 
 ## Add to Claude Code
 
-Easiest: `scripts/setup-mcp.sh` writes a repo-level `.mcp.json` (gitignored —
-it holds this machine's absolute venv path), so any Claude Code session
-opened **in this repo** offers the server automatically; approve it when
-prompted. For sessions outside the repo, register user-wide — one command
-per profile:
+Easiest: `scripts/setup-mcp.sh`. It covers both routes below — but they are
+different routes with different reach, and knowing which one is serving you is
+most of MCP troubleshooting.
+
+**Claude Code has three scopes**, and the difference is not cosmetic:
+
+| Scope | Where it lives | Who sees it | Approval |
+| --- | --- | --- | --- |
+| `project` | `.mcp.json` at the repo root | sessions opened **in this repo** | **yes**, once per project |
+| `local` (the CLI **default**) | `~/.claude.json`, keyed by directory | sessions in **that one directory** | no |
+| `user` | `~/.claude.json`, global | sessions in **any** directory | no |
+
+**Route 1 — `.mcp.json` (project scope).** The setup script writes it
+(gitignored: it holds this machine's absolute venv path). Two properties
+surprise people. It is **approval-gated** — the offer appears when you start a
+session and stays inert until you accept, with the answer recorded in the
+project's `enabledMcpjsonServers` — and the session that *ran* the script has
+already read its config, so **the offer reaches your next session**, not the
+current one. The script also keeps this file to a **single** profile, because
+every entry in it is offered to every session in the repo.
+
+**Route 2 — `claude mcp add` (user scope).** For sessions outside the repo:
 
 ```bash
-claude mcp add maestro-career-studio \
+claude mcp add --scope user maestro-career-studio \
   -e BACKEND_URL=http://localhost:8001 \
   -e MAESTRO_CS_MCP_PROFILE=full \
   -- /absolute/path/to/backend/.venv/bin/maestro-career-studio-mcp
 ```
 
-The `--` separates Claude's own flags from the command that launches the server;
-everything after it is executed verbatim. Add `--scope project` to write
-`.mcp.json` at the repo root instead of your user config.
+`--scope user` is load-bearing. **The CLI defaults to `local`**, which is
+private to whichever directory you happened to run the command in — so a
+"global" registration made without the flag silently works in exactly one
+place. Use `--scope project` to write `.mcp.json` at the repo root instead.
+The `--` separates Claude's own flags from the command that launches the
+server; everything after it is executed verbatim.
 
-Verify and manage:
+Verify and manage — `list` shows every registration, `get` names the scope of
+one:
 
 ```bash
 claude mcp list
+claude mcp get maestro-career-studio
 ```
 
 ## Add to Cursor, Windsurf, and other stdio clients
@@ -558,3 +621,24 @@ over stdio. Ctrl-C to exit.
 - **A tool errors with a `422`** — the JSON Claude sent didn't match the backend
   schema (e.g. a malformed `extracted_json` or `ResumeData`). The validation
   detail comes back in the error, so Claude can see what's wrong and correct it.
+- **The tools don't appear in Claude Code** — work out which route you expected
+  to serve you (see [Add to Claude Code](#add-to-claude-code)). `claude mcp get
+  maestro-career-studio` prints the scope of a CLI registration; a `local`-scope
+  one only works in the directory it was added from. A `.mcp.json` entry needs
+  both a **new session** started in the repo and your **approval** — until then
+  the file is correct and inert, and the project's `enabledMcpjsonServers` list
+  is empty. Re-running `scripts/setup-mcp.sh` is always safe: it is keyed by
+  server name, so it overwrites rather than accumulates.
+- **The tools appear twice, or the model picks the wrong one** — you have two
+  profiles registered at once (`full` beside a scoped one). The setup script
+  prunes siblings from `.mcp.json`, but registrations you made with
+  `claude mcp add` are yours: `claude mcp list`, then
+  `claude mcp remove <name>`.
+- **A Claude Desktop config edit did not survive** — the app writes
+  `claude_desktop_config.json` itself, so an edit made while it is running can
+  be lost when it exits. Quit fully (Cmd+Q) before editing, or let
+  `./scripts/setup-mcp.sh --write-desktop-config` do it — it refuses to run
+  while the app is open, which removes the failure mode entirely. If an edit
+  still vanishes, add the server through Settings → Connectors instead. Note
+  also that Claude Desktop is a **separate surface** from Claude Code — a
+  working `claude mcp list` says nothing about what Desktop can see.

@@ -12,7 +12,11 @@
     "Enable ONE profile per chat: running `full` alongside a scoped profile",
     "registers the same tool twice and the model has to guess which to call.",
     "MAESTRO_CS_MCP_CLIENT is an optional provenance label used only when the",
-    "MCP client does not announce its own name; KB writes are recorded with it."
+    "MCP client does not announce its own name; KB writes are recorded with it.",
+    "Quit Claude Desktop fully (Cmd+Q) before editing: the app writes this",
+    "file too and can discard an edit made while it is open. Easier still,",
+    "run scripts/setup-mcp.sh --write-desktop-config, which refuses to run",
+    "while the app is open and merges one key without touching the rest."
   ],
   "mcpServers": {
     "maestro-career-studio": {

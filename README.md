@@ -8,7 +8,7 @@
 <p align="center">
   <a href="https://github.com/seinun-ai/maestro-career-studio/actions/workflows/ci.yml"><img src="https://github.com/seinun-ai/maestro-career-studio/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://github.com/seinun-ai/maestro-career-studio/actions/workflows/codeql.yml"><img src="https://github.com/seinun-ai/maestro-career-studio/actions/workflows/codeql.yml/badge.svg" alt="CodeQL"></a>
-  <a href="https://github.com/seinun-ai/maestro-career-studio/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/tests-4%2C099%20passing-brightgreen" alt="Tests"></a>
+  <a href="https://github.com/seinun-ai/maestro-career-studio/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/tests-4%2C100%20passing-brightgreen" alt="Tests"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="License"></a>
   <a href="https://maestrocareerstudio.com"><img src="https://img.shields.io/badge/site-maestrocareerstudio.com-1a3a5c" alt="Project site"></a>
   <a href="https://github.com/seinun-ai/maestro-career-studio/pkgs/container/maestro-career-studio-backend"><img src="https://img.shields.io/badge/ghcr.io-multi--arch-blue" alt="Container images"></a>
@@ -597,16 +597,26 @@ That creates the host-side venv (the MCP server runs on your machine, so it
 needs a host **Python 3.12+** — the script says exactly how to get one if
 yours is older), installs the `mcp` extra, reads your backend port out of
 `.env`, registers the server with **Claude Code** two ways — a repo-level
-`.mcp.json` so any session opened in this repo offers it automatically, plus
-a user-wide `claude mcp add` — and prints ready-to-paste blocks for **Claude
-Desktop** and the **ChatGPT desktop app / Codex CLI** with every path already
-filled in. Add `--profile hunt` to register a scoped profile instead, or
-`--print-only` to change nothing and just see the config.
+`.mcp.json` for sessions opened in this repo, plus a `claude mcp add --scope
+user` for every other directory — and prints ready-to-paste blocks for
+**Claude Desktop** and the **ChatGPT desktop app / Codex CLI** with every path
+already filled in. Add `--profile hunt` to register a scoped profile instead,
+or `--print-only` to register nothing (`--print-only --skip-install` is a true
+no-op).
+
+The `.mcp.json` route has one wrinkle worth knowing up front: it is
+approval-gated and read at session start, so the offer arrives in your **next**
+Claude Code session in this repo, and you accept it once. If tools are already
+working before then, the `claude mcp add` route is what is serving them —
+`claude mcp get maestro-career-studio` names the scope.
 
 The script exists because MCP clients need an **absolute** path to the server
 binary and GUI apps don't inherit your shell `PATH` — so the alternative is
-hand-substituting four placeholders into a JSON file. Restart Claude Desktop
-with Cmd+Q after pasting; a window close is not enough.
+hand-substituting four placeholders into a JSON file. Claude Desktop is a
+**separate surface** from Claude Code and has to be set up on its own: quit the
+app and add `--write-desktop-config`, and the script merges the entry into
+`claude_desktop_config.json` for you (backup first, your other servers
+untouched, and it refuses to run while the app is open).
 
 > **Or skip the copy-paste entirely.** Open a coding-agent session (Claude
 > Code, Codex CLI) in this repo and ask it to run `./scripts/setup-mcp.sh` —
@@ -615,10 +625,12 @@ with Cmd+Q after pasting; a window close is not enough.
 > CLI, and prints the one command that still needs a plain terminal. If the
 > agent's permission mode refuses to run the script, hand it
 > `./scripts/setup-mcp.sh --print-only` output and let it apply the steps
-> itself. Two checks before restarting anything: edits to Claude Desktop's
-> config only survive if the app was **fully quit first** (it rewrites the
-> file on exit), and the usual config mistake is a relative path or the
-> container's `8000` where the host's `8001` belongs.
+> itself. Two checks before restarting anything: a hand edit to Claude
+> Desktop's config survives only if the app was **fully quit first**, so verify
+> under Settings → Connectors after relaunching (or let
+> `--write-desktop-config` handle it — it refuses to run while the app is
+> open), and the usual config mistake is a relative path or the container's
+> `8000` where the host's `8001` belongs.
 
 `BACKEND_URL` must be the **host** port compose publishes — `8001` by default,
 not the container's internal `8000`. The script resolves this for you from

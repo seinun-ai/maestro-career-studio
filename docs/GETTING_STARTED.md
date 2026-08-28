@@ -6,7 +6,7 @@ application through it — in the order that actually works. It assumes no
 prior Docker or terminal experience beyond copy-pasting commands.
 
 **Contents:**
-[The fastest path: let an AI agent set it up](#0-the-fastest-path-let-an-ai-agent-set-it-up) ·
+[The short version: six steps](#0-the-short-version-six-steps) ·
 [Prerequisites](#1-prerequisites) ·
 [Install and first boot](#2-install-and-first-boot) ·
 [Find your way around](#3-find-your-way-around) ·
@@ -18,7 +18,56 @@ prior Docker or terminal experience beyond copy-pasting commands.
 
 ---
 
-## 0. The fastest path: let an AI agent set it up
+## 0. The short version: six steps
+
+The whole install, including your assistant, on a machine that has neither.
+Each step links to the section that explains it. **Run these in any terminal**
+— Terminal.app, iTerm, the one in your editor, or a Claude Code session; it
+makes no difference except where noted in §6.
+
+**1. Install the two prerequisites** ([§1](#1-prerequisites)) — Docker Desktop,
+   and a host Python 3.12 or newer. A fresh Mac ships 3.9, which is too old:
+
+```bash
+brew install python@3.12
+```
+
+**Start Docker Desktop and leave it running** before the next steps.
+
+**2. Clone the repo:**
+
+```bash
+git clone https://github.com/seinun-ai/maestro-career-studio.git
+```
+
+**3. Start the app** ([§2](#2-install-and-first-boot)) — this pulls prebuilt
+   images, a few minutes on a normal connection:
+
+```bash
+cd maestro-career-studio && cp .env.example .env && docker compose up -d
+```
+
+Open <http://localhost:3000> to confirm it came up.
+
+**4. Quit Claude Desktop — but only if it is already open.** Cmd+Q; closing
+   the window is not enough. If you do not use Claude Desktop, or it is not
+   running, skip this. *(Claude **Code** does not need quitting — different
+   app, and step 5 works fine from inside a Claude Code session.)*
+
+**5. Set up your assistant** ([§6](#6-drive-it-from-your-assistant-mcp)):
+
+```bash
+./scripts/setup-mcp.sh --write-desktop-config
+```
+
+**6. Open Claude Desktop → Settings → Connectors** and confirm
+   `maestro-career-studio` is listed. Then go to
+   [§4](#4-your-first-session-in-order) for your first session.
+
+Steps 4–6 are only for Claude Desktop. For Claude Code alone, plain
+`./scripts/setup-mcp.sh` at step 5 is enough and steps 4 and 6 do not apply.
+
+### Or let an AI agent do it
 
 If you use a coding agent or AI IDE (Claude Code, Codex CLI, Cursor, …), you
 can skip most of this guide's mechanics: open a session and paste something
@@ -220,17 +269,41 @@ With the backend running, one command prepares everything:
 
 Then per client:
 
-- **Claude Code** — nothing more to do for sessions opened in this repo:
-  the script writes a repo-level `.mcp.json`, and the session offers the
-  server automatically (approve when prompted). For sessions elsewhere, the
-  script registers user-wide too (or prints the command to run).
-- **Claude Desktop** — **quit the app first (Cmd+Q)**, then Settings →
-  **Developer** → **Edit Config** opens `claude_desktop_config.json`; paste
-  the block the script printed into `mcpServers`, save, reopen the app.
-  (Quit-first matters: the running app rewrites that file on exit and will
-  silently drop your edit.)
+- **Claude Code** — the script writes a repo-level `.mcp.json`, which offers
+  the server to sessions opened **in this repo**. Two things to expect: the
+  offer reaches the **next** session you start here, not the one that ran the
+  script, and you **approve it once** before it can do anything. If the CLI
+  was available, the script also registered it at **user scope**, which works
+  from any directory. `claude mcp list` shows what you ended up with.
+- **Claude Desktop** — a **separate surface**. Registering with Claude Code
+  gives Desktop chats nothing, and vice versa. Easiest: **quit Claude Desktop**
+  and re-run `./scripts/setup-mcp.sh --write-desktop-config`, which backs the
+  file up, merges one entry and leaves your other servers alone. Otherwise add
+  it through the app's own UI (Settings → **Connectors** → **Add custom
+  connector**; older builds put this under Settings → **Developer**) using the
+  command and env vars the script printed, or paste that block into
+  `claude_desktop_config.json` by hand — the last one only works if the app was
+  **fully quit first**, so check Settings → Connectors after relaunching.
 - **ChatGPT desktop app / Codex CLI** — both read `~/.codex/config.toml`;
-  append the TOML block the script printed and restart the app.
+  append the TOML block the script printed and restart the app. **This file is
+  never written by the script**, only printed — including with
+  `--write-desktop-config`, which touches Claude Desktop's config and nothing
+  else. An existing Codex setup cannot be disturbed by running any of this.
+
+Three things people ask at this point:
+
+- **Which terminal?** Any. The only difference inside a **Claude Code**
+  session is that the script will not run `claude mcp add` for you — it prints
+  the command to run yourself instead, because that writes to your user config
+  outside the repo and an agent should not do it on your behalf.
+  `--write-desktop-config` works the same either way.
+- **Do I have to quit Claude Desktop?** Only if it is currently running.
+  `--write-desktop-config` checks, and refuses rather than risking your config.
+  If the app is closed there is nothing to do. Claude **Code** never needs
+  quitting.
+- **Will this disturb my other MCP servers?** No. The script merges a single
+  entry and leaves every other server — and every other top-level key —
+  exactly as it found it, after taking a backup.
 
 No further installation is needed beyond what the script already did — the
 venv it created *is* the server. The full reference (profiles, every tool,
