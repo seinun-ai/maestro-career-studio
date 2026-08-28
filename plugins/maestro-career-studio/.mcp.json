@@ -1,0 +1,12 @@
+{
+  "maestro-career-studio": {
+    "command": "docker",
+    "args": [
+      "exec", "-i",
+      "-e", "BACKEND_URL=http://localhost:8000",
+      "-e", "MAESTRO_CS_MCP_PROFILE=full",
+      "maestro-career-studio-backend-1",
+      "python", "-m", "mcp_server.server"
+    ]
+  }
+}

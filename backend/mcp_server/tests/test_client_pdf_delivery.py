@@ -325,3 +325,48 @@ def test_prepare_upload_rejects_unsafe_application_id(tmp_path, monkeypatch):
 
     with pytest.raises(BackendError, match="application_id"):
         BackendClient(BASE).prepare_application_pdf_upload("../a1")
+
+
+@respx.mock
+def test_prepare_upload_translates_container_path_to_host_when_host_root_set(
+    tmp_path, monkeypatch
+):
+    # The MCP server can run INSIDE the backend container (`docker exec`), but the
+    # browser that opens this file runs on the host. An untranslated path exists
+    # only in the container, and a browser fails to OPEN it rather than erroring —
+    # so the translation has to happen here, where the two roots are both known.
+    container_root = tmp_path / "container" / "uploads"
+    host_root = tmp_path / "host" / "uploads"
+    monkeypatch.setenv("MAESTRO_CS_UPLOAD_DIR", str(container_root))
+    monkeypatch.setenv("MAESTRO_CS_UPLOAD_HOST_ROOT", str(host_root))
+    pdf = multipage_text_pdf_bytes(["Container-side PDF"])
+    respx.get(f"{BASE}/api/applications/a1/pdf").mock(
+        return_value=_pdf_response(pdf, "Resume.pdf")
+    )
+
+    _mock_assert_open_proposal()
+    out = BackendClient(BASE).prepare_application_pdf_upload("a1")
+
+    assert out["upload_path"] == str(host_root / "a1" / "Resume.pdf")
+    # The bytes really went to the container path; only the STRING is rewritten.
+    assert (container_root / "a1" / "Resume.pdf").read_bytes() == pdf
+    assert not (host_root / "a1" / "Resume.pdf").exists()
+
+
+@respx.mock
+def test_prepare_upload_path_unchanged_when_host_root_unset(tmp_path, monkeypatch):
+    # The venv transport writes and reads one filesystem, so translation must be
+    # inert there — otherwise it rewrites a path that was already correct.
+    upload_root = tmp_path / "uploads"
+    monkeypatch.setenv("MAESTRO_CS_UPLOAD_DIR", str(upload_root))
+    monkeypatch.delenv("MAESTRO_CS_UPLOAD_HOST_ROOT", raising=False)
+    pdf = multipage_text_pdf_bytes(["Host-side PDF"])
+    respx.get(f"{BASE}/api/applications/a1/pdf").mock(
+        return_value=_pdf_response(pdf, "Resume.pdf")
+    )
+
+    _mock_assert_open_proposal()
+    out = BackendClient(BASE).prepare_application_pdf_upload("a1")
+
+    assert out["upload_path"] == str(upload_root / "a1" / "Resume.pdf")
+    assert Path(out["upload_path"]).read_bytes() == pdf

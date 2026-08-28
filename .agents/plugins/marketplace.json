@@ -1,0 +1,19 @@
+{
+  "name": "maestro-career-studio",
+  "interface": {
+    "displayName": "Maestro Career Studio"
+  },
+  "plugins": [
+    {
+      "name": "maestro-career-studio",
+      "source": {
+        "source": "local",
+        "path": "./plugins/maestro-career-studio"
+      },
+      "policy": {
+        "installation": "AVAILABLE"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

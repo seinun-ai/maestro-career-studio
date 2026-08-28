@@ -31,7 +31,47 @@ below are just typed entry points into the existing backend HTTP API.
   thing if it finds only an old Python. The MCP server was tested with `mcp`
   1.26.
 
-## Install
+## Install as a plugin (Claude Code, Codex)
+
+The shortest route, and the only one with nothing machine-specific in it. Add
+this repo as a plugin marketplace and install `maestro-career-studio`:
+
+```bash
+claude plugin marketplace add https://github.com/seinun-ai/maestro-career-studio
+claude plugin install maestro-career-studio@maestro-career-studio
+```
+
+Codex takes the same two steps as `codex plugin marketplace add
+seinun-ai/maestro-career-studio` and `codex plugin add
+maestro-career-studio@maestro-career-studio`.
+
+The shipped declaration is one file
+([`plugins/maestro-career-studio/.mcp.json`](../../plugins/maestro-career-studio/.mcp.json))
+read by both ecosystems, and it runs the server **inside the backend
+container**:
+
+```
+docker exec -i -e BACKEND_URL=http://localhost:8000 \
+  -e MAESTRO_CS_MCP_PROFILE=full \
+  maestro-career-studio-backend-1 python -m mcp_server.server
+```
+
+Three consequences worth knowing:
+
+- **No host Python.** The prerequisites below apply to the venv route only.
+- **`BACKEND_URL` is a constant.** Inside the container the app is always on
+  `localhost:8000`, so the host-port confusion described below cannot happen.
+- **The container name is a literal**, fixed by `name: maestro-career-studio`
+  in `docker-compose.yml`, because Codex plugin manifests support no `${VAR}`
+  interpolation. See RELEASING.md's third standing constraint before changing
+  it. If you set `COMPOSE_PROJECT_NAME`, your container is named differently
+  and the plugin will not find it — use the setup script instead.
+
+The plugin ships `full` only. Scoped profiles need a per-server toggle, which
+plugin-provided servers do not have, so they come from the setup script or a
+hand-written client entry.
+
+## Install (host virtualenv)
 
 Use the setup script from the repo root — it resolves the venv path, the
 backend port and the absolute binary path, registers the server with Claude
@@ -390,7 +430,7 @@ editing the file a third time.
 
 ## Add to Claude Code
 
-Easiest: `scripts/setup-mcp.sh`. It covers both routes below — but they are
+Easiest of all is the plugin above. Failing that, `scripts/setup-mcp.sh`. It covers both routes below — but they are
 different routes with different reach, and knowing which one is serving you is
 most of MCP troubleshooting.
 

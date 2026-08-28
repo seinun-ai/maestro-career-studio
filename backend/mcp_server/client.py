@@ -166,6 +166,23 @@ def _default_upload_root() -> Path:
     return Path(__file__).resolve().parents[2] / ".playwright-mcp" / "uploads"
 
 
+def _host_visible(path: Path, upload_root: Path) -> Path:
+    """Rewrite an upload path into the one the BROWSER can open.
+
+    This server may run inside the backend container (`docker exec`), while the
+    Playwright browser that opens the staged PDF runs on the host. The container
+    path is correct for the write and useless to the browser, which fails to open
+    it rather than erroring — a silent dead end. `MAESTRO_CS_UPLOAD_HOST_ROOT`
+    names the host side of the same bind mount; unset (the venv transport, where
+    both are one filesystem) this is inert, because rewriting a path that was
+    already right is its own bug.
+    """
+    host_root = os.environ.get("MAESTRO_CS_UPLOAD_HOST_ROOT")
+    if not host_root:
+        return path
+    return Path(host_root) / path.relative_to(upload_root)
+
+
 def _atomic_write_bytes(destination: Path, content: bytes) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
     fd, temp_name = tempfile.mkstemp(
@@ -811,7 +828,7 @@ class BackendClient:
         return {
             "application_id": application_id,
             "canonical_filename": canonical_filename,
-            "upload_path": str(upload_path),
+            "upload_path": str(_host_visible(upload_path, upload_root)),
             "size_bytes": len(content),
             "sha256": hashlib.sha256(content).hexdigest(),
             **inspection,

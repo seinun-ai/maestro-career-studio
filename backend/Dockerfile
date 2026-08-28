@@ -75,7 +75,7 @@ WORKDIR /app
 # -e ".[mcp]"` still resolves normally). Regenerate the lock on the target
 # platform after changing a dependency:
 #   docker run --rm -v "$PWD/backend:/w" -w /w python:3.12-slim \
-#     sh -c "pip install pip-tools && pip-compile --extra dev \
+#     sh -c "pip install pip-tools && pip-compile --extra dev --extra mcp \
 #            --generate-hashes --output-file requirements.lock pyproject.toml"
 COPY pyproject.toml requirements.lock ./
 RUN pip install --no-cache-dir -r requirements.lock \

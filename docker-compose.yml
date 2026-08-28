@@ -1,3 +1,10 @@
+# Fixes the compose project name, and with it the container names, so a shipped
+# MCP declaration can name `maestro-career-studio-backend-1` as a literal —
+# Codex plugin manifests support no ${VAR} interpolation, so it cannot be a
+# variable. COMPOSE_PROJECT_NAME still overrides this; an existing install that
+# relied on the folder name moves to a different volume, so see docs/RELEASING.md.
+name: maestro-career-studio
+
 services:
   postgres:
     image: postgres:16
@@ -73,6 +80,17 @@ services:
       # Unset = the companion extension cannot reach the API; the web UI is
       # unaffected. Never widen this to all extensions.
       MAESTRO_CS_EXTENSION_IDS: ${MAESTRO_CS_EXTENSION_IDS:-}
+      # Staging area for PDFs the apply lane hands to a browser. Both are set
+      # HERE rather than in the MCP client's config, because `docker exec`
+      # inherits the container environment — which is what lets the shipped
+      # plugin manifest stay free of any machine-specific value.
+      # The MCP server may run inside this container while the browser that
+      # opens the file runs on the host, so it needs BOTH sides of the mount:
+      # UPLOAD_DIR to write to, UPLOAD_HOST_ROOT to report back. Unset
+      # UPLOAD_HOST_ROOT (the host-venv transport) makes the translation inert.
+      # ${PWD} is the shell's directory, so run compose from the repo root.
+      MAESTRO_CS_UPLOAD_DIR: /app/.playwright-mcp/uploads
+      MAESTRO_CS_UPLOAD_HOST_ROOT: ${PWD}/.playwright-mcp/uploads
     volumes:
       - ./applications:/app/applications
       - ./settings:/app/settings
@@ -80,6 +98,10 @@ services:
       - ./exports:/app/exports
       - ./base_resumes:/app/base_resumes
       - ./kb_documents:/app/kb_documents
+      # Host side of the upload staging area above. Without this the staged PDF
+      # exists only in the container and the browser fails to OPEN it — a silent
+      # dead end rather than an error.
+      - ./.playwright-mcp:/app/.playwright-mcp
     ports:
       # Host 8001 avoids clashes with other local backends. Bound to 127.0.0.1 (zero authentication).
       - "127.0.0.1:${BACKEND_HOST_PORT:-8001}:8000"

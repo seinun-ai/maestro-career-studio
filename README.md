@@ -8,7 +8,7 @@
 <p align="center">
   <a href="https://github.com/seinun-ai/maestro-career-studio/actions/workflows/ci.yml"><img src="https://github.com/seinun-ai/maestro-career-studio/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://github.com/seinun-ai/maestro-career-studio/actions/workflows/codeql.yml"><img src="https://github.com/seinun-ai/maestro-career-studio/actions/workflows/codeql.yml/badge.svg" alt="CodeQL"></a>
-  <a href="https://github.com/seinun-ai/maestro-career-studio/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/tests-4%2C100%20passing-brightgreen" alt="Tests"></a>
+  <a href="https://github.com/seinun-ai/maestro-career-studio/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/tests-4%2C102%20passing-brightgreen" alt="Tests"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="License"></a>
   <a href="https://maestrocareerstudio.com"><img src="https://img.shields.io/badge/site-maestrocareerstudio.com-1a3a5c" alt="Project site"></a>
   <a href="https://github.com/seinun-ai/maestro-career-studio/pkgs/container/maestro-career-studio-backend"><img src="https://img.shields.io/badge/ghcr.io-multi--arch-blue" alt="Container images"></a>
@@ -195,7 +195,7 @@ attach to it whenever you want them:
 |---|---|
 | **1. The stack** | one `docker compose up -d` (below) — three containers, all on localhost |
 | **2. One API key** | paste into `.env` or **Settings → Models**; OpenAI *or* Gemini, [either alone is a complete setup](#5-choose-your-models-deliberately) |
-| **3. MCP for your assistant** | one script — `./scripts/setup-mcp.sh` registers Claude Code and prints paste-ready config for Claude Desktop and the ChatGPT desktop app / Codex CLI ([details](#driving-it-from-claude-codex-or-chatgpt-mcp)) |
+| **3. MCP for your assistant** | **optional.** Add this repo as a plugin marketplace in Claude Code or Codex and install `maestro-career-studio` — no host Python, no paths to edit, because the server runs inside the container you just started. Claude Desktop and other stdio clients take one config entry instead ([details](#driving-it-from-claude-codex-or-chatgpt-mcp)) |
 | **4. The browser extension** | `chrome://extensions` → Developer mode → **Load unpacked** → the repo's `extension/` folder. **No ID to copy, nothing to configure**: the extension pins its identity, so the backend already allowlists it out of the box — [full steps](extension/README.md) |
 
 ```bash
@@ -587,50 +587,44 @@ runs on **your machine** against **your** database. Nothing is uploaded.
      capture is one tool call ending on a question with no result. Re-capture
      against a scored instance, then save here and add below the dashboard. -->
 
-With the backend already running, one command sets it up:
+With the backend already running, **Claude Code** and **Codex** install it as a
+plugin — add this repo as a marketplace, install `maestro-career-studio`, done:
+
+```bash
+claude plugin marketplace add https://github.com/seinun-ai/maestro-career-studio
+```
+```bash
+claude plugin install maestro-career-studio@maestro-career-studio
+```
+
+Nothing to configure afterwards. The plugin runs `docker exec` into the backend
+container, so there is **no host Python to install** and no absolute path to
+substitute — the same declaration works on every machine, which is exactly what
+makes it shippable in a marketplace at all.
+
+**Claude Desktop is a separate surface** with no marketplace: add a custom
+connector under Settings → Connectors with command `docker` and arguments
+`exec -i -e BACKEND_URL=http://localhost:8000 -e MAESTRO_CS_MCP_PROFILE=full
+maestro-career-studio-backend-1 python -m mcp_server.server`.
+
+For **Cursor, Windsurf, other stdio clients, a backend outside Docker, or scoped
+profiles**, the setup script still resolves everything and prints a paste-ready
+block per client:
 
 ```bash
 ./scripts/setup-mcp.sh
 ```
 
-That creates the host-side venv (the MCP server runs on your machine, so it
-needs a host **Python 3.12+** — the script says exactly how to get one if
-yours is older), installs the `mcp` extra, reads your backend port out of
-`.env`, registers the server with **Claude Code** two ways — a repo-level
-`.mcp.json` for sessions opened in this repo, plus a `claude mcp add --scope
-user` for every other directory — and prints ready-to-paste blocks for
-**Claude Desktop** and the **ChatGPT desktop app / Codex CLI** with every path
-already filled in. Add `--profile hunt` to register a scoped profile instead,
-or `--print-only` to register nothing (`--print-only --skip-install` is a true
-no-op).
-
-The `.mcp.json` route has one wrinkle worth knowing up front: it is
-approval-gated and read at session start, so the offer arrives in your **next**
-Claude Code session in this repo, and you accept it once. If tools are already
-working before then, the `claude mcp add` route is what is serving them —
-`claude mcp get maestro-career-studio` names the scope.
-
-The script exists because MCP clients need an **absolute** path to the server
-binary and GUI apps don't inherit your shell `PATH` — so the alternative is
-hand-substituting four placeholders into a JSON file. Claude Desktop is a
-**separate surface** from Claude Code and has to be set up on its own: quit the
-app and add `--write-desktop-config`, and the script merges the entry into
-`claude_desktop_config.json` for you (backup first, your other servers
-untouched, and it refuses to run while the app is open).
+That route builds a host virtualenv, so it is the one that needs a host
+**Python 3.12+** (the script says exactly how to get one if yours is older).
+Add `--profile hunt` for a scoped profile, `--write-desktop-config` to merge
+into Claude Desktop, or `--print-only` to change nothing.
 
 > **Or skip the copy-paste entirely.** Open a coding-agent session (Claude
 > Code, Codex CLI) in this repo and ask it to run `./scripts/setup-mcp.sh` —
 > the script knows it may be driven by an agent: it detects a nested Claude
 > Code session, writes the repo-level `.mcp.json` instead of fighting the
-> CLI, and prints the one command that still needs a plain terminal. If the
-> agent's permission mode refuses to run the script, hand it
-> `./scripts/setup-mcp.sh --print-only` output and let it apply the steps
-> itself. Two checks before restarting anything: a hand edit to Claude
-> Desktop's config survives only if the app was **fully quit first**, so verify
-> under Settings → Connectors after relaunching (or let
-> `--write-desktop-config` handle it — it refuses to run while the app is
-> open), and the usual config mistake is a relative path or the container's
-> `8000` where the host's `8001` belongs.
+> CLI, and prints the one command that still needs a plain terminal.
 
 `BACKEND_URL` must be the **host** port compose publishes — `8001` by default,
 not the container's internal `8000`. The script resolves this for you from

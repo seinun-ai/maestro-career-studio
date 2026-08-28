@@ -6,7 +6,7 @@ application through it — in the order that actually works. It assumes no
 prior Docker or terminal experience beyond copy-pasting commands.
 
 **Contents:**
-[The short version: six steps](#0-the-short-version-six-steps) ·
+[Three pieces, and only the first is required](#0-three-pieces-and-only-the-first-is-required) ·
 [Prerequisites](#1-prerequisites) ·
 [Install and first boot](#2-install-and-first-boot) ·
 [Find your way around](#3-find-your-way-around) ·
@@ -18,77 +18,65 @@ prior Docker or terminal experience beyond copy-pasting commands.
 
 ---
 
-## 0. The short version: six steps
+## 0. Three pieces, and only the first is required
 
-The whole install, including your assistant, on a machine that has neither.
-Each step links to the section that explains it. **Run these in any terminal**
-— Terminal.app, iTerm, the one in your editor, or a Claude Code session; it
-makes no difference except where noted in §6.
+Maestro CS installs in three parts. **Part 1 is the product.** Parts 2 and 3 are
+optional add-ons that connect *to* it — take either, both, or neither, now or
+later. Neither changes how the app itself works, and neither is a prerequisite
+for the other.
 
-**1. Install the two prerequisites** ([§1](#1-prerequisites)) — Docker Desktop,
-   and a host Python 3.12 or newer. A fresh Mac ships 3.9, which is too old:
+| | what it is | what it gives you | required? |
+| --- | --- | --- | --- |
+| **1. The app** | a Docker stack: web UI, API, database | everything — resumes, tailoring, ATS scoring, PDFs, tracking, at localhost:3000 | **yes** |
+| **2. Your assistant** | an MCP server for Claude or Codex | drive all of the above by chat instead of clicking | no |
+| **3. The extension** | a Chrome side panel | capture and fill postings in the tab you are already on | no |
 
-```bash
-brew install python@3.12
-```
+If you only ever do Part 1, you have a complete working product.
 
-**Start Docker Desktop and leave it running** before the next steps.
+---
 
-**2. Clone the repo:**
+### Part 1 — the app  *(required, ~5 minutes)*
+
+**Prerequisite: Docker, installed and running** ([§1](#1-prerequisites)).
+Nothing else — no Python, no Node.
 
 ```bash
 git clone https://github.com/seinun-ai/maestro-career-studio.git
 ```
 
-**3. Start the app** ([§2](#2-install-and-first-boot)) — this pulls prebuilt
-   images, a few minutes on a normal connection:
-
 ```bash
 cd maestro-career-studio && cp .env.example .env && docker compose up -d
 ```
 
-Open <http://localhost:3000> to confirm it came up.
-
-**4. Quit Claude Desktop — but only if it is already open.** Cmd+Q; closing
-   the window is not enough. If you do not use Claude Desktop, or it is not
-   running, skip this. *(Claude **Code** does not need quitting — different
-   app, and step 5 works fine from inside a Claude Code session.)*
-
-**5. Set up your assistant** ([§6](#6-drive-it-from-your-assistant-mcp)):
-
-```bash
-./scripts/setup-mcp.sh --write-desktop-config
-```
-
-**6. Open Claude Desktop → Settings → Connectors** and confirm
-   `maestro-career-studio` is listed. Then go to
-   [§4](#4-your-first-session-in-order) for your first session.
-
-Steps 4–6 are only for Claude Desktop. For Claude Code alone, plain
-`./scripts/setup-mcp.sh` at step 5 is enough and steps 4 and 6 do not apply.
-
-### Or let an AI agent do it
-
-If you use a coding agent or AI IDE (Claude Code, Codex CLI, Cursor, …), you
-can skip most of this guide's mechanics: open a session and paste something
-like —
-
-> Clone https://github.com/seinun-ai/maestro-career-studio, check that the
-> prerequisites in docs/GETTING_STARTED.md are present on this machine, set
-> up the `.env`, and start the stack with docker compose. Then tell me what
-> still needs me.
-
-— and later, from a session opened inside the cloned repo:
-
-> Set up this repo's MCP server for my assistant. Run ./scripts/setup-mcp.sh
-> and apply its output; docs/GETTING_STARTED.md §6 has the per-client paths.
-
-Two things an agent cannot do for you: **install and start Docker Desktop**
-(it needs an admin password and a GUI first-run), and **decide where your
-API key goes** (§2). Everything else — cloning, `.env`, compose, the MCP
-config — an agent handles, and the repo's own scripts cooperate with it.
+Open **<http://localhost:3000>**. That is the whole product; [§4](#4-your-first-session-in-order)
+walks your first session. Details and troubleshooting: [§2](#2-install-and-first-boot).
 
 ---
+
+### Part 2 — your assistant  *(optional, ~1 minute)*
+
+Lets Claude or ChatGPT/Codex operate the app for you. **Requires Part 1 running**,
+because the assistant talks to your own backend.
+
+For **Claude Code** or **Codex**, add this repo as a plugin marketplace and
+install `maestro-career-studio`. That is the whole setup — no paths to edit and
+no host Python, because the server runs inside the container you already started.
+
+**Claude Desktop is a separate surface** and is not covered by that marketplace;
+it needs its own entry. Full instructions for every client, including Cursor and
+Windsurf: [§6](#6-drive-it-from-your-assistant-mcp).
+
+---
+
+### Part 3 — the extension  *(optional, ~2 minutes)*
+
+A Chrome side panel for saving and filling postings without leaving the tab.
+**Requires Part 1 running.** Independent of Part 2 — you can have either without
+the other. Steps: [§5](#5-the-browser-extension).
+
+---
+
+### Or let an AI agent do it
 
 ## 1. Prerequisites
 
@@ -111,8 +99,10 @@ config — an agent handles, and the repo's own scripts cooperate with it.
   (Settings → Models, after first boot) — and without one, the deterministic
   core (ATS scoring, PDF rendering, tracking) works fully in
   [No-Key Mode](../README.md#try-it-before-you-bring-a-key-no-key-mode).
-- **For the MCP server only** (§6): a host **Python 3.12+**. Not needed for
-  the app itself.
+- **Not needed for most installs: Python.** The app runs in Docker and the
+  marketplace plugin runs inside that container. A host **Python 3.12+** is
+  required only for the `scripts/setup-mcp.sh` route in [§6](#6-drive-it-from-your-assistant-mcp)
+  — a non-Docker backend, a client with no plugin support, or scoped profiles.
 
 ## 2. Install and first boot
 
@@ -261,53 +251,93 @@ panel's `⋯` menu. What its telemetry does and doesn't store is in the
 
 ## 6. Drive it from your assistant (MCP)
 
-With the backend running, one command prepares everything:
+**Part 1 must be running** — the assistant talks to your own backend, so
+`docker compose up -d` first. Three routes; pick by client.
+
+### Claude Code and Codex — install the plugin *(recommended)*
+
+```bash
+claude plugin marketplace add https://github.com/seinun-ai/maestro-career-studio
+```
+```bash
+claude plugin install maestro-career-studio@maestro-career-studio
+```
+
+For Codex, the same two steps with `codex plugin marketplace add
+seinun-ai/maestro-career-studio` and `codex plugin add
+maestro-career-studio@maestro-career-studio`.
+
+Prefer clicking? Use **Plugins → Add → Add plugin marketplace** in either app and
+fill it in exactly like this:
+
+| field | value |
+| --- | --- |
+| Source | `seinun-ai/maestro-career-studio` |
+| Git ref | `main` |
+| Sparse paths | *leave empty* |
+
+Then open the **Maestro Career Studio** entry that appears and press **Install**.
+Leave sparse paths empty: the marketplace manifests live at the repo root
+(`.claude-plugin/` and `.agents/plugins/`) and point at `./plugins/…`, so a
+sparse checkout of `plugins/` alone would fetch the plugin but not the manifest
+that lists it.
+
+There is nothing to configure afterwards. The plugin runs `docker exec` into the
+container Part 1 already started, so there is no host Python to install, no
+absolute path to substitute, and the declaration is byte-identical on every
+machine. If the tools error, the stack is down — check `docker compose ps`.
+
+### Claude Desktop — add a connector
+
+Claude Desktop is a **separate surface** from Claude Code; a plugin installed in
+one gives the other nothing. It has no marketplace, so add it by hand:
+**Settings → Connectors → Add custom connector** (older builds: Settings →
+Developer), with
+
+| field | value |
+| --- | --- |
+| Command | `docker` |
+| Arguments | `exec -i -e BACKEND_URL=http://localhost:8000 -e MAESTRO_CS_MCP_PROFILE=full maestro-career-studio-backend-1 python -m mcp_server.server` |
+
+That needs no host Python either. If you prefer editing
+`claude_desktop_config.json` directly, **fully quit the app first** (Cmd+Q — the
+app writes that file too and can discard an edit made while it is open), then
+reopen and confirm the server is listed under Connectors.
+
+### Everything else — the setup script
 
 ```bash
 ./scripts/setup-mcp.sh
 ```
 
-Then per client:
+Use this for Cursor, Windsurf and other stdio clients, for a backend you run
+outside Docker (`uvicorn`), or for scoped profiles. It builds a host virtualenv
+and prints a ready-to-paste block per client, so **this is the one route that
+needs a host Python 3.12+**. Useful flags: `--write-desktop-config` (merges into
+Claude Desktop, refusing to run while the app is open), `--profile hunt`,
+`--print-only`.
 
-- **Claude Code** — the script writes a repo-level `.mcp.json`, which offers
-  the server to sessions opened **in this repo**. Two things to expect: the
-  offer reaches the **next** session you start here, not the one that ran the
-  script, and you **approve it once** before it can do anything. If the CLI
-  was available, the script also registered it at **user scope**, which works
-  from any directory. `claude mcp list` shows what you ended up with.
-- **Claude Desktop** — a **separate surface**. Registering with Claude Code
-  gives Desktop chats nothing, and vice versa. Easiest: **quit Claude Desktop**
-  and re-run `./scripts/setup-mcp.sh --write-desktop-config`, which backs the
-  file up, merges one entry and leaves your other servers alone. Otherwise add
-  it through the app's own UI (Settings → **Connectors** → **Add custom
-  connector**; older builds put this under Settings → **Developer**) using the
-  command and env vars the script printed, or paste that block into
-  `claude_desktop_config.json` by hand — the last one only works if the app was
-  **fully quit first**, so check Settings → Connectors after relaunching.
-- **ChatGPT desktop app / Codex CLI** — both read `~/.codex/config.toml`;
-  append the TOML block the script printed and restart the app. **This file is
-  never written by the script**, only printed — including with
-  `--write-desktop-config`, which touches Claude Desktop's config and nothing
-  else. An existing Codex setup cannot be disturbed by running any of this.
+### Enable one profile at a time
 
-Three things people ask at this point:
+The server ships six profiles — `full` and five scoped subsets of it. They are
+**subsets, not alternatives**, so enabling several at once costs more and buys
+nothing:
 
-- **Which terminal?** Any. The only difference inside a **Claude Code**
-  session is that the script will not run `claude mcp add` for you — it prints
-  the command to run yourself instead, because that writes to your user config
-  outside the repo and an agent should not do it on your behalf.
-  `--write-desktop-config` works the same either way.
-- **Do I have to quit Claude Desktop?** Only if it is currently running.
-  `--write-desktop-config` checks, and refuses rather than risking your config.
-  If the app is closed there is nothing to do. Claude **Code** never needs
-  quitting.
-- **Will this disturb my other MCP servers?** No. The script merges a single
-  entry and leaves every other server — and every other top-level key —
-  exactly as it found it, after taking a backup.
+| enabled | tool schemas | approx. tokens per request |
+| --- | --- | --- |
+| `full` alone | 83 | ~20,400 |
+| `apply` alone | 46 | ~12,200 |
+| `hunt` alone | 19 | ~3,400 |
+| all six together | 189 | ~44,800 — **2.2x `full`, identical capability** |
 
-No further installation is needed beyond what the script already did — the
-venv it created *is* the server. The full reference (profiles, every tool,
-troubleshooting) is [`backend/mcp_server/README.md`](../backend/mcp_server/README.md).
+Tool definitions are sent with every request, before the model reads your
+prompt, so naming a tool in the prompt does not reduce what was loaded. They do
+cache across a session, which softens the cost after the first request. The
+plugin ships `full` only; scoped profiles come from the setup script or a
+hand-written client entry, both of which give you a per-server toggle.
+
+The full reference — every tool, all six profiles, troubleshooting — is
+[`backend/mcp_server/README.md`](../backend/mcp_server/README.md).
 
 ## 7. Where it can go next
 

@@ -4,7 +4,10 @@ __pycache__/
 *.pyc
 .venv/
 # machine-specific Claude Code project registration written by scripts/setup-mcp.sh
-.mcp.json
+# Anchored to the repo root: this is the machine-specific file setup-mcp.sh
+# writes. Unanchored, the pattern also swallowed the SHIPPED plugin payload at
+# plugins/*/.mcp.json, which is the one file the marketplace cannot do without.
+/.mcp.json
 venv/
 
 # build

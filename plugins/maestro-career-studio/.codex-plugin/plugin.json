@@ -1,0 +1,25 @@
+{
+  "name": "maestro-career-studio",
+  "version": "0.1.2",
+  "description": "Drive Maestro Career Studio from your assistant: capture and score jobs, tailor resumes against a JD, render PDFs, and track applications. Requires the stack running locally (docker compose up -d) \u2014 the server talks to your own backend and nothing leaves the machine.",
+  "author": {
+    "name": "Ajey Dhayashanker Loganathan"
+  },
+  "homepage": "https://github.com/seinun-ai/maestro-career-studio",
+  "license": "Apache-2.0",
+  "keywords": [
+    "resume",
+    "job-search",
+    "ats",
+    "career",
+    "mcp"
+  ],
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Maestro Career Studio",
+    "shortDescription": "Tailor resumes and track applications, from your own machine",
+    "developerName": "Ajey Dhayashanker Loganathan",
+    "category": "Productivity",
+    "websiteURL": "https://maestrocareerstudio.com"
+  }
+}

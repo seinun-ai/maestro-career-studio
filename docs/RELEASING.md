@@ -10,7 +10,7 @@ The versioning policy — SemVer as honestly applied to 0.x, and the
 
 ---
 
-## Two standing constraints
+## Three standing constraints
 
 These are not steps. They hold between releases, and both are cheap to respect
 and impossible to repair afterwards.
@@ -30,6 +30,19 @@ ago. If a change on `main` cannot be satisfied by the images already published
 (a new required env var, a compose service the old image does not answer, a
 script that assumes a new endpoint), then that change *is* a release: cut one
 rather than leaving the combination broken.
+
+**3. The compose project name is fixed and must never move again.**
+`docker-compose.yml` sets `name: maestro-career-studio`, so containers are
+`maestro-career-studio-backend-1` and the volume is
+`maestro-career-studio_pgdata`. That container name is a **literal** in the
+shipped plugin manifest (`plugins/maestro-career-studio/.mcp.json`) because
+Codex plugin manifests support no `${VAR}` interpolation — there is nowhere to
+put a variable. Changing the project name therefore breaks marketplace installs
+on every machine at once, and separately points existing stacks at a different
+Postgres volume, which presents as an empty app rather than an error.
+`COMPOSE_PROJECT_NAME` still overrides it for anyone who needs a second stack
+side by side; that is the supported escape hatch, and such a user configures
+their MCP server with `scripts/setup-mcp.sh` rather than the plugin.
 
 ---
 

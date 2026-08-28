@@ -1,0 +1,20 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "maestro-career-studio",
+  "description": "The Maestro Career Studio MCP server, for assistants that speak stdio MCP.",
+  "owner": {
+    "name": "Ajey Dhayashanker Loganathan"
+  },
+  "plugins": [
+    {
+      "name": "maestro-career-studio",
+      "description": "Drive Maestro Career Studio from your assistant: capture and score jobs, tailor resumes against a JD, render PDFs, and track applications. Requires the stack running locally (docker compose up -d) — the server talks to your own backend and nothing leaves the machine.",
+      "author": {
+        "name": "Ajey Dhayashanker Loganathan"
+      },
+      "category": "productivity",
+      "source": "./plugins/maestro-career-studio",
+      "homepage": "https://github.com/seinun-ai/maestro-career-studio"
+    }
+  ]
+}

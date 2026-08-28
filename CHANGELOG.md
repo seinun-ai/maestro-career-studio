@@ -28,7 +28,41 @@ published image tag is the same version with the leading `v` removed (`0.1.2`).
 
 ## [Unreleased]
 
-Nothing yet.
+### Breaking changes
+
+- **The compose project name is now fixed to `maestro-career-studio`.**
+  `docker-compose.yml` sets it explicitly, because the shipped plugin manifest
+  has to name the container as a literal (Codex plugin manifests support no
+  `${VAR}` interpolation). This is a **no-op for a normal install** — cloning
+  the repo already produced that name. It is *not* a no-op if your stack's
+  project name came from a differently-named directory: that stack points at a
+  different Postgres volume and comes up **looking empty rather than failing**.
+  If that is you, set `COMPOSE_PROJECT_NAME` to your old name in `.env` before
+  updating; it still overrides, and it stays the supported way to run two
+  stacks side by side.
+
+### Added
+
+- **Install the MCP server from a marketplace.** `claude plugin marketplace
+  add` / `codex plugin marketplace add` against this repo, then install
+  `maestro-career-studio` — no paths to edit and **no host Python**, because
+  the server runs inside the backend container you already started. The `mcp`
+  extra is now baked into the image so the container can be the MCP server.
+  Claude Desktop is a separate surface and still needs its own entry.
+- **A three-part install story** in `docs/GETTING_STARTED.md`: the app is Part
+  1 and the only required one; the assistant and the extension are independent
+  optional add-ons.
+
+### Fixed
+
+- `prepare_application_pdf_upload` now reports the upload path **the browser
+  can open**, not the in-container path it wrote to.
+- Requests are no longer paused as "offline" against a local API.
+- `scripts/setup-mcp.sh`: dropped a `claude mcp add` scope the CLI never had,
+  and a venv check that never ran. Added `--write-desktop-config`, which
+  refuses while Claude Desktop is running and backs the file up first.
+- `.gitignore`'s `.mcp.json` rule is anchored to the repo root — unanchored, it
+  swallowed the shipped plugin payload at `plugins/*/.mcp.json`.
 
 ## [0.1.2] — 2026-08-26
 
