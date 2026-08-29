@@ -1,0 +1,7 @@
+# `mcpb pack` does not read .gitignore, so anything that must stay out of the
+# bundle is listed here. The bundle is committed to the repo, so every byte in
+# it is a byte in every clone.
+.npm-cache/
+tests/
+*.mcpb
+.DS_Store

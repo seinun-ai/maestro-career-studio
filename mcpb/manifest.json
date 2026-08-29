@@ -1,0 +1,62 @@
+{
+  "manifest_version": "0.3",
+  "name": "maestro-career-studio",
+  "display_name": "Maestro Career Studio",
+  "version": "0.2.0",
+  "description": "Tailor resumes and track applications, from your own machine",
+  "long_description": "Drive Maestro Career Studio from Claude: capture and score jobs, tailor resumes against a job description, render PDFs, and track applications. Requires the Maestro CS stack running locally (docker compose up -d) — this extension talks to your own backend over Docker, and nothing leaves the machine.",
+  "author": {
+    "name": "Ajey Dhayashanker Loganathan"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/seinun-ai/maestro-career-studio"
+  },
+  "homepage": "https://maestrocareerstudio.com",
+  "documentation": "https://github.com/seinun-ai/maestro-career-studio/blob/main/backend/mcp_server/README.md",
+  "support": "https://github.com/seinun-ai/maestro-career-studio/issues",
+  "license": "Apache-2.0",
+  "keywords": ["resume", "job-search", "ats", "career", "mcp"],
+  "server": {
+    "type": "node",
+    "entry_point": "server/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/server/index.js"],
+      "env": {
+        "MAESTRO_CS_CONTAINER": "${user_config.container_name}",
+        "MAESTRO_CS_MCP_PROFILE": "${user_config.profile}",
+        "MAESTRO_CS_DOCKER": "${user_config.docker_path}"
+      }
+    }
+  },
+  "tools_generated": true,
+  "user_config": {
+    "container_name": {
+      "type": "string",
+      "title": "Container name",
+      "description": "The backend container to run the server inside. The default is correct unless you set COMPOSE_PROJECT_NAME; check `docker ps` if unsure.",
+      "default": "maestro-career-studio-backend-1",
+      "required": false
+    },
+    "docker_path": {
+      "type": "file",
+      "title": "Docker path",
+      "description": "Only needed if Docker is installed somewhere unusual. Claude Desktop runs extensions with a minimal PATH, so the usual locations are searched by absolute path; leave this empty unless that fails.",
+      "required": false
+    },
+    "profile": {
+      "type": "string",
+      "title": "Tool profile",
+      "description": "full (83 tools) or a scoped set: hunt, apply, explore, templates, career. Enable one at a time — the scoped profiles are subsets of full, so more than one costs context without adding capability.",
+      "default": "full",
+      "required": false
+    }
+  },
+  "compatibility": {
+    "platforms": ["darwin"],
+    "runtimes": {
+      "node": ">=18.0.0"
+    }
+  }
+}

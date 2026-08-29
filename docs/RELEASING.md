@@ -12,7 +12,7 @@ The versioning policy — SemVer as honestly applied to 0.x, and the
 
 ## Three standing constraints
 
-These are not steps. They hold between releases, and both are cheap to respect
+These are not steps. They hold between releases, and each is cheap to respect
 and impossible to repair afterwards.
 
 **1. From the first public tag onward, the published history is append-only.**
@@ -58,15 +58,16 @@ their MCP server with `scripts/setup-mcp.sh` rather than the plugin.
   backwards for every user who has not pinned. If you must publish a fix for an
   older line, give it a higher number.
 
-### 2. Bump the three places a version lives
+### 2. Bump the five places a version lives
 
-They must agree, and two of them will keep lying silently if you forget:
+They must agree, and most of them will keep lying silently if you forget:
 
 | File | Value |
 |---|---|
 | `backend/pyproject.toml` | `version = "X.Y.Z"` |
 | `extension/manifest.json` | `"version": "X.Y.Z"` |
 | `CITATION.cff` | `version: "X.Y.Z"` + `date-released` (cffconvert cannot catch a stale one — check by eye) |
+| `mcpb/manifest.json` | `"version": "X.Y.Z"` — what Claude Desktop shows for the installed extension. Re-pack the bundle after editing (`scripts/check_mcpb_bundle.py` fails otherwise) |
 | the git tag (step 4) | `vX.Y.Z` |
 
 The published image tag is the version **without** the `v` (`X.Y.Z`) — the

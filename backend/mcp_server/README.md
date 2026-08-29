@@ -361,30 +361,43 @@ and carry a proposal through that lifecycle.
 ## Add to Claude Desktop
 
 > **Claude Desktop and Claude Code are separate surfaces.** A server
-> registered with Claude Code — in `.mcp.json` or via `claude mcp add` — gives
-> Desktop chats nothing, and the reverse is equally true. Each has to be set
-> up on its own.
+> registered with Claude Code — in `.mcp.json`, via `claude mcp add`, or as a
+> plugin — gives Desktop chats nothing, and the reverse is equally true. Each
+> has to be set up on its own.
 
-### Route 1 — let the setup script do it
+### Route 0 — install the extension *(recommended)*
 
-```bash
-./scripts/setup-mcp.sh --write-desktop-config
-```
+Settings → **Extensions** → **Install Extension**, then pick
+[`mcpb/maestro-career-studio.mcpb`](../../mcpb/maestro-career-studio.mcpb) from
+your clone. Leave the fields empty; the defaults are correct.
 
-Opt-in, because that file is shared with your other MCP servers. It **refuses
-to run while Claude Desktop is open** (the app writes this file too), backs the
-file up first, merges a single `mcpServers` key, and leaves every other server
-and top-level key exactly as it found them. It touches **only** this file —
-`~/.codex/config.toml` is printed for you to paste and is never written, so a
-Codex or ChatGPT desktop setup cannot be affected. Runs fine from inside a
-Claude Code session. Other Maestro profiles already in
-the file are reported and left alone — Claude Desktop can toggle servers per
-chat, so having several registered is fine.
+It is the same `docker exec` server the Claude Code and Codex plugins declare,
+packaged in the format Desktop accepts, so it needs no host Python either. The
+bundle is committed and CI fails if it drifts from `mcpb/` — see
+`scripts/check_mcpb_bundle.py`.
+
+Three environment differences broke earlier builds of it, all worth knowing if
+you package anything similar for Desktop. It launches extensions with
+`PATH=/usr/bin:/bin:/usr/sbin:/sbin`, so `docker` must be found by absolute
+path. A `user_config` field the user leaves empty arrives as the literal string
+`${user_config.name}` unless the manifest declares a `default`. And it runs
+extensions in Electron's Node, where `stdio: "inherit"` does not connect a child
+to the transport — pipe explicitly.
+
+### Route 1 — the `.mcpb` extension (above)
+
+Installing the bundle is the supported route and needs no terminal at all.
+`scripts/setup-mcp.sh` no longer writes this file: the flag that did
+(`--write-desktop-config`) was retired when the extension replaced it, so the
+script now prints a paste-ready block instead — see Route 3 for doing it by
+hand, and `--print-only` to see the block without touching anything.
 
 ### Route 2 — the app's Connectors UI
 
-**Settings → Connectors → Add custom connector** (older builds put this under
-**Settings → Developer**), then:
+**Note:** on current builds **Settings → Connectors → Add custom connector takes
+a remote `https://` endpoint only** — it has no command field, so a local stdio
+server cannot be added there. Use Route 1 or Route 3 below. The fields described
+here apply to older builds that did offer a command:
 
 | Field | Value |
 | --- | --- |
@@ -676,9 +689,8 @@ over stdio. Ctrl-C to exit.
   `claude mcp remove <name>`.
 - **A Claude Desktop config edit did not survive** — the app writes
   `claude_desktop_config.json` itself, so an edit made while it is running can
-  be lost when it exits. Quit fully (Cmd+Q) before editing, or let
-  `./scripts/setup-mcp.sh --write-desktop-config` do it — it refuses to run
-  while the app is open, which removes the failure mode entirely. If an edit
-  still vanishes, add the server through Settings → Connectors instead. Note
+  be lost when it exits. Quit fully (Cmd+Q) before editing. Better still, skip
+  the file: install the `.mcpb` extension, which Desktop manages itself and
+  which no hand-edit can lose. Note
   also that Claude Desktop is a **separate surface** from Claude Code — a
   working `claude mcp list` says nothing about what Desktop can see.

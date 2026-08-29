@@ -587,25 +587,19 @@ runs on **your machine** against **your** database. Nothing is uploaded.
      capture is one tool call ending on a question with no result. Re-capture
      against a scored instance, then save here and add below the dashboard. -->
 
-With the backend already running, **Claude Code** and **Codex** install it as a
-plugin — add this repo as a marketplace, install `maestro-career-studio`, done:
+With the backend already running, both clients install by picking something in
+their own settings — no terminal, no config file, nothing to quit:
 
-```bash
-claude plugin marketplace add https://github.com/seinun-ai/maestro-career-studio
-```
-```bash
-claude plugin install maestro-career-studio@maestro-career-studio
-```
+- **Claude** — Settings → **Extensions** → **Install Extension** → pick
+  `mcpb/maestro-career-studio.mcpb` from your clone. One install covers Claude
+  Desktop *and* Claude Code sessions running inside the Claude app.
+- **Codex / ChatGPT desktop** — Settings → **Plugins** → **Add** → this repo as a
+  marketplace (`seinun-ai/maestro-career-studio`, ref `main`, sparse paths
+  empty), then **Install**.
 
-Nothing to configure afterwards. The plugin runs `docker exec` into the backend
-container, so there is **no host Python to install** and no absolute path to
-substitute — the same declaration works on every machine, which is exactly what
-makes it shippable in a marketplace at all.
-
-**Claude Desktop is a separate surface** with no marketplace: add a custom
-connector under Settings → Connectors with command `docker` and arguments
-`exec -i -e BACKEND_URL=http://localhost:8000 -e MAESTRO_CS_MCP_PROFILE=full
-maestro-career-studio-backend-1 python -m mcp_server.server`.
+Neither needs a host Python or a path to edit: both run the same server inside
+the backend container you already started, which is what makes one declaration
+correct on every machine.
 
 For **Cursor, Windsurf, other stdio clients, a backend outside Docker, or scoped
 profiles**, the setup script still resolves everything and prints a paste-ready
@@ -616,9 +610,8 @@ block per client:
 ```
 
 That route builds a host virtualenv, so it is the one that needs a host
-**Python 3.12+** (the script says exactly how to get one if yours is older).
-Add `--profile hunt` for a scoped profile, `--write-desktop-config` to merge
-into Claude Desktop, or `--print-only` to change nothing.
+**Python 3.12+**. Add `--profile hunt` for a scoped profile, or `--print-only`
+to change nothing.
 
 > **Or skip the copy-paste entirely.** Open a coding-agent session (Claude
 > Code, Codex CLI) in this repo and ask it to run `./scripts/setup-mcp.sh` —

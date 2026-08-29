@@ -11,15 +11,13 @@
 #
 #   ./scripts/setup-mcp.sh                     # venv + Claude Code + print the rest
 #   ./scripts/setup-mcp.sh --profile hunt      # register a scoped profile instead
-#   ./scripts/setup-mcp.sh --write-desktop-config   # also merge into Claude Desktop
 #   ./scripts/setup-mcp.sh --print-only        # register nothing; still builds the venv
 #   ./scripts/setup-mcp.sh --print-only --skip-install   # a true no-op: just show the config
 #   ./scripts/setup-mcp.sh --backend-url http://localhost:8000
 #
 # Nothing here touches the backend or the database. The only thing it can
 # modify outside the repo is your Claude Code MCP registration, and only when
-# --print-only is absent, plus Claude Desktop's config when you pass
-# --write-desktop-config. Inside the repo it owns exactly one file, the
+# --print-only is absent. Inside the repo it owns exactly one file, the
 # gitignored .mcp.json, and keeps it to a SINGLE profile (--keep-other-profiles
 # opts out) so no session is offered two copies of the same tool.
 
@@ -34,7 +32,6 @@ BACKEND_URL=""
 PRINT_ONLY=0
 SKIP_INSTALL=0
 PRUNE_SIBLINGS=1
-WRITE_DESKTOP=0
 
 die() { printf '\033[31merror:\033[0m %s\n' "$*" >&2; exit 1; }
 note() { printf '\033[36m→\033[0m %s\n' "$*"; }
@@ -52,15 +49,10 @@ while [ $# -gt 0 ]; do
     --print-only)   PRINT_ONLY=1; shift ;;
     --skip-install) SKIP_INSTALL=1; shift ;;
     --keep-other-profiles) PRUNE_SIBLINGS=0; shift ;;
-    --write-desktop-config) WRITE_DESKTOP=1; shift ;;
     -h|--help)      sed -n '2,23p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *)              die "unknown argument: $1 (try --help)" ;;
   esac
 done
-
-if [ "$PRINT_ONLY" -eq 1 ] && [ "$WRITE_DESKTOP" -eq 1 ]; then
-  die "--print-only and --write-desktop-config contradict each other"
-fi
 
 case "$PROFILE" in
   full|hunt|apply|explore|templates|career) ;;
@@ -240,138 +232,21 @@ PYEOF
 fi
 
 # ---------------------------------------------------------------------------
-# 4. Claude Desktop (opt-in). It is a SEPARATE surface from Claude Code —
-#    nothing registered above reaches it. Its config is an ordinary JSON file
-#    and this script can merge into it, but only when asked: that file is
-#    shared with your other MCP servers, and an install script that silently
-#    rewrites an assistant config is a bad neighbour. So: opt in, back up,
-#    merge one key, and refuse to run while the app is open.
-# ---------------------------------------------------------------------------
-desktop_config_path() {
-  case "$(uname -s)" in
-    Darwin) printf '%s/Library/Application Support/Claude/claude_desktop_config.json' "$HOME" ;;
-    Linux)  printf '%s/.config/Claude/claude_desktop_config.json' "$HOME" ;;
-    *)      return 1 ;;
-  esac
-}
-
-# shellcheck disable=SC2009  # pgrep is the usual advice; it does not work here, see below
-desktop_is_running() {
-  # `pgrep -f` does not reliably see this argv on macOS, but the full
-  # executable path out of ps does — and it cannot be confused with Claude
-  # CODE, whose own bundle is a lowercase claude.app under Application Support.
-  case "$(uname -s)" in
-    Darwin) ps -Ao comm= | grep -qx '/Applications/Claude.app/Contents/MacOS/Claude' ;;
-    *)      return 1 ;;
-  esac
-}
-
-DESKTOP_CFG=""
-DESKTOP_ACTION=""
-if [ "$WRITE_DESKTOP" -eq 1 ]; then
-  DESKTOP_CFG="$(desktop_config_path)" \
-    || die "--write-desktop-config is implemented for macOS and Linux only; use the block printed below"
-  if desktop_is_running; then
-    die "Claude Desktop is running. Quit it fully (Cmd+Q — closing the window is
-       not enough) and re-run. The app writes this file too, so an edit made
-       while it is open can be discarded when it exits."
-  fi
-  mkdir -p "$(dirname "$DESKTOP_CFG")"
-  if [ -f "$DESKTOP_CFG" ]; then
-    backup="$DESKTOP_CFG.bak-$(date +%Y%m%d-%H%M%S)"
-    cp "$DESKTOP_CFG" "$backup"
-    note "backed up your Desktop config to $(basename "$backup")"
-  fi
-  DESKTOP_ACTION="$("$VENV/bin/python" - "$DESKTOP_CFG" "$SERVER_NAME" "$MCP_BIN" \
-      "$BACKEND_URL" "$PROFILE" <<'PYEOF'
-import json, os, sys
-path, name, bin_, url, profile = sys.argv[1:6]
-try:
-    with open(path) as f:
-        data = json.load(f)
-except FileNotFoundError:
-    data = {}
-except json.JSONDecodeError as exc:
-    raise SystemExit("refusing to touch %s — it is not valid JSON (%s)" % (path, exc))
-servers = data.setdefault("mcpServers", {})
-existed = name in servers
-# Merge ONE key. Every other server in this file, and every other top-level
-# key, belongs to the app or to somebody else. Never rebuild it from scratch.
-servers[name] = {
-    "command": bin_,
-    "env": {
-        "BACKEND_URL": url,
-        "MAESTRO_CS_MCP_PROFILE": profile,
-        "MAESTRO_CS_MCP_CLIENT": "Claude Desktop",
-    },
-}
-tmp = path + ".tmp"
-with open(tmp, "w") as f:
-    json.dump(data, f, indent=2)
-    f.write("\n")
-with open(tmp) as f:      # parse what we are about to install, before installing it
-    json.load(f)
-os.replace(tmp, path)
-siblings = sorted(k for k in servers if k.startswith("maestro-career-studio") and k != name)
-print(("updated" if existed else "added") + "\t" + " ".join(siblings))
-PYEOF
-)"
-  IFS="$(printf '\t')" read -r action siblings <<< "$DESKTOP_ACTION"
-  ok "$action '$SERVER_NAME' in $DESKTOP_CFG (other servers left untouched)"
-  [ -z "$siblings" ] || note "other Maestro profiles already in that file: $siblings — left alone; Claude Desktop can toggle servers per chat"
-fi
-
-# ---------------------------------------------------------------------------
-# 5. GUI clients — print a block with every placeholder already resolved.
+# 4. GUI clients — print a block with every placeholder already resolved.
 #    The Codex block is printed rather than written because that file is
-#    shared with your other servers; Claude Desktop has --write-desktop-config
-#    (section 4) for the same job, opt-in for the same reason.
+#    shared with your other servers. Claude Desktop is not printed here at
+#    all any more: it installs mcpb/maestro-career-studio.mcpb instead.
 # ---------------------------------------------------------------------------
-if [ -n "$DESKTOP_CFG" ]; then
-  cat <<EOF
-
-────────────────────────────────────────────────────────────────────────
-Claude Desktop — already done: '$SERVER_NAME' was merged into
-  $DESKTOP_CFG
-Start the app and confirm it under Settings → Connectors. If it is not there,
-your backup is beside that file and the paste-by-hand block is available with
-  ./scripts/setup-mcp.sh --print-only --skip-install
-EOF
-else
-  cat <<EOF
-
-────────────────────────────────────────────────────────────────────────
-Claude Desktop is a SEPARATE surface: what this script registered above gives
-tools to Claude Code only, and does nothing for Desktop chats. Three ways in,
-easiest first:
-
-  1. Re-run this script with --write-desktop-config (quit the app first — it
-     backs the file up, merges one key, and leaves your other servers alone).
-  2. The app's own UI: Settings → Connectors → Add custom connector (older
-     builds put this under Settings → Developer), with
-       Command:  $MCP_BIN
-       Env:      BACKEND_URL=$BACKEND_URL
-                 MAESTRO_CS_MCP_PROFILE=$PROFILE
-                 MAESTRO_CS_MCP_CLIENT=Claude Desktop
-  3. By hand: FULLY quit the app first (Cmd+Q — closing the window is not
-     enough; the app writes this file too and can discard an edit made while
-     it is open), merge the block below into the "mcpServers" object of
-       ~/Library/Application Support/Claude/claude_desktop_config.json
-     then reopen and check Settings → Connectors that it took.
-
-    "$SERVER_NAME": {
-      "command": "$MCP_BIN",
-      "env": {
-        "BACKEND_URL": "$BACKEND_URL",
-        "MAESTRO_CS_MCP_PROFILE": "$PROFILE",
-        "MAESTRO_CS_MCP_CLIENT": "Claude Desktop"
-      }
-    }
-EOF
-fi
-
 cat <<EOF
 
+────────────────────────────────────────────────────────────────────────
+Claude Desktop — nothing to paste. It installs an extension instead:
+  Settings → Extensions → Install Extension → mcpb/maestro-career-studio.mcpb
+That runs the same server inside your backend container, so it needs neither
+this venv nor a host Python, and nothing has to be quit. Claude Code sessions
+running inside the Claude app are served by that extension too.
+
+────────────────────────────────────────────────────────────────────────
 ────────────────────────────────────────────────────────────────────────
 ChatGPT desktop app / Codex CLI — append to ~/.codex/config.toml
 (both share this file):
@@ -387,7 +262,7 @@ MAESTRO_CS_MCP_PROFILE = "$PROFILE"
 EOF
 
 # ---------------------------------------------------------------------------
-# 6. Is the backend actually up? Not fatal — the server starts either way and
+# 5. Is the backend actually up? Not fatal — the server starts either way and
 #    the failure would otherwise surface as a confusing tool error mid-chat.
 # ---------------------------------------------------------------------------
 if command -v curl >/dev/null 2>&1; then

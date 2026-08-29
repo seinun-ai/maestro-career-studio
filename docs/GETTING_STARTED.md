@@ -28,8 +28,12 @@ for the other.
 | | what it is | what it gives you | required? |
 | --- | --- | --- | --- |
 | **1. The app** | a Docker stack: web UI, API, database | everything — resumes, tailoring, ATS scoring, PDFs, tracking, at localhost:3000 | **yes** |
-| **2. Your assistant** | an MCP server for Claude or Codex | drive all of the above by chat instead of clicking | no |
-| **3. The extension** | a Chrome side panel | capture and fill postings in the tab you are already on | no |
+| **2. Your assistant** | an MCP server, installed into Claude or Codex | drive all of the above by chat instead of clicking | no |
+| **3. The browser panel** | a Chrome side panel | capture and fill postings in the tab you are already on | no |
+
+Two different things are called an "extension" below, so they are named apart:
+the **Claude Desktop extension** is Part 2 (an `.mcpb`, the MCP server), and the
+**browser panel** is Part 3 (a Chrome side panel). They are unrelated.
 
 If you only ever do Part 1, you have a complete working product.
 
@@ -58,19 +62,27 @@ walks your first session. Details and troubleshooting: [§2](#2-install-and-firs
 Lets Claude or ChatGPT/Codex operate the app for you. **Requires Part 1 running**,
 because the assistant talks to your own backend.
 
-For **Claude Code** or **Codex**, add this repo as a plugin marketplace and
-install `maestro-career-studio`. That is the whole setup — no paths to edit and
-no host Python, because the server runs inside the container you already started.
+Both clients install by picking something in their own settings — no terminal,
+no config file, nothing to quit:
 
-**Claude Desktop is a separate surface** and is not covered by that marketplace;
-it needs its own entry. Full instructions for every client, including Cursor and
-Windsurf: [§6](#6-drive-it-from-your-assistant-mcp).
+| your client | install |
+| --- | --- |
+| **Claude** | Settings → **Extensions** → **Install Extension** → pick `mcpb/maestro-career-studio.mcpb` from this clone |
+| **Codex / ChatGPT desktop** | Settings → **Plugins** → **Add** → this repo as a marketplace, then **Install** |
+
+The Claude extension covers **Claude Desktop and Claude Code sessions running
+inside the Claude app** — one install, both surfaces.
+
+Neither needs a host Python or a path to edit: the server runs inside the
+container Part 1 started. Standalone `claude` CLI, Cursor, Windsurf, a backend
+outside Docker, or scoped profiles: [§6](#6-drive-it-from-your-assistant-mcp).
 
 ---
 
-### Part 3 — the extension  *(optional, ~2 minutes)*
+### Part 3 — the browser panel  *(optional, ~2 minutes)*
 
 A Chrome side panel for saving and filling postings without leaving the tab.
+Unrelated to Part 2's Claude extension, despite the shared word.
 **Requires Part 1 running.** Independent of Part 2 — you can have either without
 the other. Steps: [§5](#5-the-browser-extension).
 
@@ -254,21 +266,49 @@ panel's `⋯` menu. What its telemetry does and doesn't store is in the
 **Part 1 must be running** — the assistant talks to your own backend, so
 `docker compose up -d` first. Three routes; pick by client.
 
-### Claude Code and Codex — install the plugin *(recommended)*
+> **Desktop and CLI surfaces only.** This server is a local process on your
+> machine, so only clients that can launch one will ever see it: **Claude Code,
+> Claude Desktop, Codex CLI, the ChatGPT desktop app**. The **web** surfaces —
+> claude.ai and chatgpt.com — cannot, because they accept remote HTTPS
+> connectors and nothing here is reachable from Anthropic's or OpenAI's servers.
+> Asking a web chat about Maestro CS gets "no such tool" no matter how the
+> install went, and that is by design: a remote connector would mean exposing a
+> deliberately unauthenticated backend holding your employment history.
+>
+> Claude Desktop lists the plugin's server under **Connectors** with a "connect
+> each one" prompt. That copy is for connectors that authenticate; this server
+> does not, so there is nothing to press — opening it just shows the command and
+> arguments it will run. If the tools are missing, the server is failing to
+> start, not waiting to be connected. Run its command by hand to see the error:
+>
+> ```bash
+> echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"p","version":"0"}}}' | docker exec -i maestro-career-studio-backend-1 python -m mcp_server.server
+> ```
+>
+> A JSON result means the server is fine and the problem is client-side. `No such
+> container` means the stack is down or its project name differs (see
+> `docker ps`). `No module named 'mcp'` means the image predates the MCP extra —
+> `docker compose build backend`, or pull a release that includes it.
 
-```bash
-claude plugin marketplace add https://github.com/seinun-ai/maestro-career-studio
-```
-```bash
-claude plugin install maestro-career-studio@maestro-career-studio
-```
+### Claude — install the extension
 
-For Codex, the same two steps with `codex plugin marketplace add
-seinun-ai/maestro-career-studio` and `codex plugin add
-maestro-career-studio@maestro-career-studio`.
+Settings → **Extensions** → **Install Extension**, then pick
+`mcpb/maestro-career-studio.mcpb` from your clone. Leave the fields as they are;
+the defaults are correct, and "Docker path" exists only for installs where
+Docker sits somewhere unusual.
 
-Prefer clicking? Use **Plugins → Add → Add plugin marketplace** in either app and
-fill it in exactly like this:
+One install covers **Claude Desktop and Claude Code sessions running inside the
+Claude app**. A standalone `claude` CLI installed outside the app is a separate
+case — use the plugin marketplace below, or the setup script.
+
+**Do not use Settings → Connectors → Add custom connector.** That dialog takes a
+*remote* `https://` endpoint only — there is no command field — and this server
+is a local process. Exposing the backend over HTTPS is the one thing this
+project deliberately refuses to do.
+
+### Codex / ChatGPT desktop — install the plugin
+
+Settings → **Plugins** → **Add** → **Add plugin marketplace**, with
 
 | field | value |
 | --- | --- |
@@ -276,33 +316,20 @@ fill it in exactly like this:
 | Git ref | `main` |
 | Sparse paths | *leave empty* |
 
-Then open the **Maestro Career Studio** entry that appears and press **Install**.
-Leave sparse paths empty: the marketplace manifests live at the repo root
-(`.claude-plugin/` and `.agents/plugins/`) and point at `./plugins/…`, so a
-sparse checkout of `plugins/` alone would fetch the plugin but not the manifest
-that lists it.
+Then open the **Maestro Career Studio** entry and press **Install**. Sparse
+paths must stay empty: the marketplace manifests live at the repo root
+(`.agents/plugins/`), so fetching only `plugins/` would get the plugin without
+the manifest that lists it. The CLI equivalent:
 
-There is nothing to configure afterwards. The plugin runs `docker exec` into the
-container Part 1 already started, so there is no host Python to install, no
-absolute path to substitute, and the declaration is byte-identical on every
-machine. If the tools error, the stack is down — check `docker compose ps`.
+```bash
+codex plugin marketplace add seinun-ai/maestro-career-studio
+```
+```bash
+codex plugin add maestro-career-studio@maestro-career-studio
+```
 
-### Claude Desktop — add a connector
-
-Claude Desktop is a **separate surface** from Claude Code; a plugin installed in
-one gives the other nothing. It has no marketplace, so add it by hand:
-**Settings → Connectors → Add custom connector** (older builds: Settings →
-Developer), with
-
-| field | value |
-| --- | --- |
-| Command | `docker` |
-| Arguments | `exec -i -e BACKEND_URL=http://localhost:8000 -e MAESTRO_CS_MCP_PROFILE=full maestro-career-studio-backend-1 python -m mcp_server.server` |
-
-That needs no host Python either. If you prefer editing
-`claude_desktop_config.json` directly, **fully quit the app first** (Cmd+Q — the
-app writes that file too and can discard an edit made while it is open), then
-reopen and confirm the server is listed under Connectors.
+The same marketplace also serves a standalone Claude Code CLI, via
+`claude plugin marketplace add https://github.com/seinun-ai/maestro-career-studio`.
 
 ### Everything else — the setup script
 
@@ -310,12 +337,31 @@ reopen and confirm the server is listed under Connectors.
 ./scripts/setup-mcp.sh
 ```
 
-Use this for Cursor, Windsurf and other stdio clients, for a backend you run
-outside Docker (`uvicorn`), or for scoped profiles. It builds a host virtualenv
-and prints a ready-to-paste block per client, so **this is the one route that
-needs a host Python 3.12+**. Useful flags: `--write-desktop-config` (merges into
-Claude Desktop, refusing to run while the app is open), `--profile hunt`,
-`--print-only`.
+For Cursor, Windsurf and other stdio clients, for a backend you run outside
+Docker (`uvicorn`), or for scoped profiles. It builds a host virtualenv and
+prints a paste-ready block per client, so **this is the only route that needs a
+host Python 3.12+**. Useful flags: `--profile hunt`, `--print-only`.
+
+<details><summary>Configuring Claude Desktop by hand instead</summary>
+
+Edit `claude_desktop_config.json`, adding to `mcpServers`:
+
+```json
+"maestro-career-studio": {
+  "command": "docker",
+  "args": ["exec", "-i",
+           "-e", "BACKEND_URL=http://localhost:8000",
+           "-e", "MAESTRO_CS_MCP_PROFILE=full",
+           "maestro-career-studio-backend-1",
+           "python", "-m", "mcp_server.server"]
+}
+```
+
+**Fully quit the app first** (Cmd+Q — it writes that file too and can discard an
+edit made while it is open). Do not run this alongside the extension: they are
+two registrations of one server, so the model sees every tool twice.
+
+</details>
 
 ### Enable one profile at a time
 

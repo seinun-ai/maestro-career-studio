@@ -166,6 +166,28 @@ jobs:
       - name: Check SYSTEM.md against its header contract
         run: python3 scripts/check_system_md.py
 
+      # The .mcpb is a committed build artifact so users can install it out of
+      # their own clone. Its predictable failure is silent staleness: edit the
+      # manifest or the shim, forget to re-pack, and the bundle keeps installing
+      # older behaviour while everything looks fine. Compares contents, not
+      # bytes, so a no-op re-pack does not fail on zip timestamps. Stdlib only,
+      # so this needs no Node toolchain in the job.
+      - name: Check the committed .mcpb matches its source
+        run: python3 scripts/check_mcpb_bundle.py
+
+      # The shim's tests existed but nothing ran them, which is the same as not
+      # having them: they cover the two Desktop-only traps that made the first
+      # extension fail — a minimal PATH with no docker on it, and an unfilled
+      # user_config field arriving as its literal ${...} placeholder. Node's
+      # built-in runner, no dependencies to install.
+      - name: Setup Node.js 24
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "24"
+
+      - name: Run the .mcpb shim tests
+        run: node --test mcpb/tests/*.test.js
+
   frontend:
     name: Frontend Build & Type Check (Node 24)
     runs-on: ubuntu-latest
