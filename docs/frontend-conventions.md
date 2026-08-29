@@ -117,7 +117,7 @@
   768` (`hooks/use-mobile.ts`), so the sidebar becomes a sheet only BELOW
   768 — at exactly 768 the 256px rail is still pinned and a `max-w-6xl` page
   has 462px of usable width. Test tables and toolbars at 768, not just 1280
-  and 375. The Applications table carries `min-w-[46rem]` because
+  and 375. The Applications table carries `min-w-[52rem]` because
   `table-fixed` cannot grow a starved column.
 - **`truncate` on a flex child that can reach `width: 0` hides the whole
   string** — `overflow: hidden` on a zero-width box shows nothing (`flex-1` is
@@ -207,7 +207,7 @@
   for this shell whenever a card's whole face is a link AND it carries an
   actions menu — that pairing is the invariant, a preview image is not.
 - Sidebar: a tonal "New application" pill CTA, then labeled `SidebarGroup`s
-  **Job search** (Applications, Referrals), **Career library** (Career KB,
+  **Job search** (Applications, Agent Proposals, Referrals), **Career library** (Career KB,
   Base Resumes, Templates), **Tools** (Chat, Analytics); Profile + Settings
   pinned in `SidebarFooter`. Add new routes to the right group in
   `components/app-sidebar.tsx` (`NAV_GROUPS`), not a flat list.
@@ -298,7 +298,7 @@
 - **Derived setup guidance**: Profile starts with `SetupStatusStrip`, then
   Persona (disabled-until-import "Draft from my career"), Market, Job
   preferences, and Autofill. The empty tracker places `GettingStartedCard` above its
-  empty-state copy: same five derived steps, deep links, locally dismissible,
+  empty-state copy: same six derived steps, deep links, locally dismissible,
   gone when setup completes. Both surfaces share the `['setup-status']` query
   and always refetch on mount (bypassing the 30-second stale window);
   successful Profile saves invalidate the key.
@@ -306,9 +306,10 @@
   section, flat rows, hover-or-touch actions, local Save/Cancel editors with
   Escape. Do not regress these surfaces to always-editable form grids.
 - **Analytics** (was "Explore"): route `/analytics` (`/explore` is a 307
-  redirect — there is no `app/explore/` route, and the charts live in
+  redirect — `app/explore/page.tsx` is a stub that `redirect()`s and nothing
+  else, NOT a next.config rule; the charts live in
   `components/charts/` and `components/analytics/`;
-  the API prefix stays `/api/explore` and the six MCP-wrapped chart endpoints
+  the API prefix stays `/api/explore` and the seven MCP-wrapped chart endpoints
   keep their paths). Four `?tab=` deep-linkable tabs: Overview (KPI tiles,
   activity, pipeline chips, teasers), Job market, Resume fit, Gaps & growth
   (ONE **Skill gaps** card — `components/analytics/gap-tiers-panel.tsx`;

@@ -2,32 +2,22 @@
 
 ## Primary files
 
-- `logos/maestro_lockup_light.svg`
+The masters sit flat in this directory; only `icons/` is a subfolder.
+
+- `maestro_lockup_light.svg`
   Use on white and light backgrounds.
-- `logos/maestro_lockup_dark.svg`
+- `maestro_lockup_dark.svg`
   Use on dark backgrounds. The mark remains blue/yellow; the wordmark becomes white.
-- `logos/maestro_mark_small.svg`
+- `maestro_mark_small.svg`
   Simplified two-color mark for sizes at or below 32 px.
-- `logos/maestro_avatar_primary.svg`
+- `maestro_avatar_primary.svg`
   Primary avatar: blue tile with white + yellow M.
-- `logos/maestro_avatar_light.svg`
+- `maestro_avatar_light.svg`
   Alternate avatar for forced light-tile contexts.
-- `logos/maestro_mark_navy.svg`
+- `maestro_mark_navy.svg`
   Monochrome navy mark for documents, PDF footers, stamps, and one-color print.
-- `logos/maestro_mark_white.svg`
+- `maestro_mark_white.svg`
   Monochrome white mark for dark surfaces and watermark use.
-
-## Favicon / app-icon files
-
-- `icons/favicon.svg` — preferred modern browser favicon
-- `icons/favicon.ico` — legacy browser fallback (16/32/48 px)
-- `icons/favicon-16x16.png`
-- `icons/favicon-32x32.png`
-- `icons/favicon-48x48.png`
-- `icons/apple-touch-icon.png` — 180 × 180
-- `icons/android-chrome-192x192.png`
-- `icons/android-chrome-512x512.png`
-- `icons/site.webmanifest`
 
 ## Locked color tokens
 
@@ -40,8 +30,7 @@
 - Dark-mode tagline: `#CBD5E1`
 - White: `#FFFFFF`
 
-Machine-readable versions are in `tokens/brand-tokens.css` and
-`tokens/brand-tokens.json`.
+Machine-readable versions are in `brand-tokens.css` and `brand-tokens.json`.
 
 ## Website header usage
 
@@ -55,6 +44,10 @@ of shrinking the full wordmark below legibility.
 
 ## Recommended HTML
 
+For a web context outside this repo, once the corresponding files are generated
+from the masters here (the app itself uses Next's file conventions instead — see
+the last section):
+
 ```html
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="/favicon.ico" sizes="any">
@@ -65,19 +58,18 @@ of shrinking the full wordmark below legibility.
 
 ## Typography
 
-The SVG lockups are configured for `Inter`, with `Manrope` and `Arial` as
-fallbacks. For a fully portable production master, convert the final approved
-wordmark text to vector outlines in Figma, Illustrator, or Inkscape after
-confirming the exact Inter weight and tracking.
+The wordmark is `Inter`, already converted to vector outlines in both production
+lockups — the SVGs reference no font, so they render identically wherever they
+are opened. Set new type in Inter (fallbacks `Manrope`, `Arial`) and outline it
+the same way before committing a replacement master.
 
 ## GitHub social preview
 
-- `social/social-preview.png` — 1280 × 640 final sharing card
-- `social/social-preview.svg` — editable vector source
+- `social-preview.png` — 1280 × 640 final sharing card
+- `social-preview.svg` — editable vector source
 
-The brand wordmark in both production lockups is converted to genuine Inter
-vector outlines so GitHub and other image viewers do not depend on locally
-installed fonts.
+Outlined wordmark, as above, so GitHub and other image viewers do not depend on
+locally installed fonts.
 
 ## icons/ (kept masters not wired into the app)
 

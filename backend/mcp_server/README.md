@@ -215,7 +215,7 @@ staging.
 
 | Tool | Description |
 | --- | --- |
-| `edit_base_resume(slug, ops)` | Apply typed edit `ops` to a base resume (read-then-edit; the server keeps every untouched field). Call `get_base_resume` first to pick indices/categories, then send only the changes. Op kinds: `replace_summary`, `toggle_entry`, `replace_bullet`, `replace_skills_group`. Re-renders the PDF. Use `update_base_resume` only for a full wholesale replace. |
+| `edit_base_resume(slug, ops)` | Apply typed edit `ops` to a base resume (read-then-edit; the server keeps every untouched field). Call `get_base_resume` first to pick indices/categories, then send only the changes. Carries the FULL 16-kind op vocabulary — the tool's own docstring renders it from `schemas/resume_edit.py`, so read it there rather than from any list restated outside the code. Re-renders the PDF. Use `update_base_resume` only for a full wholesale replace. |
 | `update_base_resume(slug, data, display_name?)` | Replace a base resume. `data` is **required** — it's a full `ResumeData` replacement, not a patch. |
 | `create_base_resume(slug, display_name, data)` | Create a new base resume from full `ResumeData`. |
 | `duplicate_base_resume(slug, new_slug, new_display_name?)` | Copy an existing base resume to a new slug. |
@@ -314,12 +314,12 @@ transport-session collision this rename avoids.
 | --- | --- |
 | `score_ats(job_id, target_type?, target_id?)` | Deterministic ATS score (replaces the old `score_fit` LLM scorer). Omit the target to score **all** base resumes (fast, no LLM calls); or target one `"base_resume"` (`target_id` = slug) / `"application"` (`target_id` = id). Returns a 0–100 composite, per-layer subscores, gate warnings, and a per-skill diagnostic table with fix hints. |
 | `compare_ats(application_id)` | Before/after ATS comparison for an application: composite and per-layer deltas plus a per-skill diff (absent→matched, skills-list-only→dual, decayed→recent). Computes any missing phase row on demand. |
-| `create_tailoring_session(job_id, base_resume, enrich?)` | Start the gap-analysis workflow: scores the base (persisted as the "before" score) and returns the session's gap list in fix-cost order. `enrich=true` (default) runs one LLM pass adding display-only helper text and elicitation questions per gap — narrative never feeds the score. |
+| `create_tailoring_session(job_id, base_resume, enrich?)` | Start the gap-analysis workflow: scores the base (persisted as the "before" score) and returns the session's gap list in fix-cost order. `enrich=false` (default here, unlike the REST endpoint) skips the backend's fast-model pass — no in-house LLM call. `enrich=true` adds display-only helper text and elicitation questions per gap; narrative never feeds the score. |
 | `quick_tailor(job_id, base_resume)` | Fast-path tailoring: fills the gap session from the user's saved quick-tailor profile instead of walking gaps one by one. Makes no in-house LLM call of its own. |
 | `list_tailoring_sessions(job_id)` | List all tailoring sessions for a job, newest first, so you can resume an open one instead of spawning a duplicate. |
 | `get_tailoring_session(tailoring_session_id)` | Resume a half-done gap walkthrough: the frozen gap list, resolutions saved so far, and status (`open`/`tailored`). |
 | `close_tailoring_session(tailoring_session_id)` | Abandon an open tailoring session without tailoring it. |
-| `resolve_gaps(tailoring_session_id, resolutions)` | Save `{gap_id, action, payload}` resolutions (merged by gap_id, idempotent). Actions: `add_keyword` (wording/placement fixes where evidence already exists), `user_input` (the user's real experience, for missing skills), `attach_project`, `skip`. |
+| `resolve_gaps(tailoring_session_id, resolutions)` | Save `{gap_id, action, payload}` resolutions (merged by gap_id, idempotent). Actions: `add_keyword` (wording/placement fixes where evidence already exists), `user_input` (the user's real experience, for missing skills), `attach_project`, `skip`, `enable_entry` and `port_kb_point` (evidence-carrying, re-verified server-side), and `cannot_confirm` (skips the gap AND records a durable "don't know" so the claim is never re-asked). |
 | `tailor_session(tailoring_session_id, user_prompt?)` | Run the tailor pipeline: resolutions → one LLM edit-ops call → tailored application, auto-scored. Returns the session plus the before/after ATS compare. |
 
 **Profile coach**
@@ -545,8 +545,8 @@ The module form (`-m mcp_server.server`) needs no working directory because the
 package is installed, so Python resolves it from site-packages rather than the
 process cwd.
 
-Repeat the pair of tables for `explore` and `templates` if you want them.
-Defining all five is fine — pick which one a given chat uses in the app's
+Repeat the pair of tables for `explore`, `templates` and `career` if you want
+them. Defining all six is fine — pick which one a given chat uses in the app's
 source/connector picker rather than enabling `full` alongside a scoped profile in
 the same conversation.
 

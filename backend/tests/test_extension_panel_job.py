@@ -275,7 +275,7 @@ def test_the_url_reaches_the_backend_exactly_as_the_tab_holds_it(ingested):
     """UNSTRIPPED, tracking parameters and all.
 
     Whether two urls are the same posting is the SERVER's question
-    (`is_same_posting`, SYSTEM.md §11 item 9), and a client that quietly trimmed
+    (`is_same_posting`, SYSTEM.md §4 Job), and a client that quietly trimmed
     a query string would be answering it — differently from the server, and
     wrongly on every board where the query string IS the job id.
     """

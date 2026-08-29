@@ -193,7 +193,7 @@ def _find_existing(
         return existing
     url = (source_url or "").strip()
     if url_fallback and url:
-        # Posting equality, not string equality (SYSTEM.md §11 item 9): a
+        # Posting equality, not string equality (SYSTEM.md §4, Job): a
         # re-capture arriving through a referral link (?gh_src=, ?utm_*) or
         # from the posting's /apply sub-path names the job that is already
         # captured, and exact matching was how the library filled with

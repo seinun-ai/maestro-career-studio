@@ -37,9 +37,10 @@
 > that fails if it breaks — and is pinned in `.system_md_enforcement.json`.
 > **Do not accrete "Prior:" entries in this header** — REPLACE the latest
 > entry per line; older change history lives in `git log SYSTEM.md`.
-> Last full revision: 2026-08-20, moved to the repo root, reference tier
-> extracted, invariants given ids and enforcement pins. §13 is machine-checked
-> via `.slopledger.json`; the whole file via `scripts/check_system_md.py`.
+> Last full revision: 2026-08-28, doc↔code audit: §6's extension-policy and EEO
+> invariants rewritten onto the two-list consent model, counts and paths corrected,
+> §13's work-auth reader set completed. §13 is machine-checked via
+> `.slopledger.json`; the whole file via `scripts/check_system_md.py`.
 
 **Contents**
 - [§1 What this is](#1-what-this-is) — the product in one paragraph
@@ -79,7 +80,8 @@ backend/
     schemas/           Pydantic request/response models
     routers/           HTTP endpoints (applications, jobs, tailoring_sessions,
                        ats, base_resumes, templates, qa, resume_versions,
-                       resume_lint, career_kb, exports, chat, explore, referrals, settings)
+                       resume_lint, career_kb, exports, chat, explore, referrals,
+                       settings, autofill, proposals, setup, role_categories, version)
     services/          business logic (ats/, tailoring_session, gap_analysis,
                        role_categories, kb_import, exports, gap_enrichment,
                        placement_targets, ats_score, application_writes,
@@ -91,6 +93,7 @@ backend/
   mcp_server/          FastMCP server (server.py tools → client.py httpx → REST)
   migrations/          alembic (see §12 for the revision-id gotcha)
   tests/               pytest vs the test DB; mcp_server/tests/ uses respx (no DB)
+  scripts/             calibration + parity tooling (ats_*, template_parity), run from backend/
 frontend/              Next.js 16 (App Router) + React 19 + Tailwind v4 + Base UI-flavored
                        shadcn. AGENTS.md: read node_modules/next/dist/docs before writing code.
 base_resumes/          on-disk resume data (<slug>.json) + rendered tex/pdf output
@@ -103,7 +106,7 @@ scripts/               setup-mcp.sh (MCP registration), update.sh (user update p
 
 ```
  paste JD ─┐                          ┌─ web UI (Next 16, react-query)
- extension ─┼→ jobs router → Job row  ├─ MCP server (34+ tools, thin REST wrappers)
+ extension ─┼→ jobs router → Job row  ├─ MCP server (83 tools, thin REST wrappers)
  MCP ingest┘        │                 └─ chat agent (chat_tools.py — separate toolset)
                     ▼
         ATS engine (deterministic, LLM-free)  →  AtsScore rows (base upsert / tailored append)
@@ -120,10 +123,9 @@ disk — DB `base_resumes` row + file must both exist) and rendered artifacts.
 
 ## 4. Core entities and their lifecycles
 
-Reference tier: consulted per task, not read for orientation, so it lives
-in `docs/entities/` and the root file stays orientation-sized. Every file
-there carries the same contract as this one. Code citing "§4" lands here;
-the table says which file to open.
+Reference tier: consulted per task, not read for orientation, so it lives in
+`docs/entities/` — keeping the root file orientation-sized — each file under this
+same contract. Code citing "§4" lands here; the table says which file to open.
 
 | Entity | File | Scope |
 |---|---|---|
@@ -138,29 +140,28 @@ the table says which file to open.
 
 1. **Capture** — `/new`: paste JD → `POST /api/jobs` (LLM extract, dedup) →
    summary card ("Already tracked" banner on dedup). Or extension/MCP
-   `store_extracted_jd` → `POST /api/jobs/ingest` (pre-extracted; Claude is
-   the extractor by design).
+   `store_extracted_jd` → `POST /api/jobs/ingest` (pre-extracted; the client
+   agent is the extractor by design).
 2. **Track** — `/applications`: the tracker. Two queries (summary list with
    server-joined job fields + saved jobs), a grouped status `Select` with
    counts, inline `StatusChip` per row (PATCHes directly), search, sort, and
    an All/You/Agent provenance `SourceToggle` (counts follow the toggle;
-   `?source=` deep-linkable). "Saved" = job with no application —
-   agent-captured jobs stay out unless the toggle is `Agent` (hunt inventory
-   lives on `/proposals`). The filter's three groups are All/Saved, **Your
-   applications** (`APPLICATION_STATUSES`) and **Agent lane**
+   `?source=` deep-linkable). "Saved" = job with no application — agent-captured
+   jobs stay out unless the toggle is `Agent` (hunt inventory lives on
+   `/proposals`). The filter's three groups are All/Saved, **Your applications**
+   (`APPLICATION_STATUSES`) and **Agent lane**
    (`proposed`/`queued`/`needs_you`/`skipped`, derived from the newest
-   `proposal_status` via `rowFilterKey`); `FILTERS` derives from those groups,
-   so a key can never filter rows yet never appear as an option. **Empty
-   buckets are hidden** — an option renders iff
-   `count > 0 || f === "all" || f === filter`, the trailing clause so the
-   active filter can never vanish under the user who picked it (re-check if
-   the control changes again). `skipped` absorbs proposal `rejected` AND
+   `proposal_status` via `rowFilterKey`); `FILTERS` derives from those groups, so a
+   key can never filter rows yet never appear as an option. **Empty buckets are
+   hidden** — an option renders iff `count > 0 || f === "all" || f === filter`, the
+   trailing clause so the active filter can never vanish under the user who picked
+   it (re-check if the control changes again). `skipped` absorbs proposal `rejected` AND
    `expired`, while the ROW chip still says Expired (row-level truth). An
    unknown `?status=` falls back to `all` via the `FILTERS.includes` guard.
-3. **Workspace** — `/jobs/[id]`: identity header (monogram, meta line,
-   inline StatusChip + Details menu; proposal pill + Accept/Skip when a
-   proposal exists), tabs Overview / Score & Tailor / Resume / Q&A (tab URL
-   values stay jd/fit/output/qa for deep-link compatibility).
+3. **Workspace** — `/jobs/[id]`: identity header (monogram, meta line, inline
+   StatusChip + Details menu; proposal pill + Accept/Skip when a proposal exists),
+   tabs Overview / Score & Tailor / Resume / Q&A (tab URL values stay
+   jd/fit/output/qa for deep-link compatibility).
    `?from=proposals` flips Back + prev/next onto `cs-proposals-seq`;
    otherwise they use `cs-tracker-seq`. Overview mounts an Agent proposal
    block when `proposal_id` is present; job list/detail derive
@@ -168,18 +169,18 @@ the table says which file to open.
    renders the **knock-out pre-scan** (`services/knockout.scan_job`, embedded
    in `GET /jobs/{id}/detail` and in `get_final_review` as `knockout`):
    stated JD requirements (work auth, OPT policy, salary) vs the autofill
-   profile, recomputed on every read. Verdicts are `conflict` /
-   `clear` / `incomplete_profile` / `unstated` — unstated is NEVER a pass,
-   and salary only warns (pay is negotiable). Informational like G11 tier 2:
-   it flags; the consent/submit decision stays human.
-4. **Score** — Score & Tailor tab auto-scores all active bases on first visit;
-   per-base cards → "Analyze gaps & tailor" creates a session.
+   profile, recomputed on every read. Verdicts are `conflict` / `clear` /
+   `incomplete_profile` / `unstated` — unstated is NEVER a pass, and salary only
+   warns (pay is negotiable). Informational like G11 tier 2: it flags; the
+   consent/submit decision stays human.
+4. **Score** — Score & Tailor auto-scores all active bases on first visit; per-base
+   cards → "Analyze gaps & tailor" creates a session.
 5. **Gap analysis** — `/jobs/[id]/tailor/[sessionId]`: per-gap resolutions
    (add_keyword / user_input / attach_project / skip + enable_entry /
-   port_kb_point — see §4; plus cannot_confirm on claim-asking gaps: skip for
-   the document + a durable `user_cannot_confirm` KB record written at SAVE
-   time, so the claim is never re-asked — see §6 inv-provenance-no-decay)
-   autosaved debounced with replace=true semantics
+   port_kb_point — see §4; plus cannot_confirm on claim-asking gaps: skip for the
+   document + a durable `user_cannot_confirm` KB record written at SAVE time, so
+   the claim is never re-asked — see §6 inv-provenance-no-decay) autosaved
+   debounced with replace=true semantics
    (omitted gap_ids are deleted server-side); KB-auto-resolved gaps arrive
    pre-selected with provenance + Undo and a counting banner; optional
    per-session note (`user_prompt`, falls back into tailor()). "Use base
@@ -200,22 +201,21 @@ the table says which file to open.
    pass caller ops to skip the backend LLM. Post-tailor the UI lands in
    review mode (`?review=1`): provenance-labeled structural diff
    (`GET /applications/{id}/resume-diff`, hunks attributed kb_auto/user/llm),
-   revert-per-hunk through the normal edit path, and an on-demand read-only
-   coherence lint (`POST .../coherence-check`).
+   revert-per-hunk through the normal edit path, and an on-demand read-only coherence
+   lint (`POST .../coherence-check`).
 7. **Output** — Resume tab: the ONE before/after compare panel + PDF card;
    **Generate PDF** renders the tailored draft and shows the shared rasterized
    page preview inline (Regenerate refreshes it); download/open actions become
-   available immediately. "Edit resume" → the studio
-   (`/applications/[id]/resume`) where Save chains render → re-score
-   automatically.
-8. **Apply package** — Q&A tab: questions, cover letter (tone). Outreach/cold
-   messages are asked as free-form questions (there is no dedicated cold-message
-   generator); the QA prompt injects the application's linked referral contact.
-9. **Track to terminal** — StatusChip anywhere (tracker row or job header):
-   draft → applied → interviewing → offered → accepted / rejected / withdrawn.
-   A base résumé grown past the Career KB shows a `Sync to KB (N)` toolbar pill
-   (N excludes already-recorded drift); its **Sync now** drafts new and drifted
-   items with no LLM, near-matching entities instead of forking duplicates.
+   available immediately. "Edit resume" → the studio (`/applications/[id]/resume`),
+   where Save chains render → re-score automatically.
+8. **Apply package** — Q&A tab: questions, cover letter (tone). Outreach/cold messages
+   are asked as free-form questions (no dedicated cold-message generator); the QA
+   prompt injects the application's linked referral contact.
+9. **Track to terminal** — StatusChip anywhere (tracker row or job header): draft →
+   applied → interviewing → offered → accepted / rejected / withdrawn. A base résumé
+   grown past the Career KB shows a `Sync to KB (N)` toolbar pill (N excludes
+   already-recorded drift); its **Sync now** drafts new and drifted items with no
+   LLM, near-matching entities instead of forking duplicates.
 
 ## 6. Cross-cutting invariants (do not break these)
 
@@ -289,12 +289,12 @@ the table says which file to open.
   DESTINATION — keys without a host fall back to Langfuse Cloud and would ship
   resume text to a third party); compose does not forward the Langfuse vars.
 - **Staged artifact removal** `{#inv-staged-artifact-removal}`: NEVER delete rendered files inside a
-  transaction that can still roll back. Every `customized_json` write goes
-  through `services/application_writes.stage_resume_update` (sets draft, clears
-  artifact refs, records version, returns stale paths); the caller commits,
-  THEN calls `artifacts.remove_files(stale)` (also removes the `<pdf>.pages/`
-  dir and prunes emptied folders). Chat edits and version-restore follow the
-  same pattern; there is no "immediate unlink" helper — don't reintroduce one.
+  transaction that can still roll back. Every `customized_json` write goes through
+  `services/application_writes.stage_resume_update` (sets draft, clears artifact
+  refs, records version, returns stale paths); the caller commits, THEN calls
+  `artifacts.remove_files(stale)` (which also removes the `<pdf>.pages/` dir and
+  prunes emptied folders). Chat edits and version-restore follow the same
+  pattern; there is no "immediate unlink" helper — don't reintroduce one.
 - **Stable per-application `artifact_dir`** `{#inv-stable-artifact-dir}`: one folder per application,
   `applications/Company_Role_YYYYMMDD_<idprefix>/`, allocated once via
   `services/application_artifacts.get_dir`, persisted on
@@ -322,11 +322,11 @@ the table says which file to open.
   set-default-template tool. Registration is pinned by a subset assert in
   `mcp_server/tests/test_server.py` — add new tools there.
 - **`tailor_application` vs `edit_application`** `{#inv-tailor-vs-edit}` (MCP): the former REPLACES
-  `customized_json` wholesale from the BASE resume; the latter applies ops to
-  the CURRENT draft — docstrings lead with this; keep them unmistakable. Edit
-  indices are **0-based into the full JSON section array**, including
-  `enabled: false` rows (PDF render omits those — never display ordinals).
-  Successful PATCH `/edits` responses echo `applied[]`.
+  `customized_json` wholesale from the BASE resume; the latter applies ops to the
+  CURRENT draft — docstrings lead with this; keep them unmistakable. Edit indices are
+  **0-based into the full JSON section array**, including `enabled: false` rows (PDF
+  render omits those — never display ordinals). Successful PATCH `/edits` responses
+  echo `applied[]`.
 - **Autofill telemetry carries no VALUES.** `{#inv-autofill-telemetry-no-values}` `POST /api/autofill/telemetry`
   stores label, kind, rule id, option texts, outcome, host — never what was
   typed, what was there before, or any AI answer. Structural: no value column,
@@ -348,26 +348,33 @@ the table says which file to open.
   reconciliation strip). Attach additionally requires a VISIBLE input —
   `input.files` is readable with no submit and no gesture, so an off-screen
   input is a résumé collector. Pinned by `tests/test_extension_frame_gate.py`.
-- **The policy deny-list is single-source.** `{#inv-policy-deny-list-single-source}` `POLICY_BLOCKED` (signatures,
-  attestations, consent, credentials, government IDs) lives in
-  `extension/shared/policy.js` (in `shared/`, not `content/`, since the side
-  panel consults it too). FOUR consumers across THREE surfaces:
-  `fillFormFromProfile` ahead of rule matching and `collectOpenQuestions` ahead
-  of EXCLUDE and the per-type ladder — so a consent question rendered as a
-  select/radio is never offered to the model or tagged `data-rt-qid` — plus the
-  panel's PAIR, which is the half a reader would not guess: the pause row's
-  body renders no input for a blocked label AND `submitAnswer` refuses one
-  again, because the first is a decision about what to draw and the second is
-  the one that touches the page. Salary history/current/CTC and unqualified
+- **The policy deny-list is single-source, and it is TWO lists.** `{#inv-policy-deny-list-single-source}`
+  `extension/shared/policy.js` (in `shared/`, not `content/`, since the panel
+  consults it too) declares each exactly once. `NEVER_FILLED` —
+  signatures/initials, passwords, government IDs — is absolute: no setting
+  unlocks it, because a signature is an ACT and the other two are credentials,
+  not consent. `CONSENT_FORMS` — the application's OWN certify/acknowledge/
+  attest/terms/arbitration/waiver boxes — is refused by default and unlocked
+  only by the standing `consent_forms` permission (inv-eeo-standing-consent).
+  Both run through `isPolicyBlocked(label, {consentForms})`, whose option
+  DEFAULTS to false, so a caller that never learned about the permission cannot
+  unlock anything by omission — which is why only `fillFormFromProfile` passes
+  it. FOUR consumers across THREE surfaces: `fillFormFromProfile` ahead of rule
+  matching and `collectOpenQuestions` ahead of EXCLUDE and the per-type ladder —
+  so a consent question rendered as a select/radio is never offered to the model
+  or tagged `data-rt-qid` — plus the panel's PAIR, the half a reader would not
+  guess: the pause row's body renders no input for a blocked label AND
+  `submitAnswer` refuses one again, because the first decides what to draw and
+  the second is what touches the page. Salary history/current/CTC and unqualified
   salary/wage/compensation mentions are also blocked; explicit salary
-  expectations are allowed only AFTER the deny-list check, so an expectation
-  phrase cannot bypass a signature/consent/credential/government-ID match.
-  `test_both_copies_of_the_policy_deny_list_stay_identical` asserts exactly
-  one `POLICY_BLOCKED` declaration; only the page-INJECTED commit ladder stays
+  expectations are allowed only AFTER both lists, so an expectation phrase cannot
+  bypass a signature/credential/consent match.
+  `test_both_copies_of_the_policy_deny_list_stay_identical` asserts exactly one
+  declaration of EACH list; only the page-INJECTED commit ladder stays
   deliberately duplicated (`…commit_ladder_stay_identical`).
 - **One label-pattern table, two readers** `{#inv-one-label-pattern-table}` (`extension/shared/profile-fields.js`).
-  The eight patterns naming a TYPED home in the autofill profile
-  (`eligibility.*`, `preferences.*`) are read by `content/autofill.js`'s rule
+  The eleven patterns naming a TYPED home in the autofill profile
+  (`eligibility.*`, `work_auth.*`, `preferences.*`) are read by `content/autofill.js`'s rule
   table, which FILLS those fields, and by the panel's `saveTargetFor`, which
   decides where a pause-row answer is LEARNED. They must be one table: an answer
   learned into `profile.custom` for a field the rules fill from
@@ -386,16 +393,20 @@ the table says which file to open.
   rendered PDFs must not contain em-dashes (ATS parsers). The MCP client's
   slim `get_rendered_pdf` scan remains a resume-PDF backstop (metadata + page
   paths; no `page_images_b64` — use `get_rendered_pdf_page_image` for one page).
-- **EEO standing consent is enforced at the ENDPOINT.** `{#inv-eeo-standing-consent}` Profile standing
-  consent (`settings/eeo_consent.json`; `eeo_consent` on
-  `/api/autofill/context`) authorizes EEO fill. `GET /api/autofill/context`
-  strips `profile.eeo` unless consent is enabled and fails CLOSED when the
-  consent section cannot be computed; the MCP client keeps its OWN strip — two
-  gates, not a relocated one. Which client asks must never decide whether
-  protected-class data is served. No inference or invented EEO answers; never
-  solicit pasted demographic answers in chat when consented values are in
-  Profile. WOTC/public-assistance, signatures, penalties-of-perjury, terms,
-  credentials, and certifications remain human-only (direct handoff).
+- **EEO standing consent is enforced at the ENDPOINT.** `{#inv-eeo-standing-consent}` One record
+  (`settings/eeo_consent.json`, `schemas/eeo_consent.py`; `eeo_consent` on
+  `/api/autofill/context`), TWO permissions kept apart on purpose: `enabled`
+  authorizes disclosing protected characteristics, `consent_forms` authorizes
+  ticking the application's OWN agreement boxes (inv-policy-deny-list-single-source).
+  One flag for both would make opting into EEO fill silently agree to terms.
+  `GET /api/autofill/context` strips `profile.eeo` unless `enabled` and fails
+  CLOSED when the consent section cannot be computed; the MCP client keeps its
+  OWN strip — two gates, not a relocated one. Which client asks must never
+  decide whether protected-class data is served. No inference or invented EEO
+  answers; never solicit pasted demographic answers in chat when consented values
+  are in Profile. Human-only at ANY setting is `NEVER_FILLED` and nothing wider:
+  signatures/initials, passwords, government IDs. The MODEL path is the separate
+  rule — `consent_forms` unlocks the deterministic tick, never an agent's judgment.
 - **PDF word-spacing** `{#inv-pdf-word-spacing}`: pdflatex+XCharter joins words for strict extractors;
   `pdfinterwordspaceon` + the parse_certified gate protect this — see the
   shared header partial `_header.tex.j2`, which BOTH resume and cover-letter
@@ -496,19 +507,18 @@ the table says which file to open.
     `quick_tailor` = create + `POST .../apply-profile` (deterministic fill) →
     agent authors ops → `tailor_session(ops=…)` skips the backend LLM pass.
     Filling precedes authoring so saved resolutions and applied ops cannot
-    disagree (§11 item 13). `apply-profile` discards
-    `fill_checkpoint_session`'s standing-instruction return (persisting it would
-    break the web path's transience), so the hint carries it as the
-    `tailor_session` option's `user_prompt`, ONLY when the session has no note
-    of its own — else quick tailor over MCP ignores a setting the web obeys.
-    **The caller-ops honesty rule is enforced by DOCSTRING, not the server**:
-    `apply_edits` has no honesty gate, keyword-survival is LLM-path only. The
-    server-side evidence gates (`save_resolutions` re-running
-    `enable_entry`/`port_kb_point`) still hold.
-  - **Apply readiness** reads `setup/status`'s `autofill` block. There is no
-    cross-server introspection, so the server cannot know whether the client
-    holds Playwright — the offer is conditional and points at the playbook
-    rather than asserting a capability.
+    disagree (§11 item 13). `apply-profile` discards `fill_checkpoint_session`'s
+    standing-instruction return (persisting it would break the web path's
+    transience), so the hint carries it as the `tailor_session` option's
+    `user_prompt`, ONLY when the session has no note of its own — else quick
+    tailor over MCP ignores a setting the web obeys. **The caller-ops honesty
+    rule is enforced by DOCSTRING, not the server**: `apply_edits` has no honesty
+    gate, keyword-survival is LLM-path only. The server-side evidence gates
+    (`save_resolutions` re-running `enable_entry`/`port_kb_point`) still hold.
+  - **Apply readiness** reads `setup/status`'s `autofill` block. With no
+    cross-server introspection the server cannot know whether the client holds
+    Playwright, so the offer is conditional and points at the playbook rather
+    than asserting a capability.
 - **Onboarding workflow** (`workflow.py`): `kb_ingest_resume` (drafts) →
   `kb_approve_points` (the user's gate) → `create_base_resume_from_kb` →
   `render_pdf` walks ingest-several → KB → role-targeted bases with zero
@@ -553,41 +563,40 @@ the table says which file to open.
   `prompt.chat_system` Setting row reset to take effect (settings page → reset,
   or delete the row); untouched rows are resynced by migration on deploy
   (86ac8658395f precedent).
-- **Persona draft** (`POST /api/settings/persona/draft`): one smart-model
-  proposal grounded in the whole-KB compose/context + typed job preferences.
-  Returns `{draft}` and persists **nothing** — Profile puts it into the
-  persona editor as a dirty edit; only `PUT /api/settings/persona` saves; an
-  empty Career KB 422s with an import-first message.
+- **Persona draft** (`POST /api/settings/persona/draft`): one smart-model proposal
+  grounded in the whole-KB compose/context + typed job preferences. Returns
+  `{draft}` and persists **nothing** — Profile puts it into the persona editor as a
+  dirty edit; only `PUT /api/settings/persona` saves; an empty Career KB 422s
+  with an import-first message.
 - **Chrome extension** (`extension/`): MV3; the **side panel** (`panel/`) is the
   ONE surface — toolbar icon (`openPanelOnActionClick`) and hotkey
   (Alt+Shift+J → `sidePanel.open`, guarded: that method is Chrome 116 and the
   minimum is 114) both open it. Five-stage rail — Job → Score → Resume →
   Fill → Track — whose active stage is INFERRED from the store by
   `ns.decisions.stageFor` every render, never set by what was clicked. A stage
-  is "which question is still open", so `hasForm` is NOT one of its inputs:
-  the base-as-is claim skips Score/Resume on a posting page too,
-  and whether filling can happen HERE is decided at the Fill body (it says to
-  open the employer's Apply page) and at the footer (`primaryRefused` — no
-  Start fill without a form; a late detect yes gives it back, moving no stage).
-  ONE row
-  shows a body: the active one, or a row the user reopened — DONE Score/Resume/
-  Fill always, DONE Job only for the user's own pick (`claimed`; un-pick/switch
-  live there), and a row skipped by a CLAIM (`choiceSkipped` — base-as-is'
-  Resume row names the choice and carries its withdraw; a skip the path computed
-  is no door) — via `card.revisit` (view state, never persisted, dropped when
-  the stage moves or the page facts reset); it rewinds no tick, the active row
-  keeps its styling, the footer's one primary follows the OPEN row.
+  is "which question is still open", so `hasForm` is NOT one of its inputs: the
+  base-as-is claim skips Score/Resume on a posting page too, and whether filling
+  can happen HERE is decided at the Fill body (it says to open the employer's
+  Apply page) and at the footer (`primaryRefused` — no Start fill without a form;
+  a late detect yes gives it back, moving no stage). ONE row shows a body: the
+  active one, or a row the user reopened — DONE Score/Resume/Fill always, DONE
+  Job only for the user's own pick (`claimed`; un-pick/switch live there), and a
+  row skipped by a CLAIM (`choiceSkipped` — base-as-is' Resume row names the
+  choice and carries its withdraw; a skip the path computed is no door) — via
+  `card.revisit` (view state, never persisted, dropped when the stage moves or
+  the page facts reset); it rewinds no tick, the active row keeps its styling,
+  the footer's one primary follows the OPEN row.
   The panel document is a family of scripts (panel.html owns roster and order):
   `panel.js` owns the store, the loaders and the generation guard; per-STAGE
   bodies (`panel/stages/*.js`) get a per-render SNAPSHOT (`stageContext`),
-  per-CONCERN actions (`panel/actions/*.js`) a HANDLE with one `write(patch)`
-  door (`actionStore` refuses a key the store lacks; `actions/during.js` is the
-  one `busy` span they all read). `card` is never published, and each family's
-  roster (`stages.js`/`actions.js`) THROWS at boot naming any part whose script
-  tag is missing. `shared/` is what both worlds load: `decisions.js` (pure
-  decisions — and since R-C the ONE home of every rule the card once duplicated),
-  `choose.js` (routing, the /choose batch, `rest_fill` shaping, `QUESTIONY`'s ONE
-  definition) and `guided-run.js` (the runner, transport injected).
+  per-CONCERN actions (`panel/actions/*.js`) a HANDLE with one `write(patch)` door
+  (`actionStore` refuses a key the store lacks; `actions/during.js` is the one
+  `busy` span they all read). `card` is never published, and each family's roster
+  (`stages.js`/`actions.js`) THROWS at boot naming any part whose script tag is
+  missing. `shared/` is what both worlds load: `decisions.js` (pure decisions —
+  since R-C the ONE home of every rule the card once duplicated), `choose.js`
+  (routing, the /choose batch, `rest_fill` shaping, `QUESTIONY`'s ONE definition)
+  and `guided-run.js` (the runner, transport injected).
   **Sender model:** a panel has no `sender.tab` (that is the
   discriminator) and NAMES its bound tab, so sw.js's `sender.id !==
   chrome.runtime.id` is the WHOLE of provenance for a tab-less sender;
@@ -606,7 +615,7 @@ the table says which file to open.
   drops every live entry — and `restoreSession`'s `if (entry.applicationId)`
   guard is the condition of writing an application-less entry at all. Orphan
   keys are swept once on panel boot. **`extension/README.md` owns the rest.**
-- **Guided fill** (design: `docs/plans/2026-08-16-guided-apply-design.md`):
+- **Guided fill** (design doc `2026-08-16-guided-apply-design`, unpublished — §10):
   the panel's **Fill** stage — "Start fill" → `panel_prepare` (the
   gesture-backed injection; `preparePage` is the only other injector) → the
   runner. The mode control picks `aiAssist` (`fillMode` in
@@ -633,12 +642,11 @@ the table says which file to open.
 
 ## 8. Frontend conventions
 
-Reference tier, like §4: consulted while working in `frontend/`, not read
-for orientation. Lives in
+Reference tier, like §4: consulted while working in `frontend/`, not read for
+orientation. Lives in
 [`docs/frontend-conventions.md`](docs/frontend-conventions.md) — layout and
-sidebar-gutter rules, Tailwind v4 tokens, a11y and focus behaviour, naming,
-and the copy rules, each with the failure mode that bought it. Code citing
-"§8" lands here.
+sidebar-gutter rules, Tailwind v4 tokens, a11y and focus behaviour, naming, and
+the copy rules, each with the failure mode that bought it. Code citing "§8" lands here.
 
 ## 9. Dev & test environment
 
@@ -653,8 +661,8 @@ and the copy rules, each with the failure mode that bought it. Code citing
   checkout runs on a machine, they differ by host ports (`*_HOST_PORT` in each
   `.env`) — go by the port, not the name.
 - **ATS calibration** — the engine is corpus-tunable, so measure, don't
-  argue. `scripts/ats_snapshot.py` prints a ranking table;
-  `scripts/ats_calibration.py` writes a machine-readable snapshot and diffs
+  argue. `backend/scripts/ats_snapshot.py` prints a ranking table;
+  `backend/scripts/ats_calibration.py` writes a machine-readable snapshot, diffs
   two (`DATABASE_URL=…55432/maestro_cs BASE_RESUMES_DIR=<main-checkout>/
   base_resumes python -m scripts.ats_calibration snapshot before.json`). It
   pins `as_of` and groups contribution drops by match-form transition: a
@@ -666,57 +674,56 @@ and the copy rules, each with the failure mode that bought it. Code citing
   true evidence never lowers the score" over the whole corpus — run it after
   ANY matcher or tier change, not just a scoring-weight one.
 - Backend tests: `TEST_DATABASE_URL=postgresql://app:app@127.0.0.1:55432/maestro_cs_test`
-  then `python -m pytest tests/ -q` from `backend/`. Suite must stay green.
+  then `pytest tests/ mcp_server/tests/ -q` from `backend/` (CI's command; a bare
+  `tests/` silently skips the MCP suite). Suite must stay green.
 - **Deploying a local change = rebuilding BOTH images** (MAINTAINER path, MAIN
   checkout): `docker build -t maestro-career-studio-backend backend/` AND
-  `…-frontend frontend/`, then `docker compose up -d --no-build
-  --force-recreate backend frontend`. A frontend-only change still needs the
-  frontend image rebuilt — a stale image once made fixed UI look broken for a
-  whole review.
-- **A USER updates instead** — `./scripts/update.sh`: backup → ff-only to the
-  newest `v*` tag → images pinned to that tag → health poll → extension/MCP
-  reminders (README "Updating"; `docs/RELEASING.md` cuts one). The tree is
-  runtime here (unpacked extension, host MCP venv), so checkout and images move
-  TOGETHER — a bare `docker compose pull` skews an install. Contributors build.
-- **Version identity**: the tag bakes into both images as `APP_VERSION`, served
-  by `GET /api/version` with the live alembic revision; the frontend warns when
-  its baked copy disagrees, unless either side STARTS WITH `dev` (local or
-  dispatch build) = do not compare — which also keeps it off contributors.
+  `…-frontend frontend/`, then `docker compose up -d --no-build --force-recreate
+  backend frontend`. A frontend-only change still needs the frontend image rebuilt
+  — a stale image once made fixed UI look broken for a whole review.
+- **A USER updates instead** — `./scripts/update.sh`: backup → ff-only to the newest
+  `v*` tag → images pinned to that tag → health poll → extension/MCP reminders
+  (README "Updating"; `docs/RELEASING.md` cuts one). The tree is runtime here
+  (unpacked extension, host MCP venv), so checkout and images move TOGETHER — a bare
+  `docker compose pull` skews an install. Contributors build.
+- **Version identity**: the tag bakes into both images as `APP_VERSION`, served by
+  `GET /api/version` with the live alembic revision; the frontend warns when its
+  baked copy disagrees, unless either side STARTS WITH `dev` (local or dispatch
+  build) = do not compare — which also keeps it off contributors.
 - Never verify new code against the docker-compose stack (old images). Launch
   fresh: uvicorn on a free port with data-dir env overrides +
   `/Library/TeX/texbin` on PATH; frontend `API_PROXY_BACKEND=... npm run dev`.
-  The maintainer keeps the full recipe in a local `verify` skill (not shipped
-  in this repo); the browser-pane gotchas worth knowing: DPR mismatch → use
-  ref clicks; toasts overlay the send button.
-- **Two dependency sources, on purpose.** `pyproject.toml` keeps `>=` floors
-  (what `pip install -e ".[dev,mcp]"` resolves); `backend/requirements.lock`
-  is hash-pinned and is what the **container image** installs, so a published
-  image is reproducible. After changing a dependency, regenerate the lock **on
-  the target platform** (command in `backend/Dockerfile`; pip-compile on
-  macOS/3.13 produces wrong pins). CI's `dependency-audit` runs `pip-audit`
-  against the lock — a new advisory failing an unrelated PR is intended.
-- **No Langfuse stack ships here** (the bundled compose file had fixed
-  default secrets). `services/tracing.py` and the three `LANGFUSE_*` settings
-  stay: tracing points at any instance the user runs; `langfuse_host` defaults
-  to empty (the SDK falls back to Cloud).
-- Alembic revision ids are hand-written fake-hex and COLLIDE easily — generate
-  with `uuid.uuid4().hex[:12]`.
+  Full recipe: the maintainer's local `verify` skill (not shipped). Browser-pane
+  gotchas: DPR mismatch → use ref clicks; toasts overlay the send button.
+- **Two dependency sources, on purpose.** `pyproject.toml` keeps `>=` floors (what
+  `pip install -e ".[dev,mcp]"` resolves); `backend/requirements.lock` is hash-pinned
+  and is what the **container image** installs, so a published image is reproducible.
+  After changing a dependency, regenerate the lock **on the target platform**
+  (command in `backend/Dockerfile`; pip-compile on macOS/3.13 produces wrong pins).
+  CI's `dependency-audit` runs `pip-audit` against the lock — a new advisory failing
+  an unrelated PR is intended.
+- **No Langfuse stack ships here** (the bundled compose file had fixed default
+  secrets). `services/tracing.py` and the three `LANGFUSE_*` settings stay: tracing
+  points at any instance the user runs; `langfuse_host` defaults to empty (the SDK
+  falls back to Cloud).
+- Alembic revision ids are hand-written fake-hex and COLLIDE easily — generate with
+  `uuid.uuid4().hex[:12]`.
 - **SYSTEM.md gate**: `python3 scripts/check_system_md.py` (CI `docs-gate` job)
-  enforces this file's header contract and FAILS (not warns) on: the size
-  ceiling; a `(YYYY-MM-DD` date in §1–§10 or in any reference-tier file; a
-  shipped item left in §11; a section over its line budget; and any §6
-  invariant whose enforcement pin in `.system_md_enforcement.json` has lost its
-  file or its symbol — the "docs promise what the code no longer does" class.
+  enforces this file's header contract and FAILS (not warns) on: the size ceiling;
+  a `(YYYY-MM-DD` date in §1–§10 or any reference-tier file; a shipped item left in
+  §11; a section over its line budget; and any §6 invariant whose enforcement pin in
+  `.system_md_enforcement.json` has lost its file or symbol — the "docs promise what
+  the code no longer does" class.
   Re-baselining requires `--update-baselines --reason "<text>"`, recorded in
   `.slopledger.json`. It anchors the repo root on the script's own parent
   directory, deliberately: a walk-up search finds the MAIN checkout's copy from
   a worktree and validates the wrong file.
 - **On merge, re-verify the doc.** Two lanes each update the sections they know
-  about, and the merge can produce a file describing neither branch — this file
-  is least accurate exactly when the most agents are reading it. After any
-  non-trivial merge, list the SYSTEM.md sections whose subject files changed on
-  BOTH sides and re-read each. The enforcement pins catch the worst subclass
-  mechanically; nothing catches the rest but this checklist.
+  about, and the merge can produce a file describing neither branch — least
+  accurate exactly when the most agents are reading it. After any non-trivial
+  merge, list the SYSTEM.md sections whose subject files changed on BOTH sides and
+  re-read each. The pins catch the worst subclass; nothing catches the rest but
+  this checklist.
 - **Slop ratchet.** Per-surface `.slopconfig.json` + committed
   `.slop-baseline.json` in `backend/`, `frontend/`, `extension/`. After
   changing a surface, the maintainer runs `python3
@@ -733,18 +740,17 @@ and the copy rules, each with the failure mode that bought it. Code citing
   the codebase GROWS, when you ADD TESTS (`gate_test_loc:false` exempts test
   LOC but nothing exempts test complexity), and — the trap — when you DECOMPOSE
   a monster: splitting one cc=46 function into named pieces can move the count
-  UP. Judge erosion by hotspot density per KLOC and the worst offender's cc,
-  not by the count. The other metrics are honest ratchets — orphan LOC and
-  duplication only move when something really regressed. Scan a SURFACE dir,
-  never the repo root: the analyzer roots module names at the scan path, so a
-  root scan can't resolve `app.*` imports and reports the whole backend as
-  orphaned. jscpd is optional; without it the duplication metric is skipped,
-  the rest still gates. The extension's allowlisted clones are the documented
-  injected twins, so a NEW clone there is a real finding. Read the reason
-  strings before trusting a green: the matcher pairs FILE NAMES by substring,
-  so a rule naming a file on either side also hides that file's own
-  SELF-clones. `allowlisted_clones` is PRINTED, never gated — a new clone
-  landing inside an allowlisted pair raises that number silently while
+  UP. Judge erosion by hotspot density per KLOC and the worst offender's cc, not
+  by the count. Orphan LOC and duplication are honest ratchets — they move only
+  on a real regression. Scan a SURFACE dir, never the repo root: the analyzer
+  roots module names at the scan path, so a root scan can't resolve `app.*`
+  imports and reports the whole backend as orphaned. jscpd is optional; without
+  it duplication is skipped and the rest still gates. The extension's
+  allowlisted clones are the documented injected twins, so a NEW clone there is
+  a real finding. Read the reason strings before trusting a green: the matcher
+  pairs FILE NAMES by substring, so a rule naming a file on either side also
+  hides that file's own SELF-clones. `allowlisted_clones` is PRINTED, never
+  gated — a new clone inside an allowlisted pair raises it silently while
   `clone_count` stays 0, so check it by eye. Optional graph signals read
   `graphify-out/graph.json` (gitignored): regenerate with `graphify extract .
   --no-cluster --code-only` (PyPI `graphifyy`).
@@ -794,16 +800,16 @@ citation. Priority lives in the item text, not in the ordinal.
    half — stated requirements vs profile — shipped as the knock-out pre-scan,
    §5 step 3; this item is now only the post-render artifact pipeline.)
 3. Base-score staleness on from-base: re-score only when the base resume's
-   updated_at is newer than the score row — never unconditional re-scoring.
+   updated_at is newer than the score row — never unconditionally.
 4. JD promoted-field correction before gap freezing (today only source_url is
    editable) + score provenance (engine/config version) surfaced in the UI.
 5. Server-side pagination for the tracker (client caps at limit=500 today).
-6. Chat KB document provenance: `ChatAttachment` stores extracted text only, so
-   a chat-added document never becomes a KB source document — persist bytes, or
-   hand chat a `kb_ingest_document` tool.
-7. Contact URLs in the shared `_header.tex.j2` still go through `latex_escape`
-   (the `~` corruption class, needs `latex_escape_url`); the fix touches BOTH
-   templates, so it needs cover-letter regression tests.
+6. Chat KB document provenance: `ChatAttachment` stores extracted text only, so a
+   chat-added document never becomes a KB source document — persist bytes, or hand
+   chat a `kb_ingest_document` tool.
+7. Contact URLs in the shared `_header.tex.j2` still go through `latex_escape` (the
+   `~` corruption class, needs `latex_escape_url`); the fix touches BOTH templates,
+   so it needs cover-letter regression tests.
 8. Agentic job-search phase 2: JobBoard registry (kind/tags/last_checked),
    SavedSearch model, Job triage state, cross-session search-run logging.
 10. Work-auth warning CODES: `services/job_search_brief` still reads the two
@@ -819,7 +825,7 @@ citation. Priority lives in the item text, not in the ordinal.
     drill-down/export; label/option-text redaction; summary pagination.
 15. Typst phase 2 (the LaTeX retirement itself is §13): `typst query` AST
     introspection over source-text capability heuristics; web engine picker;
-    in-product .tex→Typst conversion (expose `scripts/template_parity.py
+    in-product .tex→Typst conversion (expose `backend/scripts/template_parity.py
     --compare` as a backend tool).
 16. Onboarding intake: entity resolution ACROSS kinds (a certificate merges
     into its experience entity, not a sibling); a re-runnable "import more";
@@ -850,63 +856,58 @@ citation. Priority lives in the item text, not in the ordinal.
     auto-advance toggle; per-ATS selector blueprints; the essay path onto
     qid-keyed `/choose`; `guidedIsListboxButton` stays looser than the two
     pinned strict discriminators (it rechecks vetted elements only).
-23. **Five §6 invariants have no enforcement pin** — `inv-honesty`,
-   `inv-tailor-vs-edit`, `inv-autofill-telemetry-no-values`,
-   `inv-eeo-standing-consent`, `inv-pdf-word-spacing` (listed under `unpinned`
-   in `.system_md_enforcement.json`). Each is a rule the gate cannot defend:
-   it survives only as long as everyone remembers it. When next working in one
-   of those areas, either add the pin or demote the rule to a convention note.
+23. **Some §6 invariants have no enforcement pin** — the current list is
+   `unpinned` in `.system_md_enforcement.json`. Each is a rule the gate cannot
+   defend: it survives only as long as everyone remembers it. When next working
+   in one of those areas, add the pin or demote the rule to a convention note.
 24. Surface enum-coercion warnings from `schemas/job_extraction._coerce_enum`
    through the jobs-ingest response, so `store_extracted_jd` callers see that
    input X was stored as `unstated` (audit 2026-08-22, finding A1).
 
 ## 12. Gotchas that have bitten before
 
-- **A guard test mocked away the guard** (2026-08-25): a green ask/answer suite hid a
-  100%-failing numeric rewrite path because it replaced `guarded_rewrite`. When a guard
-  or validator is the subject, fake `llm.call_openai`, never the guard.
+- **A guard test mocked away the guard** (2026-08-25): a green ask/answer suite hid
+  a 100%-failing numeric rewrite path because it replaced `guarded_rewrite`. When a
+  guard or validator is the subject, fake `llm.call_openai`, never the guard.
 - **The FAST model quietly caps score honesty** (2026-08-24): flash-lite
   extractions missed conceptual JD skills → base ATS scores inflated ~9 pts vs
   fuller extractors. Fast tier drives coverage/honesty/latency; Smart barely
   moves outcomes — re-benchmark FAST before changing model defaults.
-- **`autoflush=False` sessions**: two `session.merge`s that canonicalize to the
-  same PK in one flush both INSERT (no dedup) → IntegrityError. Dedupe in
-  Python first (see `_insert_skills`).
-- **Pydantic error mapping order**: `ValidationError` subclasses `ValueError` —
-  catch it FIRST or 422s silently become 400s (render endpoint comment).
+- **`autoflush=False` sessions**: two `session.merge`s that canonicalize to the same
+  PK in one flush both INSERT (no dedup) → IntegrityError. Dedupe in Python first
+  (see `_insert_skills`).
+- **Pydantic error mapping order**: `ValidationError` subclasses `ValueError` — catch
+  it FIRST or 422s silently become 400s (render endpoint comment).
 - **Transient response attrs**: `already_existed` (Job) and `health_warning`
-  (TailoringSession) are instance attributes set after refresh, never columns —
-  don't "fix" them into the ORM.
+  (TailoringSession) are instance attrs set after refresh, never columns — don't
+  "fix" them into the ORM.
 - **score_target(result=...)**: passes a precomputed engine result to persist;
   the double-run it replaced was audit finding C18 — don't re-add a second run.
-- **Studio external-edit dirty-guard**: StudioEditor keys on the *adopted*
-  server snapshot, not live `customized_json`; external edits auto-adopt only
-  when clean, and Save flags the next server key so Save→render→re-score
-  adopts banner-free.
-- **An expanded hit target can cover its own label**: `after:-inset-2` inside
-  an `h-5` chip put the remove target over the chip's own text, so clicking to
-  open cleared instead. Expanded targets need room around them, not just
-  under them.
+- **Studio external-edit dirty-guard**: StudioEditor keys on the *adopted* server
+  snapshot, not live `customized_json`; external edits auto-adopt only when clean,
+  and Save flags the next server key so Save→render→re-score adopts banner-free.
+- **An expanded hit target can cover its own label**: `after:-inset-2` inside an
+  `h-5` chip put the remove target over the chip's own text, so clicking to open
+  cleared instead. Expanded targets need room around them, not just under them.
 - **MCP clients truncate tool descriptions at ~2048 dedented chars**: keep
   `__doc__` ≤2000 (ratchet test) or put the fact on a param
   `Field(description=…)`.
-- **Worktree subagents**: agents may edit the MAIN checkout instead of the
-  worktree — always hand them absolute worktree paths and verify with
-  `git -C <worktree> status`.
-- **Ports**: 8000/8001 may be squatted by unrelated apps or stale servers —
-  verify identity via `GET /openapi.json` `info.title == "Maestro CS API"`.
-- **Model catalog is seeds ∪ extras** (`MODEL_OPTIONS` ∪ `llm.extra_models`):
-  `GET /api/settings/openai` returns the merge; deleting an id a role still
-  uses is 400; hosted chat is probe-gated (stored tools=false blocks; unprobed
-  is allowed through, matching `require()`).
-- **JSON mode is capability-gated**: `response_format=json_object` goes out
-  only when `llm._json_mode_supported()` (other servers may hard-400 on the
-  field); `llm._extract_json_object` salvages fenced JSON.
-- **Check model capability in the ROUTER, never inside `run_turn`**: `run_turn`
-  is a generator — anything it raises fires after the SSE headers are out and
-  reaches the browser as a truncated stream. Capabilities are probed on save
-  (`llm_capabilities.probe()`); `require()` raises `CapabilityMissing`;
-  unprobed models are never blocked.
+- **Worktree subagents**: agents may edit the MAIN checkout instead of the worktree
+  — hand them absolute worktree paths and verify with `git -C <worktree> status`.
+- **Ports**: 8000/8001 may be squatted by unrelated apps or stale servers — verify
+  identity via `GET /openapi.json` `info.title == "Maestro CS API"`.
+- **Model catalog is seeds ∪ extras** (`MODEL_OPTIONS` ∪ `llm.extra_models`): `GET
+  /api/settings/openai` returns the merge; deleting an id a role still uses is 400;
+  hosted chat is probe-gated (stored tools=false blocks; unprobed is allowed
+  through, matching `require()`).
+- **JSON mode is capability-gated**: `response_format=json_object` goes out only
+  when `llm._json_mode_supported()` (other servers may hard-400 on the field);
+  `llm._extract_json_object` salvages fenced JSON.
+- **Check model capability in the ROUTER, never inside `run_turn`**: `run_turn` is a
+  generator — anything it raises fires after the SSE headers are out and reaches the
+  browser as a truncated stream. Capabilities are probed on save
+  (`llm_capabilities.probe()`); `require()` raises `CapabilityMissing`; unprobed
+  models are never blocked.
 - **A probe must issue the SAME call as the surface it measures**: same client
   (`llm.get_chat_client`) and the same per-model kwargs from
   `llm.completion_extras` (the one site for such rules). A probe that
@@ -916,13 +917,13 @@ citation. Priority lives in the item text, not in the ordinal.
   `llm.LLMProviderError`; `app.main` maps it to 502 + the provider's message
   for every router. Never catch `openai.*` in routers; plain `RuntimeError`
   means a LOCAL render/compile failure and must stay a 500.
-- **Explore charts live under Analytics**: `/explore` is a 307 to `/analytics`;
-  the charts live in `frontend/components/charts/` and `…/analytics/`, not an
+- **Explore charts live under Analytics**: `/explore` is a 307 to `/analytics`; the
+  charts live in `frontend/components/charts/` and `…/analytics/`, not an
   `app/explore/` route.
-- **`delete-orphan` cascade vs bulk re-point**: a bulk `update()` that moves
-  children off a parent does not refresh the parent's already-loaded
-  collection, so a following `session.delete(parent)` cascades away the rows
-  just moved — expire the parent between the two (`career_kb.merge_entities`).
+- **`delete-orphan` cascade vs bulk re-point**: a bulk `update()` that moves children
+  off a parent does not refresh the parent's already-loaded collection, so a following
+  `session.delete(parent)` cascades away the rows just moved — expire the parent
+  between the two (`career_kb.merge_entities`).
 
 ## 13. Active migrations & deprecation ledger
 
@@ -942,10 +943,9 @@ maintainer tooling as the slop ratchet, not shipped here) to detect drift. Keep 
 are verify-by-hand. That file mirrors TRIGGERS only — the why and the traps
 stay here.
 
-**This section exists so SYSTEM.md can shrink.** When a row lands here, CUT
-the superseded prose from its home section and leave a one-line pointer
-("migration state: §13 `<id>`"). Delete the row when the old path is gone —
-never leave green rows.
+**This section exists so SYSTEM.md can shrink.** When a row lands here, CUT the
+superseded prose from its home section and leave a one-line pointer ("migration
+state: §13 `<id>`"). Delete the row when the old path is gone — never leave green rows.
 
 Status: `both-live` (both reachable, old still default) · `new-is-default` (new
 path is canonical, old survives as fallback/backup) · `blocked` (trigger cannot
@@ -963,30 +963,31 @@ evidence live in `git log SYSTEM.md`, not here.
 | `texlive-layer` | minimal TeX Live layer (`backend/Dockerfile`) → `typst==0.15.0` in-process | blocked | Layer is already slim (install-tl `scheme-basic` + 18 tlmgr packages) and XCharter is vendored at `backend/app/assets/fonts/xcharter/` (keep the Bitstream Charter notice alongside; `settings.typst_font_paths` defaults there, so typst no longer reaches into texlive). The remaining FULL cut requires only: `grep -rn pdflatex backend/app` returns only comments. Blocked on `latex-render-path`. | medium |
 | `chat-selection-kind` | untagged resume chips → `ChatSelection.kind` (`resume`\|`kb_entity`) | both-live | All three scope-picker constructors emit `kind:"resume"`, THEN zero `chat_messages.meta_json->'selections'` elements lack a `kind` key. | small |
 | `autofill-education-shape` | single-object `education`, coerced in 2 clients → list, normalized server-side | new-is-default | `GET /api/settings/autofill` returns `education` absent or an array for a pre-normalization profile. Cut the frontend coercion first, the extension one release later. | small |
-| `autofill-work-auth-shape` | `work_auth.authorized_to_work` + `requires_sponsorship` (two timeless booleans, stored "yes"/"no") → typed `WorkAuth` (`schemas/autofill_profile.py`: `status`, `authorized_now`, `sponsorship_now`, `sponsorship_future`, `authorization_expires_on`, `countries_authorized`) | both-live | Delete when no raw-profile reader uses either legacy key. Today's storage readers are `services/autofill_profile.py`'s legacy branch, the Settings editor's legacy-on-edit bridge, and the extension's own copy of the dual-read (`content/autofill.js:51,56` in the profile normalizer; moved from agent.js at the phase-2 split). `job_search_brief`'s identically named response fields are a frozen outward compatibility projection from typed `authorized_now` / `sponsorship_future`, not a legacy reader, and do not block removal. ALSO `GET /api/settings/autofill` must return a `work_auth` carrying neither legacy key. Then delete the legacy branch of BOTH `autofill_profile.get_work_auth` and the extension's `w` binding. Per `autofill-education-shape`: cut the frontend first, the extension one release later. | small |
+| `autofill-work-auth-shape` | `work_auth.authorized_to_work` + `requires_sponsorship` (two timeless booleans, stored "yes"/"no") → typed `WorkAuth` (`schemas/autofill_profile.py`: `status`, `authorized_now`, `sponsorship_now`, `sponsorship_future`, `authorization_expires_on`, `countries_authorized`) | both-live | Delete when no raw-profile reader uses either legacy key. Today's storage readers are FOUR: `services/autofill_profile.py`'s legacy branch, the Settings editor's legacy-on-edit bridge (`components/settings/autofill-section.tsx`), the fill engine's dual-read (`content/autofill.js`, the `w` binding in the profile normalizer; moved from agent.js at the phase-2 split), and the panel's `workAuthForWrite` (`panel/actions/pause.js`), which promotes the legacy pair before the first typed pause-row write. The panel copy is the trap: `.slopledger.json`'s trigger paths cover `extension/content` only, so the mechanical check goes GREEN while that reader lives — widen the paths or verify it by hand. `job_search_brief`'s identically named response fields are a frozen outward compatibility projection from typed `authorized_now` / `sponsorship_future`, not a legacy reader, and do not block removal. ALSO `GET /api/settings/autofill` must return a `work_auth` carrying neither legacy key. Then delete the legacy branch of BOTH `autofill_profile.get_work_auth` and the extension's `w` binding. Per `autofill-education-shape`: cut the frontend first, the extension one release later. | small |
 | `job-location-raw` | `jobs.location` (dual-written) → `location_raw` + city/state/country | both-live | Stage 1 (schema shim + `.location` property) already met. Stage 2: no reader of `jobs.location` remains, then `op.drop_column`. | small |
 | `explore-redirect` | `frontend/app/explore/page.tsx` → `/analytics` | ready-to-cut | Owner overrules the recorded keep-decision. Safe: it is a 307, not a 308 — no browser cached the mapping. | trivial |
 | `health-rewrite-cache` | unattended rewrite always-LLM → `bullet_rewrites` (NULL text = tried-ask) + ephemeral ask answers → `health_ask_answers` | new-is-default | Migration `85a1bb628e28`. The LLM miss path is the intended fallback, not a second product — cut this row when a follow-up deletes either table or the GET `/api/resume-lint/{kind}/{key}/answers` rehydrate. | small |
 
 **Row notes** (only where the trigger hides a trap):
 
-- `typst-*`: strictly ordered flip → delete-latex → drop-texlive (the font is
-  vendored, so the old drop-the-layer-changes-the-font trap is closed).
-- `latex-render-path`: alembic `9a0404101e5f` reads `resume.tex.j2` off disk
-  during `upgrade()`. Deleting the file breaks first boot on a fresh clone.
-- `chat-selection-kind`: inverted today — the branch four comments call "legacy"
-  is the only form the frontend emits, and `kind:"resume"` is unreachable. Until
-  stage 1 ships, those comments are actively misleading.
-- `autofill-work-auth-shape`: two traps. (1) `sponsorship_now` has NO legacy
+- `typst-*`: strictly ordered flip → delete-latex → drop-texlive (the font is vendored,
+  so the old drop-the-layer-changes-the-font trap is closed).
+- `latex-render-path`: alembic `9a0404101e5f` reads `resume.tex.j2` off disk during
+  `upgrade()`. Deleting the file breaks first boot on a fresh clone.
+- `chat-selection-kind`: inverted today — the branch four comments call "legacy" is
+  the only form the frontend emits (`scope-picker.tsx` sets `kind` on kb chips only),
+  so `kind:"resume"` is unreachable and those comments mislead until stage 1 ships.
+- `autofill-work-auth-shape`: three traps. (0) The reader count is FOUR and one
+  of them sits outside the trigger paths — see the row. (1) `sponsorship_now` has NO legacy
   source and stays `None` on purpose — defaulting it from
   `requires_sponsorship` answers the OPT case wrong (no sponsorship NOW,
   needed later); unknown must stay unknown. (2) `job_search_brief`'s public
   legacy-named response fields are a frozen projection of the typed reader,
   not a storage-migration blocker.
-- `job-location-raw`: `JobSummary` exposes ONLY the old field (no `location_raw`),
-  so the list endpoint is the hardest blocker to dropping the column.
-- `explore-redirect`: contradicts a recorded decision to keep it. Needs an
-  explicit overrule, not a silent delete.
+- `job-location-raw`: `JobSummary` exposes ONLY the old field (no `location_raw`), so
+  the list endpoint is the hardest blocker to dropping the column.
+- `explore-redirect`: contradicts a recorded decision to keep it. Needs an explicit
+  overrule, not a silent delete.
 
 **Not migrations — do not re-file these here** (each was proposed as a row and
 rejected): the 4-way application-status vocabulary and the 3-way

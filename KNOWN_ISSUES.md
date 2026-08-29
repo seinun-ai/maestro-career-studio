@@ -56,7 +56,7 @@ Honest list. None of these are secret; most are §11 items with a number.
 - **The extension does not handle every ATS — and autofill is not
   first-try-clean even on the ones it does.** Workday, Greenhouse, Lever and
   iCIMS get the most attention because those are what I meet in my own search; expect
-  gaps elsewhere (§11.12, §11.18). Even on covered platforms a first run
+  gaps elsewhere (§11.12). Even on covered platforms a first run
   rarely fills everything: unusual widget kinds (multi-step button dropdowns,
   custom comboboxes) and less-common field domains fall through to you, by
   design — the fill engine abstains rather than guesses.
@@ -231,7 +231,7 @@ gap, not busy-work invented for contributors.
 
 1. **Server-side tracker pagination** (§11.5). Contained, testable, and it fixes
    a real slowdown.
-2. **URL canonicalization server-side** (§11.9). Tracking-parameter stripping is
+2. **URL canonicalization server-side.** Tracking-parameter stripping is
    currently every caller's job, which means it is done inconsistently.
 3. **`latex_escape_url`** (§11.7). Contact URLs go through the wrong escaper and
    `~` corrupts. The fix touches both templates, so it needs cover-letter

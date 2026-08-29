@@ -28,11 +28,11 @@ services:
       retries: 10
 
   backend:
-    # Build-first by default: the tag is local (`maestro-career-studio-backend:latest`)
-    # and `docker compose up -d --build` produces it. No image is published yet,
-    # so defaulting to a registry path would make `up -d` fail on a pull.
-    # Once images ship, set IMAGE_REGISTRY=ghcr.io/seinun-ai/maestro-career-studio in .env and the
-    # same compose file pulls instead of building.
+    # Pull or build, same file. `.env.example` ships IMAGE_REGISTRY set to
+    # ghcr.io/seinun-ai/maestro-career-studio, so a fresh clone PULLS the published
+    # multi-arch images. Comment that line out (or pass --build) and the fallback
+    # below is a local tag (`maestro-career-studio-backend:latest`) that
+    # `docker compose up -d --build` produces — the mode contributors want.
     image: ${IMAGE_REGISTRY:-maestro-career-studio}-backend:${IMAGE_TAG:-latest}
     build:
       context: ./backend

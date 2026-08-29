@@ -740,9 +740,12 @@ collector at the other end, in this repo or anywhere else), capture is a toggle
 in the widget's `⋯` menu, and **Analytics → Autofill coverage → Clear data**
 deletes all of it, whenever you want, without turning capture off.
 
-Signatures, attestations, consent checkboxes, credentials and
-government IDs sit on a deny-list that both write paths consult, so they are
-never filled and never shown to a model. Those stay human-only, always.
+Signatures, credentials and government IDs sit on a deny-list that both write
+paths consult: never filled, at any setting. Your application's own agreement
+boxes — consent checkboxes, acknowledgements, attestations, terms — are refused
+by default and ticked only if you turn on the standing consent in Profile, beside
+the EEO opt-in; even then the fill only ticks a box you decided to tick, and
+never submits. Neither family is ever shown to a model.
 
 ### Analytics: what the market keeps asking you for
 
