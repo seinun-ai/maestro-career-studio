@@ -368,8 +368,8 @@ and carry a proposal through that lifecycle.
 ### Route 0 — install the extension *(recommended)*
 
 Settings → **Extensions** → **Install Extension**, then pick
-[`mcpb/maestro-career-studio.mcpb`](../../mcpb/maestro-career-studio.mcpb) from
-your clone. Leave the fields empty; the defaults are correct.
+[`maestro-career-studio/mcpb/maestro-career-studio.mcpb`](../../mcpb/maestro-career-studio.mcpb),
+inside the project folder. Leave the fields empty; the defaults are correct.
 
 It is the same `docker exec` server the Claude Code and Codex plugins declare,
 packaged in the format Desktop accepts, so it needs no host Python either. The

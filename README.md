@@ -590,11 +590,12 @@ runs on **your machine** against **your** database. Nothing is uploaded.
 With the backend already running, both clients install by picking something in
 their own settings — no terminal, no config file, nothing to quit:
 
-- **Claude** — Settings → **Extensions** → **Install Extension** → pick
-  `mcpb/maestro-career-studio.mcpb` from your clone. One install covers Claude
-  Desktop *and* Claude Code sessions running inside the Claude app.
-- **Codex / ChatGPT desktop** — Settings → **Plugins** → **Add** → this repo as a
-  marketplace (`seinun-ai/maestro-career-studio`, ref `main`, sparse paths
+- **Claude** — Settings → **Extensions** → **Install Extension** → select
+  `maestro-career-studio/mcpb/maestro-career-studio.mcpb`, inside the folder the
+  clone above created. One install covers Claude Desktop *and* Claude Code
+  sessions running inside the Claude app.
+- **Codex / ChatGPT desktop** — Settings → **Plugins** → **Add** → add
+  `seinun-ai/maestro-career-studio` as a marketplace (ref `main`, sparse paths
   empty), then **Install**.
 
 Neither needs a host Python or a path to edit: both run the same server inside

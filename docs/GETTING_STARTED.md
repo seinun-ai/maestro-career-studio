@@ -67,24 +67,36 @@ no config file, nothing to quit:
 
 | your client | install |
 | --- | --- |
-| **Claude** | Settings → **Extensions** → **Install Extension** → pick `mcpb/maestro-career-studio.mcpb` from this clone |
-| **Codex / ChatGPT desktop** | Settings → **Plugins** → **Add** → this repo as a marketplace, then **Install** |
+| **Claude** | Settings → **Extensions** → **Install Extension** → select `maestro-career-studio/mcpb/maestro-career-studio.mcpb` — the file is inside the folder Part 1 created |
+| **Codex / ChatGPT desktop** | Settings → **Plugins** → **Add** → add `seinun-ai/maestro-career-studio` as a marketplace, then **Install** |
 
 The Claude extension covers **Claude Desktop and Claude Code sessions running
 inside the Claude app** — one install, both surfaces.
 
 Neither needs a host Python or a path to edit: the server runs inside the
-container Part 1 started. Standalone `claude` CLI, Cursor, Windsurf, a backend
-outside Docker, or scoped profiles: [§6](#6-drive-it-from-your-assistant-mcp).
+container Part 1 started. If an install does not work, both apps also take the
+server from a config file you edit directly —
+[§6](#if-neither-install-worked--write-the-config-by-hand) has both, with how to
+open each file from inside the app. Standalone `claude` CLI, Cursor, Windsurf, a
+backend outside Docker, or scoped profiles: also
+[§6](#6-drive-it-from-your-assistant-mcp).
 
 ---
 
 ### Part 3 — the browser panel  *(optional, ~2 minutes)*
 
-A Chrome side panel for saving and filling postings without leaving the tab.
-Unrelated to Part 2's Claude extension, despite the shared word.
-**Requires Part 1 running.** Independent of Part 2 — you can have either without
-the other. Steps: [§5](#5-the-browser-extension).
+A Chrome side panel for saving and filling job postings without leaving the tab.
+Unrelated to Part 2's Claude extension, despite the shared word — and independent
+of it, so you can have either without the other. **Requires Part 1 running.**
+
+1. Open `chrome://extensions` and switch on **Developer mode** (top right).
+2. Click **Load unpacked** and select `maestro-career-studio/extension` — again,
+   inside the folder Part 1 created.
+3. Pin the icon, then click it on any job page to open the panel.
+
+Nothing to configure: the extension pins its own identity, so the backend already
+allows it. If you changed the ports in `.env`, set the backend and app URLs under
+the panel's `⋯` menu. More in [§5](#5-the-browser-extension).
 
 ---
 
@@ -110,7 +122,7 @@ the other. Steps: [§5](#5-the-browser-extension).
   OpenAI-compatible server. The place to add it is **inside the app**
   (Settings → Models, after first boot) — and without one, the deterministic
   core (ATS scoring, PDF rendering, tracking) works fully in
-  [No-Key Mode](../README.md#try-it-before-you-bring-a-key-no-key-mode).
+  [No-Key Mode](../README.md#do-you-need-an-api-key).
 - **Not needed for most installs: Python.** The app runs in Docker and the
   marketplace plugin runs inside that container. A host **Python 3.12+** is
   required only for the `scripts/setup-mcp.sh` route in [§6](#6-drive-it-from-your-assistant-mcp)
@@ -292,8 +304,9 @@ panel's `⋯` menu. What its telemetry does and doesn't store is in the
 
 ### Claude — install the extension
 
-Settings → **Extensions** → **Install Extension**, then pick
-`mcpb/maestro-career-studio.mcpb` from your clone. Leave the fields as they are;
+Settings → **Extensions** → **Install Extension**, then select
+`maestro-career-studio/mcpb/maestro-career-studio.mcpb` — the file sits inside
+the folder Part 1 created. Leave the fields as they are;
 the defaults are correct, and "Docker path" exists only for installs where
 Docker sits somewhere unusual.
 
@@ -342,9 +355,24 @@ Docker (`uvicorn`), or for scoped profiles. It builds a host virtualenv and
 prints a paste-ready block per client, so **this is the only route that needs a
 host Python 3.12+**. Useful flags: `--profile hunt`, `--print-only`.
 
-<details><summary>Configuring Claude Desktop by hand instead</summary>
+### If neither install worked — write the config by hand
 
-Edit `claude_desktop_config.json`, adding to `mcpServers`:
+Both apps read a plain config file. Adding the server there always works, and is
+worth trying before debugging an install: if the hand-written entry connects,
+the server is fine and the problem was the packaging.
+
+Whichever you use, **do not run it alongside the extension or plugin** — that is
+two registrations of one server, and the model then sees every tool twice.
+
+<details><summary><b>Claude Desktop</b> — claude_desktop_config.json</summary>
+
+Reach the file from **Settings → Developer → Edit Config**, which opens it in
+your editor. It lives at
+`~/Library/Application Support/Claude/claude_desktop_config.json`.
+
+**Fully quit Claude first** (Cmd+Q — closing the window is not enough). The app
+writes this file too and can discard an edit made while it is open. Add to
+`mcpServers`:
 
 ```json
 "maestro-career-studio": {
@@ -357,11 +385,37 @@ Edit `claude_desktop_config.json`, adding to `mcpServers`:
 }
 ```
 
-**Fully quit the app first** (Cmd+Q — it writes that file too and can discard an
-edit made while it is open). Do not run this alongside the extension: they are
-two registrations of one server, so the model sees every tool twice.
+Reopen, then check **Settings → Connectors** that it is listed.
 
 </details>
+
+<details><summary><b>Codex / ChatGPT desktop</b> — ~/.codex/config.toml</summary>
+
+Reach the file from the app's **Settings → Configuration → open config.toml**
+(labels move between builds; it is the same file either way). It lives at
+`~/.codex/config.toml`, shared by the ChatGPT desktop app and the Codex CLI.
+
+Append:
+
+```toml
+[mcp_servers.maestro-career-studio]
+command = "docker"
+args = ["exec", "-i",
+        "-e", "BACKEND_URL=http://localhost:8000",
+        "-e", "MAESTRO_CS_MCP_PROFILE=full",
+        "maestro-career-studio-backend-1",
+        "python", "-m", "mcp_server.server"]
+enabled = true
+```
+
+Restart the app, then check **Settings → MCPs** that it is listed. Codex also has
+a form for this — **MCPs → Connect to a custom MCP**, type **STDIO** — taking the
+same command and arguments if you would rather not edit the file.
+
+</details>
+
+Both entries run the server inside the backend container, so neither needs a host
+Python. They are the same command the extension and plugin use.
 
 ### Enable one profile at a time
 
