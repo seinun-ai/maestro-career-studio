@@ -69,7 +69,9 @@ Three consequences worth knowing:
 
 The plugin ships `full` only. Scoped profiles need a per-server toggle, which
 plugin-provided servers do not have, so they come from the setup script or a
-hand-written client entry.
+hand-written client entry. (The Claude Desktop **extension** is the
+exception: its install dialog has a **Tool profile** field, so scoping there
+needs no config file.)
 
 ## Install (host virtualenv)
 

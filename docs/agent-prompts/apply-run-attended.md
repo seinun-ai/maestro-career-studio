@@ -6,8 +6,8 @@
 
 ---
 
-Apply run with Maestro CS (apply profile + a headed real-Chrome browser via
-Playwright MCP): work through `list_proposals(status="accepted")` per the
+Apply run with Maestro CS (the `full` or `apply` profile, plus a headed
+real-Chrome browser via Playwright MCP): work through `list_proposals(status="accepted")` per the
 Maestro CS tools' guidance, the
 [agent-apply playbook](../playbooks/agent-apply.md), and the
 [execution skill](../skills/agent-apply-execution/SKILL.md).

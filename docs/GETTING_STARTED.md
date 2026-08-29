@@ -52,6 +52,11 @@ git clone https://github.com/seinun-ai/maestro-career-studio.git
 cd maestro-career-studio && cp .env.example .env && docker compose up -d
 ```
 
+The first command downloads ("clones") the project into a
+`maestro-career-studio` folder. Keep that folder — it is what every later
+mention of *the folder Part 1 created* means, and updates
+([§8](#8-keeping-it-up-to-date)) run from it.
+
 Open **<http://localhost:3000>**. That is the whole product; [§4](#4-your-first-session-in-order)
 walks your first session. Details and troubleshooting: [§2](#2-install-and-first-boot).
 
@@ -74,7 +79,12 @@ The Claude extension covers **Claude Desktop and Claude Code sessions running
 inside the Claude app** — one install, both surfaces.
 
 Neither needs a host Python or a path to edit: the server runs inside the
-container Part 1 started. If an install does not work, both apps also take the
+container Part 1 started. Both load the complete toolset (the `full` profile)
+— the right default. Leaner task-scoped profiles are an optional
+customization, set in the Claude extension's own settings or by editing a
+config file directly ([§6](#enable-one-profile-at-a-time)).
+
+If an install does not work, both apps also take the
 server from a config file you edit directly —
 [§6](#if-neither-install-worked--write-the-config-by-hand) has both, with how to
 open each file from inside the app. Standalone `claude` CLI, Cursor, Windsurf, a
@@ -102,6 +112,23 @@ the panel's `⋯` menu. More in [§5](#5-the-browser-extension).
 
 ### Or let an AI agent do it
 
+If you already use a coding agent — Claude Code, the Codex CLI — you can skip
+most of the copy-pasting. Install Docker and Git yourself ([§1](#1-prerequisites);
+an agent cannot do that part), clone the repo, then open an agent session in
+that folder and ask:
+
+> Read docs/GETTING_STARTED.md and set Maestro CS up for me — start the stack,
+> wait until it is healthy, and register the MCP server.
+
+The agent runs the same steps this guide walks through, and
+`./scripts/setup-mcp.sh` knows it may be driven by one: it detects a nested
+Claude Code session, writes the repo-level `.mcp.json` instead of fighting the
+CLI, and prints the one command that still needs a plain terminal. Two things
+stay yours either way: pasting your API key into **Settings → Models**, and
+clicking **Load unpacked** for the browser panel ([§5](#5-the-browser-extension)).
+
+---
+
 ## 1. Prerequisites
 
 - **Docker.** On macOS or Windows install
@@ -116,8 +143,13 @@ the panel's `⋯` menu. More in [§5](#5-the-browser-extension).
   ```
 
   (Any output ending without an error means you're fine.)
-- **~4 GB of disk** for the three images (see the README's
-  [Prerequisites](../README.md#prerequisites) for the breakdown).
+- **Git.** macOS offers to install it the first time you run `git` (accept
+  the "command line developer tools" prompt); on Windows install
+  [Git for Windows](https://git-scm.com/download/win); on Linux it comes from
+  your package manager. It is how you install — and later update — Maestro CS.
+- **Disk: about a 1 GB download** for the three images, which unpack to
+  roughly 3–4 GB (see the README's
+  [Prerequisites](../README.md#prerequisites) for the per-image breakdown).
 - **An LLM API key — optional at this point.** OpenAI or Gemini, or a local
   OpenAI-compatible server. The place to add it is **inside the app**
   (Settings → Models, after first boot) — and without one, the deterministic
@@ -149,7 +181,8 @@ in Settings.
 docker compose up -d
 ```
 
-That downloads prebuilt images (a few minutes on a normal connection). If you
+That downloads prebuilt images (about 1 GB — a few minutes on a normal
+connection). If you
 would rather compile from your own checkout — the contributor path — comment
 out `IMAGE_REGISTRY` in `.env` and run `docker compose up -d --build` instead;
 that takes longer, because it installs TeX Live and downloads the embedding
@@ -307,8 +340,9 @@ panel's `⋯` menu. What its telemetry does and doesn't store is in the
 Settings → **Extensions** → **Install Extension**, then select
 `maestro-career-studio/mcpb/maestro-career-studio.mcpb` — the file sits inside
 the folder Part 1 created. Leave the fields as they are;
-the defaults are correct, and "Docker path" exists only for installs where
-Docker sits somewhere unusual.
+the defaults are correct — "Docker path" exists only for installs where
+Docker sits somewhere unusual, and **Tool profile** stays `full` unless you
+later want a scoped one ([below](#enable-one-profile-at-a-time)).
 
 One install covers **Claude Desktop and Claude Code sessions running inside the
 Claude app**. A standalone `claude` CLI installed outside the app is a separate
@@ -415,7 +449,9 @@ same command and arguments if you would rather not edit the file.
 </details>
 
 Both entries run the server inside the backend container, so neither needs a host
-Python. They are the same command the extension and plugin use.
+Python. They are the same command the extension and plugin use — and they are
+also the customization point for profiles: swap `full` in
+`MAESTRO_CS_MCP_PROFILE` for a scoped one (next section).
 
 ### Enable one profile at a time
 
@@ -432,9 +468,15 @@ nothing:
 
 Tool definitions are sent with every request, before the model reads your
 prompt, so naming a tool in the prompt does not reduce what was loaded. They do
-cache across a session, which softens the cost after the first request. The
-plugin ships `full` only; scoped profiles come from the setup script or a
-hand-written client entry, both of which give you a per-server toggle.
+cache across a session, which softens the cost after the first request.
+
+Every install route defaults to `full`, and staying there is fine. To scope
+one instead: the Claude extension has a **Tool profile** field in its own
+settings (set it to `hunt`, `apply`, `explore`, `templates` or `career`); the
+Codex plugin is pinned to `full`, so use a hand-written `config.toml` entry
+and change the `MAESTRO_CS_MCP_PROFILE` value ([above](#if-neither-install-worked--write-the-config-by-hand));
+the setup script takes `--profile hunt`. However you set it, enable one
+profile at a time.
 
 The full reference — every tool, all six profiles, troubleshooting — is
 [`backend/mcp_server/README.md`](../backend/mcp_server/README.md).

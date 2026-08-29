@@ -163,10 +163,14 @@ makes it so. [`SECURITY.md`](SECURITY.md) has the detail and the threat model.
 
 ## Prerequisites
 - **Docker Desktop** (or Docker Engine + Compose v2)
-- **~4 GB of disk space** for the three images (backend ~1.9 GB, frontend
-  ~1.6 GB, PostgreSQL ~0.4 GB). The backend carries a minimal TeX Live
-  (`scheme-basic` plus exactly the packages the bundled templates use, ~660 MB),
-  Typst, and the pinned embedding model.
+- **Git** — any recent version; it is how you install *and* update (macOS
+  offers to install it on first use, Windows takes
+  [Git for Windows](https://git-scm.com/download/win))
+- **Disk: the three images are about a 1 GB download** (backend ~480 MB,
+  frontend ~360 MB, PostgreSQL ~170 MB compressed), unpacking to roughly
+  3–4 GB of image storage. The backend is the big one — it carries a minimal
+  TeX Live (`scheme-basic` plus exactly the packages the bundled templates
+  use, ~660 MB), Typst, and the pinned embedding model.
 - **One API key — OpenAI or Gemini, either alone is a complete setup.** The
   parts that make Maestro CS fastest day to day run on it: in-app tailoring,
   the extension's tailor-on-the-go and AI form filling, cover letters and Q&A,
@@ -207,8 +211,8 @@ cp .env.example .env
 # 2. Your API key is added later, INSIDE the app (Settings -> Models) — the
 #    deterministic core runs without one, the AI lanes want one. Only put a
 #    key in .env for headless/scripted setups; a key saved in-app wins over it
-# 3. Start the stack — this PULLS prebuilt multi-arch images (a download, not
-#    a build). Add --build to compile from this checkout instead (several
+# 3. Start the stack — this PULLS prebuilt multi-arch images (a ~1 GB
+#    download, not a build). Add --build to compile from this checkout instead (several
 #    minutes: it installs TeX Live and downloads the embedding model)
 docker compose up -d
 ```
@@ -625,7 +629,11 @@ not the container's internal `8000`. The script resolves this for you from
 `BACKEND_HOST_PORT`.
 
 Six profiles keep the tool list relevant per chat: `full` (83 tools), `hunt`,
-`apply`, `explore`, `templates`, `career`. Enable one at a time — `full`
+`apply`, `explore`, `templates`, `career`. Every install route defaults to
+`full`; a scoped profile is a customization you opt into — the Claude
+extension's **Tool profile** field in its settings, the
+`MAESTRO_CS_MCP_PROFILE` value in a hand-written config entry, or
+`setup-mcp.sh --profile`. Enable one at a time — `full`
 alongside a scoped profile registers each shared tool twice.
 
 Doing it by hand instead:

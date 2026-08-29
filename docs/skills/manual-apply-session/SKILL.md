@@ -6,8 +6,8 @@ description: Use for a manually invoked, user-driven application session over Ma
 # Manual Apply Session
 
 Use this skill for a manually invoked application session. It creates no
-schedule, trigger, automation, or custom tools. Maestro CS (apply profile)
-provides the application data actions; a browser MCP (Playwright MCP with
+schedule, trigger, automation, or custom tools. Maestro CS (the `full` or `apply`
+profile) provides the application data actions; a browser MCP (Playwright MCP with
 headed real Chrome, or Claude-in-Chrome) provides browser actions.
 
 The [agent-apply playbook](../../playbooks/agent-apply.md) is the canonical

@@ -30,6 +30,42 @@ published image tag is the same version with the leading `v` removed (`0.2.0`).
 
 Nothing yet.
 
+## [0.3.0] — 2026-08-29
+
+### Breaking changes
+
+None.
+
+### Added
+
+- **Claude Desktop extension (`.mcpb`).** `mcpb/maestro-career-studio.mcpb`
+  installs the MCP server from Claude's own Settings → Extensions dialog — no
+  terminal, no config file, no host Python; the shim runs the server inside
+  the backend container. One install covers Claude Desktop and Claude Code
+  sessions running inside the Claude app. `scripts/check_mcpb_bundle.py` gates
+  the bundle in CI.
+
+### Changed
+
+- `scripts/setup-mcp.sh` slimmed down now that the extension and plugin routes
+  cover the common clients; it remains the route for Cursor, Windsurf and
+  other stdio clients, a backend outside Docker, and scoped profiles.
+- README and Getting Started reorganized around the extension/plugin installs,
+  with hand-written client-config fallbacks (Claude Desktop JSON, Codex TOML)
+  documented for when a packaged install fails.
+- Install docs now state the image **download** size (~1 GB compressed) ahead
+  of the unpacked footprint (~3–4 GB), and list Git as a prerequisite.
+- Scoped MCP profiles are presented as an opt-in customization everywhere:
+  every install route defaults to `full`, the Claude extension's **Tool
+  profile** field or a hand-edited config entry scopes it, and the agent
+  prompts no longer read as if they require the `hunt`/`apply` profiles.
+
+### Fixed
+
+- The two marketplace plugin manifests (`.claude-plugin/plugin.json`,
+  `.codex-plugin/plugin.json`) now carry the release version — they had
+  silently stayed at `0.1.2` through two releases.
+
 ## [0.2.0] — 2026-08-28
 
 ### Breaking changes

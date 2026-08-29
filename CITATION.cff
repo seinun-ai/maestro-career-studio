@@ -28,8 +28,8 @@ authors:
 license: Apache-2.0
 repository-code: "https://github.com/seinun-ai/maestro-career-studio"
 url: "https://github.com/seinun-ai/maestro-career-studio"
-version: "0.2.0"
-date-released: "2026-08-28"
+version: "0.3.0"
+date-released: "2026-08-29"
 keywords:
   - resume
   - job-application
