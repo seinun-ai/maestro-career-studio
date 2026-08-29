@@ -226,12 +226,12 @@ Then open **http://localhost:3000**.
 > runs your code. Moving an existing install to a newer version is
 > [one command](#updating) either way.
 
-> **The compose path is the least-tested part of this release.** The stack runs
-> daily on my machine, but the fresh-clone first boot has had little
-> outside testing yet. If it fails on yours, please
+> **Young, but rehearsed.** The stack runs daily on my machine, and the
+> fresh-clone install — clone, compose, first tailoring run — has been verified
+> end to end on a second machine. What it has had little of is testing on
+> machines that aren't mine. If it fails on yours, please
 > [open an issue](https://github.com/seinun-ai/maestro-career-studio/issues)
-> with the log — right now that report is one of the most valuable
-> contributions there is.
+> with the log — that report is one of the most valuable contributions there is.
 
 ### Do you need an API key?
 
