@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "maestro-career-studio",
   "display_name": "Maestro Career Studio",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Tailor resumes and track applications, from your own machine",
   "long_description": "Drive Maestro Career Studio from Claude: capture and score jobs, tailor resumes against a job description, render PDFs, and track applications. Requires the Maestro CS stack running locally (docker compose up -d) — this extension talks to your own backend over Docker, and nothing leaves the machine.",
   "author": {
