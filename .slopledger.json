@@ -52,11 +52,12 @@
           "pattern": "authorized_to_work|requires_sponsorship",
           "paths": [
             "backend/app/services/autofill_profile.py",
-            "extension/content"
+            "extension/content",
+            "extension/panel"
           ]
         }
       ],
-      "hand_check": "job_search_brief's identically named response fields are a frozen outward projection, NOT a legacy reader \u2014 deliberately outside the trigger paths. Also requires the Settings editor legacy bridge gone and GET /api/settings/autofill clean. Trigger path widened to extension/content/ 2026-08-02 after the phase-2 split moved the dual-read from agent.js to autofill.js:51,56 \u2014 a file-pinned path would go green on the next rename without the reader dying."
+      "hand_check": "job_search_brief's identically named response fields are a frozen outward projection, NOT a legacy reader \u2014 deliberately outside the trigger paths. Also requires the Settings editor legacy bridge gone and GET /api/settings/autofill clean. Trigger paths are DIRECTORIES, not files: extension/content/ was widened 2026-08-02 after the phase-2 split moved the dual-read out of agent.js, and extension/panel/ was added after the panel's workAuthForWrite (actions/pause.js) turned out to promote the legacy pair before the first typed pause-row write while the content-only path read green. A file-pinned path goes green on the next rename without the reader dying."
     },
     {
       "id": "job-location-raw",

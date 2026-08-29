@@ -21,7 +21,7 @@ outage silently cost KB coverage detection; that was code placement, not design.
 under the private `_LLM_PROPOSALS_KEY`, which the gating pass consumes and pops.
 The pop is what keeps that private key out of the frozen `gaps_json`: both the
 stash and the pop are gated on the same `kb_snapshot is None` test, and
-`create_session` re-scrubs via `_pop_stash` if gating raises. A failure in the
+`create_session` re-scrubs via `gap_enrichment.pop_stash` if gating raises. A failure in the
 gating pass DEGRADES (warn + ungated gaps), matching the snapshot-load and
 enrichment branches either side of it — KB library evidence is an enhancement,
 and session creation has already paid for a full engine run.

@@ -37,7 +37,7 @@ def test_get_job_search_brief():
 @respx.mock
 def test_find_job_by_url_found_with_application():
     # ONE request now: /api/jobs/match answers job + newest application
-    # together, with posting-equality semantics (SYSTEM.md §11 item 9) —
+    # together, with posting-equality semantics (SYSTEM.md §4, Job) —
     # the detail round-trip is gone.
     match_route = respx.get(f"{BASE}/api/jobs/match").mock(
         return_value=httpx.Response(200, json={

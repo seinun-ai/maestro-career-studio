@@ -952,7 +952,7 @@ def test_list_jobs_filters_by_source(db_session):
 
 
 def test_ingest_url_fallback_matches_the_posting_not_the_string(db_session):
-    """SYSTEM.md §11 item 9: the no-raw-text capture path dedupes by POSTING,
+    """SYSTEM.md §4 (Job): the no-raw-text capture path dedupes by POSTING,
     not by string equality. A re-capture arriving through a referral link
     (?gh_src=, ?utm_*) or from the posting's /apply sub-path is the job
     already captured; a different posting on the same board is not."""

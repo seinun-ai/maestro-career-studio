@@ -22,7 +22,8 @@ job-without-application (`GET /api/jobs?without_application=true`).
   parallel copy.
 - **Dedup rules** (`_find_existing`): exact `raw_text_hash` always;
   `source_url` fallback **only when there is no raw text** (MCP/extension
-  capture path, whose hash is of the LLM extraction JSON and unstable). Never
+  capture path, whose hash is of the LLM extraction JSON and unstable) — and
+  that fallback matches by POSTING, not by string (next bullet). Never
   URL-dedup the paste path: careers pages reuse URLs across different postings.
   **Requisition dedup** (G11): post-extraction, a match on `(lower(company),
   requisition_id)` returns the tracked row with `already_existed` — the same
@@ -31,6 +32,17 @@ job-without-application (`GET /api/jobs?without_application=true`).
   (never invented; prompt rule in `extract_jd.txt`). Without one, company+title
   is only ever a SOFT duplicate signal (final-review `duplicate_submitted` + a
   triage chip), never a capture-time merge.
+- **Posting equality, not string equality** (`services/job_url_match.is_same_posting`,
+  behind `find_job_by_url` / `GET /api/jobs/match`): the same host AND the saved
+  path being a PREFIX of the current one (equal counts). Query strings are
+  ignored outright, so tracking parameters cannot make one posting look like two,
+  and a deeper apply-flow URL still matches the saved posting. Never raises —
+  `source_url` is user-supplied and the caller is a request path with nowhere to
+  report a parse failure, so an unusable URL simply does not match. TWO callers,
+  same predicate: `GET /api/jobs/match` (what the extension is looking at) and
+  `_find_existing`'s url_fallback above — so the no-raw-text capture path dedupes
+  by POSTING too. Both scan newest-first and take the first hit, so overlapping
+  saves resolve deterministically to the most recent capture.
 - **Dedup response**: create/ingest return `already_existed: true` (transient
   attr → `JobRead`) on a dedup hit; the capture UI must not claim a fresh
   extraction.

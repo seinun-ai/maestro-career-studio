@@ -58,7 +58,7 @@ their MCP server with `scripts/setup-mcp.sh` rather than the plugin.
   backwards for every user who has not pinned. If you must publish a fix for an
   older line, give it a higher number.
 
-### 2. Bump the five places a version lives
+### 2. Bump the seven places a version lives
 
 They must agree, and most of them will keep lying silently if you forget:
 
@@ -68,6 +68,8 @@ They must agree, and most of them will keep lying silently if you forget:
 | `extension/manifest.json` | `"version": "X.Y.Z"` |
 | `CITATION.cff` | `version: "X.Y.Z"` + `date-released` (cffconvert cannot catch a stale one — check by eye) |
 | `mcpb/manifest.json` | `"version": "X.Y.Z"` — what Claude Desktop shows for the installed extension. Re-pack the bundle after editing (`scripts/check_mcpb_bundle.py` fails otherwise) |
+| `plugins/maestro-career-studio/.claude-plugin/plugin.json` | `"version": "X.Y.Z"` — what `/plugins` shows for the marketplace install |
+| `plugins/maestro-career-studio/.codex-plugin/plugin.json` | `"version": "X.Y.Z"` — its Codex twin; the two must not diverge |
 | the git tag (step 4) | `vX.Y.Z` |
 
 The published image tag is the version **without** the `v` (`X.Y.Z`) — the
@@ -155,8 +157,8 @@ release which publishes perfectly and updates nobody.
 ### 9. After the release
 
 - Refresh the static test-count badge in `README.md`.
-- Add the ghcr image badge once step 7 has made the packages public (there is a
-  `TODO(P5)` comment in `README.md` marking the spot). It is the one badge that
+- The ghcr image badge is already up (it went live with v0.1.1, once both
+  packages were public). It is the one badge that
   would otherwise advertise something a stranger cannot pull.
 
 ---
