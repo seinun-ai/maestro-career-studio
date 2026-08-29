@@ -48,12 +48,18 @@ Each prompt marks its personal placeholders in `<ANGLE_BRACKETS>`. Fill in:
 
 - **Claude Code / Claude Desktop:** paste the prompt into a session, or
   schedule the hunt with a routine/scheduled task (`/schedule` in Claude
-  Code) so it runs daily. Register the MCP server first —
-  `./scripts/setup-mcp.sh` from the repo root; the `hunt` profile fits the
-  hunt prompt, `apply` fits the apply prompts.
-- **ChatGPT desktop app / Codex CLI:** register the MCP server (the setup
-  script prints the config block), then paste the prompt; the hunt prompt
-  also works as a scheduled task where your client supports one.
+  Code) so it runs daily. Register the MCP server first — the extension or
+  plugin install from the
+  [README](../../README.md#driving-it-from-claude-codex-or-chatgpt-mcp)
+  registers the `full` profile, which covers every prompt here. Scoped
+  profiles are an optional trim, not a requirement: `hunt` fits the hunt
+  prompt and `apply` fits the apply prompts — set one in the Claude
+  extension's **Tool profile** field, or via
+  `./scripts/setup-mcp.sh --profile hunt`.
+- **ChatGPT desktop app / Codex CLI:** install the plugin from the
+  marketplace (or have the setup script print a config block), then paste
+  the prompt; the hunt prompt also works as a scheduled task where your
+  client supports one.
 - **As a skill:** copy `docs/skills/manual-apply-session/` into your client's
   skills directory (Claude Code: `.claude/skills/` in a project or
   `~/.claude/skills/` globally) and invoke it when you want a strict,

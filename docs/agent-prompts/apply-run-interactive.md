@@ -7,8 +7,8 @@
 
 ---
 
-Apply run with Maestro CS (apply profile + a headed real-Chrome browser via
-Playwright MCP): follow the
+Apply run with Maestro CS (the `full` or `apply` profile, plus a headed
+real-Chrome browser via Playwright MCP): follow the
 [agent-apply playbook](../playbooks/agent-apply.md) and the
 [execution skill](../skills/agent-apply-execution/SKILL.md).
 
