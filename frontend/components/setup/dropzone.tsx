@@ -3,6 +3,8 @@
 import React, { useRef, useState } from "react";
 import { Upload } from "lucide-react";
 
+import { acceptExtensions } from "@/lib/upload-accept";
+
 export type DropzoneRejection = { file: File; reason: string };
 
 function formatBytes(bytes: number): string {
@@ -21,7 +23,8 @@ export function Dropzone({
   disabled,
   onFiles,
 }: {
-  /** Comma-separated extension list for the file input, e.g. ".pdf,.docx". */
+  /** The file input's accept list — extensions and MIME types, from
+   *  `lib/upload-accept`. Both forms are matched below. */
   accept: string;
   maxFiles: number;
   maxBytes: number;
@@ -76,7 +79,7 @@ export function Dropzone({
         if (!matchesExt) {
           rejected.push({
             file,
-            reason: `unsupported format (expected ${accept})`,
+            reason: `unsupported format (expected ${acceptExtensions(accept).join(", ")})`,
           });
           return;
         }

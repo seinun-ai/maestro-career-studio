@@ -29,6 +29,7 @@ VALID_PROMPTS = {
     "kb_cluster_points",
     "kb_resume_parse",
     "base_from_kb_plan",
+    "base_resume_instruct",
     "persona_draft",
     "autofill_choose",
     # NOTE: every key here must have a prompt file: seed_prompts() and

@@ -13,7 +13,7 @@
  * that used to be split across two files is written out below in full.
  *
  * WHAT THIS FILE PUBLISHES: ns.decisions = { stageFor, rankBaseResumes,
- * sessionTenant, restorableSession, reconcileFill, sanitizeAnswer }.
+ * postingId, sessionTenant, restorableSession, reconcileFill, sanitizeAnswer }.
  */
 (() => {
   const ns = (window.careerStudioCompanion ??= {});
@@ -203,6 +203,12 @@
    * across a wizard's steps everywhere we fill (Workday keeps its tenant in
    * the subdomain, so the extra segment is harmless there).
    *
+   * PLUS THE POSTING ID where the url carries one (`postingId`): on a board
+   * whose jobs all share one path, the segment alone made every job one
+   * scope, and a pick made on job A came back on job B. The suffix keeps
+   * the query string out of the tenant EXCEPT for the one key that names the
+   * posting — a referral or search param still scopes nothing.
+   *
    * TOTAL, because the panel asks this about whatever a TAB currently holds
    * rather than about a page it is running inside: `new URL("")` THROWS, and
    * an empty or relative url is what a tab reports before it has committed
@@ -218,10 +224,58 @@
   function sessionTenant(url) {
     try {
       const u = new URL(url);
-      return `${u.origin}/${u.pathname.split("/")[1] ?? ""}`;
+      const tenant = `${u.origin}/${u.pathname.split("/")[1] ?? ""}`;
+      const identity = postingId(url);
+      return identity ? `${tenant}?job=${identity.id}` : tenant;
     } catch {
       return null;
     }
+  }
+
+  /** Query keys that carry a posting's IDENTITY rather than a referral: the
+   * boards where one path serves every job and only the query string moves.
+   * THE SAME TABLE as the backend's `job_url_match.POSTING_ID_QUERY_KEYS`,
+   * and `tests/test_extension_panel.py` pins the two functions against each
+   * other over one URL table — a key added on one side only would make the
+   * backend call two pages one posting while the panel scoped them apart, or
+   * the reverse, and either way the user sees an application that belongs to
+   * the job they just navigated away from. */
+  const POSTING_ID_QUERY_KEYS = ["currentJobId", "jk", "vjk", "gh_jid"];
+  // LinkedIn's permalink carries the id in the PATH (/jobs/view/4001/ or
+  // /jobs/view/<title-slug>-4001); host-gated like the backend's copy.
+  const LINKEDIN_VIEW_RE = /^\/jobs\/view\/(?:[^/]*?-)?(\d+)\/?/;
+
+  /** `{host, id}` when this url names its posting in the query string or, on
+   * LinkedIn, in the permalink path; null otherwise — including for a url
+   * `new URL` refuses, so callers need no try/catch.
+   *
+   * WHY THE TENANT NEEDS IT (the 2026-09-01 report): LinkedIn's job list is
+   * ONE path for every job. Clicking a result rewrites `?currentJobId=` via
+   * pushState, `tabs.onUpdated` does fire, the facts reset — and then the
+   * identity re-forms as the SAME job, because `sessionTenant` kept only the
+   * first path segment and the backend matched on the path alone. The pick
+   * made on job A was restored onto job B, and "Add job" on job B deduped
+   * into A's row. With the id folded into the tenant, job B is a different
+   * scope and the remembered pick stays with A; the backend fix
+   * (`job_url_match.posting_id`) is the other half, so that A's row is no
+   * longer "exact" on B's page. */
+  function postingId(url) {
+    let u;
+    try {
+      u = new URL(url);
+    } catch {
+      return null;
+    }
+    if (!u.hostname) return null;
+    for (const key of POSTING_ID_QUERY_KEYS) {
+      const value = (u.searchParams.get(key) ?? "").trim();
+      if (value) return { host: u.hostname, id: value };
+    }
+    if (u.hostname === "linkedin.com" || u.hostname.endsWith(".linkedin.com")) {
+      const match = LINKEDIN_VIEW_RE.exec(u.pathname);
+      if (match) return { host: u.hostname, id: match[1] };
+    }
+    return null;
   }
 
   /** May a remembered pick be restored onto THIS page load?
@@ -387,7 +441,7 @@
   }
 
   ns.decisions = {
-    stageFor, rankBaseResumes, sessionTenant, restorableSession, reconcileFill,
-    sanitizeAnswer,
+    stageFor, rankBaseResumes, postingId, sessionTenant, restorableSession,
+    reconcileFill, sanitizeAnswer,
   };
 })();

@@ -49,13 +49,38 @@ meaning for, and the old constants were guessed rather than measured — the
 heuristic had never once run. A decision the caller must not reinterpret is
 better typed as a decision.
 
-Query strings and fragments are ignored, as before: a `?gh_src=` or
-`?utm_source=` referral link and a `#apply` anchor name a posting that is
-already saved, and treating them as new is how a library fills with
-duplicates.
+Query strings and fragments are ignored, as before — with ONE exception. A
+`?gh_src=` or `?utm_source=` referral link and a `#apply` anchor name a posting
+that is already saved, and treating them as new is how a library fills with
+duplicates. But some boards keep the posting's IDENTITY in the query string
+rather than the path: LinkedIn's job list is one path for every job
+(`/jobs/search/?currentJobId=N`, `/jobs/collections/…/?currentJobId=N`),
+Indeed uses `viewjob?jk=` / `jobs?vjk=`, and a Greenhouse board embedded in a
+company site uses `careers?gh_jid=`. Under the pure prefix rule every job on
+such a page IS the first one saved, so the extension registered one
+application for a whole LinkedIn session and deduped every job saved from that
+page into one row. `posting_id` names those keys; when the SAVED link carries
+one, equality of (host, id) is the whole decision — a current page with a
+different id is a sibling, and one with no id at all is the listing, not the
+posting. When the saved link carries none, the prefix rule stands unchanged,
+so an apply page that merely adds `?jobId=` still descends from its posting.
+The extension's session scope (`shared/decisions.js` `postingId`) mirrors
+this table; `tests/test_extension_panel.py` pins the two against each other.
 """
 
-from urllib.parse import urlsplit
+import re
+from urllib.parse import parse_qs, urlsplit
+
+# Query keys that carry a posting's identity on the boards named above. Order is
+# precedence when a URL carries several. Deliberately short: a key here turns a
+# same-path URL pair into two postings, so it must name a posting and nothing
+# else (`gh_src`, `refId`, `trk` are referrals and stay out).
+POSTING_ID_QUERY_KEYS: tuple[str, ...] = ("currentJobId", "jk", "vjk", "gh_jid")
+
+# LinkedIn's permalink carries the same id in the PATH: /jobs/view/4001/ or
+# /jobs/view/<title-slug>-4001. Host-gated so a look-alike path elsewhere is
+# left to the prefix rule.
+_LINKEDIN_VIEW_RE = re.compile(r"^/jobs/view/(?:[^/]*?-)?(\d+)/?")
 
 
 def _host_and_segments(url: str | None) -> tuple[str, list[str]] | None:
@@ -87,14 +112,55 @@ def _host_and_segments(url: str | None) -> tuple[str, list[str]] | None:
     return host, [segment for segment in path.split("/") if segment]
 
 
+def posting_id(url: str | None) -> tuple[str, str] | None:
+    """(hostname, posting id) when `url` carries its posting's identity in the
+    query string (POSTING_ID_QUERY_KEYS) or, on LinkedIn, in the permalink
+    path; None for every other URL — including an unusable one, so callers
+    need no try/except. An empty value (`?currentJobId=`) is no identity."""
+    if not url:
+        return None
+    try:
+        split = urlsplit(url)
+        host = split.hostname
+    except ValueError:
+        return None
+    if not host:
+        return None
+    query_id = _query_identity(split.query)
+    if query_id is not None:
+        return host, query_id
+    if host == "linkedin.com" or host.endswith(".linkedin.com"):
+        match = _LINKEDIN_VIEW_RE.match(split.path)
+        if match:
+            return host, match.group(1)
+    return None
+
+
+def _query_identity(query: str) -> str | None:
+    """The first non-blank value under a POSTING_ID_QUERY_KEYS key, or None."""
+    params = parse_qs(query, keep_blank_values=False)
+    for key in POSTING_ID_QUERY_KEYS:
+        values = params.get(key)
+        if values and values[0].strip():
+            return values[0].strip()
+    return None
+
+
 def is_same_posting(saved: str | None, current: str | None) -> bool:
     """Is the page at `current` the same job posting as the saved link `saved`?
 
     True when the hosts agree and the saved path is a prefix of the current
-    path (an equal path counts as a prefix). Never raises: source_url is
+    path (an equal path counts as a prefix) — unless the saved link carries a
+    posting id (`posting_id`), in which case the current page must carry the
+    SAME id on the same host: a different id is a sibling posting and no id
+    is the listing the posting sits in. Never raises: source_url is
     user-supplied and the caller is a request path with nowhere to report a
     parse failure, so an unusable URL simply does not match.
     """
+    saved_identity = posting_id(saved)
+    if saved_identity is not None:
+        return posting_id(current) == saved_identity
+
     saved_parts = _host_and_segments(saved)
     current_parts = _host_and_segments(current)
     if saved_parts is None or current_parts is None:

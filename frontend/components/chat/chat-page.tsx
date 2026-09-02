@@ -52,6 +52,7 @@ import {
   uploadChatAttachment,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { DOCUMENT_ACCEPT } from "@/lib/upload-accept";
 import type {
   BaseResumeDetail,
   BaseResumeSummary,
@@ -473,7 +474,7 @@ export function ChatPage() {
       <input
         ref={fileInputRef}
         type="file"
-        accept=".pdf,.docx,.md,.txt,.tex,.png,.jpg,.jpeg,.webp"
+        accept={DOCUMENT_ACCEPT}
         className="hidden"
         onChange={(e) => {
           const file = e.target.files?.[0];

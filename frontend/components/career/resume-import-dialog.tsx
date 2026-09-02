@@ -19,8 +19,9 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { kbImportConsolidate, kbImportResume } from "@/lib/api";
 import type { ImportReport } from "@/lib/types";
+import { RESUME_FILE_ACCEPT } from "@/lib/upload-accept";
 
-const ACCEPT = ".json,.pdf,.docx,.md,.txt,.tex";
+const ACCEPT = RESUME_FILE_ACCEPT;
 const MAX_FILES = 10;
 const MAX_BYTES = 10 * 1024 * 1024;
 

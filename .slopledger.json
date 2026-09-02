@@ -76,23 +76,23 @@
     }
   ],
   "system_md_baselines": {
-    "total": 929,
+    "total": 1000,
     "sections": {
-      "(preamble)": 58,
+      "(preamble)": 59,
       "1. What this is": 9,
-      "2. Repo layout": 34,
+      "2. Repo layout": 36,
       "3. Architecture at a glance": 19,
-      "4. Core entities and their lifecycles": 16,
-      "5. The application workflow, end to end (web)": 67,
-      "6. Cross-cutting invariants (do not break these)": 182,
+      "4. Core entities and their lifecycles": 15,
+      "5. The application workflow, end to end (web)": 81,
+      "6. Cross-cutting invariants (do not break these)": 208,
       "7. Agent surfaces": 207,
-      "8. Frontend conventions": 9,
-      "9. Dev & test environment": 101,
+      "8. Frontend conventions": 8,
+      "9. Dev & test environment": 107,
       "10. Design-decision record": 22,
-      "11. Known deferred items (priority order)": 79,
-      "12. Gotchas that have bitten before": 54,
-      "13. Active migrations & deprecation ledger": 72
+      "11. Known deferred items (priority order)": 87,
+      "12. Gotchas that have bitten before": 69,
+      "13. Active migrations & deprecation ledger": 73
     },
-    "reason": "2026-08-20 restructure: moved to repo root, extracted the reference tier (entities -> docs/entities/, frontend conventions -> docs/frontend-conventions.md), 1809 -> 929 lines. Section budgets are now measured against the cap rather than the current total, because extraction shrinks the denominator and would otherwise fail sections that never grew."
+    "reason": "\u00a712 grew by three dated gotchas from the 2026-09-01 fix batch (LinkedIn posting identity, starter template gate, upload accept lists); older entries reflowed, nothing dropped; \u00a77's sender-model paragraph extracted to extension/README.md"
   }
 }

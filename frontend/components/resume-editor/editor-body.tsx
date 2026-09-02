@@ -9,6 +9,7 @@ import {
   Download,
   ExternalLink,
   Pencil,
+  Sparkles,
   Tag,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -26,6 +27,7 @@ import { EducationEditor } from "@/components/resume-editor/education-editor";
 import { ExperienceEditor } from "@/components/resume-editor/experience-editor";
 import { ExtraSectionsEditor } from "@/components/resume-editor/extra-sections-editor";
 import { FormattingPanel } from "@/components/resume-editor/formatting-panel";
+import { InstructSheet } from "@/components/resume-editor/instruct-sheet";
 import { KbImportDrawer } from "@/components/resume-editor/kb-import-drawer";
 import { PdfPagesPreview } from "@/components/resume-editor/pdf-pages-preview";
 import { ProjectEditor } from "@/components/resume-editor/project-editor";
@@ -69,6 +71,7 @@ export function EditorBody({
   const [displayName, setDisplayName] = useState(initial.display_name ?? "");
   const [rawMode, setRawMode] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [instructOpen, setInstructOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [roleOpen, setRoleOpen] = useState(false);
   // Same shared vocabulary query the picker uses, for the menu item's label.
@@ -352,6 +355,18 @@ export function EditorBody({
                         </DropdownMenuItem>
                       }
                     >
+                      {/* A free instruction against this document — an edit
+                          or a question. Applying goes through PATCH /edits on
+                          the SAVED record, so like the KB import it waits for
+                          unsaved edits to be saved first rather than merging
+                          into a form the server has not seen. */}
+                      <DropdownMenuItem
+                        disabled={hasUnsavedChanges}
+                        onClick={() => setInstructOpen(true)}
+                      >
+                        <Sparkles />
+                        Ask for changes…
+                      </DropdownMenuItem>
                       {/* Moved out of the inline bar: it is the rarest thing
                           here and it is disabled whenever there are unsaved
                           edits, yet it used to sit first and most prominent. */}
@@ -504,6 +519,14 @@ export function EditorBody({
         roleLabel={live?.role_label ?? initial.role_label}
         open={roleOpen}
         onOpenChange={setRoleOpen}
+      />
+      <InstructSheet
+        open={instructOpen}
+        onOpenChange={setInstructOpen}
+        targetSlug={slug}
+        onApplied={(result) => {
+          adoptBaseResumeDetail(result);
+        }}
       />
       <KbImportDrawer
         open={importOpen}

@@ -237,6 +237,32 @@ you which of the two you are looking at.
   ticked Fill row is how you reach Start fill again on page three of a form the
   extension has already finished once.
 
+## Rules the code depends on
+
+Extracted from SYSTEM.md §7 (which still owns the panel's shape); these are the
+mechanics a reader of `sw.js`, `content/agent.js` and the fill engine has to
+know, and each one was learned from a live failure.
+
+- **Sender model.** A panel has no `sender.tab` (that is the discriminator) and
+  NAMES its bound tab, so sw.js's `sender.id !== chrome.runtime.id` is the WHOLE
+  of provenance for a tab-less sender; `detect_page` joins `extract_job_posting`
+  as a frame-0 read because the panel runs in no page. Content scripts are the
+  fill engine and the field work and NOTHING else since R-C deleted the floating
+  card, so `fanoutTab`'s content-script branch is a written rule with no caller.
+- **The COMMIT GESTURE.** `visitControl`/`leaveControl` (plus the
+  `guided`-prefixed and injected copies) wrap everything that is not a text
+  commit, because a `<select>` set through the native setter and a radio driven
+  by `click()` fire no focus events, so Workday's required-field validation
+  never ran.
+- **ONE definition of "a box a résumé could go into".** `agent.js`'s
+  `attachableFileInputs` is read by `attachResumePdf` AND by `detect_page`'s
+  `fileInputs` count, which is what lets the panel offer an attach it can honour.
+- **Posting identity is one table in two languages.** `shared/decisions.js`
+  `postingId` mirrors the backend's `job_url_match.posting_id` (query keys
+  `currentJobId`, `jk`, `vjk`, `gh_jid`; LinkedIn's `/jobs/view/<id>` path). The
+  tenant scope, the backend match and `agent.js`'s stale-JSON-LD guard all read
+  it; `backend/tests/test_extension_posting_identity.py` pins the two copies.
+
 ## How the fill behaves
 
 - **Checkboxes are left alone except in two authorised cases.** The default is

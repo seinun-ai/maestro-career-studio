@@ -1,10 +1,10 @@
 {
   "structure": {
     "root": "backend",
-    "modules": 426,
-    "total_loc": 120410,
-    "src_loc": 39656,
-    "test_loc": 80754,
+    "modules": 438,
+    "total_loc": 122171,
+    "src_loc": 40247,
+    "test_loc": 81924,
     "orphan_modules": [],
     "test_only_reachable": [],
     "orphan_loc": 0,
@@ -67,7 +67,7 @@
       },
       {
         "file": "app/services/quick_tailor.py",
-        "line": 99,
+        "line": 89,
         "name": "_plan_gap",
         "complexity": 34,
         "params": 3,
@@ -179,7 +179,7 @@
       },
       {
         "file": "tests/test_extension_panel.py",
-        "line": 586,
+        "line": 618,
         "name": "test_the_panel_document_is_self_contained_and_joins_the_namespace",
         "complexity": 24,
         "params": 0,
@@ -322,6 +322,14 @@
         "lines": 53
       },
       {
+        "file": "app/services/setup_status.py",
+        "line": 98,
+        "name": "build_status",
+        "complexity": 21,
+        "params": 1,
+        "lines": 113
+      },
+      {
         "file": "app/services/kb_ingest.py",
         "line": 217,
         "name": "ingest_document",
@@ -400,17 +408,9 @@
         "complexity": 19,
         "params": 3,
         "lines": 63
-      },
-      {
-        "file": "tests/test_extension_panel_job.py",
-        "line": 2155,
-        "name": "test_stop_using_this_draft_unbinds_the_page_and_rewrites_the_bridge",
-        "complexity": 19,
-        "params": 1,
-        "lines": 40
       }
     ],
-    "hotspot_count": 405,
+    "hotspot_count": 411,
     "error_masking": [
       {
         "file": "tests/test_tracing.py",
@@ -459,8 +459,8 @@
       }
     ],
     "error_masking_count": 9,
-    "internal_import_edges": 1792,
-    "imports_per_module": 4.21,
+    "internal_import_edges": 1837,
+    "imports_per_module": 4.19,
     "entry_points_used": [
       "app.main",
       "mcp_server.server",
@@ -477,9 +477,9 @@
       "min_tokens": 50,
       "mode": "weak"
     },
-    "percentage": 0.88,
-    "duplicated_lines": 430,
-    "clones": 46,
+    "percentage": 0.83,
+    "duplicated_lines": 420,
+    "clones": 45,
     "allowlisted_clones": 0,
     "worst_files": [
       [
@@ -582,7 +582,7 @@
     {
       "rank": "P2",
       "signal": "complexity_concentration",
-      "detail": "405 function(s) over threshold. worst: mcp_server/tests/test_server.py:532 cc=42",
+      "detail": "411 function(s) over threshold. worst: mcp_server/tests/test_server.py:532 cc=42",
       "why": "Complexity mass concentrating in few functions is the erosion signature.",
       "action": "Decompose the top 3. Do not touch the tail."
     },
@@ -595,16 +595,16 @@
     }
   ],
   "metrics": {
-    "total_loc": 120410,
-    "src_loc": 39656,
-    "test_loc": 80754,
-    "modules": 426,
+    "total_loc": 122171,
+    "src_loc": 40247,
+    "test_loc": 81924,
+    "modules": 438,
     "orphan_loc": 0,
-    "duplication_pct": 0.88,
-    "duplicated_lines": 430,
-    "clone_count": 46,
-    "complexity_hotspots": 405,
+    "duplication_pct": 0.83,
+    "duplicated_lines": 420,
+    "clone_count": 45,
+    "complexity_hotspots": 411,
     "error_masking": 9,
-    "imports_per_module": 4.21
+    "imports_per_module": 4.19
   }
 }

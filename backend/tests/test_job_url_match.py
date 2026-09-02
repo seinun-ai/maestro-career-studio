@@ -7,7 +7,7 @@ from app.db import get_db
 from app.main import app
 from app.models.application import Application
 from app.models.job import Job
-from app.services.job_url_match import is_same_posting
+from app.services.job_url_match import is_same_posting, posting_id
 
 
 LEVER = "https://jobs.lever.co/acme/abc"
@@ -71,6 +71,81 @@ GREENHOUSE = "https://boards.greenhouse.io/acme/jobs/123"
     ],
 )
 def test_is_same_posting(saved, current, expected):
+    assert is_same_posting(saved, current) is expected
+
+
+# --- posting identity carried in the QUERY STRING -------------------------
+#
+# LinkedIn's job list is one path for every job: clicking a result rewrites
+# `?currentJobId=` via pushState and nothing else moves. Under the prefix rule
+# every job on that page was the first one saved, so the panel registered one
+# application for the whole session (reported 2026-09-01). The same shape
+# exists on Indeed (`viewjob?jk=`, search `vjk=`) and on Greenhouse boards
+# embedded in a company site (`careers?gh_jid=`).
+
+LI_SEARCH = "https://www.linkedin.com/jobs/search/?currentJobId=4001&keywords=data"
+LI_VIEW = "https://www.linkedin.com/jobs/view/4001/"
+
+
+@pytest.mark.parametrize(
+    ("url", "expected"),
+    [
+        (LI_SEARCH, ("www.linkedin.com", "4001")),
+        ("https://www.linkedin.com/jobs/collections/recommended/?currentJobId=4001",
+         ("www.linkedin.com", "4001")),
+        # The permalink carries the same id in its PATH; a slugged permalink
+        # ends in the id too.
+        (LI_VIEW, ("www.linkedin.com", "4001")),
+        ("https://www.linkedin.com/jobs/view/data-engineer-at-acme-4001", ("www.linkedin.com", "4001")),
+        ("https://www.linkedin.com/jobs/view/4001/?refId=abc&trk=x", ("www.linkedin.com", "4001")),
+        ("https://www.indeed.com/viewjob?jk=abc123&from=serp", ("www.indeed.com", "abc123")),
+        ("https://www.indeed.com/jobs?q=data&vjk=abc123", ("www.indeed.com", "abc123")),
+        ("https://acme.example/careers?gh_jid=555", ("acme.example", "555")),
+        # No identity in the query: an ordinary posting URL, a tracking param,
+        # an empty id, and the LinkedIn list with nothing selected.
+        (LEVER, None),
+        ("https://jobs.lever.co/acme/abc?gh_src=x", None),
+        ("https://www.linkedin.com/jobs/search/?currentJobId=&keywords=data", None),
+        ("https://www.linkedin.com/jobs/search/?keywords=data", None),
+        # Only LinkedIn's /jobs/view/ path is an id carrier; a look-alike path
+        # on another host is not.
+        ("https://example.com/jobs/view/4001/", None),
+        (None, None),
+        ("http://[", None),
+    ],
+)
+def test_posting_id(url, expected):
+    assert posting_id(url) == expected
+
+
+@pytest.mark.parametrize(
+    ("saved", "current", "expected"),
+    [
+        # The bug: two jobs on LinkedIn's one-path search page.
+        (LI_SEARCH, "https://www.linkedin.com/jobs/search/?currentJobId=4002&keywords=data", False),
+        # The same job, reached three ways.
+        (LI_SEARCH, LI_VIEW, True),
+        (LI_VIEW, LI_SEARCH, True),
+        (LI_VIEW, "https://www.linkedin.com/jobs/view/4001/?refId=abc", True),
+        # Saved from the permalink, viewing a different permalink: siblings.
+        (LI_VIEW, "https://www.linkedin.com/jobs/view/4002/", False),
+        # A saved id, a current page with none: the list with nothing
+        # selected is not the posting.
+        (LI_SEARCH, "https://www.linkedin.com/jobs/search/?keywords=data", False),
+        # Greenhouse embed: the careers page with no id is the INDEX, not the job.
+        ("https://acme.example/careers?gh_jid=555", "https://acme.example/careers", False),
+        ("https://acme.example/careers?gh_jid=555", "https://acme.example/careers?gh_jid=556", False),
+        ("https://acme.example/careers?gh_jid=555", "https://acme.example/careers?gh_jid=555&utm=x", True),
+        # Indeed: the search page with the same job selected IS the job.
+        ("https://www.indeed.com/viewjob?jk=abc123", "https://www.indeed.com/jobs?q=data&vjk=abc123", True),
+        # Ids belong to a host: the same number on another site is nothing.
+        (LI_VIEW, "https://www.indeed.com/viewjob?jk=4001", False),
+        # No id on the SAVED side keeps the prefix rule exactly as before —
+        # an apply page that adds an id param still descends from its posting.
+        (LEVER, f"{LEVER}/apply?jobId=9", True),
+    ],
+)
+def test_is_same_posting_with_query_identity(saved, current, expected):
     assert is_same_posting(saved, current) is expected
 
 

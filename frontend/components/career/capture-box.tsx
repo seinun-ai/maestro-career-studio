@@ -12,8 +12,9 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { kbCapture, kbIngestDocument } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { DOCUMENT_ACCEPT } from "@/lib/upload-accept";
 
-const ACCEPT = ".pdf,.docx,.md,.markdown,.txt,.tex,.png,.jpg,.jpeg,.webp";
+const ACCEPT = DOCUMENT_ACCEPT;
 
 export function CaptureBox() {
   const queryClient = useQueryClient();

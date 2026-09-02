@@ -43,6 +43,9 @@ class BaseResumeDetail(BaseModel):
     archived_at: datetime | None = None
     # Present on PATCH /edits responses — which entries the ops actually touched.
     applied: list[dict] | None = None
+    # Present on POST /import responses — list rows the parser had to drop
+    # (see kb_consolidation._validate_with_salvage); empty means a clean parse.
+    parse_warnings: list[str] | None = None
 
 
 class BaseResumeCreate(BaseModel):
@@ -145,3 +148,23 @@ class BaseResumePortProject(BaseModel):
 class BaseResumePortProjectResult(BaseModel):
     target_slug: str
     project_index: int
+
+
+class BaseResumeProposeRequest(BaseModel):
+    """POST /{slug}/propose — an instruction against the resume, persist nothing."""
+
+    instruction: str
+
+
+class BaseResumeProposeRead(BaseModel):
+    """A proposal the user applies (through PATCH /edits) or discards.
+
+    `ops` is the validated, dry-run op list — applying it cannot fail for a
+    reason the model could have known. `notes` carries the prose half: advice,
+    pivot ideas, or the facts the model needed and would not invent.
+    """
+
+    summary: str
+    notes: str
+    ops: list[dict]
+    ops_count: int
