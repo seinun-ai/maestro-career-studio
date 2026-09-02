@@ -39,8 +39,8 @@
 - [§8 Frontend conventions](#8-frontend-conventions) — INDEX into `docs/frontend-conventions.md`: layout, a11y, naming, copy rules
 - [§9 Dev & test environment](#9-dev--test-environment) — interpreter, DBs, calibration, deploy, gates
 - [§10 Design-decision record](#10-design-decision-record) — lineage of superseding decisions
-- [§11 Known deferred items](#11-known-deferred-items-priority-order) — ledger of work not yet built
-- [§12 Gotchas that have bitten before](#12-gotchas-that-have-bitten-before) — dated symptom → cause → rule entries
+- [§11 Known deferred items](#11-known-deferred-items-ledger--trigger-required) — ledger of work not yet built, each item with a trigger
+- [§12 Gotchas that have bitten before](#12-gotchas-that-have-bitten-before-ledger--evict-when-the-cause-becomes-enforced) — dated symptom → cause → rule entries; evicted once enforced
 - [§13 Active migrations & deprecation ledger](#13-active-migrations--deprecation-ledger) — built-twice rows with removal triggers
 
 ## 1. What this is
@@ -755,7 +755,11 @@ unrepresentable" — a draft gate needs an approver wherever review happens, and
 agent transcription is NOT the verbatim-file exception, so ingest lands drafts
 and consent-gated `kb_approve_points` is the one approval path from MCP.
 
-## 11. Known deferred items (priority order)
+## 11. Known deferred items (ledger — trigger-required)
+
+**Every item needs a trigger** — `do when <condition>`; an item that goes 30
+days without one gets one or is deleted. At most seven items live here; overflow
+goes to `docs/deferred.md` under this same contract, keeping its item number.
 
 **Item numbers are stable, not positional.** Code and migrations cite
 "§11 item N" from a dozen places, so new items APPEND here and shipped
@@ -842,7 +846,7 @@ citation. Priority lives in the item text, not in the ordinal.
    through the jobs-ingest response, so `store_extracted_jd` callers see that
    input X was stored as `unstated` (audit 2026-08-22, finding A1).
 
-## 12. Gotchas that have bitten before
+## 12. Gotchas that have bitten before (ledger — evict when the cause becomes enforced)
 
 - **One path, every job** (2026-09-01): LinkedIn's list rewrites only
   `?currentJobId=` and the matcher dropped the query string, so every job was the
