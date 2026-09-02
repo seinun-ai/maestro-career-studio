@@ -17,6 +17,7 @@ import {
 import { formatAbsoluteDateTime } from "@/lib/format-date";
 import type { KBDocumentOut } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { DOCUMENT_ACCEPT } from "@/lib/upload-accept";
 
 export function DocumentsPanel({
   entityId,
@@ -108,7 +109,7 @@ export function DocumentsPanel({
             ref={inputRef}
             type="file"
             className="sr-only"
-            accept=".pdf,.docx,.md,.markdown,.txt,.tex,.png,.jpg,.jpeg,.webp"
+            accept={DOCUMENT_ACCEPT}
             onChange={(event) => receiveFile(event.target.files?.[0])}
             disabled={upload.isPending}
             aria-label="Upload source document"

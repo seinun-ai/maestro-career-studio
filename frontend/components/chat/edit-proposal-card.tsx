@@ -11,8 +11,10 @@ import { apiFetch, setChatCardState } from "@/lib/api";
 import { baseResumeLabel } from "@/lib/types";
 import type { ChatCardState, ChatProposalOps, UUID } from "@/lib/types";
 
-/** One line per op: "replace_bullet · experience[0].bullets[1] — “new text…”". */
-function describeOp(op: Record<string, unknown>): string {
+/** One line per op: "replace_bullet · experience[0].bullets[1] — “new text…”".
+ *  Shared with the base-resume instruction sheet, which renders the same op
+ *  vocabulary for the same one-click apply. */
+export function describeOp(op: Record<string, unknown>): string {
   const kind = String(op.kind ?? "?");
   let path = "";
   if (op.section != null) {

@@ -597,24 +597,16 @@ same contract. Code citing "§4" lands here; the table says which file to open.
   since R-C the ONE home of every rule the card once duplicated), `choose.js`
   (routing, the /choose batch, `rest_fill` shaping, `QUESTIONY`'s ONE definition)
   and `guided-run.js` (the runner, transport injected).
-  **Sender model:** a panel has no `sender.tab` (that is the
-  discriminator) and NAMES its bound tab, so sw.js's `sender.id !==
-  chrome.runtime.id` is the WHOLE of provenance for a tab-less sender;
-  `detect_page` joins `extract_job_posting` as a frame-0 read because the panel
-  runs in no page. Content scripts are the fill engine and the field work and
-  NOTHING else since R-C deleted the floating card, so `fanoutTab`'s
-  content-script branch is a written rule with no caller. Two engine rules hold
-  across every writer: the COMMIT GESTURE (`visitControl`/`leaveControl` + the
-  `guided`-prefixed and injected copies) wraps everything that is not a text
-  commit, because a `<select>` set through the native setter and a radio driven
-  by `click()` fire no focus events, so Workday's required-field validation
-  never ran; and `agent.js`'s `attachableFileInputs` is ONE definition of "a box
-  a résumé could go into", read by `attachResumePdf` AND `detect_page`'s
-  `fileInputs` count, which is what lets the panel offer an attach it can
-  honour. The bridge storage key `widget.session` must NOT be renamed — that
+  **Sender model, the COMMIT GESTURE and the ONE `attachableFileInputs`
+  definition** are reference tier: `extension/README.md` → "Rules the code
+  depends on". The bridge storage key `widget.session` must NOT be renamed — that
   drops every live entry — and `restoreSession`'s `if (entry.applicationId)`
   guard is the condition of writing an application-less entry at all. Orphan
-  keys are swept once on panel boot. **`extension/README.md` owns the rest.**
+  keys are swept once on panel boot. **Posting identity is ONE table in two
+  languages** — `job_url_match.posting_id` ↔ `decisions.postingId` (LinkedIn
+  `currentJobId` / `/jobs/view/<id>`, Indeed `jk`/`vjk`, embedded Greenhouse
+  `gh_jid`), pinned by `test_extension_posting_identity.py`; add a key to BOTH.
+  **`extension/README.md` owns the rest.**
 - **Guided fill** (design doc `2026-08-16-guided-apply-design`, unpublished — §10):
   the panel's **Fill** stage — "Start fill" → `panel_prepare` (the
   gesture-backed injection; `preparePage` is the only other injector) → the
@@ -866,13 +858,22 @@ citation. Priority lives in the item text, not in the ordinal.
 
 ## 12. Gotchas that have bitten before
 
+- **One path, every job** (2026-09-01): LinkedIn's list rewrites only
+  `?currentJobId=` and the matcher dropped the query string, so every job was the
+  first one saved. A query-keyed board needs its key in BOTH `posting_id` tables
+  (§7); an SPA's `<head>` JSON-LD is the PREVIOUS job's until checked.
+- **A starter that fails its own gate** (2026-09-01): the from-scratch template
+  rendered three sections, so create-with-validate certified `false` on an untouched
+  draft. What the app mints AND validates in one request must clear every probe.
+- **Extension-only `accept` lists grey out real files** (2026-09-01): six hand-typed
+  pickers, no MIME types. Every picker reads `frontend/lib/upload-accept.ts`.
 - **A guard test mocked away the guard** (2026-08-25): a green ask/answer suite hid
   a 100%-failing numeric rewrite path because it replaced `guarded_rewrite`. When a
   guard or validator is the subject, fake `llm.call_openai`, never the guard.
-- **The FAST model quietly caps score honesty** (2026-08-24): flash-lite
-  extractions missed conceptual JD skills → base ATS scores inflated ~9 pts vs
-  fuller extractors. Fast tier drives coverage/honesty/latency; Smart barely
-  moves outcomes — re-benchmark FAST before changing model defaults.
+- **The FAST model quietly caps score honesty** (2026-08-24): flash-lite extractions
+  missed conceptual JD skills → base ATS scores inflated ~9 pts vs fuller extractors.
+  Fast tier drives coverage/honesty/latency; Smart barely moves outcomes —
+  re-benchmark FAST before changing model defaults.
 - **`autoflush=False` sessions**: two `session.merge`s that canonicalize to the same
   PK in one flush both INSERT (no dedup) → IntegrityError. Dedupe in Python first
   (see `_insert_skills`).
@@ -889,17 +890,16 @@ citation. Priority lives in the item text, not in the ordinal.
 - **An expanded hit target can cover its own label**: `after:-inset-2` inside an
   `h-5` chip put the remove target over the chip's own text, so clicking to open
   cleared instead. Expanded targets need room around them, not just under them.
-- **MCP clients truncate tool descriptions at ~2048 dedented chars**: keep
-  `__doc__` ≤2000 (ratchet test) or put the fact on a param
-  `Field(description=…)`.
+- **MCP clients truncate tool descriptions at ~2048 dedented chars**: keep `__doc__`
+  ≤2000 (ratchet test) or put the fact on a param `Field(description=…)`.
 - **Worktree subagents**: agents may edit the MAIN checkout instead of the worktree
   — hand them absolute worktree paths and verify with `git -C <worktree> status`.
 - **Ports**: 8000/8001 may be squatted by unrelated apps or stale servers — verify
   identity via `GET /openapi.json` `info.title == "Maestro CS API"`.
 - **Model catalog is seeds ∪ extras** (`MODEL_OPTIONS` ∪ `llm.extra_models`): `GET
   /api/settings/openai` returns the merge; deleting an id a role still uses is 400;
-  hosted chat is probe-gated (stored tools=false blocks; unprobed is allowed
-  through, matching `require()`).
+  hosted chat is probe-gated (stored tools=false blocks; unprobed passes, matching
+  `require()`).
 - **JSON mode is capability-gated**: `response_format=json_object` goes out only
   when `llm._json_mode_supported()` (other servers may hard-400 on the field);
   `llm._extract_json_object` salvages fenced JSON.
@@ -909,10 +909,10 @@ citation. Priority lives in the item text, not in the ordinal.
   (`llm_capabilities.probe()`); `require()` raises `CapabilityMissing`; unprobed
   models are never blocked.
 - **A probe must issue the SAME call as the surface it measures**: same client
-  (`llm.get_chat_client`) and the same per-model kwargs from
-  `llm.completion_extras` (the one site for such rules). A probe that
-  re-implements the call measures one the app never makes, and its stored row
-  then SHADOWS reality — a false tools=No once 422'd every chat message.
+  (`llm.get_chat_client`) and the same per-model kwargs from `llm.completion_extras`
+  (the one site for such rules). A probe that re-implements the call measures one
+  the app never makes, and its stored row then SHADOWS reality — a false tools=No
+  once 422'd every chat message.
 - **LLM provider outages are ONE exception type**: `llm.py` normalizes them to
   `llm.LLMProviderError`; `app.main` maps it to 502 + the provider's message
   for every router. Never catch `openai.*` in routers; plain `RuntimeError`

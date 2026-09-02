@@ -575,3 +575,63 @@ def test_archiving_an_unknown_template_is_404(db_session):
         assert client.post("/api/templates/nope/archive").status_code == 404
     finally:
         app.dependency_overrides.clear()
+
+
+# ---------- the from-scratch starter ----------
+#
+# "New template" in the web UI is the ONLY caller that mints the starter AND
+# validates it in the same request. The starter used to render name, summary
+# and experience alone, so the fresh draft failed the education/skills/email
+# probes and the gallery flagged it "ATS spacing" the moment it appeared — a
+# warning on a document the user had not touched yet, which reads as an error
+# in the create flow. The starter must clear every probe on its own.
+
+
+def test_starter_renders_every_core_section_and_custom_sections():
+    """LaTeX-free half: every probe phrase and every section header survives
+    the Jinja render, and the extras block is live (not a comment)."""
+    from app.services import pdf_render, template_registry as reg
+    from app.services import template_validation as tv
+
+    tex = pdf_render.render_tex_from_source(reg.STARTER_SOURCE, tv.SAMPLE_RESUME)
+    for probe in (
+        *tv.PARSE_FIDELITY_PROBES,
+        *tv.CONTACT_PROBES,
+        "Sentinel Publication Alpha",
+        "Sentinel entry bullet detail",
+        "Sentinel award bullet detail",
+        "Maestro CS",  # a project
+        "AWS Certified Solutions Architect",  # a certification
+        "GPA 3.8/4.0",
+    ):
+        assert probe in tex, probe
+    for header in tv.HEADER_PROBES:
+        assert header in tex.lower(), header
+    assert pdf_render.source_references_extras(reg.STARTER_SOURCE)
+
+
+@pytest.mark.skipif(not _HAS_LATEX, reason="pdflatex not installed")
+def test_create_from_scratch_with_validate_is_certified(db_session, tmp_path, monkeypatch):
+    """The web path exactly: POST ?validate=true with no source. The row must
+    come back ready AND certified, with nothing missing from the parse report,
+    so the gallery shows a clean card rather than a warning."""
+    import app.services.template_validation as tv
+    monkeypatch.setattr(tv.settings, "base_resumes_dir", tmp_path)
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        c = TestClient(app)
+        cr = c.post(
+            "/api/templates?validate=true",
+            json={"id": "scratch", "display_name": "Scratch", "origin": "frontend"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+    assert cr.status_code == 200, cr.text
+    body = cr.json()
+    assert body["status"] == "ready", body.get("last_error")
+    assert body["parse_certified"] is True
+    report = body["parse_report"]
+    assert report["missing"] == []
+    assert report["headers_missing"] == []
+    assert report["email_ok"] is True
+    assert report["extra_sections_supported"] is True

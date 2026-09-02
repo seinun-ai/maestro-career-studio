@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -23,6 +23,8 @@ from app.schemas.base_resume import (
     BaseResumeDuplicate,
     BaseResumePortProject,
     BaseResumePortProjectResult,
+    BaseResumeProposeRead,
+    BaseResumeProposeRequest,
     BaseResumeSummary,
     BaseResumeUpdate,
     ExcludedEntityRead,
@@ -35,12 +37,16 @@ from app.schemas.resume_edit import ResumeEditRequest
 from app.services import (
     base_from_kb_plan,
     base_resume_data,
+    base_resume_instruct,
     base_resume_render,
     career_kb,
     kb_base_sync,
+    kb_consolidation,
+    kb_import,
     pdf_preview,
     role_categories,
 )
+from app.services.attachment_extract import extract_text
 from app.services import resume_ops
 from app.services.resume_edit import ContentChangedError
 from app.services.resume_versions import record_version
@@ -410,6 +416,125 @@ def create_from_kb(
             role_label=role_label,
         ),
         db,
+    )
+
+
+IMPORT_MAX_BYTES = kb_import.MAX_BYTES
+
+
+def _parse_resume_upload(db: Session, file: UploadFile) -> tuple[str, dict, list[str]]:
+    """(safe filename, ResumeData dict, salvage warnings) for one upload.
+
+    The parsing half of the KB import, with its error contract mapped to HTTP:
+    413 over the cap, 422 for a file the extractor or parser cannot use, 502
+    when the model is unreachable. JSON is validated as-is with no model call.
+    """
+    safe_name = Path(file.filename or "upload").name or "upload"
+    try:
+        blob = file.file.read()
+    except OSError as exc:
+        raise HTTPException(status_code=400, detail=f"{safe_name}: could not read upload") from exc
+    if len(blob) > IMPORT_MAX_BYTES:
+        raise HTTPException(status_code=413, detail="file exceeds the 10 MB limit")
+
+    if kb_import._is_json(safe_name, file.content_type):
+        try:
+            return safe_name, ResumeData.model_validate_json(blob).model_dump(mode="json"), []
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=f"{safe_name}: {exc}") from exc
+    try:
+        text = extract_text(safe_name, file.content_type, blob)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    # Resolve the prompt and model BEFORE anything joins the session:
+    # get_prompt commits its file default on first use (kb_import's rule).
+    kb_consolidation.prefetch_prompts(db)
+    try:
+        parsed, warnings = kb_consolidation.parse_resume_text(db, text)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except RuntimeError as exc:  # provider unavailable
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return safe_name, parsed, warnings
+
+
+@router.post("/import", response_model=BaseResumeDetail)
+def import_base_resume(
+    db: Annotated[Session, Depends(get_db)],
+    file: UploadFile = File(...),
+    slug: Annotated[str | None, Form()] = None,
+    display_name: Annotated[str | None, Form()] = None,
+    role_category: Annotated[str | None, Form()] = None,
+    role_label: Annotated[str | None, Form()] = None,
+):
+    """Parse ONE uploaded resume file straight into a NEW base resume.
+
+    The base-resume lane of the "New base resume" dialog, beside From Career KB
+    / From existing / Blank. It reuses the KB import's parsing half — JSON is
+    validated as-is, anything else goes extract_text → parse_resume_text (the
+    smart model, into the ResumeData shape) — and then the standard create
+    pipeline above (slug validation, 409s, version row, disk write, render).
+
+    What it deliberately does NOT do: touch the Career KB. `POST /api/kb/import`
+    is the onboarding action that mints bases AND consolidates them into the
+    KB; this is the user saying "make me a base from this file" and nothing
+    more, so no entity, point or port-log row is written. The KB sync pill on
+    the resulting resume offers the KB half later, on request.
+
+    Naming is the user's: `display_name` and `slug` win when given; otherwise
+    the file's stem names the resume and a free slug is derived from that.
+    """
+    safe_name, parsed, parse_warnings = _parse_resume_upload(db, file)
+
+    display = (display_name or "").strip() or (
+        Path(safe_name).stem.replace("_", " ").strip() or "Imported resume"
+    )
+    if slug is None or not slug.strip():
+        slug = kb_import._free_slug(db, kb_import._slugify(display))
+
+    detail = create_base_resume(
+        BaseResumeCreate(
+            slug=slug.strip(),
+            display_name=display,
+            data=ResumeData.model_validate(parsed),
+            role_category=role_category or None,
+            role_label=role_label or None,
+        ),
+        db,
+    )
+    detail.parse_warnings = parse_warnings
+    return detail
+
+
+@router.post("/{slug}/propose", response_model=BaseResumeProposeRead)
+def propose_base_resume_edits(
+    slug: str,
+    payload: BaseResumeProposeRequest,
+    db: Annotated[Session, Depends(get_db)],
+):
+    """Propose edits (and/or advice) for a base resume from a free instruction.
+
+    Persists NOTHING — the propose-then-approve shape of `/from-kb/plan` and of
+    chat's `propose_edits`. The client shows the ops for review and applies
+    them through `PATCH /{slug}/edits`, the one typed-op door every surface
+    uses, so provenance, versioning and render all happen there. An
+    ideas-only instruction ("what could this pivot to?") answers in `notes`
+    with an empty op list.
+    """
+    row = db.get(BaseResume, slug)
+    if row is None or row.deleted_at is not None:
+        raise HTTPException(status_code=404, detail="Base resume not found")
+    try:
+        proposal = base_resume_instruct.propose(db, row, payload.instruction)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+    except RuntimeError as e:  # provider unavailable
+        raise HTTPException(status_code=502, detail=str(e)) from e
+    return BaseResumeProposeRead(
+        summary=proposal.summary,
+        notes=proposal.notes,
+        ops=[op.model_dump(mode="json") for op in proposal.ops],
+        ops_count=len(proposal.ops),
     )
 
 

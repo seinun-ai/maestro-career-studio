@@ -511,9 +511,41 @@ def tenants(tmp_path_factory):
         # Recorded so the distinction stays deliberate: only what `new URL`
         # REFUSES becomes null.
         "browser_page": "chrome://newtab",
+        # One path, every job: LinkedIn's list rewrites `currentJobId` via
+        # pushState and nothing else moves (the 2026-09-01 report). The
+        # permalink carries the same id in its path.
+        "linkedin_search_a":
+            "https://www.linkedin.com/jobs/search/?currentJobId=4001&keywords=data",
+        "linkedin_search_b":
+            "https://www.linkedin.com/jobs/search/?currentJobId=4002&keywords=data",
+        "linkedin_view_a":
+            "https://www.linkedin.com/jobs/view/data-engineer-at-acme-4001/?refId=x",
+        "linkedin_list_nothing_selected":
+            "https://www.linkedin.com/jobs/search/?keywords=data",
+        # A Greenhouse board embedded in a company site: same shape.
+        "greenhouse_embed_a": "https://careers.acme.test/careers?gh_jid=555",
+        "greenhouse_embed_b": "https://careers.acme.test/careers?gh_jid=556",
     }
     return run_node(_TENANT_DRIVER_JS, {"urls": urls},
                     tmp_path_factory.mktemp("tenants"), source=DECISIONS_JS)
+
+
+def test_two_jobs_on_one_path_are_two_tenants(tenants):
+    """The 2026-09-01 bleed, in the other direction from the greenhouse one:
+    not two companies on one origin but two JOBS on one path. LinkedIn's list
+    page is `/jobs/search/` for every job and only `currentJobId` moves, so a
+    segment-only scope restored job A's pick onto job B and the panel showed
+    one application for the whole session."""
+    assert tenants["linkedin_search_a"] == "https://www.linkedin.com/jobs?job=4001"
+    assert tenants["linkedin_search_b"] == "https://www.linkedin.com/jobs?job=4002"
+    assert tenants["linkedin_search_a"] != tenants["linkedin_search_b"]
+    # The permalink IS the list entry: same job, same scope, so a pick made on
+    # the list survives opening the job's own page.
+    assert tenants["linkedin_view_a"] == tenants["linkedin_search_a"]
+    # Nothing selected is the list, not a job: the plain segment scope.
+    assert tenants["linkedin_list_nothing_selected"] == "https://www.linkedin.com/jobs"
+    assert tenants["greenhouse_embed_a"] == "https://careers.acme.test/careers?job=555"
+    assert tenants["greenhouse_embed_a"] != tenants["greenhouse_embed_b"]
 
 
 def test_one_origin_two_companies_are_two_tenants(tenants):
@@ -1796,6 +1828,41 @@ def test_a_pick_made_on_another_company_is_refused_on_this_one(tmp_path):
     assert _restored(out) is None
     # And the panel says what the backend said instead: a new posting.
     assert _by_class(out["regions"]["identity"], "chip")[0]["text"] == "New"
+
+
+LINKEDIN_ORIGIN = "https://www.linkedin.com"
+LINKEDIN_JOB_A = f"{LINKEDIN_ORIGIN}/jobs/search/?currentJobId=4001&keywords=data"
+LINKEDIN_JOB_B = f"{LINKEDIN_ORIGIN}/jobs/search/?currentJobId=4002&keywords=data"
+LINKEDIN_VIEW_A = f"{LINKEDIN_ORIGIN}/jobs/view/4001/"
+
+
+def _linkedin_entry():
+    return entry(origin=LINKEDIN_ORIGIN, tenant=f"{LINKEDIN_ORIGIN}/jobs?job=4001")
+
+
+def test_a_pick_made_on_one_linkedin_job_is_refused_on_the_next(tmp_path):
+    """The 2026-09-01 report: LinkedIn's list is one path for every job, so
+    the pick made on job A was restored onto job B — same origin, same first
+    segment, and a backend that (before `posting_id`) called B's page an
+    exact match for A. Here the backend answers honestly (no match), which is
+    exactly when the memory used to be trusted; the tenant now carries the
+    posting id and refuses it."""
+    out = _load(tmp_path, tabs=[{"id": 7, "url": LINKEDIN_JOB_B}],
+                api={"linkedin": _reply({"match": "none", "job": None,
+                                         "application": None}), **_SESSION_API},
+                stored={"widget.session": _linkedin_entry()})
+    assert _restored(out) is None
+    assert _by_class(out["regions"]["identity"], "chip")[0]["text"] == "New"
+
+
+def test_a_linkedin_pick_survives_opening_the_jobs_permalink(tmp_path):
+    """…and the cost side, checked: the same job reached by its /jobs/view/
+    permalink is the same scope, so the pick is still there."""
+    out = _load(tmp_path, tabs=[{"id": 7, "url": LINKEDIN_VIEW_A}],
+                api={"linkedin": _reply({"match": "none", "job": None,
+                                         "application": None}), **_SESSION_API},
+                stored={"widget.session": _linkedin_entry()})
+    assert _restored(out) == "app-remembered"
 
 
 def test_a_tab_with_no_url_restores_nothing_and_does_not_die_trying(tmp_path):

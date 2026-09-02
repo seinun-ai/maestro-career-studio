@@ -33,7 +33,21 @@
   collapses to the pick; coverage matches free-text tags to free-text favored
   roles by casefolded label with an alias bridge. Insert sites: REST create
   (**422** on invalid or contradicting explicit values), duplicate (**inherits
-  the pair**), seeding (a slug that IS a category key). Human input is
+  the pair**), seeding (a slug that IS a category key), `POST /import` (one
+  uploaded file → the KB import's parse half, `extract_text` →
+  `kb_consolidation.parse_resume_text`, JSON validated as-is → the SAME create
+  pipeline; the user's `display_name`/`slug`/role win, else the file stem
+  names it and a free slug is derived; **writes nothing to the Career KB** —
+  that is `POST /api/kb/import`'s job — and returns `parse_warnings` for
+  salvaged rows; the "From file" tab of the New base resume dialog), and
+  `POST /from-kb`. **Instruction → proposal**: `POST /{slug}/propose`
+  (`services/base_resume_instruct`, prompt `base_resume_instruct`) turns a free
+  instruction into `{summary, notes, ops}` — ops validated against the op
+  schema AND dry-run with `apply_edits` before they reach the client, one
+  corrective retry, then 422; an ideas/question instruction answers in `notes`
+  with empty ops. Persists nothing; the editor's "Ask for changes" sheet applies
+  through `PATCH /edits` like every other surface, so it is disabled while the
+  form holds unsaved edits (the KB-import rule). Human input is
   VALIDATED, never `normalize()`d (its unrecognized→`other` is right for LLM
   extraction, wrong for a typo). Deliberately no required create field: the documented onboarding path
   drops JSON into `base_resumes/` and reaches `seeding.py` without touching the

@@ -7,6 +7,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
+import { Dropzone, type DropzoneRejection } from "@/components/setup/dropzone";
+
 import { useRoleCategories } from "@/components/role-category-picker";
 import {
   favoredRoleFromTag,
@@ -35,6 +37,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { apiFetch } from "@/lib/api";
 import { uniqueSlug } from "@/lib/slug";
+import { RESUME_FILE_ACCEPT } from "@/lib/upload-accept";
 import type {
   BaseResumeDetail,
   BaseResumeSummary,
@@ -73,7 +76,9 @@ type Plan = {
   summary: string;
 };
 
-type Mode = "kb" | "existing" | "blank";
+type Mode = "kb" | "existing" | "file" | "blank";
+
+const IMPORT_MAX_BYTES = 10 * 1024 * 1024;
 
 /**
  * One dialog for every way a base resume comes into existence.
@@ -107,7 +112,7 @@ export function NewBaseResumeDialog({
           <DialogTitle>New base resume</DialogTitle>
           <DialogDescription>
             Build it from your Career Knowledge Base, copy one you already have,
-            or start from an empty document.
+            parse a resume file, or start from an empty document.
           </DialogDescription>
         </DialogHeader>
         {/* Remount per open: field state resets by construction, with no
@@ -159,6 +164,12 @@ function NewBaseResumeForm({
   const [summary, setSummary] = useState("");
   const [plan, setPlan] = useState<Plan | null>(null);
   const [source, setSource] = useState("");
+  // The file lane: one resume file, parsed straight into a new base. Kept
+  // apart from the onboarding import (which also feeds the Career KB and names
+  // bases after their files) — here the user names the resume and the KB is
+  // left alone.
+  const [file, setFile] = useState<File | null>(null);
+  const [fileRejected, setFileRejected] = useState<DropzoneRejection[]>([]);
   const slugsTaken = existingResumes.map((r) => r.slug);
 
   // The coarse key a FavoredRole implies, for the two KB calls that need one.
@@ -203,6 +214,11 @@ function NewBaseResumeForm({
   const done = (created: BaseResumeDetail) => {
     qc.invalidateQueries({ queryKey: ["base-resumes"] });
     qc.invalidateQueries({ queryKey: ["setup-status"] });
+    if (created.parse_warnings && created.parse_warnings.length > 0) {
+      // The parser dropped rows it could not read rather than failing the
+      // file; the user should know what to look for in the editor.
+      toast.warning(`Imported with gaps: ${created.parse_warnings.join("; ")}`);
+    }
     onOpenChange(false);
     router.push(`/base-resumes/${created.slug}`);
   };
@@ -288,6 +304,25 @@ function NewBaseResumeForm({
         }),
       });
     }
+    if (mode === "file") {
+      if (!file) throw new Error("Choose a resume file first.");
+      const form = new FormData();
+      form.append("file", file);
+      // The server names the resume after the file when the name is blank and
+      // derives a free slug either way; a typed name also picks the slug the
+      // other lanes would.
+      if (display) {
+        form.append("display_name", display);
+        form.append("slug", uniqueSlug(display, slugsTaken));
+      }
+      const identity = identityFromFavoredRole(tag);
+      if (identity.role_category) form.append("role_category", identity.role_category);
+      if (identity.role_label) form.append("role_label", identity.role_label);
+      return apiFetch<BaseResumeDetail>("/api/base-resumes/import", {
+        method: "POST",
+        body: form,
+      });
+    }
     if (mode === "existing") {
       const created = await apiFetch<BaseResumeDetail>(
         `/api/base-resumes/${source}/duplicate`,
@@ -346,7 +381,9 @@ function NewBaseResumeForm({
       ? Boolean(tag) && selected.size > 0
       : mode === "existing"
         ? Boolean(source)
-        : Boolean(name.trim());
+        : mode === "file"
+          ? Boolean(file)
+          : Boolean(name.trim());
 
   const submit = () => create.mutate();
 
@@ -380,16 +417,19 @@ function NewBaseResumeForm({
           <TabsList>
             <TabsTrigger value="kb">From Career KB</TabsTrigger>
             <TabsTrigger value="existing">From existing</TabsTrigger>
+            <TabsTrigger value="file">From file</TabsTrigger>
             <TabsTrigger value="blank">Blank</TabsTrigger>
           </TabsList>
 
           <div className="grid gap-4 pt-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="grid gap-1.5">
-                <Label htmlFor="nbr_name">Name</Label>
+                <Label htmlFor="nbr_name" optional={mode === "file"}>
+                  Name
+                </Label>
                 <Input
                   id="nbr_name"
-                  placeholder="Machine Learning Engineer"
+                  placeholder={mode === "file" ? "Defaults to the file name" : "Machine Learning Engineer"}
                   value={name}
                   onChange={(e) => {
                     const next = e.target.value;
@@ -416,7 +456,7 @@ function NewBaseResumeForm({
                   />
                 </div>
               )}
-              {mode === "blank" && (
+              {(mode === "blank" || mode === "file") && (
                 <div className="grid gap-1.5">
                   <Label htmlFor="nbr_role">
                     Target role
@@ -610,6 +650,40 @@ function NewBaseResumeForm({
               )}
             </TabsContent>
 
+            <TabsContent value="file" className="grid gap-3">
+              <Dropzone
+                accept={RESUME_FILE_ACCEPT}
+                maxFiles={1}
+                maxBytes={IMPORT_MAX_BYTES}
+                disabled={busy}
+                hint="PDF, DOCX, Markdown, text, or the app’s own JSON · one file, up to 10 MB"
+                onFiles={(picked, rejected) => {
+                  setFile(picked[0] ?? null);
+                  setFileRejected(rejected);
+                }}
+              />
+              {file && (
+                <p className="text-sm">
+                  <span className="text-muted-foreground">Selected: </span>
+                  <span className="font-medium">{file.name}</span>
+                </p>
+              )}
+              {fileRejected.length > 0 && (
+                <ul className="space-y-1 text-xs">
+                  {fileRejected.map((r) => (
+                    <li key={r.file.name} className="text-muted-foreground truncate">
+                      <span className="font-medium">{r.file.name}</span>: {r.reason}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <p className="text-muted-foreground text-xs">
+                The file is parsed into this app’s resume structure and becomes a
+                new base resume you can edit. Your Career KB is not changed — use
+                the resume’s Sync to KB pill later if you want it there too.
+              </p>
+            </TabsContent>
+
             <TabsContent value="blank">
               <p className="text-muted-foreground text-sm">
                 An empty document you fill in yourself.
@@ -624,7 +698,7 @@ function NewBaseResumeForm({
           </Button>
           <Button onClick={submit} disabled={!canCreate || busy}>
             {busy ? <Loader2 className="animate-spin" /> : null}
-            Create
+            {busy && mode === "file" ? "Parsing…" : "Create"}
           </Button>
         </DialogFooter>
     </>

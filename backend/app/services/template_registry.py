@@ -94,21 +94,114 @@ def supported_fmt_keys(source: str, engine: str = "latex") -> list[str]:
         keys.update(_FMT_KEY_RE.findall(text))
     return sorted(keys)
 
-# Canonical starter for new drafts (create_draft with source=None). Kept small
-# on purpose: it demonstrates the custom delimiters + latex_escape and compiles
-# as-is, so a fresh draft validates before any editing.
+# Canonical starter for new drafts (create_draft with source=None). A COMPLETE
+# skeleton on purpose: it renders every core section, the contact line (email
+# included) and both custom-section shapes, so a fresh draft clears every
+# parse probe in template_validation and lands `ready` + certified. The first
+# version rendered name, summary and experience alone; the web "New template"
+# flow validates on create, so that draft failed the education/skills/email
+# probes and the gallery flagged it "ATS spacing" before the user had typed a
+# character — the from-scratch flow looked broken on its first screen. It also
+# stays free of `fmt.*` knobs (a starter opts into nothing; see
+# test_supported_fmt_keys_default_and_starter) and of packages outside the
+# image's TeX layer (backend/Dockerfile).
 STARTER_SOURCE = r"""\documentclass[11pt]{article}
-\usepackage[margin=1in]{geometry}
-\usepackage{hyperref}
+\usepackage[margin=0.75in]{geometry}
+\usepackage[hidelinks]{hyperref}
+\usepackage{enumitem}
+\setlist[itemize]{leftmargin=1.2em, itemsep=1pt, topsep=2pt, parsep=0pt}
+\setlength{\parindent}{0pt}
+\pagestyle{empty}
+% A section title with a rule under it. Edit freely. Triple-paren tags print a
+% resume field and paren-star tags are control flow; keep |latex_escape on
+% every user string so a stray ampersand or percent sign cannot break TeX.
+\newcommand{\sectiontitle}[1]{\par\vspace{8pt}{\large\bfseries #1}\par\vspace{1pt}\hrule\vspace{5pt}}
 \begin{document}
-\begin{center}{\Large\bfseries ((( resume.contact.name|latex_escape )))}\end{center}
-((* if resume.summary *))((( resume.summary|latex_escape )))((* endif *))
-\section*{Experience}
+((* macro bullets(items) *))((* if items *))
+\begin{itemize}
+((* for b in items *))
+\item ((( b|latex_escape )))
+((* endfor *))
+\end{itemize}
+((* else *))
+\par
+((* endif *))((* endmacro *))
+\begin{center}
+{\LARGE\bfseries ((( resume.contact.name|latex_escape )))}\\[3pt]
+\small ((( resume.contact.email|latex_escape )))((* if resume.contact.phone *)) ~$\cdot$~ ((( resume.contact.phone|latex_escape )))((* endif *))((* if resume.contact.location *)) ~$\cdot$~ ((( resume.contact.location|latex_escape )))((* endif *))
+((* if resume.contact.linkedin or resume.contact.github or resume.contact.website *))
+\\[1pt] \small
+((* if resume.contact.linkedin *))\href{https://((( resume.contact.linkedin|latex_escape_url )))}{((( resume.contact.linkedin|latex_escape )))}((* endif *))
+((* if resume.contact.github *)) ~$\cdot$~ \href{https://((( resume.contact.github|latex_escape_url )))}{((( resume.contact.github|latex_escape )))}((* endif *))
+((* if resume.contact.website *)) ~$\cdot$~ \href{https://((( resume.contact.website|latex_escape_url )))}{((( resume.contact.website|latex_escape )))}((* endif *))
+((* endif *))
+\end{center}
+((* if resume.summary *))
+\sectiontitle{Summary}
+((( resume.summary|latex_escape )))
+((* endif *))
+((* if resume.skills *))
+\sectiontitle{Skills}
+((* for group in resume.skills *))
+\textbf{((( group.category|latex_escape )))}: ((( group.items|map("latex_escape")|join(", ") )))((* if not loop.last *))\\((* endif *))
+((* endfor *))
+((* endif *))
+((* if resume.experience *))
+\sectiontitle{Experience}
 ((* for e in resume.experience *))
-\textbf{((( e.company|latex_escape )))} — ((( e.role|latex_escape )))\\
-((* for b in e.bullets *))$\bullet$ ((( b|latex_escape )))\\
+\textbf{((( e.role|latex_escape )))} $|$ ((( e.company|latex_escape )))((* if e.location *)), ((( e.location|latex_escape )))((* endif *))\hfill ((* if e.start_date *))((( e.start_date|latex_escape )))((* if e.end_date *)) -- ((( e.end_date|latex_escape )))((* endif *))((* elif e.end_date *))((( e.end_date|latex_escape )))((* endif *))
+((( bullets(e.bullets) )))
 ((* endfor *))
+((* endif *))
+((* if resume.projects *))
+\sectiontitle{Projects}
+((* for p in resume.projects *))
+\textbf{((( p.name|latex_escape )))}((* if p.tech *)) $|$ \emph{((( p.tech|latex_escape )))}((* endif *))\hfill ((( p.date|latex_escape if p.date else "" )))
+((( bullets(p.bullets) )))
 ((* endfor *))
+((* endif *))
+((* for section in resume.extra_sections *))
+((* if section.type == "entries" and section.entries *))
+\sectiontitle{((( section.title|latex_escape )))}
+((* for entry in section.entries *))
+\textbf{((( entry.heading|latex_escape )))}((* if entry.subheading *)) $|$ ((( entry.subheading|latex_escape )))((* endif *))((* if entry.location *)), ((( entry.location|latex_escape )))((* endif *))\hfill ((( entry.date|latex_escape if entry.date else "" )))
+((* if entry.link *))
+\begin{itemize}
+\item \href{((( entry.link|latex_escape_url )))}{((( entry.link|latex_escape )))}
+((* for b in entry.bullets *))
+\item ((( b|latex_escape )))
+((* endfor *))
+\end{itemize}
+((* else *))
+((( bullets(entry.bullets) )))
+((* endif *))
+((* endfor *))
+((* elif section.type == "bullets" and section.bullets *))
+\sectiontitle{((( section.title|latex_escape )))}
+((( bullets(section.bullets) )))
+((* endif *))
+((* endfor *))
+((* if resume.education *))
+\sectiontitle{Education}
+((* for edu in resume.education *))
+\textbf{((( edu.institution|latex_escape )))}((* if edu.location *)), ((( edu.location|latex_escape )))((* endif *))\hfill ((* if edu.start_date *))((( edu.start_date|latex_escape )))((* if edu.end_date *)) -- ((( edu.end_date|latex_escape )))((* endif *))((* elif edu.end_date *))((( edu.end_date|latex_escape )))((* elif edu.graduation_date *))((( edu.graduation_date|latex_escape )))((* endif *))\\
+((* if edu.degree *))((( edu.degree|latex_escape )))((* endif *))((* if edu.field and edu.field not in (edu.degree or "") *)), ((( edu.field|latex_escape )))((* endif *))((* if edu.gpa *)) ~$\cdot$~ ((( edu.gpa|latex_escape )))((* endif *))
+((* if edu.coursework *))
+\begin{itemize}
+\item Coursework: ((( edu.coursework|map("latex_escape")|join(", ") )))
+((* for b in edu.bullets *))
+\item ((( b|latex_escape )))
+((* endfor *))
+\end{itemize}
+((* else *))
+((( bullets(edu.bullets) )))
+((* endif *))
+((* endfor *))
+((* endif *))
+((* if resume.certifications *))
+\sectiontitle{Certifications}
+((( bullets(resume.certifications) )))
+((* endif *))
 \end{document}"""
 
 

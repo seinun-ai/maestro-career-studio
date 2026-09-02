@@ -463,6 +463,16 @@ export interface BaseResumeDetail extends BaseResumeSummary {
   pdf_pages: number | null;
   formatting: Record<string, unknown> | null;
   template_id: string | null;
+  /** POST /import only: rows the parser dropped rather than fail the file. */
+  parse_warnings?: string[] | null;
+}
+
+/** POST /api/base-resumes/{slug}/propose — a reviewed-before-applied proposal. */
+export interface BaseResumeProposal {
+  summary: string;
+  notes: string;
+  ops: Record<string, unknown>[];
+  ops_count: number;
 }
 
 // ---------------------------------------------------------------------------

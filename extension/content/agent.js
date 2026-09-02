@@ -11,6 +11,24 @@
 (() => {
   const ns = (window.careerStudioCompanion ??= {});
 
+  /** JSON-LD that names a DIFFERENT posting than the page's own url.
+   *
+   * A single-page job board rewrites the url and the visible pane when the
+   * user picks another job, but the `<head>` JSON-LD it shipped with is not
+   * re-rendered — so the walk above keeps returning the first job's title and
+   * description under the second job's url, and "Add job" would file A's text
+   * as B. Only decidable when BOTH sides carry a posting id
+   * (`decisions.postingId`); a JSON-LD block without a `url`, or a board whose
+   * ids live nowhere we know, is trusted as before. */
+  function postingIsForAnotherJob(posting) {
+    const postingId = ns.decisions?.postingId;
+    if (typeof postingId !== "function" || typeof posting.url !== "string") return false;
+    const declared = postingId(posting.url);
+    const here = postingId(location.href);
+    return Boolean(declared && here
+      && (declared.host !== here.host || declared.id !== here.id));
+  }
+
   /** Prefer a described schema.org JobPosting; otherwise use visible content. */
   function extractJobPosting() {
     const stripHtml = (html) => {
@@ -20,7 +38,7 @@
     };
 
     const posting = ns.findJobPostingInDocument({ presenceOnly: false });
-    if (posting) {
+    if (posting && !postingIsForAnotherJob(posting)) {
       const org = posting.hiringOrganization;
       const company = typeof org === "string" ? org : org?.name;
       const parts = [];

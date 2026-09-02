@@ -15,8 +15,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { DOCUMENT_ACCEPT } from "@/lib/upload-accept";
 
-const DOC_ACCEPT = ".pdf,.docx,.md,.txt,.tex,.png,.jpg,.jpeg,.webp";
+const DOC_ACCEPT = DOCUMENT_ACCEPT;
 const DOC_MAX_FILES = 10;
 /** The backend's own cap (career_kb.ingest_document_first). */
 const DOC_MAX_BYTES = 10 * 1024 * 1024;
