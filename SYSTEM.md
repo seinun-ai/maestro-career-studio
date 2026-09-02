@@ -691,7 +691,8 @@ the copy rules, each with the failure mode that bought it. Code citing "§8" lan
   a `(YYYY-MM-DD` date in §1–§10 or any reference-tier file; a shipped item left in
   §11; a section over its line budget; and any §6 invariant whose enforcement pin in
   `.system_md_enforcement.json` has lost its file or symbol — the "docs promise what
-  the code no longer does" class.
+  the code no longer does" class. It WARNS at 90% of the cap, naming the extraction
+  candidate (largest reference-shaped section), and on any §11 item without a `do when` trigger.
   Re-baselining requires `--update-baselines --reason "<text>"`, recorded in
   `.slopledger.json`. It anchors the repo root on the script's own parent
   directory, deliberately: a walk-up search finds the MAIN checkout's copy from
