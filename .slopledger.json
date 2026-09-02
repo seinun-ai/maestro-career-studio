@@ -76,9 +76,9 @@
     }
   ],
   "system_md_baselines": {
-    "total": 1000,
+    "total": 991,
     "sections": {
-      "(preamble)": 59,
+      "(preamble)": 45,
       "1. What this is": 9,
       "2. Repo layout": 36,
       "3. Architecture at a glance": 19,
@@ -87,12 +87,12 @@
       "6. Cross-cutting invariants (do not break these)": 208,
       "7. Agent surfaces": 207,
       "8. Frontend conventions": 8,
-      "9. Dev & test environment": 107,
+      "9. Dev & test environment": 108,
       "10. Design-decision record": 22,
-      "11. Known deferred items (priority order)": 87,
-      "12. Gotchas that have bitten before": 69,
+      "11. Known deferred items (ledger \u2014 trigger-required)": 91,
+      "12. Gotchas that have bitten before (ledger \u2014 evict when the cause becomes enforced)": 69,
       "13. Active migrations & deprecation ledger": 73
     },
-    "reason": "\u00a712 grew by three dated gotchas from the 2026-09-01 fix batch (LinkedIn posting identity, starter template gate, upload accept lists); older entries reflowed, nothing dropped; \u00a77's sender-model paragraph extracted to extension/README.md"
+    "reason": "contract v4 upgrade (2026-09-02): header condensed 43\u219229 lines with rationale moved to docs/system-md-contract.md; \u00a711/\u00a712 headings renamed to carry their ledger lifecycle rules; \u00a79 gate description gained the warn threshold and trigger check; no fact lines changed"
   }
 }

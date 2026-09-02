@@ -1,26 +1,24 @@
 #!/usr/bin/env python3
-"""Machine gate for SYSTEM.md — enforces the header contract.
+"""check_system_md.py — hygiene gate for SYSTEM.md. Generated from the
+bootstrap-system-md skill's gate template (contract v4) and adapted to this
+repo; adjust CONFIG. Rationale for the generic rules AND for every
+repo-specific choice below: docs/system-md-contract.md.
 
-Generated from the `bootstrap-system-md` skill's gate template, adapted to this
-repo. What it defends, in the order the failures actually happen:
+LEVEL controls which checks run; this repo is "large":
+  small : length (WARN at 90% of the cap, naming the extraction candidate;
+          FAIL at 100%), accretion detector (a `(YYYY-MM-DD` date outside
+          the ledgers), SHIPPED/DONE markers in the deferred ledger, deferred
+          items missing a "do when" trigger (WARN — graveyard entries)
+  medium: + per-section budgets (FAIL), baselines sidecar
+  large : + enforcement-point verification (.system_md_enforcement.json:
+          every pinned invariant must still have its file and symbol, and
+          every pin must still name an invariant in the doc), the reference
+          tier under the same accretion check, and --update-baselines
+          requires --reason
 
-  * ACCRETION — the contract works too well and agents honour it by appending
-    dated paragraphs instead of rewriting descriptions. Caught by grepping for
-    `(YYYY-MM-DD` outside the ledgers, and by the size cap.
-  * SPRAWL — one section swallows the file. Caught by a per-section budget.
-  * STALENESS — the doc keeps promising behaviour the code dropped. Caught by
-    the enforcement map: every §6 invariant names a file and a symbol that must
-    still exist.
-  * LEDGER ROT — shipped work left in the deferred ledger. Caught by grepping
-    §11 for SHIPPED/DONE.
+FAIL is exit 1. Stdlib only. Run from anywhere inside the repo:
 
-FAIL (exit 1) on any of the above. Re-baselining requires `--update-baselines
---reason "<text>"`; a cap or budget moved without an auditable reason is the
-doc-shaped version of re-baselining past a regression.
-
-Stdlib only. Run from anywhere inside the repo:
-
-    python3 scripts/check_system_md.py [--update-baselines --reason "..."]
+    python3 scripts/check_system_md.py [--update-baselines --reason "<text>"]
 """
 
 from __future__ import annotations
@@ -31,6 +29,8 @@ import sys
 from pathlib import Path
 
 # ---- CONFIG ----------------------------------------------------------------
+LEVEL = "large"                  # "small" | "medium" | "large"
+
 # The repo root is the parent of this script's directory. It is NOT discovered
 # by walking up looking for SYSTEM.md: this repo is worked in git worktrees
 # under `.claude/worktrees/`, and a walk-up finds the MAIN checkout's copy and
@@ -44,25 +44,26 @@ ENFORCEMENT_MAP = ROOT / ".system_md_enforcement.json"
 REFERENCE_GLOBS = ("docs/entities/*.md", "docs/frontend-conventions.md")
 
 CAP_LINES = 1000                 # ~15% above the post-extraction size
+WARN_AT = 0.90                   # plan an extraction here, not under fail pressure
 
-# Budget is a share of THE CAP, not of the current total. A share-of-total
-# budget tightens every remaining section the moment you extract one — the
-# extraction the contract prescribes makes the file smaller, so every survivor's
-# share rises and sections that never grew start failing. Measured here: after
-# moving §4 and §8 to the reference tier, §6 went from 10% to 20% without a line
-# being added. Same trap as gating a duplication percentage instead of absolute
-# duplicated lines. Against the cap the number means "lines", and it is stable.
+# Budget is a share of THE CAP, not of the current total (share-of-total
+# tightens every survivor the moment one section is extracted — see the
+# rationale doc). 0.25 rather than the template's 0.15 because this orientation
+# tier carries two irreducibly large sections (§6 invariants, §7 agent
+# surfaces) and the contract forbids splitting orientation content.
 SECTION_BUDGET = 0.25            # 250 lines at the current cap
-BUDGET_NOTE = (
-    "0.25 rather than the template's 0.15 because this repo's orientation tier "
-    "carries two irreducibly large sections (§6 invariants, §7 agent surfaces) "
-    "and the contract forbids splitting orientation content. Recorded, not "
-    "silently widened."
-)
 
+# Sections that are reference-shaped: the largest of these is the extraction
+# candidate the length warning names.
+REFERENCE_HEADINGS = ("entities", "agent surfaces", "conventions")
 LEDGER_HEADINGS = ("deferred", "gotchas", "migrations & deprecation")
+
 DATE_RX = re.compile(r"\(20\d\d-\d\d-\d\d")
+# Uppercase only, deliberately: §11 items legitimately say "shipped as X" in
+# lowercase when describing a partial landing; the marker form is the ledger rot.
 SHIPPED_RX = re.compile(r"\b(SHIPPED|DONE)\b")
+TRIGGER_RX = re.compile(r"\bdo when\b", re.I)
+ITEM_RX = re.compile(r"^\s*\d+\.\s")
 INV_ID_RX = re.compile(r"\{#(inv-[a-z0-9-]+)\}")
 # -----------------------------------------------------------------------------
 
@@ -77,16 +78,40 @@ def sections(lines: list[str]) -> list[tuple[str, int, int]]:
     return out
 
 
-def is_ledger(name: str) -> bool:
-    return any(k in name.lower() for k in LEDGER_HEADINGS)
+def has(name: str, keys: tuple[str, ...]) -> bool:
+    return any(k in name.lower() for k in keys)
 
 
 def check_accretion(name: str, body: list[str], offset: int, where: str) -> list[str]:
-    if is_ledger(name):
+    if has(name, LEDGER_HEADINGS):
         return []
     return [f"date in descriptive section '{name}' ({where} line {j}): integrate, "
             f"don't append — history lives in git log"
             for j, ln in enumerate(body, offset + 1) if DATE_RX.search(ln)]
+
+
+def check_deferred(body: list[str], offset: int) -> tuple[list[str], list[str]]:
+    """Shipped markers FAIL; a numbered item with no 'do when' trigger WARNS.
+    An item is its numbered line plus continuation lines up to the next item
+    or blank line, so a trigger on a wrapped line still counts."""
+    errs = [f"shipped item still in the deferred ledger (line {j}): delete it, "
+            f"git remembers" for j, ln in enumerate(body, offset + 1)
+            if SHIPPED_RX.search(ln)]
+    warns: list[str] = []
+    item_start, item_text = None, []
+    def flush():
+        if item_start is not None and not TRIGGER_RX.search(" ".join(item_text)):
+            warns.append(f"deferred item at line {item_start} has no 'do when' trigger "
+                         f"— graveyard entry; add a trigger or delete it")
+    for j, ln in enumerate(body, offset + 1):
+        if ITEM_RX.match(ln):
+            flush(); item_start, item_text = j, [ln]
+        elif item_start is not None and ln.strip():
+            item_text.append(ln)
+        else:
+            flush(); item_start, item_text = None, []
+    flush()
+    return errs, warns
 
 
 def check_enforcement() -> list[str]:
@@ -128,8 +153,8 @@ def load_baselines() -> dict:
     return json.loads(LEDGER.read_text()).get("system_md_baselines", {})
 
 
-def save_baselines(counts: dict, total: int, reason: str) -> None:
-    data = json.loads(LEDGER.read_text())
+def save_baselines(counts: dict, total: int, reason: str | None) -> None:
+    data = json.loads(LEDGER.read_text()) if LEDGER.exists() else {}
     data["system_md_baselines"] = {"total": total, "sections": counts, "reason": reason}
     LEDGER.write_text(json.dumps(data, indent=2) + "\n")
 
@@ -143,36 +168,43 @@ def main() -> int:
     errs: list[str] = []
     warns: list[str] = []
 
+    # Length: two thresholds. The warning names where the next extraction goes.
+    biggest_ref = max(((n, c) for n, c in counts.items() if has(n, REFERENCE_HEADINGS)),
+                      key=lambda t: t[1], default=None)
+    hint = (f" — extraction candidate: '{biggest_ref[0]}' ({biggest_ref[1]} lines) "
+            f"→ docs/ with an index left behind") if biggest_ref else ""
     if total > CAP_LINES:
-        errs.append(f"SYSTEM.md is {total} lines (> {CAP_LINES}). Groom before feature "
-                    f"work. The cap may be raised only immediately after a grooming "
-                    f"pass that failed to get under it — prove incompressibility "
-                    f"before buying budget.")
+        errs.append(f"SYSTEM.md is {total} lines (> {CAP_LINES}). Groom or extract before "
+                    f"feature work; raise the cap only after that fails, with "
+                    f"--reason — prove incompressibility before buying budget{hint}")
+    elif total > CAP_LINES * WARN_AT:
+        warns.append(f"SYSTEM.md is {total}/{CAP_LINES} lines ({total/CAP_LINES:.0%}) — "
+                     f"plan an extraction now, not under fail pressure{hint}")
 
     for name, a, b in secs:
         body = lines[a:b]
         errs += check_accretion(name, body, a, "SYSTEM.md")
         if "deferred" in name.lower():
-            errs += [f"shipped item still in the deferred ledger (line {j}): delete it, "
-                     f"git remembers" for j, ln in enumerate(body, a + 1)
-                     if SHIPPED_RX.search(ln)]
+            e, w = check_deferred(body, a)
+            errs += e; warns += w
 
-    budget_lines = int(CAP_LINES * SECTION_BUDGET)
-    for name, n in counts.items():
-        if is_ledger(name) or name == "(preamble)":
-            continue
-        if n > budget_lines:
-            errs.append(f"'{name}' is {n} lines (> {budget_lines} budget). Groom it, or "
-                        f"extract it to the reference tier under docs/ and leave an "
-                        f"index — never split the orientation tier.")
+    if LEVEL in ("medium", "large"):
+        budget_lines = int(CAP_LINES * SECTION_BUDGET)
+        for name, n in counts.items():
+            if has(name, LEDGER_HEADINGS) or name == "(preamble)":
+                continue
+            if n > budget_lines:
+                errs.append(f"'{name}' is {n} lines (> {budget_lines} budget). Groom it, "
+                            f"or extract it to the reference tier under docs/ and leave "
+                            f"an index — never split the orientation tier.")
 
-    # The reference tier carries the same contract as the root file.
-    for pattern in REFERENCE_GLOBS:
-        for f in sorted(ROOT.glob(pattern)):
-            rlines = f.read_text(encoding="utf-8").splitlines()
-            errs += check_accretion(f.name, rlines, 0, f.relative_to(ROOT).as_posix())
-
-    errs += check_enforcement()
+    if LEVEL == "large":
+        # The reference tier carries the same contract as the root file.
+        for pattern in REFERENCE_GLOBS:
+            for f in sorted(ROOT.glob(pattern)):
+                rlines = f.read_text(encoding="utf-8").splitlines()
+                errs += check_accretion(f.name, rlines, 0, f.relative_to(ROOT).as_posix())
+        errs += check_enforcement()
 
     base = load_baselines()
     if base.get("sections"):
@@ -183,11 +215,11 @@ def main() -> int:
                              f"Integrate, don't append — or re-baseline with a reason.")
 
     if "--update-baselines" in argv:
-        if "--reason" not in argv:
+        reason = argv[argv.index("--reason") + 1] if "--reason" in argv else None
+        if LEVEL == "large" and not reason:
             print('FAIL: re-baselining requires --reason "<text>" — every movement of '
                   'a baseline needs an auditable justification', file=sys.stderr)
             return 1
-        reason = argv[argv.index("--reason") + 1]
         save_baselines(counts, total, reason)
         print(f"baselines updated in {LEDGER.name} (reason: {reason})")
         return 0
@@ -197,14 +229,14 @@ def main() -> int:
     for e in errs:
         print(f"FAIL: {e}")
     if errs:
-        print("\nSYSTEM.md header contract: integrate don't append; ledgers must "
-              "shrink; caps are earned.", file=sys.stderr)
+        print("\nSYSTEM.md header contract: integrate don't append; ledgers shrink; "
+              "caps are earned.", file=sys.stderr)
         return 1
 
-    ref = sum(len(( ROOT / f).read_text(encoding="utf-8").splitlines())
+    ref = sum(len(f.read_text(encoding="utf-8").splitlines())
               for pattern in REFERENCE_GLOBS for f in sorted(ROOT.glob(pattern)))
-    print(f"check_system_md: OK — {total}/{CAP_LINES} lines in the orientation tier, "
-          f"{ref} more in the reference tier, {len(secs) - 1} sections, "
+    print(f"check_system_md: OK ({LEVEL}) — {total}/{CAP_LINES} lines in the orientation "
+          f"tier, {ref} more in the reference tier, {len(secs) - 1} sections, "
           f"{len(warns)} warning(s)")
     return 0
 
