@@ -2,7 +2,7 @@ import hashlib
 import json
 import logging
 from collections import defaultdict
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, time
 from decimal import Decimal
 from typing import Annotated, Any, Literal
 from uuid import UUID
@@ -392,7 +392,9 @@ def export_jobs(
     if level:
         stmt = stmt.where(Job.level == level)
     if since:
-        stmt = stmt.where(Job.created_at >= since)
+        # created_at is UTCDateTime, which refuses a bare date at bind time.
+        # Bind the instant Postgres used to imply for a date: midnight UTC.
+        stmt = stmt.where(Job.created_at >= datetime.combine(since, time.min, tzinfo=UTC))
     if skill:
         stmt = stmt.where(
             Job.id.in_(
