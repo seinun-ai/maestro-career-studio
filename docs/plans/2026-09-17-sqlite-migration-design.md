@@ -169,10 +169,24 @@ name search.
 - `GET /api/version` keeps reporting the live alembic revision; the
   frontend's version-mismatch warning needs no change.
 
-### 2.6 The exporter and the backup
+### 2.6 The importer and the backup
 
+**Where it runs: inside the backend, at the first boot of release N.** An
+install on release N-1 runs N-1's `update.sh`, which cannot contain a step
+added in N, and a user who updates by hand (`docker compose pull && up -d`)
+never runs the script at all. So `seeding.run_startup()` calls
+`import_if_needed()` right after `alembic upgrade head` and before any seed:
+if `LEGACY_DATABASE_URL` is set (compose sets it for this one release), the
+target file holds no user data, and the source holds some, the import runs
+in one target transaction and writes `data/.migrated-from-postgres.json` on
+success. An unreachable source is retried at the next boot; a verification
+mismatch rolls back and is logged loudly; a target that already has data is
+left alone. `update.sh`'s job shrinks to the pre-update backup and the
+"remove the old volume" advice.
+
+The same code is the command line tool
 `python -m app.tools.migrate_from_postgres --source <url> --target <path>`
-lives in `app/tools/` (importable, unit-tested) and does, in order:
+(in `app/tools/`, importable, unit-tested), which does, in order:
 
 1. Run the legacy chain to head against the source (a user may skip
    releases; `update.sh` moves to the newest tag). Refuse if the source
@@ -268,9 +282,10 @@ because recency scoring compares stored dates to "today".
   previous release still runs (`docs/RELEASING.md` rollback recipe).
 - Interrupted mid-copy: the target is incomplete and non-empty; rerunning
   requires `--replace`, which is what `update.sh` passes on a retry.
-- Fresh install (never had Postgres): no exporter runs; boot creates the
-  file. `update.sh` decides by "SQLite file absent AND a `pgdata` volume
-  exists", not by version arithmetic.
+- Fresh install (never had Postgres): the source has no `alembic_version`
+  table, so the import records "source-empty" in the marker and boot
+  creates the file. Every decision keys off the marker file and the
+  target's emptiness, never off version arithmetic.
 
 ## 4. Rollout
 
@@ -278,13 +293,12 @@ Two releases. Removal triggers are stated so this can become a §13 row.
 
 **Release N** (`postgres-to-sqlite`, status `new-is-default`):
 - SQLite is the only runtime database. Compose keeps the `postgres`
-  service under `profiles: ["legacy-postgres"]` so it does not start by
-  default; `backend` no longer `depends_on` it.
-- `update.sh`, after its backup and after moving images to the tag:
-  if `data/maestro_cs.sqlite3` is absent and a `pgdata` volume exists,
-  start Postgres with the legacy profile, run the exporter through
-  `compose run --rm backend`, stop Postgres, then `up -d`. Print where the
-  old volume is and how to remove it once satisfied.
+  service for this one release, still `depends_on` by `backend`, and passes
+  `LEGACY_DATABASE_URL` so the first boot can import (§2.6). A fresh install
+  pulls the Postgres image one last time and imports nothing.
+- `update.sh` takes a `pg_dump` while no import marker exists, an online
+  SQLite backup afterwards, and prints where the old volume is and how to
+  remove it once satisfied. `--check` reports which database is live.
 - `.env.example` keeps `POSTGRES_*` and `POSTGRES_HOST_PORT` for this one
   release, marked legacy. New keys: none. `DATA_DIR` is container-absolute
   and needs no `.env` entry.
