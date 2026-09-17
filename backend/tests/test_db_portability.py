@@ -16,8 +16,9 @@ from app.models.types import UTCDateTime
 
 APP = Path(__file__).resolve().parents[1] / "app"
 TYPES_MODULE = APP / "models" / "types.py"
+INIT_MODULE = APP / "models" / "__init__.py"
 DIALECT_IMPORT = re.compile(r"^\s*(from|import)\s+sqlalchemy\.dialects", re.M)
-POSTGRES_ONLY_DDL = re.compile(r"::jsonb|postgresql_where|postgresql_using|postgresql_ops")
+POSTGRES_ONLY_DDL = re.compile(r"::jsonb|postgresql_[a-z_]+")
 
 
 def test_no_dialect_imports_outside_types_module():
@@ -36,6 +37,20 @@ def test_no_postgres_only_ddl_in_models():
         if POSTGRES_ONLY_DDL.search(p.read_text(encoding="utf-8"))
     )
     assert offenders == []
+
+
+def test_every_model_module_is_registered():
+    # Base.metadata only knows a table once its module is imported. A model
+    # left out of app/models/__init__.py is invisible to alembic and to the
+    # test below (sorted_tables raises on a foreign key to an absent table).
+    registry = INIT_MODULE.read_text(encoding="utf-8")
+    missing = sorted(
+        p.stem
+        for p in (APP / "models").glob("*.py")
+        if p.stem not in {"__init__", "types"}
+        and f"from app.models.{p.stem} import" not in registry
+    )
+    assert missing == []
 
 
 def test_every_datetime_column_is_utcdatetime():

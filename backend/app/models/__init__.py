@@ -13,6 +13,7 @@ from app.models.health_gate_waiver import HealthGateWaiver
 from app.models.job import Job
 from app.models.job_skill import JobSkill
 from app.models.qa_entry import QAEntry
+from app.models.referral import Referral
 from app.models.resume_lint_report import ResumeLintReport
 from app.models.resume_version import ResumeVersion
 from app.models.setting import Setting
@@ -41,6 +42,7 @@ __all__ = [
     "KBPortLog",
     "KBProfile",
     "QAEntry",
+    "Referral",
     "ResumeLintReport",
     "ResumeVersion",
     "Setting",

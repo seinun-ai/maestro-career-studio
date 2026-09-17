@@ -1,6 +1,6 @@
 """app.models.types: the one place a column type is chosen."""
 import uuid
-from datetime import UTC, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta, timezone
 
 import pytest
 import sqlalchemy as sa
@@ -47,6 +47,14 @@ def test_naive_datetime_is_refused(session):
         session.commit()
 
 
+def test_non_datetime_is_refused(session):
+    # date is not a datetime subclass; without the guard it would reach the
+    # tzinfo check and fail with an unrelated AttributeError.
+    session.add(_Row(id=5, at=date(2026, 1, 1)))
+    with pytest.raises(sa.exc.StatementError, match="expects datetime"):
+        session.commit()
+
+
 def test_server_default_reads_back_aware(session):
     session.add(_Row(id=3))
     session.commit()
@@ -64,14 +72,6 @@ def test_json_and_uuid_round_trip(session):
     row = session.get(_Row, 4)
     assert row.doc == {"b": [1, 2], "a": None}
     assert row.ref == ref and isinstance(row.ref, uuid.UUID)
-
-
-def test_compare_type_unwraps_decorators():
-    from sqlalchemy.dialects import sqlite
-
-    from app.models.types import compare_type_unwrapping_decorators
-
-    same = compare_type_unwrapping_decorators(None, None, None, sqlite.DATETIME(), UTCDateTime())
-    other = compare_type_unwrapping_decorators(None, None, None, sa.Text(), UTCDateTime())
-    passthrough = compare_type_unwrapping_decorators(None, None, None, sa.Text(), sa.Text())
-    assert same is False and other is True and passthrough is None
+    # The on-disk shape the design relies on: CHAR(32) hex text, not a blob.
+    on_disk = session.execute(sa.text("select ref, typeof(ref) from rows where id = 4")).one()
+    assert on_disk == (ref.hex, "text")

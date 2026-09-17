@@ -5,7 +5,7 @@ happened in one file, and so nothing under app/ ever imports a dialect again.
 """
 from __future__ import annotations
 
-from datetime import UTC
+from datetime import UTC, datetime
 
 import sqlalchemy as sa
 from sqlalchemy.types import TypeDecorator
@@ -36,6 +36,8 @@ class UTCDateTime(TypeDecorator):
     def process_bind_param(self, value, dialect):
         if value is None:
             return None
+        if not isinstance(value, datetime):
+            raise TypeError(f"UTCDateTime expects datetime, got {type(value).__name__}")
         if value.tzinfo is None:
             raise ValueError(
                 "naive datetime bound to a UTCDateTime column; use datetime.now(UTC)"
@@ -48,15 +50,3 @@ class UTCDateTime(TypeDecorator):
         if value.tzinfo is None:
             return value.replace(tzinfo=UTC)
         return value.astimezone(UTC)
-
-
-def compare_type_unwrapping_decorators(
-    context, inspected_column, metadata_column, inspected_type, metadata_type
-):
-    """Alembic `compare_type` hook. Alembic compares a TypeDecorator by its
-    class name and would report every UTCDateTime as a change against the
-    DATETIME it created. Compare by the decorator's impl instead; defer to
-    Alembic for everything else (None)."""
-    if isinstance(metadata_type, TypeDecorator):
-        return not isinstance(inspected_type, type(metadata_type.impl))
-    return None
