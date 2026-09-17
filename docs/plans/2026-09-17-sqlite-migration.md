@@ -682,6 +682,8 @@ ruff check . && git add app/db.py tests/test_db.py && git commit -m "feat(db): m
 
 ### Task 6: Box the Postgres chain; generate the SQLite baseline
 
+> **Amended after Task 5 review (2026-09-17):** `migrations/env.py` calls `app.db.prepare_sqlite_file(DATABASE_URL)` before building its plain engine, because first boot creates the database file through alembic, not through `make_engine`, and the 0600 guarantee lives in that helper. Add a test in Task 7 (`tests/test_db.py` or the parity test) that a fresh file created by `alembic upgrade head` has mode 0600 on posix.
+
 **Files:**
 - Move: `backend/migrations/` → `backend/legacy_postgres/migrations/` (git mv; includes `versions/`, `env.py`, `script.py.mako`, `README`, `prompt_defaults.lock.json`)
 - Create: `backend/legacy_postgres/alembic.ini` (copy of `backend/alembic.ini`)
@@ -740,7 +742,7 @@ from alembic import context
 from sqlalchemy import create_engine, pool
 
 from app.config import settings
-from app.db import Base
+from app.db import Base, prepare_sqlite_file
 from app.models import *  # noqa: F403  registers models for autogenerate
 
 config = context.config
@@ -779,7 +781,10 @@ def run_migrations_offline() -> None:
 def run_migrations_online() -> None:
     # A plain engine, NOT app.db.make_engine: SQLite's documented ALTER TABLE
     # recipe (which batch mode implements) must run with foreign_keys OFF, and
-    # make_engine turns it ON for every connection.
+    # make_engine turns it ON for every connection. The file still has to be
+    # created 0600 (first boot creates it HERE, via `alembic upgrade head`),
+    # so prepare it the way make_engine would before this engine touches it.
+    prepare_sqlite_file(DATABASE_URL)
     connectable = create_engine(DATABASE_URL, future=True, poolclass=pool.NullPool)
     with connectable.connect() as connection:
         context.configure(
@@ -2449,6 +2454,10 @@ Append-only. One line per deviation: task, what the plan said, what was found, w
 | 5 | docstring: "SQLite forgets all four when a connection closes" | `journal_mode` persists in the file; the other three are per-connection | docstring corrected; all four still set on every connection so a `DELETE` override wins | — |
 | 5 | run this task's tests with conftest | the Postgres-era conftest cannot host a sqlite URL (its fixture runs `CREATE DATABASE`) and its bare `postgresql://` default only imports here because anaconda carries an undeclared psycopg2 | Tasks 5–6 run their named tests with `--noconftest` and an explicit sqlite `TEST_DATABASE_URL`; Task 7 retires the fixture | — |
 | 5 | "`tests/test_model_types.py` does not import app.db" | it does, through `app.models.__init__` → `application.py` → `app.db` | plan note corrected here; no code change | — |
+| 5 | `synchronous=NORMAL` always | design §3.3 accepts NORMAL under WAL only; DELETE is the escape hatch for distrusted filesystems | `FULL` under DELETE | no data loss |
+| 5 | private `_prepare_sqlite_file`, called only by `make_engine` | first boot creates the file through alembic's plain engine (0644); restored archives are 0644 | public `prepare_sqlite_file(url_or_path)`, `O_EXCL` create, tightens a wider existing file to 0600 with a warning; Task 6's `env.py` calls it | security boundary |
+| 5 | docstring: a DELETE override "takes effect" | SQLite refuses a journal-mode switch while another connection holds the file: opaque `database is locked`, busy timeout not consulted | the pragma's result is verified and the failure re-raised with the path and the fix | correctness |
+| 5 | `DB_FILENAME` in `db.py` | unused there; `config.py` hardcodes the same name and cannot import `db` (cycle) | constant lives in `config.py`, used by `_derive_database_url`, imported by `db.py` | do not fix unrelated things (our own) |
 | 7 | — | suite baseline on SQLite before fixes: `N failed, M passed` | — | — |
 
 **LLM-call audit (Task 10):**
