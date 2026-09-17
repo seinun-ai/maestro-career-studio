@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from pydantic import AliasChoices, BaseModel, Field, field_validator
+from pydantic import AliasChoices, AwareDatetime, BaseModel, Field, field_validator
 
 from app.schemas.job import JobRead
 from app.schemas.resume_edit import ResumeEdit
@@ -32,7 +32,9 @@ class ApplicationFromBase(BaseModel):
 class ApplicationPatch(BaseModel):
     customized_json: Any = None
     status: str | None = None
-    applied_at: datetime | None = None
+    # AwareDatetime, not datetime: the column is UTCDateTime, which refuses a
+    # naive value at flush (a 500). Refusing it here makes it a 422 instead.
+    applied_at: AwareDatetime | None = None
     notes: str | None = None
     referral_id: UUID | None = None
     formatting: dict[str, Any] | None = None

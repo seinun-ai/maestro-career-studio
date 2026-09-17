@@ -1,7 +1,8 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, Float, Text, func
+from sqlalchemy import Float, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
+from app.models.types import UTCDateTime
 
 from app.db import Base
 
@@ -22,5 +23,5 @@ class BulletClassification(Base):
     override_reason: Mapped[str | None] = mapped_column(Text)
     model: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
+        UTCDateTime(), server_default=func.now()
     )

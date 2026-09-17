@@ -1,8 +1,8 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, Integer, Text, func
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import Integer, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
+from app.models.types import JSONDoc, UTCDateTime
 
 from app.db import Base
 
@@ -30,24 +30,24 @@ class BaseResume(Base):
     # `other` as "a real role that matches no category"), `unknown` only for
     # never-tagged. See the round-2 design doc for the four-state table.
     role_label: Mapped[str | None] = mapped_column(Text, nullable=True)
-    data_json: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    data_json: Mapped[dict] = mapped_column(JSONDoc, nullable=False)
     pdf_path: Mapped[str | None] = mapped_column(Text)
     tex_path: Mapped[str | None] = mapped_column(Text)
-    pdf_rendered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    formatting_json: Mapped[dict | None] = mapped_column(JSONB)
+    pdf_rendered_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    formatting_json: Mapped[dict | None] = mapped_column(JSONDoc)
     template_id: Mapped[str | None] = mapped_column(Text)
     pdf_pages: Mapped[int | None] = mapped_column(Integer)
     render_error: Mapped[str | None] = mapped_column(Text)
-    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    deleted_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     # Hidden from every PICK surface but fully resolvable: archiving a stale
     # career track must never break its editor, its version history, or an
     # application that already references it. See
     # services/base_resume_data.active_ vs selectable_base_resume_slugs.
-    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    last_kb_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    archived_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    last_kb_synced_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
+        UTCDateTime(), server_default=func.now(), nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+        UTCDateTime(), server_default=func.now(), onupdate=func.now(), nullable=False
     )

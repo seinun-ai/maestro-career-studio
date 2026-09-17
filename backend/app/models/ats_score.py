@@ -1,9 +1,9 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, Numeric, Text, func, text
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy import ForeignKey, Index, Numeric, Text, func, text
 from sqlalchemy.orm import Mapped, mapped_column
+from app.models.types import JSONDoc, UTCDateTime, UUIDType
 
 from app.db import Base
 
@@ -19,28 +19,28 @@ class AtsScore(Base):
             "uq_ats_scores_base_target",
             "job_id", "target_type", "target_id",
             unique=True,
-            postgresql_where=text("phase = 'base'"),
+            sqlite_where=text("phase = 'base'"),
         ),
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id: Mapped[uuid.UUID] = mapped_column(UUIDType(as_uuid=True), primary_key=True, default=uuid.uuid4)
     job_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("jobs.id", ondelete="CASCADE"), nullable=False
+        UUIDType(as_uuid=True), ForeignKey("jobs.id", ondelete="CASCADE"), nullable=False
     )
     target_type: Mapped[str] = mapped_column(Text, nullable=False)  # base_resume | application
     target_id: Mapped[str] = mapped_column(Text, nullable=False)    # slug or application uuid str
     application_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("applications.id", ondelete="CASCADE"), nullable=True
+        UUIDType(as_uuid=True), ForeignKey("applications.id", ondelete="CASCADE"), nullable=True
     )
     phase: Mapped[str] = mapped_column(Text, nullable=False)        # base | tailored
     composite: Mapped[float] = mapped_column(Numeric(5, 1), nullable=False)
-    subscores_json: Mapped[dict] = mapped_column(JSONB, nullable=False)
-    skill_table_json: Mapped[list] = mapped_column(JSONB, nullable=False)
-    gaps_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    subscores_json: Mapped[dict] = mapped_column(JSONDoc, nullable=False)
+    skill_table_json: Mapped[list] = mapped_column(JSONDoc, nullable=False)
+    gaps_json: Mapped[dict | None] = mapped_column(JSONDoc, nullable=True)
     config_version: Mapped[str] = mapped_column(Text, nullable=False)
     engine_version: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
+        UTCDateTime(), server_default=func.now(), nullable=False
     )
 
     @property

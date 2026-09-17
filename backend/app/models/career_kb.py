@@ -4,10 +4,10 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import DateTime, ForeignKey, Integer, Text, func
+from sqlalchemy import ForeignKey, Integer, Text, func
 from sqlalchemy import text as sa_text
-from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from app.models.types import JSONDoc, UTCDateTime, UUIDType
 
 from app.db import Base
 
@@ -15,7 +15,7 @@ from app.db import Base
 class KBEntity(Base):
     __tablename__ = "kb_entities"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id: Mapped[uuid.UUID] = mapped_column(UUIDType(as_uuid=True), primary_key=True, default=uuid.uuid4)
     kind: Mapped[str] = mapped_column(Text, nullable=False)  # experience|project|education|certification
     title: Mapped[str] = mapped_column(Text, nullable=False)
     org: Mapped[str | None] = mapped_column(Text)
@@ -25,7 +25,7 @@ class KBEntity(Base):
         Text, nullable=False, default="completed", server_default="completed"
     )  # ongoing|completed|archived
     detail_json: Mapped[dict[str, Any]] = mapped_column(
-        JSONB, nullable=False, default=dict, server_default=sa_text("'{}'::jsonb")
+        JSONDoc, nullable=False, default=dict, server_default=sa_text("'{}'")
     )
     notes: Mapped[str | None] = mapped_column(Text)
     # Provenance for agent-written rows. NULL = created before this existed, or
@@ -33,10 +33,10 @@ class KBEntity(Base):
     origin: Mapped[str | None] = mapped_column(Text)
     origin_detail: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
+        UTCDateTime(), server_default=func.now(), nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+        UTCDateTime(), server_default=func.now(), onupdate=func.now(), nullable=False
     )
 
     points: Mapped[list["KBPoint"]] = relationship(
@@ -50,9 +50,9 @@ class KBEntity(Base):
 class KBPoint(Base):
     __tablename__ = "kb_points"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id: Mapped[uuid.UUID] = mapped_column(UUIDType(as_uuid=True), primary_key=True, default=uuid.uuid4)
     entity_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("kb_entities.id", ondelete="CASCADE"), nullable=False, index=True
+        UUIDType(as_uuid=True), ForeignKey("kb_entities.id", ondelete="CASCADE"), nullable=False, index=True
     )
     text: Mapped[str] = mapped_column(Text, nullable=False)
     state: Mapped[str] = mapped_column(
@@ -69,18 +69,18 @@ class KBPoint(Base):
     # Which client wrote it, when origin is an agent: "Claude Desktop", "ChatGPT".
     origin_detail: Mapped[str | None] = mapped_column(Text)
     source_document_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("kb_documents.id", ondelete="SET NULL")
+        UUIDType(as_uuid=True), ForeignKey("kb_documents.id", ondelete="SET NULL")
     )
     tags_json: Mapped[list[Any]] = mapped_column(
-        JSONB, nullable=False, default=list, server_default=sa_text("'[]'::jsonb")
+        JSONDoc, nullable=False, default=list, server_default=sa_text("'[]'")
     )
-    merge_sources_json: Mapped[list[Any] | None] = mapped_column(JSONB)  # [{resume_key, section, text}]
-    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    merge_sources_json: Mapped[list[Any] | None] = mapped_column(JSONDoc)  # [{resume_key, section, text}]
+    approved_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
+        UTCDateTime(), server_default=func.now(), nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+        UTCDateTime(), server_default=func.now(), onupdate=func.now(), nullable=False
     )
 
     entity: Mapped[KBEntity] = relationship(back_populates="points")
@@ -89,9 +89,9 @@ class KBPoint(Base):
 class KBDocument(Base):
     __tablename__ = "kb_documents"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id: Mapped[uuid.UUID] = mapped_column(UUIDType(as_uuid=True), primary_key=True, default=uuid.uuid4)
     entity_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("kb_entities.id", ondelete="CASCADE"), nullable=False, index=True
+        UUIDType(as_uuid=True), ForeignKey("kb_entities.id", ondelete="CASCADE"), nullable=False, index=True
     )
     filename: Mapped[str] = mapped_column(Text, nullable=False)
     mime: Mapped[str | None] = mapped_column(Text)
@@ -103,7 +103,7 @@ class KBDocument(Base):
     )  # extracted|minted|failed
     ingest_summary: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
+        UTCDateTime(), server_default=func.now(), nullable=False
     )
 
     entity: Mapped[KBEntity] = relationship(back_populates="documents")
@@ -112,13 +112,13 @@ class KBDocument(Base):
 class KBPortLog(Base):
     __tablename__ = "kb_port_log"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id: Mapped[uuid.UUID] = mapped_column(UUIDType(as_uuid=True), primary_key=True, default=uuid.uuid4)
     entity_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("kb_entities.id", ondelete="CASCADE"), nullable=False, index=True
+        UUIDType(as_uuid=True), ForeignKey("kb_entities.id", ondelete="CASCADE"), nullable=False, index=True
     )
     # CASCADE is intentional: design cascades port provenance away on point deletion (nullable is for entry-shell/cert payloads, point_id=None)
     point_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("kb_points.id", ondelete="CASCADE"), index=True
+        UUIDType(as_uuid=True), ForeignKey("kb_points.id", ondelete="CASCADE"), index=True
     )
     resume_kind: Mapped[str] = mapped_column(Text, nullable=False, default="base", server_default="base")
     resume_key: Mapped[str] = mapped_column(Text, nullable=False)
@@ -131,7 +131,7 @@ class KBPortLog(Base):
     # NULL = pre-direction rows; readers keep today's behavior for NULL.
     direction: Mapped[str | None] = mapped_column(Text)  # to_resume|from_source
     ported_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
+        UTCDateTime(), server_default=func.now(), nullable=False
     )
 
 
@@ -140,13 +140,13 @@ class KBProfile(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False, default=1)
     contact_json: Mapped[dict[str, Any]] = mapped_column(
-        JSONB, nullable=False, default=dict, server_default=sa_text("'{}'::jsonb")
+        JSONDoc, nullable=False, default=dict, server_default=sa_text("'{}'")
     )
     summary: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
     skills_json: Mapped[list[Any]] = mapped_column(
-        JSONB, nullable=False, default=list, server_default=sa_text("'[]'::jsonb")
+        JSONDoc, nullable=False, default=list, server_default=sa_text("'[]'")
     )
     notes: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+        UTCDateTime(), server_default=func.now(), onupdate=func.now(), nullable=False
     )

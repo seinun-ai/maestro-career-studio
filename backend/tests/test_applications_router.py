@@ -1093,6 +1093,53 @@ def test_patch_status_applied_idempotent_preserves_original_applied_at(db_sessio
     assert response.json()["applied_at"].startswith("2020-01-01")
 
 
+def test_patch_naive_applied_at_is_rejected_at_the_boundary(db_session):
+    # UTCDateTime refuses a naive datetime at flush, which would surface as a
+    # 500. The request schema must refuse it first (422) so a client learns to
+    # send an offset instead of getting a server error.
+    job = _job(db_session)
+    application = Application(job_id=job.id, base_resume="hybrid", status="draft")
+    db_session.add(application)
+    db_session.commit()
+    db_session.refresh(application)
+
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        response = TestClient(app).patch(
+            f"/api/applications/{application.id}",
+            json={"applied_at": "2026-08-18T14:32:11"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 422
+    assert any(
+        "applied_at" in error["loc"] for error in response.json()["detail"]
+    )
+
+
+def test_patch_aware_applied_at_is_stored(db_session):
+    job = _job(db_session)
+    application = Application(job_id=job.id, base_resume="hybrid", status="draft")
+    db_session.add(application)
+    db_session.commit()
+    db_session.refresh(application)
+
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        response = TestClient(app).patch(
+            f"/api/applications/{application.id}",
+            json={"applied_at": "2026-08-18T14:32:11+00:00"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["applied_at"].startswith("2026-08-18T14:32:11")
+    db_session.refresh(application)
+    assert application.applied_at == datetime(2026, 8, 18, 14, 32, 11, tzinfo=UTC)
+
+
 def test_create_application_from_base_with_id_updates_in_place(db_session, monkeypatch):
     job = _job(db_session)
     base = {

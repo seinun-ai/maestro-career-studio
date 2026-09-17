@@ -2,10 +2,10 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import Boolean, DateTime, Index, Integer, Numeric, String, Text, UniqueConstraint, func
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy import Boolean, Index, Integer, Numeric, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import expression
+from app.models.types import JSONDoc, UTCDateTime, UUIDType
 
 from app.db import Base
 
@@ -18,12 +18,12 @@ class Job(Base):
         Index("ix_jobs_state", "state"),
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id: Mapped[uuid.UUID] = mapped_column(UUIDType(as_uuid=True), primary_key=True, default=uuid.uuid4)
     raw_text: Mapped[str] = mapped_column(Text, nullable=False)
     raw_text_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     source_url: Mapped[str | None] = mapped_column(Text)
     source: Mapped[str] = mapped_column(Text, nullable=False, server_default="user")
-    extracted_json: Mapped[dict | None] = mapped_column(JSONB)
+    extracted_json: Mapped[dict | None] = mapped_column(JSONDoc)
     title: Mapped[str | None] = mapped_column(Text)
     company: Mapped[str | None] = mapped_column(Text)
     # ATS requisition/job identifier (Workday R-…/JR…, Greenhouse/Lever ids).
@@ -50,10 +50,10 @@ class Job(Base):
     opt_accepted: Mapped[str | None] = mapped_column(Text)
     years_experience_min: Mapped[int | None] = mapped_column(Integer)
     years_experience_max: Mapped[int | None] = mapped_column(Integer)
-    extracted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    extracted_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     disqualifying_for_opt: Mapped[bool | None] = mapped_column(
         Boolean, nullable=True, server_default=expression.false()
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
+        UTCDateTime(), server_default=func.now(), nullable=False
     )

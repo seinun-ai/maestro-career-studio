@@ -1,9 +1,9 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, Text, func
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy import ForeignKey, Index, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
+from app.models.types import JSONDoc, UTCDateTime, UUIDType
 
 from app.db import Base
 
@@ -21,27 +21,27 @@ class ApplicationProposal(Base):
         Index("ix_application_proposals_job_id", "job_id"),
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id: Mapped[uuid.UUID] = mapped_column(UUIDType(as_uuid=True), primary_key=True, default=uuid.uuid4)
     job_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("jobs.id", ondelete="CASCADE"), nullable=False
+        UUIDType(as_uuid=True), ForeignKey("jobs.id", ondelete="CASCADE"), nullable=False
     )
     application_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("applications.id", ondelete="SET NULL")
+        UUIDType(as_uuid=True), ForeignKey("applications.id", ondelete="SET NULL")
     )
     referral_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("referrals.id", ondelete="SET NULL")
+        UUIDType(as_uuid=True), ForeignKey("referrals.id", ondelete="SET NULL")
     )
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending_review")
-    fit_json: Mapped[dict | None] = mapped_column(JSONB)
-    plan_json: Mapped[dict | None] = mapped_column(JSONB)
-    evidence_json: Mapped[list | None] = mapped_column(JSONB)
-    intervention_json: Mapped[dict | None] = mapped_column(JSONB)
+    fit_json: Mapped[dict | None] = mapped_column(JSONDoc)
+    plan_json: Mapped[dict | None] = mapped_column(JSONDoc)
+    evidence_json: Mapped[list | None] = mapped_column(JSONDoc)
+    intervention_json: Mapped[dict | None] = mapped_column(JSONDoc)
     reason: Mapped[str | None] = mapped_column(Text)
-    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    cap_reserved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    cap_reserved_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
+        UTCDateTime(), server_default=func.now(), nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+        UTCDateTime(), server_default=func.now(), onupdate=func.now(), nullable=False
     )
