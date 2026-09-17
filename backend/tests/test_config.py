@@ -1,14 +1,44 @@
+import pytest
+from pydantic import ValidationError
+
+
 def test_settings_reads_env(monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
-    monkeypatch.setenv("DATABASE_URL", "postgresql://x/y")
+    monkeypatch.setenv("DATABASE_URL", "sqlite:////tmp/x.sqlite3")
 
     from app.config import Settings
 
-    s = Settings()
+    s = Settings(_env_file=None)
 
     assert s.openai_api_key == "sk-test"
-    assert s.database_url == "postgresql+psycopg://x/y"
+    assert s.database_url == "sqlite:////tmp/x.sqlite3"
     assert s.fast_model == "gpt-5.6-luna"
+
+
+def test_database_url_derives_from_data_dir(monkeypatch):
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.setenv("DATA_DIR", "/srv/mcs")
+
+    from app.config import Settings
+
+    assert Settings(_env_file=None).database_url == "sqlite:////srv/mcs/maestro_cs.sqlite3"
+
+
+def test_postgres_database_url_is_refused(monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", "postgresql://app:app@postgres:5432/maestro_cs")
+
+    from app.config import Settings
+
+    with pytest.raises(ValidationError, match="no longer a runtime database"):
+        Settings(_env_file=None)
+
+
+def test_legacy_database_url_is_a_plain_setting(monkeypatch):
+    monkeypatch.setenv("LEGACY_DATABASE_URL", "postgresql://app:app@postgres:5432/maestro_cs")
+
+    from app.config import Settings
+
+    assert Settings(_env_file=None).legacy_database_url.startswith("postgresql")
 
 
 def test_typst_font_paths_default_and_env_override(monkeypatch):
