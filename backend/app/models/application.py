@@ -4,8 +4,8 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import ForeignKey, Index, Integer, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from app.models.types import JSONDoc, UTCDateTime, UUIDType
 
+from app.models.types import JSONDoc, UTCDateTime, UUIDType
 from app.db import Base
 
 if TYPE_CHECKING:

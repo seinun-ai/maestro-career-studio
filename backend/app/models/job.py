@@ -5,8 +5,8 @@ from decimal import Decimal
 from sqlalchemy import Boolean, Index, Integer, Numeric, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import expression
-from app.models.types import JSONDoc, UTCDateTime, UUIDType
 
+from app.models.types import JSONDoc, UTCDateTime, UUIDType
 from app.db import Base
 
 

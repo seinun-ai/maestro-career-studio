@@ -2,8 +2,8 @@ from datetime import datetime
 
 from sqlalchemy import Integer, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
-from app.models.types import JSONDoc, UTCDateTime
 
+from app.models.types import JSONDoc, UTCDateTime
 from app.db import Base
 
 

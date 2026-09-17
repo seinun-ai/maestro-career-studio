@@ -4,8 +4,8 @@ from datetime import datetime
 
 from sqlalchemy import Index, Integer, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
-from app.models.types import JSONDoc, UTCDateTime, UUIDType
 
+from app.models.types import JSONDoc, UTCDateTime, UUIDType
 from app.db import Base
 
 

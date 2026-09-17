@@ -3,8 +3,8 @@ from datetime import datetime
 
 from sqlalchemy import ForeignKey, Index, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
-from app.models.types import JSONDoc, UTCDateTime, UUIDType
 
+from app.models.types import JSONDoc, UTCDateTime, UUIDType
 from app.db import Base
 
 PROPOSAL_STATUSES = (

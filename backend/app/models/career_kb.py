@@ -7,8 +7,8 @@ from typing import Any
 from sqlalchemy import ForeignKey, Integer, Text, func
 from sqlalchemy import text as sa_text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from app.models.types import JSONDoc, UTCDateTime, UUIDType
 
+from app.models.types import JSONDoc, UTCDateTime, UUIDType
 from app.db import Base
 
 

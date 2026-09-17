@@ -2,8 +2,8 @@ import uuid
 
 from sqlalchemy import ForeignKey, Index, Text
 from sqlalchemy.orm import Mapped, mapped_column
-from app.models.types import UUIDType
 
+from app.models.types import UUIDType
 from app.db import Base
 
 
