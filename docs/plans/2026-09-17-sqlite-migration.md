@@ -2445,6 +2445,10 @@ Append-only. One line per deviation: task, what the plan said, what was found, w
 | 4 | derive from `data_dir` as given | a relative `DATA_DIR` meant a different file per working directory | `data_dir.resolve()` | no data loss |
 | 4 | four config tests | `sqlite_journal_mode` had no test; the refusal test imported `app.config` after setting env and passed only via conftest's earlier import | tests added/reordered | correctness |
 | 4 | — | `backend/scripts/{ats_calibration,ats_snapshot,apply_template_sources}.py` docstrings still say `DATABASE_URL=postgresql://…` | Task 18 already lists them; for the desktop work later, build the URL with `URL.create("sqlite", database=…)` rather than an f-string (a `?` in a home path would truncate) | — |
+| 5 | `make_engine` pre-creates the file at construction | that runs at `import app.db`, i.e. for every model import; a host process without `DATA_DIR` died on `mkdir('/app/data')` (read-only), and the MCP host venv, scripts and dev shells import models without a writable `/app` | file is prepared in a `do_connect` listener, so import touches nothing and a wrong `DATA_DIR` fails at the first real connection; test pins that `import app.db` in a subprocess with an unwritable URL exits 0 | correctness / no data loss |
+| 5 | docstring: "SQLite forgets all four when a connection closes" | `journal_mode` persists in the file; the other three are per-connection | docstring corrected; all four still set on every connection so a `DELETE` override wins | — |
+| 5 | run this task's tests with conftest | the Postgres-era conftest cannot host a sqlite URL (its fixture runs `CREATE DATABASE`) and its bare `postgresql://` default only imports here because anaconda carries an undeclared psycopg2 | Tasks 5–6 run their named tests with `--noconftest` and an explicit sqlite `TEST_DATABASE_URL`; Task 7 retires the fixture | — |
+| 5 | "`tests/test_model_types.py` does not import app.db" | it does, through `app.models.__init__` → `application.py` → `app.db` | plan note corrected here; no code change | — |
 | 7 | — | suite baseline on SQLite before fixes: `N failed, M passed` | — | — |
 
 **LLM-call audit (Task 10):**
