@@ -124,6 +124,8 @@ git commit -m "test(db): pin the single-dialect invariant (red)"
 
 ### Task 2: The type module
 
+> **Amended after review (2026-09-17):** `compare_type_unwrapping_decorators` and its test are REMOVED. Alembic 1.18 compares types by compiled DDL, so a `UTCDateTime` column already matches the `DATETIME` it created; the hook overrode that with a coarser check. `UTCDateTime.process_bind_param` also raises `TypeError` on a non-`datetime` value. See the deviation log.
+
 **Files:**
 - Create: `backend/app/models/types.py`
 - Create: `backend/tests/test_model_types.py`
@@ -355,6 +357,10 @@ ruff check --fix app/models && git diff --stat app/models
 ```
 
 Read `git diff app/models/ats_score.py app/models/career_kb.py` in full: the unique index must now say `sqlite_where=text("phase = 'base'")`, and the four server defaults must be `'{}'` / `'[]'` with no cast. If a file imports `DateTime` for another reason ruff will keep it; that is fine.
+
+**Step 2b: The API boundary for `applied_at`** (added after review)
+
+`ApplicationPatch.applied_at` (`app/schemas/application.py:35`) is the one request-side `datetime` field, and `routers/applications.py:343-344` writes it through. Pydantic parses `"2026-08-18T14:32:11"` as a NAIVE datetime, which `UTCDateTime` now refuses at flush, i.e. a 500. Type the field as `pydantic.AwareDatetime` so a naive value is a 422 at the boundary. Add to `tests/test_applications_router.py` a test that PATCHes `{"applied_at": "2026-08-18T14:32:11"}` and asserts 422, and one that PATCHes `"2026-08-18T14:32:11+00:00"` and asserts 200 with the value stored.
 
 **Step 3: Run the portability test**
 
@@ -734,7 +740,6 @@ from sqlalchemy import create_engine, pool
 from app.config import settings
 from app.db import Base
 from app.models import *  # noqa: F403  registers models for autogenerate
-from app.models.types import compare_type_unwrapping_decorators
 
 config = context.config
 
@@ -763,7 +768,7 @@ def run_migrations_offline() -> None:
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
         render_as_batch=True,
-        compare_type=compare_type_unwrapping_decorators,
+        compare_type=True,
     )
     with context.begin_transaction():
         context.run_migrations()
@@ -778,7 +783,7 @@ def run_migrations_online() -> None:
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
-            compare_type=compare_type_unwrapping_decorators,
+            compare_type=True,
             render_as_batch=True,
         )
         with context.begin_transaction():
@@ -833,7 +838,7 @@ TEST_DATABASE_URL=sqlite:////tmp/mcs-check.sqlite3 python3 -m alembic upgrade he
 TEST_DATABASE_URL=sqlite:////tmp/mcs-check.sqlite3 python3 -m alembic check
 ```
 
-Expected: the upgrade logs one `Running upgrade -> <REV>` line; `alembic check` prints `No new upgrade operations detected.` If it reports a type change on a `Uuid` or `Numeric` column, read the diff it prints and add the pair to `compare_type_unwrapping_decorators` only if it is the same on-disk type spelled differently. Log it.
+Expected: the upgrade logs one `Running upgrade -> <REV>` line; `alembic check` prints `No new upgrade operations detected.` If it reports a type change, read the diff it prints: Alembic compares by compiled DDL, so a real report means the baseline and the models disagree. Fix the baseline, never the comparison. Log it.
 
 **Step 8: Lint and commit**
 
@@ -993,16 +998,13 @@ from alembic.migration import MigrationContext
 
 from app.db import Base, make_engine
 import app.models  # noqa: F401  import side effect: registers every table
-from app.models.types import compare_type_unwrapping_decorators
 
 
 def test_models_match_migrations(db_session):
     engine = make_engine(os.environ["TEST_DATABASE_URL"])
     try:
         with engine.connect() as conn:
-            ctx = MigrationContext.configure(
-                conn, opts={"compare_type": compare_type_unwrapping_decorators}
-            )
+            ctx = MigrationContext.configure(conn, opts={"compare_type": True})
             diff = compare_metadata(ctx, Base.metadata)
     finally:
         engine.dispose()
@@ -2421,6 +2423,12 @@ Append-only. One line per deviation: task, what the plan said, what was found, w
 
 | Task | Planned | Found | Done | Goal Card line |
 |---|---|---|---|---|
+| 2 | `types.py` imports `UTC, datetime` | `datetime` unused; ruff F401 blocks the commit | import `UTC` only | do not fix unrelated things |
+| 2 | ship `compare_type_unwrapping_decorators` | Alembic 1.18 compares compiled DDL; hook redundant and coarser (ignores type args) | removed the hook and its test; Tasks 6/7 use `compare_type=True` | one dialect, no extra machinery |
+| 2 | — | `UTCDateTime` given a `date` fails with `AttributeError`, not the intended message | `process_bind_param` raises `TypeError` for non-`datetime` | correctness |
+| 1 | `import app.models` registers every table | `app/models/__init__.py` omitted `referral`; `sorted_tables` raised `NoReferencedTableError` unless conftest had imported it | added the import + a static pin that every model module is imported by `__init__` | no data loss (a table the registry forgets is a table the importer skips) |
+| 3 | naive binds only ever come from server code | `ApplicationPatch.applied_at` accepts a naive ISO string from clients | field typed `AwareDatetime`, 422 at the boundary (Task 3 Step 2b) | security boundary / correctness |
+| 19 | pre-port calibration snapshot taken in this worktree before Task 4 | Postgres refused after Task 4 in THIS tree only; the main checkout still runs the old code | snapshot taken from the main checkout at `b4afd7ef` against the live Postgres: 2015 pairs, ats-2.5.0, `scratchpad/ats-before.json` | deterministic scores |
 | 7 | — | suite baseline on SQLite before fixes: `N failed, M passed` | — | — |
 
 **LLM-call audit (Task 10):**

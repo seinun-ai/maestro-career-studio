@@ -117,8 +117,9 @@ Every model imports its column types from here and nowhere else:
 - `JSONDoc` → `sa.JSON`. Behaves as before for load/store. Mutation
   tracking is unchanged (whatever `flag_modified`/mutable usage exists
   today keeps working; the type is not the tracker).
-- `PK` → `sa.Uuid(as_uuid=True)`. SQLite stores it as 32-char hex. The
-  exporter writes through this type, so the representation is consistent.
+- `UUIDType` → `sa.Uuid`, called as `UUIDType(as_uuid=True)`. SQLite stores it
+  as 32-char hex. The importer writes through this type, so the
+  representation is consistent.
 - `UTCDateTime` → a `TypeDecorator` over `sa.DateTime`. Bind: aware
   datetimes are converted to UTC and stored naive; a naive datetime raises,
   because every writer today uses `datetime.now(UTC)` and a naive value is
