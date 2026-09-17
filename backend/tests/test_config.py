@@ -3,10 +3,10 @@ from pydantic import ValidationError
 
 
 def test_settings_reads_env(monkeypatch):
+    from app.config import Settings
+
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
     monkeypatch.setenv("DATABASE_URL", "sqlite:////tmp/x.sqlite3")
-
-    from app.config import Settings
 
     s = Settings(_env_file=None)
 
@@ -16,29 +16,70 @@ def test_settings_reads_env(monkeypatch):
 
 
 def test_database_url_derives_from_data_dir(monkeypatch):
+    from app.config import Settings
+
     monkeypatch.delenv("DATABASE_URL", raising=False)
     monkeypatch.setenv("DATA_DIR", "/srv/mcs")
-
-    from app.config import Settings
 
     assert Settings(_env_file=None).database_url == "sqlite:////srv/mcs/maestro_cs.sqlite3"
 
 
+def test_database_url_derives_absolute_from_relative_data_dir(monkeypatch):
+    from app.config import Settings
+
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.setenv("DATA_DIR", "relative/dir")
+
+    url = Settings(_env_file=None).database_url
+    assert url.startswith("sqlite:////")
+    assert url.endswith("relative/dir/maestro_cs.sqlite3")
+
+
 def test_postgres_database_url_is_refused(monkeypatch):
+    # Import BEFORE the env write: app.config builds a module-level `settings`
+    # singleton at import, so on a cold import the refusal would fire there,
+    # outside the `raises` block, and the test would fail for the wrong reason.
+    from app.config import Settings
+
     monkeypatch.setenv("DATABASE_URL", "postgresql://app:app@postgres:5432/maestro_cs")
 
+    with pytest.raises(ValidationError, match="no longer a runtime database"):
+        Settings(_env_file=None)
+
+
+def test_heroku_postgres_spelling_is_refused(monkeypatch):
     from app.config import Settings
+
+    monkeypatch.setenv("DATABASE_URL", "postgres://x/y")
 
     with pytest.raises(ValidationError, match="no longer a runtime database"):
         Settings(_env_file=None)
 
 
 def test_legacy_database_url_is_a_plain_setting(monkeypatch):
-    monkeypatch.setenv("LEGACY_DATABASE_URL", "postgresql://app:app@postgres:5432/maestro_cs")
-
     from app.config import Settings
 
+    monkeypatch.setenv("LEGACY_DATABASE_URL", "postgresql://app:app@postgres:5432/maestro_cs")
+
     assert Settings(_env_file=None).legacy_database_url.startswith("postgresql")
+
+
+@pytest.mark.parametrize("raw, expected", [(" wal ", "WAL"), ("delete", "DELETE")])
+def test_sqlite_journal_mode_is_normalized(monkeypatch, raw, expected):
+    from app.config import Settings
+
+    monkeypatch.setenv("SQLITE_JOURNAL_MODE", raw)
+
+    assert Settings(_env_file=None).sqlite_journal_mode == expected
+
+
+def test_sqlite_journal_mode_refuses_unknown(monkeypatch):
+    from app.config import Settings
+
+    monkeypatch.setenv("SQLITE_JOURNAL_MODE", "TRUNCATE")
+
+    with pytest.raises(ValidationError, match="WAL or DELETE"):
+        Settings(_env_file=None)
 
 
 def test_typst_font_paths_default_and_env_override(monkeypatch):

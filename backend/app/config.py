@@ -5,6 +5,8 @@ from typing import Annotated
 
 from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+from sqlalchemy.engine import make_url
+from sqlalchemy.exc import ArgumentError
 
 # XCharter, vendored beside this package so the render path never depends on a
 # TeX Live installation or a per-machine env var. Resolved from __file__ so it
@@ -69,8 +71,9 @@ class Settings(BaseSettings):
     openai_base_url: str = ""
     # Empty = derived from data_dir after validation (see _derive_database_url).
     # Set it only to point at another FILE: sqlite:////absolute/path.sqlite3.
-    # Postgres URLs are refused on purpose: SQLite is the only runtime database
-    # and the legacy importer is the only Postgres reader (SYSTEM.md §13).
+    # Any non-sqlite URL, Postgres included, is refused on purpose: SQLite is the
+    # only runtime database and the legacy importer is the only Postgres reader
+    # (SYSTEM.md §13).
     database_url: str = ""
     # ONE release only (SYSTEM.md §13 postgres-to-sqlite): the compose-era
     # Postgres database to import at first boot. Unset = nothing to import.
@@ -94,8 +97,18 @@ class Settings(BaseSettings):
 
     @field_validator("database_url")
     @classmethod
-    def _refuse_postgres(cls, value: str) -> str:
-        if value.startswith("postgresql"):
+    def _only_sqlite(cls, value: str) -> str:
+        # An allowlist, not a Postgres blocklist: any non-sqlite URL, Postgres
+        # included (either spelling), is refused, and so is a string SQLAlchemy
+        # cannot parse at all, under the one message. Empty is left alone so
+        # _derive_database_url can fill it in.
+        if not value:
+            return value
+        try:
+            backend = make_url(value).get_backend_name()
+        except ArgumentError:
+            backend = None
+        if backend != "sqlite":
             raise ValueError(
                 "DATABASE_URL points at Postgres, which is no longer a runtime database. "
                 "Leave DATABASE_URL unset; a compose-era database is imported into the "
@@ -113,9 +126,11 @@ class Settings(BaseSettings):
         return mode
 
     @model_validator(mode="after")
-    def _derive_database_url(self):
+    def _derive_database_url(self) -> "Settings":
+        # resolve(): a relative DATA_DIR must not mean three different files for
+        # uvicorn, alembic and a script started from different directories.
         if not self.database_url:
-            self.database_url = f"sqlite:///{self.data_dir / 'maestro_cs.sqlite3'}"
+            self.database_url = f"sqlite:///{self.data_dir.resolve() / 'maestro_cs.sqlite3'}"
         return self
 
     # --- Browser-borne attack surface -------------------------------------
