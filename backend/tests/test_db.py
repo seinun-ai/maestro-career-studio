@@ -1,8 +1,12 @@
 import os
 import stat
+import subprocess
+import sys
 from pathlib import Path
 
 from app.db import make_engine, sqlite_path
+
+BACKEND_DIR = Path(__file__).resolve().parents[1]
 
 
 def test_session_factory_creates_session():
@@ -35,10 +39,31 @@ def test_make_engine_honours_delete_journal_mode(tmp_path):
 
 def test_make_engine_creates_the_file_with_mode_0600(tmp_path):
     path = tmp_path / "nested" / "t.sqlite3"
-    make_engine(f"sqlite:///{path}").dispose()
-    assert path.exists()
-    if os.name == "posix":
-        assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    engine = make_engine(f"sqlite:///{path}")
+    try:
+        # Construction is inert: the file (and its directory) appear on the
+        # first real connection, not at import.
+        assert not path.exists()
+        with engine.connect():
+            pass
+        assert path.exists()
+        if os.name == "posix":
+            assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    finally:
+        engine.dispose()
+
+
+def test_import_of_app_db_does_not_touch_the_filesystem():
+    # The MCP host venv, scripts and dev shells import models (hence app.db)
+    # without a writable data dir; a mkdir at import would break all of them.
+    result = subprocess.run(
+        [sys.executable, "-c", "import app.db"],
+        env={**os.environ, "TEST_DATABASE_URL": "sqlite:////nonexistent-root-for-test/x.sqlite3"},
+        capture_output=True,
+        text=True,
+        cwd=BACKEND_DIR,
+    )
+    assert result.returncode == 0, result.stderr
 
 
 def test_sqlite_path_only_for_file_urls():

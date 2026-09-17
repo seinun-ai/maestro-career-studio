@@ -3,8 +3,10 @@
 SQLite is the only runtime database (SYSTEM.md §3). `make_engine` is the ONE
 engine constructor: the app, the test suite, the migrations' verify step and
 the legacy importer all go through it, so every connection carries the same
-pragmas. A connection without them is not "the same database": SQLite forgets
-all four when a connection closes, and foreign_keys defaults to OFF.
+pragmas. journal_mode is persisted in the file; the other three are
+per-connection state (foreign_keys defaults to OFF). All four are set on every
+connection anyway, so a `DELETE` override takes effect and nothing depends on
+which connection created the file.
 """
 import os
 import sqlite3
@@ -47,16 +49,26 @@ def make_engine(url: str, *, journal_mode: str | None = None) -> Engine:
         raise ValueError(f"journal_mode must be WAL or DELETE, not {mode!r}")
 
     connect_args: dict = {}
+    path: Path | None = None
     is_sqlite = make_url(url).get_backend_name() == "sqlite"
     if is_sqlite:
         # The DBAPI-level busy wait, in seconds. PRAGMA busy_timeout below is
         # the same knob for connections sqlite3 hands to other code paths.
         connect_args["timeout"] = 30
         path = sqlite_path(url)
-        if path is not None:
-            _prepare_sqlite_file(path)
 
     engine = create_engine(url, future=True, connect_args=connect_args)
+
+    if path is not None:
+        # Construction must stay inert: the MCP host venv, scripts and dev
+        # shells import models (hence this module) without a writable data
+        # dir. do_connect fires before the DBAPI opens the file, so the 0600
+        # pre-create still wins the race; the cost is one stat per new
+        # connection, and a wrong DATA_DIR fails at the first real connection.
+        @event.listens_for(engine, "do_connect")
+        def _prepare(_dialect, _conn_rec, _cargs, _cparams):
+            _prepare_sqlite_file(path)
+            return None  # let the default connect proceed
 
     @event.listens_for(engine, "connect")
     def _pragmas(dbapi_connection, _record):
