@@ -1173,6 +1173,8 @@ Run: `python3 -m pytest tests/ mcp_server/tests/ -q --ignore=tests/ats/test_gold
 | `no such function: …` | another Postgres function | list it in the deviation log with the file and line, then port it in Python the way Task 8 did |
 | an `ilike` test on non-ASCII case | SQLAlchemy emulates ILIKE with `lower()` | accept and log |
 | `test_settings_reads_env`-style assertions on `postgresql+psycopg://` | old normalization expectation | rewrite the expectation; the URL is refused now |
+| `AttributeError: 'str' object has no attribute 'hex'` | a test (or app path) binds a string to a `UUIDType` column; native Postgres UUID accepted strings, SQLite's CHAR(32) path does not | tests: pass `uuid.UUID` objects. App code: none known (Task 3 sweep); if one appears, convert at the boundary and log it |
+| a `>=`/`<=` filter or ordering is off by one row within the same second | SQLite stores ORM-bound datetimes as `YYYY-MM-DD HH:MM:SS.ffffff` but `server_default=func.now()` / `onupdate=func.now()` rows as `YYYY-MM-DD HH:MM:SS`; comparisons are lexicographic | make the app write every timestamp itself: in `types.py` add `def utcnow(): return datetime.now(UTC)`; codemod `server_default=func.now()` → `default=utcnow, server_default=func.now()` and `onupdate=func.now()` → `onupdate=utcnow` (keep the server default for DDL). One format on disk, microseconds preserved for imported Postgres rows. Do this in Task 9 whether or not a test fails; add a portability-test assertion that every `UTCDateTime` column with a `server_default` also has a Python `default` |
 
 Every fix outside `tests/` gets a deviation-log line.
 
@@ -2435,6 +2437,8 @@ Append-only. One line per deviation: task, what the plan said, what was found, w
 | 3 | `mcp_server/` untouched | `update_application`'s docstring says `applied_at` is "ISO 8601"; a naive value is now a 422 | follow-up: docstring to say "with a UTC offset"; do it with the final review, ratchet test permitting | correctness |
 | 3 | transitional suite | full suite on the Postgres test DB after Task 3: `2 failed, 3878 passed, 1 skipped` — the `since=` bug above and the parity test (expected until Task 7) | — | — |
 | 3 | `applied_at` is the only request-side datetime | `GET /api/applications?created_after=&created_before=` are `datetime | None` too; a naive value would 500 at flush | both typed `AwareDatetime` → 422 at the boundary, with tests | correctness |
+| 3 | — | quality review: codemod placed `from app.models.types import …` inside the third-party import block in 20 files | moved next to `from app.db import Base` as a housekeeping commit at the start of Task 4 | do not fix unrelated things (our own diff) |
+| 3 | — | quality review watch-items for later tasks: mixed datetime text formats on SQLite (server defaults lack microseconds), `sa.Uuid` string binds raise on SQLite, `Numeric(5,1)` rounds half-even on SQLite vs half-away on Postgres (harmless: `ats/engine.py:84` rounds before persisting) | first two added to Task 9's fix table; the third is pinned by the Task 19 calibration diff and a comment on `ats_score.composite` | deterministic scores |
 | 7 | — | suite baseline on SQLite before fixes: `N failed, M passed` | — | — |
 
 **LLM-call audit (Task 10):**
