@@ -2430,6 +2430,10 @@ Append-only. One line per deviation: task, what the plan said, what was found, w
 | 1 | `import app.models` registers every table | `app/models/__init__.py` omitted `referral`; `sorted_tables` raised `NoReferencedTableError` unless conftest had imported it | added the import + a static pin that every model module is imported by `__init__` | no data loss (a table the registry forgets is a table the importer skips) |
 | 3 | naive binds only ever come from server code | `ApplicationPatch.applied_at` accepts a naive ISO string from clients | field typed `AwareDatetime`, 422 at the boundary (Task 3 Step 2b) | security boundary / correctness |
 | 19 | pre-port calibration snapshot taken in this worktree before Task 4 | Postgres refused after Task 4 in THIS tree only; the main checkout still runs the old code | snapshot taken from the main checkout at `b4afd7ef` against the live Postgres: 2015 pairs, ats-2.5.0, `scratchpad/ats-before.json` | deterministic scores |
+| 3 | codemod rewrites 18 files | 20: `bullet_classification.py` and `bullet_rewrite.py` had only `DateTime(timezone=True)` | rewritten by the same codemod | one dialect |
+| 3 | "expect tests, not app code" | `routers/jobs.py:386-395` binds a `date` query param to `created_at`; `UTCDateTime` refuses it → `/api/jobs/export?since=` 500 | router converts to midnight UTC (`datetime.combine(since, time.min, tzinfo=UTC)`), same instant Postgres implied | no data loss / correctness |
+| 3 | `mcp_server/` untouched | `update_application`'s docstring says `applied_at` is "ISO 8601"; a naive value is now a 422 | follow-up: docstring to say "with a UTC offset"; do it with the final review, ratchet test permitting | correctness |
+| 3 | transitional suite | full suite on the Postgres test DB after Task 3: `2 failed, 3878 passed, 1 skipped` — the `since=` bug above and the parity test (expected until Task 7) | — | — |
 | 7 | — | suite baseline on SQLite before fixes: `N failed, M passed` | — | — |
 
 **LLM-call audit (Task 10):**
