@@ -377,6 +377,8 @@ ruff check . && git add app/models && git commit -m "refactor(models): route eve
 
 ### Task 4: Settings: `data_dir`, a derived SQLite `database_url`, and a loud refusal of Postgres URLs
 
+> **Amended after review (2026-09-17):** the refusal is an ALLOWLIST (`make_url(value).get_backend_name() != "sqlite"` → refuse), the same rule Task 7's conftest enforces, so `postgres://` and any other backend are refused with one message; `database_url` derives from `data_dir.resolve()`; tests import `app.config` before writing env vars (the module builds a `settings` singleton at import) and cover `sqlite_journal_mode` normalization and refusal. See the deviation log.
+
 **Files:**
 - Modify: `backend/app/config.py:17-32` (docstring of `normalize_postgres_url`), `:68` (`database_url`), `:82-86` (validator), `:163-168` (data dirs)
 - Modify: `backend/tests/test_config.py:1-11`
@@ -2439,6 +2441,10 @@ Append-only. One line per deviation: task, what the plan said, what was found, w
 | 3 | `applied_at` is the only request-side datetime | `GET /api/applications?created_after=&created_before=` are `datetime | None` too; a naive value would 500 at flush | both typed `AwareDatetime` → 422 at the boundary, with tests | correctness |
 | 3 | — | quality review: codemod placed `from app.models.types import …` inside the third-party import block in 20 files | moved next to `from app.db import Base` as a housekeeping commit at the start of Task 4 | do not fix unrelated things (our own diff) |
 | 3 | — | quality review watch-items for later tasks: mixed datetime text formats on SQLite (server defaults lack microseconds), `sa.Uuid` string binds raise on SQLite, `Numeric(5,1)` rounds half-even on SQLite vs half-away on Postgres (harmless: `ats/engine.py:84` rounds before persisting) | first two added to Task 9's fix table; the third is pinned by the Task 19 calibration diff and a comment on `ats_score.composite` | deterministic scores |
+| 4 | `startswith("postgresql")` blocklist | Task 7's conftest uses a sqlite allowlist; two doors, two rules; `postgres://` slipped to a `NoSuchModuleError` | allowlist in `_only_sqlite`, same message | one dialect |
+| 4 | derive from `data_dir` as given | a relative `DATA_DIR` meant a different file per working directory | `data_dir.resolve()` | no data loss |
+| 4 | four config tests | `sqlite_journal_mode` had no test; the refusal test imported `app.config` after setting env and passed only via conftest's earlier import | tests added/reordered | correctness |
+| 4 | — | `backend/scripts/{ats_calibration,ats_snapshot,apply_template_sources}.py` docstrings still say `DATABASE_URL=postgresql://…` | Task 18 already lists them; for the desktop work later, build the URL with `URL.create("sqlite", database=…)` rather than an f-string (a `?` in a home path would truncate) | — |
 | 7 | — | suite baseline on SQLite before fixes: `N failed, M passed` | — | — |
 
 **LLM-call audit (Task 10):**
