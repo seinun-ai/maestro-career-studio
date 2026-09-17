@@ -2434,6 +2434,7 @@ Append-only. One line per deviation: task, what the plan said, what was found, w
 | 3 | "expect tests, not app code" | `routers/jobs.py:386-395` binds a `date` query param to `created_at`; `UTCDateTime` refuses it → `/api/jobs/export?since=` 500 | router converts to midnight UTC (`datetime.combine(since, time.min, tzinfo=UTC)`), same instant Postgres implied | no data loss / correctness |
 | 3 | `mcp_server/` untouched | `update_application`'s docstring says `applied_at` is "ISO 8601"; a naive value is now a 422 | follow-up: docstring to say "with a UTC offset"; do it with the final review, ratchet test permitting | correctness |
 | 3 | transitional suite | full suite on the Postgres test DB after Task 3: `2 failed, 3878 passed, 1 skipped` — the `since=` bug above and the parity test (expected until Task 7) | — | — |
+| 3 | `applied_at` is the only request-side datetime | `GET /api/applications?created_after=&created_before=` are `datetime | None` too; a naive value would 500 at flush | both typed `AwareDatetime` → 422 at the boundary, with tests | correctness |
 | 7 | — | suite baseline on SQLite before fixes: `N failed, M passed` | — | — |
 
 **LLM-call audit (Task 10):**
