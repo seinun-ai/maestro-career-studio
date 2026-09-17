@@ -1673,6 +1673,51 @@ def test_list_applications_filters_by_source(db_session):
     assert res_invalid.status_code == 422
 
 
+def test_list_applications_naive_created_filter_is_rejected_at_the_boundary(db_session):
+    # created_at is UTCDateTime, which refuses a naive datetime at bind time
+    # (a 500). The query boundary must refuse an offset-less value first, as
+    # a 422 that names the parameter.
+    job = _job(db_session)
+    db_session.add(Application(job_id=job.id, base_resume="hybrid"))
+    db_session.commit()
+
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        client = TestClient(app)
+        res_after = client.get("/api/applications?created_after=2026-08-18T14:32:11")
+        res_before = client.get("/api/applications?created_before=2026-08-18T14:32:11")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert res_after.status_code == 422
+    assert any("created_after" in error["loc"] for error in res_after.json()["detail"])
+    assert res_before.status_code == 422
+    assert any("created_before" in error["loc"] for error in res_before.json()["detail"])
+
+
+def test_list_applications_aware_created_filters_are_applied(db_session):
+    job = _job(db_session)
+    application = Application(job_id=job.id, base_resume="hybrid")
+    db_session.add(application)
+    db_session.commit()
+
+    # The row was created now, which is after this instant, so the same
+    # value includes it as a lower bound and excludes it as an upper bound.
+    instant = "2026-08-18T14:32:11%2B00:00"
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        client = TestClient(app)
+        res_after = client.get(f"/api/applications?created_after={instant}")
+        res_before = client.get(f"/api/applications?created_before={instant}")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert res_after.status_code == 200
+    assert [row["id"] for row in res_after.json()] == [str(application.id)]
+    assert res_before.status_code == 200
+    assert res_before.json() == []
+
+
 def test_marking_applied_closes_open_proposals_for_the_job(db_session):
     # User override: they applied manually from the job workspace. Flipping the
     # StatusChip to applied must resolve the job's open proposal instead of
