@@ -110,7 +110,8 @@ class Settings(BaseSettings):
             backend = None
         if backend != "sqlite":
             raise ValueError(
-                "DATABASE_URL points at Postgres, which is no longer a runtime database. "
+                "DATABASE_URL is not a SQLite file URL; Postgres is no longer a runtime "
+                "database. "
                 "Leave DATABASE_URL unset; a compose-era database is imported into the "
                 "SQLite file automatically at boot when LEGACY_DATABASE_URL is set "
                 "(or run: python -m app.tools.migrate_from_postgres)."
@@ -127,10 +128,13 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _derive_database_url(self) -> "Settings":
-        # resolve(): a relative DATA_DIR must not mean three different files for
-        # uvicorn, alembic and a script started from different directories.
+        # resolve() the directory itself, not just the URL: a relative DATA_DIR
+        # must not mean three different files for uvicorn, alembic and a script
+        # started from different directories, and settings.data_dir (the
+        # import marker lives under it) must never disagree with the URL.
+        self.data_dir = self.data_dir.resolve()
         if not self.database_url:
-            self.database_url = f"sqlite:///{self.data_dir.resolve() / 'maestro_cs.sqlite3'}"
+            self.database_url = f"sqlite:///{self.data_dir / 'maestro_cs.sqlite3'}"
         return self
 
     # --- Browser-borne attack surface -------------------------------------

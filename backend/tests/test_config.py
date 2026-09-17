@@ -30,9 +30,10 @@ def test_database_url_derives_absolute_from_relative_data_dir(monkeypatch):
     monkeypatch.delenv("DATABASE_URL", raising=False)
     monkeypatch.setenv("DATA_DIR", "relative/dir")
 
-    url = Settings(_env_file=None).database_url
-    assert url.startswith("sqlite:////")
-    assert url.endswith("relative/dir/maestro_cs.sqlite3")
+    s = Settings(_env_file=None)
+    assert s.data_dir.is_absolute()
+    assert s.database_url.startswith("sqlite:////")
+    assert s.database_url.endswith("relative/dir/maestro_cs.sqlite3")
 
 
 def test_postgres_database_url_is_refused(monkeypatch):
