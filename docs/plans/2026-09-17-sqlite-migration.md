@@ -2313,8 +2313,9 @@ In the two-dependency-sources bullet add one sentence: `legacy-postgres` is a on
   `foreign_keys=OFF` → 21 `ondelete=` cascades silently stop → every engine
   goes through `app.db.make_engine`; never `create_engine` in app code.
 - YYYY-MM-DD: Alembic autogenerate renders a TypeDecorator as `sa.<Name>()`,
-  which does not exist → replace with the impl type by hand in the revision,
-  and compare through `compare_type_unwrapping_decorators`.
+  which does not exist → replace with the impl type by hand in the revision.
+  Comparison needs no hook: Alembic ≥1.4 compares compiled DDL, so
+  `compare_type=True` already sees `UTCDateTime` as the `DATETIME` it made.
 ```
 
 **§13** — append the row:
