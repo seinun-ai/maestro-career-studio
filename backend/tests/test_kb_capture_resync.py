@@ -8,7 +8,7 @@ import sqlalchemy as sa
 
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSIONS = ROOT / "migrations" / "versions"
+VERSIONS = ROOT / "legacy_postgres" / "migrations" / "versions"
 
 
 def _migration_module():

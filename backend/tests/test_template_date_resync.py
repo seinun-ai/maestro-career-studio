@@ -14,7 +14,7 @@ from app.services import pdf_render
 
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSIONS = ROOT / "migrations" / "versions"
+VERSIONS = ROOT / "legacy_postgres" / "migrations" / "versions"
 PRE_SECTION_ORDER = ROOT / "tests" / "fixtures" / "templates_pre_section_order"
 BUNDLED = {
     "default": "resume.tex.j2",
