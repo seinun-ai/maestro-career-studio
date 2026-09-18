@@ -2376,7 +2376,7 @@ In the two-dependency-sources bullet add one sentence: `legacy-postgres` is a on
 **§13** — append the row:
 
 ```
-| `postgres-to-sqlite` | compose `postgres` service + `legacy_postgres/` chain → `data/maestro_cs.sqlite3` + one baseline | new-is-default | The next release ships. Then delete: `legacy_postgres/`, `app/tools/migrate_from_postgres.py`, `seeding._import_legacy_postgres`, `legacy_database_url`, `normalize_postgres_url`, the `legacy-postgres` extra and CI job, the compose `postgres` service + `pgdata` volume + `LEGACY_DATABASE_URL`, every `POSTGRES_*` env key, `update.sh`'s pg_dump branch, and the three tests that exercise the boxed chain (`tests/test_kb_capture_resync.py`, `tests/test_template_date_resync.py`, `tests/test_template_section_order_resync.py`). `update.sh --check` must then say "install <this release> first" when a `pgdata` volume exists without `data/.migrated-from-postgres.json`. | medium |
+| `postgres-to-sqlite` | compose `postgres` service + `legacy_postgres/` chain → `data/maestro_cs.sqlite3` + one baseline | new-is-default | The next release ships. Then delete: `legacy_postgres/`, `app/tools/migrate_from_postgres.py`, `seeding._import_legacy_postgres`, `legacy_database_url`, `normalize_postgres_url`, the `legacy-postgres` extra (from BOTH the Dockerfile's editable install and the `pip-compile` recipe — the lock is what actually carries psycopg into the image; regenerate it) and CI job, the compose `postgres` service + `pgdata` volume + `LEGACY_DATABASE_URL`, every `POSTGRES_*` env key, `update.sh`'s pg_dump branch, and the three tests that exercise the boxed chain (`tests/test_kb_capture_resync.py`, `tests/test_template_date_resync.py`, `tests/test_template_section_order_resync.py`). `update.sh --check` must then say "install <this release> first" when a `pgdata` volume exists without `data/.migrated-from-postgres.json`. | medium |
 ```
 
 **`.system_md_enforcement.json`** — add to `invariants`:
@@ -2446,6 +2446,7 @@ Find every line with `grep -n -i "postgres\|55432\|pg_dump" <file>` and rewrite 
   ```
 - **backend/scripts/*.py** docstrings: `DATABASE_URL=sqlite:////absolute/path/to/data/maestro_cs.sqlite3` (stack stopped, or a `backups/` snapshot).
 - **THIRD_PARTY_NOTICES.md** (psycopg, ~lines 146–172): still accurate for the image, but note psycopg now ships only through the one-release `legacy-postgres` extra and leaves with it.
+- **Source installs** (CONTRIBUTING / README setup): a host run with `LEGACY_DATABASE_URL` set needs `pip install -e ".[dev,legacy-postgres]"`; the boot error names the extra, the docs should too.
 
 Run `python3 scripts/check_system_md.py` again (it reads the reference tier too), then:
 
