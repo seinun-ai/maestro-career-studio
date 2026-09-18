@@ -5,11 +5,11 @@
 # Why this exists: an install IS a git checkout. The unpacked extension loads
 # from extension/ and the MCP venv sits over backend/, so checkout and images
 # must move together. `docker compose pull` alone updates two surfaces of four.
-# This also backs up the database before the one irreversible step (migrations,
-# which run themselves at backend boot) and reports .env drift without editing
-# it.
+# This also snapshots the SQLite database (data/maestro_cs.sqlite3) before the
+# one irreversible step (migrations, which run themselves at backend boot) and
+# reports .env drift without editing it.
 #
-#   ./scripts/update.sh            # backup → ff-to-tag → pull/build → up
+#   ./scripts/update.sh            # SQLite snapshot → ff-to-tag → pull/build → up
 #   ./scripts/update.sh --check    # report only; always exits 0
 #   ./scripts/update.sh --force    # allow a dirty working tree
 #   ./scripts/update.sh --help
@@ -143,6 +143,14 @@ do_check() {
   note "checkout: $REPO"
   probe_backend "$port"
 
+  if legacy_postgres_is_live; then
+    note "database: Postgres (legacy); the next backend boot imports it into data/maestro_cs.sqlite3"
+  elif [ -s "$SQLITE_FILE" ]; then
+    ok "database: data/maestro_cs.sqlite3"
+  else
+    note "database: not created yet (first boot creates it)"
+  fi
+
   if describe="$(git -C "$REPO" describe --tags --always 2>/dev/null)"; then
     ok "local: $describe"
   else
@@ -179,9 +187,16 @@ print_restore() {
   local dump="$1"
   local user="$2"
   local db="$3"
-  note "restore this dump:  gunzip -c $dump | docker compose --project-directory \"$REPO\" exec -T postgres psql -U $user $db"
-  note "Rollback is one recipe: old git ref + old images + this dump. Never restore a dump into a newer schema."
-  note "This dump guards the migration. base_resumes/, applications/, settings/, kb_documents/ are on disk and no step here touches them."
+  case "$dump" in
+    *.sqlite3.gz)
+      note "restore this snapshot (stack STOPPED):  docker compose --project-directory \"$REPO\" down && gunzip -c $dump > $SQLITE_FILE && rm -f $SQLITE_FILE-wal $SQLITE_FILE-shm"
+      ;;
+    *)
+      note "restore this dump:  gunzip -c $dump | docker compose --project-directory \"$REPO\" exec -T postgres psql -U $user $db"
+      ;;
+  esac
+  note "Rollback is one recipe: old git ref + old images + this backup. Never restore a backup into a newer schema."
+  note "This backup guards the migration. base_resumes/, applications/, settings/, kb_documents/ are on disk and no step here touches them."
 }
 
 prune_keep_last() {
@@ -223,6 +238,33 @@ wait_postgres() {
   die "postgres did not become healthy"
 }
 
+SQLITE_FILE="$REPO/data/maestro_cs.sqlite3"
+IMPORT_MARKER="$REPO/data/.migrated-from-postgres.json"
+
+pgdata_volume() {
+  # The compose file pins the project name; COMPOSE_PROJECT_NAME still overrides
+  # it, the same way it does for compose.
+  local project="${COMPOSE_PROJECT_NAME:-maestro-career-studio}"
+  docker volume ls --format '{{.Name}}' 2>/dev/null | grep -Fx "${project}_pgdata" || true
+}
+
+# True while the database that matters still lives in Postgres: no import
+# marker yet, and a pgdata volume to import from.
+legacy_postgres_is_live() {
+  [ ! -f "$IMPORT_MARKER" ] && [ -n "$(pgdata_volume)" ]
+}
+
+backup_sqlite() {
+  local dump="$1"
+  note "backing up the SQLite database to $dump"
+  # Through the app's own tool (online backup): a plain cp of a live database
+  # is a torn snapshot, WAL pages sit in the -wal sidecar until a checkpoint.
+  if ! compose run --rm -T --no-deps backend python -m app.tools.backup_db --stdout | gzip > "$dump"; then
+    rm -f "$dump"
+    die "sqlite backup failed"
+  fi
+}
+
 wait_health() {
   local port="$1"
   local i
@@ -236,6 +278,7 @@ wait_health() {
     sleep 5
   done
   warn "timed out waiting for /health"
+  note "if the backend refused to boot on 'Importing the legacy Postgres database failed' or 'cannot be reached', nothing was deleted: fix the cause and re-run, or unset LEGACY_DATABASE_URL in docker-compose.yml to skip the import"
   compose logs --tail=50 || true
   return 1
 }
@@ -266,17 +309,24 @@ do_update() {
   ts="$(date +%Y%m%dT%H%M%S)"
   version="$(git -C "$REPO" describe --tags --always 2>/dev/null | tr '/:' '--')"
 
-  note "starting postgres so there is a database to back up"
-  compose up -d postgres
-  wait_postgres "$user" "$db"
-
-  dump="$REPO/backups/db-${ts}-${version}.sql.gz"
-  note "backing up database to $dump"
-  # --clean --if-exists so the printed restore command works into a database
-  # that already has the schema (a plain dump errors on every duplicate table).
-  if ! compose exec -T postgres pg_dump --clean --if-exists -U "$user" "$db" | gzip > "$dump"; then
-    rm -f "$dump"
-    die "pg_dump failed"
+  if legacy_postgres_is_live; then
+    note "starting postgres so there is a database to back up"
+    compose up -d postgres
+    wait_postgres "$user" "$db"
+    dump="$REPO/backups/db-${ts}-${version}.sql.gz"
+    note "backing up database to $dump"
+    # --clean --if-exists so the printed restore command works into a database
+    # that already has the schema (a plain dump errors on every duplicate table).
+    if ! compose exec -T postgres pg_dump --clean --if-exists -U "$user" "$db" | gzip > "$dump"; then
+      rm -f "$dump"
+      die "pg_dump failed"
+    fi
+  else
+    if [ ! -s "$SQLITE_FILE" ]; then
+      die "no database to back up: neither $SQLITE_FILE nor a Postgres volume exists (first boot creates the file)"
+    fi
+    dump="$REPO/backups/db-${ts}-${version}.sqlite3.gz"
+    backup_sqlite "$dump"
   fi
   if [ ! -s "$dump" ]; then
     rm -f "$dump"
@@ -350,6 +400,12 @@ do_update() {
 
   printf '\n'
   ok "update complete"
+  if [ -f "$IMPORT_MARKER" ] && [ -n "$(pgdata_volume)" ]; then
+    printf '\n'
+    note "Your database now lives in data/maestro_cs.sqlite3 (imported from Postgres, verified)."
+    note "The old Postgres volume is no longer read. Once you are satisfied, remove it:"
+    note "  docker volume rm $(pgdata_volume)"
+  fi
   if [ "$(git -C "$REPO" rev-parse --short HEAD)" != "$old_sha" ]; then
     note "commits brought in:"
     git -C "$REPO" log --oneline "${old_sha}..HEAD" || true
