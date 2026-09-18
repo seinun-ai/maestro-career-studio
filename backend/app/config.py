@@ -14,6 +14,11 @@ from sqlalchemy.exc import ArgumentError
 # alike. See app/assets/fonts/xcharter/README.md.
 VENDORED_FONTS_DIR = Path(__file__).resolve().parent / "assets" / "fonts" / "xcharter"
 
+# The one relational file (SYSTEM.md §3), created under data_dir; its -wal/-shm
+# sidecars sit beside it. app/db.py imports this so every path that names the
+# file (engine, backup, importer) spells it the same way.
+DB_FILENAME = "maestro_cs.sqlite3"
+
 
 def normalize_postgres_url(value: str) -> str:
     """Force the psycopg v3 dialect onto a bare postgresql:// URL. Used ONLY by
@@ -134,7 +139,7 @@ class Settings(BaseSettings):
         # import marker lives under it) must never disagree with the URL.
         self.data_dir = self.data_dir.resolve()
         if not self.database_url:
-            self.database_url = f"sqlite:///{self.data_dir / 'maestro_cs.sqlite3'}"
+            self.database_url = f"sqlite:///{self.data_dir / DB_FILENAME}"
         return self
 
     # --- Browser-borne attack surface -------------------------------------
