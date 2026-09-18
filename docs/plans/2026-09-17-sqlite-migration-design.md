@@ -336,8 +336,10 @@ Two releases. Removal triggers are stated so this can become a §13 row.
   SQLite backup afterwards, and prints where the old volume is and how to
   remove it once satisfied. `--check` reports which database is live.
 - `.env.example` keeps `POSTGRES_*` and `POSTGRES_HOST_PORT` for this one
-  release, marked legacy. New keys: none. `DATA_DIR` is container-absolute
-  and needs no `.env` entry.
+  release, marked legacy. One new optional key, commented out:
+  `SQLITE_JOURNAL_MODE=DELETE`, the escape hatch for a bind mount WAL cannot
+  trust; compose forwards it (`${SQLITE_JOURNAL_MODE:-}`, empty = unset).
+  `DATA_DIR` is container-absolute and needs no `.env` entry.
 - Docs updated (§5). README's prerequisite drops "PostgreSQL ~170 MB" from
   the download estimate.
 
