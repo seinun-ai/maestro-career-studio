@@ -1,5 +1,7 @@
 """POST /api/kb/ingest-parsed — caller-parsed resumes, KB-only, no LLM."""
 
+from uuid import UUID
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -77,7 +79,7 @@ def test_ingest_parsed_happy_path_returns_ids(client, db_session, no_llm):
     # Every returned id must resolve to a real row with the right linkage.
     entity_ids = {e["id"] for e in body["entities"]}
     for item in body["points"]:
-        point = db_session.get(KBPoint, item["id"])
+        point = db_session.get(KBPoint, UUID(item["id"]))
         assert point is not None
         assert str(point.entity_id) == item["entity_id"]
         assert item["entity_id"] in entity_ids
@@ -292,7 +294,7 @@ def test_onboarding_round_trip_ingest_approve_compose(
     assert len(entity_ids) == 2
 
     for pid in point_ids:
-        row = db_session.get(KBPoint, pid)
+        row = db_session.get(KBPoint, UUID(pid))
         assert row is not None and row.state == "draft"
 
     # Drafts contribute NO bullets: the entries compose as bare headers.
@@ -310,7 +312,7 @@ def test_onboarding_round_trip_ingest_approve_compose(
     assert {row["id"] for row in approve.json()["results"]} == set(point_ids)
     for pid in point_ids:
         db_session.expire_all()
-        row = db_session.get(KBPoint, pid)
+        row = db_session.get(KBPoint, UUID(pid))
         assert row.state == "approved"
         assert row.approved_at is not None
 

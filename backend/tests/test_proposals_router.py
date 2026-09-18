@@ -1,4 +1,5 @@
 from datetime import UTC, datetime, timedelta
+from uuid import UUID
 
 from fastapi.testclient import TestClient
 
@@ -23,6 +24,27 @@ def test_create_and_get(db_session):
     detail = client.get(f"/api/proposals/{pid}").json()
     assert detail["status"] == "pending_review"
     assert detail["job"]["company"] == "Acme"
+
+
+def test_string_ids_cross_the_route_into_uuid_columns(db_session):
+    """JSON carries ids as strings and the route's schema (ProposalCreate) is
+    where they become uuid.UUID. sa.Uuid does no str coercion of its own (a
+    str bind raises StatementError on SQLite), so the schema IS the boundary;
+    this pins it for both id fields and for the path parameter on read."""
+    job = _mk_job(db_session, company="Acme", source="agent")
+    app_row = Application(job_id=job.id, base_resume="hybrid", source="agent", status="draft")
+    db_session.add(app_row)
+    db_session.commit()
+
+    r = client.post(
+        "/api/proposals", json={"job_id": str(job.id), "application_id": str(app_row.id)},
+    )
+    assert r.status_code == 201
+    pid = r.json()["id"]
+
+    prop = db_session.get(ApplicationProposal, UUID(pid))
+    assert (prop.job_id, prop.application_id) == (job.id, app_row.id)
+    assert client.get(f"/api/proposals/{pid}").status_code == 200
 
 
 def test_duplicate_open_proposal_returns_existing(db_session):
@@ -182,7 +204,7 @@ def test_delete_refused_for_submitted_proposals(db_session):
     # Submitted rows ARE the audit trail of a machine submission (design §3c).
     job = _mk_job(db_session, company="DelGuardCo")
     pid = client.post("/api/proposals", json={"job_id": str(job.id)}).json()["id"]
-    prop = db_session.get(ApplicationProposal, pid)
+    prop = db_session.get(ApplicationProposal, UUID(pid))
     prop.status = "submitted"
     db_session.commit()
     r = client.delete(f"/api/proposals/{pid}")
@@ -260,7 +282,7 @@ def test_list_filters_by_status_and_lazily_expires(db_session):
     pid2 = r2.json()["id"]
 
     # Expire proposal 1 manually
-    prop1 = db_session.get(ApplicationProposal, pid1)
+    prop1 = db_session.get(ApplicationProposal, UUID(pid1))
     prop1.expires_at = datetime.now(UTC) - timedelta(days=1)
     db_session.commit()
 
@@ -301,7 +323,7 @@ def test_approve_then_submit_flow(db_session):
     r = client.post("/api/proposals", json={"job_id": str(job.id), "application_id": str(app_row.id)})
     pid = r.json()["id"]
 
-    prop = db_session.get(ApplicationProposal, pid)
+    prop = db_session.get(ApplicationProposal, UUID(pid))
     prop.evidence_json = [{
         "step": 99, "label": "final review", "path": "evidence/fr.png",
         "sha256": "fr", "kind": "final_review",
@@ -315,7 +337,7 @@ def test_approve_then_submit_flow(db_session):
     assert r_app.status_code == 200
     assert r_app.json()["status"] == "approved"
 
-    prop = db_session.get(ApplicationProposal, pid)
+    prop = db_session.get(ApplicationProposal, UUID(pid))
     prop.evidence_json = list(prop.evidence_json or []) + [{
         "step": 100, "label": "receipt", "path": "evidence/rcpt.png",
         "sha256": "rc", "kind": "submission_receipt",
@@ -336,7 +358,7 @@ def test_double_approve_conflict(db_session):
     r = client.post("/api/proposals", json={"job_id": str(job.id)})
     pid = r.json()["id"]
 
-    prop = db_session.get(ApplicationProposal, pid)
+    prop = db_session.get(ApplicationProposal, UUID(pid))
     prop.evidence_json = [{
         "step": 99, "label": "final review", "path": "evidence/fr.png",
         "sha256": "fr", "kind": "final_review",
@@ -396,14 +418,14 @@ def test_proposals_funnel_summary(db_session):
     db_session.add(app2)
     db_session.commit()
     p2 = client.post("/api/proposals", json={"job_id": str(job_agent2.id), "application_id": str(app2.id)}).json()
-    prop2 = db_session.get(ApplicationProposal, p2['id'])
+    prop2 = db_session.get(ApplicationProposal, UUID(p2['id']))
     prop2.evidence_json = [{
         "step": 99, "label": "final review", "path": "evidence/fr.png",
         "sha256": "fr", "kind": "final_review",
     }]
     db_session.commit()
     client.patch(f"/api/proposals/{p2['id']}", json={"status": "approved", "consent": {"channel": "chat"}})
-    prop2 = db_session.get(ApplicationProposal, p2['id'])
+    prop2 = db_session.get(ApplicationProposal, UUID(p2['id']))
     prop2.evidence_json = list(prop2.evidence_json or []) + [{
         "step": 100, "label": "receipt", "path": "evidence/rcpt.png",
         "sha256": "rc", "kind": "submission_receipt",
@@ -554,7 +576,7 @@ def test_report_failure_submission_uncertain(db_session):
     pid = client.post("/api/proposals", json={
         "job_id": str(job.id), "application_id": str(app_row.id),
     }).json()["id"]
-    prop = db_session.get(ApplicationProposal, pid)
+    prop = db_session.get(ApplicationProposal, UUID(pid))
     prop.evidence_json = _fr_evidence()
     db_session.commit()
     client.patch(f"/api/proposals/{pid}", json={
@@ -588,7 +610,7 @@ def test_get_final_review_bundle(db_session):
         "fit": {"chosen_base": "hybrid", "scores": {"hybrid": 80, "ml_eng": 70}},
         "plan": {"summary": "ok", "blocked_items": ["signature"], "manual_items": ["CAPTCHA"]},
     }).json()["id"]
-    prop = db_session.get(ApplicationProposal, pid)
+    prop = db_session.get(ApplicationProposal, UUID(pid))
     prop.evidence_json = _fr_evidence()
     db_session.commit()
 

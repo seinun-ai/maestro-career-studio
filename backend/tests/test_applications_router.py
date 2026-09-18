@@ -2,6 +2,7 @@ import shutil
 import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
+from uuid import UUID
 
 from tests.pdf_fixtures import write_blank_pdf
 import pytest
@@ -1278,7 +1279,7 @@ def test_patch_application_edits_hash_mismatch_returns_409_without_write(
     assert response.status_code == 409
     assert response.json()["detail"].startswith("content changed since analysis")
     db_session.expire_all()
-    row = db_session.get(Application, app_id)
+    row = db_session.get(Application, UUID(app_id))
     assert row.customized_json["summary"] == "Base summary."
 
 
