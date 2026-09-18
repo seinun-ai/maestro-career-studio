@@ -1,3 +1,4 @@
+import atexit
 import os
 import shutil
 import tempfile
@@ -12,6 +13,10 @@ _OWNED_TMP: str | None = None
 if not os.environ.get("TEST_DATABASE_URL"):
     _OWNED_TMP = tempfile.mkdtemp(prefix="maestro_cs_test_")
     os.environ["TEST_DATABASE_URL"] = f"sqlite:///{Path(_OWNED_TMP) / 'maestro_cs_test.sqlite3'}"
+    # The session fixture removes the dir on a normal run. This covers
+    # `--collect-only` and a collection-time abort, where no fixture ever runs
+    # and every invocation would otherwise leave an empty dir behind.
+    atexit.register(shutil.rmtree, _OWNED_TMP, ignore_errors=True)
 
 # Same reason, same timing: `app.main` installs TrustedHostMiddleware from
 # `settings.allowed_hosts` at import, and starlette's TestClient sends
@@ -28,6 +33,7 @@ if not os.environ.get("MAESTRO_CS_EXTENSION_IDS"):
     os.environ["MAESTRO_CS_EXTENSION_IDS"] = "abcdefghijklmnopabcdefghijklmnop"
 
 import pytest
+import sqlalchemy as sa
 from alembic import command
 from alembic.config import Config
 from sqlalchemy.engine import make_url
@@ -59,8 +65,9 @@ def _hermetic_embedder(request, monkeypatch):
     monkeypatch.setattr(embeddings, "embed_texts", fake_embed_texts)
 
 
-# Tests delete from every table. Refuse anything that could be real data: a
-# file under the repo's data/ mount, or a file named like the dev database.
+# Tests delete from every table. Refuse anything that could be real data: the
+# app's own database, a file under the repo's data/ mount, or a file named
+# like the dev database.
 FORBIDDEN_DB_STEMS = {"maestro_cs", "career_studio", "resume_auto"}
 REPO_DATA_DIR = Path(__file__).resolve().parents[2] / "data"
 TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL")
@@ -85,6 +92,16 @@ def _validate_test_db_url(url: str | None) -> str:
             "open separate connections, and an in-memory database is per-connection."
         )
     path = Path(parsed.database).resolve()
+    # Imported here, not at module top: this module sets env vars before any
+    # app import (see the E402 note in pyproject), and app.config reads them.
+    from app.config import settings
+
+    own = make_url(settings.database_url).database
+    if own and path == Path(own).resolve():
+        raise RuntimeError(
+            f"TEST_DATABASE_URL {url!r} is the app's own database "
+            "(settings.database_url); tests delete every table."
+        )
     if REPO_DATA_DIR in path.parents or path.stem in FORBIDDEN_DB_STEMS:
         raise RuntimeError(
             f"TEST_DATABASE_URL {url!r} looks like real data; use a throwaway file "
@@ -125,11 +142,22 @@ def _test_engine():
 
 @pytest.fixture
 def db_session(_test_engine) -> Iterator[Session]:
+    """A session on the shared engine, every table cleared before and after.
+
+    One reachable stall: a test that leaves an app-side session (app.db's
+    SessionLocal, a TestClient dependency) holding an UNCOMMITTED write keeps
+    SQLite's write lock, so the clearing DELETEs here wait the full
+    busy_timeout (30 s) and then fail with "database is locked" — in this
+    fixture's teardown or the next test's setup, attributed to the wrong test.
+    """
     SessionLocal = sessionmaker(bind=_test_engine, autoflush=False, autocommit=False)
     with SessionLocal() as session:
         _clear_tables(session)
         session.commit()
         yield session
+        # Load-bearing: commit() flushes pending objects, so without this
+        # rollback a never-flushed `add` would be written AFTER the deletes
+        # below and leak into the next test.
         session.rollback()
         _clear_tables(session)
         session.commit()
@@ -140,6 +168,14 @@ def _clear_tables(session: Session) -> None:
     import app.models  # noqa: F401  registers every table
 
     # Children before parents, so no DELETE trips a foreign key: the
-    # connection has foreign_keys=ON (app.db.make_engine), which is the point.
+    # connection has foreign_keys=ON (app.db.make_engine), which is the point,
+    # and it stays ON everywhere else. Deferral is belt-and-braces for the
+    # ORDER: SQLite then checks the constraints at COMMIT instead of per
+    # statement, so the reverse-sorted_tables walk stays correct even if a
+    # future mutual FK pair makes that order arbitrary. The pragma switches
+    # itself off at each COMMIT or ROLLBACK, so it covers exactly this
+    # transaction; pysqlite opens that transaction at the first DELETE, and a
+    # flag set before it carries in (verified: parent-first DELETE, clean commit).
+    session.execute(sa.text("PRAGMA defer_foreign_keys=ON"))
     for table in reversed(Base.metadata.sorted_tables):
         session.execute(table.delete())
