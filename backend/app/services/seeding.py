@@ -181,5 +181,35 @@ def seed_startup_data(session: Session) -> None:
 
 def run_startup() -> None:
     run_migrations()
+    _import_legacy_postgres()
     with SessionLocal() as session:
         seed_startup_data(session)
+
+
+def _import_legacy_postgres() -> None:
+    """ONE release only (SYSTEM.md §13 postgres-to-sqlite). Runs before any
+    seed so a compose-era database lands in an empty file, never beside demo
+    rows. The ordering is load-bearing: run_startup() is `alembic upgrade
+    head` -> this hook -> seed_startup_data(), and seeding opens one long
+    write transaction (the KB consolidation) before the app serves, so the
+    import has finished and committed before that transaction starts.
+    Unreachable source = retry next boot; a verification failure is logged
+    loudly and the app still boots (the transaction rolled back)."""
+    if not settings.legacy_database_url:
+        return
+    from app.tools import migrate_from_postgres as tool
+
+    marker = Path(settings.data_dir) / tool.MARKER_NAME
+    try:
+        outcome = tool.import_if_needed(
+            settings.legacy_database_url, settings.database_url, marker, log=logger.info
+        )
+    except tool.ExportError:
+        logger.exception("legacy Postgres import failed verification; booting with the empty file")
+        return
+    if outcome == "imported":
+        logger.warning(
+            "Imported your Postgres database into %s. The old Docker volume is no longer "
+            "read; remove it when satisfied (README: Updating).",
+            settings.database_url,
+        )
