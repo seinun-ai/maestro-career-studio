@@ -2,9 +2,9 @@
 
 The importer itself is covered in tests/tools. This is the hook's contract:
 it runs between the migrations and the seed, it is inert without a legacy
-URL, soft outcomes let the app boot, and ANY failure aborts startup (fails
-closed) so the still-empty file is retried at the next boot instead of being
-filled with demo rows.
+URL, soft outcomes let the app boot, and ANY failure -- an unreachable source
+included -- aborts startup (fails closed) so the still-empty file is retried
+at the next boot instead of being filled with demo rows.
 """
 import logging
 from pathlib import Path
@@ -79,13 +79,27 @@ def test_hook_targets_the_app_database_and_the_marker_under_data_dir(legacy_url,
 
 
 @pytest.mark.parametrize(
-    "outcome",
-    ["source-unreachable", "source-empty", "already-imported", "target-not-empty", "imported"],
+    "outcome", ["source-empty", "already-imported", "target-not-empty", "imported"]
 )
 def test_soft_outcomes_let_the_app_boot(legacy_url, monkeypatch, outcome):
     _stub_import(monkeypatch, outcome=outcome)
 
     seeding._import_legacy_postgres()
+
+
+def test_an_unreachable_source_aborts_startup(legacy_url, monkeypatch, caplog):
+    # A set LEGACY_DATABASE_URL is a request for an import, so "cannot reach
+    # it" is a configuration error; booting on would seed demo rows and leave
+    # every later boot at target-not-empty.
+    _stub_import(monkeypatch, outcome="source-unreachable")
+
+    with caplog.at_level(logging.ERROR, logger=seeding.logger.name):
+        with pytest.raises(RuntimeError, match="docker compose up -d postgres") as info:
+            seeding._import_legacy_postgres()
+
+    assert "unset LEGACY_DATABASE_URL" in str(info.value)
+    assert info.value.__cause__ is None
+    assert "cannot be reached" in caplog.text
 
 
 def test_imported_logs_the_handover_warning(legacy_url, monkeypatch, caplog):

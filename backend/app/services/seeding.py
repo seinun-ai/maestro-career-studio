@@ -192,13 +192,19 @@ def _import_legacy_postgres() -> None:
     lands in an empty file, never beside demo rows, and it has committed
     before seeding opens its long write transaction (the KB consolidation).
 
-    Fails CLOSED. On any failure the user's data still lives in Postgres and
-    the importer's transaction has rolled back, so the file is still empty.
-    Booting on would let seeding fill it with demo rows and leave every later
-    boot at `target-not-empty` with a confusingly empty app; aborting keeps
-    the file empty, so the next boot retries once the cause is fixed. Soft
-    outcomes (no source, unreachable source, nothing to import, already
-    imported, a file that already holds data) never abort."""
+    Fails CLOSED, on a failure and on an unreachable source alike. On a
+    failure the user's data still lives in Postgres and the importer's
+    transaction has rolled back, so the file is still empty. Booting on would
+    let seeding fill it with demo rows and leave every later boot at
+    `target-not-empty` with a confusingly empty app; aborting keeps the file
+    empty, so the next boot retries once the cause is fixed. An unreachable
+    source is the same trap by another route: when LEGACY_DATABASE_URL is
+    set the operator asked for an import, so a source that cannot be reached
+    is a configuration error, not a transient to paper over. Compose orders
+    the backend after Postgres's healthcheck, so in the stack this only fires
+    when something is genuinely wrong, and the message says to unset
+    LEGACY_DATABASE_URL to skip. Soft outcomes (no source, nothing to
+    import, already imported, a file that already holds data) never abort."""
     if not settings.legacy_database_url:
         return
     from app.tools import migrate_from_postgres as tool
@@ -216,6 +222,15 @@ def _import_legacy_postgres() -> None:
             "restart; the import retries at the next boot. To skip it, unset "
             "LEGACY_DATABASE_URL."
         ) from exc
+    if outcome == "source-unreachable":
+        message = (
+            "LEGACY_DATABASE_URL is set but the Postgres source cannot be reached; refusing "
+            "to boot on an empty file so the import can retry. Start the postgres service "
+            "(docker compose up -d postgres) and restart, or unset LEGACY_DATABASE_URL to "
+            "skip the import."
+        )
+        logger.error(message)
+        raise RuntimeError(message)
     if outcome == "imported":
         logger.warning(
             "Imported your Postgres database into %s. The old Docker volume is no longer "

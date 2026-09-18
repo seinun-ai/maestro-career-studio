@@ -258,8 +258,9 @@ def import_if_needed(
     source-unreachable, source-empty, target-not-empty, imported. Raises
     ExportError on a verification mismatch and lets any other copy error
     propagate; either way the target transaction rolled back before commit,
-    the file is as empty as it was and no marker exists, so the next boot
-    retries."""
+    the file is as empty as it was and no marker exists. Whether the process
+    then boots or retries at the next start is the caller's call
+    (seeding._import_legacy_postgres fails closed, on source-unreachable too)."""
     if marker.exists():
         return "already-imported"
     if not source_url:
@@ -267,7 +268,10 @@ def import_if_needed(
     source_url = normalize_postgres_url(source_url)
     has_data = _source_has_data(source_url)
     if has_data is None:
-        log("legacy Postgres source is unreachable; will retry at the next boot")
+        # The caller decides what that means: the boot hook refuses to start
+        # (a set LEGACY_DATABASE_URL is a request, not a hint), so the file
+        # stays empty and the next boot retries.
+        log("legacy Postgres source is unreachable")
         return "source-unreachable"
     if not has_data:
         _write_marker(marker, {"outcome": "source-empty"})
