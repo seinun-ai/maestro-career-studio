@@ -66,6 +66,9 @@ def test_make_engine_refuses_other_journal_modes(tmp_path):
 
 
 def test_make_engine_non_sqlite_url_gets_no_listeners():
+    # psycopg is the legacy-postgres extra; this test is meaningful in the image
+    # and the legacy CI job, and skipped on the lean install.
+    pytest.importorskip("psycopg")
     engine = make_engine("postgresql+psycopg://x/y")
     try:
         assert isinstance(engine, Engine)
