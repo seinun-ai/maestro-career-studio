@@ -2330,10 +2330,19 @@ In the two-dependency-sources bullet add one sentence: `legacy-postgres` is a on
 - YYYY-MM-DD: SQLite forgets every PRAGMA when a connection closes and ships
   `foreign_keys=OFF` → 21 `ondelete=` cascades silently stop → every engine
   goes through `app.db.make_engine`; never `create_engine` in app code.
-- YYYY-MM-DD: Alembic autogenerate renders a TypeDecorator as `sa.<Name>()`,
-  which does not exist → replace with the impl type by hand in the revision.
-  Comparison needs no hook: Alembic ≥1.4 compares compiled DDL, so
-  `compare_type=True` already sees `UTCDateTime` as the `DATETIME` it made.
+- YYYY-MM-DD: Alembic autogenerate renders a TypeDecorator fully qualified
+  (`app.models.types.UTCDateTime()`), unimportable in a revision → replace
+  with the impl type by hand. Comparison needs no hook: Alembic compares
+  compiled DDL, so `compare_type=True` sees `UTCDateTime` as `DATETIME`; but
+  `alembic check` ignores server defaults → the parity test has a
+  `compare_server_default=True` pass with an exact allow-list.
+- YYYY-MM-DD: a Boolean `server_default="false"` is TEXT `'false'` on SQLite
+  and truthy in Python (every user template read as the default) → Boolean
+  defaults are expressions (`expression.false()`), pinned by
+  `test_db_portability`.
+- YYYY-MM-DD: `Session.commit()` flushes pending objects, so the
+  `rollback()` before a teardown clear is load-bearing; without it a
+  never-flushed `add` lands AFTER the deletes and leaks into the next test.
 ```
 
 **§13** — append the row:
@@ -2476,6 +2485,9 @@ Append-only. One line per deviation: task, what the plan said, what was found, w
 | 6 | legacy env imports `normalize_postgres_url` from `app.config` and writes the URL back via `set_main_option` | importing `app.config` instantiates `Settings()`, which refuses a compose-era `.env`; ConfigParser interpolation breaks on `%` in a URL-encoded password | normalizer inlined in the box; URL kept in a module variable and passed straight to `create_engine`/`url=` | correctness |
 | 6 | `alembic check` gates the baseline | it ignores server defaults; the template round-trip test built its schema with `create_all`, so `sa.text('0')` was reviewed by eye only | Task 7: round-trip test on the migrated fixture; parity test gets a `compare_server_default=True` pass with the four `''` false positives allow-listed | deterministic / no data loss |
 | 7 | `compare_metadata` returns bare tuples | Alembic 1.18.3 wraps column-level `modify_*` ops in a per-column list | the parity test flattens one level and keys on `(str(table), str(column))` (`quoted_name`) | — |
+| 7 | `tmp_path_factory` session dir | it does not exist at conftest import, and the env var must be set before any `app` import | `tempfile.mkdtemp` per process + session-fixture rmtree + `atexit` fallback; design §2.7 rewritten in place | — |
+| 7 | `_clear_tables` with `foreign_keys=OFF` | ON exercises the 21 `ondelete=` relationships; SQLite checks immediate FKs at statement end so reverse `sorted_tables` works even for the self-referential table | ON, plus `PRAGMA defer_foreign_keys=ON` for the clearing transaction; design §2.7 rewritten in place | correctness |
+| 7 | server-default allow-list keyed on (table, column) | a genuine drift on one of the four columns stayed green (proved by injecting `'unknown'`) | allow-list also requires DB side `''` and model side `""`; `_validate_test_db_url` gained a test file and refuses `settings.database_url` | deterministic / no data loss |
 | 7 | — | suite baseline on SQLite before fixes: `43 failed, 4151 passed, 1 skipped, 23 errors in 218.89s`. By cause: 23 errors + 12 failures are Task 6 relocation effects (prompt-defaults lock pin; three resync-migration tests globbing the old path); 21 string-UUID binds (`.hex`), 20 in tests via `session.get`, 1 in `services/proposals.py:66`; 9 `date_trunc` (Task 8); 1 ordering suspect in `kb_consolidation`. No naive-datetime failures. | fix items added to Task 9's table | — |
 
 **LLM-call audit (Task 10):**

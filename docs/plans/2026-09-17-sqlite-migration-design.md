@@ -219,15 +219,25 @@ because the Postgres data is what the migration is about to read.
 
 ### 2.7 Tests and CI
 
-- `conftest.py`: default `TEST_DATABASE_URL` becomes a SQLite file under
-  `tmp_path_factory`'s session dir. The `CREATE DATABASE` branch and both
-  "Postgres is unreachable, run `docker compose up -d postgres`" messages
-  go. `_test_database_ready` keeps running `alembic upgrade head`.
+- `conftest.py`: default `TEST_DATABASE_URL` becomes a SQLite file in a
+  per-process `tempfile.mkdtemp(prefix="maestro_cs_test_")` directory, set
+  before any `app` import (which is why `tmp_path_factory` cannot be used:
+  it does not exist at conftest import) and removed by the session fixture,
+  with an `atexit` fallback for collection-only runs. The `CREATE DATABASE`
+  branch and both "Postgres is unreachable, run `docker compose up -d
+  postgres`" messages go. `_test_database_ready` keeps running
+  `alembic upgrade head`. The guard also refuses the app's own
+  `settings.database_url`.
 - `db_session` builds one engine per session instead of per test (the
   per-test engine existed to dodge Postgres's 100-connection cap, which no
   longer applies) and still disposes it.
 - `_clear_tables` becomes dialect-neutral: `DELETE FROM` in reverse
-  `sorted_tables` order with `foreign_keys=OFF` for the duration.
+  `sorted_tables` order with `foreign_keys=ON` (it exercises the 21
+  `ondelete=` relationships the app relies on) and `PRAGMA
+  defer_foreign_keys=ON` for the clearing transaction, so the order stays
+  correct even if a future mutual FK pair makes `sorted_tables` arbitrary.
+  SQLite checks immediate FK constraints at statement end, so a single
+  `DELETE` clears a self-referential table.
 - The three tests that already build an in-memory `sqlite://` engine keep
   working and stop being special.
 - CI: the `test` job loses its `postgres` service. A `legacy-export` job
