@@ -14,6 +14,7 @@ from app.services import pdf_render
 
 
 ROOT = Path(__file__).resolve().parents[1]
+# Delete with legacy_postgres/ (SYSTEM.md §13 postgres-to-sqlite): this exercises the boxed Postgres chain.
 VERSIONS = ROOT / "legacy_postgres" / "migrations" / "versions"
 PRE_SECTION_ORDER = ROOT / "tests" / "fixtures" / "templates_pre_section_order"
 BUNDLED = {

@@ -25,9 +25,11 @@ class UTCDateTime(TypeDecorator):
 
     SQLite has no timezone-aware column type. Every writer in the app uses
     datetime.now(UTC), so a NAIVE bind is a bug, not a convention, and it
-    raises here rather than storing an ambiguous instant. Values read back
-    (including CURRENT_TIMESTAMP server defaults, which SQLite emits in UTC)
-    are stamped UTC so comparisons against datetime.now(UTC) stay legal.
+    raises here rather than storing an ambiguous instant. The app writes every
+    timestamp itself (default=utcnow, onupdate=utcnow); the CURRENT_TIMESTAMP
+    server default is DDL-only, reachable only by raw SQL, which the app does
+    not use. Values read back are stamped UTC so comparisons against
+    datetime.now(UTC) stay legal.
     """
 
     impl = sa.DateTime

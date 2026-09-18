@@ -90,14 +90,17 @@ def test_every_server_default_timestamp_also_has_a_python_default():
     # binds "YYYY-MM-DD HH:MM:SS.ffffff"; the two shapes compare as strings,
     # so rows written within one second tie (or misorder) against each other.
     # One writer, the app, means one on-disk format: every UTCDateTime column
-    # with a server_default (kept for DDL parity) also carries utcnow.
+    # with a server_default (kept for DDL parity) also carries utcnow. The
+    # default has to be PYTHON-side (is_callable) — default=func.now() is a SQL
+    # expression too, so it writes the same 19-char form and would slip past a
+    # bare `is not None`.
     missing = [
         f"{table.name}.{column.name}"
         for table in Base.metadata.sorted_tables
         for column in table.columns
         if isinstance(column.type, UTCDateTime)
         and column.server_default is not None
-        and column.default is None
+        and (column.default is None or not column.default.is_callable)
     ]
     assert missing == []
 
@@ -105,10 +108,13 @@ def test_every_server_default_timestamp_also_has_a_python_default():
 def test_every_onupdate_is_python_side():
     # Same reason as above for the update path: onupdate=func.now() would put
     # a second-precision string on a row the app otherwise timestamps itself.
+    # Read SQLAlchemy's own is_callable (the flag it sets when it wrapped a
+    # callable, and the same one the rule above uses) rather than re-deriving it
+    # with callable() over .arg, which not every default carries.
     sql_side = [
         f"{table.name}.{column.name}"
         for table in Base.metadata.sorted_tables
         for column in table.columns
-        if column.onupdate is not None and not callable(column.onupdate.arg)
+        if column.onupdate is not None and not column.onupdate.is_callable
     ]
     assert sql_side == []

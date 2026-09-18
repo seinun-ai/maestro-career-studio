@@ -54,7 +54,8 @@ OPEN_STATUSES = frozenset({
 })
 
 
-def create_proposal(session, *, job_id, application_id=None, referral_id=None,
+def create_proposal(session, *, job_id: UUID, application_id: UUID | None = None,
+                    referral_id: UUID | None = None,
                     fit=None, plan=None) -> ApplicationProposal:
     cfg = auto_apply_settings.get_settings(session)
     prop = ApplicationProposal(
