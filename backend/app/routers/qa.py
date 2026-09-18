@@ -88,7 +88,13 @@ def _run_qa(payload: QARequest, db: Session) -> QAResponse:
             for entry in prior:
                 artifacts.cleanup_qa_entry_files(entry)
                 db.delete(entry)
-            db.flush()
+            # COMMIT, not flush: generation takes tens of seconds, and a
+            # flushed DELETE would hold SQLite's write lock for all of it, so
+            # every other writer waits out busy_timeout and then fails (design
+            # §3.2). Nothing is lost by committing early — the files those rows
+            # pointed at are already gone from disk above, so a rolled-back
+            # DELETE would only restore rows whose pdf_path names a deleted file.
+            db.commit()
             response.cover_letter = qa_service.generate_cover_letter(
                 payload.application_id, tone, db
             )

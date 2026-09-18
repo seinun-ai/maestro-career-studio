@@ -3,10 +3,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.config import settings as app_settings
-from app.db import get_db
+from app.db import SessionLocal, get_db
 from app.main import app
 from app.models.application import Application
 from app.models.job import Job
@@ -414,6 +414,75 @@ def test_generate_cover_letter_replaces_prior_entry_and_pdf(
     ).all()
     assert len(rows) == 1
     assert rows[0].answer == "fresh cover letter text"
+
+
+def test_prior_cover_letter_delete_is_committed_before_generation(
+    db_session, tmp_path, monkeypatch
+):
+    """The replace-DELETE must land before the LLM call, not sit flushed across it.
+
+    A flushed-but-uncommitted DELETE holds SQLite's write lock for the whole
+    generation (tens of seconds), so every other writer waits out the 30 s
+    busy_timeout and then fails with "database is locked" (design §3.2). The
+    observer below reads on ANOTHER connection: under WAL it sees the last
+    COMMITTED state, so a still-open transaction shows up as the prior row
+    still being there.
+    """
+    application = _application(db_session)
+    old_pdf = tmp_path / "cover_letter.pdf"
+    old_pdf.write_bytes(b"old")
+    db_session.add(
+        QAEntry(
+            application_id=application.id,
+            kind="cover_letter",
+            prompt="cover letter",
+            answer="old",
+            pdf_path=str(old_pdf),
+        )
+    )
+    db_session.commit()
+
+    seen_by_other_connection: list[int] = []
+
+    def fake_generate(app_id, tone, session=None):
+        with SessionLocal() as observer:
+            seen_by_other_connection.append(
+                observer.scalar(
+                    select(func.count())
+                    .select_from(QAEntry)
+                    .where(
+                        QAEntry.application_id == app_id,
+                        QAEntry.kind == "cover_letter",
+                    )
+                )
+            )
+        session.add(
+            QAEntry(
+                application_id=app_id,
+                kind="cover_letter",
+                answer="fresh cover letter text",
+                model_used="test-model",
+            )
+        )
+        session.commit()
+        return "fresh cover letter text"
+
+    monkeypatch.setattr(qa.qa_service, "generate_cover_letter", fake_generate)
+
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        response = TestClient(app).post(
+            "/api/qa",
+            json={
+                "application_id": str(application.id),
+                "cover_letter": {"tone": "balanced"},
+            },
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert seen_by_other_connection == [0]
 
 
 def test_regenerate_qa_entry_overwrites_answer(db_session, monkeypatch):
