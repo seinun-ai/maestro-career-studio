@@ -262,15 +262,26 @@ commit. `busy_timeout=30000` makes a second writer wait rather than fail.
 Reachable only if a transaction holds a write lock across something slow.
 With `autoflush=False`, the write lock is taken at the first flushed
 INSERT/UPDATE, normally at commit. The risk is an explicit `flush()` or
-`commit()` **before** an LLM call inside the same session. A grep for the
-LLM client names 22 files under `services/` (several are the client and
-its tracing, not callers); the plan must audit each caller for that shape
-and fix any found by moving the flush after the call or splitting the
-transaction.
-`tailoring_session.tailor()` is the first to check: it applies pre-ops in
-memory and commits once at the end, which is the correct shape.
-Acceptance for the audit: a tailoring run and an MCP `score_ats` on another
-job, started concurrently, both succeed.
+`commit()` **before** an LLM call inside the same session. The audit (plan
+Task 10, ~30 call sites) found two routes with that shape and fixed them by
+committing first (`routers/qa.py` cover-letter regeneration; `routers/
+career_kb.py` document upload before the mint call). Two sites keep it BY
+DESIGN: `kb_consolidation.consolidate` (a flush, then one LLM call per
+entity, one commit; `seeding.seed_career_kb` relies on that atomicity via
+`commit=False`) and `tailoring_session.create_session` with enrichment
+(score flush + supersede UPDATE, then the enrichment LLM call, one commit;
+the code states the trade). While either runs, another writer waits
+`busy_timeout` (30 s) and then fails "database is locked". Consolidation is
+user-initiated and rare (import, the KB page's consolidate action; first-
+boot seeding runs before the app serves), enrichment is seconds. Recorded
+as a known limitation with the fix sketch (compute every LLM result first,
+then write in one short transaction, keeping the seeder's `commit=False`
+contract) in KNOWN_ISSUES and SYSTEM.md §11 item 25.
+`tailoring_session.tailor()` is the correct shape: pre-ops in memory, one
+commit at the end. Acceptance: a tailoring session created WITH
+`enrich=true` and a concurrent MCP `score_ats` on another job both succeed
+within the busy timeout; a KB import with consolidation plus any concurrent
+write is the known limitation, not a regression.
 
 ### 3.3 Disk and durability
 

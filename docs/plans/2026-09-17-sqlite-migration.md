@@ -2354,6 +2354,21 @@ In the two-dependency-sources bullet add one sentence: `legacy-postgres` is a on
   created_at` for "never edited".
 ```
 
+**§11** — append item 25:
+
+```
+25. SQLite has one write lock per database, and two transactions keep it
+   across LLM calls: `kb_consolidation.consolidate` (flush, then one LLM
+   call per entity, one commit — `seeding.seed_career_kb` relies on the
+   atomicity via `commit=False`) and `tailoring_session.create_session`
+   with enrichment (score flush + supersede UPDATE, then the enrichment
+   call). A concurrent writer waits `busy_timeout` (30 s) then fails
+   "database is locked". Fix: compute every LLM result first, then write
+   in one short transaction, keeping the seeder's `commit=False` contract.
+   Until then consolidation is a user-initiated, rare, minutes-long
+   exclusive window (audit: the SQLite migration plan, Task 10).
+```
+
 **§13** — append the row:
 
 ```
@@ -2413,7 +2428,7 @@ Find every line with `grep -n -i "postgres\|55432\|pg_dump" <file>` and rewrite 
 - **docs/GETTING_STARTED.md** 191–193, 199–202: first boot creates the file; the table row `only postgres reports healthy` → `the backend reports healthy once migrations finish`. Section "Starting over" (206–233): the database is now `data/maestro_cs.sqlite3` inside the folder, so deleting the folder DOES delete it (the opposite of before); `docker compose down -v` removes only the legacy volume; a clean slate is `docker compose down && rm -rf data/*`. Keep the `.gitkeep`.
 - **docs/RELEASING.md** line 42 (project-name paragraph): the volume consequence applies only until the import lands. Step 8: add "on a scratch clone at the previous tag WITH data in Postgres, run `./scripts/update.sh`, then confirm `data/.migrated-from-postgres.json` exists, the tracker shows the old applications, and a PDF renders".
 - **SECURITY.md** 189–191: `… plus \`.env\` and \`data/\` (the SQLite database with its -wal/-shm sidecars; file mode 0600)`.
-- **KNOWN_ISSUES.md** 142–146: the database half of a backup is now one file (`backup_db`), the directories are the other half; the bundle command is still open.
+- **KNOWN_ISSUES.md** 142–146: the database half of a backup is now one file (`backup_db`), the directories are the other half; the bundle command is still open. Add under Operational gaps: **"A KB consolidation holds the database's only write lock for its whole run."** Other writes (extension telemetry, an MCP capture, chat) wait 30 s and then fail with "database is locked" while it runs; it is user-initiated and rare, and the workaround is not to use the app during an import. The few seconds of a tailoring session's gap enrichment are the same shape. See SYSTEM.md §11 item 25.
 - **CHANGELOG.md** under Unreleased:
   ```
   ### Breaking changes
@@ -2445,7 +2460,7 @@ Run every one; paste results into the deviation log's **Gate results** table.
 4. **Calibration** (maintainer machine, main checkout):
    - Before the port, on Postgres: `cd backend && DATABASE_URL=postgresql://app:app@127.0.0.1:55432/maestro_cs BASE_RESUMES_DIR=<main>/base_resumes python -m scripts.ats_calibration snapshot /tmp/before.json` (run this on the commit BEFORE Task 4; `DATABASE_URL` is refused after it).
    - After: stop the stack, then `DATABASE_URL=sqlite:///<main>/data/maestro_cs.sqlite3 BASE_RESUMES_DIR=<main>/base_resumes python -m scripts.ats_calibration snapshot /tmp/after.json` and `python -m scripts.ats_calibration diff /tmp/before.json /tmp/after.json` → no contribution changes. Then `… monotonicity` → passes.
-5. **Concurrency acceptance**: with the compose stack up, start a tailoring run in the UI and, during it, call MCP `score_ats` on another job (or `curl -X POST …/api/ats/score`). Both succeed; `docker compose logs backend | grep -i "database is locked"` prints nothing.
+5. **Concurrency acceptance**: with the compose stack up, (a) create a tailoring session WITH enrichment (`enrich=true`, the site that holds the lock for the enrichment call) and, during it, call MCP `score_ats` on another job (or `curl -X POST …/api/ats/score`): both succeed within the 30 s busy timeout; `docker compose logs backend | grep -i "database is locked"` prints nothing. (b) Start a KB import with consolidation and issue any concurrent write: if it fails with "database is locked" after 30 s that is the recorded known limitation (§11 item 25), not a regression; record the symptom.
 6. **Bind-mount WAL smoke** (macOS Docker Desktop): `for i in $(seq 1 200); do curl -s -o /dev/null -X POST localhost:8001/api/autofill/telemetry -H 'content-type: application/json' -d '[]' & done; wait` then the grep above prints nothing and `/health` still answers.
 7. **Update rehearsal** (design §6 item 5): a scratch clone at the previous tag with real rows in Postgres → `./scripts/update.sh` → `data/.migrated-from-postgres.json` exists, tracker shows the rows, a PDF renders, `--check` says `database: data/maestro_cs.sqlite3`.
 8. **Slop ratchet** (maintainer tooling, repo root): `python3 ~/.claude/skills/ai-slop-detector/scripts/slop_scan.py check backend` → name the surface in the claim. This change touches `backend/` only.
@@ -2505,12 +2520,26 @@ Append-only. One line per deviation: task, what the plan said, what was found, w
 | 9 | consolidation picks the newer duplicate because a query lacks `ORDER BY` | `_identity_index` already orders by `created_at, id`; server-default `created_at` was second-precision so same-second rows tied and the uuid4 tie-break was random (9 failures in 12 paired runs); `test_list_sessions_newest_first` had the same mechanism | the one-format timestamp change (D) fixed both; no test sorting added | deterministic |
 | 9 | — | `git mv` of `prompt_defaults.lock.json` back into `migrations/`; `utcnow()` added to `types.py`; 35 `default=utcnow` + 11 `onupdate=utcnow` across 19 models (all row-write timestamps); no query-side `func.now()` existed; baseline unchanged, `alembic check` clean | commits `85fa95f0`, `7b165fbf`, `32a0a5c4`, `33b55e26`; suite `4237 passed, 1 skipped, 0 failed, 0 errors` (was 43 failed + 23 errors) | one dialect / deterministic |
 | 9 | portability pin: every server-default timestamp has a Python `default` | `default=func.now()` satisfied `column.default is not None` yet still writes the 19-char form | rule also requires `column.default.is_callable`; onupdate rule uses `is_callable`; `create_proposal` params annotated `UUID`; the three legacy-chain tests carry a removal comment (commit `8775eb72`) | deterministic |
+| 10 | design §3.2: no site holds a write across an LLM call | two routes did; two more do by design | two routes commit first, with tests observing from a second connection; the by-design pair is a recorded known limitation (design §3.2 rewritten; §11 item 25 and a KNOWN_ISSUES entry queued for Tasks 17/18); Task 19 gate 5 reworded to test the enriched session, not `tailor()` | correctness / do not fix unrelated things |
+| 10 | — | review: the reader test false-passed if the writer thread died; tests did not pin WAL; `qa.py` still unlinked files before the commit | writer exceptions captured, event/join asserted, `journal_mode="WAL"` explicit, and the qa route now deletes rows → commits → removes files per `{#inv-staged-artifact-removal}` | correctness |
+| 11 | — | for the importer: `seeding.run_startup()` holds one write transaction across the whole first-boot consolidation; the import must finish before seeding begins (it does: migrations → import → seed), and no host tool may open the file during that window | ordering stated in the boot hook's docstring | no data loss |
 | 7 | — | suite baseline on SQLite before fixes: `43 failed, 4151 passed, 1 skipped, 23 errors in 218.89s`. By cause: 23 errors + 12 failures are Task 6 relocation effects (prompt-defaults lock pin; three resync-migration tests globbing the old path); 21 string-UUID binds (`.hex`), 20 in tests via `session.get`, 1 in `services/proposals.py:66`; 9 `date_trunc` (Task 8); 1 ordering suspect in `kb_consolidation`. No naive-datetime failures. | fix items added to Task 9's table | — |
 
-**LLM-call audit (Task 10):**
+**LLM-call audit (Task 10):** client entry points are `llm.call_openai`, `llm.get_chat_client` (streaming), `list_openai_models`/`list_gemini_models`. With `autoflush=False`, `add()`/`merge()` take no lock; `prompts.get_prompt` and `model_settings._set_value` COMMIT (lock released).
 
 | file | LLM call (line) | write flushed before it? | action |
 |---|---|---|---|
+| routers/qa.py → services/qa.py | `generate_cover_letter` (router ~98) | YES: prior-entry delete flushed | FIXED `6dc9bb5f`: commit first (and, after review, delete rows → commit → remove files) |
+| routers/career_kb.py → services/kb_ingest.py | `mint_document` (router ~558, upload) | YES: `store_document` flushed the INSERT | FIXED `6b4a6392`: commit between store and mint |
+| services/kb_consolidation.py | `_cluster_points_for_entity` ~978, per entity | YES by design: flush ~1304, commit ~1318 | LEFT: §11 item 25 |
+| services/tailoring_session.py | `gap_enrichment.enrich_gaps` ~251 via `create_session` | YES by design: score flush + supersede UPDATE | LEFT: §11 item 25; the code states the trade |
+| services/chat_agent.py | stream ~148/172 | no: `db.commit()` before every stream and after each tool round | clean |
+| services/kb_consolidation.py | `_resolve_family` ~860; `parse_resume_text` ~1228 | no | clean |
+| services/kb_ingest.py | `ingest_document` ~253; `capture` ~369; `mint_document` via re-mint route | no: writes follow the call | clean |
+| services/tailoring_session.py | `_llm_customized` ~1256/1283 in `tailor()` | no: one commit at the end | clean |
+| services/qa.py | `answer_questions` ~190; `answer_questions_for_job` ~284; `regenerate_entry` ~336; `generate_cover_letter_for_job` ~382 | no | clean |
+| services/bullet_classify.py, health_verify.py, health_guards.py, coherence_check.py, gap_enrichment.py, jd_extraction.py, autofill_choose.py, base_from_kb_plan.py, base_resume_instruct.py, kb_adapt.py, persona.py, attachment_extract.py, llm_capabilities.py, kb_import.py; routers/settings.py model lists | various | no (reads only, or commits before) | clean |
+| services/career_kb.get_or_create_profile | (not an LLM call) | flushes without commit just before QA/cover-letter/persona calls, only when the singleton `KBProfile` is absent (seeding creates it) | noted |
 
 **Gate results (Task 19):**
 
