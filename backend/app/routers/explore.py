@@ -1,5 +1,5 @@
 from collections import defaultdict
-from datetime import UTC, date
+from datetime import date
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Query
@@ -20,7 +20,7 @@ from app.services import (
     explore_gaps,
     explore_overview,
 )
-from app.services.explore_activity import week_start
+from app.services.explore_activity import bucket_for
 from app.services.explore_skills import TOP_TIER_FRACTION, classify_skill_rows
 
 
@@ -270,7 +270,7 @@ def role_mix_over_time(
     ).all()
     counts: dict[tuple[date, str], int] = {}
     for created_at, category in rows:
-        key = (week_start(created_at.astimezone(UTC).date()), category)
+        key = (bucket_for(created_at, "week"), category)
         counts[key] = counts.get(key, 0) + 1
     return [
         {"week_start": ws.isoformat(), "role_category": category, "count": n}

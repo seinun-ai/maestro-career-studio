@@ -6,7 +6,8 @@ app/routers/explore.py wrap these and return plain JSON lists.
 """
 from collections import Counter, defaultdict
 from collections.abc import Iterator
-from datetime import UTC, date
+from datetime import date
+from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import func, select
@@ -15,7 +16,7 @@ from sqlalchemy.orm import Session, aliased
 from app.models.application import Application
 from app.models.ats_score import AtsScore
 from app.models.job import Job
-from app.services.explore_activity import week_start
+from app.services.explore_activity import bucket_for
 
 LOW_SAMPLE_THRESHOLD = 5
 
@@ -205,11 +206,11 @@ def ats_over_time(
     )
     stmt = _apply_job_filters(stmt, role_category, level, employment_type)
 
-    groups: dict[tuple[date, str, str], list[float]] = defaultdict(list)
+    # Kept as Decimal, not float: composite is Numeric(5, 1), and averaging
+    # floats turns an exact .x5 tie like 76.95 into 76.9499... -> 76.9.
+    groups: dict[tuple[date, str, str], list[Decimal]] = defaultdict(list)
     for created_at, phase, category, composite in db.execute(stmt):
-        groups[(week_start(created_at.astimezone(UTC).date()), phase, category)].append(
-            float(composite)
-        )
+        groups[(bucket_for(created_at, "week"), phase, category)].append(composite)
 
     # Same order the SQL version produced: week, role_category, phase.
     ordered = sorted(groups.items(), key=lambda item: (item[0][0], item[0][2], item[0][1]))
@@ -218,7 +219,7 @@ def ats_over_time(
             "week_start": ws.isoformat(),
             "phase": phase,
             "role_category": category,
-            "avg_composite": round(sum(values) / len(values), 1),
+            "avg_composite": round(float(sum(values) / len(values)), 1),
             "n": len(values),
             "low_sample": _low_sample(len(values)),
         }

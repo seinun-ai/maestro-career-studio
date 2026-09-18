@@ -1,6 +1,6 @@
 """Tests for /api/explore/activity (dashboard series + pipeline totals)."""
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta, timezone
 
 from fastapi.testclient import TestClient
 
@@ -8,6 +8,7 @@ from app.db import get_db
 from app.main import app
 from app.models.application import Application
 from app.models.job import Job
+from app.services import explore_activity
 
 
 def _override_db(db_session):
@@ -130,12 +131,21 @@ def test_activity_week_granularity_and_coercion(db_session):
     assert body["granularity"] == "week"
     assert len(body["series"]) == 4
     assert sum(r["submitted"] for r in body["series"]) == 1
-    # Week buckets are Mondays (matches Postgres date_trunc('week')).
+    # Week buckets are Mondays (matches `explore_activity.week_start`).
     for row in body["series"]:
         assert datetime.fromisoformat(row["bucket_start"]).weekday() == 0
 
     coerced = _get(db_session, "/api/explore/activity?granularity=hour").json()
     assert coerced["granularity"] == "day"
+
+
+def test_bucket_for_normalises_to_utc_and_week_start_is_idempotent():
+    # 23:30 at UTC-5 is already the next day in UTC; the bucket follows UTC,
+    # not the wall clock the row was written at.
+    aware = datetime(2026, 4, 20, 23, 30, tzinfo=timezone(timedelta(hours=-5)))
+    assert explore_activity.bucket_for(aware, "day") == date(2026, 4, 21)
+    # 2026-04-20 is a Monday, so it is its own week start.
+    assert explore_activity.week_start(date(2026, 4, 20)) == date(2026, 4, 20)
 
 
 def test_activity_weeks_bounds_422(db_session):
