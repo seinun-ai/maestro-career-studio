@@ -223,7 +223,7 @@ def upgrade() -> None:
     sa.Column('source', sa.Text(), nullable=False),
     sa.Column('engine', sa.Text(), server_default='latex', nullable=False),
     sa.Column('status', sa.Text(), server_default='draft', nullable=False),
-    sa.Column('is_default', sa.Boolean(), server_default='false', nullable=False),
+    sa.Column('is_default', sa.Boolean(), server_default=sa.text('0'), nullable=False),
     sa.Column('origin', sa.Text(), server_default='frontend', nullable=False),
     sa.Column('last_error', sa.Text(), nullable=True),
     sa.Column('validated_at', sa.DateTime(), nullable=True),

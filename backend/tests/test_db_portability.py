@@ -68,3 +68,18 @@ def test_every_datetime_column_is_utcdatetime():
         for table in Base.metadata.sorted_tables
         for column in table.columns
     )
+
+
+def test_boolean_server_defaults_are_expressions_not_strings():
+    # SQLite has no boolean type. server_default="false" is stored as the TEXT
+    # 'false', which SQLAlchemy reads back truthy while `IS 1` never matches;
+    # expression.false() compiles to DEFAULT 0 and round-trips as False.
+    string_defaults = [
+        f"{table.name}.{column.name}"
+        for table in Base.metadata.sorted_tables
+        for column in table.columns
+        if isinstance(column.type, sa.Boolean)
+        and column.server_default is not None
+        and isinstance(column.server_default.arg, str)
+    ]
+    assert string_defaults == []
