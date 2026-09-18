@@ -4,8 +4,9 @@ ONE release only (SYSTEM.md §13 `postgres-to-sqlite`); delete with that row.
 
 Two entry points:
 - `import_if_needed(...)` — called by seeding.run_startup() at boot. Idempotent
-  (a marker file records success), atomic (one transaction on the target),
-  verified (row counts and a per-table content hash, source vs target).
+  (a marker file records success), atomic and verified (row counts and a
+  per-table content hash, checked inside the one target transaction before
+  it commits; a mismatch rolls back and leaves the file empty).
 - `python -m app.tools.migrate_from_postgres` — the same thing by hand.
 
 The source is read by reflection (the legacy schema at its head); the target
@@ -46,7 +47,13 @@ Log = Callable[[str], None]
 
 
 class ExportError(RuntimeError):
-    pass
+    """`report` carries the per-table report when the failure is a verification
+    mismatch, so the CLI can still print it; every row it counts was rolled
+    back."""
+
+    def __init__(self, message: str, *, report: dict[str, dict] | None = None):
+        super().__init__(message)
+        self.report = report
 
 
 def normalize_value(value):
@@ -121,8 +128,10 @@ def _coerce_for_target(table: sa.Table, row: dict) -> dict:
 
 
 def copy_database(source_url: str, target_url: str, *, log: Log = print) -> dict[str, dict]:
-    """Copy every table in dependency order, in ONE target transaction, then
-    verify. Returns {table: {rows, source_hash, target_rows, target_hash, ok}}."""
+    """Copy every table in dependency order in ONE target transaction and verify
+    INSIDE it, before it commits. A mismatch raises ExportError from within the
+    block, so the transaction rolls back and the target is exactly as empty as
+    it was. Returns {table: {rows, source_hash, target_rows, target_hash, ok}}."""
     # Every Postgres URL reaching create_engine goes through here (app.config):
     # the bare scheme selects psycopg2, which this project does not install.
     source = sa.create_engine(normalize_postgres_url(source_url), future=True)
@@ -152,7 +161,9 @@ def copy_database(source_url: str, target_url: str, *, log: Log = print) -> dict
                     )
                 report[table.name] = {"rows": len(rows), "source_hash": table_hash(rows, columns)}
                 log(f"  {table.name}: {len(rows)} rows")
-        with target.connect() as tconn:
+            # Read back on the SAME connection, which sees the uncommitted
+            # rows. Raising here, inside the block, is what rolls the whole
+            # copy back: the next boot finds an empty file and retries.
             for table in Base.metadata.sorted_tables:
                 columns = [column.name for column in table.columns]
                 rows = read_rows(tconn, table)
@@ -162,6 +173,12 @@ def copy_database(source_url: str, target_url: str, *, log: Log = print) -> dict
                 entry["ok"] = (
                     entry["rows"] == entry["target_rows"]
                     and entry["source_hash"] == entry["target_hash"]
+                )
+            bad = sorted(name for name, entry in report.items() if not entry["ok"])
+            if bad:
+                raise ExportError(
+                    f"import verification failed for {bad}; nothing was committed",
+                    report=report,
                 )
     finally:
         source.dispose()
@@ -239,8 +256,10 @@ def import_if_needed(
 ) -> str:
     """Boot-time entry point. Returns one of: already-imported, no-source,
     source-unreachable, source-empty, target-not-empty, imported. Raises
-    ExportError only on a verification mismatch (the transaction has already
-    rolled back; the target is left as it was)."""
+    ExportError on a verification mismatch and lets any other copy error
+    propagate; either way the target transaction rolled back before commit,
+    the file is as empty as it was and no marker exists, so the next boot
+    retries."""
     if marker.exists():
         return "already-imported"
     if not source_url:
@@ -261,9 +280,6 @@ def import_if_needed(
         upgrade_legacy_source(source_url)
     log("importing the Postgres database into the SQLite file")
     report = copy_database(source_url, target_url, log=log)
-    bad = sorted(name for name, entry in report.items() if not entry["ok"])
-    if bad:
-        raise ExportError(f"import verification failed for {bad}; nothing was kept")
     _write_marker(marker, {"outcome": "imported", "tables": report})
     total = sum(entry["rows"] for entry in report.values())
     log(f"imported {total} rows from Postgres; the pgdata volume is no longer read")
@@ -273,7 +289,14 @@ def import_if_needed(
 def _write_marker(marker: Path, payload: dict) -> None:
     marker.parent.mkdir(parents=True, exist_ok=True)
     payload = {"at": datetime.now(UTC).isoformat(), **payload}
-    marker.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    # 0600 like the database file (app.db.prepare_sqlite_file): it names every
+    # table and its row count. Created with the mode rather than chmod-ed
+    # after; the fchmod narrows a marker an earlier run left wider.
+    fd = os.open(marker, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        if os.name == "posix":
+            os.fchmod(fd, 0o600)
+        handle.write(json.dumps(payload, indent=2, sort_keys=True))
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -326,19 +349,22 @@ def main(argv: list[str] | None = None) -> int:
         print("copying tables")
         report = copy_database(normalize_postgres_url(args.source), args.target)
     except ExportError as exc:
+        if exc.report:
+            _print_report(exc.report)
         print(f"error: {exc}", file=sys.stderr)
         return 1
 
+    _print_report(report)
+    _write_marker(path.parent / MARKER_NAME, {"outcome": "imported", "tables": report})
+    print("verified: every table matches by count and content hash")
+    return 0
+
+
+def _print_report(report: dict[str, dict]) -> None:
     width = max(len(name) for name in report)
     for name, entry in report.items():
         flag = "ok" if entry["ok"] else "MISMATCH"
         print(f"{name:<{width}}  {entry['rows']:>7} -> {entry['target_rows']:>7}  {flag}")
-    if all(entry["ok"] for entry in report.values()):
-        _write_marker(path.parent / MARKER_NAME, {"outcome": "imported", "tables": report})
-        print("verified: every table matches by count and content hash")
-        return 0
-    print("verification FAILED; the target was left in place for inspection", file=sys.stderr)
-    return 1
 
 
 if __name__ == "__main__":

@@ -187,14 +187,18 @@ def run_startup() -> None:
 
 
 def _import_legacy_postgres() -> None:
-    """ONE release only (SYSTEM.md §13 postgres-to-sqlite). Runs before any
-    seed so a compose-era database lands in an empty file, never beside demo
-    rows. The ordering is load-bearing: run_startup() is `alembic upgrade
-    head` -> this hook -> seed_startup_data(), and seeding opens one long
-    write transaction (the KB consolidation) before the app serves, so the
-    import has finished and committed before that transaction starts.
-    Unreachable source = retry next boot; a verification failure is logged
-    loudly and the app still boots (the transaction rolled back)."""
+    """ONE release only (SYSTEM.md §13 postgres-to-sqlite). run_startup() is
+    `alembic upgrade head` -> this hook -> seed_startup_data(): the import
+    lands in an empty file, never beside demo rows, and it has committed
+    before seeding opens its long write transaction (the KB consolidation).
+
+    Fails CLOSED. On any failure the user's data still lives in Postgres and
+    the importer's transaction has rolled back, so the file is still empty.
+    Booting on would let seeding fill it with demo rows and leave every later
+    boot at `target-not-empty` with a confusingly empty app; aborting keeps
+    the file empty, so the next boot retries once the cause is fixed. Soft
+    outcomes (no source, unreachable source, nothing to import, already
+    imported, a file that already holds data) never abort."""
     if not settings.legacy_database_url:
         return
     from app.tools import migrate_from_postgres as tool
@@ -204,9 +208,14 @@ def _import_legacy_postgres() -> None:
         outcome = tool.import_if_needed(
             settings.legacy_database_url, settings.database_url, marker, log=logger.info
         )
-    except tool.ExportError:
-        logger.exception("legacy Postgres import failed verification; booting with the empty file")
-        return
+    except Exception as exc:
+        logger.exception("legacy Postgres import failed; refusing to boot on an empty file")
+        raise RuntimeError(
+            "Importing the legacy Postgres database failed; nothing was deleted and the "
+            "SQLite file is still empty. Fix the cause (see the traceback above) and "
+            "restart; the import retries at the next boot. To skip it, unset "
+            "LEGACY_DATABASE_URL."
+        ) from exc
     if outcome == "imported":
         logger.warning(
             "Imported your Postgres database into %s. The old Docker volume is no longer "

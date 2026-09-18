@@ -6,6 +6,7 @@ only Postgres can prove — psycopg's dict/aware-datetime/Decimal values — is
 covered by test_export_from_real_postgres, which CI's legacy job runs.
 """
 import os
+import stat
 import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -110,6 +111,9 @@ def test_import_if_needed_is_idempotent_and_writes_the_marker(tmp_path):
 
     assert first == "imported" and second == "already-imported"
     assert marker.exists() and '"jobs"' in marker.read_text()
+    if os.name == "posix":
+        # Like the database file: the marker names every table and its row count.
+        assert stat.S_IMODE(marker.stat().st_mode) == 0o600
 
 
 def test_import_if_needed_skips_a_target_that_already_has_data(tmp_path):
@@ -141,6 +145,76 @@ def test_import_if_needed_skips_an_unreachable_source(tmp_path):
 
     assert outcome == "source-unreachable"
     assert not marker.exists()
+
+
+def _corrupt_target_hash_of(monkeypatch, table_name: str):
+    """Make copy_database see a content mismatch on ONE table. It hashes each
+    table's source rows first and reads the target back second, so the second
+    call for that table's column set is the target side. Returns the real
+    table_hash, so a test can put it back and prove the retry."""
+    real = tool.table_hash
+    columns = tuple(column.name for column in tool.Base.metadata.tables[table_name].columns)
+    seen: set[tuple[str, ...]] = set()
+
+    def corrupted(rows, column_names):
+        key = tuple(column_names)
+        if key == columns and key in seen:
+            return "0" * 64
+        seen.add(key)
+        return real(rows, column_names)
+
+    monkeypatch.setattr(tool, "table_hash", corrupted)
+    return real
+
+
+def _count(url: str, table: str) -> int:
+    engine = make_engine(url)
+    try:
+        with engine.connect() as conn:
+            return conn.execute(sa.text(f"SELECT count(*) FROM {table}")).scalar()
+    finally:
+        engine.dispose()
+
+
+def test_import_if_needed_rolls_back_a_verification_mismatch_then_retries(tmp_path, monkeypatch):
+    src = f"sqlite:///{tmp_path / 'src.sqlite3'}"
+    dst = f"sqlite:///{tmp_path / 'dst.sqlite3'}"
+    _fresh_schema(src)
+    _seed(src)
+    _fresh_schema(dst)
+    marker = tmp_path / ".migrated-from-postgres.json"
+    real = _corrupt_target_hash_of(monkeypatch, "jobs")
+
+    with pytest.raises(tool.ExportError, match=r"\['jobs'\]") as info:
+        tool.import_if_needed(src, dst, marker, log=lambda *_: None, upgrade_source=False)
+
+    assert info.value.report["jobs"]["ok"] is False
+    assert info.value.report["kb_entities"]["ok"] is True
+    assert not marker.exists()
+    # The WHOLE transaction rolled back, not just the mismatched table.
+    for table in ("jobs", "ats_scores", "kb_entities"):
+        assert _count(dst, table) == 0
+
+    # The file is as empty as it was, so the next boot retries and succeeds.
+    monkeypatch.setattr(tool, "table_hash", real)
+    assert tool.import_if_needed(src, dst, marker, log=lambda *_: None, upgrade_source=False) == "imported"
+    assert _count(dst, "jobs") == 1 and marker.exists()
+
+
+def test_main_prints_the_report_and_commits_nothing_on_a_mismatch(tmp_path, monkeypatch, capsys):
+    src = f"sqlite:///{tmp_path / 'src.sqlite3'}"
+    _fresh_schema(src)
+    _seed(src)
+    target = tmp_path / "dst.sqlite3"
+    _corrupt_target_hash_of(monkeypatch, "jobs")
+
+    code = tool.main(["--source", src, "--target", f"sqlite:///{target}", "--skip-source-upgrade"])
+
+    captured = capsys.readouterr()
+    assert code == 1
+    assert "MISMATCH" in captured.out and "nothing was committed" in captured.err
+    assert not (tmp_path / tool.MARKER_NAME).exists()
+    assert _count(f"sqlite:///{target}", "jobs") == 0
 
 
 @pytest.mark.legacy_postgres
