@@ -23,16 +23,16 @@ INTERVIEW_PLUS_STATUSES = ("interviewing", "offered", "accepted")
 
 
 def week_start(day: date) -> date:
-    """Monday of the week holding `day`. The ONE definition of a week bucket;
-    explore.role_mix_over_time and explore_gaps.ats_over_time import it, so
-    the three weekly charts can never disagree about where a week begins."""
+    """Monday of the week holding `day`. The ONE definition of a week bucket."""
     return day - timedelta(days=day.weekday())
 
 
 def bucket_for(value: datetime, granularity: str) -> date:
     """The bucket `value` falls in. `value` must be tz-aware — UTCDateTime
     guarantees that, and a naive value would be read as local time, moving
-    rows across bucket edges. Any granularity other than "week" means day."""
+    rows across bucket edges. Any granularity other than "week" means day.
+    explore.role_mix_over_time and explore_gaps.ats_over_time import it, so
+    the three weekly charts can never disagree about where a week begins."""
     day = value.astimezone(UTC).date()
     return week_start(day) if granularity == "week" else day
 

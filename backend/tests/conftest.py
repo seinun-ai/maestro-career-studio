@@ -130,7 +130,7 @@ def _test_database_ready() -> Iterator[None]:
 
 
 @pytest.fixture(scope="session")
-def _test_engine():
+def _test_engine(_test_database_ready):
     # Imported here, not at module top: this module sets env vars before any
     # app import (see the E402 note in pyproject), and app.db reads them.
     from app.db import make_engine
