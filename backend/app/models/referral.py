@@ -4,7 +4,7 @@ from datetime import datetime
 from sqlalchemy import Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.models.types import UTCDateTime, UUIDType
+from app.models.types import UTCDateTime, UUIDType, utcnow
 from app.db import Base
 
 
@@ -17,8 +17,8 @@ class Referral(Base):
     contact_name: Mapped[str | None] = mapped_column(Text)
     notes: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
-        UTCDateTime(), server_default=func.now(), nullable=False
+        UTCDateTime(), default=utcnow, server_default=func.now(), nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        UTCDateTime(), server_default=func.now(), onupdate=func.now(), nullable=False
+        UTCDateTime(), default=utcnow, server_default=func.now(), onupdate=utcnow, nullable=False
     )

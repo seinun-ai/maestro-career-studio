@@ -4,7 +4,7 @@ from datetime import datetime
 from sqlalchemy import ForeignKey, Index, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.models.types import JSONDoc, UTCDateTime, UUIDType
+from app.models.types import JSONDoc, UTCDateTime, UUIDType, utcnow
 from app.db import Base
 
 
@@ -23,5 +23,5 @@ class ConsentEvent(Base):
     evidence_manifest_json: Mapped[list | None] = mapped_column(JSONDoc)
     note: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
-        UTCDateTime(), server_default=func.now(), nullable=False
+        UTCDateTime(), default=utcnow, server_default=func.now(), nullable=False
     )

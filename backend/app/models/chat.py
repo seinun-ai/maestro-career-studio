@@ -5,7 +5,7 @@ from datetime import datetime
 from sqlalchemy import ForeignKey, Index, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.types import JSONDoc, UTCDateTime, UUIDType
+from app.models.types import JSONDoc, UTCDateTime, UUIDType, utcnow
 from app.db import Base
 
 
@@ -19,10 +19,10 @@ class ChatSession(Base):
     # Default scope, e.g. {"target_kind": "base", "target_key": "ml_eng"}
     context_json: Mapped[dict | None] = mapped_column(JSONDoc)
     created_at: Mapped[datetime] = mapped_column(
-        UTCDateTime(), server_default=func.now(), nullable=False
+        UTCDateTime(), default=utcnow, server_default=func.now(), nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        UTCDateTime(), server_default=func.now(), onupdate=func.now(), nullable=False
+        UTCDateTime(), default=utcnow, server_default=func.now(), onupdate=utcnow, nullable=False
     )
 
     messages: Mapped[list["ChatMessage"]] = relationship(
@@ -61,7 +61,7 @@ class ChatMessage(Base):
     tool_call_id: Mapped[str | None] = mapped_column(Text)  # set on role="tool"
     meta_json: Mapped[dict | None] = mapped_column(JSONDoc)
     created_at: Mapped[datetime] = mapped_column(
-        UTCDateTime(), server_default=func.now(), nullable=False
+        UTCDateTime(), default=utcnow, server_default=func.now(), nullable=False
     )
 
     session: Mapped[ChatSession] = relationship(back_populates="messages")
@@ -80,5 +80,5 @@ class ChatAttachment(Base):
     mime: Mapped[str | None] = mapped_column(Text)
     text_content: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        UTCDateTime(), server_default=func.now(), nullable=False
+        UTCDateTime(), default=utcnow, server_default=func.now(), nullable=False
     )

@@ -4,7 +4,7 @@ from datetime import datetime
 from sqlalchemy import Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.models.types import UTCDateTime, UUIDType
+from app.models.types import UTCDateTime, UUIDType, utcnow
 from app.db import Base
 
 
@@ -21,5 +21,5 @@ class HealthGateWaiver(Base):
     gate_id: Mapped[str] = mapped_column(Text)        # 'S1'..'S5', 'C1', 'C2'
     reason: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
-        UTCDateTime(), server_default=func.now()
+        UTCDateTime(), default=utcnow, server_default=func.now()
     )

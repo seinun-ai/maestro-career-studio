@@ -50,3 +50,10 @@ class UTCDateTime(TypeDecorator):
         if value.tzinfo is None:
             return value.replace(tzinfo=UTC)
         return value.astimezone(UTC)
+
+
+def utcnow() -> datetime:
+    """Python-side default for UTCDateTime columns. SQLite's CURRENT_TIMESTAMP
+    has no microseconds and is a different string shape from what the ORM
+    binds; one writer means one on-disk format and correct comparisons."""
+    return datetime.now(UTC)

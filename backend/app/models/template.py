@@ -4,7 +4,7 @@ from sqlalchemy import Boolean, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import expression
 
-from app.models.types import JSONDoc, UTCDateTime
+from app.models.types import JSONDoc, UTCDateTime, utcnow
 from app.db import Base
 
 
@@ -40,8 +40,8 @@ class Template(Base):
     # rather than two that behave almost alike.
     archived_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     created_at: Mapped[datetime] = mapped_column(
-        UTCDateTime(), server_default=func.now(), nullable=False
+        UTCDateTime(), default=utcnow, server_default=func.now(), nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        UTCDateTime(), server_default=func.now(), onupdate=func.now(), nullable=False
+        UTCDateTime(), default=utcnow, server_default=func.now(), onupdate=utcnow, nullable=False
     )

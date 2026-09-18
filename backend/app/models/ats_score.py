@@ -4,7 +4,7 @@ from datetime import datetime
 from sqlalchemy import ForeignKey, Index, Numeric, Text, func, text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.models.types import JSONDoc, UTCDateTime, UUIDType
+from app.models.types import JSONDoc, UTCDateTime, UUIDType, utcnow
 from app.db import Base
 
 
@@ -40,7 +40,7 @@ class AtsScore(Base):
     config_version: Mapped[str] = mapped_column(Text, nullable=False)
     engine_version: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        UTCDateTime(), server_default=func.now(), nullable=False
+        UTCDateTime(), default=utcnow, server_default=func.now(), nullable=False
     )
 
     @property

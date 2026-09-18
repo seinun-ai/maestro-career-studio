@@ -8,7 +8,7 @@ from sqlalchemy import ForeignKey, Integer, Text, func
 from sqlalchemy import text as sa_text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.types import JSONDoc, UTCDateTime, UUIDType
+from app.models.types import JSONDoc, UTCDateTime, UUIDType, utcnow
 from app.db import Base
 
 
@@ -33,10 +33,10 @@ class KBEntity(Base):
     origin: Mapped[str | None] = mapped_column(Text)
     origin_detail: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
-        UTCDateTime(), server_default=func.now(), nullable=False
+        UTCDateTime(), default=utcnow, server_default=func.now(), nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        UTCDateTime(), server_default=func.now(), onupdate=func.now(), nullable=False
+        UTCDateTime(), default=utcnow, server_default=func.now(), onupdate=utcnow, nullable=False
     )
 
     points: Mapped[list["KBPoint"]] = relationship(
@@ -77,10 +77,10 @@ class KBPoint(Base):
     merge_sources_json: Mapped[list[Any] | None] = mapped_column(JSONDoc)  # [{resume_key, section, text}]
     approved_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     created_at: Mapped[datetime] = mapped_column(
-        UTCDateTime(), server_default=func.now(), nullable=False
+        UTCDateTime(), default=utcnow, server_default=func.now(), nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        UTCDateTime(), server_default=func.now(), onupdate=func.now(), nullable=False
+        UTCDateTime(), default=utcnow, server_default=func.now(), onupdate=utcnow, nullable=False
     )
 
     entity: Mapped[KBEntity] = relationship(back_populates="points")
@@ -103,7 +103,7 @@ class KBDocument(Base):
     )  # extracted|minted|failed
     ingest_summary: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
-        UTCDateTime(), server_default=func.now(), nullable=False
+        UTCDateTime(), default=utcnow, server_default=func.now(), nullable=False
     )
 
     entity: Mapped[KBEntity] = relationship(back_populates="documents")
@@ -131,7 +131,7 @@ class KBPortLog(Base):
     # NULL = pre-direction rows; readers keep today's behavior for NULL.
     direction: Mapped[str | None] = mapped_column(Text)  # to_resume|from_source
     ported_at: Mapped[datetime] = mapped_column(
-        UTCDateTime(), server_default=func.now(), nullable=False
+        UTCDateTime(), default=utcnow, server_default=func.now(), nullable=False
     )
 
 
@@ -148,5 +148,5 @@ class KBProfile(Base):
     )
     notes: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
     updated_at: Mapped[datetime] = mapped_column(
-        UTCDateTime(), server_default=func.now(), onupdate=func.now(), nullable=False
+        UTCDateTime(), default=utcnow, server_default=func.now(), onupdate=utcnow, nullable=False
     )

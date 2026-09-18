@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import ForeignKey, Index, Integer, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.types import JSONDoc, UTCDateTime, UUIDType
+from app.models.types import JSONDoc, UTCDateTime, UUIDType, utcnow
 from app.db import Base
 
 if TYPE_CHECKING:
@@ -43,10 +43,10 @@ class Application(Base):
     )
     user_prompt: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
-        UTCDateTime(), server_default=func.now(), nullable=False
+        UTCDateTime(), default=utcnow, server_default=func.now(), nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        UTCDateTime(), server_default=func.now(), onupdate=func.now(), nullable=False
+        UTCDateTime(), default=utcnow, server_default=func.now(), onupdate=utcnow, nullable=False
     )
 
     qa_entries: Mapped[list["QAEntry"]] = relationship(

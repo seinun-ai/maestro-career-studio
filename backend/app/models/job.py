@@ -6,7 +6,7 @@ from sqlalchemy import Boolean, Index, Integer, Numeric, String, Text, UniqueCon
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import expression
 
-from app.models.types import JSONDoc, UTCDateTime, UUIDType
+from app.models.types import JSONDoc, UTCDateTime, UUIDType, utcnow
 from app.db import Base
 
 
@@ -55,5 +55,5 @@ class Job(Base):
         Boolean, nullable=True, server_default=expression.false()
     )
     created_at: Mapped[datetime] = mapped_column(
-        UTCDateTime(), server_default=func.now(), nullable=False
+        UTCDateTime(), default=utcnow, server_default=func.now(), nullable=False
     )

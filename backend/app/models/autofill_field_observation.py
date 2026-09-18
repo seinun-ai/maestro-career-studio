@@ -4,7 +4,7 @@ from datetime import datetime
 from sqlalchemy import Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.models.types import JSONDoc, UTCDateTime, UUIDType
+from app.models.types import JSONDoc, UTCDateTime, UUIDType, utcnow
 from app.db import Base
 
 
@@ -36,11 +36,11 @@ class AutofillFieldObservation(Base):
     seen_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     session_marks: Mapped[list] = mapped_column(JSONDoc, nullable=False, default=list)
     first_seen_at: Mapped[datetime] = mapped_column(
-        UTCDateTime(), server_default=func.now(), nullable=False
+        UTCDateTime(), default=utcnow, server_default=func.now(), nullable=False
     )
     last_seen_at: Mapped[datetime] = mapped_column(
         UTCDateTime(),
-        server_default=func.now(),
-        onupdate=func.now(),
+        default=utcnow, server_default=func.now(),
+        onupdate=utcnow,
         nullable=False,
     )

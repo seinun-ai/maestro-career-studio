@@ -5,7 +5,7 @@ from datetime import datetime
 from sqlalchemy import Index, Integer, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.models.types import JSONDoc, UTCDateTime, UUIDType
+from app.models.types import JSONDoc, UTCDateTime, UUIDType, utcnow
 from app.db import Base
 
 
@@ -29,5 +29,5 @@ class ResumeLintReport(Base):
     model_version: Mapped[str | None] = mapped_column(Text)      # e.g. "health-v2"
     features_json: Mapped[dict | None] = mapped_column(JSONDoc)    # levels/tier/zones for band re-tuning
     created_at: Mapped[datetime] = mapped_column(
-        UTCDateTime(), server_default=func.now(), nullable=False
+        UTCDateTime(), default=utcnow, server_default=func.now(), nullable=False
     )
