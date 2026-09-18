@@ -5,7 +5,10 @@ metadata on the target), so it is exercised here SQLite→SQLite. The one thing
 only Postgres can prove — psycopg's dict/aware-datetime/Decimal values — is
 covered by test_export_from_real_postgres, which CI's legacy job runs.
 """
+import json
 import os
+import shutil
+import sqlite3
 import stat
 import uuid
 from datetime import UTC, datetime
@@ -20,6 +23,7 @@ from app.db import make_engine
 from app.models.ats_score import AtsScore
 from app.models.career_kb import KBEntity
 from app.models.job import Job
+from app.models.resume_version import ResumeVersion
 from app.tools import migrate_from_postgres as tool
 
 BACKEND = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -49,9 +53,21 @@ def _seed(url: str) -> dict[str, int]:
             config_version="v", engine_version="v",
         ))
         session.add(KBEntity(kind="experience", title="Thing"))
+        # The child sorts BEFORE its parent by primary key, so copy_database
+        # inserts it first: only defer_foreign_keys makes that legal.
+        parent = ResumeVersion(
+            id=uuid.UUID("ffffffff-ffff-4fff-8fff-ffffffffffff"), resume_kind="base",
+            resume_key="example", version_number=1, snapshot={"v": 1}, source="create",
+        )
+        child = ResumeVersion(
+            id=uuid.UUID("00000000-0000-4000-8000-000000000000"), resume_kind="base",
+            resume_key="example", version_number=2, parent_version_id=parent.id,
+            snapshot={"v": 2}, source="form_edit",
+        )
+        session.add_all([parent, child])
         session.commit()
     engine.dispose()
-    return {"jobs": 1, "ats_scores": 1, "kb_entities": 1}
+    return {"jobs": 1, "ats_scores": 1, "kb_entities": 1, "resume_versions": 2}
 
 
 def test_normalize_value_is_canonical():
@@ -217,6 +233,101 @@ def test_main_prints_the_report_and_commits_nothing_on_a_mismatch(tmp_path, monk
     assert _count(f"sqlite:///{target}", "jobs") == 0
 
 
+def _wal_image_with_rows(tmp_path, name: str, rows: int):
+    """A target whose committed rows live only in its -wal: the pooled
+    connection is still open when the image is taken, so nothing has been
+    checkpointed. Returns the image's URL."""
+    from sqlalchemy.orm import Session
+
+    live = tmp_path / "live.sqlite3"
+    _fresh_schema(f"sqlite:///{live}")
+    engine = make_engine(f"sqlite:///{live}")
+    with Session(engine) as session:
+        session.add_all(KBEntity(kind="project", title=f"Row {n}") for n in range(rows))
+        session.commit()
+    image = tmp_path / name
+    shutil.copy(live, image)
+    shutil.copy(f"{live}-wal", f"{image}-wal")
+    # Taken now, before dispose() closes the last connection and checkpoints:
+    # the main file alone must NOT have the rows, or the image proves nothing.
+    bare = tmp_path / "bare.sqlite3"
+    shutil.copy(live, bare)
+    engine.dispose()
+    assert _sqlite_count(bare, "kb_entities") == 0
+    return f"sqlite:///{image}"
+
+
+def _sqlite_count(path, table: str) -> int:
+    conn = sqlite3.connect(path)
+    try:
+        return conn.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
+    finally:
+        conn.close()
+
+
+def test_replace_folds_the_wal_in_so_the_moved_aside_copy_is_complete(tmp_path):
+    src = f"sqlite:///{tmp_path / 'src.sqlite3'}"
+    _fresh_schema(src)
+    _seed(src)
+    crash = _wal_image_with_rows(tmp_path, "crash.sqlite3", rows=3)
+
+    code = tool.main(["--source", src, "--target", crash, "--replace", "--skip-source-upgrade"])
+
+    assert code == 0
+    (aside,) = tmp_path.glob("crash.sqlite3.replaced-*")
+    assert _sqlite_count(aside, "kb_entities") == 3
+    assert _count(crash, "kb_entities") == 1  # the fresh import, not the old rows
+
+
+def test_replace_refuses_while_another_process_holds_the_file(tmp_path, monkeypatch, capsys):
+    src = f"sqlite:///{tmp_path / 'src.sqlite3'}"
+    _fresh_schema(src)
+    held = _wal_image_with_rows(tmp_path, "held.sqlite3", rows=3)
+    reader = sqlite3.connect(tmp_path / "held.sqlite3")
+    reader.execute("BEGIN")
+    reader.execute("SELECT count(*) FROM kb_entities").fetchone()  # holds a WAL read mark
+    monkeypatch.setattr(tool, "CHECKPOINT_TIMEOUT", 0)
+    try:
+        code = tool.main(["--source", src, "--target", held, "--replace", "--skip-source-upgrade"])
+    finally:
+        reader.close()
+
+    assert code == 2
+    assert "another process holds" in capsys.readouterr().out
+    assert not list(tmp_path.glob("held.sqlite3.replaced-*"))
+    assert _sqlite_count(tmp_path / "held.sqlite3", "kb_entities") == 3
+
+
+def test_main_checks_the_source_before_touching_the_target(tmp_path, capsys):
+    dst = f"sqlite:///{tmp_path / 'dst.sqlite3'}"
+    _fresh_schema(dst)
+    _seed(dst)
+
+    code = tool.main([
+        "--source", "sqlite:////nonexistent-dir-for-this-test/none.sqlite3",
+        "--target", dst, "--replace", "--skip-source-upgrade",
+    ])
+
+    assert code == 1
+    assert "cannot be reached" in capsys.readouterr().err
+    assert not list(tmp_path.glob("dst.sqlite3.replaced-*"))
+    assert _count(dst, "jobs") == 1
+
+
+def test_main_imports_into_a_migrated_but_empty_target_without_replace(tmp_path):
+    src = f"sqlite:///{tmp_path / 'src.sqlite3'}"
+    _fresh_schema(src)
+    _seed(src)
+    dst = f"sqlite:///{tmp_path / 'dst.sqlite3'}"
+    _fresh_schema(dst)  # what a failed-closed first boot leaves behind
+
+    code = tool.main(["--source", src, "--target", dst, "--skip-source-upgrade"])
+
+    assert code == 0
+    assert _count(dst, "jobs") == 1
+    assert (tmp_path / tool.MARKER_NAME).exists()
+
+
 @pytest.mark.legacy_postgres
 def test_export_from_real_postgres(tmp_path):
     source = os.environ.get("LEGACY_POSTGRES_TEST_URL")
@@ -232,14 +343,30 @@ def test_export_from_real_postgres(tmp_path):
         # revisions adds one, and the ported model has none either). The
         # salary pair is the one unscaled NUMERIC in the schema: psycopg
         # returns it at the writer's scale, SQLite at a fixed one.
+        # Non-ASCII JSONB, a non-UTC timestamptz and a scaled NUMERIC(5,1)
+        # are what only psycopg can hand back; each is pinned here.
         conn.execute(
             sa.text(
                 "INSERT INTO jobs (id, raw_text, raw_text_hash, extracted_json, title, company, "
                 "role_category, salary_min, salary_max, extracted_at, created_at) VALUES "
-                "(:id, 'JD', 'h1', '{\"title\": \"x\"}'::jsonb, 'x', 'Acme', 'data_scientist', "
-                "120000, 150000.50, now(), now())"
+                "(:id, 'JD', 'h1', CAST(:extracted AS jsonb), 'x', 'Acme', 'data_scientist', "
+                "120000, 150000.50, '2026-09-18 10:11:12.123456+05:30', now())"
             ),
-            {"id": job_id},
+            {
+                "id": job_id,
+                "extracted": json.dumps(
+                    {"title": "Ingénieur", "n": [1.5, None, True]}, ensure_ascii=False
+                ),
+            },
+        )
+        conn.execute(
+            sa.text(
+                "INSERT INTO ats_scores (id, job_id, target_type, target_id, phase, composite, "
+                "subscores_json, skill_table_json, config_version, engine_version, created_at) "
+                "VALUES (:id, :job_id, 'base_resume', 'example', 'base', 72.5, '{}'::jsonb, "
+                "'[]'::jsonb, 'c', 'e', now())"
+            ),
+            {"id": uuid.uuid4(), "job_id": job_id},
         )
     engine.dispose()
     dst = f"sqlite:///{tmp_path / 'dst.sqlite3'}"
@@ -247,4 +374,5 @@ def test_export_from_real_postgres(tmp_path):
 
     report = tool.copy_database(source, dst, log=lambda *_: None)
 
-    assert report["jobs"]["ok"] and report["jobs"]["rows"] == 1
+    assert all(entry["ok"] for entry in report.values()), report
+    assert report["jobs"]["rows"] == 1 and report["ats_scores"]["rows"] == 1

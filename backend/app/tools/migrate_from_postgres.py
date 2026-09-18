@@ -19,6 +19,7 @@ import argparse
 import hashlib
 import json
 import os
+import sqlite3
 import sys
 import uuid
 from collections.abc import Callable
@@ -29,6 +30,7 @@ from pathlib import Path
 import sqlalchemy as sa
 from alembic import command
 from alembic.config import Config
+from sqlalchemy.engine import make_url
 from sqlalchemy.types import TypeDecorator
 
 from app.config import normalize_postgres_url, settings
@@ -40,6 +42,8 @@ LEGACY_INI = BACKEND_ROOT / "legacy_postgres" / "alembic.ini"
 NEW_INI = BACKEND_ROOT / "alembic.ini"
 MARKER_NAME = ".migrated-from-postgres.json"
 BATCH = 1000
+# How long --replace waits for readers before reporting the file as held.
+CHECKPOINT_TIMEOUT = 5.0
 # Tables whose emptiness means "this target has never held user data".
 _USER_DATA_TABLES = ("jobs", "applications", "base_resumes", "kb_entities")
 
@@ -303,6 +307,46 @@ def _write_marker(marker: Path, payload: dict) -> None:
         handle.write(json.dumps(payload, indent=2, sort_keys=True))
 
 
+def _target_is_schema_only(target_url: str) -> bool:
+    """True for a file that carries the app schema and no user data: what a
+    failed-closed first boot leaves behind, and what the documented by-hand
+    retry must accept without --replace. Anything unreadable counts as data;
+    the tool never overwrites what it cannot read."""
+    try:
+        engine = make_engine(target_url)
+        try:
+            with engine.connect() as conn:
+                if not sa.inspect(conn).has_table("alembic_version"):
+                    return False
+        finally:
+            engine.dispose()
+        return _target_is_empty(target_url)
+    except (sa.exc.SQLAlchemyError, sqlite3.Error, RuntimeError):
+        return False
+
+
+def _move_aside(path: Path) -> Path | None:
+    """Rename `path` to a timestamped sibling, WAL folded in first. After the
+    rename the -wal would belong to a file that no longer exists, so every
+    committed row still sitting in it (a crash image, an app that was not
+    shut down) would be lost with the sidecar. None when another process
+    holds the file and the checkpoint cannot complete."""
+    conn = sqlite3.connect(path, timeout=CHECKPOINT_TIMEOUT)
+    try:
+        busy = conn.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()[0]
+    finally:
+        conn.close()
+    if busy:
+        return None
+    aside = path.with_name(f"{path.name}.replaced-{datetime.now(UTC):%Y%m%dT%H%M%S}")
+    path.rename(aside)
+    for suffix in ("-wal", "-shm"):
+        sidecar = Path(f"{path}{suffix}")
+        if sidecar.exists():
+            sidecar.unlink()
+    return aside
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -315,10 +359,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--target",
         default=settings.database_url,
-        help="sqlite:///… (default: the app's database_url)",
+        help=(
+            "sqlite:///… (default: the app's database_url). The import marker is written "
+            "beside the target; the boot hook reads it under DATA_DIR, the same place for "
+            "the default target"
+        ),
     )
     parser.add_argument(
-        "--replace", action="store_true", help="move a non-empty target aside first"
+        "--replace", action="store_true", help="move a target that holds data aside first"
     )
     parser.add_argument(
         "--skip-source-upgrade",
@@ -331,30 +379,50 @@ def main(argv: list[str] | None = None) -> int:
     path = sqlite_path(args.target)
     if path is None:
         parser.error("--target must be a sqlite:/// file URL")
-
-    if path.exists() and path.stat().st_size > 0:
-        if not args.replace:
-            print(f"refusing: {path} exists and is not empty (pass --replace to move it aside)")
-            return 2
-        aside = path.with_name(f"{path.name}.replaced-{datetime.now(UTC):%Y%m%dT%H%M%S}")
-        path.rename(aside)
-        for suffix in ("-wal", "-shm"):
-            sidecar = Path(f"{path}{suffix}")
-            if sidecar.exists():
-                sidecar.unlink()
-        print(f"moved {path} -> {aside}")
+    source = normalize_postgres_url(args.source)
 
     try:
+        # The source first: the user's file is not moved and no schema is
+        # created until the source is known to be usable ("refuse rather
+        # than guess", design §2.6).
+        has_data = _source_has_data(source)
+        if has_data is None:
+            shown = make_url(source).render_as_string(hide_password=True)
+            print(f"error: the source cannot be reached ({shown}); refusing rather than guess",
+                  file=sys.stderr)
+            return 1
+        if not has_data:
+            print("note: the source holds no user data; only the schema will be created")
         if not args.skip_source_upgrade:
             print("upgrading the source through the legacy migration chain")
-            upgrade_legacy_source(args.source)
+            upgrade_legacy_source(source)
+
+        if path.exists() and path.stat().st_size > 0:
+            if _target_is_schema_only(args.target):
+                print(f"{path} has the app schema and no user data; importing into it")
+            elif not args.replace:
+                print(
+                    f"refusing: {path} exists and is not an empty app database "
+                    "(pass --replace to move it aside)"
+                )
+                return 2
+            else:
+                aside = _move_aside(path)
+                if aside is None:
+                    print(f"refusing: another process holds {path} (stop the backend first)")
+                    return 2
+                print(f"moved {path} -> {aside}")
+
         print(f"creating the SQLite schema at {path}")
         create_target_schema(args.target)
         print("copying tables")
-        report = copy_database(normalize_postgres_url(args.source), args.target)
+        report = copy_database(source, args.target)
     except ExportError as exc:
         if exc.report:
             _print_report(exc.report)
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    except (sa.exc.SQLAlchemyError, sqlite3.Error, OSError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 
