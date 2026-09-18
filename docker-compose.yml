@@ -6,6 +6,11 @@
 name: maestro-career-studio
 
 services:
+  # ONE release only (SYSTEM.md §13 postgres-to-sqlite). The backend imports
+  # this database into ./data/maestro_cs.sqlite3 at its first boot and never
+  # reads it again; the next release deletes this service, the pgdata volume
+  # below, and the POSTGRES_* keys. Remove the volume yourself once satisfied:
+  #   docker volume rm maestro-career-studio_pgdata
   postgres:
     image: postgres:16
     environment:
@@ -45,11 +50,17 @@ services:
         APP_GID: ${APP_GID:-1000}
     security_opt:
       - no-new-privileges:true
+    # The first-boot Postgres import runs at startup, so it must be healthy.
     depends_on:
       postgres:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD:-app}@postgres:5432/${POSTGRES_DB:-maestro_cs}
+      # The runtime database is the SQLite file under /app/data (bind-mounted
+      # below); DATABASE_URL is deliberately NOT set. This is the compose-era
+      # database the first boot imports, one release only (see the postgres
+      # service above). The backend refuses to boot if it cannot reach it, so
+      # keep the postgres service until the import marker exists.
+      LEGACY_DATABASE_URL: postgresql://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD:-app}@postgres:5432/${POSTGRES_DB:-maestro_cs}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       # Empty = the OpenAI API. Set to an OpenAI-compatible endpoint (Ollama,
@@ -92,6 +103,12 @@ services:
       MAESTRO_CS_UPLOAD_DIR: /app/.playwright-mcp/uploads
       MAESTRO_CS_UPLOAD_HOST_ROOT: ${PWD}/.playwright-mcp/uploads
     volumes:
+      # The database: maestro_cs.sqlite3 plus its -wal/-shm sidecars and the
+      # import marker. PII like every other mount here. Never open it from the
+      # host while the backend runs — WAL needs shared memory the Docker
+      # Desktop mount does not promise; stop the stack or read a backups/
+      # snapshot instead.
+      - ./data:/app/data
       - ./applications:/app/applications
       - ./settings:/app/settings
       - ./logs:/app/logs
