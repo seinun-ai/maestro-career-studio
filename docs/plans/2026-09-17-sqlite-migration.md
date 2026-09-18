@@ -857,6 +857,8 @@ ruff check . && git add -A alembic.ini legacy_postgres migrations && git commit 
 
 ### Task 7: Test fixtures on a throwaway SQLite file
 
+> **Amended after Task 6 review (2026-09-17):** (1) `tests/test_template_defaults.py` must run against the alembic-migrated `db_session` fixture instead of `Base.metadata.create_all`, so it pins revision `871d0425b64c`'s server default, not the model's. (2) The rewritten parity test gets a second pass with `compare_server_default=True` that allow-lists Alembic's known empty-string TEXT false positives (`kb_documents.text_content`, `kb_port_log.ported_text`, `kb_profile.summary`, `kb_profile.notes`) and fails on anything else. (3) `tests/test_migrations_env.py` (added with Task 6's follow-up) already pins "a fresh file created by `alembic upgrade head` is 0600" and the sqlite-only guard; keep it green. (4) `migrations/env.py` now refuses non-sqlite URLs, so `_validate_test_db_url`'s sqlite check and the env guard agree.
+
 **Files:**
 - Modify: `backend/tests/conftest.py:1-10`, `:79-110`, `:112-201`, `:203-236`
 - Modify: `backend/tests/test_migration_model_parity.py`
@@ -2463,6 +2465,9 @@ Append-only. One line per deviation: task, what the plan said, what was found, w
 | 6 | `versions/` untouched | `template.py:23` had `server_default="false"`: on SQLite that is TEXT `'false'`, truthy in Python, so every user-created template would read as the default (three `Template(` constructions omit the flag) | `expression.false()` in the model, `sa.text('0')` in the baseline, a metadata pin that no Boolean column has a string server default, and a round-trip test | no data loss / correctness |
 | 6 | `versions/` untouched | legacy revision `9a0404101e5f` reads `resume.tex.j2` via `Path(__file__).parents[2]`, which the move into `legacy_postgres/` broke; the importer's CI job upgrades an empty Postgres through it | `parents[3]` with a comment: the one permitted edit in the legacy box (no id or schema change) | no data loss |
 | 6 | `alembic heads` with a fake URL proves the legacy env accepts a URL | `heads` never loads `env.py`; it prints the head with no URL at all | proved with `current` instead: fails at the socket (`Connection refused` on port 1) after normalizing onto psycopg v3 | — |
+| 6 | new `migrations/env.py` as written | it accepted any backend URL; `TEST_DATABASE_URL=postgresql://…` would apply the SQLite baseline to a Postgres database | sqlite-only guard raising `RuntimeError` before any connection; `connect_args={"timeout": 30}` for symmetry with `make_engine` | one dialect |
+| 6 | legacy env imports `normalize_postgres_url` from `app.config` and writes the URL back via `set_main_option` | importing `app.config` instantiates `Settings()`, which refuses a compose-era `.env`; ConfigParser interpolation breaks on `%` in a URL-encoded password | normalizer inlined in the box; URL kept in a module variable and passed straight to `create_engine`/`url=` | correctness |
+| 6 | `alembic check` gates the baseline | it ignores server defaults; the template round-trip test built its schema with `create_all`, so `sa.text('0')` was reviewed by eye only | Task 7: round-trip test on the migrated fixture; parity test gets a `compare_server_default=True` pass with the four `''` false positives allow-listed | deterministic / no data loss |
 | 7 | — | suite baseline on SQLite before fixes: `N failed, M passed` | — | — |
 
 **LLM-call audit (Task 10):**
