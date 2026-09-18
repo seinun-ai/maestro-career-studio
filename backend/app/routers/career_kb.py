@@ -545,6 +545,14 @@ def upload_document(
         ingest_status=ingest_status,
         ingest_summary=ingest_summary,
     )
+    # Commit the stored document BEFORE minting. store_document flushes to get
+    # the id it names the file directory with, and minting is an LLM call of
+    # tens of seconds — holding that flush's write lock across it makes every
+    # other writer wait out busy_timeout and fail (design §3.2). The bytes are
+    # already on disk at this point, so committing here is what makes the row
+    # and the file agree; a mint that dies now leaves a stored, re-mintable
+    # document (POST /documents/{id}/mint) instead of an orphaned file.
+    db.commit()
 
     if document.ingest_status != "failed":
         kb_ingest.mint_document(db, document)
