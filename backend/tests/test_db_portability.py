@@ -80,6 +80,6 @@ def test_boolean_server_defaults_are_expressions_not_strings():
         for column in table.columns
         if isinstance(column.type, sa.Boolean)
         and column.server_default is not None
-        and isinstance(column.server_default.arg, str)
+        and isinstance(getattr(column.server_default, "arg", None), str)
     ]
     assert string_defaults == []

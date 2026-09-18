@@ -1,12 +1,21 @@
 import os
 from logging.config import fileConfig
 
-from sqlalchemy import engine_from_config
-from sqlalchemy import pool
+from sqlalchemy import create_engine, pool
 
 from alembic import context
 
-from app.config import normalize_postgres_url
+
+def _normalize_postgres_url(value: str) -> str:
+    # Mirrors app.config.normalize_postgres_url and dies with this box. Inlined
+    # so this env.py never imports app.config: instantiating Settings() reads
+    # .env and refuses a compose-era DATABASE_URL before the box can say
+    # "no source URL". The bare scheme selects psycopg2, which this project
+    # does not install.
+    if value.startswith("postgresql://"):
+        return "postgresql+psycopg://" + value[len("postgresql://") :]
+    return value
+
 
 # ONE release only (SYSTEM.md §13 postgres-to-sqlite). This chain never sees the
 # app's own database again: it runs only against a compose-era Postgres source,
@@ -18,42 +27,30 @@ if not _url:
         "legacy_postgres: no source URL. Set LEGACY_DATABASE_URL or pass it through "
         "app.tools.migrate_from_postgres; this chain must never run against the SQLite file."
     )
-config.set_main_option("sqlalchemy.url", normalize_postgres_url(_url))
+# A module variable, never written back with set_main_option: ConfigParser
+# interpolation breaks on the '%' of a URL-encoded password.
+SOURCE_URL = _normalize_postgres_url(_url)
 
 # Interpret the config file for Python logging.
-# This line sets up loggers basically.
 if config.config_file_name is not None:
     # disable_existing_loggers defaults to TRUE, which switches off every logger
-    # already created. That is wrong for both callers we have: the app runs
-    # `alembic upgrade head` from seeding.run_startup() during the FastAPI
-    # lifespan, so the default would silence the app's own loggers for the rest
-    # of the process; and the test suite migrates its database at session start,
-    # where it emptied `caplog` and broke assertions about logged output.
+    # already created. The importer (app.tools.migrate_from_postgres) runs this
+    # chain in-process through alembic.command, so the default would silence
+    # its own loggers for the rest of the run.
     fileConfig(config.config_file_name, disable_existing_loggers=False)
 
+# Upgrade-only: the ported models describe the SQLite schema, not this one.
 target_metadata = None
-
-# other values from the config, defined by the needs of env.py,
-# can be acquired:
-# my_important_option = config.get_main_option("my_important_option")
-# ... etc.
 
 
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode.
 
-    This configures the context with just a URL
-    and not an Engine, though an Engine is acceptable
-    here as well.  By skipping the Engine creation
-    we don't even need a DBAPI to be available.
-
-    Calls to context.execute() here emit the given string to the
-    script output.
-
+    This configures the context with just a URL and not an Engine; calls to
+    context.execute() emit the given string to the script output.
     """
-    url = config.get_main_option("sqlalchemy.url")
     context.configure(
-        url=url,
+        url=SOURCE_URL,
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
@@ -64,27 +61,17 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
-    """Run migrations in 'online' mode.
-
-    In this scenario we need to create an Engine
-    and associate a connection with the context.
-
-    """
-    connectable = engine_from_config(
-        config.get_section(config.config_ini_section, {}),
-        prefix="sqlalchemy.",
-        poolclass=pool.NullPool,
-    )
+    """Run migrations in 'online' mode: create an Engine and associate a
+    connection with the context."""
+    connectable = create_engine(SOURCE_URL, poolclass=pool.NullPool, future=True)
 
     with connectable.connect() as connection:
-        context.configure(
-            connection=connection,
-            target_metadata=target_metadata,
-            compare_type=True,
-        )
+        context.configure(connection=connection, target_metadata=target_metadata)
 
         with context.begin_transaction():
             context.run_migrations()
+
+    connectable.dispose()
 
 
 if context.is_offline_mode():
