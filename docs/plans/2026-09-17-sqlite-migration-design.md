@@ -182,11 +182,16 @@ never runs the script at all. So `seeding.run_startup()` calls
 `import_if_needed()` right after `alembic upgrade head` and before any seed:
 if `LEGACY_DATABASE_URL` is set (compose sets it for this one release), the
 target file holds no user data, and the source holds some, the import runs
-in one target transaction and writes `data/.migrated-from-postgres.json` on
-success. An unreachable source is retried at the next boot; a verification
-mismatch rolls back and is logged loudly; a target that already has data is
-left alone. `update.sh`'s job shrinks to the pre-update backup and the
-"remove the old volume" advice.
+in one target transaction, verifies row counts and per-table content hashes
+BEFORE that transaction commits, and writes `data/.migrated-from-postgres.json`
+(mode 0600) on success. An unreachable source is retried at the next boot; a
+target that already has data is left alone. Any other failure (a verification
+mismatch, an integrity error from legacy data) FAILS CLOSED: the transaction
+rolls back so the file stays empty, and startup aborts with a message naming
+the cause and the retry; the next boot imports again once the cause is fixed.
+Booting an empty app that seeding then fills with demo rows would strand the
+user's data behind a permanent `target-not-empty`. `update.sh`'s job shrinks
+to the pre-update backup and the "remove the old volume" advice.
 
 The same code is the command line tool
 `python -m app.tools.migrate_from_postgres --source <url> --target <path>`
@@ -302,9 +307,11 @@ because recency scoring compares stored dates to "today".
 
 - Source unreachable: exporter refuses; `update.sh` stops before touching
   images and names the backup it took.
-- Verification mismatch: exporter exits non-zero, leaves the target for
-  inspection, `update.sh` stops. The Postgres volume is untouched, so the
-  previous release still runs (`docs/RELEASING.md` rollback recipe).
+- Verification mismatch (or any error mid-copy): the target transaction
+  rolls back, the file stays empty, the CLI exits non-zero and the boot hook
+  aborts startup with the cause. The Postgres volume is untouched, so the
+  previous release still runs (`docs/RELEASING.md` rollback recipe) and the
+  next boot retries.
 - Interrupted mid-copy: the target is incomplete and non-empty; rerunning
   requires `--replace`, which is what `update.sh` passes on a retry.
 - Fresh install (never had Postgres): the source has no `alembic_version`
