@@ -2345,6 +2345,10 @@ In the two-dependency-sources bullet add one sentence: `legacy-postgres` is a on
 - YYYY-MM-DD: `Session.commit()` flushes pending objects, so the
   `rollback()` before a teardown clear is load-bearing; without it a
   never-flushed `add` lands AFTER the deletes and leaks into the next test.
+- YYYY-MM-DD: `with sqlite3.connect(...) as conn:` COMMITS but does not
+  CLOSE → a leaked read lock on the live database and an open handle on a
+  temp image → `app/tools/backup_db.py` closes every connection in
+  `finally`; never use the sqlite3 context manager as a closer.
 - YYYY-MM-DD: SQLite's `CURRENT_TIMESTAMP` has no microseconds and compares
   as text against the ORM's `.ffffff` binds → same-second rows tied and
   "oldest wins" fell to a uuid4 tie-break → the app writes every timestamp
@@ -2441,6 +2445,7 @@ Find every line with `grep -n -i "postgres\|55432\|pg_dump" <file>` and rewrite 
     first.
   ```
 - **backend/scripts/*.py** docstrings: `DATABASE_URL=sqlite:////absolute/path/to/data/maestro_cs.sqlite3` (stack stopped, or a `backups/` snapshot).
+- **THIRD_PARTY_NOTICES.md** (psycopg, ~lines 146–172): still accurate for the image, but note psycopg now ships only through the one-release `legacy-postgres` extra and leaves with it.
 
 Run `python3 scripts/check_system_md.py` again (it reads the reference tier too), then:
 
@@ -2528,6 +2533,8 @@ Append-only. One line per deviation: task, what the plan said, what was found, w
 | 11 | verification mismatch "rolls back and the app boots"; other errors unhandled | the copy had already committed before verification, and a boot that seeds demo rows over an empty file strands the user's data behind `target-not-empty` | verification runs before commit; ANY failure aborts startup with the cause (fail closed) and the next boot retries; marker written 0600; design §2.6/§3.5 rewritten | no data loss |
 | 11 | `source-unreachable` retries at the next boot | seeding inserts the demo resume after a soft return, so the next boot sees `target-not-empty` and never imports | unreachable fails closed too when `LEGACY_DATABASE_URL` is set; the message names the fix and the skip; design §2.6/§3.5 rewritten | no data loss |
 | 11 | `--replace` renames the target and unlinks its sidecars | committed rows still in the WAL vanish from the aside copy, the only safety net `--replace` offers | `PRAGMA wal_checkpoint(TRUNCATE)` first, refuse when busy; source checked and upgraded BEFORE the target moves; a schema-only empty target no longer needs `--replace`; one `error:` line instead of tracebacks; tests for each | no data loss |
+| 12 | plan's `snapshot()` used `with sqlite3.connect(...)` | the sqlite3 context manager commits but never closes (a leaked read lock and an open handle on the temp image); a missing source was silently CREATED and backed up empty; output was 0644; the read-only fallback swallowed every `OperationalError` | explicit closes; `FileNotFoundError` on a missing source; output 0600 in a 0700 dir; `sqlite_master` + `timeout=30` + a narrow fallback with a stderr warning; one `error:` line; read-only pinned by a test | security boundary / no data loss |
+| 13 | editable install without the extra "still imports" | it did, only because anaconda carries a stray psycopg; on a clean box `tests/test_db.py::test_make_engine_non_sqlite_url_gets_no_listeners` fails because `create_engine` imports the DBAPI eagerly | `pytest.importorskip("psycopg")` on that one test; the lock diff was one header line, no pin moved, the image built | one dialect |
 | 7 | — | suite baseline on SQLite before fixes: `43 failed, 4151 passed, 1 skipped, 23 errors in 218.89s`. By cause: 23 errors + 12 failures are Task 6 relocation effects (prompt-defaults lock pin; three resync-migration tests globbing the old path); 21 string-UUID binds (`.hex`), 20 in tests via `session.get`, 1 in `services/proposals.py:66`; 9 `date_trunc` (Task 8); 1 ordering suspect in `kb_consolidation`. No naive-datetime failures. | fix items added to Task 9's table | — |
 
 **LLM-call audit (Task 10):** client entry points are `llm.call_openai`, `llm.get_chat_client` (streaming), `list_openai_models`/`list_gemini_models`. With `autoflush=False`, `add()`/`merge()` take no lock; `prompts.get_prompt` and `model_settings._set_value` COMMIT (lock released).
