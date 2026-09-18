@@ -54,7 +54,8 @@ def sqlite_path(url: str) -> Path | None:
 def prepare_sqlite_file(url_or_path: str | Path) -> Path | None:
     """Create the database file 0600 (directory 0700) if absent; narrow a wider
     mode if present. Returns the path, or None when the URL names no file
-    (another backend, :memory:).
+    (another backend, :memory:). A `str` is parsed as a URL; pass a filesystem
+    path as a `Path` (a bare path string raises `ArgumentError`).
 
     Callers that connect through a plain `create_engine` -- alembic's env.py,
     the first-boot path -- call this before connecting; `make_engine` does it
@@ -74,8 +75,18 @@ def prepare_sqlite_file(url_or_path: str | Path) -> Path | None:
         if os.name == "posix":
             mode = stat.S_IMODE(path.stat().st_mode)
             if mode & ~0o600:
-                os.chmod(path, 0o600)
-                logger.warning("narrowed %s from %#o to 0600", path, mode)
+                try:
+                    os.chmod(path, 0o600)
+                except PermissionError:
+                    # A repair is never a precondition for opening the database.
+                    logger.error(
+                        "could not narrow %s from %#o to 0600: the file is not owned by "
+                        "this process (a uid-mismatched bind mount, or a host-created file)",
+                        path,
+                        mode,
+                    )
+                else:
+                    logger.warning("narrowed %s from %#o to 0600", path, mode)
     return path
 
 

@@ -111,6 +111,31 @@ def test_make_engine_narrows_a_wide_mode_on_connect(tmp_path, caplog):
         engine.dispose()
 
 
+@pytest.mark.skipif(os.name != "posix", reason="file modes are posix-only")
+def test_make_engine_still_connects_when_the_0600_repair_is_refused(tmp_path, caplog, monkeypatch):
+    # A uid-mismatched bind mount or a host-created file cannot be chmod-ed by
+    # this process; the repair is logged and the connection proceeds regardless.
+    path = tmp_path / "t.sqlite3"
+    path.touch()
+    os.chmod(path, 0o644)
+
+    def refuse(*_args, **_kwargs):
+        raise PermissionError(1, "Operation not permitted")
+
+    monkeypatch.setattr(os, "chmod", refuse)
+    engine = make_engine(f"sqlite:///{path}")
+    try:
+        with caplog.at_level(logging.ERROR, logger="app.db"):
+            with engine.connect() as conn:
+                assert _pragma(conn, "foreign_keys") == 1
+        assert stat.S_IMODE(path.stat().st_mode) == 0o644  # left as found
+        assert any(
+            r.levelno == logging.ERROR and str(path) in r.getMessage() for r in caplog.records
+        )
+    finally:
+        engine.dispose()
+
+
 def test_prepare_sqlite_file_accepts_url_or_path(tmp_path):
     assert prepare_sqlite_file("sqlite://") is None
     assert prepare_sqlite_file("sqlite:///:memory:") is None
@@ -125,10 +150,11 @@ def test_prepare_sqlite_file_accepts_url_or_path(tmp_path):
 
 def test_make_engine_refuses_to_switch_journal_mode_under_a_holder(tmp_path):
     path = tmp_path / "t.sqlite3"
-    holder = sqlite3.connect(path)
+    holder = sqlite3.connect(path, isolation_level=None)  # manual transactions
     holder.execute("PRAGMA journal_mode=WAL")
-    # A WAL connection holds the file's shared lock from its first read on;
-    # an idle one that never read does not block the switch.
+    # An open read transaction holds the WAL read-mark on every SQLite
+    # version; an idle connection that never read does not block the switch.
+    holder.execute("BEGIN")
     holder.execute("SELECT count(*) FROM sqlite_master").fetchall()
     engine = make_engine(f"sqlite:///{path}", journal_mode="DELETE")
     try:
