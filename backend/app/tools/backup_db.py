@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import gzip
+import os
 import shutil
 import sqlite3
 import sys
@@ -19,6 +20,24 @@ from pathlib import Path
 
 from app.config import settings
 from app.db import sqlite_path
+
+# Seconds to wait behind a writer, matching the app's own connections
+# (app/db.py `connect_args["timeout"]`). sqlite3's default is 5, which under
+# SQLITE_JOURNAL_MODE=DELETE makes the read-only probe below lose to a
+# concurrent writer and silently downgrade the backup to a read-write open.
+BUSY_TIMEOUT = 30
+
+# The only failures that mean "this database cannot be opened read-only".
+# Anything else is a real error and must not be papered over by reopening the
+# live database read-write.
+_READ_ONLY_FAILURES = ("readonly", "unable to open")
+
+
+def _fall_back_to_read_write(source: Path, exc: sqlite3.OperationalError) -> sqlite3.Connection:
+    if not any(sign in str(exc).lower() for sign in _READ_ONLY_FAILURES):
+        raise exc
+    print(f"warning: opened the database read-write for the backup ({exc})", file=sys.stderr)
+    return sqlite3.connect(source, timeout=BUSY_TIMEOUT)
 
 
 def _connect_source(source: Path) -> sqlite3.Connection:
@@ -35,17 +54,25 @@ def _connect_source(source: Path) -> sqlite3.Connection:
     database open, so the sidecar is there -- but after an unclean shutdown a
     hand-run backup would otherwise fail on a file it can read perfectly well.
     The probe below is what surfaces that: opening succeeds, the first read is
-    where sqlite wants the index.
+    where sqlite wants the index. `sqlite_master` rather than its modern alias
+    `sqlite_schema`, which needs sqlite >= 3.33.
     """
     try:
-        live = sqlite3.connect(f"{source.resolve().as_uri()}?mode=ro", uri=True)
-    except sqlite3.OperationalError:
-        return sqlite3.connect(source)
+        live = sqlite3.connect(
+            f"{source.resolve().as_uri()}?mode=ro", uri=True, timeout=BUSY_TIMEOUT
+        )
+    except sqlite3.OperationalError as exc:
+        return _fall_back_to_read_write(source, exc)
     try:
-        live.execute("SELECT count(*) FROM sqlite_schema").fetchone()
-    except sqlite3.OperationalError:
+        live.execute("SELECT count(*) FROM sqlite_master").fetchone()
+    except sqlite3.OperationalError as exc:
         live.close()
-        return sqlite3.connect(source)
+        return _fall_back_to_read_write(source, exc)
+    except sqlite3.Error:
+        # Corrupt, or not a database at all: there is nothing to fall back to,
+        # but the handle still has to go back.
+        live.close()
+        raise
     return live
 
 
@@ -58,6 +85,13 @@ def snapshot(source: Path, destination: Path) -> None:
     remove a directory whose files are open) and a read lock on the LIVE
     database for the rest of the process's life.
     """
+    # Checked before anything opens the path: `sqlite3.connect` CREATES a
+    # missing file, so without this a mistyped --source produced an empty,
+    # integrity-clean, plausible-looking backup -- the one failure mode a
+    # backup tool must not have.
+    if not source.is_file():
+        raise FileNotFoundError(source)
+
     live = _connect_source(source)
     try:
         copy = sqlite3.connect(destination)
@@ -102,19 +136,59 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: no database file at {source}", file=sys.stderr)
         return 1
 
-    with tempfile.TemporaryDirectory() as tmp:
-        image = Path(tmp) / "snapshot.sqlite3"
-        snapshot(source, image)
-        if args.stdout:
-            with image.open("rb") as handle:
-                shutil.copyfileobj(handle, sys.stdout.buffer)
-            sys.stdout.buffer.flush()
-        else:
-            out = Path(args.out)
-            out.parent.mkdir(parents=True, exist_ok=True)
-            with image.open("rb") as handle, gzip.open(out, "wb") as packed:
-                shutil.copyfileobj(handle, packed)
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            image = Path(tmp) / "snapshot.sqlite3"
+            snapshot(source, image)
+            if args.stdout:
+                _stream(image)
+            else:
+                _write_gzip(image, Path(args.out))
+    except BrokenPipeError:
+        # `--stdout | head` closes the pipe early. Point stdout at devnull so
+        # the interpreter's flush at exit does not raise this a second time and
+        # print "Exception ignored" after we have already returned.
+        _silence_stdout()
+        return 1
+    except (RuntimeError, sqlite3.Error, OSError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
     return 0
+
+
+def _stream(image: Path) -> None:
+    with image.open("rb") as handle:
+        shutil.copyfileobj(handle, sys.stdout.buffer)
+    sys.stdout.buffer.flush()
+
+
+def _write_gzip(image: Path, out: Path) -> None:
+    """Write the snapshot to `out` as gzip, 0600 in a 0700 directory.
+
+    A backup holds every row of the career record, so it gets the mode the
+    database itself gets (app.db.prepare_sqlite_file). Created WITH the mode
+    rather than chmod-ed after, which would leave a world-readable window; the
+    fchmod narrows a backup an earlier, wider-umask run left behind, since
+    O_CREAT's mode applies only to a file it actually creates.
+    """
+    out.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    fd = os.open(out, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    # Both handles are closed, innermost first: GzipFile.close() writes the
+    # trailer but does NOT close the file it was handed.
+    with os.fdopen(fd, "wb") as raw:
+        if os.name == "posix":
+            os.fchmod(fd, 0o600)
+        with gzip.GzipFile(fileobj=raw, mode="wb") as packed, image.open("rb") as handle:
+            shutil.copyfileobj(handle, packed)
+
+
+def _silence_stdout() -> None:
+    try:
+        os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
+    except (OSError, ValueError):
+        # No real fd behind stdout (pytest's capture, a StringIO): nothing to
+        # silence, and nothing that can raise at exit either.
+        pass
 
 
 if __name__ == "__main__":
