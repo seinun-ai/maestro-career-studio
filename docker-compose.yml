@@ -59,8 +59,14 @@ services:
       # below); DATABASE_URL is deliberately NOT set. This is the compose-era
       # database the first boot imports, one release only (see the postgres
       # service above). The backend refuses to boot if it cannot reach it, so
-      # keep the postgres service until the import marker exists.
+      # keep the postgres service until data/.migrated-from-postgres.json exists.
       LEGACY_DATABASE_URL: postgresql://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD:-app}@postgres:5432/${POSTGRES_DB:-maestro_cs}
+      # Empty = WAL, the default. DELETE is the escape hatch for a bind-mount
+      # filesystem whose shared-memory semantics SQLite cannot trust. The app
+      # reads this from the container environment, and scrub_empty_env treats
+      # the empty string as unset (same pattern as OPENAI_BASE_URL below), so
+      # without this line a value set in .env never reaches the container.
+      SQLITE_JOURNAL_MODE: ${SQLITE_JOURNAL_MODE:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       # Empty = the OpenAI API. Set to an OpenAI-compatible endpoint (Ollama,
