@@ -1,8 +1,9 @@
 from collections import defaultdict
+from datetime import UTC, date
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import Date, case, distinct, func, not_, select
+from sqlalchemy import case, distinct, func, not_, select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -19,6 +20,7 @@ from app.services import (
     explore_gaps,
     explore_overview,
 )
+from app.services.explore_activity import week_start
 from app.services.explore_skills import TOP_TIER_FRACTION, classify_skill_rows
 
 
@@ -263,21 +265,16 @@ def role_mix_over_time(
     if window != "week":
         window = "week"
 
-    week_start = func.date_trunc("week", Job.created_at).cast(Date).label("week_start")
     rows = db.execute(
-        select(week_start, Job.role_category, func.count().label("count"))
-        .where(Job.role_category.is_not(None))
-        .group_by(week_start, Job.role_category)
-        .order_by(week_start, Job.role_category)
+        select(Job.created_at, Job.role_category).where(Job.role_category.is_not(None))
     ).all()
-
+    counts: dict[tuple[date, str], int] = {}
+    for created_at, category in rows:
+        key = (week_start(created_at.astimezone(UTC).date()), category)
+        counts[key] = counts.get(key, 0) + 1
     return [
-        {
-            "week_start": row.week_start.isoformat(),
-            "role_category": row.role_category,
-            "count": row.count,
-        }
-        for row in rows
+        {"week_start": ws.isoformat(), "role_category": category, "count": n}
+        for (ws, category), n in sorted(counts.items())
     ]
 
 
