@@ -1318,7 +1318,7 @@ BACKEND = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file
 
 def _fresh_schema(url: str) -> None:
     cfg = Config(os.path.join(BACKEND, "alembic.ini"))
-    cfg.set_main_option("sqlalchemy.url", url)
+    cfg.set_main_option("sqlalchemy.url", url.replace("%", "%%"))
     command.upgrade(cfg, "head")
 
 
@@ -1642,13 +1642,16 @@ def upgrade_legacy_source(source_url: str) -> None:
             "pip install -e '.[legacy-postgres]'"
         ) from exc
     cfg = Config(str(LEGACY_INI))
-    cfg.set_main_option("sqlalchemy.url", normalize_postgres_url(source_url))
+    # ConfigParser interpolation: a bare `%` (a URL-encoded password) is
+    # rejected at set time, so escape it. The legacy env reads the option
+    # back raw and never writes it (Task 6 follow-up).
+    cfg.set_main_option("sqlalchemy.url", normalize_postgres_url(source_url).replace("%", "%%"))
     command.upgrade(cfg, "head")
 
 
 def create_target_schema(target_url: str) -> None:
     cfg = Config(str(NEW_INI))
-    cfg.set_main_option("sqlalchemy.url", target_url)
+    cfg.set_main_option("sqlalchemy.url", target_url.replace("%", "%%"))
     command.upgrade(cfg, "head")
 
 
