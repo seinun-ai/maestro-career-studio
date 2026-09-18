@@ -1,95 +1,64 @@
 import os
 from logging.config import fileConfig
 
-from sqlalchemy import engine_from_config
-from sqlalchemy import pool
-
 from alembic import context
+from sqlalchemy import create_engine, pool
 
-from app.config import normalize_postgres_url, settings
-from app.db import Base
-from app.models import *  # noqa: F403 - registers models for Alembic autogenerate
+from app.config import settings
+from app.db import Base, prepare_sqlite_file
+from app.models import *  # noqa: F403  registers models for autogenerate
 
-# this is the Alembic Config object, which provides
-# access to the values within the .ini file in use.
 config = context.config
-# Same resolution order as app/db.py, and it must stay that way: the test suite
-# migrates its own throwaway database through alembic, and reading only
-# settings.database_url here would silently point those migrations at the DEV
-# database instead — the one holding real career data.
-# Wrapped in normalize_postgres_url for the same reason app/db.py is: the
-# TEST_DATABASE_URL branch never passes through Settings, so a bare
-# `postgresql://` would select the psycopg2 dialect this project does not ship.
-config.set_main_option(
-    "sqlalchemy.url",
-    normalize_postgres_url(os.environ.get("TEST_DATABASE_URL") or settings.database_url),
+
+# Same resolution order as app/db.py, and it must stay that way: the test
+# suite migrates its own throwaway file through alembic, and reading only
+# settings.database_url here would point those migrations at the real data.
+# The importer sets sqlalchemy.url explicitly to build a schema elsewhere.
+DATABASE_URL = (
+    config.get_main_option("sqlalchemy.url")
+    or os.environ.get("TEST_DATABASE_URL")
+    or settings.database_url
 )
 
-# Interpret the config file for Python logging.
-# This line sets up loggers basically.
 if config.config_file_name is not None:
-    # disable_existing_loggers defaults to TRUE, which switches off every logger
-    # already created. That is wrong for both callers we have: the app runs
-    # `alembic upgrade head` from seeding.run_startup() during the FastAPI
-    # lifespan, so the default would silence the app's own loggers for the rest
-    # of the process; and the test suite migrates its database at session start,
-    # where it emptied `caplog` and broke assertions about logged output.
+    # disable_existing_loggers defaults to TRUE and would silence the app's own
+    # loggers: seeding.run_startup() runs `alembic upgrade head` in-process.
     fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 target_metadata = Base.metadata
 
-# other values from the config, defined by the needs of env.py,
-# can be acquired:
-# my_important_option = config.get_main_option("my_important_option")
-# ... etc.
-
 
 def run_migrations_offline() -> None:
-    """Run migrations in 'offline' mode.
-
-    This configures the context with just a URL
-    and not an Engine, though an Engine is acceptable
-    here as well.  By skipping the Engine creation
-    we don't even need a DBAPI to be available.
-
-    Calls to context.execute() here emit the given string to the
-    script output.
-
-    """
-    url = config.get_main_option("sqlalchemy.url")
     context.configure(
-        url=url,
+        url=DATABASE_URL,
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        render_as_batch=True,
+        compare_type=True,
     )
-
     with context.begin_transaction():
         context.run_migrations()
 
 
 def run_migrations_online() -> None:
-    """Run migrations in 'online' mode.
-
-    In this scenario we need to create an Engine
-    and associate a connection with the context.
-
-    """
-    connectable = engine_from_config(
-        config.get_section(config.config_ini_section, {}),
-        prefix="sqlalchemy.",
-        poolclass=pool.NullPool,
-    )
-
+    # A plain engine, NOT app.db.make_engine: SQLite's documented ALTER TABLE
+    # recipe (which batch mode implements) must run with foreign_keys OFF, and
+    # make_engine turns it ON for every connection. The file still has to be
+    # created 0600 (first boot creates it HERE, via `alembic upgrade head`),
+    # so prepare it the way make_engine would before this engine touches it.
+    prepare_sqlite_file(DATABASE_URL)
+    connectable = create_engine(DATABASE_URL, future=True, poolclass=pool.NullPool)
     with connectable.connect() as connection:
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
             compare_type=True,
+            render_as_batch=True,
         )
-
         with context.begin_transaction():
             context.run_migrations()
+    connectable.dispose()
 
 
 if context.is_offline_mode():
