@@ -2297,8 +2297,9 @@ exist) and rendered artifacts.
   only runtime database. `app/models/types.py` (`JSONDoc`, `UUIDType`,
   `UTCDateTime`) is the only place a column type is chosen, and nothing under
   `app/` imports `sqlalchemy.dialects`. `UTCDateTime` is the whole timezone
-  story: aware in Python, naive UTC on disk, and a NAIVE bind raises. Pinned
-  by `tests/test_db_portability.py`.
+  story: aware in Python, naive UTC on disk, and a NAIVE bind raises; the APP
+  writes every timestamp (`default=utcnow`, `onupdate=utcnow`) so one format
+  lands on disk. Pinned by `tests/test_db_portability.py`.
 ```
 
 **§9** — replace the Postgres bullet (649–654) with:
@@ -2344,12 +2345,19 @@ In the two-dependency-sources bullet add one sentence: `legacy-postgres` is a on
 - YYYY-MM-DD: `Session.commit()` flushes pending objects, so the
   `rollback()` before a teardown clear is load-bearing; without it a
   never-flushed `add` lands AFTER the deletes and leaks into the next test.
+- YYYY-MM-DD: SQLite's `CURRENT_TIMESTAMP` has no microseconds and compares
+  as text against the ORM's `.ffffff` binds → same-second rows tied and
+  "oldest wins" fell to a uuid4 tie-break → the app writes every timestamp
+  (`default=utcnow`, `onupdate=utcnow`; `server_default` is DDL only),
+  pinned by `test_db_portability`. A fresh row's `created_at` and
+  `updated_at` now differ by microseconds; never test `updated_at ==
+  created_at` for "never edited".
 ```
 
 **§13** — append the row:
 
 ```
-| `postgres-to-sqlite` | compose `postgres` service + `legacy_postgres/` chain → `data/maestro_cs.sqlite3` + one baseline | new-is-default | The next release ships. Then delete: `legacy_postgres/`, `app/tools/migrate_from_postgres.py`, `seeding._import_legacy_postgres`, `legacy_database_url`, `normalize_postgres_url`, the `legacy-postgres` extra and CI job, the compose `postgres` service + `pgdata` volume + `LEGACY_DATABASE_URL`, every `POSTGRES_*` env key, `update.sh`'s pg_dump branch. `update.sh --check` must then say "install <this release> first" when a `pgdata` volume exists without `data/.migrated-from-postgres.json`. | medium |
+| `postgres-to-sqlite` | compose `postgres` service + `legacy_postgres/` chain → `data/maestro_cs.sqlite3` + one baseline | new-is-default | The next release ships. Then delete: `legacy_postgres/`, `app/tools/migrate_from_postgres.py`, `seeding._import_legacy_postgres`, `legacy_database_url`, `normalize_postgres_url`, the `legacy-postgres` extra and CI job, the compose `postgres` service + `pgdata` volume + `LEGACY_DATABASE_URL`, every `POSTGRES_*` env key, `update.sh`'s pg_dump branch, and the three tests that exercise the boxed chain (`tests/test_kb_capture_resync.py`, `tests/test_template_date_resync.py`, `tests/test_template_section_order_resync.py`). `update.sh --check` must then say "install <this release> first" when a `pgdata` volume exists without `data/.migrated-from-postgres.json`. | medium |
 ```
 
 **`.system_md_enforcement.json`** — add to `invariants`:

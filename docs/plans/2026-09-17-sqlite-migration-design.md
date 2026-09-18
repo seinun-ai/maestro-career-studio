@@ -124,8 +124,11 @@ Every model imports its column types from here and nowhere else:
   datetimes are converted to UTC and stored naive; a naive datetime raises,
   because every writer today uses `datetime.now(UTC)` and a naive value is
   a bug, not a convention. Result: naive values come back with `tzinfo=UTC`.
-  `server_default=func.now()` renders `CURRENT_TIMESTAMP` on SQLite, which
-  is UTC and naive, so it round-trips through the same decorator.
+  The app writes every timestamp itself (`default=utcnow`,
+  `onupdate=utcnow` from the same module); `server_default=func.now()` is
+  kept for DDL only, because SQLite's `CURRENT_TIMESTAMP` has no
+  microseconds and compares as text against the ORM's `.ffffff` binds, which
+  broke same-second ordering.
 - The four `'{}'::jsonb` / `'[]'::jsonb` server defaults become
   `server_default=sa.text("'{}'")` / `"'[]'"` (SQLite stores JSON as text).
 - The one `postgresql_where` index becomes `sqlite_where=` with the same
