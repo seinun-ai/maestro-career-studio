@@ -184,11 +184,14 @@ if `LEGACY_DATABASE_URL` is set (compose sets it for this one release), the
 target file holds no user data, and the source holds some, the import runs
 in one target transaction, verifies row counts and per-table content hashes
 BEFORE that transaction commits, and writes `data/.migrated-from-postgres.json`
-(mode 0600) on success. An unreachable source is retried at the next boot; a
-target that already has data is left alone. Any other failure (a verification
-mismatch, an integrity error from legacy data) FAILS CLOSED: the transaction
-rolls back so the file stays empty, and startup aborts with a message naming
-the cause and the retry; the next boot imports again once the cause is fixed.
+(mode 0600) on success. A target that already has data is left alone. Every
+failure, including an UNREACHABLE source, FAILS CLOSED: the transaction rolls
+back so the file stays empty, and startup aborts with a message naming the
+cause and the retry (or how to skip: unset `LEGACY_DATABASE_URL`); the next
+boot imports again once the cause is fixed. Unreachable cannot be soft: the
+app would boot, seeding would insert the demo resume, and every later boot
+would see a non-empty target. Compose orders the backend after Postgres's
+healthcheck, so in the stack that failure means something is genuinely wrong.
 Booting an empty app that seeding then fills with demo rows would strand the
 user's data behind a permanent `target-not-empty`. `update.sh`'s job shrinks
 to the pre-update backup and the "remove the old volume" advice.
@@ -305,8 +308,9 @@ because recency scoring compares stored dates to "today".
 
 ### 3.5 Migration failure modes
 
-- Source unreachable: exporter refuses; `update.sh` stops before touching
-  images and names the backup it took.
+- Source unreachable: the CLI refuses; the boot hook aborts startup and
+  says to start Postgres or unset `LEGACY_DATABASE_URL`; `update.sh`'s
+  pre-update backup has already been taken.
 - Verification mismatch (or any error mid-copy): the target transaction
   rolls back, the file stays empty, the CLI exits non-zero and the boot hook
   aborts startup with the cause. The Postgres volume is untouched, so the
