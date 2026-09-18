@@ -2326,6 +2326,8 @@ In the calibration bullet replace `DATABASE_URL=…55432/maestro_cs` with `DATAB
 
 In the two-dependency-sources bullet add one sentence: `legacy-postgres` is a one-release extra (§13).
 
+In the "A USER updates instead" bullet, replace "backup → ff-only" with "SQLite snapshot (`app.tools.backup_db`, run inside the container; a `pg_dump` only while a legacy Postgres volume is still the live database) → ff-only", and add: the first boot of this release imports a compose-era Postgres into `data/` and fails closed if it cannot (§13 `postgres-to-sqlite`; `update.sh --check` says which database is live).
+
 **§12** — append (fill the date with the landing date):
 
 ```
