@@ -5,6 +5,7 @@ import sqlalchemy as sa
 from fastapi.testclient import TestClient
 
 from app.models.career_kb import KBDocument, KBPoint
+from app.models.setting import Setting
 from app.services import prompts
 
 
@@ -278,6 +279,20 @@ def test_delete_document_keeps_points_nulls_source(client, db_session, monkeypat
     assert not (tmp_path / did).exists()
 
 
+def _prewarm_mint_prompt(db_session):
+    """Put the session in the state every install is in after its first mint.
+
+    `prompts.get_prompt` INSERTs its file default and COMMITS on first use, so
+    on a fresh database the mint call commits whatever the request has pending
+    — including the document row — and a test measuring WHEN that row lands
+    would be reading that accident instead of the route. Resolving it up front
+    (and proving the Setting row is now there) removes the commit from the
+    request's path.
+    """
+    prompts.get_prompt("kb_mint", db_session)
+    assert db_session.get(Setting, prompts._setting_key("kb_mint")) is not None
+
+
 def test_uploaded_document_is_committed_before_the_mint_call(
     client, db_session, monkeypatch, tmp_path
 ):
@@ -290,11 +305,7 @@ def test_uploaded_document_is_committed_before_the_mint_call(
     ANOTHER connection, which under WAL sees the last COMMITTED state.
     """
     monkeypatch.setattr("app.services.kb_ingest.settings.kb_documents_dir", tmp_path)
-    # Resolve the mint prompt FIRST, the state every install is in after its
-    # first mint: get_prompt INSERTs its file default and COMMITS on first use,
-    # which would otherwise commit the document row underneath this test and
-    # hide the very thing it measures.
-    prompts.get_prompt("kb_mint", db_session)
+    _prewarm_mint_prompt(db_session)
 
     seen_by_other_connection: list[int] = []
 

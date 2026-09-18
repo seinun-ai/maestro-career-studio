@@ -85,16 +85,19 @@ def _run_qa(payload: QARequest, db: Session) -> QAResponse:
                     QAEntry.kind == "cover_letter",
                 )
             ).all()
+            # Stage the paths, delete the rows, COMMIT, then touch the disk —
+            # §6 {#inv-staged-artifact-removal}: a rendered file is never
+            # removed inside a transaction that can still roll back, or a
+            # rollback leaves rows whose pdf_path names a deleted file.
+            # The commit is also what keeps the write lock off the generation
+            # call below: a merely flushed DELETE would hold it for the LLM's
+            # whole run (tens of seconds), so every other writer would wait out
+            # busy_timeout and then fail (design §3.2).
+            stale = [Path(entry.pdf_path) for entry in prior if entry.pdf_path]
             for entry in prior:
-                artifacts.cleanup_qa_entry_files(entry)
                 db.delete(entry)
-            # COMMIT, not flush: generation takes tens of seconds, and a
-            # flushed DELETE would hold SQLite's write lock for all of it, so
-            # every other writer waits out busy_timeout and then fails (design
-            # §3.2). Nothing is lost by committing early — the files those rows
-            # pointed at are already gone from disk above, so a rolled-back
-            # DELETE would only restore rows whose pdf_path names a deleted file.
             db.commit()
+            artifacts.remove_files(stale)
             response.cover_letter = qa_service.generate_cover_letter(
                 payload.application_id, tone, db
             )

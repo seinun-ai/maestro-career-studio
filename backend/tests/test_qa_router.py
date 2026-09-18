@@ -2,6 +2,7 @@ import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
@@ -444,7 +445,7 @@ def test_prior_cover_letter_delete_is_committed_before_generation(
 
     seen_by_other_connection: list[int] = []
 
-    def fake_generate(app_id, tone, session=None):
+    def fake_generate(app_id, tone, session):
         with SessionLocal() as observer:
             seen_by_other_connection.append(
                 observer.scalar(
@@ -483,6 +484,66 @@ def test_prior_cover_letter_delete_is_committed_before_generation(
 
     assert response.status_code == 200
     assert seen_by_other_connection == [0]
+    # Staged removal (§6 {#inv-staged-artifact-removal}): the file goes after
+    # the commit, never before it — but it does go.
+    assert not old_pdf.exists()
+
+
+def test_failed_generation_leaves_no_prior_row_and_no_prior_file(
+    db_session, tmp_path, monkeypatch
+):
+    """Rows and files stay consistent when generation blows up mid-request.
+
+    The replace DELETE is committed before the call, so a failure cannot put
+    the prior entries back — and because their PDFs are removed AFTER that
+    commit, it cannot leave a surviving row pointing at a deleted file either.
+    Both halves are gone, which is the state the next request can work from.
+    """
+    application = _application(db_session)
+    old_pdf = tmp_path / "cover_letter.pdf"
+    old_pdf.write_bytes(b"old")
+    db_session.add(
+        QAEntry(
+            application_id=application.id,
+            kind="cover_letter",
+            answer="old",
+            pdf_path=str(old_pdf),
+        )
+    )
+    db_session.commit()
+
+    def boom(app_id, tone, session):
+        raise RuntimeError("provider down")
+
+    monkeypatch.setattr(qa.qa_service, "generate_cover_letter", boom)
+
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        with pytest.raises(RuntimeError, match="provider down"):
+            TestClient(app).post(
+                "/api/qa",
+                json={
+                    "application_id": str(application.id),
+                    "cover_letter": {"tone": "balanced"},
+                },
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    # Read the rows on ANOTHER connection: the request's own session would show
+    # a merely-flushed DELETE as gone too, and it is the COMMIT that has to have
+    # happened for the file removal below to be legitimate.
+    with SessionLocal() as observer:
+        survivors = observer.scalar(
+            select(func.count())
+            .select_from(QAEntry)
+            .where(
+                QAEntry.application_id == application.id,
+                QAEntry.kind == "cover_letter",
+            )
+        )
+    assert survivors == 0
+    assert not old_pdf.exists()
 
 
 def test_regenerate_qa_entry_overwrites_answer(db_session, monkeypatch):
