@@ -5,11 +5,11 @@
 # Why this exists: an install IS a git checkout. The unpacked extension loads
 # from extension/ and the MCP venv sits over backend/, so checkout and images
 # must move together. `docker compose pull` alone updates two surfaces of four.
-# This also backs up the database before the one irreversible step (migrations,
-# which run themselves at backend boot) and reports .env drift without editing
-# it.
+# This also snapshots the SQLite database (data/maestro_cs.sqlite3) before the
+# one irreversible step (migrations, which run themselves at backend boot) and
+# reports .env drift without editing it.
 #
-#   ./scripts/update.sh            # backup → ff-to-tag → pull/build → up
+#   ./scripts/update.sh            # SQLite snapshot → ff-to-tag → pull/build → up
 #   ./scripts/update.sh --check    # report only; always exits 0
 #   ./scripts/update.sh --force    # allow a dirty working tree
 #   ./scripts/update.sh --help
@@ -138,10 +138,27 @@ probe_backend() {
 }
 
 do_check() {
-  local port describe newest newest_sha head remote_tags
+  local port describe newest newest_sha head remote_tags volume
   port="$(env_get BACKEND_HOST_PORT 8001)"
   note "checkout: $REPO"
   probe_backend "$port"
+
+  volume="$(pgdata_volume)"
+  if [ ! -s "$SQLITE_FILE" ] && [ -f "$IMPORT_MARKER" ]; then
+    # The marker alone decides whether the backend imports; an empty file next
+    # to it is a deleted database, not a pending import.
+    warn "database: data/maestro_cs.sqlite3 is missing or empty but the import marker exists, so the backend will skip the import; restore a snapshot from backups/${volume:+, or remove the marker to re-import from $volume}"
+  elif [ ! -s "$SQLITE_FILE" ] && [ -n "$volume" ]; then
+    note "database: Postgres (legacy); the next backend boot imports it into data/maestro_cs.sqlite3"
+  elif [ ! -s "$SQLITE_FILE" ]; then
+    note "database: not created yet (first boot creates it)"
+  elif [ -n "$volume" ] && [ ! -f "$IMPORT_MARKER" ]; then
+    warn "database: data/maestro_cs.sqlite3 exists but no import marker does, and $volume is still there — a failed-closed import leaves exactly this. Read the backend log; update.sh backs up both until it is resolved."
+  elif [ -n "$volume" ]; then
+    ok "database: data/maestro_cs.sqlite3 (the Postgres volume is also present and unused; remove it with docker volume rm $volume)"
+  else
+    ok "database: data/maestro_cs.sqlite3"
+  fi
 
   if describe="$(git -C "$REPO" describe --tags --always 2>/dev/null)"; then
     ok "local: $describe"
@@ -175,13 +192,25 @@ do_check() {
   report_env_diff
 }
 
+# Takes both backups a run can produce; either may be empty. Dispatching on
+# which variable holds the path, rather than sniffing the suffix, is exact when
+# one run can write both.
 print_restore() {
-  local dump="$1"
-  local user="$2"
-  local db="$3"
-  note "restore this dump:  gunzip -c $dump | docker compose --project-directory \"$REPO\" exec -T postgres psql -U $user $db"
-  note "Rollback is one recipe: old git ref + old images + this dump. Never restore a dump into a newer schema."
-  note "This dump guards the migration. base_resumes/, applications/, settings/, kb_documents/ are on disk and no step here touches them."
+  local dump_pg="$1"
+  local dump_sqlite="$2"
+  local user="$3"
+  local db="$4"
+  if [ -n "$dump_sqlite" ]; then
+    note "restore this snapshot (stack STOPPED):  docker compose --project-directory \"$REPO\" down && gunzip -c \"$dump_sqlite\" > \"$SQLITE_FILE\" && rm -f \"$SQLITE_FILE-wal\" \"$SQLITE_FILE-shm\" && docker compose --project-directory \"$REPO\" up -d"
+  fi
+  if [ -n "$dump_pg" ]; then
+    note "restore this dump:  gunzip -c \"$dump_pg\" | docker compose --project-directory \"$REPO\" exec -T postgres psql -U $user $db"
+  fi
+  if [ -n "$dump_pg" ] && [ -n "$dump_sqlite" ]; then
+    note "Both were taken because no import marker exists and both stores hold something: restore the one the backend was actually reading (the backend log says whether the import landed)."
+  fi
+  note "Rollback is one recipe: old git ref + old images + this backup. Never restore a backup into a newer schema."
+  note "This backup guards the migration. base_resumes/, applications/, settings/, kb_documents/ are on disk and no step here touches them."
 }
 
 prune_keep_last() {
@@ -223,6 +252,102 @@ wait_postgres() {
   die "postgres did not become healthy"
 }
 
+SQLITE_FILE="$REPO/data/maestro_cs.sqlite3"
+IMPORT_MARKER="$REPO/data/.migrated-from-postgres.json"
+
+pgdata_volume() {
+  # The compose file pins the project name; COMPOSE_PROJECT_NAME still overrides
+  # it, the same way it does for compose.
+  local project="${COMPOSE_PROJECT_NAME:-maestro-career-studio}"
+  docker volume ls --format '{{.Name}}' 2>/dev/null | grep -Fx "${project}_pgdata" || true
+}
+
+# True while an import is still pending: no marker yet, and a pgdata volume to
+# import from. Deliberately NOT also "and the SQLite file is empty" — a boot
+# that fails the import closed leaves a file that HAS the schema and no rows
+# (app/tools/migrate_from_postgres.py `_target_is_schema_only`), so file size
+# cannot tell that apart from an install that skipped the import and whose
+# SQLite file is the real database. The backup below refuses to guess and takes
+# both; this predicate only answers "could an import still land?".
+legacy_postgres_is_live() {
+  [ ! -f "$IMPORT_MARKER" ] && [ -n "$(pgdata_volume)" ]
+}
+
+# `--status running`, not a bare `ps`: a container `compose stop` left behind
+# is not one to exec into, and some compose versions list it anyway.
+backend_container_running() {
+  [ -n "$(compose ps -q --status running backend 2>/dev/null || true)" ]
+}
+
+backup_sqlite() {
+  local dump="$1"
+  local registry="$2"
+  local version="$3"
+  local -a via
+  local pin=""
+  note "backing up the SQLite database to $dump"
+  # Through the app's own tool (online backup): a plain cp of a live database
+  # is a torn snapshot, WAL pages sit in the -wal sidecar until a checkpoint.
+  # WHICH image runs it matters: this step runs BEFORE do_update pins
+  # IMAGE_TAG, so a plain `compose run` in pull mode uses .env's IMAGE_TAG
+  # (`latest`), which can be a pre-SQLite pull with no app.tools.backup_db.
+  if backend_container_running; then
+    # The container holding the file open runs the image that wrote it.
+    note "snapshotting through the running backend container"
+    via=(compose exec -T backend)
+  else
+    via=(compose run --rm -T --no-deps backend)
+    if is_pull_mode "$registry"; then
+      case "$version" in
+        v[0-9]*)
+          # The checkout's own release, for this one command. A describe past
+          # its tag carries `-N-gSHA`; dropped, so the tag named is a published
+          # one. A `dev`/sha describe names no tag at all, and .env stands.
+          pin="${version#v}"
+          pin="${pin%%-[0-9]*-g*}"
+          note "backend is not running; snapshotting with the ${pin} image (the checkout's release, not .env's IMAGE_TAG)"
+          ;;
+      esac
+    fi
+    # Build mode: the local `latest` IS the checkout's build.
+  fi
+  # umask in a subshell so the shell's redirection CREATES the file 0600: this
+  # snapshot holds every resume, application and setting in the database, and a
+  # chmod after the fact leaves it world-readable for the length of the dump.
+  # The IMAGE_TAG export lives and dies in that same subshell.
+  if ! ( umask 077; if [ -n "$pin" ]; then export IMAGE_TAG="$pin"; fi; "${via[@]}" python -m app.tools.backup_db --stdout | gzip > "$dump" ); then
+    rm -f "$dump"
+    die "sqlite backup failed"
+  fi
+  chmod 600 "$dump"
+}
+
+# gzip -t proves the container is intact; this proves the contents are the kind
+# of database the name claims. Catches a dump that "succeeded" into the wrong
+# branch's file, or a backup_db that wrote a diagnostic instead of bytes.
+assert_backup_magic() {
+  local dump="$1"
+  local magic
+  case "$dump" in
+    *.sqlite3.gz)
+      # `head -c 15`, not 16: byte 16 of the header is a NUL, which a command
+      # substitution drops (with a warning on bash >= 5). `|| true` because
+      # head closes the pipe as soon as it has its bytes, gunzip dies of
+      # SIGPIPE, and `set -o pipefail` would report that 141 as the pipeline's
+      # status even though the match succeeded.
+      magic="$(gunzip -c "$dump" 2>/dev/null | head -c 15 || true)"
+      [ "$magic" = "SQLite format 3" ] || die "backup is not a SQLite database: $dump"
+      ;;
+    *)
+      magic="$(gunzip -c "$dump" 2>/dev/null | head -c 200 || true)"
+      case "$magic" in
+        *"PostgreSQL database dump"*) ;;
+        *) die "backup is not a pg_dump: $dump" ;;
+      esac
+      ;;
+  esac
+}
+
 wait_health() {
   local port="$1"
   local i
@@ -236,6 +361,10 @@ wait_health() {
     sleep 5
   done
   warn "timed out waiting for /health"
+  if legacy_postgres_is_live; then
+    note "the import is still pending. If the log below says 'Importing the legacy Postgres database failed' or 'cannot be reached', nothing was deleted: fix the cause and re-run — the import retries at the next boot."
+    note "To skip the import instead, comment out the LEGACY_DATABASE_URL line in docker-compose.yml. It cannot be overridden from the environment: compose BUILDS that value from POSTGRES_*, so neither a shell variable nor an .env key of that name is read. Commenting it out dirties a tracked file, so the next update needs --force."
+  fi
   compose logs --tail=50 || true
   return 1
 }
@@ -243,7 +372,7 @@ wait_health() {
 do_update() {
   local force="$1"
   local port user db registry
-  local old_sha ts version dump envbak pulled=0
+  local old_sha ts version dump="" dump_pg="" d envbak pulled=0 backups
   local newest tag_without_v
 
   port="$(env_get BACKEND_HOST_PORT 8001)"
@@ -266,24 +395,42 @@ do_update() {
   ts="$(date +%Y%m%dT%H%M%S)"
   version="$(git -C "$REPO" describe --tags --always 2>/dev/null | tr '/:' '--')"
 
-  note "starting postgres so there is a database to back up"
-  compose up -d postgres
-  wait_postgres "$user" "$db"
-
-  dump="$REPO/backups/db-${ts}-${version}.sql.gz"
-  note "backing up database to $dump"
-  # --clean --if-exists so the printed restore command works into a database
-  # that already has the schema (a plain dump errors on every duplicate table).
-  if ! compose exec -T postgres pg_dump --clean --if-exists -U "$user" "$db" | gzip > "$dump"; then
-    rm -f "$dump"
-    die "pg_dump failed"
+  # Two independent questions, not one either/or. Between them sits a state the
+  # shell cannot resolve: no marker with both stores non-empty is EITHER a
+  # failed-closed import (the file is schema-only, Postgres holds the data) OR
+  # an install that skipped the import (the file IS the data). Guessing wrong
+  # archives an empty database and calls it a rollback, so take both.
+  if legacy_postgres_is_live; then
+    note "starting postgres so there is a database to back up"
+    compose up -d postgres
+    wait_postgres "$user" "$db"
+    dump_pg="$REPO/backups/db-${ts}-${version}.sql.gz"
+    note "backing up the Postgres database to $dump_pg"
+    # --clean --if-exists so the printed restore command works into a database
+    # that already has the schema (a plain dump errors on every duplicate table).
+    if ! ( umask 077; compose exec -T postgres pg_dump --clean --if-exists -U "$user" "$db" | gzip > "$dump_pg" ); then
+      rm -f "$dump_pg"
+      die "pg_dump failed"
+    fi
+    chmod 600 "$dump_pg"
   fi
-  if [ ! -s "$dump" ]; then
-    rm -f "$dump"
-    die "backup is empty — gzip would otherwise hide a failed dump"
+  if [ -s "$SQLITE_FILE" ]; then
+    dump="$REPO/backups/db-${ts}-${version}.sqlite3.gz"
+    backup_sqlite "$dump" "$registry" "$version"
   fi
-  gzip -t "$dump" || die "backup is not valid gzip"
-  ok "backup written ($(wc -c < "$dump" | tr -d ' ') bytes)"
+  if [ -z "$dump" ] && [ -z "$dump_pg" ]; then
+    die "no database to back up: $SQLITE_FILE is empty or missing and there is no legacy Postgres volume to dump; a first boot creates the file"
+  fi
+  for d in "$dump_pg" "$dump"; do
+    [ -n "$d" ] || continue
+    if [ ! -s "$d" ]; then
+      rm -f "$d"
+      die "backup is empty — gzip would otherwise hide a failed dump"
+    fi
+    gzip -t "$d" || die "backup is not valid gzip"
+    assert_backup_magic "$d"
+    ok "backup written: $d ($(wc -c < "$d" | tr -d ' ') bytes)"
+  done
 
   envbak="$REPO/backups/env-${ts}.bak"
   if [ -f "$REPO/.env" ]; then
@@ -294,7 +441,7 @@ do_update() {
   fi
   prune_keep_last "$REPO/backups" "db-"
   prune_keep_last "$REPO/backups" "env-"
-  print_restore "$dump" "$user" "$db"
+  print_restore "$dump_pg" "$dump" "$user" "$db"
 
   note "fetching tags from origin"
   git -C "$REPO" fetch --tags origin || die "git fetch --tags origin failed"
@@ -311,7 +458,11 @@ do_update() {
     if git -C "$REPO" merge --ff-only "$newest"; then
       ok "checkout is at $newest"
     else
-      die "could not fast-forward to $newest (divergent history?). Refusing to move; your backup is at $dump"
+      backups="${dump:-$dump_pg}"
+      if [ -n "$dump" ] && [ -n "$dump_pg" ]; then
+        backups="$dump and $dump_pg"
+      fi
+      die "could not fast-forward to $newest (divergent history?). Refusing to move; your backup is at $backups"
     fi
   fi
 
@@ -344,12 +495,18 @@ do_update() {
   fi
 
   if ! wait_health "$port"; then
-    print_restore "$dump" "$user" "$db"
+    print_restore "$dump_pg" "$dump" "$user" "$db"
     exit 1
   fi
 
   printf '\n'
   ok "update complete"
+  if [ -f "$IMPORT_MARKER" ] && [ -n "$(pgdata_volume)" ]; then
+    printf '\n'
+    note "Your database now lives in data/maestro_cs.sqlite3 (imported from Postgres, verified)."
+    note "The old Postgres volume is no longer read. Once you are satisfied, remove it:"
+    note "  docker volume rm $(pgdata_volume)"
+  fi
   if [ "$(git -C "$REPO" rev-parse --short HEAD)" != "$old_sha" ]; then
     note "commits brought in:"
     git -C "$REPO" log --oneline "${old_sha}..HEAD" || true

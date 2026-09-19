@@ -3,8 +3,10 @@ import os
 from pathlib import Path
 from typing import Annotated
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+from sqlalchemy.engine import make_url
+from sqlalchemy.exc import ArgumentError
 
 # XCharter, vendored beside this package so the render path never depends on a
 # TeX Live installation or a per-machine env var. Resolved from __file__ so it
@@ -12,9 +14,16 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 # alike. See app/assets/fonts/xcharter/README.md.
 VENDORED_FONTS_DIR = Path(__file__).resolve().parent / "assets" / "fonts" / "xcharter"
 
+# The one relational file (SYSTEM.md §3), created under data_dir; its -wal/-shm
+# sidecars sit beside it. app/db.py imports this so every path that names the
+# file (engine, backup, importer) spells it the same way.
+DB_FILENAME = "maestro_cs.sqlite3"
+
 
 def normalize_postgres_url(value: str) -> str:
-    """Force the psycopg **v3** dialect onto a bare ``postgresql://`` URL.
+    """Force the psycopg v3 dialect onto a bare postgresql:// URL. Used ONLY by
+    the legacy importer (app/tools/migrate_from_postgres.py); delete with it
+    (SYSTEM.md §13 postgres-to-sqlite).
 
     SQLAlchemy maps the bare scheme to psycopg2, which this project does not
     install (`psycopg[binary]>=3.2`). Every URL reaching `create_engine` must go
@@ -65,7 +74,19 @@ class Settings(BaseSettings):
     # true — with a local endpoint no resume text leaves the machine. A DB
     # setting (llm.base_url) overrides this env default.
     openai_base_url: str = ""
-    database_url: str = "postgresql://app:app@postgres:5432/maestro_cs"
+    # Empty = derived from data_dir after validation (see _derive_database_url).
+    # Set it only to point at another FILE: sqlite:////absolute/path.sqlite3.
+    # Any non-sqlite URL, Postgres included, is refused on purpose: SQLite is the
+    # only runtime database and the legacy importer is the only Postgres reader
+    # (SYSTEM.md §13).
+    database_url: str = ""
+    # ONE release only (SYSTEM.md §13 postgres-to-sqlite): the compose-era
+    # Postgres database to import at first boot. Unset = nothing to import.
+    legacy_database_url: str = ""
+    # WAL is right on a local disk. The escape hatch exists for filesystems whose
+    # shared-memory semantics SQLite cannot trust (some Docker Desktop bind-mount
+    # backends): set DELETE there. Only these two values are accepted.
+    sqlite_journal_mode: str = "WAL"
     fast_model: str = "gpt-5.6-luna"
     smart_model: str = "gpt-5.6-luna"
     # Chat agent needs streaming tool calls; eligibility is the tools probe.
@@ -81,10 +102,45 @@ class Settings(BaseSettings):
 
     @field_validator("database_url")
     @classmethod
-    def _use_psycopg_v3(cls, value: str) -> str:
-        # Delegates to the module-level helper so the env-var readers that never
-        # construct Settings (app/db.py, migrations/env.py) share one rule.
-        return normalize_postgres_url(value)
+    def _only_sqlite(cls, value: str) -> str:
+        # An allowlist, not a Postgres blocklist: any non-sqlite URL, Postgres
+        # included (either spelling), is refused, and so is a string SQLAlchemy
+        # cannot parse at all, under the one message. Empty is left alone so
+        # _derive_database_url can fill it in.
+        if not value:
+            return value
+        try:
+            backend = make_url(value).get_backend_name()
+        except ArgumentError:
+            backend = None
+        if backend != "sqlite":
+            raise ValueError(
+                "DATABASE_URL is not a SQLite file URL; Postgres is no longer a runtime "
+                "database. "
+                "Leave DATABASE_URL unset; a compose-era database is imported into the "
+                "SQLite file automatically at boot when LEGACY_DATABASE_URL is set "
+                "(or run: python -m app.tools.migrate_from_postgres)."
+            )
+        return value
+
+    @field_validator("sqlite_journal_mode")
+    @classmethod
+    def _journal_mode_is_known(cls, value: str) -> str:
+        mode = value.strip().upper()
+        if mode not in {"WAL", "DELETE"}:
+            raise ValueError("SQLITE_JOURNAL_MODE must be WAL or DELETE")
+        return mode
+
+    @model_validator(mode="after")
+    def _derive_database_url(self) -> "Settings":
+        # resolve() the directory itself, not just the URL: a relative DATA_DIR
+        # must not mean three different files for uvicorn, alembic and a script
+        # started from different directories, and settings.data_dir (the
+        # import marker lives under it) must never disagree with the URL.
+        self.data_dir = self.data_dir.resolve()
+        if not self.database_url:
+            self.database_url = f"sqlite:///{self.data_dir / DB_FILENAME}"
+        return self
 
     # --- Browser-borne attack surface -------------------------------------
     # This API has no authentication by design, so the browser is the only
@@ -160,6 +216,10 @@ class Settings(BaseSettings):
     llm_log_content: bool = False
 
     app_root: Path = Path("/app")
+    # Everything relational lives in ONE file under here (SYSTEM.md §3):
+    # maestro_cs.sqlite3 plus its -wal/-shm sidecars. Bind-mounted from ./data
+    # in compose; override with DATA_DIR when running the backend yourself.
+    data_dir: Path = Path("/app/data")
     applications_dir: Path = Path("/app/applications")
     settings_dir: Path = Path("/app/settings")
     logs_dir: Path = Path("/app/logs")

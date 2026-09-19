@@ -15,7 +15,7 @@ improvement takes two things, not one:
 1. the edit to `app/prompts/<key>.txt` (what a NEW install gets), and
 2. a resync migration that rewrites the stored row **only when it still matches
    the previous default**, leaving genuine customizations alone
-   (pattern: `migrations/versions/c37b89e136ad_add_job_salary_currency.py`,
+   (pattern: `legacy_postgres/migrations/versions/c37b89e136ad_add_job_salary_currency.py`,
    which pins the old text in `OLD_EXTRACT_JD` and compares before writing).
 
 Skip step 2 and nothing fails. The code, the tests and the file all agree, the

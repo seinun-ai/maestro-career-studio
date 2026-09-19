@@ -402,6 +402,15 @@ def test_role_mix_over_time_groups_by_week(db_session):
         role_category="data_engineer",
         created_at=datetime(2026, 4, 29, tzinfo=UTC),
     )
+    # Seeded LAST but belongs to the FIRST week, so insertion order is not
+    # sorted order. Without it the ordering assertion below passes even when
+    # the endpoint does not sort at all — do not drop it.
+    _seed_job(
+        db_session,
+        raw_hash="week-4",
+        role_category="data_engineer",
+        created_at=datetime(2026, 4, 21, tzinfo=UTC),
+    )
     db_session.commit()
 
     app.dependency_overrides[get_db] = _override_db(db_session)
@@ -414,6 +423,9 @@ def test_role_mix_over_time_groups_by_week(db_session):
     rows = response.json()
     assert {"week_start": "2026-04-20", "role_category": "data_scientist", "count": 2} in rows
     assert {"week_start": "2026-04-27", "role_category": "data_engineer", "count": 1} in rows
+    # The ordering the endpoint documents: week, then role_category.
+    keys = [(r["week_start"], r["role_category"]) for r in rows]
+    assert keys == sorted(keys)
 
 
 def test_top_skills_collapses_one_name_across_categories(db_session):

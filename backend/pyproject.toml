@@ -15,7 +15,6 @@ dependencies = [
     "uvicorn[standard]>=0.32",
     "sqlalchemy>=2.0",
     "alembic>=1.13",
-    "psycopg[binary]>=3.2",
     "pydantic>=2.9",
     "pydantic-settings>=2.6",
     "openai>=1.54",
@@ -60,6 +59,11 @@ mcp = [
     "pypdfium2>=4",
     "pillow>=10",
 ]
+# ONE release only (SYSTEM.md §13 postgres-to-sqlite): the importer that moves
+# a compose-era Postgres database into the SQLite file. Delete with it.
+legacy-postgres = [
+    "psycopg[binary]>=3.2",
+]
 
 [project.scripts]
 maestro-career-studio-mcp = "mcp_server.server:main"
@@ -92,6 +96,7 @@ asyncio_mode = "auto"
 markers = [
     "real_model: exercises the real pinned embedding model (skips the hermetic fake embedder; first run downloads ~100MB)",
     "embeddings_internals: tests embed_texts' own memoization/batching (stubs _model; skips the hermetic fake embedder)",
+    "legacy_postgres: needs LEGACY_POSTGRES_TEST_URL; run by CI's legacy-postgres-export job",
 ]
 
 [tool.ruff]

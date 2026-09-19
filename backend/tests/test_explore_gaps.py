@@ -609,6 +609,38 @@ def test_ats_over_time_buckets_weekly_by_phase_and_role(db_session):
         "n": 1,
         "low_sample": True,
     } in rows
+    # The ordering the function documents: week, then role_category, then phase.
+    keys = [(r["week_start"], r["role_category"], r["phase"]) for r in rows]
+    assert keys == sorted(keys)
+
+
+def test_ats_over_time_averages_exactly_at_a_rounding_tie(db_session):
+    """(56.3 + 97.6) / 2 is exactly 76.95, which must round to 77.0.
+
+    Averaging the composites as floats yields 76.9499... and rounds DOWN to
+    76.9, so this pins the Decimal arithmetic, not just the output shape.
+    """
+    job = _seed_job(db_session, raw_hash="aot-tie", role_category="data_scientist")
+    db_session.add_all(
+        [
+            _base_row(job.id, "a", 56.3, created_at=datetime(2026, 4, 21, tzinfo=UTC)),
+            _base_row(job.id, "b", 97.6, created_at=datetime(2026, 4, 22, tzinfo=UTC)),
+        ]
+    )
+    db_session.commit()
+
+    rows = explore_gaps.ats_over_time(db_session)
+
+    assert rows == [
+        {
+            "week_start": "2026-04-20",
+            "phase": "base",
+            "role_category": "data_scientist",
+            "avg_composite": 77.0,
+            "n": 2,
+            "low_sample": True,
+        }
+    ]
 
 
 # ---------------------------------------------------------------------------

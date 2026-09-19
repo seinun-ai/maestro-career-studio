@@ -51,6 +51,10 @@ graphify-out
 # own into a tmp base_resumes_dir.
 /kb_documents/*
 !/kb_documents/.gitkeep
+# the SQLite database (maestro_cs.sqlite3 + -wal/-shm) and the import marker —
+# the whole career record; never commit
+/data/*
+!/data/.gitkeep
 /pgdata/
 
 # editor

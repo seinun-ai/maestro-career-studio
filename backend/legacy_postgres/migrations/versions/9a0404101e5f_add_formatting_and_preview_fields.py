@@ -36,7 +36,10 @@ def upgrade() -> None:
     # ``fmt.`` references). Editing the default in place (PUT ?allow_default_edit)
     # does not change origin, so guarding on origin alone would clobber a user's
     # customizations; the ``fmt.`` guard makes this a targeted, idempotent upgrade.
-    template_path = Path(__file__).parents[2] / "app" / "templates" / "resume.tex.j2"
+    # parents[3], not [2]: this chain moved one directory deeper, into
+    # legacy_postgres/, for its last release, and the template it reads still
+    # lives at backend/app/templates/.
+    template_path = Path(__file__).parents[3] / "app" / "templates" / "resume.tex.j2"
     source = template_path.read_text(encoding="utf-8")
     op.execute(
         sa.text(

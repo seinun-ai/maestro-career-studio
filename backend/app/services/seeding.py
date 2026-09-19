@@ -181,5 +181,65 @@ def seed_startup_data(session: Session) -> None:
 
 def run_startup() -> None:
     run_migrations()
+    _import_legacy_postgres()
     with SessionLocal() as session:
         seed_startup_data(session)
+
+
+_SKIP_HINT = (
+    "To skip the import, comment the `LEGACY_DATABASE_URL` line out of "
+    "docker-compose.yml (then `./scripts/update.sh` needs `--force` past its "
+    "dirty-tree check), or unset the variable on a host run."
+)
+
+
+def _import_legacy_postgres() -> None:
+    """ONE release only (SYSTEM.md §13 postgres-to-sqlite). run_startup() is
+    `alembic upgrade head` -> this hook -> seed_startup_data(): the import
+    lands in an empty file, never beside demo rows, and it has committed
+    before seeding opens its long write transaction (the KB consolidation).
+
+    Fails CLOSED, on a failure and on an unreachable source alike. On a
+    failure the user's data still lives in Postgres and the importer's
+    transaction has rolled back, so the file is still empty. Booting on would
+    let seeding fill it with demo rows and leave every later boot at
+    `target-not-empty` with a confusingly empty app; aborting keeps the file
+    empty, so the next boot retries once the cause is fixed. An unreachable
+    source is the same trap by another route: when LEGACY_DATABASE_URL is
+    set the operator asked for an import, so a source that cannot be reached
+    is a configuration error, not a transient to paper over. Compose orders
+    the backend after Postgres's healthcheck, so in the stack this only fires
+    when something is genuinely wrong, and the message says how to skip the
+    import (compose BUILDS the URL from POSTGRES_*, so there is no env override
+    to unset: comment the line out of docker-compose.yml). Soft outcomes (no source, nothing to
+    import, already imported, a file that already holds data) never abort."""
+    if not settings.legacy_database_url:
+        return
+    from app.tools import migrate_from_postgres as tool
+
+    marker = Path(settings.data_dir) / tool.MARKER_NAME
+    try:
+        outcome = tool.import_if_needed(
+            settings.legacy_database_url, settings.database_url, marker, log=logger.info
+        )
+    except Exception as exc:
+        logger.exception("legacy Postgres import failed; refusing to boot on an empty file")
+        raise RuntimeError(
+            "Importing the legacy Postgres database failed; nothing was deleted and the "
+            "SQLite file is still empty. Fix the cause (see the traceback above) and "
+            "restart; the import retries at the next boot. " + _SKIP_HINT
+        ) from exc
+    if outcome == "source-unreachable":
+        message = (
+            "LEGACY_DATABASE_URL is set but the Postgres source cannot be reached; refusing "
+            "to boot on an empty file so the import can retry. Start the postgres service "
+            "(docker compose up -d postgres) and restart. " + _SKIP_HINT
+        )
+        logger.error(message)
+        raise RuntimeError(message)
+    if outcome == "imported":
+        logger.warning(
+            "Imported your Postgres database into %s. The old Docker volume is no longer "
+            "read; remove it when satisfied (README: Updating).",
+            settings.database_url,
+        )

@@ -6,7 +6,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
-from pydantic import ValidationError
+from pydantic import AwareDatetime, ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -168,8 +168,10 @@ def list_applications(
     db: Annotated[Session, Depends(get_db)],
     status: str | None = None,
     role_category: str | None = None,
-    created_after: Annotated[datetime | None, Query()] = None,
-    created_before: Annotated[datetime | None, Query()] = None,
+    # AwareDatetime, not datetime: created_at is UTCDateTime, which refuses a
+    # naive bind (a 500). Refusing an offset-less value here makes it a 422.
+    created_after: Annotated[AwareDatetime | None, Query()] = None,
+    created_before: Annotated[AwareDatetime | None, Query()] = None,
     source: Literal["user", "agent"] | None = Query(default=None),
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
     offset: Annotated[int, Query(ge=0)] = 0,

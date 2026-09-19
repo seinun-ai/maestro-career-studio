@@ -21,7 +21,7 @@ A clear and concise description of what you expected to happen.
 
 ### Environment & Diagnostics
 - **OS & Docker Version:** 
-- **Database Target:** (e.g. Docker container port 55432)
+- **Database:** (paste the `database:` line from `./scripts/update.sh --check`)
 - **Model Configured (if LLM-related):** (e.g. OpenAI gpt-4o / Gemini 3.1 Pro)
 - **Logs / Error Trace:**
 ```

@@ -904,7 +904,8 @@ def update_application(
     it with the current time (only if not already set), moving back to "draft"
     clears it, and every later stage (interviewing/offered/accepted/rejected/
     withdrawn) preserves whatever applied_at already holds. Pass `applied_at`
-    explicitly (ISO 8601) only when you need to override that automatic behavior.
+    explicitly only to override that; it must carry a UTC offset
+    (e.g. `2026-08-18T14:32:11+00:00`) — a naive value is a 422.
     """
     return _client.update_application(
         application_id,

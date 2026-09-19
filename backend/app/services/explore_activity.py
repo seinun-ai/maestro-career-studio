@@ -4,10 +4,10 @@ Drafted = Application.created_at (a draft came into existence). Submitted =
 Application.applied_at (stamped by the status rules; rejected/withdrawn keep
 it, so "submitted" is a fact about the past, not the current status).
 """
-from datetime import UTC, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 
-from sqlalchemy import Date, func, select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models.application import Application
@@ -22,14 +22,29 @@ IN_FLIGHT_STATUSES = ("applied", "interviewing", "offered")
 INTERVIEW_PLUS_STATUSES = ("interviewing", "offered", "accepted")
 
 
+def week_start(day: date) -> date:
+    """Monday of the week holding `day`. The ONE definition of a week bucket."""
+    return day - timedelta(days=day.weekday())
+
+
+def bucket_for(value: datetime, granularity: str) -> date:
+    """The bucket `value` falls in. `value` must be tz-aware — UTCDateTime
+    guarantees that, and a naive value would be read as local time, moving
+    rows across bucket edges. Any granularity other than "week" means day.
+    explore.role_mix_over_time and explore_gaps.ats_over_time import it, so
+    the three weekly charts can never disagree about where a week begins."""
+    day = value.astimezone(UTC).date()
+    return week_start(day) if granularity == "week" else day
+
+
 def _bucket_starts(granularity: str, weeks: int) -> list:
     """Bucket start dates from the window start through today, oldest first.
 
-    Week buckets start on Monday to match Postgres date_trunc('week').
+    Week buckets start on Monday (week_start).
     """
     today = datetime.now(UTC).date()
     if granularity == "week":
-        this_monday = today - timedelta(days=today.weekday())
+        this_monday = week_start(today)
         return [this_monday - timedelta(weeks=i) for i in reversed(range(weeks))]
     start = today - timedelta(days=weeks * 7 - 1)
     return [start + timedelta(days=i) for i in range(weeks * 7)]
@@ -49,15 +64,16 @@ def activity(
     window_start = datetime.combine(buckets[0], time.min, tzinfo=UTC)
 
     def _series(column) -> dict[str, int]:
-        bucket = func.date_trunc(granularity, column).cast(Date).label("bucket")
-        stmt = (
-            select(bucket, func.count().label("n"))
-            .where(column.is_not(None), column >= window_start)
-            .group_by(bucket)
-        )
+        # Bucketed in Python, not SQL: date_trunc was Postgres-only and the
+        # data is single-user scale, so a dialect-free query costs nothing.
+        stmt = select(column).where(column.is_not(None), column >= window_start)
         if source:
             stmt = stmt.where(Application.source == source)
-        return {row.bucket.isoformat(): int(row.n) for row in db.execute(stmt).all()}
+        counts: dict[str, int] = {}
+        for (value,) in db.execute(stmt):
+            key = bucket_for(value, granularity).isoformat()
+            counts[key] = counts.get(key, 0) + 1
+        return counts
 
     drafted = _series(Application.created_at)
     submitted = _series(Application.applied_at)

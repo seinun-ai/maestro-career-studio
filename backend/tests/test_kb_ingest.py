@@ -1,9 +1,12 @@
 import uuid
 
 import pytest
+import sqlalchemy as sa
 from fastapi.testclient import TestClient
 
 from app.models.career_kb import KBDocument, KBPoint
+from app.models.setting import Setting
+from app.services import prompts
 
 
 @pytest.fixture
@@ -274,3 +277,54 @@ def test_delete_document_keeps_points_nulls_source(client, db_session, monkeypat
     assert point.source_document_id is None
     # the mirrored file dir was cleaned up too
     assert not (tmp_path / did).exists()
+
+
+def _prewarm_mint_prompt(db_session):
+    """Put the session in the state every install is in after its first mint.
+
+    `prompts.get_prompt` INSERTs its file default and COMMITS on first use, so
+    on a fresh database the mint call commits whatever the request has pending
+    — including the document row — and a test measuring WHEN that row lands
+    would be reading that accident instead of the route. Resolving it up front
+    (and proving the Setting row is now there) removes the commit from the
+    request's path.
+    """
+    prompts.get_prompt("kb_mint", db_session)
+    assert db_session.get(Setting, prompts._setting_key("kb_mint")) is not None
+
+
+def test_uploaded_document_is_committed_before_the_mint_call(
+    client, db_session, monkeypatch, tmp_path
+):
+    """The stored row must land before minting, not sit flushed across it.
+
+    store_document flushes to get the id it names the file directory with; a
+    flushed INSERT holds SQLite's write lock, so leaving it un-committed across
+    the mint LLM call (tens of seconds) makes every other writer wait out the
+    30 s busy_timeout and then fail (design §3.2). The observer reads on
+    ANOTHER connection, which under WAL sees the last COMMITTED state.
+    """
+    monkeypatch.setattr("app.services.kb_ingest.settings.kb_documents_dir", tmp_path)
+    _prewarm_mint_prompt(db_session)
+
+    seen_by_other_connection: list[int] = []
+
+    def fake(*, prompt, model, response_format="json", **kw):
+        from app.db import SessionLocal
+
+        with SessionLocal() as observer:
+            seen_by_other_connection.append(
+                observer.scalar(sa.select(sa.func.count()).select_from(KBDocument))
+            )
+        return {"points": [{"text": "Cut latency 30% via caching"}]}
+
+    monkeypatch.setattr("app.services.llm.call_openai", fake)
+
+    eid = client.post("/api/kb/entities", json={"kind": "project", "title": "X"}).json()["id"]
+    r = client.post(
+        f"/api/kb/entities/{eid}/documents",
+        files={"file": ("r.md", b"# report\nwe cut latency", "text/markdown")},
+    )
+
+    assert r.status_code == 200
+    assert seen_by_other_connection == [1]

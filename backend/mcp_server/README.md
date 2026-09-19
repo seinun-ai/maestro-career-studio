@@ -633,7 +633,7 @@ and rendering. Claude does the reasoning; the app does the storage and the
 LaTeX.
 
 ```
-MCP client --stdio--> maestro-career-studio-mcp --HTTP--> FastAPI (:8000) --> Postgres + LaTeX
+MCP client --stdio--> maestro-career-studio-mcp --HTTP--> FastAPI (:8000) --> SQLite (data/maestro_cs.sqlite3) + LaTeX/Typst
 ```
 
 ### List responses are a single JSON array (audit #10)

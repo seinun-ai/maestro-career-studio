@@ -11,6 +11,7 @@ any tailoring or filling effort is spent. Two honesty rules are pinned here:
 """
 
 from decimal import Decimal
+from uuid import UUID
 
 from fastapi.testclient import TestClient
 
@@ -263,4 +264,4 @@ def test_final_review_carries_the_knockout_scan_and_drops_the_dead_warnings_key(
     # extracted_json["warnings"] was read here but never written anywhere;
     # the knockout scan replaces that dead concept.
     assert "warnings" not in body["job"]
-    assert db_session.get(ApplicationProposal, pid) is not None
+    assert db_session.get(ApplicationProposal, UUID(pid)) is not None

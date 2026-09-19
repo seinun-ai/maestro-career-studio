@@ -28,7 +28,54 @@ published image tag is the same version with the leading `v` removed (`0.2.0`).
 
 ## [Unreleased]
 
-Nothing yet.
+### Breaking changes
+
+- **The database is now `data/maestro_cs.sqlite3`.** Existing installs are
+  imported from Postgres automatically at the first boot of this release
+  (verified by row count and content hash; the old volume is left in place).
+  Keep your `POSTGRES_*` values in `.env` until the import has run;
+  `./scripts/update.sh --check` reports which database is live. The import
+  fails closed — if the `postgres` service cannot be reached, or the copy does
+  not verify, the backend refuses to start and says why, and nothing is
+  deleted. The next release deletes the `postgres` service entirely: install
+  this one first.
+- **`DATABASE_URL` accepts only `sqlite:///` URLs.** Anything else — a
+  Postgres URL in either spelling included — is refused at startup with a
+  message saying what to do instead. Leave it unset and the file is derived
+  from the new `DATA_DIR` setting (default `/app/data`, where compose mounts
+  `./data`). The other new setting, `LEGACY_DATABASE_URL`, is the one place a
+  Postgres URL still belongs: compose builds it from your `POSTGRES_*` values,
+  and it names the source of the first-boot import.
+- **The migration history is squashed to one SQLite baseline**
+  (`871d0425b64c`). The Postgres chain survives only inside the importer, so a
+  branch carrying a revision parented on the old chain will not apply after
+  this release — rebase it onto the baseline.
+- **`applied_at`, and the applications list's `created_after` / `created_before`
+  filters, now require a UTC offset.** A naive timestamp is refused at the
+  boundary with a 422 instead of failing at write time with a 500.
+
+### Added
+
+- **`SQLITE_JOURNAL_MODE`** in `.env` — set it to `DELETE` for a filesystem
+  that cannot support WAL; the default (WAL) is right everywhere else.
+- **`python -m app.tools.backup_db`** takes an online snapshot of the database
+  while the stack runs, and **`python -m app.tools.migrate_from_postgres`** is
+  the first-boot import as a command you can run yourself.
+
+### Changed
+
+- The backend test suite needs no database service: each test process gets its
+  own throwaway SQLite file when `TEST_DATABASE_URL` is unset. When it is set,
+  it must be a `sqlite:///` file URL; one under `data/` or naming the app's own
+  database is refused.
+- psycopg moved into an optional `legacy-postgres` extra, which leaves with the
+  `postgres` service next release. A source install that has to import a
+  Postgres database needs `pip install -e ".[dev,legacy-postgres]"`.
+
+### Fixed
+
+- Cover-letter regeneration and document upload commit before their LLM call,
+  so a slow model no longer holds the database's write lock while it thinks.
 
 ## [0.3.0] — 2026-08-29
 

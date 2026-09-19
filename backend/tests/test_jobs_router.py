@@ -109,7 +109,7 @@ def test_saved_jobs_list_carries_newest_proposal_status(db_session, monkeypatch)
         plain_job = client.post("/api/jobs", json={"raw_text": "posting B"}).json()
 
         prop = svc.create_proposal(
-            db_session, job_id=declined_job["id"],
+            db_session, job_id=uuid.UUID(declined_job["id"]),
             fit={"chosen_base": "hybrid"}, plan={},
         )
         svc.transition(db_session, prop, "rejected",
@@ -348,7 +348,7 @@ def test_re_extract_job_updates_columns_and_skills(db_session, monkeypatch):
     body = re_extract.json()
     assert body["company"] == "Beta"
     assert body["title"] == "Lead Data Engineer"
-    skills = db_session.query(JobSkill).filter(JobSkill.job_id == created["id"]).all()
+    skills = db_session.query(JobSkill).filter(JobSkill.job_id == uuid.UUID(created["id"])).all()
     # Skill names are canonicalized (casefolded) at store time.
     assert [s.skill_name for s in skills] == ["spark"]
 

@@ -188,48 +188,55 @@ out `IMAGE_REGISTRY` in `.env` and run `docker compose up -d --build` instead;
 that takes longer, because it installs TeX Live and downloads the embedding
 model. Either way, then open **http://localhost:3000**.
 
-First boot starts PostgreSQL on port 55432, runs migrations, seeds a demo
-resume with rendered previews, and — if a key is present — builds a demo
-Career KB from it.
+First boot creates the database file `data/maestro_cs.sqlite3`, runs
+migrations, seeds a demo resume with rendered previews, and — if a key is
+present — builds a demo Career KB from it.
 
 ### If something goes wrong
 
 | You see | It means | Do |
 | --- | --- | --- |
 | `Cannot connect to the Docker daemon` | Docker isn't running | Start Docker Desktop, wait for "running", re-run the command |
-| `port is already allocated` | Another app owns 3000/8001/55432 | Change `*_HOST_PORT` in `.env` ([details](../README.md#troubleshooting--common-questions)) |
+| `port is already allocated` | Another app owns 3000 or 8001 (or 55432, which this release still uses for the old Postgres) | Change `*_HOST_PORT` in `.env` ([details](../README.md#troubleshooting--common-questions)) |
 | Build sits at TeX Live / model download | Normal on first build | Wait it out; later builds are fast |
-| Page loads but everything errors | Backend still starting | `curl -s localhost:8001/health` answers `{"status":"ok"}` when it's ready (also at `/api/health`); `docker compose ps` shows it `Up` — only postgres reports `healthy` |
+| Page loads but everything errors | Backend still starting | `curl -s localhost:8001/health` answers `{"status":"ok"}` when it's ready (also at `/api/health`); `docker compose ps` shows it `Up` — only postgres reports `healthy`, because the backend has no healthcheck of its own |
 | Added a key to `.env` after starting | Keys are read at process start | `docker compose restart backend` — and remember a key saved in Settings overrides `.env` |
 | LLM calls fail 401 though Settings says "Configured" | A stale key — the label says where it lives (in-app beats `.env`) | Re-enter the key in Settings → Models and press **Test** |
 
 ### Starting over (a genuinely clean slate)
 
-Deleting the project folder does **not** delete your data — and neither does
-`docker compose down` or removing containers. The database lives in a Docker
-**volume** stored inside Docker itself, named after the project folder
-(`maestro-career-studio_pgdata`). Two consequences worth knowing before they
-surprise you:
+**Your database is a file inside the project folder**, `data/maestro_cs.sqlite3`
+(with `-wal` and `-shm` sidecars beside it). That is the opposite of how this
+worked before: the database used to live in a Docker volume that outlived the
+folder. Two consequences worth knowing before they surprise you:
 
-- **A re-clone into a folder with the same name re-attaches the old
-  database.** Your resumes, applications, and even a saved API key are back —
-  which is the right default (an update or an accidental folder deletion
-  never costs you data), but it means "delete the folder and clone again" is
-  *not* a fresh install. To test a truly fresh one, clone into a differently
-  named folder.
-- **Deleting only the folder leaves the two halves of your state out of
-  sync**: the database survives, but the rendered PDFs that lived under
-  `applications/` and `base_resumes/` in the folder are gone, so the app may
-  list documents whose files no longer exist. Re-render them from the UI —
-  the content itself is safe in the database.
+- **Deleting the project folder now deletes your data** — resumes,
+  applications, KB and stored keys, together with the rendered PDFs under
+  `applications/` and `base_resumes/`. There is no copy inside Docker to
+  re-attach by cloning into a folder of the same name. Keep a snapshot from
+  `backups/` if you are about to move or remove the folder.
+- **`docker compose down -v` alone is no longer the reset button.** All it
+  removes now is the leftover Postgres volume from before this release — and
+  that is exactly why it still belongs in the clean slate below.
 
 When you *want* everything gone — demo data, your data, stored keys, all of
-it — this is the one command, run from the project folder, and it is not
+it — this is the pair of commands, run from the project folder, and it is not
 undoable:
 
 ```bash
 docker compose down -v
+rm -rf data/*
 ```
+
+The `-v` matters this release. With the old Postgres volume still there and
+the file gone, the next boot would find a database to import and copy your old
+Postgres data straight back in; with the volume gone there is nothing to
+import, and the boot starts clean. The glob skips dotfiles, so `data/.gitkeep`
+and the import marker (`data/.migrated-from-postgres.json`) stay — leave them:
+a marker with no volume behind it is inert. Deleting the marker as well, while
+the volume is still there, is the one combination that makes the next boot
+import the old data again — which is also how you re-import on purpose
+(`./scripts/update.sh --check` spells that out).
 
 ## 3. Find your way around
 
@@ -515,15 +522,20 @@ waits until the stack is healthy again. Run `./scripts/update.sh --check`
 first if you only want to know whether there is anything new — it changes
 nothing.
 
-Three things worth knowing before your first update:
+Four things worth knowing before your first update:
 
 - **Your data is not involved.** Your resumes, applications, KB documents and
-  settings are files on disk that no update step touches, and the database
-  lives in a Docker volume that survives everything here — including folder
-  deletion and re-cloning (see
-  [Starting over](#starting-over-a-genuinely-clean-slate) for when that
-  persistence surprises you). The backup the script takes guards the
-  database *migration* specifically.
+  settings are files on disk that no update step touches, and so is the
+  database — `data/maestro_cs.sqlite3`, in the same folder (see
+  [Starting over](#starting-over-a-genuinely-clean-slate), because that also
+  means the folder is now the thing to protect). The backup the script takes
+  guards the database *migration* specifically.
+- **This release moves the database out of Docker**, so the first boot after
+  this particular update imports your old Postgres database into the new file
+  and checks it row for row. Leave the `POSTGRES_*` values in `.env` as they
+  are until that has happened; `./scripts/update.sh --check` says which store
+  is live. The [README's Updating section](../README.md#what-happens-to-your-data)
+  has the detail, including when it is safe to delete the old Docker volume.
 - **Migrations run themselves** when the backend starts, so the first boot
   after an update takes longer than usual. The script tells you it is waiting.
 - **Two things stay manual**, because Docker cannot reach them: reload the

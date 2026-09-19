@@ -1,7 +1,7 @@
 """Tests for document-first KB entity creation (POST /api/kb/documents/ingest)."""
 
 import io
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from fastapi.testclient import TestClient
 
@@ -69,7 +69,7 @@ def test_ingest_creates_certification_entity_with_metadata(db_session, monkeypat
     assert body["point_count"] == 1
     assert body["document"]["ingest_status"] == "minted"
 
-    entity = db_session.get(KBEntity, body["entity_id"])
+    entity = db_session.get(KBEntity, UUID(body["entity_id"]))
     assert entity.org == "Amazon Web Services"
     assert entity.start_date == "2026-03"
     assert entity.end_date == "2029-03"

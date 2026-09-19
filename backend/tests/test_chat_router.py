@@ -1,5 +1,6 @@
 import io
 import json
+from uuid import UUID
 
 from fastapi.testclient import TestClient
 
@@ -119,6 +120,6 @@ def test_upload_attachment_certificate_pdf_stores_transcript(db_session, monkeyp
 
     from app.models.chat import ChatAttachment
 
-    row = db_session.get(ChatAttachment, body["id"])
+    row = db_session.get(ChatAttachment, UUID(body["id"]))
     assert "Anthropic Academy" in row.text_content
     assert "Riley Quill" in row.text_content

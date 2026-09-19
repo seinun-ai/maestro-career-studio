@@ -153,7 +153,7 @@ def test_create_session_with_enrichment(db_session, tmp_path, monkeypatch):
     )
 
     # the base score row was persisted and linked
-    base_row = db_session.get(AtsScore, body["base_ats_score_id"])
+    base_row = db_session.get(AtsScore, UUID(body["base_ats_score_id"]))
     assert base_row is not None
     assert base_row.phase == "base"
     assert base_row.target_id == slug
@@ -1747,7 +1747,7 @@ def test_patch_non_open_session_returns_409(db_session, tmp_path, monkeypatch):
     try:
         client = TestClient(app)
         created = _create(client, job, slug, enrich=False).json()
-        row = db_session.get(TailoringSession, created["id"])
+        row = db_session.get(TailoringSession, UUID(created["id"]))
         row.status = "tailored"
         db_session.commit()
         response = client.patch(
@@ -2481,7 +2481,7 @@ def test_tailor_invalid_ops_from_llm_leaves_nothing(db_session, tmp_path, monkey
     assert "invalid edit ops" in response.json()["detail"]
 
     db_session.rollback()
-    row = db_session.get(TailoringSession, created["id"])
+    row = db_session.get(TailoringSession, UUID(created["id"]))
     assert row.status == "open"
     assert row.application_id is None
     assert row.resolutions_json == [SALESFORCE_RESOLUTION]
@@ -2521,7 +2521,7 @@ def test_tailor_out_of_range_ops_leave_nothing(db_session, tmp_path, monkeypatch
     assert response.status_code == 400
     assert "invalid edit ops" in response.json()["detail"]
     db_session.rollback()
-    assert db_session.get(TailoringSession, created["id"]).status == "open"
+    assert db_session.get(TailoringSession, UUID(created["id"])).status == "open"
     assert db_session.scalars(select(Application)).first() is None
 
 
@@ -2553,7 +2553,7 @@ def test_tailor_provider_failure_returns_502(db_session, tmp_path, monkeypatch):
     assert response.status_code == 502
     assert "insufficient_quota" in response.json()["detail"]
     db_session.rollback()
-    row = db_session.get(TailoringSession, created["id"])
+    row = db_session.get(TailoringSession, UUID(created["id"]))
     assert row.status == "open"
     assert row.application_id is None
     assert db_session.scalars(select(Application)).first() is None
@@ -2714,7 +2714,7 @@ def test_tailor_without_actionable_resolutions_returns_400(db_session, tmp_path,
     assert all_skips.status_code == 400
     assert "No actionable resolutions" in all_skips.json()["detail"]
     assert calls == []  # never reached the LLM
-    assert db_session.get(TailoringSession, created["id"]).status == "open"
+    assert db_session.get(TailoringSession, UUID(created["id"])).status == "open"
 
 
 def test_tailor_unknown_session_returns_404(db_session):

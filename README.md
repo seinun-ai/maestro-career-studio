@@ -170,7 +170,11 @@ makes it so. [`SECURITY.md`](SECURITY.md) has the detail and the threat model.
   frontend ~360 MB, PostgreSQL ~170 MB compressed), unpacking to roughly
   3–4 GB of image storage. The backend is the big one — it carries a minimal
   TeX Live (`scheme-basic` plus exactly the packages the bundled templates
-  use, ~660 MB), Typst, and the pinned embedding model.
+  use, ~660 MB), Typst, and the pinned embedding model. PostgreSQL is here for
+  this release only: your database is a file now, and the old service survives
+  one release so that an existing install can be imported into it. A fresh
+  install starts it once, finds nothing to import, and never reads it again;
+  the next release drops it.
 - **One API key — OpenAI or Gemini, either alone is a complete setup.** The
   parts that make Maestro CS fastest day to day run on it: in-app tailoring,
   the extension's tailor-on-the-go and AI form filling, cover letters and Q&A,
@@ -307,10 +311,11 @@ third. A report of what worked or broke, with the model name, is a genuinely
 useful contribution — please open an issue.
 
 On first boot, Docker will:
-1. Launch PostgreSQL on host port `55432` (`127.0.0.1:55432`) to prevent collisions with any existing Postgres instance on port 5432.
-2. Run database migrations via Alembic.
-3. Seed demonstration base resumes, compile initial PDF previews, seed default AI prompts, and build your initial demo Career KB (if an API key is present).
-4. Serve the UI on **http://127.0.0.1:3000** and backend API on **http://127.0.0.1:8001**.
+1. Launch PostgreSQL on host port `55432` (`127.0.0.1:55432`, to prevent collisions with any existing Postgres instance on port 5432). This release only: the import checks it, and then it idles.
+2. Create the database file `data/maestro_cs.sqlite3` and run migrations via Alembic.
+3. Import your old Postgres database into that file, verified row for row, if you are updating an install that had one — see [Updating](#updating). A fresh install has nothing to import, and the boot records that too.
+4. Seed demonstration base resumes, compile initial PDF previews, seed default AI prompts, and build your initial demo Career KB (if an API key is present).
+5. Serve the UI on **http://127.0.0.1:3000** and backend API on **http://127.0.0.1:8001**.
 
 ---
 
@@ -349,8 +354,17 @@ and pins the image pull to that same tag, rather than tracking `main`.
 Same thing, in the open, if you would rather see the moving parts:
 
 ```bash
-# 1. Back up the database (see "What happens to your data" below)
+# 1. Back up the database (see "What happens to your data" below). There are
+#    two stores this release, so there are two commands; update.sh picks the
+#    right one for you. The subshell umask keeps the file 0600, like the rest
+#    of your record.
 mkdir -p backups
+
+#    a) The database file exists — the normal case, and safe on a live stack:
+( umask 077; docker compose run --rm -T --no-deps backend python -m app.tools.backup_db --stdout | gzip > backups/db-manual.sqlite3.gz )
+
+#    b) THIS RELEASE ONLY — an install still on Postgres, whose first boot has
+#       not imported it yet (there is no data/maestro_cs.sqlite3):
 docker compose up -d postgres
 docker compose exec -T postgres pg_dump --clean --if-exists -U app maestro_cs | gzip > backups/db-manual.sql.gz
 
@@ -372,7 +386,7 @@ IMAGE_TAG="${TAG#v}" docker compose up -d --force-recreate --remove-orphans
 > wonder why a fresh release did not appear, that is why; `docker compose pull`
 > is the one-line answer.
 
-`-U app` and `maestro_cs` are the compose defaults (`POSTGRES_USER` /
+`-U app` and `maestro_cs` in (b) are the compose defaults (`POSTGRES_USER` /
 `POSTGRES_DB`); use your own values if you changed them in `.env`.
 
 **Pinning a version — the `v` is the trap.** The git tag is `v0.1.2`; the
@@ -397,23 +411,79 @@ back out — see [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 **Nothing.** `base_resumes/`, `applications/`, `settings/`, `kb_documents/`,
 `exports/` and `logs/` are your files on disk, git-ignored, and no step of an
-update touches them. Postgres lives in a named Docker volume that survives
-`up`, `down` and `pull` alike (only `docker compose down -v` destroys it, and
-nothing here runs that).
+update touches them. The database is one more file beside them —
+`data/maestro_cs.sqlite3`, git-ignored the same way, with its `-wal` and
+`-shm` sidecars — and no update step touches it either. It used to live in a
+named Docker volume, so the trade has flipped: `docker compose down -v` no
+longer reaches your data, and deleting the project folder now does.
+
+**This release is the one that moves it.** If you are updating an install that
+ran Postgres, the first boot imports it into the new file and verifies the copy
+row for row — row counts plus a content hash per table — before committing it.
+Your old Docker volume is left exactly where it is, so nothing rides on the
+import working the first time; if it fails, the backend refuses to start rather
+than come up empty, and nothing is deleted (see
+[Troubleshooting](#troubleshooting--common-questions)). Three things follow
+from that:
+
+- **Leave the `POSTGRES_*` values in `.env` as they are** until the import has
+  run. Compose builds the import's source URL out of them.
+- **`./scripts/update.sh --check` tells you where you stand.** It prints a
+  `database:` line naming the store that is live.
+- **Once you are satisfied, the old volume is yours to delete:**
+  `docker volume rm maestro-career-studio_pgdata`. Nothing reads it after a
+  successful import, and the next release drops the `postgres` service
+  entirely.
 
 **Database migrations run themselves.** The backend runs `alembic upgrade head`
 at boot, so there is no migration step for you — but the first boot after a
 schema change is genuinely slower, which is why the script says it is waiting
 rather than sitting silent.
 
-**What the pre-update backup actually covers.** The dump in `backups/` guards
-that migration, which is the one irreversible step in the process. It is *not*
-"your career data" — that is the on-disk directories above, which never needed
-guarding.
+**What the pre-update backup actually covers.** `./scripts/update.sh` backs up
+whichever store is live before it changes anything, into `backups/` and
+readable only by you. Which file you get says which that was:
+
+- **`db-<timestamp>-<version>.sql.gz`** is a `pg_dump`. On the update that
+  performs the import there is no SQLite file yet, so this is the only artifact
+  that update can produce.
+- **`db-<timestamp>-<version>.sqlite3.gz`** is an online snapshot of the
+  database file, and is what every later update writes.
+- **Both**, when both stores hold something and no import marker says which one
+  the backend actually read. The script refuses to guess; it takes both and
+  says so.
+
+It prints the restore command for whatever it just took, and prints it again if
+the stack does not come back healthy. The backup guards that migration, which
+is the one irreversible step in the process. It is *not* "your career data" —
+that is the on-disk directories above, which never needed guarding.
 
 ### Rolling back
 
-One recipe: the old git ref, the old images, and the dump — in that order.
+One recipe — the old git ref, the old images, and the backup — in two forms,
+one per kind of backup file (see above for which you have).
+
+**From a SQLite snapshot (`.sqlite3.gz`)**, with the stack stopped, because
+restoring means replacing a file the backend holds open:
+
+```bash
+docker compose down                                     # the restore needs it stopped
+git checkout v0.1.1                                     # the version you were on
+gunzip -c backups/db-<timestamp>-<version>.sqlite3.gz > data/maestro_cs.sqlite3
+rm -f data/maestro_cs.sqlite3-wal data/maestro_cs.sqlite3-shm
+IMAGE_TAG=0.1.1 docker compose up -d --force-recreate
+```
+
+The two sidecar files have to go: they belong to the database you just
+replaced, and leaving them in place mixes the two. For the same reason, never
+copy the live file out from the host while the backend is running — the copy
+can miss whatever is still in the write-ahead log. Take a snapshot with the
+`backup_db` command in [the manual equivalent](#the-manual-equivalent) above
+instead — it is safe to run against a live stack.
+
+**From a Postgres dump (`.sql.gz`)** — what the update that performed the
+import left behind, and what a rollback to a release that still read Postgres
+needs:
 
 ```bash
 git checkout v0.1.1                                     # the version you were on
@@ -421,7 +491,7 @@ IMAGE_TAG=0.1.1 docker compose up -d --force-recreate
 gunzip -c backups/db-<timestamp>-<version>.sql.gz | docker compose exec -T postgres psql -U app maestro_cs
 ```
 
-**Never restore a dump into a newer schema, and do not reach for an Alembic
+**Never restore a snapshot into a newer schema, and do not reach for an Alembic
 downgrade.** Downgrade functions exist in the migration files, but they have
 never been a supported or tested path here — rolling the schema back means
 rolling the whole stack back to the version that wrote it.
@@ -896,7 +966,8 @@ it. Point it at a host you control.
 - `exports/` — derived, downloadable personal artifacts such as `career.md`; ignored except for `.gitkeep` and mounted into the backend container.
 - `applications/` — Rendered per-application artifacts organized by company and role (tex, typ, pdf).
 - `logs/` — Application runtime execution logs.
-- `docker-compose.yml` — Core production architecture (postgres, backend, frontend).
+- `data/` — The database file `maestro_cs.sqlite3` and its `-wal`/`-shm` sidecars; ignored except for `.gitkeep`, and mounted into the backend container. Deleting this directory deletes every application, resume version and KB entry.
+- `docker-compose.yml` — Core production architecture (backend, frontend; postgres one more release, for the import).
 - `docker-compose.dev.yml` — Development overrides for bind mounts and hot real-time reload.
 
 ---
@@ -997,10 +1068,16 @@ directly:
 Render exceptions during initial seeding are safely caught and logged; database records are still minted even if PDF rendering hits a local font or dependency missing in custom setups. Re-attempt rendering directly from the UI once the backend container initializes.
 
 **"port is already allocated" on `docker compose up`:**
-All three host ports are overridable in `.env` — `BACKEND_HOST_PORT` (8001), `FRONTEND_HOST_PORT` (3000) and `POSTGRES_HOST_PORT` (55432). Find the culprit with `lsof -i :<port>`, change the number, and run `docker compose up -d` again. Only the host side of the mapping moves; the containers keep their internal ports, so nothing else needs editing — except the browser extension's backend/app URLs, which you set under `⋯` on its card. Two of the defaults are already chosen to dodge the usual collisions: 8001 rather than 8000 (uvicorn, Django and `python -m http.server` all default to 8000) and 55432 rather than 5432 (any locally installed PostgreSQL).
+Two host ports matter day to day, and both are overridable in `.env` — `BACKEND_HOST_PORT` (8001) and `FRONTEND_HOST_PORT` (3000). `POSTGRES_HOST_PORT` (55432) is the third for this one release only, while the old Postgres service stands by for the import; it is 55432 rather than 5432 so it cannot collide with a PostgreSQL you installed yourself. Find the culprit with `lsof -i :<port>`, change the number, and run `docker compose up -d` again. Only the host side of the mapping moves; the containers keep their internal ports, so nothing else needs editing — except the browser extension's backend/app URLs, which you set under `⋯` on its card. The backend default is already chosen to dodge the usual collision: 8001 rather than 8000 (uvicorn, Django and `python -m http.server` all default to 8000).
 
-**Postgres data looks wrong, or an aborted build corrupted it:**
-`docker compose down -v` resets the data volumes. **This deletes every application, resume version and KB entry in that stack** — export anything you want to keep first.
+**The app came up empty after updating:**
+Your data is not gone. This release moves the database into `data/maestro_cs.sqlite3`, and the first boot after the update imports your old Postgres database into it — which needs the `postgres` service reachable at that moment. Check `docker compose logs backend | grep -i legacy` to see what it said, leave the `POSTGRES_*` values in `.env` exactly as they were, and run `docker compose up -d` again. Nothing was deleted: the old Docker volume still holds every row. `./scripts/update.sh --check` prints a `database:` line saying which store is live.
+
+**The backend refuses to start, saying "Importing the legacy Postgres database failed" or that the source "cannot be reached":**
+That refusal is deliberate — booting on an empty file would leave your data stranded behind a database that has since seeded itself with demo rows. Nothing was deleted, and the import retries on the next boot. The log lines above the message name the cause; fix it and restart. To skip the import entirely, comment the `LEGACY_DATABASE_URL` line out of `docker-compose.yml` (after that, `./scripts/update.sh` needs `--force` to get past its dirty-tree check).
+
+**"database is locked":**
+SQLite takes one writer at a time, and something else is holding the file. Most often that is a tool on your host that opened `data/maestro_cs.sqlite3` while the stack was running — don't: stop the stack first, or read a snapshot from `backups/` instead. It also happens while a long write is in flight: a Career KB consolidation, or the first-boot import, holds the write lock for its whole run, so give it a few minutes and don't drive the app during one. If your filesystem cannot support WAL at all (some network and bind mounts), set `SQLITE_JOURNAL_MODE=DELETE` in `.env` and restart — Compose passes it through.
 
 **LLM calls returning 401 Unauthorized or Quota errors:**
 The backend imports `OPENAI_API_KEY` and `GEMINI_API_KEY` at process initialization. If you modify `.env` after containers start, run `docker compose restart backend`. Settings status indicators confirm real-time detection of configured keys.

@@ -1,10 +1,10 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Integer, String, Text, UniqueConstraint, func
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy import Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app.models.types import JSONDoc, UTCDateTime, UUIDType, utcnow
 from app.db import Base
 
 
@@ -24,23 +24,23 @@ class AutofillFieldObservation(Base):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+        UUIDType(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     signature_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     host: Mapped[str] = mapped_column(Text, nullable=False)
     label: Mapped[str] = mapped_column(Text, nullable=False)
     kind: Mapped[str] = mapped_column(Text, nullable=False)
-    options: Mapped[list | None] = mapped_column(JSONB)
+    options: Mapped[list | None] = mapped_column(JSONDoc)
     rule_id: Mapped[str | None] = mapped_column(Text)
-    outcomes: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    outcomes: Mapped[dict] = mapped_column(JSONDoc, nullable=False, default=dict)
     seen_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    session_marks: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    session_marks: Mapped[list] = mapped_column(JSONDoc, nullable=False, default=list)
     first_seen_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
+        UTCDateTime(), default=utcnow, server_default=func.now(), nullable=False
     )
     last_seen_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        server_default=func.now(),
-        onupdate=func.now(),
+        UTCDateTime(),
+        default=utcnow, server_default=func.now(),
+        onupdate=utcnow,
         nullable=False,
     )

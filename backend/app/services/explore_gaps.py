@@ -6,14 +6,17 @@ app/routers/explore.py wrap these and return plain JSON lists.
 """
 from collections import Counter, defaultdict
 from collections.abc import Iterator
+from datetime import date
+from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import Date, func, select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, aliased
 
 from app.models.application import Application
 from app.models.ats_score import AtsScore
 from app.models.job import Job
+from app.services.explore_activity import bucket_for
 
 LOW_SAMPLE_THRESHOLD = 5
 
@@ -196,32 +199,31 @@ def ats_over_time(
     employment_type: str | None = None,
 ) -> list[dict[str, Any]]:
     """Weekly avg ATS composite + count, split by phase and Job.role_category."""
-    week_start = func.date_trunc("week", AtsScore.created_at).cast(Date).label("week_start")
     stmt = (
-        select(
-            week_start,
-            AtsScore.phase,
-            Job.role_category,
-            func.avg(AtsScore.composite).label("avg_composite"),
-            func.count().label("n"),
-        )
+        select(AtsScore.created_at, AtsScore.phase, Job.role_category, AtsScore.composite)
         .join(Job, Job.id == AtsScore.job_id)
         .where(Job.role_category.is_not(None))
-        .group_by(week_start, AtsScore.phase, Job.role_category)
-        .order_by(week_start, Job.role_category, AtsScore.phase)
     )
     stmt = _apply_job_filters(stmt, role_category, level, employment_type)
 
+    # Kept as Decimal, not float: composite is Numeric(5, 1), and averaging
+    # floats turns an exact .x5 tie like 76.95 into 76.9499... -> 76.9.
+    groups: dict[tuple[date, str, str], list[Decimal]] = defaultdict(list)
+    for created_at, phase, category, composite in db.execute(stmt):
+        groups[(bucket_for(created_at, "week"), phase, category)].append(composite)
+
+    # Same order the SQL version produced: week, role_category, phase.
+    ordered = sorted(groups.items(), key=lambda item: (item[0][0], item[0][2], item[0][1]))
     return [
         {
-            "week_start": row.week_start.isoformat(),
-            "phase": row.phase,
-            "role_category": row.role_category,
-            "avg_composite": round(float(row.avg_composite), 1),
-            "n": int(row.n),
-            "low_sample": _low_sample(int(row.n)),
+            "week_start": ws.isoformat(),
+            "phase": phase,
+            "role_category": category,
+            "avg_composite": round(float(sum(values) / len(values)), 1),
+            "n": len(values),
+            "low_sample": _low_sample(len(values)),
         }
-        for row in db.execute(stmt).all()
+        for (ws, phase, category), values in ordered
     ]
 
 

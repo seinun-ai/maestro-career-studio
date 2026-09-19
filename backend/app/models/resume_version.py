@@ -2,10 +2,10 @@ import uuid
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, Text, UniqueConstraint, func
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy import ForeignKey, Index, Integer, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app.models.types import JSONDoc, UTCDateTime, UUIDType, utcnow
 from app.db import Base
 
 
@@ -26,20 +26,20 @@ class ResumeVersion(Base):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+        UUIDType(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     resume_kind: Mapped[str] = mapped_column(Text, nullable=False)  # 'base' | 'application'
     resume_key: Mapped[str] = mapped_column(Text, nullable=False)
     version_number: Mapped[int] = mapped_column(Integer, nullable=False)
     parent_version_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("resume_versions.id", ondelete="SET NULL")
+        UUIDType(as_uuid=True), ForeignKey("resume_versions.id", ondelete="SET NULL")
     )
-    snapshot: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    snapshot: Mapped[dict] = mapped_column(JSONDoc, nullable=False)
     summary: Mapped[str | None] = mapped_column(Text)
     # 'create' | 'form_edit' | 'edit_ops' | 'chat' | 'tailor' | 'import' | 'restore'
     source: Mapped[str] = mapped_column(Text, nullable=False)
     source_ref: Mapped[str | None] = mapped_column(Text)
     label: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
+        UTCDateTime(), default=utcnow, server_default=func.now(), nullable=False
     )

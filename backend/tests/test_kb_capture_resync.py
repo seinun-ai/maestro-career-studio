@@ -8,7 +8,8 @@ import sqlalchemy as sa
 
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSIONS = ROOT / "migrations" / "versions"
+# Delete with legacy_postgres/ (SYSTEM.md §13 postgres-to-sqlite): this exercises the boxed Postgres chain.
+VERSIONS = ROOT / "legacy_postgres" / "migrations" / "versions"
 
 
 def _migration_module():
