@@ -2447,6 +2447,7 @@ Find every line with `grep -n -i "postgres\|55432\|pg_dump" <file>` and rewrite 
     first.
   ```
 - **backend/scripts/*.py** docstrings: `DATABASE_URL=sqlite:////absolute/path/to/data/maestro_cs.sqlite3` (stack stopped, or a `backups/` snapshot).
+- **.github/ISSUE_TEMPLATE/bug_report.md** (~line 24): "Database Target: (e.g. Docker container port 55432)" → ask for the `update.sh --check` database line instead.
 - **THIRD_PARTY_NOTICES.md** (psycopg, ~lines 146–172): still accurate for the image, but note psycopg now ships only through the one-release `legacy-postgres` extra and leaves with it.
 - **Source installs** (CONTRIBUTING / README setup): a host run with `LEGACY_DATABASE_URL` set needs `pip install -e ".[dev,legacy-postgres]"`; the boot error names the extra, the docs should too.
 
@@ -2459,6 +2460,8 @@ git add README.md CONTRIBUTING.md docs SECURITY.md KNOWN_ISSUES.md CHANGELOG.md 
 ---
 
 ### Task 19: Verification gates (design §6)
+
+> **Housekeeping to fold into the final review sweep (2026-09-19):** (a) `backend/mcp_server/server.py` `update_application` docstring: `applied_at` needs a UTC offset (Task 3; the docstring-length ratchet test must stay green); (b) `backend/tests/tools/test_migrate_from_postgres.py` `--replace` WAL test: call `tool._move_aside(path)` directly on the crash image so the checkpoint is isolated (Task 11 review); (c) `scripts/update.sh` `do_check`'s first branch should consult the marker (a marker with a deleted file is "skip", not "import"), and the fast-forward failure message should name both dumps in the both-dumps state (Task 15 review).
 
 Run every one; paste results into the deviation log's **Gate results** table.
 
@@ -2545,6 +2548,7 @@ Append-only. One line per deviation: task, what the plan said, what was found, w
 | 15 | `gunzip -c … \| head -c 16 \| grep -q` magic check | returns 141 under `pipefail` (SIGPIPE) on every good backup | header captured into a variable (`head -c 15 \|\| true`); pg_dump header text taken from the postgres:16 image | correctness |
 | 15 | note: "unset `LEGACY_DATABASE_URL`" from the shell or `.env` | compose BUILDS that value from `POSTGRES_*`; no env or `.env` override exists | note says to comment the line out of `docker-compose.yml` and `--force` past the dirty-tree check; Task 18 must say the same | — |
 | 15 | — | retention is 5 `db-*` files total; in the both-dumps state that is 2.5 runs of history | accepted as transient (until the import marker exists) | — |
+| 16 | — | `.github/ISSUE_TEMPLATE/bug_report.md` still asks for a Postgres port; `pytest -m legacy_postgres` collecting nothing exits 5 (a tripwire, kept) | template added to Task 18's list | — |
 | 7 | — | suite baseline on SQLite before fixes: `43 failed, 4151 passed, 1 skipped, 23 errors in 218.89s`. By cause: 23 errors + 12 failures are Task 6 relocation effects (prompt-defaults lock pin; three resync-migration tests globbing the old path); 21 string-UUID binds (`.hex`), 20 in tests via `session.get`, 1 in `services/proposals.py:66`; 9 `date_trunc` (Task 8); 1 ordering suspect in `kb_consolidation`. No naive-datetime failures. | fix items added to Task 9's table | — |
 
 **LLM-call audit (Task 10):** client entry points are `llm.call_openai`, `llm.get_chat_client` (streaming), `list_openai_models`/`list_gemini_models`. With `autoflush=False`, `add()`/`merge()` take no lock; `prompts.get_prompt` and `model_settings._set_value` COMMIT (lock released).
