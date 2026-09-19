@@ -247,6 +247,13 @@ class Settings(BaseSettings):
         parsed = _split_env_list(value, extra_separator=os.pathsep)
         return [Path(p) for p in parsed] if isinstance(parsed, list) else parsed
 
+    # Explicit pdflatex binary. When set it WINS and is never searched around:
+    # a wrong value makes the probe report unavailable with the reason, exactly
+    # like the MCPB shim treats a wrong Docker path. Unset = search PATH plus the
+    # known TeX homes (app/services/engines.py). Doubles as the test switch for
+    # a TeX-less host: MAESTRO_CS_PDFLATEX=/nonexistent.
+    maestro_cs_pdflatex: Path | None = None
+
     # Default ISO 4217 currency assumed for jobs that disclose a salary amount
     # without a currency code (legacy rows + extraction fallback). Override via
     # HOME_CURRENCY — never hard-code USD at the call site or in migrations.
