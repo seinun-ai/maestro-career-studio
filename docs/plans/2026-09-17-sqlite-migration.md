@@ -2573,3 +2573,4 @@ Append-only. One line per deviation: task, what the plan said, what was found, w
 
 | gate | result | evidence |
 |---|---|---|
+| 4 calibration | PASS | live Postgres (`maestro_cs`, read only, `--skip-source-upgrade`) imported into a scratch SQLite: 27 tables `ok` by count and content hash (e.g. `ats_scores 949`, `job_skills 1672`, `applications 105`); `ats_calibration snapshot` after vs before: `2015 pairs compared, 0 moved, 0 newly matched, 0 newly absent` (ats-2.5.0 / 4bb5e9dab8ad both sides); run 2026-09-19 from the worktree at `6428259c` |
