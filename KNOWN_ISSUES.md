@@ -139,11 +139,20 @@ the domain model and not yet self-explanatory to someone who does not.
 
 ### Operational gaps
 
-- **A backup is two things and nothing joins them.** Postgres holds the
-  relational state; `base_resumes/`, `applications/`, `kb_documents/`,
-  `exports/`, `settings/` and `logs/` hold the rest. A database dump alone is
-  not a restore, a directory copy alone is not either, and there is no bundle
-  command or tested restore path.
+- **A backup is two things and nothing joins them.** The database half is now
+  a single file and `python -m app.tools.backup_db` snapshots it safely while
+  the stack runs; `base_resumes/`, `applications/`, `kb_documents/`,
+  `exports/`, `settings/` and `logs/` are the other half. A database snapshot
+  alone is not a restore, a directory copy alone is not either, and there is
+  still no bundle command or tested restore path.
+- **A Career KB consolidation holds the database's only write lock for its
+  whole run.** SQLite allows one writer, and consolidation takes it across
+  every LLM call it makes, so anything else trying to write — extension
+  telemetry, an MCP capture, a chat turn — waits 30 seconds and then fails with
+  "database is locked". It is user-initiated and rare, and the workaround is
+  simply not to use the app while one (or a first-boot import) is running. The
+  few seconds a tailoring session spends enriching gaps are the same shape.
+  `SYSTEM.md` §11 item 25 has the fix.
 - **A stored ATS score cannot be exactly reproduced.** Scoring is deterministic
   given its inputs, but the row does not record `as_of`, the résumé/JD content
   hashes, or the embedding model — and recency is computed against *today* —
@@ -212,9 +221,13 @@ disagree, open a discussion rather than a PR.
 
 ## Migrations in flight
 
-Two things are deliberately live in two forms at once. `SYSTEM.md` §13
+Three things are deliberately live in two forms at once. `SYSTEM.md` §13
 carries the full ledger with removal triggers.
 
+- **The database, for this one release.** SQLite is the store; the old
+  `postgres` service and its Docker volume stay in the compose file so that an
+  existing install can be imported on its first boot. The next release deletes
+  both.
 - **Two render engines.** LaTeX and Typst are both first-class and both
   supported. The default is LaTeX; a switch to Typst was considered and is on
   hold. Changes to templates or rendering must handle both.

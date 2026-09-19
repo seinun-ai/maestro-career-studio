@@ -187,8 +187,11 @@ evasion of that filtering. Use the lane on postings you have looked at yourself.
 ## 5. Secrets and personal data on your machine
 
 Runtime state lives in gitignored directories — `settings/`, `base_resumes/`,
-`kb_documents/`, `applications/`, `exports/`, `logs/` — plus `.env` and your
-Postgres volume. Never commit any of it.
+`kb_documents/`, `applications/`, `exports/`, `logs/` — plus `.env` and `data/`,
+which holds the SQLite database `maestro_cs.sqlite3` and its `-wal`/`-shm`
+sidecars (the file is created mode 0600). For this one release the legacy
+Postgres volume may still hold a copy of everything the database has, until you
+remove it. Never commit any of it.
 
 - **API keys are stored in cleartext** in `.env` and in your local database. The
   HTTP API never returns them (it reports only whether one is configured), but

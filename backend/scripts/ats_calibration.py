@@ -4,8 +4,9 @@
 MACHINE-readable snapshot and diffs two of them, so a scoring change can be
 measured instead of argued about.
 
-Usage (from backend/, dev DB running):
-    DATABASE_URL=postgresql://app:app@127.0.0.1:55432/maestro_cs \\
+Usage (from backend/, with the stack STOPPED — or against a backups/ snapshot
+restored to a scratch file; never open the live file while the backend runs):
+    DATABASE_URL=sqlite:////absolute/path/to/data/maestro_cs.sqlite3 \\
         python -m scripts.ats_calibration snapshot before.json
     # ... make the scoring change ...
     DATABASE_URL=... python -m scripts.ats_calibration snapshot after.json

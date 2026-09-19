@@ -127,19 +127,9 @@ Two things you still owe, and they are about *other people's* code, not yours:
 
 ## 4. Development Environment Setup
 
-Maestro CS is a single-user, local-first application built with FastAPI (backend), Next.js 16 (frontend), PostgreSQL 16, and dual-engine PDF rendering (typst + LaTeX).
+Maestro CS is a single-user, local-first application built with FastAPI (backend), Next.js 16 (frontend), SQLite, and dual-engine PDF rendering (typst + LaTeX).
 
-### Database Setup
-To prevent port collisions with any existing local PostgreSQL instances on your system, our Docker Compose setup binds PostgreSQL to host port **`55432`** (it remains `5432` inside the container network).
-
-Start PostgreSQL locally:
-```bash
-docker compose up -d postgres
-```
-
-The Docker Postgres instance hosts two databases by default:
-- `maestro_cs`: The development database used when running the application.
-- `maestro_cs_test`: A dedicated throwaway database reserved exclusively for running test suites.
+There is no database service to start. The application database is the file `data/maestro_cs.sqlite3`, created and migrated on the backend's first boot; tests never touch it (see §5).
 
 ### Backend Setup
 Install the Python backend in editable mode with development and MCP server extras enabled using Python 3.12+:
@@ -149,6 +139,8 @@ python -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev,mcp]"
 ```
+
+For one release only, importing an existing Postgres database from a host run — anything with `LEGACY_DATABASE_URL` set — also needs psycopg, which ships as its own extra: `pip install -e ".[dev,mcp,legacy-postgres]"`. The boot error names it if you hit it. The extra leaves with the `postgres` service in the next release.
 
 *Gotcha reminder (SYSTEM.md §9):* Beware of stale `.pth` files in virtual environments if you switch across Git worktrees or branches. Reinstall editable dependencies and restart clients (such as Claude Desktop) if imports unexpectedly point to older workspace directories.
 
@@ -199,15 +191,9 @@ Cutting a release is a separate, maintainer-only checklist:
 We require all automated test suites to stay clean and green on every commit.
 
 ### Backend Testing (`pytest`)
-The backend test suite truncates user-data tables during execution. To protect real user data, our test configuration (`backend/tests/conftest.py`) actively blocks execution against any production or development database named `maestro_cs`.
+The backend test suite needs no database service, and two runs cannot collide: `backend/tests/conftest.py` creates a throwaway SQLite file per test process under the system temp directory, migrates it, and removes it afterwards.
 
-- **Automatic Fallback:** When running tests locally without explicitly setting an environment variable, `conftest.py` automatically defaults to the throwaway test database:
-  `postgresql://app:app@127.0.0.1:55432/maestro_cs_test`
-- **Checking Shared Instances:** Because local terminal sessions and background tools share the same test database instance on port `55432`, concurrent test runs will produce cascading false failures. **Always check for active test processes before initiating a suite run:**
-  ```bash
-  pgrep -f pytest
-  ```
-  If another session is running `pytest`, wait for it to finish.
+The suite deletes every table as it goes, so the fixture refuses a `TEST_DATABASE_URL` that is not a SQLite file, that names the application's own database, or that points anywhere inside `data/`. Set it only to send the run at a scratch file of your own; leave it unset for the default.
 
 Run the test suite from inside `backend/`:
 ```bash
