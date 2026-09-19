@@ -218,7 +218,7 @@ def clear_telemetry(db: Annotated[Session, Depends(get_db)]) -> dict[str, int]:
     `first_seen_at`, so the accumulated table is a record of WHICH COMPANIES
     were applied to and WHEN. Value-free, still personal. The extension toggle
     stops new rows; nothing removed the old ones, which left a machine-shared-
-    or-backed-up Postgres as the user's only recourse.
+    or-backed-up database as the user's only recourse.
 
     Deliberately NOT a capture opt-out: clearing history and declining to
     capture are two decisions, and answering the second while being asked the

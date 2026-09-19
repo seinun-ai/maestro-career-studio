@@ -8,10 +8,9 @@ from alembic import context
 
 def _normalize_postgres_url(value: str) -> str:
     # Mirrors app.config.normalize_postgres_url and dies with this box. Inlined
-    # so this env.py never imports app.config: instantiating Settings() reads
-    # .env and refuses a compose-era DATABASE_URL before the box can say
-    # "no source URL". The bare scheme selects psycopg2, which this project
-    # does not install.
+    # so the box has no dependency on app.config's signature: the box is
+    # deleted with the §13 row, and a rename there must not reach into it.
+    # The bare scheme selects psycopg2, which this project does not install.
     if value.startswith("postgresql://"):
         return "postgresql+psycopg://" + value[len("postgresql://") :]
     return value

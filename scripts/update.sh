@@ -273,15 +273,49 @@ legacy_postgres_is_live() {
   [ ! -f "$IMPORT_MARKER" ] && [ -n "$(pgdata_volume)" ]
 }
 
+# `--status running`, not a bare `ps`: a container `compose stop` left behind
+# is not one to exec into, and some compose versions list it anyway.
+backend_container_running() {
+  [ -n "$(compose ps -q --status running backend 2>/dev/null || true)" ]
+}
+
 backup_sqlite() {
   local dump="$1"
+  local registry="$2"
+  local version="$3"
+  local -a via
+  local pin=""
   note "backing up the SQLite database to $dump"
   # Through the app's own tool (online backup): a plain cp of a live database
   # is a torn snapshot, WAL pages sit in the -wal sidecar until a checkpoint.
+  # WHICH image runs it matters: this step runs BEFORE do_update pins
+  # IMAGE_TAG, so a plain `compose run` in pull mode uses .env's IMAGE_TAG
+  # (`latest`), which can be a pre-SQLite pull with no app.tools.backup_db.
+  if backend_container_running; then
+    # The container holding the file open runs the image that wrote it.
+    note "snapshotting through the running backend container"
+    via=(compose exec -T backend)
+  else
+    via=(compose run --rm -T --no-deps backend)
+    if is_pull_mode "$registry"; then
+      case "$version" in
+        v[0-9]*)
+          # The checkout's own release, for this one command. A describe past
+          # its tag carries `-N-gSHA`; dropped, so the tag named is a published
+          # one. A `dev`/sha describe names no tag at all, and .env stands.
+          pin="${version#v}"
+          pin="${pin%%-[0-9]*-g*}"
+          note "backend is not running; snapshotting with the ${pin} image (the checkout's release, not .env's IMAGE_TAG)"
+          ;;
+      esac
+    fi
+    # Build mode: the local `latest` IS the checkout's build.
+  fi
   # umask in a subshell so the shell's redirection CREATES the file 0600: this
   # snapshot holds every resume, application and setting in the database, and a
   # chmod after the fact leaves it world-readable for the length of the dump.
-  if ! ( umask 077; compose run --rm -T --no-deps backend python -m app.tools.backup_db --stdout | gzip > "$dump" ); then
+  # The IMAGE_TAG export lives and dies in that same subshell.
+  if ! ( umask 077; if [ -n "$pin" ]; then export IMAGE_TAG="$pin"; fi; "${via[@]}" python -m app.tools.backup_db --stdout | gzip > "$dump" ); then
     rm -f "$dump"
     die "sqlite backup failed"
   fi
@@ -382,7 +416,7 @@ do_update() {
   fi
   if [ -s "$SQLITE_FILE" ]; then
     dump="$REPO/backups/db-${ts}-${version}.sqlite3.gz"
-    backup_sqlite "$dump"
+    backup_sqlite "$dump" "$registry" "$version"
   fi
   if [ -z "$dump" ] && [ -z "$dump_pg" ]; then
     die "no database to back up: $SQLITE_FILE is empty or missing and there is no legacy Postgres volume to dump; a first boot creates the file"

@@ -47,6 +47,8 @@ def _seed(url: str) -> dict[str, int]:
         )
         session.add(job)
         session.flush()
+        # gaps_json OMITTED, not None: the ORM writes SQL NULL for a column it
+        # was never given, while an explicit None is the JSON text 'null'.
         session.add(AtsScore(
             job_id=job.id, target_type="base_resume", target_id="example", phase="base",
             composite=Decimal("72.5"), subscores_json={"a": 1}, skill_table_json=[],
@@ -99,6 +101,64 @@ def test_copy_database_round_trips_and_verifies(tmp_path):
     for table, n in expected.items():
         assert report[table]["rows"] == n == report[table]["target_rows"]
     assert report["jobs"]["source_hash"] == report["jobs"]["target_hash"]
+
+
+def _typeof(url: str, table: str, column: str) -> list[str]:
+    engine = make_engine(url)
+    try:
+        with engine.connect() as conn:
+            return conn.execute(sa.text(f"SELECT typeof({column}) FROM {table}")).scalars().all()
+    finally:
+        engine.dispose()
+
+
+def test_copy_database_keeps_a_sql_null_json_column_null(tmp_path):
+    src = f"sqlite:///{tmp_path / 'src.sqlite3'}"
+    dst = f"sqlite:///{tmp_path / 'dst.sqlite3'}"
+    _fresh_schema(src)
+    _seed(src)
+    _fresh_schema(dst)
+    assert _typeof(src, "ats_scores", "gaps_json") == ["null"]
+    assert _typeof(src, "jobs", "extracted_json") == ["text"]
+
+    report = tool.copy_database(src, dst, log=lambda *_: None)
+
+    # sa.JSON would bind None as the TEXT 'null' (IS NULL false); both sides read
+    # None, so the hash alone cannot tell. typeof can.
+    assert _typeof(dst, "ats_scores", "gaps_json") == ["null"]
+    assert _typeof(dst, "jobs", "extracted_json") == ["text"]
+    assert report["ats_scores"]["ok"] and report["jobs"]["ok"], report
+
+
+def test_main_hides_the_password_of_a_malformed_source(tmp_path, capsys):
+    dst = f"sqlite:///{tmp_path / 'dst.sqlite3'}"
+    _fresh_schema(dst)
+
+    # Parses, but names no dialect: an ArgumentError out of create_engine. A
+    # string make_url cannot parse takes the same branch and is not echoed.
+    code = tool.main([
+        "--source", "postgresx://app:s3cret@localhost/db",
+        "--target", dst, "--skip-source-upgrade",
+    ])
+
+    captured = capsys.readouterr()
+    assert code == 1
+    assert "malformed source URL (password hidden): postgresx://app:***@localhost/db" in captured.err
+    assert "s3cret" not in captured.err + captured.out
+
+
+def test_import_if_needed_hides_the_password_of_a_malformed_source(tmp_path):
+    dst = f"sqlite:///{tmp_path / 'dst.sqlite3'}"
+    _fresh_schema(dst)
+    marker = tmp_path / ".migrated-from-postgres.json"
+
+    with pytest.raises(tool.ExportError) as info:
+        tool.import_if_needed("postgresx://app:s3cret@localhost/db", dst, marker, log=lambda *_: None)
+
+    # The boot hook logs the whole chain: no link of it may carry the password.
+    assert "s3cret" not in str(info.value)
+    assert info.value.__cause__ is None and info.value.__suppress_context__
+    assert not marker.exists()
 
 
 def test_main_refuses_a_non_empty_target_without_replace(tmp_path, capsys):

@@ -31,6 +31,8 @@ import sqlalchemy as sa
 from alembic import command
 from alembic.config import Config
 from sqlalchemy.engine import make_url
+from sqlalchemy.exc import ArgumentError
+from sqlalchemy.sql.elements import Null
 from sqlalchemy.types import TypeDecorator
 
 from app.config import normalize_postgres_url, settings
@@ -66,6 +68,10 @@ def normalize_value(value):
     the same through app.models.types."""
     if isinstance(value, uuid.UUID):
         return str(value)
+    if isinstance(value, Null):
+        # What _coerce_for_target binds for a source NULL in a JSON column;
+        # the target reads it back as None, so it hashes as None here.
+        return None
     if isinstance(value, datetime):
         aware = value if value.tzinfo else value.replace(tzinfo=UTC)
         return aware.astimezone(UTC).isoformat()
@@ -118,7 +124,14 @@ def _coerce_for_target(table: sa.Table, row: dict) -> dict:
     out = {}
     for column in table.columns:
         value = row[column.name]
-        if value is not None:
+        if value is None:
+            if isinstance(column.type, sa.JSON):
+                # sa.JSON binds Python None as the JSON text 'null': a TEXT
+                # cell, `IS NULL` false. The ORM writes SQL NULL for a column
+                # it was never given, and a source NULL reads back as None, so
+                # only an explicit null() keeps it NULL on the target.
+                value = sa.null()
+        else:
             if isinstance(column.type, sa.Uuid) and isinstance(value, str):
                 value = uuid.UUID(value)
             elif (
@@ -214,6 +227,16 @@ def create_target_schema(target_url: str) -> None:
     command.upgrade(cfg, "head")
 
 
+def _hidden(url: str) -> str:
+    """`url` as it may be printed or logged: the password hidden. A string
+    make_url cannot parse is not echoed at all -- a password pasted wrong is
+    the likeliest way to get one."""
+    try:
+        return make_url(url).render_as_string(hide_password=True)
+    except ArgumentError:
+        return "<unparseable URL, not echoed>"
+
+
 def _source_has_data(source_url: str) -> bool | None:
     """True/False, or None when the source cannot be reached."""
     try:
@@ -223,6 +246,13 @@ def _source_has_data(source_url: str) -> bool | None:
             "psycopg is not installed; install the legacy-postgres extra: "
             "pip install -e '.[legacy-postgres]'"
         ) from exc
+    except ArgumentError as exc:
+        # `from None`: the original message can quote the raw URL, and the boot
+        # hook logs the whole chain with logger.exception.
+        raise ExportError(
+            f"malformed source URL (password hidden): {_hidden(source_url)} "
+            f"({type(exc).__name__})"
+        ) from None
     try:
         with engine.connect() as conn:
             if not sa.inspect(conn).has_table("alembic_version"):
@@ -387,9 +417,8 @@ def main(argv: list[str] | None = None) -> int:
         # than guess", design §2.6).
         has_data = _source_has_data(source)
         if has_data is None:
-            shown = make_url(source).render_as_string(hide_password=True)
-            print(f"error: the source cannot be reached ({shown}); refusing rather than guess",
-                  file=sys.stderr)
+            print(f"error: the source cannot be reached ({_hidden(source)}); refusing rather "
+                  "than guess", file=sys.stderr)
             return 1
         if not has_data:
             print("note: the source holds no user data; only the schema will be created")
@@ -423,7 +452,11 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 1
     except (sa.exc.SQLAlchemyError, sqlite3.Error, OSError) as exc:
-        print(f"error: {exc}", file=sys.stderr)
+        # A driver message that quotes the URL would print the password with it.
+        text = str(exc)
+        for raw in {args.source, source}:
+            text = text.replace(raw, _hidden(raw))
+        print(f"error: {text}", file=sys.stderr)
         return 1
 
     _print_report(report)
