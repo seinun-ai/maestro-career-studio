@@ -13,7 +13,9 @@ from app.services.template_validation import SAMPLE_RESUME
 
 TILDE_CONTACT = {
     "name": "Jane Doe",
-    "email": "jane@example.com",
+    # The underscore is load-bearing: a plain address escapes identically under
+    # both filters, which left all three \href{mailto:…} sites unguarded.
+    "email": "jane_doe@example.com",
     "location": "Austin, TX",
     "linkedin": "linkedin.com/in/~jane",
     "github": "github.com/jane_dev",
@@ -51,15 +53,17 @@ PDF_STREAM_RE = re.compile(rb"stream\r?\n(.*?)endstream", re.S)
 
 def _tilde_resume() -> dict:
     """SAMPLE_RESUME with a tilde and an underscore in all THREE kinds of URL a
-    template can emit: the contact links, the first project's link, and the
-    first extra-section entry's link.
+    template can emit: the contact links (mailto included — TILDE_CONTACT's
+    address carries an underscore precisely so the ``\\href{mailto:…}`` sites
+    are guarded too), the first project's link, and the first extra-section
+    entry's link.
 
-    Every kind has to carry both characters or the audit goes vacuous for the
-    sites that render it — SAMPLE_RESUME's own contact/project/entry links are
-    all plain, so a template reverted to ``latex_escape`` on an unseeded site
-    would still render clean URLs and pass. ``website`` is added on top of
-    TILDE_CONTACT for the same reason: two templates render a website \\href
-    behind an ``((* if contact.website *))`` guard.
+    Every kind has to carry one of the two characters or the audit goes vacuous
+    for the sites that render it — SAMPLE_RESUME's own contact/project/entry
+    links are all plain, so a template reverted to ``latex_escape`` on an
+    unseeded site would still render clean URLs and pass. ``website`` is added
+    on top of TILDE_CONTACT for the same reason: two templates render a website
+    \\href behind an ``((* if contact.website *))`` guard.
     """
     data = copy.deepcopy(SAMPLE_RESUME)
     data["contact"] = {**TILDE_CONTACT, "website": "example.com/~jane_site"}
