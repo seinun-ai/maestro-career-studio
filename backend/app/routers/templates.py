@@ -15,17 +15,22 @@ from app.schemas.template import (
     TemplateSummary,
     TemplateUpdate,
 )
-from app.services import pdf_preview
+from app.services import engines, pdf_preview
 from app.services import template_registry as reg
 from app.services import template_validation as tv
 
 router = APIRouter(prefix="/api/templates", tags=["templates"])
 
 
-def _with_fmt_keys(row):
+def _with_fmt_keys(row, pdflatex_ok: bool | None = None):
     # Attach the derived fmt.* key list so from_attributes serialization picks it
     # up (it is computed from source, not stored on the model).
     row.supported_fmt_keys = reg.supported_fmt_keys(row.source or "", row.engine)
+    # engine_available is a host property, not a row property: derived here so
+    # the list probes once for every row instead of once per row.
+    if pdflatex_ok is None:
+        pdflatex_ok = engines.pdflatex_available()
+    row.engine_available = row.engine != "latex" or pdflatex_ok
     return row
 
 
@@ -45,7 +50,8 @@ def list_templates(
     rows = reg.list_all(db)
     if not include_archived:
         rows = [row for row in rows if row.archived_at is None]
-    return [_with_fmt_keys(row) for row in rows]
+    pdflatex_ok = engines.pdflatex_available()
+    return [_with_fmt_keys(row, pdflatex_ok) for row in rows]
 
 
 @router.get("/{template_id}", response_model=TemplateDetail)

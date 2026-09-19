@@ -10,7 +10,13 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.models.template import Template
 from app.schemas.template import validate_template_id
-from app.services import pdf_render
+from app.services import engines, pdf_render
+
+# The ONE wording for "this LaTeX template cannot be validated on this host".
+# `compile_against_sample` returns it, `validate_template` records it as
+# last_error, and `template_registry._seed_validate` writes it on a LaTeX seed
+# it skips — so the gallery can say "requires TeX" from either path.
+REQUIRES_TEX = "requires TeX (pdflatex not found)"
 
 SAMPLE_RESUME: dict = {
     "contact": {
@@ -270,7 +276,13 @@ def compile_against_sample(
                 shutil.copy(out_dir / "preview.pdf", keep_pdf_at)
         return None
 
-    # ---- latex (unchanged) ----
+    # ---- latex ----
+    # Validation NEVER substitutes: validating template A must never validate
+    # template B (that is the document-render rule, pdf_render.
+    # resolve_render_template). Without pdflatex the answer is simply "cannot
+    # validate here", recorded as the reason instead of a spawn traceback.
+    if not engines.pdflatex_available():
+        return REQUIRES_TEX
     try:
         tex = pdf_render.render_tex_from_source(
             source, SAMPLE_RESUME, formatting=default_formatting

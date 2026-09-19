@@ -1,5 +1,6 @@
 """Design 2026-09-19 §2.2: a render never changes engine silently, and a
 missing pdflatex is an actionable error, never a 500 from FileNotFoundError."""
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -12,8 +13,9 @@ from app.main import app
 from app.models.application import Application
 from app.models.template import Template
 from app.routers import applications as applications_router
-from app.services import base_resume_render, engines, pdf_render
+from app.services import base_resume_render, engines, pdf_render, resume_lint
 from app.services import template_registry as reg
+from app.services import template_validation as tv
 from app.services.template_validation import SAMPLE_RESUME
 from tests.test_applications_router import _job
 from tests.test_base_resumes_router import _override_db, _seed
@@ -325,3 +327,81 @@ def test_extras_error_after_a_substitution_says_the_substitution_happened(
     assert "TeX is not installed" in message
     assert "Plain" in message and "Classic" in message
     assert "cannot render custom sections" in message
+
+
+# --- Validation and health gates without TeX ----------------------------------
+
+
+def test_validating_a_latex_template_without_tex_reports_requires_tex(db_session, monkeypatch):
+    # Validation never substitutes: template A must never validate template B.
+    _no_tex(monkeypatch)
+    _seed_rows(db_session)
+    result = tv.validate_template("default", db_session)
+    assert result["ok"] is False
+    assert result["error"] == "requires TeX (pdflatex not found)"
+    row = db_session.get(Template, "default")
+    assert row.status == "draft" and row.last_error == result["error"]
+
+
+def test_health_gates_follow_the_template_that_renders(
+    db_session, tmp_path, monkeypatch, caplog
+):
+    # Without TeX the resume renders through Typst Classic, so the structure
+    # gates must be Typst Classic's, and no lazy LaTeX certification may run.
+    _no_tex(monkeypatch)
+    _seed_rows(db_session)
+    # Typst Classic's lazy certification compiles for real and writes a preview.
+    monkeypatch.setattr(app_settings, "base_resumes_dir", tmp_path)
+    seen: list[str] = []
+    real_validate = tv.validate_template
+
+    def spy(template_id, session):
+        seen.append(template_id)
+        return real_validate(template_id, session)
+
+    monkeypatch.setattr(tv, "validate_template", spy)
+    gates = resume_lint.structure_gates(db_session, "default", SAMPLE_RESUME)
+    assert seen == [reg.TYPST_CLASSIC_ID]
+    assert "lazy template certification failed" not in caplog.text
+    assert {g["id"] for g in gates} >= {"S1", "S2"}
+
+
+def test_health_gates_fall_back_to_the_requested_template_when_no_typst_is_ready(
+    db_session, monkeypatch
+):
+    _no_tex(monkeypatch)
+    _seed_rows(db_session, typst_ready=False)
+    gates = resume_lint.structure_gates(db_session, "default", SAMPLE_RESUME)
+    # The health run never fails on the no-Typst ValueError; S1 is not_assessed
+    # with the requires-TeX reason recorded on the template.
+    s1 = next(g for g in gates if g["id"] == "S1")
+    assert s1["status"] == "not_assessed"
+    assert db_session.get(Template, "default").last_error == "requires TeX (pdflatex not found)"
+
+
+def test_create_side_base_resume_responses_carry_the_note(db_session, tmp_path, monkeypatch):
+    _no_tex(monkeypatch)
+    _seed_rows(db_session)
+    monkeypatch.setattr(app_settings, "base_resumes_dir", tmp_path)
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        client = TestClient(app)
+        created = client.post(
+            "/api/base-resumes",
+            json={"slug": "made_here", "role_category": "data_scientist", "data": SAMPLE_RESUME},
+        )
+        assert created.status_code == 200, created.text
+        assert "TeX is not installed" in created.json()["render_note"]
+        dup = client.post("/api/base-resumes/made_here/duplicate", json={"new_slug": "made_copy"})
+        assert dup.status_code == 200, dup.text
+        assert "TeX is not installed" in dup.json()["render_note"]
+        # /import delegates to the create handler; a JSON upload needs no model.
+        imported = client.post(
+            "/api/base-resumes/import",
+            data={"slug": "made_import"},
+            files={"file": ("resume.json", json.dumps(SAMPLE_RESUME), "application/json")},
+        )
+        assert imported.status_code == 200, imported.text
+        assert "TeX is not installed" in imported.json()["render_note"]
+    finally:
+        app.dependency_overrides.clear()

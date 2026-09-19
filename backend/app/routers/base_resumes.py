@@ -249,7 +249,9 @@ def create_base_resume(
     _write_json_file(payload.slug, data_dict)
     base_resume_render.render_base_resume(payload.slug, db)
     db.refresh(row)
-    return _detail(row)
+    # A create is a render response too (from-kb and /import come through
+    # here): without the note a TeX-less host substitutes Typst silently.
+    return _detail(row, render_note=getattr(row, "render_note", None))
 
 
 @router.put("/{slug}", response_model=BaseResumeDetail)
@@ -725,7 +727,7 @@ def duplicate_base_resume(
     _write_json_file(payload.new_slug, data_copy)
     base_resume_render.render_base_resume(payload.new_slug, db)
     db.refresh(row)
-    return _detail(row)
+    return _detail(row, render_note=getattr(row, "render_note", None))
 
 
 @router.get("/{slug}/pdf")

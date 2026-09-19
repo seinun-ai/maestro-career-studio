@@ -1,6 +1,9 @@
 import pytest
 
+from app.models.template import Template
+from app.services import engines
 from app.services import template_registry as reg
+from app.services import template_validation as tv
 
 
 def test_supported_fmt_keys_follows_bundled_partial():
@@ -225,3 +228,45 @@ def test_duplicate_copies_engine(db_session):
     reg.create_draft(db_session, id="ty", display_name="Ty", source="#x", origin="mcp", engine="typst")
     copy = reg.duplicate(db_session, "ty", "ty2")
     assert copy.engine == "typst"
+
+
+def test_seed_validation_without_tex_leaves_latex_seeds_draft_with_a_reason(
+    db_session, tmp_path, monkeypatch
+):
+    # The Typst seeds really compile here (in-process), so they need a writable
+    # preview dir; the LaTeX seeds must never get as far as a compile.
+    monkeypatch.setattr(tv.settings, "base_resumes_dir", tmp_path)
+    monkeypatch.setattr(engines, "pdflatex_available", lambda: False)
+    reg.reset_seed_validation_attempts()
+    reg.ensure_seed_templates(db_session, validate=True)
+
+    default = reg.get(db_session, "default")
+    assert default.status == "draft"
+    assert default.last_error == "requires TeX (pdflatex not found)"
+    assert reg.get(db_session, reg.TYPST_CLASSIC_ID).status == "ready"
+    # Every bundled LaTeX seed says the same; no bundled Typst seed is touched.
+    for template_id, _name, engine, _file, _fmt in reg.BUNDLED_TEMPLATES:
+        row = reg.get(db_session, template_id)
+        if engine == "latex":
+            assert row.status == "draft"
+            assert row.last_error == "requires TeX (pdflatex not found)"
+        else:
+            assert row.status == "ready"
+    # Nothing was compiled, so nothing was "attempted": the guard is unconsumed
+    # and the next validating ensure (next boot) re-checks the probe.
+    assert "default" not in reg._SEED_VALIDATION_ATTEMPTED
+
+    monkeypatch.setattr(engines, "pdflatex_available", lambda: True)
+    calls: list[str] = []
+
+    def fake_validate(template_id, session):
+        calls.append(template_id)
+        row = session.get(Template, template_id)
+        row.status, row.last_error = "ready", None
+        session.commit()
+        return {"ok": True}
+
+    monkeypatch.setattr(tv, "validate_template", fake_validate)
+    reg.ensure_seed_templates(db_session, validate=True)
+    assert "default" in calls
+    assert reg.get(db_session, "default").status == "ready"

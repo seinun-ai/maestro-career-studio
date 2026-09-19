@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.models.template import Template
 from app.schemas.template import validate_template_id
-from app.services import pdf_render, typst_compiler
+from app.services import engines, pdf_render, typst_compiler
 
 logger = logging.getLogger(__name__)
 
@@ -214,6 +214,13 @@ def _bootstrap_default(session: Session, *, validate: bool = True) -> Template:
     # 'default' row had been deleted after the user re-pointed the default.
     current = session.scalar(select(Template).where(Template.is_default.is_(True)))
     if current is not None:
+        # The seed default gets the same "another go on the next ensure" as
+        # every other seed (`_bootstrap_seeded`): a first boot without TeX
+        # leaves it a draft with "requires TeX", and returning here unconditionally
+        # meant installing TeX never re-validated it. A user-chosen default is
+        # the user's and is never validated on their behalf.
+        if validate and current.id == DEFAULT_ID and _needs_seed_validation(current):
+            _seed_validate(session, current)
         return current
     existing = session.get(Template, DEFAULT_ID)
     if existing is not None:
@@ -298,6 +305,15 @@ def _seed_validate(session: Session, tmpl: Template) -> None:
     from app.services import template_validation  # lazy: avoid import cycle
 
     if tmpl.id in _SEED_VALIDATION_ATTEMPTED:
+        return
+    if tmpl.engine == "latex" and not engines.pdflatex_available():
+        # Not an attempt: nothing compiled, so the guard stays unconsumed and
+        # the next validating ensure (startup, or POST /validate) re-checks the
+        # probe. The reason is recorded so the gallery can say "requires TeX".
+        reason = template_validation.REQUIRES_TEX
+        if tmpl.last_error != reason:
+            tmpl.last_error = reason
+            session.commit()
         return
     _SEED_VALIDATION_ATTEMPTED.add(tmpl.id)
     try:
