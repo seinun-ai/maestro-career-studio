@@ -6,7 +6,7 @@ import subprocess
 from dataclasses import dataclass
 from datetime import date as _date
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from jinja2 import FileSystemLoader
 from jinja2.sandbox import SandboxedEnvironment
@@ -17,6 +17,11 @@ from app.schemas.resume import ResumeData
 from app.services import engines, typst_compiler
 from app.services.date_format import format_date
 from app.services.resume_projects import resume_for_render
+
+if TYPE_CHECKING:  # annotations only: template_registry imports this module at load
+    from sqlalchemy.orm import Session
+
+    from app.models.template import Template
 
 logger = logging.getLogger(__name__)
 
@@ -562,7 +567,9 @@ def tex_fallback_note(substitute: str, requested: str) -> str:
     )
 
 
-def resolve_render_template(template_id: str | None, session):
+def resolve_render_template(
+    template_id: str | None, session: "Session"
+) -> "tuple[Template, str | None]":
     """The ONE fallback rule (design 2026-09-19 §2.2): resolve as before, then a
     LaTeX template on a host with no pdflatex becomes the first ready Typst
     template, with a note that names both. No ready Typst template → ValueError
@@ -579,7 +586,10 @@ def resolve_render_template(template_id: str | None, session):
     note = tex_fallback_note(
         substitute.display_name or substitute.id, tmpl.display_name or tmpl.id
     )
-    logger.info("render fallback: %s", note)
+    # The user-facing note says only that TeX is absent; the log also carries
+    # the probe's reason so a reader can tell a missing TeX from a broken one
+    # (a wrong MAESTRO_CS_PDFLATEX, a --version that fails).
+    logger.info("render fallback: %s (pdflatex: %s)", note, engines.probe_pdflatex().reason)
     return substitute, note
 
 
@@ -605,9 +615,17 @@ def render_document(
     tmpl, note = resolve_render_template(template_id, session)
     merged = merge_formatting(tmpl.default_formatting, formatting).model_dump()
     if tmpl.engine == "typst":
-        sys_inputs = build_typst_sys_inputs(
-            tmpl.source, resume_data, merged, enforce_extras_support=True
-        )
+        try:
+            sys_inputs = build_typst_sys_inputs(
+                tmpl.source, resume_data, merged, enforce_extras_support=True
+            )
+        except TemplateMissingExtraSectionsError as exc:
+            if note is None:
+                raise
+            # The user's own (LaTeX) template renders extras; the TeX-less
+            # substitute cannot. Say the substitution happened, or the message
+            # blames the user's template for lacking a feature it has.
+            raise TemplateMissingExtraSectionsError(f"{note} {exc}") from exc
         return RenderedDoc(
             "typst", tmpl.source, sys_inputs, resolved_template_id=tmpl.id, render_note=note
         )
@@ -675,32 +693,72 @@ def render_and_compile(
     return source_path, doc
 
 
+COVER_LETTER_TEMPLATE = "cover_letter.tex.j2"
+COVER_LETTER_TYPST_TEMPLATE = "cover_letter.typ"
+
+
+def cover_letter_paragraphs(body: str) -> list[str]:
+    return [p.strip() for p in body.split("\n\n") if p.strip()]
+
+
 def render_cover_letter_tex(
     *,
     contact: dict[str, Any],
     body: str,
     today: _date,
 ) -> str:
-    paragraphs = [p.strip() for p in body.split("\n\n") if p.strip()]
-    template = _environment().get_template("cover_letter.tex.j2")
+    template = _environment().get_template(COVER_LETTER_TEMPLATE)
     # The cover letter includes the shared _header.tex.j2 partial, which reads
     # fmt.* (e.g. fmt.header_align). Pass default formatting so the header keeps
     # its historical centered layout and does not raise UndefinedError.
     return template.render(
         contact=contact,
-        body_paragraphs=paragraphs,
+        body_paragraphs=cover_letter_paragraphs(body),
         today_date=today.strftime("%B %-d, %Y"),
         fmt=merge_formatting(None),
     )
 
 
+def cover_letter_typst_inputs(
+    *, contact: dict[str, Any], body: str, today: _date
+) -> dict[str, str]:
+    """sys_inputs for cover_letter.typ; blanks coerced like the resume path so a
+    cleared phone never prints as "None"."""
+    return {
+        "contact": json.dumps(_coerce_blank_to_none(dict(contact))),
+        "paragraphs": json.dumps(cover_letter_paragraphs(body)),
+        "today": today.strftime("%B %-d, %Y"),
+        "fmt": merge_formatting(None).model_dump_json(),
+    }
+
+
+def render_cover_letter(
+    *, engine: str, contact: dict[str, Any], body: str, today: _date
+) -> RenderedDoc:
+    """Engine-dispatching render half for cover letters. The engine is the
+    resolved RESUME template's engine (routers/qa.py), so a Typst-template user
+    and a TeX-less host both get Typst, and a LaTeX user sees no change."""
+    if engine == "typst":
+        source = (TEMPLATE_DIR / COVER_LETTER_TYPST_TEMPLATE).read_text(encoding="utf-8")
+        return RenderedDoc(
+            "typst", source, cover_letter_typst_inputs(contact=contact, body=body, today=today)
+        )
+    return RenderedDoc("latex", render_cover_letter_tex(contact=contact, body=body, today=today))
+
+
 def compile_cover_letter_pdf(
-    tex_text: str,
+    source_text: str,
     out_dir: Path,
     stem: str = "cover_letter",
+    *,
+    engine: str = "latex",
+    sys_inputs: dict[str, str] | None = None,
 ) -> Path:
-    """Cover-letter compile. A thin alias for `compile_pdf` — see its docstring
-    for why the two are no longer separate implementations. Kept as a named
-    entry point because callers read better for it, and because the
-    `latex-render-path` ledger row (SYSTEM §13) tracks it by name."""
-    return compile_pdf(tex_text, out_dir, stem, document="cover letter")
+    """Cover-letter compile for either engine. The latex branch is a thin alias
+    for `compile_pdf` — see its docstring for why the two are no longer separate
+    implementations. Kept as a named entry point because callers read better for
+    it, and because the `latex-render-path` ledger row (SYSTEM §13) tracks it by
+    name."""
+    if engine == "typst":
+        return compile_typst_pdf(source_text, out_dir, stem, sys_inputs=sys_inputs or {})
+    return compile_pdf(source_text, out_dir, stem, document="cover letter")

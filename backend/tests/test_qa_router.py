@@ -12,7 +12,10 @@ from app.main import app
 from app.models.application import Application
 from app.models.job import Job
 from app.models.qa_entry import QAEntry
+from app.models.template import Template
 from app.routers import qa
+from app.services import engines
+from app.services import template_registry as reg
 
 
 def _override_db(db_session):
@@ -285,7 +288,7 @@ def test_render_cover_letter_writes_pdf_and_sets_path(
         },
     )
 
-    def fake_compile(tex, out_dir, stem="cover_letter"):
+    def fake_compile(source, out_dir, stem="cover_letter", **kwargs):
         out_dir.mkdir(parents=True, exist_ok=True)
         path = out_dir / f"{stem}.pdf"
         path.write_bytes(b"%PDF test")
@@ -682,3 +685,81 @@ def test_post_qa_answers_an_unknown_application_id_with_404_not_500(db_session):
 
     assert response.status_code == 404
     assert str(missing) in response.json()["detail"]
+
+
+# --- The cover letter follows the resume's engine (design 2026-09-19 §2.3) ---
+
+
+def _seed_templates(db_session, *, typst_ready: bool) -> None:
+    """Every seed as a draft row (no compile); optionally mark typst-classic ready."""
+    reg.reset_seed_validation_attempts()
+    reg.ensure_seed_templates(db_session, validate=False)
+    if typst_ready:
+        db_session.get(Template, reg.TYPST_CLASSIC_ID).status = "ready"
+        db_session.commit()
+
+
+def _cover_letter_entry(db_session, application) -> QAEntry:
+    entry = QAEntry(
+        application_id=application.id,
+        kind="cover_letter",
+        prompt="cover letter",
+        answer="Dear team,\n\nHello.\n\nJane",
+    )
+    db_session.add(entry)
+    db_session.commit()
+    db_session.refresh(entry)
+    return entry
+
+
+def test_render_cover_letter_follows_the_resume_engine_without_tex(
+    db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(engines, "pdflatex_available", lambda: False)
+    _seed_templates(db_session, typst_ready=True)
+
+    application = _application(db_session)
+    entry = _cover_letter_entry(db_session, application)
+    monkeypatch.setattr(app_settings, "applications_dir", tmp_path)
+    monkeypatch.setattr(
+        qa.base_resume_data,
+        "load_base_resume",
+        lambda slug, session=None: {"contact": {"name": "Jane Doe", "email": "jane@example.com"}},
+    )
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        response = TestClient(app).post(f"/api/qa/{entry.id}/render")
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert Path(body["pdf_path"]).exists()
+    assert "TeX is not installed" in body["render_note"]
+
+
+def test_render_cover_letter_without_tex_or_typst_is_400_and_allocates_nothing(
+    db_session, tmp_path, monkeypatch
+):
+    """The resolver runs BEFORE application_artifacts.get_dir, so a 400 never
+    leaves an empty artifact directory (or a persisted artifact_dir) behind."""
+    monkeypatch.setattr(engines, "pdflatex_available", lambda: False)
+    _seed_templates(db_session, typst_ready=False)
+
+    application = _application(db_session)
+    entry = _cover_letter_entry(db_session, application)
+    monkeypatch.setattr(app_settings, "applications_dir", tmp_path)
+    monkeypatch.setattr(
+        qa.base_resume_data,
+        "load_base_resume",
+        lambda slug, session=None: {"contact": {"name": "Jane Doe", "email": "jane@example.com"}},
+    )
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        response = TestClient(app).post(f"/api/qa/{entry.id}/render")
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code == 400, response.text
+    assert "needs TeX" in response.json()["detail"]
+    assert not any(tmp_path.iterdir())
+    db_session.refresh(application)
+    assert application.artifact_dir is None

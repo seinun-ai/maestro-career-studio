@@ -277,3 +277,30 @@ def test_a_failed_re_render_does_not_leave_a_stale_note(db_session, tmp_path, mo
     with pytest.raises(RuntimeError, match="boom"):
         base_resume_render.render_base_resume("data_scientist", db_session)
     assert row.render_note is None
+
+
+def test_extras_error_after_a_substitution_says_the_substitution_happened(
+    db_session, monkeypatch
+):
+    """The user picked a LaTeX template that CAN render extras; the TeX-less
+    substitute cannot. The incompatibility message must say the engine was
+    swapped, or the user is told their own template lacks a feature it has."""
+    _no_tex(monkeypatch)
+    _seed_rows(db_session, typst_ready=False)
+    # The only ready Typst template never names extra_sections.
+    plain = Template(
+        id="plain", display_name="Plain", engine="typst", status="ready",
+        source="#let r = json(bytes(sys.inputs.resume))\n#r.contact.name",
+    )
+    db_session.add(plain)
+    db_session.commit()
+    assert reg.first_ready_typst(db_session).id == "plain"
+    # SAMPLE_RESUME carries enabled, non-empty extra sections (the sentinels).
+    assert pdf_render._renderable_extra_sections(SAMPLE_RESUME)
+
+    with pytest.raises(pdf_render.TemplateMissingExtraSectionsError) as info:
+        pdf_render.render_document(SAMPLE_RESUME, template_id="default", session=db_session)
+    message = str(info.value)
+    assert "TeX is not installed" in message
+    assert "Plain" in message and "Classic" in message
+    assert "cannot render custom sections" in message

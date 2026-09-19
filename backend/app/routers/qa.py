@@ -171,6 +171,14 @@ def render_cover_letter(entry_id: UUID, db: Annotated[Session, Depends(get_db)])
 
     base_resume = base_resume_data.load_base_resume(application.base_resume, db)
     contact = base_resume.get("contact", {})
+    # The cover letter follows the RESUME's engine: resolve the application's
+    # template exactly as application_render.render_resume does (None → the
+    # default), fallback rule included. Resolved BEFORE get_dir so a 400 never
+    # allocates (and persists) an empty artifact directory.
+    try:
+        tmpl, render_note = pdf_render.resolve_render_template(application.template_id, db)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
     rendered_at = datetime.now(UTC)
     role_label = role_titles.generic_role_title(
         role_category=job.role_category,
@@ -189,16 +197,18 @@ def render_cover_letter(entry_id: UUID, db: Annotated[Session, Depends(get_db)])
         role=role_label,
         document_type="CoverLetter",
     )
-    tex_text = pdf_render.render_cover_letter_tex(
-        contact=contact,
-        body=entry.answer,
-        today=rendered_at.date(),
+    doc = pdf_render.render_cover_letter(
+        engine=tmpl.engine, contact=contact, body=entry.answer, today=rendered_at.date()
     )
-    pdf_path = pdf_render.compile_cover_letter_pdf(tex_text, out_dir, stem=stem)
+    pdf_path = pdf_render.compile_cover_letter_pdf(
+        doc.source_text, out_dir, stem=stem, engine=doc.engine, sys_inputs=doc.sys_inputs
+    )
 
     entry.pdf_path = str(pdf_path)
     db.commit()
     db.refresh(entry)
+    # Transient, unmapped (QAEntryRead.render_note): lives on the row, never in it.
+    entry.render_note = render_note
     return entry
 
 
