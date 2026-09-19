@@ -279,6 +279,23 @@ def test_replace_folds_the_wal_in_so_the_moved_aside_copy_is_complete(tmp_path):
     assert _count(crash, "kb_entities") == 1  # the fresh import, not the old rows
 
 
+def test_move_aside_folds_the_wal_in_by_itself(tmp_path):
+    # Direct call, so the checkpoint is _move_aside's own work: the end-to-end
+    # path also runs _target_is_schema_only, whose connect/dispose can fold the
+    # WAL in as a side effect and mask a _move_aside that no longer does.
+    crash = tmp_path / "crash.sqlite3"
+    _wal_image_with_rows(tmp_path, crash.name, rows=3)
+
+    aside = tool._move_aside(crash)
+
+    assert aside is not None and aside.name.startswith("crash.sqlite3.replaced-")
+    assert not crash.exists()
+    assert not (tmp_path / "crash.sqlite3-wal").exists()
+    assert not (tmp_path / "crash.sqlite3-shm").exists()
+    assert not list(tmp_path.glob("crash.sqlite3.replaced-*-wal"))
+    assert _sqlite_count(aside, "kb_entities") == 3
+
+
 def test_replace_refuses_while_another_process_holds_the_file(tmp_path, monkeypatch, capsys):
     src = f"sqlite:///{tmp_path / 'src.sqlite3'}"
     _fresh_schema(src)
@@ -336,7 +353,7 @@ def test_export_from_real_postgres(tmp_path):
         # mean the legacy-postgres-export job quietly stopped testing anything:
         # its one test skips, pytest exits 0, and the job stays green forever.
         # So under CI a missing URL is a failure, not a skip.
-        if os.environ.get("CI"):
+        if os.environ.get("CI", "").lower() not in ("", "0", "false"):
             pytest.fail(
                 "LEGACY_POSTGRES_TEST_URL is not set in CI; "
                 "the legacy-postgres-export job must provide it"

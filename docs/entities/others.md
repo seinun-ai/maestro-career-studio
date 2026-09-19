@@ -265,7 +265,7 @@
   snapshots the point at port time for adapted ports; `drifted` compares
   `coalesce(source_text, ported_text)` to the current point, so an adapted
   rewrite is NOT drift but a later KB point edit is. **Local Markdown Career
-  Export** (`services/exports.py`, `routers/exports.py`): postgres stays
+  Export** (`services/exports.py`, `routers/exports.py`): the database stays
   authoritative; `career.md` is derived, deterministic, LLM-free, cached
   atomically under `EXPORTS_DIR`. REST: `GET /api/exports`, `GET
   /api/exports/career`, `POST /api/exports/career/refresh`. Reads auto-repair

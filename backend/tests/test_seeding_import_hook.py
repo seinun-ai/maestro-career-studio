@@ -97,7 +97,7 @@ def test_an_unreachable_source_aborts_startup(legacy_url, monkeypatch, caplog):
         with pytest.raises(RuntimeError, match="docker compose up -d postgres") as info:
             seeding._import_legacy_postgres()
 
-    assert "unset LEGACY_DATABASE_URL" in str(info.value)
+    assert "comment the `LEGACY_DATABASE_URL` line out of docker-compose.yml" in str(info.value)
     assert info.value.__cause__ is None
     assert "cannot be reached" in caplog.text
 
@@ -129,5 +129,5 @@ def test_any_import_failure_aborts_startup(legacy_url, monkeypatch, caplog, erro
             seeding._import_legacy_postgres()
 
     assert info.value.__cause__ is error
-    assert "unset LEGACY_DATABASE_URL" in str(info.value)
+    assert "comment the `LEGACY_DATABASE_URL` line out of docker-compose.yml" in str(info.value)
     assert "refusing to boot on an empty file" in caplog.text

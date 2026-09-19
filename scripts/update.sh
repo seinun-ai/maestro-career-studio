@@ -144,7 +144,11 @@ do_check() {
   probe_backend "$port"
 
   volume="$(pgdata_volume)"
-  if [ ! -s "$SQLITE_FILE" ] && [ -n "$volume" ]; then
+  if [ ! -s "$SQLITE_FILE" ] && [ -f "$IMPORT_MARKER" ]; then
+    # The marker alone decides whether the backend imports; an empty file next
+    # to it is a deleted database, not a pending import.
+    warn "database: data/maestro_cs.sqlite3 is missing or empty but the import marker exists, so the backend will skip the import; restore a snapshot from backups/${volume:+, or remove the marker to re-import from $volume}"
+  elif [ ! -s "$SQLITE_FILE" ] && [ -n "$volume" ]; then
     note "database: Postgres (legacy); the next backend boot imports it into data/maestro_cs.sqlite3"
   elif [ ! -s "$SQLITE_FILE" ]; then
     note "database: not created yet (first boot creates it)"
@@ -334,7 +338,7 @@ wait_health() {
 do_update() {
   local force="$1"
   local port user db registry
-  local old_sha ts version dump="" dump_pg="" d envbak pulled=0
+  local old_sha ts version dump="" dump_pg="" d envbak pulled=0 backups
   local newest tag_without_v
 
   port="$(env_get BACKEND_HOST_PORT 8001)"
@@ -420,7 +424,11 @@ do_update() {
     if git -C "$REPO" merge --ff-only "$newest"; then
       ok "checkout is at $newest"
     else
-      die "could not fast-forward to $newest (divergent history?). Refusing to move; your backup is at ${dump:-$dump_pg}"
+      backups="${dump:-$dump_pg}"
+      if [ -n "$dump" ] && [ -n "$dump_pg" ]; then
+        backups="$dump and $dump_pg"
+      fi
+      die "could not fast-forward to $newest (divergent history?). Refusing to move; your backup is at $backups"
     fi
   fi
 

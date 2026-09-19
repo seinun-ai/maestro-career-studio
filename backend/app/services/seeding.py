@@ -186,6 +186,13 @@ def run_startup() -> None:
         seed_startup_data(session)
 
 
+_SKIP_HINT = (
+    "To skip the import, comment the `LEGACY_DATABASE_URL` line out of "
+    "docker-compose.yml (then `./scripts/update.sh` needs `--force` past its "
+    "dirty-tree check), or unset the variable on a host run."
+)
+
+
 def _import_legacy_postgres() -> None:
     """ONE release only (SYSTEM.md §13 postgres-to-sqlite). run_startup() is
     `alembic upgrade head` -> this hook -> seed_startup_data(): the import
@@ -202,8 +209,9 @@ def _import_legacy_postgres() -> None:
     set the operator asked for an import, so a source that cannot be reached
     is a configuration error, not a transient to paper over. Compose orders
     the backend after Postgres's healthcheck, so in the stack this only fires
-    when something is genuinely wrong, and the message says to unset
-    LEGACY_DATABASE_URL to skip. Soft outcomes (no source, nothing to
+    when something is genuinely wrong, and the message says how to skip the
+    import (compose BUILDS the URL from POSTGRES_*, so there is no env override
+    to unset: comment the line out of docker-compose.yml). Soft outcomes (no source, nothing to
     import, already imported, a file that already holds data) never abort."""
     if not settings.legacy_database_url:
         return
@@ -219,15 +227,13 @@ def _import_legacy_postgres() -> None:
         raise RuntimeError(
             "Importing the legacy Postgres database failed; nothing was deleted and the "
             "SQLite file is still empty. Fix the cause (see the traceback above) and "
-            "restart; the import retries at the next boot. To skip it, unset "
-            "LEGACY_DATABASE_URL."
+            "restart; the import retries at the next boot. " + _SKIP_HINT
         ) from exc
     if outcome == "source-unreachable":
         message = (
             "LEGACY_DATABASE_URL is set but the Postgres source cannot be reached; refusing "
             "to boot on an empty file so the import can retry. Start the postgres service "
-            "(docker compose up -d postgres) and restart, or unset LEGACY_DATABASE_URL to "
-            "skip the import."
+            "(docker compose up -d postgres) and restart. " + _SKIP_HINT
         )
         logger.error(message)
         raise RuntimeError(message)
