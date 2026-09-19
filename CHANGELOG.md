@@ -39,6 +39,17 @@ published image tag is the same version with the leading `v` removed (`0.2.0`).
   not verify, the backend refuses to start and says why, and nothing is
   deleted. The next release deletes the `postgres` service entirely: install
   this one first.
+- **`DATABASE_URL` accepts only `sqlite:///` URLs.** Anything else — a
+  Postgres URL in either spelling included — is refused at startup with a
+  message saying what to do instead. Leave it unset and the file is derived
+  from the new `DATA_DIR` setting (default `/app/data`, where compose mounts
+  `./data`). The other new setting, `LEGACY_DATABASE_URL`, is the one place a
+  Postgres URL still belongs: compose builds it from your `POSTGRES_*` values,
+  and it names the source of the first-boot import.
+- **The migration history is squashed to one SQLite baseline**
+  (`871d0425b64c`). The Postgres chain survives only inside the importer, so a
+  branch carrying a revision parented on the old chain will not apply after
+  this release — rebase it onto the baseline.
 - **`applied_at`, and the applications list's `created_after` / `created_before`
   filters, now require a UTC offset.** A naive timestamp is refused at the
   boundary with a 422 instead of failing at write time with a 500.
@@ -54,7 +65,9 @@ published image tag is the same version with the leading `v` removed (`0.2.0`).
 ### Changed
 
 - The backend test suite needs no database service: each test process gets its
-  own throwaway SQLite file.
+  own throwaway SQLite file when `TEST_DATABASE_URL` is unset. When it is set,
+  it must be a `sqlite:///` file URL; one under `data/` or naming the app's own
+  database is refused.
 - psycopg moved into an optional `legacy-postgres` extra, which leaves with the
   `postgres` service next release. A source install that has to import a
   Postgres database needs `pip install -e ".[dev,legacy-postgres]"`.

@@ -215,22 +215,28 @@ folder. Two consequences worth knowing before they surprise you:
   `applications/` and `base_resumes/`. There is no copy inside Docker to
   re-attach by cloning into a folder of the same name. Keep a snapshot from
   `backups/` if you are about to move or remove the folder.
-- **`docker compose down -v` is no longer the reset button.** All it removes
-  now is the leftover Postgres volume from before this release.
+- **`docker compose down -v` alone is no longer the reset button.** All it
+  removes now is the leftover Postgres volume from before this release — and
+  that is exactly why it still belongs in the clean slate below.
 
 When you *want* everything gone — demo data, your data, stored keys, all of
 it — this is the pair of commands, run from the project folder, and it is not
 undoable:
 
 ```bash
-docker compose down
-rm -rf data/* data/.migrated-from-postgres.json
+docker compose down -v
+rm -rf data/*
 ```
 
-The glob skips dotfiles, which is why the import marker is named separately:
-left behind, it tells the next boot that the import has already happened, and
-your old Postgres data would not be re-imported. It leaves `data/.gitkeep`
-alone, which is what you want.
+The `-v` matters this release. With the old Postgres volume still there and
+the file gone, the next boot would find a database to import and copy your old
+Postgres data straight back in; with the volume gone there is nothing to
+import, and the boot starts clean. The glob skips dotfiles, so `data/.gitkeep`
+and the import marker (`data/.migrated-from-postgres.json`) stay — leave them:
+a marker with no volume behind it is inert. Deleting the marker as well, while
+the volume is still there, is the one combination that makes the next boot
+import the old data again — which is also how you re-import on purpose
+(`./scripts/update.sh --check` spells that out).
 
 ## 3. Find your way around
 

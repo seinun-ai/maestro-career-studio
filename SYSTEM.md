@@ -687,9 +687,10 @@ the copy rules, each with the failure mode that bought it. Code citing "§8" lan
   `docker compose up -d --no-build --force-recreate backend frontend`. A frontend-only change still needs
   the frontend image rebuilt — a stale image once made fixed UI look broken for a whole review.
 - **A USER updates instead** — `./scripts/update.sh`: online SQLite snapshot
-  (`app.tools.backup_db --stdout`, 0600, magic-byte checked; plus a `pg_dump` while a legacy Postgres volume
-  is live with no import marker) → ff-only to the newest `v*` tag → images pinned to that tag → health poll
-  → extension/MCP reminders (README "Updating"; `docs/RELEASING.md` cuts one). The tree is runtime here
+  (`app.tools.backup_db --stdout` through the running backend container, else the checkout's own image tag —
+  `.env`'s `latest` can predate the tool; 0600, magic-byte checked; plus a `pg_dump` while a legacy Postgres
+  volume is live with no import marker) → ff-only to the newest `v*` tag → images pinned to that tag →
+  health poll → extension/MCP reminders (README "Updating"; `docs/RELEASING.md` cuts one). The tree is runtime here
   (unpacked extension, host MCP venv), so checkout and images move TOGETHER — a bare `docker compose pull`
   skews an install. Contributors build. **This release's first boot imports a compose-era Postgres**
   (`LEGACY_DATABASE_URL`, which compose BUILDS from `POSTGRES_*`) between `alembic upgrade head` and
