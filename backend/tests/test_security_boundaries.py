@@ -144,9 +144,9 @@ def test_every_pdflatex_call_site_passes_the_hardened_environment():
     Keyed on the source so it covers call sites this test file does not
     exercise: every `subprocess.run` in the module must carry `env=`. Both
     call sites now share ONE spawn (`_run_pdflatex`), so the guard also pins
-    the routing: a second bare `subprocess.run` added later is caught by the
-    `env=` loop, an entry point that stops going through the runner by the
-    routing check.
+    the routing: a second spawn fails the count; the runner losing `env=`
+    fails the loop; an entry point bypassing the runner fails the routing
+    check.
     """
     source = pathlib.Path(pdf_render.__file__).read_text()
     calls = source.split("subprocess.run(")[1:]
@@ -159,7 +159,7 @@ def test_every_pdflatex_call_site_passes_the_hardened_environment():
         )
     for entry in ("def compile_pdf(", "def render_and_compile("):
         body = source.split(entry, 1)[1].split("\ndef ", 1)[0]
-        assert "_run_pdflatex(" in body, (
+        assert "= _run_pdflatex(" in body, (
             f"{entry} no longer routes through _run_pdflatex — "
             "paranoid file access is not applied on that path"
         )

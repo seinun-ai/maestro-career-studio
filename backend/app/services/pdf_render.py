@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import re
 import subprocess
@@ -17,6 +18,7 @@ from app.services import engines, typst_compiler
 from app.services.date_format import format_date
 from app.services.resume_projects import resume_for_render
 
+logger = logging.getLogger(__name__)
 
 TEMPLATE_DIR = Path(__file__).parent.parent / "templates"
 RESUME_TEMPLATE = "resume.tex.j2"
@@ -336,14 +338,20 @@ def _compile_cwd(source_path: Path) -> Path:
 def _run_pdflatex(source_path: Path, out_dir: Path, stem: str) -> subprocess.CompletedProcess:
     """The one spawn. A missing (or wrongly configured) binary is the actionable
     "install TeX or pick a Typst template" error, not an OSError 500. OSError
-    covers FileNotFoundError, PermissionError and IsADirectoryError — a wrong
-    MAESTRO_CS_PDFLATEX may name any of those; TimeoutExpired is not an OSError
-    and keeps propagating as before."""
+    covers FileNotFoundError and PermissionError — a wrong MAESTRO_CS_PDFLATEX
+    may name a missing path or a directory (exec of a directory is EACCES, not
+    IsADirectoryError), and ENOEXEC is a bare OSError; TimeoutExpired is not an
+    OSError and keeps propagating as before."""
     try:
         return subprocess.run(
             _pdflatex_argv(source_path, out_dir, stem),
             capture_output=True,
-            text=True,
+            # Not text=True: that decodes STRICTLY, and one non-UTF-8 byte in a
+            # pdflatex transcript (a font name, a stray Latin-1 log line) would
+            # raise UnicodeDecodeError out of the compile instead of the
+            # pdflatex diagnostic we are about to report.
+            encoding="utf-8",
+            errors="replace",
             timeout=60,
             check=False,
             env=_compile_env(out_dir),
@@ -351,9 +359,16 @@ def _run_pdflatex(source_path: Path, out_dir: Path, stem: str) -> subprocess.Com
         )
     except OSError as exc:
         _, reason = engines.find_pdflatex()
+        if reason is None:
+            # The probe found a binary but the spawn still failed (fork
+            # failure, ENOEXEC, EACCES): "not installed" would send the user
+            # to install TeX they already have.
+            raise RuntimeError(
+                f"pdflatex could not be started ({exc}). Reinstall TeX or pick a Typst template."
+            ) from exc
         raise RuntimeError(
-            "pdflatex is not installed on this machine "
-            f"({reason or exc}). Install TeX or pick a Typst template."
+            f"pdflatex is not installed on this machine ({reason}). "
+            "Install TeX or pick a Typst template."
         ) from exc
 
 
@@ -362,11 +377,12 @@ def compile_pdf(
 ) -> Path:
     """Write ``tex_text`` beside its PDF and compile it with pdflatex.
 
-    The ONE pdflatex entry point. It used to have a cover-letter twin that
-    differed in exactly one argument — ``-shell-escape``, i.e. permission to run
-    host commands — so the twin was both a duplicate and the weaker of the two.
-    Removing that flag left the bodies identical; keep it that way, and pass
-    ``document`` if a failure needs naming in the error.
+    The application-render entry point (tex text → PDF). The spawn itself is
+    `_run_pdflatex`, shared with `render_and_compile`. It used to have a
+    cover-letter twin that differed in exactly one argument — ``-shell-escape``,
+    i.e. permission to run host commands — so the twin was both a duplicate and
+    the weaker of the two. Removing that flag left the bodies identical; keep it
+    that way, and pass ``document`` if a failure needs naming in the error.
     """
     out_dir.mkdir(parents=True, exist_ok=True)
     tex_path = out_dir / f"{stem}.tex"
@@ -525,10 +541,46 @@ class RenderedDoc:
     source_text: str
     sys_inputs: dict[str, str] | None = None
     resolved_template_id: str | None = None
+    # Non-null ONLY when the engine was substituted (TeX missing); says why.
+    render_note: str | None = None
 
     @property
     def source_suffix(self) -> str:
         return ".typ" if self.engine == "typst" else ".tex"
+
+
+TEX_MISSING_NO_TYPST = (
+    "This template needs TeX, which is not installed on this machine. "
+    "Install TeX or pick a Typst template."
+)
+
+
+def tex_fallback_note(substitute: str, requested: str) -> str:
+    return (
+        "TeX is not installed on this machine; rendered with "
+        f"{substitute} instead of {requested}."
+    )
+
+
+def resolve_render_template(template_id: str | None, session):
+    """The ONE fallback rule (design 2026-09-19 §2.2): resolve as before, then a
+    LaTeX template on a host with no pdflatex becomes the first ready Typst
+    template, with a note that names both. No ready Typst template → ValueError
+    (the routers' 400). Document renders use this; template VALIDATION never
+    does — validating template A must never validate template B."""
+    from app.services import template_registry  # lazy import to avoid a cycle
+
+    tmpl = template_registry.get_usable_template(template_id, session)
+    if tmpl.engine != "latex" or engines.pdflatex_available():
+        return tmpl, None
+    substitute = template_registry.first_ready_typst(session)
+    if substitute is None:
+        raise ValueError(TEX_MISSING_NO_TYPST)
+    note = tex_fallback_note(
+        substitute.display_name or substitute.id, tmpl.display_name or tmpl.id
+    )
+    logger.info("render fallback: %s", note)
+    return substitute, note
 
 
 def render_document(
@@ -550,16 +602,14 @@ def render_document(
             ),
         )
 
-    from app.services import template_registry  # lazy import to avoid a cycle
-
-    tmpl = template_registry.get_usable_template(template_id, session)
+    tmpl, note = resolve_render_template(template_id, session)
     merged = merge_formatting(tmpl.default_formatting, formatting).model_dump()
     if tmpl.engine == "typst":
         sys_inputs = build_typst_sys_inputs(
             tmpl.source, resume_data, merged, enforce_extras_support=True
         )
         return RenderedDoc(
-            "typst", tmpl.source, sys_inputs, resolved_template_id=tmpl.id
+            "typst", tmpl.source, sys_inputs, resolved_template_id=tmpl.id, render_note=note
         )
     return RenderedDoc(
         "latex",
@@ -567,6 +617,7 @@ def render_document(
             tmpl.source, resume_data, formatting=merged, enforce_extras_support=True
         ),
         resolved_template_id=tmpl.id,
+        render_note=note,
     )
 
 

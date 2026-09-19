@@ -509,6 +509,31 @@ def get_usable_template(template_id: str | None, session: Session) -> Template:
     return row
 
 
+def first_ready_typst(session: Session) -> Template | None:
+    """The substitute for a LaTeX template on a TeX-less host, in a FIXED
+    order so the same install always falls back the same way: the default if
+    it is a ready Typst template, else typst-classic, else any ready Typst
+    template by id."""
+    default = session.scalar(select(Template).where(Template.is_default.is_(True)))
+    for candidate in (default, session.get(Template, TYPST_CLASSIC_ID)):
+        if (
+            candidate is not None
+            and candidate.engine == "typst"
+            and candidate.status == "ready"
+            and candidate.archived_at is None
+        ):
+            return candidate
+    return session.scalar(
+        select(Template)
+        .where(
+            Template.engine == "typst",
+            Template.status == "ready",
+            Template.archived_at.is_(None),
+        )
+        .order_by(Template.id)
+    )
+
+
 def create_draft(
     session: Session, *, id: str, display_name: str, source: str | None, origin: str,
     engine: str = "latex",

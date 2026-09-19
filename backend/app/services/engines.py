@@ -73,7 +73,14 @@ def find_pdflatex() -> tuple[str | None, str | None]:
     override = settings.maestro_cs_pdflatex
     if override is not None:
         candidate = Path(override)
-        if candidate.is_file() and os.access(candidate, os.X_OK):
+        try:
+            # is_file() itself can raise (PermissionError when a parent dir
+            # lacks search permission; Python 3.13 stopped swallowing it), and
+            # a probe whose job is to report must not.
+            usable = candidate.is_file() and os.access(candidate, os.X_OK)
+        except OSError:
+            usable = False
+        if usable:
             return str(candidate), None
         return None, (
             f"MAESTRO_CS_PDFLATEX points at {override}, which is not an "
