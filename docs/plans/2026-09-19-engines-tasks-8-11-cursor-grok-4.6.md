@@ -213,4 +213,10 @@ objection.
 
 | # | Task | What the plan said | What was done instead | Why |
 |---|---|---|---|---|
-| | | | | |
+| 1 | 8 | Test assumed the throwaway DB already has seeded LaTeX Classic, so `default_engine_available` is False when pdflatex is patched away | Test inserts a `classic` latex seed default before the GET | Tests do not run `ensure_seed_templates`; without a latex default the predicate is True (`default_tpl is None`) and the assertion cannot hold |
+| 2 | 9 | `assert "TeX" in srv.create_template_draft.__doc__` | Asserted `"no TeX"` and `"engine_available"` | `"TeX"` already matches `"LaTeX"` in the existing docstring; the plan's assertion would have passed with no new sentence |
+| 3 | 9 | Fix `render_pdf`'s `template_fallback` sentence; the listed test only checks the four new words | Also asserted `"silently substituted" not in` `render_pdf.__doc__` | The old sentence is the contract the handoff told us to retire; a word-presence test would not catch leaving it |
+| 4 | 10 | Pill strip lists only unfinished steps, so the engines row appears only in the expanded getting-started card | Left `setup-status-strip.tsx` unchanged; it maps every step | Strip is not in the allowed file list; live code does not filter on `done`. Engines will show there as a done pill whenever Typst is available |
+| 5 | wt | `git worktree add … -b cursor/engines-tasks-8-11 claude/desktop-step2-engines-mcp` in one shot | First add created the branch then failed writing `.git/worktrees/…/commondir` (sandbox); attached the existing branch at the same SHA | Same branch, same tip as the base; not a content change |
+| 6 | 12 note | — | Do not edit SYSTEM.md. It should gain: `engines` on `GET /api/setup/status` (informational, never `complete`); MCP docstring facts (`render_note`, `engine_available`, corrected `template_fallback`); frontend `requires TeX` badge + setup-checklist engines row | Planner's Task 12; Goal Card non-goal |
+| 7 | 11 | Correct only `others.md` ~113–114 | Also replaced the later “hash-guarded migration is what reaches installed rows” clause with seed-time `SUPERSEDED_SEED_DIGESTS` | Same paragraph, now false of the branch; Task 11 says every sentence must be true of the code |

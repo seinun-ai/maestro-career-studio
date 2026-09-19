@@ -110,8 +110,10 @@
   falls back tolerantly when stale. Formatting is a 4-layer merge: template
   default ← base-resume partial ← application partial ← render call. Bundled
   templates render a non-empty start plus blank end as `Present` without
-  mutating resume JSON; migration `c84a19d2e7f0` resyncs only untouched stored
-  seed sources.
+  mutating resume JSON. Migration `c84a19d2e7f0` (legacy Postgres chain) first
+  resynced untouched stored seed sources; the live mechanism is seed-time
+  (`template_registry.SUPERSEDED_SEED_DIGESTS`, every boot, after any legacy
+  import).
   `ResumeFormatting` has 14 knobs. The newest is **`section_order`**
   (`list[str] | None`): every bundled template defines its own native list and
   dispatches through it, so **absent/None = that template's order, byte-for-byte
@@ -131,7 +133,8 @@
   whole extras run, `move_extra_section` orders them among themselves.
   The four live user templates are bundled at
   `app/templates/user/`; `scripts/apply_template_sources` is their update
-  path, and a hash-guarded migration is what reaches installed rows.
+  path, and seed-time `SUPERSEDED_SEED_DIGESTS` is what reaches installed
+  rows.
   **Pre-change template sources are frozen per migration** at
   `tests/fixtures/templates_pre_section_order/`: reconstructing old bytes from
   the LIVE templates (what the date-resync test did) breaks on the next template
