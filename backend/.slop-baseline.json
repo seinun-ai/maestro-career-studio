@@ -1,10 +1,10 @@
 {
   "structure": {
     "root": "backend",
-    "modules": 438,
-    "total_loc": 122171,
-    "src_loc": 40247,
-    "test_loc": 81924,
+    "modules": 452,
+    "total_loc": 124998,
+    "src_loc": 41281,
+    "test_loc": 83717,
     "orphan_modules": [],
     "test_only_reachable": [],
     "orphan_loc": 0,
@@ -83,7 +83,7 @@
       },
       {
         "file": "app/services/proposals.py",
-        "line": 88,
+        "line": 89,
         "name": "transition",
         "complexity": 32,
         "params": 7,
@@ -123,7 +123,7 @@
       },
       {
         "file": "app/services/proposals.py",
-        "line": 299,
+        "line": 300,
         "name": "get_final_review",
         "complexity": 28,
         "params": 2,
@@ -299,7 +299,7 @@
       },
       {
         "file": "tests/test_kb_ingest_parsed.py",
-        "line": 50,
+        "line": 52,
         "name": "test_ingest_parsed_happy_path_returns_ids",
         "complexity": 21,
         "params": 3,
@@ -307,7 +307,7 @@
       },
       {
         "file": "tests/test_kb_ingest_parsed.py",
-        "line": 271,
+        "line": 273,
         "name": "test_onboarding_round_trip_ingest_approve_compose",
         "complexity": 21,
         "params": 4,
@@ -410,7 +410,7 @@
         "lines": 63
       }
     ],
-    "hotspot_count": 411,
+    "hotspot_count": 417,
     "error_masking": [
       {
         "file": "tests/test_tracing.py",
@@ -459,10 +459,12 @@
       }
     ],
     "error_masking_count": 9,
-    "internal_import_edges": 1837,
-    "imports_per_module": 4.19,
+    "internal_import_edges": 1874,
+    "imports_per_module": 4.15,
     "entry_points_used": [
       "app.main",
+      "app.tools.backup_db",
+      "app.tools.migrate_from_postgres",
       "mcp_server.server",
       "scripts.apply_template_sources",
       "scripts.ats_calibration",
@@ -477,7 +479,7 @@
       "min_tokens": 50,
       "mode": "weak"
     },
-    "percentage": 0.83,
+    "percentage": 0.81,
     "duplicated_lines": 420,
     "clones": 45,
     "allowlisted_clones": 0,
@@ -561,7 +563,9 @@
       "scripts.ats_snapshot",
       "scripts.backfill_work_auth",
       "scripts.template_parity",
-      "migrations.env"
+      "migrations.env",
+      "app.tools.backup_db",
+      "app.tools.migrate_from_postgres"
     ],
     "duplication_ignore": [
       "**/tests/**",
@@ -573,16 +577,20 @@
       "**/*.test.ts",
       "**/migrations/**",
       "**/.slop-baseline.json",
-      "**/graphify-out/**"
+      "**/graphify-out/**",
+      "**/legacy_postgres/**"
     ],
     "allowed_clones": [],
-    "gate_test_loc": false
+    "gate_test_loc": false,
+    "duplication_ignore_reasons": {
+      "**/legacy_postgres/**": "one-release copy of the pre-SQLite alembic chain + its alembic.ini (SYSTEM.md \u00a713 postgres-to-sqlite); read only by app.tools.migrate_from_postgres and deleted with that row. Not an allowed_clones pair: that matcher pairs file NAMES by substring and would also hide backend/alembic.ini's own future clones."
+    }
   },
   "ranked": [
     {
       "rank": "P2",
       "signal": "complexity_concentration",
-      "detail": "411 function(s) over threshold. worst: mcp_server/tests/test_server.py:532 cc=42",
+      "detail": "417 function(s) over threshold. worst: mcp_server/tests/test_server.py:532 cc=42",
       "why": "Complexity mass concentrating in few functions is the erosion signature.",
       "action": "Decompose the top 3. Do not touch the tail."
     },
@@ -595,16 +603,16 @@
     }
   ],
   "metrics": {
-    "total_loc": 122171,
-    "src_loc": 40247,
-    "test_loc": 81924,
-    "modules": 438,
+    "total_loc": 124998,
+    "src_loc": 41281,
+    "test_loc": 83717,
+    "modules": 452,
     "orphan_loc": 0,
-    "duplication_pct": 0.83,
+    "duplication_pct": 0.81,
     "duplicated_lines": 420,
     "clone_count": 45,
-    "complexity_hotspots": 411,
+    "complexity_hotspots": 417,
     "error_masking": 9,
-    "imports_per_module": 4.19
+    "imports_per_module": 4.15
   }
 }

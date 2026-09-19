@@ -184,11 +184,12 @@ def _write_gzip(image: Path, out: Path) -> None:
 
 def _silence_stdout() -> None:
     try:
-        os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
+        fd = sys.stdout.fileno()
     except (OSError, ValueError):
         # No real fd behind stdout (pytest's capture, a StringIO): nothing to
         # silence, and nothing that can raise at exit either.
-        pass
+        return
+    os.dup2(os.open(os.devnull, os.O_WRONLY), fd)
 
 
 if __name__ == "__main__":
