@@ -199,7 +199,7 @@ present — builds a demo Career KB from it.
 | `Cannot connect to the Docker daemon` | Docker isn't running | Start Docker Desktop, wait for "running", re-run the command |
 | `port is already allocated` | Another app owns 3000 or 8001 (or 55432, which this release still uses for the old Postgres) | Change `*_HOST_PORT` in `.env` ([details](../README.md#troubleshooting--common-questions)) |
 | Build sits at TeX Live / model download | Normal on first build | Wait it out; later builds are fast |
-| Page loads but everything errors | Backend still starting | `curl -s localhost:8001/health` answers `{"status":"ok"}` when it's ready (also at `/api/health`); `docker compose ps` shows it `Up`, and the backend reports `healthy` once migrations finish |
+| Page loads but everything errors | Backend still starting | `curl -s localhost:8001/health` answers `{"status":"ok"}` when it's ready (also at `/api/health`); `docker compose ps` shows it `Up` — only postgres reports `healthy`, because the backend has no healthcheck of its own |
 | Added a key to `.env` after starting | Keys are read at process start | `docker compose restart backend` — and remember a key saved in Settings overrides `.env` |
 | LLM calls fail 401 though Settings says "Configured" | A stale key — the label says where it lives (in-app beats `.env`) | Re-enter the key in Settings → Models and press **Test** |
 
@@ -224,8 +224,13 @@ undoable:
 
 ```bash
 docker compose down
-rm -rf data/*        # the glob leaves data/.gitkeep alone, which is what you want
+rm -rf data/* data/.migrated-from-postgres.json
 ```
+
+The glob skips dotfiles, which is why the import marker is named separately:
+left behind, it tells the next boot that the import has already happened, and
+your old Postgres data would not be re-imported. It leaves `data/.gitkeep`
+alone, which is what you want.
 
 ## 3. Find your way around
 
@@ -517,7 +522,7 @@ Four things worth knowing before your first update:
   settings are files on disk that no update step touches, and so is the
   database — `data/maestro_cs.sqlite3`, in the same folder (see
   [Starting over](#starting-over-a-genuinely-clean-slate), because that also
-  means the folder is now the thing to protect). The snapshot the script takes
+  means the folder is now the thing to protect). The backup the script takes
   guards the database *migration* specifically.
 - **This release moves the database out of Docker**, so the first boot after
   this particular update imports your old Postgres database into the new file

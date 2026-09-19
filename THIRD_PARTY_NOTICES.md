@@ -172,11 +172,12 @@ buried in a table.
 > psycopg, not to our code. Anyone who redistributes a *modified* psycopg, or
 > links it statically, takes on further obligations.
 >
-> **It is here for one release.** SQLite is the only runtime database now, and
-> psycopg ships solely through the optional `legacy-postgres` extra, which
-> exists so an existing install can import its old Postgres database at first
-> boot. The extra — and psycopg with it — goes when the `postgres` service
-> does.
+> **It is here for one release.** SQLite is the only runtime database now.
+> psycopg reaches the image through the optional `legacy-postgres` extra —
+> installed by `backend/Dockerfile` and pinned in `backend/requirements.lock`,
+> so it does ship in the published image — and it is there for one purpose:
+> importing an existing Postgres database into the SQLite file at first boot.
+> The extra, and psycopg with it, goes when the `postgres` service does.
 >
 > **The same applies to `@img/sharp-libvips-*` (LGPL-3.0-or-later)** on the
 > frontend — libvips arrives as a prebuilt platform binary pulled in by Next.js

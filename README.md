@@ -166,13 +166,15 @@ makes it so. [`SECURITY.md`](SECURITY.md) has the detail and the threat model.
 - **Git** — any recent version; it is how you install *and* update (macOS
   offers to install it on first use, Windows takes
   [Git for Windows](https://git-scm.com/download/win))
-- **Disk: the two app images are about an 850 MB download** (backend ~480 MB,
-  frontend ~360 MB compressed), unpacking to roughly 3–4 GB of image storage.
-  The backend is the big one — it carries a minimal TeX Live (`scheme-basic`
-  plus exactly the packages the bundled templates use, ~660 MB), Typst, and
-  the pinned embedding model. This release pulls the PostgreSQL image
-  (~170 MB) one last time, because an existing install imports its old
-  database on the first boot; the next release drops the service.
+- **Disk: the three images are about a 1 GB download** (backend ~480 MB,
+  frontend ~360 MB, PostgreSQL ~170 MB compressed), unpacking to roughly
+  3–4 GB of image storage. The backend is the big one — it carries a minimal
+  TeX Live (`scheme-basic` plus exactly the packages the bundled templates
+  use, ~660 MB), Typst, and the pinned embedding model. PostgreSQL is here for
+  this release only: your database is a file now, and the old service survives
+  one release so that an existing install can be imported into it. A fresh
+  install starts it once, finds nothing to import, and never reads it again;
+  the next release drops it.
 - **One API key — OpenAI or Gemini, either alone is a complete setup.** The
   parts that make Maestro CS fastest day to day run on it: in-app tailoring,
   the extension's tailor-on-the-go and AI form filling, cover letters and Q&A,
@@ -309,9 +311,11 @@ third. A report of what worked or broke, with the model name, is a genuinely
 useful contribution — please open an issue.
 
 On first boot, Docker will:
-1. Create the database file `data/maestro_cs.sqlite3` and run migrations via Alembic. (Updating from an earlier release: your Postgres database is imported into that file first, verified row for row — see [Updating](#updating).)
-2. Seed demonstration base resumes, compile initial PDF previews, seed default AI prompts, and build your initial demo Career KB (if an API key is present).
-3. Serve the UI on **http://127.0.0.1:3000** and backend API on **http://127.0.0.1:8001**.
+1. Launch PostgreSQL on host port `55432` (`127.0.0.1:55432`, to prevent collisions with any existing Postgres instance on port 5432). This release only: the import checks it, and then it idles.
+2. Create the database file `data/maestro_cs.sqlite3` and run migrations via Alembic.
+3. Import your old Postgres database into that file, verified row for row, if you are updating an install that had one — see [Updating](#updating). A fresh install has nothing to import, and the boot records that too.
+4. Seed demonstration base resumes, compile initial PDF previews, seed default AI prompts, and build your initial demo Career KB (if an API key is present).
+5. Serve the UI on **http://127.0.0.1:3000** and backend API on **http://127.0.0.1:8001**.
 
 ---
 
@@ -350,9 +354,19 @@ and pins the image pull to that same tag, rather than tracking `main`.
 Same thing, in the open, if you would rather see the moving parts:
 
 ```bash
-# 1. Back up the database (see "What happens to your data" below)
+# 1. Back up the database (see "What happens to your data" below). There are
+#    two stores this release, so there are two commands; update.sh picks the
+#    right one for you. The subshell umask keeps the file 0600, like the rest
+#    of your record.
 mkdir -p backups
-docker compose run --rm -T --no-deps backend python -m app.tools.backup_db --stdout | gzip > backups/db-manual.sqlite3.gz
+
+#    a) The database file exists — the normal case, and safe on a live stack:
+( umask 077; docker compose run --rm -T --no-deps backend python -m app.tools.backup_db --stdout | gzip > backups/db-manual.sqlite3.gz )
+
+#    b) THIS RELEASE ONLY — an install still on Postgres, whose first boot has
+#       not imported it yet (there is no data/maestro_cs.sqlite3):
+docker compose up -d postgres
+docker compose exec -T postgres pg_dump --clean --if-exists -U app maestro_cs | gzip > backups/db-manual.sql.gz
 
 # 2. Move the checkout to the newest released tag
 git fetch --tags origin
@@ -371,6 +385,9 @@ IMAGE_TAG="${TAG#v}" docker compose up -d --force-recreate --remove-orphans
 > is exactly what `update.sh` (and step 3 above) does explicitly. If you ever
 > wonder why a fresh release did not appear, that is why; `docker compose pull`
 > is the one-line answer.
+
+`-U app` and `maestro_cs` in (b) are the compose defaults (`POSTGRES_USER` /
+`POSTGRES_DB`); use your own values if you changed them in `.env`.
 
 **Pinning a version — the `v` is the trap.** The git tag is `v0.1.2`; the
 image tag drops the `v`. Pin with `IMAGE_TAG=0.1.2` — `IMAGE_TAG=v0.1.2` does
@@ -423,20 +440,31 @@ at boot, so there is no migration step for you — but the first boot after a
 schema change is genuinely slower, which is why the script says it is waiting
 rather than sitting silent.
 
-**What the pre-update backup actually covers.** `./scripts/update.sh` takes an
-online snapshot of the database file before it changes anything —
-`backups/db-<timestamp>-<version>.sqlite3.gz`, readable only by you — and while
-a legacy Postgres volume is still live with no import behind it, it takes a
-`pg_dump` too and tells you which of the two to restore from. The snapshot
-guards that migration, which is the one irreversible step in the process. It is
-*not* "your career data" — that is the on-disk directories above, which never
-needed guarding.
+**What the pre-update backup actually covers.** `./scripts/update.sh` backs up
+whichever store is live before it changes anything, into `backups/` and
+readable only by you. Which file you get says which that was:
+
+- **`db-<timestamp>-<version>.sql.gz`** is a `pg_dump`. On the update that
+  performs the import there is no SQLite file yet, so this is the only artifact
+  that update can produce.
+- **`db-<timestamp>-<version>.sqlite3.gz`** is an online snapshot of the
+  database file, and is what every later update writes.
+- **Both**, when both stores hold something and no import marker says which one
+  the backend actually read. The script refuses to guess; it takes both and
+  says so.
+
+It prints the restore command for whatever it just took, and prints it again if
+the stack does not come back healthy. The backup guards that migration, which
+is the one irreversible step in the process. It is *not* "your career data" —
+that is the on-disk directories above, which never needed guarding.
 
 ### Rolling back
 
-One recipe: the old git ref, the old images, and the snapshot — with the stack
-stopped, because restoring the database means replacing a file the backend
-holds open.
+One recipe — the old git ref, the old images, and the backup — in two forms,
+one per kind of backup file (see above for which you have).
+
+**From a SQLite snapshot (`.sqlite3.gz`)**, with the stack stopped, because
+restoring means replacing a file the backend holds open:
 
 ```bash
 docker compose down                                     # the restore needs it stopped
@@ -452,6 +480,16 @@ copy the live file out from the host while the backend is running — the copy
 can miss whatever is still in the write-ahead log. Take a snapshot with the
 `backup_db` command in [the manual equivalent](#the-manual-equivalent) above
 instead — it is safe to run against a live stack.
+
+**From a Postgres dump (`.sql.gz`)** — what the update that performed the
+import left behind, and what a rollback to a release that still read Postgres
+needs:
+
+```bash
+git checkout v0.1.1                                     # the version you were on
+IMAGE_TAG=0.1.1 docker compose up -d --force-recreate
+gunzip -c backups/db-<timestamp>-<version>.sql.gz | docker compose exec -T postgres psql -U app maestro_cs
+```
 
 **Never restore a snapshot into a newer schema, and do not reach for an Alembic
 downgrade.** Downgrade functions exist in the migration files, but they have

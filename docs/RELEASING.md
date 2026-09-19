@@ -164,7 +164,10 @@ four:
 - `data/.migrated-from-postgres.json` exists;
 - the tracker lists the applications that were there before;
 - a PDF renders;
-- `./scripts/update.sh --check` says `database: data/maestro_cs.sqlite3`.
+- `./scripts/update.sh --check` prints `✓ database: data/maestro_cs.sqlite3`
+  — with ` (the Postgres volume is also present and unused; remove it with
+  docker volume rm …)` appended, which is what it says for as long as the old
+  volume is still there.
 
 An import that fails closed is a backend that refuses to start, so a green
 health poll alone does not prove this path.
