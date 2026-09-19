@@ -834,6 +834,29 @@ git commit -m "fix(render): header contact URLs go through latex_escape_url (SYS
 
 ---
 
+### Task 5b: Existing installs get the user-template fix (resync migration)
+
+Added after Task 5's quality review (deviation row 20). Seeded template rows copy
+the bundled source ONLY on insert (`_bootstrap_seeded`; "untouched applies to
+the SOURCE of an existing row"), so `carlito_dense` and `harshibar` keep the
+old escaping on an upgraded install, while `_header.tex.j2` reaches everyone
+because it is a disk-loaded partial. Precedent: the hash-pinned resyncs
+`legacy_postgres/migrations/versions/0bc45a1bf6d6_resync_bundled_templates_section_order.py`
+and `c84a19d2e7f0_resync_bundled_template_dates_present.py` — rewrite only rows
+whose source digest equals the frozen PRE-change bytes, never a user-edited row,
+guarded by a test that checks the pinned digests against the frozen fixtures.
+
+**Files:**
+- Create: `backend/migrations/versions/<uuid4 hex[:12]>_resync_bundled_templates_href_url.py` (`down_revision = "871d0425b64c"`, the SQLite baseline; ids by `uuid.uuid4().hex[:12]`, SYSTEM.md §9)
+- Create: `backend/tests/fixtures/templates_pre_href_url/carlito_dense.tex.j2` and `harshibar.tex.j2` (byte-exact copies of the sources at `a510a5f1`: `git show a510a5f1:backend/app/templates/user/<name>`)
+- Test: `backend/tests/test_template_href_url_resync.py`
+
+**Steps:** (1) write the test first: build a temp SQLite file, `alembic upgrade head` through `migrations/env.py` the way `tests/test_migrations_env.py` does, insert three `templates` rows — `carlito_dense` with the pre-fix bytes, `harshibar` with the pre-fix bytes, and `carlito_dense_mine` (a user copy whose source differs by one character) — downgrade to the baseline is NOT needed: instead insert the rows, then run the migration's `upgrade()` body via a fresh `alembic upgrade` from `871d0425b64c` (stamp the DB at the baseline first, insert, then upgrade to head) and assert the two seed rows now equal the current bundled sources and the user row is byte-identical to before; a second test asserts the pinned SHA-256 digests in the migration equal `hashlib.sha256(fixture_bytes).hexdigest()` (a wrong digest is a silent no-op, which is why the precedent pins them). (2) Write the migration: read `id, source` from `templates`, for each `(id, expected_digest, new_source_path)` update only when the digest matches; `downgrade()` is a no-op with a docstring saying why (the old bytes are the bug). (3) `python3 -m pytest tests/test_template_href_url_resync.py tests/test_migrations_env.py tests/test_db_portability.py -q`, ruff, full suite. (4) Commit `fix(templates): resync carlito_dense and harshibar sources on existing installs`.
+
+Do NOT touch `legacy_postgres/` (that chain is frozen; the SQLite chain is the only one a new install runs — SYSTEM.md §13 `postgres-to-sqlite`).
+
+---
+
 ### Task 6: The cover letter on both engines
 
 **Files:**
@@ -1747,6 +1770,8 @@ git commit -m "docs(plans): engines branch — deviation log and gate results"
 | 15 | 4 | Files: the two POST `/render` endpoints | Also `PUT /api/base-resumes/{slug}` and `PATCH …/edits` return `render_note`; `render_base_resume` clears the transient at entry and sets it on success | The web UI never calls the base-resume POST `/render`; it re-renders through PUT/PATCH, so without this a web user on a TeX-less host got a silent substitution. Clearing at entry prevents a stale note surviving a failed re-render on the same identity object. |
 | 17 | 7 (planned) | Task 4 covered POST `/render`, PUT and PATCH | Task 7 will ALSO pass `render_note=getattr(row, "render_note", None)` at the create-side return sites of `routers/base_resumes.py` (`POST ""`, `/duplicate`, `/import`, `/from-kb`) with one test | Task 4's re-review: on a TeX-less desktop the user's FIRST action is import or create, and those re-render too; `duplicate` was probed returning `render_note: null`. |
 | 18 | 5 | Fix the three `\href` URL arguments in `_header.tex.j2` | Also `user/carlito_dense.tex.j2` (four `\href`s) and `user/harshibar.tex.j2` (project link), with a parametrized test over every bundled LaTeX template | The implementer found the same bug there; §11 item 7 cannot be deleted while any bundled template still corrupts a `~`/`_` link target. |
+| 19 | 5 | Audit fixture: contact links + first project link; header comment cites "§11 item 7, fixed 2026-09-19" | Fixture also sets the first extra-section entry link; audit also covers `template_registry.STARTER_SOURCE`; compile tests assert the PDF's `/URI` entries; the header comment points at `LATEX_URL_REPLACEMENTS` instead of a dated ledger item | Quality review: a mutation of the two `entry.link` sites left the audit green while its docstring claimed full coverage; the ledger pointer would dangle after Task 12 and bundled templates carry no dates. |
+| 20 | 5b (new) | The plan assumed editing a bundled template reaches every install | New Task 5b: a hash-pinned resync migration on the SQLite chain for `carlito_dense` and `harshibar` | Seeded rows copy the source only on insert; `_header.tex.j2` is a disk-loaded partial (reaches everyone), the two user templates are whole-source rows (do not). Precedent: the two `resync_bundled_*` migrations in `legacy_postgres/`. |
 | 16 | 10 (planned) | Task 10 shows `render_note` only in a badge tooltip | Task 10 will ALSO surface `render_note` on render success in the web UI (toast) and type `RenderResult`/`render_note` in `frontend/lib/types.ts` | Design principle: every fallback names itself in the response AND the UI; both frontend render call sites currently discard the response body. |
 
 ## Gate results
