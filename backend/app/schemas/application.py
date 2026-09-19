@@ -107,8 +107,10 @@ class RenderResult(BaseModel):
     pdf_path: str
     resolved_template_id: str | None = None
     resolved_engine: str | None = None
-    # True whenever the resolved id differs from the requested one, for ANY
-    # reason (stale id -> default, or TeX absent -> Typst); render_note says why.
+    # True only when an EXPLICIT template_id was passed and the resolved id
+    # differs (stale id → default, or TeX absent → Typst). A substitution of the
+    # resume's/application's PERSISTED choice does not set it: render_note is
+    # the only signal on that path.
     template_fallback: bool | None = None
     # Non-null ONLY when the engine was substituted because TeX is absent;
     # says why, in the words the user sees.

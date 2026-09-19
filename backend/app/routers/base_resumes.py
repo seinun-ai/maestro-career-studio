@@ -289,7 +289,7 @@ def update_base_resume(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     db.refresh(row)
-    return _detail(row)
+    return _detail(row, render_note=getattr(row, "render_note", None))
 
 
 @router.patch("/{slug}/edits", response_model=BaseResumeDetail)
@@ -323,7 +323,7 @@ def edit_base_resume(
         raise HTTPException(status_code=409, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
-    return _detail(row, applied=applied)
+    return _detail(row, applied=applied, render_note=getattr(row, "render_note", None))
 
 
 @router.post("/from-kb/plan", response_model=BaseFromKBPlanRead)
@@ -799,6 +799,7 @@ def render_base_resume_endpoint(
         row,
         resolved_template_id=resolved_template_id,
         resolved_engine=getattr(rendered, "resolved_engine", None),
+        # see RenderResult.template_fallback
         template_fallback=(
             template_id is not None and resolved_template_id != template_id
         ),

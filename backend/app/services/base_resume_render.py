@@ -20,6 +20,13 @@ def render_base_resume(slug: str, db: Session, *, template_id: str | None = None
     if row is None:
         raise LookupError(f"Base resume not found: {slug}")
 
+    # Clear FIRST, set only on success: the row is a session-identity object and
+    # `render_note` is an unmapped attribute, so neither rollback nor refresh
+    # clears it. Without this, a failed re-render (resume_ops.edit_base persists
+    # render_error and returns this same object) would still carry the note from
+    # an earlier successful render in the same session.
+    row.render_note = None
+
     # No explicit template -> use the resume's persisted choice (None -> default).
     if template_id is None:
         template_id = row.template_id

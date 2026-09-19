@@ -12,7 +12,7 @@ from app.main import app
 from app.models.application import Application
 from app.models.template import Template
 from app.routers import applications as applications_router
-from app.services import engines, pdf_render
+from app.services import base_resume_render, engines, pdf_render
 from app.services import template_registry as reg
 from app.services.template_validation import SAMPLE_RESUME
 from tests.test_applications_router import _job
@@ -189,6 +189,9 @@ def test_base_resume_render_reports_the_fallback(db_session, tmp_path, monkeypat
     body = r.json()
     assert body["resolved_engine"] == "typst"
     assert "TeX is not installed" in body["render_note"]
+    # No explicit template_id was passed, so the substitution of the resume's
+    # persisted choice leaves the flag False — render_note is the only signal.
+    assert body["template_fallback"] is False
     assert Path(body["pdf_path"]).exists()
 
 
@@ -211,8 +214,10 @@ def test_application_render_reports_the_fallback(db_session, tmp_path, monkeypat
     finally:
         app.dependency_overrides.clear()
     assert r.status_code == 200, r.text
-    assert r.json()["resolved_engine"] == "typst"
-    assert "TeX is not installed" in r.json()["render_note"]
+    body = r.json()
+    assert body["resolved_engine"] == "typst"
+    assert "TeX is not installed" in body["render_note"]
+    assert Path(body["pdf_path"]).exists()
 
 
 def test_render_note_is_null_on_the_wire_when_nothing_was_substituted(
@@ -230,3 +235,45 @@ def test_render_note_is_null_on_the_wire_when_nothing_was_substituted(
         app.dependency_overrides.clear()
     assert r.status_code == 200, r.text
     assert r.json()["render_note"] is None
+
+
+def test_edits_response_reports_the_fallback(db_session, tmp_path, monkeypatch):
+    """PATCH /edits re-renders, so it is a render response: without the note a
+    web user on a TeX-less host gets a silently substituted PDF (the web app
+    never calls POST /render)."""
+    _no_tex(monkeypatch)
+    _seed_rows(db_session)
+    monkeypatch.setattr(app_settings, "base_resumes_dir", tmp_path)
+    _seed(db_session, slug="data_scientist", data_json=SAMPLE_RESUME)
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        r = TestClient(app).patch(
+            "/api/base-resumes/data_scientist/edits",
+            json={"ops": [{"kind": "replace_summary", "value": "New summary"}]},
+        )
+    finally:
+        app.dependency_overrides.clear()
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["render_error"] is None
+    assert "TeX is not installed" in body["render_note"]
+
+
+def test_a_failed_re_render_does_not_leave_a_stale_note(db_session, tmp_path, monkeypatch):
+    """render_note is an unmapped attribute on a session-identity row, so a
+    rollback/refresh cannot clear it — render_base_resume must null it itself."""
+    _no_tex(monkeypatch)
+    _seed_rows(db_session)
+    monkeypatch.setattr(app_settings, "base_resumes_dir", tmp_path)
+    row = _seed(db_session, slug="data_scientist", data_json=SAMPLE_RESUME)
+
+    base_resume_render.render_base_resume("data_scientist", db_session)
+    assert "TeX is not installed" in row.render_note
+
+    def boom(*a, **kw):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(pdf_render, "_compile_typst_file", boom)
+    with pytest.raises(RuntimeError, match="boom"):
+        base_resume_render.render_base_resume("data_scientist", db_session)
+    assert row.render_note is None

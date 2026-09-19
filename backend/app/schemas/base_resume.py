@@ -36,6 +36,8 @@ class BaseResumeDetail(BaseModel):
     template_id: str | None = None
     resolved_template_id: str | None = None
     resolved_engine: str | None = None
+    # Same contract as RenderResult.template_fallback (see there): an EXPLICIT
+    # template_id only — never a substitution of the persisted choice.
     template_fallback: bool | None = None
     # Transient like resolved_engine (set on the row after commit): non-null
     # ONLY when the engine was substituted because TeX is absent; says why.
