@@ -2461,7 +2461,7 @@ git add README.md CONTRIBUTING.md docs SECURITY.md KNOWN_ISSUES.md CHANGELOG.md 
 
 ### Task 19: Verification gates (design §6)
 
-> **Housekeeping to fold into the final review sweep (2026-09-19):** (a) `backend/mcp_server/server.py` `update_application` docstring: `applied_at` needs a UTC offset (Task 3; the docstring-length ratchet test must stay green); (b) `backend/tests/tools/test_migrate_from_postgres.py` `--replace` WAL test: call `tool._move_aside(path)` directly on the crash image so the checkpoint is isolated (Task 11 review); (c) `scripts/update.sh` `do_check`'s first branch should consult the marker (a marker with a deleted file is "skip", not "import"), and the fast-forward failure message should name both dumps in the both-dumps state (Task 15 review).
+> **Housekeeping to fold into the final review sweep (2026-09-19):** (a) `backend/mcp_server/server.py` `update_application` docstring: `applied_at` needs a UTC offset (Task 3; the docstring-length ratchet test must stay green); (b) `backend/tests/tools/test_migrate_from_postgres.py` `--replace` WAL test: call `tool._move_aside(path)` directly on the crash image so the checkpoint is isolated (Task 11 review); (c) `scripts/update.sh` `do_check`'s first branch should consult the marker (a marker with a deleted file is "skip", not "import"), and the fast-forward failure message should name both dumps in the both-dumps state (Task 15 review). (d) `tests/tools/test_migrate_from_postgres.py`: the `CI` guard treats any non-empty value as truthy (`CI=false` would fail instead of skip); tighten to `not in ("", "0", "false")` (Task 16 follow-up note).
 
 Run every one; paste results into the deviation log's **Gate results** table.
 
