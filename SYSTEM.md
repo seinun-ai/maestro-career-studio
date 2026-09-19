@@ -659,7 +659,9 @@ the copy rules, each with the failure mode that bought it. Code citing "§8" lan
 - **The database is a file.** `data/maestro_cs.sqlite3` (compose bind-mounts `./data` to `/app/data`), WAL,
   pragmas set per connection by `app/db.make_engine` — the ONE engine constructor (app, tests, tools);
   `prepare_sqlite_file` mints it 0600 and `migrations/env.py` calls it too, so a first boot creates the file
-  through alembic. Never open the container's file from the host while the backend runs: WAL needs shared
+  through alembic. **`env.py` then builds a PLAIN `create_engine` on purpose** — SQLite's batch ALTER recipe
+  must run with `foreign_keys` OFF and `make_engine` turns it ON — so do not "fix" it to `make_engine`; it is
+  the one exception. Never open the container's file from the host while the backend runs: WAL needs shared
   memory the Docker Desktop mount does not promise — stop the stack or read a `backups/` snapshot.
   `SQLITE_JOURNAL_MODE=DELETE` (forwarded by compose, commented in `.env.example`) is the escape hatch for a
   filesystem WAL cannot trust. Postgres survives one release, for the first-boot import only (§13
@@ -845,17 +847,17 @@ citation. Priority lives in the item text, not in the ordinal.
     `tailoring_session.create_session` with enrichment (score flush + supersede UPDATE, then the enrichment
     call). A concurrent writer waits `busy_timeout` (30 s), then fails "database is locked". Fix: compute
     every LLM result first, then write in one short transaction, keeping the seeder's `commit=False`
-    contract. Until then consolidation is a user-initiated, rare, minutes-long exclusive window.
+    contract. Until then consolidation is a user-initiated, rare, minutes-long exclusive window
+    (audit: the SQLite migration plan, Task 10).
 
 ## 12. Gotchas that have bitten before
 
-- **A PRAGMA dies with its connection** (2026-09-19): SQLite ships `foreign_keys=OFF` and forgets every
-  pragma on close, so 21 `ondelete=` cascades silently stopped doing anything. Every engine comes from
-  `app.db.make_engine`, which sets the pragmas per connection — never `create_engine` in app code.
+- **`foreign_keys` is per connection, and defaults OFF** (2026-09-19): `journal_mode` persists in the file,
+  but `foreign_keys`/`synchronous`/`busy_timeout` reset on every connect, so 21 `ondelete=` cascades
+  silently stopped. Every SQLite engine goes through `app.db.make_engine`, which sets them per connection.
 - **Autogenerate fully qualifies a TypeDecorator** (2026-09-19): `app.models.types.UTCDateTime()` is
   unimportable in a revision → use the impl type by hand. Alembic compares compiled DDL, so `compare_type`
-  needs no hook; `alembic check` skips server defaults, hence the parity test's
-  `compare_server_default=True` pass.
+  needs no hook; `alembic check` skips server defaults — hence the parity test's `compare_server_default=True` pass.
 - **A Boolean `server_default="false"` is TEXT on SQLite** (2026-09-19): `'false'` is truthy in Python, so
   every user-created template read as the default. Boolean defaults are expressions (`expression.false()`),
   pinned by `test_db_portability`.
@@ -865,10 +867,9 @@ citation. Priority lives in the item text, not in the ordinal.
 - **`with sqlite3.connect(...)` commits but does not CLOSE** (2026-09-19): a leaked read lock on the live
   database and an open handle on the temp image → `app/tools/backup_db.py` closes every connection in a
   `finally`; never use the sqlite3 context manager as a closer.
-- **SQLite's `CURRENT_TIMESTAMP` has no microseconds** (2026-09-19): it compares as TEXT against the ORM's
-  `.ffffff` binds, so same-second rows tied and "oldest wins" fell to a uuid4 tie-break → the APP writes
-  every timestamp (`default=utcnow`/`onupdate=utcnow`; `server_default` is DDL only). Never test
-  `updated_at == created_at`.
+- **SQLite's `CURRENT_TIMESTAMP` has no microseconds** (2026-09-19): compared as TEXT against the ORM's
+  `.ffffff` binds, same-second rows tied and "oldest wins" fell to a uuid4 tie-break → the APP writes every
+  timestamp (`default=utcnow`/`onupdate=utcnow`), so never test `updated_at == created_at` for "never edited".
 - **One path, every job** (2026-09-01): LinkedIn's list rewrites only `?currentJobId=` and the matcher
   dropped the query string, so every job was the first one saved. A query-keyed board needs its key in BOTH
   `posting_id` tables (§7); an SPA's `<head>` JSON-LD is the PREVIOUS job's until checked.
