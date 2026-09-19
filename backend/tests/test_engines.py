@@ -48,6 +48,22 @@ def test_known_tex_homes_are_searched_when_path_lacks_tex(monkeypatch, tmp_path)
     assert engines.probe_pdflatex().path == str(exe)
 
 
+def test_no_path_at_all_does_not_search_the_working_directory(monkeypatch, tmp_path):
+    """An EMPTY entry in a search path means "the current directory" to
+    shutil.which, and a GUI-launched process — the case this module exists for —
+    can have no PATH at all. Joining that empty string in would run whatever
+    `pdflatex` happens to sit in the process's working directory."""
+    _fake_pdflatex(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("PATH", raising=False)
+    texbin = tmp_path / "texbin"
+    texbin.mkdir()
+    monkeypatch.setattr(engines, "_candidate_dirs", lambda: [str(texbin)])
+    status = engines.probe_pdflatex()
+    assert status.available is False
+    assert status.path is None
+
+
 def test_wrong_override_fails_closed_and_never_searches(monkeypatch, tmp_path):
     _fake_pdflatex(tmp_path)  # a search WOULD find this one
     monkeypatch.setenv("PATH", str(tmp_path))

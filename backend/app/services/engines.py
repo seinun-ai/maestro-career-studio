@@ -72,8 +72,12 @@ def find_pdflatex() -> tuple[str | None, str | None]:
             f"MAESTRO_CS_PDFLATEX points at {override}, which is not an "
             "executable file; correct it or unset it to search the usual locations"
         )
-    search = os.pathsep.join([os.environ.get("PATH", ""), *_candidate_dirs()])
-    found = shutil.which("pdflatex", path=search)
+    # Drop empty entries before joining: an empty entry means "the current
+    # directory" to shutil.which, and an absent PATH — the GUI-launched process
+    # this module exists for — would otherwise put the process's cwd ahead of
+    # the TeX homes and resolve to a bare, relative "pdflatex".
+    entries = [e for e in [os.environ.get("PATH", ""), *_candidate_dirs()] if e]
+    found = shutil.which("pdflatex", path=os.pathsep.join(entries))
     if found is None:
         return None, "pdflatex not found on PATH or in the usual TeX locations"
     return found, None
