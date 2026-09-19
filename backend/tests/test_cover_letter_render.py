@@ -219,3 +219,32 @@ def test_cover_letter_with_tilde_url_compiles(tmp_path):
     uris = _pdf_uris(pdf)
     assert "https://linkedin.com/in/~jane" in uris, uris
     assert "https://github.com/jane_dev" in uris, uris
+
+
+# --- The shared header survives a missing location ----------------------------
+# _header.tex.j2 emitted a bare "\\" for a contact with no location, and
+# pdflatex answered "There's no line here to end." — a live 500 on the DEFAULT
+# resume template and the cover letter alike. Both documents, both blank shapes:
+# the typed-edit editor writes "" for a cleared field, JSON simply omits it.
+
+NO_LOCATION_CONTACT = {"name": "Jane Doe", "email": "jane@example.com"}
+
+
+def _resume_tex(contact: dict) -> str:
+    source = (pdf_render.TEMPLATE_DIR / pdf_render.RESUME_TEMPLATE).read_text(encoding="utf-8")
+    return pdf_render.render_tex_from_source(source, {**SAMPLE_RESUME, "contact": contact})
+
+
+def _cover_letter_tex(contact: dict) -> str:
+    return render_cover_letter_tex(contact=contact, body="Hi", today=date(2026, 5, 1))
+
+
+@pytest.mark.skipif(shutil.which("pdflatex") is None, reason="pdflatex not installed")
+@pytest.mark.parametrize("render", [_resume_tex, _cover_letter_tex], ids=["resume", "cover_letter"])
+@pytest.mark.parametrize(
+    "contact",
+    [NO_LOCATION_CONTACT, {**NO_LOCATION_CONTACT, "location": ""}],
+    ids=["absent", "blank"],
+)
+def test_header_compiles_without_a_location(render, contact, tmp_path):
+    assert pdf_render.compile_pdf(render(contact), tmp_path).exists()

@@ -12,10 +12,8 @@ from app.main import app
 from app.models.application import Application
 from app.models.job import Job
 from app.models.qa_entry import QAEntry
-from app.models.template import Template
 from app.routers import qa
-from app.services import engines
-from app.services import template_registry as reg
+from tests.test_render_fallback import _no_tex, _seed_rows
 
 
 def _override_db(db_session):
@@ -688,15 +686,8 @@ def test_post_qa_answers_an_unknown_application_id_with_404_not_500(db_session):
 
 
 # --- The cover letter follows the resume's engine (design 2026-09-19 §2.3) ---
-
-
-def _seed_templates(db_session, *, typst_ready: bool) -> None:
-    """Every seed as a draft row (no compile); optionally mark typst-classic ready."""
-    reg.reset_seed_validation_attempts()
-    reg.ensure_seed_templates(db_session, validate=False)
-    if typst_ready:
-        db_session.get(Template, reg.TYPST_CLASSIC_ID).status = "ready"
-        db_session.commit()
+# `_no_tex` / `_seed_rows` come from test_render_fallback so there is ONE no-TeX
+# switch and one draft-seed helper across the fallback tests.
 
 
 def _cover_letter_entry(db_session, application) -> QAEntry:
@@ -715,8 +706,8 @@ def _cover_letter_entry(db_session, application) -> QAEntry:
 def test_render_cover_letter_follows_the_resume_engine_without_tex(
     db_session, tmp_path, monkeypatch
 ):
-    monkeypatch.setattr(engines, "pdflatex_available", lambda: False)
-    _seed_templates(db_session, typst_ready=True)
+    _no_tex(monkeypatch)
+    _seed_rows(db_session)
 
     application = _application(db_session)
     entry = _cover_letter_entry(db_session, application)
@@ -742,8 +733,8 @@ def test_render_cover_letter_without_tex_or_typst_is_400_and_allocates_nothing(
 ):
     """The resolver runs BEFORE application_artifacts.get_dir, so a 400 never
     leaves an empty artifact directory (or a persisted artifact_dir) behind."""
-    monkeypatch.setattr(engines, "pdflatex_available", lambda: False)
-    _seed_templates(db_session, typst_ready=False)
+    _no_tex(monkeypatch)
+    _seed_rows(db_session, typst_ready=False)
 
     application = _application(db_session)
     entry = _cover_letter_entry(db_session, application)

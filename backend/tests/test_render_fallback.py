@@ -22,9 +22,30 @@ MINIMAL_TEX = "\\documentclass{article}\\begin{document}x\\end{document}"
 
 
 def _no_tex(monkeypatch):
+    """THE no-TeX switch: every seam the render path reads. The resolver probes
+    ONCE via `probe_pdflatex`; `_run_pdflatex` reads `find_pdflatex` for its
+    error reason and `pdflatex_command` for argv[0]."""
     monkeypatch.setattr(engines, "find_pdflatex", lambda: (None, "pdflatex not found (test)"))
     monkeypatch.setattr(engines, "pdflatex_command", lambda: "/nonexistent/pdflatex")
+    monkeypatch.setattr(
+        engines,
+        "probe_pdflatex",
+        lambda: engines.EngineStatus("pdflatex", False, reason="pdflatex not found (test)"),
+    )
     monkeypatch.setattr(engines, "pdflatex_available", lambda: False)
+
+
+def _with_tex(monkeypatch):
+    """The opposite switch, so a with-TeX expectation does not depend on the
+    host running the suite."""
+    monkeypatch.setattr(
+        engines,
+        "probe_pdflatex",
+        lambda: engines.EngineStatus(
+            "pdflatex", True, version="pdfTeX (test)", path="/opt/tex/bin/pdflatex"
+        ),
+    )
+    monkeypatch.setattr(engines, "pdflatex_available", lambda: True)
 
 
 def test_argv_uses_the_resolved_binary(monkeypatch, tmp_path):
@@ -155,7 +176,7 @@ def test_typst_templates_are_untouched_without_tex(db_session, monkeypatch):
 
 
 def test_latex_templates_are_untouched_with_tex(db_session, monkeypatch):
-    monkeypatch.setattr(engines, "pdflatex_available", lambda: True)
+    _with_tex(monkeypatch)
     _seed_rows(db_session)
     tmpl, note = pdf_render.resolve_render_template("default", db_session)
     assert tmpl.id == "default"
@@ -163,7 +184,7 @@ def test_latex_templates_are_untouched_with_tex(db_session, monkeypatch):
 
 
 def test_render_note_is_none_when_nothing_was_substituted(db_session, monkeypatch):
-    monkeypatch.setattr(engines, "pdflatex_available", lambda: True)
+    _with_tex(monkeypatch)
     _seed_rows(db_session)
     doc = pdf_render.render_document(
         SAMPLE_RESUME, template_id=reg.TYPST_CLASSIC_ID, session=db_session

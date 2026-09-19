@@ -578,7 +578,12 @@ def resolve_render_template(
     from app.services import template_registry  # lazy import to avoid a cycle
 
     tmpl = template_registry.get_usable_template(template_id, session)
-    if tmpl.engine != "latex" or engines.pdflatex_available():
+    if tmpl.engine != "latex":
+        return tmpl, None
+    # ONE probe per resolve: the probe caches successes only, so a second call
+    # on a host whose `pdflatex --version` fails would spawn it again.
+    status = engines.probe_pdflatex()
+    if status.available:
         return tmpl, None
     substitute = template_registry.first_ready_typst(session)
     if substitute is None:
@@ -589,7 +594,7 @@ def resolve_render_template(
     # The user-facing note says only that TeX is absent; the log also carries
     # the probe's reason so a reader can tell a missing TeX from a broken one
     # (a wrong MAESTRO_CS_PDFLATEX, a --version that fails).
-    logger.info("render fallback: %s (pdflatex: %s)", note, engines.probe_pdflatex().reason)
+    logger.info("render fallback: %s (pdflatex: %s)", note, status.reason)
     return substitute, note
 
 
@@ -701,6 +706,13 @@ def cover_letter_paragraphs(body: str) -> list[str]:
     return [p.strip() for p in body.split("\n\n") if p.strip()]
 
 
+def _cover_letter_date(today: _date) -> str:
+    """The letter's dateline on both engines ("May 1, 2026"). `%-d` (no zero
+    padding) is a glibc/BSD extension: pre-existing, and a Windows host is a
+    later desktop step."""
+    return today.strftime("%B %-d, %Y")
+
+
 def render_cover_letter_tex(
     *,
     contact: dict[str, Any],
@@ -714,7 +726,7 @@ def render_cover_letter_tex(
     return template.render(
         contact=contact,
         body_paragraphs=cover_letter_paragraphs(body),
-        today_date=today.strftime("%B %-d, %Y"),
+        today_date=_cover_letter_date(today),
         fmt=merge_formatting(None),
     )
 
@@ -724,10 +736,15 @@ def cover_letter_typst_inputs(
 ) -> dict[str, str]:
     """sys_inputs for cover_letter.typ; blanks coerced like the resume path so a
     cleared phone never prints as "None"."""
+    # Typst mirrors LaTeX (decision 2026-09-19): TeX reads a lone newline inside
+    # a paragraph as a space, while Typst would break the line. Collapse here,
+    # per paragraph, so the shared `cover_letter_paragraphs` keeps the .tex
+    # byte-identical.
+    paragraphs = [" ".join(p.split()) for p in cover_letter_paragraphs(body)]
     return {
-        "contact": json.dumps(_coerce_blank_to_none(dict(contact))),
-        "paragraphs": json.dumps(cover_letter_paragraphs(body)),
-        "today": today.strftime("%B %-d, %Y"),
+        "contact": json.dumps(_coerce_blank_to_none(contact)),
+        "paragraphs": json.dumps(paragraphs),
+        "today": _cover_letter_date(today),
         "fmt": merge_formatting(None).model_dump_json(),
     }
 

@@ -11,7 +11,8 @@
 % ---------------------------------------------------------------------------
 ((* if fmt.header_align == "left" *))\begin{flushleft}((* elif fmt.header_align == "right" *))\begin{flushright}((* else *))\begin{center}((* endif *))
     {\Huge \scshape ((( contact.name|latex_escape ))) } \\ \vspace{1pt}
-    ((( contact.location|latex_escape ))) \\ \vspace{1pt}
+((* if contact.location *))    ((( contact.location|latex_escape ))) \\ \vspace{1pt}
+((* endif *))
     \small
 ((* if contact.phone *))
     \raisebox{-0.1\height}\faPhone\ ((( contact.phone|latex_escape ))) ~

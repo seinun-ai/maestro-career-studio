@@ -5,8 +5,10 @@
 //
 // Data contract (every sys.input is a string): contact = ResumeData.contact
 // JSON with blank strings already coerced to null; paragraphs = JSON array of
-// strings; today = an already-formatted date; fmt = merged formatting JSON
-// (honors font_size and header_align, like the LaTeX header partial).
+// strings, each a single line (intra-paragraph whitespace is collapsed
+// server-side, so a lone newline is a space here exactly as it is in LaTeX);
+// today = an already-formatted date; fmt = merged formatting JSON (honors
+// font_size and header_align, like the LaTeX header partial).
 #let contact = json(bytes(sys.inputs.contact))
 #let paragraphs = json(bytes(sys.inputs.paragraphs))
 #let today = sys.inputs.today

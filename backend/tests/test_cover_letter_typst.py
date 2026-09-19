@@ -1,4 +1,6 @@
 """Cover letters follow the resume's engine (design 2026-09-19 §2.3)."""
+import inspect
+import json
 import re
 import shutil
 from datetime import date
@@ -41,6 +43,8 @@ _UNMAPPED_GLYPH_RE = re.compile(r"\(cid:\d+\)")
 
 def _words(text: str) -> set[str]:
     # Icon glyphs (LaTeX fontawesome) and layout tokens fall out; words stay.
+    # The Typst "·" separator and LaTeX's "~" / icon glue sit outside the
+    # [a-z0-9] class by design, so only the words the reader sees are compared.
     text = _UNMAPPED_GLYPH_RE.sub(" ", text.lower())
     return set(re.findall(r"[a-z0-9][a-z0-9@./'-]*", text))
 
@@ -58,10 +62,31 @@ def test_typst_cover_letter_compiles_with_header_date_and_body(tmp_path):
     assert "None" not in text and "null" not in text
 
 
-def test_latex_cover_letter_is_the_default_engine():
+def test_latex_cover_letter_renders_tex():
     doc = pdf_render.render_cover_letter(engine="latex", contact=CONTACT, body=BODY, today=TODAY)
     assert doc.engine == "latex"
     assert "\\begin{document}" in doc.source_text
+    # Callers that predate the engine parameter still get LaTeX.
+    signature = inspect.signature(pdf_render.compile_cover_letter_pdf)
+    assert signature.parameters["engine"].default == "latex"
+
+
+def test_cover_letter_typst_inputs_pin_the_data_contract():
+    inputs = pdf_render.cover_letter_typst_inputs(
+        contact={**CONTACT, "phone": "  "}, body="x\n\n\n\ny", today=TODAY
+    )
+    contact = json.loads(inputs["contact"])
+    assert contact["phone"] is None  # whitespace-only → null, never "None"
+    assert contact["github"] is None
+    assert json.loads(inputs["paragraphs"]) == ["x", "y"]
+    assert inputs["today"] == "May 1, 2026"
+    fmt = json.loads(inputs["fmt"])
+    assert "font_size" in fmt and "header_align" in fmt
+    # Typst mirrors LaTeX (decision 2026-09-19): a lone newline is a space.
+    signoff = pdf_render.cover_letter_typst_inputs(
+        contact=CONTACT, body="Sincerely,\nJane", today=TODAY
+    )
+    assert json.loads(signoff["paragraphs"]) == ["Sincerely, Jane"]
 
 
 @pytest.mark.skipif(shutil.which("pdflatex") is None, reason="pdflatex not installed")
