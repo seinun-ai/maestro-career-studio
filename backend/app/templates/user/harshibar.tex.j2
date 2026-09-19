@@ -163,7 +163,7 @@
     \resumeSubHeadingListStart
       ((* for p in resume.projects *))
       \resumeProjectHeading
-          {\textbf{((* if p.link *))\href{((( p.link|latex_escape )))}{\myuline{((( p.name|latex_escape )))}}((* else *))((( p.name|latex_escape )))((* endif *))} ((* if p.tech *))$|$ \emph{((( p.tech|latex_escape )))}((* endif *))}{((( p.date|format_date(fmt.date_format)|latex_escape )))}
+          {\textbf{((* if p.link *))\href{((( p.link|latex_escape_url )))}{\myuline{((( p.name|latex_escape )))}}((* else *))((( p.name|latex_escape )))((* endif *))} ((* if p.tech *))$|$ \emph{((( p.tech|latex_escape )))}((* endif *))}{((( p.date|format_date(fmt.date_format)|latex_escape )))}
           ((* if p.bullets *))
           \resumeItemListStart
             ((* for b in p.bullets *))
