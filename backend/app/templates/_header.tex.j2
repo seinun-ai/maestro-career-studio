@@ -6,6 +6,8 @@
 %
 % Included by BOTH resume.tex.j2 and cover_letter.tex.j2 — format and scanner
 % changes must handle both (see SYSTEM.md §6).
+% \href URL arguments use latex_escape_url, display text latex_escape — never
+% swap them (SYSTEM.md §11 item 7, fixed 2026-09-19).
 % ---------------------------------------------------------------------------
 ((* if fmt.header_align == "left" *))\begin{flushleft}((* elif fmt.header_align == "right" *))\begin{flushright}((* else *))\begin{center}((* endif *))
     {\Huge \scshape ((( contact.name|latex_escape ))) } \\ \vspace{1pt}
@@ -14,12 +16,12 @@
 ((* if contact.phone *))
     \raisebox{-0.1\height}\faPhone\ ((( contact.phone|latex_escape ))) ~
 ((* endif *))
-    \href{mailto:((( contact.email|latex_escape )))}{\raisebox{-0.2\height}\faEnvelope\ \underline{((( contact.email|latex_escape )))}} ~
+    \href{mailto:((( contact.email|latex_escape_url )))}{\raisebox{-0.2\height}\faEnvelope\ \underline{((( contact.email|latex_escape )))}} ~
 ((* if contact.linkedin *))
-    \href{https://((( contact.linkedin|latex_escape )))}{\raisebox{-0.2\height}\faLinkedin\ \underline{((( contact.linkedin|latex_escape )))}} ~
+    \href{https://((( contact.linkedin|latex_escape_url )))}{\raisebox{-0.2\height}\faLinkedin\ \underline{((( contact.linkedin|latex_escape )))}} ~
 ((* endif *))
 ((* if contact.github *))
-    \href{https://((( contact.github|latex_escape )))}{\raisebox{-0.2\height}\faGithub\ \underline{((( contact.github|latex_escape ))) }}
+    \href{https://((( contact.github|latex_escape_url )))}{\raisebox{-0.2\height}\faGithub\ \underline{((( contact.github|latex_escape ))) }}
 ((* endif *))
 ((* if fmt.header_align == "left" *))\end{flushleft}((* elif fmt.header_align == "right" *))\end{flushright}((* else *))\end{center}((* endif *))
 \vspace{((( fmt.section_spacing - 18 )))pt}
