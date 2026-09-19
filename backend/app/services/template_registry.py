@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import logging
 import re
 
@@ -329,6 +330,60 @@ def _needs_seed_validation(tmpl: Template) -> bool:
     return not template_validation._preview_path(tmpl.id).exists()
 
 
+# Digests (sha256 of the utf-8 source) of every version of a bundled seed that
+# SHIPPED before the current one: one entry per `main` commit that changed the
+# file, listed oldest first. A seeded row carrying one of these is ours and
+# never resynced ("untouched applies to the SOURCE", ensure_seed_templates), so
+# it is safe to replace with the current bundle; a user-edited row matches
+# nothing and is left alone. Pinned literals, checked against the frozen bytes
+# under tests/fixtures/templates_superseded/<seed_id>/<n>.tex.j2 — a wrong
+# digest is a silent no-op. Seed-time rather than alembic because
+# seeding.run_startup is migrations → legacy import → seed: on the cutover boot
+# a migration runs against an EMPTY file, then the importer lands the old
+# Postgres rows verbatim, and only seeding — which runs on every boot — ever
+# sees them. Whenever a bundled user template's bytes change, the bytes it had
+# become a version that shipped: freeze them as the next fixture and pin here.
+SUPERSEDED_SEED_DIGESTS: dict[str, frozenset[str]] = {
+    "carlito_dense": frozenset({
+        # e81696be, c4b40be0, c27b05d4 (main's tip). All three pass \href
+        # targets through latex_escape, which body-escapes ~ and _ in URLs.
+        "a7de33995feedd47bf8021b9ab89d3c74614477ce7d20c1c22a6f7692b55f29b",
+        "32a6aef985681c89664187cfc70c53de0f642e53335574ec541e3ce894b9af20",
+        "167050b70047a07e0ad3111e51fbc82bfe4724a69ae7de65a19a21424401b8bb",
+    }),
+    "harshibar": frozenset({
+        # e81696be, c4b40be0, c27b05d4 (main's tip): the same three releases,
+        # the same \href bug on the project link.
+        "a676b9f7f9a44fb8e3f77fc1c5beddc419ff3efff24fff452e3d85a45ed3c546",
+        "b3dc762c7e52b134cc39f98d584eeef329086673045c51efcb0a460a0813498f",
+        "5bdc42534d3f8f9f03de09f7455b0a8ac813b759d5b86232ffc188698051ee89",
+    }),
+}
+
+
+def _resync_superseded_seed(session: Session, row: Template, current_source: str) -> bool:
+    """Replace a seeded row's source when it is a version we shipped before.
+
+    Returns True when it did. Status drops to draft so startup validation
+    re-earns `ready` against the new source — the stored parse evidence
+    described the old bytes; the user's default_formatting is never touched.
+    """
+    if row.origin != "seed" or row.source == current_source:
+        return False
+    digest = hashlib.sha256(row.source.encode("utf-8")).hexdigest()
+    if digest not in SUPERSEDED_SEED_DIGESTS.get(row.id, frozenset()):
+        return False
+    row.source = current_source
+    row.status = "draft"
+    row.validated_at = None
+    row.parse_certified = None
+    row.parse_report_json = None
+    row.last_error = None
+    session.commit()
+    logger.info("resynced superseded bundled template source: %s", row.id)
+    return True
+
+
 def _bootstrap_seeded(
     session: Session,
     *,
@@ -348,6 +403,17 @@ def _bootstrap_seeded(
     """
     existing = session.get(Template, template_id)
     if existing is not None:
+        # A row seeded from an OLDER bundle keeps that bundle's bytes on its
+        # own forever, so a fix to a bundled file never reaches an upgraded
+        # install. Resync it when its digest proves it is ours — before the
+        # validation check, so the new source re-earns `ready` in this same
+        # startup. Gated on the id having a history at all: this runs on every
+        # GET /api/templates, and a seed with nothing to resync must not pay a
+        # disk read per list request.
+        if template_id in SUPERSEDED_SEED_DIGESTS and source_path.exists():
+            _resync_superseded_seed(
+                session, existing, source_path.read_text(encoding="utf-8")
+            )
         # A row stranded non-ready by an earlier first-boot validation failure —
         # or ready with a missing preview — gets another go on the next ensure,
         # instead of staying broken forever.
@@ -457,9 +523,12 @@ def ensure_seed_templates(session: Session, *, validate: bool = True) -> None:
     """Idempotent: bootstrap the Classic LaTeX default, typst-classic, and the
     four bundled designs in app/templates/user/.
 
-    "Untouched" applies to the SOURCE of an existing row, never to its
-    validation state: a row that cannot produce a preview is re-validated so a
-    broken first boot heals on the next one rather than persisting.
+    "Untouched" applies to the SOURCE of an existing row when that source is
+    the user's. A row still carrying a bundle we shipped before is ours and is
+    resynced to the current bundle (`SUPERSEDED_SEED_DIGESTS`). Validation
+    state is never untouched: a row that cannot produce a preview is
+    re-validated so a broken first boot heals on the next one rather than
+    persisting.
 
     `validate=False` means "make sure the ROWS exist, render nothing", and it is
     what `GET /api/templates` must use. `template_validation.validate_template`
