@@ -73,6 +73,11 @@
       "id": "health-rewrite-cache",
       "status": "new-is-default",
       "hand_check": "Migration 85a1bb628e28. Cut when bullet_rewrites or health_ask_answers is dropped, or GET /api/resume-lint/{kind}/{key}/answers goes away. Miss path is fallback, not a competing product."
+    },
+    {
+      "id": "postgres-to-sqlite",
+      "status": "new-is-default",
+      "hand_check": "Release event: cut when the release AFTER the SQLite one ships. SYSTEM.md §13 lists every file to delete."
     }
   ],
   "system_md_baselines": {

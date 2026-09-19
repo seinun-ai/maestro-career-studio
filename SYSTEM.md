@@ -90,12 +90,15 @@ backend/
                        jd_extraction, resume_lint, health_*, career_kb,
                        chat_agent, chat_tools, …)
     templates/         bundled .tex.j2 sources and typst_classic.typ
+    tools/             operator tools, `python -m app.tools.<name>`: migrate_from_postgres (one release, §13), backup_db
   mcp_server/          FastMCP server (server.py tools → client.py httpx → REST)
-  migrations/          alembic (see §12 for the revision-id gotcha)
-  tests/               pytest vs the test DB; mcp_server/tests/ uses respx (no DB)
+  migrations/          alembic: ONE SQLite baseline (see §12 for the revision-id gotcha)
+  legacy_postgres/     the pre-SQLite chain + its alembic.ini; read ONLY by app/tools/migrate_from_postgres (§13)
+  tests/               pytest on a throwaway SQLite file, no service; mcp_server/tests/ uses respx (no DB)
   scripts/             calibration + parity tooling (ats_*, template_parity), run from backend/
 frontend/              Next.js 16 (App Router) + React 19 + Tailwind v4 + Base UI-flavored
                        shadcn. AGENTS.md: read node_modules/next/dist/docs before writing code.
+data/                  the database: maestro_cs.sqlite3 + its -wal/-shm sidecars (bind-mounted, PII)
 base_resumes/          on-disk resume data (<slug>.json) + rendered tex/pdf output
 applications/          rendered per-application artifacts (Company_Role_YYYYMMDD_<idprefix>/)
 extension/             browser-capture extension (posts pre-extracted JDs)
@@ -118,8 +121,9 @@ scripts/               setup-mcp.sh (MCP registration), update.sh (user update p
         status tracking (StatusChip)        QA router (cover letter / answers)
 ```
 
-Postgres holds all state except resume file data (`base_resumes/<slug>.json` on
-disk — DB `base_resumes` row + file must both exist) and rendered artifacts.
+`data/maestro_cs.sqlite3` (SQLite, WAL) holds all state except resume file data
+(`base_resumes/<slug>.json` on disk — DB `base_resumes` row + file must both exist) and rendered
+artifacts.
 
 ## 4. Core entities and their lifecycles
 
@@ -424,6 +428,12 @@ same contract. Code citing "§4" lands here; the table says which file to open.
   (`test_no_writer_flips_user_cannot_confirm`) and
   `tests/test_gap_cannot_confirm.py`
   (`test_nothing_upgrades_user_cannot_confirm`).
+- **Column types come from ONE module.** `{#inv-single-dialect}` SQLite is the only runtime
+  database. `app/models/types.py` (`JSONDoc`, `UUIDType`, `UTCDateTime`) is the only place a
+  column type is chosen, and nothing under `app/` imports `sqlalchemy.dialects`. `UTCDateTime` is
+  the whole timezone story: aware in Python, naive UTC on disk, and a NAIVE bind raises; the APP
+  writes every timestamp (`default=utcnow`, `onupdate=utcnow`) so one format lands on disk.
+  Pinned by `tests/test_db_portability.py`.
 
 ## 7. Agent surfaces
 
@@ -561,8 +571,8 @@ same contract. Code citing "§4" lands here; the table says which file to open.
   the transcript is the history — grounded via read-only `get_career_context`;
   conventions live in chat_system.txt. Prompt-file changes need the DB
   `prompt.chat_system` Setting row reset to take effect (settings page → reset,
-  or delete the row); untouched rows are resynced by migration on deploy
-  (86ac8658395f precedent).
+  or delete the row); the resync-on-deploy precedent (`86ac8658395f`) is boxed in
+  `legacy_postgres/`, so a new install needs a fresh migration on the SQLite chain to do it.
 - **Persona draft** (`POST /api/settings/persona/draft`): one smart-model proposal
   grounded in the whole-KB compose/context + typed job preferences. Returns
   `{draft}` and persists **nothing** — Profile puts it into the persona editor as a
@@ -643,109 +653,100 @@ the copy rules, each with the failure mode that bought it. Code citing "§8" lan
 ## 9. Dev & test environment
 
 - Use the Python interpreter from the backend's virtual environment; backend installed editable
-  (`pip install -e ".[dev,mcp]"` — beware the stale-`.pth` gotcha: it can pin
-  `app`/`mcp_server` to an OLD worktree for anything run outside a repo dir,
-  including the Claude Desktop MCP server; reinstall + restart client to fix).
-- Postgres runs in the compose stack's `postgres` service on host port
-  **55432**, never 5432 (deliberate: dodges any locally installed PostgreSQL).
-  The compose-default dev DB is `maestro_cs` (`POSTGRES_DB` in `.env`); create
-  `maestro_cs_test` beside it for the test suite. If more than one stack or
-  checkout runs on a machine, they differ by host ports (`*_HOST_PORT` in each
-  `.env`) — go by the port, not the name.
-- **ATS calibration** — the engine is corpus-tunable, so measure, don't
-  argue. `backend/scripts/ats_snapshot.py` prints a ranking table;
-  `backend/scripts/ats_calibration.py` writes a machine-readable snapshot, diffs
-  two (`DATABASE_URL=…55432/maestro_cs BASE_RESUMES_DIR=<main-checkout>/
-  base_resumes python -m scripts.ats_calibration snapshot before.json`). It
-  pins `as_of` and groups contribution drops by match-form transition: a
-  CHANGED form is a deliberate reclassification, an UNCHANGED one is the shape
-  a real regression takes (exit 1). Base-resume JSON is gitignored PII living
-  only in the main checkout — a worktree run needs `BASE_RESUMES_DIR`;
-  snapshots store JD skill names only, never resume text.
-  `python -m scripts.ats_calibration monotonicity` (same env) asserts "adding
-  true evidence never lowers the score" over the whole corpus — run it after
-  ANY matcher or tier change, not just a scoring-weight one.
-- Backend tests: `TEST_DATABASE_URL=postgresql://app:app@127.0.0.1:55432/maestro_cs_test`
-  then `pytest tests/ mcp_server/tests/ -q` from `backend/` (CI's command; a bare
-  `tests/` silently skips the MCP suite). Suite must stay green.
-- **Deploying a local change = rebuilding BOTH images** (MAINTAINER path, MAIN
-  checkout): `docker build -t maestro-career-studio-backend backend/` AND
-  `…-frontend frontend/`, then `docker compose up -d --no-build --force-recreate
-  backend frontend`. A frontend-only change still needs the frontend image rebuilt
-  — a stale image once made fixed UI look broken for a whole review.
-- **A USER updates instead** — `./scripts/update.sh`: backup → ff-only to the newest
-  `v*` tag → images pinned to that tag → health poll → extension/MCP reminders
-  (README "Updating"; `docs/RELEASING.md` cuts one). The tree is runtime here
-  (unpacked extension, host MCP venv), so checkout and images move TOGETHER — a bare
-  `docker compose pull` skews an install. Contributors build.
-- **Version identity**: the tag bakes into both images as `APP_VERSION`, served by
-  `GET /api/version` with the live alembic revision; the frontend warns when its
-  baked copy disagrees, unless either side STARTS WITH `dev` (local or dispatch
-  build) = do not compare — which also keeps it off contributors.
-- Never verify new code against the docker-compose stack (old images). Launch
-  fresh: uvicorn on a free port with data-dir env overrides +
-  `/Library/TeX/texbin` on PATH; frontend `API_PROXY_BACKEND=... npm run dev`.
-  Full recipe: the maintainer's local `verify` skill (not shipped). Browser-pane
-  gotchas: DPR mismatch → use ref clicks; toasts overlay the send button.
+  (`pip install -e ".[dev,mcp]"` — beware the stale-`.pth` gotcha: it can pin `app`/`mcp_server` to an OLD
+  worktree for anything run outside a repo dir, including the Claude Desktop MCP server; reinstall + restart
+  client to fix).
+- **The database is a file.** `data/maestro_cs.sqlite3` (compose bind-mounts `./data` to `/app/data`), WAL,
+  pragmas set per connection by `app/db.make_engine` — the ONE engine constructor (app, tests, tools);
+  `prepare_sqlite_file` mints it 0600 and `migrations/env.py` calls it too, so a first boot creates the file
+  through alembic. Never open the container's file from the host while the backend runs: WAL needs shared
+  memory the Docker Desktop mount does not promise — stop the stack or read a `backups/` snapshot.
+  `SQLITE_JOURNAL_MODE=DELETE` (forwarded by compose, commented in `.env.example`) is the escape hatch for a
+  filesystem WAL cannot trust. Postgres survives one release, for the first-boot import only (§13
+  `postgres-to-sqlite`). If more than one stack or checkout runs on a machine, they differ by host ports
+  (`*_HOST_PORT` in each `.env`) and by `data/` directory — go by those, not by a database name.
+- **ATS calibration** — the engine is corpus-tunable, so measure, don't argue.
+  `backend/scripts/ats_snapshot.py` prints a ranking table; `backend/scripts/ats_calibration.py` writes a
+  machine-readable snapshot, diffs two (stack stopped:
+  `DATABASE_URL=sqlite:///<main-checkout>/data/maestro_cs.sqlite3
+  BASE_RESUMES_DIR=<main-checkout>/base_resumes python -m scripts.ats_calibration snapshot
+  before.json`). It pins `as_of` and groups contribution drops by match-form transition: a CHANGED form is a deliberate
+  reclassification, an UNCHANGED one is the shape a real regression takes (exit 1). Base-resume JSON is
+  gitignored PII living only in the main checkout — a worktree run needs `BASE_RESUMES_DIR`; snapshots store
+  JD skill names only, never resume text. `python -m scripts.ats_calibration monotonicity` (same env)
+  asserts "adding true evidence never lowers the score" over the whole corpus — run it after ANY matcher or
+  tier change, not just a scoring-weight one.
+- Backend tests: `pytest tests/ mcp_server/tests/ -q` from `backend/` (CI's command; a bare `tests/`
+  silently skips the MCP suite). No service: conftest creates a throwaway SQLite file per process under the
+  temp dir, and `TEST_DATABASE_URL` may name another sqlite file, never one under `data/`. Suite must stay
+  green.
+- **Deploying a local change = rebuilding BOTH images** (MAINTAINER path, MAIN checkout):
+  `docker build -t maestro-career-studio-backend backend/` AND `…-frontend frontend/`, then
+  `docker compose up -d --no-build --force-recreate backend frontend`. A frontend-only change still needs
+  the frontend image rebuilt — a stale image once made fixed UI look broken for a whole review.
+- **A USER updates instead** — `./scripts/update.sh`: online SQLite snapshot
+  (`app.tools.backup_db --stdout`, 0600, magic-byte checked; plus a `pg_dump` while a legacy Postgres volume
+  is live with no import marker) → ff-only to the newest `v*` tag → images pinned to that tag → health poll
+  → extension/MCP reminders (README "Updating"; `docs/RELEASING.md` cuts one). The tree is runtime here
+  (unpacked extension, host MCP venv), so checkout and images move TOGETHER — a bare `docker compose pull`
+  skews an install. Contributors build. **This release's first boot imports a compose-era Postgres**
+  (`LEGACY_DATABASE_URL`, which compose BUILDS from `POSTGRES_*`) between `alembic upgrade head` and
+  seeding, verifies row counts + per-table content hashes inside the target transaction, writes
+  `data/.migrated-from-postgres.json` 0600, and FAILS CLOSED on any failure, an unreachable source included;
+  to skip it, comment the `LEGACY_DATABASE_URL` line out of `docker-compose.yml`. The CLI form is
+  `python -m app.tools.migrate_from_postgres` (`--replace` checkpoints the WAL before moving a target
+  aside). `update.sh --check` says which database is live.
+- **Version identity**: the tag bakes into both images as `APP_VERSION`, served by `GET /api/version` with
+  the live alembic revision; the frontend warns when its baked copy disagrees, unless either side STARTS
+  WITH `dev` (local or dispatch build) = do not compare — which also keeps it off contributors.
+- Never verify new code against the docker-compose stack (old images). Launch fresh: uvicorn on a free port
+  with data-dir env overrides (its own sqlite file, never `data/`) + `/Library/TeX/texbin` on PATH; frontend
+  `API_PROXY_BACKEND=... npm run dev`. Full recipe: the maintainer's local `verify` skill (not shipped).
+  Browser-pane gotchas: DPR mismatch → use ref clicks; toasts overlay the send button.
 - **Two dependency sources, on purpose.** `pyproject.toml` keeps `>=` floors (what
-  `pip install -e ".[dev,mcp]"` resolves); `backend/requirements.lock` is hash-pinned
-  and is what the **container image** installs, so a published image is reproducible.
-  After changing a dependency, regenerate the lock **on the target platform**
-  (command in `backend/Dockerfile`; pip-compile on macOS/3.13 produces wrong pins).
-  CI's `dependency-audit` runs `pip-audit` against the lock — a new advisory failing
-  an unrelated PR is intended.
-- **No Langfuse stack ships here** (the bundled compose file had fixed default
-  secrets). `services/tracing.py` and the three `LANGFUSE_*` settings stay: tracing
-  points at any instance the user runs; `langfuse_host` defaults to empty (the SDK
-  falls back to Cloud).
-- Alembic revision ids are hand-written fake-hex and COLLIDE easily — generate with
-  `uuid.uuid4().hex[:12]`.
-- **SYSTEM.md gate**: `python3 scripts/check_system_md.py` (CI `docs-gate` job)
-  enforces this file's header contract and FAILS (not warns) on: the size ceiling;
-  a `(YYYY-MM-DD` date in §1–§10 or any reference-tier file; a shipped item left in
-  §11; a section over its line budget; and any §6 invariant whose enforcement pin in
-  `.system_md_enforcement.json` has lost its file or symbol — the "docs promise what
-  the code no longer does" class.
-  Re-baselining requires `--update-baselines --reason "<text>"`, recorded in
-  `.slopledger.json`. It anchors the repo root on the script's own parent
-  directory, deliberately: a walk-up search finds the MAIN checkout's copy from
-  a worktree and validates the wrong file.
-- **On merge, re-verify the doc.** Two lanes each update the sections they know
-  about, and the merge can produce a file describing neither branch — least
-  accurate exactly when the most agents are reading it. After any non-trivial
-  merge, list the SYSTEM.md sections whose subject files changed on BOTH sides and
-  re-read each. The pins catch the worst subclass; nothing catches the rest but
-  this checklist.
-- **Slop ratchet.** Per-surface `.slopconfig.json` + committed
-  `.slop-baseline.json` in `backend/`, `frontend/`, `extension/`. After
-  changing a surface, the maintainer runs `python3
-  ~/.claude/skills/ai-slop-detector/scripts/slop_scan.py check <surface>` from
-  the repo root (not shipped; see CONTRIBUTING) — non-zero exit means a metric
-  regressed past baseline; fix or re-baseline deliberately with a reason. **RUN
-  EVERY SURFACE YOU TOUCHED AND NAME EACH ONE IN THE CLAIM.** A change to one
-  surface moves another's numbers routinely — the extension's tests live in
-  `backend/`, so an extension feature is a backend ratchet event — and an
-  unnamed "slop ratchet OK" is the shape of the 2026-08-17 false green.
-  **`complexity_hotspots` is a COUNT, and counts move for reasons that are not
-  decay — re-baseline it rather than chasing it.** A function is a hotspot if
-  `cc >= 10` OR `>50 source lines` OR too many params, so the count rises when
-  the codebase GROWS, when you ADD TESTS (`gate_test_loc:false` exempts test
-  LOC but nothing exempts test complexity), and — the trap — when you DECOMPOSE
-  a monster: splitting one cc=46 function into named pieces can move the count
-  UP. Judge erosion by hotspot density per KLOC and the worst offender's cc, not
-  by the count. Orphan LOC and duplication are honest ratchets — they move only
-  on a real regression. Scan a SURFACE dir, never the repo root: the analyzer
-  roots module names at the scan path, so a root scan can't resolve `app.*`
-  imports and reports the whole backend as orphaned. jscpd is optional; without
-  it duplication is skipped and the rest still gates. The extension's
-  allowlisted clones are the documented injected twins, so a NEW clone there is
-  a real finding. Read the reason strings before trusting a green: the matcher
-  pairs FILE NAMES by substring, so a rule naming a file on either side also
-  hides that file's own SELF-clones. `allowlisted_clones` is PRINTED, never
-  gated — a new clone inside an allowlisted pair raises it silently while
-  `clone_count` stays 0, so check it by eye. Optional graph signals read
-  `graphify-out/graph.json` (gitignored): regenerate with `graphify extract .
-  --no-cluster --code-only` (PyPI `graphifyy`).
+  `pip install -e ".[dev,mcp]"` resolves); `backend/requirements.lock` is hash-pinned and is what the
+  **container image** installs, so a published image is reproducible. After changing a dependency,
+  regenerate the lock **on the target platform** (command in `backend/Dockerfile`; pip-compile on macOS/3.13
+  produces wrong pins). CI's `dependency-audit` runs `pip-audit` against the lock — a new advisory failing
+  an unrelated PR is intended. `legacy-postgres` (psycopg) is a one-release extra (§13), installed by the
+  importer's CI job and the image, not by the suite.
+- **No Langfuse stack ships here** (the bundled compose file had fixed default secrets).
+  `services/tracing.py` and the three `LANGFUSE_*` settings stay: tracing points at any instance the user
+  runs; `langfuse_host` defaults to empty (the SDK falls back to Cloud).
+- Alembic revision ids are hand-written fake-hex and COLLIDE easily — generate with `uuid.uuid4().hex[:12]`.
+- **SYSTEM.md gate**: `python3 scripts/check_system_md.py` (CI `docs-gate` job) enforces this file's header
+  contract and FAILS (not warns) on: the size ceiling; a `(YYYY-MM-DD` date in §1–§10 or any reference-tier
+  file; a shipped item left in §11; a section over its line budget; and any §6 invariant whose enforcement
+  pin in `.system_md_enforcement.json` has lost its file or symbol — the "docs promise what the code no
+  longer does" class. Re-baselining requires `--update-baselines --reason "<text>"`, recorded in
+  `.slopledger.json`. It anchors the repo root on the script's own parent directory, deliberately: a walk-up
+  search finds the MAIN checkout's copy from a worktree and validates the wrong file.
+- **On merge, re-verify the doc.** Two lanes each update the sections they know about, and the merge can
+  produce a file describing neither branch — least accurate exactly when the most agents are reading it.
+  After any non-trivial merge, list the SYSTEM.md sections whose subject files changed on BOTH sides and
+  re-read each. The pins catch the worst subclass; nothing catches the rest but this checklist.
+- **Slop ratchet.** Per-surface `.slopconfig.json` + committed `.slop-baseline.json` in `backend/`,
+  `frontend/`, `extension/`. After changing a surface, the maintainer runs
+  `python3 ~/.claude/skills/ai-slop-detector/scripts/slop_scan.py check <surface>` from the repo root (not
+  shipped; see CONTRIBUTING) — non-zero exit means a metric regressed past baseline; fix or re-baseline
+  deliberately with a reason. **RUN EVERY SURFACE YOU TOUCHED AND NAME EACH ONE IN THE CLAIM.** A change to
+  one surface moves another's numbers routinely — the extension's tests live in `backend/`, so an extension
+  feature is a backend ratchet event — and an unnamed "slop ratchet OK" is the shape of the 2026-08-17 false
+  green. **`complexity_hotspots` is a COUNT, and counts move for reasons that are not decay — re-baseline it
+  rather than chasing it.** A function is a hotspot if `cc >= 10` OR `>50 source lines` OR too many params,
+  so the count rises when the codebase GROWS, when you ADD TESTS (`gate_test_loc:false` exempts test LOC but
+  nothing exempts test complexity), and — the trap — when you DECOMPOSE a monster: splitting one cc=46
+  function into named pieces can move the count UP. Judge erosion by hotspot density per KLOC and the worst
+  offender's cc, not by the count. Orphan LOC and duplication are honest ratchets — they move only on a real
+  regression. Scan a SURFACE dir, never the repo root: the analyzer roots module names at the scan path, so
+  a root scan can't resolve `app.*` imports and reports the whole backend as orphaned. jscpd is optional;
+  without it duplication is skipped and the rest still gates. The extension's allowlisted clones are the
+  documented injected twins, so a NEW clone there is a real finding. Read the reason strings before trusting
+  a green: the matcher pairs FILE NAMES by substring, so a rule naming a file on either side also hides that
+  file's own SELF-clones. `allowlisted_clones` is PRINTED, never gated — a new clone inside an allowlisted
+  pair raises it silently while `clone_count` stays 0, so check it by eye. Optional graph signals read
+  `graphify-out/graph.json` (gitignored): regenerate with `graphify extract . --no-cluster --code-only`
+  (PyPI `graphifyy`).
 
 ## 10. Design-decision record
 
@@ -771,188 +772,186 @@ and consent-gated `kb_approve_points` is the one approval path from MCP.
 
 ## 11. Known deferred items (priority order)
 
-**Item numbers are stable, not positional.** Code and migrations cite
-"§11 item N" from a dozen places, so new items APPEND here and shipped
-items are deleted in place — renumbering silently invalidates every
+**Item numbers are stable, not positional.** Code and migrations cite "§11 item N" from a dozen places,
+so new items APPEND here and shipped items are deleted in place — renumbering silently invalidates every
 citation. Priority lives in the item text, not in the ordinal.
 
-1. Extra-section op **payloads** stay loosely typed. Op *kinds* are a single
-   source (`schemas/resume_edit.py`: 16-kind discriminated union with
-   `op_kinds()` / `op_scope()` / `render_ops_brief()` / `render_ops_shapes()`;
-   chat imports those, MCP builds `edit_base_resume` from `render_ops_shapes()`
-   at import, parity tests in `test_resume_edit_reference.py`). Residual:
-   `add_extra_section` / `replace_extra_section` `value` is `dict[str, Any]`
-   and ExtraSection validation lives in the service
-   (`resume_edit._validate_extra_section`), same pattern as `AddEntry` — a bad
-   extras payload is a 400, not a schema 422. Nested extra-section
-   entry/bullet ops remain item 20.
-2. One post-render readiness pipeline ("Ready to apply" gate: health, em-dash,
-   pages, contact checks on the exact rendered artifact), consuming the shared
-   rasterized preview + slim MCP `get_rendered_pdf` metadata. (The JD-level
-   half — stated requirements vs profile — shipped as the knock-out pre-scan,
-   §5 step 3; this item is now only the post-render artifact pipeline.)
-3. Base-score staleness on from-base: re-score only when the base resume's
-   updated_at is newer than the score row — never unconditionally.
-4. JD promoted-field correction before gap freezing (today only source_url is
-   editable) + score provenance (engine/config version) surfaced in the UI.
+1. Extra-section op **payloads** stay loosely typed. Op *kinds* are a single source
+   (`schemas/resume_edit.py`: 16-kind discriminated union with `op_kinds()` / `op_scope()` /
+   `render_ops_brief()` / `render_ops_shapes()`; chat imports those, MCP builds `edit_base_resume` from
+   `render_ops_shapes()` at import, parity tests in `test_resume_edit_reference.py`). Residual:
+   `add_extra_section` / `replace_extra_section` `value` is `dict[str, Any]` and ExtraSection validation
+   lives in the service (`resume_edit._validate_extra_section`), same pattern as `AddEntry` — a bad extras
+   payload is a 400, not a schema 422. Nested extra-section entry/bullet ops remain item 20.
+2. One post-render readiness pipeline ("Ready to apply" gate: health, em-dash, pages, contact checks on the
+   exact rendered artifact), consuming the shared rasterized preview + slim MCP `get_rendered_pdf` metadata.
+   (The JD-level half — stated requirements vs profile — shipped as the knock-out pre-scan, §5 step 3; this
+   item is now only the post-render artifact pipeline.)
+3. Base-score staleness on from-base: re-score only when the base resume's updated_at is newer than the
+   score row — never unconditionally.
+4. JD promoted-field correction before gap freezing (today only source_url is editable) + score provenance
+   (engine/config version) surfaced in the UI.
 5. Server-side pagination for the tracker (client caps at limit=500 today).
-6. Chat KB document provenance: `ChatAttachment` stores extracted text only, so a
-   chat-added document never becomes a KB source document — persist bytes, or hand
-   chat a `kb_ingest_document` tool.
-7. Contact URLs in the shared `_header.tex.j2` still go through `latex_escape` (the
-   `~` corruption class, needs `latex_escape_url`); the fix touches BOTH templates,
-   so it needs cover-letter regression tests.
-8. Agentic job-search phase 2: JobBoard registry (kind/tags/last_checked),
-   SavedSearch model, Job triage state, cross-session search-run logging.
-10. Work-auth warning CODES: `services/job_search_brief` still reads the two
-    legacy keys and pattern-matches loose strings in `warnings[]`; it should
-    understand the typed `WorkAuth` shape.
-12. Extension identity-combobox reconciliation (ARIA-widget overwrite is
-    riskier), and block-scoped education-vs-employment rule matching (`not:`
-    label guards miss unheaded education containers).
-13. Quick-tailor: derive `applied` from the committed resume DIFF, not planned
-    intent; employment-blocks v2.
-14. Telemetry v2: option-set fingerprint + normalization; capture-session
-    record for per-site/per-kind saturation; failure-count ranking + Analytics
-    drill-down/export; label/option-text redaction; summary pagination.
-15. Typst phase 2 (the LaTeX retirement itself is §13): `typst query` AST
-    introspection over source-text capability heuristics; web engine picker;
-    in-product .tex→Typst conversion (expose `backend/scripts/template_parity.py
-    --compare` as a backend tool).
-16. Onboarding intake: entity resolution ACROSS kinds (a certificate merges
-    into its experience entity, not a sibling); a re-runnable "import more";
-    bounding LLM cost (file cap of 10 in `services/kb_import`).
-17. ATS follow-ups: (a) alias/adjacency vocabulary via an OFFLINE human-gated
-    miner over stored `extracted_json`, guarded by
-    `SkillMatcher._tokens_contained` — until then the JD side is unenforced;
-    (b) education-as-evidence stays OFF pending a dot-stripping degree
-    normalizer (school + graduation year stay out of score and prompt either
-    way); (c) lexical-vs-semantic cert attribution, 1 row in 6,993 — re-check
-    if it grows; (d) stamp `as_of` + `jd_extraction_hash` on `AtsScore` and
-    add both to `compare()`'s guard.
-19. Auto-apply follow-ups: `source` threading through the explore builders;
-    Telegram consent channel (rejected for v1); extension-less CDP fill (HARD
-    constraint: backend CORS must never admit ATS/web origins).
-20. `extra_sections` remainder: calibrate the `extra_only` multiplier; nested
-    extra-section entry/bullet ops are still unbuilt.
-21. MCP onboarding follow-ups: `near_duplicate_of` hints in the ingest report
-    (normalized-distance vs existing points, so the agent can retire one copy
-    without the LLM clusterer); a batch `sources` variant of
-    `kb_ingest_resume` (single-source calls make profile seeding
-    order-dependent); a consent story for `_seed_profile`/`_merge_skills` —
-    profile contact and skills have no draft state yet compose onto EVERY
+6. Chat KB document provenance: `ChatAttachment` stores extracted text only, so a chat-added document never
+   becomes a KB source document — persist bytes, or hand chat a `kb_ingest_document` tool.
+7. Contact URLs in the shared `_header.tex.j2` still go through `latex_escape` (the `~` corruption class,
+   needs `latex_escape_url`); the fix touches BOTH templates, so it needs cover-letter regression tests.
+8. Agentic job-search phase 2: JobBoard registry (kind/tags/last_checked), SavedSearch model, Job triage
+   state, cross-session search-run logging.
+10. Work-auth warning CODES: `services/job_search_brief` still reads the two legacy keys and pattern-matches
+    loose strings in `warnings[]`; it should understand the typed `WorkAuth` shape.
+12. Extension identity-combobox reconciliation (ARIA-widget overwrite is riskier), and block-scoped
+    education-vs-employment rule matching (`not:` label guards miss unheaded education containers).
+13. Quick-tailor: derive `applied` from the committed resume DIFF, not planned intent; employment-blocks v2.
+14. Telemetry v2: option-set fingerprint + normalization; capture-session record for per-site/per-kind
+    saturation; failure-count ranking + Analytics drill-down/export; label/option-text redaction; summary
+    pagination.
+15. Typst phase 2 (the LaTeX retirement itself is §13): `typst query` AST introspection over source-text
+    capability heuristics; web engine picker; in-product .tex→Typst conversion (expose
+    `backend/scripts/template_parity.py --compare` as a backend tool).
+16. Onboarding intake: entity resolution ACROSS kinds (a certificate merges into its experience entity, not
+    a sibling); a re-runnable "import more"; bounding LLM cost (file cap of 10 in `services/kb_import`).
+17. ATS follow-ups: (a) alias/adjacency vocabulary via an OFFLINE human-gated miner over stored
+    `extracted_json`, guarded by `SkillMatcher._tokens_contained` — until then the JD side is unenforced;
+    (b) education-as-evidence stays OFF pending a dot-stripping degree normalizer (school + graduation year
+    stay out of score and prompt either way); (c) lexical-vs-semantic cert attribution, 1 row in 6,993 —
+    re-check if it grows; (d) stamp `as_of` + `jd_extraction_hash` on `AtsScore` and add both to
+    `compare()`'s guard.
+19. Auto-apply follow-ups: `source` threading through the explore builders; Telegram consent channel
+    (rejected for v1); extension-less CDP fill (HARD constraint: backend CORS must never admit ATS/web
+    origins).
+20. `extra_sections` remainder: calibrate the `extra_only` multiplier; nested extra-section entry/bullet ops
+    are still unbuilt.
+21. MCP onboarding follow-ups: `near_duplicate_of` hints in the ingest report (normalized-distance vs
+    existing points, so the agent can retire one copy without the LLM clusterer); a batch `sources` variant
+    of `kb_ingest_resume` (single-source calls make profile seeding order-dependent); a consent story for
+    `_seed_profile`/`_merge_skills` — profile contact and skills have no draft state yet compose onto EVERY
     base; `enabled: false` entries still ingest (LLM-path parity, revisit).
-22. Guided Apply follow-ups (design doc has R2 stepper + R3 vault): checkbox
-    collection needs its own safe design (group-level collection, legend-level
-    policy screening, mirroring radios; `skipped_checkbox` holds until then);
-    auto-advance toggle; per-ATS selector blueprints; the essay path onto
-    qid-keyed `/choose`; `guidedIsListboxButton` stays looser than the two
-    pinned strict discriminators (it rechecks vetted elements only).
-23. **Some §6 invariants have no enforcement pin** — the current list is
-   `unpinned` in `.system_md_enforcement.json`. Each is a rule the gate cannot
-   defend: it survives only as long as everyone remembers it. When next working
-   in one of those areas, add the pin or demote the rule to a convention note.
-24. Surface enum-coercion warnings from `schemas/job_extraction._coerce_enum`
-   through the jobs-ingest response, so `store_extracted_jd` callers see that
-   input X was stored as `unstated` (audit 2026-08-22, finding A1).
+22. Guided Apply follow-ups (design doc has R2 stepper + R3 vault): checkbox collection needs its own safe
+    design (group-level collection, legend-level policy screening, mirroring radios; `skipped_checkbox`
+    holds until then); auto-advance toggle; per-ATS selector blueprints; the essay path onto qid-keyed
+    `/choose`; `guidedIsListboxButton` stays looser than the two pinned strict discriminators (it rechecks
+    vetted elements only).
+23. **Some §6 invariants have no enforcement pin** — the current list is `unpinned` in
+    `.system_md_enforcement.json`. Each is a rule the gate cannot defend: it survives only as long as
+    everyone remembers it. When next working in one of those areas, add the pin or demote the rule to a
+    convention note.
+24. Surface enum-coercion warnings from `schemas/job_extraction._coerce_enum` through the jobs-ingest
+    response, so `store_extracted_jd` callers see that input X was stored as `unstated` (audit 2026-08-22,
+    finding A1).
+25. SQLite has one write lock per database, and two transactions hold it across LLM calls by design:
+    `kb_consolidation.consolidate` (flush, then one LLM call per entity, one commit —
+    `seeding.seed_career_kb` relies on that atomicity via `commit=False`) and
+    `tailoring_session.create_session` with enrichment (score flush + supersede UPDATE, then the enrichment
+    call). A concurrent writer waits `busy_timeout` (30 s), then fails "database is locked". Fix: compute
+    every LLM result first, then write in one short transaction, keeping the seeder's `commit=False`
+    contract. Until then consolidation is a user-initiated, rare, minutes-long exclusive window.
 
 ## 12. Gotchas that have bitten before
 
-- **One path, every job** (2026-09-01): LinkedIn's list rewrites only
-  `?currentJobId=` and the matcher dropped the query string, so every job was the
-  first one saved. A query-keyed board needs its key in BOTH `posting_id` tables
-  (§7); an SPA's `<head>` JSON-LD is the PREVIOUS job's until checked.
-- **A starter that fails its own gate** (2026-09-01): the from-scratch template
-  rendered three sections, so create-with-validate certified `false` on an untouched
-  draft. What the app mints AND validates in one request must clear every probe.
-- **Extension-only `accept` lists grey out real files** (2026-09-01): six hand-typed
-  pickers, no MIME types. Every picker reads `frontend/lib/upload-accept.ts`.
-- **A guard test mocked away the guard** (2026-08-25): a green ask/answer suite hid
-  a 100%-failing numeric rewrite path because it replaced `guarded_rewrite`. When a
-  guard or validator is the subject, fake `llm.call_openai`, never the guard.
-- **The FAST model quietly caps score honesty** (2026-08-24): flash-lite extractions
-  missed conceptual JD skills → base ATS scores inflated ~9 pts vs fuller extractors.
-  Fast tier drives coverage/honesty/latency; Smart barely moves outcomes —
-  re-benchmark FAST before changing model defaults.
-- **`autoflush=False` sessions**: two `session.merge`s that canonicalize to the same
-  PK in one flush both INSERT (no dedup) → IntegrityError. Dedupe in Python first
-  (see `_insert_skills`).
-- **Pydantic error mapping order**: `ValidationError` subclasses `ValueError` — catch
-  it FIRST or 422s silently become 400s (render endpoint comment).
-- **Transient response attrs**: `already_existed` (Job) and `health_warning`
-  (TailoringSession) are instance attrs set after refresh, never columns — don't
-  "fix" them into the ORM.
-- **score_target(result=...)**: passes a precomputed engine result to persist;
-  the double-run it replaced was audit finding C18 — don't re-add a second run.
-- **Studio external-edit dirty-guard**: StudioEditor keys on the *adopted* server
-  snapshot, not live `customized_json`; external edits auto-adopt only when clean,
-  and Save flags the next server key so Save→render→re-score adopts banner-free.
-- **An expanded hit target can cover its own label**: `after:-inset-2` inside an
-  `h-5` chip put the remove target over the chip's own text, so clicking to open
-  cleared instead. Expanded targets need room around them, not just under them.
-- **MCP clients truncate tool descriptions at ~2048 dedented chars**: keep `__doc__`
-  ≤2000 (ratchet test) or put the fact on a param `Field(description=…)`.
-- **Worktree subagents**: agents may edit the MAIN checkout instead of the worktree
-  — hand them absolute worktree paths and verify with `git -C <worktree> status`.
-- **Ports**: 8000/8001 may be squatted by unrelated apps or stale servers — verify
-  identity via `GET /openapi.json` `info.title == "Maestro CS API"`.
-- **Model catalog is seeds ∪ extras** (`MODEL_OPTIONS` ∪ `llm.extra_models`): `GET
-  /api/settings/openai` returns the merge; deleting an id a role still uses is 400;
-  hosted chat is probe-gated (stored tools=false blocks; unprobed passes, matching
-  `require()`).
-- **JSON mode is capability-gated**: `response_format=json_object` goes out only
-  when `llm._json_mode_supported()` (other servers may hard-400 on the field);
-  `llm._extract_json_object` salvages fenced JSON.
-- **Check model capability in the ROUTER, never inside `run_turn`**: `run_turn` is a
-  generator — anything it raises fires after the SSE headers are out and reaches the
-  browser as a truncated stream. Capabilities are probed on save
-  (`llm_capabilities.probe()`); `require()` raises `CapabilityMissing`; unprobed
-  models are never blocked.
-- **A probe must issue the SAME call as the surface it measures**: same client
-  (`llm.get_chat_client`) and the same per-model kwargs from `llm.completion_extras`
-  (the one site for such rules). A probe that re-implements the call measures one
-  the app never makes, and its stored row then SHADOWS reality — a false tools=No
-  once 422'd every chat message.
-- **LLM provider outages are ONE exception type**: `llm.py` normalizes them to
-  `llm.LLMProviderError`; `app.main` maps it to 502 + the provider's message
-  for every router. Never catch `openai.*` in routers; plain `RuntimeError`
-  means a LOCAL render/compile failure and must stay a 500.
-- **Explore charts live under Analytics**: `/explore` is a 307 to `/analytics`; the
-  charts live in `frontend/components/charts/` and `…/analytics/`, not an
-  `app/explore/` route.
-- **`delete-orphan` cascade vs bulk re-point**: a bulk `update()` that moves children
-  off a parent does not refresh the parent's already-loaded collection, so a following
-  `session.delete(parent)` cascades away the rows just moved — expire the parent
-  between the two (`career_kb.merge_entities`).
+- **A PRAGMA dies with its connection** (2026-09-19): SQLite ships `foreign_keys=OFF` and forgets every
+  pragma on close, so 21 `ondelete=` cascades silently stopped doing anything. Every engine comes from
+  `app.db.make_engine`, which sets the pragmas per connection — never `create_engine` in app code.
+- **Autogenerate fully qualifies a TypeDecorator** (2026-09-19): `app.models.types.UTCDateTime()` is
+  unimportable in a revision → use the impl type by hand. Alembic compares compiled DDL, so `compare_type`
+  needs no hook; `alembic check` skips server defaults, hence the parity test's
+  `compare_server_default=True` pass.
+- **A Boolean `server_default="false"` is TEXT on SQLite** (2026-09-19): `'false'` is truthy in Python, so
+  every user-created template read as the default. Boolean defaults are expressions (`expression.false()`),
+  pinned by `test_db_portability`.
+- **`Session.commit()` flushes first** (2026-09-19): a teardown that deletes rows and commits also lands a
+  never-flushed `add`, AFTER the deletes, leaking it into the next test → `rollback()` before a teardown
+  clear.
+- **`with sqlite3.connect(...)` commits but does not CLOSE** (2026-09-19): a leaked read lock on the live
+  database and an open handle on the temp image → `app/tools/backup_db.py` closes every connection in a
+  `finally`; never use the sqlite3 context manager as a closer.
+- **SQLite's `CURRENT_TIMESTAMP` has no microseconds** (2026-09-19): it compares as TEXT against the ORM's
+  `.ffffff` binds, so same-second rows tied and "oldest wins" fell to a uuid4 tie-break → the APP writes
+  every timestamp (`default=utcnow`/`onupdate=utcnow`; `server_default` is DDL only). Never test
+  `updated_at == created_at`.
+- **One path, every job** (2026-09-01): LinkedIn's list rewrites only `?currentJobId=` and the matcher
+  dropped the query string, so every job was the first one saved. A query-keyed board needs its key in BOTH
+  `posting_id` tables (§7); an SPA's `<head>` JSON-LD is the PREVIOUS job's until checked.
+- **A starter that fails its own gate** (2026-09-01): the from-scratch template rendered three sections, so
+  create-with-validate certified `false` on an untouched draft. What the app mints AND validates in one
+  request must clear every probe.
+- **Extension-only `accept` lists grey out real files** (2026-09-01): six hand-typed pickers, no MIME types.
+  Every picker reads `frontend/lib/upload-accept.ts`.
+- **A guard test mocked away the guard** (2026-08-25): a green ask/answer suite hid a 100%-failing numeric
+  rewrite path because it replaced `guarded_rewrite`. When a guard or validator is the subject, fake
+  `llm.call_openai`, never the guard.
+- **The FAST model quietly caps score honesty** (2026-08-24): flash-lite extractions missed conceptual JD
+  skills → base ATS scores inflated ~9 pts vs fuller extractors. Fast tier drives coverage/honesty/latency;
+  Smart barely moves outcomes — re-benchmark FAST before changing model defaults.
+- **`autoflush=False` sessions**: two `session.merge`s that canonicalize to the same PK in one flush both
+  INSERT (no dedup) → IntegrityError. Dedupe in Python first (see `_insert_skills`).
+- **Pydantic error mapping order**: `ValidationError` subclasses `ValueError` — catch it FIRST or 422s
+  silently become 400s (render endpoint comment).
+- **Transient response attrs**: `already_existed` (Job) and `health_warning` (TailoringSession) are instance
+  attrs set after refresh, never columns — don't "fix" them into the ORM.
+- **score_target(result=...)**: passes a precomputed engine result to persist; the double-run it replaced
+  was audit finding C18 — don't re-add a second run.
+- **Studio external-edit dirty-guard**: StudioEditor keys on the *adopted* server snapshot, not live
+  `customized_json`; external edits auto-adopt only when clean, and Save flags the next server key so
+  Save→render→re-score adopts banner-free.
+- **An expanded hit target can cover its own label**: `after:-inset-2` inside an `h-5` chip put the remove
+  target over the chip's own text, so clicking to open cleared instead. Expanded targets need room around
+  them, not just under them.
+- **MCP clients truncate tool descriptions at ~2048 dedented chars**: keep `__doc__` ≤2000 (ratchet test) or
+  put the fact on a param `Field(description=…)`.
+- **Worktree subagents**: agents may edit the MAIN checkout instead of the worktree — hand them absolute
+  worktree paths and verify with `git -C <worktree> status`.
+- **Ports**: 8000/8001 may be squatted by unrelated apps or stale servers — verify identity via
+  `GET /openapi.json` `info.title == "Maestro CS API"`.
+- **Model catalog is seeds ∪ extras** (`MODEL_OPTIONS` ∪ `llm.extra_models`): `GET /api/settings/openai`
+  returns the merge; deleting an id a role still uses is 400; hosted chat is probe-gated (stored tools=false
+  blocks; unprobed passes, matching `require()`).
+- **JSON mode is capability-gated**: `response_format=json_object` goes out only when
+  `llm._json_mode_supported()` (other servers may hard-400 on the field); `llm._extract_json_object`
+  salvages fenced JSON.
+- **Check model capability in the ROUTER, never inside `run_turn`**: `run_turn` is a generator — anything it
+  raises fires after the SSE headers are out and reaches the browser as a truncated stream. Capabilities are
+  probed on save (`llm_capabilities.probe()`); `require()` raises `CapabilityMissing`; unprobed models are
+  never blocked.
+- **A probe must issue the SAME call as the surface it measures**: same client (`llm.get_chat_client`) and
+  the same per-model kwargs from `llm.completion_extras` (the one site for such rules). A probe that
+  re-implements the call measures one the app never makes, and its stored row then SHADOWS reality — a false
+  tools=No once 422'd every chat message.
+- **LLM provider outages are ONE exception type**: `llm.py` normalizes them to `llm.LLMProviderError`;
+  `app.main` maps it to 502 + the provider's message for every router. Never catch `openai.*` in routers;
+  plain `RuntimeError` means a LOCAL render/compile failure and must stay a 500.
+- **Explore charts live under Analytics**: `/explore` is a 307 to `/analytics`; the charts live in
+  `frontend/components/charts/` and `…/analytics/`, not an `app/explore/` route.
+- **`delete-orphan` cascade vs bulk re-point**: a bulk `update()` that moves children off a parent does not
+  refresh the parent's already-loaded collection, so a following `session.delete(parent)` cascades away the
+  rows just moved — expire the parent between the two (`career_kb.merge_entities`).
 
 ## 13. Active migrations & deprecation ledger
 
-**The rule.** A row is born the moment work lands that SUPERSEDES something
-without deleting it; it dies when the old path is removed. Every row names a
-**removal trigger** — the observable condition under which the old path gets
-deleted. If you cannot state one, it is not a migration but two ways of doing
+**The rule.** A row is born the moment work lands that SUPERSEDES something without deleting it; it dies
+when the old path is removed. Every row names a **removal trigger** — the observable condition under
+which the old path gets deleted. If you cannot state one, it is not a migration but two ways of doing
 the same thing: a design bug to fix, not a row to file.
 
-**Not §11.** §11 = work NOT YET BUILT. §13 = work built TWICE, where one copy
-must die. A §11 item that turns out to be a removal plan belongs here.
+**Not §11.** §11 = work NOT YET BUILT. §13 = work built TWICE, where one copy must die. A §11 item that
+turns out to be a removal plan belongs here.
 
-**Machine-checked.** Rows with executable triggers are mirrored in
-`.slopledger.json`; the maintainer runs `python3
-~/.claude/skills/ai-slop-detector/scripts/ledger_check.py . --strict` (same
-maintainer tooling as the slop ratchet, not shipped here) to detect drift. Keep row ids identical in both places; rows without predicates
-are verify-by-hand. That file mirrors TRIGGERS only — the why and the traps
-stay here.
+**Machine-checked.** Rows with executable triggers are mirrored in `.slopledger.json`; the maintainer
+runs `python3 ~/.claude/skills/ai-slop-detector/scripts/ledger_check.py . --strict` (same maintainer
+tooling as the slop ratchet, not shipped here) to detect drift. Keep row ids identical in both places;
+rows without predicates are verify-by-hand. That file mirrors TRIGGERS only — the why and the traps stay
+here.
 
-**This section exists so SYSTEM.md can shrink.** When a row lands here, CUT the
-superseded prose from its home section and leave a one-line pointer ("migration
-state: §13 `<id>`"). Delete the row when the old path is gone — never leave green rows.
+**This section exists so SYSTEM.md can shrink.** When a row lands here, CUT the superseded prose from
+its home section and leave a one-line pointer ("migration state: §13 `<id>`"). Delete the row when the
+old path is gone — never leave green rows.
 
-Status: `both-live` (both reachable, old still default) · `new-is-default` (new
-path is canonical, old survives as fallback/backup) · `blocked` (trigger cannot
-be evaluated until a named prerequisite lands) · `ready-to-cut` (trigger met).
+Status: `both-live` (both reachable, old still default) · `new-is-default` (new path is canonical, old
+survives as fallback/backup) · `blocked` (trigger cannot be evaluated until a named prerequisite lands)
+· `ready-to-cut` (trigger met).
 
-**Re-verify triggers on a schedule** — a stale `ready-to-cut` is worse than no
-row, because it claims a deletion is safe without evidence. `.slopledger.json`
+**Re-verify triggers on a schedule** — a stale `ready-to-cut` is worse than no row, because it claims a
+deletion is safe without evidence. `.slopledger.json`
 + `ledger_check.py --strict` do the mechanical part. Cut rows and their
 evidence live in `git log SYSTEM.md`, not here.
 
@@ -966,35 +965,33 @@ evidence live in `git log SYSTEM.md`, not here.
 | `autofill-work-auth-shape` | `work_auth.authorized_to_work` + `requires_sponsorship` (two timeless booleans, stored "yes"/"no") → typed `WorkAuth` (`schemas/autofill_profile.py`: `status`, `authorized_now`, `sponsorship_now`, `sponsorship_future`, `authorization_expires_on`, `countries_authorized`) | both-live | Delete when no raw-profile reader uses either legacy key. Today's storage readers are FOUR: `services/autofill_profile.py`'s legacy branch, the Settings editor's legacy-on-edit bridge (`components/settings/autofill-section.tsx`), the fill engine's dual-read (`content/autofill.js`, the `w` binding in the profile normalizer; moved from agent.js at the phase-2 split), and the panel's `workAuthForWrite` (`panel/actions/pause.js`), which promotes the legacy pair before the first typed pause-row write. The panel copy is the trap: `.slopledger.json`'s trigger paths cover `extension/content` only, so the mechanical check goes GREEN while that reader lives — widen the paths or verify it by hand. `job_search_brief`'s identically named response fields are a frozen outward compatibility projection from typed `authorized_now` / `sponsorship_future`, not a legacy reader, and do not block removal. ALSO `GET /api/settings/autofill` must return a `work_auth` carrying neither legacy key. Then delete the legacy branch of BOTH `autofill_profile.get_work_auth` and the extension's `w` binding. Per `autofill-education-shape`: cut the frontend first, the extension one release later. | small |
 | `job-location-raw` | `jobs.location` (dual-written) → `location_raw` + city/state/country | both-live | Stage 1 (schema shim + `.location` property) already met. Stage 2: no reader of `jobs.location` remains, then `op.drop_column`. | small |
 | `explore-redirect` | `frontend/app/explore/page.tsx` → `/analytics` | ready-to-cut | Owner overrules the recorded keep-decision. Safe: it is a 307, not a 308 — no browser cached the mapping. | trivial |
-| `health-rewrite-cache` | unattended rewrite always-LLM → `bullet_rewrites` (NULL text = tried-ask) + ephemeral ask answers → `health_ask_answers` | new-is-default | Migration `85a1bb628e28`. The LLM miss path is the intended fallback, not a second product — cut this row when a follow-up deletes either table or the GET `/api/resume-lint/{kind}/{key}/answers` rehydrate. | small |
+| `health-rewrite-cache` | unattended rewrite always-LLM → `bullet_rewrites` (NULL text = tried-ask) + ephemeral ask answers → `health_ask_answers` | new-is-default | Migration `85a1bb628e28` (now in `legacy_postgres/`; the tables are in the SQLite baseline). The LLM miss path is the intended fallback, not a second product — cut this row when a follow-up deletes either table or the GET `/api/resume-lint/{kind}/{key}/answers` rehydrate. | small |
+| `postgres-to-sqlite` | compose `postgres` service + `legacy_postgres/` chain → `data/maestro_cs.sqlite3` + one baseline | new-is-default | The next release ships. Then delete: `legacy_postgres/`, `app/tools/migrate_from_postgres.py`, `seeding._import_legacy_postgres`, `legacy_database_url`, `normalize_postgres_url`, the `legacy-postgres` extra (from BOTH the Dockerfile's editable install and the `pip-compile` recipe — the lock is what actually carries psycopg into the image; regenerate it) and CI job, the compose `postgres` service + `pgdata` volume + `LEGACY_DATABASE_URL`, every `POSTGRES_*` env key, `update.sh`'s pg_dump branch, and the three tests that exercise the boxed chain (`tests/test_kb_capture_resync.py`, `tests/test_template_date_resync.py`, `tests/test_template_section_order_resync.py`). `update.sh --check` must then say "install <this release> first" when a `pgdata` volume exists without `data/.migrated-from-postgres.json`. | medium |
 
 **Row notes** (only where the trigger hides a trap):
 
-- `typst-*`: strictly ordered flip → delete-latex → drop-texlive (the font is vendored,
-  so the old drop-the-layer-changes-the-font trap is closed).
-- `latex-render-path`: alembic `9a0404101e5f` reads `resume.tex.j2` off disk during
-  `upgrade()`. Deleting the file breaks first boot on a fresh clone.
-- `chat-selection-kind`: inverted today — the branch four comments call "legacy" is
-  the only form the frontend emits (`scope-picker.tsx` sets `kind` on kb chips only),
-  so `kind:"resume"` is unreachable and those comments mislead until stage 1 ships.
-- `autofill-work-auth-shape`: three traps. (0) The reader count is FOUR and one
-  of them sits outside the trigger paths — see the row. (1) `sponsorship_now` has NO legacy
-  source and stays `None` on purpose — defaulting it from
-  `requires_sponsorship` answers the OPT case wrong (no sponsorship NOW,
-  needed later); unknown must stay unknown. (2) `job_search_brief`'s public
-  legacy-named response fields are a frozen projection of the typed reader,
-  not a storage-migration blocker.
-- `job-location-raw`: `JobSummary` exposes ONLY the old field (no `location_raw`), so
-  the list endpoint is the hardest blocker to dropping the column.
-- `explore-redirect`: contradicts a recorded decision to keep it. Needs an explicit
-  overrule, not a silent delete.
+- `typst-*`: strictly ordered flip → delete-latex → drop-texlive (the font is vendored, so the old
+  drop-the-layer-changes-the-font trap is closed).
+- `latex-render-path`: alembic `9a0404101e5f`, from `legacy_postgres/`, reads `resume.tex.j2` off disk
+  during `upgrade()`. Deleting the file breaks the one-release legacy import.
+- `chat-selection-kind`: inverted today — the branch four comments call "legacy" is the only form the
+  frontend emits (`scope-picker.tsx` sets `kind` on kb chips only), so `kind:"resume"` is unreachable and
+  those comments mislead until stage 1 ships.
+- `autofill-work-auth-shape`: three traps. (0) The reader count is FOUR and one of them sits outside the
+  trigger paths — see the row. (1) `sponsorship_now` has NO legacy source and stays `None` on purpose —
+  defaulting it from `requires_sponsorship` answers the OPT case wrong (no sponsorship NOW, needed later);
+  unknown must stay unknown. (2) `job_search_brief`'s public legacy-named response fields are a frozen
+  projection of the typed reader, not a storage-migration blocker.
+- `job-location-raw`: `JobSummary` exposes ONLY the old field (no `location_raw`), so the list endpoint is
+  the hardest blocker to dropping the column.
+- `explore-redirect`: contradicts a recorded decision to keep it. Needs an explicit overrule, not a silent
+  delete.
 
-**Not migrations — do not re-file these here** (each was proposed as a row and
-rejected): the 4-way application-status vocabulary and the 3-way
-`quick_tailor_profile` shape are hand-synced by design; the `/api/explore`
-prefix and 7 MCP tool names are a deliberately frozen public surface after the UI
-rename; the typed-op vocabulary lives in `schemas/resume_edit.py` (item 1 tracks
-only the extras-payload residual) and is not a migration. Cross-boundary duplication (a Python enum and its TypeScript
-mirror) is never a ledger row — it needs a contract test, not a deletion. The two
-seniority lists are NOT a subset relation and must not be merged — see §4
-AtsScore, "Rank markers are domain data"; merging them would be a scoring bug.
+**Not migrations — do not re-file these here** (each was proposed as a row and rejected): the 4-way
+application-status vocabulary and the 3-way `quick_tailor_profile` shape are hand-synced by design; the
+`/api/explore` prefix and 7 MCP tool names are a deliberately frozen public surface after the UI rename;
+the typed-op vocabulary lives in `schemas/resume_edit.py` (item 1 tracks only the extras-payload
+residual) and is not a migration. Cross-boundary duplication (a Python enum and its TypeScript mirror)
+is never a ledger row — it needs a contract test, not a deletion. The two seniority lists are NOT a
+subset relation and must not be merged — see §4 AtsScore, "Rank markers are domain data"; merging them
+would be a scoring bug.
