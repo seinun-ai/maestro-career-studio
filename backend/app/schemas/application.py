@@ -107,4 +107,9 @@ class RenderResult(BaseModel):
     pdf_path: str
     resolved_template_id: str | None = None
     resolved_engine: str | None = None
+    # True whenever the resolved id differs from the requested one, for ANY
+    # reason (stale id -> default, or TeX absent -> Typst); render_note says why.
     template_fallback: bool | None = None
+    # Non-null ONLY when the engine was substituted because TeX is absent;
+    # says why, in the words the user sees.
+    render_note: str | None = None

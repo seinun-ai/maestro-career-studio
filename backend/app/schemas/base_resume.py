@@ -37,6 +37,9 @@ class BaseResumeDetail(BaseModel):
     resolved_template_id: str | None = None
     resolved_engine: str | None = None
     template_fallback: bool | None = None
+    # Transient like resolved_engine (set on the row after commit): non-null
+    # ONLY when the engine was substituted because TeX is absent; says why.
+    render_note: str | None = None
     pdf_pages: int | None = None
     render_error: str | None = None
     updated_at: datetime

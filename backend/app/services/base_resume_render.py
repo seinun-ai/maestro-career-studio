@@ -43,4 +43,5 @@ def render_base_resume(slug: str, db: Session, *, template_id: str | None = None
     db.refresh(row)
     row.resolved_template_id = doc.resolved_template_id
     row.resolved_engine = doc.engine
+    row.render_note = doc.render_note
     return row

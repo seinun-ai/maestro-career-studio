@@ -513,9 +513,12 @@ def render_application(
         pdf_path=str(pdf_path),
         resolved_template_id=doc.resolved_template_id,
         resolved_engine=doc.engine,
+        # True whenever the resolved id differs from the requested one, for ANY
+        # reason (stale id -> default, or TeX absent -> Typst); render_note says why.
         template_fallback=(
             template_id is not None and doc.resolved_template_id != template_id
         ),
+        render_note=doc.render_note,
     )
 
 

@@ -1,11 +1,22 @@
 """Design 2026-09-19 §2.2: a render never changes engine silently, and a
 missing pdflatex is an actionable error, never a 500 from FileNotFoundError."""
-import pytest
+from datetime import UTC, datetime
+from pathlib import Path
 
+import pytest
+from fastapi.testclient import TestClient
+
+from app.config import settings as app_settings
+from app.db import get_db
+from app.main import app
+from app.models.application import Application
 from app.models.template import Template
+from app.routers import applications as applications_router
 from app.services import engines, pdf_render
 from app.services import template_registry as reg
 from app.services.template_validation import SAMPLE_RESUME
+from tests.test_applications_router import _job
+from tests.test_base_resumes_router import _override_db, _seed
 
 MINIMAL_TEX = "\\documentclass{article}\\begin{document}x\\end{document}"
 
@@ -118,8 +129,6 @@ def test_first_ready_typst_order_is_default_then_classic_then_by_id(db_session):
     _mark_ready(db_session, reg.TYPST_CLASSIC_ID)
     assert reg.first_ready_typst(db_session).id == reg.TYPST_CLASSIC_ID
     # ...and a ready Typst default outranks both. Archived is never a candidate.
-    from datetime import UTC, datetime
-
     mine = Template(id="mine", display_name="Mine", engine="typst", status="ready", source="x")
     db_session.add(mine)
     db_session.commit()
@@ -161,3 +170,63 @@ def test_render_note_is_none_when_nothing_was_substituted(db_session, monkeypatc
     )
     assert doc.engine == "typst"
     assert doc.render_note is None
+
+
+# --- The note on the wire -----------------------------------------------------
+
+
+def test_base_resume_render_reports_the_fallback(db_session, tmp_path, monkeypatch):
+    _no_tex(monkeypatch)
+    _seed_rows(db_session)
+    monkeypatch.setattr(app_settings, "base_resumes_dir", tmp_path)
+    _seed(db_session, slug="data_scientist", data_json=SAMPLE_RESUME)
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        r = TestClient(app).post("/api/base-resumes/data_scientist/render")
+    finally:
+        app.dependency_overrides.clear()
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["resolved_engine"] == "typst"
+    assert "TeX is not installed" in body["render_note"]
+    assert Path(body["pdf_path"]).exists()
+
+
+def test_application_render_reports_the_fallback(db_session, tmp_path, monkeypatch):
+    _no_tex(monkeypatch)
+    _seed_rows(db_session)
+    monkeypatch.setattr(app_settings, "applications_dir", tmp_path)
+    monkeypatch.setattr(
+        applications_router.base_resume_data,
+        "load_base_resume",
+        lambda slug, session=None: SAMPLE_RESUME,
+    )
+    job = _job(db_session)
+    application = Application(job_id=job.id, base_resume="data_scientist", status="draft")
+    db_session.add(application)
+    db_session.commit()
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        r = TestClient(app).post(f"/api/applications/{application.id}/render")
+    finally:
+        app.dependency_overrides.clear()
+    assert r.status_code == 200, r.text
+    assert r.json()["resolved_engine"] == "typst"
+    assert "TeX is not installed" in r.json()["render_note"]
+
+
+def test_render_note_is_null_on_the_wire_when_nothing_was_substituted(
+    db_session, tmp_path, monkeypatch
+):
+    _seed_rows(db_session)
+    monkeypatch.setattr(app_settings, "base_resumes_dir", tmp_path)
+    _seed(db_session, slug="data_scientist", data_json=SAMPLE_RESUME)
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        r = TestClient(app).post(
+            f"/api/base-resumes/data_scientist/render?template_id={reg.TYPST_CLASSIC_ID}"
+        )
+    finally:
+        app.dependency_overrides.clear()
+    assert r.status_code == 200, r.text
+    assert r.json()["render_note"] is None

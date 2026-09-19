@@ -159,6 +159,7 @@ def _detail(
     resolved_template_id: str | None = None,
     resolved_engine: str | None = None,
     template_fallback: bool | None = None,
+    render_note: str | None = None,
 ) -> BaseResumeDetail:
     return BaseResumeDetail(
         slug=row.slug,
@@ -174,6 +175,7 @@ def _detail(
         resolved_template_id=resolved_template_id,
         resolved_engine=resolved_engine,
         template_fallback=template_fallback,
+        render_note=render_note,
         pdf_pages=row.pdf_pages,
         render_error=row.render_error,
         updated_at=row.updated_at,
@@ -800,6 +802,7 @@ def render_base_resume_endpoint(
         template_fallback=(
             template_id is not None and resolved_template_id != template_id
         ),
+        render_note=getattr(rendered, "render_note", None),
     )
 
 
