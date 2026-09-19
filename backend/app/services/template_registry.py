@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import re
+from pathlib import Path
 
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
@@ -342,44 +343,73 @@ def _needs_seed_validation(tmpl: Template) -> bool:
 # a migration runs against an EMPTY file, then the importer lands the old
 # Postgres rows verbatim, and only seeding — which runs on every boot — ever
 # sees them. Whenever a bundled user template's bytes change, the bytes it had
-# become a version that shipped: freeze them as the next fixture and pin here.
+# become a version that shipped: freeze them as the next fixture and pin here
+# (CURRENT_SEED_DIGESTS below fails a test until that is done).
 SUPERSEDED_SEED_DIGESTS: dict[str, frozenset[str]] = {
     "carlito_dense": frozenset({
-        # e81696be, c4b40be0, c27b05d4 (main's tip). All three pass \href
-        # targets through latex_escape, which body-escapes ~ and _ in URLs.
+        # e81696be, c4b40be0, c27b05d4 (last change on main; identical at
+        # main's tip). All three pass \href targets through latex_escape,
+        # which body-escapes ~ and _ in URLs.
         "a7de33995feedd47bf8021b9ab89d3c74614477ce7d20c1c22a6f7692b55f29b",
         "32a6aef985681c89664187cfc70c53de0f642e53335574ec541e3ce894b9af20",
         "167050b70047a07e0ad3111e51fbc82bfe4724a69ae7de65a19a21424401b8bb",
     }),
     "harshibar": frozenset({
-        # e81696be, c4b40be0, c27b05d4 (main's tip): the same three releases,
-        # the same \href bug on the project link.
+        # e81696be, c4b40be0, c27b05d4 (last change on main; identical at
+        # main's tip): the same three releases, the same \href bug on the
+        # project link.
         "a676b9f7f9a44fb8e3f77fc1c5beddc419ff3efff24fff452e3d85a45ed3c546",
         "b3dc762c7e52b134cc39f98d584eeef329086673045c51efcb0a460a0813498f",
         "5bdc42534d3f8f9f03de09f7455b0a8ac813b759d5b86232ffc188698051ee89",
     }),
 }
 
+# sha256 of each CURRENTLY bundled source, for every seed with a history
+# above. Its only job is to fail `test_current_bundled_sources_are_pinned`
+# when someone edits one of these templates without freezing the version being
+# superseded: the bytes on disk today are what every install seeded from this
+# release will carry, and the resync can only recognise what was pinned.
+# Update it LAST, after the fixture and the SUPERSEDED_SEED_DIGESTS entry.
+CURRENT_SEED_DIGESTS: dict[str, str] = {
+    "carlito_dense": "7a7484a25d6f93db395899e63084ad1f9f9d317f6c8f727ef475df8979102b8e",
+    "harshibar": "4ec93a33152635603d7d8d2281cf5e8c23db964cd36ac818f22c9346493473c6",
+}
 
-def _resync_superseded_seed(session: Session, row: Template, current_source: str) -> bool:
+
+def _resync_superseded_seed(session: Session, row: Template, source_path: Path) -> bool:
     """Replace a seeded row's source when it is a version we shipped before.
 
     Returns True when it did. Status drops to draft so startup validation
     re-earns `ready` against the new source — the stored parse evidence
     described the old bytes; the user's default_formatting is never touched.
+
+    Digest first, bundle second: this runs on every GET /api/templates, and a
+    row's digest stops matching the moment it is resynced, so the steady state
+    is one in-memory hash and no disk read per list request.
     """
-    if row.origin != "seed" or row.source == current_source:
+    pins = SUPERSEDED_SEED_DIGESTS.get(row.id)
+    if not pins or row.origin != "seed":
         return False
-    digest = hashlib.sha256(row.source.encode("utf-8")).hexdigest()
-    if digest not in SUPERSEDED_SEED_DIGESTS.get(row.id, frozenset()):
+    if hashlib.sha256(row.source.encode("utf-8")).hexdigest() not in pins:
         return False
-    row.source = current_source
+    if not source_path.exists():
+        logger.warning("bundled template source missing, not resynced: %s", source_path)
+        return False
+    current = source_path.read_text(encoding="utf-8")
+    if current == row.source:
+        return False
+    row.source = current
     row.status = "draft"
     row.validated_at = None
     row.parse_certified = None
     row.parse_report_json = None
     row.last_error = None
-    session.commit()
+    try:
+        session.commit()
+    except Exception:  # noqa: BLE001 -- a locked file at boot must not break seeding
+        session.rollback()
+        logger.exception("%s superseded-source resync failed; left as is", row.id)
+        return False
     logger.info("resynced superseded bundled template source: %s", row.id)
     return True
 
@@ -407,13 +437,8 @@ def _bootstrap_seeded(
         # own forever, so a fix to a bundled file never reaches an upgraded
         # install. Resync it when its digest proves it is ours — before the
         # validation check, so the new source re-earns `ready` in this same
-        # startup. Gated on the id having a history at all: this runs on every
-        # GET /api/templates, and a seed with nothing to resync must not pay a
-        # disk read per list request.
-        if template_id in SUPERSEDED_SEED_DIGESTS and source_path.exists():
-            _resync_superseded_seed(
-                session, existing, source_path.read_text(encoding="utf-8")
-            )
+        # startup.
+        _resync_superseded_seed(session, existing, source_path)
         # A row stranded non-ready by an earlier first-boot validation failure —
         # or ready with a missing preview — gets another go on the next ensure,
         # instead of staying broken forever.

@@ -3,6 +3,7 @@ plan Task 5b). A seeded row keeps its source forever unless its digest matches
 a version we shipped before; a user-edited row matches nothing and is never
 touched."""
 import hashlib
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -44,6 +45,19 @@ def test_no_current_bundled_source_is_listed_as_superseded():
         assert _digest(_current_source(seed_id)) not in digests
 
 
+def test_current_bundled_sources_are_pinned():
+    # The tripwire: editing a bundled user template without freezing the bytes
+    # it replaces strands every install seeded from those bytes on the old
+    # source forever, because nothing would recognise them as ours.
+    assert set(reg.CURRENT_SEED_DIGESTS) == set(reg.SUPERSEDED_SEED_DIGESTS)
+    for seed_id, pinned in reg.CURRENT_SEED_DIGESTS.items():
+        assert _digest(_current_source(seed_id)) == pinned, (
+            f"{seed_id}: the bundled source changed. Freeze the OLD bytes under "
+            f"tests/fixtures/templates_superseded/{seed_id}/<n>.tex.j2, add their "
+            f"digest to SUPERSEDED_SEED_DIGESTS, then update CURRENT_SEED_DIGESTS."
+        )
+
+
 @pytest.mark.parametrize(
     "seed_id,path",
     _fixture_versions(),
@@ -60,6 +74,12 @@ def test_a_seed_row_with_a_shipped_old_source_is_resynced(db_session, seed_id, p
             engine="latex",
             status="ready",
             origin="seed",
+            # Stale evidence about the OLD bytes, all four fields populated so
+            # each clear below is a real assertion rather than a default.
+            validated_at=datetime.now(UTC),
+            parse_certified=True,
+            parse_report_json={"missing": []},
+            last_error="stale",
             default_formatting={"font_size": 10},
         )
     )
@@ -68,7 +88,10 @@ def test_a_seed_row_with_a_shipped_old_source_is_resynced(db_session, seed_id, p
     row = db_session.get(Template, seed_id)
     assert row.source == _current_source(seed_id)
     assert row.status == "draft"
-    assert row.validated_at is None and row.parse_certified is None and row.last_error is None
+    assert row.validated_at is None
+    assert row.parse_certified is None
+    assert row.parse_report_json is None
+    assert row.last_error is None
     assert row.default_formatting == {"font_size": 10}  # the user's, never touched
 
 
