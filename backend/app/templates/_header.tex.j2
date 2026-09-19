@@ -7,7 +7,7 @@
 % Included by BOTH resume.tex.j2 and cover_letter.tex.j2 — format and scanner
 % changes must handle both (see SYSTEM.md §6).
 % \href URL arguments use latex_escape_url, display text latex_escape — never
-% swap them (SYSTEM.md §11 item 7, fixed 2026-09-19).
+% swap them (see LATEX_URL_REPLACEMENTS in app/services/pdf_render.py).
 % ---------------------------------------------------------------------------
 ((* if fmt.header_align == "left" *))\begin{flushleft}((* elif fmt.header_align == "right" *))\begin{flushright}((* else *))\begin{center}((* endif *))
     {\Huge \scshape ((( contact.name|latex_escape ))) } \\ \vspace{1pt}
