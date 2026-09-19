@@ -13,7 +13,7 @@ from jinja2.sandbox import SandboxedEnvironment
 from app.config import settings
 from app.schemas.formatting import merge_formatting, resolve_section_order
 from app.schemas.resume import ResumeData
-from app.services import typst_compiler
+from app.services import engines, typst_compiler
 from app.services.date_format import format_date
 from app.services.resume_projects import resume_for_render
 
@@ -124,6 +124,9 @@ _INTERWORD_SPACE = r"\pdfmapline{+dummy-space <dummy-space}\pdfinterwordspaceon"
 def _pdflatex_argv(tex_path: Path, out_dir: Path, jobname: str) -> list[str]:
     """pdflatex argv that enables interword spaces, then \\input{tex_path}.
 
+    argv[0] is the path the probe resolved (`engines.pdflatex_command`), so a
+    GUI-launched process with no shell PATH still finds MacTeX.
+
     ``-no-shell-escape`` is UNCONDITIONAL and has no opt-out parameter. Shell
     escape lets a document run host commands via ``\\write18``, and the only
     thing standing between generated text and that primitive is one
@@ -139,7 +142,7 @@ def _pdflatex_argv(tex_path: Path, out_dir: Path, jobname: str) -> list[str]:
     absolute path there made kpathsea refuse the app's own staged source.
     A plain relative name inside the working directory is always readable.
     """
-    argv = ["pdflatex", "-no-shell-escape"]
+    argv = [engines.pdflatex_command(), "-no-shell-escape"]
     argv += [
         "-interaction=nonstopmode",
         "-halt-on-error",
@@ -330,6 +333,30 @@ def _compile_cwd(source_path: Path) -> Path:
     return source_path.parent
 
 
+def _run_pdflatex(source_path: Path, out_dir: Path, stem: str) -> subprocess.CompletedProcess:
+    """The one spawn. A missing (or wrongly configured) binary is the actionable
+    "install TeX or pick a Typst template" error, not an OSError 500. OSError
+    covers FileNotFoundError, PermissionError and IsADirectoryError — a wrong
+    MAESTRO_CS_PDFLATEX may name any of those; TimeoutExpired is not an OSError
+    and keeps propagating as before."""
+    try:
+        return subprocess.run(
+            _pdflatex_argv(source_path, out_dir, stem),
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+            env=_compile_env(out_dir),
+            cwd=_compile_cwd(source_path),
+        )
+    except OSError as exc:
+        _, reason = engines.find_pdflatex()
+        raise RuntimeError(
+            "pdflatex is not installed on this machine "
+            f"({reason or exc}). Install TeX or pick a Typst template."
+        ) from exc
+
+
 def compile_pdf(
     tex_text: str, out_dir: Path, stem: str = "resume", *, document: str = ""
 ) -> Path:
@@ -346,15 +373,7 @@ def compile_pdf(
     pdf_path = out_dir / f"{stem}.pdf"
     tex_path.write_text(tex_text, encoding="utf-8")
 
-    result = subprocess.run(
-        _pdflatex_argv(tex_path, out_dir, stem),
-        capture_output=True,
-        text=True,
-        timeout=60,
-        check=False,
-        env=_compile_env(out_dir),
-        cwd=_compile_cwd(tex_path),
-    )
+    result = _run_pdflatex(tex_path, out_dir, stem)
     if result.returncode != 0 or not pdf_path.exists():
         label = f"pdflatex failed ({document})" if document else "pdflatex failed"
         raise RuntimeError(
@@ -595,15 +614,7 @@ def render_and_compile(
     # and it compiles a DB-stored template `source` that chat, MCP and the web
     # editor can all write. Hardening only `compile_pdf` left this one reading
     # files exactly as before — see `_compile_env` for what that allowed.
-    result = subprocess.run(
-        _pdflatex_argv(source_path, out_pdf_path.parent, out_pdf_path.stem),
-        capture_output=True,
-        text=True,
-        timeout=60,
-        check=False,
-        env=_compile_env(out_pdf_path.parent),
-        cwd=_compile_cwd(source_path),
-    )
+    result = _run_pdflatex(source_path, out_pdf_path.parent, out_pdf_path.stem)
     if result.returncode != 0 or not out_pdf_path.exists():
         raise RuntimeError(
             "pdflatex failed\n"

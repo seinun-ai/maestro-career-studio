@@ -7,7 +7,7 @@ path. `MAESTRO_CS_PDFLATEX` overrides the search and fails closed when wrong.
 
 Cheap by design: `which` re-runs on every call (installing TeX while the app
 runs is noticed on the next probe), the `--version` subprocess runs once per
-resolved path per process.
+working path per process (a failed `--version` is retried on the next probe).
 """
 from __future__ import annotations
 

@@ -151,6 +151,20 @@ def test_pdflatex_command_falls_back_to_the_bare_name(monkeypatch, tmp_path):
     assert engines.pdflatex_command() == "pdflatex"
 
 
+def test_candidate_dirs_are_existing_directories_even_without_home(monkeypatch):
+    # Stubbed in every other test, so exercise the real one: it must only ever
+    # name directories that exist, and it must survive a GUI-launched process
+    # that has no HOME to expand the `~/.TinyTeX` pattern against.
+    dirs = engines._candidate_dirs()
+    assert isinstance(dirs, list)
+    assert all(Path(d).is_dir() for d in dirs)
+
+    monkeypatch.delenv("HOME", raising=False)
+    without_home = engines._candidate_dirs()
+    assert isinstance(without_home, list)
+    assert all(Path(d).is_dir() for d in without_home)
+
+
 def test_typst_probe_reports_version_and_fonts():
     status = engines.probe_typst()
     assert status.available is True
