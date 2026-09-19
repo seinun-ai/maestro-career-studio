@@ -396,16 +396,19 @@ Per the header contract: rewrite in place, dated narrative stays in git.
    (this is a backend-surface change; name it in the claim), and
    `python3 scripts/check_mcpb_bundle.py` (expected untouched).
 
-## 7. Decisions still open for the owner
+## 7. Decisions taken pending the owner's objection
 
-1. **Directory name.** `data/` as proposed, or reuse `settings/`?
-   Recommendation: `data/`; settings are user-editable JSON and the DB is
-   not.
-2. **N+1 timing.** Next minor release, or a calendar window?
-   Recommendation: next minor release, so the trigger is a release event
-   the checklist already has.
-3. **`synchronous`.** `NORMAL` as proposed, or `FULL`? Recommendation:
-   `NORMAL`; revisit on the first corruption report.
+The implementation took each recommendation; say so if any should change.
+
+1. **Directory name.** `data/` (settings are user-editable JSON and the DB
+   is not).
+2. **N+1 timing.** The next release: SYSTEM.md §13's `postgres-to-sqlite`
+   row triggers on "the next release ships".
+3. **`synchronous`.** `NORMAL` under WAL; `FULL` under the `DELETE` escape
+   hatch (a rollback journal on a distrusted filesystem deserves it).
+4. **Fail closed.** Every first-boot import failure, including an
+   unreachable source, aborts startup (§2.6); the skip is commenting the
+   `LEGACY_DATABASE_URL` line out of `docker-compose.yml`.
 
 ## 8. What this unblocks (not in scope here)
 
