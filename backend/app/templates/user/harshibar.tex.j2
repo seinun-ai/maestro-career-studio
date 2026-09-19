@@ -110,7 +110,7 @@
 ((* if fmt.header_align == "left" *))\begin{flushleft}((* elif fmt.header_align == "right" *))\begin{flushright}((* else *))\begin{center}((* endif *))
     \textbf{\Huge ((( resume.contact.name|latex_escape )))} \\ \vspace{5pt}
     \small
-    ((* set pipe = joiner(' \hspace{1pt} $|$ \hspace{1pt} ') *))
+    ((* set pipe = joiner(' \\hspace{1pt} $|$ \\hspace{1pt} ') *))
     ((* if resume.contact.phone *))((( pipe() ))) \faPhone* \texttt{((( resume.contact.phone|latex_escape )))}((* endif *))
     ((* if resume.contact.email *))((( pipe() ))) \faEnvelope \hspace{2pt} \texttt{((( resume.contact.email|latex_escape )))}((* endif *))
     ((* if resume.contact.linkedin *))((( pipe() ))) \faLinkedin \hspace{2pt} \texttt{((( resume.contact.linkedin|latex_escape )))}((* endif *))
