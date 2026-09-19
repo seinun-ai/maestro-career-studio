@@ -22,12 +22,15 @@ from pathlib import Path
 
 from app.config import settings
 
-# Where TeX installs put pdflatex when it is not on PATH. Globs sort newest
-# TeX Live year first.
+# Where TeX installs put pdflatex when it is not on PATH, in priority order.
 _TEX_HOMES_POSIX = (
     "/Library/TeX/texbin",
     "/usr/local/texlive/*/bin/*",
     "~/.TinyTeX/bin/*",
+    # Not TeX homes: the package managers' bin dirs, where TinyTeX's
+    # `tlmgr path add` and a Homebrew formula LINK pdflatex. Last, and searched
+    # only after PATH and the real TeX homes, so they add a fallback without
+    # ever outranking a genuine install.
     "/opt/homebrew/bin",
     "/usr/local/bin",
 )
@@ -57,6 +60,10 @@ def _candidate_dirs() -> list[str]:
     dirs: list[str] = []
     for pattern in homes:
         expanded = os.path.expandvars(os.path.expanduser(pattern))
+        # Reverse-sorted WITHIN a pattern (so patterns keep their priority
+        # order): that puts the newest TeX Live first only because the year is
+        # the first varying component and always four digits, which makes the
+        # string order the numeric order.
         dirs.extend(sorted(glob.glob(expanded), reverse=True))
     return dirs
 
@@ -72,11 +79,16 @@ def find_pdflatex() -> tuple[str | None, str | None]:
             f"MAESTRO_CS_PDFLATEX points at {override}, which is not an "
             "executable file; correct it or unset it to search the usual locations"
         )
-    # Drop empty entries before joining: an empty entry means "the current
-    # directory" to shutil.which, and an absent PATH — the GUI-launched process
-    # this module exists for — would otherwise put the process's cwd ahead of
-    # the TeX homes and resolve to a bare, relative "pdflatex".
-    entries = [e for e in [os.environ.get("PATH", ""), *_candidate_dirs()] if e]
+    # SPLIT PATH first, then drop every empty component. An empty component
+    # means "the current directory" to shutil.which, and `PATH=/usr/bin:` or
+    # `/a::/b` hides one mid-string — so does an absent PATH, which is the
+    # GUI-launched process this module exists for. This is not about honouring
+    # shell PATH semantics: the probe's contract is an ABSOLUTE path to hand to
+    # `pdf_render`, and a cwd-relative hit is not one (the render subprocess
+    # runs with `cwd=<staging dir>`, so it would not even be the same file).
+    # The cwd is never a candidate.
+    path_entries = os.environ.get("PATH", "").split(os.pathsep)
+    entries = [e for e in [*path_entries, *_candidate_dirs()] if e]
     found = shutil.which("pdflatex", path=os.pathsep.join(entries))
     if found is None:
         return None, "pdflatex not found on PATH or in the usual TeX locations"
@@ -93,8 +105,9 @@ def pdflatex_command() -> str:
     return found or "pdflatex"
 
 
-# path -> (version, reason). One --version per path per process.
-_VERSION_CACHE: dict[str, tuple[str | None, str | None]] = {}
+# resolved path -> version string. SUCCESSES ONLY, so one --version runs per
+# working path per process.
+_VERSION_CACHE: dict[str, str] = {}
 
 
 def reset_cache() -> None:
@@ -102,20 +115,35 @@ def reset_cache() -> None:
 
 
 def _pdflatex_version(path: str) -> tuple[str | None, str | None]:
-    if path in _VERSION_CACHE:
-        return _VERSION_CACHE[path]
+    """(version, reason), caching successes and never failures.
+
+    A failure here is routinely transient — a probe landing mid-install finds
+    the symlink farm before the binary is runnable — and caching it would mark
+    TeX missing for the life of the process, which is exactly what this
+    module's "noticed on the next probe, no restart" promise rules out.
+    """
+    cached = _VERSION_CACHE.get(path)
+    if cached is not None:
+        return cached, None
     try:
         result = subprocess.run(
-            [path, "--version"], capture_output=True, text=True, timeout=15, check=False
+            [path, "--version"],
+            capture_output=True,
+            # Not text=True: that decodes STRICTLY, and a compiler banner in an
+            # unexpected encoding would raise UnicodeDecodeError (a ValueError,
+            # not an OSError) out of a probe whose whole job is to report.
+            encoding="utf-8",
+            errors="replace",
+            timeout=15,
+            check=False,
         )
-        first = (result.stdout or "").strip().splitlines()
-        outcome = (first[0], None) if result.returncode == 0 and first else (
-            None, f"{path} --version failed (exit {result.returncode})"
-        )
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        outcome = (None, f"{path} could not be run: {exc}")
-    _VERSION_CACHE[path] = outcome
-    return outcome
+    except (OSError, ValueError, subprocess.TimeoutExpired) as exc:
+        return None, f"{path} could not be run: {exc}"
+    lines = (result.stdout or "").strip().splitlines()
+    if result.returncode != 0 or not lines:
+        return None, f"{path} --version failed (exit {result.returncode})"
+    _VERSION_CACHE[path] = lines[0]
+    return lines[0], None
 
 
 def probe_pdflatex() -> EngineStatus:
@@ -137,7 +165,12 @@ def probe_typst() -> EngineStatus:
         import typst  # noqa: F401 — presence is the point
     except ImportError:
         return EngineStatus("typst", False, reason="the typst package is not installed")
-    version = importlib.metadata.version("typst")
+    try:
+        version = importlib.metadata.version("typst")
+    except importlib.metadata.PackageNotFoundError:
+        # Importable but not installed as a distribution — a frozen build, which
+        # is where the desktop shell is headed. The engine still runs.
+        version = None
     missing = [str(p) for p in settings.typst_font_paths if not Path(p).is_dir()]
     if missing:
         # typst falls back to embedded fonts SILENTLY for a missing dir — a
