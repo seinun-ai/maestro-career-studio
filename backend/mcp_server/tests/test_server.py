@@ -566,6 +566,17 @@ def test_audit_one_sentence_docstring_fixes():
     assert "resolved_template_id" in rp
     assert "template_fallback" in rp
 
+
+def test_engine_availability_is_documented_on_the_template_and_render_tools():
+    rp = srv.render_pdf.__doc__ or ""
+    assert "render_note" in rp
+    assert "silently substituted" not in rp
+    assert "engine_available" in srv.list_templates.__doc__
+    assert "engine_available" in srv.get_template.__doc__
+    # "TeX" alone already matches "LaTeX"; require the new no-TeX clause.
+    assert "no TeX" in srv.create_template_draft.__doc__
+    assert "engine_available" in srv.create_template_draft.__doc__
+
     gp = srv.get_rendered_pdf.__doc__ or ""
     assert "artifact_dir" in gp
     assert "prepare_application_pdf_upload" in gp
