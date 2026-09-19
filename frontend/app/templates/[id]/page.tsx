@@ -252,6 +252,15 @@ export default function TemplateEditorPage() {
               <Badge variant="outline" className="font-mono">
                 {tq.data.engine}
               </Badge>
+              {!tq.data.engine_available && (
+                <Badge
+                  variant="outline"
+                  className="border-amber-500/40 text-amber-600 dark:text-amber-400"
+                  title="TeX is not installed where the backend runs. A resume using this template renders through a Typst template instead, and the render says so, until TeX is installed."
+                >
+                  requires TeX
+                </Badge>
+              )}
               {dirty && (
                 <span className="text-xs text-amber-600">unsaved</span>
               )}

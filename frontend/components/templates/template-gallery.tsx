@@ -50,6 +50,15 @@ function TemplateBadgeStrip({ template }: { template: TemplateSummary }) {
       <Badge variant="outline" className="font-mono">
         {template.engine}
       </Badge>
+      {!template.engine_available && (
+        <Badge
+          variant="outline"
+          className="border-amber-500/40 text-amber-600 dark:text-amber-400"
+          title="TeX is not installed where the backend runs. A resume using this template renders through a Typst template instead, and the render says so, until TeX is installed."
+        >
+          requires TeX
+        </Badge>
+      )}
       {isReady && template.parse_certified === false && (
         <Badge
           variant="outline"

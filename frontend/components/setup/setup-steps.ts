@@ -12,7 +12,8 @@ export type SetupStepView = {
     | "autofill"
     | "job_preferences"
     | "persona"
-    | "template";
+    | "template"
+    | "engines";
   /** Pill text — short. */
   label: string;
   /** Card row title — a full imperative phrase. */
@@ -66,7 +67,7 @@ function autofillTarget(autofill: SetupStatus["autofill"]): string | null {
 }
 
 /**
- * The single source of truth for the five setup steps.
+ * The single source of truth for the setup steps.
  *
  * Both the compact pill strip and the expanded getting-started card render from
  * this. Neither owns a step list — that is exactly how the two drifted apart,
@@ -150,6 +151,17 @@ export function buildSetupSteps(
         ? "Using the starter template"
         : `Default: ${defaultTemplate ?? "set"}`,
       done: status.template.done,
+      home: "/templates",
+      anchor: "template-gallery",
+    },
+    {
+      id: "engines",
+      label: "PDF engines",
+      title: "PDF engines",
+      detail: status.engines.pdflatex.available
+        ? `Typst ready · TeX ${status.engines.pdflatex.version ?? "found"}`
+        : "Typst ready · TeX not found (LaTeX templates render with Typst until it is installed)",
+      done: status.engines.typst.available,
       home: "/templates",
       anchor: "template-gallery",
     },

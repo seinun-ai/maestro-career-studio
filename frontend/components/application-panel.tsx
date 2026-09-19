@@ -38,7 +38,7 @@ import {
 import { JobTrackingUrlField } from "@/components/job-tracking-url-field";
 import { apiFetch, apiUrlForBrowserPdf } from "@/lib/api";
 import { baseResumeLabel } from "@/lib/types";
-import type { Application, Referral } from "@/lib/types";
+import type { Application, Referral, RenderResult } from "@/lib/types";
 
 function formatDateInput(value: string | null | undefined): string {
   if (!value) return "";
@@ -264,14 +264,17 @@ export function OutputTab({ app, jobId }: { app: Application; jobId: string }) {
   const hasPdf = !!app.pdf_path;
   const renderPdf = useMutation({
     mutationFn: () =>
-      apiFetch(`/api/applications/${app.id}/render`, { method: "POST" }),
-    onSuccess: () => {
+      apiFetch<RenderResult>(`/api/applications/${app.id}/render`, {
+        method: "POST",
+      }),
+    onSuccess: (result) => {
       setPreviewVersion((version) => version + 1);
       qc.invalidateQueries({ queryKey: ["job-detail", jobId] });
       qc.invalidateQueries({ queryKey: ["application", app.id] });
       qc.invalidateQueries({
         queryKey: ["pdf-preview", `/api/applications/${app.id}`],
       });
+      if (result.render_note) toast.info(result.render_note);
       toast.success("PDF generated");
     },
     onError: (error: Error) => toast.error(error.message),
