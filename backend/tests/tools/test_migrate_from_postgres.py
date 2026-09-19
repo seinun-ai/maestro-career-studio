@@ -332,6 +332,15 @@ def test_main_imports_into_a_migrated_but_empty_target_without_replace(tmp_path)
 def test_export_from_real_postgres(tmp_path):
     source = os.environ.get("LEGACY_POSTGRES_TEST_URL")
     if not source:
+        # Skipping is right locally, where there is no Postgres. In CI it would
+        # mean the legacy-postgres-export job quietly stopped testing anything:
+        # its one test skips, pytest exits 0, and the job stays green forever.
+        # So under CI a missing URL is a failure, not a skip.
+        if os.environ.get("CI"):
+            pytest.fail(
+                "LEGACY_POSTGRES_TEST_URL is not set in CI; "
+                "the legacy-postgres-export job must provide it"
+            )
         pytest.skip("LEGACY_POSTGRES_TEST_URL not set (CI's legacy-postgres-export job sets it)")
     tool.upgrade_legacy_source(source)
     engine = sa.create_engine(tool.normalize_postgres_url(source), future=True)
