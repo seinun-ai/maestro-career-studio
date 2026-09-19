@@ -103,7 +103,7 @@ Verified during the brainstorm (interpreter `/opt/anaconda3/bin/python`,
 `EngineStatus {name, available, version, path, reason}` and
 `EnginesStatus {pdflatex, typst}`.
 
-- `pdflatex`: `settings.pdflatex_path` (env `MAESTRO_CS_PDFLATEX`) wins
+- `pdflatex`: `settings.maestro_cs_pdflatex` (env `MAESTRO_CS_PDFLATEX`) wins
   when set, and a wrong value FAILS (reason recorded, no search): an
   explicit setting is not a hint, the MCPB shim's Docker-path precedent.
   Otherwise `shutil.which("pdflatex")` over `PATH` extended with the TeX
@@ -167,8 +167,10 @@ of {latex display_name}."
 - `_seed_validate` short-circuits a LaTeX seed when the probe says
   unavailable: `last_error = "requires TeX (pdflatex not found)"`, status
   stays `draft`, and the per-process attempt guard is NOT consumed (only a
-  real compile attempt consumes it), so the next `GET /api/templates` after
-  TeX appears validates it without a restart. Typst seeds are unaffected.
+  real compile attempt consumes it), so the next validating ensure (the next
+  boot, or an explicit Re-validate; `GET /api/templates` seeds with
+  `validate=False` by design) picks it up once TeX appears. Typst seeds are
+  unaffected.
 - `TemplateSummary` and `TemplateDetail` gain `engine_available: bool`,
   set by the router from one probe per request. The gallery card and the
   picker show "requires TeX" on LaTeX templates while TeX is absent;

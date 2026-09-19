@@ -1730,7 +1730,8 @@ git commit -m "docs(plans): engines branch — deviation log and gate results"
 
 | # | Task | What the plan said | What was done instead | Why |
 |---|---|---|---|---|
-| | | | | |
+| 1 | 1 | `search = os.pathsep.join([os.environ.get("PATH", ""), *_candidate_dirs()])` | Empty joined components are dropped before the join; pinned by `test_no_path_at_all_does_not_search_the_working_directory` (`d7d5d306`) | CPython `shutil.which` treats an empty path component as the CURRENT DIRECTORY, so a PATH-less GUI process searched cwd ahead of `/Library/TeX/texbin` and returned a relative `pdflatex` that the render subprocess (cwd = staging dir) could not spawn. The eight specified tests pass unchanged under both versions. |
+| 2 | 1 | Design §2.1 named the setting `settings.pdflatex_path (env MAESTRO_CS_PDFLATEX)` | Field is `maestro_cs_pdflatex` (as the task text and tests said); design doc corrected in the same commit as this row | `Settings` has no `env_prefix`, so only a `maestro_cs_*` field maps to `MAESTRO_CS_*`. |
 
 ## Gate results
 
