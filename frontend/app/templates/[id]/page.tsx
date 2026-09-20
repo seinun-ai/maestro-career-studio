@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { FormattingPanel } from "@/components/resume-editor/formatting-panel";
 import { PdfPagesPreview } from "@/components/resume-editor/pdf-pages-preview";
 import { LatexEditor } from "@/components/templates/latex-editor";
+import { RequiresTexBadge } from "@/components/templates/requires-tex-badge";
 import { EditorShell } from "@/components/resume-editor/editor-shell";
 import { Badge } from "@/components/ui/badge";
 import { IconButton } from "@/components/icon-button";
@@ -252,15 +253,7 @@ export default function TemplateEditorPage() {
               <Badge variant="outline" className="font-mono">
                 {tq.data.engine}
               </Badge>
-              {!tq.data.engine_available && (
-                <Badge
-                  variant="outline"
-                  className="border-amber-500/40 text-amber-600 dark:text-amber-400"
-                  title="TeX is not installed where the backend runs. A resume using this template renders through a Typst template instead, and the render says so, until TeX is installed."
-                >
-                  requires TeX
-                </Badge>
-              )}
+              {!tq.data.engine_available && <RequiresTexBadge />}
               {dirty && (
                 <span className="text-xs text-amber-600">unsaved</span>
               )}
