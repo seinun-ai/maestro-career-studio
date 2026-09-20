@@ -85,11 +85,11 @@ backend/
     services/          business logic (ats/, tailoring_session, gap_analysis,
                        role_categories, kb_import, exports, gap_enrichment,
                        placement_targets, ats_score, application_writes,
-                       artifacts, application_render,
+                       artifacts, application_render, engines (the ONE probe),
                        pdf_render (dual-engine: pdflatex + typst), pdf_preview,
                        jd_extraction, resume_lint, health_*, career_kb,
                        chat_agent, chat_tools, …)
-    templates/         bundled .tex.j2 sources and typst_classic.typ
+    templates/         bundled .tex.j2 sources, typst_classic.typ and cover_letter.typ
     tools/             operator tools, `python -m app.tools.<name>`: migrate_from_postgres (one release, §13), backup_db
   mcp_server/          FastMCP server (server.py tools → client.py httpx → REST)
   migrations/          alembic: ONE SQLite baseline (see §12 for the revision-id gotcha)
@@ -340,100 +340,93 @@ same contract. Code citing "§4" lands here; the table says which file to open.
   does NOT touch the capture toggle. Field list/toggle/default-on decision:
   `extension/README.md`; `…/telemetry/summary` ranks failures + saturation.
 - **A frame must EARN the user's data.** `{#inv-frame-earns-data}` `sw.js` authorizes a broadcast at
-  the sender, but `broadcastToFrames` targets every frame — a job page carries
-  ad/analytics/chat iframes, and the ISOLATED world protects the message in
-  transit, NOT the DOM written into: a frame owns its DOM, so a profile value
-  in a third-party frame's input is readable by that frame's script. `agent.js`
-  gates all four fan-out handlers (`profile_fill`, `collect_open_questions`,
-  `fill_answers`, `attach_resume_pdf`) on `frameMayReceiveUserData()`: the TOP
-  frame always passes, a SUBFRAME must show `detectPage().form`, and a frame
-  whose detection throws is refused. A refused frame returns the handler's
-  EMPTY shape, never a throw (a throw reads as "didn't stick" in the
-  reconciliation strip). Attach additionally requires a VISIBLE input —
-  `input.files` is readable with no submit and no gesture, so an off-screen
-  input is a résumé collector. Pinned by `tests/test_extension_frame_gate.py`.
-- **The policy deny-list is single-source, and it is TWO lists.** `{#inv-policy-deny-list-single-source}`
-  `extension/shared/policy.js` (in `shared/`, not `content/`, since the panel
-  consults it too) declares each exactly once. `NEVER_FILLED` —
-  signatures/initials, passwords, government IDs — is absolute: no setting
-  unlocks it, because a signature is an ACT and the other two are credentials,
-  not consent. `CONSENT_FORMS` — the application's OWN certify/acknowledge/
-  attest/terms/arbitration/waiver boxes — is refused by default and unlocked
-  only by the standing `consent_forms` permission (inv-eeo-standing-consent).
-  Both run through `isPolicyBlocked(label, {consentForms})`, whose option
-  DEFAULTS to false, so a caller that never learned about the permission cannot
-  unlock anything by omission — which is why only `fillFormFromProfile` passes
-  it. FOUR consumers across THREE surfaces: `fillFormFromProfile` ahead of rule
-  matching and `collectOpenQuestions` ahead of EXCLUDE and the per-type ladder —
-  so a consent question rendered as a select/radio is never offered to the model
-  or tagged `data-rt-qid` — plus the panel's PAIR, the half a reader would not
-  guess: the pause row's body renders no input for a blocked label AND
-  `submitAnswer` refuses one again, because the first decides what to draw and
-  the second is what touches the page. Salary history/current/CTC and unqualified
-  salary/wage/compensation mentions are also blocked; explicit salary
-  expectations are allowed only AFTER both lists, so an expectation phrase cannot
-  bypass a signature/credential/consent match.
-  `test_both_copies_of_the_policy_deny_list_stay_identical` asserts exactly one
-  declaration of EACH list; only the page-INJECTED commit ladder stays
-  deliberately duplicated (`…commit_ladder_stay_identical`).
-- **One label-pattern table, two readers** `{#inv-one-label-pattern-table}` (`extension/shared/profile-fields.js`).
-  The eleven patterns naming a TYPED home in the autofill profile
-  (`eligibility.*`, `work_auth.*`, `preferences.*`) are read by `content/autofill.js`'s rule
-  table, which FILLS those fields, and by the panel's `saveTargetFor`, which
-  decides where a pause-row answer is LEARNED. They must be one table: an answer
-  learned into `profile.custom` for a field the rules fill from
-  `preferences.notice_period` lands where the rules do not look, so the same
-  question pauses on every later application with nothing failing. **The learn
-  store is the autofill profile, never `qa_entries`** — that table is
-  application-scoped and no reader feeds it back into a fill, so "pause once,
-  learn forever" is only true of `profile.custom` (matched by the deterministic
-  rule pass on every later form) and the typed keys. Wiring faults are made
-  loud rather than left silent: `profile-fields.js` throws at load if
-  `shared/policy.js` has not run (it borrows `salaryExpectationRe`), and
-  `autofill.js`'s `pf()` throws on an unknown id — an undefined pattern does not
-  error, it just never matches.
-- **Em-dash rule** `{#inv-em-dash}`: generated Q&A answers and cover letters are
-  scrubbed of U+2014/U+2013 at store time (`qa.scrub_typographic_dashes`);
-  rendered PDFs must not contain em-dashes (ATS parsers). The MCP client's
-  slim `get_rendered_pdf` scan remains a resume-PDF backstop (metadata + page
-  paths; no `page_images_b64` — use `get_rendered_pdf_page_image` for one page).
+  the sender, but `broadcastToFrames` targets every frame — a job page carries ad/analytics/chat
+  iframes, and the ISOLATED world protects the message in transit, NOT the DOM written into: a frame
+  owns its DOM, so a profile value in a third-party frame's input is readable by that frame's
+  script. `agent.js` gates all four fan-out handlers (`profile_fill`, `collect_open_questions`,
+  `fill_answers`, `attach_resume_pdf`) on `frameMayReceiveUserData()`: the TOP frame always passes,
+  a SUBFRAME must show `detectPage().form`, and a frame whose detection throws is refused. A refused
+  frame returns the handler's EMPTY shape, never a throw (a throw reads as "didn't stick" in the
+  reconciliation strip). Attach additionally requires a VISIBLE input — `input.files` is readable
+  with no submit and no gesture, so an off-screen input is a résumé collector. Pinned by
+  `tests/test_extension_frame_gate.py`.
+- **The policy deny-list is single-source, and it is TWO lists.**
+  `{#inv-policy-deny-list-single-source}` `extension/shared/policy.js` (in `shared/`, not
+  `content/`, since the panel consults it too) declares each exactly once. `NEVER_FILLED` —
+  signatures/initials, passwords, government IDs — is absolute: no setting unlocks it, because a
+  signature is an ACT and the other two are credentials, not consent. `CONSENT_FORMS` — the
+  application's OWN certify/acknowledge/ attest/terms/arbitration/waiver boxes — is refused by
+  default and unlocked only by the standing `consent_forms` permission (inv-eeo-standing-consent).
+  Both run through `isPolicyBlocked(label, {consentForms})`, whose option DEFAULTS to false, so a
+  caller that never learned about the permission cannot unlock anything by omission — which is why
+  only `fillFormFromProfile` passes it. FOUR consumers across THREE surfaces: `fillFormFromProfile`
+  ahead of rule matching and `collectOpenQuestions` ahead of EXCLUDE and the per-type ladder — so a
+  consent question rendered as a select/radio is never offered to the model or tagged `data-rt-qid`
+  — plus the panel's PAIR, the half a reader would not guess: the pause row's body renders no input
+  for a blocked label AND `submitAnswer` refuses one again, because the first decides what to draw
+  and the second is what touches the page. Salary history/current/CTC and unqualified
+  salary/wage/compensation mentions are also blocked; explicit salary expectations are allowed only
+  AFTER both lists, so an expectation phrase cannot bypass a signature/credential/consent match.
+  `test_both_copies_of_the_policy_deny_list_stay_identical` asserts exactly one declaration of EACH
+  list; only the page-INJECTED commit ladder stays deliberately duplicated
+  (`…commit_ladder_stay_identical`).
+- **One label-pattern table, two readers** `{#inv-one-label-pattern-table}`
+  (`extension/shared/profile-fields.js`). The eleven patterns naming a TYPED home in the autofill
+  profile (`eligibility.*`, `work_auth.*`, `preferences.*`) are read by `content/autofill.js`'s rule
+  table, which FILLS those fields, and by the panel's `saveTargetFor`, which decides where a
+  pause-row answer is LEARNED. They must be one table: an answer learned into `profile.custom` for a
+  field the rules fill from `preferences.notice_period` lands where the rules do not look, so the
+  same question pauses on every later application with nothing failing. **The learn store is the
+  autofill profile, never `qa_entries`** — that table is application-scoped and no reader feeds it
+  back into a fill, so "pause once, learn forever" is only true of `profile.custom` (matched by the
+  deterministic rule pass on every later form) and the typed keys. Wiring faults are made loud
+  rather than left silent: `profile-fields.js` throws at load if `shared/policy.js` has not run (it
+  borrows `salaryExpectationRe`), and `autofill.js`'s `pf()` throws on an unknown id — an undefined
+  pattern does not error, it just never matches.
+- **Em-dash rule** `{#inv-em-dash}`: generated Q&A answers and cover letters are scrubbed of
+  U+2014/U+2013 at store time (`qa.scrub_typographic_dashes`); rendered PDFs must not contain
+  em-dashes (ATS parsers). The MCP client's slim `get_rendered_pdf` scan remains a resume-PDF
+  backstop (metadata + page paths; no `page_images_b64` — use `get_rendered_pdf_page_image` for one
+  page).
 - **EEO standing consent is enforced at the ENDPOINT.** `{#inv-eeo-standing-consent}` One record
-  (`settings/eeo_consent.json`, `schemas/eeo_consent.py`; `eeo_consent` on
-  `/api/autofill/context`), TWO permissions kept apart on purpose: `enabled`
-  authorizes disclosing protected characteristics, `consent_forms` authorizes
-  ticking the application's OWN agreement boxes (inv-policy-deny-list-single-source).
-  One flag for both would make opting into EEO fill silently agree to terms.
-  `GET /api/autofill/context` strips `profile.eeo` unless `enabled` and fails
-  CLOSED when the consent section cannot be computed; the MCP client keeps its
-  OWN strip — two gates, not a relocated one. Which client asks must never
-  decide whether protected-class data is served. No inference or invented EEO
-  answers; never solicit pasted demographic answers in chat when consented values
-  are in Profile. Human-only at ANY setting is `NEVER_FILLED` and nothing wider:
-  signatures/initials, passwords, government IDs. The MODEL path is the separate
-  rule — `consent_forms` unlocks the deterministic tick, never an agent's judgment.
-- **PDF word-spacing** `{#inv-pdf-word-spacing}`: pdflatex+XCharter joins words for strict extractors;
-  `pdfinterwordspaceon` + the parse_certified gate protect this — see the
-  shared header partial `_header.tex.j2`, which BOTH resume and cover-letter
-  templates include (format/scanner changes must handle both).
-- **`user_cannot_confirm` is durable.** `{#inv-provenance-no-decay}` No code
-  path upgrades that provenance to anything else — including the gap flow that
-  writes it: a "cannot confirm" gap outcome stores a retired
-  `user_cannot_confirm` point (on the entity its placement names, else the
-  archived "Unconfirmed claims" holder) and future sessions pre-resolve the
-  claim instead of re-asking (normalized-text match, evidence autos win).
-  Base-sync of the same claim drafts a NEW `user_authored` point and leaves
-  the record untouched — new first-party evidence beats an old "don't know";
-  the draft queue is where the user reconciles. Pinned by
-  `tests/test_kb_provenance_stamping.py`
-  (`test_no_writer_flips_user_cannot_confirm`) and
-  `tests/test_gap_cannot_confirm.py`
-  (`test_nothing_upgrades_user_cannot_confirm`).
+  (`settings/eeo_consent.json`, `schemas/eeo_consent.py`; `eeo_consent` on `/api/autofill/context`),
+  TWO permissions kept apart on purpose: `enabled` authorizes disclosing protected characteristics,
+  `consent_forms` authorizes ticking the application's OWN agreement boxes
+  (inv-policy-deny-list-single-source). One flag for both would make opting into EEO fill silently
+  agree to terms. `GET /api/autofill/context` strips `profile.eeo` unless `enabled` and fails CLOSED
+  when the consent section cannot be computed; the MCP client keeps its OWN strip — two gates, not a
+  relocated one. Which client asks must never decide whether protected-class data is served. No
+  inference or invented EEO answers; never solicit pasted demographic answers in chat when consented
+  values are in Profile. Human-only at ANY setting is `NEVER_FILLED` and nothing wider:
+  signatures/initials, passwords, government IDs. The MODEL path is the separate rule —
+  `consent_forms` unlocks the deterministic tick, never an agent's judgment.
+- **PDF word-spacing** `{#inv-pdf-word-spacing}`: pdflatex+XCharter joins words for strict
+  extractors; `pdfinterwordspaceon` + the parse_certified gate protect this — see the shared header
+  partial `_header.tex.j2`, which BOTH resume and cover-letter templates include (format/scanner
+  changes must handle both).
+- **A render never changes engine silently** `{#inv-render-fallback-explained}`: with no `pdflatex`
+  (`services/engines`, the ONE probe; `MAESTRO_CS_PDFLATEX` overrides and fails CLOSED) a LaTeX
+  template renders through the first ready Typst template and `render_note` names both — resumes,
+  base resumes and cover letters alike (`pdf_render.resolve_render_template`); template VALIDATION
+  never substitutes. Error contract (`base_resume_render.record_render_error`): a committed write
+  degrades to a persisted `render_error`, a render that IS the request is a 400, never a 500. Every
+  `render_base_resume` call site is enumerated by `tests/test_render_note_coverage.py`. Pinned by
+  `tests/test_render_fallback.py`.
+- **`user_cannot_confirm` is durable.** `{#inv-provenance-no-decay}` No code path upgrades that
+  provenance to anything else — including the gap flow that writes it: a "cannot confirm" gap
+  outcome stores a retired `user_cannot_confirm` point (on the entity its placement names, else the
+  archived "Unconfirmed claims" holder) and future sessions pre-resolve the claim instead of
+  re-asking (normalized-text match, evidence autos win). Base-sync of the same claim drafts a NEW
+  `user_authored` point and leaves the record untouched — new first-party evidence beats an old
+  "don't know"; the draft queue is where the user reconciles. Pinned by
+  `tests/test_kb_provenance_stamping.py` (`test_no_writer_flips_user_cannot_confirm`) and
+  `tests/test_gap_cannot_confirm.py` (`test_nothing_upgrades_user_cannot_confirm`).
 - **Column types come from ONE module.** `{#inv-single-dialect}` SQLite is the only runtime
-  database. `app/models/types.py` (`JSONDoc`, `UUIDType`, `UTCDateTime`) is the only place a
-  column type is chosen, and nothing under `app/` imports `sqlalchemy.dialects`. `UTCDateTime` is
-  the whole timezone story: aware in Python, naive UTC on disk, and a NAIVE bind raises; the APP
-  writes every timestamp (`default=utcnow`, `onupdate=utcnow`) so one format lands on disk.
-  Pinned by `tests/test_db_portability.py`.
+  database. `app/models/types.py` (`JSONDoc`, `UUIDType`, `UTCDateTime`) is the only place a column
+  type is chosen, and nothing under `app/` imports `sqlalchemy.dialects`. `UTCDateTime` is the whole
+  timezone story: aware in Python, naive UTC on disk, and a NAIVE bind raises; the APP writes every
+  timestamp (`default=utcnow`, `onupdate=utcnow`) so one format lands on disk. Pinned by
+  `tests/test_db_portability.py`.
 
 ## 7. Agent surfaces
 
@@ -703,9 +696,11 @@ the copy rules, each with the failure mode that bought it. Code citing "§8" lan
   the live alembic revision; the frontend warns when its baked copy disagrees, unless either side STARTS
   WITH `dev` (local or dispatch build) = do not compare — which also keeps it off contributors.
 - Never verify new code against the docker-compose stack (old images). Launch fresh: uvicorn on a free port
-  with data-dir env overrides (its own sqlite file, never `data/`) + `/Library/TeX/texbin` on PATH; frontend
-  `API_PROXY_BACKEND=... npm run dev`. Full recipe: the maintainer's local `verify` skill (not shipped).
-  Browser-pane gotchas: DPR mismatch → use ref clicks; toasts overlay the send button.
+  with data-dir env overrides (its own sqlite file, never `data/`); frontend `API_PROXY_BACKEND=... npm run
+  dev`. TeX is optional (`services/engines` searches the TeX homes itself, and
+  `MAESTRO_CS_PDFLATEX=/nonexistent` simulates a TeX-less host). Full recipe: the maintainer's local
+  `verify` skill (not shipped). Browser-pane gotchas: DPR mismatch → use ref clicks; toasts overlay the send
+  button.
 - **Two dependency sources, on purpose.** `pyproject.toml` keeps `>=` floors (what
   `pip install -e ".[dev,mcp]"` resolves); `backend/requirements.lock` is hash-pinned and is what the
   **container image** installs, so a published image is reproducible. After changing a dependency,
@@ -797,8 +792,6 @@ citation. Priority lives in the item text, not in the ordinal.
 5. Server-side pagination for the tracker (client caps at limit=500 today).
 6. Chat KB document provenance: `ChatAttachment` stores extracted text only, so a chat-added document never
    becomes a KB source document — persist bytes, or hand chat a `kb_ingest_document` tool.
-7. Contact URLs in the shared `_header.tex.j2` still go through `latex_escape` (the `~` corruption class,
-   needs `latex_escape_url`); the fix touches BOTH templates, so it needs cover-letter regression tests.
 8. Agentic job-search phase 2: JobBoard registry (kind/tags/last_checked), SavedSearch model, Job triage
    state, cross-session search-run logging.
 10. Work-auth warning CODES: `services/job_search_brief` still reads the two legacy keys and pattern-matches
@@ -853,6 +846,12 @@ citation. Priority lives in the item text, not in the ordinal.
 
 ## 12. Gotchas that have bitten before
 
+- **A GUI-launched process has no shell `PATH`** (2026-09-20): MacTeX at `/Library/TeX/texbin` is invisible
+  to the desktop shell and to a Claude Desktop child, so a bare `pdflatex` does not resolve.
+  `engines.find_pdflatex` searches the TeX homes after PATH, and every run spawns the resolved ABSOLUTE path.
+- **A seeded template copies its source only on INSERT** (2026-09-20): the legacy Postgres import lands rows
+  AFTER migrations run, so a migration rewriting a superseded seed would fire on an empty file and the
+  importer re-land the old bytes — hence `template_registry.SUPERSEDED_SEED_DIGESTS` resyncs at SEED time.
 - **`foreign_keys` is per connection, and defaults OFF** (2026-09-19): `journal_mode` persists in the file,
   but `foreign_keys`/`synchronous`/`busy_timeout` reset on every connect, so 21 `ondelete=` cascades
   silently stopped. Every SQLite engine goes through `app.db.make_engine`, which sets them per connection.
@@ -960,7 +959,7 @@ evidence live in `git log SYSTEM.md`, not here.
 | id | old → new | status | removal trigger | effort |
 |---|---|---|---|---|
 | `typst-default-flip` | seed `default` (LaTeX Classic) → seed `typst-classic` | both-live | **HELD by owner 2026-08-09: LaTeX stays, both engines remain first-class.** This is a longer park than 2026-08-02's, not a cancellation — the row survives because the trigger is still reachable, but nothing is waiting on it and `latex-render-path`/`texlive-layer` stay blocked behind it indefinitely. Header defects fixed (Typst `ulink()`; LaTeX separator space), DB rows re-synced. **The CLEAN 8/8 parity corpus predates 2026-08-08's extractor swap** (PyMuPDF→pypdfium2, forced by the Apache relicence), so those numbers were taken with a different measuring tape — re-run the corpus before acting on them. Then repoint `_bootstrap_default` (template_registry.py:131); a runtime `set-default` is NOT enough, seeding re-mints the LaTeX default on every fresh install. | medium |
-| `latex-render-path` | `pdf_render` latex branch + `*.tex.j2` → typst branch + `typst_classic.typ` | blocked | `select count(*) from templates where engine='latex'` = 0 **and still 0 after `GET /api/templates`** (which re-runs `ensure_seed_templates`); cover letters ported off `compile_cover_letter_pdf`; no surface (web, chat, MCP, STARTER_SOURCE) can mint a latex row. Blocked on `typst-default-flip`. | large |
+| `latex-render-path` | `pdf_render` latex branch + `*.tex.j2` → typst branch + `typst_classic.typ` | blocked | `select count(*) from templates where engine='latex'` = 0 **and still 0 after `GET /api/templates`** (which re-runs `ensure_seed_templates`); `cover_letter.tex.j2` has no caller, i.e. `render_cover_letter(engine="latex")` is unreachable — `compile_cover_letter_pdf` itself survives as the engine-dispatching entry point for both; no surface (web, chat, MCP, STARTER_SOURCE) can mint a latex row. Blocked on `typst-default-flip`. | large |
 | `texlive-layer` | minimal TeX Live layer (`backend/Dockerfile`) → `typst==0.15.0` in-process | blocked | Layer is already slim (install-tl `scheme-basic` + 18 tlmgr packages) and XCharter is vendored at `backend/app/assets/fonts/xcharter/` (keep the Bitstream Charter notice alongside; `settings.typst_font_paths` defaults there, so typst no longer reaches into texlive). The remaining FULL cut requires only: `grep -rn pdflatex backend/app` returns only comments. Blocked on `latex-render-path`. | medium |
 | `chat-selection-kind` | untagged resume chips → `ChatSelection.kind` (`resume`\|`kb_entity`) | both-live | All three scope-picker constructors emit `kind:"resume"`, THEN zero `chat_messages.meta_json->'selections'` elements lack a `kind` key. | small |
 | `autofill-education-shape` | single-object `education`, coerced in 2 clients → list, normalized server-side | new-is-default | `GET /api/settings/autofill` returns `education` absent or an array for a pre-normalization profile. Cut the frontend coercion first, the extension one release later. | small |

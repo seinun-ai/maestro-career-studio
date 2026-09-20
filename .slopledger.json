@@ -9,7 +9,7 @@
     {
       "id": "latex-render-path",
       "status": "blocked",
-      "hand_check": "DB condition: count of engine='latex' template rows must be 0 and stay 0 after GET /api/templates re-seeds. Blocked on typst-default-flip."
+      "hand_check": "DB condition: count of engine='latex' template rows must be 0 and stay 0 after GET /api/templates re-seeds. ALSO cover_letter.tex.j2 must have no caller, i.e. render_cover_letter(engine=\"latex\") is unreachable \u2014 compile_cover_letter_pdf itself survives as the engine-dispatching entry point for both engines and is NOT the condition. Blocked on typst-default-flip."
     },
     {
       "id": "texlive-layer",
