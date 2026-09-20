@@ -23,7 +23,7 @@ from app.models.application import Application
 from app.models.base_resume import BaseResume
 from app.models.resume_version import ResumeVersion
 from app.schemas.resume_edit import ResumeEdit
-from app.services import artifacts, base_resume_render, pdf_render
+from app.services import artifacts, base_resume_render
 from app.services.application_writes import stage_resume_update
 from app.services.resume_edit import apply_edits
 
@@ -78,10 +78,7 @@ def edit_base(
         )
         render_error = str(e)
     if render_error is not None:
-        db.rollback()
-        row = db.get(BaseResume, row.slug)
-        row.render_error = pdf_render.extract_render_error(render_error)
-        db.commit()
+        row = base_resume_render.record_render_error(db, row.slug, render_error)
     db.refresh(row)
     return row, version, render_error, applied
 

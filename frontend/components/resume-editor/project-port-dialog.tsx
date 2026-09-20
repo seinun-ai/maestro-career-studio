@@ -69,6 +69,13 @@ export function ProjectPortDialog({
       ),
     onSuccess: (result) => {
       notifyRenderNote(result);
+      // The port is committed before the target re-renders, so a render
+      // failure comes back beside the success, not instead of it.
+      if (result.render_error) {
+        toast.warning(
+          `${baseResumeLabel(result.target_slug)} kept its previous PDF: the re-render failed.`,
+        );
+      }
       toast.success(
         `Copied to ${baseResumeLabel(result.target_slug)} as archived`,
       );

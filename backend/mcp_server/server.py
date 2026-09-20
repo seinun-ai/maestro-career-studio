@@ -789,7 +789,11 @@ def restore_resume_version(
     Restore goes through the standard versioned write path — it is itself a
     new version (history is append-only; nothing is deleted). kind/key as on
     list_resume_versions: "base"+slug or "application"+id. For applications,
-    the old PDF is cleared; call render_pdf before attaching.
+    the old PDF is cleared; call render_pdf before attaching. A "base" restore
+    re-renders, so the response carries render_note (see render_pdf: non-null
+    only when a TeX-less backend rendered a LaTeX template through a Typst
+    one) and, if that render failed, render_error — the restore landed either
+    way, only the PDF is stale.
     """
     return _client.restore_resume_version(kind, key, number)
 

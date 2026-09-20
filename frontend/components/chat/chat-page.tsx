@@ -51,6 +51,7 @@ import {
   streamChatMessage,
   uploadChatAttachment,
 } from "@/lib/api";
+import { notifyRenderNote } from "@/lib/render-note";
 import { cn } from "@/lib/utils";
 import { DOCUMENT_ACCEPT } from "@/lib/upload-accept";
 import type {
@@ -362,8 +363,13 @@ export function ChatPage() {
             version_number: event.version_number,
             summary: event.summary,
             ops_count: event.ops_count,
+            render_note: event.render_note,
           };
           setStreaming((s) => (s ? { ...s, cards: [...s.cards, card] } : s));
+          // The edit re-rendered the resume, so a TeX-less host substituted an
+          // engine: say so here, exactly as every REST edit site does (the
+          // card's own Revert already reports its own render).
+          notifyRenderNote(card);
           followEditedResume(event.resume_kind, event.resume_key);
         } else if (event.type === "proposal") {
           const proposal: ChatProposal & { message_id?: UUID } = {

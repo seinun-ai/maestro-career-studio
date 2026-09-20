@@ -28,7 +28,6 @@ from app.schemas.career_kb import (
 from app.schemas.resume_edit import ResumeEditRequest
 from app.services import base_resume_render
 from app.services import base_resume_data
-from app.services import pdf_render
 from app.services.base_resume_data import write_base_resume_json
 from app.services.resume_edit import apply_edits
 from app.services.resume_versions import record_version
@@ -1123,6 +1122,11 @@ def _persist_port(
 
     Shared by the verbatim port and the adapted port so both get the same
     tolerant-render semantics.
+
+    Returns the SAME session-identity row the render ran on, carrying the
+    transient `render_note` its callers read onto the response (four routes
+    depend on that): re-fetching the resume in a fresh session here would null
+    the note everywhere without failing a single test.
     """
     target.data_json = working
     record_version(session, "base", target.slug, working, source="import", summary=summary)
@@ -1144,10 +1148,7 @@ def _persist_port(
         logger.warning(
             "PDF re-render failed after KB port for %s", target.slug, exc_info=True
         )
-        session.rollback()
-        target = session.get(BaseResume, target.slug)
-        target.render_error = pdf_render.extract_render_error(str(e))
-        session.commit()
+        target = base_resume_render.record_render_error(session, target.slug, str(e))
     session.refresh(target)
     return target
 

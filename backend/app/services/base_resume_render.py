@@ -52,3 +52,23 @@ def render_base_resume(slug: str, db: Session, *, template_id: str | None = None
     row.resolved_engine = doc.engine
     row.render_note = doc.render_note
     return row
+
+
+def record_render_error(db: Session, slug: str, message: str) -> BaseResume:
+    """Persist a POST-COMMIT render failure on the row; return it refreshed.
+
+    Every re-render of a base resume runs AFTER its data write committed
+    (resume_ops.edit_base, career_kb._persist_port, the project port, the
+    version restore), so a render failure must not fail the request: it would
+    report failure for a change that landed and invite a retry that applies an
+    additive write twice. This is the shared tail — roll the failed render's
+    session state back, record `render_error` (what the UI's stale-PDF banner
+    reads), keep the data write. `render_note` stays None: a failed render
+    substituted nothing, and `render_base_resume` already cleared it.
+    """
+    db.rollback()
+    row = db.get(BaseResume, slug)
+    row.render_error = pdf_render.extract_render_error(message)
+    db.commit()
+    db.refresh(row)
+    return row

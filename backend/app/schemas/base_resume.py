@@ -155,6 +155,10 @@ class BaseResumePortProjectResult(BaseModel):
     project_index: int
     # The target was re-rendered: transient, see BaseResumeDetail.render_note.
     render_note: str | None = None
+    # The port is committed before the render, so a render failure is reported
+    # here (and persisted on the target row) instead of failing the call. The
+    # two are alternatives: a failed render substituted nothing.
+    render_error: str | None = None
 
 
 class BaseResumeProposeRequest(BaseModel):

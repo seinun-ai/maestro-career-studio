@@ -1,6 +1,7 @@
 """Design 2026-09-19 §2.2: a render never changes engine silently, and a
 missing pdflatex is an actionable error, never a 500 from FileNotFoundError."""
 import json
+import shutil
 from copy import deepcopy
 from datetime import UTC, datetime
 from pathlib import Path
@@ -12,9 +13,11 @@ from app.config import settings as app_settings
 from app.db import get_db
 from app.main import app
 from app.models.application import Application
+from app.models.base_resume import BaseResume
 from app.models.template import Template
 from app.routers import applications as applications_router
 from app.services import base_resume_render, engines, pdf_render, resume_lint
+from app.services.chat_tools import ToolContext, tool_edit_resume
 from app.services import template_registry as reg
 from app.services import template_validation as tv
 from app.services.resume_versions import record_version
@@ -540,3 +543,216 @@ def test_kb_import_reports_the_fallback(db_session, tmp_path, monkeypatch):
     base = r.json()["bases"][0]
     assert base["render_error"] is None
     assert "TeX is not installed" in base["render_note"]
+
+
+def test_tex_present_leaves_the_note_null_on_every_re_rendering_route(
+    db_session, tmp_path, monkeypatch
+):
+    """The null half of the contract for the four routes Task 10c wired.
+
+    The positive tests above would all still pass if a route hard-coded a
+    note, and `POST /render` is the only route the null case was pinned on.
+    These renders are the real LaTeX path (that is the point: TeX present, no
+    substitution), so a TeX-less host skips rather than fails.
+    """
+    if shutil.which("pdflatex") is None:
+        pytest.skip("pdflatex is not installed")
+    _with_tex(monkeypatch)
+    _seed_rows(db_session)
+    monkeypatch.setattr(app_settings, "base_resumes_dir", tmp_path)
+    row = _seed(db_session, slug="data_scientist", data_json=SAMPLE_RESUME)
+    entity, points = _make_entity(
+        db_session,
+        kind="project",
+        title="RAG Chatbot",
+        detail={"tech": "Python"},
+        points=[("Built a retrieval pipeline.", "approved")],
+    )
+    record_version(db_session, "base", "data_scientist", SAMPLE_RESUME, source="create")
+    changed = deepcopy(SAMPLE_RESUME)
+    changed["summary"] = "A different summary"
+    row.data_json = changed
+    record_version(db_session, "base", "data_scientist", changed, source="form_edit")
+    db_session.commit()
+
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        client = TestClient(app)
+        port = client.post(
+            "/api/kb/port",
+            json={"target_slug": "data_scientist", "items": [{"entity_id": str(entity.id)}]},
+        )
+        assert port.status_code == 200, port.text
+        # render_error None too: a FAILED render also leaves the note null, so
+        # without this the null pin would pass vacuously on a broken TeX.
+        assert port.json()["resume"]["render_error"] is None
+        assert port.json()["resume"]["render_note"] is None
+
+        adapted = client.post(
+            "/api/kb/port/adapt/apply",
+            json={
+                "target_slug": "data_scientist",
+                "entity_id": str(entity.id),
+                "bullets": [
+                    {
+                        "text": "Built a retrieval pipeline serving 10k queries a day.",
+                        "source_point_ids": [str(points[0].id)],
+                    }
+                ],
+            },
+        )
+        assert adapted.status_code == 200, adapted.text
+        assert adapted.json()["resume"]["render_error"] is None
+        assert adapted.json()["resume"]["render_note"] is None
+
+        restored = client.post("/api/resume-versions/base/data_scientist/1/restore")
+        assert restored.status_code == 200, restored.text
+        assert restored.json()["render_error"] is None
+        assert restored.json()["render_note"] is None
+
+        imported = client.post(
+            "/api/kb/import?consolidate=false",
+            files=[_json_upload("plain.json", SAMPLE_RESUME)],
+        )
+        assert imported.status_code == 200, imported.text
+        assert imported.json()["bases"][0]["render_error"] is None
+        assert imported.json()["bases"][0]["render_note"] is None
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_a_tolerated_render_failure_reports_no_note(db_session, tmp_path, monkeypatch):
+    """Where a failed render still answers with a body, that body must carry
+    `render_error` AND a null note: the two are alternatives, never both, and
+    `render_note` is an unmapped attribute that no rollback clears."""
+    _no_tex(monkeypatch)
+    _seed_rows(db_session)
+    monkeypatch.setattr(app_settings, "base_resumes_dir", tmp_path)
+    _seed(db_session, slug="data_scientist", data_json=SAMPLE_RESUME)
+    entity, _points = _make_entity(
+        db_session,
+        kind="project",
+        title="RAG Chatbot",
+        detail={"tech": "Python"},
+        points=[("Built a retrieval pipeline.", "approved")],
+    )
+
+    def boom(*a, **kw):
+        raise RuntimeError("! typst exploded")
+
+    monkeypatch.setattr(pdf_render, "_compile_typst_file", boom)
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        client = TestClient(app)
+        port = client.post(
+            "/api/kb/port",
+            json={"target_slug": "data_scientist", "items": [{"entity_id": str(entity.id)}]},
+        )
+        assert port.status_code == 200, port.text
+        resume = port.json()["resume"]
+        assert "typst exploded" in resume["render_error"]
+        assert resume["render_note"] is None
+
+        imported = client.post(
+            "/api/kb/import?consolidate=false",
+            files=[_json_upload("plain.json", SAMPLE_RESUME)],
+        )
+        assert imported.status_code == 200, imported.text
+        base = imported.json()["bases"][0]
+        assert "typst exploded" in base["render_error"]
+        assert base["render_note"] is None
+    finally:
+        app.dependency_overrides.clear()
+
+
+# --- No ready Typst template: a 400-class failure, never a 500 ---------------
+
+
+def test_port_project_without_a_typst_fallback_does_not_500(
+    db_session, tmp_path, monkeypatch
+):
+    """Design §2.2: no ready Typst template on a TeX-less host is a 400-class
+    failure, never a 500.
+
+    The port is COMMITTED before the render, so this route degrades rather
+    than raising: 200, the port landed, and a persisted `render_error` (the
+    stale-PDF banner) instead of a 500 over a silently stale PDF.
+    """
+    _no_tex(monkeypatch)
+    _seed_rows(db_session, typst_ready=False)
+    monkeypatch.setattr(app_settings, "base_resumes_dir", tmp_path)
+    _seed(db_session, slug="data_scientist", data_json=SAMPLE_RESUME)
+    _seed(db_session, slug="hybrid", data_json=SAMPLE_RESUME)
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        r = TestClient(app, raise_server_exceptions=False).post(
+            "/api/base-resumes/data_scientist/port-project",
+            json={"target_slug": "hybrid", "project_index": 0},
+        )
+    finally:
+        app.dependency_overrides.clear()
+    assert r.status_code != 500, r.text
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["render_note"] is None
+    assert "needs TeX" in body["render_error"]
+    target = db_session.get(BaseResume, "hybrid")
+    db_session.refresh(target)
+    # The port landed, and the row itself says the PDF is stale.
+    assert len(target.data_json["projects"]) == len(SAMPLE_RESUME["projects"]) + 1
+    assert "needs TeX" in target.render_error
+
+
+def test_version_restore_without_a_typst_fallback_does_not_500(
+    db_session, tmp_path, monkeypatch
+):
+    """The same rule at the restore: the snapshot IS the live resume by the
+    time the render runs, so a 4xx would report failure for a write that
+    landed (and a retry would append yet another version)."""
+    _no_tex(monkeypatch)
+    _seed_rows(db_session, typst_ready=False)
+    monkeypatch.setattr(app_settings, "base_resumes_dir", tmp_path)
+    row = _seed(db_session, slug="data_scientist", data_json=SAMPLE_RESUME)
+    record_version(db_session, "base", "data_scientist", SAMPLE_RESUME, source="create")
+    changed = deepcopy(SAMPLE_RESUME)
+    changed["summary"] = "A different summary"
+    row.data_json = changed
+    record_version(db_session, "base", "data_scientist", changed, source="form_edit")
+    db_session.commit()
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        r = TestClient(app, raise_server_exceptions=False).post(
+            "/api/resume-versions/base/data_scientist/1/restore"
+        )
+    finally:
+        app.dependency_overrides.clear()
+    assert r.status_code != 500, r.text
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["source"] == "restore"
+    assert body["render_note"] is None
+    assert "needs TeX" in body["render_error"]
+    db_session.refresh(row)
+    assert row.data_json["summary"] == SAMPLE_RESUME["summary"]
+    assert "needs TeX" in row.render_error
+
+
+def test_chat_edit_resume_card_reports_the_fallback(db_session, tmp_path, monkeypatch):
+    """The chat edit tool re-renders through resume_ops, so its change card is
+    a render response. It was the last silent base-resume re-render: the
+    card's own Revert explains itself, the forward edit did not."""
+    _no_tex(monkeypatch)
+    _seed_rows(db_session)
+    monkeypatch.setattr(app_settings, "base_resumes_dir", tmp_path)
+    _seed(db_session, slug="data_scientist", data_json=SAMPLE_RESUME)
+
+    result = tool_edit_resume(
+        ToolContext(db=db_session, message_id="msg-1"),
+        "base",
+        "data_scientist",
+        [{"kind": "replace_summary", "value": "Sharper summary."}],
+    )
+
+    card = result["change_card"]
+    assert card["version_number"] == 1
+    assert "TeX is not installed" in card["render_note"]

@@ -158,11 +158,18 @@ def tool_edit_resume(ctx: ToolContext, kind: str, key: str, ops: list[dict]) -> 
     # tail as the REST endpoints — chat is no longer a third implementation.
     # Base renders degrade to a persisted render_error (previously chat
     # swallowed render failures with no signal at all).
+    render_note: str | None = None
     try:
         if kind == "base":
-            _, version, _, _ = resume_ops.edit_base(
+            edited, version, _, _ = resume_ops.edit_base(
                 ctx.db, row, parsed, source="chat", source_ref=ctx.message_id
             )
+            # A base edit re-renders, so the card is a render response: on a
+            # TeX-less host the substitution has to name itself here too, or
+            # the forward edit is silent while the card's Revert explains
+            # itself. An application edit renders nothing (the PDF comes on an
+            # explicit Render), so it leaves the note null.
+            render_note = getattr(edited, "render_note", None)
         else:
             _, version, _ = resume_ops.edit_application(
                 ctx.db,
@@ -184,6 +191,7 @@ def tool_edit_resume(ctx: ToolContext, kind: str, key: str, ops: list[dict]) -> 
             "version_number": version.version_number,
             "summary": version.summary,
             "ops_count": len(parsed),
+            "render_note": render_note,
         }
     }
 

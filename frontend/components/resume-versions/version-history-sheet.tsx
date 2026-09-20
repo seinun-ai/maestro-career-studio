@@ -99,6 +99,11 @@ export function VersionHistorySheet({
       qc.invalidateQueries({ queryKey: ["application"] });
       setSelected(null);
       notifyRenderNote(created);
+      // The restore is committed before the re-render, so a render failure
+      // comes back beside the success, not instead of it.
+      if (created.render_error) {
+        toast.warning("The PDF kept its previous version: the re-render failed.");
+      }
       toast.success(`Restored as version ${created.version_number}`);
       onRestored?.();
     },

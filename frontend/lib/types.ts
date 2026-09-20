@@ -921,6 +921,12 @@ export interface KBProfilePatch {
 export interface BaseResumePortProjectResult extends RenderNoted {
   target_slug: string;
   project_index: number;
+  /**
+   * The port is committed before the target is re-rendered, so a render
+   * failure comes back here (the project landed; only the PDF is stale)
+   * instead of failing the call — never set together with `render_note`.
+   */
+  render_error?: string | null;
 }
 
 export interface TopSkillRow {
@@ -1565,9 +1571,13 @@ export interface ResumeVersionDetail extends ResumeVersion {
 /**
  * POST /restore answers with the new version. A base restore re-renders the
  * PDF, so it carries the note; an application restore renders nothing (the
- * PDF comes on an explicit Render) and leaves it null.
+ * PDF comes on an explicit Render) and leaves it null. The restore is
+ * committed before that render, so a render failure comes back as
+ * `render_error` (the restore landed; only the PDF is stale) instead of
+ * failing the call — the two are alternatives, never both.
  */
-export type ResumeVersionRestoreResult = ResumeVersion & RenderNoted;
+export type ResumeVersionRestoreResult = ResumeVersion &
+  RenderNoted & { render_error?: string | null };
 
 // ---------------------------------------------------------------------------
 // Chat
@@ -1590,7 +1600,12 @@ export interface ChatContext {
   attachment_ids?: UUID[];
 }
 
-export interface ChatChangeCard {
+/**
+ * The chat edit tool's card. A BASE edit re-renders, so the card is a render
+ * response and carries the note (optional: cards persisted before it existed
+ * have no such key); an application edit renders nothing and leaves it null.
+ */
+export interface ChatChangeCard extends RenderNoted {
   resume_kind: "base" | "application";
   resume_key: string;
   version_number: number;

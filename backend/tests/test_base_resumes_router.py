@@ -341,6 +341,7 @@ def test_port_project_appends_disabled_copy_to_target(db_session, tmp_path, monk
         "target_slug": "hybrid",
         "project_index": 0,
         "render_note": None,
+        "render_error": None,
     }
     assert rendered == ["hybrid"]
 

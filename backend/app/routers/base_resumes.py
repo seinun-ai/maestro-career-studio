@@ -674,12 +674,33 @@ def port_project_to_base_resume(
     db.refresh(target)
 
     _write_json_file(payload.target_slug, target_data)
-    rendered = base_resume_render.render_base_resume(payload.target_slug, db)
+    # The port is COMMITTED above, so the re-render degrades instead of
+    # raising (same tail as resume_ops.edit_base): a TeX-less host with no
+    # ready Typst template raises ValueError here, which used to leave the
+    # caller a 500 over an already-applied port and a silently stale PDF —
+    # and a retry appends the project twice.
+    render_note: str | None = None
+    render_error: str | None = None
+    try:
+        rendered = base_resume_render.render_base_resume(payload.target_slug, db)
+        render_note = getattr(rendered, "render_note", None)
+    except LookupError as e:  # the target vanished between commit and render
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    except Exception as e:  # noqa: BLE001 — the port landed; the PDF goes stale
+        logger.warning(
+            "PDF re-render failed after a project port to %s",
+            payload.target_slug,
+            exc_info=True,
+        )
+        render_error = base_resume_render.record_render_error(
+            db, payload.target_slug, str(e)
+        ).render_error
 
     return BaseResumePortProjectResult(
         target_slug=payload.target_slug,
         project_index=len(target_projects) - 1,
-        render_note=getattr(rendered, "render_note", None),
+        render_note=render_note,
+        render_error=render_error,
     )
 
 

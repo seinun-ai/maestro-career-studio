@@ -35,6 +35,10 @@ class ResumeVersionRestoreResult(ResumeVersionSummary):
 
     # Transient, see BaseResumeDetail.render_note.
     render_note: str | None = None
+    # The restore is committed before the render, so a render failure is
+    # reported here (and persisted on the row) instead of failing the call.
+    # The two are alternatives: a failed render substituted nothing.
+    render_error: str | None = None
 
 
 class ResumeVersionLabelPatch(BaseModel):
