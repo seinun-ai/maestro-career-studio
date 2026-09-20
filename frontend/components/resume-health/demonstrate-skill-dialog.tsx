@@ -14,13 +14,13 @@ import {
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { draftRewrite, apiFetch } from "@/lib/api";
-import { notifyRenderNote, type RenderNoted } from "@/lib/render-note";
+import { notifyRenderNote } from "@/lib/render-note";
 import {
   STALE_APPLY_HINT,
 } from "@/lib/health-report";
 import { toastRewriteError } from "./report-errors";
 import { wordDiff } from "@/lib/word-diff";
-import type { ResumeData } from "@/lib/types";
+import type { RenderNoted, ResumeData } from "@/lib/types";
 
 type PickedBullet = {
   section: "experience" | "projects";

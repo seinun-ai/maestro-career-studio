@@ -7,9 +7,14 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { apiFetch, setChatCardState } from "@/lib/api";
-import { notifyRenderNote, type RenderNoted } from "@/lib/render-note";
+import { notifyRenderNote } from "@/lib/render-note";
 import { baseResumeLabel } from "@/lib/types";
-import type { ChatCardState, ChatProposal, UUID } from "@/lib/types";
+import type {
+  ChatCardState,
+  ChatProposal,
+  RenderNoted,
+  UUID,
+} from "@/lib/types";
 
 /**
  * Staged extraction result (upload → project points). Never merged silently —

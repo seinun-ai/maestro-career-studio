@@ -62,13 +62,14 @@ import {
   textAtLocation,
   shortFindingLabel,
 } from "@/lib/health-report";
-import { notifyRenderNote, type RenderNoted } from "@/lib/render-note";
+import { notifyRenderNote } from "@/lib/render-note";
 import { wordDiff } from "@/lib/word-diff";
 import { cn } from "@/lib/utils";
 import type {
   EvidenceLevel,
   LintFinding,
   LintGate,
+  RenderNoted,
   ResumeData,
 } from "@/lib/types";
 

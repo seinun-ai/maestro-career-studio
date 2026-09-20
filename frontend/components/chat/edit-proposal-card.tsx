@@ -8,9 +8,14 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { apiFetch, setChatCardState } from "@/lib/api";
-import { notifyRenderNote, type RenderNoted } from "@/lib/render-note";
+import { notifyRenderNote } from "@/lib/render-note";
 import { baseResumeLabel } from "@/lib/types";
-import type { ChatCardState, ChatProposalOps, UUID } from "@/lib/types";
+import type {
+  ChatCardState,
+  ChatProposalOps,
+  RenderNoted,
+  UUID,
+} from "@/lib/types";
 
 /** One line per op: "replace_bullet · experience[0].bullets[1] — “new text…”".
  *  Shared with the base-resume instruction sheet, which renders the same op

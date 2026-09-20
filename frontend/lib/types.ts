@@ -4,6 +4,21 @@ export type UUID = string;
  * ("user") or the agent-hunted auto-apply lane ("agent"). */
 type ProvenanceSource = "user" | "agent";
 
+/**
+ * Carried by every response that FOLLOWS a render. `render_note` is non-null
+ * only when TeX is absent on the backend host and a LaTeX template rendered
+ * through a Typst one instead — the render succeeded, under another engine.
+ *
+ * Optional because one caller can hit either arm of the `/edits` pair: the
+ * base-resume arm re-renders and answers with the note, while the application
+ * arm renders NOTHING (`resume_ops.edit_application` only clears the artifact
+ * refs; the PDF is rendered later, on an explicit Render). So that arm has no
+ * note to give and needs none.
+ */
+export interface RenderNoted {
+  render_note?: string | null;
+}
+
 export interface Job {
   id: UUID;
   raw_text: string;
@@ -231,7 +246,7 @@ export interface QAResponse {
   cover_letter: string | null;
 }
 
-export interface QAEntry {
+export interface QAEntry extends RenderNoted {
   id: UUID;
   application_id: UUID;
   kind: string;
@@ -240,8 +255,6 @@ export interface QAEntry {
   model_used: string | null;
   pdf_path: string | null;
   created_at: string;
-  /** Non-null only when TeX was missing and a Typst template rendered instead. */
-  render_note?: string | null;
 }
 
 export interface SettingValue {
@@ -471,7 +484,7 @@ export interface ImportReport {
   kb: { entities_created: number; points_approved: number } | null;
 }
 
-export interface BaseResumeDetail extends BaseResumeSummary {
+export interface BaseResumeDetail extends BaseResumeSummary, RenderNoted {
   data: ResumeData;
   pdf_path: string | null;
   tex_path: string | null;
@@ -480,18 +493,15 @@ export interface BaseResumeDetail extends BaseResumeSummary {
   template_id: string | null;
   /** POST /import only: rows the parser dropped rather than fail the file. */
   parse_warnings?: string[] | null;
-  /** Non-null only when TeX was missing and a Typst template rendered instead. */
-  render_note?: string | null;
 }
 
 /** POST /api/applications/{id}/render */
-export interface RenderResult {
+export interface RenderResult extends RenderNoted {
   tex_path: string;
   pdf_path: string;
   resolved_template_id: string | null;
   resolved_engine: string | null;
   template_fallback: boolean | null;
-  render_note: string | null;
 }
 
 /** POST /api/base-resumes/{slug}/propose — a reviewed-before-applied proposal. */
