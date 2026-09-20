@@ -756,3 +756,82 @@ def test_chat_edit_resume_card_reports_the_fallback(db_session, tmp_path, monkey
     card = result["change_card"]
     assert card["version_number"] == 1
     assert "TeX is not installed" in card["render_note"]
+
+
+def test_kb_port_without_a_typst_fallback_degrades_like_the_others(
+    db_session, tmp_path, monkeypatch
+):
+    """The ONE rule for all four post-commit re-renders: the write already
+    landed, so the render failure degrades.
+
+    `_persist_port` used to re-raise the no-ready-Typst ValueError as the
+    router's 400 — the port had been committed, the user was told it failed,
+    and a retry ported the same entity again."""
+    _no_tex(monkeypatch)
+    _seed_rows(db_session, typst_ready=False)
+    monkeypatch.setattr(app_settings, "base_resumes_dir", tmp_path)
+    _seed(db_session, slug="data_scientist", data_json=SAMPLE_RESUME)
+    entity, _points = _make_entity(
+        db_session,
+        kind="project",
+        title="RAG Chatbot",
+        detail={"tech": "Python"},
+        points=[("Built a retrieval pipeline.", "approved")],
+    )
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        r = TestClient(app, raise_server_exceptions=False).post(
+            "/api/kb/port",
+            json={"target_slug": "data_scientist", "items": [{"entity_id": str(entity.id)}]},
+        )
+    finally:
+        app.dependency_overrides.clear()
+    assert r.status_code == 200, r.text
+    resume = r.json()["resume"]
+    assert resume["render_note"] is None
+    assert "needs TeX" in resume["render_error"]
+    row = db_session.get(BaseResume, "data_scientist")
+    db_session.refresh(row)
+    # The port landed: the entity is on the resume and the row says so.
+    assert any(p.get("name") == "RAG Chatbot" for p in row.data_json["projects"])
+    assert "needs TeX" in row.render_error
+
+
+def test_kb_port_adapt_apply_without_a_typst_fallback_degrades_too(
+    db_session, tmp_path, monkeypatch
+):
+    """The adapted port persists through the same `_persist_port`, so it takes
+    the same answer — a pre-commit ValueError (a bad bullet, a non-approved
+    source point) is still the router's 400; only the render degrades."""
+    _no_tex(monkeypatch)
+    _seed_rows(db_session, typst_ready=False)
+    monkeypatch.setattr(app_settings, "base_resumes_dir", tmp_path)
+    _seed(db_session, slug="data_scientist", data_json=SAMPLE_RESUME)
+    entity, points = _make_entity(
+        db_session,
+        kind="project",
+        title="RAG Chatbot",
+        detail={"tech": "Python"},
+        points=[("Built a retrieval pipeline.", "approved")],
+    )
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        r = TestClient(app, raise_server_exceptions=False).post(
+            "/api/kb/port/adapt/apply",
+            json={
+                "target_slug": "data_scientist",
+                "entity_id": str(entity.id),
+                "bullets": [
+                    {
+                        "text": "Built a retrieval pipeline serving 10k queries a day.",
+                        "source_point_ids": [str(points[0].id)],
+                    }
+                ],
+            },
+        )
+    finally:
+        app.dependency_overrides.clear()
+    assert r.status_code == 200, r.text
+    resume = r.json()["resume"]
+    assert resume["render_note"] is None
+    assert "needs TeX" in resume["render_error"]

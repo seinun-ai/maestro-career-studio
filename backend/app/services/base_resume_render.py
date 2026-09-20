@@ -57,14 +57,21 @@ def render_base_resume(slug: str, db: Session, *, template_id: str | None = None
 def record_render_error(db: Session, slug: str, message: str) -> BaseResume:
     """Persist a POST-COMMIT render failure on the row; return it refreshed.
 
+    **The rule, for every render failure including a TeX-less host with no
+    ready Typst template: if the write already committed, DEGRADE and persist
+    `render_error`; if the render IS the request, 400; never a 500.**
+
     Every re-render of a base resume runs AFTER its data write committed
     (resume_ops.edit_base, career_kb._persist_port, the project port, the
     version restore), so a render failure must not fail the request: it would
     report failure for a change that landed and invite a retry that applies an
-    additive write twice. This is the shared tail — roll the failed render's
-    session state back, record `render_error` (what the UI's stale-PDF banner
-    reads), keep the data write. `render_note` stays None: a failed render
-    substituted nothing, and `render_base_resume` already cleared it.
+    additive write twice. This is the shared tail those four call — roll the
+    failed render's session state back, record `render_error` (what the UI's
+    stale-PDF banner reads), keep the data write. `render_note` stays None: a
+    failed render substituted nothing, and `render_base_resume` already
+    cleared it. The render-is-the-request routes (`POST /{slug}/render`, the
+    application and cover-letter renders) keep raising for their 400 — there
+    is no committed write to contradict.
     """
     db.rollback()
     row = db.get(BaseResume, slug)

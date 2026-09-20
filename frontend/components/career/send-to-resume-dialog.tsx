@@ -110,6 +110,12 @@ export function SendToResumeDialog({
     });
     void queryClient.invalidateQueries({ queryKey: ["kb", "entity", entity.id] });
     notifyRenderNote(response.resume);
+    // The port is committed before the target re-renders, so a render failure
+    // now comes back beside the success (it used to be a 4xx for a port that
+    // had already landed), not instead of it.
+    if (response.resume.render_error) {
+      toast.warning(`${targetLabel} kept its previous PDF: the re-render failed.`);
+    }
     toast.success(
       `${item?.created_entry ? "Added entity" : `Ported ${ported} ${ported === 1 ? "point" : "points"}`}${skipped ? ` · ${skipped} duplicate${skipped === 1 ? "" : "s"} skipped` : ""}`,
       {

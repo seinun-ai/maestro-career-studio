@@ -113,6 +113,11 @@ export function KbImportDrawer({
       void queryClient.invalidateQueries({ queryKey: ["kb", "entities"] });
       onImported(response.resume);
       notifyRenderNote(response.resume);
+      // Committed before the re-render, so a render failure is reported
+      // beside the success rather than as a failed import.
+      if (response.resume.render_error) {
+        toast.warning("The resume kept its previous PDF: the re-render failed.");
+      }
       toast.success(
         `Imported ${response.report.items.length} ${response.report.items.length === 1 ? "entity" : "entities"} and ${response.report.skills_merged.length} skill ${response.report.skills_merged.length === 1 ? "group" : "groups"}${duplicates ? ` · ${duplicates} duplicate${duplicates === 1 ? "" : "s"} skipped` : ""}`,
       );

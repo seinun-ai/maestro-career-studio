@@ -1629,6 +1629,76 @@ Commit `feat(render): render_note on port-project, KB port and version restore`.
 
 ---
 
+### Task 10d: the last `render_note` gaps and the structural gate
+
+Added after Task 10c's code-quality review (deviation rows 50–54). Two real
+gaps and four smaller ones, plus the gate that stops the next one: three
+consecutive tasks each found one more re-rendering call site that dropped the
+note, so the enumeration itself is now pinned.
+
+**Files:**
+- Modify: `backend/app/services/base_resume_render.py` (the shared degrade tail),
+  `backend/app/routers/base_resumes.py` (`port_project_to_base_resume`),
+  `backend/app/routers/resume_versions.py` (`restore_version`),
+  `backend/app/services/career_kb.py` (`_persist_port`),
+  `backend/app/services/resume_ops.py` (`edit_base`),
+  `backend/app/services/chat_tools.py` (`tool_edit_resume`),
+  `backend/app/schemas/base_resume.py`, `backend/app/schemas/resume_version.py`,
+  `backend/mcp_server/server.py` (`restore_resume_version` docstring)
+- Modify: `frontend/lib/types.ts`, `frontend/components/chat/chat-page.tsx`,
+  `frontend/components/resume-editor/project-port-dialog.tsx`,
+  `frontend/components/resume-versions/version-history-sheet.tsx`
+- Add: `backend/tests/test_render_note_coverage.py`; extend
+  `backend/tests/test_render_fallback.py`
+
+**The rule this task settles** (Task 12 pins it in SYSTEM.md §6, citing
+`base_resume_render.record_render_error`'s docstring as the enforcement
+point): a render failure — a TeX-less host with no ready Typst template
+included — **degrades and persists `render_error` when the write already
+committed, is a 400 when the render IS the request, and is never a 500**.
+
+1. **Never a 500 on a committed write.** `POST /{slug}/port-project` and
+   `POST /resume-versions/{kind}/{key}/{n}/restore` called
+   `render_base_resume` unwrapped (500 measured on both); `_persist_port`
+   re-raised the same `ValueError` as a 400 for `POST /api/kb/port` and
+   `POST /api/kb/port/adapt/apply`, telling the user a committed port had
+   failed. All four now degrade through ONE helper,
+   `base_resume_render.record_render_error` (rollback → persist
+   `render_error` → refresh), which `resume_ops.edit_base` also calls;
+   `LookupError` still maps to 404 and pre-commit `ValueError`s still map to
+   400. `render_error` is echoed on `BaseResumePortProjectResult` and
+   `ResumeVersionRestoreResult` and toasted beside the success at both
+   callers.
+2. **The chat `edit_resume` card carries `render_note`** (`chat_tools`, typed
+   on `ChatChangeCard`, surfaced with the shared `notifyRenderNote` where
+   `chat-page.tsx` receives the SSE `change_card`) — the last silent
+   base-resume re-render.
+3. **`tests/test_render_note_coverage.py`**: an AST scan of `app/routers` +
+   `app/services` for `render_base_resume(` call sites versus a reviewed
+   allowlist naming what carries the note per site (`seeding`: none, no HTTP
+   response). It pins the ENUMERATION, not the behaviour; a new call site
+   fails it until someone adds a line.
+4. TeX-present null pins for the four Task 10c routes (real pdflatex; skips
+   on a TeX-less host), and `render_error is None` asserted beside them so the
+   null pin cannot pass vacuously.
+5. `render_note` asserted null beside `render_error` where a tolerated render
+   failure still answers with a body (`kb/port`, `kb/import`).
+6. `restore_resume_version`'s MCP docstring names `render_note`/`render_error`.
+7. `_persist_port`'s docstring says its return value is what carries the
+   transient note, so a refactor that re-fetches in a fresh session cannot
+   silently null four routes.
+
+Gates: `tests/test_render_fallback.py tests/test_render_note_coverage.py
+tests/test_chat_tools.py tests/test_kb_port.py tests/test_kb_adapt.py
+tests/test_kb_import.py tests/test_resume_versions_router.py
+tests/test_base_resumes_router.py mcp_server/tests/`, ruff, the full suite,
+then `npx tsc --noEmit && npm run lint && npm run build`.
+Commits `fix(render): 400 not 500 without a Typst fallback; chat card
+explains; coverage gate` and `fix(render): KB port degrades like the other
+three post-commit renders`.
+
+---
+
 ### Task 11: User docs
 
 **Files:**
@@ -1901,6 +1971,7 @@ git commit -m "docs(plans): engines branch — deviation log and gate results"
 | 51 | 10d | "Map `ValueError` → 400 like the PUT sites, or degrade like `resume_ops.edit_base`" | DEGRADE at both: 200, the write kept, `render_error` persisted on the row AND echoed on `BaseResumePortProjectResult` / `ResumeVersionRestoreResult` (`LookupError` still → 404) | Both routes write and commit BEFORE they render, and the port is ADDITIVE: a 4xx would report failure for a change that landed and invite a retry that appends the project twice (`edit_base`'s own documented reason). `POST /api/kb/port` keeps its 400 — `_persist_port` re-raises `ValueError` — so the two ports still disagree for the no-Typst case; left alone as out of scope, worth one decision later. |
 | 52 | 10d | — | The post-commit degrade tail is now ONE helper, `base_resume_render.record_render_error` (rollback → persist `render_error` → refresh), with four callers: `resume_ops.edit_base`, `career_kb._persist_port` and the two new sites | It was about to be the third and fourth copy of the same six lines. |
 | 53 | 10d | — | `tests/test_render_note_coverage.py`: an AST scan of `app/routers` + `app/services` for `render_base_resume(` call sites, matched against a ten-entry allowlist that names what carries the note per site (`seeding` carries none — no HTTP response) | Three consecutive tasks each found one more forgetful call site; the gate pins the ENUMERATION so the next one fails a test instead of a user's PDF. |
+| 54 | 10d | Row 51 left `POST /api/kb/port` at 400 as out of scope | Closed instead: `_persist_port` no longer re-raises the render `ValueError`, so `/api/kb/port` and `/api/kb/port/adapt/apply` degrade through the same helper as the other three — all four post-commit sites agree. Two tests added (red at 400 first); pre-commit `ValueError`s (bad payload, non-approved point, stale replace target) still 400, pinned by `tests/test_kb_adapt.py` | Owner's call: Task 12 pins the rule in SYSTEM.md §6 and cannot describe two ports that disagree. The rule, now in `record_render_error`'s docstring: committed write → degrade and persist `render_error`; render IS the request → 400; never a 500. |
 
 ## Gate results
 
