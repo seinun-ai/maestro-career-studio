@@ -464,7 +464,7 @@ export interface BaseResumeSummary {
  *  `proposed` is true when the system guessed the role from resume content and
  *  the UI must ask the user to confirm; false means "unknown", i.e. undeclared
  *  rather than guessed. */
-interface ImportedBase {
+interface ImportedBase extends RenderNoted {
   slug: string;
   display_name: string;
   role_category: string;

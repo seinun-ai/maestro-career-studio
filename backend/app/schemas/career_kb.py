@@ -545,6 +545,8 @@ class ImportedBaseRead(BaseModel):
     # the user to confirm. False means "unknown" — undeclared, not guessed.
     proposed: bool
     render_error: str | None = None
+    # The minted base was rendered: transient, see BaseResumeDetail.render_note.
+    render_note: str | None = None
     parse_warnings: list[str] = Field(default_factory=list)
 
 

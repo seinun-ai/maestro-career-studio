@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { kbImportConsolidate, kbImportResume } from "@/lib/api";
+import { notifyRenderNote } from "@/lib/render-note";
 import type { ImportReport } from "@/lib/types";
 import { RESUME_FILE_ACCEPT } from "@/lib/upload-accept";
 
@@ -75,6 +76,10 @@ export function ResumeImportPanel({ onClose }: { onClose: () => void }) {
         );
       }
     }
+
+    // Every base rendered on the same host through the same default template,
+    // so their notes are one string: say it once, not once per file.
+    notifyRenderNote(bases.find((b) => b.render_note));
 
     let kb: ImportReport["kb"] = null;
     if (bases.length > 0) {

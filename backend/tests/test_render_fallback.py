@@ -21,6 +21,7 @@ from app.services.resume_versions import record_version
 from app.services.template_validation import SAMPLE_RESUME
 from tests.test_applications_router import _job
 from tests.test_base_resumes_router import _override_db, _seed
+from tests.test_kb_import import _json_upload
 from tests.test_kb_port import _make_entity
 
 MINIMAL_TEX = "\\documentclass{article}\\begin{document}x\\end{document}"
@@ -479,3 +480,63 @@ def test_version_restore_reports_the_fallback(db_session, tmp_path, monkeypatch)
     body = r.json()
     assert body["source"] == "restore"
     assert "TeX is not installed" in body["render_note"]
+
+
+def test_kb_port_adapt_apply_reports_the_fallback(db_session, tmp_path, monkeypatch):
+    """The adapted port persists through the same _persist_port as the verbatim
+    one, so it is a render response too. Apply takes bullets the user already
+    approved and makes no LLM call."""
+    _no_tex(monkeypatch)
+    _seed_rows(db_session)
+    monkeypatch.setattr(app_settings, "base_resumes_dir", tmp_path)
+    _seed(db_session, slug="data_scientist", data_json=SAMPLE_RESUME)
+    entity, points = _make_entity(
+        db_session,
+        kind="project",
+        title="RAG Chatbot",
+        detail={"tech": "Python"},
+        points=[("Built a retrieval pipeline.", "approved")],
+    )
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        r = TestClient(app).post(
+            "/api/kb/port/adapt/apply",
+            json={
+                "target_slug": "data_scientist",
+                "entity_id": str(entity.id),
+                "bullets": [
+                    {
+                        "text": "Built a retrieval pipeline serving 10k queries a day.",
+                        "source_point_ids": [str(points[0].id)],
+                    }
+                ],
+            },
+        )
+    finally:
+        app.dependency_overrides.clear()
+    assert r.status_code == 200, r.text
+    resume = r.json()["resume"]
+    assert resume["render_error"] is None
+    assert "TeX is not installed" in resume["render_note"]
+
+
+def test_kb_import_reports_the_fallback(db_session, tmp_path, monkeypatch):
+    """The onboarding import mints AND renders each base — on a TeX-less
+    desktop it is the first render the user ever sees. A JSON upload with
+    consolidate=false makes no LLM call (test_kb_import proves both halves),
+    so nothing needs stubbing but the data dir."""
+    _no_tex(monkeypatch)
+    _seed_rows(db_session)
+    monkeypatch.setattr(app_settings, "base_resumes_dir", tmp_path)
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        r = TestClient(app).post(
+            "/api/kb/import?consolidate=false",
+            files=[_json_upload("plain.json", SAMPLE_RESUME)],
+        )
+    finally:
+        app.dependency_overrides.clear()
+    assert r.status_code == 200, r.text
+    base = r.json()["bases"][0]
+    assert base["render_error"] is None
+    assert "TeX is not installed" in base["render_note"]
