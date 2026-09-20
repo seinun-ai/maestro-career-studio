@@ -1596,6 +1596,39 @@ base-resume edit, create and import`.
 
 ---
 
+### Task 10c: `render_note` on the three remaining re-rendering routes
+
+Added after Task 10b (deviation row 44). Three routes re-render a base resume
+and return a schema without `render_note`, so their UI callers cannot
+explain a substitution: `POST /api/base-resumes/{slug}/port-project`
+(`BaseResumePortProjectResult`, caller `frontend/components/resume-editor/project-port-dialog.tsx`),
+`POST /api/kb/port` (`KBPortResponse.resume`, callers
+`frontend/components/career/send-to-resume-dialog.tsx` and
+`frontend/components/resume-editor/kb-import-drawer.tsx`), and the version
+restore in `backend/app/routers/resume_versions.py` (~line 96; find its
+frontend caller with `grep -rn "resume-versions\|/versions" frontend/components frontend/app`).
+
+**Backend:** add `render_note: str | None = None` to each response schema
+(on `BaseResumePortProjectResult`; on `KBPortResponse.resume` it is already a
+`BaseResumeDetail`, so thread `render_note=getattr(row, "render_note", None)`
+into wherever that detail is constructed — grep `BaseResumeDetail(` in
+`routers/career_kb.py` and `services/career_kb.py`; for the restore route,
+whichever detail/summary it returns) and set it from the row after the
+render, exactly as `routers/base_resumes.py` does. One test per route in
+`tests/test_render_fallback.py` under `_no_tex` asserting the note is present
+(reuse the existing seeding helpers; a KB port needs an approved point — copy
+the smallest fixture from `tests/test_kb_port.py`; a restore needs a prior
+version — see `tests/test_resume_versions_router.py`).
+
+**Frontend:** the three callers use `notifyRenderNote(result)` on success,
+like every other site. Type the new field on the corresponding interfaces in
+`frontend/lib/types.ts`.
+
+Gates: backend suite + ruff; `npx tsc --noEmit && npm run lint && npm run build`.
+Commit `feat(render): render_note on port-project, KB port and version restore`.
+
+---
+
 ### Task 11: User docs
 
 **Files:**
@@ -1828,6 +1861,9 @@ git commit -m "docs(plans): engines branch — deviation log and gate results"
 | 39 | 9/10 | — | Review fixes on top of the merge: the new docstring test had been spliced into `test_audit_one_sentence_docstring_fixes` (un-spliced); the badge was inlined twice (one `RequiresTexBadge`) | Light-tier findings; both cosmetic, both fixed before the browser pass. |
 | 40 | 10b (new) | Task 10 named three render call sites | `BaseResumeDetail.render_note` is surfaced nowhere: base-resume PUT/PATCH/create/duplicate/import/from-KB substitute silently in the UI on a TeX-less host | Goal-Card gap found by the review, correctly outside Grok's scope; new Task 10b. |
 | 41 | 13 (planned) | — | The backend slop ratchet is red on the BASE branch before Grok's lane (`complexity_hotspots` 417 → 421, `error_masking` 9 → 10, from Tasks 1–7); Grok's lane is net zero after the un-splice; frontend green | Re-baseline on this branch in Task 13 with a reason naming the growth (tests + the guarded commits in `template_registry`/`engines`). |
+| 42 | 7 → 12/13 | Task 7 approved "Yes" with minors | Carry into Task 12/13: guard the short-circuit's `session.commit()` in `_seed_validate` like the sibling bookkeeping commit; tighten `test_list_reports_engine_availability` to assert every row (`all(t["engine_available"] == (t["engine"] != "latex") …)`); note that a FOUND-but-broken `pdflatex --version` is now spawned by every template list/detail (successes-only cache) — a short negative cache in `engines` is the global fix, deferred with a §11 mention if not done | Task 7's quality review; observation (a) decided: a `ready` seed keeps `ready` on a TeX-less host (its certification was earned by a real compile; demoting it would route renders through the default once TeX returns). |
+| 43 | 10b | "Every mutation on six base-resume routes" | 13 sites (`3058be1d`), `notifyRenderNote` in `frontend/lib/render-note.ts` used by all of them including the previous lane's three; `batch-ask-dialog` toasts once per batch from the last applied row; the duplicate lane's identity PATCH no longer clobbers the create response's note | More than three copies is one definition; identity never re-renders so its response's note is always null. |
+| 44 | 10c (new) | — | `port-project`, `POST /api/kb/port` and version restore re-render a base resume but their schemas carry no `render_note`; new Task 10c (backend field + three frontend callers) | Found by Task 10b; the same principle ("names itself in the UI") applies. |
 | 16 | 10 (planned) | Task 10 shows `render_note` only in a badge tooltip | Task 10 will ALSO surface `render_note` on render success in the web UI (toast) and type `RenderResult`/`render_note` in `frontend/lib/types.ts` | Design principle: every fallback names itself in the response AND the UI; both frontend render call sites currently discard the response body. |
 
 ## Gate results
