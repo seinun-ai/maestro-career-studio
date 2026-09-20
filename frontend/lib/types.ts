@@ -240,6 +240,8 @@ export interface QAEntry {
   model_used: string | null;
   pdf_path: string | null;
   created_at: string;
+  /** Non-null only when TeX was missing and a Typst template rendered instead. */
+  render_note?: string | null;
 }
 
 export interface SettingValue {
@@ -398,6 +400,14 @@ interface SetupStep {
   detail: Record<string, unknown>;
 }
 
+interface EngineProbe {
+  name: string;
+  available: boolean;
+  version: string | null;
+  path: string | null;
+  reason: string | null;
+}
+
 export interface SetupStatus {
   /** A provider API key is configured (in-app or .env). Blocks everything. */
   model_key: SetupStep;
@@ -411,6 +421,11 @@ export interface SetupStatus {
   job_preferences: SetupStep;
   persona: SetupStep;
   template: SetupStep;
+  /** Which PDF engines the backend can run. Informational, never blocks. */
+  engines: {
+    pdflatex: EngineProbe;
+    typst: EngineProbe;
+  };
   suggested_bases: { role_category: string; label: string }[];
   complete: boolean;
 }
@@ -465,6 +480,18 @@ export interface BaseResumeDetail extends BaseResumeSummary {
   template_id: string | null;
   /** POST /import only: rows the parser dropped rather than fail the file. */
   parse_warnings?: string[] | null;
+  /** Non-null only when TeX was missing and a Typst template rendered instead. */
+  render_note?: string | null;
+}
+
+/** POST /api/applications/{id}/render */
+export interface RenderResult {
+  tex_path: string;
+  pdf_path: string;
+  resolved_template_id: string | null;
+  resolved_engine: string | null;
+  template_fallback: boolean | null;
+  render_note: string | null;
 }
 
 /** POST /api/base-resumes/{slug}/propose — a reviewed-before-applied proposal. */
@@ -1023,6 +1050,12 @@ export interface TemplateSummary {
   origin: string;
   /** Render engine for `source`: LaTeX (Jinja→pdflatex) or Typst (raw .typ). */
   engine: TemplateEngine;
+  /**
+   * False when this template's engine cannot run on the backend host (a LaTeX
+   * template with no pdflatex). Still pickable: a render through it falls back
+   * to a Typst template and the response says so in `render_note`.
+   */
+  engine_available: boolean;
   last_error: string | null;
   validated_at: string | null;
   updated_at?: string | null;

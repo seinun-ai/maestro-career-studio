@@ -61,6 +61,11 @@ published image tag is the same version with the leading `v` removed (`0.2.0`).
 - **`python -m app.tools.backup_db`** takes an online snapshot of the database
   while the stack runs, and **`python -m app.tools.migrate_from_postgres`** is
   the first-boot import as a command you can run yourself.
+- **PDF engine probe** on `GET /api/setup/status` (`engines`), `render_note` on
+  render responses when a LaTeX template is rendered through Typst because TeX
+  is missing, `engine_available` on templates, a Typst cover letter
+  (`cover_letter.typ`), and **`MAESTRO_CS_PDFLATEX`** to name a pdflatex binary
+  outside the usual locations (host/venv backends; the image already has TeX).
 
 ### Changed
 
@@ -76,6 +81,11 @@ published image tag is the same version with the leading `v` removed (`0.2.0`).
 
 - Cover-letter regeneration and document upload commit before their LLM call,
   so a slow model no longer holds the database's write lock while it thinks.
+- Contact URLs with `~`/`_` in the shared header partial no longer corrupt the
+  link target (resume and cover letter). The header also compiles for a contact
+  without a location. User templates `carlito_dense` and `harshibar` pass
+  `\href` targets through `latex_escape_url` the same way, and existing
+  installs are resynced at seed time.
 
 ## [0.3.0] — 2026-08-29
 

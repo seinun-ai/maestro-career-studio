@@ -135,7 +135,8 @@ export function QATab({ applicationId }: { applicationId: string }) {
   const renderEntry = useMutation({
     mutationFn: (id: string) =>
       apiFetch<QAEntry>(`/api/qa/${id}/render`, { method: "POST" }),
-    onSuccess: () => {
+    onSuccess: (entry) => {
+      if (entry.render_note) toast.info(entry.render_note);
       toast.success("Cover letter PDF ready");
       invalidate();
     },

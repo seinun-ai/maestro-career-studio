@@ -23,7 +23,7 @@ These have real coverage and are unlikely to move under you.
   same resume, job description and config version produce a byte-identical
   0–100 score and breakdown, every time. This is the part most worth trusting.
 - **Rendering.** Both engines (LaTeX and Typst) compile the bundled templates,
-  and cross-engine parity is enforced by tests, not by eye.
+  and cross-engine parity is enforced by tests, cover letters included.
 - **The Career KB → resume → application chain.** Approved evidence composes
   verbatim; rewriting is a separate, consented step. Resume versions are
   recorded, so nothing is one-way.
@@ -230,7 +230,9 @@ carries the full ledger with removal triggers.
   both.
 - **Two render engines.** LaTeX and Typst are both first-class and both
   supported. The default is LaTeX; a switch to Typst was considered and is on
-  hold. Changes to templates or rendering must handle both.
+  hold. Without TeX, LaTeX templates fall back to Typst with a `render_note`;
+  the default stays LaTeX where TeX exists. Changes to templates or rendering
+  must handle both.
 - **Autofill profile shapes.** `work_auth` and `education` each have a legacy
   and a typed form, with readers for both. If you touch autofill, check §13
   before assuming which shape you have.

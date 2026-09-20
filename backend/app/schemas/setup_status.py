@@ -25,6 +25,23 @@ class SuggestedBase(BaseModel):
     label: str
 
 
+class EngineProbe(BaseModel):
+    model_config = {"from_attributes": True}
+
+    name: str
+    available: bool
+    version: str | None = None
+    path: str | None = None
+    reason: str | None = None
+
+
+class EnginesProbe(BaseModel):
+    model_config = {"from_attributes": True}
+
+    pdflatex: EngineProbe
+    typst: EngineProbe
+
+
 class SetupStatus(BaseModel):
     # First because it blocks everything: with no provider key there is no
     # extraction, no tailoring and no chat.
@@ -34,5 +51,8 @@ class SetupStatus(BaseModel):
     job_preferences: SetupStep
     persona: SetupStep
     template: SetupStep
+    # Which PDF engines this backend can run. Informational: never part of
+    # `complete` (Typst is always shipped, so a PDF is always possible).
+    engines: EnginesProbe
     suggested_bases: list[SuggestedBase]
     complete: bool
