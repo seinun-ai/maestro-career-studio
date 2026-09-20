@@ -62,6 +62,7 @@ import {
   textAtLocation,
   shortFindingLabel,
 } from "@/lib/health-report";
+import { notifyRenderNote, type RenderNoted } from "@/lib/render-note";
 import { wordDiff } from "@/lib/word-diff";
 import { cn } from "@/lib/utils";
 import type {
@@ -493,13 +494,14 @@ export function SuggestionEditor({
         kind === "base"
           ? `/api/base-resumes/${resumeKey}/edits`
           : `/api/applications/${resumeKey}/edits`;
-      return apiFetch(path, {
+      return apiFetch<RenderNoted>(path, {
         method: "PATCH",
         body: JSON.stringify({ ops: [op] }),
       });
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       setApplied(true);
+      notifyRenderNote(result);
       toast.success("Applied and saved as a new version");
       onApplied();
     },
@@ -909,12 +911,13 @@ export function NotesTable({
         kind === "base"
           ? `/api/base-resumes/${resumeKey}/edits`
           : `/api/applications/${resumeKey}/edits`;
-      return apiFetch(path, {
+      return apiFetch<RenderNoted>(path, {
         method: "PATCH",
         body: JSON.stringify({ ops }),
       });
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
+      notifyRenderNote(result);
       toast.success("Applied and saved as a new version");
       onApplied();
     },

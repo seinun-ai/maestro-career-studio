@@ -37,6 +37,7 @@ import {
 
 import { JobTrackingUrlField } from "@/components/job-tracking-url-field";
 import { apiFetch, apiUrlForBrowserPdf } from "@/lib/api";
+import { notifyRenderNote } from "@/lib/render-note";
 import { baseResumeLabel } from "@/lib/types";
 import type { Application, Referral, RenderResult } from "@/lib/types";
 
@@ -274,7 +275,7 @@ export function OutputTab({ app, jobId }: { app: Application; jobId: string }) {
       qc.invalidateQueries({
         queryKey: ["pdf-preview", `/api/applications/${app.id}`],
       });
-      if (result.render_note) toast.info(result.render_note);
+      notifyRenderNote(result);
       toast.success("PDF generated");
     },
     onError: (error: Error) => toast.error(error.message),

@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/select";
 import { LoadErrorState } from "@/components/load-error-state";
 import { apiFetch, apiUrlForBrowserPdf } from "@/lib/api";
+import { notifyRenderNote } from "@/lib/render-note";
 import type { QAEntry, QAResponse } from "@/lib/types";
 
 const TONES = ["balanced", "enthusiastic", "formal", "concise"];
@@ -136,7 +137,7 @@ export function QATab({ applicationId }: { applicationId: string }) {
     mutationFn: (id: string) =>
       apiFetch<QAEntry>(`/api/qa/${id}/render`, { method: "POST" }),
     onSuccess: (entry) => {
-      if (entry.render_note) toast.info(entry.render_note);
+      notifyRenderNote(entry);
       toast.success("Cover letter PDF ready");
       invalidate();
     },

@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { draftRewrite, apiFetch } from "@/lib/api";
+import { notifyRenderNote, type RenderNoted } from "@/lib/render-note";
 import {
   STALE_APPLY_HINT,
 } from "@/lib/health-report";
@@ -115,7 +116,7 @@ export function DemonstrateSkillDialog({
         kind === "base"
           ? `/api/base-resumes/${resumeKey}/edits`
           : `/api/applications/${resumeKey}/edits`;
-      return apiFetch(path, {
+      return apiFetch<RenderNoted>(path, {
         method: "PATCH",
         body: JSON.stringify({
           ops: [
@@ -131,7 +132,8 @@ export function DemonstrateSkillDialog({
         }),
       });
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
+      notifyRenderNote(result);
       toast.success("Applied and saved as a new version");
       onApplied();
       reset();

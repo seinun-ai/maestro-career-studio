@@ -36,6 +36,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { apiFetch } from "@/lib/api";
+import { notifyRenderNote } from "@/lib/render-note";
 import { uniqueSlug } from "@/lib/slug";
 import { RESUME_FILE_ACCEPT } from "@/lib/upload-accept";
 import type {
@@ -214,6 +215,7 @@ function NewBaseResumeForm({
   const done = (created: BaseResumeDetail) => {
     qc.invalidateQueries({ queryKey: ["base-resumes"] });
     qc.invalidateQueries({ queryKey: ["setup-status"] });
+    notifyRenderNote(created);
     if (created.parse_warnings && created.parse_warnings.length > 0) {
       // The parser dropped rows it could not read rather than failing the
       // file; the user should know what to look for in the editor.
@@ -342,13 +344,17 @@ function NewBaseResumeForm({
         body.role_label !== inherited.role_label ||
         (body.role_category ?? null) !== (inherited.role_category ?? null)
       ) {
-        return apiFetch<BaseResumeDetail>(
+        const tagged = await apiFetch<BaseResumeDetail>(
           `/api/base-resumes/${created.slug}/identity`,
           {
             method: "PATCH",
             body: JSON.stringify(body),
           },
         );
+        // Declaring a role deliberately does not re-render, so that response
+        // carries no render note. Keep the duplicate's, or the fallback that
+        // just rendered this resume goes unsaid on exactly this path.
+        return { ...tagged, render_note: created.render_note };
       }
       return created;
     }

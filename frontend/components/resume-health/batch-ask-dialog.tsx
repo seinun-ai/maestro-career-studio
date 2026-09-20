@@ -24,6 +24,7 @@ import {
   STALE_APPLY_HINT,
   type StoredAskAnswer,
 } from "@/lib/health-report";
+import { notifyRenderNote, type RenderNoted } from "@/lib/render-note";
 import { toastRewriteError } from "./report-errors";
 import { wordDiff } from "@/lib/word-diff";
 import { textAtLocation } from "@/lib/health-report";
@@ -176,7 +177,7 @@ export function BatchAskDialog({
       kind === "base"
         ? `/api/base-resumes/${resumeKey}/edits`
         : `/api/applications/${resumeKey}/edits`;
-    await apiFetch(path, {
+    return apiFetch<RenderNoted>(path, {
       method: "PATCH",
       body: JSON.stringify({ ops: [op] }),
     });
@@ -185,15 +186,19 @@ export function BatchAskDialog({
   const applyAll = async () => {
     setApplying(true);
     try {
+      let rendered: RenderNoted | undefined;
       for (const row of drafted) {
         try {
-          await applyOne(row);
+          rendered = (await applyOne(row)) ?? rendered;
           onApplied();
         } catch (err) {
           toastRewriteError(err, onReanalyze);
           return;
         }
       }
+      // One note for the whole batch: every row re-renders, so toasting per
+      // row would stack N copies of the same fallback line.
+      if (rendered) notifyRenderNote(rendered);
       toast.success("Applied and saved as a new version");
       onOpenChange(false);
     } finally {

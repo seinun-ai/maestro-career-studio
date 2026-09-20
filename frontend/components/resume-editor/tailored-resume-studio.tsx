@@ -60,6 +60,7 @@ import {
   runCoherenceCheck,
 } from "@/lib/api";
 import { FORMATTING_DEFAULTS, type ResumeFormatting } from "@/lib/formatting";
+import { notifyRenderNote } from "@/lib/render-note";
 import { resumeDataSchema } from "@/lib/resume-schema";
 import type {
   Application,
@@ -149,7 +150,7 @@ export function TailoredResumeStudio({
         { method: "POST" },
       ),
     onSuccess: (data, opts) => {
-      if (data.render_note) toast.info(data.render_note);
+      notifyRenderNote(data);
       toast.success("PDF rendered");
       setPdfNonce((n) => n + 1);
       qc.invalidateQueries({ queryKey: ["job-detail", jobId] });

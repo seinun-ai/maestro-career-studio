@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { apiFetch, setChatCardState } from "@/lib/api";
+import { notifyRenderNote, type RenderNoted } from "@/lib/render-note";
 import { baseResumeLabel } from "@/lib/types";
 import type { ChatCardState, ChatProposal, UUID } from "@/lib/types";
 
@@ -41,19 +42,20 @@ export function ProposalCard({
         proposal.target_kind === "base"
           ? `/api/base-resumes/${proposal.target_key}/edits`
           : `/api/applications/${proposal.target_key}/edits`;
-      return apiFetch(path, {
+      return apiFetch<RenderNoted>(path, {
         method: "PATCH",
         body: JSON.stringify({
           ops: [{ kind: "add_entry", section: "projects", value: proposal.project }],
         }),
       });
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       setResolution("merged");
       stamp("applied");
       qc.invalidateQueries({ queryKey: ["base-resumes"] });
       qc.invalidateQueries({ queryKey: ["application"] });
       qc.invalidateQueries({ queryKey: ["resume-versions"] });
+      notifyRenderNote(result);
       toast.success("Project merged into the resume");
     },
     onError: (err: Error) => toast.error(err.message),
