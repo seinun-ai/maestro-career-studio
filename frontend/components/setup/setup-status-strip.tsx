@@ -46,7 +46,12 @@ export function SetupStatusStrip({
 
   if (loading || !status || status.complete) return null;
 
-  const steps = buildSetupSteps(status, pathname);
+  // A healthy engines row is not an outstanding setup step: Typst always ships,
+  // so it would sit here as a permanent done pill on every install. The strip is
+  // for what is still unfinished; the full row lives in the getting-started card.
+  const steps = buildSetupSteps(status, pathname).filter(
+    (step) => !(step.id === "engines" && step.done),
+  );
 
   return (
     <>
