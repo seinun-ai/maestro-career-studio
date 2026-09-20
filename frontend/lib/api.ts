@@ -369,7 +369,7 @@ export function restoreResumeVersion(
   key: string,
   version: number,
 ) {
-  return apiFetch<import("@/lib/types").ResumeVersion>(
+  return apiFetch<import("@/lib/types").ResumeVersionRestoreResult>(
     `/api/resume-versions/${kind}/${encodeURIComponent(key)}/${version}/restore`,
     { method: "POST" },
   );

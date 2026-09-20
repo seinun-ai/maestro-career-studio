@@ -602,7 +602,10 @@ def port(payload: KBPortRequest, db: Annotated[Session, Depends(get_db)]):
         raise HTTPException(status_code=400, detail=str(e)) from e
     from app.routers.base_resumes import _detail
 
-    return KBPortResponse(resume=_detail(target), report=report)
+    return KBPortResponse(
+        resume=_detail(target, render_note=getattr(target, "render_note", None)),
+        report=report,
+    )
 
 
 @router.post("/port/adapt", response_model=KBAdaptProposal)
@@ -629,7 +632,10 @@ def port_adapt_apply(payload: KBAdaptApplyRequest, db: Annotated[Session, Depend
         raise HTTPException(status_code=400, detail=str(e)) from e
     from app.routers.base_resumes import _detail
 
-    return KBPortResponse(resume=_detail(target), report=report)
+    return KBPortResponse(
+        resume=_detail(target, render_note=getattr(target, "render_note", None)),
+        report=report,
+    )
 
 
 # --- Composed resume view --------------------------------------------------

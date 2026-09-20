@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { apiFetch, kbAdapt, kbAdaptApply, kbPort } from "@/lib/api";
+import { notifyRenderNote } from "@/lib/render-note";
 import type {
   BaseResumeSummary,
   KBAdaptAction,
@@ -108,6 +109,7 @@ export function SendToResumeDialog({
       queryKey: ["resume-versions", "base", targetSlug],
     });
     void queryClient.invalidateQueries({ queryKey: ["kb", "entity", entity.id] });
+    notifyRenderNote(response.resume);
     toast.success(
       `${item?.created_entry ? "Added entity" : `Ported ${ported} ${ported === 1 ? "point" : "points"}`}${skipped ? ` · ${skipped} duplicate${skipped === 1 ? "" : "s"} skipped` : ""}`,
       {

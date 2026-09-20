@@ -153,6 +153,8 @@ class BaseResumePortProject(BaseModel):
 class BaseResumePortProjectResult(BaseModel):
     target_slug: str
     project_index: int
+    # The target was re-rendered: transient, see BaseResumeDetail.render_note.
+    render_note: str | None = None
 
 
 class BaseResumeProposeRequest(BaseModel):

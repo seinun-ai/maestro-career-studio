@@ -28,6 +28,7 @@ import {
   kbPort,
   listKbEntities,
 } from "@/lib/api";
+import { notifyRenderNote } from "@/lib/render-note";
 import type {
   BaseResumeDetail,
   KBEntityDetail,
@@ -111,6 +112,7 @@ export function KbImportDrawer({
       });
       void queryClient.invalidateQueries({ queryKey: ["kb", "entities"] });
       onImported(response.resume);
+      notifyRenderNote(response.resume);
       toast.success(
         `Imported ${response.report.items.length} ${response.report.items.length === 1 ? "entity" : "entities"} and ${response.report.skills_merged.length} skill ${response.report.skills_merged.length === 1 ? "group" : "groups"}${duplicates ? ` · ${duplicates} duplicate${duplicates === 1 ? "" : "s"} skipped` : ""}`,
       );

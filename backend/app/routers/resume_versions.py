@@ -10,6 +10,7 @@ from app.models.base_resume import BaseResume
 from app.schemas.resume_version import (
     ResumeVersionDetail,
     ResumeVersionLabelPatch,
+    ResumeVersionRestoreResult,
     ResumeVersionSummary,
 )
 from app.services import base_resume_render
@@ -74,7 +75,7 @@ def diff_version(
     return service.diff_versions(parent.snapshot if parent else None, row.snapshot)
 
 
-@router.post("/{kind}/{key}/{number}/restore", response_model=ResumeVersionSummary)
+@router.post("/{kind}/{key}/{number}/restore", response_model=ResumeVersionRestoreResult)
 def restore_version(
     kind: Kind, key: str, number: int, db: Annotated[Session, Depends(get_db)]
 ):
@@ -84,6 +85,7 @@ def restore_version(
     except LookupError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
 
+    render_note: str | None = None
     if kind == "base":
         row = db.get(BaseResume, key)
         if row is None:
@@ -93,7 +95,8 @@ def restore_version(
         from app.routers.base_resumes import _write_json_file
 
         _write_json_file(key, snapshot)
-        base_resume_render.render_base_resume(key, db)
+        rendered = base_resume_render.render_base_resume(key, db)
+        render_note = getattr(rendered, "render_note", None)
     else:
         try:
             application_id = UUID(key)
@@ -108,7 +111,10 @@ def restore_version(
         remove_files(stale)
 
     db.refresh(version)
-    return ResumeVersionSummary.model_validate(version)
+    return ResumeVersionRestoreResult(
+        **ResumeVersionSummary.model_validate(version).model_dump(),
+        render_note=render_note,
+    )
 
 
 @router.patch("/{kind}/{key}/{number}", response_model=ResumeVersionSummary)

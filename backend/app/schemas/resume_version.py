@@ -25,5 +25,17 @@ class ResumeVersionDetail(ResumeVersionSummary):
     diff: list[dict[str, Any]]
 
 
+class ResumeVersionRestoreResult(ResumeVersionSummary):
+    """POST /restore — the new version, plus how the live resume was rendered.
+
+    A base restore re-renders the PDF, so this is a render response; an
+    application restore renders nothing (the PDF comes on an explicit Render)
+    and leaves the note null.
+    """
+
+    # Transient, see BaseResumeDetail.render_note.
+    render_note: str | None = None
+
+
 class ResumeVersionLabelPatch(BaseModel):
     label: str | None = None

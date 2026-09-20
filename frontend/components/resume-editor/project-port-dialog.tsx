@@ -21,6 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { apiFetch } from "@/lib/api";
+import { notifyRenderNote } from "@/lib/render-note";
 import type {
   BaseResumePortProjectResult,
   BaseResumeSummary,
@@ -67,6 +68,7 @@ export function ProjectPortDialog({
         },
       ),
     onSuccess: (result) => {
+      notifyRenderNote(result);
       toast.success(
         `Copied to ${baseResumeLabel(result.target_slug)} as archived`,
       );

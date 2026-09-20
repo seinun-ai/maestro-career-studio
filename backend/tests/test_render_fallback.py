@@ -1,6 +1,7 @@
 """Design 2026-09-19 §2.2: a render never changes engine silently, and a
 missing pdflatex is an actionable error, never a 500 from FileNotFoundError."""
 import json
+from copy import deepcopy
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -16,9 +17,11 @@ from app.routers import applications as applications_router
 from app.services import base_resume_render, engines, pdf_render, resume_lint
 from app.services import template_registry as reg
 from app.services import template_validation as tv
+from app.services.resume_versions import record_version
 from app.services.template_validation import SAMPLE_RESUME
 from tests.test_applications_router import _job
 from tests.test_base_resumes_router import _override_db, _seed
+from tests.test_kb_port import _make_entity
 
 MINIMAL_TEX = "\\documentclass{article}\\begin{document}x\\end{document}"
 
@@ -405,3 +408,74 @@ def test_create_side_base_resume_responses_carry_the_note(db_session, tmp_path, 
         assert "TeX is not installed" in imported.json()["render_note"]
     finally:
         app.dependency_overrides.clear()
+
+
+def test_port_project_reports_the_fallback(db_session, tmp_path, monkeypatch):
+    """POST /port-project re-renders the TARGET and otherwise answers with two
+    ids, so without the note the substitution would be invisible."""
+    _no_tex(monkeypatch)
+    _seed_rows(db_session)
+    monkeypatch.setattr(app_settings, "base_resumes_dir", tmp_path)
+    _seed(db_session, slug="data_scientist", data_json=SAMPLE_RESUME)
+    _seed(db_session, slug="hybrid", data_json=SAMPLE_RESUME)
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        r = TestClient(app).post(
+            "/api/base-resumes/data_scientist/port-project",
+            json={"target_slug": "hybrid", "project_index": 0},
+        )
+    finally:
+        app.dependency_overrides.clear()
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["target_slug"] == "hybrid"
+    assert "TeX is not installed" in body["render_note"]
+
+
+def test_kb_port_reports_the_fallback(db_session, tmp_path, monkeypatch):
+    _no_tex(monkeypatch)
+    _seed_rows(db_session)
+    monkeypatch.setattr(app_settings, "base_resumes_dir", tmp_path)
+    _seed(db_session, slug="data_scientist", data_json=SAMPLE_RESUME)
+    entity, _points = _make_entity(
+        db_session,
+        kind="project",
+        title="RAG Chatbot",
+        detail={"tech": "Python"},
+        points=[("Built a retrieval pipeline.", "approved")],
+    )
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        r = TestClient(app).post(
+            "/api/kb/port",
+            json={"target_slug": "data_scientist", "items": [{"entity_id": str(entity.id)}]},
+        )
+    finally:
+        app.dependency_overrides.clear()
+    assert r.status_code == 200, r.text
+    resume = r.json()["resume"]
+    # The port's tolerant render succeeded (under Typst) — not a recorded failure.
+    assert resume["render_error"] is None
+    assert "TeX is not installed" in resume["render_note"]
+
+
+def test_version_restore_reports_the_fallback(db_session, tmp_path, monkeypatch):
+    _no_tex(monkeypatch)
+    _seed_rows(db_session)
+    monkeypatch.setattr(app_settings, "base_resumes_dir", tmp_path)
+    row = _seed(db_session, slug="data_scientist", data_json=SAMPLE_RESUME)
+    record_version(db_session, "base", "data_scientist", SAMPLE_RESUME, source="create")
+    changed = deepcopy(SAMPLE_RESUME)
+    changed["summary"] = "A different summary"
+    row.data_json = changed
+    record_version(db_session, "base", "data_scientist", changed, source="form_edit")
+    db_session.commit()
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        r = TestClient(app).post("/api/resume-versions/base/data_scientist/1/restore")
+    finally:
+        app.dependency_overrides.clear()
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["source"] == "restore"
+    assert "TeX is not installed" in body["render_note"]

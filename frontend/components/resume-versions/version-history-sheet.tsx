@@ -16,6 +16,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { listResumeVersions, restoreResumeVersion } from "@/lib/api";
+import { notifyRenderNote } from "@/lib/render-note";
 import { cn } from "@/lib/utils";
 import type { ResumeVersion, ResumeVersionSource } from "@/lib/types";
 
@@ -97,6 +98,7 @@ export function VersionHistorySheet({
       qc.invalidateQueries({ queryKey: ["base-resumes"] });
       qc.invalidateQueries({ queryKey: ["application"] });
       setSelected(null);
+      notifyRenderNote(created);
       toast.success(`Restored as version ${created.version_number}`);
       onRestored?.();
     },

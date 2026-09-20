@@ -918,7 +918,7 @@ export interface KBProfilePatch {
   notes?: string;
 }
 
-export interface BaseResumePortProjectResult {
+export interface BaseResumePortProjectResult extends RenderNoted {
   target_slug: string;
   project_index: number;
 }
@@ -1561,6 +1561,13 @@ export interface ResumeVersionDetail extends ResumeVersion {
   snapshot: ResumeData;
   diff: ResumeDiffChange[];
 }
+
+/**
+ * POST /restore answers with the new version. A base restore re-renders the
+ * PDF, so it carries the note; an application restore renders nothing (the
+ * PDF comes on an explicit Render) and leaves it null.
+ */
+export type ResumeVersionRestoreResult = ResumeVersion & RenderNoted;
 
 // ---------------------------------------------------------------------------
 // Chat

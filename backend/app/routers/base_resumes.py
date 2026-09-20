@@ -674,11 +674,12 @@ def port_project_to_base_resume(
     db.refresh(target)
 
     _write_json_file(payload.target_slug, target_data)
-    base_resume_render.render_base_resume(payload.target_slug, db)
+    rendered = base_resume_render.render_base_resume(payload.target_slug, db)
 
     return BaseResumePortProjectResult(
         target_slug=payload.target_slug,
         project_index=len(target_projects) - 1,
+        render_note=getattr(rendered, "render_note", None),
     )
 
 
