@@ -1808,6 +1808,32 @@ test_cover_letter_parity + unchanged LaTeX templates" and mark G3 partial.
 If Docker is unavailable in this session, record G3 as deferred to the owner's
 rebuild.
 
+**Step 3b: Browser pass (from Task 10b's quality review; run against the G2 stack)**
+
+TeX-less backend (`MAESTRO_CS_PDFLATEX=/nonexistent`, default Classic
+selected, typst-classic ready). Expected note at every site: "TeX is not
+installed on this machine; rendered with Typst Classic instead of Classic."
+
+| # | Action | Expected |
+|---|---|---|
+| 1 | `/templates`: gallery cards | LaTeX cards show `requires TeX`; Typst cards do not |
+| 2 | `/templates/<latex id>` header | `requires TeX` badge next to the engine badge |
+| 3 | `/profile` (or the tracker's getting-started card) | "PDF engines" row present in the card, ABSENT from the pill strip |
+| 4 | Base-resume editor → edit a bullet → Save | note, then `Saved. PDF re-rendered.` |
+| 5 | Instruct sheet → propose → Apply | note, then `Applied N edits…` |
+| 6 | Gallery row ⋯ → Duplicate → confirm | note only, still visible after the push to the new editor |
+| 7 | New base resume → blank / from file / from KB / duplicate (tag unchanged AND tag changed) | note on each lane; the tag-changed duplicate is the identity-merge regression |
+| 8 | Health report (base target) → Apply suggestion; punctuation batch; number-questions batch with ≥ 2 rows; Demonstrate skill | note once per action (ONE for the batch), then the success toast |
+| 9 | Chat (base target) → edit proposal Apply; project proposal Merge | note, then the card's success toast |
+| 10 | Application → Output → Generate PDF | note, then `PDF generated` |
+| 11 | Tailored studio → Save | one note (shared id), success toasts as before |
+| 12 | QA tab → render cover letter | note, then `Cover letter PDF ready` |
+| 13 | Health report or chat with an APPLICATION target → apply an edit | no note (that route does not render) |
+| 14 | Port-project dialog, KB send-to-resume, KB import drawer, version restore | note once Task 10c lands; before it, none |
+
+TeX-present backend (override unset): repeat 1, 3, 4, 6, 8, 11, 12 → no
+badge, no engines pill, no info toast, success toasts as before.
+
 **Step 4: Fill the tables below, commit them**
 
 ```bash
@@ -1864,6 +1890,7 @@ git commit -m "docs(plans): engines branch — deviation log and gate results"
 | 42 | 7 → 12/13 | Task 7 approved "Yes" with minors | Carry into Task 12/13: guard the short-circuit's `session.commit()` in `_seed_validate` like the sibling bookkeeping commit; tighten `test_list_reports_engine_availability` to assert every row (`all(t["engine_available"] == (t["engine"] != "latex") …)`); note that a FOUND-but-broken `pdflatex --version` is now spawned by every template list/detail (successes-only cache) — a short negative cache in `engines` is the global fix, deferred with a §11 mention if not done | Task 7's quality review; observation (a) decided: a `ready` seed keeps `ready` on a TeX-less host (its certification was earned by a real compile; demoting it would route renders through the default once TeX returns). |
 | 43 | 10b | "Every mutation on six base-resume routes" | 13 sites (`3058be1d`), `notifyRenderNote` in `frontend/lib/render-note.ts` used by all of them including the previous lane's three; `batch-ask-dialog` toasts once per batch from the last applied row; the duplicate lane's identity PATCH no longer clobbers the create response's note | More than three copies is one definition; identity never re-renders so its response's note is always null. |
 | 44 | 10c (new) | — | `port-project`, `POST /api/kb/port` and version restore re-render a base resume but their schemas carry no `render_note`; new Task 10c (backend field + three frontend callers) | Found by Task 10b; the same principle ("names itself in the UI") applies. |
+| 45 | 10b | Fix round | Shared toast id (`render-note`) so repeats collapse; `batch-ask` keeps the FIRST non-null note and emits it on the error path too; `data?.render_note` guard; `RenderNoted` moves to `lib/types.ts` with the three response interfaces extending it | Quality review. Decision taken: the toast fires on every substituted render (plan: no gating; the badge and the checklist row are the persistent explanation). The owner may later prefer once-per-session; that is a one-line change in `render-note.ts`. |
 | 16 | 10 (planned) | Task 10 shows `render_note` only in a badge tooltip | Task 10 will ALSO surface `render_note` on render success in the web UI (toast) and type `RenderResult`/`render_note` in `frontend/lib/types.ts` | Design principle: every fallback names itself in the response AND the UI; both frontend render call sites currently discard the response body. |
 
 ## Gate results
