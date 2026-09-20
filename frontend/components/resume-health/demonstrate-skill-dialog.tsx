@@ -13,14 +13,14 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { draftRewrite, apiFetch } from "@/lib/api";
+import { draftRewrite, applyResumeEdits } from "@/lib/api";
 import { notifyRenderNote } from "@/lib/render-note";
 import {
   STALE_APPLY_HINT,
 } from "@/lib/health-report";
 import { toastRewriteError } from "./report-errors";
 import { wordDiff } from "@/lib/word-diff";
-import type { RenderNoted, ResumeData } from "@/lib/types";
+import type { ResumeData } from "@/lib/types";
 
 type PickedBullet = {
   section: "experience" | "projects";
@@ -112,25 +112,16 @@ export function DemonstrateSkillDialog({
   const applyMut = useMutation({
     mutationFn: async () => {
       if (!picked || !draft) throw new Error("Nothing to apply");
-      const path =
-        kind === "base"
-          ? `/api/base-resumes/${resumeKey}/edits`
-          : `/api/applications/${resumeKey}/edits`;
-      return apiFetch<RenderNoted>(path, {
-        method: "PATCH",
-        body: JSON.stringify({
-          ops: [
-            {
-              kind: "replace_bullet",
-              section: picked.section,
-              index: picked.index,
-              bullet_index: picked.bullet_index,
-              value: draft.suggestion,
-              expected_content_hash: draft.content_hash,
-            },
-          ],
-        }),
-      });
+      return applyResumeEdits(kind, resumeKey, [
+        {
+          kind: "replace_bullet",
+          section: picked.section,
+          index: picked.index,
+          bullet_index: picked.bullet_index,
+          value: draft.suggestion,
+          expected_content_hash: draft.content_hash,
+        },
+      ]);
     },
     onSuccess: (result) => {
       notifyRenderNote(result);

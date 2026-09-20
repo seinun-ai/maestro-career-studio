@@ -6,13 +6,12 @@ import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { apiFetch, setChatCardState } from "@/lib/api";
+import { applyResumeEdits, setChatCardState } from "@/lib/api";
 import { notifyRenderNote } from "@/lib/render-note";
 import { baseResumeLabel } from "@/lib/types";
 import type {
   ChatCardState,
   ChatProposal,
-  RenderNoted,
   UUID,
 } from "@/lib/types";
 
@@ -42,18 +41,10 @@ export function ProposalCard({
   };
 
   const merge = useMutation({
-    mutationFn: () => {
-      const path =
-        proposal.target_kind === "base"
-          ? `/api/base-resumes/${proposal.target_key}/edits`
-          : `/api/applications/${proposal.target_key}/edits`;
-      return apiFetch<RenderNoted>(path, {
-        method: "PATCH",
-        body: JSON.stringify({
-          ops: [{ kind: "add_entry", section: "projects", value: proposal.project }],
-        }),
-      });
-    },
+    mutationFn: () =>
+      applyResumeEdits(proposal.target_kind, proposal.target_key, [
+        { kind: "add_entry", section: "projects", value: proposal.project },
+      ]),
     onSuccess: (result) => {
       setResolution("merged");
       stamp("applied");

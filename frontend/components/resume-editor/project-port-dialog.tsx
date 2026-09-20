@@ -21,7 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { apiFetch } from "@/lib/api";
-import { notifyRenderNote } from "@/lib/render-note";
+import { notifyRenderOutcome } from "@/lib/render-note";
 import type {
   BaseResumePortProjectResult,
   BaseResumeSummary,
@@ -68,14 +68,11 @@ export function ProjectPortDialog({
         },
       ),
     onSuccess: (result) => {
-      notifyRenderNote(result);
       // The port is committed before the target re-renders, so a render
       // failure comes back beside the success, not instead of it.
-      if (result.render_error) {
-        toast.warning(
-          `${baseResumeLabel(result.target_slug)} kept its previous PDF: the re-render failed.`,
-        );
-      }
+      notifyRenderOutcome(result, {
+        staleLabel: baseResumeLabel(result.target_slug),
+      });
       toast.success(
         `Copied to ${baseResumeLabel(result.target_slug)} as archived`,
       );

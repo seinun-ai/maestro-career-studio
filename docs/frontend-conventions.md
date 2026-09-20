@@ -79,6 +79,16 @@
   `onValueChange` path. Popups are `w-(--anchor-width) min-w-56` — a compact
   header chip is ~100px wide, and a list sized to it truncated every role to
   two syllables.
+- **The post-commit render pair has ONE implementation each.** A one-click
+  apply goes through `applyResumeEdits(kind, key, ops)` (`lib/api.ts`), which
+  owns the base-vs-application `/edits` path choice and types the answer
+  `RenderNoted`. Reporting goes through `lib/render-note.ts`:
+  `notifyRenderNote` for a route that only ever substitutes an engine, and
+  `notifyRenderOutcome(data, { staleLabel })` where the write commits BEFORE
+  its render and can come back with `render_error` — it emits the note and
+  then one warning naming what kept its previous PDF. Never hand-roll either:
+  six callers had copied the path ternary and four the note-plus-warning pair,
+  which is how the same block became a duplication regression twice.
 - **A failed fetch is a THIRD state, never the empty one.** react-query leaves
   `data` undefined after an error, so `if (isLoading || !data)` holds its
   skeleton forever and any `data ?? []` list renders its EMPTY branch — the

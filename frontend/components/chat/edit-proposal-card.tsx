@@ -7,13 +7,12 @@ import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { apiFetch, setChatCardState } from "@/lib/api";
+import { applyResumeEdits, setChatCardState } from "@/lib/api";
 import { notifyRenderNote } from "@/lib/render-note";
 import { baseResumeLabel } from "@/lib/types";
 import type {
   ChatCardState,
   ChatProposalOps,
-  RenderNoted,
   UUID,
 } from "@/lib/types";
 
@@ -75,16 +74,8 @@ export function EditProposalCard({
   };
 
   const apply = useMutation({
-    mutationFn: () => {
-      const path =
-        proposal.target_kind === "base"
-          ? `/api/base-resumes/${proposal.target_key}/edits`
-          : `/api/applications/${proposal.target_key}/edits`;
-      return apiFetch<RenderNoted>(path, {
-        method: "PATCH",
-        body: JSON.stringify({ ops: proposal.ops }),
-      });
-    },
+    mutationFn: () =>
+      applyResumeEdits(proposal.target_kind, proposal.target_key, proposal.ops),
     onSuccess: (result) => {
       setResolution("applied");
       stamp("applied");

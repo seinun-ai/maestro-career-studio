@@ -17,7 +17,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { ApiError, answerAsk, apiFetch } from "@/lib/api";
+import { ApiError, answerAsk, applyResumeEdits } from "@/lib/api";
 import {
   answerMatchesFinding,
   isContentChangedError,
@@ -28,7 +28,7 @@ import { notifyRenderNote } from "@/lib/render-note";
 import { toastRewriteError } from "./report-errors";
 import { wordDiff } from "@/lib/word-diff";
 import { textAtLocation } from "@/lib/health-report";
-import type { LintFinding, RenderNoted, ResumeData } from "@/lib/types";
+import type { LintFinding, ResumeData } from "@/lib/types";
 
 type RowState = {
   finding: LintFinding;
@@ -173,14 +173,7 @@ export function BatchAskDialog({
             value: row.suggestion,
             ...hash,
           };
-    const path =
-      kind === "base"
-        ? `/api/base-resumes/${resumeKey}/edits`
-        : `/api/applications/${resumeKey}/edits`;
-    return apiFetch<RenderNoted>(path, {
-      method: "PATCH",
-      body: JSON.stringify({ ops: [op] }),
-    });
+    return applyResumeEdits(kind, resumeKey, [op]);
   };
 
   const applyAll = async () => {
