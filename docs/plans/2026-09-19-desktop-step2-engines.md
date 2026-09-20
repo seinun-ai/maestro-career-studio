@@ -1573,6 +1573,29 @@ git commit -m "feat(ui): 'requires TeX' badges and a PDF-engines row in the setu
 
 ---
 
+### Task 10b: `render_note` in the base-resume editor
+
+Added after the Grok lane's review (deviation row 40). `BaseResumeDetail.render_note`
+is typed and returned by PUT, PATCH edits, create, duplicate, import and
+from-KB, but no frontend consumer of those responses shows it, so a
+base-resume edit on a TeX-less host substitutes Typst silently in the UI —
+against the Goal Card's "every fallback names itself in the UI".
+
+**Files:** `frontend/**` only — find every mutation whose `mutationFn` calls
+`PUT /api/base-resumes/{slug}`, `PATCH /api/base-resumes/{slug}/edits`,
+`POST /api/base-resumes`, `…/duplicate`, `…/import`, `…/from-kb` (`grep -rn
+"api/base-resumes" frontend/components frontend/app frontend/lib`), and in
+each `onSuccess` read the returned `BaseResumeDetail` and `toast.info(data.render_note)`
+once when it is non-null, exactly as Grok did at the three sites in Task 10
+(no state, no hooks, no gating on `template_fallback`). The typed-edit PATCH
+path already degrades a failed render to a persisted `render_error`; the note
+is orthogonal to that and only present on success. If a site's `onSuccess`
+ignores the response (`(_data, …)`), give it a name. Gates: `npx tsc --noEmit
+&& npm run lint && npm run build`. Commit `feat(ui): render_note toast on
+base-resume edit, create and import`.
+
+---
+
 ### Task 11: User docs
 
 **Files:**
@@ -1799,6 +1822,12 @@ git commit -m "docs(plans): engines branch — deviation log and gate results"
 | 33 | 7 | The unconsumed guard means "the next validating ensure re-checks the probe" | `_bootstrap_default` now re-validates the SEED default when `_needs_seed_validation` says so (`ae387271`), guarded to `DEFAULT_ID` so a user-chosen default is never validated on their behalf | Pre-existing gap: `_bootstrap_default` returned early for any existing default, so only bundled seeds ever re-validated; the task's own test (`"default" in calls` after the second ensure) exposed it. |
 | 34 | 7 | Files list | Also `tests/test_health_invariants.py` (`_FakeTemplate.engine = "typst"`) and two tests redirect `base_resumes_dir` to `tmp_path` | The render rule reads `engine`; the default `base_resumes_dir` (`/app`) is unwritable on a dev host. |
 | 35 | 7 | Row 17: create-side `render_note` on create, duplicate, `/import`, from-KB | Create and duplicate pass it explicitly; `/import` and `create_from_kb` return `create_base_resume(...)` and inherit it (`/import` tested, from-KB not — the fixture needs approved KB points); `port-project` returns `BaseResumePortProjectResult`, which has no `render_note` | Out of the "`return _detail(row…)` after a render" rule; a follow-up if the port-project response should explain a substitution. |
+| 36 | 8–11 | Tasks 8–11 executed by Claude subagents in this worktree | Delegated to Cursor CLI / Grok 4.6 (handoff `docs/plans/2026-09-19-engines-tasks-8-11-cursor-grok-4.6.md`, branch `cursor/engines-tasks-8-11`, merged at `ce675637`); reviewed light-touch by an Opus 5 subagent with the budgeted extras (numbers reproduced exactly, three mutations killed, slop ratchet, dedup scan) | Owner's ask; the capability profile's strong zone (frontend surfaces, docstring lanes, docs); all seven of its deviations logged in the handoff and adjudicated accept. |
+| 37 | 10 | "The pill strip lists only unfinished steps, so the engines row appears only in the expanded card" | FALSE of the repo — `setup-status-strip.tsx` maps every step; the review added a filter so a DONE engines row is omitted from the strip (`fix(review)`, after `ce675637`) | Grok's objection, verified. Typst always ships, so the row would have been a permanent pill on every install. |
+| 38 | 9 | Test asserts `"TeX" in create_template_draft.__doc__` | Grok asserted `"no TeX"` and `"engine_available"`, plus `"silently substituted" not in render_pdf.__doc__` | The plan's assertion is satisfied by "LaTeX" with no new sentence — a loophole against "the docstring is the API" (§7); mutation-proven by the reviewer. |
+| 39 | 9/10 | — | Review fixes on top of the merge: the new docstring test had been spliced into `test_audit_one_sentence_docstring_fixes` (un-spliced); the badge was inlined twice (one `RequiresTexBadge`) | Light-tier findings; both cosmetic, both fixed before the browser pass. |
+| 40 | 10b (new) | Task 10 named three render call sites | `BaseResumeDetail.render_note` is surfaced nowhere: base-resume PUT/PATCH/create/duplicate/import/from-KB substitute silently in the UI on a TeX-less host | Goal-Card gap found by the review, correctly outside Grok's scope; new Task 10b. |
+| 41 | 13 (planned) | — | The backend slop ratchet is red on the BASE branch before Grok's lane (`complexity_hotspots` 417 → 421, `error_masking` 9 → 10, from Tasks 1–7); Grok's lane is net zero after the un-splice; frontend green | Re-baseline on this branch in Task 13 with a reason naming the growth (tests + the guarded commits in `template_registry`/`engines`). |
 | 16 | 10 (planned) | Task 10 shows `render_note` only in a badge tooltip | Task 10 will ALSO surface `render_note` on render success in the web UI (toast) and type `RenderResult`/`render_note` in `frontend/lib/types.ts` | Design principle: every fallback names itself in the response AND the UI; both frontend render call sites currently discard the response body. |
 
 ## Gate results
