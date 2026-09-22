@@ -31,12 +31,12 @@
   controls. `--destructive` is M3 error, tuned for this page and `--canvas`
   (light `oklch(0.49 0.185 27.3)`, dark tone 80 `oklch(0.838 0.089 26.76)`),
   and `text-destructive` on its tints is pinned at 4.5:1. `--muted-foreground`
-  on `--background` and `--card` is pinned at 4.5:1 in both modes. **A selected
-  tonal toggle also leads with a `Check` and sets
-  `aria-pressed`** (health-report filters, Review changes, the zoom presets):
-  the fill is about 1.16:1 against the light page, too faint to say "on" by
-  itself. **Selected in a set** (a toggle, filter chip, or segment) is `tonal`
-  plus a leading `Check` plus `aria-pressed`. Two exceptions carry the state
+  on `--background` and `--card` is pinned at 4.5:1 in both modes. **Selected
+  in a set** (a toggle, filter chip, or segment) is `tonal` plus a leading
+  `Check` plus `aria-pressed` (health-report filters, Review changes,
+  SourceToggle, the proposals filter, the zoom presets): the tonal fill is
+  about 1.16:1 against the light page, too faint to say "on" by itself.
+  `test_selected_tonal_toggles_show_a_check` pins the first four. Two exceptions carry the state
   without a Check: the formatting panel's segmented buttons are solid
   `bg-primary` plus `aria-pressed` (a full-strength fill needs no second cue,
   and a Check would widen every segment in a narrow pane), and the Career KB's
@@ -54,16 +54,18 @@
   `ring-ring/50` and `outline-ring/60` measure about 1.8 to 2.6:1 against the
   page, under WCAG 1.4.11's 3:1, so a ring, outline or border on a `focus:`,
   `focus-visible:`, `focus-within:` or `has-[…:focus-visible]:` variant carries
-  no alpha. The one allowance is the primitives' 3px `/50` halo beside a solid
-  1px `focus-visible:border-ring` (Button, Input, Select, Textarea, Checkbox,
-  Tabs, Badge): the border carries the 3:1 and the halo decorates it. A
+  no alpha. The rule has one structural allowance and no per-file exemptions:
+  a 3px `/50` halo beside a solid 1px `focus-visible:border-ring` on the same
+  element (the primitives: Button, Input, Select, Textarea, Checkbox, Tabs,
+  Badge), where the border carries the 3:1 and the halo decorates it. A
   translucent focus BORDER is never allowed (the destructive Button's was /40,
   about 2.1:1 in light mode). A `ring-offset-N` names its surface (`ring-offset-background`):
   the default offset colour is white, a white band around the ring in dark
-  mode. `test_frontend_color_roles.py` pins all three, with no exemptions. `--ring` is pinned at
+  mode. `test_frontend_color_roles.py` pins all three by scanning every `.tsx`
+  under `app/` and `components/`. `--ring` is pinned at
   3:1 on the page, card, sidebar, canvas, muted and secondary-container
   surfaces; `--primary-container` (the FAB) is not in that set, because the
-  dark ring measures 2.88:1 on it.
+  dark ring measures 2.88:1 on it (SYSTEM.md §11 item 28).
 - **Top-left corner belongs to the sidebar reveal pill**
   (`components/sidebar-reveal-trigger.tsx`, owner decision). Clearance is
   **not** a per-page concern: `SidebarGutter` wraps the main area once in
@@ -102,7 +104,8 @@
   base-resume header did, and a `<div>` inside a `<p>` is invalid HTML that
   React reported as a hydration error on every load of that page. Still on the old
   pattern:
-  detail/editor routes (`jobs/[id]`, both studios, `entity-detail`) and Chat
+  detail/editor routes (`jobs/[id]`, both studios and the template editor, all
+  three in `FullscreenEditorPage`; `entity-detail`) and Chat
   (no page header by design).
 - **The base-resume studio header is the NAME; its subtitle is the save
   status, never an identity line.** Display name is
@@ -217,15 +220,17 @@
     key, so the adoption effect never runs; it replaces the editor from its
     own success path. Every Rebuild also writes its response into the
     `["application", id]` cache, or a remounted clean editor adopts the stale
-    copy a banner was about until the refetch lands.
+    copy a banner was about until the refetch lands. Two known gaps (two Saves
+    in one refetch window; the parent's `templateId` is never re-synced) are
+    SYSTEM.md §11 item 26.
   - *Formatting controls*: a knob edit is stored as `diffFrom(baseline, …)`,
     so an edit made before every layer of the baseline has loaded drops an
     explicit override equal to the incomplete one (a scalar, or
     `section_order`), and the drop only shows once the layer lands.
     `FormattingPanel` therefore takes a required `FormattingBaseline` state
     (`lib/formatting.ts`), `"loading"` | `"error"` | `"ready"`, and enables its
-    knobs only on `"ready"`. Loading says "Loading the template defaults…";
-    a failed layer is the third state, a compact `LoadErrorState` naming the
+    knobs only on `"ready"`. Loading names the layer it waits on ("Loading
+    the template defaults…"); a failed layer is the third state, a compact `LoadErrorState` naming the
     layer with a retry, and the knobs stay disabled under it (editing against
     an unknown baseline is the race itself). `useTemplateBaseline`
     (`template-select.tsx`) is the template layer: it reads the one
@@ -410,7 +415,8 @@
   enabled submit while the first POST was still in flight. Every form the
   page shows reads the shared pending flag. On Referrals the inline
   empty-state form shares the same draft, so text left by a failed dialog
-  create pre-fills it once the last row is deleted.
+  create pre-fills it once the last row is deleted. `NewEntityDialog` still
+  resets on close (SYSTEM.md §11 item 32).
 - Route-level `app/error.tsx` + `app/global-error.tsx` + `app/not-found.tsx`
   catch components that throw; page-level `isError` branches handle query
   failures. `next.config.ts` sets nosniff / DENY / no-referrer /
@@ -425,9 +431,10 @@
   the ONLY status vocabulary/color source in the UI), `CompanyMonogram`,
   `ApplicationDetailsMenu` (status lives in the chip, not the menu). "Needs
   you" (`needs_decision` and `needs_human`) is ONE `NEEDS_YOU` object:
-  `text-orange-800` on `bg-orange-500/10`, `dark:text-orange-400`. Orange-700
-  measured 3.98:1 over `--muted`; `test_frontend_color_roles.py` computes the
-  chip over background, card and muted in both modes.
+  `text-orange-800` on `bg-orange-500/10`, `dark:text-orange-400`; "Submission
+  uncertain" is its own entry with the same classes. Orange-700 measured
+  3.98:1 over `--muted`; `test_frontend_color_roles.py` finds every orange chip
+  in the file and computes it over background, card and muted in both modes.
 - **Card galleries**: Templates and Base Resumes are the same image-first
   card grid, so the shell lives once in `components/gallery/` (`GalleryGrid`,
   `GalleryCard`, `GalleryCardActions` — the z-20 wrapper — and
@@ -489,6 +496,14 @@
   pinned in `SidebarFooter`. Add new routes to the right group in
   `components/app-sidebar.tsx` (`NAV_GROUPS`), not a flat list. Pinned by
   `test_frontend_sidebar_nav.py` and `test_frontend_first_run.py`.
+- **Tracker filter** (`app/applications/page.tsx`): three groups, All/Saved,
+  Your applications (`APPLICATION_STATUSES`) and Agent lane (from the newest
+  `proposal_status` via `rowFilterKey`). `FILTERS` derives from those groups,
+  so a key can never filter rows yet never appear as an option. **Empty
+  buckets are hidden**: an option renders iff `count > 0 || f === "all" || f
+  === filter`, the trailing clause so the active filter can never vanish under
+  the user who picked it (re-check if the control changes again). An unknown
+  `?status=` falls back to `all` via the `FILTERS.includes` guard.
 - Naming: the no-application state is **Saved** everywhere; the tracker
   page/nav is **Applications**. A proposal you passed on is **Skipped**, the
   verb **Skip** — never "Declined"/"Rejected": application `rejected` means

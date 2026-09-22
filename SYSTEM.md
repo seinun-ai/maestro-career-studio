@@ -59,12 +59,11 @@
 
 ## 1. What this is
 
-A single-user job-application copilot: capture job descriptions, score base
-resumes against them with a deterministic ATS engine, walk a gap-analysis
-workflow, LLM-tailor the resume, render a LaTeX PDF, generate the apply package
-(cover letter, screening answers), and track every application
-from Saved to Accepted. Three surfaces drive the same backend: a Next.js web
-app, an MCP server (Claude Desktop et al.), and an in-app chat agent.
+A single-user job-application copilot: capture job descriptions, score base resumes against them with a
+deterministic ATS engine, walk a gap-analysis workflow, LLM-tailor the resume, render a LaTeX PDF, generate the
+apply package (cover letter, screening answers), and track every application from Saved to Accepted. Three
+surfaces drive the same backend: a Next.js web app, an MCP server (Claude Desktop et al.), and an in-app chat
+agent.
 
 ## 2. Repo layout
 
@@ -121,15 +120,14 @@ scripts/               setup-mcp.sh (MCP registration), update.sh (user update p
         status tracking (StatusChip)        QA router (cover letter / answers)
 ```
 
-`data/maestro_cs.sqlite3` (SQLite, WAL) holds all state except resume file data
-(`base_resumes/<slug>.json` on disk — DB `base_resumes` row + file must both exist) and rendered
-artifacts.
+`data/maestro_cs.sqlite3` (SQLite, WAL) holds all state except resume file data (`base_resumes/<slug>.json` on
+disk — DB `base_resumes` row + file must both exist) and rendered artifacts.
 
 ## 4. Core entities and their lifecycles
 
-Reference tier: consulted per task, not read for orientation, so it lives in
-`docs/entities/` — keeping the root file orientation-sized — each file under this
-same contract. Code citing "§4" lands here; the table says which file to open.
+Reference tier: consulted per task, not read for orientation, so it lives in `docs/entities/` — keeping the root
+file orientation-sized — each file under this same contract. Code citing "§4" lands here; the table says which
+file to open.
 
 | Entity | File | Scope |
 |---|---|---|
@@ -152,16 +150,10 @@ same contract. Code citing "§4" lands here; the table says which file to open.
    an All/You/Agent provenance `SourceToggle` (counts follow the toggle;
    `?source=` deep-linkable). "Saved" = job with no application — agent-captured
    jobs stay out unless the toggle is `Agent` (hunt inventory lives on
-   `/proposals`). The filter's three groups are All/Saved, **Your applications**
-   (`APPLICATION_STATUSES`) and **Agent lane**
-   (`proposed`/`queued`/`needs_you`/`skipped`, derived from the newest
-   `proposal_status` via `rowFilterKey`); `FILTERS` derives from those groups, so a
-   key can never filter rows yet never appear as an option. **Empty buckets are
-   hidden** — an option renders iff `count > 0 || f === "all" || f === filter`, the
-   trailing clause so the active filter can never vanish under the user who picked
-   it (re-check if the control changes again). `skipped` absorbs proposal `rejected` AND
-   `expired`, while the ROW chip still says Expired (row-level truth). An
-   unknown `?status=` falls back to `all` via the `FILTERS.includes` guard.
+   `/proposals`). Filter groups: All/Saved, **Your applications** and **Agent
+   lane** (`proposed`/`queued`/`needs_you`/`skipped`, from the newest
+   `proposal_status`); `skipped` absorbs proposal `rejected` AND `expired`, while
+   the ROW chip still says Expired. Option rules: frontend-conventions, "Tracker filter".
 3. **Workspace** — `/jobs/[id]`: identity header (monogram, meta line, inline
    StatusChip + Details menu; proposal pill + Accept/Skip when a proposal exists),
    tabs Overview / Score & Tailor / Resume / Q&A (tab URL values stay
@@ -567,11 +559,10 @@ same contract. Code citing "§4" lands here; the table says which file to open.
   `prompt.chat_system` Setting row reset to take effect (settings page → reset,
   or delete the row); the resync-on-deploy precedent (`86ac8658395f`) is boxed in
   `legacy_postgres/`, so a new install needs a fresh migration on the SQLite chain to do it.
-- **Persona draft** (`POST /api/settings/persona/draft`): one smart-model proposal
-  grounded in the whole-KB compose/context + typed job preferences. Returns
-  `{draft}` and persists **nothing** — Profile puts it into the persona editor as a
-  dirty edit; only `PUT /api/settings/persona` saves; an empty Career KB 422s
-  with an import-first message.
+- **Persona draft** (`POST /api/settings/persona/draft`): one smart-model proposal grounded in the whole-KB
+  compose/context + typed job preferences. Returns `{draft}` and persists **nothing** — Profile puts it into the
+  persona editor as a dirty edit; only `PUT /api/settings/persona` saves; an empty Career KB 422s with an
+  import-first message.
 - **Chrome extension** (`extension/`): MV3; the **side panel** (`panel/`) is the
   ONE surface — toolbar icon (`openPanelOnActionClick`) and hotkey
   (Alt+Shift+J → `sidePanel.open`, guarded: that method is Chrome 116 and the
@@ -633,16 +624,15 @@ same contract. Code citing "§4" lands here; the table says which file to open.
   to `guidedWrite` — identity data never reaches `/choose`. Readback is
   timer-sampled and never defaults to failure: unconfirmable is
   `filled_unverified`, not `not_stuck`. Navigation and submit stay human.
-- **Streaming chat** needs the OpenAI streaming tool-call wire shape (OpenAI,
-  or Gemini via the OpenAI-compat URL); eligibility is the tools probe.
+- **Streaming chat** needs the OpenAI streaming tool-call wire shape (OpenAI, or Gemini via the OpenAI-compat
+  URL); eligibility is the tools probe.
 
 ## 8. Frontend conventions
 
-Reference tier, like §4: consulted while working in `frontend/`, not read for
-orientation. Lives in [`docs/frontend-conventions.md`](docs/frontend-conventions.md):
-layout and sidebar rules, Tailwind v4 tokens and M3 colour roles, the studios' save and
-preview model, a11y and focus behaviour, naming, and the copy rules, each with the
-failure mode that bought it. Code citing "§8" lands here.
+Reference tier, like §4: consulted while working in `frontend/`, not read for orientation. Lives in
+[`docs/frontend-conventions.md`](docs/frontend-conventions.md): layout and sidebar rules, Tailwind v4 tokens and
+M3 colour roles, the studios' save and preview model, a11y and focus behaviour, naming, and the copy rules, each
+with the failure mode that bought it. Code citing "§8" lands here.
 
 ## 9. Dev & test environment
 
@@ -727,47 +717,36 @@ failure mode that bought it. Code citing "§8" lands here.
 - **Slop ratchet.** Per-surface `.slopconfig.json` + committed `.slop-baseline.json` in `backend/`,
   `frontend/`, `extension/`. After changing a surface, the maintainer runs
   `python3 ~/.claude/skills/ai-slop-detector/scripts/slop_scan.py check <surface>` from the repo root (not
-  shipped; see CONTRIBUTING) — non-zero exit means a metric regressed past baseline; fix or re-baseline
-  deliberately with a reason. **RUN EVERY SURFACE YOU TOUCHED AND NAME EACH ONE IN THE CLAIM.** A change to
-  one surface moves another's numbers routinely — the extension's tests live in `backend/`, so an extension
-  feature is a backend ratchet event — and an unnamed "slop ratchet OK" is the shape of the 2026-08-17 false
-  green. **`complexity_hotspots` is a COUNT, and counts move for reasons that are not decay — re-baseline it
-  rather than chasing it.** A function is a hotspot if `cc >= 10` OR `>50 source lines` OR too many params,
-  so the count rises when the codebase GROWS, when you ADD TESTS (`gate_test_loc:false` exempts test LOC but
-  nothing exempts test complexity), and — the trap — when you DECOMPOSE a monster: splitting one cc=46
-  function into named pieces can move the count UP. Judge erosion by hotspot density per KLOC and the worst
-  offender's cc, not by the count. Orphan LOC and duplication are honest ratchets — they move only on a real
-  regression. Scan a SURFACE dir, never the repo root: the analyzer roots module names at the scan path, so
-  a root scan can't resolve `app.*` imports and reports the whole backend as orphaned. jscpd is optional;
-  without it duplication is skipped and the rest still gates. The extension's allowlisted clones are the
-  documented injected twins, so a NEW clone there is a real finding. Read the reason strings before trusting
-  a green: the matcher pairs FILE NAMES by substring, so a rule naming a file on either side also hides that
-  file's own SELF-clones. `allowlisted_clones` is PRINTED, never gated — a new clone inside an allowlisted
-  pair raises it silently while `clone_count` stays 0, so check it by eye. Optional graph signals read
-  `graphify-out/graph.json` (gitignored): regenerate with `graphify extract . --no-cluster --code-only`
-  (PyPI `graphifyy`).
+  shipped; see CONTRIBUTING); non-zero exit means a metric regressed past baseline — fix, or re-baseline
+  deliberately with a reason. **RUN EVERY SURFACE YOU TOUCHED AND NAME EACH ONE IN THE CLAIM**: one surface's
+  change moves another's numbers (the extension's tests live in `backend/`), and an unnamed "slop ratchet OK"
+  is the shape of the 2026-08-17 false green. **`complexity_hotspots` is a COUNT — re-baseline it rather than
+  chasing it.** A hotspot is `cc >= 10`, `>50 source lines` or too many params, so the count rises when the
+  code GROWS, when you ADD TESTS (nothing exempts test complexity) and — the trap — when you DECOMPOSE a
+  monster (one cc=46 function split into named pieces can move it UP). Judge erosion by hotspot density per
+  KLOC and the worst cc. Orphan LOC and duplication are honest ratchets. Scan a SURFACE dir, never the repo
+  root (module names root at the scan path, so a root scan orphans the whole backend). jscpd is optional;
+  without it duplication is skipped. The extension's allowlisted clones are the documented injected twins, so
+  a NEW clone there is real — but the matcher pairs FILE NAMES by substring (a rule naming a file also hides
+  its SELF-clones), and `allowlisted_clones` is PRINTED, never gated: check it by eye. Graph signals read
+  `graphify-out/graph.json` (gitignored; `graphify extract . --no-cluster --code-only`, PyPI `graphifyy`).
 
 ## 10. Design-decision record
 
-**The dated design docs are NOT published.** They live in the upstream private
-repository; this file is the public record of what they decided (they are agent
-handoff scripts — publishing them would ship instructions for a machine no
-reader has). This section carries the lineage: which decision superseded which.
+**The dated design docs are NOT published.** They live in the upstream private repository; this file is the
+public record of what they decided (they are agent handoff scripts — publishing them would ship instructions for
+a machine no reader has). This section carries the lineage: which decision superseded which.
 
-Key lineage: 2026-04-22 greenfield → 2026-05-29 jobs/applications consolidation
-→ 2026-07-06 deterministic ATS gap workflow (fit_scores deprecated; dropped in
-migration `09265240aade`) → 2026-07-08 tailoring refinements → 2026-07-12/14
-health gates → 2026-07-14 career KB (sidecar) → **2026-07-15 applications
-workflow simplification + UI changeover** (D1–D13; the audit findings C# and
-review fixes referenced throughout this file) → 2026-07-15 parallel delegation
-tasks (MCP apply-package tools; health-check-v2 override UI) → 2026-07-16 UI
-polish (Career KB + extension Q&A) → **2026-07-16 custom resume sections
-(`extra_sections`) phases 1-2** (fixed-core-plus-typed-extras, then versioned
-ATS evidence + stable-key gap placement) → MCP guided tailoring (caller-authored
-ops, hint envelope) → MCP onboarding: reversed "approving from MCP is
-unrepresentable" — a draft gate needs an approver wherever review happens, and
-agent transcription is NOT the verbatim-file exception, so ingest lands drafts
-and consent-gated `kb_approve_points` is the one approval path from MCP.
+Key lineage: 2026-04-22 greenfield → 2026-05-29 jobs/applications consolidation → 2026-07-06 deterministic ATS
+gap workflow (fit_scores deprecated; dropped in migration `09265240aade`) → 2026-07-08 tailoring refinements →
+2026-07-12/14 health gates → 2026-07-14 career KB (sidecar) → **2026-07-15 applications workflow simplification
++ UI changeover** (D1–D13; the audit findings C# and review fixes referenced throughout this file) → 2026-07-15
+parallel delegation tasks (MCP apply-package tools; health-check-v2 override UI) → 2026-07-16 UI polish (Career
+KB + extension Q&A) → **2026-07-16 custom resume sections (`extra_sections`) phases 1-2**
+(fixed-core-plus-typed-extras, then versioned ATS evidence + stable-key gap placement) → MCP guided tailoring
+(caller-authored ops, hint envelope) → MCP onboarding: reversed "approving from MCP is unrepresentable" — a
+draft gate needs an approver wherever review happens, and agent transcription is NOT the verbatim-file
+exception, so ingest lands drafts and consent-gated `kb_approve_points` is the one approval path from MCP.
 
 ## 11. Known deferred items (priority order)
 
@@ -784,8 +763,7 @@ citation. Priority lives in the item text, not in the ordinal.
    payload is a 400, not a schema 422. Nested extra-section entry/bullet ops remain item 20.
 2. One post-render readiness pipeline ("Ready to apply" gate: health, em-dash, pages, contact checks on the
    exact rendered artifact), consuming the shared rasterized preview + slim MCP `get_rendered_pdf` metadata.
-   (The JD-level half — stated requirements vs profile — shipped as the knock-out pre-scan, §5 step 3; this
-   item is now only the post-render artifact pipeline.)
+   The JD-level half (stated requirements vs profile) is the knock-out pre-scan, §5 step 3.
 3. Base-score staleness on from-base: re-score only when the base resume's updated_at is newer than the
    score row — never unconditionally.
 4. JD promoted-field correction before gap freezing (today only source_url is editable) + score provenance
@@ -833,17 +811,41 @@ citation. Priority lives in the item text, not in the ordinal.
     `.system_md_enforcement.json`. Each is a rule the gate cannot defend: it survives only as long as
     everyone remembers it. When next working in one of those areas, add the pin or demote the rule to a
     convention note.
-24. Surface enum-coercion warnings from `schemas/job_extraction._coerce_enum` through the jobs-ingest
-    response, so `store_extracted_jd` callers see that input X was stored as `unstated` (audit 2026-08-22,
-    finding A1).
-25. SQLite has one write lock per database, and two transactions hold it across LLM calls by design:
-    `kb_consolidation.consolidate` (flush, then one LLM call per entity, one commit —
-    `seeding.seed_career_kb` relies on that atomicity via `commit=False`) and
-    `tailoring_session.create_session` with enrichment (score flush + supersede UPDATE, then the enrichment
-    call). A concurrent writer waits `busy_timeout` (30 s), then fails "database is locked". Fix: compute
-    every LLM result first, then write in one short transaction, keeping the seeder's `commit=False`
-    contract. Until then consolidation is a user-initiated, rare, minutes-long exclusive window
-    (audit: the SQLite migration plan, Task 10).
+24. Surface `schemas/job_extraction._coerce_enum` warnings through the jobs-ingest response, so
+    `store_extracted_jd` callers see that input X was stored as `unstated` (audit 2026-08-22, finding A1).
+25. SQLite has one write lock, and two transactions hold it across LLM calls: `kb_consolidation.consolidate`
+    (flush, one LLM call per entity, one commit — `seeding.seed_career_kb` relies on that via `commit=False`)
+    and `tailoring_session.create_session` with enrichment (score flush + supersede UPDATE, then the call). A
+    concurrent writer waits `busy_timeout` (30 s), then fails "database is locked". Fix: compute every LLM
+    result first, then write in one short transaction, keeping the seeder's `commit=False` contract.
+26. Tailored-studio adoption gaps (`TailoredResumeStudio`): (a) two Saves in one refetch window, the second
+    returning to the adopted content — `onSaved` queues no key equal to `adoptedKey`, so once the first key is
+    adopted in place the second reads as foreign: a false "changed outside the editor" banner until Load latest
+    or Save; (b) the parent-held `templateId` is never re-synced from the server, so it survives Rebuild and
+    Load latest, and a foreign template-only change reads as a local unsaved edit.
+27. `FullscreenEditorPage` is `h-dvh` (both studios, the template editor), and `VersionBanner` renders above
+    it in `SidebarGutter`, so the page overflows by the banner's height whenever the banner shows.
+28. Contrast and focus visibility (WCAG 1.4.11, 2.4.7): the agent-pipeline data bar
+    (`analytics/agent-pipeline-card.tsx`, `bg-primary/10` on a `bg-muted/50` track) is ~1.16:1 (solid
+    `bg-primary`: ~6:1); dark `--ring` on `--primary-container` (the FAB) is 2.88:1, which is why that surface
+    is not in `_RING_SURFACES`; the studio section tabs' `TabsContent` panels take focus with no visible ring.
+29. Focus lands on `<body>`: Escape on the <768px sidebar sheet (which also stays open after a nav link is
+    tapped), and deleting the LAST referral (the table unmounts for the empty-state form; other deletes land on
+    "Add referral").
+30. Raw keys still reach the user or an agent: Job market's work-mode, OPT, sponsorship and level bars
+    (`toBars` in `explore/explore-overview.tsx`); the Analytics Employment and Level filters (`full_time`,
+    `mid`); MCP `explore_*` results carry role slugs with no `role_label`; the Applications table's Base column
+    shows `baseResumeLabel(slug)` ("Ds Base") instead of the résumé's `display_name`.
+31. Narrow widths (375px unless noted): the New base résumé dialog's tab row does not shrink; the chat
+    composer's Send and the tailor page's "Tailor resume" run off-screen; the job page's tab row pushes Q&A
+    off-screen; the base studio squeezes the editor to ~64px inputs beside the preview; the LLM-endpoint and
+    `/new` Source URL placeholders clip at 768 and 375.
+32. Small UI gaps: `/base-resumes/<unknown>/health` shows a skeleton ~7 s before its error (the 404 takes
+    react-query's three default retries; `app/providers.tsx` sets no `retry`); the studio template button says
+    "Template: Default" while the picker names what the default resolves to; `NewEntityDialog` calls `reset()`
+    on close, so Esc or an overlay click loses typed text (Referrals keeps its draft); `/templates`' stale-chip
+    tooltip sits under `GalleryCard`'s `z-10` stretched link; four hint/control pairs keep hardcoded ids
+    (`new_id_hint`/`new_id_error`, `nbr_name_hint`, `kb-profile-notes-hint`, `job-preferences-locations-hint`).
 
 ## 12. Gotchas that have bitten before
 
@@ -889,21 +891,20 @@ citation. Priority lives in the item text, not in the ordinal.
   INSERT (no dedup) → IntegrityError. Dedupe in Python first (see `_insert_skills`).
 - **Pydantic error mapping order**: `ValidationError` subclasses `ValueError` — catch it FIRST or 422s
   silently become 400s (render endpoint comment).
-- **Transient response attrs**: `already_existed` (Job) and `health_warning` (TailoringSession) are instance
-  attrs set after refresh, never columns — don't "fix" them into the ORM.
-- **score_target(result=...)**: passes a precomputed engine result to persist; the double-run it replaced
-  was audit finding C18 — don't re-add a second run.
-- **Studio external-edit dirty-guard**: TailoredResumeStudio compares `customized_json` by `serverKey` (sorted-key
-  JSON). A key its own Save returned moves the editor's baseline in place: no remount, so the working copy, focus
-  and status line survive. Any other new key remounts the editor only when it is clean or a confirmed Rebuild; over
-  unsaved edits it shows the Load-latest banner.
-- **The query cache keeps old key order** (2026-09-22): structural sharing reuses the old object in every unchanged
-  subtree, so `JSON.stringify` of a refetch ≠ the mutation response once the server reorders keys (PATCH re-dumps in
-  schema order; migrated drafts are JSONB order), and an own Save read as foreign. Compare server JSON by `serverKey`.
+- **Transient response attrs**: `already_existed` (Job) and `health_warning` (TailoringSession) are instance attrs
+  set after refresh, never columns — don't "fix" them into the ORM.
+- **score_target(result=...)**: passes a precomputed engine result to persist; the double-run it replaced was
+  audit finding C18 — don't re-add a second run.
+- **Studio external-edit dirty-guard: the query cache keeps old key order** (2026-09-22): structural sharing reuses
+  the old object in every unchanged subtree, so `JSON.stringify` of a refetch ≠ the mutation response once the server
+  reorders keys (PATCH re-dumps in schema order), and an own Save read as foreign. `TailoredResumeStudio` compares by
+  `serverKey` (sorted keys): its own Save's key moves the baseline in place (no remount); any other key remounts only
+  a clean editor or a confirmed Rebuild, else shows Load latest. Formatting, template and a pending raw-JSON draft
+  count as unsaved. Known gaps: §11 item 26.
 - **MCP clients truncate tool descriptions at ~2048 dedented chars**: keep `__doc__` ≤2000 (ratchet test) or
   put the fact on a param `Field(description=…)`.
-- **Worktree subagents**: agents may edit the MAIN checkout instead of the worktree — hand them absolute
-  worktree paths and verify with `git -C <worktree> status`.
+- **Worktree subagents**: agents may edit the MAIN checkout instead of the worktree — hand them absolute worktree
+  paths and verify with `git -C <worktree> status`.
 - **Ports**: 8000/8001 may be squatted by unrelated apps or stale servers — verify identity via
   `GET /openapi.json` `info.title == "Maestro CS API"`.
 - **Model catalog is seeds ∪ extras** (`MODEL_OPTIONS` ∪ `llm.extra_models`): `GET /api/settings/openai`

@@ -1951,52 +1951,9 @@ Goal Card line it violates.
   auto-refresh after timing a multi-page résumé in Docker; Formatting as a
   right-hand inspector at ≥1200px; the job-fit chip in the tailored studio.
 - **Phase 3:** document-level undo/redo.
-- **Earlier review items:** KB "Profile" tab → "Basics"; server-side
-  `category_label` for MCP and chat; analytics role labels and series cap;
-  copy nits; Referrals form on demand; template Sample label; the placeholder
-  convention (GOV.UK forbids example placeholders; the conventions doc cites
-  GOV.UK for allowing them).
-- **HIGH PRIORITY, found in Tasks 9–10 review (pre-existing):** the tailored
-  studio's external-edit guard (SYSTEM.md §12). After a Save that leaves
-  `customized_json` unchanged (formatting/template only) `adoptNextServerKey`
-  is never consumed, so a later foreign edit is adopted banner-free even over
-  unsaved edits; an edit typed in the post-save gap is lost on the remount;
-  focus drops to `<body>` on remount (and the status live region remounts).
-  Fix direction: `onSaved(savedKey)` and adopt banner-free only when
-  `customizedKey === savedKey`.
-- **From the Task 14 browser pass and the final review (next plan):**
-  - Raw-JSON edits are untracked: an unapplied raw draft reads "All changes
-    saved", Cmd/Ctrl+S does nothing, no unload warning, Cancel discards
-    silently. `RawJsonToggle` should report a pending draft up.
-  - Template editor at 1280x800 still scrolls (the Knobs/Formatting panel has
-    no height bound), and the collapsed "Show PDF preview" edge tab sits half
-    under the scrollbar and over the "School first"/"Bulleted" buttons.
-  - Focus drops to `<body>` after the Score-tab import (Done) and after a
-    tailored Save click; "No ATS scores yet" flashes briefly around the rescore.
-  - Hand-rolled `bg-primary/10 text-primary` selected states (SourceToggle,
-    proposals filter, chat pills, active chat session) still differ from the
-    secondary-container `tonal`/nav look: pick one rule.
-  - The FAB (primary container) and the active nav row (secondary container)
-    are nearly the same blue (1.05:1); on `/new` nothing in the sidebar looks
-    current although the FAB carries `aria-current`.
-  - The collapsed (off-canvas) sidebar's controls stay in the Tab order.
-  - `/jobs/[id]` highlights no sidebar item; at 768px with the sidebar open the
-    base studio's Contact grid overflows its pane; Re-score re-enables during
-    "Rendering PDF…".
-  - The frontend slop ratchet has zero headroom (518/518): the next studio
-    change should re-baseline with a reason, not shuffle props.
-- **Found by reviews, pre-existing, not this plan's to fix:** the light
-  `--ring` is ~2.5:1 on `--canvas` (WCAG 1.4.11 borderline); `text-destructive`
-  on `bg-destructive/10` is ~3.1–3.6:1 (render-error banner, template compile
-  error); the divider has no single-pointer alternative to dragging beyond
-  hide/show (WCAG 2.5.7); the drag scales by `window.innerWidth` rather than the
-  shell's width, has no `pointercancel`, and writes localStorage on every move;
-  moving a section down and back up leaves "Unsaved changes" (the first move
-  stores an explicit `section_order` where `null` meant the template's order);
-  the preview paints one frame at Fit width before a stored zoom applies (the
-  same read-after-mount pattern as EditorShell; `useSyncExternalStore` would fix
-  both);
-  the setup pill and top-skills chip have no dark-mode hover.
+- **Shipped by `docs/plans/2026-09-22-ux-followups.md`:** the earlier review items, the
+  high-priority external-edit guard, the Task 14 browser-pass findings and the pre-existing
+  review findings that used to be listed here. What it left open is SYSTEM.md §11 items 26-32.
 - **Sidebar state across reloads:** needs a server read (a cookie in the root
   layout) that conflicts with the desktop shell's static UI, or a pre-paint
   script. Decide with the desktop shell.
