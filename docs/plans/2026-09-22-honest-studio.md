@@ -2044,3 +2044,4 @@ Goal Card line it violates.
 | Task 14 | slop ratchet | backend OK; frontend FAILED 43→44 clones, fixed by ce48ca8b (StudioSaveButton), then OK at exactly 518 lines |
 | Task 14 | browser pass (light+dark, 1280/768/767) | checks 1, 2, 3, 5, 7, 8, 10 pass; 4, 6, 9 partial (focus after import, weak zoom selected state, template-editor edge tab); measured tonal 9.8:1 / 9.34:1, primary #1358bb, no console errors |
 | Task 14 | final goal critique | changes required: tailored empty-preview copy, zoom selected state; both in the final fix batch |
+| Final | 20711f0f fix batch + full backend suite | goal critique APPROVE; 4432 passed, 2 skipped; ruff, node 40/40, tsc, lint (5 pre-existing warnings), both slop ratchets and check_system_md OK |
