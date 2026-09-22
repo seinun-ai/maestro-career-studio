@@ -541,8 +541,8 @@ A1 §3 (`focusableWhenDisabled`).
    the `kind` unions in `lib/api.ts` and the child components.
 2. Run the health pins (`test_frontend_health_report.py`, color_roles, query_error_states),
    tsc, lint and `npm run build`. Orphan LOC should drop.
-3. Close the pending "Resolve orphaned tailored-resume health route" task chip, if it is
-   still open, as done by this task.
+3. Tell the controller this is done. It dismisses its pending "Resolve orphaned
+   tailored-resume health route" suggestion chip; an executing agent can't do that itself.
 4. Commit: `chore(health): remove the unreachable tailored health page; MCP keeps the endpoints`.
 
 ### Task 16: Referrals: the table is the page; adding opens a form
@@ -605,7 +605,9 @@ A1 §3 (`focusableWhenDisabled`).
   code, and fix anything stale.
 - `SYSTEM.md`:
   - the §12 changes from Task 2;
-  - §11 items for the out-of-scope leaks (B §3 risks);
+  - §11 items for the out-of-scope leaks (B §3 risks), the studios' `h-dvh` overflowing
+    by the VersionBanner's height (A2 §6 risks), and the agent-pipeline data bar at
+    ~1.16:1 against its track (A2 §8, a WCAG 1.4.11 candidate);
   - the `useSearchParams` Suspense gotcha from A2's docs section, if not already added;
   - stay at or under the cap by grooming.
 - In `docs/plans/2026-09-22-honest-studio.md`, replace the follow-up bullets this plan
