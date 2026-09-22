@@ -282,10 +282,10 @@ export function NewEntityDialog({
                   onChange={(event) => setTitle(event.target.value)}
                   placeholder={
                     kind === "extra"
-                      ? "e.g. Paper Title or Role"
+                      ? "e.g. Best Paper Award"
                       : kind === "project"
-                        ? "Project name"
-                        : "Role or title"
+                        ? "e.g. Fraud detection pipeline"
+                        : "e.g. Senior Data Scientist"
                   }
                   autoFocus
                   required
@@ -304,8 +304,8 @@ export function NewEntityDialog({
                   onChange={(event) => setOrg(event.target.value)}
                   placeholder={
                     kind === "extra"
-                      ? "Conference, publisher, or org"
-                      : "Company, institution, or issuer"
+                      ? "e.g. NeurIPS 2024"
+                      : "e.g. Acme Corp"
                   }
                   disabled={create.isPending}
                 />
@@ -320,7 +320,7 @@ export function NewEntityDialog({
                     id="career-entity-start"
                     value={startDate}
                     onChange={(event) => setStartDate(event.target.value)}
-                    placeholder="Jan 2025"
+                    placeholder="e.g. Jan 2025"
                     disabled={create.isPending}
                   />
                 </div>
@@ -332,7 +332,7 @@ export function NewEntityDialog({
                     id="career-entity-end"
                     value={endDate}
                     onChange={(event) => setEndDate(event.target.value)}
-                    placeholder="Present"
+                    placeholder="e.g. Mar 2025"
                     disabled={create.isPending}
                   />
                 </div>

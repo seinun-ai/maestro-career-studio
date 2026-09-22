@@ -157,7 +157,7 @@ export function RoleCategoryPicker({
           className,
           guessing && "border-dashed",
         )}
-        placeholder={roleCategory === "unknown" && !label ? "Set role…" : ""}
+        placeholder={roleCategory === "unknown" && !label ? "e.g. Data Scientist" : ""}
       />
     </div>
   );

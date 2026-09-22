@@ -123,13 +123,14 @@ export function ExperienceEditor({
                     label="Start date"
                     value={entry.start_date ?? ""}
                     onChange={(v) => update(i, { start_date: v })}
-                    placeholder="Jan 2023"
+                    placeholder="e.g. Jan 2023"
                   />
                   <Field
                     label="End date"
                     value={entry.end_date ?? ""}
                     onChange={(v) => update(i, { end_date: v })}
-                    placeholder="Present"
+                    placeholder="e.g. Mar 2025"
+                    hint="Leave empty for a current role."
                   />
                 </div>
                 <BulletList

@@ -267,9 +267,13 @@ export default function TemplatesListPage() {
           <div className="grid gap-3">
             <div className="grid gap-1.5">
               <Label htmlFor="new_id">ID</Label>
+              <p id="new_id_hint" className="text-muted-foreground text-xs">
+                Use only lowercase letters, numbers, hyphens, and underscores.
+              </p>
               <Input
                 id="new_id"
-                placeholder="classic_serif"
+                aria-describedby="new_id_hint"
+                placeholder="e.g. classic_serif"
                 value={newId}
                 onChange={(e) => setNewId(e.target.value)}
                 aria-invalid={idError}

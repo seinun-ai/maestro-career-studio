@@ -492,7 +492,7 @@ function ReferralEditRow({
           value={contactName}
           onChange={(e) => setContactName(e.target.value)}
           aria-label="Contact name"
-          placeholder="Jane Doe"
+          placeholder="e.g. Jane Doe"
         />
       </TableCell>
       <TableCell>
@@ -501,7 +501,7 @@ function ReferralEditRow({
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
           aria-label="Notes"
-          placeholder="Met at the AWS meetup"
+          placeholder="e.g. Met at the AWS meetup"
         />
       </TableCell>
       <TableCell className="text-right tabular-nums text-muted-foreground">

@@ -421,13 +421,13 @@ export function AddKeywordControls({
       ))}
       <div className="grid gap-1.5">
         <Label htmlFor={wordingId} className="text-muted-foreground text-xs">
-          Wording
+          Exact wording
         </Label>
         <Input
           id={wordingId}
           value={wording}
           onChange={(event) => onWordingChange(event.target.value)}
-          placeholder="Exact wording to add"
+          placeholder="e.g. PySpark"
         />
       </div>
     </div>
@@ -440,6 +440,7 @@ export function UserInputControls({
   targets,
   selected,
   placeholder = "e.g. Built the ingestion pipeline in Python and Airflow",
+  hint,
   onTextChange,
   onPickTarget,
 }: {
@@ -451,6 +452,8 @@ export function UserInputControls({
   selected: SavedTarget | null;
   /** Override the textarea placeholder (e.g. the summary value-prop draft). */
   placeholder?: string;
+  /** Consequence joined onto the standing constraint, which has to stay visible. */
+  hint?: string;
   onTextChange: (value: string) => void;
   /** Pass a target to attach it, or null to detach the current selection. */
   onPickTarget: (target: PlacementTarget | null) => void;
@@ -464,7 +467,7 @@ export function UserInputControls({
       {/* The constraint has to stay on screen. It used to live in the
           placeholder, so it disappeared the moment you started writing. */}
       <p id={`${questionId}-hint`} className="text-muted-foreground text-xs">
-        Only what you write here is used.
+        Only what you write here is used.{hint ? ` ${hint}` : ""}
       </p>
       <Textarea
         aria-labelledby={questionId}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
 
@@ -12,6 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { draftRewrite, applyResumeEdits } from "@/lib/api";
 import { notifyRenderNote } from "@/lib/render-note";
@@ -85,6 +86,7 @@ export function DemonstrateSkillDialog({
     suggestion: string;
     content_hash: string;
   } | null>(null);
+  const rewriteId = useId();
 
   const reset = () => {
     setPicked(null);
@@ -199,10 +201,10 @@ export function DemonstrateSkillDialog({
               {" · "}
               <span className="italic">{picked.text}</span>
             </p>
+            <Label htmlFor={rewriteId}>How {skill} shows up in this bullet</Label>
             <Textarea
+              id={rewriteId}
               rows={2}
-              aria-label={`How ${skill} shows up in this bullet`}
-              placeholder={`How ${skill} shows up here`}
               value={prose}
               onChange={(e) => setProse(e.target.value)}
               disabled={locked}

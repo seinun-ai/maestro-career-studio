@@ -238,7 +238,7 @@ export default function BaseResumesListPage() {
             <Label htmlFor="dup_display">New name</Label>
             <Input
               id="dup_display"
-              placeholder="Data Scientist (1 page)"
+              placeholder="e.g. Data Scientist (1 page)"
               value={dupDisplay}
               onChange={(e) => setDupDisplay(e.target.value)}
             />

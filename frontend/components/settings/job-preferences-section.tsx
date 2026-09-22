@@ -207,7 +207,11 @@ function JobPreferencesEditor({
           <Label htmlFor="job-preferences-locations" className="text-xs" optional>
             Locations
           </Label>
+          <p id="job-preferences-locations-hint" className="text-muted-foreground text-xs">
+            One location per line.
+          </p>
           <Textarea
+            aria-describedby="job-preferences-locations-hint"
             id="job-preferences-locations"
             value={locationsText}
             rows={2}
@@ -224,7 +228,6 @@ function JobPreferencesEditor({
               }));
             }}
           />
-          <p className="text-muted-foreground text-xs">One location per line.</p>
         </div>
 
         <div className="grid gap-1.5">

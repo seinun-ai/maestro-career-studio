@@ -118,7 +118,7 @@ export default function NewApplicationPage() {
           <Label htmlFor="source_url" optional>Source URL</Label>
           <Input
             id="source_url"
-            placeholder="https://boards.example.com/job/123"
+            placeholder="e.g. https://boards.example.com/job/123"
             value={sourceUrl}
             onChange={(e) => onSourceUrlChange(e.target.value)}
           />

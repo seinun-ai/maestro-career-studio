@@ -81,6 +81,11 @@ export function JobTrackingUrlField({
           </a>
         ) : null}
       </div>
+      {description ? (
+        <p id={`${id}-hint`} className="text-muted-foreground text-xs">
+          {description}
+        </p>
+      ) : null}
       <Input
         id={id}
         type="url"
@@ -90,10 +95,8 @@ export function JobTrackingUrlField({
         onChange={(e) => setDraft(e.target.value)}
         onBlur={save}
         disabled={patch.isPending}
+        aria-describedby={description ? `${id}-hint` : undefined}
       />
-      {description ? (
-        <p className="text-muted-foreground text-xs">{description}</p>
-      ) : null}
     </div>
   );
 }

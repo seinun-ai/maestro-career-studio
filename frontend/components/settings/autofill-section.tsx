@@ -913,7 +913,6 @@ function AutofillEditor({
                 className="text-sm"
                 rows={2}
                 aria-label={`Answer to custom question ${i + 1}`}
-                placeholder="Answer"
                 value={qa.answer}
                 onChange={(e) =>
                   setCustom(

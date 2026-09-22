@@ -136,7 +136,7 @@ export function CaptureBox() {
             id="career-capture"
             value={text}
             onChange={(event) => setText(event.target.value)}
-            placeholder="This week I shipped…"
+            placeholder="e.g. This week I shipped…"
             rows={4}
             disabled={capture.isPending}
             aria-describedby="career-capture-help"

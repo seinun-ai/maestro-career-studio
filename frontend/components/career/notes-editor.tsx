@@ -138,7 +138,11 @@ export function NotesEditor({
             <Label htmlFor={`kb-notes-${entityId}`} className="sr-only">
               Career item context notes
             </Label>
+            <p id={`kb-notes-${entityId}-hint`} className="text-muted-foreground text-xs">
+              Stack, scale, constraints, collaborators, and what you owned.
+            </p>
             <Textarea
+              aria-describedby={`kb-notes-${entityId}-hint`}
               id={`kb-notes-${entityId}`}
               rows={9}
               value={value}
@@ -149,7 +153,6 @@ export function NotesEditor({
                   cancel();
                 }
               }}
-              placeholder="Stack, scale, constraints, collaborators, and what you personally owned…"
               disabled={save.isPending}
               autoFocus
             />

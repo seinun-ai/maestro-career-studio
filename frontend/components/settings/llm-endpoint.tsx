@@ -81,7 +81,7 @@ export function EndpointControls({
             <Input
               id={endpointId}
               aria-describedby={endpointHintId}
-              placeholder="http://host.docker.internal:11434/v1"
+              placeholder="e.g. http://host.docker.internal:11434/v1"
               value={value}
               disabled={disabled}
               onChange={(e) => setDraft(e.target.value)}

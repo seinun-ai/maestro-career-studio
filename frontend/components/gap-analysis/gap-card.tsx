@@ -696,9 +696,10 @@ export function GapCard({
             }
             placeholder={
               isSummary
-                ? "Draft your JD-aligned value proposition. This becomes your summary."
+                ? "e.g. Data scientist who ships forecasting models to production"
                 : undefined
             }
+            hint={isSummary ? "This becomes your summary." : undefined}
             text={text}
             targets={inputTargets}
             selected={inputTarget}
