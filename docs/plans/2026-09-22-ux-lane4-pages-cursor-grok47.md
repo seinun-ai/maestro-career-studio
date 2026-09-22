@@ -170,12 +170,45 @@ gate table, deviations, anything queued or deferred, and any concerns.
 
 | Task | Planned | Did instead | Why (Goal Card line) |
 |---|---|---|---|
+| 14 | Pin "passes `mark=`" and alt mentions "sample", no test file named | New `backend/tests/test_frontend_template_preview.py`. The alt pin matches the alt template literal, and the shell must render `mark` at `top-1.5 right-1.5` | A file-wide "sample" substring already passes: the component comment says "sample resume". No owned pin file covered thumbnails (conventions change with a pin CI actually runs) |
+| 15 | Comment only in `studio-toolbar.tsx` | Same sentence also sits on `const kind = "base"` in `health-report-page.tsx` | The prop is gone; the constant is the only thing stopping a later reader from threading `kind` back in (honesty: the page is base-only, MCP is not) |
+| 16 | Focus the new header button inside `onCreated` | A ref flag set before the cache update, then `useEffect` focuses the button once `populated` is true | The button does not exist until that commit. Focusing in the success handler lands on nothing (accessibility: focus must not drop to `<body>`) |
+| 16 | Hardcoded `referral-*` field ids | `useId()` per field | The form can mount in the empty-state card and in the dialog; conventions say ids come from `useId()` |
+| 14, 16 (review) | Task 16 pinned by its one `_QUERY_SURFACES` entry; Task 14 pinned by `\bmark=`; the add dialog's fields live in `ReferralForm` | New `test_frontend_referrals.py` (error state, `initialFocus`, confirmed delete, focus after the first create, header action only beside the table, `<Label optional>`, `useId()`, grid rows, the draft). Task 14 pins `mark="Sample"` and the `showImage &&` gate. The draft moved up to `ReferralsPage` and clears only after a create succeeds; the dialog gained a `DialogDescription`; the no-op `useMemo` in `health-report-page.tsx` is gone. Each pin was mutation-checked | Review showed the old pins passed with every one of those behaviours broken. Planner decision: Esc or an overlay click unmounted `DialogContent` and lost the typed text ("if a gesture could lose typed text, it asks or keeps the text") |
+| 16 | B §5 leaves the create-form placeholders unprefixed; edit rows unchanged | New `ReferralForm` placeholders are `e.g. …`. Edit-row placeholders stay `Jane Doe` / `Met at the AWS meetup` | Lane note: new referral UI follows owner decision 3. B §5 says the edit rows are unchanged, so Task 17 still owns those two |
+| 16 (review) | The create `useMutation` lives in `ReferralForm`, with the draft on `ReferralsPage` | `ReferralsPage` owns the one create and hands both forms `adding={create.isPending}` and `onAdd={create.mutate}`; `canSubmit` ends `&& !adding`, and success clears the draft, closes the dialog and raises the focus flag only when the cache was empty. Two new pins, two adjusted (focus flag, draft clear); each mutation-checked | Browser: with the POST delayed, Esc then reopen showed the kept draft with an enabled submit, and a second submit made two identical rows. "If a gesture could lose typed text, it asks or keeps the text" kept the text but not the request behind it |
 
 ## Gate results
 
 | Task | Gate | Result |
 |---|---|---|
+| 14 | `test_frontend_template_preview.py` + every `test_frontend_*.py` | 158 passed |
+| 14 | tsc / lint / `node --test lib/*.test.ts` | clean / 0 errors, 5 warnings / 67/67 |
+| 14 | slop `check frontend` / `check backend` | OK / OK. Duplication 517 lines, 43 clones (ceiling) |
+| 14 | browser | `/templates`: 6 "Sample" marks, top-right (6px/6px). Picker dialog: 6, same corner. Base resume "Lane Four" thumbnail: 0 Sample marks, alt "Lane Four preview". Stale chip tooltip not reachable (see Deferred) |
+| 15 | health pins (`test_frontend_health_report.py`, `test_frontend_color_roles.py`, `test_frontend_query_error_states.py`) + every `test_frontend_*.py` | 158 passed |
+| 15 | `test_get_application_lint_404_without_a_report` | passed. GET `/api/resume-lint/application/{id}` is 404 "No health report yet" with no stored report. The endpoint already behaved this way; the test locks it |
+| 15 | tsc / lint / node / `npm run build` | clean / 0 errors, 5 warnings / 67/67 / build OK. Route table has `/base-resumes/[slug]/health` and no `/applications/[id]/health` |
+| 15 | slop `check frontend` / `check backend` | OK / OK. Duplication still 517 lines, 43 clones |
+| 15 | browser | `/base-resumes/lane4_sample/health` renders "Resume health report" / "Lane Four" / "No health report yet." `/applications/00000000-0000-4000-8000-000000000001/health` renders "Page not found" |
+| 16 | referrals pin + every `test_frontend_*.py` | 159 passed |
+| 16 | tsc / lint / node | clean / 0 errors, 5 warnings / 67/67 |
+| 16 | slop `check frontend` / `check backend` | OK / OK. Duplication still 517 lines, 43 clones |
+| 16 | browser 768 and 375 | Empty page is the "Add your first referral" form (768). First create moves focus to the header "Add referral" button (`activeElement` is that button, not `<body>`), then the table. Dialog opens with initial focus on Company. At 768 the first two fields are side by side and the dialog fits (512px). At 375 the dialog fits (16px inset, not clipped, fields stacked). Delete button is on the row; `ReferralViewRow` still `await confirm(...)` before delete. The confirm click itself was not completed |
 
 ## Queued for Task 18 (SYSTEM.md changes Claude applies)
 
+Task 15: none. SYSTEM.md does not describe a web tailored-health route. MCP health tools already document `kind='application'` (§7); that surface stays.
+
+Found in review, not fixed on this branch (candidates for §11):
+- Referrals: focus drops to `<body>` only after deleting the LAST row (the table unmounts for the empty-state form). Other deletes land on the header "Add referral" button (browser-verified).
+- `/base-resumes/<unknown>/health` shows a skeleton for ~7s before "Couldn't load this resume.": the 404 goes through React Query's default 3 retries (1s + 2s + 4s backoff; `app/providers.tsx` sets no `retry`).
+- Studio template button reads "Template: Default" while the picker's first row says "Use the default template" beside the resolved name ("Classic"). The picker names the resolution on purpose (comment at `components/templates/template-select.tsx` ~165); the button's `label` (~135) just maps `DEFAULT_TEMPLATE` to "Default", with no comment saying why. Looks like an omission; note only, lane 1 owns the file.
+- `NewEntityDialog` (`components/career/new-entity-dialog.tsx`) has the gap the referral dialog had: its `onOpenChange` calls `reset()` on every close, so Esc or an overlay click loses typed text.
+- The stale-chip tooltip on `/templates` can't be reached: `GalleryCard`'s stretched link is `absolute inset-0 z-10` and the chip sits under it (see *Deferred to merge*).
+
 ## Deferred to merge (edits left for Claude, with file:line)
+
+- `frontend/components/templates/template-select.tsx:163` (DialogTitle "Choose a template"): skipped the optional `<DialogDescription>Previews show a sample resume, not yours.</DialogDescription>`. Lane 1 owns this file.
+- Stale-chip tooltip, not fixed (Task 14 step 3). On `/templates`, `elementFromPoint` at the centre of Harshibar's "needs re-validation" chip hits the stretched card link (`aria-label="Open Harshibar layout"`), not the chip. The `title` is set; hover cannot reach it because `GalleryCard`'s link is `absolute inset-0 z-10` and the chip is not lifted to z-20. Picker mode has no stretched link, so that page is the one that hides the tooltip.
+- ~~Picker card accessible names omit "Sample" (not changed). B §6 hides the mark (`aria-hidden`) and puts "sample" in the image alt. In the picker the card is a button, and the a11y-tree names were "Carlito Dense ready latex" with no "sample". Manage-mode links are named "Open {template}". The alt is on the `<img>`, which is a separate node from that link.~~ Withdrawn: a reviewer verified that the `<img>` alt is part of the picker button's accessible name.

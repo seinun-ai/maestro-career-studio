@@ -81,6 +81,7 @@ _QUERY_SURFACES: list[tuple[str, str]] = [
     ("components/setup/getting-started-card.tsx", "Getting started"),
     ("app/applications/[id]/page.tsx", "This application no longer exists."),
     ("app/profile/page.tsx", "<SetupStatusStrip"),
+    ("app/referrals/page.tsx", "Add your first referral"),
 ]
 
 

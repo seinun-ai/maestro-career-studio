@@ -18,7 +18,8 @@ import type { ReactNode } from "react";
  *
  * `status` is base-only now: a tailored resume's health score is inherited from
  * its base, so the tailored studio checks structure through the post-tailoring
- * review instead and leaves this slot empty.
+ * review instead and leaves this slot empty. There is no application health
+ * page; MCP's health tools still accept kind='application'.
  *
  * Slots exist rather than a `children` array so the order is a property of this
  * file and not of each call site. Reading left to right the bar answers, in

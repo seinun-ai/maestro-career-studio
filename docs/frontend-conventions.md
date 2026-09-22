@@ -396,6 +396,16 @@
   Several resume entry cards are open at once, so a text-derived id repeats
   across them and clicking one entry's label focuses another's input; a caller
   `idPrefix` only moves the collision one level out.
+- **A dialog holding a create form keeps its draft across close until the
+  create succeeds**: `DialogContent` unmounts on close, so Esc or an overlay
+  click would drop typed text; the field state lives in the component that
+  owns the dialog (Referrals' `draft`, pinned by `test_frontend_referrals.py`).
+  The create mutation lives there too, one per page: a mutation inside the
+  form dies with it, so a reopened dialog showed the kept draft with an
+  enabled submit while the first POST was still in flight. Every form the
+  page shows reads the shared pending flag. On Referrals the inline
+  empty-state form shares the same draft, so text left by a failed dialog
+  create pre-fills it once the last row is deleted.
 - Route-level `app/error.tsx` + `app/global-error.tsx` + `app/not-found.tsx`
   catch components that throw; page-level `isError` branches handle query
   failures. `next.config.ts` sets nosniff / DENY / no-referrer /
@@ -417,7 +427,12 @@
   card grid, so the shell lives once in `components/gallery/` (`GalleryGrid`,
   `GalleryCard`, `GalleryCardActions` — the z-20 wrapper — and
   `PreviewThumbnail`). A gallery supplies only what differs: preview URL,
-  empty-state wording, optional corner chip, card body. Two behaviours must
+  empty-state wording, optional corner chip, optional top-right `mark` (what
+  the image IS — template previews pass "Sample", because the picture is a
+  synthetic resume, not the user's; base-resume thumbnails pass none), card
+  body. The chip stays bottom-left and reports a degraded state; both can
+  show at once, and the mark is `aria-hidden` because the image alt carries
+  the words. Two behaviours must
   never diverge: the 404 fallback remembers the failed **src** (not a boolean)
   so a re-render retries, and the card link is a z-10 SIBLING — an `<a>`
   wrapping the card would contain the actions menu, and a `<button>` inside an
