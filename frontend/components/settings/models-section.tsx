@@ -60,6 +60,10 @@ export function useSaveModelSettings(onSaved?: (info: OpenAIInfo) => void) {
       }),
     onSuccess: (result) => {
       qc.setQueryData(["settings", "openai"], result);
+      // A saved key completes the "API key" setup step; every setup-status
+      // reader (the checklist, the Profile strip, /new's key notice) must see
+      // it now, not after the 30-second stale window.
+      qc.invalidateQueries({ queryKey: ["setup-status"] });
       onSaved?.(result);
     },
     onError: (err: Error) => toast.error(err.message),

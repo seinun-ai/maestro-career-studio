@@ -298,18 +298,24 @@ export function AtsScorePanel({ jobId }: { jobId: string }) {
   // A resume imported from the prompt below lands in ["base-resumes"] (the
   // import dialog invalidates it). Score against it once the dialog closes,
   // but only on a CONFIRMED none -> some transition, never on the first load.
-  // Waiting for the close matters: scoring swaps the prompt for a skeleton,
-  // which would unmount the dialog mid-report, before the user has confirmed
-  // each new resume's target role.
+  // - Arm only on a SETTLED empty list: a cached `[]` from an earlier visit
+  //   still reads as empty while its refetch is in flight, and if the refetch
+  //   returns resumes this would score a second time, racing the first-visit
+  //   auto-run above (two concurrent runs collide on the base-score unique key
+  //   and toast an error).
+  // - Never fire while a run is in flight, for the same reason.
+  // - Wait for the dialog to close: scoring swaps the prompt for a skeleton,
+  //   which would unmount the dialog mid-report, before the user has
+  //   confirmed each new resume's target role.
   const sawNoBases = useRef(false);
   useEffect(() => {
-    if (noBases) {
+    if (noBases && !bases.isFetching) {
       sawNoBases.current = true;
-    } else if (sawNoBases.current && baseCount > 0 && !importOpen) {
+    } else if (sawNoBases.current && baseCount > 0 && !importOpen && !run.isPending) {
       sawNoBases.current = false;
       runMutate();
     }
-  }, [noBases, baseCount, importOpen, runMutate]);
+  }, [noBases, bases.isFetching, baseCount, importOpen, run.isPending, runMutate]);
 
   const baseRows = (scores.data ?? [])
     .filter((s) => s.phase === "base")
@@ -339,9 +345,14 @@ export function AtsScorePanel({ jobId }: { jobId: string }) {
   }
 
   if (baseRows.length === 0) {
+    // A 422 means the job itself can't be scored (e.g. no extracted skills) —
+    // retrying can't succeed, so show the reason instead of a dead-end button.
+    // It is checked first: an import cannot fix a job-level fact either.
+    const unscorable =
+      run.error instanceof ApiError && run.error.status === 422 ? run.error.message : null;
     // `importOpen` keeps the dialog mounted after the import lands, while
     // its report is still on screen (see the effect above).
-    if (noBases || importOpen) {
+    if (!unscorable && (noBases || importOpen)) {
       return (
         <div className="flex flex-col items-center gap-3 py-8 text-center">
           <p className="text-sm font-medium">No base resumes to score against.</p>
@@ -356,10 +367,6 @@ export function AtsScorePanel({ jobId }: { jobId: string }) {
         </div>
       );
     }
-    // A 422 means the job itself can't be scored (e.g. no extracted skills) —
-    // retrying can't succeed, so show the reason instead of a dead-end button.
-    const unscorable =
-      run.error instanceof ApiError && run.error.status === 422 ? run.error.message : null;
     return (
       <div className="flex flex-col items-center gap-3 py-8">
         <p className="text-muted-foreground text-sm">{unscorable ?? "No ATS scores yet."}</p>

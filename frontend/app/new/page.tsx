@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -26,15 +26,17 @@ export default function NewApplicationPage() {
   // Extract is an LLM call: with no provider key it can only fail, so say so
   // before the paste, not after it. A failed status fetch blocks nothing:
   // `needsKey` is true only on a confirmed "not done". Same query key as the
-  // setup checklist. Saving a key in Settings does not invalidate it, so
-  // refetch on every mount: coming back from "Add API key" must re-enable
-  // Extract, not wait out the 30-second stale window.
+  // setup checklist, which saving a key in Settings invalidates; refetched on
+  // every mount like its other readers, so a key added any other way (.env,
+  // another tab) re-enables Extract without waiting out the stale window.
   const setup = useQuery({
     queryKey: ["setup-status"],
     queryFn: () => apiFetch<SetupStatus>("/api/setup/status"),
     refetchOnMount: "always",
   });
   const needsKey = setup.data?.model_key.done === false;
+  // A disabled button says nothing about why; point it at the notice.
+  const keyNoticeId = useId();
 
   function onRawTextChange(value: string) {
     setRawText(value);
@@ -86,7 +88,7 @@ export default function NewApplicationPage() {
 
       {needsKey ? (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-amber-500/40 bg-amber-500/[0.08] px-3 py-2 text-sm dark:border-amber-400/40 dark:bg-amber-400/[0.08]">
-          <span className="text-amber-800 dark:text-amber-200">
+          <span id={keyNoticeId} className="text-amber-800 dark:text-amber-200">
             Extract reads the posting with a model, so it needs a provider API key.
           </span>
           <Button
@@ -127,11 +129,14 @@ export default function NewApplicationPage() {
         <Button
           onClick={() => extractJob.mutate()}
           disabled={disabled || busy || needsKey}
+          aria-describedby={needsKey ? keyNoticeId : undefined}
         >
           {extractJob.isPending ? "Extracting…" : "Extract job"}
         </Button>
         <p className="text-muted-foreground text-sm">
-          The job is listed under Saved. Scoring comes next.
+          {needsKey
+            ? "Add an API key to extract."
+            : "The job is listed under Saved. Scoring comes next."}
         </p>
       </div>
 
