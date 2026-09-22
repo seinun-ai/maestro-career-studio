@@ -46,7 +46,10 @@ import { ExtraSectionsEditor } from "@/components/resume-editor/extra-sections-e
 import { FormattingPanel } from "@/components/resume-editor/formatting-panel";
 import { PdfPagesPreview } from "@/components/resume-editor/pdf-pages-preview";
 import { ProjectEditor } from "@/components/resume-editor/project-editor";
-import { RawJsonToggle } from "@/components/resume-editor/raw-json-toggle";
+import {
+  RawJsonToggle,
+  useRawJsonDraft,
+} from "@/components/resume-editor/raw-json-toggle";
 import { SaveStatusText } from "@/components/resume-editor/save-status";
 import { SkillsEditor } from "@/components/resume-editor/skills-editor";
 import { VersionHistorySheet } from "@/components/resume-versions/version-history-sheet";
@@ -431,6 +434,7 @@ function StudioEditor({
 
   const [data, setData] = useState<ResumeData>(initialData);
   const [rawMode, setRawMode] = useState(false);
+  const raw = useRawJsonDraft();
   const [historyOpen, setHistoryOpen] = useState(false);
   const [formatting, setFormatting] = useState<Partial<ResumeFormatting> | null>(
     (application.formatting as Partial<ResumeFormatting> | null) ?? null,
@@ -568,12 +572,16 @@ function StudioEditor({
   // A template change alone is also a saveable edit — otherwise the choice could
   // be rendered with (via the render query param) but never persisted.
   const serverTemplateId = application.template_id ?? null;
+  // Typed JSON not yet applied is an edit too: without it the leave-page
+  // warning stayed quiet and a foreign edit remounted over the draft.
   const dirty = useMemo(
     () =>
+      raw.pending ||
       JSON.stringify(data) !== initialSerialized ||
       serverKey(formatting) !== serverFormatting ||
       templateIdToApi(templateId) !== serverTemplateId,
     [
+      raw.pending,
       data,
       initialSerialized,
       formatting,
@@ -600,11 +608,13 @@ function StudioEditor({
   // leave-page warning read it.
   const [savedSnapshot, setSavedSnapshot] = useState<string | null>(null);
   // Before the first Save there is nothing to compare, so `unsaved` is `dirty`.
+  // A pending raw draft is unsaved whatever the snapshot says.
   const unsaved =
-    dirty &&
-    (savedSnapshot === null ||
-      snapshotOf(data, formatting, templateIdToApi(templateId)) !==
-        savedSnapshot);
+    raw.pending ||
+    (dirty &&
+      (savedSnapshot === null ||
+        snapshotOf(data, formatting, templateIdToApi(templateId)) !==
+          savedSnapshot));
 
   const save = useMutation({
     mutationFn: async (sent: SaveSent) => {
@@ -670,6 +680,12 @@ function StudioEditor({
     rescoring: rescore.isPending,
   });
   const canSave = unsaved && !busy;
+  // Applies a pending raw draft first and saves exactly that (`setData` has
+  // not landed yet); an invalid draft saves nothing and the pane says why.
+  const onSave = () =>
+    raw.commitThen(setData, (applied) =>
+      save.mutate({ data: applied ?? data, formatting, templateId }),
+    );
   const pdfHref = apiUrlForBrowserPdf(`/api/applications/${applicationId}/pdf`);
   const pdfFilename =
     application.pdf_path?.split(/[\\/]/).pop() ?? "tailored-resume.pdf";
@@ -824,7 +840,7 @@ function StudioEditor({
                   }
                   primary={
                     <StudioSaveButton
-                      onSave={() => save.mutate({ data, formatting, templateId })}
+                      onSave={onSave}
                       canSave={canSave}
                       pending={save.isPending}
                     />
@@ -832,7 +848,11 @@ function StudioEditor({
                   overflow={
                     <StudioOverflowMenu
                       rawMode={rawMode}
-                      onToggleRaw={() => setRawMode((r) => !r)}
+                      onToggleRaw={() =>
+                        rawMode
+                          ? raw.commitThen(setData, () => setRawMode(false))
+                          : setRawMode(true)
+                      }
                       onHistory={() => setHistoryOpen(true)}
                     >
                       {/* The recovery path, and the only job "Generate PDF"
@@ -884,6 +904,7 @@ function StudioEditor({
 
             {rawMode ? (
               <RawJsonToggle
+                {...raw.bind}
                 value={data}
                 onChange={setData}
                 onClose={() => setRawMode(false)}

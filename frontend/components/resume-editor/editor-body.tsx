@@ -33,7 +33,10 @@ import { InstructSheet } from "@/components/resume-editor/instruct-sheet";
 import { KbImportDrawer } from "@/components/resume-editor/kb-import-drawer";
 import { PdfPagesPreview } from "@/components/resume-editor/pdf-pages-preview";
 import { ProjectEditor } from "@/components/resume-editor/project-editor";
-import { RawJsonToggle } from "@/components/resume-editor/raw-json-toggle";
+import {
+  RawJsonToggle,
+  useRawJsonDraft,
+} from "@/components/resume-editor/raw-json-toggle";
 import { SaveStatusText } from "@/components/resume-editor/save-status";
 import { SkillsEditor } from "@/components/resume-editor/skills-editor";
 import { HealthBadges } from "@/components/resume-health/health-badges";
@@ -93,6 +96,7 @@ export function EditorBody({
   const [data, setData] = useState<ResumeData>(initial.data);
   const [displayName, setDisplayName] = useState(initial.display_name ?? "");
   const [rawMode, setRawMode] = useState(false);
+  const raw = useRawJsonDraft();
   const [importOpen, setImportOpen] = useState(false);
   const [instructOpen, setInstructOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -145,8 +149,10 @@ export function EditorBody({
       // reads the saved name as an unsaved edit.
       lastSyncedRef.current = liveSnap;
       setLastSyncedSnapshot(liveSnap);
-    } else if (serverMoved && localSnap === lastSyncedRef.current) {
-      // Only adopt the server record when the user has no unsaved local edits.
+    } else if (serverMoved && localSnap === lastSyncedRef.current && !raw.pending) {
+      // Only adopt the server record when the user has no unsaved local edits,
+      // typed JSON included: a later Apply would overwrite the adopted copy.
+      // It adopts once the draft is applied or discarded.
       setData(live.data);
       setDisplayName(live.display_name ?? "");
       setFormatting(
@@ -156,7 +162,7 @@ export function EditorBody({
       lastSyncedRef.current = liveSnap;
       setLastSyncedSnapshot(liveSnap);
     }
-  }, [live, data, displayName, formatting, templateId]);
+  }, [live, data, displayName, formatting, templateId, raw.pending]);
 
   const buildPdfHref = (download: boolean) => {
     if (!live.pdf_path) return null;
@@ -271,7 +277,7 @@ export function EditorBody({
     formatting,
     templateId: templateIdToApi(templateId),
   });
-  const hasUnsavedChanges = currentSnapshot !== lastSyncedSnapshot;
+  const hasUnsavedChanges = raw.pending || currentSnapshot !== lastSyncedSnapshot;
   // This flag already existed but only ever gated the KB-import button, so a
   // reload or a closed tab discarded the edits without a word.
   useUnsavedChangesWarning(hasUnsavedChanges);
@@ -282,6 +288,11 @@ export function EditorBody({
     rescoring: false,
   });
   const canSave = hasUnsavedChanges && !save.isPending && !regenerate.isPending;
+  // Applies a pending raw draft first (see the tailored studio's `onSave`).
+  const onSave = () =>
+    raw.commitThen(setData, (applied) =>
+      save.mutate({ data: applied ?? data, displayName, formatting, templateId }),
+    );
 
   return (
     <>
@@ -387,9 +398,7 @@ export function EditorBody({
                   }
                   primary={
                     <StudioSaveButton
-                      onSave={() =>
-                        save.mutate({ data, displayName, formatting, templateId })
-                      }
+                      onSave={onSave}
                       canSave={canSave}
                       pending={save.isPending}
                     />
@@ -413,7 +422,11 @@ export function EditorBody({
                         </DropdownMenuItem>
                       }
                       rawMode={rawMode}
-                      onToggleRaw={() => setRawMode((r) => !r)}
+                      onToggleRaw={() =>
+                        rawMode
+                          ? raw.commitThen(setData, () => setRawMode(false))
+                          : setRawMode(true)
+                      }
                       onHistory={() => setHistoryOpen(true)}
                     >
                       <DropdownMenuItem
@@ -478,6 +491,7 @@ export function EditorBody({
 
             {rawMode ? (
               <RawJsonToggle
+                {...raw.bind}
                 value={data}
                 onChange={setData}
                 onClose={() => setRawMode(false)}

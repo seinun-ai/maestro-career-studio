@@ -231,6 +231,55 @@ def test_save_responses_keep_edits_made_while_saving():
     assert "adoptBaseResumeDetail(" not in _mutation(_BASE, "save")
 
 
+_RAW_JSON = _read("components/resume-editor/raw-json-toggle.tsx")
+
+
+def test_raw_json_drafts_count_as_unsaved():
+    # The typed JSON lived only in the pane: status said "All changes saved",
+    # Save and Cmd/Ctrl+S were off, the leave-page prompt stayed quiet, and
+    # Cancel or "Form view" dropped the text. The pane now reports a pending
+    # draft up, and both studios fold it into their unsaved signals.
+    assert "onPendingChange" in _RAW_JSON
+    for studio in (_TAILORED, _BASE):
+        assert "useRawJsonDraft(" in studio
+        assert "{...raw.bind}" in studio
+    assert re.search(r"const unsaved =\s*raw\.pending \|\|", _TAILORED)
+    # `dirty` too: the leave-page warning and the adoption guard read it, so a
+    # foreign edit shows the banner instead of remounting over the draft.
+    assert re.search(r"const dirty = useMemo\(\s*\(\) =>\s*raw\.pending \|\|", _TAILORED)
+    assert "const hasUnsavedChanges = raw.pending ||" in _BASE
+    # A server copy is never adopted underneath a pending draft: a later Apply
+    # would silently overwrite it.
+    assert "localSnap === lastSyncedRef.current && !raw.pending" in _BASE
+
+
+def test_save_applies_a_pending_raw_draft_first():
+    # Apply is the pane's commit step, as blur is a chip input's: Save and the
+    # chord apply a valid draft, then save exactly what was applied (setData is
+    # async). An invalid draft saves nothing; the pane's alert says why.
+    for studio in (_TAILORED, _BASE):
+        assert "raw.commitThen(setData, (applied) =>" in studio
+        assert "data: applied ?? data" in studio
+        assert "raw.commitThen(setData, () => setRawMode(false))" in studio
+    assert "if (committed === null) return;" in _RAW_JSON
+    assert 'role="alert"' in _RAW_JSON
+
+
+def test_raw_json_cancel_confirms_before_discarding():
+    assert "Discard your JSON edits?" in _RAW_JSON
+    assert re.search(r"if \(\s*pending &&\s*!\(await confirm\(", _RAW_JSON)
+
+
+def test_raw_json_pane_resyncs_to_the_saved_copy():
+    # Raw mode survives a Save (no remount), and the pane's text was set once:
+    # after apply-then-save it still held the pre-save text. A value that
+    # changes under text matching the PREVIOUS value re-syncs; comparing with
+    # the new value would lock a normalized save into "pending".
+    assert "if (value !== shown) {" in _RAW_JSON
+    assert "if (!jsonDraftDiffers(text, shown)) setText(" in _RAW_JSON
+    assert "jsonDraftDiffers(text, value)" in _RAW_JSON
+
+
 def test_studio_overflow_menu_sizes_to_its_labels():
     # The primitive anchors a menu to its trigger's width: 28px for the ⋯
     # button, so every label wrapped at the 128px floor. Capped at the room
