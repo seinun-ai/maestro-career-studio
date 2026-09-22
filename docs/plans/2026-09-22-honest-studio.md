@@ -581,8 +581,12 @@ base string, replace
 with
 `data-active:bg-secondary-container data-active:font-semibold data-active:text-on-secondary-container data-active:hover:bg-secondary-container-hover data-active:[&_svg]:text-primary`.
 Leave `hover:bg-sidebar-accent` (neutral hover, now distinct from active).
-Pair `data-active:` with `hover:` explicitly: two attribute/pseudo selectors
-outrank one, so an active row never flips to the neutral hover fill.
+Pair `data-active:` with `hover:` explicitly. shadcn's `data-active` variant
+compiles to `:where([data-active])`, which adds NO specificity, so a bare
+`data-active:bg-*` (0,1,0) loses to `hover:bg-sidebar-accent` (0,2,0). The
+paired `data-active:hover:` ties it and wins on output order (custom variants
+are emitted after built-in `hover:`); verified in compiled CSS during Task 1's
+review.
 
 `frontend/components/app-sidebar.tsx`:
 - Imports: add `navCurrent` from `@/lib/nav`, `shortcutLabel` from
@@ -598,9 +602,10 @@ outrank one, so an active row never flips to the neutral hover fill.
             aria-current={navCurrent(pathname, "/new")}
             className={cn(
               // M3 extended FAB at the top of the rail: primary container,
-              // 16px corners (M3's 16dp), the one create action on a screen.
+              // 16px corners (M3's 16dp; this theme's rounded-2xl is 18px), the
+              // one create action on a screen.
               buttonVariants({ variant: "fab", size: "lg" }),
-              "h-10 gap-2.5 rounded-2xl px-4",
+              "h-10 gap-2.5 rounded-[16px] px-4",
               navCurrent(pathname, "/new") && "shadow-md",
             )}
           >
@@ -1868,8 +1873,12 @@ Goal Card line it violates.
 
 | Task | Planned | Did instead | Why (Goal Card line) |
 |---|---|---|---|
+| 1 | globals.css comment: hover tokens work because "custom properties resolve per element" | Comment says they work because `.dark` sits on `<html>`, the same element `:root` matches; a `.dark` on a subtree would keep the light hover | Accuracy of a comment the next agent will trust (Principles: conventions win); code unchanged |
 
 ## Gate results
 
 | When | Gate | Result |
 |---|---|---|
+| Baseline | `npx tsc --noEmit` / `npm run lint` | clean / 0 errors, 5 pre-existing warnings |
+| Baseline | `pytest tests/ mcp_server/tests/ -q` (before Task 1) | 4378 passed, 2 skipped (232 s) |
+| Task 1 | `test_frontend_color_roles.py` | 10 failed → 11 passed; tsc clean; lint unchanged |
