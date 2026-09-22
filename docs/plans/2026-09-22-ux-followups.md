@@ -679,6 +679,9 @@ A1 §3 (`focusableWhenDisabled`).
 | 1 (review) | `adoptServerKey` checks own keys first; `keepIfEdited` compares with `JSON.stringify` | Forced (Rebuild) key wins over queued own keys; `keepIfEdited` compares by `serverKey`; non-finite widths clamp to the default | A queued own key equal to the Rebuild key left a stale arm (the high-priority bug's shape); key order is not content |
 
 ## Gate results
+| Task 19 | full gates on `claude/ux-followups` | pytest 4582 passed, 2 skipped; ruff OK; node 85; tsc clean; lint 0 errors; `npm run build` OK; slop OK on frontend, backend, extension (frontend 505/42, from 518); check_system_md 999/1000 |
+| Task 19 | browser regression sweep (light + dark, 1280/768/375) | pass on every area; one new focus drop (Formatting panel retry) fixed in `29ccb04d` (focus stays on Try again, then moves into the panel) |
+| Task 19 | goal critique | approve with findings; the findings predate this branch and go to the next plan below |
 
 | When | Gate | Result |
 |---|---|---|
@@ -692,3 +695,48 @@ A1 §3 (`focusableWhenDisabled`).
 | Lane 3 merged (`e5c618b2`, `b1e4250d`) | full review | adversarial review (18 mutants) + 11-check browser pass with 10 seeded roles; full backend 4540 passed, 2 skipped |
 | Lane 4 merged (`d61dbdcc`, `f462e2a5`) | full review | adversarial review + two browser passes (12 checks, then the duplicate-create fix); pins 261, node 85, tsc/lint clean, `npm run build` OK, ruff OK, slop OK (506/42, backend hotspots 424), check_system_md 998/1000 |
 | Task 18 | check_system_md / frontend pins | OK 999/1000 (1488 lines in the reference tier, 0 warnings) / `pytest tests/test_frontend_*.py`: 284 passed |
+
+## Next plan (from Task 19's goal critique and browser sweep)
+
+All of these predate `a3c800bb`; none blocks this branch. Fixing them widens scope, so
+they are the owner's call. Ordered by the Goal Card line they break.
+
+**Losing typed text / "saved" while pending (Principle 1)**
+1. Leaving an editor through an in-app link loses unsaved edits: `useUnsavedChangesWarning`
+   guards only reload and tab close. Studio back arrows (`editor-body.tsx`,
+   `tailored-resume-studio.tsx`), sidebar links, and the template editor (no guard at all).
+   Next 16.3's `<Link onNavigate>` can `preventDefault()`.
+2. Gap-answer page (`app/jobs/[id]/tailor/[sessionId]/page.tsx`): "Saved" stays while a
+   newer edit waits; leaving within 800 ms drops the last keystrokes (the unmount cancels
+   the timer instead of saving; `notes-editor.tsx` shows the fix).
+3. Dialogs that drop typed text or paid-for LLM output on Esc: new base résumé
+   (`new-base-resume-dialog.tsx`), Ask for changes (`instruct-sheet.tsx`), demonstrate
+   skill, send-to-resume, and `NewEntityDialog` (§11 item 32). The referral dialog's
+   page-owned draft is the pattern.
+4. Q&A answer editor closes before the save lands (`qa-tab.tsx`); notes editor's Esc
+   discards silently; settings show "Saves automatically" after a failed autosave.
+
+**Plain words (no ids, no slugs)**
+5. Chat suggestion cards and the Ask-for-changes sheet list `replace_bullet ·
+   experience[0].bullets[1]` (`edit-proposal-card.tsx`).
+6. `humanizeSlug` as the permanent résumé name ("Ds Base") in chat cards, application
+   panel, score panel, proposals, the tailor page and the Applications Base column (§11 item
+   30 names only the last); the template gallery's `latex` engine chip.
+
+**Accessibility**
+7. Focus drops to `<body>`: Edit summary/contact, Hide/Show PDF preview, ⋯ Edit raw JSON /
+   Role (after Esc), confirming Load latest or Rebuild, and Try again on most other
+   `LoadErrorState` screens (the refetch resets a data-less query to pending and unmounts
+   the button).
+8. Status chips under AA over `--muted`/page (Interviewing, Accepted, Queued, Approved);
+   the orange pin covers only orange chips.
+9. Selection without `aria-pressed` or a Check: new-entity section presets, gap-target
+   chips, employment-type toggles; the template picker's focus ring and selected ring look
+   identical.
+10. Studio section tab panels have no visible focus ring (§11 item 28; likely one class).
+
+**Minor**
+11. Keystrokes typed in the same instant as Cmd/Ctrl+S are lost (blur, refocus next tick);
+    an instant double-click on the referral submit creates two rows (`isPending` not yet
+    rendered); the chat composer also overflows at 768 with the history rail open.
+
