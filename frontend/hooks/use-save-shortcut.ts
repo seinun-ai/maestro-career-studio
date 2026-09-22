@@ -41,6 +41,9 @@ export function useSaveShortcut(onSave: () => void, canSave: boolean) {
       if (!isSaveShortcut(event)) return;
       const claimed = event.defaultPrevented;
       event.preventDefault();
+      // A draft commit is pending and will save: a second chord in that gap
+      // would find focus on the body and save a second time.
+      if (timer !== undefined) return;
       if (claimed || event.repeat || event.isComposing) return;
       if (event.target instanceof Element && event.target.closest(DIALOG)) return;
 
@@ -50,10 +53,10 @@ export function useSaveShortcut(onSave: () => void, canSave: boolean) {
         return;
       }
       field.blur();
-      clearTimeout(timer);
       // A blur is a discrete event, so React has committed the draft (and
       // `save` reads the new props) by the next task.
       timer = setTimeout(() => {
+        timer = undefined;
         if (field.isConnected) field.focus({ preventScroll: true });
         save();
       }, 0);
