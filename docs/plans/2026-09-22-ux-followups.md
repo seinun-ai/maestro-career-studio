@@ -662,6 +662,8 @@ A1 §3 (`focusableWhenDisabled`).
 
 | Task | Planned | Did instead | Why (Goal Card line) |
 |---|---|---|---|
+| Lane 1 (review) | Grok 4.7 gated knobs on `supportedKeys === undefined` | Claude fix `64358959`: explicit `FormattingBaseline` (loading / error with retry / ready), one shared templates query, the tailored studio's base-resume layer gated too | A failed fetch read "Loading…" forever (never mislead); the base layer could still drop an override |
+| Lane 2 (review) | Translucent focus rings deferred; Suspense fallback built with `from = null` | Claude fix `35f92eab`: solid rings app-wide with a ratchet (lane-3 sites allowlisted until it lands), the fallback marks no section for `/jobs/*`, pins that catch the score-tab regressions, the Suspense note moved into the conventions | WCAG 1.4.11 measured failures; a fallback must not claim state it can't know |
 | Planner (2026-09-22) | Tasks 4–17 in order, one subagent each | Wave 1: four parallel Grok 4.7 lanes (Tasks 4/8/9, 5/6/7/10, 11/12/13, 14/15/16), each with a handoff doc `2026-09-22-ux-lane*-cursor-grok47.md`; wave 2: Task 17 alone on the merged branch; Claude reviews and merges each lane, then does Tasks 18–19. SYSTEM.md edits from any lane are queued for Task 18 | The owner asked to parallelize with Grok 4.7; Task 17 touches ~20 files every lane owns; SYSTEM.md sits at the line cap |
 | 3 | Bare-substring pins | Regex pins; the base guard pinned whole (`localSnap === lastSyncedRef.current && !raw.pending`); plus 8 mutation-checked wiring pins (cancel, `onSave`, pending report, unmount cleanup, error clearing) | Pins survive wrapping; review found the wiring itself unpinned |
 | 3 (review) | Error cleared only by a successful parse | Also cleared when the text returns to the form's copy and on a Save with no draft | A stale parse alert above valid text misleads (Principles: honesty) |
@@ -682,3 +684,5 @@ A1 §3 (`focusableWhenDisabled`).
 | Task 2 (+ review fix) | pins / node / full backend / slop / check_system_md | 111 passed / 67/67 / 4438 passed, 2 skipped / frontend 516 of 518, backend OK / OK 998/1000; browser-verified both studios (Playwright for real key events) |
 | Task 3 (+ review fix) | pins / node / tsc / lint / slop / check_system_md | 42 studio pins, 156 frontend pins / 67/67 / clean / 0 errors, 5 warnings / frontend 517 of 518 (43 clones), backend OK / OK 998/1000; browser-verified both studios (Playwright) |
 | Lane branch point | duplication ceiling for every wave-1 lane | 517 duplicated lines, 43 clones |
+| Lane 1 merged (`321dfbe3`) | full review | adversarial review + 14/14 browser checks reproduced; pins 169, node 72, tsc/lint clean, slop OK (516/43, backend hotspots 424) |
+| Lane 2 merged (`16cb8081`) | full review | adversarial review + 15/15 browser checks reproduced; pins 195, node 78, tsc/lint clean, `npm run build` OK, ruff OK, slop OK (516/43), check_system_md 998/1000 |
