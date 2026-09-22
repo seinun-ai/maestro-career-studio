@@ -200,7 +200,16 @@ gate table, deviations, anything queued or deferred, and any concerns.
 | 8 | slop frontend | OK. Duplication held at 517 lines, 43 clones. The three hydrate copies were under the 50-token clone threshold, so removing them did not lower the count. |
 | 8 | slop backend | Still 425 hotspots from Task 4's pin (CC 10). This task added none. Not re-baselined. |
 | 8 | browser | pass. Sidebar open: a pointer drag moved the divider (45% → 55%) and localStorage stayed unset until release (`55.3`), then double-click stored `45`. Widen/Narrow stepped 45 → 50 → 45. After reload the separator's first value was the stored 50%, and Fit page was already pressed. The collapsed rail did not overlap Edit contact. |
+| 9 | Task 9 pin plus every `backend/tests/test_frontend_*.py` | pass (162) |
+| 9 | `npx tsc --noEmit` | clean |
+| 9 | `npm run lint` | 0 errors, 5 warnings (baseline) |
+| 9 | `node --test lib/*.test.ts` | 67 pass |
+| 9 | slop frontend | OK. Duplication 517 lines, 43 clones (delta 0) |
+| 9 | slop backend | Still 425 hotspots from Task 4's pin. Not re-baselined. |
+| 9 | browser | pass. At 1280×800 `/templates/harshibar` the document is 800px (no page scroll) and Knobs scrolls inside itself (715 client, 941 scroll). At 768 and 375 the base studio Contact block does not overflow (`dl` scrollWidth equals clientWidth; the email fits). |
 
 ## Queued for Task 18 (SYSTEM.md changes Claude applies)
 
 ## Deferred to merge (edits left for Claude, with file:line)
+
+- `FullscreenEditorPage` is `h-dvh`. `VersionBanner` renders above it in `SidebarGutter` (`frontend/app/layout.tsx`), so when the banner shows the template editor overflows by the banner height. Both studios already do this (A2 §6). Not fixed here.

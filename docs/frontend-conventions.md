@@ -286,7 +286,11 @@
   768 — at exactly 768 the 256px rail is still pinned and a `max-w-6xl` page
   has 462px of usable width. Test tables and toolbars at 768, not just 1280
   and 375. The Applications table carries `min-w-[52rem]` because
-  `table-fixed` cannot grow a starved column.
+  `table-fixed` cannot grow a starved column. The base studio's Contact
+  block is the worked case: its read grid is `@xs:grid-cols-[8rem_minmax(0,1fr)]`
+  with `wrap-anywhere`, and below 20rem each label/value pair stacks, so a
+  768px window with the sidebar pinned and the preview open does not grow a
+  page scrollbar.
 - **`truncate` on a flex child that can reach `width: 0` hides the whole
   string** — `overflow: hidden` on a zero-width box shows nothing (`flex-1` is
   basis 0, so it never triggers a wrap next to a `shrink-0` cluster). A title

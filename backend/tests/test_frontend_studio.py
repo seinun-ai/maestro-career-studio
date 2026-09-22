@@ -19,6 +19,15 @@ def _read(rel: str) -> str:
 _SHELL = _read("components/resume-editor/editor-shell.tsx")
 
 
+def test_template_editor_fills_the_viewport_and_contact_fits():
+    page = _read("app/templates/[id]/page.tsx")
+    assert "<FullscreenEditorPage>" in page
+    contact = _read("components/resume-editor/contact-form.tsx")
+    assert "minmax(0,1fr)" in contact
+    assert "wrap-anywhere" in contact
+    assert "grid-cols-[8rem_1fr]" not in contact
+
+
 def test_divider_has_a_pointer_alternative():
     assert 'aria-label="Widen preview"' in _SHELL
     assert 'aria-label="Narrow preview"' in _SHELL

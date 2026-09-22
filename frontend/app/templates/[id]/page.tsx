@@ -13,6 +13,7 @@ import { PdfPagesPreview } from "@/components/resume-editor/pdf-pages-preview";
 import { LatexEditor } from "@/components/templates/latex-editor";
 import { RequiresTexBadge } from "@/components/templates/requires-tex-badge";
 import { EditorShell } from "@/components/resume-editor/editor-shell";
+import { FullscreenEditorPage } from "@/components/resume-editor/fullscreen-editor-page";
 import { Badge } from "@/components/ui/badge";
 import { IconButton } from "@/components/icon-button";
 import { Button } from "@/components/ui/button";
@@ -214,10 +215,7 @@ export default function TemplateEditorPage() {
   const previewVersion = `${tq.data.validated_at ?? ""}:${previewNonce}`;
 
   return (
-    // <main> here rather than inside EditorShell: the studio route already
-    // wraps the shell in its own <main> alongside a page header, and two of
-    // them would nest.
-    <main className="flex min-h-0 w-full flex-1 flex-col">
+    <FullscreenEditorPage>
     <EditorShell
       fullHeightLeft
       storageKey="templateEditor"
@@ -363,6 +361,6 @@ export default function TemplateEditorPage() {
         )
       }
     />
-    </main>
+    </FullscreenEditorPage>
   );
 }
