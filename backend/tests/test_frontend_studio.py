@@ -46,13 +46,25 @@ def test_preview_pane_is_a_canvas():
     assert "bg-muted/30" not in _SHELL
 
 
+_SAVE_BUTTON = _read("components/resume-editor/studio-save-button.tsx")
+
+
+def test_one_save_button_owns_the_click_and_the_shortcut():
+    # Key and button read the one `canSave`, so they cannot disagree.
+    assert "useSaveShortcut(" in _SAVE_BUTTON
+    assert 'aria-keyshortcuts="Meta+S Control+S"' in _SAVE_BUTTON
+    assert "disabled={!canSave}" in _SAVE_BUTTON
+
+
 _BASE = _read("components/resume-editor/editor-body.tsx")
 
 
 def test_base_studio_save_is_dirty_gated_and_keyed():
-    assert "disabled={!canSave}" in _BASE
-    assert "useSaveShortcut(" in _BASE
-    assert 'aria-keyshortcuts="Meta+S Control+S"' in _BASE
+    assert "<StudioSaveButton" in _BASE
+    assert "canSave={canSave}" in _BASE
+    # The button owns the shortcut; a studio wiring its own would be a second
+    # owner that can drift from the button.
+    assert "useSaveShortcut(" not in _BASE
 
 
 def test_base_studio_can_rerender_with_nothing_to_save():
@@ -80,8 +92,9 @@ def test_tailored_save_chain_fires_no_success_toasts():
 
 def test_tailored_studio_status_shortcut_and_stale_preview():
     assert "<SaveStatusText" in _TAILORED
-    assert "useSaveShortcut(" in _TAILORED
-    assert 'aria-keyshortcuts="Meta+S Control+S"' in _TAILORED
+    assert "<StudioSaveButton" in _TAILORED
+    assert "canSave={canSave}" in _TAILORED
+    assert "useSaveShortcut(" not in _TAILORED
     assert "previewStale={unsaved}" in _TAILORED
 
 

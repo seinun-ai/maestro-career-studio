@@ -99,8 +99,10 @@
     IMAGES only, so the render-error banner, page-count pill and zoom keep full
     contrast. The strip is not a live region (the status line announces) and
     never says "your last save": after a failed render the pages are older.
-  - *Cmd/Ctrl+S*: `useSaveShortcut(onSave, canSave)`, `canSave` being the Save
-    button's enabled state, so key and button agree. The chord is always
+  - *Cmd/Ctrl+S*: owned by `StudioSaveButton`, both studios' one Save button,
+    which calls `useSaveShortcut(onSave, canSave)` with the `canSave` that
+    enables it, so key and button agree, and is mounted exactly while the
+    studio's toolbar is. The chord is always
     swallowed (the browser's Save page saves app HTML) but never saves on
     repeat, mid-IME, once another handler claimed it, or from inside a dialog,
     where "Load the latest version?" would be overwritten. It blurs a focused

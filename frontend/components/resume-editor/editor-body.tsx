@@ -17,14 +17,13 @@ import { toast } from "sonner";
 
 import { IconButton } from "@/components/icon-button";
 import { KbSyncPill } from "@/components/kb-sync-pill";
-import { useModKey } from "@/hooks/use-mod-key";
-import { useSaveShortcut } from "@/hooks/use-save-shortcut";
 import { useUnsavedChangesWarning } from "@/hooks/use-unsaved-changes-warning";
 import { PageHeader } from "@/components/page-shell";
 import { ContactForm } from "@/components/resume-editor/contact-form";
 import { EditableTitle } from "@/components/resume-editor/editable-title";
 import { EditorShell } from "@/components/resume-editor/editor-shell";
 import { StudioOverflowMenu } from "@/components/resume-editor/studio-overflow";
+import { StudioSaveButton } from "@/components/resume-editor/studio-save-button";
 import { StudioToolbar } from "@/components/resume-editor/studio-toolbar";
 import { EducationEditor } from "@/components/resume-editor/education-editor";
 import { ExperienceEditor } from "@/components/resume-editor/experience-editor";
@@ -61,7 +60,6 @@ import { apiFetch, apiUrlForBrowserPdf } from "@/lib/api";
 import { FORMATTING_DEFAULTS, type ResumeFormatting } from "@/lib/formatting";
 import { notifyRenderNote } from "@/lib/render-note";
 import { resumeDataSchema } from "@/lib/resume-schema";
-import { shortcutLabel } from "@/lib/shortcuts";
 import { saveStatus } from "@/lib/studio";
 import type { BaseResumeDetail, ResumeData } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -259,8 +257,6 @@ export function EditorBody({
     rescoring: false,
   });
   const canSave = hasUnsavedChanges && !save.isPending && !regenerate.isPending;
-  useSaveShortcut(() => save.mutate(), canSave);
-  const mod = useModKey();
 
   return (
     <>
@@ -365,24 +361,20 @@ export function EditorBody({
                     />
                   }
                   primary={
-                    <Button
-                      onClick={() => save.mutate()}
-                      disabled={!canSave}
-                      title={`Save (${shortcutLabel(mod, "S")})`}
-                      aria-keyshortcuts="Meta+S Control+S"
-                    >
-                      {save.isPending ? "Saving…" : "Save"}
-                    </Button>
+                    <StudioSaveButton
+                      onSave={() => save.mutate()}
+                      canSave={canSave}
+                      pending={save.isPending}
+                    />
                   }
                   overflow={
                     <StudioOverflowMenu
-                      rawMode={rawMode}
-                      onToggleRaw={() => setRawMode((r) => !r)}
-                      onHistory={() => setHistoryOpen(true)}
-                      /* First, and labelled with its value: this is the only
-                         place the role is legible now that the header shows
-                         the name alone, so it is read as often as the two
-                         shared items are used. */
+                      /* Props in the order the menu renders them: this item,
+                         the shared pair, then `children`. First, and labelled
+                         with its value: this is the only place the role is
+                         legible now that the header shows the name alone, so
+                         it is read as often as the two shared items are
+                         used. */
                       leading={
                         <DropdownMenuItem onClick={() => setRoleOpen(true)}>
                           <Tag />
@@ -393,6 +385,9 @@ export function EditorBody({
                           )}
                         </DropdownMenuItem>
                       }
+                      rawMode={rawMode}
+                      onToggleRaw={() => setRawMode((r) => !r)}
+                      onHistory={() => setHistoryOpen(true)}
                     >
                       <DropdownMenuItem
                         disabled={

@@ -16,8 +16,6 @@ import { toast } from "sonner";
 
 import { useConfirm } from "@/components/confirm-dialog";
 import { IconButton } from "@/components/icon-button";
-import { useModKey } from "@/hooks/use-mod-key";
-import { useSaveShortcut } from "@/hooks/use-save-shortcut";
 import { useUnsavedChangesWarning } from "@/hooks/use-unsaved-changes-warning";
 import { PageHeader } from "@/components/page-shell";
 import { ContactForm } from "@/components/resume-editor/contact-form";
@@ -31,6 +29,7 @@ import {
 } from "@/components/resume-editor/diff-review";
 import { EditorShell } from "@/components/resume-editor/editor-shell";
 import { StudioOverflowMenu } from "@/components/resume-editor/studio-overflow";
+import { StudioSaveButton } from "@/components/resume-editor/studio-save-button";
 import { StudioToolbar } from "@/components/resume-editor/studio-toolbar";
 import { EducationEditor } from "@/components/resume-editor/education-editor";
 import { ExperienceEditor } from "@/components/resume-editor/experience-editor";
@@ -66,7 +65,6 @@ import {
 import { FORMATTING_DEFAULTS, type ResumeFormatting } from "@/lib/formatting";
 import { notifyRenderNote } from "@/lib/render-note";
 import { resumeDataSchema } from "@/lib/resume-schema";
-import { shortcutLabel } from "@/lib/shortcuts";
 import { saveStatus } from "@/lib/studio";
 import type {
   Application,
@@ -615,8 +613,6 @@ function StudioEditor({
     rescoring: rescore.isPending,
   });
   const canSave = unsaved && !busy;
-  useSaveShortcut(() => save.mutate(), canSave);
-  const mod = useModKey();
   const pdfHref = apiUrlForBrowserPdf(`/api/applications/${applicationId}/pdf`);
   const pdfFilename =
     application.pdf_path?.split(/[\\/]/).pop() ?? "tailored-resume.pdf";
@@ -770,16 +766,11 @@ function StudioEditor({
                     </>
                   }
                   primary={
-                    <Button
-                      size="sm"
-                      onClick={() => save.mutate()}
-                      disabled={!canSave}
-                      title={`Save (${shortcutLabel(mod, "S")})`}
-                      aria-keyshortcuts="Meta+S Control+S"
-                    >
-                      {save.isPending && <Loader2 className="animate-spin" />}
-                      {save.isPending ? "Saving…" : "Save"}
-                    </Button>
+                    <StudioSaveButton
+                      onSave={() => save.mutate()}
+                      canSave={canSave}
+                      pending={save.isPending}
+                    />
                   }
                   overflow={
                     <StudioOverflowMenu
