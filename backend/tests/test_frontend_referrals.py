@@ -33,6 +33,12 @@ _FORM = _top_level("function ReferralForm(")
 _VIEW_ROW = _top_level("function ReferralViewRow(")
 
 
+def _create_success() -> str:
+    """The page's create mutation, `onSuccess` up to `onError`."""
+    start = _ROOT.index("const create = useMutation(")
+    return _ROOT[_ROOT.index("onSuccess:", start) : _ROOT.index("onError:", start)]
+
+
 def test_a_failed_fetch_is_the_shared_error_state():
     branch = _ROOT[_ROOT.index("referrals.isError ?") : _ROOT.index(") : populated ?")]
     assert "<LoadErrorState" in branch, "a failed fetch renders LoadErrorState"
@@ -62,8 +68,15 @@ def test_first_create_moves_focus_to_the_header_button():
     effect = effect[: effect.index("}, [populated]);")]
     assert "addButtonRef.current?.focus()" in effect
     assert "focusAddAfterCreate.current" in effect
-    card = _ROOT[_ROOT.index("<FirstReferralCard") :]
-    assert "focusAddAfterCreate.current = true" in card[: card.index("/>")]
+    # The flag is raised only when this create is the one that makes the table
+    # appear, and before the cache update that renders it.
+    success = _create_success()
+    flat = _squash(success)
+    assert (
+        "if (!qc.getQueryData<Referral[]>(REFERRALS_KEY)?.length) {"
+        " focusAddAfterCreate.current = true; }"
+    ) in flat
+    assert flat.index("focusAddAfterCreate.current = true") < flat.index("qc.setQueryData")
 
 
 def test_delete_waits_for_the_confirm():
@@ -116,5 +129,34 @@ def test_the_draft_outlives_the_dialog():
 def test_only_a_successful_create_clears_the_draft():
     clears = re.findall(r"(?:setDraft|onDraftChange)\(EMPTY_DRAFT\)", _PAGE)
     assert len(clears) == 1
-    success = _FORM[_FORM.index("onSuccess:") : _FORM.index("onError:")]
-    assert "onDraftChange(EMPTY_DRAFT)" in success
+    success = _create_success()
+    assert "setDraft(EMPTY_DRAFT)" in success
+    assert "setAddOpen(false)" in success, "success closes the dialog"
+    assert _PAGE.count("setAddOpen(false)") == 1
+
+
+def test_one_create_and_the_page_owns_it():
+    """The dialog's form unmounts on close; a create it owned ran on unseen,
+    and a reopened dialog offered an enabled submit and a second POST."""
+    posts = re.findall(r'"/api/referrals",\s*\{\s*method: "POST"', _PAGE)
+    assert len(posts) == 1, "one create request in the page"
+    assert "useMutation" not in _FORM, "the form starts no request of its own"
+    assert "useMutation" not in _CARD
+    assert _ROOT.count("useMutation(") == 1
+    assert "const create = useMutation(" in _ROOT
+    assert _squash(_ROOT).count(
+        "adding={create.isPending} onAdd={create.mutate}"
+    ) == 2, "the inline form and the dialog share the one create"
+
+
+def test_submit_waits_for_the_shared_create():
+    """Wherever the form shows, including a reopened dialog, a pending create
+    reads "Adding…" and cannot be submitted again."""
+    can_submit = _squash(_FORM[_FORM.index("const canSubmit =") :])
+    can_submit = can_submit[: can_submit.index(";")]
+    assert can_submit.endswith("&& !adding"), can_submit
+    submit = _FORM[_FORM.index("const submit =") :]
+    assert "if (!canSubmit) return;" in submit[: submit.index("onAdd(")]
+    button = _squash(_FORM[_FORM.index("const submitButton =") :])
+    assert "disabled={!canSubmit}" in button
+    assert '{adding ? "Adding…" : "Add referral"}' in button

@@ -176,6 +176,7 @@ gate table, deviations, anything queued or deferred, and any concerns.
 | 16 | Hardcoded `referral-*` field ids | `useId()` per field | The form can mount in the empty-state card and in the dialog; conventions say ids come from `useId()` |
 | 14, 16 (review) | Task 16 pinned by its one `_QUERY_SURFACES` entry; Task 14 pinned by `\bmark=`; the add dialog's fields live in `ReferralForm` | New `test_frontend_referrals.py` (error state, `initialFocus`, confirmed delete, focus after the first create, header action only beside the table, `<Label optional>`, `useId()`, grid rows, the draft). Task 14 pins `mark="Sample"` and the `showImage &&` gate. The draft moved up to `ReferralsPage` and clears only after a create succeeds; the dialog gained a `DialogDescription`; the no-op `useMemo` in `health-report-page.tsx` is gone. Each pin was mutation-checked | Review showed the old pins passed with every one of those behaviours broken. Planner decision: Esc or an overlay click unmounted `DialogContent` and lost the typed text ("if a gesture could lose typed text, it asks or keeps the text") |
 | 16 | B §5 leaves the create-form placeholders unprefixed; edit rows unchanged | New `ReferralForm` placeholders are `e.g. …`. Edit-row placeholders stay `Jane Doe` / `Met at the AWS meetup` | Lane note: new referral UI follows owner decision 3. B §5 says the edit rows are unchanged, so Task 17 still owns those two |
+| 16 (review) | The create `useMutation` lives in `ReferralForm`, with the draft on `ReferralsPage` | `ReferralsPage` owns the one create and hands both forms `adding={create.isPending}` and `onAdd={create.mutate}`; `canSubmit` ends `&& !adding`, and success clears the draft, closes the dialog and raises the focus flag only when the cache was empty. Two new pins, two adjusted (focus flag, draft clear); each mutation-checked | Browser: with the POST delayed, Esc then reopen showed the kept draft with an enabled submit, and a second submit made two identical rows. "If a gesture could lose typed text, it asks or keeps the text" kept the text but not the request behind it |
 
 ## Gate results
 
@@ -200,7 +201,9 @@ gate table, deviations, anything queued or deferred, and any concerns.
 Task 15: none. SYSTEM.md does not describe a web tailored-health route. MCP health tools already document `kind='application'` (§7); that surface stays.
 
 Found in review, not fixed on this branch (candidates for §11):
-- Referrals: focus drops to `<body>` after a row delete. Pre-existing: the deleted row unmounts, and on the last row the whole table does.
+- Referrals: focus drops to `<body>` only after deleting the LAST row (the table unmounts for the empty-state form). Other deletes land on the header "Add referral" button (browser-verified).
+- `/base-resumes/<unknown>/health` shows a skeleton for ~7s before "Couldn't load this resume.": the 404 goes through React Query's default 3 retries (1s + 2s + 4s backoff; `app/providers.tsx` sets no `retry`).
+- Studio template button reads "Template: Default" while the picker's first row says "Use the default template" beside the resolved name ("Classic"). The picker names the resolution on purpose (comment at `components/templates/template-select.tsx` ~165); the button's `label` (~135) just maps `DEFAULT_TEMPLATE` to "Default", with no comment saying why. Looks like an omission; note only, lane 1 owns the file.
 - `NewEntityDialog` (`components/career/new-entity-dialog.tsx`) has the gap the referral dialog had: its `onOpenChange` calls `reset()` on every close, so Esc or an overlay click loses typed text.
 - The stale-chip tooltip on `/templates` can't be reached: `GalleryCard`'s stretched link is `absolute inset-0 z-10` and the chip sits under it (see *Deferred to merge*).
 

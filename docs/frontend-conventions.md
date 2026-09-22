@@ -335,6 +335,12 @@
   create succeeds**: `DialogContent` unmounts on close, so Esc or an overlay
   click would drop typed text; the field state lives in the component that
   owns the dialog (Referrals' `draft`, pinned by `test_frontend_referrals.py`).
+  The create mutation lives there too, one per page: a mutation inside the
+  form dies with it, so a reopened dialog showed the kept draft with an
+  enabled submit while the first POST was still in flight. Every form the
+  page shows reads the shared pending flag. On Referrals the inline
+  empty-state form shares the same draft, so text left by a failed dialog
+  create pre-fills it once the last row is deleted.
 - Route-level `app/error.tsx` + `app/global-error.tsx` + `app/not-found.tsx`
   catch components that throw; page-level `isError` branches handle query
   failures. `next.config.ts` sets nosniff / DENY / no-referrer /

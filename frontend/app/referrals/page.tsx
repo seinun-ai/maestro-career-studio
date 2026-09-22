@@ -68,6 +68,7 @@ const EMPTY_DRAFT: ReferralDraft = {
 };
 
 export default function ReferralsPage() {
+  const qc = useQueryClient();
   const referrals = useQuery({
     queryKey: REFERRALS_KEY,
     queryFn: () => apiFetch<Referral[]>("/api/referrals"),
@@ -79,13 +80,38 @@ export default function ReferralsPage() {
   const [draft, setDraft] = useState<ReferralDraft>(EMPTY_DRAFT);
   const companyRef = useRef<HTMLInputElement>(null);
   const addButtonRef = useRef<HTMLButtonElement>(null);
-  // Set in the inline form's success handler, before the cache update renders
-  // the header button. The effect runs after that commit; reading the ref
-  // during render is what the compiler forbids.
+  // Set in the create's success handler, before the cache update renders the
+  // header button. The effect runs after that commit; reading the ref during
+  // render is what the compiler forbids.
   const focusAddAfterCreate = useRef(false);
   const rows = referrals.data ?? [];
   const populated =
     !referrals.isLoading && !referrals.isError && rows.length > 0;
+
+  // One create for the page, not one per form: the dialog's form unmounts on
+  // close, and a create it owned kept running with nothing left to say so. A
+  // reopened dialog then offered an enabled submit, and a second POST.
+  const create = useMutation({
+    mutationFn: (payload: ReferralCreate) =>
+      apiFetch<Referral>("/api/referrals", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+    onSuccess: (created) => {
+      // An empty cache means this create swaps the inline form for the table,
+      // unmounting the focused submit; the effect focuses the header button.
+      if (!qc.getQueryData<Referral[]>(REFERRALS_KEY)?.length) {
+        focusAddAfterCreate.current = true;
+      }
+      qc.setQueryData<Referral[]>(REFERRALS_KEY, (prev) =>
+        prev ? [created, ...prev] : [created],
+      );
+      toast.success(`Added referral for ${created.company}`);
+      setDraft(EMPTY_DRAFT);
+      setAddOpen(false);
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
 
   useEffect(() => {
     if (!populated || !focusAddAfterCreate.current) return;
@@ -121,9 +147,8 @@ export default function ReferralsPage() {
         <FirstReferralCard
           draft={draft}
           onDraftChange={setDraft}
-          onCreated={() => {
-            focusAddAfterCreate.current = true;
-          }}
+          adding={create.isPending}
+          onAdd={create.mutate}
         />
       )}
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
@@ -137,9 +162,10 @@ export default function ReferralsPage() {
           <ReferralForm
             draft={draft}
             onDraftChange={setDraft}
+            adding={create.isPending}
+            onAdd={create.mutate}
             companyRef={companyRef}
             inDialog
-            onCreated={() => setAddOpen(false)}
           />
         </DialogContent>
       </Dialog>
@@ -150,12 +176,12 @@ export default function ReferralsPage() {
 type DraftProps = {
   draft: ReferralDraft;
   onDraftChange: Dispatch<SetStateAction<ReferralDraft>>;
+  /** The page's one create is in flight, whichever form started it. */
+  adding: boolean;
+  onAdd: (payload: ReferralCreate) => void;
 };
 
-function FirstReferralCard({
-  onCreated,
-  ...draftProps
-}: DraftProps & { onCreated: () => void }) {
+function FirstReferralCard(draftProps: DraftProps) {
   return (
     <Card>
       <CardHeader>
@@ -166,7 +192,7 @@ function FirstReferralCard({
         <CardDescription>A company where someone can refer you.</CardDescription>
       </CardHeader>
       <CardContent>
-        <ReferralForm {...draftProps} onCreated={onCreated} />
+        <ReferralForm {...draftProps} />
       </CardContent>
     </Card>
   );
@@ -175,15 +201,14 @@ function FirstReferralCard({
 function ReferralForm({
   draft,
   onDraftChange,
+  adding,
+  onAdd,
   companyRef,
-  onCreated,
   inDialog = false,
 }: DraftProps & {
   companyRef?: Ref<HTMLInputElement>;
-  onCreated?: () => void;
   inDialog?: boolean;
 }) {
-  const qc = useQueryClient();
   const formId = useId();
   const companyId = useId();
   const careersUrlId = useId();
@@ -198,34 +223,13 @@ function ReferralForm({
       onDraftChange((prev) => ({ ...prev, [field]: value }));
     };
 
-  const create = useMutation({
-    mutationFn: (payload: ReferralCreate) =>
-      apiFetch<Referral>("/api/referrals", {
-        method: "POST",
-        body: JSON.stringify(payload),
-      }),
-    onSuccess: (created) => {
-      // Before the cache update: the inline page unmounts this form and mounts
-      // the header button in the same commit, and that button is what we focus.
-      onCreated?.();
-      qc.setQueryData<Referral[]>(REFERRALS_KEY, (prev) =>
-        prev ? [created, ...prev] : [created],
-      );
-      toast.success(`Added referral for ${created.company}`);
-      onDraftChange(EMPTY_DRAFT);
-    },
-    onError: (err: Error) => toast.error(err.message),
-  });
-
   const canSubmit =
-    company.trim().length > 0 &&
-    careersUrl.trim().length > 0 &&
-    !create.isPending;
+    company.trim().length > 0 && careersUrl.trim().length > 0 && !adding;
 
   const submit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!canSubmit) return;
-    create.mutate({
+    onAdd({
       company: company.trim(),
       careers_url: careersUrl.trim(),
       contact_name: contactName.trim() ? contactName.trim() : null,
@@ -239,7 +243,7 @@ function ReferralForm({
       form={inDialog ? formId : undefined}
       disabled={!canSubmit}
     >
-      {create.isPending ? "Adding…" : "Add referral"}
+      {adding ? "Adding…" : "Add referral"}
     </Button>
   );
 
