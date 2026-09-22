@@ -1964,6 +1964,27 @@ Goal Card line it violates.
   focus drops to `<body>` on remount (and the status live region remounts).
   Fix direction: `onSaved(savedKey)` and adopt banner-free only when
   `customizedKey === savedKey`.
+- **From the Task 14 browser pass and the final review (next plan):**
+  - Raw-JSON edits are untracked: an unapplied raw draft reads "All changes
+    saved", Cmd/Ctrl+S does nothing, no unload warning, Cancel discards
+    silently. `RawJsonToggle` should report a pending draft up.
+  - Template editor at 1280x800 still scrolls (the Knobs/Formatting panel has
+    no height bound), and the collapsed "Show PDF preview" edge tab sits half
+    under the scrollbar and over the "School first"/"Bulleted" buttons.
+  - Focus drops to `<body>` after the Score-tab import (Done) and after a
+    tailored Save click; "No ATS scores yet" flashes briefly around the rescore.
+  - Hand-rolled `bg-primary/10 text-primary` selected states (SourceToggle,
+    proposals filter, chat pills, active chat session) still differ from the
+    secondary-container `tonal`/nav look: pick one rule.
+  - The FAB (primary container) and the active nav row (secondary container)
+    are nearly the same blue (1.05:1); on `/new` nothing in the sidebar looks
+    current although the FAB carries `aria-current`.
+  - The collapsed (off-canvas) sidebar's controls stay in the Tab order.
+  - `/jobs/[id]` highlights no sidebar item; at 768px with the sidebar open the
+    base studio's Contact grid overflows its pane; Re-score re-enables during
+    "Rendering PDF…".
+  - The frontend slop ratchet has zero headroom (518/518): the next studio
+    change should re-baseline with a reason, not shuffle props.
 - **Found by reviews, pre-existing, not this plan's to fix:** the light
   `--ring` is ~2.5:1 on `--canvas` (WCAG 1.4.11 borderline); `text-destructive`
   on `bg-destructive/10` is ~3.1–3.6:1 (render-error banner, template compile
@@ -2021,3 +2042,5 @@ Goal Card line it violates.
 | Task 14 | full backend suite (before ce48ca8b) | 4428 passed, 2 skipped (237 s) |
 | Task 14 | ruff / node unit tests / tsc / lint / `npm run build` | all clean; 39/39; lint 0 errors, 5 pre-existing warnings; build OK |
 | Task 14 | slop ratchet | backend OK; frontend FAILED 43→44 clones, fixed by ce48ca8b (StudioSaveButton), then OK at exactly 518 lines |
+| Task 14 | browser pass (light+dark, 1280/768/767) | checks 1, 2, 3, 5, 7, 8, 10 pass; 4, 6, 9 partial (focus after import, weak zoom selected state, template-editor edge tab); measured tonal 9.8:1 / 9.34:1, primary #1358bb, no console errors |
+| Task 14 | final goal critique | changes required: tailored empty-preview copy, zoom selected state; both in the final fix batch |
