@@ -45,10 +45,8 @@ import {
   type StreamFilter,
   staleFindingIds,
 } from "@/lib/health-report";
-import { resumeDataSchema } from "@/lib/resume-schema";
 import { cn } from "@/lib/utils";
 import type {
-  ApplicationDetail,
   BaseResumeDetail,
   EvidenceLevel,
   LintFinding,
@@ -69,16 +67,17 @@ const FILTERS: { id: StreamFilter; label: string }[] = [
  * Prose measure lives inside cards (~65ch), not on the page.
  */
 export function HealthReportPage({
-  kind,
   resumeKey,
   backHref,
   backLabel,
 }: {
-  kind: "base" | "application";
   resumeKey: string;
   backHref: string;
   backLabel: string;
 }) {
+  // The web report is base resumes only. A tailored resume inherits its base's
+  // health score; MCP's health tools still accept kind="application".
+  const kind = "base" as const;
   const qc = useQueryClient();
   const [filter, setFilter] = useState<StreamFilter>("all");
   const [appliedCount, setAppliedCount] = useState(0);
@@ -97,40 +96,19 @@ export function HealthReportPage({
   const baseQuery = useQuery({
     queryKey: ["base-resumes", resumeKey],
     queryFn: () => apiFetch<BaseResumeDetail>(`/api/base-resumes/${resumeKey}`),
-    enabled: kind === "base",
   });
-  const appQuery = useQuery({
-    queryKey: ["application", resumeKey],
-    queryFn: () => apiFetch<ApplicationDetail>(`/api/applications/${resumeKey}`),
-    enabled: kind === "application",
-  });
-  const detailQuery = kind === "base" ? baseQuery : appQuery;
 
-  const resumeData = useMemo<ResumeData | null>(() => {
-    if (kind === "base") return baseQuery.data?.data ?? null;
-    const raw = appQuery.data?.customized_json;
-    if (raw == null) return null;
-    const parsed = resumeDataSchema.safeParse(raw);
-    return parsed.success ? parsed.data : null;
-  }, [kind, baseQuery.data, appQuery.data]);
+  const resumeData = useMemo<ResumeData | null>(
+    () => baseQuery.data?.data ?? null,
+    [baseQuery.data],
+  );
 
-
-  const templateId =
-    kind === "base"
-      ? (baseQuery.data?.template_id ?? null)
-      : (appQuery.data?.template_id ?? null);
+  const templateId = baseQuery.data?.template_id ?? null;
 
   const label = useMemo(() => {
-    if (kind === "base") {
-      const detail = baseQuery.data;
-      return detail ? (detail.display_name ?? detail.slug) : null;
-    }
-    const job = appQuery.data?.job;
-    if (!job) return null;
-    return job.title && job.company
-      ? `${job.title} · ${job.company}`
-      : (job.title ?? job.company ?? null);
-  }, [kind, baseQuery.data, appQuery.data]);
+    const detail = baseQuery.data;
+    return detail ? (detail.display_name ?? detail.slug) : null;
+  }, [baseQuery.data]);
 
   const report = useQuery<LintReport>({
     queryKey: ["resume-lint", kind, resumeKey],
@@ -239,23 +217,18 @@ export function HealthReportPage({
     setAppliedCount((n) => n + 1);
     void qc.invalidateQueries({ queryKey: ["resume-lint", kind, resumeKey, "answers"] });
     qc.invalidateQueries({ queryKey: ["base-resumes"] });
-    qc.invalidateQueries({ queryKey: ["application"] });
     qc.invalidateQueries({ queryKey: ["resume-versions"] });
     qc.invalidateQueries({ queryKey: ["resume-lint", kind, resumeKey] });
   };
 
-  if (detailQuery.isError) {
+  if (baseQuery.isError) {
     return (
       <PageShell>
         <LoadErrorState
-          title={
-            kind === "base"
-              ? "Couldn't load this resume."
-              : "Couldn't load this application."
-          }
-          detail={(detailQuery.error as Error)?.message}
-          retrying={detailQuery.isFetching}
-          onRetry={() => void detailQuery.refetch()}
+          title="Couldn't load this resume."
+          detail={(baseQuery.error as Error)?.message}
+          retrying={baseQuery.isFetching}
+          onRetry={() => void baseQuery.refetch()}
           action={
             <Button
               variant="outline"
@@ -268,7 +241,7 @@ export function HealthReportPage({
     );
   }
 
-  if (detailQuery.isLoading || report.isLoading) {
+  if (baseQuery.isLoading || report.isLoading) {
     return (
       <PageShell>
         <Skeleton className="h-10 w-60" />

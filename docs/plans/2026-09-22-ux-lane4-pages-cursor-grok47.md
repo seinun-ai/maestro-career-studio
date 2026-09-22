@@ -171,6 +171,7 @@ gate table, deviations, anything queued or deferred, and any concerns.
 | Task | Planned | Did instead | Why (Goal Card line) |
 |---|---|---|---|
 | 14 | Pin "passes `mark=`" and alt mentions "sample", no test file named | New `backend/tests/test_frontend_template_preview.py`. The alt pin matches the alt template literal, and the shell must render `mark` at `top-1.5 right-1.5` | A file-wide "sample" substring already passes: the component comment says "sample resume". No owned pin file covered thumbnails (conventions change with a pin CI actually runs) |
+| 15 | Comment only in `studio-toolbar.tsx` | Same sentence also sits on `const kind = "base"` in `health-report-page.tsx` | The prop is gone; the constant is the only thing stopping a later reader from threading `kind` back in (honesty: the page is base-only, MCP is not) |
 
 ## Gate results
 
@@ -180,8 +181,15 @@ gate table, deviations, anything queued or deferred, and any concerns.
 | 14 | tsc / lint / `node --test lib/*.test.ts` | clean / 0 errors, 5 warnings / 67/67 |
 | 14 | slop `check frontend` / `check backend` | OK / OK. Duplication 517 lines, 43 clones (ceiling) |
 | 14 | browser | `/templates`: 6 "Sample" marks, top-right (6px/6px). Picker dialog: 6, same corner. Base resume "Lane Four" thumbnail: 0 Sample marks, alt "Lane Four preview". Stale chip tooltip not reachable (see Deferred) |
+| 15 | health pins (`test_frontend_health_report.py`, `test_frontend_color_roles.py`, `test_frontend_query_error_states.py`) + every `test_frontend_*.py` | 158 passed |
+| 15 | `test_get_application_lint_404_without_a_report` | passed. GET `/api/resume-lint/application/{id}` is 404 "No health report yet" with no stored report. The endpoint already behaved this way; the test locks it |
+| 15 | tsc / lint / node / `npm run build` | clean / 0 errors, 5 warnings / 67/67 / build OK. Route table has `/base-resumes/[slug]/health` and no `/applications/[id]/health` |
+| 15 | slop `check frontend` / `check backend` | OK / OK. Duplication still 517 lines, 43 clones |
+| 15 | browser | `/base-resumes/lane4_sample/health` renders "Resume health report" / "Lane Four" / "No health report yet." `/applications/00000000-0000-4000-8000-000000000001/health` renders "Page not found" |
 
 ## Queued for Task 18 (SYSTEM.md changes Claude applies)
+
+Task 15: none. SYSTEM.md does not describe a web tailored-health route. MCP health tools already document `kind='application'` (§7); that surface stays.
 
 ## Deferred to merge (edits left for Claude, with file:line)
 

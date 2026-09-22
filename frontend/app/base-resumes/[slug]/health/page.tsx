@@ -12,7 +12,6 @@ export default function BaseResumeHealthPage({
   const { slug } = use(params);
   return (
     <HealthReportPage
-      kind="base"
       resumeKey={slug}
       backHref={`/base-resumes/${slug}`}
       backLabel="Back to editor"

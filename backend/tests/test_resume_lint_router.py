@@ -221,6 +221,20 @@ def _complete_report_json(*, gates=None, insufficient_evidence=False):
     }
 
 
+def test_get_application_lint_404_without_a_report(db_session):
+    """MCP health tools still call kind='application'. With no stored report the
+    route is 404 — the web page that used to render that response is gone."""
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        response = TestClient(app).get(
+            "/api/resume-lint/application/00000000-0000-4000-8000-000000000001"
+        )
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code == 404
+    assert response.json()["detail"] == "No health report yet"
+
+
 def test_get_latest_lint_surfaces_fresh_score_breakdown(db_session):
     base = _seed(db_session, slug="data_scientist")
     version = resume_versions.record_version(
