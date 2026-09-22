@@ -32,6 +32,7 @@ export function SidebarRevealTrigger() {
       <SidebarTrigger
         className="pointer-events-auto rounded-md border bg-background/90 shadow-sm backdrop-blur"
         title={`Toggle sidebar (${shortcutLabel(mod, "B")})`}
+        aria-keyshortcuts="Meta+B Control+B"
       />
     </div>
   );

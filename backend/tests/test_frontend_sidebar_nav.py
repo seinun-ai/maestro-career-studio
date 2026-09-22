@@ -26,11 +26,23 @@ def _menu_button_base() -> str:
 
 
 def test_active_row_is_a_tinted_indicator_distinct_from_hover():
-    base = _menu_button_base()
-    assert "data-active:bg-secondary-container" in base
-    assert "data-active:font-semibold" in base
-    assert "data-active:bg-sidebar-accent" not in base
-    assert "hover:bg-sidebar-accent" in base  # hover stays neutral
+    # Exact tokens, not substrings: "hover:bg-sidebar-accent" is also inside
+    # "data-open:hover:bg-sidebar-accent", so a substring check passes even
+    # with the neutral hover deleted.
+    toks = set(_menu_button_base().split())
+    for tok in (
+        "data-active:bg-secondary-container",
+        "data-active:font-semibold",
+        "data-active:text-on-secondary-container",
+        # `data-active` is a zero-specificity :where(), so the bare fill and
+        # label lose to `hover:` on the active row without these pairs.
+        "data-active:hover:bg-secondary-container-hover",
+        "data-active:hover:text-on-secondary-container",
+        "data-active:[&_svg]:text-primary",
+        "hover:bg-sidebar-accent",  # hover stays neutral
+    ):
+        assert tok in toks, tok
+    assert "data-active:bg-sidebar-accent" not in toks
 
 
 def test_create_action_is_the_fab_variant():
@@ -39,5 +51,6 @@ def test_create_action_is_the_fab_variant():
 
 
 def test_sidebar_toggles_name_their_shortcut():
-    assert 'shortcutLabel(mod, "B")' in _SIDEBAR
-    assert 'shortcutLabel(mod, "B")' in _REVEAL
+    for src in (_SIDEBAR, _REVEAL):
+        assert 'shortcutLabel(mod, "B")' in src  # visible hint (title)
+        assert 'aria-keyshortcuts="Meta+B Control+B"' in src  # programmatic

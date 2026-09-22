@@ -1,18 +1,24 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 
 import { modKeyFor, type ModKey } from "@/lib/shortcuts";
 
+// The platform never changes while the page is open, so there is nothing to
+// subscribe to.
+function subscribeNoop() {
+  return () => {};
+}
+
 /**
  * The platform's modifier, for shortcut hints. "Ctrl" on the server AND on the
- * first client render so hydration matches; corrected after mount.
+ * hydration render so the markup matches; React re-renders with the client
+ * snapshot straight after.
  */
 export function useModKey(): ModKey {
-  const [mod, setMod] = useState<ModKey>("Ctrl");
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- the platform is only knowable after mount
-    setMod(modKeyFor(navigator.platform || navigator.userAgent));
-  }, []);
-  return mod;
+  return useSyncExternalStore(
+    subscribeNoop,
+    () => modKeyFor(navigator.platform || navigator.userAgent),
+    () => "Ctrl",
+  );
 }

@@ -85,6 +85,7 @@ export function AppSidebar() {
         <SidebarTrigger
           className="shrink-0"
           title={`Toggle sidebar (${shortcutLabel(mod, "B")})`}
+          aria-keyshortcuts="Meta+B Control+B"
         />
       </SidebarHeader>
       <SidebarContent>
@@ -102,7 +103,6 @@ export function AppSidebar() {
               // one create action on a screen.
               buttonVariants({ variant: "fab", size: "lg" }),
               "h-10 gap-2.5 rounded-[16px] px-4",
-              navCurrent(pathname, "/new") && "shadow-md",
             )}
           >
             <FilePlus2 className="size-4" aria-hidden="true" />
