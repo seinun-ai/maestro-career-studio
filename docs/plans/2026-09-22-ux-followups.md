@@ -197,8 +197,6 @@ A1 §3 (`focusableWhenDisabled`).
    - Rebuild while there are unsaved edits replaces the editor.
    - Rebuild with unsaved edits on a draft whose rebuilt content equals the adopted
      key (edit a fresh draft, don't save, Rebuild) still replaces the editor.
-   - A Harshibar application: edit a knob right after load, before the templates
-     query resolves; an explicit section order must not be dropped.
 8. Commit: `fix(studio): own saves adopt in place; no edits lost; Save keeps focus`.
 
 ### Task 3: Raw-JSON drafts count as unsaved
@@ -237,8 +235,16 @@ A1 §3 (`focusableWhenDisabled`).
    pin (A1 §6). They FAIL.
 2. Change both gates to `busy || render.isPending || unsaved`, and pass
    `DiffReviewPanel dirty={unsaved}`. Don't add `render.isPending` to `busy`.
+   **Amended by Task 1's review:** `useTemplateDefaults` returns `{}` until the templates
+   query resolves. A knob edited in that window is diffed against empty defaults, which
+   can drop an explicit override: the scalar knobs always had this race, and since Task 1
+   `section_order` has it too. Keep the Formatting panel's controls disabled until the
+   template defaults have loaded (expose a loaded flag from `useTemplateDefaults`, or
+   gate on the templates query), in all three FormattingPanel callers. Pin it.
 3. Run the pins, tsc and lint.
 4. **Browser check:**
+   - A Harshibar application: the Formatting controls are disabled until the template
+     defaults load, and its explicit section order survives an immediate knob edit.
    - Re-score stays disabled through "Rendering PDF…".
    - In both studios, moving Experience down and back up returns to "All changes saved".
 5. Commit: `fix(studio): no re-score or regenerate mid-render; section order undo stores nothing`.
