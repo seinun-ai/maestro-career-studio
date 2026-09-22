@@ -287,6 +287,9 @@
   spacing. A list-shaped knob also needs an order-sensitive
   equality in `lib/formatting.ts` `diffFrom` — `!==` on a rebuilt array is always
   true, so reference compare stores a redundant "override" on every render.
+  `section_order` compares what the control shows (`shownSectionOrder`: `null`
+  shows the fallback list), so moving a section down and back up stores nothing
+  (`lib/formatting.test.ts`).
 - **Form-control ids come from `useId()`, never from the label text.**
   Several resume entry cards are open at once, so a text-derived id repeats
   across them and clicking one entry's label focuses another's input; a caller

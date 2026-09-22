@@ -41,6 +41,65 @@ export function emptyPreviewMessage(unsaved: boolean): string {
     : "No PDF yet. Generate one from More resume actions (⋯).";
 }
 
+/**
+ * A server JSON value as one comparable string, object keys sorted at every depth. The query
+ * cache is structurally shared: a refetch keeps the OLD object, and its key order, for every
+ * subtree whose content did not change, while a mutation response is raw. With plain
+ * JSON.stringify, a Save that only reordered keys in an untouched section would not match its
+ * own refetch (and drafts migrated from Postgres are in JSONB key order).
+ */
+export function serverKey(value: unknown): string {
+  if (value == null) return "";
+  return JSON.stringify(value, (_key, v: unknown) =>
+    v !== null && typeof v === "object" && !Array.isArray(v)
+      ? Object.fromEntries(
+          Object.entries(v as Record<string, unknown>).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
+        )
+      : v,
+  );
+}
+
+export type AdoptAction = "none" | "in-place" | "remount" | "banner";
+
+/**
+ * What the tailored studio does when the server's customized_json moves (SYSTEM.md §12).
+ * `own`: keys our own Saves returned, oldest first, not yet seen from the server.
+ * - one of ours → move the baseline IN PLACE (the working copy is never replaced);
+ * - anyone else's, editor clean, or a Rebuild the user confirmed → replace the content (remount);
+ * - anyone else's over unsaved edits → keep the editor; the banner offers Load latest.
+ * A queue, not a single "next key is ours" flag: two Saves inside one refetch window would
+ * otherwise flash a false banner, and a Save that returns the adopted key arms nothing.
+ */
+export function adoptServerKey(s: {
+  live: string;
+  adopted: string;
+  own: readonly string[];
+  dirty: boolean;
+  forced: string | null;
+}): { action: AdoptAction; own: string[] } {
+  if (s.live === "" || s.live === s.adopted) return { action: "none", own: [...s.own] };
+  const i = s.own.indexOf(s.live);
+  if (i !== -1) return { action: "in-place", own: s.own.slice(i + 1) }; // drops older, unseen own keys too
+  if (!s.dirty || s.live === s.forced) return { action: "remount", own: [] };
+  return { action: "banner", own: [...s.own] };
+}
+
+/** `saved` when `current` still equals what was sent, else `current`: a save's response must not
+ *  overwrite an edit made while the save ran. Compared by value (a re-picked equal value is a new object). */
+export function keepIfEdited<T>(current: T, sent: T, saved: T): T {
+  return JSON.stringify(current) === JSON.stringify(sent) ? saved : current;
+}
+
+/** Whether typed JSON would change `value`. Whitespace and object key order are not changes; text
+ *  that does not parse is (the user would lose it). */
+export function jsonDraftDiffers(text: string, value: unknown): boolean {
+  try {
+    return serverKey(JSON.parse(text)) !== serverKey(value);
+  } catch {
+    return true;
+  }
+}
+
 /** Width of the preview pane, as a percent of the studio. */
 export const PREVIEW_PCT = { default: 45, min: 25, max: 70, step: 5 } as const;
 
@@ -66,6 +125,21 @@ export function nextPreviewPct(pct: number, key: string): number | null {
     default:
       return null;
   }
+}
+
+/**
+ * A dragged preview width, within the limits. Rounds to 0.1 so the stored value never jumps
+ * visibly on release (whole-percent rounding jumped up to 0.5%, about 5px).
+ */
+export function clampPreviewPct(pct: number): number {
+  const { min, max } = PREVIEW_PCT;
+  return Math.round(Math.min(max, Math.max(min, pct)) * 10) / 10;
+}
+
+/** A stored preview width; the default when absent, garbled or out of range. */
+export function parsePreviewPct(raw: string | null): number {
+  const n = raw === null ? NaN : Number(raw);
+  return Number.isFinite(n) && n >= PREVIEW_PCT.min && n <= PREVIEW_PCT.max ? n : PREVIEW_PCT.default;
 }
 
 export type PreviewZoom = "width" | "page" | "actual";

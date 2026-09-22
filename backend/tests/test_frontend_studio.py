@@ -232,6 +232,15 @@ def test_section_order_buttons_are_24px_targets():
     assert "<button" not in block
 
 
+def test_section_order_shows_what_diff_compares():
+    # One definition of what `null` shows: diffFrom compares the shown order
+    # (lib/formatting.test.ts), so moving a section down and back up stores
+    # nothing. A panel-local fallback would drift from that comparison.
+    panel = _read("components/resume-editor/formatting-panel.tsx")
+    assert "shownSectionOrder(" in panel
+    assert "SECTION_ORDER_FALLBACK" not in panel
+
+
 def test_preview_scroller_is_keyboard_reachable_and_named():
     start = _PREVIEW.index('role="region"')
     scroller = _PREVIEW[start:]

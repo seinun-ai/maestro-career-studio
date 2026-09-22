@@ -30,11 +30,11 @@ import {
   FONT_SIZE_OPTIONS,
   FORMATTING_DEFAULTS,
   HEADER_ALIGN_OPTIONS,
-  SECTION_ORDER_FALLBACK,
   SECTION_ORDER_LABELS,
   SKILLS_LAYOUT_OPTIONS,
   SLIDER_RANGES,
   diffFrom,
+  shownSectionOrder,
   type ResumeFormatting,
   type SectionKey,
 } from "@/lib/formatting";
@@ -215,7 +215,7 @@ export function FormattingPanel({
     const key: keyof ResumeFormatting = "section_order";
     const disabled = isDisabled(key);
     const labelId = rowLabelId(key);
-    const order: SectionKey[] = effective.section_order ?? SECTION_ORDER_FALLBACK;
+    const order: SectionKey[] = shownSectionOrder(effective.section_order);
     return (
       <div className={cn("grid gap-1", disabled && "opacity-50")}>
         <span id={labelId} className="text-sm">

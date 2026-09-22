@@ -89,6 +89,11 @@ export const SECTION_ORDER_FALLBACK: SectionKey[] = [
   "education",
 ];
 
+/** The order the section-order control shows: `null` (the template's own order) shows the fallback list. */
+export function shownSectionOrder(order: SectionKey[] | null | undefined): SectionKey[] {
+  return order ?? SECTION_ORDER_FALLBACK;
+}
+
 /** Option labels for the choice-style knobs. */
 export const DATE_FORMAT_OPTIONS: { value: ResumeFormatting["date_format"]; label: string }[] = [
   { value: "verbatim", label: "As written" },
@@ -145,6 +150,11 @@ export const SLIDER_RANGES = {
  * it is defaults merged with the base resume's formatting, so an application
  * only stores genuine overrides of what it inherits — and can still override an
  * inherited non-default value back to a default (which differs from baseline).
+ *
+ * `section_order` compares what the control SHOWS ({@link shownSectionOrder}):
+ * an explicit list equal to the order the baseline displays is not an
+ * override, so moving a section down and back up stores nothing (null keeps
+ * inheriting the template's order).
  */
 export function diffFrom(
   baseline: ResumeFormatting,
@@ -153,9 +163,15 @@ export function diffFrom(
   const out: Partial<ResumeFormatting> = {};
   for (const key of Object.keys(FORMATTING_DEFAULTS) as (keyof ResumeFormatting)[]) {
     const v = value[key];
-    if (v !== undefined && !sameFormattingValue(v, baseline[key])) {
-      (out as Record<string, unknown>)[key] = v;
-    }
+    if (v === undefined) continue;
+    const same =
+      key === "section_order"
+        ? sameFormattingValue(
+            shownSectionOrder(v as SectionKey[] | null),
+            shownSectionOrder(baseline.section_order),
+          )
+        : sameFormattingValue(v, baseline[key]);
+    if (!same) (out as Record<string, unknown>)[key] = v;
   }
   return Object.keys(out).length ? out : null;
 }
