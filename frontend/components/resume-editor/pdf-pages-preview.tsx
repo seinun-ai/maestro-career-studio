@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Check } from "lucide-react";
 
 import { apiFetch, apiUrlForBrowserPdf } from "@/lib/api";
 import {
@@ -93,7 +93,9 @@ export function PdfPagesPreview({
           zoom group wraps in a narrow pane instead of clipping. */}
       <div className="flex shrink-0 flex-col gap-2 px-4 pt-2">
         {/* A solid surface: muted text on the bare canvas is 4.56:1 in light
-            mode, at the AA floor. */}
+            mode, at the AA floor. The selected preset leads with a check: its
+            secondary-container fill is about 1.16:1 against this surface,
+            too faint to say "on" by itself. */}
         <div
           role="group"
           aria-label="Zoom"
@@ -106,12 +108,13 @@ export function PdfPagesPreview({
               aria-pressed={zoom === option.value}
               onClick={() => chooseZoom(option.value)}
               className={cn(
-                "h-6 rounded px-2 text-xs transition-colors pointer-coarse:min-h-11",
+                "inline-flex h-6 items-center gap-1 rounded px-2 text-xs transition-colors pointer-coarse:min-h-11",
                 zoom === option.value
                   ? "bg-secondary-container text-on-secondary-container font-medium"
                   : "text-muted-foreground hover:text-foreground",
               )}
             >
+              {zoom === option.value && <Check className="size-3" aria-hidden="true" />}
               {option.label}
             </button>
           ))}

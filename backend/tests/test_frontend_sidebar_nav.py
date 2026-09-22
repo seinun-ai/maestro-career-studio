@@ -1,6 +1,5 @@
 """Pins: the sidebar SHOWS and ANNOUNCES the current page, and its create
-action is the M3 FAB. See docs/ux/research-studio-and-ui-direction.md Part B
-C1, C2 and C5."""
+action is the M3 FAB. See docs/plans/2026-09-22-honest-studio.md, Task 2."""
 
 from __future__ import annotations
 

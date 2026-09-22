@@ -27,8 +27,12 @@
   (/20 only under `dark:`): at `oklch(0.55)` the hand-rolled
   `bg-primary/10 text-primary` fills failed AA (3.8 to 4.3:1) across 25+
   controls. **A selected tonal toggle also leads with a `Check` and sets
-  `aria-pressed`** (health-report filters, Review changes): the fill is about
-  1.16:1 against the light page, too faint to say "on" by itself.
+  `aria-pressed`** (health-report filters, Review changes, the zoom presets):
+  the fill is about 1.16:1 against the light page, too faint to say "on" by
+  itself. Several hand-rolled `bg-primary/10 text-primary` selected states
+  (SourceToggle, the proposals filter, chat pills and the active chat session)
+  have not yet moved to secondary container: a known inconsistency tracked for
+  the next plan.
 - **Top-left corner belongs to the sidebar reveal pill**
   (`components/sidebar-reveal-trigger.tsx`, owner decision). Clearance is
   **not** a per-page concern: `SidebarGutter` wraps the main area once in
@@ -93,7 +97,15 @@
     edit typed mid-render is not in that PDF. It IS the success report: a
     studio Save fires no success toast (a tailored Save used to fire three),
     errors still toast, and only the manual Re-score confirms (`announce:
-    true`; the Save chain passes `false`).
+    true`; the Save chain passes `false`). The line also carries the words
+    while a save runs: `StudioSaveButton` keeps its "Save" label and leads
+    with a spinner, because a "Saving…" label widened it from 52 to 89px.
+  - *Empty preview*: both studios pass `emptyPreviewMessage(unsaved)`, which
+    names the action enabled right now: "No PDF yet. Save to render one." with
+    unsaved edits, otherwise "No PDF yet. Generate one from More resume actions
+    (⋯)." (the ⋯ trigger's accessible name). Save is dirty-gated, so a clean
+    studio with no PDF (after Build draft or Rebuild from base) cannot save,
+    and ⋯ Generate PDF is disabled while edits are unsaved.
   - *Stale preview*: `EditorShell previewStale` adds an amber strip ("Preview
     doesn't include your unsaved edits. Save to update it.") and dims the page
     IMAGES only, so the render-error banner, page-count pill and zoom keep full
@@ -120,8 +132,8 @@
     paints over half its focus ring.
   - *Base studio*: Save is dirty-gated, so ⋯ **Regenerate PDF** (Generate PDF
     before the first render) is the retry for a failed render, disabled while
-    edits are unsaved; the empty preview points there, and the render-error
-    banner says "save or regenerate", never "save again". A rename re-syncs the
+    edits are unsaved, and the render-error banner says "save or
+    regenerate", never "save again". A rename re-syncs the
     saved baseline: `EditableTitle` PATCHes `/identity` and writes the cache,
     so when the server lands on exactly what the form holds the baseline moves,
     or the saved name reads as an unsaved edit.
@@ -134,7 +146,9 @@
 - **`PdfPagesPreview` owns the canvas and the zoom.** Pages sit on
   `bg-canvas`, so a caller adds no fill of its own. Zoom is a `role="group"`
   "Zoom" of `aria-pressed` presets (Fit width, Fit page, 100%) on a solid
-  `bg-background` (muted labels are 4.56:1 on the bare canvas), and ONE saved
+  `bg-background` (muted labels are 4.56:1 on the bare canvas); the selected
+  preset is secondary container led by a `Check`, and each preset is 24px tall
+  (`h-6`, 44px on a coarse pointer). ONE saved
   choice (`pdfPreview.zoom`) serves all four surfaces: both studios, the job
   page's Resume tab and the template editor. The zoom row and the render-error
   banner sit ABOVE the scroller in normal flow: sticky inside it, the group

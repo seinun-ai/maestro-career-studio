@@ -17,7 +17,9 @@ import { shortcutLabel } from "@/lib/shortcuts";
  * which is every state of an open studio (raw JSON and a collapsed preview
  * included), so the shortcut lives exactly as long as the button it presses.
  *
- * `sm`, like the rest of the toolbar row (template picker, ⋯ opener).
+ * `sm`, like the rest of the toolbar row (template picker, ⋯ opener). While a
+ * save runs it keeps its label and spins: the header's status line carries
+ * the words, and a longer label here widened the button from 52 to 89px.
  */
 export function StudioSaveButton({
   onSave,
@@ -39,8 +41,8 @@ export function StudioSaveButton({
       title={`Save (${shortcutLabel(mod, "S")})`}
       aria-keyshortcuts="Meta+S Control+S"
     >
-      {pending && <Loader2 className="animate-spin" />}
-      {pending ? "Saving…" : "Save"}
+      {pending && <Loader2 className="animate-spin" aria-hidden="true" />}
+      Save
     </Button>
   );
 }

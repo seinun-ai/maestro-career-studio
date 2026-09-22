@@ -18,7 +18,8 @@ export type SaveStatus = { label: string; tone: "busy" | "dirty" | "clean" };
  * come next, ahead of the render and re-score that follow a save: an edit
  * typed while the PDF renders is not in that PDF, so the line must not read
  * as if the work is on its way. Then the render, the re-score, and clean. It
- * sits beside the title, where Google Docs and Reactive Resume both put it.
+ * renders in the header subtitle, directly below the title (after the job
+ * label in the tailored studio).
  */
 export function saveStatus(s: SaveStatusInput): SaveStatus {
   if (s.saving) return { label: "Saving…", tone: "busy" };
@@ -26,6 +27,18 @@ export function saveStatus(s: SaveStatusInput): SaveStatus {
   if (s.rendering) return { label: "Rendering PDF…", tone: "busy" };
   if (s.rescoring) return { label: "Re-scoring…", tone: "busy" };
   return { label: "All changes saved", tone: "clean" };
+}
+
+/**
+ * What an empty studio preview says: the action that is enabled right now.
+ * Save is dirty-gated, so a clean studio with no PDF (just after Build draft
+ * or Rebuild from base) cannot save, and ⋯ Generate PDF is disabled while
+ * edits are unsaved. "More resume actions" is the ⋯ trigger's accessible name.
+ */
+export function emptyPreviewMessage(unsaved: boolean): string {
+  return unsaved
+    ? "No PDF yet. Save to render one."
+    : "No PDF yet. Generate one from More resume actions (⋯).";
 }
 
 /** Width of the preview pane, as a percent of the studio. */

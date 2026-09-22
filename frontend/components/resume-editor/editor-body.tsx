@@ -60,7 +60,7 @@ import { apiFetch, apiUrlForBrowserPdf } from "@/lib/api";
 import { FORMATTING_DEFAULTS, type ResumeFormatting } from "@/lib/formatting";
 import { notifyRenderNote } from "@/lib/render-note";
 import { resumeDataSchema } from "@/lib/resume-schema";
-import { saveStatus } from "@/lib/studio";
+import { emptyPreviewMessage, saveStatus } from "@/lib/studio";
 import type { BaseResumeDetail, ResumeData } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -549,7 +549,7 @@ export function EditorBody({
           <PdfPagesPreview
             basePath={`/api/base-resumes/${slug}`}
             version={live.pdf_rendered_at as string | null}
-            emptyMessage="No PDF yet. Generate one from More resume actions (⋯)."
+            emptyMessage={emptyPreviewMessage(hasUnsavedChanges)}
           />
         }
       />

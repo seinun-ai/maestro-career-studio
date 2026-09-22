@@ -3,6 +3,7 @@ import { test } from "node:test";
 
 import {
   actualSizeWidthPx,
+  emptyPreviewMessage,
   nextPreviewPct,
   parseZoom,
   PREVIEW_PCT,
@@ -37,6 +38,14 @@ test("edits made while a render or re-score runs read as unsaved", () => {
 test("render then re-score report in chain order", () => {
   assert.equal(saveStatus({ ...idle, rendering: true, rescoring: true }).label, "Rendering PDF…");
   assert.equal(saveStatus({ ...idle, rescoring: true }).label, "Re-scoring…");
+});
+
+test("an empty preview names Save only when there is something to save", () => {
+  assert.equal(emptyPreviewMessage(true), "No PDF yet. Save to render one.");
+  assert.equal(
+    emptyPreviewMessage(false),
+    "No PDF yet. Generate one from More resume actions (⋯).",
+  );
 });
 
 test("ArrowLeft widens the preview, ArrowRight narrows it, within limits", () => {

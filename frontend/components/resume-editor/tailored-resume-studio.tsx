@@ -65,7 +65,7 @@ import {
 import { FORMATTING_DEFAULTS, type ResumeFormatting } from "@/lib/formatting";
 import { notifyRenderNote } from "@/lib/render-note";
 import { resumeDataSchema } from "@/lib/resume-schema";
-import { saveStatus } from "@/lib/studio";
+import { emptyPreviewMessage, saveStatus } from "@/lib/studio";
 import type {
   Application,
   BaseResumeDetail,
@@ -969,7 +969,7 @@ function StudioEditor({
           <PdfPagesPreview
             basePath={`/api/applications/${applicationId}`}
             version={pdfNonce}
-            emptyMessage="No PDF yet. Save your edits and it renders automatically."
+            emptyMessage={emptyPreviewMessage(unsaved)}
           />
         }
       />

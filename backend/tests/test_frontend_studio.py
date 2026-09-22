@@ -1,7 +1,7 @@
-"""Pins for the honest studio (docs/ux/research-studio-and-ui-direction.md,
-Phase 1): the preview says when it is stale, the divider works from the
-keyboard, save status lives in the header, Cmd/Ctrl+S saves, and the page
-sits on a canvas with zoom presets."""
+"""Pins for the honest studio (docs/plans/2026-09-22-honest-studio.md): the
+preview says when it is stale, the divider works from the keyboard, save
+status lives in the header, Cmd/Ctrl+S saves, and the page sits on a canvas
+with zoom presets."""
 
 from __future__ import annotations
 
@@ -81,12 +81,26 @@ def test_base_studio_reports_save_in_the_header_not_a_toast():
 _TAILORED = _read("components/resume-editor/tailored-resume-studio.tsx")
 
 
+def _mutation(src: str, name: str) -> str:
+    """`const <name> = useMutation(` up to its onError: the success path."""
+    block = src[src.index(f"const {name} = useMutation(") :]
+    return block[: block.index("onError")]
+
+
 def test_tailored_save_chain_fires_no_success_toasts():
     assert '"Saved. Rendering PDF…"' not in _TAILORED
     assert 'toast.success("PDF rendered")' not in _TAILORED
-    # The chained re-score is silent; a manual Re-score still confirms, since
-    # the score itself is not shown in the studio yet (Phase 2 chip).
-    assert "if (opts?.announce)" in _TAILORED
+    # Save -> render -> re-score. The save and render success paths toast
+    # nothing; the chained re-score is silent, and a manual Re-score still
+    # confirms, since the score itself is not shown in the studio yet (Phase 2
+    # chip). That confirmation is the chain's ONE success toast.
+    assert "toast.success(" not in _mutation(_TAILORED, "save")
+    render = _mutation(_TAILORED, "render")
+    assert "toast.success(" not in render
+    assert "rescore.mutate({ announce: false })" in render
+    rescore = _mutation(_TAILORED, "rescore")
+    assert rescore.count("toast.success(") == 1
+    assert 'if (opts?.announce) toast.success("Tailored resume re-scored");' in rescore
     assert "rescore.mutate({ announce: true })" in _TAILORED
 
 
@@ -113,12 +127,25 @@ def test_rename_resyncs_the_base_studio():
     assert "localSnap === liveSnap" in _BASE
 
 
+_STUDIO_LIB = _read("lib/studio.ts")
+
+
 def test_base_empty_preview_points_at_generate_not_save():
     # Save is dirty-gated, so a clean resume with no PDF cannot be saved.
     assert "Save the resume to render one." not in _BASE
-    assert "No PDF yet. Generate one from More resume actions (⋯)." in _BASE
+    assert "emptyMessage={emptyPreviewMessage(hasUnsavedChanges)}" in _BASE
+    assert "No PDF yet. Generate one from More resume actions (⋯)." in _STUDIO_LIB
     overflow = _read("components/resume-editor/studio-overflow.tsx")
     assert 'aria-label="More resume actions"' in overflow
+
+
+def test_tailored_empty_preview_never_points_at_a_disabled_save():
+    # After Build draft or Rebuild from base the studio is clean with no PDF
+    # and Save is disabled. Both studios name the action enabled right now:
+    # Save while edits are unsaved, the ⋯ menu's Generate PDF otherwise.
+    assert "Save your edits and it renders automatically." not in _TAILORED
+    assert "emptyMessage={emptyPreviewMessage(unsaved)}" in _TAILORED
+    assert '"No PDF yet. Save to render one."' in _STUDIO_LIB
 
 
 def test_base_regenerate_refreshes_the_gallery():
@@ -235,11 +262,40 @@ def test_actual_size_pages_hide_until_their_width_is_known():
     assert 'zoom === "actual" && naturalWidth === null && "invisible"' in _PREVIEW
 
 
+def _zoom_button() -> str:
+    block = _PREVIEW[_PREVIEW.index("{PREVIEW_ZOOMS.map(") :]
+    return block[: block.index("</button>")]
+
+
 def test_zoom_buttons_grow_on_a_coarse_pointer():
-    assert "pointer-coarse:min-h-11" in _PREVIEW
+    assert "pointer-coarse:min-h-11" in _zoom_button()
+    assert "h-6" in re.search(r'"([^"]*pointer-coarse:min-h-11[^"]*)"', _zoom_button()).group(1).split()
+
+
+def test_selected_zoom_preset_leads_with_a_check():
+    # The secondary-container fill is about 1.16:1 against the group and its
+    # label only 2.1:1 from an unselected one: the fill cannot say "on" alone.
+    button = _zoom_button()
+    assert "aria-pressed={zoom === option.value}" in button
+    check = '{zoom === option.value && <Check className="size-3" aria-hidden="true" />}'
+    assert check in button
+    assert button.index(check) < button.index("{option.label}")
+
+
+def test_save_button_keeps_its_label_while_saving():
+    # "Saving…" in the button widened it from 52 to 89px mid-click. The header
+    # status line carries the words; the button keeps "Save" and spins.
+    assert "Saving…" not in _SAVE_BUTTON
+    assert '{pending && <Loader2 className="animate-spin" aria-hidden="true" />}' in _SAVE_BUTTON
+    assert re.search(r"/>\}\s*Save\s*</Button>", _SAVE_BUTTON)
 
 
 def test_job_page_preview_box_has_no_hidden_fill():
-    # The preview paints its own canvas over the whole box.
+    # The preview paints its own canvas over the whole box, so a fill on the
+    # box is hidden weight. Checked per class token (variants included), so
+    # reordering the class list cannot slip a background past the pin.
     panel = _read("components/application-panel.tsx")
-    assert "bg-muted/30 h-[80vh]" not in panel
+    head = panel[: panel.index("<PdfPagesPreview")]
+    tokens = re.findall(r'<div className="([^"]*)"', head)[-1].split()
+    assert "h-[80vh]" in tokens
+    assert not [t for t in tokens if t.split(":")[-1].lstrip("!").startswith("bg-")]
