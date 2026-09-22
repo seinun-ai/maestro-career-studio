@@ -130,6 +130,43 @@ def test_tailored_unsaved_equals_dirty_before_the_first_save():
 
 def test_studio_overflow_menu_sizes_to_its_labels():
     # The primitive anchors a menu to its trigger's width: 28px for the ⋯
-    # button, so every label wrapped at the 128px floor.
+    # button, so every label wrapped at the 128px floor. Capped at the room
+    # Base UI measures, so a long "Copy slug: …" cannot leave a narrow viewport,
+    # and wrapped anywhere, since a slug's underscores never break.
     overflow = _read("components/resume-editor/studio-overflow.tsx")
-    assert 'className="w-auto min-w-56"' in overflow
+    assert (
+        'className="w-auto min-w-56 max-w-(--available-width) wrap-anywhere"'
+        in overflow
+    )
+
+
+_PREVIEW = _read("components/resume-editor/pdf-pages-preview.tsx")
+
+
+def test_preview_offers_zoom_presets_as_a_labelled_group():
+    assert 'role="group"' in _PREVIEW and 'aria-label="Zoom"' in _PREVIEW
+    assert "PREVIEW_ZOOMS" in _PREVIEW and "aria-pressed" in _PREVIEW
+    assert "bg-canvas" in _PREVIEW
+
+
+def test_preview_dpi_matches_the_backend_rasterizer():
+    py = (_BACKEND / "app/services/pdf_preview.py").read_text()
+    ts = _read("lib/studio.ts")
+    backend_dpi = int(re.search(r"^DPI = (\d+)", py, re.M).group(1))
+    frontend_dpi = int(re.search(r"export const PREVIEW_DPI = (\d+);", ts).group(1))
+    assert backend_dpi == frontend_dpi
+
+
+def test_preview_render_error_does_not_ask_for_a_dirty_gated_save():
+    # Both studios' Save is disabled with nothing to save.
+    assert "and save again" not in _PREVIEW
+    assert "Fix the content or template, then save or regenerate the PDF." in _PREVIEW
+
+
+def test_fit_page_is_bounded_by_the_preview_not_the_viewport():
+    # The job page's Resume tab is an 80vh box and the studio pane loses height
+    # to its header, stale strip and formatting panel: a viewport offset
+    # overflowed both. The scroller is a size container; `cqh` measures it.
+    assert "@container-[size]" in _PREVIEW
+    assert "max-h-[100cqh]" in _PREVIEW
+    assert "dvh" not in _PREVIEW
