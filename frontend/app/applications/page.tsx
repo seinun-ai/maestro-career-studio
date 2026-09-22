@@ -20,6 +20,7 @@ import { EmptyState, TableFrame } from "@/components/empty-state";
 import { IconButton } from "@/components/icon-button";
 import { LoadErrorState } from "@/components/load-error-state";
 import { GettingStartedCard } from "@/components/setup/getting-started-card";
+import { useSidebarHidden } from "@/components/sidebar-reveal-trigger";
 import {
   SourceToggle,
   type SourceFilter,
@@ -166,6 +167,7 @@ function ApplicationsContent() {
   const searchParams = useSearchParams();
   const qc = useQueryClient();
   const confirm = useConfirm();
+  const sidebarHidden = useSidebarHidden();
   const [filter, setFilter] = useState<Filter>(() => {
     const v = searchParams.get("status") ?? storedValue(FILTER_STORE_KEY);
     return v && (FILTERS as readonly string[]).includes(v)
@@ -392,15 +394,21 @@ function ApplicationsContent() {
         title="Applications"
         subtitle="Every job you've captured, from saved to signed."
         actions={
-          <Button
-            nativeButton={false}
-            render={
-              <Link href="/new">
-                <FilePlus2 className="size-4" />
-                New application
-              </Link>
-            }
-          />
+          // The sidebar's FAB is THE New application while it is showing (M3:
+          // a FAB's action is not repeated on its screen). The sidebar slides
+          // off-canvas when collapsed and below 768px; then this is the only
+          // way to start one, so it renders exactly when the FAB cannot be seen.
+          sidebarHidden ? (
+            <Button
+              nativeButton={false}
+              render={
+                <Link href="/new">
+                  <FilePlus2 className="size-4" />
+                  New application
+                </Link>
+              }
+            />
+          ) : null
         }
       />
 
@@ -484,7 +492,8 @@ function ApplicationsContent() {
         />
       ) : filtered.length === 0 ? (
         <div className="space-y-5">
-          {allRows.length === 0 ? <GettingStartedCard /> : null}
+          {/* The task leads and the setup checklist supports it: a new user
+              reads what this page is for before a list of setup homework. */}
           <EmptyState
             icon={Inbox}
             title={
@@ -499,8 +508,11 @@ function ApplicationsContent() {
             }
             action={
               allRows.length === 0 ? (
+                // Lowest emphasis (M3 text button): the FAB or the header
+                // button is the primary create action, but an empty state
+                // still offers its pathway as a control, not just a sentence.
                 <Button
-                  variant="outline"
+                  variant="ghost"
                   nativeButton={false}
                   render={
                     <Link href="/new">
@@ -512,6 +524,7 @@ function ApplicationsContent() {
               ) : null
             }
           />
+          {allRows.length === 0 ? <GettingStartedCard /> : null}
         </div>
       ) : (
         <TableFrame>

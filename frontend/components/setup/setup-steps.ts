@@ -20,6 +20,8 @@ export type SetupStepView = {
   title: string;
   detail?: string;
   done: boolean;
+  /** Blocks the core loop: extract needs a key, scoring needs a base resume. */
+  required?: boolean;
   /** Route this step's answer lives on. */
   home: string;
   /** Element id within `home`. */
@@ -100,6 +102,7 @@ export function buildSetupSteps(
       title: "Add a provider API key",
       detail: "Nothing extracts, tailors or chats without one.",
       done: status.model_key.done,
+      required: true,
       home: "/settings",
       anchor: "api-keys",
     },
@@ -109,6 +112,7 @@ export function buildSetupSteps(
       title: "Import your resumes",
       detail: `${detailNumber(status.import_resumes.detail, "base_resumes")} base resumes · ${detailNumber(status.import_resumes.detail, "kb_entities")} KB entries`,
       done: status.import_resumes.done,
+      required: true,
       home: "/career",
       anchor: "kb-entities",
     },
