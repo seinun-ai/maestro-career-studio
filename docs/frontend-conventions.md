@@ -10,7 +10,7 @@
 
 
 - Next.js 16 App Router, React 19, Tailwind v4 tokens in `app/globals.css`
-  (oklch; Google-blue primary `oklch(0.55 0.17 259)` light /
+  (oklch; Google-blue primary `oklch(0.48 0.17 259)` light (M3 tone 40) /
   `oklch(0.76 0.11 259)` dark; blue-tinted focus rings; motion utilities
   `animate-fade-rise`, `animate-shimmer`, `[data-pending]`).
 - **Top-left corner belongs to the sidebar reveal pill**

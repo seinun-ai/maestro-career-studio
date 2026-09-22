@@ -16,25 +16,66 @@ from pathlib import Path
 import pytest
 
 _FRONTEND = Path(__file__).resolve().parents[2] / "frontend"
-_CSS = (_FRONTEND / "app/globals.css").read_text()
-_BUTTON = (_FRONTEND / "components/ui/button.tsx").read_text()
-_BADGE = (_FRONTEND / "components/ui/badge.tsx").read_text()
-
-_OKLCH = re.compile(r"--([\w-]+):\s*oklch\(([\d.]+)\s+([\d.]+)\s+([\d.]+)\)")
 
 
-def _tokens(selector: str) -> dict[str, tuple[float, float, float]]:
+def _read(rel: str) -> str:
+    return (_FRONTEND / rel).read_text(encoding="utf-8")
+
+
+_CSS = _read("app/globals.css")
+_BUTTON = _read("components/ui/button.tsx")
+_BADGE = _read("components/ui/badge.tsx")
+_HEALTH = _read("components/resume-health/health-report-page.tsx")
+_STUDIO = _read("components/resume-editor/tailored-resume-studio.tsx")
+
+_OKLCH_DECL = re.compile(r"--([\w-]+):\s*oklch\(([^)]*)\)")
+_LCH = re.compile(r"([\d.]+)\s+([\d.]+)\s+([\d.]+)")
+
+
+def _block(selector: str) -> str:
     start = _CSS.index(f"{selector} {{")  # first block: the palette
-    block = _CSS[start : _CSS.index("}", start)]
-    return {
-        m.group(1): (float(m.group(2)), float(m.group(3)), float(m.group(4)))
-        for m in _OKLCH.finditer(block)
-    }
+    return _CSS[start : _CSS.index("}", start)]
 
 
-LIGHT = _tokens(":root")
-DARK = {**LIGHT, **_tokens(".dark")}
+def _tokens(selector: str) -> tuple[set[str], dict[str, tuple[float, float, float]]]:
+    """Every custom property the block declares, and its plain oklch values.
+
+    Loud on an oklch() it cannot read: skipping one used to let DARK fall back
+    to the LIGHT value and pass on the wrong colour. Alpha values (`.dark`'s
+    --border and --input) are skipped on purpose; a test that asks for one
+    gets a KeyError, not a stand-in.
+    """
+    block = _block(selector)
+    parsed = {}
+    for m in _OKLCH_DECL.finditer(block):
+        name, value = m.group(1), m.group(2).strip()
+        if "/" in value:
+            continue
+        lch = _LCH.fullmatch(value)
+        assert lch, f"{selector} --{name}: cannot read oklch({value}) as `L C H`"
+        parsed[name] = tuple(float(v) for v in lch.groups())
+    return set(re.findall(r"--([\w-]+):", block)), parsed
+
+
+_, LIGHT = _tokens(":root")
+_DARK_DECLARED, _DARK_OWN = _tokens(".dark")
+# .dark inherits a :root value only for a name it does not declare at all.
+DARK = {
+    **{k: v for k, v in LIGHT.items() if k not in _DARK_DECLARED},
+    **_DARK_OWN,
+}
 _MODES = {"light": LIGHT, "dark": DARK}
+
+# `--X-hover: color-mix(in oklab, var(--X), var(--on-X) N%)`, read from the
+# CSS so the test blends what the browser blends.
+_HOVER_MIX = {
+    m.group(1): (m.group(2), m.group(3), float(m.group(4)) / 100)
+    for m in re.finditer(
+        r"--([\w-]+)-hover:\s*color-mix\(in oklab,\s*var\(--([\w-]+)\),"
+        r"\s*var\(--([\w-]+)\)\s+([\d.]+)%\)",
+        _block(":root"),
+    )
+}
 
 
 def _oklab(lch):
@@ -83,10 +124,10 @@ def _over(fg, bg, alpha):
     return tuple(alpha * f + (1 - alpha) * b for f, b in zip(fg, bg))
 
 
-def _hover(tokens, container, on):
-    # Mirrors `color-mix(in oklab, container, on 8%)` in globals.css.
+def _hover(tokens, container, on, weight):
+    # `color-mix(in oklab, container, on N%)`: N% on-colour, blended in OKLab.
     c, o = _oklab(tokens[container]), _oklab(tokens[on])
-    return _srgb(tuple(0.92 * x + 0.08 * y for x, y in zip(c, o)))
+    return _srgb(tuple((1 - weight) * x + weight * y for x, y in zip(c, o)))
 
 
 _PAIRS = [
@@ -99,12 +140,15 @@ _PAIRS = [
 @pytest.mark.parametrize("container,on", _PAIRS)
 def test_container_text_meets_aa_at_rest_and_on_hover(mode, container, on):
     t = _MODES[mode]
+    mix = _HOVER_MIX.get(container)
+    assert mix, f"--{container}-hover is not `color-mix(in oklab, var(), var() N%)`"
+    assert mix[:2] == (container, on), f"--{container}-hover mixes {mix[:2]}"
     assert _contrast(_rgb(t, on), _rgb(t, container)) >= 4.5
-    assert _contrast(_rgb(t, on), _hover(t, container, on)) >= 4.5
+    assert _contrast(_rgb(t, on), _hover(t, container, on, mix[2])) >= 4.5
 
 
 # Blue text sits on blue tints at ~20 hand-rolled sites. Light mode is safe up
-# to /15 at tone 40; /20 is dark-mode only (see the scan below).
+# to /15 at tone 40; /20 is dark-mode only (the scan below holds both).
 _TINT_CEILING = {"light": 0.15, "dark": 0.20}
 
 
@@ -132,31 +176,50 @@ def test_light_primary_is_m3_tone_40():
     )
 
 
-def test_no_light_mode_primary_20_tint_under_primary_text():
+def test_primary_text_tints_stay_under_the_ceiling():
     offenders = []
     for root in ("app", "components"):
         for path in (_FRONTEND / root).rglob("*.tsx"):
-            for n, line in enumerate(path.read_text().splitlines(), 1):
+            lines = path.read_text(encoding="utf-8").splitlines()
+            for n, line in enumerate(lines, 1):
                 if not re.search(r"text-primary(?![-\w])", line):
                     continue
-                for tok in re.findall(r"[\w:\[\]&-]*bg-primary/20\b", line):
-                    if "dark:" not in tok:
+                for tok, pct in re.findall(r"([\w:\[\]&-]*bg-primary/(\d+))\b", line):
+                    mode = "dark" if "dark:" in tok else "light"
+                    if int(pct) / 100 > _TINT_CEILING[mode]:
                         offenders.append(f"{path.relative_to(_FRONTEND)}:{n}: {tok}")
     assert offenders == [], offenders
 
 
+def _variant(source: str, name: str, where: str) -> str:
+    m = re.search(rf'\b{name}:\s*"([^"]+)"', source)
+    assert m, f"{where}: no `{name}` variant written as one string literal"
+    return m.group(1)
+
+
 def test_tonal_variants_use_secondary_container():
-    for source in (_BUTTON, _BADGE):
-        tonal = re.search(r'tonal:\s*"([^"]+)"', source).group(1)
+    for where, source in (("button.tsx", _BUTTON), ("badge.tsx", _BADGE)):
+        tonal = _variant(source, "tonal", where)
         assert "bg-secondary-container" in tonal
         assert "text-on-secondary-container" in tonal
         assert "bg-primary/" not in tonal
+        assert "text-primary" not in tonal
 
 
 def test_fab_variant_uses_primary_container():
-    fab = re.search(r'fab:\s*"([^"]+)"', _BUTTON).group(1)
+    fab = _variant(_BUTTON, "fab", "button.tsx")
     assert "bg-primary-container" in fab
     assert "text-on-primary-container" in fab
+
+
+def test_selected_tonal_toggles_show_a_check():
+    # The secondary container is a quiet fill (1.16:1 against the light page)
+    # and its text is lighter than an outline button's, so `tonal` alone no
+    # longer reads as "on". M3's selected filter chip leads with a check.
+    # These are the two call sites that use tonal as the pressed state.
+    assert "aria-pressed={filter === f.id}" in _HEALTH
+    assert "{filter === f.id && <Check />}" in _HEALTH
+    assert "{review ? <Check /> : <GitCompare />}" in _STUDIO
 
 
 def test_theme_exposes_role_utilities():

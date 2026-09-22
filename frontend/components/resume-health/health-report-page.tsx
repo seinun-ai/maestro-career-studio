@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, HeartPulse, Loader2, RefreshCw } from "lucide-react";
+import { ArrowLeft, Check, HeartPulse, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -453,14 +453,19 @@ export function HealthReportPage({
               </nav>
             )}
 
+            {/* The tonal fill is quiet (about 1.16:1 against the light
+                page), so the check says "selected", as on M3's selected
+                filter chip. */}
             <div className="flex flex-wrap gap-1.5">
               {FILTERS.map((f) => (
                 <Button
                   key={f.id}
                   size="xs"
                   variant={filter === f.id ? "tonal" : "outline"}
+                  aria-pressed={filter === f.id}
                   onClick={() => setFilter(f.id)}
                 >
+                  {filter === f.id && <Check />}
                   {f.label}
                 </Button>
               ))}

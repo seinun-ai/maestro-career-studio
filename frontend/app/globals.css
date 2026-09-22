@@ -82,7 +82,7 @@
      Declared once: next-themes puts .dark on <html>, the element :root
      matches, so these color-mix()es resolve against .dark's container
      values. (A .dark SUBTREE would inherit the light mix already resolved.) */
-  --primary-container: oklch(0.91 0.045 259);
+  --primary-container: oklch(0.91 0.043 259);
   --on-primary-container: oklch(0.33 0.12 259);
   --primary-container-hover: color-mix(in oklab, var(--primary-container), var(--on-primary-container) 8%);
   --secondary-container: oklch(0.925 0.022 259);
@@ -137,7 +137,7 @@
   --primary: oklch(0.76 0.11 259);
   --primary-foreground: oklch(0.205 0.05 259);
   --primary-container: oklch(0.37 0.09 259);
-  --on-primary-container: oklch(0.92 0.04 259);
+  --on-primary-container: oklch(0.92 0.038 259);
   --secondary-container: oklch(0.33 0.03 259);
   --on-secondary-container: oklch(0.91 0.02 259);
   --canvas: oklch(0.115 0 0);

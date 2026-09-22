@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
+  Check,
   Download,
   ExternalLink,
   GitCompare,
@@ -662,14 +663,15 @@ function StudioEditor({
                         // `tonal` when pressed, not `default`: an active toggle
                         // used to render filled, so this bar could show two
                         // filled buttons at once and neither read as the
-                        // primary action.
+                        // primary action. The tonal fill is quiet, so the
+                        // check (M3's selected-chip mark) is what says "on".
                         <Button
                           variant={review ? "tonal" : "outline"}
                           size="sm"
                           aria-pressed={review}
                           onClick={() => setReview((value) => !value)}
                         >
-                          <GitCompare />
+                          {review ? <Check /> : <GitCompare />}
                           Review changes
                           {hunks.length > 0 && !review
                             ? ` (${hunks.length})`
