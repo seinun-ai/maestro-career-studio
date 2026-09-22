@@ -268,6 +268,31 @@ def test_save_applies_a_pending_raw_draft_first():
 def test_raw_json_cancel_confirms_before_discarding():
     assert "Discard your JSON edits?" in _RAW_JSON
     assert re.search(r"if \(\s*pending &&\s*!\(await confirm\(", _RAW_JSON)
+    # Wired: an unwired `cancel` leaves the button closing the pane silently.
+    assert "onClick={cancel}" in _RAW_JSON
+
+
+def test_raw_json_pending_reaches_the_studio():
+    # The pane reports every change of `pending`, and closing it clears the
+    # studio's flag: a pane that unmounts mid-draft left "Unsaved changes" on.
+    assert re.search(
+        r"useEffect\(\(\) => \{\s*onPendingChange\(pending\);\s*\}, \[pending, onPendingChange\]\);",
+        _RAW_JSON,
+    )
+    assert "useEffect(() => () => onPendingChange(false), [onPendingChange]);" in _RAW_JSON
+    # The Save button and the chord run the apply-then-save handler.
+    for studio in (_TAILORED, _BASE):
+        assert "onSave={onSave}" in studio
+
+
+def test_raw_json_error_clears_with_its_draft():
+    # Invalid JSON, Save (alert), undo back to the form's copy, then a template
+    # change saved: the save succeeded under a red "Unexpected token" alert.
+    assert "onChange={edit}" in _RAW_JSON
+    assert "if (!jsonDraftDiffers(next, value)) setError(null);" in _RAW_JSON
+    assert re.search(
+        r"if \(!pending\) \{\s*setError\(null\);\s*return undefined;", _RAW_JSON
+    )
 
 
 def test_raw_json_pane_resyncs_to_the_saved_copy():

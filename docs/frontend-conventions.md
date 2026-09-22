@@ -117,16 +117,16 @@
   - *Cmd/Ctrl+S*: owned by `StudioSaveButton`, both studios' one Save button,
     which calls `useSaveShortcut(onSave, canSave)` with the `canSave` that
     enables it, so key and button agree, and is mounted exactly while the
-    studio's toolbar is. The chord is always
-    swallowed (the browser's Save page saves app HTML) but never saves on
-    repeat, mid-IME, once another handler claimed it, or from inside a dialog,
-    where "Load the latest version?" would be overwritten. It blurs a focused
-    field first, so a blur-committed draft (chip input, section rename) saves as
-    a click would, then refocuses and saves on the next task; a chord inside
-    that gap is swallowed, so one chord is one save. Save (key or click) applies a
-    pending raw-JSON draft first and saves exactly what it applied; an invalid
-    draft saves nothing. `isSaveShortcut` falls
-    back to `code === "KeyS"` only when the layout types no Latin letter there:
+    studio's toolbar is. The chord is always swallowed (the browser's Save
+    page saves app HTML) but never saves on repeat, mid-IME, once another
+    handler claimed it, or from inside a dialog, where "Load the latest
+    version?" would be overwritten. It blurs a focused field first, so a
+    blur-committed draft (chip input, section rename) saves as a click would,
+    then refocuses and saves on the next task; a chord inside that gap is
+    swallowed, so one chord is one save. Save (key or click)
+    applies a pending raw-JSON draft first and saves exactly what it applied;
+    an invalid draft saves nothing. `isSaveShortcut` falls back to
+    `code === "KeyS"` only when the layout types no Latin letter there:
     Colemak and Dvorak put R and O on that key. Save buttons carry the shortcut
     as `title` and `aria-keyshortcuts="Meta+S Control+S"`.
   - *Raw JSON*: typed JSON is an unsaved edit. `RawJsonToggle` reports a
@@ -138,9 +138,13 @@
     remounting over the draft. The base studio adopts no server copy under a
     pending draft, since a later Apply would overwrite it. Save and "Form
     view" commit the draft (Apply); an invalid one keeps the pane open with
-    its `role="alert"` error and saves nothing. Cancel is the only discard,
-    and it confirms. The pane survives a Save, so a value that changes under
-    text still matching the PREVIOUS value re-syncs it to the saved copy.
+    its `role="alert"` error and saves nothing. The error describes a draft,
+    so it clears once the text matches the form's copy again (an edit back,
+    or a Save with no draft). Cancel is the pane's only discard, and it
+    confirms; in the tailored studio, Load latest and Rebuild also drop a
+    draft, behind their own confirms. The pane survives a Save, so a value
+    that changes under text still matching the PREVIOUS value re-syncs it to
+    the saved copy.
   - *Divider*: an APG window splitter. A focusable `role="separator"` whose
     value is the EDITOR's share (rounded; `aria-valuetext` names both panes;
     `aria-controls` the editor pane). Arrows snap to the 5% grid, since a drag

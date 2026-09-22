@@ -99,16 +99,26 @@ export function RawJsonToggle({
     }
   };
 
+  // An error describes a draft. Text edited back to the form's copy has none,
+  // so the alert must not keep reporting a parse failure that no longer exists.
+  const edit = (next: string) => {
+    setText(next);
+    if (!jsonDraftDiffers(next, value)) setError(null);
+  };
+
   useImperativeHandle(ref, () => ({
     commit: () => {
-      if (!pending) return undefined;
+      if (!pending) {
+        setError(null);
+        return undefined;
+      }
       const next = parse();
       if (next) setText(JSON.stringify(next, null, 2));
       return next;
     },
   }));
 
-  // The only discard gesture, so it asks. "Form view" applies instead.
+  // The pane's only discard gesture, so it asks. "Form view" applies instead.
   const cancel = async () => {
     if (
       pending &&
@@ -125,7 +135,7 @@ export function RawJsonToggle({
 
   return (
     <div className="space-y-3">
-      <JsonEditor value={text} onChange={setText} />
+      <JsonEditor value={text} onChange={edit} />
       {error && (
         <pre
           role="alert"
