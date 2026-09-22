@@ -8,7 +8,6 @@ import type { TopSkillsFilters } from "@/components/charts/top-skills-chart";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch } from "@/lib/api";
 import type {
-  BuildAreaCategory,
   BuildAreaRow,
   BuildAreaStatus,
   BuildAreaTier,
@@ -40,20 +39,6 @@ const STATUS_META: Record<
     hint: "Already on some resumes. Adapt it to the ones that miss it.",
     chip: "bg-muted text-muted-foreground",
   },
-};
-
-/**
- * What a surface row actually needs. "wording" is deliberately absent: that
- * word belongs to the wording tier alone, and mirror_wording here is the
- * adds_credit sibling — real headroom, which is why the backend put it in
- * surface rather than the footnote.
- */
-const CATEGORY_LABEL: Record<BuildAreaCategory, string> = {
-  missing_skills: "no evidence on this resume",
-  mirror_wording: "exact token missing",
-  dual_place: "needs corroborating",
-  resurface_recent: "stale evidence",
-  adjacent: "adjacent skill",
 };
 
 /**
@@ -177,8 +162,7 @@ function GapRow({ row, maxJobs }: { row: BuildAreaRow; maxJobs: number }) {
   // and the section blurb already says so. Only surface rows learn from them.
   const isSurface = tierOf(row) === "surface";
   const meta = isSurface ? STATUS_META[row.status] : null;
-  const categoryLabel =
-    isSurface && row.category ? CATEGORY_LABEL[row.category] : null;
+  const categoryLabel = isSurface ? (row.category_label ?? null) : null;
   const width = maxJobs > 0 ? Math.max(6, (row.n_jobs / maxJobs) * 100) : 6;
   return (
     <div className="py-3">

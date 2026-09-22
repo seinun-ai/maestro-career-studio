@@ -637,9 +637,13 @@ TOOL_SPECS: list[dict[str, Any]] = [
             "never call it a skill the user lacks), wording (a literal-token mismatch "
             "already matched at full credit; tailoring mirrors it and it moves no "
             "score — a footnote, so these rows report n_jobs 0 and count under "
-            "wording_jobs). status is the raw KB-evidence label (missing/in_kb/ported) "
+            "wording_jobs). status is the raw KB-evidence key (missing/in_kb/ported) "
             "and does NOT on its own mean 'learn it' — read tier for that. category is "
-            "the gap category driving the row. "
+            "the gap category key driving the row; category_label is the same in plain "
+            "words. When you describe a row to the user, use the tier word and "
+            "category_label, and say status in words (not in your Career KB / in your "
+            "Career KB / ported before) — never a raw key like missing_skills, "
+            "dual_place or in_kb. "
             "role_category filters by the job's slug; omit it for all roles."
         ),
         "parameters": {

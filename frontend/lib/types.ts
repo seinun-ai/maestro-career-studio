@@ -856,6 +856,8 @@ export interface BuildAreaRow {
   tier: BuildAreaTier;
   /** Most-common effective gap category; null on wording-only rows. */
   category: BuildAreaCategory | null;
+  /** Plain words for `category`, owned by the server. Absent on a backend that predates it. Render this, never `category`. */
+  category_label?: string | null;
   /** Distinct jobs where this skill gapped only as a hygiene wording mismatch. */
   wording_jobs: number;
 }
@@ -982,6 +984,8 @@ export interface GapFrequencyRow {
   n_jobs: number;
   avg_potential_points: number;
   category: string | null;
+  /** Plain words for `category`, owned by the server. Absent on a backend that predates it. Render this, never `category`. */
+  category_label?: string | null;
   requirement_level: string | null;
   low_sample: boolean;
 }

@@ -1000,6 +1000,11 @@ def test_find_job_by_url_tool_calls_client(monkeypatch):
     assert seen == {"url": "https://x.test/jobs/1"}
 
 
+def test_gap_docstrings_name_category_label():
+    assert "category_label" in (srv.explore_gap_frequency.__doc__ or "")
+    assert "category_label" in (srv.get_job_search_brief.__doc__ or "")
+
+
 def test_job_search_docstrings_state_capture_only():
     # The brief is the entry point of the agentic search playbook; its contract
     # (capture + score only, no auto-apply) must be discoverable on the tool.

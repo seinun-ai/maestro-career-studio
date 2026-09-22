@@ -177,6 +177,8 @@ gate table, deviations, anything queued or deferred, and any concerns.
 |---|---|---|---|
 | 11–13 | Main plan trailer `Co-Authored-By: Claude Opus 5` | Commit trailer is `Assisted-by: Grok 4.7 (Cursor CLI)` only | This handoff is the binding trailer for this executor. |
 | 11 | Optional naming note in `docs/frontend-conventions.md` | No conventions edit | No existing bullet names the KB Profile tab, and the task marks the note optional. Other lanes edit other bullets of the same file. |
+| 12 | Replace the last two sentences of the `analytics_gap_frequency` chat spec | Replaced the status and category sentences; kept `role_category filters by the job's slug` | That sentence now follows them. Dropping it would hide the closed slug vocabulary. Additive contracts only. |
+| 12 | Append the prompt line | Also updated `migrations/prompt_defaults.lock.json`. No resync migration | The pin test fails without the hash. Appendix B says this line is reinforcement for new installs; the tool spec is what existing installs read. |
 
 ## Gate results
 
@@ -187,6 +189,12 @@ gate table, deviations, anything queued or deferred, and any concerns.
 | 11 | tsc / lint / `node --test lib/*.test.ts` | tsc clean; lint 0 errors, 5 warnings; 67 passed |
 | 11 | slop `check frontend` and `check backend` | both OK; frontend duplication 517 lines, 43 clones |
 | 11 | browser (scratch stack, 3103) | Basics tab selected on `/career`; Templates subtitle "The look of the PDF."; Job market tiles are sentence case and insight details have no em dash; Needs you chip on `/proposals` uses `bg-orange-500/10 text-orange-700` |
+| 12 | five pins (label set, row label, wording `None`, both docstrings, chat spec) | failed first, then passed |
+| 12 | `pytest tests/ mcp_server/tests/ -q` | 4448 passed, 2 skipped, after the prompt pin update (first run: 4447 passed, 1 failed on `test_prompt_file_matches_its_pin[chat_system]`) |
+| 12 | docstring budget ratchet | passed (inside the full suite) |
+| 12 | tsc / lint / node tests | tsc clean; lint 0 errors, 5 warnings; 67 passed |
+| 12 | slop `check frontend` and `check backend` | frontend OK, duplication 517 lines, 43 clones. Backend `complexity_hotspots` 424 → 426 because two existing tests each gained one `assert` and crossed cc 10. Not re-baselined. |
+| 12 | browser | not in the task steps. The panel's words are unchanged; they now come from `category_label`. No scored gap rows on the scratch stack, so the panel was not opened. |
 
 ## Queued for Task 18 (SYSTEM.md changes Claude applies)
 

@@ -122,6 +122,27 @@ def _is_hygiene_wording(cat_key: str | None, gap: dict) -> bool:
     return cat_key == "mirror_wording" and gap.get("score_effect") == "hygiene"
 
 
+# Plain words for each skill-gap category, for every surface that shows a row to
+# a person: the Analytics "Skill gaps" panel, chat, and MCP agents. The keys are
+# internal (gap_analysis._HINT_TO_CATEGORY values) and must never reach prose.
+# Worded for a SURFACE row, so mirror_wording avoids the word "wording": that word
+# belongs to the wording tier alone, and mirror_wording on an effective row is the
+# adds_credit sibling, which has real headroom.
+GAP_CATEGORY_LABELS: dict[str, str] = {
+    "missing_skills": "no evidence on this resume",
+    "mirror_wording": "exact token missing",
+    "dual_place": "needs corroborating",
+    "resurface_recent": "stale evidence",
+    "adjacent": "adjacent skill",
+}
+
+
+def category_label(key: str | None) -> str | None:
+    """Plain words for a gap category key. None when there is no category (wording
+    rows) or the key is unknown (a legacy row): callers omit it, never show a key."""
+    return GAP_CATEGORY_LABELS.get(key) if key else None
+
+
 def gap_frequency(
     db: Session,
     role_category: str | None = None,
@@ -171,8 +192,10 @@ def gap_frequency(
             if req_level is not None:
                 req_levels[skill][req_level] += 1
 
-    rows = [
-        {
+    rows = []
+    for skill, ids in job_ids.items():
+        category = _most_common(categories[skill])
+        rows.append({
             "skill": skill,
             "n_jobs": len(ids),
             "avg_potential_points": round(
@@ -180,12 +203,11 @@ def gap_frequency(
             )
             if points[skill]
             else 0.0,
-            "category": _most_common(categories[skill]),
+            "category": category,
+            "category_label": category_label(category),
             "requirement_level": _most_common(req_levels[skill]),
             "low_sample": _low_sample(len(ids)),
-        }
-        for skill, ids in job_ids.items()
-    ]
+        })
     rows.sort(
         key=lambda r: (-r["n_jobs"], -r["avg_potential_points"], r["skill"])
     )

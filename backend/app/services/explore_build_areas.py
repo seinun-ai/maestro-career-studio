@@ -59,6 +59,7 @@ from app.services.explore_gaps import (
     _is_hygiene_wording,
     _most_common,
     _skill_gap_occurrences,
+    category_label,
 )
 
 
@@ -153,6 +154,7 @@ def build_areas(
                 "kb_entities": found["kb_entities"],
                 "tier": tier,
                 "category": category,
+                "category_label": category_label(category),
                 "wording_jobs": len(hygiene_jobs),
             }
         )

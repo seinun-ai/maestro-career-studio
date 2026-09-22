@@ -541,7 +541,9 @@
   measures headroom to the DUAL-placement ceiling — exactly why the skip is a
   predicate, not a points filter. **`build_areas` rows are tiered by what would
   fix them.** Additive fields `tier` (`build`|`surface`|`wording`), `category`
-  (most-common effective gap category, `null` on wording rows) and
+  (most-common effective gap category, `null` on wording rows), `category_label`
+  (server-owned plain words for `category`, `null` on wording rows; the panel renders it and holds no
+  label map of its own) and
   `wording_jobs` — additive so MCP `explore_gap_frequency` and
   `chat_tools.tool_analytics_gap_frequency` keep working; both docstrings LEAD
   with `tier`, because for an agent the docstring IS the API. An occurrence is
