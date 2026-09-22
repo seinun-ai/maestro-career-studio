@@ -343,7 +343,11 @@
   invalidate job-detail alongside applications when status changes.
 - Shared components: `StatusChip`/`SavedChip` (`components/status-chip.tsx` —
   the ONLY status vocabulary/color source in the UI), `CompanyMonogram`,
-  `ApplicationDetailsMenu` (status lives in the chip, not the menu).
+  `ApplicationDetailsMenu` (status lives in the chip, not the menu). "Needs
+  you" (`needs_decision` and `needs_human`) is ONE `NEEDS_YOU` object:
+  `text-orange-800` on `bg-orange-500/10`, `dark:text-orange-400`. Orange-700
+  measured 3.98:1 over `--muted`; `test_frontend_color_roles.py` computes the
+  chip over background, card and muted in both modes.
 - **Card galleries**: Templates and Base Resumes are the same image-first
   card grid, so the shell lives once in `components/gallery/` (`GalleryGrid`,
   `GalleryCard`, `GalleryCardActions` — the z-20 wrapper — and
@@ -523,7 +527,13 @@
   hidden count in the caption; role mix folds that tail into one "More roles"
   series so the week still sums. Role text on these charts, the filters, the
   heatmap, and the Job market bars comes from `useRoleLabel`, never the slug.
-  Colours follow that order and are never cycled. **The gap sweeps read ONE base per job.** Both
+  While the catalog loads, or when its request fails, the label is
+  `humanizeSlug` (`lib/humanize-slug.ts`, also `baseResumeLabel`'s fallback):
+  the key's own words with the catalog's acronyms cased as its labels case
+  them (AI/ML, MLOps, BI, QA, IT), never blank. A new acronym in the catalog
+  goes in `TOKEN_CASE`; `test_frontend_analytics.py` fails until it does. The
+  fit-distribution legend names each resume by `display_name` and draws at
+  most the palette's six. Colours follow that order and are never cycled. **The gap sweeps read ONE base per job.** Both
   `explore_gaps.gap_frequency` and `explore_build_areas.build_areas` go through
   `explore_gaps._best_base_gap_rows` — the single highest-composite base-phase
   row per job (ties break `target_id` asc for deterministic reruns). Pooling

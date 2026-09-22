@@ -42,6 +42,11 @@ def _count_by(db, column, filters: JobFilters, *, coalesce="unstated"):
 
 
 def compute_signals(o: dict[str, Any]) -> list[dict[str, str]]:
+    """The first five insights; `candidate_signals` is every one that fires."""
+    return candidate_signals(o)[:5]
+
+
+def candidate_signals(o: dict[str, Any]) -> list[dict[str, str]]:
     total = o["meta"]["total_jobs"]
     if not total:
         return []
@@ -64,7 +69,8 @@ def compute_signals(o: dict[str, Any]) -> list[dict[str, str]]:
     if o["top_required_skills"]:
         s = o["top_required_skills"][0]
         signals.append({
-            "title": f"{s['skill_name']} required in {round(s['n'] / total * 100)}% of JDs",
+            # Skill names are stored casefolded, so the name never leads the title.
+            "title": f"Top required skill: {s['skill_name']} ({round(s['n'] / total * 100)}% of JDs)",
             "detail": f"Required in {s['n']} of {total} JDs, more than any other skill.",
         })
 
@@ -103,7 +109,7 @@ def compute_signals(o: dict[str, Any]) -> list[dict[str, str]]:
             "detail": f"Only {remote} of {total} JDs are remote.",
         })
 
-    return signals[:5]
+    return signals
 
 
 def _salary_year_stats(db, filters: JobFilters):

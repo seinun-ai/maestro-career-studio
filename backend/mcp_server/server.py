@@ -312,9 +312,9 @@ def get_job_search_brief() -> Any:
     category_label; speak those words, never the raw category key), referral
     careers pages (company + careers_url + has_contact), and counts of jobs
     captured in the last 30 days by role category. Call this FIRST in an agentic
-    search session
-    (playbook: docs/agentic-job-search.md). The workflow it anchors is capture
-    and score only — browse, extract, store_extracted_jd — never auto-apply."""
+    search session (playbook: docs/agentic-job-search.md). The workflow it
+    anchors is capture and score only — browse, extract, store_extracted_jd —
+    never auto-apply."""
     return _client.get_job_search_brief()
 
 
@@ -1180,7 +1180,8 @@ def explore_role_mix_over_time() -> Any:
 @_guard
 def explore_fit_distribution() -> Any:
     """How each base resume's ATS composites (deterministic engine) are
-    distributed across jobs."""
+    distributed across jobs. Each row's `display_name` is the resume's own name
+    (null for a slug with no row): call the resume by it, not by the slug."""
     return _client.explore_fit_distribution()
 
 

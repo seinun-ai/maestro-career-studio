@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { MAX_ROLE_SERIES, splitTopRoles } from "./analytics-series.ts";
+import { MAX_ROLE_SERIES, splitTopSeries } from "./analytics-series.ts";
 
 test("ranks roles by summed weight and breaks ties by key ascending", () => {
   const rows = [
@@ -10,7 +10,7 @@ test("ranks roles by summed weight and breaks ties by key ascending", () => {
     { role: "b", n: 3 },
     { role: "c", n: 4 },
   ];
-  const { shown, hidden } = splitTopRoles(
+  const { shown, hidden } = splitTopSeries(
     rows,
     (row) => row.role,
     (row) => row.n,
@@ -26,7 +26,7 @@ test("the default cap is four roles and the rest are hidden", () => {
     role,
     n: 5 - index,
   }));
-  const { shown, hidden } = splitTopRoles(
+  const { shown, hidden } = splitTopSeries(
     rows,
     (row) => row.role,
     (row) => row.n,
@@ -42,7 +42,7 @@ test("hidden is empty when every role fits", () => {
     { role: "a", n: 1 },
     { role: "b", n: 2 },
   ];
-  const { shown, hidden } = splitTopRoles(
+  const { shown, hidden } = splitTopSeries(
     rows,
     (row) => row.role,
     (row) => row.n,

@@ -188,7 +188,7 @@ export function KbImportDrawer({
                     {kind.label}
                   </TabsTrigger>
                 ))}
-                <TabsTrigger value="profile">Profile</TabsTrigger>
+                <TabsTrigger value="basics">Basics</TabsTrigger>
               </TabsList>
 
               {KINDS.map((kind) => {
@@ -218,9 +218,9 @@ export function KbImportDrawer({
                 );
               })}
 
-              <TabsContent value="profile" className="space-y-5 py-3">
+              <TabsContent value="basics" className="space-y-5 py-3">
                 {profile.isLoading ? (
-                  <p className="text-muted-foreground text-sm">Loading profile…</p>
+                  <p className="text-muted-foreground text-sm">Loading basics…</p>
                 ) : profile.error ? (
                   <p role="alert" className="text-destructive text-sm">
                     {profile.error.message}

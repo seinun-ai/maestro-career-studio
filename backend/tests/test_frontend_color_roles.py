@@ -233,3 +233,56 @@ def test_theme_exposes_role_utilities():
         "canvas",
     ):
         assert f"--color-{role}: var(--{role});" in _CSS
+
+
+# Tailwind v4's palette is OKLCH (frontend/node_modules/tailwindcss/theme.css).
+# CI's backend job installs no node_modules, so the shades these pins use are
+# copied here and checked against the installed theme wherever it exists.
+_TAILWIND = {
+    "orange-400": (0.75, 0.183, 55.934),
+    "orange-500": (0.705, 0.213, 47.604),
+    "orange-800": (0.47, 0.157, 37.304),
+    "emerald-400": (0.765, 0.177, 163.223),
+    "emerald-700": (0.508, 0.118, 165.612),
+}
+_TAILWIND_THEME = _FRONTEND / "node_modules" / "tailwindcss" / "theme.css"
+
+
+@pytest.mark.skipif(not _TAILWIND_THEME.exists(), reason="frontend/node_modules not installed")
+def test_copied_tailwind_shades_match_the_installed_theme():
+    theme = _TAILWIND_THEME.read_text(encoding="utf-8")
+    for name, lch in _TAILWIND.items():
+        m = re.search(rf"--color-{name}:\s*oklch\(([\d.]+)%\s+([\d.]+)\s+([\d.]+)\)", theme)
+        assert m, name
+        read = (float(m.group(1)) / 100, float(m.group(2)), float(m.group(3)))
+        assert read == pytest.approx(lch), name
+
+
+_NEEDS_YOU = re.search(
+    r'const NEEDS_YOU = \{[^}]*className: "([^"]+)"', _read("components/status-chip.tsx")
+).group(1)
+
+
+@pytest.mark.parametrize("mode", list(_MODES))
+def test_needs_you_chip_text_meets_aa_on_its_tint(mode):
+    """The chip is text on a 10% tint of orange-500, read from the source. Over
+    --muted, orange-700 was 3.98:1."""
+    tint, pct = re.search(r"(?<![\w:-])bg-([a-z]+-\d+)/(\d+)", _NEEDS_YOU).groups()
+    text_re = r"(?<![\w:-])text-([a-z]+-\d+)" if mode == "light" else r"dark:text-([a-z]+-\d+)"
+    text = _srgb(_oklab(_TAILWIND[re.search(text_re, _NEEDS_YOU).group(1)]))
+    for surface in ("background", "card", "muted"):
+        fill = _over(_srgb(_oklab(_TAILWIND[tint])), _rgb(_MODES[mode], surface), int(pct) / 100)
+        ratio = _contrast(text, fill)
+        assert ratio >= 4.5, f"{mode}: Needs you over --{surface} is {ratio:.2f}:1"
+
+
+@pytest.mark.parametrize("mode", list(_MODES))
+def test_tailoring_lift_sign_colours_meet_aa_on_the_card(mode):
+    """The overall lift's +/- figure is text on the chart's card, in both modes."""
+    lift = _read("components/charts/tailoring-lift-chart.tsx")
+    assert '? "text-emerald-700 dark:text-emerald-400"\n                : "text-destructive"' in lift
+    t = _MODES[mode]
+    gain = _srgb(_oklab(_TAILWIND["emerald-700" if mode == "light" else "emerald-400"]))
+    for name, fg in (("gain", gain), ("loss", _rgb(t, "destructive"))):
+        ratio = _contrast(fg, _rgb(t, "card"))
+        assert ratio >= 4.5, f"{mode}: lift {name} on --card is {ratio:.2f}:1"

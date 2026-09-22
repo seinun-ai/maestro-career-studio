@@ -63,7 +63,7 @@ function chipClasses(interactive: boolean): string {
     "inline-flex h-6 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-xs font-medium",
     interactive &&
       "cursor-pointer transition-[transform,box-shadow] duration-150 ease-out select-none " +
-        "hover:shadow-sm active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-ring/60",
+        "hover:shadow-sm active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-ring",
   );
 }
 
@@ -81,6 +81,16 @@ export function SavedChip() {
     </span>
   );
 }
+
+// needs_decision and needs_human are ONE state to the user ("Needs you"), so they
+// share one object: one label, one colour. Orange, not amber: amber is the
+// application chip's "Interviewing", which sits in the same tracker column.
+// orange-800, not 700: 700 on this tint is 3.98:1 over --muted (AA is 4.5).
+// Contrast pinned in test_frontend_color_roles.py.
+const NEEDS_YOU = {
+  label: "Needs you",
+  className: "bg-orange-500/10 text-orange-800 dark:text-orange-400",
+};
 
 /** Derived agent-lane state for a saved (no-application) job, from its newest
  * proposal — Skipped/Expired are clear terminal answers instead of a flat
@@ -109,14 +119,6 @@ export function SavedChip() {
  * already groups both into one NEEDS_YOU lane, so the lane heading carries the
  * distinction and the badge was repeating a split the layout had already made.
  */
-// needs_decision and needs_human are ONE state to the user ("Needs you"), so they
-// share one object: one label, one colour. Orange, not amber: amber is the
-// application chip's "Interviewing", which sits in the same tracker column.
-const NEEDS_YOU = {
-  label: "Needs you",
-  className: "bg-orange-500/10 text-orange-700 dark:text-orange-400",
-};
-
 export const PROPOSAL_STATUS_CHIP: Record<
   string,
   { label: string; className: string }

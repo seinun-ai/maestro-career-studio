@@ -16,7 +16,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { CHART_COLORS as COLORS, TOOLTIP_CONTENT_STYLE, TOOLTIP_ITEM_STYLE, TOOLTIP_LABEL_STYLE } from "@/components/charts/chart-kit";
 import { useRoleLabel } from "@/components/role-category-picker";
-import { splitTopRoles } from "@/lib/analytics-series";
+import { splitTopSeries } from "@/lib/analytics-series";
 import { apiFetch } from "@/lib/api";
 import type { RoleMixRow } from "@/lib/types";
 
@@ -35,7 +35,7 @@ export function RoleMixChart() {
   // which is a real category). Five named roles plus that bucket is 6 hues.
   const { chartData, categories } = useMemo(() => {
     if (!data) return { chartData: [], categories: [] as string[] };
-    const { shown, hidden } = splitTopRoles(
+    const { shown, hidden } = splitTopSeries(
       data,
       (row) => row.role_category,
       (row) => row.count,

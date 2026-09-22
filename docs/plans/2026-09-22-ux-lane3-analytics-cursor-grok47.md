@@ -181,6 +181,7 @@ gate table, deviations, anything queued or deferred, and any concerns.
 | 12 | Append the prompt line | Also updated `migrations/prompt_defaults.lock.json`. No resync migration | The pin test fails without the hash. Appendix B says this line is reinforcement for new installs; the tool spec is what existing installs read. |
 | 13 | Tests named in the task only | Also added `backend/tests/test_frontend_analytics.py` | Node tests are not in CI. The lane rule says every `lib/*.ts` behaviour needs a pytest source pin. |
 | 13 | Stay inside the owned file list | Updated the module docstring in `backend/app/routers/role_categories.py` | It named the deleted `frontend/lib/format.ts`. The endpoint still exists so pickers can fetch labels. |
+| Review | Merge as delivered | Review fixes (Claude, one commit): the label fallback is `lib/humanize-slug.ts` (acronyms cased as the catalog cases them; `baseResumeLabel` uses it too, so `SLUG_ACRONYMS` is gone); Needs you is `text-orange-800` with a computed pin; solid focus on the status chip and role picker; the lift figure uses `text-destructive` / `emerald-700`; the fit chart names resumes by `display_name` (additive field on `/api/explore/fit-distribution`, and its MCP docstring) and caps at six hues; the KB import drawer's tab is Basics; the skill insight reads "Top required skill: sql (32% of JDs)", because skill names are stored casefolded and have no display form; `splitTopRoles` became `splitTopSeries`; pins are one per case | Goal Card: no slugs in the web app or MCP; contrast pinned by computed tests. The fit chart and drawer items were deferred below and are done here. |
 
 ## Gate results
 
@@ -202,6 +203,10 @@ gate table, deviations, anything queued or deferred, and any concerns.
 | 13 | tsc / lint / `node --test lib/*.test.ts` | tsc clean; lint 0 errors, 5 warnings; 70 passed |
 | 13 | slop `check frontend` and `check backend` | frontend OK. Duplication 517 lines / 43 clones → 507 / 42 (deleting `format.ts` and the panel map). Backend `complexity_hotspots` 424 → 428. The four new hotspots are tests (two asserts in Task 12, `test_best_paying_signal_uses_role_label`, and the source pin). Not re-baselined. |
 | 13 | browser (scratch stack, 3103) | Job market role mix, heatmap, salary tile, and the role filter options are catalog labels (Data Scientist, Data Engineer, Product Manager, Software Engineer), and the closed filter says Any. Best-paying insight says "Data Scientist". Resume fit and Gaps show no role slugs (both empty of scores: "No data yet" / "No frequent gaps yet"). Role-mix legend is 4 lines, strokes `--chart-1` through `--chart-4`, no repeat. Work mode and OPT keys are still raw; queued below. |
+| Review | full suite / tsc / lint / node / ruff | 4499 passed, 2 skipped; tsc clean; lint 0 errors, 5 warnings; node 74 passed; ruff clean |
+| Review | slop `check frontend` and `check backend` | both OK, no re-baseline. Frontend duplication 507 lines / 42 clones; backend `complexity_hotspots` 428 → 424 |
+| Review | mutation checks | 38 mutants, each fails the pin written for it (a revert that breaks a present and an absent pin on the same line fails both) |
+| Review | browser (scratch stack, 3116) | Catalog request delayed then 500: labels read AI/ML Engineer, MLOps Engineer, BI Developer. Needs you chip 6.57:1 light / 6.68:1 dark on `/proposals`, 6.16 (5.86 row hover) light / 7.56 (6.60) dark on `/applications`. Fit legend shows six resume names, `--chart-1..6`; its caption read "1 more are not shown", so the count now picks is/are (pinned; not re-run in the browser). |
 
 ## Queued for Task 18 (SYSTEM.md changes Claude applies)
 
@@ -214,15 +219,26 @@ gate table, deviations, anything queued or deferred, and any concerns.
   brief named for §11.
 - MCP `explore_*` tools still return role slugs and do not add a `role_label`.
   The web app labels roles. The agent tools do not.
+- Analytics filters still print raw keys: Employment shows `full_time` /
+  `part_time`, and Level shows lowercase keys (`mid`, `senior`)
+  (`frontend/app/analytics/page.tsx:147-153`). The Job market Level bars do the
+  same (`toBars(o.level_breakdown)`, `explore-overview.tsx:215`). Same class as
+  the work-mode / OPT / sponsorship leak above.
+- The Applications table's Base column shows the humanized slug ("Ds Base")
+  through `baseResumeLabel(r.app.base_resume)` (`app/applications/page.tsx:604`)
+  instead of the resume's `display_name`. Found during the review browser pass.
+- **Owner flag:** orange is no longer unique to "Needs you". Owner decision 6
+  makes Needs you "one orange object", but `submission_uncertain` ("Submission
+  uncertain") is also orange, as its own object, still `text-orange-700`
+  (3.98:1 over `--muted`, 4.40:1 over `--background`: under AA). Decide whether
+  it gets its own hue or joins the orange-800 shade.
 
 ## Deferred to merge (edits left for Claude, with file:line)
 
-- `frontend/components/resume-editor/kb-import-drawer.tsx` still has a Profile
-  tab (`TabsTrigger value="profile"`). Task 11 renamed only
-  `app/career/page.tsx`, which is the surface Appendix B §1 names.
-- `frontend/components/charts/fit-distribution-chart.tsx` still uses
-  `COLORS[i % COLORS.length]` for one series per base resume. It is not in
-  Task 13's file list. More than six base resumes would repeat a colour.
+- `backend/tests/test_frontend_color_roles.py` on `claude/ux-followups`:
+  `_PENDING_TRANSLUCENT_FOCUS` lists `components/status-chip.tsx` and
+  `components/role-category-picker.tsx`. Both rings are solid on this branch,
+  so delete the set (and its stale check) at merge, or the stale check fails.
 - The `analytics_gap_frequency` chat spec uses the appendix's status phrase
   ("not in your Career KB / in your Career KB / ported before"). The chips
   say "Not in your KB", "In your KB", and "Ported before".

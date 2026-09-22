@@ -1,3 +1,5 @@
+import { humanizeSlug } from "./humanize-slug";
+
 export type UUID = string;
 
 /** Provenance lane: who initiated the row — the user's own browsing/tracking
@@ -967,6 +969,8 @@ export interface HeatmapRow {
 
 export interface FitDistributionRow {
   base_resume: string;
+  /** The resume's own name; null for a slug with no row. Absent on a backend that predates it. */
+  display_name?: string | null;
   buckets: Record<string, number>;
   n: number;
   low_sample: boolean;
@@ -1013,14 +1017,6 @@ export interface TailoringLiftRow {
   low_sample: boolean;
 }
 
-/** @deprecated Base resumes are user-created; there is no fixed list.
- *  Kept only as the acronym table for `baseResumeLabel`. */
-const SLUG_ACRONYMS: Record<string, string> = {
-  ai_ml_engineer: "AI/ML Engineer",
-  bi_developer: "BI Developer",
-  mlops_engineer: "MLOps Engineer",
-};
-
 export interface Referral {
   id: UUID;
   company: string;
@@ -1051,11 +1047,7 @@ export function baseResumeLabel(slug: string): string {
   // hardcoded 5-entry list, so ANY resume outside it (data_scientist_new,
   // business_analyst, example, ...) rendered as a raw slug. Prefer the row's
   // display_name where the caller has it; this is the fallback.
-  if (SLUG_ACRONYMS[slug]) return SLUG_ACRONYMS[slug];
-  return slug
-    .split("_")
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(" ");
+  return humanizeSlug(slug);
 }
 
 type TemplateStatus = "draft" | "ready";

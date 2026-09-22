@@ -16,7 +16,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { CHART_COLORS as COLORS, buildQuery, TOOLTIP_CONTENT_STYLE, TOOLTIP_ITEM_STYLE, TOOLTIP_LABEL_STYLE } from "@/components/charts/chart-kit";
 import { useRoleLabel } from "@/components/role-category-picker";
-import { MAX_ROLE_SERIES, splitTopRoles } from "@/lib/analytics-series";
+import { MAX_ROLE_SERIES, splitTopSeries } from "@/lib/analytics-series";
 import { apiFetch } from "@/lib/api";
 import type { AtsOverTimeRow } from "@/lib/types";
 import type { TopSkillsFilters } from "@/components/charts/top-skills-chart";
@@ -61,7 +61,7 @@ export function AtsOverTimeChart({ filters }: { filters: TopSkillsFilters }) {
 
     const split = singleRole
       ? { shown: [...new Set(data.map((row) => row.role_category))], hidden: [] as string[] }
-      : splitTopRoles(data, (row) => row.role_category, (row) => row.n);
+      : splitTopSeries(data, (row) => row.role_category, (row) => row.n);
     const drawn = singleRole
       ? data
       : data.filter((row) => split.shown.includes(row.role_category));

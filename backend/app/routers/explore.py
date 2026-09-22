@@ -223,6 +223,7 @@ def fit_distribution(db: Annotated[Session, Depends(get_db)]):
     """Distribution of ATS composites (deterministic engine) per base resume.
 
     Reads base-phase ats_scores rows (one per job/slug — base phase upserts).
+    `display_name` is the resume's own name, null for a slug with no row.
     """
     bucket_expr = case(
         (AtsScore.composite < 20, "0-20"),
@@ -245,10 +246,18 @@ def fit_distribution(db: Annotated[Session, Depends(get_db)]):
     )
     for row in rows:
         buckets_by_resume[row.base_resume][row.bucket] = row.n
+    names = dict(
+        db.execute(
+            select(BaseResume.slug, BaseResume.display_name).where(
+                BaseResume.slug.in_(list(buckets_by_resume))
+            )
+        ).all()
+    )
 
     return [
         {
             "base_resume": base_resume,
+            "display_name": names.get(base_resume),
             "buckets": buckets,
             "n": sum(buckets.values()),
             "low_sample": sum(buckets.values()) < 5,

@@ -61,7 +61,9 @@ export function TailoringLiftChart({ filters }: { filters: TopSkillsFilters }) {
           {overall.avg_tailored.toFixed(1)}{" "}
           <span
             className={
-              overall.avg_lift >= 0 ? "text-emerald-600" : "text-red-600"
+              overall.avg_lift >= 0
+                ? "text-emerald-700 dark:text-emerald-400"
+                : "text-destructive"
             }
           >
             ({overall.avg_lift >= 0 ? "+" : ""}
