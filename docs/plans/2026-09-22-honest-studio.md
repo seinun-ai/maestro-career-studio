@@ -1870,6 +1870,12 @@ fails a `(YYYY-MM-DD` in reference-tier files):
    - The empty tracker keeps a ghost New application in its empty state on
      purpose (NN/g: the pathway is a control), beside the FAB or header button.
    - SYSTEM.md §5 step 4 (Score): with no base resume the tab offers the import.
+   - One saved zoom (`pdfPreview.zoom`) applies to all four PdfPagesPreview
+     surfaces; Fit page measures the PREVIEW (container units), not the
+     viewport; the zoom row sits above the scroller so it never scrolls away.
+   - Studio ⋯ menu: `w-auto min-w-56 max-w-(--available-width) wrap-anywhere`.
+   - Tailored studio: user-facing signals read `unsaved`; `dirty` stays the
+     adoption guard's input. Base studio: rename re-syncs the saved baseline.
 
 Run: `python3 scripts/check_system_md.py` → PASS.
 Commit: `git commit -m "docs(conventions): colour roles, sidebar FAB and the honest studio"`.
@@ -1978,6 +1984,9 @@ Goal Card line it violates.
 | 4 | Rescore as soon as ["base-resumes"] goes none → some | Rescore waits until the import dialog CLOSES; the prompt stays mounted while it is open | The plan's version swapped the prompt for a skeleton and unmounted the dialog mid-report, where the user confirms each new resume's role (Principles: accessibility; don't break a flow) |
 | 5 | `/new` reuses ["setup-status"] and "a key saved in Settings clears this" | `refetchOnMount: "always"`, like the two other readers | Settings does not invalidate ["setup-status"]; Extract would stay disabled up to 30 s after adding a key (Goal: no first-run dead end) |
 | 8 | Divider class as written; `useState(PREVIEW_PCT.default)` | Adds `relative z-10` (with a comment); `useState<number>(…)` | The opaque, relative preview pane painted over half the focus ring (seen in the browser); `as const` inferred the literal 45 |
+| 11 | Zoom group sticky inside the scroller | A normal row above the scroller; `backdrop-blur` dropped | At 100% scrolled right only 56px of a sticky group stayed visible; clipped at 375px (browser-checked) |
+| 11 | Fit page = `max-h-[calc(100dvh-6rem)]` | `max-h-[100cqh]` (the preview's own height, container units) + a pin that fails on the plan's value | The dvh value overflowed the job page's 638px box and the studio pane with Formatting open |
+| 11 | ⋯ menu `max-w-(--available-width)` | Also `wrap-anywhere` | Slugs are `[a-z0-9_]`, unbreakable; capped width alone cut the slug off at 375px |
 | 9 | Plan pins only | `test_kb_sync_frontend.py` now slices from `<StudioToolbar` | Its first-`status={` anchor matched the new `<SaveStatusText status={status} />` in the header; same assertion, sturdier anchor |
 | 10 | `mutationFn: (_opts?) => …`, chained `rescore.mutate()` | `mutationFn` takes no argument; the variables type lives on `onSuccess`; the chain passes `{ announce: false }` | The plan's form failed tsc and added a lint warning (`_` args are not ignored here) |
 | 6–7 (fix) | `isSaveShortcut` accepts `code === "KeyS"` | Physical-key fallback only when `key` is not a single Latin letter | Colemak/Dvorak put other letters on KeyS: the planner's version made Cmd+R / Cmd+O save (proven by a failing test) |
