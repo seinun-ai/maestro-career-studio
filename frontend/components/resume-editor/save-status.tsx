@@ -16,8 +16,8 @@ export function SaveStatusText({ status }: { status: SaveStatus }) {
     <span
       role="status"
       className={cn(
-        "inline-flex items-center gap-1.5",
-        status.tone === "dirty" && "text-amber-700 dark:text-amber-300",
+        "inline-flex items-center gap-1.5 whitespace-nowrap",
+        status.tone === "dirty" && "text-amber-800 dark:text-amber-300",
       )}
     >
       {status.tone === "busy" ? (

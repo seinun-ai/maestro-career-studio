@@ -29,6 +29,11 @@ test("a save in flight outranks the dirty flag it is clearing", () => {
   });
 });
 
+test("edits made while a render or re-score runs read as unsaved", () => {
+  assert.equal(saveStatus({ ...idle, dirty: true, rendering: true }).label, "Unsaved changes");
+  assert.equal(saveStatus({ ...idle, dirty: true, rescoring: true }).label, "Unsaved changes");
+});
+
 test("render then re-score report in chain order", () => {
   assert.equal(saveStatus({ ...idle, rendering: true, rescoring: true }).label, "Rendering PDF…");
   assert.equal(saveStatus({ ...idle, rescoring: true }).label, "Re-scoring…");
@@ -39,6 +44,11 @@ test("ArrowLeft widens the preview, ArrowRight narrows it, within limits", () =>
   assert.equal(nextPreviewPct(45, "ArrowRight"), 40);
   assert.equal(nextPreviewPct(PREVIEW_PCT.max, "ArrowLeft"), PREVIEW_PCT.max);
   assert.equal(nextPreviewPct(PREVIEW_PCT.min, "ArrowRight"), PREVIEW_PCT.min);
+});
+
+test("arrow keys snap a dragged, fractional width to the step grid", () => {
+  assert.equal(nextPreviewPct(47.38, "ArrowLeft"), 50);
+  assert.equal(nextPreviewPct(47.38, "ArrowRight"), 45);
 });
 
 test("Home and End jump to the limits; other keys do nothing", () => {

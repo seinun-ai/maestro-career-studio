@@ -15,15 +15,28 @@ export function shortcutLabel(mod: ModKey, key: string): string {
 
 type KeyLike = {
   key: string;
+  code?: string;
   metaKey: boolean;
   ctrlKey: boolean;
   altKey: boolean;
   shiftKey: boolean;
 };
 
-/** Cmd/Ctrl+S exactly. Shift is "Save As" elsewhere; Alt is someone else's. */
+/**
+ * Cmd/Ctrl+S exactly. Shift is "Save As" elsewhere; Alt is someone else's.
+ *
+ * The letter decides, and the key's position (`code`) is the fallback only
+ * when the layout types no Latin letter there: a Russian layout reports "ы"
+ * for that key, but Colemak's "r" and Dvorak's "o" sit on the same position,
+ * and their Cmd+R and Cmd+O must stay reload and open. The modifier checks
+ * run first, so a synthetic keydown with no `key` (autofill dispatches them)
+ * never reaches `toLowerCase`.
+ */
 export function isSaveShortcut(e: KeyLike): boolean {
   return (
-    (e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "s"
+    (e.metaKey || e.ctrlKey) &&
+    !e.altKey &&
+    !e.shiftKey &&
+    (e.key.toLowerCase() === "s" || (e.code === "KeyS" && !/^[a-z]$/i.test(e.key)))
   );
 }

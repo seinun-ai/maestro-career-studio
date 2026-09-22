@@ -13,16 +13,18 @@ export type SaveStatusInput = {
 export type SaveStatus = { label: string; tone: "busy" | "dirty" | "clean" };
 
 /**
- * The studio's one save-status line. Work in flight outranks everything (a
- * Save is still "dirty" until the server copy is adopted), then unsaved
- * edits, then clean. It sits beside the title, where Google Docs and
- * Reactive Resume both put it.
+ * The studio's one save-status line. A Save in flight outranks everything (the
+ * editor is still "dirty" until the server copy is adopted). Unsaved edits
+ * come next, ahead of the render and re-score that follow a save: an edit
+ * typed while the PDF renders is not in that PDF, so the line must not read
+ * as if the work is on its way. Then the render, the re-score, and clean. It
+ * sits beside the title, where Google Docs and Reactive Resume both put it.
  */
 export function saveStatus(s: SaveStatusInput): SaveStatus {
   if (s.saving) return { label: "Saving…", tone: "busy" };
+  if (s.dirty) return { label: "Unsaved changes", tone: "dirty" };
   if (s.rendering) return { label: "Rendering PDF…", tone: "busy" };
   if (s.rescoring) return { label: "Re-scoring…", tone: "busy" };
-  if (s.dirty) return { label: "Unsaved changes", tone: "dirty" };
   return { label: "All changes saved", tone: "clean" };
 }
 
@@ -32,16 +34,18 @@ export const PREVIEW_PCT = { default: 45, min: 25, max: 70, step: 5 } as const;
 /**
  * Keyboard move for the editor/preview divider (APG window-splitter
  * pattern). The divider's value is the EDITOR's share, so Left moves it left:
- * a smaller editor, a wider preview. Home/End jump to the limits; any other
- * key returns null so the caller leaves the event alone.
+ * a smaller editor, a wider preview. Arrows land on the step grid, because a
+ * pointer drag leaves a fractional width (47.38 steps to 50 or 45, never
+ * 52.38). Home/End jump to the limits; any other key returns null so the
+ * caller leaves the event alone.
  */
 export function nextPreviewPct(pct: number, key: string): number | null {
   const { min, max, step } = PREVIEW_PCT;
   switch (key) {
     case "ArrowLeft":
-      return Math.min(max, pct + step);
+      return Math.min(max, Math.floor(pct / step) * step + step);
     case "ArrowRight":
-      return Math.max(min, pct - step);
+      return Math.max(min, Math.ceil(pct / step) * step - step);
     case "Home":
       return max;
     case "End":
@@ -53,7 +57,7 @@ export function nextPreviewPct(pct: number, key: string): number | null {
 
 export type PreviewZoom = "width" | "page" | "actual";
 
-export const PREVIEW_ZOOMS: { value: PreviewZoom; label: string }[] = [
+export const PREVIEW_ZOOMS: ReadonlyArray<{ value: PreviewZoom; label: string }> = [
   { value: "width", label: "Fit width" },
   { value: "page", label: "Fit page" },
   { value: "actual", label: "100%" },
