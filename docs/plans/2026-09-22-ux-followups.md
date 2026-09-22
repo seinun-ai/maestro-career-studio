@@ -174,7 +174,11 @@ A1 §3 (`focusableWhenDisabled`).
 
    Add the pins from A1 §3: `focusableWhenDisabled` and `data-disabled:opacity-50` in the
    save button. Run them: they FAIL.
-2. Implement A1 §1 and §2 in the tailored studio and A1 §2's base twin. Factor the base
+2. Implement A1 §1 and §2 in the tailored studio and A1 §2's base twin. **Amended by Task 1's
+   review:** in `materialize.onSuccess`, when the returned key equals `adoptedKey`, bump
+   `editorGen` directly (the adoption effect never runs for an unchanged key), and clear
+   `forcedKey` on any adoption action other than `none`. The helper already lets the
+   forced key win over queued own keys. Factor the base
    snapshot builder into one local function, as A1 §2 says, for the ratchet.
 3. Implement A1 §3 in `StudioSaveButton`.
 4. Rewrite the comments A1 §2 names, since they describe the remount.
@@ -191,6 +195,10 @@ A1 §3 (`focusableWhenDisabled`).
    - Cmd/Ctrl+S from Summary keeps focus in Summary.
    - A formatting-only save followed by a foreign edit over unsaved edits shows the banner.
    - Rebuild while there are unsaved edits replaces the editor.
+   - Rebuild with unsaved edits on a draft whose rebuilt content equals the adopted
+     key (edit a fresh draft, don't save, Rebuild) still replaces the editor.
+   - A Harshibar application: edit a knob right after load, before the templates
+     query resolves; an explicit section order must not be dropped.
 8. Commit: `fix(studio): own saves adopt in place; no edits lost; Save keeps focus`.
 
 ### Task 3: Raw-JSON drafts count as unsaved
@@ -639,6 +647,8 @@ A1 §3 (`focusableWhenDisabled`).
 
 | Task | Planned | Did instead | Why (Goal Card line) |
 |---|---|---|---|
+| 1 | Helpers only | Also extended the `diffFrom` sentence in the conventions doc; pin also asserts `SECTION_ORDER_FALLBACK` is gone from the panel; import swap | Principles: conventions change in the same commit; one definition of what `null` shows |
+| 1 (review) | `adoptServerKey` checks own keys first; `keepIfEdited` compares with `JSON.stringify` | Forced (Rebuild) key wins over queued own keys; `keepIfEdited` compares by `serverKey`; non-finite widths clamp to the default | A queued own key equal to the Rebuild key left a stale arm (the high-priority bug's shape); key order is not content |
 
 ## Gate results
 
