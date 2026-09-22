@@ -410,7 +410,11 @@
   invalidate job-detail alongside applications when status changes.
 - Shared components: `StatusChip`/`SavedChip` (`components/status-chip.tsx` —
   the ONLY status vocabulary/color source in the UI), `CompanyMonogram`,
-  `ApplicationDetailsMenu` (status lives in the chip, not the menu).
+  `ApplicationDetailsMenu` (status lives in the chip, not the menu). "Needs
+  you" (`needs_decision` and `needs_human`) is ONE `NEEDS_YOU` object:
+  `text-orange-800` on `bg-orange-500/10`, `dark:text-orange-400`. Orange-700
+  measured 3.98:1 over `--muted`; `test_frontend_color_roles.py` computes the
+  chip over background, card and muted in both modes.
 - **Card galleries**: Templates and Base Resumes are the same image-first
   card grid, so the shell lives once in `components/gallery/` (`GalleryGrid`,
   `GalleryCard`, `GalleryCardActions` — the z-20 wrapper — and
@@ -610,7 +614,18 @@
   (separate light/dark steps; re-run the dataviz palette validator if changed);
   shared helpers live in `components/charts/chart-kit.tsx` — never re-declare
   per-chart COLORS arrays; the heatmap uses a `color-mix` primary-blue
-  sequential ramp. **The gap sweeps read ONE base per job.** Both
+  sequential ramp. ATS-over-time draws at most 4 roles (`MAX_ROLE_SERIES` in
+  `lib/analytics-series.ts`) and leaves the tail off the chart, naming the
+  hidden count in the caption; role mix folds that tail into one "More roles"
+  series so the week still sums. Role text on these charts, the filters, the
+  heatmap, and the Job market bars comes from `useRoleLabel`, never the slug.
+  While the catalog loads, or when its request fails, the label is
+  `humanizeSlug` (`lib/humanize-slug.ts`, also `baseResumeLabel`'s fallback):
+  the key's own words with the catalog's acronyms cased as its labels case
+  them (AI/ML, MLOps, BI, QA, IT), never blank. A new acronym in the catalog
+  goes in `TOKEN_CASE`; `test_frontend_analytics.py` fails until it does. The
+  fit-distribution legend names each resume by `display_name` and draws at
+  most the palette's six. Colours follow that order and are never cycled. **The gap sweeps read ONE base per job.** Both
   `explore_gaps.gap_frequency` and `explore_build_areas.build_areas` go through
   `explore_gaps._best_base_gap_rows` — the single highest-composite base-phase
   row per job (ties break `target_id` asc for deterministic reruns). Pooling
@@ -633,7 +648,9 @@
   measures headroom to the DUAL-placement ceiling — exactly why the skip is a
   predicate, not a points filter. **`build_areas` rows are tiered by what would
   fix them.** Additive fields `tier` (`build`|`surface`|`wording`), `category`
-  (most-common effective gap category, `null` on wording rows) and
+  (most-common effective gap category, `null` on wording rows), `category_label`
+  (server-owned plain words for `category`, `null` on wording rows; the panel renders it and holds no
+  label map of its own) and
   `wording_jobs` — additive so MCP `explore_gap_frequency` and
   `chat_tools.tool_analytics_gap_frequency` keep working; both docstrings LEAD
   with `tier`, because for an agent the docstring IS the API. An occurrence is

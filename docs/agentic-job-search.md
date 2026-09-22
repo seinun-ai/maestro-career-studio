@@ -94,7 +94,8 @@ Call `get_job_search_brief` (GET /api/jobs/search-brief). It returns:
   lift, application counts): what the candidate can credibly apply as.
 - `role_mix` / `top_skills` — the demand picture across already-captured JDs.
 - `build_areas` — frequent gap skills with KB-evidence status, each carrying a
-  `tier`. Read the tier before treating a row as a deficit: only `build` (no
+  `tier`. `category_label` is the plain-words reason; say that, not `category`.
+  Read the tier before treating a row as a deficit: only `build` (no
   resume evidence AND nothing in the KB) is something to stretch toward;
   `surface` means the material already exists and just needs porting or
   corroborating; `wording` is a zero-headroom footnote (`n_jobs: 0`,

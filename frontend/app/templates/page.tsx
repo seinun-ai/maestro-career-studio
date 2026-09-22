@@ -169,7 +169,7 @@ export default function TemplatesListPage() {
     <PageShell>
       <PageHeader
         title="Templates"
-        subtitle="Templates used to render resumes."
+        subtitle="The look of the PDF."
         actions={
           <div className="flex items-center gap-3">
             <label className="text-muted-foreground flex items-center gap-2 text-sm">

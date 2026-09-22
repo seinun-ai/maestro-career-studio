@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.models.job import Job
 from app.models.job_skill import JobSkill
+from app.services import role_categories
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,6 +42,11 @@ def _count_by(db, column, filters: JobFilters, *, coalesce="unstated"):
 
 
 def compute_signals(o: dict[str, Any]) -> list[dict[str, str]]:
+    """The first five insights; `candidate_signals` is every one that fires."""
+    return candidate_signals(o)[:5]
+
+
+def candidate_signals(o: dict[str, Any]) -> list[dict[str, str]]:
     total = o["meta"]["total_jobs"]
     if not total:
         return []
@@ -50,33 +56,38 @@ def compute_signals(o: dict[str, Any]) -> list[dict[str, str]]:
     accept = opt.get("yes", 0) + opt.get("stem_opt_ok", 0)
     signals.append({
         "title": f"{round(accept / total * 100)}% of JDs explicitly accept OPT",
-        "detail": f"{accept} of {total} say yes or STEM-OPT; the rest are 'no' or unstated.",
+        "detail": f"{accept} of {total} accept OPT or STEM OPT. The rest say no or don't say.",
     })
 
     if o["locations"]:
         top = o["locations"][0]
         signals.append({
             "title": f"Top location: {top['key']} ({top['count']})",
-            "detail": "Highest concentration of JDs by location.",
+            "detail": "More JDs name this location than any other.",
         })
 
     if o["top_required_skills"]:
         s = o["top_required_skills"][0]
         signals.append({
-            "title": f"{s['skill_name']} required in {round(s['n'] / total * 100)}% of JDs",
-            "detail": f"Most-required skill — {s['n']} of {total} JDs.",
+            # Skill names are stored casefolded, so the name never leads the title.
+            "title": f"Top required skill: {s['skill_name']} ({round(s['n'] / total * 100)}% of JDs)",
+            "detail": f"Required in {s['n']} of {total} JDs, more than any other skill.",
         })
 
-    paid = [r for r in o["salary_by_role"] if r.get("avg_max")]
+    # Reserved buckets are not a "track": "Best-paying track: Unknown" says nothing.
+    paid = [
+        r for r in o["salary_by_role"]
+        if r.get("avg_max") and r["role_category"] not in role_categories.RESERVED
+    ]
     if paid:
         best = max(paid, key=lambda r: r["avg_max"])
         cur = best.get("currency") or o["meta"].get("salary_year_currency")
         cur_bit = f" {cur}" if cur else ""
         signals.append({
-            "title": f"Best-paying track: {best['role_category']}",
+            "title": f"Best-paying track: {role_categories.label_for(best['role_category'])}",
             "detail": (
-                f"~{round(best['avg_max'] / 1000)}k{cur_bit} avg max across "
-                f"{best['n']} disclosed JDs."
+                f"Average top of the pay range: about {round(best['avg_max'] / 1000)}k{cur_bit}, "
+                f"from {best['n']} JDs that list pay."
             ),
         })
 
@@ -85,8 +96,7 @@ def compute_signals(o: dict[str, Any]) -> list[dict[str, str]]:
         signals.append({
             "title": f"{round(without / total * 100)}% of JDs state no salary",
             "detail": (
-                f"{without} of {total} omit pay numbers — normal "
-                "(~40%+ US / ~88% DE; IL may only hyperlink a pay page)."
+                f"{without} of {total} leave pay out. That is common, so it is not a red flag."
             ),
         })
 
@@ -99,7 +109,7 @@ def compute_signals(o: dict[str, Any]) -> list[dict[str, str]]:
             "detail": f"Only {remote} of {total} JDs are remote.",
         })
 
-    return signals[:5]
+    return signals
 
 
 def _salary_year_stats(db, filters: JobFilters):

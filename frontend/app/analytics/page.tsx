@@ -17,6 +17,7 @@ import {
   type TopSkillsFilters,
 } from "@/components/charts/top-skills-chart";
 import { ExploreOverview } from "@/components/explore/explore-overview";
+import { useRoleLabel } from "@/components/role-category-picker";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import {
@@ -71,6 +72,7 @@ function AnalyticsContent() {
     queryKey: ["jobs"],
     queryFn: () => apiFetch<Job[]>("/api/jobs"),
   });
+  const label = useRoleLabel();
 
   const options = useMemo(() => {
     const roles = new Set<string>();
@@ -86,13 +88,15 @@ function AnalyticsContent() {
       if (job.salary_currency) currencies.add(job.salary_currency);
     }
     return {
-      roles: [...roles].sort(),
+      roles: [...roles].sort(
+        (a, b) => label(a).localeCompare(label(b)) || a.localeCompare(b),
+      ),
       levels: [...levels].sort(),
       employment: [...employment].sort(),
       countries: [...countries].sort(),
       currencies: [...currencies].sort(),
     };
-  }, [jobs.data]);
+  }, [jobs.data, label]);
 
   const filters: TopSkillsFilters = {
     role_category: roleCategory === ANY ? null : roleCategory,
@@ -104,24 +108,25 @@ function AnalyticsContent() {
 
   const filterSelect = (
     id: string,
-    label: string,
+    fieldLabel: string,
     value: string,
     onChange: (v: string) => void,
     items: string[],
+    format: (v: string) => string = (v) => v,
   ) => (
     <div className="grid gap-1.5">
-      <Label htmlFor={id}>{label}</Label>
+      <Label htmlFor={id}>{fieldLabel}</Label>
       <Select value={value} onValueChange={(v) => onChange(v ?? ANY)}>
         <SelectTrigger id={id} className="w-44">
           <SelectValue>
-            {(v) => (v === ANY ? "any" : String(v ?? ""))}
+            {(v) => (v === ANY ? "Any" : format(String(v ?? "")))}
           </SelectValue>
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value={ANY}>any</SelectItem>
+          <SelectItem value={ANY}>Any</SelectItem>
           {items.map((it) => (
             <SelectItem key={it} value={it}>
-              {it}
+              {format(it)}
             </SelectItem>
           ))}
         </SelectContent>
@@ -137,6 +142,7 @@ function AnalyticsContent() {
         roleCategory,
         setRoleCategory,
         options.roles,
+        label,
       )}
       {filterSelect("level", "Level", level, setLevel, options.levels)}
       {filterSelect(

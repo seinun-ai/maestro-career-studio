@@ -15,6 +15,7 @@ import {
 
 import { Skeleton } from "@/components/ui/skeleton";
 import { CHART_COLORS as COLORS, buildQuery, TOOLTIP_CONTENT_STYLE, TOOLTIP_ITEM_STYLE, TOOLTIP_LABEL_STYLE } from "@/components/charts/chart-kit";
+import { useRoleLabel } from "@/components/role-category-picker";
 import { apiFetch } from "@/lib/api";
 import type { TailoringLiftRow } from "@/lib/types";
 import type { TopSkillsFilters } from "@/components/charts/top-skills-chart";
@@ -28,6 +29,8 @@ export function TailoringLiftChart({ filters }: { filters: TopSkillsFilters }) {
       ),
   });
 
+  const label = useRoleLabel();
+
   // The "all" row is the cross-role summary, not a role — pull it out of the
   // bars and surface it as a caption so it isn't mistaken for a category.
   const { chartData, overall } = useMemo(() => {
@@ -36,14 +39,14 @@ export function TailoringLiftChart({ filters }: { filters: TopSkillsFilters }) {
     const chartData = rows
       .filter((r) => r.role_category !== "all")
       .map((r) => ({
-        role: r.role_category,
+        role: label(r.role_category),
         Base: r.avg_base,
         Tailored: r.avg_tailored,
         n: r.n,
         low_sample: r.low_sample,
       }));
     return { chartData, overall };
-  }, [data]);
+  }, [data, label]);
 
   if (isLoading) return <Skeleton className="h-80 w-full" />;
   if (!data || data.length === 0) {
@@ -58,7 +61,9 @@ export function TailoringLiftChart({ filters }: { filters: TopSkillsFilters }) {
           {overall.avg_tailored.toFixed(1)}{" "}
           <span
             className={
-              overall.avg_lift >= 0 ? "text-emerald-600" : "text-red-600"
+              overall.avg_lift >= 0
+                ? "text-emerald-700 dark:text-emerald-400"
+                : "text-destructive"
             }
           >
             ({overall.avg_lift >= 0 ? "+" : ""}

@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch } from "@/lib/api";
 import type { ExploreCountRow, ExploreOverview } from "@/lib/types";
 import { LowSampleCaption } from "@/components/explore/low-sample-hint";
+import { useRoleLabel } from "@/components/role-category-picker";
 
 type Filters = {
   role_category?: string | null;
@@ -83,6 +84,7 @@ export function ExploreOverview({ filters }: { filters: Filters }) {
     queryKey: ["explore-overview", filters],
     queryFn: () => apiFetch<ExploreOverview>(buildPath(filters)),
   });
+  const label = useRoleLabel();
 
   if (q.isLoading)
     return (
@@ -116,31 +118,31 @@ export function ExploreOverview({ filters }: { filters: Filters }) {
         ? "mixed"
         : "—";
   const salarySub = o.meta.salary_mixed_currencies
-    ? "filter by currency"
+    ? "Filter by currency"
     : o.meta.jobs_with_salary
-      ? `${o.meta.jobs_with_salary} disclosed · ${o.meta.jobs_without_salary} omit pay`
-      : "year only · omit is normal";
+      ? `${o.meta.jobs_with_salary} list pay · ${o.meta.jobs_without_salary} don't`
+      : "Yearly pay only";
 
   return (
     <div className="flex flex-col gap-4">
       <LowSampleCaption n={total} lowSample={total < 5} unit="jobs" />
       <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-5">
         <StatTile
-          label="total JDs"
+          label="Job descriptions"
           value={String(total)}
-          sub={o.meta.since ? `since ${o.meta.since.slice(0, 10)}` : undefined}
+          sub={o.meta.since ? `Since ${o.meta.since.slice(0, 10)}` : undefined}
         />
         <StatTile
-          label="role categories"
+          label="Role categories"
           value={String(o.meta.role_category_count)}
         />
         <StatTile
-          label="onsite"
+          label="Onsite"
           value={`${pct(onsite, total)}%`}
           sub={`${onsite} of ${total}`}
         />
         <StatTile
-          label="avg yearly salary"
+          label="Avg yearly salary"
           value={salaryAvg}
           sub={salarySub}
         />
@@ -168,7 +170,13 @@ export function ExploreOverview({ filters }: { filters: Filters }) {
             <CardTitle>Role category mix</CardTitle>
           </CardHeader>
           <CardContent>
-            <BarList rows={toBars(o.role_mix)} empty="No data" />
+            <BarList
+              rows={o.role_mix.map((row) => ({
+                label: label(row.key),
+                count: row.count,
+              }))}
+              empty="No data"
+            />
           </CardContent>
         </Card>
 
@@ -274,7 +282,7 @@ export function ExploreOverview({ filters }: { filters: Filters }) {
                     className="bg-muted/40 rounded-md p-3"
                   >
                     <p className="text-muted-foreground text-xs">
-                      {r.role_category}
+                      {label(r.role_category)}
                       {r.currency ? ` · ${r.currency}` : ""}
                     </p>
                     <p className="text-foreground text-base font-medium">

@@ -7,7 +7,7 @@ from app.main import app
 from app.models.application import Application
 from app.models.ats_score import AtsScore
 from app.models.job import Job
-from app.services import explore_gaps
+from app.services import explore_gaps, gap_analysis
 
 
 def _override_db(db_session):
@@ -207,7 +207,14 @@ def test_gap_frequency_ranks_by_distinct_jobs(db_session):
     # avg_potential_points is the mean across occurrences: (4.0 + 6.0) / 2 == 5.0
     assert by_skill["kubernetes"]["avg_potential_points"] == 5.0
     assert by_skill["kubernetes"]["category"] == "missing_skills"
+    assert by_skill["kubernetes"]["category_label"] == "no evidence on this resume"
     assert by_skill["kubernetes"]["requirement_level"] == "required"
+
+
+def test_every_skill_gap_category_has_a_label():
+    assert set(explore_gaps.GAP_CATEGORY_LABELS) == set(
+        gap_analysis._HINT_TO_CATEGORY.values()
+    )
 
 
 def test_gap_frequency_flags_low_sample_below_five_jobs(db_session):

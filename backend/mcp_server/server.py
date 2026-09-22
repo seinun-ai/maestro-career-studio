@@ -308,11 +308,13 @@ def get_job_search_brief() -> Any:
     relocation, work-auth VERBATIM plus warnings[] when values are contradictory
     or missing — never guessed), persona text (may be empty; weigh the
     analytics-derived targets higher when it is), active base-resume summaries,
-    role mix, top required skills, build areas, referral careers pages
-    (company + careers_url + has_contact), and counts of jobs captured in the
-    last 30 days by role category. Call this FIRST in an agentic search session
-    (playbook: docs/agentic-job-search.md). The workflow it anchors is capture
-    and score only — browse, extract, store_extracted_jd — never auto-apply."""
+    role mix, top required skills, build areas (per-skill tier plus
+    category_label; speak those words, never the raw category key), referral
+    careers pages (company + careers_url + has_contact), and counts of jobs
+    captured in the last 30 days by role category. Call this FIRST in an agentic
+    search session (playbook: docs/agentic-job-search.md). The workflow it
+    anchors is capture and score only — browse, extract, store_extracted_jd —
+    never auto-apply."""
     return _client.get_job_search_brief()
 
 
@@ -1178,7 +1180,8 @@ def explore_role_mix_over_time() -> Any:
 @_guard
 def explore_fit_distribution() -> Any:
     """How each base resume's ATS composites (deterministic engine) are
-    distributed across jobs."""
+    distributed across jobs. Each row's `display_name` is the resume's own name
+    (null for a slug with no row): call the resume by it, not by the slug."""
     return _client.explore_fit_distribution()
 
 
@@ -1201,6 +1204,10 @@ def explore_gap_frequency(
     carries build_areas, or GET /api/explore/build-areas. Hygiene mirror_wording
     gaps are excluded here: the resume already matches those at full keyword
     credit, so the literal JD token moves no score and is not demand.
+    Each row also carries category_label, the plain-words form of category
+    (e.g. "needs corroborating"); in anything you tell the user, say
+    category_label (and, on build_areas rows, the tier word), never a raw key
+    such as dual_place or missing_skills.
     Optionally filtered by role/level/type; limit caps the number of skills
     returned."""
     return _client.explore_gap_frequency(

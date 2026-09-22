@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { apiFetch } from "@/lib/api";
+import { humanizeSlug } from "@/lib/humanize-slug";
 import { cn } from "@/lib/utils";
 import type { BaseResumeDetail, FavoredRole, RoleCategory } from "@/lib/types";
 
@@ -34,15 +35,21 @@ export function useRoleCategories() {
   });
 }
 
+/** key -> display label from the fetched catalog. While it loads, after it
+ *  fails, or for a key it no longer has, `humanizeSlug` stands in: the role's
+ *  own name, acronyms cased as the catalog cases them, never blank. */
+export function useRoleLabel() {
+  const { data } = useRoleCategories();
+  return useCallback(
+    (key: string | null | undefined) => roleLabel(key, data),
+    [data],
+  );
+}
+
 export function roleLabel(key: string | null | undefined, options?: RoleCategory[]) {
-  if (!key) return "Unknown";
-  const hit = options?.find((o) => o.key === key);
-  if (hit) return hit.label;
+  const hit = key ? options?.find((o) => o.key === key) : undefined;
   // A row written before a category was renamed still renders.
-  return key
-    .split("_")
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(" ");
+  return hit ? hit.label : humanizeSlug(key);
 }
 
 /** Prefer the free-text label when present; otherwise the catalog category. */
@@ -146,7 +153,7 @@ export function RoleCategoryPicker({
         }}
         disabled={save.isPending || !options}
         className={cn(
-          "border-input focus-within:ring-ring/50 flex min-h-9 flex-wrap items-center gap-1.5 rounded-md border bg-transparent px-2 py-1.5 text-sm focus-within:ring-2",
+          "border-input focus-within:ring-ring flex min-h-9 flex-wrap items-center gap-1.5 rounded-md border bg-transparent px-2 py-1.5 text-sm focus-within:ring-2",
           className,
           guessing && "border-dashed",
         )}

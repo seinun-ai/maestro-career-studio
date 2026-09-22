@@ -15,9 +15,13 @@ import {
 
 import { Skeleton } from "@/components/ui/skeleton";
 import { CHART_COLORS as COLORS, buildQuery, TOOLTIP_CONTENT_STYLE, TOOLTIP_ITEM_STYLE, TOOLTIP_LABEL_STYLE } from "@/components/charts/chart-kit";
+import { useRoleLabel } from "@/components/role-category-picker";
+import { MAX_ROLE_SERIES, splitTopSeries } from "@/lib/analytics-series";
 import { apiFetch } from "@/lib/api";
 import type { AtsOverTimeRow } from "@/lib/types";
 import type { TopSkillsFilters } from "@/components/charts/top-skills-chart";
+
+const PHASE_LABEL = { base: "Base", tailored: "Tailored" } as const;
 
 interface SeriesMeta {
   role: string;
@@ -39,20 +43,33 @@ export function AtsOverTimeChart({ filters }: { filters: TopSkillsFilters }) {
       ),
   });
 
-  // One role selected → collapse series to just base/tailored; otherwise one
-  // series per role_category + phase. Base is always dashed, tailored solid.
+  // One role selected → collapse series to just base/tailored; otherwise the
+  // top roles by score count, tail excluded so colours never cycle. Base is
+  // always dashed, tailored solid. dataKey stays the slug; `name` is the label.
   const singleRole = Boolean(filters.role_category);
+  const label = useRoleLabel();
 
-  const { chartData, series } = useMemo(() => {
-    if (!data) return { chartData: [], series: [] as Series[] };
+  const { chartData, series, hidden, anyLow } = useMemo(() => {
+    if (!data) {
+      return {
+        chartData: [],
+        series: [] as Series[],
+        hidden: [] as string[],
+        anyLow: false,
+      };
+    }
 
-    const roles = [...new Set(data.map((r) => r.role_category))].sort();
-    const roleColor = (role: string) =>
-      COLORS[Math.max(0, roles.indexOf(role)) % COLORS.length];
+    const split = singleRole
+      ? { shown: [...new Set(data.map((row) => row.role_category))], hidden: [] as string[] }
+      : splitTopSeries(data, (row) => row.role_category, (row) => row.n);
+    const drawn = singleRole
+      ? data
+      : data.filter((row) => split.shown.includes(row.role_category));
+    const roleColor = (role: string) => COLORS[split.shown.indexOf(role)];
 
     const weeks = new Map<string, Record<string, number | string>>();
     const seriesMeta = new Map<string, SeriesMeta>();
-    for (const row of data) {
+    for (const row of drawn) {
       const key = singleRole
         ? row.phase
         : `${row.role_category} · ${row.phase}`;
@@ -75,7 +92,12 @@ export function AtsOverTimeChart({ filters }: { filters: TopSkillsFilters }) {
       return { key, meta, stroke };
     });
 
-    return { chartData, series };
+    return {
+      chartData,
+      series,
+      hidden: split.hidden,
+      anyLow: drawn.some((row) => row.low_sample),
+    };
   }, [data, singleRole]);
 
   if (isLoading) return <Skeleton className="h-80 w-full" />;
@@ -83,14 +105,15 @@ export function AtsOverTimeChart({ filters }: { filters: TopSkillsFilters }) {
     return <p className="text-muted-foreground text-sm">No data yet.</p>;
   }
 
-  const anyLow = (data ?? []).some((r) => r.low_sample);
-
   return (
     <div>
       <p className="text-muted-foreground mb-2 text-xs">
         Solid = tailored · dashed = base. Weekly average ATS composite (0–100).
         {anyLow
           ? " Weeks with fewer than 5 scores are directional only."
+          : ""}
+        {hidden.length
+          ? ` Showing the ${MAX_ROLE_SERIES} roles with the most scores. Pick a role category above to see the other ${hidden.length}.`
           : ""}
       </p>
       <ResponsiveContainer width="100%" height={320}>
@@ -105,6 +128,11 @@ export function AtsOverTimeChart({ filters }: { filters: TopSkillsFilters }) {
               key={key}
               type="monotone"
               dataKey={key}
+              name={
+                singleRole
+                  ? PHASE_LABEL[meta.phase]
+                  : `${label(meta.role)} · ${PHASE_LABEL[meta.phase]}`
+              }
               stroke={stroke}
               strokeDasharray={meta.phase === "base" ? "5 5" : undefined}
               dot={false}

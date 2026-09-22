@@ -7,6 +7,7 @@ from app.main import app
 from app.models.ats_score import AtsScore
 from app.models.job import Job
 from app.models.job_skill import JobSkill
+from app.services import explore_overview
 
 
 def _override_db(db_session):
@@ -222,6 +223,25 @@ def test_fit_distribution_flags_low_sample_and_reports_n(db_session):
     assert rows["hybrid"]["buckets"]["0-20"] == 5
 
 
+def test_fit_distribution_names_each_base_resume(db_session):
+    """The chart legend says the resume's own name. A slug with no row has none."""
+    from app.models.base_resume import BaseResume
+
+    job = _seed_job(db_session, raw_hash="fit-name", role_category="data_scientist")
+    db_session.add(BaseResume(slug="ds_base", display_name="Data Science Base", data_json={}))
+    db_session.add_all([_ats_base_row(job.id, "ds_base", 70.0), _ats_base_row(job.id, "disk_only", 40.0)])
+    db_session.commit()
+
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        response = TestClient(app).get("/api/explore/fit-distribution")
+    finally:
+        app.dependency_overrides.clear()
+
+    names = {row["base_resume"]: row["display_name"] for row in response.json()}
+    assert names == {"ds_base": "Data Science Base", "disk_only": None}
+
+
 def test_overview_aggregates(db_session):
     j1 = _seed_job(db_session, raw_hash="o1", role_category="data_scientist", level="entry")
     j2 = _seed_job(db_session, raw_hash="o2", role_category="data_scientist", level="mid")
@@ -381,6 +401,87 @@ def test_overview_signals(db_session):
     assert "Texas" in titles
     assert "Python" in titles
     assert len(body["signals"]) <= 5
+
+
+def test_overview_signal_copy_has_no_em_dash(db_session):
+    """Insight title and detail are sentences. An em dash is a clause joiner, not copy.
+
+    Reads the UNCAPPED list: the endpoint keeps five, and this fixture fires all
+    six, so a sixth signal's copy would otherwise go unchecked."""
+    j1 = _seed_job(db_session, raw_hash="s1", role_category="data_scientist")
+    j2 = _seed_job(db_session, raw_hash="s2", role_category="data_scientist")
+    paid = _seed_job(db_session, raw_hash="s3", role_category="data_scientist")
+    j1.opt_accepted, j2.opt_accepted, paid.opt_accepted = "yes", "no", "stem_opt_ok"
+    j1.state, j2.state, paid.state = "Texas", "Texas", "Texas"
+    j1.work_mode, j2.work_mode, paid.work_mode = "onsite", "onsite", "onsite"
+    paid.salary_min, paid.salary_max, paid.salary_period, paid.salary_currency = (
+        150000,
+        180000,
+        "year",
+        "USD",
+    )
+    _add_skill(db_session, j1, "Python", requirement="required")
+    _add_skill(db_session, j2, "Python", requirement="required")
+    _add_skill(db_session, paid, "Python", requirement="required")
+    db_session.flush()
+    signals = explore_overview.candidate_signals(explore_overview.build_overview(db_session))
+    assert len(signals) == 6, [s["title"] for s in signals]
+    copy = " ".join(f"{s['title']} {s['detail']}" for s in signals)
+    assert "Remote roles are scarce" in copy
+    assert "—" not in copy
+
+
+# AI/ML Engineer out-earns Data Scientist. A reserved bucket is appended to out-earn both.
+_TRACKS = [("data_scientist", 100000, 150000), ("ai_ml_engineer", 160000, 200000)]
+
+
+def _best_paying_titles(db_session, pay):
+    """Overview signal titles with one yearly-USD job per (role, min, max);
+    a role of None is stored NULL and reads back as `unknown`."""
+    for i, (role, low, high) in enumerate(pay):
+        job = _seed_job(db_session, raw_hash=f"pay-{i}", role_category="data_scientist")
+        job.role_category = role
+        job.salary_min, job.salary_max = low, high
+        job.salary_period, job.salary_currency = "year", "USD"
+    db_session.flush()
+    client = TestClient(app)
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        body = client.get("/api/explore/overview").json()
+    finally:
+        app.dependency_overrides.clear()
+    return [signal["title"] for signal in body["signals"]]
+
+
+def test_best_paying_signal_uses_role_label(db_session):
+    """The insight names the catalog label, never the slug."""
+    titles = _best_paying_titles(db_session, _TRACKS)
+    assert "Best-paying track: AI/ML Engineer" in titles
+    assert not any("ai_ml_engineer" in title for title in titles)
+
+
+def test_best_paying_signal_skips_the_unknown_bucket(db_session):
+    """A higher-paying `unknown` bucket is not a track."""
+    titles = _best_paying_titles(db_session, [*_TRACKS, (None, 300000, 400000)])
+    best = [title for title in titles if title.startswith("Best-paying track:")]
+    assert best == ["Best-paying track: AI/ML Engineer"]
+
+
+def test_best_paying_signal_skips_the_other_bucket(db_session):
+    """A higher-paying `other` bucket is not a track either."""
+    titles = _best_paying_titles(db_session, [*_TRACKS, ("other", 300000, 400000)])
+    best = [title for title in titles if title.startswith("Best-paying track:")]
+    assert best == ["Best-paying track: AI/ML Engineer"]
+
+
+def test_top_skill_signal_title_starts_with_words(db_session):
+    """Skill names are stored casefolded, so the title leads with words and
+    keeps the stored name verbatim instead of inventing a casing for it."""
+    job = _seed_job(db_session, raw_hash="skill-title", role_category="data_scientist")
+    _add_skill(db_session, job, "sql", requirement="required")
+    db_session.flush()
+    signals = explore_overview.candidate_signals(explore_overview.build_overview(db_session))
+    assert "Top required skill: sql (100% of JDs)" in [s["title"] for s in signals]
 
 
 def test_role_mix_over_time_groups_by_week(db_session):

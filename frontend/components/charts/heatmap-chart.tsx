@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { Skeleton } from "@/components/ui/skeleton";
 import { buildQuery } from "@/components/charts/chart-kit";
+import { useRoleLabel } from "@/components/role-category-picker";
 import { apiFetch } from "@/lib/api";
 import type { HeatmapRow } from "@/lib/types";
 import type { TopSkillsFilters } from "@/components/charts/top-skills-chart";
@@ -31,6 +32,8 @@ export function HeatmapChart({
         `/api/explore/heatmap?${buildQuery(filters ?? {}, { limit, top_tier_only: "true" })}`,
       ),
   });
+
+  const label = useRoleLabel();
 
   const { skills, roles, matrix } = useMemo(() => {
     const skills = new Set<string>();
@@ -65,9 +68,9 @@ export function HeatmapChart({
             {roles.map((role) => (
               <th
                 key={role}
-                className="max-w-24 p-1 text-left font-medium whitespace-nowrap"
+                className="max-w-28 p-1 text-left align-bottom font-medium"
               >
-                {role}
+                {label(role)}
               </th>
             ))}
           </tr>
@@ -83,7 +86,7 @@ export function HeatmapChart({
                 return (
                   <td
                     key={role}
-                    title={`${skill} · ${role}: ${pct}%`}
+                    title={`${skill} · ${label(role)}: ${pct}%`}
                     className="h-8 min-w-12 rounded text-center align-middle text-[10px]"
                     style={{ backgroundColor: cellColor(pct) }}
                   >

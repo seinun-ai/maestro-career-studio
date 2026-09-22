@@ -312,7 +312,7 @@ def test_build_areas_hygiene_wording_tiers_separately(db_session):
     assert rows[1]["n_jobs"] == 0
     assert rows[1]["wording_jobs"] == 2
     assert rows[1]["avg_potential_points"] == 0.0
-    assert rows[1]["category"] is None
+    assert (rows[1]["category"], rows[1]["category_label"]) == (None, None)
     assert rows[0]["wording_jobs"] == 0
 
 
@@ -361,7 +361,10 @@ def test_build_areas_build_tier_requires_kb_missing_and_missing_skills(db_sessio
     # dual_place means the token is already in the skills list: corroborate it.
     assert rows["Spark"]["status"] == "missing"
     assert rows["Spark"]["tier"] == "surface"
-    assert rows["Spark"]["category"] == "dual_place"
+    assert (rows["Spark"]["category"], rows["Spark"]["category_label"]) == (
+        "dual_place",
+        "needs corroborating",
+    )
 
 
 def test_build_areas_mixed_skill_counts_both_axes(db_session):

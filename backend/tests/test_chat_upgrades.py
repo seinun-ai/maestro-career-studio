@@ -14,6 +14,7 @@ from app.models.chat import ChatMessage, ChatSession
 from app.schemas.resume_edit import ResumeEditRequest
 from app.services.chat_agent import _context_block
 from app.services.chat_tools import (
+    TOOL_SPECS,
     ToolContext,
     check_ops_in_scope,
     execute_tool,
@@ -164,6 +165,11 @@ def test_analytics_gap_frequency_rejects_unknown_role_category(db_session):
         {"role_category": "Data Scientist"},
     )
     assert "error" in result and "data_scientist" in result["error"]
+
+
+def test_analytics_gap_frequency_spec_names_category_label():
+    spec = next(item for item in TOOL_SPECS if item["name"] == "analytics_gap_frequency")
+    assert "category_label" in spec["description"]
 
 
 # --- kind-tagged selections -------------------------------------------------
