@@ -19,6 +19,56 @@ def _read(rel: str) -> str:
 _SHELL = _read("components/resume-editor/editor-shell.tsx")
 
 
+def test_template_editor_fills_the_viewport_and_contact_fits():
+    page = _read("app/templates/[id]/page.tsx")
+    assert "<FullscreenEditorPage>" in page
+    contact = _read("components/resume-editor/contact-form.tsx")
+    assert "minmax(0,1fr)" in contact
+    assert "wrap-anywhere" in contact
+    assert "grid-cols-[8rem_1fr]" not in contact
+
+
+def test_divider_has_a_pointer_alternative():
+    assert 'aria-label="Widen preview"' in _SHELL
+    assert 'aria-label="Narrow preview"' in _SHELL
+
+
+def test_divider_tracks_the_pointer_on_the_shell():
+    assert "onPointerCancel=" in _SHELL
+    assert "setPointerCapture(" in _SHELL
+    assert "window.innerWidth" not in _SHELL
+    show = _SHELL.index('aria-label="Show PDF preview"')
+    button = _SHELL.rfind("<button", 0, show)
+    block = _SHELL[button : _SHELL.index("</button>", show)]
+    assert "absolute" not in block
+
+
+def test_divider_drag_persists_on_release_only():
+    # A drag re-renders from `dragPct`; storage is written on release, so a
+    # drag is not a localStorage write per pointer move.
+    drag = _SHELL[_SHELL.index("onDrag={") :]
+    drag = drag[: drag.index("onDragEnd={")]
+    assert "setDragPct(" in drag
+    assert "setStoredPct" not in drag
+    end = _SHELL[_SHELL.index("onDragEnd={") :]
+    assert "setStoredPct(" in end[: end.index("onReset={")]
+
+
+def test_divider_sizes_from_the_shell_and_resets_on_double_click():
+    splitter = _SHELL[_SHELL.index("function Splitter(") :]
+    assert "parentElement!.getBoundingClientRect()" in splitter
+    assert "onDoubleClick={onReset}" in splitter
+
+
+def test_stored_preferences_are_not_hydrated_in_an_effect():
+    for rel in (
+        "components/resume-editor/editor-shell.tsx",
+        "components/resume-editor/pdf-pages-preview.tsx",
+        "components/chat/chat-page.tsx",
+    ):
+        assert "set-state-in-effect" not in _read(rel), rel
+
+
 def test_divider_is_keyboard_operable():
     sep = _SHELL[_SHELL.index('role="separator"') :]
     sep = sep[: sep.index("/>")]
@@ -164,12 +214,102 @@ def test_base_regenerate_refreshes_the_gallery():
 
 
 def test_tailored_rescore_hint_reads_unsaved():
-    # The button stays disabled on `dirty` (no re-score mid-render), but the
-    # hint must not claim unsaved edits during the post-save gap.
+    # No re-score while the chain's render is out (`render.isPending`); the
+    # gate and the hint both read `unsaved`, so the post-save gap does not
+    # claim edits the server already has. `busy` stays free of the render:
+    # Save must still work for text typed while a PDF is rendering.
+    busy = _TAILORED[_TAILORED.index("const busy =") :]
+    busy = busy[: busy.index(";")]
+    assert "render.isPending" not in busy
     block = _TAILORED[_TAILORED.index("rescore.mutate({ announce: true })") :]
     block = block[: block.index("</Button>")]
-    assert "disabled={busy || dirty}" in block
+    assert "disabled={busy || render.isPending || unsaved}" in block
     assert re.search(r"title=\{\s*unsaved\s*\?", block)
+
+
+def test_generate_pdf_gate_reads_unsaved():
+    # ⋯ Generate PDF renders the server copy, so it waits on edits the server
+    # has not seen (`unsaved`), not on the post-save `dirty` gap.
+    click = _TAILORED.index('onClick={() => render.mutate()}')
+    start = _TAILORED.rfind("<DropdownMenuItem", 0, click)
+    block = _TAILORED[start:click]
+    assert "disabled={busy || render.isPending || unsaved}" in block
+    review = _TAILORED[_TAILORED.index("<DiffReviewPanel") :]
+    review = review[: review.index("/>")]
+    assert "dirty={unsaved}" in review
+
+
+# Formatting knobs are diffed (`diffFrom`) against the panel's baseline, so an
+# edit made before every layer of it has loaded drops an explicit override equal
+# to the incomplete one. The panel takes a `FormattingBaseline` state and enables
+# its knobs only on "ready"; lib/formatting.test.ts pins the layer combinators.
+_HOOKS = _read("components/templates/template-select.tsx")
+_PANEL = _read("components/resume-editor/formatting-panel.tsx")
+
+
+def _function(src: str, name: str) -> str:
+    body = src[src.index(f"function {name}(") :]
+    return body[: body.index("\n}\n")]
+
+
+def test_templates_query_is_defined_once_and_shared():
+    # The picker and the baseline must read one query: a second copy of the key
+    # could point at a different endpoint and resolve a different template.
+    assert _HOOKS.count('queryKey: ["templates", "all"]') == 1
+    assert 'queryKey: ["templates", "all"]' in _function(_HOOKS, "useTemplatesQuery")
+    assert "useTemplatesQuery()" in _function(_HOOKS, "TemplateSelect")
+
+
+def test_template_baseline_is_never_ready_without_the_templates_list():
+    hook = _function(_HOOKS, "useTemplateBaseline")
+    assert "useTemplatesQuery()" in hook
+    guard = "if (q.data === undefined) return unloadedLayer(q,"
+    assert guard in hook
+    assert hook.index(guard) < hook.index('status: "ready"')
+
+
+def test_formatting_panel_requires_an_explicit_baseline_state():
+    props = _PANEL[_PANEL.index("export function FormattingPanel(") :]
+    props = props[: props.index("}) {")]
+    assert "baseline: FormattingBaseline;" in props
+    assert "supportedKeys" not in props
+    assert 'const ready = baseline.status === "ready";' in _PANEL
+    assert "!ready || unsupported(key)" in _PANEL
+    assert "diffFrom(inheritedValues," in _PANEL
+
+
+def test_formatting_panel_reports_a_failed_baseline_with_a_retry():
+    # A failed fetch is a third state: never the "Loading…" line forever.
+    loading = _PANEL.index('baseline.status === "loading" &&')
+    error = _PANEL[_PANEL.index('baseline.status === "error" &&') :]
+    error = error[: error.index("/>")]
+    assert "<LoadErrorState" in error
+    assert "onRetry={baseline.retry}" in error
+    assert "retrying={baseline.retrying}" in error
+    assert "Loading {baseline.what}" in _PANEL[loading : loading + 200]
+
+
+def test_every_formatting_panel_caller_passes_a_baseline_state():
+    for rel in (
+        "components/resume-editor/tailored-resume-studio.tsx",
+        "components/resume-editor/editor-body.tsx",
+    ):
+        src = _read(rel)
+        assert "baseline={formattingBaseline}" in src, rel
+        assert "useTemplateBaseline(templateId)" in src, rel
+    page = _read("app/templates/[id]/page.tsx")
+    # Mounted only once its own template query resolves, whose row IS the
+    # baseline (the schema constant plus that row's key list).
+    assert "if (tq.isLoading || !tq.data)" in page
+    assert "supportedKeys: tq.data.supported_fmt_keys," in page
+
+
+def test_tailored_baseline_waits_for_the_base_resume_layer():
+    # The application inherits the base resume's formatting; an edit diffed
+    # against the template layer alone drops an override equal to it.
+    assert "const baseResume = useQuery({" in _TAILORED
+    assert "overlayBaseline(\n    templateBaseline,\n    baseResume," in _TAILORED
+    assert "baseResume?.formatting" not in _TAILORED
 
 
 def test_tailored_unsaved_equals_dirty_before_the_first_save():

@@ -45,8 +45,7 @@ import {
   TemplateSelect,
   templateIdFromApi,
   templateIdToApi,
-  useSupportedFmtKeys,
-  useTemplateDefaults,
+  useTemplateBaseline,
 } from "@/components/templates/template-select";
 import { Button } from "@/components/ui/button";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
@@ -60,7 +59,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { apiFetch, apiUrlForBrowserPdf } from "@/lib/api";
-import { FORMATTING_DEFAULTS, type ResumeFormatting } from "@/lib/formatting";
+import { type ResumeFormatting } from "@/lib/formatting";
 import { notifyRenderNote } from "@/lib/render-note";
 import { resumeDataSchema } from "@/lib/resume-schema";
 import { emptyPreviewMessage, keepIfEdited, saveStatus } from "@/lib/studio";
@@ -109,12 +108,7 @@ export function EditorBody({
   const [formatting, setFormatting] = useState<Partial<ResumeFormatting> | null>(
     (initial.formatting as Partial<ResumeFormatting> | null) ?? null,
   );
-  const supportedFmtKeys = useSupportedFmtKeys(templateId);
-  const templateDefaults = useTemplateDefaults(templateId);
-  const formattingBaseline: ResumeFormatting = {
-    ...FORMATTING_DEFAULTS,
-    ...templateDefaults,
-  };
+  const formattingBaseline = useTemplateBaseline(templateId);
 
   const { data: live } = useQuery({
     queryKey: ["base-resumes", slug],
@@ -581,7 +575,6 @@ export function EditorBody({
           <FormattingPanel
             value={formatting}
             onChange={setFormatting}
-            supportedKeys={supportedFmtKeys}
             baseline={formattingBaseline}
             collapsible={false}
           />

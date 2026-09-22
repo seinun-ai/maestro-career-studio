@@ -5,7 +5,12 @@ import { useQuery } from "@tanstack/react-query";
 import { LayoutGrid } from "lucide-react";
 
 import { apiFetch } from "@/lib/api";
-import { type ResumeFormatting } from "@/lib/formatting";
+import {
+  FORMATTING_DEFAULTS,
+  unloadedLayer,
+  type FormattingBaseline,
+  type ResumeFormatting,
+} from "@/lib/formatting";
 import type { TemplateSummary } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import {
@@ -38,9 +43,8 @@ export function templateIdFromApi(
  * actually renders with, mirroring the backend's `get_usable_template`: a
  * persisted id that no longer resolves, or resolves to a non-`"ready"` row
  * (deleted, or a draft mid-edit), falls back to the server default rather than
- * that row. Shared by {@link useTemplateDefaults} and
- * {@link useSupportedFmtKeys} so the knob baseline and knob support always
- * come from the same resolved template.
+ * that row. {@link useTemplateBaseline} resolves the knob baseline and the
+ * knob support through this one lookup, so both come from the same template.
  */
 function resolveTemplate(
   list: TemplateSummary[],
@@ -56,38 +60,41 @@ function resolveTemplate(
 }
 
 /**
- * Resolve the selected template's baked-in `default_formatting` overlay from the
- * shared `["templates"]` query. `DEFAULT_TEMPLATE` resolves to the server's
- * default template. Returns `{}` while loading or when the template has none, so
- * callers can spread it under `FORMATTING_DEFAULTS` as the panel baseline.
+ * The one `["templates", "all"]` query: the picker's list, and the source of the
+ * Formatting panel's template layer. One definition, so the two can never read
+ * different keys (or a different endpoint under the same key).
  */
-export function useTemplateDefaults(
-  templateId: string,
-): Partial<ResumeFormatting> {
-  const q = useQuery({
+function useTemplatesQuery() {
+  return useQuery({
     queryKey: ["templates", "all"],
     queryFn: () => apiFetch<TemplateSummary[]>("/api/templates?include_archived=true"),
   });
-  if (!q.data) return {};
-  const match = resolveTemplate(q.data, templateId);
-  return (match?.default_formatting as Partial<ResumeFormatting> | null) ?? {};
 }
 
 /**
- * Resolve the `fmt.*` keys the selected template opts into, reading from the
- * shared `["templates"]` query (its list rows already carry
- * `supported_fmt_keys`). `DEFAULT_TEMPLATE` resolves to the server's default
- * template. Returns `undefined` while the query is loading so the panel can
- * leave every knob enabled until it knows better.
+ * The Formatting panel's template layer: the schema defaults under the selected
+ * template's `default_formatting` overlay, plus the `fmt.*` keys it consumes
+ * (its list row already carries `supported_fmt_keys`). `DEFAULT_TEMPLATE`
+ * resolves to the server's default template.
+ *
+ * Until the templates list is in, this is `"loading"`, or `"error"` with a retry
+ * once the fetch has failed, never a baseline: the overlay is unknown, and a
+ * knob diffed against the bare schema defaults drops any explicit override equal
+ * to them. The application studio lays the base resume on top
+ * (`overlayBaseline`).
  */
-export function useSupportedFmtKeys(templateId: string): string[] | undefined {
-  const q = useQuery({
-    queryKey: ["templates", "all"],
-    queryFn: () => apiFetch<TemplateSummary[]>("/api/templates?include_archived=true"),
-  });
-  if (!q.data) return undefined;
+export function useTemplateBaseline(templateId: string): FormattingBaseline {
+  const q = useTemplatesQuery();
+  if (q.data === undefined) return unloadedLayer(q, "the template defaults");
   const match = resolveTemplate(q.data, templateId);
-  return match?.supported_fmt_keys ?? [];
+  return {
+    status: "ready",
+    values: {
+      ...FORMATTING_DEFAULTS,
+      ...((match?.default_formatting as Partial<ResumeFormatting> | null) ?? {}),
+    },
+    supportedKeys: match?.supported_fmt_keys ?? [],
+  };
 }
 
 /**
@@ -115,10 +122,7 @@ export function TemplateSelect({
   onChange: (v: string) => void;
   className?: string;
 }) {
-  const q = useQuery({
-    queryKey: ["templates", "all"],
-    queryFn: () => apiFetch<TemplateSummary[]>("/api/templates?include_archived=true"),
-  });
+  const q = useTemplatesQuery();
   const all = q.data ?? [];
   // Two different lists on purpose. The BROWSE grid offers only what you would
   // want to pick — ready and not archived, which is the whole point of

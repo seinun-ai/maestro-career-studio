@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useId, useState, type ReactNode } from "react";
+import { useId, useRef, useState, type ReactNode } from "react";
 import {
+  ArrowLeftToLine,
+  ArrowRightToLine,
   ChevronLeft,
   ChevronRight,
   History,
@@ -9,7 +11,12 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { PREVIEW_PCT, nextPreviewPct } from "@/lib/studio";
+import {
+  parseFlag,
+  serializeFlag,
+  useLocalStorageState,
+} from "@/hooks/use-local-storage-state";
+import { clampPreviewPct, PREVIEW_PCT, nextPreviewPct, parsePreviewPct } from "@/lib/studio";
 import { cn } from "@/lib/utils";
 
 const DEFAULT_STORAGE_KEY = "baseResumeEditor";
@@ -58,36 +65,22 @@ export function EditorShell({
 }) {
   const collapsedKey = `${storageKey}.previewCollapsed`;
   const widthKey = `${storageKey}.previewWidthPct`;
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useLocalStorageState(
+    collapsedKey,
+    parseFlag,
+    serializeFlag,
+  );
   const [fmtOpen, setFmtOpen] = useState(false);
-  const [previewPct, setPreviewPct] = useState<number>(PREVIEW_PCT.default);
-  const [hydrated, setHydrated] = useState(false);
+  const [storedPct, setStoredPct] = useLocalStorageState(
+    widthKey,
+    parsePreviewPct,
+    String,
+  );
+  // The width under the pointer. It is rendered, not persisted, so a drag
+  // does not write localStorage on every move.
+  const [dragPct, setDragPct] = useState<number | null>(null);
+  const previewPct = dragPct ?? storedPct;
   const editorPaneId = useId();
-
-  useEffect(() => {
-    const c = window.localStorage.getItem(collapsedKey);
-    const w = window.localStorage.getItem(widthKey);
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- hydrating from localStorage after mount
-    if (c === "1") setCollapsed(true);
-    if (w) {
-      const n = Number(w);
-      if (Number.isFinite(n) && n >= PREVIEW_PCT.min && n <= PREVIEW_PCT.max) {
-        setPreviewPct(n);
-      }
-    }
-    setHydrated(true);
-  }, [collapsedKey, widthKey]);
-
-  useEffect(() => {
-    if (!hydrated) return;
-    window.localStorage.setItem(collapsedKey, collapsed ? "1" : "0");
-  }, [collapsed, hydrated, collapsedKey]);
-
-  useEffect(() => {
-    if (!hydrated) return;
-    // Rounded: a drag leaves fractions, and the keyboard snaps to the grid.
-    window.localStorage.setItem(widthKey, String(Math.round(previewPct)));
-  }, [previewPct, hydrated, widthKey]);
 
   // `min-w-0` on both: a flex item defaults to min-width:auto, so the pane
   // refuses to shrink below its content's min-content width and pushes the
@@ -102,16 +95,21 @@ export function EditorShell({
 
   if (collapsed) {
     return (
-      <div className="relative flex min-h-0 w-full flex-1">
+      <div className="flex min-h-0 w-full flex-1">
         <div className={leftClass}>{editor}</div>
-        <button
-          type="button"
-          aria-label="Show PDF preview"
-          onClick={() => setCollapsed(false)}
-          className="bg-background hover:bg-muted text-muted-foreground hover:text-foreground absolute top-1/2 right-0 z-10 flex h-20 w-7 -translate-y-1/2 items-center justify-center gap-1 rounded-l-md border border-r-0 shadow-md transition-colors"
-        >
-          <ChevronLeft className="size-4" />
-        </button>
+        {/* In flow, not an overlay: an absolutely-placed tab covered the left
+            pane's scrollbar and its right-aligned controls. */}
+        <div className="bg-canvas flex w-7 shrink-0 items-center border-l">
+          <button
+            type="button"
+            aria-label="Show PDF preview"
+            title="Show PDF preview"
+            onClick={() => setCollapsed(false)}
+            className="text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-ring flex h-20 w-full items-center justify-center transition-colors outline-none focus-visible:ring-2 focus-visible:ring-inset"
+          >
+            <ChevronLeft className="size-4" aria-hidden="true" />
+          </button>
+        </div>
       </div>
     );
   }
@@ -128,15 +126,20 @@ export function EditorShell({
       <Splitter
         editorPct={100 - previewPct}
         controls={editorPaneId}
-        onDrag={(deltaPct) =>
-          setPreviewPct((p) =>
-            Math.min(PREVIEW_PCT.max, Math.max(PREVIEW_PCT.min, p - deltaPct)),
-          )
-        }
+        onDrag={(editorPct) => setDragPct(clampPreviewPct(100 - editorPct))}
+        onDragEnd={(editorPct) => {
+          setStoredPct(clampPreviewPct(100 - editorPct));
+          setDragPct(null);
+        }}
+        onReset={() => {
+          setStoredPct(PREVIEW_PCT.default);
+          setDragPct(null);
+        }}
         onKey={(key) => {
           const next = nextPreviewPct(previewPct, key);
           if (next === null) return false;
-          setPreviewPct(next);
+          setStoredPct(next);
+          setDragPct(null);
           return true;
         }}
       />
@@ -168,6 +171,30 @@ export function EditorShell({
               </Button>
             )}
             {previewHeader}
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              aria-label="Widen preview"
+              title="Widen preview"
+              disabled={previewPct >= PREVIEW_PCT.max}
+              onClick={() =>
+                setStoredPct(nextPreviewPct(previewPct, "ArrowLeft") ?? previewPct)
+              }
+            >
+              <ArrowLeftToLine className="size-4" />
+            </Button>
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              aria-label="Narrow preview"
+              title="Narrow preview"
+              disabled={previewPct <= PREVIEW_PCT.min}
+              onClick={() =>
+                setStoredPct(nextPreviewPct(previewPct, "ArrowRight") ?? previewPct)
+              }
+            >
+              <ArrowRightToLine className="size-4" />
+            </Button>
             <Button
               size="icon-sm"
               variant="ghost"
@@ -212,44 +239,41 @@ function Splitter({
   editorPct,
   controls,
   onDrag,
+  onDragEnd,
+  onReset,
   onKey,
 }: {
   /** The editor's share. Fractional while dragging; announced rounded. */
   editorPct: number;
   /** id of the editor pane this divider resizes (APG window splitter). */
   controls: string;
-  onDrag: (deltaPct: number) => void;
+  onDrag: (editorPct: number) => void;
+  onDragEnd: (editorPct: number) => void;
+  onReset: () => void;
   /** Returns true when it handled the key. */
   onKey: (key: string) => boolean;
 }) {
-  const start = (e: React.PointerEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    const viewportW = window.innerWidth;
-    let lastX = e.clientX;
-    const move = (ev: PointerEvent) => {
-      const deltaPx = ev.clientX - lastX;
-      lastX = ev.clientX;
-      onDrag((deltaPx / viewportW) * 100);
-    };
-    const up = () => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
-    };
-    document.body.style.cursor = "col-resize";
-    document.body.style.userSelect = "none";
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
+  const drag = useRef<{ left: number; width: number; editorPct: number } | null>(
+    null,
+  );
+  const finish = () => {
+    const d = drag.current;
+    if (!d) return; // pointerup and lostpointercapture both fire
+    drag.current = null;
+    document.body.style.cursor = "";
+    document.body.style.userSelect = "";
+    onDragEnd(d.editorPct);
   };
   return (
     // APG window splitter: focusable, and its value is the primary (editor)
     // pane's share. Pointer-only resizing was the gap Apple's split-view
-    // guidance and WCAG 2.1.1 both name.
+    // guidance and WCAG 2.1.1 both name. The separator stays self-closing so
+    // the keyboard pin can slice its attributes.
     <div
       role="separator"
       aria-orientation="vertical"
       aria-label="Resize preview"
+      title="Drag to resize. Double-click to reset."
       aria-controls={controls}
       aria-valuenow={Math.round(editorPct)}
       // The value is the EDITOR's share; say both so "Resize preview" is not
@@ -258,15 +282,37 @@ function Splitter({
       aria-valuemin={100 - PREVIEW_PCT.max}
       aria-valuemax={100 - PREVIEW_PCT.min}
       tabIndex={0}
-      onPointerDown={start}
+      onPointerDown={(e) => {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        // The shell's box, not the window: with the sidebar pinned a window
+        // fraction moved the divider 80% as far as the pointer.
+        const shell = e.currentTarget.parentElement!.getBoundingClientRect();
+        drag.current = { left: shell.left, width: shell.width, editorPct };
+        e.currentTarget.setPointerCapture(e.pointerId);
+        document.body.style.cursor = "col-resize";
+        document.body.style.userSelect = "none";
+      }}
+      onPointerMove={(e) => {
+        const d = drag.current;
+        if (!d) return;
+        // Absolute: the divider stays under the pointer and a clamp cannot drift.
+        d.editorPct = ((e.clientX - d.left) / d.width) * 100;
+        onDrag(d.editorPct);
+      }}
+      onPointerUp={finish}
+      onPointerCancel={finish}
+      onLostPointerCapture={finish}
+      onDoubleClick={onReset}
       onKeyDown={(e) => {
         // Alt/Cmd+Arrow is the browser's Back/Forward: let it through.
         if (e.altKey || e.ctrlKey || e.metaKey) return;
         if (onKey(e.key)) e.preventDefault();
       }}
       // `relative z-10`: the preview pane is positioned and paints over a
-      // static sibling, which hid the right half of the focus ring.
-      className="hover:bg-primary/20 focus-visible:bg-primary/40 focus-visible:ring-ring relative z-10 w-1 shrink-0 cursor-col-resize bg-transparent transition-colors outline-none focus-visible:ring-2"
+      // static sibling, which hid the right half of the focus ring. The
+      // invisible before-element widens the 4px hit target.
+      className="hover:bg-primary/20 focus-visible:bg-primary/40 focus-visible:ring-ring relative z-10 w-1 shrink-0 cursor-col-resize touch-none bg-transparent transition-colors outline-none before:absolute before:inset-y-0 before:-inset-x-1.5 before:content-[''] focus-visible:ring-2"
     />
   );
 }

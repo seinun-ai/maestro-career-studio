@@ -108,7 +108,7 @@
     unsaved edits, otherwise "No PDF yet. Generate one from More resume actions
     (⋯)." (the ⋯ trigger's accessible name). Save is dirty-gated, so a clean
     studio with no PDF (after Build draft or Rebuild from base) cannot save,
-    and ⋯ Generate PDF is disabled while edits are unsaved.
+    and ⋯ Generate PDF is disabled while edits are unsaved or a PDF is rendering.
   - *Stale preview*: `EditorShell previewStale` adds an amber strip ("Preview
     doesn't include your unsaved edits. Save to update it.") and dims the page
     IMAGES only, so the render-error banner, page-count pill and zoom keep full
@@ -150,7 +150,13 @@
     `aria-controls` the editor pane). Arrows snap to the 5% grid, since a drag
     leaves fractions; Home/End jump to the limits; Alt/Ctrl/Meta+Arrow pass
     through as Back/Forward. `relative z-10`, or the positioned preview pane
-    paints over half its focus ring.
+    paints over half its focus ring. Widen and Narrow step that same 5% grid,
+    the pointer alternative to dragging; double-click resets to 45%. The drag
+    measures the shell (not the window), captures the pointer, and writes
+    localStorage on release. The collapsed "Show PDF preview" control is a
+    28px rail in normal flow, not an overlay on the editor pane. Width and
+    collapse are `useLocalStorageState` preferences, so a stored value paints
+    on the first frame and stays in sync across tabs.
   - *Base studio*: Save is dirty-gated, so ⋯ **Regenerate PDF** (Generate PDF
     before the first render) is the retry for a failed render, disabled while
     edits are unsaved, and the render-error banner says "save or
@@ -162,9 +168,11 @@
     so when the server lands on exactly what the form holds the baseline moves,
     or the saved name reads as an unsaved edit.
   - *Tailored studio*: the user-facing signals (status line, Save, stale strip,
-    Re-score hint) read `unsaved`, the diff against what its own last Save
-    stored; `dirty` stays the input to the external-edit adoption guard
-    (SYSTEM.md §12) and the leave-page warning. Its own Save moves the
+    Re-score, ⋯ Generate PDF) read `unsaved`, the diff against what its own last
+    Save stored. Re-score and Generate PDF also stay disabled while a render is
+    in flight. `render.isPending` is not part of `busy`, so Save still accepts
+    an edit typed mid-render. `dirty` stays the input to the external-edit
+    adoption guard (SYSTEM.md §12) and the leave-page warning. Its own Save moves the
     editor's baseline IN PLACE: the parent queues the `serverKey` each Save
     returned and adopts it without a remount when the refetch brings it, so
     the working copy, focus, section tab, Formatting panel, scroll, raw mode
@@ -179,6 +187,26 @@
     own success path. Every Rebuild also writes its response into the
     `["application", id]` cache, or a remounted clean editor adopts the stale
     copy a banner was about until the refetch lands.
+  - *Formatting controls*: a knob edit is stored as `diffFrom(baseline, …)`,
+    so an edit made before every layer of the baseline has loaded drops an
+    explicit override equal to the incomplete one (a scalar, or
+    `section_order`), and the drop only shows once the layer lands.
+    `FormattingPanel` therefore takes a required `FormattingBaseline` state
+    (`lib/formatting.ts`), `"loading"` | `"error"` | `"ready"`, and enables its
+    knobs only on `"ready"`. Loading says "Loading the template defaults…";
+    a failed layer is the third state, a compact `LoadErrorState` naming the
+    layer with a retry, and the knobs stay disabled under it (editing against
+    an unknown baseline is the race itself). `useTemplateBaseline`
+    (`template-select.tsx`) is the template layer: it reads the one
+    `["templates", "all"]` query (`useTemplatesQuery`, shared with the picker)
+    and is never ready without it. The application studio lays the base
+    resume's `formatting` on top with `overlayBaseline`, so it also waits on
+    the `["base-resumes", slug]` query; an error in either layer wins over
+    loading, and data a query already holds stays ready through a failed
+    background refetch. The base studio has no further layer (the base's own
+    formatting is the panel's value, not its baseline). The template editor
+    mounts the panel only after its own template query resolves and passes a
+    ready baseline: the schema constant and that row's `supported_fmt_keys`.
 - **`PdfPagesPreview` owns the canvas and the zoom.** Pages sit on
   `bg-canvas`, so a caller adds no fill of its own. Zoom is a `role="group"`
   "Zoom" of `aria-pressed` presets (Fit width, Fit page, 100%) on a solid
@@ -186,7 +214,9 @@
   preset is secondary container led by a `Check`, and each preset is 24px tall
   (`h-6`, 44px on a coarse pointer). ONE saved
   choice (`pdfPreview.zoom`) serves all four surfaces: both studios, the job
-  page's Resume tab and the template editor. The zoom row and the render-error
+  page's Resume tab and the template editor. It is read through
+  `useLocalStorageState` during render, so a stored zoom paints on the first
+  frame and stays in sync across every mounted preview. The zoom row and the render-error
   banner sit ABOVE the scroller in normal flow: sticky inside it, the group
   scrolled away sideways with a 100% page and the banner pushed page 1 below a
   Fit-page fold. **Fit page is `max-h-[100cqh]`**: the scroller is a size
@@ -268,7 +298,11 @@
   768 — at exactly 768 the 256px rail is still pinned and a `max-w-6xl` page
   has 462px of usable width. Test tables and toolbars at 768, not just 1280
   and 375. The Applications table carries `min-w-[52rem]` because
-  `table-fixed` cannot grow a starved column.
+  `table-fixed` cannot grow a starved column. The base studio's Contact
+  block is the worked case: its read grid is `@xs:grid-cols-[8rem_minmax(0,1fr)]`
+  with `wrap-anywhere`, and below 20rem each label/value pair stacks, so a
+  768px window with the sidebar pinned and the preview open does not grow a
+  page scrollbar.
 - **`truncate` on a flex child that can reach `width: 0` hides the whole
   string** — `overflow: hidden` on a zero-width box shows nothing (`flex-1` is
   basis 0, so it never triggers a wrap next to a `shrink-0` cluster). A title

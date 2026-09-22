@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { AlertTriangle, Check } from "lucide-react";
 
+import { useLocalStorageState } from "@/hooks/use-local-storage-state";
 import { apiFetch, apiUrlForBrowserPdf } from "@/lib/api";
 import {
   actualSizeWidthPx,
@@ -53,16 +54,8 @@ export function PdfPagesPreview({
   version: string | number | null;
   emptyMessage: string;
 }) {
-  const [zoom, setZoom] = useState<PreviewZoom>("width");
+  const [zoom, chooseZoom] = useLocalStorageState(ZOOM_KEY, parseZoom, String);
   const [naturalWidth, setNaturalWidth] = useState<number | null>(null);
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- hydrating from localStorage after mount
-    setZoom(parseZoom(window.localStorage.getItem(ZOOM_KEY)));
-  }, []);
-  const chooseZoom = (value: PreviewZoom) => {
-    setZoom(value);
-    window.localStorage.setItem(ZOOM_KEY, value);
-  };
 
   const { data, isError } = useQuery({
     queryKey: ["pdf-preview", basePath, version],

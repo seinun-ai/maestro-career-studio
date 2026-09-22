@@ -58,8 +58,7 @@ import {
   TemplateSelect,
   templateIdFromApi,
   templateIdToApi,
-  useSupportedFmtKeys,
-  useTemplateDefaults,
+  useTemplateBaseline,
 } from "@/components/templates/template-select";
 import { Button } from "@/components/ui/button";
 import { ChipListInput } from "@/components/ui/chip-input";
@@ -74,7 +73,7 @@ import {
   runAtsScoreTarget,
   runCoherenceCheck,
 } from "@/lib/api";
-import { FORMATTING_DEFAULTS, type ResumeFormatting } from "@/lib/formatting";
+import { overlayBaseline, type ResumeFormatting } from "@/lib/formatting";
 import { notifyRenderNote } from "@/lib/render-note";
 import { resumeDataSchema } from "@/lib/resume-schema";
 import {
@@ -439,25 +438,24 @@ function StudioEditor({
   const [formatting, setFormatting] = useState<Partial<ResumeFormatting> | null>(
     (application.formatting as Partial<ResumeFormatting> | null) ?? null,
   );
-  const supportedFmtKeys = useSupportedFmtKeys(templateId);
-  const templateDefaults = useTemplateDefaults(templateId);
-
   // The application inherits the base resume's formatting (backend merges
   // schema <- template default <- base <- application). Fetch the base so the
   // panel anchors on the *inherited* values and only stores genuine overrides of
-  // them.
-  const { data: baseResume } = useQuery({
+  // them. The panel stays locked until BOTH layers are in: an edit diffed
+  // against the template layer alone drops an override equal to it.
+  const templateBaseline = useTemplateBaseline(templateId);
+  const baseResume = useQuery({
     queryKey: ["base-resumes", application.base_resume],
     queryFn: () =>
       apiFetch<BaseResumeDetail>(
         `/api/base-resumes/${application.base_resume}`,
       ),
   });
-  const formattingBaseline: ResumeFormatting = {
-    ...FORMATTING_DEFAULTS,
-    ...templateDefaults,
-    ...((baseResume?.formatting as Partial<ResumeFormatting> | null) ?? {}),
-  };
+  const formattingBaseline = overlayBaseline(
+    templateBaseline,
+    baseResume,
+    "the base resume's formatting",
+  );
 
 
   // --- Review mode: the base→tailored diff, overlaid on the same editor -------
@@ -819,10 +817,11 @@ function StudioEditor({
                         variant="outline"
                         size="sm"
                         onClick={() => rescore.mutate({ announce: true })}
-                        disabled={busy || dirty}
-                        // Disabled on `dirty`, so no re-score starts mid-render;
-                        // the hint reads `unsaved`, so the post-save gap does not
-                        // claim edits that are already saved.
+                        disabled={busy || render.isPending || unsaved}
+                        // No re-score while a render is out: the save chain
+                        // re-scores itself when it lands. The gate reads
+                        // `unsaved`, same as the hint, so the post-save gap
+                        // does not block a re-score of work already saved.
                         title={
                           unsaved
                             ? "Save your edits first. Re-scoring runs on the saved resume."
@@ -860,9 +859,9 @@ function StudioEditor({
                             a manual trigger covers is a render that FAILED —
                             without this, a failed render with nothing left to
                             edit would leave no way to retry (Save is disabled
-                            when not dirty). */}
+                            when nothing is unsaved). */}
                         <DropdownMenuItem
-                          disabled={busy || render.isPending || dirty}
+                          disabled={busy || render.isPending || unsaved}
                           onClick={() => render.mutate()}
                         >
                           <RefreshCw />
@@ -917,7 +916,7 @@ function StudioEditor({
                   <DiffReviewPanel
                     hunks={hunks}
                     revertedKeys={revertedKeys}
-                    dirty={dirty}
+                    dirty={unsaved}
                     onRevert={handleRevert}
                     coherence={coherence}
                     onCheckCoherence={handleCheckCoherence}
@@ -1036,7 +1035,6 @@ function StudioEditor({
           <FormattingPanel
             value={formatting}
             onChange={setFormatting}
-            supportedKeys={supportedFmtKeys}
             baseline={formattingBaseline}
             inherited={application.formatting == null}
             onRevertToBase={() => setFormatting(null)}
