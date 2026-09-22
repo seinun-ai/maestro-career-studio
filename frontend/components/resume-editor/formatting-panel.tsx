@@ -89,12 +89,21 @@ export function FormattingPanel({
     onChange(diffFrom(baseline, { ...effective, [key]: next }));
   }
 
-  const isDisabled = (key: keyof ResumeFormatting) =>
+  // `undefined` is useSupportedFmtKeys' loading sentinel for the same
+  // ["templates", "all"] query useTemplateDefaults reads. Until it resolves,
+  // the baseline overlay is {} and a knob edit can drop an explicit override.
+  const defaultsPending = supportedKeys === undefined;
+
+  const unsupported = (key: keyof ResumeFormatting) =>
     supportedKeys ? !supportedKeys.includes(key) : false;
 
-  // Wrap a disabled control so hovering it explains why it's greyed out.
-  const withTooltip = (disabled: boolean, control: ReactNode) =>
-    disabled ? (
+  const isDisabled = (key: keyof ResumeFormatting) =>
+    defaultsPending || unsupported(key);
+
+  // The unsupported-knob tooltip only. A control waiting on template defaults
+  // is disabled too, but that reason is the status line below, not this copy.
+  const withTooltip = (key: keyof ResumeFormatting, control: ReactNode) =>
+    unsupported(key) ? (
       <Tooltip>
         <TooltipTrigger render={<span className="inline-flex">{control}</span>} />
         <TooltipContent side="left">{UNSUPPORTED}</TooltipContent>
@@ -126,7 +135,7 @@ export function FormattingPanel({
         >
           {label}
         </span>
-        {withTooltip(disabled, control(labelId))}
+        {withTooltip(key, control(labelId))}
       </div>
     );
   };
@@ -185,7 +194,7 @@ export function FormattingPanel({
           </span>
         </div>
         {withTooltip(
-          disabled,
+          key,
           <Slider
             aria-labelledby={labelId}
             className={disabled ? "pointer-events-none" : undefined}
@@ -222,7 +231,7 @@ export function FormattingPanel({
           Section order
         </span>
         {withTooltip(
-          disabled,
+          key,
           <ul className="border-input grid gap-0.5 rounded-md border p-1">
             {order.map((section, index) => (
               <li
@@ -293,6 +302,11 @@ export function FormattingPanel({
 
       {showContent && (
         <div className="space-y-4 px-3 pt-1 pb-3">
+          {defaultsPending && (
+            <p className="text-muted-foreground text-xs">
+              Loading template defaults…
+            </p>
+          )}
           {onRevertToBase && (
             <div className="text-muted-foreground bg-muted/40 flex items-center justify-between gap-2 rounded-md px-2 py-1.5 text-xs">
               <span>
@@ -304,6 +318,7 @@ export function FormattingPanel({
                 <Button
                   variant="ghost"
                   size="xs"
+                  disabled={defaultsPending}
                   onClick={() => onRevertToBase()}
                 >
                   Revert to base
@@ -453,7 +468,7 @@ export function FormattingPanel({
             <Button
               variant="outline"
               size="sm"
-              disabled={!customized}
+              disabled={defaultsPending || !customized}
               onClick={() => onChange(null)}
             >
               <RotateCcw />

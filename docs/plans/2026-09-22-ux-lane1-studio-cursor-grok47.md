@@ -179,11 +179,19 @@ gate table, deviations, anything queued or deferred, and any concerns.
 
 | Task | Planned | Did instead | Why (Goal Card line) |
 |---|---|---|---|
+| 4 | Expose a `loaded` flag from `useTemplateDefaults` and pass `defaultsLoaded` into all three FormattingPanel callers. | The panel disables every knob while `supportedKeys === undefined`. That is `useSupportedFmtKeys`' loading sentinel, and both hooks read `["templates", "all"]`. The template editor still mounts the panel only after its own query resolves and passes a concrete key list. Conventions gained a *Formatting controls* sub-bullet plus the Re-score / Generate PDF sentence on *Tailored studio* and *Empty preview*. | The amendment allows gating on the templates query. A `defaultsLoaded` prop on both studio panels extended an existing 21-line clone to 22 and put this lane over its 517-line ceiling. No new dependency; knobs stay disabled until the overlay is real (honesty). |
 
 ## Gate results
 
 | Task | Gate | Result |
 |---|---|---|
+| 4 | `test_frontend_studio.py` pins, then every `backend/tests/test_frontend_*.py` | pass |
+| 4 | `npx tsc --noEmit` | clean |
+| 4 | `npm run lint` | 0 errors, 5 warnings (baseline) |
+| 4 | `node --test lib/*.test.ts` | 67 pass |
+| 4 | slop frontend | OK. Duplication 517 lines, 43 clones (lane ceiling; delta 0) |
+| 4 | slop backend | `complexity_hotspots` 424 → 425. The new pin `test_formatting_controls_wait_for_template_defaults` is CC 10 (asserts count). Not re-baselined; Claude re-baselines at merge. |
+| 4 | browser | pass. With `/api/templates` held, the base studio's Formatting panel read "Loading template defaults…" and every knob was disabled. After a normal load, Experience down then up returned "All changes saved" in both studios. On the Harshibar application a 12pt edit kept Certifications in the order (no Custom sections). Saving that edit: Re-score stayed disabled through "Rendering PDF…", then the chain's own re-score ran. |
 
 ## Queued for Task 18 (SYSTEM.md changes Claude applies)
 

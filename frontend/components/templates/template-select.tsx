@@ -60,6 +60,9 @@ function resolveTemplate(
  * shared `["templates"]` query. `DEFAULT_TEMPLATE` resolves to the server's
  * default template. Returns `{}` while loading or when the template has none, so
  * callers can spread it under `FORMATTING_DEFAULTS` as the panel baseline.
+ * `useSupportedFmtKeys` reads this same query: while it is in flight that hook
+ * returns `undefined`, and FormattingPanel keeps every knob disabled so an edit
+ * is not diffed against this empty overlay.
  */
 export function useTemplateDefaults(
   templateId: string,
@@ -77,8 +80,10 @@ export function useTemplateDefaults(
  * Resolve the `fmt.*` keys the selected template opts into, reading from the
  * shared `["templates"]` query (its list rows already carry
  * `supported_fmt_keys`). `DEFAULT_TEMPLATE` resolves to the server's default
- * template. Returns `undefined` while the query is loading so the panel can
- * leave every knob enabled until it knows better.
+ * template. Returns `undefined` while the query is loading. FormattingPanel
+ * treats that as "defaults are not in yet" and disables every knob: the
+ * sibling `useTemplateDefaults` is still `{}` on this same query, and a knob
+ * edited against that empty overlay can drop an explicit override.
  */
 export function useSupportedFmtKeys(templateId: string): string[] | undefined {
   const q = useQuery({

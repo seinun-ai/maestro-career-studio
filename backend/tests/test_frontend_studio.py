@@ -164,12 +164,56 @@ def test_base_regenerate_refreshes_the_gallery():
 
 
 def test_tailored_rescore_hint_reads_unsaved():
-    # The button stays disabled on `dirty` (no re-score mid-render), but the
-    # hint must not claim unsaved edits during the post-save gap.
+    # No re-score while the chain's render is out (`render.isPending`); the
+    # gate and the hint both read `unsaved`, so the post-save gap does not
+    # claim edits the server already has. `busy` stays free of the render:
+    # Save must still work for text typed while a PDF is rendering.
+    busy = _TAILORED[_TAILORED.index("const busy =") :]
+    busy = busy[: busy.index(";")]
+    assert "render.isPending" not in busy
     block = _TAILORED[_TAILORED.index("rescore.mutate({ announce: true })") :]
     block = block[: block.index("</Button>")]
-    assert "disabled={busy || dirty}" in block
+    assert "disabled={busy || render.isPending || unsaved}" in block
     assert re.search(r"title=\{\s*unsaved\s*\?", block)
+
+
+def test_generate_pdf_gate_reads_unsaved():
+    # ⋯ Generate PDF renders the server copy, so it waits on edits the server
+    # has not seen (`unsaved`), not on the post-save `dirty` gap.
+    click = _TAILORED.index('onClick={() => render.mutate()}')
+    start = _TAILORED.rfind("<DropdownMenuItem", 0, click)
+    block = _TAILORED[start:click]
+    assert "disabled={busy || render.isPending || unsaved}" in block
+    review = _TAILORED[_TAILORED.index("<DiffReviewPanel") :]
+    review = review[: review.index("/>")]
+    assert "dirty={unsaved}" in review
+
+
+def test_formatting_controls_wait_for_template_defaults():
+    # useTemplateDefaults is {} until ["templates", "all"] resolves. A knob
+    # edited in that window is diffed against empty defaults and can drop an
+    # explicit override. useSupportedFmtKeys is the loading sentinel for that
+    # same query, and the panel disables every knob while it is undefined.
+    hooks = _read("components/templates/template-select.tsx")
+    assert hooks.count('queryKey: ["templates", "all"]') >= 2
+    defaults = hooks[hooks.index("export function useTemplateDefaults") :]
+    defaults = defaults[: defaults.index("export function useSupportedFmtKeys")]
+    assert "if (!q.data) return {}" in defaults
+    keys = hooks[hooks.index("export function useSupportedFmtKeys") :]
+    assert "if (!q.data) return undefined" in keys
+    panel = _read("components/resume-editor/formatting-panel.tsx")
+    assert "const defaultsPending = supportedKeys === undefined" in panel
+    assert "defaultsPending || unsupported(key)" in panel
+    for rel in (
+        "components/resume-editor/tailored-resume-studio.tsx",
+        "components/resume-editor/editor-body.tsx",
+    ):
+        assert "supportedKeys={supportedFmtKeys}" in _read(rel), rel
+    page = _read("app/templates/[id]/page.tsx")
+    # The panel is not mounted until the template query resolves, and it
+    # passes that row's key list rather than the loading sentinel.
+    assert "if (tq.isLoading || !tq.data)" in page
+    assert "supportedKeys={tq.data.supported_fmt_keys}" in page
 
 
 def test_tailored_unsaved_equals_dirty_before_the_first_save():

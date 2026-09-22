@@ -108,7 +108,7 @@
     unsaved edits, otherwise "No PDF yet. Generate one from More resume actions
     (⋯)." (the ⋯ trigger's accessible name). Save is dirty-gated, so a clean
     studio with no PDF (after Build draft or Rebuild from base) cannot save,
-    and ⋯ Generate PDF is disabled while edits are unsaved.
+    and ⋯ Generate PDF is disabled while edits are unsaved or a PDF is rendering.
   - *Stale preview*: `EditorShell previewStale` adds an amber strip ("Preview
     doesn't include your unsaved edits. Save to update it.") and dims the page
     IMAGES only, so the render-error banner, page-count pill and zoom keep full
@@ -162,9 +162,11 @@
     so when the server lands on exactly what the form holds the baseline moves,
     or the saved name reads as an unsaved edit.
   - *Tailored studio*: the user-facing signals (status line, Save, stale strip,
-    Re-score hint) read `unsaved`, the diff against what its own last Save
-    stored; `dirty` stays the input to the external-edit adoption guard
-    (SYSTEM.md §12) and the leave-page warning. Its own Save moves the
+    Re-score, ⋯ Generate PDF) read `unsaved`, the diff against what its own last
+    Save stored. Re-score and Generate PDF also stay disabled while a render is
+    in flight. `render.isPending` is not part of `busy`, so Save still accepts
+    an edit typed mid-render. `dirty` stays the input to the external-edit
+    adoption guard (SYSTEM.md §12) and the leave-page warning. Its own Save moves the
     editor's baseline IN PLACE: the parent queues the `serverKey` each Save
     returned and adopts it without a remount when the refetch brings it, so
     the working copy, focus, section tab, Formatting panel, scroll, raw mode
@@ -179,6 +181,14 @@
     own success path. Every Rebuild also writes its response into the
     `["application", id]` cache, or a remounted clean editor adopts the stale
     copy a banner was about until the refetch lands.
+  - *Formatting controls*: `useTemplateDefaults` is `{}` until the shared
+    `["templates", "all"]` query resolves, and a knob diffed against that empty
+    overlay can drop an explicit override (a scalar, or `section_order`).
+    `useSupportedFmtKeys` reads the same query and returns `undefined` while it
+    is in flight; `FormattingPanel` keeps every knob disabled on that sentinel.
+    The template editor mounts the panel only after its own template query
+    resolves (its baseline is the schema constant, and it passes a concrete
+    `supported_fmt_keys` list).
 - **`PdfPagesPreview` owns the canvas and the zoom.** Pages sit on
   `bg-canvas`, so a caller adds no fill of its own. Zoom is a `role="group"`
   "Zoom" of `aria-pressed` presets (Fit width, Fit page, 100%) on a solid

@@ -819,10 +819,11 @@ function StudioEditor({
                         variant="outline"
                         size="sm"
                         onClick={() => rescore.mutate({ announce: true })}
-                        disabled={busy || dirty}
-                        // Disabled on `dirty`, so no re-score starts mid-render;
-                        // the hint reads `unsaved`, so the post-save gap does not
-                        // claim edits that are already saved.
+                        disabled={busy || render.isPending || unsaved}
+                        // No re-score while a render is out: the save chain
+                        // re-scores itself when it lands. The gate reads
+                        // `unsaved`, same as the hint, so the post-save gap
+                        // does not block a re-score of work already saved.
                         title={
                           unsaved
                             ? "Save your edits first. Re-scoring runs on the saved resume."
@@ -860,9 +861,9 @@ function StudioEditor({
                             a manual trigger covers is a render that FAILED —
                             without this, a failed render with nothing left to
                             edit would leave no way to retry (Save is disabled
-                            when not dirty). */}
+                            when nothing is unsaved). */}
                         <DropdownMenuItem
-                          disabled={busy || render.isPending || dirty}
+                          disabled={busy || render.isPending || unsaved}
                           onClick={() => render.mutate()}
                         >
                           <RefreshCw />
@@ -917,7 +918,7 @@ function StudioEditor({
                   <DiffReviewPanel
                     hunks={hunks}
                     revertedKeys={revertedKeys}
-                    dirty={dirty}
+                    dirty={unsaved}
                     onRevert={handleRevert}
                     coherence={coherence}
                     onCheckCoherence={handleCheckCoherence}
