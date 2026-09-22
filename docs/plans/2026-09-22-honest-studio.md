@@ -1793,7 +1793,9 @@ const PAGE_CLASS: Record<PreviewZoom, string> = {
           )}
 ```
 
-Leave the page-count pill as is.
+Leave the page-count pill as is. Update the render-error banner's copy: it
+says "...and save again", but both studios' Save is dirty-gated now, so it
+reads "Fix the content or template, then save or regenerate the PDF." 
 
 **Step 4: Run** the studio pins → PASS; tsc + lint clean.
 **Step 5: Commit**
@@ -1947,6 +1949,14 @@ Goal Card line it violates.
   copy nits; Referrals form on demand; template Sample label; the placeholder
   convention (GOV.UK forbids example placeholders; the conventions doc cites
   GOV.UK for allowing them).
+- **HIGH PRIORITY, found in Tasks 9–10 review (pre-existing):** the tailored
+  studio's external-edit guard (SYSTEM.md §12). After a Save that leaves
+  `customized_json` unchanged (formatting/template only) `adoptNextServerKey`
+  is never consumed, so a later foreign edit is adopted banner-free even over
+  unsaved edits; an edit typed in the post-save gap is lost on the remount;
+  focus drops to `<body>` on remount (and the status live region remounts).
+  Fix direction: `onSaved(savedKey)` and adopt banner-free only when
+  `customizedKey === savedKey`.
 - **Found by reviews, pre-existing, not this plan's to fix:** the light
   `--ring` is ~2.5:1 on `--canvas` (WCAG 1.4.11 borderline); `text-destructive`
   on `bg-destructive/10` is ~3.1–3.6:1 (render-error banner, template compile
@@ -1981,3 +1991,9 @@ Goal Card line it violates.
 | Baseline | `npx tsc --noEmit` / `npm run lint` | clean / 0 errors, 5 pre-existing warnings |
 | Baseline | `pytest tests/ mcp_server/tests/ -q` (before Task 1) | 4378 passed, 2 skipped (232 s) |
 | Task 1 | `test_frontend_color_roles.py` | 10 failed → 11 passed; tsc clean; lint unchanged |
+| Task 1 fix | colour-role pins | 12 passed (fail-first shown for parse, tint scan, hover mix, toggle check) |
+| Task 2 | sidebar pins + nav/shortcuts unit tests | exact-token pins pass; node 6/6; full backend 4394 passed |
+| Tasks 3–5 | first-run + query-error pins | 47 passed after review fixes; full backend 4399 passed |
+| Tasks 6–7 | `node --test lib/*.test.ts` | 39/39 after review fixes |
+| Task 8 | studio pins | 3 pass; ruff clean on new pins after review; divider browser-checked on a throwaway stack |
+| Tasks 9–10 | studio + kb-sync + colour pins | 36 passed; full backend 4411 passed / 2 skipped; both studios browser-checked |
