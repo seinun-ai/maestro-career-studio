@@ -33,6 +33,9 @@ import {
 } from "@/components/ui/sidebar";
 import { buttonVariants } from "@/components/ui/button";
 import { MaestroMark } from "@/components/brand-logo";
+import { useModKey } from "@/hooks/use-mod-key";
+import { navCurrent } from "@/lib/nav";
+import { shortcutLabel } from "@/lib/shortcuts";
 import { cn } from "@/lib/utils";
 
 type NavItem = { href: string; label: string; icon: LucideIcon };
@@ -70,8 +73,7 @@ const ACCOUNT_ITEMS: NavItem[] = [
 
 export function AppSidebar() {
   const pathname = usePathname();
-  const isActive = (href: string) =>
-    pathname === href || pathname.startsWith(`${href}/`);
+  const mod = useModKey();
 
   return (
     <Sidebar>
@@ -80,7 +82,10 @@ export function AppSidebar() {
           <MaestroMark aria-hidden="true" className="h-5 w-auto shrink-0" />
           <span className="text-sm font-semibold">Maestro CS</span>
         </div>
-        <SidebarTrigger className="shrink-0" />
+        <SidebarTrigger
+          className="shrink-0"
+          title={`Toggle sidebar (${shortcutLabel(mod, "B")})`}
+        />
       </SidebarHeader>
       <SidebarContent>
         {/* One <nav> around the primary destinations, a second around the
@@ -90,14 +95,14 @@ export function AppSidebar() {
         <div className="px-2 pt-2">
           <Link
             href="/new"
+            aria-current={navCurrent(pathname, "/new")}
             className={cn(
-              // `tonal` from buttonVariants rather than a hand-rolled copy —
-              // this used to re-implement the height, transition and
-              // press-scale Button already owns, and drifted from the other 24
-              // tonal fills in the process.
-              buttonVariants({ variant: "tonal", size: "lg" }),
-              "h-10 gap-2.5 rounded-full px-4 hover:shadow-sm",
-              isActive("/new") && "bg-primary/15 shadow-sm",
+              // M3 extended FAB at the top of the rail: primary container,
+              // 16px corners (M3's 16dp; this theme's rounded-2xl is 18px), the
+              // one create action on a screen.
+              buttonVariants({ variant: "fab", size: "lg" }),
+              "h-10 gap-2.5 rounded-[16px] px-4",
+              navCurrent(pathname, "/new") && "shadow-md",
             )}
           >
             <FilePlus2 className="size-4" aria-hidden="true" />
@@ -108,7 +113,7 @@ export function AppSidebar() {
           <SidebarGroup key={group.label}>
             <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
             <SidebarGroupContent>
-              <NavMenu items={group.items} isActive={isActive} />
+              <NavMenu items={group.items} pathname={pathname} />
             </SidebarGroupContent>
           </SidebarGroup>
         ))}
@@ -117,30 +122,25 @@ export function AppSidebar() {
       <SidebarFooter>
         <SidebarSeparator className="mx-0" />
         <nav aria-label="Account">
-          <NavMenu items={ACCOUNT_ITEMS} isActive={isActive} />
+          <NavMenu items={ACCOUNT_ITEMS} pathname={pathname} />
         </nav>
       </SidebarFooter>
     </Sidebar>
   );
 }
 
-function NavMenu({
-  items,
-  isActive,
-}: {
-  items: NavItem[];
-  isActive: (href: string) => boolean;
-}) {
+function NavMenu({ items, pathname }: { items: NavItem[]; pathname: string }) {
   return (
     <SidebarMenu>
       {items.map((item) => {
         const Icon = item.icon;
+        const current = navCurrent(pathname, item.href);
         return (
           <SidebarMenuItem key={item.href}>
             <SidebarMenuButton
-              isActive={isActive(item.href)}
+              isActive={current !== undefined}
               render={
-                <Link href={item.href}>
+                <Link href={item.href} aria-current={current}>
                   <Icon />
                   <span>{item.label}</span>
                 </Link>
