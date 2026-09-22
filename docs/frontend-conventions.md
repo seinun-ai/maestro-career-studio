@@ -331,6 +331,10 @@
   Several resume entry cards are open at once, so a text-derived id repeats
   across them and clicking one entry's label focuses another's input; a caller
   `idPrefix` only moves the collision one level out.
+- **A dialog holding a create form keeps its draft across close until the
+  create succeeds**: `DialogContent` unmounts on close, so Esc or an overlay
+  click would drop typed text; the field state lives in the component that
+  owns the dialog (Referrals' `draft`, pinned by `test_frontend_referrals.py`).
 - Route-level `app/error.tsx` + `app/global-error.tsx` + `app/not-found.tsx`
   catch components that throw; page-level `isError` branches handle query
   failures. `next.config.ts` sets nosniff / DENY / no-referrer /

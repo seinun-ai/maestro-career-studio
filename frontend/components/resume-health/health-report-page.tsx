@@ -98,10 +98,7 @@ export function HealthReportPage({
     queryFn: () => apiFetch<BaseResumeDetail>(`/api/base-resumes/${resumeKey}`),
   });
 
-  const resumeData = useMemo<ResumeData | null>(
-    () => baseQuery.data?.data ?? null,
-    [baseQuery.data],
-  );
+  const resumeData: ResumeData | null = baseQuery.data?.data ?? null;
 
   const templateId = baseQuery.data?.template_id ?? null;
 

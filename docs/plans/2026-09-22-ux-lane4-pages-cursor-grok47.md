@@ -174,6 +174,7 @@ gate table, deviations, anything queued or deferred, and any concerns.
 | 15 | Comment only in `studio-toolbar.tsx` | Same sentence also sits on `const kind = "base"` in `health-report-page.tsx` | The prop is gone; the constant is the only thing stopping a later reader from threading `kind` back in (honesty: the page is base-only, MCP is not) |
 | 16 | Focus the new header button inside `onCreated` | A ref flag set before the cache update, then `useEffect` focuses the button once `populated` is true | The button does not exist until that commit. Focusing in the success handler lands on nothing (accessibility: focus must not drop to `<body>`) |
 | 16 | Hardcoded `referral-*` field ids | `useId()` per field | The form can mount in the empty-state card and in the dialog; conventions say ids come from `useId()` |
+| 14, 16 (review) | Task 16 pinned by its one `_QUERY_SURFACES` entry; Task 14 pinned by `\bmark=`; the add dialog's fields live in `ReferralForm` | New `test_frontend_referrals.py` (error state, `initialFocus`, confirmed delete, focus after the first create, header action only beside the table, `<Label optional>`, `useId()`, grid rows, the draft). Task 14 pins `mark="Sample"` and the `showImage &&` gate. The draft moved up to `ReferralsPage` and clears only after a create succeeds; the dialog gained a `DialogDescription`; the no-op `useMemo` in `health-report-page.tsx` is gone. Each pin was mutation-checked | Review showed the old pins passed with every one of those behaviours broken. Planner decision: Esc or an overlay click unmounted `DialogContent` and lost the typed text ("if a gesture could lose typed text, it asks or keeps the text") |
 | 16 | B §5 leaves the create-form placeholders unprefixed; edit rows unchanged | New `ReferralForm` placeholders are `e.g. …`. Edit-row placeholders stay `Jane Doe` / `Met at the AWS meetup` | Lane note: new referral UI follows owner decision 3. B §5 says the edit rows are unchanged, so Task 17 still owns those two |
 
 ## Gate results
@@ -198,8 +199,13 @@ gate table, deviations, anything queued or deferred, and any concerns.
 
 Task 15: none. SYSTEM.md does not describe a web tailored-health route. MCP health tools already document `kind='application'` (§7); that surface stays.
 
+Found in review, not fixed on this branch (candidates for §11):
+- Referrals: focus drops to `<body>` after a row delete. Pre-existing: the deleted row unmounts, and on the last row the whole table does.
+- `NewEntityDialog` (`components/career/new-entity-dialog.tsx`) has the gap the referral dialog had: its `onOpenChange` calls `reset()` on every close, so Esc or an overlay click loses typed text.
+- The stale-chip tooltip on `/templates` can't be reached: `GalleryCard`'s stretched link is `absolute inset-0 z-10` and the chip sits under it (see *Deferred to merge*).
+
 ## Deferred to merge (edits left for Claude, with file:line)
 
 - `frontend/components/templates/template-select.tsx:163` (DialogTitle "Choose a template"): skipped the optional `<DialogDescription>Previews show a sample resume, not yours.</DialogDescription>`. Lane 1 owns this file.
 - Stale-chip tooltip, not fixed (Task 14 step 3). On `/templates`, `elementFromPoint` at the centre of Harshibar's "needs re-validation" chip hits the stretched card link (`aria-label="Open Harshibar layout"`), not the chip. The `title` is set; hover cannot reach it because `GalleryCard`'s link is `absolute inset-0 z-10` and the chip is not lifted to z-20. Picker mode has no stretched link, so that page is the one that hides the tooltip.
-- Picker card accessible names omit "Sample" (not changed). B §6 hides the mark (`aria-hidden`) and puts "sample" in the image alt. In the picker the card is a button, and the a11y-tree names were "Carlito Dense ready latex" with no "sample". Manage-mode links are named "Open {template}". The alt is on the `<img>`, which is a separate node from that link.
+- ~~Picker card accessible names omit "Sample" (not changed). B §6 hides the mark (`aria-hidden`) and puts "sample" in the image alt. In the picker the card is a button, and the a11y-tree names were "Carlito Dense ready latex" with no "sample". Manage-mode links are named "Open {template}". The alt is on the `<img>`, which is a separate node from that link.~~ Withdrawn: a reviewer verified that the `<img>` alt is part of the picker button's accessible name.

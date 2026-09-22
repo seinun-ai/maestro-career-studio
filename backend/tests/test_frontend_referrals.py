@@ -1,0 +1,120 @@
+"""Pins for the referrals page: the table is the page, adding opens a form.
+
+`test_frontend_query_error_states.py` only proves an error branch comes before
+the empty-state copy. It kept passing with a bare `<p>` for the error, with no
+initial focus in the dialog, with delete skipping its confirm, and with the
+header button beside the error state. These pins carry the behaviour: each one
+names a gesture the page must keep.
+"""
+
+from __future__ import annotations
+
+import re
+from pathlib import Path
+
+_PAGE = (
+    Path(__file__).resolve().parents[2] / "frontend/app/referrals/page.tsx"
+).read_text()
+
+
+def _top_level(head: str) -> str:
+    """One top-level function, from its signature to its closing brace."""
+    start = _PAGE.index(head)
+    return _PAGE[start : _PAGE.index("\n}\n", start)]
+
+
+def _squash(source: str) -> str:
+    return re.sub(r"\s+", " ", source)
+
+
+_ROOT = _top_level("export default function ReferralsPage(")
+_CARD = _top_level("function FirstReferralCard(")
+_FORM = _top_level("function ReferralForm(")
+_VIEW_ROW = _top_level("function ReferralViewRow(")
+
+
+def test_a_failed_fetch_is_the_shared_error_state():
+    branch = _ROOT[_ROOT.index("referrals.isError ?") : _ROOT.index(") : populated ?")]
+    assert "<LoadErrorState" in branch, "a failed fetch renders LoadErrorState"
+    assert "onRetry=" in branch, "the error state offers a retry"
+
+
+def test_header_action_shows_only_beside_the_table():
+    flat = _squash(_ROOT)
+    assert (
+        "const populated = !referrals.isLoading && !referrals.isError && rows.length > 0;"
+        in flat
+    )
+    assert "actions={ populated ? ( <Button ref={addButtonRef}" in flat
+    assert ") : undefined }" in flat
+
+
+def test_add_dialog_opens_on_the_company_field():
+    assert re.search(r"<DialogContent\b[^>]*\binitialFocus=\{companyRef\}", _ROOT)
+    dialog = _ROOT[_ROOT.index("<Dialog ") :]
+    assert "companyRef={companyRef}" in dialog
+    assert re.search(r"id=\{companyId\}\s+ref=\{companyRef\}", _FORM)
+
+
+def test_first_create_moves_focus_to_the_header_button():
+    """The inline form unmounts on the first create; focus must not drop to <body>."""
+    effect = _ROOT[_ROOT.index("useEffect(() => {") :]
+    effect = effect[: effect.index("}, [populated]);")]
+    assert "addButtonRef.current?.focus()" in effect
+    assert "focusAddAfterCreate.current" in effect
+    card = _ROOT[_ROOT.index("<FirstReferralCard") :]
+    assert "focusAddAfterCreate.current = true" in card[: card.index("/>")]
+
+
+def test_delete_waits_for_the_confirm():
+    on_delete = _VIEW_ROW[_VIEW_ROW.index("const onDelete = async") :]
+    confirmed = on_delete.index("await confirm(")
+    assert confirmed < on_delete.index("if (!ok) return;") < on_delete.index(
+        "remove.mutate()"
+    )
+    assert _PAGE.count("remove.mutate(") == 1, "no second, unconfirmed delete path"
+    button = _VIEW_ROW[_VIEW_ROW.index('label="Delete referral"') :]
+    assert "onClick={onDelete}" in button[: button.index("</div>")]
+
+
+def test_optional_fields_say_so_on_the_label():
+    assert "<Label htmlFor={contactId} optional>" in _FORM
+    assert "<Label htmlFor={notesId} optional>" in _FORM
+    assert "<Label htmlFor={companyId}>" in _FORM
+    assert "<Label htmlFor={careersUrlId}>" in _FORM
+
+
+def test_create_form_placeholders_are_examples():
+    placeholders = re.findall(r'placeholder="([^"]*)"', _FORM)
+    assert len(placeholders) == 4
+    assert all(p.startswith("e.g. ") for p in placeholders), placeholders
+
+
+def test_field_ids_come_from_use_id():
+    names = re.findall(r"htmlFor=\{(\w+)\}", _FORM)
+    assert len(names) == 4
+    assert all(f"const {n} = useId();" in _FORM for n in names), names
+    assert all(f"id={{{n}}}" in _FORM for n in names), names
+    assert 'htmlFor="' not in _PAGE
+
+
+def test_field_rows_are_grids():
+    assert "space-y-1.5" not in _PAGE
+    rows = re.findall(r'<div className="grid gap-1\.5\b', _FORM)
+    assert len(rows) == _FORM.count("<Label ")
+
+
+def test_the_draft_outlives_the_dialog():
+    """Esc or an overlay click unmounts DialogContent; the typed text must stay."""
+    assert "const [draft, setDraft] = useState<ReferralDraft>(EMPTY_DRAFT);" in _ROOT
+    assert "useState" not in _FORM, "the form holds no field state of its own"
+    assert _squash(_ROOT).count("draft={draft} onDraftChange={setDraft}") == 2
+    assert "{...draftProps}" in _CARD
+    assert "<Dialog open={addOpen} onOpenChange={setAddOpen}>" in _ROOT
+
+
+def test_only_a_successful_create_clears_the_draft():
+    clears = re.findall(r"(?:setDraft|onDraftChange)\(EMPTY_DRAFT\)", _PAGE)
+    assert len(clears) == 1
+    success = _FORM[_FORM.index("onSuccess:") : _FORM.index("onError:")]
+    assert "onDraftChange(EMPTY_DRAFT)" in success

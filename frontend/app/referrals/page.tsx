@@ -1,6 +1,15 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, type Ref } from "react";
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type Dispatch,
+  type Ref,
+  type SetStateAction,
+} from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Handshake, Pencil, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -21,6 +30,7 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -43,12 +53,30 @@ import { PageHeader, PageShell } from "@/components/page-shell";
 
 const REFERRALS_KEY = ["referrals"] as const;
 
+type ReferralDraft = {
+  company: string;
+  careersUrl: string;
+  contactName: string;
+  notes: string;
+};
+
+const EMPTY_DRAFT: ReferralDraft = {
+  company: "",
+  careersUrl: "",
+  contactName: "",
+  notes: "",
+};
+
 export default function ReferralsPage() {
   const referrals = useQuery({
     queryKey: REFERRALS_KEY,
     queryFn: () => apiFetch<Referral[]>("/api/referrals"),
   });
   const [addOpen, setAddOpen] = useState(false);
+  // The draft lives here, not in the form: closing the dialog unmounts its
+  // content, and Esc or an overlay click must not throw typed text away. Only
+  // a successful create clears it.
+  const [draft, setDraft] = useState<ReferralDraft>(EMPTY_DRAFT);
   const companyRef = useRef<HTMLInputElement>(null);
   const addButtonRef = useRef<HTMLButtonElement>(null);
   // Set in the inline form's success handler, before the cache update renders
@@ -91,6 +119,8 @@ export default function ReferralsPage() {
         <ReferralsTable rows={rows} />
       ) : (
         <FirstReferralCard
+          draft={draft}
+          onDraftChange={setDraft}
           onCreated={() => {
             focusAddAfterCreate.current = true;
           }}
@@ -100,8 +130,13 @@ export default function ReferralsPage() {
         <DialogContent initialFocus={companyRef}>
           <DialogHeader>
             <DialogTitle>Add referral</DialogTitle>
+            <DialogDescription>
+              A company where someone can refer you.
+            </DialogDescription>
           </DialogHeader>
           <ReferralForm
+            draft={draft}
+            onDraftChange={setDraft}
             companyRef={companyRef}
             inDialog
             onCreated={() => setAddOpen(false)}
@@ -112,7 +147,15 @@ export default function ReferralsPage() {
   );
 }
 
-function FirstReferralCard({ onCreated }: { onCreated: () => void }) {
+type DraftProps = {
+  draft: ReferralDraft;
+  onDraftChange: Dispatch<SetStateAction<ReferralDraft>>;
+};
+
+function FirstReferralCard({
+  onCreated,
+  ...draftProps
+}: DraftProps & { onCreated: () => void }) {
   return (
     <Card>
       <CardHeader>
@@ -123,17 +166,19 @@ function FirstReferralCard({ onCreated }: { onCreated: () => void }) {
         <CardDescription>A company where someone can refer you.</CardDescription>
       </CardHeader>
       <CardContent>
-        <ReferralForm onCreated={onCreated} />
+        <ReferralForm {...draftProps} onCreated={onCreated} />
       </CardContent>
     </Card>
   );
 }
 
 function ReferralForm({
+  draft,
+  onDraftChange,
   companyRef,
   onCreated,
   inDialog = false,
-}: {
+}: DraftProps & {
   companyRef?: Ref<HTMLInputElement>;
   onCreated?: () => void;
   inDialog?: boolean;
@@ -144,17 +189,14 @@ function ReferralForm({
   const careersUrlId = useId();
   const contactId = useId();
   const notesId = useId();
-  const [company, setCompany] = useState("");
-  const [careersUrl, setCareersUrl] = useState("");
-  const [contactName, setContactName] = useState("");
-  const [notes, setNotes] = useState("");
+  const { company, careersUrl, contactName, notes } = draft;
 
-  const reset = () => {
-    setCompany("");
-    setCareersUrl("");
-    setContactName("");
-    setNotes("");
-  };
+  const edit =
+    (field: keyof ReferralDraft) =>
+    (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+      const value = event.target.value;
+      onDraftChange((prev) => ({ ...prev, [field]: value }));
+    };
 
   const create = useMutation({
     mutationFn: (payload: ReferralCreate) =>
@@ -170,7 +212,7 @@ function ReferralForm({
         prev ? [created, ...prev] : [created],
       );
       toast.success(`Added referral for ${created.company}`);
-      reset();
+      onDraftChange(EMPTY_DRAFT);
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -211,7 +253,7 @@ function ReferralForm({
               id={companyId}
               ref={companyRef}
               value={company}
-              onChange={(e) => setCompany(e.target.value)}
+              onChange={edit("company")}
               placeholder="e.g. Acme Corp"
               required
             />
@@ -222,7 +264,7 @@ function ReferralForm({
               id={careersUrlId}
               type="url"
               value={careersUrl}
-              onChange={(e) => setCareersUrl(e.target.value)}
+              onChange={edit("careersUrl")}
               placeholder="e.g. https://example.com/careers"
               required
             />
@@ -234,7 +276,7 @@ function ReferralForm({
             <Input
               id={contactId}
               value={contactName}
-              onChange={(e) => setContactName(e.target.value)}
+              onChange={edit("contactName")}
               placeholder="e.g. Jane Doe"
             />
           </div>
@@ -246,7 +288,7 @@ function ReferralForm({
               id={notesId}
               rows={3}
               value={notes}
-              onChange={(e) => setNotes(e.target.value)}
+              onChange={edit("notes")}
               placeholder="e.g. Met at the AWS meetup"
             />
           </div>
