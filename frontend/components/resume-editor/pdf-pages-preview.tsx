@@ -128,58 +128,67 @@ export function PdfPagesPreview({
       {/* overflow-auto: 100% scrolls sideways. A size container, so "Fit
           page" can measure the room it has. Focusable, so the arrow keys
           scroll it where the browser does not focus scrollers itself (WebKit,
-          which the desktop shell runs on); the ring is inset because every
-          caller clips this box. */}
-      <div
-        role="region"
-        aria-label="Page preview"
-        tabIndex={0}
-        className="focus-visible:ring-ring min-h-0 flex-1 overflow-auto px-4 pt-2 pb-4 outline-none @container-[size] focus-visible:ring-2 focus-visible:ring-inset"
-      >
-        {Array.from({ length: data.page_count }, (_, i) => (
-          // Raw <img>: these are server-rendered PNGs served through our API
-          // proxy with a dynamic page count; next/image's loader/optimizer adds
-          // no value here and would need domain/loader config for API routes.
-          // Cache-bust on the server's render timestamp so the image URL always
-          // changes when the PDF re-renders — a caller-supplied counter (studio
-          // pdfNonce) resets to 0 on reload and would collide with a stale cache.
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            key={i}
-            src={apiUrlForBrowserPdf(
-              `${basePath}/preview/page/${i + 1}?v=${encodeURIComponent(
-                data.rendered_at ?? String(version ?? ""),
-              )}`,
-            )}
-            alt={`Page ${i + 1}`}
-            onLoad={
-              i === 0
-                ? (e) => setNaturalWidth(e.currentTarget.naturalWidth)
-                : undefined
-            }
-            // A failed page 1 must not hide every page at 100%.
-            onError={i === 0 ? () => setNaturalWidth(0) : undefined}
-            style={
-              zoom === "actual" && naturalWidth
-                ? { width: actualSizeWidthPx(naturalWidth) }
-                : undefined
-            }
-            className={cn(
-              "mx-auto mb-4 block rounded-[2px] bg-white shadow-lg ring-1 ring-black/5",
-              PAGE_CLASS[zoom],
-              // Until page 1 reports its size, 100% has no width to set, and
-              // the 150-DPI PNG would paint at 1275px before snapping to 816.
-              zoom === "actual" && naturalWidth === null && "invisible",
-            )}
-          />
-        ))}
-        <span
-          className={`bg-foreground text-background sticky bottom-3 left-1/2 inline-flex -translate-x-1/2 items-center rounded-full px-3 py-1 text-xs font-medium shadow ${
-            data.page_count > 1 ? "bg-amber-600" : ""
-          }`}
+          which the desktop shell runs on). */}
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        <div
+          role="region"
+          aria-label="Page preview"
+          tabIndex={0}
+          className="peer min-h-0 flex-1 overflow-auto px-4 pt-2 pb-4 outline-none @container-[size]"
         >
-          {data.page_count} page{data.page_count > 1 ? "s" : ""}
-        </span>
+          {Array.from({ length: data.page_count }, (_, i) => (
+            // Raw <img>: these are server-rendered PNGs served through our API
+            // proxy with a dynamic page count; next/image's loader/optimizer adds
+            // no value here and would need domain/loader config for API routes.
+            // Cache-bust on the server's render timestamp so the image URL always
+            // changes when the PDF re-renders — a caller-supplied counter (studio
+            // pdfNonce) resets to 0 on reload and would collide with a stale cache.
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              key={i}
+              src={apiUrlForBrowserPdf(
+                `${basePath}/preview/page/${i + 1}?v=${encodeURIComponent(
+                  data.rendered_at ?? String(version ?? ""),
+                )}`,
+              )}
+              alt={`Page ${i + 1}`}
+              onLoad={
+                i === 0
+                  ? (e) => setNaturalWidth(e.currentTarget.naturalWidth)
+                  : undefined
+              }
+              // A failed page 1 must not hide every page at 100%.
+              onError={i === 0 ? () => setNaturalWidth(0) : undefined}
+              style={
+                zoom === "actual" && naturalWidth
+                  ? { width: actualSizeWidthPx(naturalWidth) }
+                  : undefined
+              }
+              className={cn(
+                "mx-auto mb-4 block rounded-[2px] bg-white shadow-lg ring-1 ring-black/5",
+                PAGE_CLASS[zoom],
+                // Until page 1 reports its size, 100% has no width to set, and
+                // the 150-DPI PNG would paint at 1275px before snapping to 816.
+                zoom === "actual" && naturalWidth === null && "invisible",
+              )}
+            />
+          ))}
+          <span
+            className={`bg-foreground text-background sticky bottom-3 left-1/2 inline-flex -translate-x-1/2 items-center rounded-full px-3 py-1 text-xs font-medium shadow ${
+              data.page_count > 1 ? "bg-amber-600" : ""
+            }`}
+          >
+            {data.page_count} page{data.page_count > 1 ? "s" : ""}
+          </span>
+        </div>
+        {/* The focus ring lives on an overlay, not the scroller: a ring on the
+            scroller (box-shadow, or an outline pulled inside) paints under its
+            own content, so a page scrolled into the corner covers it. Inset,
+            because every caller clips this box. */}
+        <div
+          aria-hidden="true"
+          className="ring-ring pointer-events-none absolute inset-0 peer-focus-visible:ring-2 peer-focus-visible:ring-inset"
+        />
       </div>
     </div>
   );

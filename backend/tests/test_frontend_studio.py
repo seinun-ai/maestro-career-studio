@@ -193,11 +193,21 @@ def test_section_order_buttons_are_24px_targets():
 
 
 def test_preview_scroller_is_keyboard_reachable_and_named():
-    scroller = _PREVIEW[_PREVIEW.index('role="region"') :]
+    start = _PREVIEW.index('role="region"')
+    scroller = _PREVIEW[start:]
     scroller = scroller[: scroller.index(">")]
     assert 'aria-label="Page preview"' in scroller
     assert "tabIndex={0}" in scroller
-    assert "focus-visible:ring-2" in scroller
+    assert re.search(r'className="[^"]*\bpeer\b', scroller)
+    # A ring on the scroller itself (box-shadow or negative-offset outline)
+    # paints under its own content, so a scrolled page covers it. The ring is
+    # a sibling overlay the scroller's focus lights up.
+    assert "focus-visible:ring" not in scroller
+    overlay = _PREVIEW[start:]
+    overlay = overlay[overlay.index('aria-hidden="true"') :]
+    overlay = overlay[: overlay.index("/>")]
+    assert "pointer-events-none absolute inset-0" in overlay
+    assert "peer-focus-visible:ring-2" in overlay
 
 
 def test_render_error_banner_sits_above_the_scroller():
