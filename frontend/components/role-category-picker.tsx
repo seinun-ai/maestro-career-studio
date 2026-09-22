@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
@@ -32,6 +32,15 @@ export function useRoleCategories() {
     queryFn: () => apiFetch<RoleCategory[]>("/api/role-categories"),
     staleTime: 60 * 60 * 1000, // vocabulary changes only on deploy
   });
+}
+
+/** key -> display label from the fetched catalog; humanizes while it loads or for a key it no longer has. */
+export function useRoleLabel() {
+  const { data } = useRoleCategories();
+  return useCallback(
+    (key: string | null | undefined) => roleLabel(key, data),
+    [data],
+  );
 }
 
 export function roleLabel(key: string | null | undefined, options?: RoleCategory[]) {

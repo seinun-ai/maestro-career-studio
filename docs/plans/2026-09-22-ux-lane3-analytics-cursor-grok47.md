@@ -179,6 +179,8 @@ gate table, deviations, anything queued or deferred, and any concerns.
 | 11 | Optional naming note in `docs/frontend-conventions.md` | No conventions edit | No existing bullet names the KB Profile tab, and the task marks the note optional. Other lanes edit other bullets of the same file. |
 | 12 | Replace the last two sentences of the `analytics_gap_frequency` chat spec | Replaced the status and category sentences; kept `role_category filters by the job's slug` | That sentence now follows them. Dropping it would hide the closed slug vocabulary. Additive contracts only. |
 | 12 | Append the prompt line | Also updated `migrations/prompt_defaults.lock.json`. No resync migration | The pin test fails without the hash. Appendix B says this line is reinforcement for new installs; the tool spec is what existing installs read. |
+| 13 | Tests named in the task only | Also added `backend/tests/test_frontend_analytics.py` | Node tests are not in CI. The lane rule says every `lib/*.ts` behaviour needs a pytest source pin. |
+| 13 | Stay inside the owned file list | Updated the module docstring in `backend/app/routers/role_categories.py` | It named the deleted `frontend/lib/format.ts`. The endpoint still exists so pickers can fetch labels. |
 
 ## Gate results
 
@@ -195,7 +197,32 @@ gate table, deviations, anything queued or deferred, and any concerns.
 | 12 | tsc / lint / node tests | tsc clean; lint 0 errors, 5 warnings; 67 passed |
 | 12 | slop `check frontend` and `check backend` | frontend OK, duplication 517 lines, 43 clones. Backend `complexity_hotspots` 424 → 426 because two existing tests each gained one `assert` and crossed cc 10. Not re-baselined. |
 | 12 | browser | not in the task steps. The panel's words are unchanged; they now come from `category_label`. No scored gap rows on the scratch stack, so the panel was not opened. |
+| 13 | `analytics-series.test.ts` + `test_best_paying_signal_uses_role_label` | failed first (missing module; title was `Best-paying track: unknown`), then passed |
+| 13 | `pytest` explore router, the new pin, and `tests/test_frontend_*.py` | 161 passed in that selection. Full backend suite was Task 12's gate, not this task's. |
+| 13 | tsc / lint / `node --test lib/*.test.ts` | tsc clean; lint 0 errors, 5 warnings; 70 passed |
+| 13 | slop `check frontend` and `check backend` | frontend OK. Duplication 517 lines / 43 clones → 507 / 42 (deleting `format.ts` and the panel map). Backend `complexity_hotspots` 424 → 428. The four new hotspots are tests (two asserts in Task 12, `test_best_paying_signal_uses_role_label`, and the source pin). Not re-baselined. |
+| 13 | browser (scratch stack, 3103) | Job market role mix, heatmap, salary tile, and the role filter options are catalog labels (Data Scientist, Data Engineer, Product Manager, Software Engineer), and the closed filter says Any. Best-paying insight says "Data Scientist". Resume fit and Gaps show no role slugs (both empty of scores: "No data yet" / "No frequent gaps yet"). Role-mix legend is 4 lines, strokes `--chart-1` through `--chart-4`, no repeat. Work mode and OPT keys are still raw; queued below. |
 
 ## Queued for Task 18 (SYSTEM.md changes Claude applies)
 
+§11 entries from Task 13. File them; do not build them on this branch.
+
+- Job market still prints raw keys for work mode, OPT, and sponsorship
+  (`onsite`, `yes` / `no` / `stem_opt_ok` / `unstated`, `sponsorship_available`)
+  through `toBars` in `frontend/components/explore/explore-overview.tsx`.
+  Role slugs on that page are labels now. These other keys are the leak the
+  brief named for §11.
+- MCP `explore_*` tools still return role slugs and do not add a `role_label`.
+  The web app labels roles. The agent tools do not.
+
 ## Deferred to merge (edits left for Claude, with file:line)
+
+- `frontend/components/resume-editor/kb-import-drawer.tsx` still has a Profile
+  tab (`TabsTrigger value="profile"`). Task 11 renamed only
+  `app/career/page.tsx`, which is the surface Appendix B §1 names.
+- `frontend/components/charts/fit-distribution-chart.tsx` still uses
+  `COLORS[i % COLORS.length]` for one series per base resume. It is not in
+  Task 13's file list. More than six base resumes would repeat a colour.
+- The `analytics_gap_frequency` chat spec uses the appendix's status phrase
+  ("not in your Career KB / in your Career KB / ported before"). The chips
+  say "Not in your KB", "In your KB", and "Ported before".

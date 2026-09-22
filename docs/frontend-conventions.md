@@ -518,7 +518,12 @@
   (separate light/dark steps; re-run the dataviz palette validator if changed);
   shared helpers live in `components/charts/chart-kit.tsx` — never re-declare
   per-chart COLORS arrays; the heatmap uses a `color-mix` primary-blue
-  sequential ramp. **The gap sweeps read ONE base per job.** Both
+  sequential ramp. ATS-over-time draws at most 4 roles (`MAX_ROLE_SERIES` in
+  `lib/analytics-series.ts`) and leaves the tail off the chart, naming the
+  hidden count in the caption; role mix folds that tail into one "More roles"
+  series so the week still sums. Role text on these charts, the filters, the
+  heatmap, and the Job market bars comes from `useRoleLabel`, never the slug.
+  Colours follow that order and are never cycled. **The gap sweeps read ONE base per job.** Both
   `explore_gaps.gap_frequency` and `explore_build_areas.build_areas` go through
   `explore_gaps._best_base_gap_rows` — the single highest-composite base-phase
   row per job (ties break `target_id` asc for deterministic reruns). Pooling

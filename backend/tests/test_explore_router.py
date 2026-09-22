@@ -413,6 +413,34 @@ def test_overview_signal_copy_has_no_em_dash(db_session):
         assert "—" not in signal["detail"]
 
 
+def test_best_paying_signal_uses_role_label(db_session):
+    """The insight names the catalog label. A higher-paying reserved bucket is not a track."""
+    scientist = _seed_job(db_session, raw_hash="pay-ds", role_category="data_scientist")
+    engineer = _seed_job(db_session, raw_hash="pay-ml", role_category="ai_ml_engineer")
+    reserved = _seed_job(db_session, raw_hash="pay-unk", role_category="data_scientist")
+    reserved.role_category = None
+    for job, low, high in (
+        (scientist, 100000, 150000),
+        (engineer, 160000, 200000),
+        (reserved, 300000, 400000),
+    ):
+        job.salary_min = low
+        job.salary_max = high
+        job.salary_period = "year"
+        job.salary_currency = "USD"
+    db_session.flush()
+    client = TestClient(app)
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        body = client.get("/api/explore/overview").json()
+    finally:
+        app.dependency_overrides.clear()
+    titles = [signal["title"] for signal in body["signals"]]
+    assert "Best-paying track: AI/ML Engineer" in titles
+    assert not any("Unknown" in title or "unknown" in title for title in titles)
+    assert not any("ai_ml_engineer" in title or "data_scientist" in title for title in titles)
+
+
 def test_role_mix_over_time_groups_by_week(db_session):
     _seed_job(
         db_session,

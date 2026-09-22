@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.models.job import Job
 from app.models.job_skill import JobSkill
+from app.services import role_categories
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,13 +68,17 @@ def compute_signals(o: dict[str, Any]) -> list[dict[str, str]]:
             "detail": f"Required in {s['n']} of {total} JDs, more than any other skill.",
         })
 
-    paid = [r for r in o["salary_by_role"] if r.get("avg_max")]
+    # Reserved buckets are not a "track": "Best-paying track: Unknown" says nothing.
+    paid = [
+        r for r in o["salary_by_role"]
+        if r.get("avg_max") and r["role_category"] not in role_categories.RESERVED
+    ]
     if paid:
         best = max(paid, key=lambda r: r["avg_max"])
         cur = best.get("currency") or o["meta"].get("salary_year_currency")
         cur_bit = f" {cur}" if cur else ""
         signals.append({
-            "title": f"Best-paying track: {best['role_category']}",
+            "title": f"Best-paying track: {role_categories.label_for(best['role_category'])}",
             "detail": (
                 f"Average top of the pay range: about {round(best['avg_max'] / 1000)}k{cur_bit}, "
                 f"from {best['n']} JDs that list pay."

@@ -1,9 +1,9 @@
 """GET /api/role-categories — the role vocabulary, for pickers.
 
 Exists because the vocabulary lives in ats/data/role_categories.yaml and
-`frontend/lib/format.ts` deliberately declines to duplicate it — without this
-endpoint no picker can be built without recreating the drift that
-services/role_categories was written to end.
+the web app fetches it (`useRoleCategories` / `useRoleLabel`) rather than
+copying it — without this endpoint no picker can be built without recreating
+the drift that services/role_categories was written to end.
 
 `/match` is here for the same reason: mapping typed text onto the vocabulary
 runs on the same slug + alias map as everything else, and reimplementing that
