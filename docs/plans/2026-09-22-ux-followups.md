@@ -213,6 +213,10 @@ A1 §3 (`focusableWhenDisabled`).
 **Steps**
 1. Add A1 §4's pins; they FAIL.
 2. Implement `useRawJsonDraft` and the `RawJsonToggle` handle, then wire both studios.
+   **Amended by Task 2's review:** raw mode now survives a Save (no remount), but the
+   pane's text is set once, so after apply-then-save it would still hold the pre-save
+   text. After a successful save, re-sync or close the draft; A1 §4's `shown`/`value`
+   re-sync is the mechanism. Pin the behaviour.
    The base adoption effect gains `!raw.pending`.
 3. Run the pins, node tests, tsc, lint and slop checks.
 4. **Browser check:**
@@ -619,6 +623,11 @@ A1 §3 (`focusableWhenDisabled`).
   code, and fix anything stale.
 - `SYSTEM.md`:
   - the §12 changes from Task 2;
+  - §11 items from Task 2's review: (C) two saves inside one refetch window, where the
+    second returns to the adopted content, can leave a false banner until Load latest or
+    Save; (D) the parent-held `templateId` is never re-synced from the server, so it
+    survives Rebuild and Load latest, and a foreign template-only change reads as a
+    local unsaved edit;
   - §11 items for the out-of-scope leaks (B §3 risks), the studios' `h-dvh` overflowing
     by the VersionBanner's height (A2 §6 risks), and the agent-pipeline data bar at
     ~1.16:1 against its track (A2 §8, a WCAG 1.4.11 candidate);
@@ -653,6 +662,10 @@ A1 §3 (`focusableWhenDisabled`).
 
 | Task | Planned | Did instead | Why (Goal Card line) |
 |---|---|---|---|
+| 2 | Pin `onSaved(serverKey(result.customized_json))` | Pin a regex for `const key = serverKey(…); onSaved(key);` | A1 §2 needs the key twice (`parseResumeData`) |
+| 2 | Rebuild replaces directly when its key equals `adoptedKey` | Also when it equals the live key | The cache keeps the same reference, so the adoption effect never runs then either |
+| 2 | Adoption in `useEffect` | `useLayoutEffect` (pinned, documented) | The "changed outside the editor" banner painted one frame on every content save (0 of 1592 frames after) |
+| 2 | SYSTEM.md §12 bullet + gotcha | Also groomed two §12 entries into the conventions doc to stay under the cap | SYSTEM.md at 999/1000 |
 | 1 | Helpers only | Also extended the `diffFrom` sentence in the conventions doc; pin also asserts `SECTION_ORDER_FALLBACK` is gone from the panel; import swap | Principles: conventions change in the same commit; one definition of what `null` shows |
 | 1 (review) | `adoptServerKey` checks own keys first; `keepIfEdited` compares with `JSON.stringify` | Forced (Rebuild) key wins over queued own keys; `keepIfEdited` compares by `serverKey`; non-finite widths clamp to the default | A queued own key equal to the Rebuild key left a stale arm (the high-priority bug's shape); key order is not content |
 
