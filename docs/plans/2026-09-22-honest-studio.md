@@ -1292,7 +1292,9 @@ def test_divider_is_keyboard_operable():
     for attr in (
         "tabIndex={0}",
         'aria-label="Resize preview"',
-        "aria-valuenow=",
+        "aria-valuenow={Math.round(editorPct)}",
+        "aria-valuetext=",
+        "aria-controls=",
         "aria-valuemin=",
         "aria-valuemax=",
         "onKeyDown=",
@@ -1351,11 +1353,17 @@ def test_preview_pane_is_a_canvas():
         </div>
 ```
 
+- `const editorPaneId = useId();` (add `useId` to the React import) and put
+  `id={editorPaneId}` on the open-state left pane `<div className={leftOpenClass} …>`.
+- Persist the width rounded: the width effect writes
+  `String(Math.round(previewPct))` (dragging leaves fractions; the keyboard
+  helper snaps to the 5% grid since Tasks 6–7's review).
 - `Splitter` gains keyboard support. Call site:
 
 ```tsx
       <Splitter
         editorPct={100 - previewPct}
+        controls={editorPaneId}
         onDrag={(deltaPct) =>
           setPreviewPct((p) =>
             Math.min(PREVIEW_PCT.max, Math.max(PREVIEW_PCT.min, p - deltaPct)),
@@ -1375,10 +1383,14 @@ def test_preview_pane_is_a_canvas():
 ```tsx
 function Splitter({
   editorPct,
+  controls,
   onDrag,
   onKey,
 }: {
+  /** The editor's share. Fractional while dragging; announced rounded. */
   editorPct: number;
+  /** id of the editor pane this divider resizes (APG window splitter). */
+  controls: string;
   onDrag: (deltaPct: number) => void;
   /** Returns true when it handled the key. */
   onKey: (key: string) => boolean;
@@ -1392,7 +1404,11 @@ function Splitter({
       role="separator"
       aria-orientation="vertical"
       aria-label="Resize preview"
-      aria-valuenow={editorPct}
+      aria-controls={controls}
+      aria-valuenow={Math.round(editorPct)}
+      // The value is the EDITOR's share; say both so "Resize preview" is not
+      // read as the preview's width.
+      aria-valuetext={`Editor ${Math.round(editorPct)}%, preview ${100 - Math.round(editorPct)}%`}
       aria-valuemin={100 - PREVIEW_PCT.max}
       aria-valuemax={100 - PREVIEW_PCT.min}
       tabIndex={0}
@@ -1555,7 +1571,16 @@ def test_tailored_studio_status_shortcut_and_stale_preview():
     assert "<SaveStatusText" in _TAILORED
     assert "useSaveShortcut(" in _TAILORED
     assert 'aria-keyshortcuts="Meta+S Control+S"' in _TAILORED
-    assert "previewStale={dirty}" in _TAILORED
+    assert "previewStale={unsaved}" in _TAILORED
+
+
+def test_tailored_status_ignores_the_post_save_refetch_gap():
+    # `dirty` still feeds the parent's adoption guard; the USER-facing signals
+    # read `unsaved`, which forgets the gap before the remount.
+    assert "savedSnapshot" in _TAILORED
+    assert "dirty: unsaved" in _TAILORED
+    assert "const canSave = unsaved && !busy;" in _TAILORED
+    assert "onDirtyChange(dirty)" in _TAILORED
 ```
 
 **Step 2: Run** → FAIL.
@@ -1583,16 +1608,49 @@ def test_tailored_studio_status_shortcut_and_stale_preview():
 - `StudioEditor` props: `rescore: { mutate: (opts?: { announce?: boolean }) => void; isPending: boolean };`
 - `save.onSuccess`: delete `toast.success("Saved. Rendering PDF…");`.
 - The manual Re-score button: `onClick={() => rescore.mutate({ announce: true })}`.
+- **The post-save gap.** `saveStatus` ranks dirty above rendering (Tasks 6–7
+  review), and after our own Save lands `dirty` stays true until the
+  `["application"]` refetch remounts this editor, because it still compares
+  against the PRE-save server values. Without this, the header would flash and
+  announce "Unsaved changes" while the PDF renders. Keep `dirty` exactly as it
+  is for `onDirtyChange` (the parent's adoption guard depends on it) and for
+  `useUnsavedChangesWarning`; derive `unsaved` for everything the user sees:
+
+```tsx
+  // What our own last Save sent, as adopted from its response. Between that
+  // Save landing and the refetch that remounts this editor, `dirty` still
+  // compares against the PRE-save server values; this keeps the status line,
+  // Save and the stale strip from reporting the save we just made as unsaved.
+  // An edit made after the Save differs from it and reads as unsaved at once.
+  const sentData = useRef<ResumeData | null>(null);
+  const [savedSnapshot, setSavedSnapshot] = useState<string | null>(null);
+  const snapshotOf = (
+    d: ResumeData,
+    f: Partial<ResumeFormatting> | null,
+    t: string | null,
+  ) => JSON.stringify({ d, f: f ?? null, t });
+  const unsaved =
+    dirty &&
+    snapshotOf(data, formatting, templateIdToApi(templateId)) !== savedSnapshot;
+```
+
+  In `save.mutationFn`, after validation: `sentData.current = data;`. In
+  `save.onSuccess`, after adopting formatting and template:
+  `setSavedSnapshot(snapshotOf(sentData.current ?? data, (result.formatting as Partial<ResumeFormatting> | null) ?? null, result.template_id ?? null));`
+  (use the same null/default normalisation `templateIdToApi` produces, so an
+  untouched template compares equal). Verify in Task 14 that a formatting-only
+  save (which does not remount) settles to "All changes saved".
+
 - After `const busy = …`:
 
 ```tsx
   const status = saveStatus({
-    dirty,
+    dirty: unsaved,
     saving: save.isPending,
     rendering: render.isPending,
     rescoring: rescore.isPending,
   });
-  const canSave = dirty && !busy;
+  const canSave = unsaved && !busy;
   useSaveShortcut(() => save.mutate(), canSave);
   const mod = useModKey();
 ```
@@ -1611,7 +1669,7 @@ def test_tailored_studio_status_shortcut_and_stale_preview():
 
 - Save button: `disabled={!canSave}`, `title={`Save (${shortcutLabel(mod, "S")})`}`,
   `aria-keyshortcuts="Meta+S Control+S"`.
-- `EditorShell`: add `previewStale={dirty}`.
+- `EditorShell`: add `previewStale={unsaved}`.
 
 **Step 4: Run** the studio pins → PASS; tsc + lint clean.
 **Step 5: Commit**
@@ -1861,6 +1919,8 @@ Commit: `git commit -m "docs(conventions): colour roles, sidebar FAB and the hon
    - Selected health-report filters and the pressed Review toggle show a check.
    - Score tab import: after importing, focus should not drop to `<body>` and
      no frame of "No ATS scores yet" should flash (review minors #3 and #5).
+   - Cmd/Ctrl+S inside a section-rename field or a skill chip input saves the
+     typed draft; if the field unmounts on blur, focus lands somewhere sensible.
    - Empty tracker: the FAB (or header button) plus the ghost empty-state
      button is deliberate (NN/g: the empty state's pathway is a control).
 4. Stop every server you started. Record results below.
@@ -1895,6 +1955,8 @@ Goal Card line it violates.
 | 2 (review) | `data-active:hover:bg-…` only; substring pins; `useModKey` via effect; FAB `shadow-sm` at rest + `shadow-md` on /new | Adds `data-active:hover:text-on-secondary-container`; exact-token pins; `useModKey` via `useSyncExternalStore` (the `use-mobile.ts` pattern); `aria-keyshortcuts` on both sidebar toggles; "Toggle sidebar" sentence case; FAB rests flat, hover +1 (M3 rail FAB elevation 0) | Review findings; accessibility and conventions |
 | 4 | Rescore as soon as ["base-resumes"] goes none → some | Rescore waits until the import dialog CLOSES; the prompt stays mounted while it is open | The plan's version swapped the prompt for a skeleton and unmounted the dialog mid-report, where the user confirms each new resume's role (Principles: accessibility; don't break a flow) |
 | 5 | `/new` reuses ["setup-status"] and "a key saved in Settings clears this" | `refetchOnMount: "always"`, like the two other readers | Settings does not invalidate ["setup-status"]; Extract would stay disabled up to 30 s after adding a key (Goal: no first-run dead end) |
+| 6–7 (fix) | `isSaveShortcut` accepts `code === "KeyS"` | Physical-key fallback only when `key` is not a single Latin letter | Colemak/Dvorak put other letters on KeyS: the planner's version made Cmd+R / Cmd+O save (proven by a failing test) |
+| 6–7 (review) | Status order saving > rendering > rescoring > dirty; arrow keys step from any value; chord handled everywhere | Order saving > dirty > rendering > rescoring; keys snap to the 5% grid; `code === "KeyS"` fallback; the shortcut ignores dialogs, repeats and IME composition, and blurs the focused field first so blur-committed drafts save like a click; dirty text amber-800 + nowrap | Goal: "always see whether your work is saved"; Principles: accessibility. Planner amended Task 8 (rounded aria value, `aria-valuetext`, `aria-controls`) and Task 10 (`unsaved` vs `dirty`, the post-save gap) to match |
 | 1 | globals.css comment: hover tokens work because "custom properties resolve per element" | Comment says they work because `.dark` sits on `<html>`, the same element `:root` matches; a `.dark` on a subtree would keep the light hover | Accuracy of a comment the next agent will trust (Principles: conventions win); code unchanged |
 
 ## Gate results
