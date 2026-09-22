@@ -16,6 +16,8 @@ import { toast } from "sonner";
 
 import { useConfirm } from "@/components/confirm-dialog";
 import { IconButton } from "@/components/icon-button";
+import { useModKey } from "@/hooks/use-mod-key";
+import { useSaveShortcut } from "@/hooks/use-save-shortcut";
 import { useUnsavedChangesWarning } from "@/hooks/use-unsaved-changes-warning";
 import { PageHeader } from "@/components/page-shell";
 import { ContactForm } from "@/components/resume-editor/contact-form";
@@ -37,6 +39,7 @@ import { FormattingPanel } from "@/components/resume-editor/formatting-panel";
 import { PdfPagesPreview } from "@/components/resume-editor/pdf-pages-preview";
 import { ProjectEditor } from "@/components/resume-editor/project-editor";
 import { RawJsonToggle } from "@/components/resume-editor/raw-json-toggle";
+import { SaveStatusText } from "@/components/resume-editor/save-status";
 import { SkillsEditor } from "@/components/resume-editor/skills-editor";
 import { VersionHistorySheet } from "@/components/resume-versions/version-history-sheet";
 import {
@@ -63,6 +66,8 @@ import {
 import { FORMATTING_DEFAULTS, type ResumeFormatting } from "@/lib/formatting";
 import { notifyRenderNote } from "@/lib/render-note";
 import { resumeDataSchema } from "@/lib/resume-schema";
+import { shortcutLabel } from "@/lib/shortcuts";
+import { saveStatus } from "@/lib/studio";
 import type {
   Application,
   BaseResumeDetail,
@@ -132,10 +137,14 @@ export function TailoredResumeStudio({
   const rescore = useMutation({
     mutationFn: () =>
       runAtsScoreTarget(jobId, "application", applicationId, "tailored"),
-    onSuccess: () => {
+    // The variables carry the caller's `announce` flag and nothing the request
+    // needs, so they are typed here, where they are read.
+    onSuccess: (_data, opts: { announce?: boolean } | undefined) => {
       qc.invalidateQueries({ queryKey: ["ats-compare", applicationId] });
       qc.invalidateQueries({ queryKey: ["ats-scores", jobId] });
-      toast.success("Tailored resume re-scored");
+      // Only the manual Re-score confirms. The Save chain reports through the
+      // header's status line, not a third toast.
+      if (opts?.announce) toast.success("Tailored resume re-scored");
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -152,7 +161,6 @@ export function TailoredResumeStudio({
       ),
     onSuccess: (data, opts) => {
       notifyRenderNote(data);
-      toast.success("PDF rendered");
       setPdfNonce((n) => n + 1);
       qc.invalidateQueries({ queryKey: ["job-detail", jobId] });
       qc.invalidateQueries({ queryKey: ["application", applicationId] });
@@ -163,7 +171,7 @@ export function TailoredResumeStudio({
       // A standalone re-render (the ⋯ recovery item) doesn't pass this, so a
       // retry of a FAILED render doesn't add a new "tailored" trajectory row
       // for content that hasn't changed.
-      if (opts?.thenRescore) rescore.mutate();
+      if (opts?.thenRescore) rescore.mutate({ announce: false });
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -332,7 +340,10 @@ function StudioEditor({
     mutate: (opts?: { thenRescore?: boolean }) => void;
     isPending: boolean;
   };
-  rescore: { mutate: () => void; isPending: boolean };
+  rescore: {
+    mutate: (opts?: { announce?: boolean }) => void;
+    isPending: boolean;
+  };
   pdfNonce: number;
   // Dirty-guard wiring (see TailoredResumeStudio): the parent adopts newer
   // server snapshots; this editor reports its dirty state up, flags its own
@@ -505,6 +516,24 @@ function StudioEditor({
     onDirtyChange(dirty);
   }, [dirty, onDirtyChange]);
 
+  // What our own last Save sent, as adopted from its response. Between that
+  // Save landing and the refetch that remounts this editor, `dirty` still
+  // compares against the PRE-save server values; this keeps the status line,
+  // Save and the stale strip from reporting the save we just made as unsaved.
+  // An edit made after the Save differs from it and reads as unsaved at once.
+  // `dirty` itself stays as it is: the parent's adoption guard and the
+  // leave-page warning read it.
+  const sentData = useRef<ResumeData | null>(null);
+  const [savedSnapshot, setSavedSnapshot] = useState<string | null>(null);
+  const snapshotOf = (
+    d: ResumeData,
+    f: Partial<ResumeFormatting> | null,
+    t: string | null,
+  ) => JSON.stringify({ d, f: f ?? null, t });
+  const unsaved =
+    dirty &&
+    snapshotOf(data, formatting, templateIdToApi(templateId)) !== savedSnapshot;
+
   const save = useMutation({
     mutationFn: async () => {
       const validated = resumeDataSchema.safeParse(data);
@@ -515,6 +544,7 @@ function StudioEditor({
             .join("; "),
         );
       }
+      sentData.current = data;
       return apiFetch<Application>(`/api/applications/${applicationId}`, {
         method: "PATCH",
         body: JSON.stringify({
@@ -540,6 +570,18 @@ function StudioEditor({
       // Adopt the server's normalized template_id so the parent-held selection,
       // the dirty flag, and the render query param all agree after a save.
       onTemplateChange(templateIdFromApi(result.template_id));
+      // Same normalisation the next render applies to the adopted values
+      // (`templateIdToApi(templateIdFromApi(…))`), so an untouched template
+      // compares equal.
+      const savedFormatting =
+        (result.formatting as Partial<ResumeFormatting> | null) ?? null;
+      setSavedSnapshot(
+        snapshotOf(
+          sentData.current ?? data,
+          savedFormatting,
+          templateIdToApi(templateIdFromApi(result.template_id)),
+        ),
+      );
       qc.invalidateQueries({ queryKey: ["job-detail", jobId] });
       qc.invalidateQueries({ queryKey: ["application", applicationId] });
       qc.invalidateQueries({ queryKey: ["ats-compare", applicationId] });
@@ -547,7 +589,6 @@ function StudioEditor({
       // to re-diff or the list would keep offering changes that are already gone.
       qc.invalidateQueries({ queryKey: ["resume-diff", applicationId] });
       setRevertedKeys(new Set());
-      toast.success("Saved. Rendering PDF…");
       // Auto-render so the PDF regenerates without a second click. `render`
       // lives in the parent, so it keeps running through the remount that the
       // ["application"] invalidation above triggers. `thenRescore` chains the
@@ -560,6 +601,15 @@ function StudioEditor({
   });
 
   const busy = save.isPending || rescore.isPending || materializePending;
+  const status = saveStatus({
+    dirty: unsaved,
+    saving: save.isPending,
+    rendering: render.isPending,
+    rescoring: rescore.isPending,
+  });
+  const canSave = unsaved && !busy;
+  useSaveShortcut(() => save.mutate(), canSave);
+  const mod = useModKey();
   const pdfHref = apiUrlForBrowserPdf(`/api/applications/${applicationId}/pdf`);
   const pdfFilename =
     application.pdf_path?.split(/[\\/]/).pop() ?? "tailored-resume.pdf";
@@ -568,6 +618,7 @@ function StudioEditor({
     <>
       <EditorShell
         storageKey={STUDIO_STORAGE_KEY}
+        previewStale={unsaved}
         // Matches the base studio: the preview header is the PDF's own
         // controls (download, open) and nothing else. The template picker moved
         // to the toolbar's tools group where base already had it, and "Generate
@@ -646,7 +697,13 @@ function StudioEditor({
                 />
               }
               title="Tailored resume"
-              subtitle={jobLabel}
+              subtitle={
+                <span className="inline-flex flex-wrap items-center gap-x-2">
+                  <span>{jobLabel}</span>
+                  <span aria-hidden="true">·</span>
+                  <SaveStatusText status={status} />
+                </span>
+              }
               actions={
                 <StudioToolbar
                   tools={
@@ -685,7 +742,7 @@ function StudioEditor({
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => rescore.mutate()}
+                        onClick={() => rescore.mutate({ announce: true })}
                         disabled={busy || dirty}
                         title={
                           dirty
@@ -706,7 +763,9 @@ function StudioEditor({
                     <Button
                       size="sm"
                       onClick={() => save.mutate()}
-                      disabled={busy || !dirty}
+                      disabled={!canSave}
+                      title={`Save (${shortcutLabel(mod, "S")})`}
+                      aria-keyshortcuts="Meta+S Control+S"
                     >
                       {save.isPending && <Loader2 className="animate-spin" />}
                       {save.isPending ? "Saving…" : "Save"}
