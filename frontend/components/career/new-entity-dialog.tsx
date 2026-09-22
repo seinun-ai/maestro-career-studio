@@ -234,6 +234,7 @@ export function NewEntityDialog({
                 <div className="flex gap-1.5">
                   <button
                     type="button"
+                    aria-pressed={sectionType === "entries"}
                     onClick={() => setSectionType("entries")}
                     className={cn(
                       "flex flex-1 flex-col items-start gap-0.5 rounded-md border px-3 py-2 text-left transition-colors",
@@ -247,6 +248,7 @@ export function NewEntityDialog({
                   </button>
                   <button
                     type="button"
+                    aria-pressed={sectionType === "bullets"}
                     onClick={() => {
                       setSectionType("bullets");
                       if (sectionTitle.trim()) {

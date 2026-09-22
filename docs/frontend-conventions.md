@@ -35,10 +35,15 @@
   tonal toggle also leads with a `Check` and sets
   `aria-pressed`** (health-report filters, Review changes, the zoom presets):
   the fill is about 1.16:1 against the light page, too faint to say "on" by
-  itself. Several hand-rolled `bg-primary/10 text-primary` selected states
-  (SourceToggle, the proposals filter, chat pills and the active chat session)
-  have not yet moved to secondary container: a known inconsistency tracked for
-  the next plan.
+  itself. **Selected in a set** (a toggle, filter chip, or segment) is `tonal`
+  plus a leading `Check` plus `aria-pressed`. **Current in a list or nav**
+  (a sidebar row, the open chat) is secondary container, semibold, and
+  `aria-current`, with no Check. **A create or secondary action** is
+  `Button variant="tonal"`. **A non-interactive status chip** is
+  `Badge variant="tonal"` or the secondary-container pair on a custom-sized
+  chip. `bg-primary/N text-primary` is retired as a component fill. Callout
+  containers (`border-primary/25 bg-primary/5` with foreground text) are not
+  component states and stay.
 - **Top-left corner belongs to the sidebar reveal pill**
   (`components/sidebar-reveal-trigger.tsx`, owner decision). Clearance is
   **not** a per-page concern: `SidebarGutter` wraps the main area once in

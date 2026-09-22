@@ -170,7 +170,7 @@ export function Dropzone({
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
-        className={`flex w-full flex-col items-center gap-2 rounded-lg border border-dashed p-6 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
+        className={`flex w-full flex-col items-center gap-2 rounded-lg border border-dashed p-6 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
           disabled
             ? "cursor-not-allowed pointer-events-none opacity-50 border-muted-foreground/25 bg-muted/10"
             : isDragging

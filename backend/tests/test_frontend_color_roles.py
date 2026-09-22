@@ -216,10 +216,36 @@ def test_selected_tonal_toggles_show_a_check():
     # The secondary container is a quiet fill (1.16:1 against the light page)
     # and its text is lighter than an outline button's, so `tonal` alone no
     # longer reads as "on". M3's selected filter chip leads with a check.
-    # These are the two call sites that use tonal as the pressed state.
     assert "aria-pressed={filter === f.id}" in _HEALTH
     assert "{filter === f.id && <Check />}" in _HEALTH
     assert "{review ? <Check /> : <GitCompare />}" in _STUDIO
+    source = _read("components/source-toggle.tsx")
+    assert "{value === s && <Check" in source
+    proposals = _read("components/proposals/proposals-section.tsx")
+    assert 'variant={active ? "tonal" : "outline"}' in proposals
+    assert "{active && <Check" in proposals
+
+
+def test_active_chat_session_is_current():
+    chat = _read("components/chat/chat-page.tsx")
+    assert 'aria-current={activeId === s.id ? "true" : undefined}' in chat
+
+
+def test_segmented_controls_and_entity_cards_expose_pressed():
+    formatting = _read("components/resume-editor/formatting-panel.tsx")
+    assert "aria-pressed={current === o.value}" in formatting
+    dialog = _read("components/career/new-entity-dialog.tsx")
+    assert dialog.count('aria-pressed={sectionType === "') == 2
+
+
+def test_primary_tint_pairs_do_not_spread():
+    """bg-primary/10 text-primary is retired as a component fill. What remains
+    is the historical comment in button.tsx plus decorative avatars and status
+    chips the plan leaves alone. The count must not rise."""
+    count = 0
+    for path in (_FRONTEND / "components").rglob("*.tsx"):
+        count += path.read_text(encoding="utf-8").count("bg-primary/10 text-primary")
+    assert count <= 7, count
 
 
 _RING_SURFACES = ("background", "card", "sidebar", "canvas", "muted", "secondary-container")

@@ -1,5 +1,7 @@
 "use client";
 
+import { Check } from "lucide-react";
+
 import { cn } from "@/lib/utils";
 
 export const SOURCES = ["all", "user", "agent"] as const;
@@ -32,12 +34,13 @@ export function SourceToggle({
           aria-pressed={value === s}
           onClick={() => onChange(s)}
           className={cn(
-            "h-7 cursor-pointer rounded-full px-3 text-xs font-medium transition-colors duration-150",
+            "inline-flex h-7 cursor-pointer items-center gap-1 rounded-full px-3 text-xs font-medium transition-colors duration-150",
             value === s
-              ? "bg-primary/10 text-primary"
+              ? "bg-secondary-container text-on-secondary-container hover:bg-secondary-container-hover"
               : "text-muted-foreground hover:bg-muted",
           )}
         >
+          {value === s && <Check className="size-3" aria-hidden="true" />}
           {s === "all" ? "All" : s === "user" ? "You" : "Agent"}
         </button>
       ))}

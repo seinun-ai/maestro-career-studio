@@ -479,7 +479,7 @@ function StudioEditor({
   /** Count badge on a section tab, so review mode points at where to look. */
   const changeBadge = (tab: string) =>
     showReview && changeCounts[tab] ? (
-      <span className="bg-primary/15 text-primary ml-1 rounded-full px-1.5 text-[10px] font-medium tabular-nums">
+      <span className="bg-secondary-container text-on-secondary-container ml-1 rounded-full px-1.5 text-[10px] font-medium tabular-nums">
         {changeCounts[tab]}
       </span>
     ) : null;
