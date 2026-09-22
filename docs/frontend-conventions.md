@@ -158,7 +158,9 @@
     content: a foreign edit over a clean editor, Load latest, or a confirmed
     Rebuild. A Rebuild whose content equals the adopted or live copy moves no
     key, so the adoption effect never runs; it replaces the editor from its
-    own success path.
+    own success path. Every Rebuild also writes its response into the
+    `["application", id]` cache, or a remounted clean editor adopts the stale
+    copy a banner was about until the refetch lands.
 - **`PdfPagesPreview` owns the canvas and the zoom.** Pages sit on
   `bg-canvas`, so a caller adds no fill of its own. Zoom is a `role="group"`
   "Zoom" of `aria-pressed` presets (Fit width, Fit page, 100%) on a solid

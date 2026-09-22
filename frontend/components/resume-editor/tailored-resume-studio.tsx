@@ -83,6 +83,7 @@ import {
 } from "@/lib/studio";
 import type {
   Application,
+  ApplicationDetail,
   BaseResumeDetail,
   HygieneFlag,
   RenderResult,
@@ -92,13 +93,16 @@ import type {
 
 const STUDIO_STORAGE_KEY = "tailoredResumeStudio";
 
-/** What a Save sends, as one comparable string (see `unsaved` in StudioEditor). */
+/**
+ * What a Save sends, as one comparable string (see `unsaved` in StudioEditor).
+ * By content, like `dirty`: key order is not an edit.
+ */
 function snapshotOf(
   d: ResumeData,
   f: Partial<ResumeFormatting> | null,
   t: string | null,
 ): string {
-  return JSON.stringify({ d, f: f ?? null, t });
+  return serverKey({ d, f: f ?? null, t });
 }
 
 /** What a Save sends (the mutation's variables, so its response can tell edits made since). */
@@ -275,7 +279,7 @@ export function TailoredResumeStudio({
 
   const materialize = useMutation({
     mutationFn: () =>
-      apiFetch<Application>(
+      apiFetch<ApplicationDetail>(
         `/api/applications/${applicationId}/materialize-resume`,
         { method: "POST" },
       ),
@@ -287,6 +291,10 @@ export function TailoredResumeStudio({
       // Otherwise the refetch brings the key, and the effect lets it win.
       if (key === adoptedKey || key === customizedKey) replaceEditor(key);
       else forcedKey.current = key;
+      // The response IS the page's query data (ApplicationDetail). Seeding the
+      // cache moves the live key now: before the refetch landed, the remounted
+      // (clean) editor adopted the stale copy a banner was about, and painted it.
+      qc.setQueryData(["application", applicationId], result);
       qc.invalidateQueries({ queryKey: ["job-detail", jobId] });
       qc.invalidateQueries({ queryKey: ["application", applicationId] });
       toast.success("Draft built from the base resume");
@@ -552,15 +560,18 @@ function StudioEditor({
   // Formatting can change independently of `customized_json`, so it feeds the
   // dirty flag too — otherwise a formatting-only edit couldn't be saved. The
   // baseline is the server value (`application.formatting`); an invalidated
-  // application query after Save updates it, clearing the flag.
-  const serverFormatting = JSON.stringify(application.formatting ?? null);
+  // application query after Save updates it, clearing the flag. Compared by
+  // content: the panel emits keys in its own order, and a stored override
+  // (Postgres-migrated, MCP-written) may hold the same values in another, so
+  // moving a knob back to its stored value read as an unsaved edit.
+  const serverFormatting = serverKey(application.formatting);
   // A template change alone is also a saveable edit — otherwise the choice could
   // be rendered with (via the render query param) but never persisted.
   const serverTemplateId = application.template_id ?? null;
   const dirty = useMemo(
     () =>
       JSON.stringify(data) !== initialSerialized ||
-      JSON.stringify(formatting ?? null) !== serverFormatting ||
+      serverKey(formatting) !== serverFormatting ||
       templateIdToApi(templateId) !== serverTemplateId,
     [
       data,

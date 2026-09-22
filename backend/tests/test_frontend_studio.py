@@ -204,6 +204,21 @@ def test_rebuild_replaces_the_editor_even_when_its_key_does_not_move():
     materialize = _mutation(_TAILORED, "materialize")
     assert "replaceEditor(key)" in materialize
     assert "forcedKey.current = key" in materialize
+    # The response goes straight into the cache: until the refetch landed, a
+    # remounted clean editor adopted the STALE foreign copy the banner was
+    # about, and painted it.
+    assert 'qc.setQueryData(["application", applicationId], result)' in materialize
+
+
+def test_tailored_dirty_compares_formatting_by_content():
+    # A content-only refetch keeps the OLD formatting object (structural
+    # sharing) while local state holds the PATCH response. Equal content in a
+    # different key order (Postgres-migrated or MCP-written formatting) left
+    # `dirty` stuck: Re-score and Generate disabled, the leave-page prompt
+    # armed, foreign edits bannered, under "All changes saved".
+    assert "const serverFormatting = serverKey(application.formatting);" in _TAILORED
+    assert "serverKey(formatting) !== serverFormatting" in _TAILORED
+    assert "JSON.stringify(application.formatting" not in _TAILORED
 
 
 def test_save_responses_keep_edits_made_while_saving():
