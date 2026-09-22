@@ -43,3 +43,23 @@ def test_preview_says_when_it_is_stale():
 def test_preview_pane_is_a_canvas():
     assert "bg-canvas" in _SHELL
     assert "bg-muted/30" not in _SHELL
+
+
+_BASE = _read("components/resume-editor/editor-body.tsx")
+
+
+def test_base_studio_save_is_dirty_gated_and_keyed():
+    assert "disabled={!canSave}" in _BASE
+    assert "useSaveShortcut(" in _BASE
+    assert 'aria-keyshortcuts="Meta+S Control+S"' in _BASE
+
+
+def test_base_studio_can_rerender_with_nothing_to_save():
+    assert "/render`" in _BASE
+    assert '"Regenerate PDF"' in _BASE
+
+
+def test_base_studio_reports_save_in_the_header_not_a_toast():
+    assert "<SaveStatusText" in _BASE
+    assert "Saved. PDF re-rendered." not in _BASE
+    assert "previewStale={hasUnsavedChanges}" in _BASE

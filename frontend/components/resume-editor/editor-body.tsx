@@ -9,6 +9,7 @@ import {
   Download,
   ExternalLink,
   Pencil,
+  RefreshCw,
   Sparkles,
   Tag,
 } from "lucide-react";
@@ -16,6 +17,8 @@ import { toast } from "sonner";
 
 import { IconButton } from "@/components/icon-button";
 import { KbSyncPill } from "@/components/kb-sync-pill";
+import { useModKey } from "@/hooks/use-mod-key";
+import { useSaveShortcut } from "@/hooks/use-save-shortcut";
 import { useUnsavedChangesWarning } from "@/hooks/use-unsaved-changes-warning";
 import { PageHeader } from "@/components/page-shell";
 import { ContactForm } from "@/components/resume-editor/contact-form";
@@ -32,6 +35,7 @@ import { KbImportDrawer } from "@/components/resume-editor/kb-import-drawer";
 import { PdfPagesPreview } from "@/components/resume-editor/pdf-pages-preview";
 import { ProjectEditor } from "@/components/resume-editor/project-editor";
 import { RawJsonToggle } from "@/components/resume-editor/raw-json-toggle";
+import { SaveStatusText } from "@/components/resume-editor/save-status";
 import { SkillsEditor } from "@/components/resume-editor/skills-editor";
 import { HealthBadges } from "@/components/resume-health/health-badges";
 import { VersionHistorySheet } from "@/components/resume-versions/version-history-sheet";
@@ -57,6 +61,8 @@ import { apiFetch, apiUrlForBrowserPdf } from "@/lib/api";
 import { FORMATTING_DEFAULTS, type ResumeFormatting } from "@/lib/formatting";
 import { notifyRenderNote } from "@/lib/render-note";
 import { resumeDataSchema } from "@/lib/resume-schema";
+import { shortcutLabel } from "@/lib/shortcuts";
+import { saveStatus } from "@/lib/studio";
 import type { BaseResumeDetail, ResumeData } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -208,13 +214,23 @@ export function EditorBody({
       qc.invalidateQueries({ queryKey: ["base-resumes"] });
       qc.invalidateQueries({ queryKey: ["setup-status"] });
       notifyRenderNote(result);
-      toast.success("Saved. PDF re-rendered.", {
-        action: {
-          label: "Download PDF",
-          onClick: () =>
-            window.open(apiUrlForBrowserPdf(`/api/base-resumes/${slug}/pdf`)),
-        },
-      });
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  // Recovery for a render that FAILED. Save is dirty-gated, so with nothing to
+  // save it can no longer double as "render again". Mirrors the tailored
+  // studio's ⋯ Regenerate PDF, against the base's own render endpoint (the
+  // render IS the request, so a failure is a 400, never a persisted note).
+  const regenerate = useMutation({
+    mutationFn: () =>
+      apiFetch<BaseResumeDetail>(`/api/base-resumes/${slug}/render`, {
+        method: "POST",
+      }),
+    onSuccess: (result) => {
+      qc.setQueryData(["base-resumes", slug], result);
+      qc.invalidateQueries({ queryKey: ["pdf-preview"] });
+      notifyRenderNote(result);
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -229,10 +245,20 @@ export function EditorBody({
   // This flag already existed but only ever gated the KB-import button, so a
   // reload or a closed tab discarded the edits without a word.
   useUnsavedChangesWarning(hasUnsavedChanges);
+  const status = saveStatus({
+    dirty: hasUnsavedChanges,
+    saving: save.isPending,
+    rendering: regenerate.isPending,
+    rescoring: false,
+  });
+  const canSave = hasUnsavedChanges && !save.isPending && !regenerate.isPending;
+  useSaveShortcut(() => save.mutate(), canSave);
+  const mod = useModKey();
 
   return (
     <>
       <EditorShell
+        previewStale={hasUnsavedChanges}
         previewHeader={
           pdfHref && (
             <>
@@ -300,14 +326,16 @@ export function EditorBody({
                   onChange={setDisplayName}
                 />
               }
-              /* No subtitle. The header carried three identity lines saying
-                 the same words for any resume whose name, slug and role agree
-                 — the common case, since the slug is derived from the name
-                 and the name from the role. The name is the title; the slug
-                 is in the URL and on "Copy slug"; the role is the ⋯ menu's
-                 first item, which NAMES its current value so it is still read
-                 without opening anything. All three still write through PATCH
+              /* The subtitle is the save-status line, NOT an identity line.
+                 The header used to carry three identity lines saying the same
+                 words for any resume whose name, slug and role agree — the
+                 common case, since the slug is derived from the name and the
+                 name from the role. The name is the title; the slug is in the
+                 URL and on "Copy slug"; the role is the ⋯ menu's first item,
+                 which NAMES its current value so it is still read without
+                 opening anything. All three still write through PATCH
                  /identity rather than Save. */
+              subtitle={<SaveStatusText status={status} />}
               actions={
                 <StudioToolbar
                   status={
@@ -332,9 +360,11 @@ export function EditorBody({
                   primary={
                     <Button
                       onClick={() => save.mutate()}
-                      disabled={save.isPending}
+                      disabled={!canSave}
+                      title={`Save (${shortcutLabel(mod, "S")})`}
+                      aria-keyshortcuts="Meta+S Control+S"
                     >
-                      {save.isPending ? "Rendering PDF…" : "Save"}
+                      {save.isPending ? "Saving…" : "Save"}
                     </Button>
                   }
                   overflow={
@@ -357,6 +387,21 @@ export function EditorBody({
                         </DropdownMenuItem>
                       }
                     >
+                      <DropdownMenuItem
+                        disabled={
+                          hasUnsavedChanges ||
+                          regenerate.isPending ||
+                          save.isPending
+                        }
+                        onClick={() => regenerate.mutate()}
+                      >
+                        <RefreshCw />
+                        {regenerate.isPending
+                          ? "Generating…"
+                          : live.pdf_path
+                            ? "Regenerate PDF"
+                            : "Generate PDF"}
+                      </DropdownMenuItem>
                       {/* A free instruction against this document — an edit
                           or a question. Applying goes through PATCH /edits on
                           the SAVED record, so like the KB import it waits for

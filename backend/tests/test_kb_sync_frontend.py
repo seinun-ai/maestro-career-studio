@@ -97,13 +97,17 @@ def test_base_resume_studio_mounts_the_pill_not_a_page_bar():
     assert "KbSyncPill" in body
     # It belongs beside the health badges, in the toolbar's `status` slot.
     # Assert the anchors before slicing: a slot rename or reorder should fail
-    # here with a sentence rather than as an IndexError from the split.
-    assert "status={" in body, "StudioToolbar `status` slot anchor is gone"
-    assert "tools={" in body, "StudioToolbar `tools` slot anchor is gone"
-    assert body.index("status={") < body.index("tools={"), (
+    # here with a sentence rather than as an IndexError from the split. Slice
+    # from the toolbar, because the header's save-status line passes a
+    # `status=` prop of its own and comes first.
+    assert "<StudioToolbar" in body, "StudioToolbar anchor is gone"
+    toolbar = body[body.index("<StudioToolbar") :]
+    assert "status={" in toolbar, "StudioToolbar `status` slot anchor is gone"
+    assert "tools={" in toolbar, "StudioToolbar `tools` slot anchor is gone"
+    assert toolbar.index("status={") < toolbar.index("tools={"), (
         "`status` must still precede `tools` for this slice to bound the slot"
     )
-    status_block = body.split("status={")[1].split("tools={")[0]
+    status_block = toolbar.split("status={")[1].split("tools={")[0]
     assert "KbSyncPill" in status_block
     assert "HealthBadges" in status_block
 
