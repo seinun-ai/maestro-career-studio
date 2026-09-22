@@ -11,7 +11,9 @@
 
 - Next.js 16 App Router, React 19, Tailwind v4 tokens in `app/globals.css`
   (oklch; Google-blue primary `oklch(0.48 0.17 259)` light (M3 tone 40) /
-  `oklch(0.76 0.11 259)` dark; blue-tinted focus rings; motion utilities
+  `oklch(0.76 0.11 259)` dark; light focus ring `oklch(0.57 0.11 259)`, dark
+  `oklch(0.62 0.09 259)`, so the solid ring is at least 3:1 on `--canvas`;
+  the base-layer browser outline is that solid ring; motion utilities
   `animate-fade-rise`, `animate-shimmer`, `[data-pending]`).
 - **Colour roles are M3's, pinned for contrast.** `globals.css` derives primary
   and secondary container pairs (`--primary-container`/`--on-primary-container`
@@ -26,7 +28,11 @@
   refuses `text-primary` beside a `bg-primary/N` tint above /15 in light mode
   (/20 only under `dark:`): at `oklch(0.55)` the hand-rolled
   `bg-primary/10 text-primary` fills failed AA (3.8 to 4.3:1) across 25+
-  controls. **A selected tonal toggle also leads with a `Check` and sets
+  controls. `--destructive` is M3 error, tuned for this page and `--canvas`
+  (light `oklch(0.49 0.185 27.3)`, dark tone 80 `oklch(0.838 0.089 26.76)`),
+  and `text-destructive` on its tints is pinned at 4.5:1. `--muted-foreground`
+  on `--background` and `--card` is pinned at 4.5:1 in both modes. **A selected
+  tonal toggle also leads with a `Check` and sets
   `aria-pressed`** (health-report filters, Review changes, the zoom presets):
   the fill is about 1.16:1 against the light page, too faint to say "on" by
   itself. Several hand-rolled `bg-primary/10 text-primary` selected states

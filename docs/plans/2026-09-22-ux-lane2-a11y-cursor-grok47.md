@@ -183,6 +183,8 @@ gate table, deviations, anything queued or deferred, and any concerns.
 |---|---|---|---|
 | 5–10 | Main plan trailer `Co-Authored-By: Claude Opus 5` | `Assisted-by: Grok 4.7 (Cursor CLI)` | This handoff's commit contract. The session is Grok 4.7; a Claude trailer would mis-attribute the work. |
 | 5 | A1 §5 comments quote the empty-state copy | Comments say "empty-state frame"; the user-facing string is the only occurrence | `test_frontend_query_error_states.py` anchors the first occurrence of that copy, and this lane must not edit that file. Accessibility pins stay green. |
+| 6 | `--muted-foreground` pin fails with the new ring and destructive pins | The pin was added and was already green | The token already clears 4.5:1 on `--background` and `--card`. It still lands here because Task 17 cites it. The ring and destructive pins failed first. |
+| 6 | Fold A2 §2's translucent `ring-ring/50` and `outline-ring/60` sites into the solid ring | Left every listed site; see Deferred | None of those files belong to this lane. Lane 3 owns `status-chip.tsx` and `role-category-picker.tsx`. The base-layer outline and the 1px `border-ring` now carry the 3:1; the leftover halos are not on the canvas. |
 
 ## Gate results
 
@@ -196,7 +198,22 @@ gate table, deviations, anything queued or deferred, and any concerns.
 | 5 | slop `check frontend` | OK. scan: 517 duplicated lines, 43 clones (ceiling) |
 | 5 | slop `check backend` | OK |
 | 5 | Browser: import → Done on a job with zero bases | No "No ATS scores yet." in a MutationObserver across the close; cards rendered (Best match, Re-score); `document.activeElement` is the wrapper `div` (`tabindex=-1`, `outline-none`) |
+| 6 | New contrast pins failed first, then `test_frontend_color_roles.py` | Passed, including muted-foreground (already green before the token change) |
+| 6 | `tests/test_frontend_*.py` | 164 passed |
+| 6 | tsc | clean |
+| 6 | lint | 0 errors, 5 warnings (baseline) |
+| 6 | slop `check frontend` / `check backend` | Both OK. Frontend scan: 517 duplicated lines, 43 clones |
+| 6 | Browser, light and dark | Tab to the 100% zoom preset: `outline-style: auto`, 1px, color `rgb(78, 119, 184)` (`#4e77b8`, the new light ring). Shift-Tab to Open PDF: 1px border the same color, plus the button's 3px `/50` halo. Dark mode: Open PDF border, the zoom outline, and the Agent SourceToggle outline all match `.dark`'s `--ring`. Light SourceToggle outline matches `#4e77b8`. Render-error banner and "JD asks for…" badge were not on this fixture (render succeeded, no gate warning); their contrast is the computed pin. |
 
 ## Queued for Task 18 (SYSTEM.md changes Claude applies)
 
 ## Deferred to merge (edits left for Claude, with file:line)
+
+Task 6, A2 §2 translucent focus halos (drop the alpha). Not edited: the first two are lane 3's files; the rest are not this lane's.
+
+- `frontend/components/status-chip.tsx:66` `focus-visible:outline-ring/60` (lane 3)
+- `frontend/components/role-category-picker.tsx:149` `focus-within:ring-ring/50` (lane 3)
+- `frontend/components/role-picker.tsx:350` `focus-within:ring-ring/50`
+- `frontend/components/ui/chip-input.tsx:105` `focus-within:ring-ring/50`
+- `frontend/components/career/points-list.tsx:368` `focus-visible:outline-ring/60`
+- `frontend/components/career/entity-detail.tsx:417` `focus-visible:outline-ring/60`

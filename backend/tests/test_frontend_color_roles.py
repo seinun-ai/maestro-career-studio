@@ -222,6 +222,56 @@ def test_selected_tonal_toggles_show_a_check():
     assert "{review ? <Check /> : <GitCompare />}" in _STUDIO
 
 
+_RING_SURFACES = ("background", "card", "sidebar", "canvas", "muted", "secondary-container")
+
+
+@pytest.mark.parametrize("mode", list(_MODES))
+def test_focus_ring_meets_non_text_contrast(mode):
+    t = _MODES[mode]
+    for surface in _RING_SURFACES:
+        ratio = _contrast(_rgb(t, "ring"), _rgb(t, surface))
+        assert ratio >= 3.0, f"{mode}: --ring on --{surface} is {ratio:.2f}:1"
+
+
+def test_browser_focus_outline_is_the_solid_ring():
+    # outline-style:auto paints in outline-color: ring/50 was ~1.6:1.
+    assert "outline-ring/50" not in _CSS
+
+
+# Destructive text sits on its own tints. Worst alpha per surface: Button hover
+# /20 light, /30 dark; the render-error banner and compile error are /10 on canvas.
+_DESTRUCTIVE_WORST = {
+    "light": {"card": 0.20, "background": 0.20, "canvas": 0.10, "muted": 0.10},
+    "dark": {"card": 0.30, "background": 0.30, "canvas": 0.30, "muted": 0.20},
+}
+
+
+@pytest.mark.parametrize("mode", list(_MODES))
+def test_destructive_text_on_its_tints_meets_aa(mode):
+    t = _MODES[mode]
+    destructive = _rgb(t, "destructive")
+    for surface, worst in _DESTRUCTIVE_WORST[mode].items():
+        bg = _rgb(t, surface)
+        assert _contrast(destructive, bg) >= 4.5, f"{mode}: plain on --{surface}"
+        for pct in (5, 10, 15, 20, 30):
+            if pct / 100 > worst:
+                continue
+            ratio = _contrast(destructive, _over(destructive, bg, pct / 100))
+            assert ratio >= 4.5, (
+                f"{mode}: destructive on /{pct} over --{surface} is {ratio:.2f}:1"
+            )
+
+
+@pytest.mark.parametrize("mode", list(_MODES))
+def test_muted_foreground_meets_aa_on_page_and_card(mode):
+    """Placeholders use this token. Task 17's deviation cites the pin."""
+    t = _MODES[mode]
+    fg = _rgb(t, "muted-foreground")
+    for surface in ("background", "card"):
+        ratio = _contrast(fg, _rgb(t, surface))
+        assert ratio >= 4.5, f"{mode}: --muted-foreground on --{surface} is {ratio:.2f}:1"
+
+
 def test_theme_exposes_role_utilities():
     for role in (
         "primary-container",

@@ -312,7 +312,7 @@ function FindingOverflow({
 
 /** Header count chips — v2 counts keys. Shared by the sheet and report page. */
 export const COUNT_META: { key: string; label: string; chip: string }[] = [
-  { key: "gate", label: "Gate", chip: "bg-red-500/10 text-red-600 dark:text-red-400" },
+  { key: "gate", label: "Gate", chip: "bg-destructive/10 text-destructive" },
   {
     key: "critical",
     label: "Critical",
@@ -348,7 +348,7 @@ export const GRADE_STYLES: Record<string, string> = {
   B: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-500",
   C: "bg-amber-500/15 text-amber-700 dark:text-amber-400",
   D: "bg-orange-500/15 text-orange-700 dark:text-orange-400",
-  F: "bg-red-500/15 text-red-600 dark:text-red-400",
+  F: "bg-destructive/10 text-destructive",
 };
 
 function DiffText({ oldText, newText }: { oldText: string; newText: string }) {
@@ -359,7 +359,7 @@ function DiffText({ oldText, newText }: { oldText: string; newText: string }) {
           key={i}
           className={cn(
             token.kind === "removed" &&
-              "bg-red-500/10 text-red-600 line-through dark:text-red-400",
+              "bg-destructive/10 text-destructive line-through",
             token.kind === "added" &&
               "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
           )}
@@ -1131,7 +1131,7 @@ function FailedGate({
           className={cn(
             "shrink-0 text-xs",
             gate.tier === "fatal"
-              ? "bg-red-500/10 text-red-600 dark:text-red-400"
+              ? "bg-destructive/10 text-destructive"
               : "bg-amber-500/10 text-amber-700 dark:text-amber-400",
           )}
         >
