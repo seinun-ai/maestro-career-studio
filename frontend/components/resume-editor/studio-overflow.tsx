@@ -50,7 +50,10 @@ export function StudioOverflowMenu({
           </Button>
         }
       />
-      <DropdownMenuContent align="end">
+      {/* Sized to its labels. The primitive anchors a menu to its trigger's
+          width, and this trigger is a 28px icon, so every item wrapped at the
+          128px floor. */}
+      <DropdownMenuContent align="end" className="w-auto min-w-56">
         {leading}
         {/* Rare, once-a-session — see StudioToolbar's overflow rule. */}
         <DropdownMenuItem onClick={onToggleRaw}>

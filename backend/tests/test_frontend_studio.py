@@ -5,6 +5,7 @@ sits on a canvas with zoom presets."""
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 _FRONTEND = Path(__file__).resolve().parents[2] / "frontend"
@@ -91,3 +92,44 @@ def test_tailored_status_ignores_the_post_save_refetch_gap():
     assert "dirty: unsaved" in _TAILORED
     assert "const canSave = unsaved && !busy;" in _TAILORED
     assert "onDirtyChange(dirty)" in _TAILORED
+
+
+def test_rename_resyncs_the_base_studio():
+    # A rename PATCHes /identity and lands in the cache with the form already
+    # holding the new name. Form == server is a re-sync, not an unsaved edit.
+    assert "localSnap === liveSnap" in _BASE
+
+
+def test_base_empty_preview_points_at_generate_not_save():
+    # Save is dirty-gated, so a clean resume with no PDF cannot be saved.
+    assert "Save the resume to render one." not in _BASE
+    assert "No PDF yet. Generate one from More resume actions (⋯)." in _BASE
+    overflow = _read("components/resume-editor/studio-overflow.tsx")
+    assert 'aria-label="More resume actions"' in overflow
+
+
+def test_base_regenerate_refreshes_the_gallery():
+    # The gallery's "last render failed" badge reads the list query.
+    block = _BASE[_BASE.index("const regenerate = useMutation(") :]
+    block = block[: block.index("onError")]
+    assert 'qc.invalidateQueries({ queryKey: ["base-resumes"] });' in block
+
+
+def test_tailored_rescore_hint_reads_unsaved():
+    # The button stays disabled on `dirty` (no re-score mid-render), but the
+    # hint must not claim unsaved edits during the post-save gap.
+    block = _TAILORED[_TAILORED.index("rescore.mutate({ announce: true })") :]
+    block = block[: block.index("</Button>")]
+    assert "disabled={busy || dirty}" in block
+    assert re.search(r"title=\{\s*unsaved\s*\?", block)
+
+
+def test_tailored_unsaved_equals_dirty_before_the_first_save():
+    assert "savedSnapshot === null ||" in _TAILORED
+
+
+def test_studio_overflow_menu_sizes_to_its_labels():
+    # The primitive anchors a menu to its trigger's width: 28px for the ⋯
+    # button, so every label wrapped at the 128px floor.
+    overflow = _read("components/resume-editor/studio-overflow.tsx")
+    assert 'className="w-auto min-w-56"' in overflow

@@ -79,6 +79,15 @@ import type {
 
 const STUDIO_STORAGE_KEY = "tailoredResumeStudio";
 
+/** What a Save sends, as one comparable string (see `unsaved` in StudioEditor). */
+function snapshotOf(
+  d: ResumeData,
+  f: Partial<ResumeFormatting> | null,
+  t: string | null,
+): string {
+  return JSON.stringify({ d, f: f ?? null, t });
+}
+
 /**
  * Structured "studio" for an application's tailored resume (`customized_json`).
  *
@@ -525,14 +534,12 @@ function StudioEditor({
   // leave-page warning read it.
   const sentData = useRef<ResumeData | null>(null);
   const [savedSnapshot, setSavedSnapshot] = useState<string | null>(null);
-  const snapshotOf = (
-    d: ResumeData,
-    f: Partial<ResumeFormatting> | null,
-    t: string | null,
-  ) => JSON.stringify({ d, f: f ?? null, t });
+  // Before the first Save there is nothing to compare, so `unsaved` is `dirty`.
   const unsaved =
     dirty &&
-    snapshotOf(data, formatting, templateIdToApi(templateId)) !== savedSnapshot;
+    (savedSnapshot === null ||
+      snapshotOf(data, formatting, templateIdToApi(templateId)) !==
+        savedSnapshot);
 
   const save = useMutation({
     mutationFn: async () => {
@@ -744,8 +751,11 @@ function StudioEditor({
                         size="sm"
                         onClick={() => rescore.mutate({ announce: true })}
                         disabled={busy || dirty}
+                        // Disabled on `dirty`, so no re-score starts mid-render;
+                        // the hint reads `unsaved`, so the post-save gap does not
+                        // claim edits that are already saved.
                         title={
-                          dirty
+                          unsaved
                             ? "Save your edits first. Re-scoring runs on the saved resume."
                             : undefined
                         }

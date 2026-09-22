@@ -131,11 +131,16 @@ export function EditorBody({
       formatting,
       templateId: templateIdToApi(templateId),
     });
-    // Only adopt the server record when the user has no unsaved local edits.
-    if (
-      liveSnap !== lastSyncedRef.current &&
-      localSnap === lastSyncedRef.current
-    ) {
+    const serverMoved = liveSnap !== lastSyncedRef.current;
+    if (serverMoved && localSnap === liveSnap) {
+      // The form already holds what the server now has. A rename does this:
+      // EditableTitle lifts the name, then PATCHes /identity and writes the
+      // cache. Nothing to adopt, but the baseline must move, or the studio
+      // reads the saved name as an unsaved edit.
+      lastSyncedRef.current = liveSnap;
+      setLastSyncedSnapshot(liveSnap);
+    } else if (serverMoved && localSnap === lastSyncedRef.current) {
+      // Only adopt the server record when the user has no unsaved local edits.
       setData(live.data);
       setDisplayName(live.display_name ?? "");
       setFormatting(
@@ -229,6 +234,8 @@ export function EditorBody({
       }),
     onSuccess: (result) => {
       qc.setQueryData(["base-resumes", slug], result);
+      // The gallery's "last render failed" badge reads the list.
+      qc.invalidateQueries({ queryKey: ["base-resumes"] });
       qc.invalidateQueries({ queryKey: ["pdf-preview"] });
       notifyRenderNote(result);
     },
@@ -547,7 +554,7 @@ export function EditorBody({
           <PdfPagesPreview
             basePath={`/api/base-resumes/${slug}`}
             version={live.pdf_rendered_at as string | null}
-            emptyMessage="No PDF rendered yet. Save the resume to render one."
+            emptyMessage="No PDF yet. Generate one from More resume actions (⋯)."
           />
         }
       />
