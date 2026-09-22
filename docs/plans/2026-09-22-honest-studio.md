@@ -1305,7 +1305,7 @@ def test_divider_is_keyboard_operable():
 
 def test_preview_says_when_it_is_stale():
     assert "previewStale" in _SHELL
-    assert "Preview shows your last save. Save to update it." in _SHELL
+    assert "Preview doesn't include your unsaved edits. Save to update it." in _SHELL
 
 
 def test_preview_pane_is_a_canvas():
@@ -1340,7 +1340,7 @@ def test_preview_pane_is_a_canvas():
           // announces "Unsaved changes". This is the visual half.
           <div className="flex items-center gap-2 border-b bg-amber-500/10 px-3 py-1.5 text-xs text-amber-800 dark:text-amber-200">
             <History aria-hidden="true" className="size-3.5 shrink-0" />
-            Preview shows your last save. Save to update it.
+            {"Preview doesn't include your unsaved edits. Save to update it."}
           </div>
         ) : null}
         <div
@@ -1698,6 +1698,7 @@ def test_preview_offers_zoom_presets_as_a_labelled_group():
     assert "bg-canvas" in _PREVIEW
 
 
+# (Add `import re` to this file's imports here: Task 8 dropped it as unused.)
 def test_preview_dpi_matches_the_backend_rasterizer():
     py = (_BACKEND / "app/services/pdf_preview.py").read_text()
     ts = _read("lib/studio.ts")
@@ -1879,6 +1880,8 @@ Commit: `git commit -m "docs(conventions): colour roles, sidebar FAB and the hon
    - `cd frontend && npx tsc --noEmit && npm run lint && npm run build`
    - `cd frontend && node --test lib/*.test.ts`
    - `cd backend && python3 -m pytest tests/ mcp_server/tests/ -q`
+   - `cd backend && python3 -m ruff check .` (CI runs it; Task 8's review caught
+     an unused import and an E741 in the new pins)
    - `python3 scripts/check_system_md.py`
    - Slop ratchet, naming BOTH surfaces:
      `python3 ~/.claude/skills/ai-slop-detector/scripts/slop_scan.py check frontend`
@@ -1944,6 +1947,13 @@ Goal Card line it violates.
   copy nits; Referrals form on demand; template Sample label; the placeholder
   convention (GOV.UK forbids example placeholders; the conventions doc cites
   GOV.UK for allowing them).
+- **Found by reviews, pre-existing, not this plan's to fix:** the light
+  `--ring` is ~2.5:1 on `--canvas` (WCAG 1.4.11 borderline); `text-destructive`
+  on `bg-destructive/10` is ~3.1–3.6:1 (render-error banner, template compile
+  error); the divider has no single-pointer alternative to dragging beyond
+  hide/show (WCAG 2.5.7); the drag scales by `window.innerWidth` rather than the
+  shell's width, has no `pointercancel`, and writes localStorage on every move;
+  the setup pill and top-skills chip have no dark-mode hover.
 - **Sidebar state across reloads:** needs a server read (a cookie in the root
   layout) that conflicts with the desktop shell's static UI, or a pre-paint
   script. Decide with the desktop shell.
