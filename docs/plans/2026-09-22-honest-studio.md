@@ -1799,6 +1799,16 @@ fails a `(YYYY-MM-DD` in reference-tier files):
 6. "Two save models": add that explicit studio Saves report through the status
    line; errors still toast.
 7. Reordering bullet: the formatting panel's section order is buttons only.
+8. Facts that changed during Tasks 1–5 (from the reviews):
+   - The FAB rests flat (M3 rail FAB elevation 0) and hover raises it one
+     level; both sidebar toggles carry `aria-keyshortcuts="Meta+B Control+B"`.
+   - `["setup-status"]` has THREE readers (Profile strip, Getting started,
+     `/new`); Profile saves AND Settings model/key saves invalidate it.
+   - Selected tonal toggles show a leading Check (health filters also carry
+     `aria-pressed`): the secondary-container fill alone is too faint a signal.
+   - The empty tracker keeps a ghost New application in its empty state on
+     purpose (NN/g: the pathway is a control), beside the FAB or header button.
+   - SYSTEM.md §5 step 4 (Score): with no base resume the tab offers the import.
 
 Run: `python3 scripts/check_system_md.py` → PASS.
 Commit: `git commit -m "docs(conventions): colour roles, sidebar FAB and the honest studio"`.
@@ -1849,6 +1859,10 @@ Commit: `git commit -m "docs(conventions): colour roles, sidebar FAB and the hon
    - The flat FAB (no resting shadow since Task 2's review) does not blend into
      the light sidebar: fill is only ~1.25:1 there, so it relies on its label.
    - Selected health-report filters and the pressed Review toggle show a check.
+   - Score tab import: after importing, focus should not drop to `<body>` and
+     no frame of "No ATS scores yet" should flash (review minors #3 and #5).
+   - Empty tracker: the FAB (or header button) plus the ghost empty-state
+     button is deliberate (NN/g: the empty state's pathway is a control).
 4. Stop every server you started. Record results below.
 
 Then run the goal critique: read the Goal Card, and check the landed branch
@@ -1879,6 +1893,8 @@ Goal Card line it violates.
 | 1 (review) | Task 1 only | Hardened colour pins (fail loudly on unparsed tokens, every tint above ceiling, hover read from CSS); chroma nudged into sRGB; selected tonal toggles (health filters, Review changes) show a Check + `aria-pressed`; conventions primary value | Task 1 made those toggles' "on" state fainter than "off": fixing a regression it introduced (Principles: accessibility) |
 | 2 | Plan code only | Comment above `sidebarMenuButtonVariants` on why the `data-active:hover:` pairing must stay | Unpinned-by-intent class a cleanup would delete |
 | 2 (review) | `data-active:hover:bg-…` only; substring pins; `useModKey` via effect; FAB `shadow-sm` at rest + `shadow-md` on /new | Adds `data-active:hover:text-on-secondary-container`; exact-token pins; `useModKey` via `useSyncExternalStore` (the `use-mobile.ts` pattern); `aria-keyshortcuts` on both sidebar toggles; "Toggle sidebar" sentence case; FAB rests flat, hover +1 (M3 rail FAB elevation 0) | Review findings; accessibility and conventions |
+| 4 | Rescore as soon as ["base-resumes"] goes none → some | Rescore waits until the import dialog CLOSES; the prompt stays mounted while it is open | The plan's version swapped the prompt for a skeleton and unmounted the dialog mid-report, where the user confirms each new resume's role (Principles: accessibility; don't break a flow) |
+| 5 | `/new` reuses ["setup-status"] and "a key saved in Settings clears this" | `refetchOnMount: "always"`, like the two other readers | Settings does not invalidate ["setup-status"]; Extract would stay disabled up to 30 s after adding a key (Goal: no first-run dead end) |
 | 1 | globals.css comment: hover tokens work because "custom properties resolve per element" | Comment says they work because `.dark` sits on `<html>`, the same element `:root` matches; a `.dark` on a subtree would keep the light hover | Accuracy of a comment the next agent will trust (Principles: conventions win); code unchanged |
 
 ## Gate results
