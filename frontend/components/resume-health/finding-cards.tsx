@@ -1120,7 +1120,7 @@ function FailedGate({
 
   const accent =
     gate.tier === "fatal"
-      ? "border-red-500/50 bg-red-500/5"
+      ? "border-destructive/50 bg-destructive/5"
       : "border-amber-500/50 bg-amber-500/5";
 
   return (

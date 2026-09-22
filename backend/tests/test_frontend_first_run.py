@@ -52,20 +52,70 @@ def test_score_tab_offers_import_when_there_is_nothing_to_score():
     )
 
 
-def test_score_tab_import_keeps_focus_and_awaits_the_refetch():
-    """Import → Done must return focus to a stable wrapper, and the run must
-    stay pending until the score list refetches so "No ATS scores yet." never
-    paints between the prompt and the cards."""
-    panel = _read("components/ats-score-panel.tsx")
-    assert re.search(r"onSuccess:\s*\(\)\s*=>\s*qc\.invalidateQueries", panel)
-    assert "finalFocus={rootRef}" in panel
-    assert "onOpenChange={onImportOpenChange}" in panel
-    # The dialog is hoisted once, after renderBody(), so closing it does not
-    # unmount the return-focus target with the empty-state prompt.
-    assert panel.index("renderBody()") < panel.index("<UploadDialog")
+def _panel() -> str:
+    return _read("components/ats-score-panel.tsx")
+
+
+def _render_body(panel: str) -> str:
+    """renderBody()'s own body: from its definition to the call site."""
+    return panel[panel.index("function renderBody()") : panel.index("{renderBody()}")]
+
+
+def test_score_tab_import_dialog_is_hoisted_out_of_the_prompt():
+    """The dialog renders once, beside the {renderBody()} CALL, never inside a
+    branch: the prompt unmounts on Done, and a dialog inside it would take its
+    report and the return-focus target down with it."""
+    panel = _panel()
     assert panel.count("<UploadDialog") == 1
-    dialog = _read("components/setup/upload-dialog.tsx")
-    assert "finalFocus" in dialog
+    assert "<UploadDialog" not in _render_body(panel)
+    assert panel.index("{renderBody()}") < panel.index("<UploadDialog")
+
+
+def test_score_tab_wrapper_can_take_focus():
+    """Focus falls back to the wrapper after Done, so it must be focusable."""
+    panel = _panel()
+    start = panel.index("<div ref={rootRef}")
+    tag = panel[start : panel.index(">", start)]
+    assert "tabIndex={-1}" in tag
+    assert start < panel.index("{renderBody()}")  # it wraps the body
+
+
+def test_score_tab_import_returns_focus_to_its_opener_while_it_is_there():
+    """Cancel or Escape leaves the prompt up, so focus goes back to Import
+    resumes; after an import the button is gone and the wrapper takes it."""
+    panel = _panel()
+    assert "finalFocus={importFinalFocus}" in panel
+    assert "opener?.isConnected ? opener : rootRef.current" in panel
+    assert "<Button ref={importButtonRef}" in panel
+    assert "finalFocus" in _read("components/setup/upload-dialog.tsx")
+
+
+def test_score_tab_rescore_awaits_the_refetch():
+    """The run stays pending until the list refetches, so "No ATS scores yet."
+    never paints between the prompt and the cards."""
+    assert re.search(r"onSuccess:\s*\(\)\s*=>\s*qc\.invalidateQueries", _panel())
+
+
+def test_score_tab_rescores_in_the_same_event_as_the_close():
+    """mutate() inside the close handler marks the run pending before the
+    render that drops the prompt, so that render paints the skeleton. Deferred,
+    it paints "No ATS scores yet." for a frame."""
+    panel = _panel()
+    start = panel.index("const onImportOpenChange = (open: boolean) => {")
+    handler = panel[start : panel.index("\n  };", start)]
+    assert "setImportOpen(open);" in handler
+    assert "run.mutate();" in handler
+    for deferral in ("setTimeout", "queueMicrotask", "await", "requestAnimationFrame"):
+        assert deferral not in handler, deferral
+
+
+def test_score_tab_skeleton_never_hides_a_failed_fetch():
+    """A failed refetch keeps its old `[]`, and the auto-run waits for success,
+    so an idle run over that `[]` must not hold the skeleton: the error state
+    and its Retry would never render."""
+    panel = _panel()
+    assert "run.isIdle && scores.isSuccess && scores.data.length === 0" in panel
+    assert "scores.data?.length === 0" not in panel
 
 
 def test_score_tab_rescores_once_after_an_import_never_twice():

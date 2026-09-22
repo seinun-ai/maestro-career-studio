@@ -211,9 +211,16 @@ export function AtsScorePanel({ jobId }: { jobId: string }) {
   const noBases = bases.isSuccess && bases.data.length === 0;
   const baseCount = bases.data?.length ?? 0;
   const [importOpen, setImportOpen] = useState(false);
-  // Focus lands here when the import dialog closes: its opener, the prompt's
-  // button, is gone by then.
+  // Where focus goes when the import dialog closes: back to its opener while
+  // the prompt still shows it (Cancel, Escape, nothing imported), else this
+  // wrapper, since an import swaps the prompt for the skeleton and the button
+  // is gone.
   const rootRef = useRef<HTMLDivElement>(null);
+  const importButtonRef = useRef<HTMLButtonElement>(null);
+  const importFinalFocus = () => {
+    const opener = importButtonRef.current;
+    return opener?.isConnected ? opener : rootRef.current;
+  };
 
   // Open tailoring sessions let a card offer "Resume gap analysis". On
   // loading/error this stays empty, so cards fall back to the normal button.
@@ -338,12 +345,14 @@ export function AtsScorePanel({ jobId }: { jobId: string }) {
     .sort((a, b) => b.composite - a.composite);
 
   function renderBody() {
-    // Idle with an empty list means the first-visit auto-run is about to fire,
-    // so the skeleton shows instead of an empty-state frame.
+    // Idle with a SETTLED empty list means the first-visit auto-run is about
+    // to fire, so the skeleton shows instead of an empty-state frame. A failed
+    // refetch keeps its old `[]` in `data`, and the auto-run waits for success,
+    // so without `isSuccess` the skeleton would hide the error for good.
     if (
       scores.isLoading ||
       (baseRows.length === 0 &&
-        (run.isPending || (run.isIdle && scores.data?.length === 0)))
+        (run.isPending || (run.isIdle && scores.isSuccess && scores.data.length === 0)))
     ) {
       return (
         <div className="@container">
@@ -383,7 +392,7 @@ export function AtsScorePanel({ jobId }: { jobId: string }) {
               Import the resumes you already have. Each becomes a base resume, and
               this job is scored against all of them.
             </p>
-            <Button size="sm" onClick={() => setImportOpen(true)}>
+            <Button ref={importButtonRef} size="sm" onClick={() => setImportOpen(true)}>
               Import resumes
             </Button>
           </div>
@@ -446,7 +455,7 @@ export function AtsScorePanel({ jobId }: { jobId: string }) {
       <UploadDialog
         open={importOpen}
         onOpenChange={onImportOpenChange}
-        finalFocus={rootRef}
+        finalFocus={importFinalFocus}
       />
     </div>
   );

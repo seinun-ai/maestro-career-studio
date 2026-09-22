@@ -182,7 +182,7 @@ export function TemplateGallery({
               type="button"
               aria-pressed={selected}
               onClick={() => onSelect(t)}
-              className="rounded-xl text-left focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none"
+              className="rounded-xl text-left focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
             >
               <GalleryCard
                 className={cn(

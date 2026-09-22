@@ -188,6 +188,7 @@ gate table, deviations, anything queued or deferred, and any concerns.
 | 7 | Pins listed in the task only | Also pinned `from === "proposals" ? "/proposals" : "/applications"` in `nav.ts` | Node tests are not in CI. The mapping has to fail a pytest pin or a later edit can drop it silently. |
 | 10 | Rank label change at `top-skills-chart.tsx` only affects the Top 30% chips | The rank span is shared, so Rest chips use `text-on-secondary-container/80` too | One span paints both bands. A new prop would be extra API the plan doesn't ask for. On the Rest chip's `bg-background` that color is still body text, dark in light mode and light in dark mode. |
 | 10 | Formatting segments optionally become tonal plus a Check | `aria-pressed` only; the solid `bg-primary` fill stays | The plan's minimum. The solid fill already reads as selected, unlike the 1.16:1 tonal fill, and `formatting-panel.tsx` is lane 1's file. |
+| Review | Merge the branch as reported | Claude's review fixes in one commit (Opus 5.5): pinned the hoist and wrapper by the `{renderBody()}` call site; skeleton needs `scores.isSuccess`; import `finalFocus` prefers the opener while mounted; the translucent focus rings folded in (plus the chat composer's `focus-within:border-ring/60`, capture box `ring-primary/40`, destructive Button `border-destructive/40`) with a ratchet; fatal gates on the destructive token; nav fallback marks no section on `/jobs/*`; pins for the focus hand-off, the synchronous rescore and ring offsets; chat's current row semibold | Accessibility is not negotiable; never mislead (a fallback nav marked the wrong section; a skeleton hid a failed fetch). Lane 1's `chat-page.tsx` got two class edits only. |
 
 ## Gate results
 
@@ -220,18 +221,25 @@ gate table, deviations, anything queued or deferred, and any concerns.
 | 10 | slop `check frontend` / `check backend` | Both OK. Frontend scan: 517 duplicated lines, 43 clones |
 | 10 | `node --test lib/*.test.ts` | 71 passed |
 | 10 | Browser, light and dark | SourceToggle "All" is `aria-pressed` and shows a check in both modes; You and Agent do not. Dark-mode hover on the done setup pill changes its background (`lab(22.1…)` to `oklab(0.33…)`). Focused, its ring offset is `lab(2.75% 0 0)`, a dark band, not white. Top 30% chips did not render on this one-job fixture; they use the same hover token as that pill. |
+| Review | Each new pin mutation-checked (20 mutations: dialog back in the branch, `tabIndex`/`ref` dropped, `finalFocus={rootRef}`, old skeleton condition, deferred `mutate`, each translucent ring, `from={null}` fallback, …) | All 20 killed |
+| Review | `tests/test_frontend_*.py` / ruff | 182 passed / clean |
+| Review | tsc / lint / `node --test lib/*.test.ts` / `npm run build` | clean / 0 errors, 5 warnings / 73 passed / passed |
+| Review | slop `check frontend` / `check backend` | Both OK. Frontend 517 duplicated lines, 43 clones; backend `complexity_hotspots` 424 (scanner split into helpers to stay at baseline) |
+| Review | Browser (`next start` build of this tree; Grok's `next dev` on 3102 held the dev lock) | Import dialog: Cancel and Escape (mouse and keyboard open) return focus to Import resumes; Done after a base lands returns it to the `tabindex=-1` wrapper with no "No ATS scores yet." frame. Scores GET forced to 500 after a `[]`, then client-side away and back: error state and Retry render, no skeleton. Hard load `/jobs/<id>?from=proposals`: rAF + MutationObserver saw only Agent Proposals current, never Applications (plain `/jobs/<id>` marks Applications). Solid rings: Switch 4.51:1 light / 4.90:1 dark on its card, gallery card link 4.51 / 4.90, skip link 4.21 / 5.42 on the page |
 
 ## Queued for Task 18 (SYSTEM.md changes Claude applies)
 
-- §12: `useSearchParams()` under the root layout needs a Suspense boundary whose fallback is the same UI, or `next build` fails and every static route loses the component. The sidebar's main nav is that case (`app-sidebar.tsx`).
+The Suspense note that sat here moved into `docs/frontend-conventions.md` (sidebar bullet), where the `useSearchParams` pattern is described.
+
+- §11: dark `--ring` on `--primary-container` (the FAB) measures 2.88:1, under 3:1 (light is 3.44:1). Tokens unchanged; `--primary-container` stays out of `test_focus_ring_meets_non_text_contrast`'s surfaces until the dark ring or container moves.
+- §11: the 375px mobile sidebar sheet (pre-existing): Escape drops focus to `<body>`, and the sheet stays open after tapping a nav link.
+- §11: the studio tab panels (section tabs' `TabsContent`) have no visible focus ring when focused.
 
 ## Deferred to merge (edits left for Claude, with file:line)
 
-Task 6, A2 §2 translucent focus halos (drop the alpha). Not edited: the first two are lane 3's files; the rest are not this lane's.
+Task 6, A2 §2 translucent focus halos (drop the alpha). The review commit fixed every other site; these two are lane 3's files and sit in `_PENDING_TRANSLUCENT_FOCUS` (`test_frontend_color_roles.py`). Drop each entry when lane 3's fix lands (the stale check fails until you do).
 
 - `frontend/components/status-chip.tsx:66` `focus-visible:outline-ring/60` (lane 3)
 - `frontend/components/role-category-picker.tsx:149` `focus-within:ring-ring/50` (lane 3)
-- `frontend/components/role-picker.tsx:350` `focus-within:ring-ring/50`
-- `frontend/components/ui/chip-input.tsx:105` `focus-within:ring-ring/50`
-- `frontend/components/career/points-list.tsx:368` `focus-visible:outline-ring/60`
-- `frontend/components/career/entity-detail.tsx:417` `focus-visible:outline-ring/60`
+
+Seen in passing, not a focus ring: `frontend/components/charts/tailoring-lift-chart.tsx:61` still hand-rolls `text-red-600` (lane 3's file).

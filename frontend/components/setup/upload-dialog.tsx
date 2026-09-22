@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type RefObject } from "react";
+import { useState, type ComponentProps } from "react";
 import Link from "next/link";
 import { ResumeImportPanel } from "@/components/career/resume-import-dialog";
 import { Dropzone } from "@/components/setup/dropzone";
@@ -148,7 +148,7 @@ export function UploadDialog({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  finalFocus?: RefObject<HTMLElement | null>;
+  finalFocus?: ComponentProps<typeof DialogContent>["finalFocus"];
 }) {
   const [lane, setLane] = useState("resumes");
   const close = () => onOpenChange(false);

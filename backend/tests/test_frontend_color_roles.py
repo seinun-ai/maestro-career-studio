@@ -229,6 +229,8 @@ def test_selected_tonal_toggles_show_a_check():
 def test_active_chat_session_is_current():
     chat = _read("components/chat/chat-page.tsx")
     assert 'aria-current={activeId === s.id ? "true" : undefined}' in chat
+    # Current in a list is semibold, as the sidebar's active row is.
+    assert "hover:bg-secondary-container-hover font-semibold" in chat
 
 
 def test_segmented_controls_and_entity_cards_expose_pressed():
@@ -264,6 +266,75 @@ def test_browser_focus_outline_is_the_solid_ring():
     assert "outline-ring/50" not in _CSS
 
 
+# A translucent ring or outline IS the focus indicator on most controls, and
+# ring/50 or outline-ring/60 measures ~1.8 to 2.6:1, under WCAG 1.4.11's 3:1.
+# The one exemption is a halo beside a SOLID 1px `focus-visible:border-ring`
+# (Button, Input, Select, Badge...): the border carries the 3:1 (pinned above
+# per surface) and the halo only decorates it. A cva variant's halo counts the
+# base string's border. A translucent focus BORDER is never exempt: it is the
+# part that has to carry the contrast.
+_FOCUS_TOKEN = re.compile(r"[^\s\"'`]*(?:ring|outline|border)-(?:ring|primary|destructive)/\d+")
+_SOLID_FOCUS_BORDER = re.compile(r"(?<![\w:-])focus-visible:border-(?:ring|destructive)(?![/\w-])")
+# Lane 3's files, fixed on that branch. Delete each entry when it lands (the
+# stale check below fails once the site is gone).
+_PENDING_TRANSLUCENT_FOCUS = {
+    "components/status-chip.tsx",
+    "components/role-category-picker.tsx",
+}
+
+
+def _tsx_files():
+    for root in ("app", "components"):
+        yield from sorted((_FRONTEND / root).rglob("*.tsx"))
+
+
+def _translucent_focus_tokens(line: str, border_is_solid: bool):
+    for tok in _FOCUS_TOKEN.findall(line):
+        variants, _, utility = tok.rpartition(":")
+        if "focus" not in variants:
+            continue
+        if utility.startswith("border-") or not border_is_solid:
+            yield tok
+
+
+def _translucent_focus_sites():
+    for path in _tsx_files():
+        rel = str(path.relative_to(_FRONTEND))
+        text = path.read_text(encoding="utf-8")
+        base = re.search(r'cva\(\s*"([^"]*)"', text)
+        base_solid = bool(base and _SOLID_FOCUS_BORDER.search(base.group(1)))
+        for n, line in enumerate(text.splitlines(), 1):
+            solid = base_solid or bool(_SOLID_FOCUS_BORDER.search(line))
+            for tok in _translucent_focus_tokens(line, solid):
+                yield rel, f"{rel}:{n}: {tok}"
+
+
+def test_focus_indicators_are_solid():
+    offenders = [
+        site for rel, site in _translucent_focus_sites()
+        if rel not in _PENDING_TRANSLUCENT_FOCUS
+    ]
+    assert offenders == [], offenders
+
+
+def test_ring_offsets_name_their_surface():
+    """A ring offset paints `--tw-ring-offset-color`, white by default: a white
+    band around the focus ring in dark mode. Every offset names its surface."""
+    offenders = [
+        f"{path.relative_to(_FRONTEND)}:{n}"
+        for path in _tsx_files()
+        for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1)
+        if re.search(r"ring-offset-\d", line)
+        and not re.search(r"ring-offset-(?:background|card|popover|sidebar|canvas)\b", line)
+    ]
+    assert offenders == [], offenders
+
+
+def test_pending_translucent_focus_allowlist_is_not_stale():
+    still = {rel for rel, _ in _translucent_focus_sites()}
+    assert _PENDING_TRANSLUCENT_FOCUS <= still, _PENDING_TRANSLUCENT_FOCUS - still
+
+
 # Destructive text sits on its own tints. Worst alpha per surface: Button hover
 # /20 light, /30 dark; the render-error banner and compile error are /10 on canvas.
 _DESTRUCTIVE_WORST = {
@@ -286,6 +357,37 @@ def test_destructive_text_on_its_tints_meets_aa(mode):
             assert ratio >= 4.5, (
                 f"{mode}: destructive on /{pct} over --{surface} is {ratio:.2f}:1"
             )
+
+
+_FATAL_GATE = '"border-destructive/50 bg-destructive/5"'
+
+
+def test_fatal_gate_containers_use_the_destructive_token():
+    for rel in (
+        "components/resume-health/finding-cards.tsx",
+        "components/resume-editor/diff-review.tsx",
+    ):
+        source = _read(rel)
+        assert _FATAL_GATE in source, rel
+        assert "red-500" not in source, rel
+
+
+@pytest.mark.parametrize("mode", list(_MODES))
+def test_text_on_a_fatal_gate_meets_aa(mode):
+    """The gate's container is destructive/5; on it sit the Blocker badge
+    (text-destructive on bg-destructive/10), the fix hint (muted) and body."""
+    t = _MODES[mode]
+    destructive = _rgb(t, "destructive")
+    for surface in ("card", "background"):
+        gate = _over(destructive, _rgb(t, surface), 0.05)
+        badge = _over(destructive, gate, 0.10)
+        for name, fg, bg in (
+            ("badge", destructive, badge),
+            ("muted", _rgb(t, "muted-foreground"), gate),
+            ("body", _rgb(t, "foreground"), gate),
+        ):
+            ratio = _contrast(fg, bg)
+            assert ratio >= 4.5, f"{mode}: fatal gate {name} over --{surface} is {ratio:.2f}:1"
 
 
 @pytest.mark.parametrize("mode", list(_MODES))

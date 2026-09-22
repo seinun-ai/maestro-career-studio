@@ -2,9 +2,15 @@
  * The sidebar section a route belongs to when its URL does not say so. A job
  * page is a row of the Applications tracker (Saved jobs included) unless it
  * was opened from the proposals queue, whose Back button it then shows.
+ *
+ * `from` is the `?from=` value: `null` when the URL has none, `undefined` when
+ * it is not known yet (the static fallback rendered before the search params
+ * are read). A job page with an unknown `from` belongs to NO section, so the
+ * fallback never marks the wrong one; every other route ignores `from`.
  */
-export function navSection(pathname: string, from?: string | null): string {
+export function navSection(pathname: string, from?: string | null): string | null {
   if (pathname === "/jobs" || pathname.startsWith("/jobs/")) {
+    if (from === undefined) return null;
     return from === "proposals" ? "/proposals" : "/applications";
   }
   return pathname;
@@ -25,6 +31,6 @@ export function navCurrent(
 ): "page" | "true" | undefined {
   if (pathname === href) return "page";
   const section = navSection(pathname, from);
-  if (section === href || section.startsWith(`${href}/`)) return "true";
+  if (section !== null && (section === href || section.startsWith(`${href}/`))) return "true";
   return undefined;
 }

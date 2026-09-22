@@ -365,7 +365,7 @@ function PointStateChip({
             disabled={pending}
             aria-label={`Point state: ${current.label}. Change state`}
             className={cn(
-              "inline-flex h-6 items-center gap-1.5 rounded-full px-2 text-xs font-medium transition-[transform,box-shadow] duration-150 ease-out hover:shadow-sm active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-ring/60 disabled:opacity-50",
+              "inline-flex h-6 items-center gap-1.5 rounded-full px-2 text-xs font-medium transition-[transform,box-shadow] duration-150 ease-out hover:shadow-sm active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-50",
               current.chip,
             )}
           >

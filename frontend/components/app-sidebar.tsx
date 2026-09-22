@@ -92,8 +92,10 @@ export function AppSidebar() {
       <SidebarContent>
         {/* `?from=proposals` decides which section a job page sits in, and
             useSearchParams() needs a Suspense boundary for the static prerender
-            (Next 16 CSR bailout). The fallback IS the nav without `from`. */}
-        <Suspense fallback={<MainNav pathname={pathname} from={null} />}>
+            (Next 16 CSR bailout). The fallback is the same nav with `from`
+            UNKNOWN (undefined): a job page then marks no section rather than
+            a wrong one; every other route renders exactly the final nav. */}
+        <Suspense fallback={<MainNav pathname={pathname} from={undefined} />}>
           <MainNavWithSearch pathname={pathname} />
         </Suspense>
       </SidebarContent>
@@ -112,7 +114,7 @@ function MainNavWithSearch({ pathname }: { pathname: string }) {
   return <MainNav pathname={pathname} from={from} />;
 }
 
-function MainNav({ pathname, from }: { pathname: string; from: string | null }) {
+function MainNav({ pathname, from }: { pathname: string; from: string | null | undefined }) {
   // One <nav> around the primary destinations, a second around the
   // account pair in the footer: a screen reader's landmark list then
   // names them instead of offering two unlabeled "navigation" entries.
@@ -154,7 +156,7 @@ function NavMenu({
 }: {
   items: NavItem[];
   pathname: string;
-  from: string | null;
+  from: string | null | undefined;
 }) {
   return (
     <SidebarMenu>

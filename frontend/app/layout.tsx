@@ -46,7 +46,7 @@ export default function RootLayout({
             navigation. Targets the id SidebarGutter puts on the main area. */}
         <a
           href="#main-content"
-          className="bg-background focus-visible:ring-ring/50 sr-only rounded-md border px-3 py-2 text-sm font-medium shadow-sm focus-visible:fixed focus-visible:top-3 focus-visible:left-3 focus-visible:z-[60] focus-visible:not-sr-only focus-visible:ring-3"
+          className="bg-background focus-visible:ring-ring sr-only rounded-md border px-3 py-2 text-sm font-medium shadow-sm focus-visible:fixed focus-visible:top-3 focus-visible:left-3 focus-visible:z-[60] focus-visible:not-sr-only focus-visible:ring-3"
         >
           Skip to content
         </a>

@@ -65,6 +65,34 @@ def test_job_pages_read_from_under_suspense():
     assert 'from === "proposals" ? "/proposals" : "/applications"' in nav
 
 
+def test_nav_fallback_never_marks_a_wrong_section():
+    """The Suspense fallback is server-rendered before `?from=` is read. It
+    passes `from` as UNKNOWN (undefined), and a job page with an unknown
+    `from` marks no section: `null` there painted Applications current for a
+    job opened from proposals until the real nav replaced it."""
+    assert "<Suspense fallback={<MainNav pathname={pathname} from={undefined} />}>" in _SIDEBAR
+    nav = (_FRONTEND / "lib/nav.ts").read_text()
+    jobs = nav[nav.index('if (pathname === "/jobs"') :]
+    assert jobs.index("if (from === undefined) return null;") < jobs.index('from === "proposals"')
+    assert "section !== null &&" in nav
+
+
+def test_hiding_the_sidebar_hands_focus_to_the_reveal_pill():
+    """A collapse makes the container inert, so focus inside it would drop to
+    <body>; the pill takes it. Reopening sends focus back to the in-sidebar
+    trigger when the pill unmounts with it. Transitions only, never on load."""
+    assert "ref={ref}" in _REVEAL
+    assert "if (was.current === hidden) return;" in _REVEAL
+    assert (
+        "if (orphaned || active?.closest('[data-slot=\"sidebar-container\"]')) "
+        "ref.current?.focus();"
+    ) in _REVEAL
+    assert "'[data-slot=\"sidebar-container\"] [data-sidebar=\"trigger\"]'" in _REVEAL
+    # The selectors must name attributes the primitive really renders.
+    assert 'data-slot="sidebar-container"' in _UI
+    assert 'data-sidebar="trigger"' in _UI
+
+
 def test_sidebar_toggles_name_their_shortcut():
     for src in (_SIDEBAR, _REVEAL):
         assert 'shortcutLabel(mod, "B")' in src  # visible hint (title)

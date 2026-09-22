@@ -68,7 +68,7 @@ export function EntityCard({ entity }: { entity: KBEntitySummary }) {
     <GalleryCard
       href={`/career/${entity.id}`}
       ariaLabel={`Open ${entity.title}`}
-      className="h-full bg-muted/45 pt-4 shadow-none ring-0 transition-[transform,background-color,box-shadow] duration-150 ease-out hover:-translate-y-0.5 hover:bg-primary/5 hover:shadow-sm has-[a:focus-visible]:ring-3 has-[a:focus-visible]:ring-ring/50 has-[a:active]:scale-[0.97]"
+      className="h-full bg-muted/45 pt-4 shadow-none ring-0 transition-[transform,background-color,box-shadow] duration-150 ease-out hover:-translate-y-0.5 hover:bg-primary/5 hover:shadow-sm has-[a:focus-visible]:ring-3 has-[a:focus-visible]:ring-ring has-[a:active]:scale-[0.97]"
     >
       <CardHeader className="grid grid-cols-[minmax(0,1fr)_auto] gap-3">
         <div className="min-w-0">

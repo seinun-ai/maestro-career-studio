@@ -36,7 +36,13 @@
   `aria-pressed`** (health-report filters, Review changes, the zoom presets):
   the fill is about 1.16:1 against the light page, too faint to say "on" by
   itself. **Selected in a set** (a toggle, filter chip, or segment) is `tonal`
-  plus a leading `Check` plus `aria-pressed`. **Current in a list or nav**
+  plus a leading `Check` plus `aria-pressed`. Two exceptions carry the state
+  without a Check: the formatting panel's segmented buttons are solid
+  `bg-primary` plus `aria-pressed` (a full-strength fill needs no second cue,
+  and a Check would widen every segment in a narrow pane), and the Career KB's
+  new-entity section-type cards are a solid `border-primary` outline plus
+  `aria-pressed` (two option cards, each a title and a description line; the
+  outline is the cue, as on a radio card). **Current in a list or nav**
   (a sidebar row, the open chat) is secondary container, semibold, and
   `aria-current`, with no Check. **A create or secondary action** is
   `Button variant="tonal"`. **A non-interactive status chip** is
@@ -44,6 +50,22 @@
   chip. `bg-primary/N text-primary` is retired as a component fill. Callout
   containers (`border-primary/25 bg-primary/5` with foreground text) are not
   component states and stay.
+- **A focus indicator is the solid ring, never a translucent one.**
+  `ring-ring/50` and `outline-ring/60` measure about 1.8 to 2.6:1 against the
+  page, under WCAG 1.4.11's 3:1, so a ring, outline or border on a `focus:`,
+  `focus-visible:`, `focus-within:` or `has-[…:focus-visible]:` variant carries
+  no alpha. The one allowance is the primitives' 3px `/50` halo beside a solid
+  1px `focus-visible:border-ring` (Button, Input, Select, Textarea, Checkbox,
+  Tabs, Badge): the border carries the 3:1 and the halo decorates it. A
+  translucent focus BORDER is never allowed (the destructive Button's was /40,
+  about 2.1:1 in light mode). A `ring-offset-N` names its surface (`ring-offset-background`):
+  the default offset colour is white, a white band around the ring in dark
+  mode. `test_frontend_color_roles.py` pins all three; its allowlist holds the
+  two sites not yet converted (`status-chip.tsx`, `role-category-picker.tsx`)
+  and fails once either is fixed, so the entry goes too. `--ring` is pinned at
+  3:1 on the page, card, sidebar, canvas, muted and secondary-container
+  surfaces; `--primary-container` (the FAB) is not in that set, because the
+  dark ring measures 2.88:1 on it.
 - **Top-left corner belongs to the sidebar reveal pill**
   (`components/sidebar-reveal-trigger.tsx`, owner decision). Clearance is
   **not** a per-page concern: `SidebarGutter` wraps the main area once in
@@ -387,8 +409,15 @@
   the FAB included, takes `aria-current` from `navCurrent()` (`lib/nav.ts`):
   `"page"` on the route, `"true"` inside it (a studio under Base Resumes).
   `/jobs/*` is not its own item: `navSection` maps it to Applications, or to
-  Agent Proposals when `?from=proposals`, through a Suspense-wrapped
-  `useSearchParams` (the fallback is the same nav with `from` null). A
+  Agent Proposals when `?from=proposals`, read with `useSearchParams`.
+  **`useSearchParams` under the root layout needs a `<Suspense>` boundary**:
+  without one `next build` fails (`next dev` does not catch it). With it, the
+  server-rendered HTML holds the FALLBACK until the client reads the params, so
+  the fallback renders the same UI (no layout shift) and must not claim state
+  it cannot know. The sidebar's fallback passes `from` as unknown (`undefined`;
+  `null` means absent), and a job page with an unknown `from` marks no section
+  until the real nav marks the right one; on every other route the fallback
+  equals the final nav (`lib/nav.test.ts`). A
   collapsed off-canvas sidebar is `inert` (icon mode stays operable); if focus
   was inside it, the reveal pill takes focus, and opening it returns focus to
   the in-sidebar trigger when the pill unmounts with focus nowhere. The
@@ -508,7 +537,17 @@
   dialog CLOSES, on a settled none-to-some change. Scoring sooner unmounted the
   dialog before the user confirmed each resume's role, and a cached `[]` must
   not arm it: a run beside the first-visit one collides on the base-score
-  unique key. Pinned by `test_frontend_first_run.py`.
+  unique key. The rescore starts inside the close handler, so the render that
+  drops the prompt already sees the run pending, and the run's `onSuccess`
+  returns the refetch, so it stays pending until the list lands: the skeleton
+  hands straight to the cards with no "No ATS scores yet." frame. The dialog
+  renders once, beside the body and never inside the prompt; on close, focus
+  returns to Import resumes while the prompt still shows it (Cancel, Escape,
+  nothing imported), else to the panel's `tabIndex={-1}` wrapper (`finalFocus`
+  as a function). The skeleton that covers the first-visit auto-run requires
+  `scores.isSuccess`: a failed refetch keeps its old `[]`, and without the
+  check the skeleton hid the error and its Retry for good. Pinned by
+  `test_frontend_first_run.py`.
 - Career KB pages follow the Base Resumes read/edit split: one card per
   section, flat rows, hover-or-touch actions, local Save/Cancel editors with
   Escape. Do not regress these surfaces to always-editable form grids.
