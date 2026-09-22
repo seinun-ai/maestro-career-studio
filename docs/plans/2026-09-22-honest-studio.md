@@ -1932,8 +1932,9 @@ Commit: `git commit -m "docs(conventions): colour roles, sidebar FAB and the hon
      no frame of "No ATS scores yet" should flash (review minors #3 and #5).
    - Cmd/Ctrl+S inside a section-rename field or a skill chip input saves the
      typed draft; if the field unmounts on blur, focus lands somewhere sensible.
-   - Template editor at 1280x800: the page scrolls (~962px) and the collapsed
-     "Show PDF preview" edge button sits partly under the overlay scrollbar.
+   - Template editor at 1280x800: since Task 11 the preview scrolls in its own
+     pane; re-measure whether the page still scrolls (~962px before) and
+     whether the collapsed "Show PDF preview" edge button clears the scrollbar.
    - Empty tracker: the FAB (or header button) plus the ghost empty-state
      button is deliberate (NN/g: the empty state's pathway is a control).
 4. Stop every server you started. Record results below.
@@ -1969,6 +1970,11 @@ Goal Card line it violates.
   error); the divider has no single-pointer alternative to dragging beyond
   hide/show (WCAG 2.5.7); the drag scales by `window.innerWidth` rather than the
   shell's width, has no `pointercancel`, and writes localStorage on every move;
+  moving a section down and back up leaves "Unsaved changes" (the first move
+  stores an explicit `section_order` where `null` meant the template's order);
+  the preview paints one frame at Fit width before a stored zoom applies (the
+  same read-after-mount pattern as EditorShell; `useSyncExternalStore` would fix
+  both);
   the setup pill and top-skills chip have no dark-mode hover.
 - **Sidebar state across reloads:** needs a server read (a cookie in the root
   layout) that conflicts with the desktop shell's static UI, or a pre-paint
@@ -1987,6 +1993,8 @@ Goal Card line it violates.
 | 11 | Zoom group sticky inside the scroller | A normal row above the scroller; `backdrop-blur` dropped | At 100% scrolled right only 56px of a sticky group stayed visible; clipped at 375px (browser-checked) |
 | 11 | Fit page = `max-h-[calc(100dvh-6rem)]` | `max-h-[100cqh]` (the preview's own height, container units) + a pin that fails on the plan's value | The dvh value overflowed the job page's 638px box and the studio pane with Formatting open |
 | 11 | ⋯ menu `max-w-(--available-width)` | Also `wrap-anywhere` | Slugs are `[a-z0-9_]`, unbreakable; capped width alone cut the slug off at 375px |
+| 12 (review) | Section-order buttons as they were (18×18) | Shared ghost `icon-xs` (24px, 44px coarse) | WCAG 2.5.8; since Task 12 they are the only pointer reorder path (Principles: accessibility) |
+| 11 (review) | Drop the zoom group's background | Keeps a solid `bg-background` (shadow and translucency dropped) | Unselected muted labels are 4.56:1 on the bare canvas vs 5.48:1 on background |
 | 9 | Plan pins only | `test_kb_sync_frontend.py` now slices from `<StudioToolbar` | Its first-`status={` anchor matched the new `<SaveStatusText status={status} />` in the header; same assertion, sturdier anchor |
 | 10 | `mutationFn: (_opts?) => …`, chained `rescore.mutate()` | `mutationFn` takes no argument; the variables type lives on `onSuccess`; the chain passes `{ announce: false }` | The plan's form failed tsc and added a lint warning (`_` args are not ignored here) |
 | 6–7 (fix) | `isSaveShortcut` accepts `code === "KeyS"` | Physical-key fallback only when `key` is not a single Latin letter | Colemak/Dvorak put other letters on KeyS: the planner's version made Cmd+R / Cmd+O save (proven by a failing test) |
@@ -2005,4 +2013,5 @@ Goal Card line it violates.
 | Tasks 3–5 | first-run + query-error pins | 47 passed after review fixes; full backend 4399 passed |
 | Tasks 6–7 | `node --test lib/*.test.ts` | 39/39 after review fixes |
 | Task 8 | studio pins | 3 pass; ruff clean on new pins after review; divider browser-checked on a throwaway stack |
-| Tasks 9–10 | studio + kb-sync + colour pins | 36 passed; full backend 4411 passed / 2 skipped; both studios browser-checked |
+| Tasks 9–10 | studio + kb-sync + colour pins | 36 → 42 passed after review; full backend 4411 passed / 2 skipped; both studios browser-checked |
+| Tasks 11–12 | frontend pin set | 157 passed after review; ruff/tsc/lint clean; browser-checked 1280/768/375, light+dark |
