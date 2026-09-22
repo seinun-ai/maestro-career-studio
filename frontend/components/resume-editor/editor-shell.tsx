@@ -1,14 +1,18 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
-import { ChevronLeft, ChevronRight, SlidersHorizontal } from "lucide-react";
+import { useEffect, useId, useState, type ReactNode } from "react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  History,
+  SlidersHorizontal,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { PREVIEW_PCT, nextPreviewPct } from "@/lib/studio";
+import { cn } from "@/lib/utils";
 
 const DEFAULT_STORAGE_KEY = "baseResumeEditor";
-const DEFAULT_PREVIEW_PCT = 45;
-const MIN_PREVIEW_PCT = 25;
-const MAX_PREVIEW_PCT = 70;
 
 /**
  * The one two-pane editor shell: a left working pane and a resizable,
@@ -25,6 +29,7 @@ export function EditorShell({
   formattingPanel,
   fullHeightLeft = false,
   storageKey = DEFAULT_STORAGE_KEY,
+  previewStale = false,
 }: {
   editor: ReactNode;
   preview: ReactNode;
@@ -44,13 +49,20 @@ export function EditorShell({
    * their divider preferences don't collide in localStorage.
    */
   storageKey?: string;
+  /**
+   * The form has unsaved edits, so the pages below are the LAST SAVE. The
+   * shell marks the preview stale rather than letting an old page pass for
+   * the current one (Overleaf's "uncompiled" state).
+   */
+  previewStale?: boolean;
 }) {
   const collapsedKey = `${storageKey}.previewCollapsed`;
   const widthKey = `${storageKey}.previewWidthPct`;
   const [collapsed, setCollapsed] = useState(false);
   const [fmtOpen, setFmtOpen] = useState(false);
-  const [previewPct, setPreviewPct] = useState(DEFAULT_PREVIEW_PCT);
+  const [previewPct, setPreviewPct] = useState<number>(PREVIEW_PCT.default);
   const [hydrated, setHydrated] = useState(false);
+  const editorPaneId = useId();
 
   useEffect(() => {
     const c = window.localStorage.getItem(collapsedKey);
@@ -59,7 +71,7 @@ export function EditorShell({
     if (c === "1") setCollapsed(true);
     if (w) {
       const n = Number(w);
-      if (Number.isFinite(n) && n >= MIN_PREVIEW_PCT && n <= MAX_PREVIEW_PCT) {
+      if (Number.isFinite(n) && n >= PREVIEW_PCT.min && n <= PREVIEW_PCT.max) {
         setPreviewPct(n);
       }
     }
@@ -73,7 +85,8 @@ export function EditorShell({
 
   useEffect(() => {
     if (!hydrated) return;
-    window.localStorage.setItem(widthKey, String(previewPct));
+    // Rounded: a drag leaves fractions, and the keyboard snaps to the grid.
+    window.localStorage.setItem(widthKey, String(Math.round(previewPct)));
   }, [previewPct, hydrated, widthKey]);
 
   // `min-w-0` on both: a flex item defaults to min-width:auto, so the pane
@@ -105,18 +118,30 @@ export function EditorShell({
 
   return (
     <div className="flex min-h-0 w-full flex-1">
-      <div className={leftOpenClass} style={{ width: `${100 - previewPct}%` }}>
+      <div
+        id={editorPaneId}
+        className={leftOpenClass}
+        style={{ width: `${100 - previewPct}%` }}
+      >
         {editor}
       </div>
       <Splitter
+        editorPct={100 - previewPct}
+        controls={editorPaneId}
         onDrag={(deltaPct) =>
           setPreviewPct((p) =>
-            Math.min(MAX_PREVIEW_PCT, Math.max(MIN_PREVIEW_PCT, p - deltaPct)),
+            Math.min(PREVIEW_PCT.max, Math.max(PREVIEW_PCT.min, p - deltaPct)),
           )
         }
+        onKey={(key) => {
+          const next = nextPreviewPct(previewPct, key);
+          if (next === null) return false;
+          setPreviewPct(next);
+          return true;
+        }}
       />
       <div
-        className="bg-muted/30 relative flex min-h-0 min-w-0 flex-col overflow-hidden border-l"
+        className="bg-canvas relative flex min-h-0 min-w-0 flex-col overflow-hidden border-l"
         style={{ width: `${previewPct}%` }}
       >
         {/* Wraps: this header is inside the preview pane, which the user can
@@ -158,13 +183,41 @@ export function EditorShell({
             {formattingPanel}
           </div>
         )}
-        <div className="min-h-0 flex-1 overflow-hidden">{preview}</div>
+        {previewStale ? (
+          // Not a live region: the header's save-status line already
+          // announces "Unsaved changes". This is the visual half.
+          <div className="flex items-center gap-2 border-b bg-amber-500/10 px-3 py-1.5 text-xs text-amber-800 dark:text-amber-200">
+            <History aria-hidden="true" className="size-3.5 shrink-0" />
+            Preview shows your last save. Save to update it.
+          </div>
+        ) : null}
+        <div
+          className={cn(
+            "min-h-0 flex-1 overflow-hidden transition-opacity duration-200",
+            previewStale && "opacity-60",
+          )}
+        >
+          {preview}
+        </div>
       </div>
     </div>
   );
 }
 
-function Splitter({ onDrag }: { onDrag: (deltaPct: number) => void }) {
+function Splitter({
+  editorPct,
+  controls,
+  onDrag,
+  onKey,
+}: {
+  /** The editor's share. Fractional while dragging; announced rounded. */
+  editorPct: number;
+  /** id of the editor pane this divider resizes (APG window splitter). */
+  controls: string;
+  onDrag: (deltaPct: number) => void;
+  /** Returns true when it handled the key. */
+  onKey: (key: string) => boolean;
+}) {
   const start = (e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault();
     const viewportW = window.innerWidth;
@@ -186,11 +239,28 @@ function Splitter({ onDrag }: { onDrag: (deltaPct: number) => void }) {
     window.addEventListener("pointerup", up);
   };
   return (
+    // APG window splitter: focusable, and its value is the primary (editor)
+    // pane's share. Pointer-only resizing was the gap Apple's split-view
+    // guidance and WCAG 2.1.1 both name.
     <div
       role="separator"
       aria-orientation="vertical"
+      aria-label="Resize preview"
+      aria-controls={controls}
+      aria-valuenow={Math.round(editorPct)}
+      // The value is the EDITOR's share; say both so "Resize preview" is not
+      // read as the preview's width.
+      aria-valuetext={`Editor ${Math.round(editorPct)}%, preview ${100 - Math.round(editorPct)}%`}
+      aria-valuemin={100 - PREVIEW_PCT.max}
+      aria-valuemax={100 - PREVIEW_PCT.min}
+      tabIndex={0}
       onPointerDown={start}
-      className="hover:bg-primary/20 w-1 shrink-0 cursor-col-resize bg-transparent transition-colors"
+      onKeyDown={(e) => {
+        if (onKey(e.key)) e.preventDefault();
+      }}
+      // `relative z-10`: the preview pane is positioned and paints over a
+      // static sibling, which hid the right half of the focus ring.
+      className="hover:bg-primary/20 focus-visible:bg-primary/40 focus-visible:ring-ring relative z-10 w-1 shrink-0 cursor-col-resize bg-transparent transition-colors outline-none focus-visible:ring-2"
     />
   );
 }
