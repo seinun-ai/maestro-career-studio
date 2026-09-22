@@ -42,7 +42,9 @@ def test_pdflatex_argv_enables_interword_spaces(tmp_path):
 
     tex = tmp_path / "resume.tex"
     argv = _pdflatex_argv(tex, tmp_path, "resume")
-    assert argv[0] == "pdflatex"
+    # The probe resolves an absolute path when TeX is installed and falls back
+    # to the bare name when it is not; either way the binary is pdflatex.
+    assert argv[0].endswith("pdflatex")
     assert "-no-shell-escape" in argv
     assert "-interaction=nonstopmode" in argv
     assert "-halt-on-error" in argv

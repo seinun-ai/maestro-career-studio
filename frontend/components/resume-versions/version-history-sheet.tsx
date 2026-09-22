@@ -16,6 +16,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { listResumeVersions, restoreResumeVersion } from "@/lib/api";
+import { notifyRenderOutcome } from "@/lib/render-note";
 import { cn } from "@/lib/utils";
 import type { ResumeVersion, ResumeVersionSource } from "@/lib/types";
 
@@ -97,6 +98,10 @@ export function VersionHistorySheet({
       qc.invalidateQueries({ queryKey: ["base-resumes"] });
       qc.invalidateQueries({ queryKey: ["application"] });
       setSelected(null);
+      // The restore is committed before the re-render, so a render failure
+      // comes back beside the success, not instead of it. Only a base restore
+      // renders at all; an application restore has no PDF to keep.
+      notifyRenderOutcome(created, { staleLabel: "The resume" });
       toast.success(`Restored as version ${created.version_number}`);
       onRestored?.();
     },

@@ -1,11 +1,12 @@
 import json
+import logging
 import os
 import re
 import subprocess
 from dataclasses import dataclass
 from datetime import date as _date
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from jinja2 import FileSystemLoader
 from jinja2.sandbox import SandboxedEnvironment
@@ -13,10 +14,16 @@ from jinja2.sandbox import SandboxedEnvironment
 from app.config import settings
 from app.schemas.formatting import merge_formatting, resolve_section_order
 from app.schemas.resume import ResumeData
-from app.services import typst_compiler
+from app.services import engines, typst_compiler
 from app.services.date_format import format_date
 from app.services.resume_projects import resume_for_render
 
+if TYPE_CHECKING:  # annotations only: template_registry imports this module at load
+    from sqlalchemy.orm import Session
+
+    from app.models.template import Template
+
+logger = logging.getLogger(__name__)
 
 TEMPLATE_DIR = Path(__file__).parent.parent / "templates"
 RESUME_TEMPLATE = "resume.tex.j2"
@@ -124,6 +131,9 @@ _INTERWORD_SPACE = r"\pdfmapline{+dummy-space <dummy-space}\pdfinterwordspaceon"
 def _pdflatex_argv(tex_path: Path, out_dir: Path, jobname: str) -> list[str]:
     """pdflatex argv that enables interword spaces, then \\input{tex_path}.
 
+    argv[0] is the path the probe resolved (`engines.pdflatex_command`), so a
+    GUI-launched process with no shell PATH still finds MacTeX.
+
     ``-no-shell-escape`` is UNCONDITIONAL and has no opt-out parameter. Shell
     escape lets a document run host commands via ``\\write18``, and the only
     thing standing between generated text and that primitive is one
@@ -139,7 +149,7 @@ def _pdflatex_argv(tex_path: Path, out_dir: Path, jobname: str) -> list[str]:
     absolute path there made kpathsea refuse the app's own staged source.
     A plain relative name inside the working directory is always readable.
     """
-    argv = ["pdflatex", "-no-shell-escape"]
+    argv = [engines.pdflatex_command(), "-no-shell-escape"]
     argv += [
         "-interaction=nonstopmode",
         "-halt-on-error",
@@ -330,31 +340,61 @@ def _compile_cwd(source_path: Path) -> Path:
     return source_path.parent
 
 
+def _run_pdflatex(source_path: Path, out_dir: Path, stem: str) -> subprocess.CompletedProcess:
+    """The one spawn. A missing (or wrongly configured) binary is the actionable
+    "install TeX or pick a Typst template" error, not an OSError 500. OSError
+    covers FileNotFoundError and PermissionError — a wrong MAESTRO_CS_PDFLATEX
+    may name a missing path or a directory (exec of a directory is EACCES, not
+    IsADirectoryError), and ENOEXEC is a bare OSError; TimeoutExpired is not an
+    OSError and keeps propagating as before."""
+    try:
+        return subprocess.run(
+            _pdflatex_argv(source_path, out_dir, stem),
+            capture_output=True,
+            # Not text=True: that decodes STRICTLY, and one non-UTF-8 byte in a
+            # pdflatex transcript (a font name, a stray Latin-1 log line) would
+            # raise UnicodeDecodeError out of the compile instead of the
+            # pdflatex diagnostic we are about to report.
+            encoding="utf-8",
+            errors="replace",
+            timeout=60,
+            check=False,
+            env=_compile_env(out_dir),
+            cwd=_compile_cwd(source_path),
+        )
+    except OSError as exc:
+        _, reason = engines.find_pdflatex()
+        if reason is None:
+            # The probe found a binary but the spawn still failed (fork
+            # failure, ENOEXEC, EACCES): "not installed" would send the user
+            # to install TeX they already have.
+            raise RuntimeError(
+                f"pdflatex could not be started ({exc}). Reinstall TeX or pick a Typst template."
+            ) from exc
+        raise RuntimeError(
+            f"pdflatex is not installed on this machine ({reason}). "
+            "Install TeX or pick a Typst template."
+        ) from exc
+
+
 def compile_pdf(
     tex_text: str, out_dir: Path, stem: str = "resume", *, document: str = ""
 ) -> Path:
     """Write ``tex_text`` beside its PDF and compile it with pdflatex.
 
-    The ONE pdflatex entry point. It used to have a cover-letter twin that
-    differed in exactly one argument — ``-shell-escape``, i.e. permission to run
-    host commands — so the twin was both a duplicate and the weaker of the two.
-    Removing that flag left the bodies identical; keep it that way, and pass
-    ``document`` if a failure needs naming in the error.
+    The application-render entry point (tex text → PDF). The spawn itself is
+    `_run_pdflatex`, shared with `render_and_compile`. It used to have a
+    cover-letter twin that differed in exactly one argument — ``-shell-escape``,
+    i.e. permission to run host commands — so the twin was both a duplicate and
+    the weaker of the two. Removing that flag left the bodies identical; keep it
+    that way, and pass ``document`` if a failure needs naming in the error.
     """
     out_dir.mkdir(parents=True, exist_ok=True)
     tex_path = out_dir / f"{stem}.tex"
     pdf_path = out_dir / f"{stem}.pdf"
     tex_path.write_text(tex_text, encoding="utf-8")
 
-    result = subprocess.run(
-        _pdflatex_argv(tex_path, out_dir, stem),
-        capture_output=True,
-        text=True,
-        timeout=60,
-        check=False,
-        env=_compile_env(out_dir),
-        cwd=_compile_cwd(tex_path),
-    )
+    result = _run_pdflatex(tex_path, out_dir, stem)
     if result.returncode != 0 or not pdf_path.exists():
         label = f"pdflatex failed ({document})" if document else "pdflatex failed"
         raise RuntimeError(
@@ -506,10 +546,56 @@ class RenderedDoc:
     source_text: str
     sys_inputs: dict[str, str] | None = None
     resolved_template_id: str | None = None
+    # Non-null ONLY when the engine was substituted (TeX missing); says why.
+    render_note: str | None = None
 
     @property
     def source_suffix(self) -> str:
         return ".typ" if self.engine == "typst" else ".tex"
+
+
+TEX_MISSING_NO_TYPST = (
+    "This template needs TeX, which is not installed on this machine. "
+    "Install TeX or pick a Typst template."
+)
+
+
+def tex_fallback_note(substitute: str, requested: str) -> str:
+    return (
+        "TeX is not installed on this machine; rendered with "
+        f"{substitute} instead of {requested}."
+    )
+
+
+def resolve_render_template(
+    template_id: str | None, session: "Session"
+) -> "tuple[Template, str | None]":
+    """The ONE fallback rule (design 2026-09-19 §2.2): resolve as before, then a
+    LaTeX template on a host with no pdflatex becomes the first ready Typst
+    template, with a note that names both. No ready Typst template → ValueError
+    (the routers' 400). Document renders use this; template VALIDATION never
+    does — validating template A must never validate template B."""
+    from app.services import template_registry  # lazy import to avoid a cycle
+
+    tmpl = template_registry.get_usable_template(template_id, session)
+    if tmpl.engine != "latex":
+        return tmpl, None
+    # ONE probe per resolve: the probe caches successes only, so a second call
+    # on a host whose `pdflatex --version` fails would spawn it again.
+    status = engines.probe_pdflatex()
+    if status.available:
+        return tmpl, None
+    substitute = template_registry.first_ready_typst(session)
+    if substitute is None:
+        raise ValueError(TEX_MISSING_NO_TYPST)
+    note = tex_fallback_note(
+        substitute.display_name or substitute.id, tmpl.display_name or tmpl.id
+    )
+    # The user-facing note says only that TeX is absent; the log also carries
+    # the probe's reason so a reader can tell a missing TeX from a broken one
+    # (a wrong MAESTRO_CS_PDFLATEX, a --version that fails).
+    logger.info("render fallback: %s (pdflatex: %s)", note, status.reason)
+    return substitute, note
 
 
 def render_document(
@@ -531,16 +617,22 @@ def render_document(
             ),
         )
 
-    from app.services import template_registry  # lazy import to avoid a cycle
-
-    tmpl = template_registry.get_usable_template(template_id, session)
+    tmpl, note = resolve_render_template(template_id, session)
     merged = merge_formatting(tmpl.default_formatting, formatting).model_dump()
     if tmpl.engine == "typst":
-        sys_inputs = build_typst_sys_inputs(
-            tmpl.source, resume_data, merged, enforce_extras_support=True
-        )
+        try:
+            sys_inputs = build_typst_sys_inputs(
+                tmpl.source, resume_data, merged, enforce_extras_support=True
+            )
+        except TemplateMissingExtraSectionsError as exc:
+            if note is None:
+                raise
+            # The user's own (LaTeX) template renders extras; the TeX-less
+            # substitute cannot. Say the substitution happened, or the message
+            # blames the user's template for lacking a feature it has.
+            raise TemplateMissingExtraSectionsError(f"{note} {exc}") from exc
         return RenderedDoc(
-            "typst", tmpl.source, sys_inputs, resolved_template_id=tmpl.id
+            "typst", tmpl.source, sys_inputs, resolved_template_id=tmpl.id, render_note=note
         )
     return RenderedDoc(
         "latex",
@@ -548,6 +640,7 @@ def render_document(
             tmpl.source, resume_data, formatting=merged, enforce_extras_support=True
         ),
         resolved_template_id=tmpl.id,
+        render_note=note,
     )
 
 
@@ -595,15 +688,7 @@ def render_and_compile(
     # and it compiles a DB-stored template `source` that chat, MCP and the web
     # editor can all write. Hardening only `compile_pdf` left this one reading
     # files exactly as before — see `_compile_env` for what that allowed.
-    result = subprocess.run(
-        _pdflatex_argv(source_path, out_pdf_path.parent, out_pdf_path.stem),
-        capture_output=True,
-        text=True,
-        timeout=60,
-        check=False,
-        env=_compile_env(out_pdf_path.parent),
-        cwd=_compile_cwd(source_path),
-    )
+    result = _run_pdflatex(source_path, out_pdf_path.parent, out_pdf_path.stem)
     if result.returncode != 0 or not out_pdf_path.exists():
         raise RuntimeError(
             "pdflatex failed\n"
@@ -613,32 +698,84 @@ def render_and_compile(
     return source_path, doc
 
 
+COVER_LETTER_TEMPLATE = "cover_letter.tex.j2"
+COVER_LETTER_TYPST_TEMPLATE = "cover_letter.typ"
+
+
+def cover_letter_paragraphs(body: str) -> list[str]:
+    return [p.strip() for p in body.split("\n\n") if p.strip()]
+
+
+def _cover_letter_date(today: _date) -> str:
+    """The letter's dateline on both engines ("May 1, 2026"). `%-d` (no zero
+    padding) is a glibc/BSD extension: pre-existing, and a Windows host is a
+    later desktop step."""
+    return today.strftime("%B %-d, %Y")
+
+
 def render_cover_letter_tex(
     *,
     contact: dict[str, Any],
     body: str,
     today: _date,
 ) -> str:
-    paragraphs = [p.strip() for p in body.split("\n\n") if p.strip()]
-    template = _environment().get_template("cover_letter.tex.j2")
+    template = _environment().get_template(COVER_LETTER_TEMPLATE)
     # The cover letter includes the shared _header.tex.j2 partial, which reads
     # fmt.* (e.g. fmt.header_align). Pass default formatting so the header keeps
     # its historical centered layout and does not raise UndefinedError.
     return template.render(
         contact=contact,
-        body_paragraphs=paragraphs,
-        today_date=today.strftime("%B %-d, %Y"),
+        body_paragraphs=cover_letter_paragraphs(body),
+        today_date=_cover_letter_date(today),
         fmt=merge_formatting(None),
     )
 
 
+def cover_letter_typst_inputs(
+    *, contact: dict[str, Any], body: str, today: _date
+) -> dict[str, str]:
+    """sys_inputs for cover_letter.typ; blanks coerced like the resume path so a
+    cleared phone never prints as "None"."""
+    # Typst mirrors LaTeX (decision 2026-09-19): TeX reads a lone newline inside
+    # a paragraph as a space, while Typst would break the line. Collapse here,
+    # per paragraph, so the shared `cover_letter_paragraphs` keeps the .tex
+    # byte-identical.
+    paragraphs = [" ".join(p.split()) for p in cover_letter_paragraphs(body)]
+    return {
+        "contact": json.dumps(_coerce_blank_to_none(contact)),
+        "paragraphs": json.dumps(paragraphs),
+        "today": _cover_letter_date(today),
+        "fmt": merge_formatting(None).model_dump_json(),
+    }
+
+
+def render_cover_letter(
+    *, engine: str, contact: dict[str, Any], body: str, today: _date
+) -> RenderedDoc:
+    """Engine-dispatching render half for cover letters. The engine is the
+    resolved RESUME template's engine (routers/qa.py), so a Typst-template user
+    and a TeX-less host both get Typst, and a LaTeX user sees no change."""
+    if engine == "typst":
+        source = (TEMPLATE_DIR / COVER_LETTER_TYPST_TEMPLATE).read_text(encoding="utf-8")
+        return RenderedDoc(
+            "typst", source, cover_letter_typst_inputs(contact=contact, body=body, today=today)
+        )
+    return RenderedDoc("latex", render_cover_letter_tex(contact=contact, body=body, today=today))
+
+
 def compile_cover_letter_pdf(
-    tex_text: str,
+    source_text: str,
     out_dir: Path,
     stem: str = "cover_letter",
+    *,
+    engine: str = "latex",
+    sys_inputs: dict[str, str] | None = None,
 ) -> Path:
-    """Cover-letter compile. A thin alias for `compile_pdf` — see its docstring
-    for why the two are no longer separate implementations. Kept as a named
-    entry point because callers read better for it, and because the
-    `latex-render-path` ledger row (SYSTEM §13) tracks it by name."""
-    return compile_pdf(tex_text, out_dir, stem, document="cover letter")
+    """Cover-letter compile for either engine. The latex branch is a thin alias
+    for `compile_pdf` — see its docstring for why the two are no longer separate
+    implementations. Kept as a named entry point because callers read better for
+    it, and because the `latex-render-path` ledger row (SYSTEM §13) tracks it by
+    name."""
+    if engine == "typst":
+        return compile_typst_pdf(source_text, out_dir, stem, sys_inputs=sys_inputs or {})
+    return compile_pdf(source_text, out_dir, stem, document="cover letter")

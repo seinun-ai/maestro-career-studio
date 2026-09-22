@@ -79,10 +79,10 @@
     {\LARGE \bfseries ((( contact.name|latex_escape )))} \\ \vspace{2pt}
     \small
     ((( contact.location|latex_escape ))) $|$ ((( contact.phone|latex_escape ))) $|$
-    \href{mailto:((( contact.email|latex_escape )))}{((( contact.email|latex_escape )))} $|$
-    \href{https://((( contact.linkedin|latex_escape )))}{((( contact.linkedin|latex_escape )))} $|$
-    \href{https://((( contact.github|latex_escape )))}{((( contact.github|latex_escape )))}((* if contact.website *)) $|$
-    \href{https://((( contact.website|latex_escape )))}{((( contact.website|latex_escape )))}((* endif *))
+    \href{mailto:((( contact.email|latex_escape_url )))}{((( contact.email|latex_escape )))} $|$
+    \href{https://((( contact.linkedin|latex_escape_url )))}{((( contact.linkedin|latex_escape )))} $|$
+    \href{https://((( contact.github|latex_escape_url )))}{((( contact.github|latex_escape )))}((* if contact.website *)) $|$
+    \href{https://((( contact.website|latex_escape_url )))}{((( contact.website|latex_escape )))}((* endif *))
 ((* if fmt.header_align == "left" *))\end{flushleft}((* elif fmt.header_align == "right" *))\end{flushright}((* else *))\end{center}((* endif *))
 ((#
   Section bodies are MACROS, emitted by the dispatch loop just before

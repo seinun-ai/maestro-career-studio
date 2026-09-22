@@ -1,10 +1,10 @@
 {
   "structure": {
     "root": "backend",
-    "modules": 452,
-    "total_loc": 124998,
-    "src_loc": 41281,
-    "test_loc": 83717,
+    "modules": 458,
+    "total_loc": 127675,
+    "src_loc": 42030,
+    "test_loc": 85645,
     "orphan_modules": [],
     "test_only_reachable": [],
     "orphan_loc": 0,
@@ -15,7 +15,7 @@
         "name": "test_audit_one_sentence_docstring_fixes",
         "complexity": 42,
         "params": 0,
-        "lines": 50
+        "lines": 51
       },
       {
         "file": "app/services/explore_build_areas.py",
@@ -27,7 +27,7 @@
       },
       {
         "file": "app/services/career_kb.py",
-        "line": 763,
+        "line": 762,
         "name": "_compose_extra_item_ops",
         "complexity": 39,
         "params": 5,
@@ -35,7 +35,7 @@
       },
       {
         "file": "app/services/resume_lint.py",
-        "line": 701,
+        "line": 712,
         "name": "_advisories",
         "complexity": 39,
         "params": 1,
@@ -51,7 +51,7 @@
       },
       {
         "file": "app/services/career_kb.py",
-        "line": 206,
+        "line": 205,
         "name": "compose_resume_data",
         "complexity": 37,
         "params": 2,
@@ -139,7 +139,7 @@
       },
       {
         "file": "app/services/career_kb.py",
-        "line": 136,
+        "line": 135,
         "name": "compose_context",
         "complexity": 26,
         "params": 1,
@@ -195,7 +195,7 @@
       },
       {
         "file": "app/services/career_kb.py",
-        "line": 909,
+        "line": 908,
         "name": "_compose_item_ops",
         "complexity": 24,
         "params": 5,
@@ -224,6 +224,14 @@
         "complexity": 24,
         "params": 15,
         "lines": 148
+      },
+      {
+        "file": "app/services/setup_status.py",
+        "line": 100,
+        "name": "build_status",
+        "complexity": 23,
+        "params": 1,
+        "lines": 119
       },
       {
         "file": "app/services/placement_targets.py",
@@ -283,7 +291,7 @@
       },
       {
         "file": "app/services/career_kb.py",
-        "line": 715,
+        "line": 714,
         "name": "_build_entry",
         "complexity": 22,
         "params": 3,
@@ -320,14 +328,6 @@
         "complexity": 21,
         "params": 3,
         "lines": 53
-      },
-      {
-        "file": "app/services/setup_status.py",
-        "line": 98,
-        "name": "build_status",
-        "complexity": 21,
-        "params": 1,
-        "lines": 113
       },
       {
         "file": "app/services/kb_ingest.py",
@@ -410,7 +410,7 @@
         "lines": 63
       }
     ],
-    "hotspot_count": 417,
+    "hotspot_count": 424,
     "error_masking": [
       {
         "file": "tests/test_tracing.py",
@@ -418,8 +418,13 @@
         "kind": "swallowed_exception"
       },
       {
+        "file": "tests/test_cover_letter_render.py",
+        "line": 94,
+        "kind": "swallowed_exception"
+      },
+      {
         "file": "app/routers/templates.py",
-        "line": 140,
+        "line": 146,
         "kind": "swallowed_exception"
       },
       {
@@ -458,9 +463,9 @@
         "kind": "swallowed_exception"
       }
     ],
-    "error_masking_count": 9,
-    "internal_import_edges": 1874,
-    "imports_per_module": 4.15,
+    "error_masking_count": 10,
+    "internal_import_edges": 1917,
+    "imports_per_module": 4.19,
     "entry_points_used": [
       "app.main",
       "app.tools.backup_db",
@@ -479,8 +484,8 @@
       "min_tokens": 50,
       "mode": "weak"
     },
-    "percentage": 0.81,
-    "duplicated_lines": 420,
+    "percentage": 0.79,
+    "duplicated_lines": 418,
     "clones": 45,
     "allowlisted_clones": 0,
     "worst_files": [
@@ -590,29 +595,29 @@
     {
       "rank": "P2",
       "signal": "complexity_concentration",
-      "detail": "417 function(s) over threshold. worst: mcp_server/tests/test_server.py:532 cc=42",
+      "detail": "424 function(s) over threshold. worst: mcp_server/tests/test_server.py:532 cc=42",
       "why": "Complexity mass concentrating in few functions is the erosion signature.",
       "action": "Decompose the top 3. Do not touch the tail."
     },
     {
       "rank": "P2",
       "signal": "error_masking",
-      "detail": "9 bare/swallowed exception handlers",
+      "detail": "10 bare/swallowed exception handlers",
       "why": "Converts loud failures into silent wrong answers; hides the next defect.",
       "action": "Narrow the exception type or re-raise. Never leave a bare pass."
     }
   ],
   "metrics": {
-    "total_loc": 124998,
-    "src_loc": 41281,
-    "test_loc": 83717,
-    "modules": 452,
+    "total_loc": 127675,
+    "src_loc": 42030,
+    "test_loc": 85645,
+    "modules": 458,
     "orphan_loc": 0,
-    "duplication_pct": 0.81,
-    "duplicated_lines": 420,
+    "duplication_pct": 0.79,
+    "duplicated_lines": 418,
     "clone_count": 45,
-    "complexity_hotspots": 417,
-    "error_masking": 9,
-    "imports_per_module": 4.15
+    "complexity_hotspots": 424,
+    "error_masking": 10,
+    "imports_per_module": 4.19
   }
 }

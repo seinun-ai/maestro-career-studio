@@ -19,6 +19,7 @@ from app.models.career_kb import KBEntity
 from app.models.template import Template
 from app.schemas.setup_status import (
     AutofillStep,
+    EnginesProbe,
     GroupCompleteness,
     SetupStatus,
     SetupStep,
@@ -26,6 +27,7 @@ from app.schemas.setup_status import (
 )
 from app.services import (
     autofill_profile,
+    engines,
     job_preferences,
     market_settings,
     model_settings,
@@ -179,6 +181,10 @@ def build_status(db: Session) -> SetupStatus:
         or model_settings.get_gemini_api_key(db)
         or app_settings.gemini_api_key
     )
+    probed = engines.probe()
+    default_engine_available = (
+        default_tpl is None or default_tpl.engine != "latex" or probed.pdflatex.available
+    )
     steps = SetupStatus(
         model_key=SetupStep(done=key_configured),
         import_resumes=SetupStep(
@@ -195,8 +201,10 @@ def build_status(db: Session) -> SetupStatus:
                 "default_origin": default_tpl.origin if default_tpl else None,
                 # Information only — an unstamped base renders via the fallback.
                 "bases_without_template": sum(1 for b in active_bases if not b.template_id),
+                "default_engine_available": default_engine_available,
             },
         ),
+        engines=EnginesProbe.model_validate(probed),
         suggested_bases=suggested,
         complete=False,
     )

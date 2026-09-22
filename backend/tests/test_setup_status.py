@@ -332,3 +332,36 @@ def test_malformed_profile_group_degrades_to_unanswered(client, db_session):
 
     body = _status(client)["autofill"]
     assert body["groups"]["personal"] == {"answered": 0, "answerable": 12}
+
+
+def test_status_reports_engines_and_default_engine_availability(
+    client, db_session, monkeypatch
+):
+    from app.models.template import Template
+    from app.services import engines
+
+    # Tests do not run ensure_seed_templates; insert the seeded LaTeX default
+    # the plan's assertion names so default_engine_available can be False.
+    db_session.add(
+        Template(
+            id="classic",
+            source="x",
+            engine="latex",
+            origin="seed",
+            is_default=True,
+        )
+    )
+    db_session.commit()
+
+    monkeypatch.setattr(
+        engines, "probe_pdflatex",
+        lambda: engines.EngineStatus("pdflatex", False, reason="pdflatex not found (test)"),
+    )
+    body = _status(client)
+    assert body["engines"]["pdflatex"]["available"] is False
+    assert "not found" in body["engines"]["pdflatex"]["reason"]
+    assert body["engines"]["typst"]["available"] is True
+    assert body["engines"]["typst"]["version"]
+    # The seeded default is LaTeX Classic, so its engine is the missing one.
+    assert body["template"]["detail"]["default_engine_available"] is False
+    assert body["template"]["done"] is False  # engines never change completeness

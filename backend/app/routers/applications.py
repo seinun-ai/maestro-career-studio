@@ -513,9 +513,11 @@ def render_application(
         pdf_path=str(pdf_path),
         resolved_template_id=doc.resolved_template_id,
         resolved_engine=doc.engine,
+        # see RenderResult.template_fallback
         template_fallback=(
             template_id is not None and doc.resolved_template_id != template_id
         ),
+        render_note=doc.render_note,
     )
 
 

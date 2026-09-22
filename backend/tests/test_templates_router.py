@@ -635,3 +635,26 @@ def test_create_from_scratch_with_validate_is_certified(db_session, tmp_path, mo
     assert report["headers_missing"] == []
     assert report["email_ok"] is True
     assert report["extra_sections_supported"] is True
+
+
+def test_list_reports_engine_availability(db_session, monkeypatch):
+    from app.services import engines
+
+    monkeypatch.setattr(engines, "pdflatex_available", lambda: False)
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        body = TestClient(app).get("/api/templates").json()
+        detail = TestClient(app).get("/api/templates/default").json()
+    finally:
+        app.dependency_overrides.clear()
+    by_engine = {t["engine"]: t["engine_available"] for t in body}
+    assert by_engine == {"latex": False, "typst": True}
+    assert detail["engine_available"] is False
+
+    monkeypatch.setattr(engines, "pdflatex_available", lambda: True)
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        body = TestClient(app).get("/api/templates").json()
+    finally:
+        app.dependency_overrides.clear()
+    assert all(t["engine_available"] for t in body)

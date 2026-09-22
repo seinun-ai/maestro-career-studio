@@ -776,7 +776,10 @@ a redesign means rebuilding the document. Here it stops being a life decision:
 two engines, both compiled locally — **LaTeX** (pdflatex) and **Typst** — and a
 template carries its own default formatting, layered under per-resume and
 per-application overrides, so the same content renders through any of them
-without being touched. Switching is a matter of taste and a button. Start from a bundled design, adapt one you liked
+without being touched. TeX is optional: where `pdflatex` is missing
+(a host-run backend, later the desktop app) a LaTeX template renders through
+the first ready Typst template and the response, the gallery and the setup
+checklist say so — nothing is substituted silently. Switching is a matter of taste and a button. Start from a bundled design, adapt one you liked
 elsewhere, or write your own source in the built-in editor — validation compiles
 a sample PDF and runs the same parse-certification gate either way, so a template
 that would break an ATS parser never reaches `ready`. *(The web "New template"
@@ -1065,7 +1068,7 @@ directly:
 ## Troubleshooting & Common Questions
 
 **`pdflatex` or `typst` compilation failures on boot:**
-Render exceptions during initial seeding are safely caught and logged; database records are still minted even if PDF rendering hits a local font or dependency missing in custom setups. Re-attempt rendering directly from the UI once the backend container initializes.
+Seeds that need TeX on a host without it are left as drafts with "requires TeX" and validate on the next boot after TeX is installed. `GET /api/setup/status` → `engines` says what the backend found; `MAESTRO_CS_PDFLATEX` names a binary outside the usual locations.
 
 **"port is already allocated" on `docker compose up`:**
 Two host ports matter day to day, and both are overridable in `.env` — `BACKEND_HOST_PORT` (8001) and `FRONTEND_HOST_PORT` (3000). `POSTGRES_HOST_PORT` (55432) is the third for this one release only, while the old Postgres service stands by for the import; it is 55432 rather than 5432 so it cannot collide with a PostgreSQL you installed yourself. Find the culprit with `lsof -i :<port>`, change the number, and run `docker compose up -d` again. Only the host side of the mapping moves; the containers keep their internal ports, so nothing else needs editing — except the browser extension's backend/app URLs, which you set under `⋯` on its card. The backend default is already chosen to dodge the usual collision: 8001 rather than 8000 (uvicorn, Django and `python -m http.server` all default to 8000).

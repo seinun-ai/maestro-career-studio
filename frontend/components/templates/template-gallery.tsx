@@ -14,6 +14,7 @@ import { FORMATTING_DEFAULTS } from "@/lib/formatting";
 import type { TemplateSummary } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
+import { RequiresTexBadge } from "./requires-tex-badge";
 import { TemplateThumbnail } from "./template-thumbnail";
 
 /** `Knobs n/13`, for the hover summary rather than the card face.
@@ -50,6 +51,7 @@ function TemplateBadgeStrip({ template }: { template: TemplateSummary }) {
       <Badge variant="outline" className="font-mono">
         {template.engine}
       </Badge>
+      {!template.engine_available && <RequiresTexBadge />}
       {isReady && template.parse_certified === false && (
         <Badge
           variant="outline"

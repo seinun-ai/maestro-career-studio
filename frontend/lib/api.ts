@@ -23,6 +23,7 @@ import type {
   KBPortResponse,
   KBProfileOut,
   KBProfilePatch,
+  RenderNoted,
   SyncResult,
   SyncStatus,
   Resolution,
@@ -369,7 +370,7 @@ export function restoreResumeVersion(
   key: string,
   version: number,
 ) {
-  return apiFetch<import("@/lib/types").ResumeVersion>(
+  return apiFetch<import("@/lib/types").ResumeVersionRestoreResult>(
     `/api/resume-versions/${kind}/${encodeURIComponent(key)}/${version}/restore`,
     { method: "POST" },
   );
@@ -747,6 +748,32 @@ export function draftRewrite(
     `/api/resume-lint/${kind}/${encodeURIComponent(key)}/draft-rewrite`,
     { method: "POST", body: JSON.stringify(body) },
   );
+}
+
+/**
+ * PATCH the base-or-application `/edits` pair — the one write behind every
+ * one-click apply (health findings, batch ask, demonstrate-a-skill, and the
+ * two chat proposal cards). They all choose the path off the same
+ * base/application discriminator and send the same `{ ops }` body, so the
+ * choice lives here once.
+ *
+ * The response is `RenderNoted`: the base arm re-renders and may report that
+ * another engine stood in, while the application arm renders nothing and
+ * leaves the note null. Pass it to `notifyRenderNote`.
+ */
+export function applyResumeEdits(
+  kind: "base" | "application",
+  key: string,
+  ops: Record<string, unknown>[],
+) {
+  const path =
+    kind === "base"
+      ? `/api/base-resumes/${encodeURIComponent(key)}/edits`
+      : `/api/applications/${encodeURIComponent(key)}/edits`;
+  return apiFetch<RenderNoted>(path, {
+    method: "PATCH",
+    body: JSON.stringify({ ops }),
+  });
 }
 
 export function validateTemplate(templateId: string) {

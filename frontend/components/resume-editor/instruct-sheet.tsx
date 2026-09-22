@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 import { apiFetch } from "@/lib/api";
+import { notifyRenderNote } from "@/lib/render-note";
 import type { BaseResumeDetail, BaseResumeProposal } from "@/lib/types";
 
 /** Starters, not a menu: each one seeds the textarea and stays editable. The
@@ -87,6 +88,7 @@ export function InstructSheet({
         queryKey: ["resume-versions", "base", targetSlug],
       });
       onApplied(result);
+      notifyRenderNote(result);
       toast.success(
         `Applied ${proposal?.ops_count ?? 0} ${proposal?.ops_count === 1 ? "edit" : "edits"}. PDF re-rendered.`,
       );

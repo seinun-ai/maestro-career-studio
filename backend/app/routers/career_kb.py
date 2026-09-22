@@ -49,6 +49,7 @@ from app.schemas.career_kb import (
     KBPointCreate,
     KBPointOut,
     KBPointPatch,
+    KBPortReport,
     KBPortRequest,
     KBPortResponse,
     KBProfileOut,
@@ -592,6 +593,22 @@ def delete_document(document_id: UUID, db: Annotated[Session, Depends(get_db)]):
 # --- Port to base resume ---------------------------------------------------
 
 
+def _port_response(target: BaseResume, report: KBPortReport) -> KBPortResponse:
+    """The answer both port routes give: the refreshed target plus its report.
+
+    `render_note` is transient — `_persist_port` hangs it on the row when the
+    port's re-render went through another engine — so it is read off the
+    instance with getattr and threaded into the detail, never read from the DB.
+    The `_detail` import stays function-local, as it was at both call sites.
+    """
+    from app.routers.base_resumes import _detail
+
+    return KBPortResponse(
+        resume=_detail(target, render_note=getattr(target, "render_note", None)),
+        report=report,
+    )
+
+
 @router.post("/port", response_model=KBPortResponse)
 def port(payload: KBPortRequest, db: Annotated[Session, Depends(get_db)]):
     try:
@@ -600,9 +617,7 @@ def port(payload: KBPortRequest, db: Annotated[Session, Depends(get_db)]):
         raise HTTPException(status_code=404, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
-    from app.routers.base_resumes import _detail
-
-    return KBPortResponse(resume=_detail(target), report=report)
+    return _port_response(target, report)
 
 
 @router.post("/port/adapt", response_model=KBAdaptProposal)
@@ -627,9 +642,7 @@ def port_adapt_apply(payload: KBAdaptApplyRequest, db: Annotated[Session, Depend
         raise HTTPException(status_code=404, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
-    from app.routers.base_resumes import _detail
-
-    return KBPortResponse(resume=_detail(target), report=report)
+    return _port_response(target, report)
 
 
 # --- Composed resume view --------------------------------------------------

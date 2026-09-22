@@ -26,6 +26,7 @@ from app.services import (
     health_verify,
     health_zones,
     model_settings,
+    pdf_render,
     template_registry,
     template_validation,
 )
@@ -296,8 +297,18 @@ def structure_gates(db: Session, template_id: str | None, resume: dict) -> list[
     Inherited from the resume's template certification. If the template was never
     certified (parse_certified is None), certify it lazily — a gate you didn't run
     is not a gate you passed, so we run it rather than reporting a green checkmark.
+
+    Resolved through the RENDER rule, so the gates describe the PDF the user
+    gets: on a TeX-less host a LaTeX template renders through the first ready
+    Typst template, and it is that template's certification that matters.
     """
-    tmpl = template_registry.get_usable_template(template_id, db)
+    try:
+        tmpl, _note = pdf_render.resolve_render_template(template_id, db)
+    except ValueError:
+        # No ready Typst template on a TeX-less host: the render itself would
+        # 400, but a health run must never fail on it — assess the requested
+        # template and let S1 report not_assessed with the recorded reason.
+        tmpl = template_registry.get_usable_template(template_id, db)
     if tmpl.parse_certified is None:
         try:
             template_validation.validate_template(tmpl.id, db)

@@ -1,3 +1,4 @@
+import logging
 from typing import Annotated, Literal
 from uuid import UUID
 
@@ -10,11 +11,14 @@ from app.models.base_resume import BaseResume
 from app.schemas.resume_version import (
     ResumeVersionDetail,
     ResumeVersionLabelPatch,
+    ResumeVersionRestoreResult,
     ResumeVersionSummary,
 )
 from app.services import base_resume_render
 from app.services import resume_versions as service
 from app.services.artifacts import remove_files, stage_resume_artifact_removal
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/resume-versions", tags=["resume-versions"])
 
@@ -74,7 +78,7 @@ def diff_version(
     return service.diff_versions(parent.snapshot if parent else None, row.snapshot)
 
 
-@router.post("/{kind}/{key}/{number}/restore", response_model=ResumeVersionSummary)
+@router.post("/{kind}/{key}/{number}/restore", response_model=ResumeVersionRestoreResult)
 def restore_version(
     kind: Kind, key: str, number: int, db: Annotated[Session, Depends(get_db)]
 ):
@@ -84,6 +88,8 @@ def restore_version(
     except LookupError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
 
+    render_note: str | None = None
+    render_error: str | None = None
     if kind == "base":
         row = db.get(BaseResume, key)
         if row is None:
@@ -93,7 +99,25 @@ def restore_version(
         from app.routers.base_resumes import _write_json_file
 
         _write_json_file(key, snapshot)
-        base_resume_render.render_base_resume(key, db)
+        # The snapshot IS the live resume by now, so the re-render degrades
+        # rather than raising (same tail as resume_ops.edit_base): a TeX-less
+        # host with no ready Typst template raises ValueError here, which used
+        # to leave the caller a 500 for a restore that had already landed.
+        try:
+            rendered = base_resume_render.render_base_resume(key, db)
+            render_note = getattr(rendered, "render_note", None)
+        except LookupError as e:  # the row vanished between commit and render
+            raise HTTPException(status_code=404, detail=str(e)) from e
+        except Exception as e:  # noqa: BLE001 — the restore landed; the PDF goes stale
+            logger.warning(
+                "PDF re-render failed after restoring %s to version %s",
+                key,
+                number,
+                exc_info=True,
+            )
+            render_error = base_resume_render.record_render_error(
+                db, key, str(e)
+            ).render_error
     else:
         try:
             application_id = UUID(key)
@@ -108,7 +132,11 @@ def restore_version(
         remove_files(stale)
 
     db.refresh(version)
-    return ResumeVersionSummary.model_validate(version)
+    return ResumeVersionRestoreResult(
+        **ResumeVersionSummary.model_validate(version).model_dump(),
+        render_note=render_note,
+        render_error=render_error,
+    )
 
 
 @router.patch("/{kind}/{key}/{number}", response_model=ResumeVersionSummary)

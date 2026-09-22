@@ -26,6 +26,7 @@ const ACTION_LABELS: Record<string, string> = {
   job_preferences: "Set preferences",
   persona: "Write persona",
   template: "Choose template",
+  engines: "See templates",
 };
 
 /** A dismissible setup checklist for the tracker before any jobs are captured. */

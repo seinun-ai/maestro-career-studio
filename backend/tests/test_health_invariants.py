@@ -108,6 +108,9 @@ def test_no_finding_lacks_a_remedy():
 def test_unrun_gate_is_not_a_passed_gate(db_session, monkeypatch):
     class _FakeTemplate:
         id = "faketmpl"
+        # Not latex: the gates resolve through the render rule, which only
+        # probes for pdflatex on a LaTeX template.
+        engine = "typst"
         parse_certified = None
         parse_report_json = None
 

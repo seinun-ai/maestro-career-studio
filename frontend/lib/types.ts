@@ -4,6 +4,21 @@ export type UUID = string;
  * ("user") or the agent-hunted auto-apply lane ("agent"). */
 type ProvenanceSource = "user" | "agent";
 
+/**
+ * Carried by every response that FOLLOWS a render. `render_note` is non-null
+ * only when TeX is absent on the backend host and a LaTeX template rendered
+ * through a Typst one instead — the render succeeded, under another engine.
+ *
+ * Optional because one caller can hit either arm of the `/edits` pair: the
+ * base-resume arm re-renders and answers with the note, while the application
+ * arm renders NOTHING (`resume_ops.edit_application` only clears the artifact
+ * refs; the PDF is rendered later, on an explicit Render). So that arm has no
+ * note to give and needs none.
+ */
+export interface RenderNoted {
+  render_note?: string | null;
+}
+
 export interface Job {
   id: UUID;
   raw_text: string;
@@ -231,7 +246,7 @@ export interface QAResponse {
   cover_letter: string | null;
 }
 
-export interface QAEntry {
+export interface QAEntry extends RenderNoted {
   id: UUID;
   application_id: UUID;
   kind: string;
@@ -398,6 +413,14 @@ interface SetupStep {
   detail: Record<string, unknown>;
 }
 
+interface EngineProbe {
+  name: string;
+  available: boolean;
+  version: string | null;
+  path: string | null;
+  reason: string | null;
+}
+
 export interface SetupStatus {
   /** A provider API key is configured (in-app or .env). Blocks everything. */
   model_key: SetupStep;
@@ -411,6 +434,11 @@ export interface SetupStatus {
   job_preferences: SetupStep;
   persona: SetupStep;
   template: SetupStep;
+  /** Which PDF engines the backend can run. Informational, never blocks. */
+  engines: {
+    pdflatex: EngineProbe;
+    typst: EngineProbe;
+  };
   suggested_bases: { role_category: string; label: string }[];
   complete: boolean;
 }
@@ -436,7 +464,7 @@ export interface BaseResumeSummary {
  *  `proposed` is true when the system guessed the role from resume content and
  *  the UI must ask the user to confirm; false means "unknown", i.e. undeclared
  *  rather than guessed. */
-interface ImportedBase {
+interface ImportedBase extends RenderNoted {
   slug: string;
   display_name: string;
   role_category: string;
@@ -456,7 +484,7 @@ export interface ImportReport {
   kb: { entities_created: number; points_approved: number } | null;
 }
 
-export interface BaseResumeDetail extends BaseResumeSummary {
+export interface BaseResumeDetail extends BaseResumeSummary, RenderNoted {
   data: ResumeData;
   pdf_path: string | null;
   tex_path: string | null;
@@ -465,6 +493,15 @@ export interface BaseResumeDetail extends BaseResumeSummary {
   template_id: string | null;
   /** POST /import only: rows the parser dropped rather than fail the file. */
   parse_warnings?: string[] | null;
+}
+
+/** POST /api/applications/{id}/render */
+export interface RenderResult extends RenderNoted {
+  tex_path: string;
+  pdf_path: string;
+  resolved_template_id: string | null;
+  resolved_engine: string | null;
+  template_fallback: boolean | null;
 }
 
 /** POST /api/base-resumes/{slug}/propose — a reviewed-before-applied proposal. */
@@ -881,9 +918,15 @@ export interface KBProfilePatch {
   notes?: string;
 }
 
-export interface BaseResumePortProjectResult {
+export interface BaseResumePortProjectResult extends RenderNoted {
   target_slug: string;
   project_index: number;
+  /**
+   * The port is committed before the target is re-rendered, so a render
+   * failure comes back here (the project landed; only the PDF is stale)
+   * instead of failing the call — never set together with `render_note`.
+   */
+  render_error?: string | null;
 }
 
 export interface TopSkillRow {
@@ -1023,6 +1066,12 @@ export interface TemplateSummary {
   origin: string;
   /** Render engine for `source`: LaTeX (Jinja→pdflatex) or Typst (raw .typ). */
   engine: TemplateEngine;
+  /**
+   * False when this template's engine cannot run on the backend host (a LaTeX
+   * template with no pdflatex). Still pickable: a render through it falls back
+   * to a Typst template and the response says so in `render_note`.
+   */
+  engine_available: boolean;
   last_error: string | null;
   validated_at: string | null;
   updated_at?: string | null;
@@ -1519,6 +1568,17 @@ export interface ResumeVersionDetail extends ResumeVersion {
   diff: ResumeDiffChange[];
 }
 
+/**
+ * POST /restore answers with the new version. A base restore re-renders the
+ * PDF, so it carries the note; an application restore renders nothing (the
+ * PDF comes on an explicit Render) and leaves it null. The restore is
+ * committed before that render, so a render failure comes back as
+ * `render_error` (the restore landed; only the PDF is stale) instead of
+ * failing the call — the two are alternatives, never both.
+ */
+export type ResumeVersionRestoreResult = ResumeVersion &
+  RenderNoted & { render_error?: string | null };
+
 // ---------------------------------------------------------------------------
 // Chat
 
@@ -1540,7 +1600,12 @@ export interface ChatContext {
   attachment_ids?: UUID[];
 }
 
-export interface ChatChangeCard {
+/**
+ * The chat edit tool's card. A BASE edit re-renders, so the card is a render
+ * response and carries the note (optional: cards persisted before it existed
+ * have no such key); an application edit renders nothing and leaves it null.
+ */
+export interface ChatChangeCard extends RenderNoted {
   resume_kind: "base" | "application";
   resume_key: string;
   version_number: number;

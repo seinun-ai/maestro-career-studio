@@ -159,6 +159,7 @@ def _detail(
     resolved_template_id: str | None = None,
     resolved_engine: str | None = None,
     template_fallback: bool | None = None,
+    render_note: str | None = None,
 ) -> BaseResumeDetail:
     return BaseResumeDetail(
         slug=row.slug,
@@ -174,6 +175,7 @@ def _detail(
         resolved_template_id=resolved_template_id,
         resolved_engine=resolved_engine,
         template_fallback=template_fallback,
+        render_note=render_note,
         pdf_pages=row.pdf_pages,
         render_error=row.render_error,
         updated_at=row.updated_at,
@@ -247,7 +249,9 @@ def create_base_resume(
     _write_json_file(payload.slug, data_dict)
     base_resume_render.render_base_resume(payload.slug, db)
     db.refresh(row)
-    return _detail(row)
+    # A create is a render response too (from-kb and /import come through
+    # here): without the note a TeX-less host substitutes Typst silently.
+    return _detail(row, render_note=getattr(row, "render_note", None))
 
 
 @router.put("/{slug}", response_model=BaseResumeDetail)
@@ -287,7 +291,7 @@ def update_base_resume(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     db.refresh(row)
-    return _detail(row)
+    return _detail(row, render_note=getattr(row, "render_note", None))
 
 
 @router.patch("/{slug}/edits", response_model=BaseResumeDetail)
@@ -321,7 +325,7 @@ def edit_base_resume(
         raise HTTPException(status_code=409, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
-    return _detail(row, applied=applied)
+    return _detail(row, applied=applied, render_note=getattr(row, "render_note", None))
 
 
 @router.post("/from-kb/plan", response_model=BaseFromKBPlanRead)
@@ -670,11 +674,33 @@ def port_project_to_base_resume(
     db.refresh(target)
 
     _write_json_file(payload.target_slug, target_data)
-    base_resume_render.render_base_resume(payload.target_slug, db)
+    # The port is COMMITTED above, so the re-render degrades instead of
+    # raising (same tail as resume_ops.edit_base): a TeX-less host with no
+    # ready Typst template raises ValueError here, which used to leave the
+    # caller a 500 over an already-applied port and a silently stale PDF —
+    # and a retry appends the project twice.
+    render_note: str | None = None
+    render_error: str | None = None
+    try:
+        rendered = base_resume_render.render_base_resume(payload.target_slug, db)
+        render_note = getattr(rendered, "render_note", None)
+    except LookupError as e:  # the target vanished between commit and render
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    except Exception as e:  # noqa: BLE001 — the port landed; the PDF goes stale
+        logger.warning(
+            "PDF re-render failed after a project port to %s",
+            payload.target_slug,
+            exc_info=True,
+        )
+        render_error = base_resume_render.record_render_error(
+            db, payload.target_slug, str(e)
+        ).render_error
 
     return BaseResumePortProjectResult(
         target_slug=payload.target_slug,
         project_index=len(target_projects) - 1,
+        render_note=render_note,
+        render_error=render_error,
     )
 
 
@@ -723,7 +749,7 @@ def duplicate_base_resume(
     _write_json_file(payload.new_slug, data_copy)
     base_resume_render.render_base_resume(payload.new_slug, db)
     db.refresh(row)
-    return _detail(row)
+    return _detail(row, render_note=getattr(row, "render_note", None))
 
 
 @router.get("/{slug}/pdf")
@@ -797,9 +823,11 @@ def render_base_resume_endpoint(
         row,
         resolved_template_id=resolved_template_id,
         resolved_engine=getattr(rendered, "resolved_engine", None),
+        # see RenderResult.template_fallback
         template_fallback=(
             template_id is not None and resolved_template_id != template_id
         ),
+        render_note=getattr(rendered, "render_note", None),
     )
 
 

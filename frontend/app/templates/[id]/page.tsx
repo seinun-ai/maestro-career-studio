@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { FormattingPanel } from "@/components/resume-editor/formatting-panel";
 import { PdfPagesPreview } from "@/components/resume-editor/pdf-pages-preview";
 import { LatexEditor } from "@/components/templates/latex-editor";
+import { RequiresTexBadge } from "@/components/templates/requires-tex-badge";
 import { EditorShell } from "@/components/resume-editor/editor-shell";
 import { Badge } from "@/components/ui/badge";
 import { IconButton } from "@/components/icon-button";
@@ -252,6 +253,7 @@ export default function TemplateEditorPage() {
               <Badge variant="outline" className="font-mono">
                 {tq.data.engine}
               </Badge>
+              {!tq.data.engine_available && <RequiresTexBadge />}
               {dirty && (
                 <span className="text-xs text-amber-600">unsaved</span>
               )}

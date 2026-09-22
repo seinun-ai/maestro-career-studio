@@ -39,6 +39,10 @@ class TemplateSummary(BaseModel):
     is_default: bool
     origin: str
     engine: str = "latex"
+    # False when this template's engine cannot run on the backend host (a LaTeX
+    # template with no pdflatex). The gallery shows "requires TeX"; a render
+    # through it falls back to Typst and says so (render_note). Not stored.
+    engine_available: bool = True
     last_error: str | None = None
     validated_at: datetime | None = None
     # Paired with validated_at so the gallery can mark a thumbnail stale: the

@@ -28,7 +28,6 @@ from app.schemas.career_kb import (
 from app.schemas.resume_edit import ResumeEditRequest
 from app.services import base_resume_render
 from app.services import base_resume_data
-from app.services import pdf_render
 from app.services.base_resume_data import write_base_resume_json
 from app.services.resume_edit import apply_edits
 from app.services.resume_versions import record_version
@@ -1123,6 +1122,11 @@ def _persist_port(
 
     Shared by the verbatim port and the adapted port so both get the same
     tolerant-render semantics.
+
+    Returns the SAME session-identity row the render ran on, carrying the
+    transient `render_note` its callers read onto the response (four routes
+    depend on that): re-fetching the resume in a fresh session here would null
+    the note everywhere without failing a single test.
     """
     target.data_json = working
     record_version(session, "base", target.slug, working, source="import", summary=summary)
@@ -1131,23 +1135,22 @@ def _persist_port(
     session.commit()
 
     write_base_resume_json(target.slug, working)
-    # Ported text is LLM/user-derived and can break pdflatex. Mirror the base
-    # resume edit path: the port is already committed, so a compile failure
-    # records render_error rather than losing the edit.
+    # Ported text is LLM/user-derived and can break pdflatex. The port is
+    # COMMITTED above, so every render failure records render_error rather
+    # than losing the edit — see record_render_error for the one rule all four
+    # post-commit sites follow. The no-ready-Typst ValueError used to be
+    # re-raised here as the router's 400, which told the user a port that had
+    # already landed had failed (and a retry ported the entity twice); a
+    # PRE-commit ValueError, raised before this function runs, is still 400.
     try:
         base_resume_render.render_base_resume(target.slug, session)
     except LookupError:
         raise
-    except ValueError:
-        raise
-    except Exception as e:  # noqa: BLE001 — LaTeX failure leaves the PDF stale, not the port lost
+    except Exception as e:  # noqa: BLE001 — a failed render leaves the PDF stale, not the port lost
         logger.warning(
             "PDF re-render failed after KB port for %s", target.slug, exc_info=True
         )
-        session.rollback()
-        target = session.get(BaseResume, target.slug)
-        target.render_error = pdf_render.extract_render_error(str(e))
-        session.commit()
+        target = base_resume_render.record_render_error(session, target.slug, str(e))
     session.refresh(target)
     return target
 

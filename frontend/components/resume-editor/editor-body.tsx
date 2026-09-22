@@ -55,6 +55,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { apiFetch, apiUrlForBrowserPdf } from "@/lib/api";
 import { FORMATTING_DEFAULTS, type ResumeFormatting } from "@/lib/formatting";
+import { notifyRenderNote } from "@/lib/render-note";
 import { resumeDataSchema } from "@/lib/resume-schema";
 import type { BaseResumeDetail, ResumeData } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -206,6 +207,7 @@ export function EditorBody({
       qc.setQueryData(["base-resumes", slug], result);
       qc.invalidateQueries({ queryKey: ["base-resumes"] });
       qc.invalidateQueries({ queryKey: ["setup-status"] });
+      notifyRenderNote(result);
       toast.success("Saved. PDF re-rendered.", {
         action: {
           label: "Download PDF",

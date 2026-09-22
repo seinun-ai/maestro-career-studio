@@ -30,6 +30,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { NewBaseResumeDialog } from "@/components/base-resumes/new-base-resume-dialog";
 import { apiFetch, apiUrlForBrowserPdf } from "@/lib/api";
+import { notifyRenderNote } from "@/lib/render-note";
 import { uniqueSlug } from "@/lib/slug";
 import type {
   BaseResumeDetail,
@@ -82,6 +83,7 @@ export default function BaseResumesListPage() {
       setDupSource(null);
       setDupDisplay("");
       invalidate();
+      notifyRenderNote(created);
       router.push(`/base-resumes/${created.slug}`);
     },
     onError: (err: Error) => toast.error(err.message),

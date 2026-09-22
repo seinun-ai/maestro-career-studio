@@ -789,7 +789,11 @@ def restore_resume_version(
     Restore goes through the standard versioned write path — it is itself a
     new version (history is append-only; nothing is deleted). kind/key as on
     list_resume_versions: "base"+slug or "application"+id. For applications,
-    the old PDF is cleared; call render_pdf before attaching.
+    the old PDF is cleared; call render_pdf before attaching. A "base" restore
+    re-renders, so the response carries render_note (see render_pdf: non-null
+    only when a TeX-less backend rendered a LaTeX template through a Typst
+    one) and, if that render failed, render_error — the restore landed either
+    way, only the PDF is stale.
     """
     return _client.restore_resume_version(kind, key, number)
 
@@ -944,8 +948,11 @@ def render_pdf(target_type: Literal["base_resume", "application"], target_id: st
     (target_id=application id). Optional template_id selects a template (either
     engine; must be 'ready'; omit for the default). Response reports
     resolved_template_id / resolved_engine (the template actually used);
-    template_fallback=true means the requested id was unusable and the default
-    was silently substituted. Returns the render result incl.
+    template_fallback=true only when an explicit template_id was passed and the
+    resolved id differs — a substitution of the persisted choice is reported
+    by render_note, never by the flag. render_note is non-null only when the
+    backend has no TeX and a LaTeX template was rendered through a Typst
+    template instead; it names both. Returns the render result incl.
     pdf_path, plus a `next` key: for an 'application' render this is the terminal
     apply-readiness hint (autofill_ready, incomplete/blocking groups, a conditional
     browser-handoff offer); for a 'base_resume' render it is always null — a
@@ -1034,7 +1041,9 @@ def prepare_application_pdf_upload(application_id: str) -> Any:
 def list_templates() -> Any:
     """List resume templates — both engines (id, display_name, status['draft'|'ready'],
     engine, is_default, last_error). parse_certified false = a 'ready' template that
-    still loses word boundaries under strict extraction — see validate_template."""
+    still loses word boundaries under strict extraction — see validate_template.
+    engine_available=false marks a LaTeX template on a backend with no TeX: still
+    pickable, renders through Typst with a render_note."""
     return _client.list_templates()
 
 
@@ -1042,7 +1051,8 @@ def list_templates() -> Any:
 @_guard
 def get_template(template_id: str) -> Any:
     """Get a template incl. its full source (Jinja2+LaTeX for engine='latex';
-    raw .typ text for engine='typst') plus engine and supported_fmt_keys.
+    raw .typ text for engine='typst') plus engine, engine_available (see
+    list_templates), and supported_fmt_keys.
     A template of either engine opts into look knobs by referencing `fmt.*`
     (LaTeX via the Jinja namespace, Typst via sys.inputs.fmt; defaults
     reproduce Classic): font_size (11), side_margins (0.4in),
@@ -1093,7 +1103,9 @@ def create_template_draft(
     hard-coded values. Tip: start from get_template('default') and adapt.
 
     Pass validate=True to test-compile in the same call (status/last_error).
-    Not usable until validation succeeds. `id` is a slug: [a-z0-9_-]."""
+    A LaTeX draft cannot validate on a backend with no TeX (list_templates →
+    engine_available); use engine='typst' there. Not usable until validation
+    succeeds. `id` is a slug: [a-z0-9_-]."""
     return _client.create_template_draft(
         id, display_name, source, validate=validate, engine=engine
     )

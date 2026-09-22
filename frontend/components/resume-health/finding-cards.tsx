@@ -38,13 +38,13 @@ import { IconButton } from "@/components/icon-button";
 import {
   answerAsk,
   ApiError,
-  apiFetch,
+  applyResumeEdits,
   draftRewrite,
   unwaiveGate,
   validateTemplate,
   waiveGate,
 } from "@/lib/api";
-import { toastContentChanged } from "./report-errors";
+import { toastContentChanged, toastRewriteError } from "./report-errors";
 import {
   answerMatchesFinding,
   groupNotesByRule,
@@ -62,6 +62,7 @@ import {
   textAtLocation,
   shortFindingLabel,
 } from "@/lib/health-report";
+import { notifyRenderNote } from "@/lib/render-note";
 import { wordDiff } from "@/lib/word-diff";
 import { cn } from "@/lib/utils";
 import type {
@@ -489,27 +490,15 @@ export function SuggestionEditor({
               value: draft,
               ...hash,
             };
-      const path =
-        kind === "base"
-          ? `/api/base-resumes/${resumeKey}/edits`
-          : `/api/applications/${resumeKey}/edits`;
-      return apiFetch(path, {
-        method: "PATCH",
-        body: JSON.stringify({ ops: [op] }),
-      });
+      return applyResumeEdits(kind, resumeKey, [op]);
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       setApplied(true);
+      notifyRenderNote(result);
       toast.success("Applied and saved as a new version");
       onApplied();
     },
-    onError: (err: Error) => {
-      if (err instanceof ApiError && isContentChangedError(err)) {
-        toastContentChanged(onReanalyze);
-        return;
-      }
-      toast.error(err instanceof ApiError ? err.message : String(err));
-    },
+    onError: (err: Error) => toastRewriteError(err, onReanalyze),
   });
 
   if (applied) {
@@ -904,27 +893,14 @@ export function NotesTable({
   } | null>(null);
 
   const applyOps = useMutation({
-    mutationFn: (ops: Record<string, unknown>[]) => {
-      const path =
-        kind === "base"
-          ? `/api/base-resumes/${resumeKey}/edits`
-          : `/api/applications/${resumeKey}/edits`;
-      return apiFetch(path, {
-        method: "PATCH",
-        body: JSON.stringify({ ops }),
-      });
-    },
-    onSuccess: () => {
+    mutationFn: (ops: Record<string, unknown>[]) =>
+      applyResumeEdits(kind, resumeKey, ops),
+    onSuccess: (result) => {
+      notifyRenderNote(result);
       toast.success("Applied and saved as a new version");
       onApplied();
     },
-    onError: (err: Error) => {
-      if (err instanceof ApiError && isContentChangedError(err)) {
-        toastContentChanged(onReanalyze);
-        return;
-      }
-      toast.error(err instanceof ApiError ? err.message : String(err));
-    },
+    onError: (err: Error) => toastRewriteError(err, onReanalyze),
   });
 
   const condense = useMutation({
@@ -939,13 +915,7 @@ export function NotesTable({
         expected_content_hash: finding.content_hash ?? undefined,
       }).then((result) => ({ finding, ...result })),
     onSuccess: (result) => setCondenseDraft(result),
-    onError: (err: Error) => {
-      if (err instanceof ApiError && isContentChangedError(err)) {
-        toastContentChanged(onReanalyze);
-        return;
-      }
-      toast.error(err instanceof ApiError ? err.message : String(err));
-    },
+    onError: (err: Error) => toastRewriteError(err, onReanalyze),
   });
 
   return (

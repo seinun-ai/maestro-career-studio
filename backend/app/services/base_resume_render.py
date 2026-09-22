@@ -20,6 +20,13 @@ def render_base_resume(slug: str, db: Session, *, template_id: str | None = None
     if row is None:
         raise LookupError(f"Base resume not found: {slug}")
 
+    # Clear FIRST, set only on success: the row is a session-identity object and
+    # `render_note` is an unmapped attribute, so neither rollback nor refresh
+    # clears it. Without this, a failed re-render (resume_ops.edit_base persists
+    # render_error and returns this same object) would still carry the note from
+    # an earlier successful render in the same session.
+    row.render_note = None
+
     # No explicit template -> use the resume's persisted choice (None -> default).
     if template_id is None:
         template_id = row.template_id
@@ -43,4 +50,32 @@ def render_base_resume(slug: str, db: Session, *, template_id: str | None = None
     db.refresh(row)
     row.resolved_template_id = doc.resolved_template_id
     row.resolved_engine = doc.engine
+    row.render_note = doc.render_note
+    return row
+
+
+def record_render_error(db: Session, slug: str, message: str) -> BaseResume:
+    """Persist a POST-COMMIT render failure on the row; return it refreshed.
+
+    **The rule, for every render failure including a TeX-less host with no
+    ready Typst template: if the write already committed, DEGRADE and persist
+    `render_error`; if the render IS the request, 400; never a 500.**
+
+    Every re-render of a base resume runs AFTER its data write committed
+    (resume_ops.edit_base, career_kb._persist_port, the project port, the
+    version restore), so a render failure must not fail the request: it would
+    report failure for a change that landed and invite a retry that applies an
+    additive write twice. This is the shared tail those four call — roll the
+    failed render's session state back, record `render_error` (what the UI's
+    stale-PDF banner reads), keep the data write. `render_note` stays None: a
+    failed render substituted nothing, and `render_base_resume` already
+    cleared it. The render-is-the-request routes (`POST /{slug}/render`, the
+    application and cover-letter renders) keep raising for their 400 — there
+    is no committed write to contradict.
+    """
+    db.rollback()
+    row = db.get(BaseResume, slug)
+    row.render_error = pdf_render.extract_render_error(message)
+    db.commit()
+    db.refresh(row)
     return row

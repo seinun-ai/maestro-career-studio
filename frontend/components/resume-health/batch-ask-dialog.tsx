@@ -17,13 +17,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { ApiError, answerAsk, apiFetch } from "@/lib/api";
+import { ApiError, answerAsk, applyResumeEdits } from "@/lib/api";
 import {
   answerMatchesFinding,
   isContentChangedError,
   STALE_APPLY_HINT,
   type StoredAskAnswer,
 } from "@/lib/health-report";
+import { notifyRenderNote } from "@/lib/render-note";
 import { toastRewriteError } from "./report-errors";
 import { wordDiff } from "@/lib/word-diff";
 import { textAtLocation } from "@/lib/health-report";
@@ -172,22 +173,22 @@ export function BatchAskDialog({
             value: row.suggestion,
             ...hash,
           };
-    const path =
-      kind === "base"
-        ? `/api/base-resumes/${resumeKey}/edits`
-        : `/api/applications/${resumeKey}/edits`;
-    await apiFetch(path, {
-      method: "PATCH",
-      body: JSON.stringify({ ops: [op] }),
-    });
+    return applyResumeEdits(kind, resumeKey, [op]);
   };
 
   const applyAll = async () => {
     setApplying(true);
+    // The FIRST substituted render, reported once for the whole batch. Not the
+    // last: a later row can render cleanly, or fail with a persisted
+    // render_error and no note, after an earlier one has already fallen back.
+    // Reported from `finally` so a row that throws mid-loop does not take the
+    // notes of the rows that already landed with it.
+    let note: string | null | undefined;
     try {
       for (const row of drafted) {
         try {
-          await applyOne(row);
+          const applied = await applyOne(row);
+          if (!note) note = applied?.render_note;
           onApplied();
         } catch (err) {
           toastRewriteError(err, onReanalyze);
@@ -197,6 +198,7 @@ export function BatchAskDialog({
       toast.success("Applied and saved as a new version");
       onOpenChange(false);
     } finally {
+      if (note) notifyRenderNote({ render_note: note });
       setApplying(false);
     }
   };

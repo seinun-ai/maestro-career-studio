@@ -337,7 +337,12 @@ def test_port_project_appends_disabled_copy_to_target(db_session, tmp_path, monk
         app.dependency_overrides.clear()
 
     assert response.status_code == 200
-    assert response.json() == {"target_slug": "hybrid", "project_index": 0}
+    assert response.json() == {
+        "target_slug": "hybrid",
+        "project_index": 0,
+        "render_note": None,
+        "render_error": None,
+    }
     assert rendered == ["hybrid"]
 
     target = db_session.get(BaseResume, "hybrid")

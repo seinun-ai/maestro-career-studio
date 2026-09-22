@@ -38,6 +38,8 @@ class BaseResume(Base):
     template_id: Mapped[str | None] = mapped_column(Text)
     pdf_pages: Mapped[int | None] = mapped_column(Integer)
     render_error: Mapped[str | None] = mapped_column(Text)
+    # render_note is deliberately NOT a column: a transient set by
+    # base_resume_render after commit (see schemas/base_resume.py).
     deleted_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     # Hidden from every PICK surface but fully resolvable: archiving a stale
     # career track must never break its editor, its version history, or an

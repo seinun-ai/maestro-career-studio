@@ -69,6 +69,8 @@ class ImportedBase:
     proposed: bool          # True = the system guessed; the UI must ask to confirm
     role_label: str | None = None
     render_error: str | None = None
+    # Transient, see BaseResumeDetail.render_note: set from the rendered row.
+    render_note: str | None = None
     parse_warnings: list[str] = field(default_factory=list)
 
 
@@ -168,10 +170,12 @@ def _mint_base(
 
     # Render is best-effort: a pdflatex failure must not lose the base.
     try:
-        base_resume_render.render_base_resume(slug, session)
+        rendered = base_resume_render.render_base_resume(slug, session)
     except Exception as exc:  # noqa: BLE001 — any renderer failure degrades
         logger.warning("import: render failed for %s: %s", slug, exc)
         imported.render_error = pdf_render.extract_render_error(str(exc))
+    else:
+        imported.render_note = getattr(rendered, "render_note", None)
     return imported
 
 

@@ -60,11 +60,13 @@ import {
   runCoherenceCheck,
 } from "@/lib/api";
 import { FORMATTING_DEFAULTS, type ResumeFormatting } from "@/lib/formatting";
+import { notifyRenderNote } from "@/lib/render-note";
 import { resumeDataSchema } from "@/lib/resume-schema";
 import type {
   Application,
   BaseResumeDetail,
   HygieneFlag,
+  RenderResult,
   ResumeData,
   ResumeDiffHunk,
 } from "@/lib/types";
@@ -139,7 +141,7 @@ export function TailoredResumeStudio({
 
   const render = useMutation({
     mutationFn: (opts?: { thenRescore?: boolean }) =>
-      apiFetch(
+      apiFetch<RenderResult>(
         `/api/applications/${applicationId}/render${
           templateId !== DEFAULT_TEMPLATE
             ? `?template_id=${encodeURIComponent(templateId)}`
@@ -147,7 +149,8 @@ export function TailoredResumeStudio({
         }`,
         { method: "POST" },
       ),
-    onSuccess: (_data, opts) => {
+    onSuccess: (data, opts) => {
+      notifyRenderNote(data);
       toast.success("PDF rendered");
       setPdfNonce((n) => n + 1);
       qc.invalidateQueries({ queryKey: ["job-detail", jobId] });

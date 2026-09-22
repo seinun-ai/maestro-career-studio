@@ -15,6 +15,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { restoreResumeVersion } from "@/lib/api";
+import { notifyRenderNote } from "@/lib/render-note";
 import { baseResumeLabel } from "@/lib/types";
 import type { ChatChangeCard } from "@/lib/types";
 
@@ -30,10 +31,11 @@ export function ChangeCard({ card }: { card: ChatChangeCard }) {
         card.resume_key,
         card.version_number - 1,
       ),
-    onSuccess: () => {
+    onSuccess: (restored) => {
       qc.invalidateQueries({ queryKey: ["resume-versions"] });
       qc.invalidateQueries({ queryKey: ["base-resumes"] });
       qc.invalidateQueries({ queryKey: ["application"] });
+      notifyRenderNote(restored);
       toast.success("Reverted. The previous content is current again.");
     },
     onError: (err: Error) => toast.error(err.message),

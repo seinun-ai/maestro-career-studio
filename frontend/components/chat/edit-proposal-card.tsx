@@ -7,9 +7,14 @@ import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { apiFetch, setChatCardState } from "@/lib/api";
+import { applyResumeEdits, setChatCardState } from "@/lib/api";
+import { notifyRenderNote } from "@/lib/render-note";
 import { baseResumeLabel } from "@/lib/types";
-import type { ChatCardState, ChatProposalOps, UUID } from "@/lib/types";
+import type {
+  ChatCardState,
+  ChatProposalOps,
+  UUID,
+} from "@/lib/types";
 
 /** One line per op: "replace_bullet · experience[0].bullets[1] — “new text…”".
  *  Shared with the base-resume instruction sheet, which renders the same op
@@ -69,23 +74,16 @@ export function EditProposalCard({
   };
 
   const apply = useMutation({
-    mutationFn: () => {
-      const path =
-        proposal.target_kind === "base"
-          ? `/api/base-resumes/${proposal.target_key}/edits`
-          : `/api/applications/${proposal.target_key}/edits`;
-      return apiFetch(path, {
-        method: "PATCH",
-        body: JSON.stringify({ ops: proposal.ops }),
-      });
-    },
-    onSuccess: () => {
+    mutationFn: () =>
+      applyResumeEdits(proposal.target_kind, proposal.target_key, proposal.ops),
+    onSuccess: (result) => {
       setResolution("applied");
       stamp("applied");
       qc.invalidateQueries({ queryKey: ["base-resumes"] });
       qc.invalidateQueries({ queryKey: ["application"] });
       qc.invalidateQueries({ queryKey: ["resume-versions"] });
       onApplied?.(proposal.target_kind, proposal.target_key);
+      notifyRenderNote(result);
       toast.success("Suggestion applied to the resume");
     },
     onError: (err: Error) => toast.error(err.message),

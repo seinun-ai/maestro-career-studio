@@ -36,7 +36,12 @@ class BaseResumeDetail(BaseModel):
     template_id: str | None = None
     resolved_template_id: str | None = None
     resolved_engine: str | None = None
+    # Same contract as RenderResult.template_fallback (see there): an EXPLICIT
+    # template_id only — never a substitution of the persisted choice.
     template_fallback: bool | None = None
+    # Transient like resolved_engine (set on the row after commit): non-null
+    # ONLY when the engine was substituted because TeX is absent; says why.
+    render_note: str | None = None
     pdf_pages: int | None = None
     render_error: str | None = None
     updated_at: datetime
@@ -148,6 +153,12 @@ class BaseResumePortProject(BaseModel):
 class BaseResumePortProjectResult(BaseModel):
     target_slug: str
     project_index: int
+    # The target was re-rendered: transient, see BaseResumeDetail.render_note.
+    render_note: str | None = None
+    # The port is committed before the render, so a render failure is reported
+    # here (and persisted on the target row) instead of failing the call. The
+    # two are alternatives: a failed render substituted nothing.
+    render_error: str | None = None
 
 
 class BaseResumeProposeRequest(BaseModel):
