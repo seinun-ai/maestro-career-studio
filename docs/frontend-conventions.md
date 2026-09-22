@@ -99,7 +99,10 @@
     errors still toast, and only the manual Re-score confirms (`announce:
     true`; the Save chain passes `false`). The line also carries the words
     while a save runs: `StudioSaveButton` keeps its "Save" label and leads
-    with a spinner, because a "Saving…" label widened it from 52 to 89px.
+    with a spinner, because a "Saving…" label widened it from 52 to 89px. It
+    is `focusableWhenDisabled` (dimmed on `data-disabled`, since `disabled:`
+    matches only the native attribute): Save disables itself on every save,
+    and a disabled `<button>` drops focus to `<body>`.
   - *Empty preview*: both studios pass `emptyPreviewMessage(unsaved)`, which
     names the action enabled right now: "No PDF yet. Save to render one." with
     unsaved edits, otherwise "No PDF yet. Generate one from More resume actions
@@ -133,16 +136,29 @@
   - *Base studio*: Save is dirty-gated, so ⋯ **Regenerate PDF** (Generate PDF
     before the first render) is the retry for a failed render, disabled while
     edits are unsaved, and the render-error banner says "save or
-    regenerate", never "save again". A rename re-syncs the
+    regenerate", never "save again". A Save's response replaces only the
+    fields unchanged since the send (`keepIfEdited`, the tailored studio's
+    rule too): the PUT renders inline, so a save runs for seconds, and an edit
+    typed meanwhile stays and reads as unsaved. A rename re-syncs the
     saved baseline: `EditableTitle` PATCHes `/identity` and writes the cache,
     so when the server lands on exactly what the form holds the baseline moves,
     or the saved name reads as an unsaved edit.
   - *Tailored studio*: the user-facing signals (status line, Save, stale strip,
     Re-score hint) read `unsaved`, the diff against what its own last Save
-    sent; `dirty` stays the input to the external-edit adoption guard
-    (SYSTEM.md §12) and the leave-page warning. Until the post-save refetch
-    remounts the editor, `dirty` compares against pre-save values and would
-    report the save just made as unsaved.
+    stored; `dirty` stays the input to the external-edit adoption guard
+    (SYSTEM.md §12) and the leave-page warning. Its own Save moves the
+    editor's baseline IN PLACE: the parent queues the `serverKey` each Save
+    returned and adopts it without a remount when the refetch brings it, so
+    the working copy, focus, section tab, Formatting panel, scroll, raw mode
+    and status line survive. Adoption is a LAYOUT effect: the refetch renders
+    the new key first, and a passive effect let that frame paint the
+    "changed outside the editor" banner. Until that refetch lands, `dirty` compares
+    against pre-save values and would report the save just made as unsaved.
+    The editor remounts (`editorGen`) only when a server copy REPLACES its
+    content: a foreign edit over a clean editor, Load latest, or a confirmed
+    Rebuild. A Rebuild whose content equals the adopted or live copy moves no
+    key, so the adoption effect never runs; it replaces the editor from its
+    own success path.
 - **`PdfPagesPreview` owns the canvas and the zoom.** Pages sit on
   `bg-canvas`, so a caller adds no fill of its own. Zoom is a `role="group"`
   "Zoom" of `aria-pressed` presets (Fit width, Fit page, 100%) on a solid
@@ -175,7 +191,8 @@
   role" row at the foot of the popup or Backspace on the empty input. The X it
   used to carry cleared the role by accident — a remove target expands 8px in
   every direction, which inside a 20px-tall chip puts part of it over the
-  label, so clicking the chip to OPEN the picker removed the value instead.
+  label, so clicking the chip to OPEN the picker removed the value instead:
+  an expanded hit target needs room around it, not just under it.
   Multi-selection keeps `Combobox.ChipRemove`: removing one of several entries
   has no other gesture. The clear row rides in as an ordinary item with a
   sentinel value so Base UI closes the popup and commits through the same

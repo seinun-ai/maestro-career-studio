@@ -1,6 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type Dispatch,
+  type SetStateAction,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -65,7 +74,13 @@ import {
 import { FORMATTING_DEFAULTS, type ResumeFormatting } from "@/lib/formatting";
 import { notifyRenderNote } from "@/lib/render-note";
 import { resumeDataSchema } from "@/lib/resume-schema";
-import { emptyPreviewMessage, saveStatus } from "@/lib/studio";
+import {
+  adoptServerKey,
+  emptyPreviewMessage,
+  keepIfEdited,
+  saveStatus,
+  serverKey,
+} from "@/lib/studio";
 import type {
   Application,
   BaseResumeDetail,
@@ -84,6 +99,30 @@ function snapshotOf(
   t: string | null,
 ): string {
   return JSON.stringify({ d, f: f ?? null, t });
+}
+
+/** What a Save sends (the mutation's variables, so its response can tell edits made since). */
+type SaveSent = {
+  data: ResumeData;
+  formatting: Partial<ResumeFormatting> | null;
+  templateId: string;
+};
+
+/**
+ * A `serverKey` back into resume data, or null when absent or invalid. One
+ * parse for the adopted copy and for a Save's response, so the two compare
+ * equal when their content does.
+ */
+function parseResumeData(key: string): ResumeData | null {
+  if (key === "") return null;
+  let raw: unknown;
+  try {
+    raw = JSON.parse(key) as unknown;
+  } catch {
+    return null;
+  }
+  const parsed = resumeDataSchema.safeParse(raw);
+  return parsed.success ? parsed.data : null;
 }
 
 /**
@@ -122,25 +161,19 @@ export function TailoredResumeStudio({
   const qc = useQueryClient();
   const applicationId = application.id;
 
-  // Template lives here (not in StudioEditor) so a Save — which remounts the
-  // customized_json-keyed StudioEditor — doesn't reset the chosen template.
+  // Template lives here, beside `render`, which reads it for the query param.
   const [templateId, setTemplateId] = useState(
     templateIdFromApi(application.template_id),
   );
 
   // The render mutation and its cache-buster nonce live here (not in
-  // StudioEditor) so a Save — which invalidates the application query and
-  // remounts the customized_json-keyed StudioEditor — doesn't cancel an
-  // in-flight render. This lets Save chain straight into render (auto-render
-  // after save) without the remount tearing the render down.
+  // StudioEditor) so a remount of the editor (Load latest, Rebuild, a foreign
+  // edit adopted while clean) cannot tear down a render the Save chain started.
   const [pdfNonce, setPdfNonce] = useState(0);
 
-  // Lifted alongside `render` (below), for the same reason: Save invalidates
-  // the application query and remounts the customized_json-keyed
-  // StudioEditor, so the mutation driving the post-save auto re-score has to
-  // live up here too or the remount would tear it down mid-chain. This is the
-  // exact same mutation the manual "Re-score" button uses — reused, not
-  // duplicated.
+  // Lifted alongside `render` (below), for the same reason: the post-save
+  // auto re-score must outlive a remount mid-chain. This is the exact same
+  // mutation the manual "Re-score" button uses — reused, not duplicated.
   const rescore = useMutation({
     mutationFn: () =>
       runAtsScoreTarget(jobId, "application", applicationId, "tailored"),
@@ -183,45 +216,59 @@ export function TailoredResumeStudio({
     onError: (err: Error) => toast.error(err.message),
   });
 
-  const customizedKey =
-    application.customized_json == null
-      ? ""
-      : JSON.stringify(application.customized_json);
-
-  // Dirty-guard (SYSTEM.md §12): the editor is keyed on the ADOPTED server
-  // snapshot, not the live `customizedKey`, so a foreign edit (chat/MCP) to the
-  // same application no longer remounts StudioEditor and silently discards
-  // in-progress studio edits. A newer server key is adopted (→ remount) only
-  // when it's safe: right after our OWN Save, or when the editor is not dirty.
-  // While dirty, a foreign change keeps the editor mounted and surfaces a banner.
+  // Dirty-guard (SYSTEM.md §12). Server copies compare by `serverKey`
+  // (sorted-key JSON): the query cache keeps the old key order in every
+  // subtree whose content did not change. The editor starts from the ADOPTED
+  // key, not the live one, and `adoptServerKey` decides what a new live key
+  // does: one our own Save returned moves the baseline in place; anyone
+  // else's replaces the content when the editor is clean (or on a confirmed
+  // Rebuild), and over unsaved edits keeps the editor and shows the banner.
+  const customizedKey = useMemo(
+    () => serverKey(application.customized_json),
+    [application.customized_json],
+  );
   const [adoptedKey, setAdoptedKey] = useState(customizedKey);
-  // Set true when our own Save lands so the resulting server key is adopted
-  // WITHOUT the banner (Save→render→re-score chain must not break).
-  const adoptNextServerKey = useRef(false);
+  // Remounts StudioEditor. Bumped only when a server copy REPLACES the
+  // editor's content. Our own Save moves the baseline in place, so the
+  // working copy, focus, tab, scroll, Formatting panel and status line
+  // survive it.
+  const [editorGen, setEditorGen] = useState(0);
+  // Keys our own Saves returned that the server has not shown us yet.
+  const ownKeys = useRef<string[]>([]);
+  // A Rebuild's key: the user already agreed to lose unsaved edits.
+  const forcedKey = useRef<string | null>(null);
   const [editorDirty, setEditorDirty] = useState(false);
   const onDirtyChange = useCallback((dirty: boolean) => setEditorDirty(dirty), []);
 
-  useEffect(() => {
-    if (customizedKey === "" || customizedKey === adoptedKey) return;
-    if (adoptNextServerKey.current || !editorDirty) {
-      adoptNextServerKey.current = false;
-      setAdoptedKey(customizedKey);
-    }
-    // else: a foreign change arrived while the user has unsaved edits — keep the
-    // current editor mounted; `serverChanged` drives the inline reload banner.
+  // A layout effect: the refetch renders with the new live key before this
+  // runs, and in that render `serverChanged && dirty` holds. Adopting before
+  // paint keeps our own Save from flashing the banner for a frame.
+  useLayoutEffect(() => {
+    const next = adoptServerKey({
+      live: customizedKey,
+      adopted: adoptedKey,
+      own: ownKeys.current,
+      dirty: editorDirty,
+      forced: forcedKey.current,
+    });
+    ownKeys.current = next.own;
+    if (next.action === "none") return;
+    // The server moved past whatever a Rebuild armed; never leave it armed.
+    forcedKey.current = null;
+    // "banner": keep the editor; `serverChanged` shows Load latest.
+    if (next.action === "banner") return;
+    setAdoptedKey(customizedKey);
+    if (next.action === "remount") setEditorGen((g) => g + 1);
   }, [customizedKey, adoptedKey, editorDirty]);
 
-  const parseResumeData = (key: string): ResumeData | null => {
-    if (key === "") return null;
-    let raw: unknown;
-    try {
-      raw = JSON.parse(key) as unknown;
-    } catch {
-      return null;
-    }
-    const parsed = resumeDataSchema.safeParse(raw);
-    return parsed.success ? parsed.data : null;
+  /** Replace the editor's content with the server copy `key` (a remount). */
+  const replaceEditor = (key: string) => {
+    ownKeys.current = [];
+    forcedKey.current = null;
+    setAdoptedKey(key);
+    setEditorGen((g) => g + 1);
   };
+
   // The editor initializes from the adopted snapshot, not the live one.
   const adoptedData = useMemo(() => parseResumeData(adoptedKey), [adoptedKey]);
   const serverChanged = customizedKey !== "" && customizedKey !== adoptedKey;
@@ -232,7 +279,14 @@ export function TailoredResumeStudio({
         `/api/applications/${applicationId}/materialize-resume`,
         { method: "POST" },
       ),
-    onSuccess: () => {
+    onSuccess: (result) => {
+      const key = serverKey(result.customized_json);
+      // The adoption effect runs only when a key MOVES. A Rebuild whose
+      // content equals the adopted copy, or the live one, moves nothing, yet
+      // the user confirmed losing their edits: replace the editor here.
+      // Otherwise the refetch brings the key, and the effect lets it win.
+      if (key === adoptedKey || key === customizedKey) replaceEditor(key);
+      else forcedKey.current = key;
       qc.invalidateQueries({ queryKey: ["job-detail", jobId] });
       qc.invalidateQueries({ queryKey: ["application", applicationId] });
       toast.success("Draft built from the base resume");
@@ -289,7 +343,7 @@ export function TailoredResumeStudio({
 
   return (
     <StudioEditor
-      key={adoptedKey}
+      key={editorGen}
       application={application}
       jobId={jobId}
       jobLabel={jobLabel}
@@ -304,10 +358,12 @@ export function TailoredResumeStudio({
       rescore={rescore}
       pdfNonce={pdfNonce}
       serverChanged={serverChanged}
-      onLoadLatest={() => setAdoptedKey(customizedKey)}
+      onLoadLatest={() => replaceEditor(customizedKey)}
       onDirtyChange={onDirtyChange}
-      onSaved={() => {
-        adoptNextServerKey.current = true;
+      onSaved={(key) => {
+        // A formatting-only Save returns the adopted key: queueing it would
+        // leave an entry no refetch consumes.
+        if (key !== adoptedKey) ownKeys.current = [...ownKeys.current, key];
       }}
     />
   );
@@ -341,8 +397,8 @@ function StudioEditor({
   materializePending: boolean;
   onRebuild: () => void;
   templateId: string;
-  onTemplateChange: (value: string) => void;
-  // Lifted to TailoredResumeStudio so they survive the Save-triggered remount.
+  onTemplateChange: Dispatch<SetStateAction<string>>;
+  // Lifted to TailoredResumeStudio so they survive a remount mid-chain.
   render: {
     mutate: (opts?: { thenRescore?: boolean }) => void;
     isPending: boolean;
@@ -353,12 +409,13 @@ function StudioEditor({
   };
   pdfNonce: number;
   // Dirty-guard wiring (see TailoredResumeStudio): the parent adopts newer
-  // server snapshots; this editor reports its dirty state up, flags its own
-  // saves, and shows a reload banner when a foreign change arrives while dirty.
+  // server snapshots; this editor reports its dirty state up, hands up the key
+  // each of its own saves returned, and shows a reload banner when a foreign
+  // change arrives while dirty.
   serverChanged: boolean;
   onLoadLatest: () => void;
   onDirtyChange: (dirty: boolean) => void;
-  onSaved: () => void;
+  onSaved: (key: string) => void;
 }) {
   const qc = useQueryClient();
   const confirm = useConfirm();
@@ -484,10 +541,10 @@ function StudioEditor({
     handleApplyProposal({ ...flag, proposal: flag.proposal }, key);
   };
 
-  // Dirty-state: the local working copy differs from the last-saved server
-  // value. `initialData` is the parsed value `data` is initialized from and is
-  // stable for this mount (StudioEditor is re-keyed on `customized_json`), so a
-  // fresh mount starts clean and a successful Save — which remounts — clears it.
+  // Dirty-state: the local working copy differs from the adopted server copy.
+  // `initialData` is that copy, parsed. A remount (a copy that replaces the
+  // content) starts clean; our own Save instead moves `initialData` in place
+  // once its refetch lands, and `data` already holds the saved copy by then.
   const initialSerialized = useMemo(
     () => JSON.stringify(initialData),
     [initialData],
@@ -523,14 +580,13 @@ function StudioEditor({
     onDirtyChange(dirty);
   }, [dirty, onDirtyChange]);
 
-  // What our own last Save sent, as adopted from its response. Between that
-  // Save landing and the refetch that remounts this editor, `dirty` still
+  // What our own last Save stored, as taken from its response. Between that
+  // Save landing and the refetch that moves the baseline, `dirty` still
   // compares against the PRE-save server values; this keeps the status line,
   // Save and the stale strip from reporting the save we just made as unsaved.
   // An edit made after the Save differs from it and reads as unsaved at once.
   // `dirty` itself stays as it is: the parent's adoption guard and the
   // leave-page warning read it.
-  const sentData = useRef<ResumeData | null>(null);
   const [savedSnapshot, setSavedSnapshot] = useState<string | null>(null);
   // Before the first Save there is nothing to compare, so `unsaved` is `dirty`.
   const unsaved =
@@ -540,8 +596,8 @@ function StudioEditor({
         savedSnapshot);
 
   const save = useMutation({
-    mutationFn: async () => {
-      const validated = resumeDataSchema.safeParse(data);
+    mutationFn: async (sent: SaveSent) => {
+      const validated = resumeDataSchema.safeParse(sent.data);
       if (!validated.success) {
         throw new Error(
           validated.error.issues
@@ -549,43 +605,34 @@ function StudioEditor({
             .join("; "),
         );
       }
-      sentData.current = data;
       return apiFetch<Application>(`/api/applications/${applicationId}`, {
         method: "PATCH",
         body: JSON.stringify({
           customized_json: validated.data,
-          formatting,
-          template_id: templateIdToApi(templateId),
+          formatting: sent.formatting,
+          template_id: templateIdToApi(sent.templateId),
         }),
       });
     },
-    onSuccess: (result) => {
-      // Our own save: adopt the resulting server snapshot WITHOUT the foreign-
-      // change banner (the parent remounts on the new customized_json key once
-      // the ["application"] invalidation below lands).
-      onSaved();
-      // Adopt the server's normalized formatting. Postgres JSONB re-orders keys
-      // on the round-trip, so the local diff (built in schema-declaration order)
-      // and the refetched value would otherwise never match — a formatting-only
-      // save doesn't remount this component (it's keyed on customized_json), so
-      // `dirty` would stay stuck true and gate Generate PDF / Re-score forever.
-      setFormatting(
-        (result.formatting as Partial<ResumeFormatting> | null) ?? null,
-      );
-      // Adopt the server's normalized template_id so the parent-held selection,
-      // the dirty flag, and the render query param all agree after a save.
-      onTemplateChange(templateIdFromApi(result.template_id));
-      // Same normalisation the next render applies to the adopted values
-      // (`templateIdToApi(templateIdFromApi(…))`), so an untouched template
+    onSuccess: (result, sent) => {
+      // Ours: the parent moves this editor's baseline to this key in place
+      // once the refetch lands (no banner, no remount).
+      const key = serverKey(result.customized_json);
+      onSaved(key);
+      // Take the server's normalized copies (the PATCH re-dumps the draft),
+      // but only where nothing changed since the send: an edit made while the
+      // save ran stays, and reads as unsaved. The snapshot applies the same
+      // template normalisation the next render does, so an untouched template
       // compares equal.
+      const savedData = parseResumeData(key) ?? sent.data;
       const savedFormatting =
         (result.formatting as Partial<ResumeFormatting> | null) ?? null;
+      const savedTemplateId = templateIdFromApi(result.template_id);
+      setData((cur) => keepIfEdited(cur, sent.data, savedData));
+      setFormatting((cur) => keepIfEdited(cur, sent.formatting, savedFormatting));
+      onTemplateChange((cur) => keepIfEdited(cur, sent.templateId, savedTemplateId));
       setSavedSnapshot(
-        snapshotOf(
-          sentData.current ?? data,
-          savedFormatting,
-          templateIdToApi(templateIdFromApi(result.template_id)),
-        ),
+        snapshotOf(savedData, savedFormatting, templateIdToApi(savedTemplateId)),
       );
       qc.invalidateQueries({ queryKey: ["job-detail", jobId] });
       qc.invalidateQueries({ queryKey: ["application", applicationId] });
@@ -595,11 +642,10 @@ function StudioEditor({
       qc.invalidateQueries({ queryKey: ["resume-diff", applicationId] });
       setRevertedKeys(new Set());
       // Auto-render so the PDF regenerates without a second click. `render`
-      // lives in the parent, so it keeps running through the remount that the
-      // ["application"] invalidation above triggers. `thenRescore` chains the
-      // same mutation the manual "Re-score" button uses once the render
-      // lands, so the tailored ATS score doesn't go stale silently after an
-      // edit (`rescore` is lifted to the parent for the same reason).
+      // lives in the parent, so a remount mid-chain cannot tear it down.
+      // `thenRescore` chains the same mutation the manual "Re-score" button
+      // uses once the render lands, so the tailored ATS score doesn't go stale
+      // silently after an edit (`rescore` is lifted for the same reason).
       render.mutate({ thenRescore: true });
     },
     onError: (err: Error) => toast.error(err.message),
@@ -767,7 +813,7 @@ function StudioEditor({
                   }
                   primary={
                     <StudioSaveButton
-                      onSave={() => save.mutate()}
+                      onSave={() => save.mutate({ data, formatting, templateId })}
                       canSave={canSave}
                       pending={save.isPending}
                     />

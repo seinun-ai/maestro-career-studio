@@ -38,6 +38,12 @@ export function StudioSaveButton({
       size="sm"
       onClick={() => onSave()}
       disabled={!canSave}
+      // Stays focusable while disabled: Save turns itself off on every save,
+      // and a disabled <button> drops focus to <body>, which lost a keyboard
+      // user's place. Dimmed on data-disabled because `disabled:` only matches
+      // the native attribute.
+      focusableWhenDisabled
+      className="data-disabled:pointer-events-none data-disabled:opacity-50"
       title={`Save (${shortcutLabel(mod, "S")})`}
       aria-keyshortcuts="Meta+S Control+S"
     >

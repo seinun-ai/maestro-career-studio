@@ -60,9 +60,27 @@ import { apiFetch, apiUrlForBrowserPdf } from "@/lib/api";
 import { FORMATTING_DEFAULTS, type ResumeFormatting } from "@/lib/formatting";
 import { notifyRenderNote } from "@/lib/render-note";
 import { resumeDataSchema } from "@/lib/resume-schema";
-import { emptyPreviewMessage, saveStatus } from "@/lib/studio";
+import { emptyPreviewMessage, keepIfEdited, saveStatus } from "@/lib/studio";
 import type { BaseResumeDetail, ResumeData } from "@/lib/types";
 import { cn } from "@/lib/utils";
+
+/** The server record the form is in sync with, as one comparable string. */
+function syncedSnapshotOf(record: BaseResumeDetail): string {
+  return JSON.stringify({
+    data: record.data,
+    displayName: record.display_name ?? "",
+    formatting: record.formatting ?? null,
+    templateId: record.template_id ?? null,
+  });
+}
+
+/** What a Save sends (the mutation's variables, so its response can tell edits made since). */
+type BaseSaveSent = {
+  data: ResumeData;
+  displayName: string;
+  formatting: Partial<ResumeFormatting> | null;
+  templateId: string;
+};
 
 export function EditorBody({
   slug,
@@ -105,24 +123,14 @@ export function EditorBody({
   // external changes (e.g. edits made via the MCP server in another client)
   // without clobbering unsaved local edits — and prevents a later Save from
   // overwriting the newer server record with stale form state.
-  const initialSyncedSnapshot = JSON.stringify({
-    data: initial.data,
-    displayName: initial.display_name ?? "",
-    formatting: initial.formatting ?? null,
-    templateId: initial.template_id ?? null,
-  });
+  const initialSyncedSnapshot = syncedSnapshotOf(initial);
   const lastSyncedRef = useRef(initialSyncedSnapshot);
   const [lastSyncedSnapshot, setLastSyncedSnapshot] = useState(
     initialSyncedSnapshot,
   );
   useEffect(() => {
     if (!live) return;
-    const liveSnap = JSON.stringify({
-      data: live.data,
-      displayName: live.display_name ?? "",
-      formatting: live.formatting ?? null,
-      templateId: live.template_id ?? null,
-    });
+    const liveSnap = syncedSnapshotOf(live);
     const localSnap = JSON.stringify({
       data,
       displayName,
@@ -172,6 +180,14 @@ export function EditorBody({
   const pdfHref = buildPdfHref(false);
   const pdfDownloadHref = buildPdfHref(true);
 
+  const markSynced = (result: BaseResumeDetail) => {
+    const snapshot = syncedSnapshotOf(result);
+    lastSyncedRef.current = snapshot;
+    setLastSyncedSnapshot(snapshot);
+  };
+
+  // Full adoption, for the paths gated on no unsaved edits (Ask for changes,
+  // Import from Career KB). A Save takes the record field by field instead.
   const adoptBaseResumeDetail = (result: BaseResumeDetail) => {
     setData(result.data);
     setDisplayName(result.display_name ?? "");
@@ -179,19 +195,12 @@ export function EditorBody({
       (result.formatting as Partial<ResumeFormatting> | null) ?? null,
     );
     setTemplateId(templateIdFromApi(result.template_id));
-    const snapshot = JSON.stringify({
-      data: result.data,
-      displayName: result.display_name ?? "",
-      formatting: result.formatting ?? null,
-      templateId: result.template_id ?? null,
-    });
-    lastSyncedRef.current = snapshot;
-    setLastSyncedSnapshot(snapshot);
+    markSynced(result);
   };
 
   const save = useMutation({
-    mutationFn: async () => {
-      const validated = resumeDataSchema.safeParse(data);
+    mutationFn: async (sent: BaseSaveSent) => {
+      const validated = resumeDataSchema.safeParse(sent.data);
       if (!validated.success) {
         throw new Error(
           validated.error.issues
@@ -202,17 +211,33 @@ export function EditorBody({
       return apiFetch<BaseResumeDetail>(`/api/base-resumes/${slug}`, {
         method: "PUT",
         body: JSON.stringify({
-          display_name: displayName || null,
+          display_name: sent.displayName || null,
           data: validated.data,
-          template_id: templateIdToApi(templateId),
-          formatting,
+          template_id: templateIdToApi(sent.templateId),
+          formatting: sent.formatting,
         }),
       });
     },
-    onSuccess: (result) => {
+    onSuccess: (result, sent) => {
       // Adopt the server's normalized record so form, cache, and sync-snapshot
-      // all agree after a save.
-      adoptBaseResumeDetail(result);
+      // agree after a save, but only where nothing changed since the send.
+      // The PUT renders inline, so a save runs for seconds, and an edit made
+      // meanwhile stays and reads as unsaved.
+      setData((cur) => keepIfEdited(cur, sent.data, result.data));
+      setDisplayName((cur) =>
+        keepIfEdited(cur, sent.displayName, result.display_name ?? ""),
+      );
+      setFormatting((cur) =>
+        keepIfEdited(
+          cur,
+          sent.formatting,
+          (result.formatting as Partial<ResumeFormatting> | null) ?? null,
+        ),
+      );
+      setTemplateId((cur) =>
+        keepIfEdited(cur, sent.templateId, templateIdFromApi(result.template_id)),
+      );
+      markSynced(result);
       qc.setQueryData(["base-resumes", slug], result);
       qc.invalidateQueries({ queryKey: ["base-resumes"] });
       qc.invalidateQueries({ queryKey: ["setup-status"] });
@@ -362,7 +387,9 @@ export function EditorBody({
                   }
                   primary={
                     <StudioSaveButton
-                      onSave={() => save.mutate()}
+                      onSave={() =>
+                        save.mutate({ data, displayName, formatting, templateId })
+                      }
                       canSave={canSave}
                       pending={save.isPending}
                     />

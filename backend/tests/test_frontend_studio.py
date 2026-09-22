@@ -56,6 +56,14 @@ def test_one_save_button_owns_the_click_and_the_shortcut():
     assert "disabled={!canSave}" in _SAVE_BUTTON
 
 
+def test_save_button_keeps_focus_when_it_disables_itself():
+    # A disabled native <button> drops focus to <body>, and Save disables
+    # itself on every click. `disabled:` matches only the native attribute, so
+    # the dimming is restated on `data-disabled`.
+    assert "focusableWhenDisabled" in _SAVE_BUTTON
+    assert "data-disabled:opacity-50" in _SAVE_BUTTON
+
+
 _BASE = _read("components/resume-editor/editor-body.tsx")
 
 
@@ -114,7 +122,7 @@ def test_tailored_studio_status_shortcut_and_stale_preview():
 
 def test_tailored_status_ignores_the_post_save_refetch_gap():
     # `dirty` still feeds the parent's adoption guard; the USER-facing signals
-    # read `unsaved`, which forgets the gap before the remount.
+    # read `unsaved`, which forgets the gap before the refetch moves the baseline.
     assert "savedSnapshot" in _TAILORED
     assert "dirty: unsaved" in _TAILORED
     assert "const canSave = unsaved && !busy;" in _TAILORED
@@ -166,6 +174,46 @@ def test_tailored_rescore_hint_reads_unsaved():
 
 def test_tailored_unsaved_equals_dirty_before_the_first_save():
     assert "savedSnapshot === null ||" in _TAILORED
+
+
+def test_tailored_own_saves_adopt_in_place():
+    # A one-shot "the next key is ours" flag never said WHICH key: a
+    # formatting-only save left it armed, and the next chat/MCP edit remounted
+    # the editor over unsaved edits. Own keys are now queued by content
+    # (`serverKey`: the query cache keeps old key order in unchanged subtrees)
+    # and move the baseline without a remount; only a copy that replaces the
+    # content bumps `editorGen`.
+    assert "adoptNextServerKey" not in _TAILORED
+    assert "serverKey(application.customized_json)" in _TAILORED
+    assert re.search(
+        r"const key = serverKey\(result\.customized_json\);\s*onSaved\(key\);",
+        _TAILORED,
+    )
+    assert "adoptServerKey(" in _TAILORED
+    # Before paint: the refetch renders the new live key first, and a passive
+    # effect let that frame paint the "changed outside the editor" banner.
+    assert re.search(r"useLayoutEffect\(\(\) => \{\s*const next = adoptServerKey\(", _TAILORED)
+    assert "key={editorGen}" in _TAILORED
+    assert "key={adoptedKey}" not in _TAILORED
+
+
+def test_rebuild_replaces_the_editor_even_when_its_key_does_not_move():
+    # The adoption effect runs only when a key moves. A Rebuild whose content
+    # equals the adopted (or the live) copy moves nothing, so it replaces the
+    # editor from its own success path; any other Rebuild arms `forcedKey`.
+    materialize = _mutation(_TAILORED, "materialize")
+    assert "replaceEditor(key)" in materialize
+    assert "forcedKey.current = key" in materialize
+
+
+def test_save_responses_keep_edits_made_while_saving():
+    # A save's response used to overwrite the form wholesale: text typed during
+    # the PATCH (the base studio's PUT renders inline, so for seconds) vanished
+    # under "All changes saved".
+    assert "keepIfEdited(" in _TAILORED
+    assert "sentData" not in _TAILORED
+    assert "keepIfEdited(" in _BASE
+    assert "adoptBaseResumeDetail(" not in _mutation(_BASE, "save")
 
 
 def test_studio_overflow_menu_sizes_to_its_labels():

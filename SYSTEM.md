@@ -893,12 +893,13 @@ citation. Priority lives in the item text, not in the ordinal.
   attrs set after refresh, never columns — don't "fix" them into the ORM.
 - **score_target(result=...)**: passes a precomputed engine result to persist; the double-run it replaced
   was audit finding C18 — don't re-add a second run.
-- **Studio external-edit dirty-guard**: StudioEditor keys on the *adopted* server snapshot, not live
-  `customized_json`; external edits auto-adopt only when clean, and Save flags the next server key so
-  Save→render→re-score adopts banner-free.
-- **An expanded hit target can cover its own label**: `after:-inset-2` inside an `h-5` chip put the remove
-  target over the chip's own text, so clicking to open cleared instead. Expanded targets need room around
-  them, not just under them.
+- **Studio external-edit dirty-guard**: TailoredResumeStudio compares `customized_json` by `serverKey` (sorted-key
+  JSON). A key its own Save returned moves the editor's baseline in place: no remount, so the working copy, focus
+  and status line survive. Any other new key remounts the editor only when it is clean or a confirmed Rebuild; over
+  unsaved edits it shows the Load-latest banner.
+- **The query cache keeps old key order** (2026-09-22): structural sharing reuses the old object in every unchanged
+  subtree, so `JSON.stringify` of a refetch ≠ the mutation response once the server reorders keys (PATCH re-dumps in
+  schema order; migrated drafts are JSONB order), and an own Save read as foreign. Compare server JSON by `serverKey`.
 - **MCP clients truncate tool descriptions at ~2048 dedented chars**: keep `__doc__` ≤2000 (ratchet test) or
   put the fact on a param `Field(description=…)`.
 - **Worktree subagents**: agents may edit the MAIN checkout instead of the worktree — hand them absolute
@@ -922,8 +923,6 @@ citation. Priority lives in the item text, not in the ordinal.
 - **LLM provider outages are ONE exception type**: `llm.py` normalizes them to `llm.LLMProviderError`;
   `app.main` maps it to 502 + the provider's message for every router. Never catch `openai.*` in routers;
   plain `RuntimeError` means a LOCAL render/compile failure and must stay a 500.
-- **Explore charts live under Analytics**: `/explore` is a 307 to `/analytics`; the charts live in
-  `frontend/components/charts/` and `…/analytics/`, not an `app/explore/` route.
 - **`delete-orphan` cascade vs bulk re-point**: a bulk `update()` that moves children off a parent does not
   refresh the parent's already-loaded collection, so a following `session.delete(parent)` cascades away the
   rows just moved — expire the parent between the two (`career_kb.merge_entities`).
