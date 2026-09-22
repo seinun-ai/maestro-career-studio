@@ -170,3 +170,11 @@ def test_fit_page_is_bounded_by_the_preview_not_the_viewport():
     assert "@container-[size]" in _PREVIEW
     assert "max-h-[100cqh]" in _PREVIEW
     assert "dvh" not in _PREVIEW
+
+
+def test_section_order_has_no_drag_path():
+    # Reordering is up/down buttons (docs/frontend-conventions.md): drag added a
+    # second, pointer-only path and a cursor-grab promise on every row.
+    panel = _read("components/resume-editor/formatting-panel.tsx")
+    assert "draggable" not in panel
+    assert "cursor-grab" not in panel
