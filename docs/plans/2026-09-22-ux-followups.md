@@ -662,6 +662,10 @@ A1 §3 (`focusableWhenDisabled`).
 
 | Task | Planned | Did instead | Why (Goal Card line) |
 |---|---|---|---|
+| Planner (2026-09-22) | Tasks 4–17 in order, one subagent each | Wave 1: four parallel Grok 4.7 lanes (Tasks 4/8/9, 5/6/7/10, 11/12/13, 14/15/16), each with a handoff doc `2026-09-22-ux-lane*-cursor-grok47.md`; wave 2: Task 17 alone on the merged branch; Claude reviews and merges each lane, then does Tasks 18–19. SYSTEM.md edits from any lane are queued for Task 18 | The owner asked to parallelize with Grok 4.7; Task 17 touches ~20 files every lane owns; SYSTEM.md sits at the line cap |
+| 3 | Bare-substring pins | Regex pins; the base guard pinned whole (`localSnap === lastSyncedRef.current && !raw.pending`); plus 8 mutation-checked wiring pins (cancel, `onSave`, pending report, unmount cleanup, error clearing) | Pins survive wrapping; review found the wiring itself unpinned |
+| 3 (review) | Error cleared only by a successful parse | Also cleared when the text returns to the form's copy and on a Save with no draft | A stale parse alert above valid text misleads (Principles: honesty) |
+| 3 | A1 §4: Monaco holds a textarea, so Cmd/Ctrl+S blurs it first | Monaco edits through `div.native-edit-context`; the shortcut saves directly, which is harmless because Monaco reports every keystroke | Repo reality; browser-verified |
 | 2 | Pin `onSaved(serverKey(result.customized_json))` | Pin a regex for `const key = serverKey(…); onSaved(key);` | A1 §2 needs the key twice (`parseResumeData`) |
 | 2 | Rebuild replaces directly when its key equals `adoptedKey` | Also when it equals the live key | The cache keeps the same reference, so the adoption effect never runs then either |
 | 2 | Adoption in `useEffect` | `useLayoutEffect` (pinned, documented) | The "changed outside the editor" banner painted one frame on every content save (0 of 1592 frames after) |
@@ -676,4 +680,5 @@ A1 §3 (`focusableWhenDisabled`).
 | Baseline (`a3c800bb`) | full backend suite / node / tsc / lint | 4432 passed, 2 skipped / 40/40 / clean / 0 errors, 5 warnings |
 | Task 1 (+ review fix) | node / pins / tsc / lint / slop | 67/67 (mutation-checked) / pass / clean / 0 errors, 5 warnings / OK |
 | Task 2 (+ review fix) | pins / node / full backend / slop / check_system_md | 111 passed / 67/67 / 4438 passed, 2 skipped / frontend 516 of 518, backend OK / OK 998/1000; browser-verified both studios (Playwright for real key events) |
-| Stopped | owner asked to stop after Task 2 | Tasks 3–19 not started |
+| Task 3 (+ review fix) | pins / node / tsc / lint / slop / check_system_md | 42 studio pins, 156 frontend pins / 67/67 / clean / 0 errors, 5 warnings / frontend 517 of 518 (43 clones), backend OK / OK 998/1000; browser-verified both studios (Playwright) |
+| Lane branch point | duplication ceiling for every wave-1 lane | 517 duplicated lines, 43 clones |
