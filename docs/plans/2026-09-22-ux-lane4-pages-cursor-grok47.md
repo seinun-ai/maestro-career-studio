@@ -170,12 +170,20 @@ gate table, deviations, anything queued or deferred, and any concerns.
 
 | Task | Planned | Did instead | Why (Goal Card line) |
 |---|---|---|---|
+| 14 | Pin "passes `mark=`" and alt mentions "sample", no test file named | New `backend/tests/test_frontend_template_preview.py`. The alt pin matches the alt template literal, and the shell must render `mark` at `top-1.5 right-1.5` | A file-wide "sample" substring already passes: the component comment says "sample resume". No owned pin file covered thumbnails (conventions change with a pin CI actually runs) |
 
 ## Gate results
 
 | Task | Gate | Result |
 |---|---|---|
+| 14 | `test_frontend_template_preview.py` + every `test_frontend_*.py` | 158 passed |
+| 14 | tsc / lint / `node --test lib/*.test.ts` | clean / 0 errors, 5 warnings / 67/67 |
+| 14 | slop `check frontend` / `check backend` | OK / OK. Duplication 517 lines, 43 clones (ceiling) |
+| 14 | browser | `/templates`: 6 "Sample" marks, top-right (6px/6px). Picker dialog: 6, same corner. Base resume "Lane Four" thumbnail: 0 Sample marks, alt "Lane Four preview". Stale chip tooltip not reachable (see Deferred) |
 
 ## Queued for Task 18 (SYSTEM.md changes Claude applies)
 
 ## Deferred to merge (edits left for Claude, with file:line)
+
+- `frontend/components/templates/template-select.tsx:163` (DialogTitle "Choose a template"): skipped the optional `<DialogDescription>Previews show a sample resume, not yours.</DialogDescription>`. Lane 1 owns this file.
+- Stale-chip tooltip, not fixed (Task 14 step 3). On `/templates`, `elementFromPoint` at the centre of Harshibar's "needs re-validation" chip hits the stretched card link (`aria-label="Open Harshibar layout"`), not the chip. The `title` is set; hover cannot reach it because `GalleryCard`'s link is `absolute inset-0 z-10` and the chip is not lifted to z-20. Picker mode has no stretched link, so that page is the one that hides the tooltip.

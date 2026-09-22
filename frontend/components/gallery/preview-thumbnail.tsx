@@ -21,14 +21,15 @@ import { cn } from "@/lib/utils";
  *    caller's cache-busting query — retries automatically.
  *
  * Callers own the URL (including its `?v=` cache-buster) and the vocabulary:
- * what "not ready" is called, and whether a degraded-but-showable state earns a
- * corner chip.
+ * what "not ready" is called, whether the image is a sample (`mark`, top-right),
+ * and whether a degraded-but-showable state earns a corner chip (bottom-left).
  */
 export function PreviewThumbnail({
   src,
   alt,
   placeholder,
   chip,
+  mark,
   className,
 }: {
   /** `null` when there is no preview to show — renders `placeholder` instead. */
@@ -38,6 +39,9 @@ export function PreviewThumbnail({
   placeholder: string;
   /** Corner marker for a state that is degraded but still worth showing. */
   chip?: { label: string; title?: string; className?: string };
+  /** Persistent top-right marker for what the image IS (e.g. "Sample"). `chip`
+   *  reports a degraded STATE bottom-left; both can show at once. */
+  mark?: string;
   className?: string;
 }) {
   const [failedSrc, setFailedSrc] = useState<string | null>(null);
@@ -78,6 +82,14 @@ export function PreviewThumbnail({
           title={chip.title}
         >
           {chip.label}
+        </span>
+      )}
+      {showImage && mark && (
+        <span
+          aria-hidden="true"
+          className="bg-background/90 text-muted-foreground absolute top-1.5 right-1.5 rounded px-1.5 py-0.5 text-[10px] font-medium backdrop-blur"
+        >
+          {mark}
         </span>
       )}
     </div>

@@ -42,8 +42,9 @@ export function TemplateThumbnail({
   return (
     <PreviewThumbnail
       src={src}
-      alt={`${template.display_name ?? template.id} preview`}
+      alt={`${template.display_name ?? template.id} preview, rendered with a sample resume`}
       placeholder="Not validated"
+      mark="Sample"
       chip={
         isThumbnailStale(template)
           ? {

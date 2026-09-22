@@ -348,7 +348,12 @@
   card grid, so the shell lives once in `components/gallery/` (`GalleryGrid`,
   `GalleryCard`, `GalleryCardActions` — the z-20 wrapper — and
   `PreviewThumbnail`). A gallery supplies only what differs: preview URL,
-  empty-state wording, optional corner chip, card body. Two behaviours must
+  empty-state wording, optional corner chip, optional top-right `mark` (what
+  the image IS — template previews pass "Sample", because the picture is a
+  synthetic resume, not the user's; base-resume thumbnails pass none), card
+  body. The chip stays bottom-left and reports a degraded state; both can
+  show at once, and the mark is `aria-hidden` because the image alt carries
+  the words. Two behaviours must
   never diverge: the 404 fallback remembers the failed **src** (not a boolean)
   so a re-render retries, and the card link is a z-10 SIBLING — an `<a>`
   wrapping the card would contain the actions menu, and a `<button>` inside an
