@@ -674,3 +674,6 @@ A1 §3 (`focusableWhenDisabled`).
 | When | Gate | Result |
 |---|---|---|
 | Baseline (`a3c800bb`) | full backend suite / node / tsc / lint | 4432 passed, 2 skipped / 40/40 / clean / 0 errors, 5 warnings |
+| Task 1 (+ review fix) | node / pins / tsc / lint / slop | 67/67 (mutation-checked) / pass / clean / 0 errors, 5 warnings / OK |
+| Task 2 (+ review fix) | pins / node / full backend / slop / check_system_md | 111 passed / 67/67 / 4438 passed, 2 skipped / frontend 516 of 518, backend OK / OK 998/1000; browser-verified both studios (Playwright for real key events) |
+| Stopped | owner asked to stop after Task 2 | Tasks 3–19 not started |
