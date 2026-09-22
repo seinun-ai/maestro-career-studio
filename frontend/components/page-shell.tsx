@@ -93,10 +93,11 @@ export function PageHeader({
       {leading}
       <div className="min-w-0 grow basis-[16rem]">
         <h1 className="text-[22px] font-medium tracking-tight">{title}</h1>
-        {/* A div, not a <p>: the subtitle slot takes NODES, and the base
-            resume header puts an interactive role chip in it. A <div> inside
-            a <p> is invalid HTML, and React reported it as a hydration error
-            on every load of that page. Prose subtitles render identically. */}
+        {/* A div, not a <p>: the subtitle slot takes NODES, not just prose
+            (both studios put their save-status line here). A <div> inside a
+            <p> is invalid HTML, and React reported it as a hydration error on
+            every load of the base resume page when its header held a role
+            chip. Prose subtitles render identically. */}
         {subtitle ? (
           <div className="text-muted-foreground text-sm">{subtitle}</div>
         ) : null}

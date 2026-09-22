@@ -178,7 +178,8 @@ same contract. Code citing "§4" lands here; the table says which file to open.
    warns (pay is negotiable). Informational like G11 tier 2: it flags; the
    consent/submit decision stays human.
 4. **Score** — Score & Tailor auto-scores all active bases on first visit; per-base
-   cards → "Analyze gaps & tailor" creates a session.
+   cards → "Analyze gaps & tailor" creates a session. With no base resume the tab
+   offers Import resumes instead, and scores once the import dialog closes.
 5. **Gap analysis** — `/jobs/[id]/tailor/[sessionId]`: per-gap resolutions
    (add_keyword / user_input / attach_project / skip + enable_entry /
    port_kb_point — see §4; plus cannot_confirm on claim-asking gaps: skip for the
@@ -638,10 +639,10 @@ same contract. Code citing "§4" lands here; the table says which file to open.
 ## 8. Frontend conventions
 
 Reference tier, like §4: consulted while working in `frontend/`, not read for
-orientation. Lives in
-[`docs/frontend-conventions.md`](docs/frontend-conventions.md) — layout and
-sidebar-gutter rules, Tailwind v4 tokens, a11y and focus behaviour, naming, and
-the copy rules, each with the failure mode that bought it. Code citing "§8" lands here.
+orientation. Lives in [`docs/frontend-conventions.md`](docs/frontend-conventions.md):
+layout and sidebar rules, Tailwind v4 tokens and M3 colour roles, the studios' save and
+preview model, a11y and focus behaviour, naming, and the copy rules, each with the
+failure mode that bought it. Code citing "§8" lands here.
 
 ## 9. Dev & test environment
 

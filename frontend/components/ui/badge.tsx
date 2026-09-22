@@ -10,11 +10,12 @@ const badgeVariants = cva(
     variants: {
       variant: {
         default: "bg-primary text-primary-foreground [a]:hover:bg-primary/80",
-        // Matches Button's `tonal` — the same fill ladder, so a tonal chip and a
+        // Matches Button's `tonal` — the same role pair, so a tonal chip and a
         // tonal button never disagree. (The `[a]:` hover gate is correct HERE:
         // a Badge is usually not interactive. It was wrong on Button, where it
         // silently removed the main CTA's hover.)
-        tonal: "bg-primary/10 text-primary dark:bg-primary/15 [a]:hover:bg-primary/15",
+        tonal:
+          "bg-secondary-container text-on-secondary-container [a]:hover:bg-secondary-container-hover",
         secondary:
           "bg-secondary text-secondary-foreground [a]:hover:bg-secondary/80",
         destructive:

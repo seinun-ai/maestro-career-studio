@@ -14,14 +14,17 @@ const buttonVariants = cva(
         // hover feedback at all. (The gate is correct in badge.tsx, where it
         // came from: a Badge is usually not interactive.)
         default: "bg-primary text-primary-foreground hover:bg-primary/90",
-        // M3's filled-tonal. SYSTEM.md §8 has claimed "tonal fills over borders"
-        // as the design language since the start, but there was no variant for
-        // it — so `bg-primary/10 text-primary` was written out by hand at ~25
-        // sites across four different opacity ladders (/10, /15, dark:/15,
-        // dark:/20), several of which also re-implemented Button's own height,
-        // transition and press-scale. One definition, one ladder.
+        // M3's filled-tonal: SECONDARY container, M3's role for "recessive
+        // components like tonal buttons". It was `bg-primary/10 text-primary`,
+        // which failed AA (3.8-4.3:1) in light mode; the role pair is pinned
+        // at >= 4.5:1 by backend/tests/test_frontend_color_roles.py.
         tonal:
-          "bg-primary/10 text-primary hover:bg-primary/15 dark:bg-primary/15 dark:hover:bg-primary/20",
+          "bg-secondary-container text-on-secondary-container hover:bg-secondary-container-hover",
+        // M3 extended FAB: the ONE create action on a screen (the sidebar's
+        // New application). Primary container is M3's default FAB colour. A
+        // FAB in a rail rests flat and hover raises it one level; a resting
+        // shadow read as permanently hovered.
+        fab: "bg-primary-container text-on-primary-container hover:bg-primary-container-hover hover:shadow-sm",
         outline:
           "border-border bg-background hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50",
         secondary:

@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useRef, useState, type ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
 import {
   ChevronDown,
   ChevronUp,
@@ -78,8 +78,6 @@ export function FormattingPanel({
   // Namespaces this panel's label ids — the studio renders it beside another
   // copy in the base-resume editor, so bare `${key}-label` would collide.
   const uid = useId();
-  // Drag source index for the section-order list (chip-input's drag pattern).
-  const sectionDragFrom = useRef<number | null>(null);
 
   const effective: ResumeFormatting = { ...baseline, ...(value ?? {}) };
   const customized = value != null && Object.keys(value).length > 0;
@@ -229,21 +227,7 @@ export function FormattingPanel({
             {order.map((section, index) => (
               <li
                 key={section}
-                draggable={!disabled}
-                onDragStart={() => (sectionDragFrom.current = index)}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  const from = sectionDragFrom.current;
-                  sectionDragFrom.current = null;
-                  if (from !== null && from !== index) {
-                    setKey(key, move(order, from, index));
-                  }
-                }}
-                className={cn(
-                  "flex items-center justify-between gap-2 rounded px-1.5 py-0.5 text-xs",
-                  !disabled && "cursor-grab active:cursor-grabbing",
-                )}
+                className="flex items-center justify-between gap-2 rounded px-1.5 text-xs"
               >
                 <span className="min-w-0 truncate">
                   {SECTION_ORDER_LABELS[section] ?? section}
@@ -255,18 +239,23 @@ export function FormattingPanel({
                       ["down", ChevronDown, index + 1, index < order.length - 1],
                     ] as const
                   ).map(([direction, Icon, target, enabled]) => (
-                    <button
+                    // icon-xs: 24px (44px on a coarse pointer). These are
+                    // the only pointer reorder path, and two adjacent 18px
+                    // buttons failed WCAG 2.5.8's target spacing.
+                    <Button
                       key={direction}
                       type="button"
+                      variant="ghost"
+                      size="icon-xs"
                       disabled={disabled || !enabled}
                       aria-label={`Move ${
                         SECTION_ORDER_LABELS[section] ?? section
                       } ${direction}`}
                       onClick={() => setKey(key, move(order, index, target))}
-                      className="text-muted-foreground hover:text-foreground rounded p-0.5 transition-colors disabled:pointer-events-none disabled:opacity-30"
+                      className="text-muted-foreground disabled:opacity-30"
                     >
                       <Icon className="size-3.5" />
-                    </button>
+                    </Button>
                   ))}
                 </span>
               </li>

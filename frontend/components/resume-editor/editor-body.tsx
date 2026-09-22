@@ -9,6 +9,7 @@ import {
   Download,
   ExternalLink,
   Pencil,
+  RefreshCw,
   Sparkles,
   Tag,
 } from "lucide-react";
@@ -22,6 +23,7 @@ import { ContactForm } from "@/components/resume-editor/contact-form";
 import { EditableTitle } from "@/components/resume-editor/editable-title";
 import { EditorShell } from "@/components/resume-editor/editor-shell";
 import { StudioOverflowMenu } from "@/components/resume-editor/studio-overflow";
+import { StudioSaveButton } from "@/components/resume-editor/studio-save-button";
 import { StudioToolbar } from "@/components/resume-editor/studio-toolbar";
 import { EducationEditor } from "@/components/resume-editor/education-editor";
 import { ExperienceEditor } from "@/components/resume-editor/experience-editor";
@@ -32,6 +34,7 @@ import { KbImportDrawer } from "@/components/resume-editor/kb-import-drawer";
 import { PdfPagesPreview } from "@/components/resume-editor/pdf-pages-preview";
 import { ProjectEditor } from "@/components/resume-editor/project-editor";
 import { RawJsonToggle } from "@/components/resume-editor/raw-json-toggle";
+import { SaveStatusText } from "@/components/resume-editor/save-status";
 import { SkillsEditor } from "@/components/resume-editor/skills-editor";
 import { HealthBadges } from "@/components/resume-health/health-badges";
 import { VersionHistorySheet } from "@/components/resume-versions/version-history-sheet";
@@ -57,6 +60,7 @@ import { apiFetch, apiUrlForBrowserPdf } from "@/lib/api";
 import { FORMATTING_DEFAULTS, type ResumeFormatting } from "@/lib/formatting";
 import { notifyRenderNote } from "@/lib/render-note";
 import { resumeDataSchema } from "@/lib/resume-schema";
+import { emptyPreviewMessage, saveStatus } from "@/lib/studio";
 import type { BaseResumeDetail, ResumeData } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -125,11 +129,16 @@ export function EditorBody({
       formatting,
       templateId: templateIdToApi(templateId),
     });
-    // Only adopt the server record when the user has no unsaved local edits.
-    if (
-      liveSnap !== lastSyncedRef.current &&
-      localSnap === lastSyncedRef.current
-    ) {
+    const serverMoved = liveSnap !== lastSyncedRef.current;
+    if (serverMoved && localSnap === liveSnap) {
+      // The form already holds what the server now has. A rename does this:
+      // EditableTitle lifts the name, then PATCHes /identity and writes the
+      // cache. Nothing to adopt, but the baseline must move, or the studio
+      // reads the saved name as an unsaved edit.
+      lastSyncedRef.current = liveSnap;
+      setLastSyncedSnapshot(liveSnap);
+    } else if (serverMoved && localSnap === lastSyncedRef.current) {
+      // Only adopt the server record when the user has no unsaved local edits.
       setData(live.data);
       setDisplayName(live.display_name ?? "");
       setFormatting(
@@ -208,13 +217,25 @@ export function EditorBody({
       qc.invalidateQueries({ queryKey: ["base-resumes"] });
       qc.invalidateQueries({ queryKey: ["setup-status"] });
       notifyRenderNote(result);
-      toast.success("Saved. PDF re-rendered.", {
-        action: {
-          label: "Download PDF",
-          onClick: () =>
-            window.open(apiUrlForBrowserPdf(`/api/base-resumes/${slug}/pdf`)),
-        },
-      });
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  // Recovery for a render that FAILED. Save is dirty-gated, so with nothing to
+  // save it can no longer double as "render again". Mirrors the tailored
+  // studio's ⋯ Regenerate PDF, against the base's own render endpoint (the
+  // render IS the request, so a failure is a 400, never a persisted note).
+  const regenerate = useMutation({
+    mutationFn: () =>
+      apiFetch<BaseResumeDetail>(`/api/base-resumes/${slug}/render`, {
+        method: "POST",
+      }),
+    onSuccess: (result) => {
+      qc.setQueryData(["base-resumes", slug], result);
+      // The gallery's "last render failed" badge reads the list.
+      qc.invalidateQueries({ queryKey: ["base-resumes"] });
+      qc.invalidateQueries({ queryKey: ["pdf-preview"] });
+      notifyRenderNote(result);
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -229,10 +250,18 @@ export function EditorBody({
   // This flag already existed but only ever gated the KB-import button, so a
   // reload or a closed tab discarded the edits without a word.
   useUnsavedChangesWarning(hasUnsavedChanges);
+  const status = saveStatus({
+    dirty: hasUnsavedChanges,
+    saving: save.isPending,
+    rendering: regenerate.isPending,
+    rescoring: false,
+  });
+  const canSave = hasUnsavedChanges && !save.isPending && !regenerate.isPending;
 
   return (
     <>
       <EditorShell
+        previewStale={hasUnsavedChanges}
         previewHeader={
           pdfHref && (
             <>
@@ -300,14 +329,16 @@ export function EditorBody({
                   onChange={setDisplayName}
                 />
               }
-              /* No subtitle. The header carried three identity lines saying
-                 the same words for any resume whose name, slug and role agree
-                 — the common case, since the slug is derived from the name
-                 and the name from the role. The name is the title; the slug
-                 is in the URL and on "Copy slug"; the role is the ⋯ menu's
-                 first item, which NAMES its current value so it is still read
-                 without opening anything. All three still write through PATCH
+              /* The subtitle is the save-status line, NOT an identity line.
+                 The header used to carry three identity lines saying the same
+                 words for any resume whose name, slug and role agree — the
+                 common case, since the slug is derived from the name and the
+                 name from the role. The name is the title; the slug is in the
+                 URL and on "Copy slug"; the role is the ⋯ menu's first item,
+                 which NAMES its current value so it is still read without
+                 opening anything. All three still write through PATCH
                  /identity rather than Save. */
+              subtitle={<SaveStatusText status={status} />}
               actions={
                 <StudioToolbar
                   status={
@@ -330,22 +361,20 @@ export function EditorBody({
                     />
                   }
                   primary={
-                    <Button
-                      onClick={() => save.mutate()}
-                      disabled={save.isPending}
-                    >
-                      {save.isPending ? "Rendering PDF…" : "Save"}
-                    </Button>
+                    <StudioSaveButton
+                      onSave={() => save.mutate()}
+                      canSave={canSave}
+                      pending={save.isPending}
+                    />
                   }
                   overflow={
                     <StudioOverflowMenu
-                      rawMode={rawMode}
-                      onToggleRaw={() => setRawMode((r) => !r)}
-                      onHistory={() => setHistoryOpen(true)}
-                      /* First, and labelled with its value: this is the only
-                         place the role is legible now that the header shows
-                         the name alone, so it is read as often as the two
-                         shared items are used. */
+                      /* Props in the order the menu renders them: this item,
+                         the shared pair, then `children`. First, and labelled
+                         with its value: this is the only place the role is
+                         legible now that the header shows the name alone, so
+                         it is read as often as the two shared items are
+                         used. */
                       leading={
                         <DropdownMenuItem onClick={() => setRoleOpen(true)}>
                           <Tag />
@@ -356,7 +385,25 @@ export function EditorBody({
                           )}
                         </DropdownMenuItem>
                       }
+                      rawMode={rawMode}
+                      onToggleRaw={() => setRawMode((r) => !r)}
+                      onHistory={() => setHistoryOpen(true)}
                     >
+                      <DropdownMenuItem
+                        disabled={
+                          hasUnsavedChanges ||
+                          regenerate.isPending ||
+                          save.isPending
+                        }
+                        onClick={() => regenerate.mutate()}
+                      >
+                        <RefreshCw />
+                        {regenerate.isPending
+                          ? "Generating…"
+                          : live.pdf_path
+                            ? "Regenerate PDF"
+                            : "Generate PDF"}
+                      </DropdownMenuItem>
                       {/* A free instruction against this document — an edit
                           or a question. Applying goes through PATCH /edits on
                           the SAVED record, so like the KB import it waits for
@@ -502,7 +549,7 @@ export function EditorBody({
           <PdfPagesPreview
             basePath={`/api/base-resumes/${slug}`}
             version={live.pdf_rendered_at as string | null}
-            emptyMessage="No PDF rendered yet. Save the resume to render one."
+            emptyMessage={emptyPreviewMessage(hasUnsavedChanges)}
           />
         }
       />

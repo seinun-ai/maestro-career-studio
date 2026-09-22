@@ -10,6 +10,7 @@ import { NewBaseResumeDialog } from "@/components/base-resumes/new-base-resume-d
 import { LoadErrorState } from "@/components/load-error-state";
 import { buildSetupSteps } from "@/components/setup/setup-steps";
 import { UploadDialog } from "@/components/setup/upload-dialog";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { apiFetch } from "@/lib/api";
@@ -71,7 +72,7 @@ export function GettingStartedCard() {
             <div>
               <p className="text-sm font-medium">Getting started</p>
               <p className="text-muted-foreground mt-0.5 text-sm">
-                Complete the essentials for a smoother application process.
+                Required steps first. The rest can wait until you need them.
               </p>
             </div>
             <Button
@@ -104,7 +105,14 @@ export function GettingStartedCard() {
                     }
                   />
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium">{row.title}</p>
+                    <p className="flex flex-wrap items-center gap-2 text-sm font-medium">
+                      {row.title}
+                      {row.required && !row.done ? (
+                        <Badge variant="outline" className="font-normal">
+                          Required
+                        </Badge>
+                      ) : null}
+                    </p>
                     {row.detail ? (
                       <p className="text-muted-foreground mt-0.5 text-xs">
                         {row.detail}

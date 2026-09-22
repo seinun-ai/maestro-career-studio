@@ -18,7 +18,7 @@ function pillClass(done: boolean) {
   return cn(
     PILL,
     done
-      ? "bg-primary/10 text-primary dark:bg-primary/15 hover:bg-primary/20"
+      ? "bg-primary/10 text-primary dark:bg-primary/15 hover:bg-primary/15"
       : "bg-muted text-muted-foreground hover:bg-muted/70 hover:text-foreground",
   );
 }

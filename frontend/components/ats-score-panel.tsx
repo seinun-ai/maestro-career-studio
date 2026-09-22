@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -9,6 +9,7 @@ import { toast } from "sonner";
 
 import { useConfirm } from "@/components/confirm-dialog";
 import { LoadErrorState } from "@/components/load-error-state";
+import { UploadDialog } from "@/components/setup/upload-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,7 +24,12 @@ import {
   listTailoringSessions,
   runAtsScores,
 } from "@/lib/api";
-import { baseResumeLabel, type AtsScore, type TailoringSession } from "@/lib/types";
+import {
+  baseResumeLabel,
+  type AtsScore,
+  type BaseResumeSummary,
+  type TailoringSession,
+} from "@/lib/types";
 
 const SUBSCORE_LABELS: {
   key: "keyword" | "placement_recency" | "semantic_fit" | "title" | "format";
@@ -195,6 +201,17 @@ export function AtsScorePanel({ jobId }: { jobId: string }) {
     queryFn: () => listAtsScores(jobId),
   });
 
+  // The engine scores every SELECTABLE base resume, the same set
+  // GET /api/base-resumes returns. With none, "Run ATS scoring" can only
+  // return an empty list again, so the empty state offers the import instead.
+  const bases = useQuery({
+    queryKey: ["base-resumes"],
+    queryFn: () => apiFetch<BaseResumeSummary[]>("/api/base-resumes"),
+  });
+  const noBases = bases.isSuccess && bases.data.length === 0;
+  const baseCount = bases.data?.length ?? 0;
+  const [importOpen, setImportOpen] = useState(false);
+
   // Open tailoring sessions let a card offer "Resume gap analysis". On
   // loading/error this stays empty, so cards fall back to the normal button.
   const sessions = useQuery({
@@ -278,6 +295,28 @@ export function AtsScorePanel({ jobId }: { jobId: string }) {
     }
   }, [scores.isSuccess, scores.data, runMutate]);
 
+  // A resume imported from the prompt below lands in ["base-resumes"] (the
+  // import dialog invalidates it). Score against it once the dialog closes,
+  // but only on a CONFIRMED none -> some transition, never on the first load.
+  // - Arm only on a SETTLED empty list: a cached `[]` from an earlier visit
+  //   still reads as empty while its refetch is in flight, and if the refetch
+  //   returns resumes this would score a second time, racing the first-visit
+  //   auto-run above (two concurrent runs collide on the base-score unique key
+  //   and toast an error).
+  // - Never fire while a run is in flight, for the same reason.
+  // - Wait for the dialog to close: scoring swaps the prompt for a skeleton,
+  //   which would unmount the dialog mid-report, before the user has
+  //   confirmed each new resume's target role.
+  const sawNoBases = useRef(false);
+  useEffect(() => {
+    if (noBases && !bases.isFetching) {
+      sawNoBases.current = true;
+    } else if (sawNoBases.current && baseCount > 0 && !importOpen && !run.isPending) {
+      sawNoBases.current = false;
+      runMutate();
+    }
+  }, [noBases, bases.isFetching, baseCount, importOpen, run.isPending, runMutate]);
+
   const baseRows = (scores.data ?? [])
     .filter((s) => s.phase === "base")
     .sort((a, b) => b.composite - a.composite);
@@ -308,8 +347,26 @@ export function AtsScorePanel({ jobId }: { jobId: string }) {
   if (baseRows.length === 0) {
     // A 422 means the job itself can't be scored (e.g. no extracted skills) —
     // retrying can't succeed, so show the reason instead of a dead-end button.
+    // It is checked first: an import cannot fix a job-level fact either.
     const unscorable =
       run.error instanceof ApiError && run.error.status === 422 ? run.error.message : null;
+    // `importOpen` keeps the dialog mounted after the import lands, while
+    // its report is still on screen (see the effect above).
+    if (!unscorable && (noBases || importOpen)) {
+      return (
+        <div className="flex flex-col items-center gap-3 py-8 text-center">
+          <p className="text-sm font-medium">No base resumes to score against.</p>
+          <p className="text-muted-foreground max-w-[50ch] text-sm">
+            Import the resumes you already have. Each becomes a base resume, and
+            this job is scored against all of them.
+          </p>
+          <Button size="sm" onClick={() => setImportOpen(true)}>
+            Import resumes
+          </Button>
+          <UploadDialog open={importOpen} onOpenChange={setImportOpen} />
+        </div>
+      );
+    }
     return (
       <div className="flex flex-col items-center gap-3 py-8">
         <p className="text-muted-foreground text-sm">{unscorable ?? "No ATS scores yet."}</p>

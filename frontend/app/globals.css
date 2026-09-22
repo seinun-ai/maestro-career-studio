@@ -36,6 +36,13 @@
   --color-secondary: var(--secondary);
   --color-primary-foreground: var(--primary-foreground);
   --color-primary: var(--primary);
+  --color-primary-container: var(--primary-container);
+  --color-on-primary-container: var(--on-primary-container);
+  --color-primary-container-hover: var(--primary-container-hover);
+  --color-secondary-container: var(--secondary-container);
+  --color-on-secondary-container: var(--on-secondary-container);
+  --color-secondary-container-hover: var(--secondary-container-hover);
+  --color-canvas: var(--canvas);
   --color-popover-foreground: var(--popover-foreground);
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
@@ -62,9 +69,27 @@
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
-  /* Google-blue primary: one confident accent against tonal neutrals. */
-  --primary: oklch(0.55 0.17 259);
+  /* Google-blue primary at M3 tone 40, the light-theme primary Material
+     derives from a blue source. It was oklch(0.55), a tone lighter, and blue
+     text failed WCAG AA (3.8-4.3:1) on its own tints across 25+ controls.
+     Pinned by backend/tests/test_frontend_color_roles.py. */
+  --primary: oklch(0.48 0.17 259);
   --primary-foreground: oklch(0.985 0 0);
+  /* M3 colour roles from the same hue (a static scheme: no wallpaper source
+     on a desktop app). FAB = primary container; tonal buttons and the nav
+     active indicator = secondary container. Hover is M3's 8% state layer of
+     the on-colour, mixed once here so call sites never pick an opacity.
+     Declared once: next-themes puts .dark on <html>, the element :root
+     matches, so these color-mix()es resolve against .dark's container
+     values. (A .dark SUBTREE would inherit the light mix already resolved.) */
+  --primary-container: oklch(0.91 0.043 259);
+  --on-primary-container: oklch(0.33 0.12 259);
+  --primary-container-hover: color-mix(in oklab, var(--primary-container), var(--on-primary-container) 8%);
+  --secondary-container: oklch(0.925 0.022 259);
+  --on-secondary-container: oklch(0.33 0.05 259);
+  --secondary-container-hover: color-mix(in oklab, var(--secondary-container), var(--on-secondary-container) 8%);
+  /* Neutral canvas behind the rendered page in studio previews. */
+  --canvas: oklch(0.915 0 0);
   /* Recessed tonal step. These were 0.97 — indistinguishable from a 0.976 page,
      so every bg-muted tile would have vanished the moment the page gained its
      tone. They must stay clearly BELOW the page, not beside it. */
@@ -111,6 +136,11 @@
   /* Lighter tonal blue on dark, per Material dark-theme guidance. */
   --primary: oklch(0.76 0.11 259);
   --primary-foreground: oklch(0.205 0.05 259);
+  --primary-container: oklch(0.37 0.09 259);
+  --on-primary-container: oklch(0.92 0.038 259);
+  --secondary-container: oklch(0.33 0.03 259);
+  --on-secondary-container: oklch(0.91 0.02 259);
+  --canvas: oklch(0.115 0 0);
   --secondary: oklch(0.269 0 0);
   --secondary-foreground: oklch(0.985 0 0);
   --muted: oklch(0.269 0 0);
