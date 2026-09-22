@@ -40,3 +40,13 @@ def test_score_tab_offers_import_when_there_is_nothing_to_score():
     assert panel.index("scores.isError") < panel.index(
         "No base resumes to score against."
     )
+
+
+def test_new_application_names_the_key_before_the_paste():
+    page = _read("app/new/page.tsx")
+    assert "setup.data?.model_key.done === false" in page
+    assert "disabled={disabled || busy || needsKey}" in page
+    # Placeholders are example values only (conventions: microcopy rules).
+    assert "Paste the full job description here" not in page
+    assert '<Label htmlFor="source_url" optional>' in page
+    assert "The job is listed under Saved. Scoring comes next." in page
