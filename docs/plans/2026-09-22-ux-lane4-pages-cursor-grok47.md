@@ -209,6 +209,6 @@ Found in review, not fixed on this branch (candidates for §11):
 
 ## Deferred to merge (edits left for Claude, with file:line)
 
-- `frontend/components/templates/template-select.tsx:163` (DialogTitle "Choose a template"): skipped the optional `<DialogDescription>Previews show a sample resume, not yours.</DialogDescription>`. Lane 1 owns this file.
+- ~~`frontend/components/templates/template-select.tsx:163` (DialogTitle "Choose a template"): skipped the optional `<DialogDescription>Previews show a sample resume, not yours.</DialogDescription>`. Lane 1 owns this file.~~ Applied at merge by Claude.
 - Stale-chip tooltip, not fixed (Task 14 step 3). On `/templates`, `elementFromPoint` at the centre of Harshibar's "needs re-validation" chip hits the stretched card link (`aria-label="Open Harshibar layout"`), not the chip. The `title` is set; hover cannot reach it because `GalleryCard`'s link is `absolute inset-0 z-10` and the chip is not lifted to z-20. Picker mode has no stretched link, so that page is the one that hides the tooltip.
 - ~~Picker card accessible names omit "Sample" (not changed). B §6 hides the mark (`aria-hidden`) and puts "sample" in the image alt. In the picker the card is a button, and the a11y-tree names were "Carlito Dense ready latex" with no "sample". Manage-mode links are named "Open {template}". The alt is on the `<img>`, which is a separate node from that link.~~ Withdrawn: a reviewer verified that the `<img>` alt is part of the picker button's accessible name.

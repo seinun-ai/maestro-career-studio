@@ -42,3 +42,8 @@ def test_preview_thumbnail_marks_only_a_showing_image():
     assert re.search(r"\{(showImage && mark|mark && showImage) && \(", _PREVIEW), (
         "PreviewThumbnail must render the mark only while the image shows"
     )
+
+
+def test_template_picker_says_previews_are_a_sample():
+    select = (_FRONTEND / "components/templates/template-select.tsx").read_text(encoding="utf-8")
+    assert "<DialogDescription>Previews show a sample resume, not yours.</DialogDescription>" in select

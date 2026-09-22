@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -165,6 +166,7 @@ export function TemplateSelect({
         <DialogContent className="flex max-h-[80vh] w-[min(92vw,64rem)] max-w-[min(92vw,64rem)] flex-col overflow-hidden">
           <DialogHeader>
             <DialogTitle>Choose a template</DialogTitle>
+            <DialogDescription>Previews show a sample resume, not yours.</DialogDescription>
           </DialogHeader>
           {/* "Use the default template" is a real choice with no card of its
               own — it means "whatever the server default is", so it must not
