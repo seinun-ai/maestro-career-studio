@@ -185,6 +185,7 @@ gate table, deviations, anything queued or deferred, and any concerns.
 | 5 | A1 §5 comments quote the empty-state copy | Comments say "empty-state frame"; the user-facing string is the only occurrence | `test_frontend_query_error_states.py` anchors the first occurrence of that copy, and this lane must not edit that file. Accessibility pins stay green. |
 | 6 | `--muted-foreground` pin fails with the new ring and destructive pins | The pin was added and was already green | The token already clears 4.5:1 on `--background` and `--card`. It still lands here because Task 17 cites it. The ring and destructive pins failed first. |
 | 6 | Fold A2 §2's translucent `ring-ring/50` and `outline-ring/60` sites into the solid ring | Left every listed site; see Deferred | None of those files belong to this lane. Lane 3 owns `status-chip.tsx` and `role-category-picker.tsx`. The base-layer outline and the 1px `border-ring` now carry the 3:1; the leftover halos are not on the canvas. |
+| 7 | Pins listed in the task only | Also pinned `from === "proposals" ? "/proposals" : "/applications"` in `nav.ts` | Node tests are not in CI. The mapping has to fail a pytest pin or a later edit can drop it silently. |
 
 ## Gate results
 
@@ -204,8 +205,17 @@ gate table, deviations, anything queued or deferred, and any concerns.
 | 6 | lint | 0 errors, 5 warnings (baseline) |
 | 6 | slop `check frontend` / `check backend` | Both OK. Frontend scan: 517 duplicated lines, 43 clones |
 | 6 | Browser, light and dark | Tab to the 100% zoom preset: `outline-style: auto`, 1px, color `rgb(78, 119, 184)` (`#4e77b8`, the new light ring). Shift-Tab to Open PDF: 1px border the same color, plus the button's 3px `/50` halo. Dark mode: Open PDF border, the zoom outline, and the Agent SourceToggle outline all match `.dark`'s `--ring`. Light SourceToggle outline matches `#4e77b8`. Render-error banner and "JD asks for…" badge were not on this fixture (render succeeded, no gate warning); their contrast is the computed pin. |
+| 7 | Sidebar pins failed first, then `test_frontend_sidebar_nav.py` + first-run | Passed |
+| 7 | `tests/test_frontend_*.py` | 166 passed |
+| 7 | `node --test lib/*.test.ts` | 71 passed (nav job-page cases included) |
+| 7 | tsc / lint | tsc clean; lint 0 errors, 5 warnings |
+| 7 | `npm run build` | Passed. Static pages generated; no missing-Suspense error |
+| 7 | slop `check frontend` / `check backend` | Both OK. Frontend scan: 517 duplicated lines, 43 clones |
+| 7 | Browser | Collapse: container `inert`, focus on the reveal pill (not inside the sidebar). Eight Tabs stay in the page (New application, search, filters) and never enter the sidebar. `/new` FAB background equals `--primary` with `aria-current="page"`; elsewhere it equals `--primary-container` and omits `aria-current`. `/jobs/{id}` marks Applications `true`; `?from=proposals` marks Agent Proposals `true` instead. At 375px the desktop container is absent and the trigger opens the sheet (`data-mobile="true"`). |
 
 ## Queued for Task 18 (SYSTEM.md changes Claude applies)
+
+- §12: `useSearchParams()` under the root layout needs a Suspense boundary whose fallback is the same UI, or `next build` fails and every static route loses the component. The sidebar's main nav is that case (`app-sidebar.tsx`).
 
 ## Deferred to merge (edits left for Claude, with file:line)
 

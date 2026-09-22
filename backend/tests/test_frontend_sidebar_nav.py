@@ -3,6 +3,7 @@ action is the M3 FAB. See docs/plans/2026-09-22-honest-studio.md, Task 2."""
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 _FRONTEND = Path(__file__).resolve().parents[2] / "frontend"
@@ -45,8 +46,23 @@ def test_active_row_is_a_tinted_indicator_distinct_from_hover():
 
 
 def test_create_action_is_the_fab_variant():
-    assert 'variant: "fab"' in _SIDEBAR
+    # Current on /new is the full-strength primary; everywhere else it stays fab.
+    assert re.search(r'variant:\s*fabCurrent \? "default" : "fab"', _SIDEBAR)
     assert "bg-primary/15" not in _SIDEBAR
+
+
+def test_offcanvas_sidebar_is_inert_when_collapsed():
+    start = _UI.index('data-slot="sidebar-container"')
+    end = _UI.index('data-slot="sidebar-inner"', start)
+    assert "inert={offcanvasHidden}" in _UI[start:end]
+
+
+def test_job_pages_read_from_under_suspense():
+    assert "<Suspense" in _SIDEBAR
+    assert "useSearchParams()" in _SIDEBAR
+    # Node tests cover the mapping; CI only runs this file, so pin the branch.
+    nav = (_FRONTEND / "lib/nav.ts").read_text()
+    assert 'from === "proposals" ? "/proposals" : "/applications"' in nav
 
 
 def test_sidebar_toggles_name_their_shortcut():

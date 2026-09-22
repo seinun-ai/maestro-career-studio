@@ -18,3 +18,20 @@ test("a sibling sharing a prefix is not current", () => {
 test("an unrelated route is not current", () => {
   assert.equal(navCurrent("/settings", "/profile"), undefined);
 });
+
+test("a job page marks Applications current", () => {
+  assert.equal(navCurrent("/jobs/abc", "/applications"), "true");
+});
+
+test("a job opened from proposals marks Agent Proposals instead", () => {
+  assert.equal(navCurrent("/jobs/abc", "/proposals", "proposals"), "true");
+  assert.equal(navCurrent("/jobs/abc", "/applications", "proposals"), undefined);
+});
+
+test("the tailor flow follows the job page's section", () => {
+  assert.equal(navCurrent("/jobs/abc/tailor/s1", "/applications"), "true");
+});
+
+test("a route that only shares the jobs prefix is not Applications", () => {
+  assert.equal(navCurrent("/jobsite", "/applications"), undefined);
+});

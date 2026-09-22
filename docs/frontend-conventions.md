@@ -370,7 +370,9 @@
   actions menu — that pairing is the invariant, a preview image is not.
 - **Sidebar: one create action, and a current page you can see and hear.** Above
   the nav groups, New application is M3's extended FAB (`variant: "fab"`,
-  `rounded-[16px]`, since this theme's `rounded-2xl` is 18px). It rests flat
+  `rounded-[16px]`, since this theme's `rounded-2xl` is 18px). On `/new` it is
+  current and renders with the `default` (primary) variant, keeping that
+  geometry; it stays `fab` on every other route. It rests flat
   and hover raises it one level: a resting shadow read as permanently hovered.
   It is the one New application per screen, so the Applications header renders
   its own button only while `useSidebarHidden()` holds (collapsed, or the sheet
@@ -378,7 +380,13 @@
   tracker's ghost New application is the deliberate exception: an empty state
   offers its pathway as a control, not only a sentence (NN/g). Every nav link,
   the FAB included, takes `aria-current` from `navCurrent()` (`lib/nav.ts`):
-  `"page"` on the route, `"true"` inside it (a studio under Base Resumes). The
+  `"page"` on the route, `"true"` inside it (a studio under Base Resumes).
+  `/jobs/*` is not its own item: `navSection` maps it to Applications, or to
+  Agent Proposals when `?from=proposals`, through a Suspense-wrapped
+  `useSearchParams` (the fallback is the same nav with `from` null). A
+  collapsed off-canvas sidebar is `inert` (icon mode stays operable); if focus
+  was inside it, the reveal pill takes focus, and opening it returns focus to
+  the in-sidebar trigger when the pill unmounts with focus nowhere. The
   active row is secondary container, semibold, with a primary icon; it used to
   share the neutral hover fill at about 1.05:1, and hover stays neutral. Keep
   the paired `data-active:hover:` fill and label classes in

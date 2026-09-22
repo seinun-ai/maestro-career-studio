@@ -205,6 +205,10 @@ function Sidebar({
     )
   }
 
+  // Off-canvas is only moved off screen, so without inert its links stay in
+  // the Tab order while invisible. Icon mode stays visible and operable.
+  const offcanvasHidden = collapsible === "offcanvas" && state === "collapsed"
+
   return (
     <div
       className="group peer hidden text-sidebar-foreground md:block"
@@ -229,6 +233,7 @@ function Sidebar({
       <div
         data-slot="sidebar-container"
         data-side={side}
+        inert={offcanvasHidden}
         className={cn(
           "fixed inset-y-0 z-10 hidden h-svh w-(--sidebar-width) transition-[left,right,width] duration-200 ease-linear data-[side=left]:left-0 data-[side=left]:group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)] data-[side=right]:right-0 data-[side=right]:group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)] md:flex",
           // Adjust the padding for floating and inset variants.

@@ -1,7 +1,8 @@
 "use client";
 
+import { Suspense } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import {
   Bot,
   FilePlus2,
@@ -89,52 +90,77 @@ export function AppSidebar() {
         />
       </SidebarHeader>
       <SidebarContent>
-        {/* One <nav> around the primary destinations, a second around the
-            account pair in the footer: a screen reader's landmark list then
-            names them instead of offering two unlabeled "navigation" entries. */}
-        <nav aria-label="Main" className="flex flex-col">
-        <div className="px-2 pt-2">
-          <Link
-            href="/new"
-            aria-current={navCurrent(pathname, "/new")}
-            className={cn(
-              // M3 extended FAB at the top of the rail: primary container,
-              // 16px corners (M3's 16dp; this theme's rounded-2xl is 18px), the
-              // one create action on a screen.
-              buttonVariants({ variant: "fab", size: "lg" }),
-              "h-10 gap-2.5 rounded-[16px] px-4",
-            )}
-          >
-            <FilePlus2 className="size-4" aria-hidden="true" />
-            New application
-          </Link>
-        </div>
-        {NAV_GROUPS.map((group) => (
-          <SidebarGroup key={group.label}>
-            <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <NavMenu items={group.items} pathname={pathname} />
-            </SidebarGroupContent>
-          </SidebarGroup>
-        ))}
-        </nav>
+        {/* `?from=proposals` decides which section a job page sits in, and
+            useSearchParams() needs a Suspense boundary for the static prerender
+            (Next 16 CSR bailout). The fallback IS the nav without `from`. */}
+        <Suspense fallback={<MainNav pathname={pathname} from={null} />}>
+          <MainNavWithSearch pathname={pathname} />
+        </Suspense>
       </SidebarContent>
       <SidebarFooter>
         <SidebarSeparator className="mx-0" />
         <nav aria-label="Account">
-          <NavMenu items={ACCOUNT_ITEMS} pathname={pathname} />
+          <NavMenu items={ACCOUNT_ITEMS} pathname={pathname} from={null} />
         </nav>
       </SidebarFooter>
     </Sidebar>
   );
 }
 
-function NavMenu({ items, pathname }: { items: NavItem[]; pathname: string }) {
+function MainNavWithSearch({ pathname }: { pathname: string }) {
+  const from = useSearchParams().get("from");
+  return <MainNav pathname={pathname} from={from} />;
+}
+
+function MainNav({ pathname, from }: { pathname: string; from: string | null }) {
+  // One <nav> around the primary destinations, a second around the
+  // account pair in the footer: a screen reader's landmark list then
+  // names them instead of offering two unlabeled "navigation" entries.
+  const fabCurrent = navCurrent(pathname, "/new");
+  return (
+    <nav aria-label="Main" className="flex flex-col">
+      <div className="px-2 pt-2">
+        <Link
+          href="/new"
+          aria-current={fabCurrent}
+          className={cn(
+            // Current: the full-strength role, M3's selected state for a
+            // container-coloured control; the container fill is ~1.05:1 from
+            // the active row. Geometry stays the extended FAB either way.
+            buttonVariants({ variant: fabCurrent ? "default" : "fab", size: "lg" }),
+            "h-10 gap-2.5 rounded-[16px] px-4",
+          )}
+        >
+          <FilePlus2 className="size-4" aria-hidden="true" />
+          New application
+        </Link>
+      </div>
+      {NAV_GROUPS.map((group) => (
+        <SidebarGroup key={group.label}>
+          <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <NavMenu items={group.items} pathname={pathname} from={from} />
+          </SidebarGroupContent>
+        </SidebarGroup>
+      ))}
+    </nav>
+  );
+}
+
+function NavMenu({
+  items,
+  pathname,
+  from,
+}: {
+  items: NavItem[];
+  pathname: string;
+  from: string | null;
+}) {
   return (
     <SidebarMenu>
       {items.map((item) => {
         const Icon = item.icon;
-        const current = navCurrent(pathname, item.href);
+        const current = navCurrent(pathname, item.href, from);
         return (
           <SidebarMenuItem key={item.href}>
             <SidebarMenuButton

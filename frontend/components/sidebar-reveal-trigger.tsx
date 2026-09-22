@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useRef } from "react";
+
 import { SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 import { useModKey } from "@/hooks/use-mod-key";
 import { shortcutLabel } from "@/lib/shortcuts";
@@ -24,12 +26,32 @@ export function useSidebarHidden(): boolean {
  */
 export function SidebarRevealTrigger() {
   const hidden = useSidebarHidden();
+  const { isMobile } = useSidebar();
   const mod = useModKey();
+  const ref = useRef<HTMLButtonElement>(null);
+  const was = useRef(hidden);
+  useEffect(() => {
+    if (was.current === hidden) return; // transitions only: never on page load
+    was.current = hidden;
+    if (isMobile) return; // the Sheet owns its own focus
+    const active = document.activeElement;
+    const orphaned = !active || active === document.body;
+    if (hidden) {
+      // The in-sidebar control that had focus just went inert.
+      if (orphaned || active?.closest('[data-slot="sidebar-container"]')) ref.current?.focus();
+    } else if (orphaned) {
+      // The pill that had focus just unmounted.
+      document
+        .querySelector<HTMLElement>('[data-slot="sidebar-container"] [data-sidebar="trigger"]')
+        ?.focus();
+    }
+  }, [hidden, isMobile]);
   if (!hidden) return null;
 
   return (
     <div className="pointer-events-none fixed top-3 left-3 z-50">
       <SidebarTrigger
+        ref={ref}
         className="pointer-events-auto rounded-md border bg-background/90 shadow-sm backdrop-blur"
         title={`Toggle sidebar (${shortcutLabel(mod, "B")})`}
         aria-keyshortcuts="Meta+B Control+B"
