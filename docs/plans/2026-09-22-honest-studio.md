@@ -1993,6 +1993,8 @@ Goal Card line it violates.
 | 11 | Zoom group sticky inside the scroller | A normal row above the scroller; `backdrop-blur` dropped | At 100% scrolled right only 56px of a sticky group stayed visible; clipped at 375px (browser-checked) |
 | 11 | Fit page = `max-h-[calc(100dvh-6rem)]` | `max-h-[100cqh]` (the preview's own height, container units) + a pin that fails on the plan's value | The dvh value overflowed the job page's 638px box and the studio pane with Formatting open |
 | 11 | ⋯ menu `max-w-(--available-width)` | Also `wrap-anywhere` | Slugs are `[a-z0-9_]`, unbreakable; capped width alone cut the slug off at 375px |
+| 14 | Each studio wires its own Save button + `useSaveShortcut` (Tasks 9–10) | One `StudioSaveButton` owns the button AND Cmd/Ctrl+S; base Save adopts the toolbar's `size="sm"` + spinner; the base ⋯ menu's `leading` prop moved first (its render order) | The frontend slop ratchet caught the duplicated Save block (43→44 clones); the key and the button now share one `canSave` by construction. Duplication sits exactly at the 518-line limit |
+| 5 (correction) | Row above says Settings does not invalidate ["setup-status"] | Since 13917adc `useSaveModelSettings` invalidates it AND `/new` refetches on mount | Log accuracy (Task 13 found it) |
 | 12 (review) | Section-order buttons as they were (18×18) | Shared ghost `icon-xs` (24px, 44px coarse) | WCAG 2.5.8; since Task 12 they are the only pointer reorder path (Principles: accessibility) |
 | 11 (review) | Drop the zoom group's background | Keeps a solid `bg-background` (shadow and translucency dropped) | Unselected muted labels are 4.56:1 on the bare canvas vs 5.48:1 on background |
 | 9 | Plan pins only | `test_kb_sync_frontend.py` now slices from `<StudioToolbar` | Its first-`status={` anchor matched the new `<SaveStatusText status={status} />` in the header; same assertion, sturdier anchor |
@@ -2015,3 +2017,7 @@ Goal Card line it violates.
 | Task 8 | studio pins | 3 pass; ruff clean on new pins after review; divider browser-checked on a throwaway stack |
 | Tasks 9–10 | studio + kb-sync + colour pins | 36 → 42 passed after review; full backend 4411 passed / 2 skipped; both studios browser-checked |
 | Tasks 11–12 | frontend pin set | 157 passed after review; ruff/tsc/lint clean; browser-checked 1280/768/375, light+dark |
+| Task 13 | `scripts/check_system_md.py` | OK, 999/1000 orientation lines, 0 warnings |
+| Task 14 | full backend suite (before ce48ca8b) | 4428 passed, 2 skipped (237 s) |
+| Task 14 | ruff / node unit tests / tsc / lint / `npm run build` | all clean; 39/39; lint 0 errors, 5 pre-existing warnings; build OK |
+| Task 14 | slop ratchet | backend OK; frontend FAILED 43→44 clones, fixed by ce48ca8b (StudioSaveButton), then OK at exactly 518 lines |
