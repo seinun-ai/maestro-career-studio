@@ -13,6 +13,22 @@
   (oklch; Google-blue primary `oklch(0.48 0.17 259)` light (M3 tone 40) /
   `oklch(0.76 0.11 259)` dark; blue-tinted focus rings; motion utilities
   `animate-fade-rise`, `animate-shimmer`, `[data-pending]`).
+- **Colour roles are M3's, pinned for contrast.** `globals.css` derives primary
+  and secondary container pairs (`--primary-container`/`--on-primary-container`
+  and the secondary twins) from the primary's hue, each with a `-hover` token
+  (M3's 8% state layer, mixed once so no call site picks an opacity), plus
+  `--canvas`, the neutral behind rendered pages. The `fab` Button variant is
+  primary container; the `tonal` Button and Badge, the sidebar's active row and
+  a selected zoom preset are secondary container. The hover mixes live once in
+  `:root` and follow dark mode only because `.dark` sits on `<html>`; a `.dark`
+  subtree would keep the light mix. `test_frontend_color_roles.py` computes
+  WCAG contrast from the CSS (every pair ≥ 4.5:1 at rest and on hover) and
+  refuses `text-primary` beside a `bg-primary/N` tint above /15 in light mode
+  (/20 only under `dark:`): at `oklch(0.55)` the hand-rolled
+  `bg-primary/10 text-primary` fills failed AA (3.8 to 4.3:1) across 25+
+  controls. **A selected tonal toggle also leads with a `Check` and sets
+  `aria-pressed`** (health-report filters, Review changes): the fill is about
+  1.16:1 against the light page, too faint to say "on" by itself.
 - **Top-left corner belongs to the sidebar reveal pill**
   (`components/sidebar-reveal-trigger.tsx`, owner decision). Clearance is
   **not** a per-page concern: `SidebarGutter` wraps the main area once in
@@ -53,7 +69,8 @@
   pattern:
   detail/editor routes (`jobs/[id]`, both studios, `entity-detail`) and Chat
   (no page header by design).
-- **The base-resume studio header is the NAME, nothing else.** Display name is
+- **The base-resume studio header is the NAME; its subtitle is the save
+  status, never an identity line.** Display name is
   the title (`EditableTitle`, instant PATCH `/identity`); the slug is the URL
   plus a "Copy slug" item; the target role is the ⋯ menu's FIRST item, which
   names its own value ("Role: Data Scientist" / "Role not set") and opens
@@ -61,7 +78,77 @@
   saying the same words, because the slug derives from the name and the name
   from the role. A menu item that names a value goes in `StudioOverflowMenu`'s
   `leading` slot, above the shared raw-JSON/History pair; ordinary
-  studio-specific actions stay in `children`, below it.
+  studio-specific actions stay in `children`, below it. The menu is `w-auto
+  min-w-56 max-w-(--available-width) wrap-anywhere`: the primitive sizes a menu
+  to its trigger, a 28px icon, which wrapped every item at the 128px floor; the
+  cap keeps "Copy slug: …" on screen, and a slug has no break opportunity.
+- **The studio is honest about its page.** A résumé Save stays explicit (it
+  writes a version, renders and re-scores), so both studios earn trust through
+  status instead of autosave. Pinned by `test_frontend_studio.py`; the pure
+  helpers in `lib/studio.ts` and `lib/shortcuts.ts` by `node --test`.
+  - *Status line*: `SaveStatusText` (`role="status"`) renders `saveStatus()`
+    in the header subtitle (all of it in the base studio, after the job label
+    in the tailored one): Saving… > Unsaved changes > Rendering PDF… >
+    Re-scoring… > All changes saved. Unsaved outranks the render because an
+    edit typed mid-render is not in that PDF. It IS the success report: a
+    studio Save fires no success toast (a tailored Save used to fire three),
+    errors still toast, and only the manual Re-score confirms (`announce:
+    true`; the Save chain passes `false`).
+  - *Stale preview*: `EditorShell previewStale` adds an amber strip ("Preview
+    doesn't include your unsaved edits. Save to update it.") and dims the page
+    IMAGES only, so the render-error banner, page-count pill and zoom keep full
+    contrast. The strip is not a live region (the status line announces) and
+    never says "your last save": after a failed render the pages are older.
+  - *Cmd/Ctrl+S*: `useSaveShortcut(onSave, canSave)`, `canSave` being the Save
+    button's enabled state, so key and button agree. The chord is always
+    swallowed (the browser's Save page saves app HTML) but never saves on
+    repeat, mid-IME, once another handler claimed it, or from inside a dialog,
+    where "Load the latest version?" would be overwritten. It blurs a focused
+    field first, so a blur-committed draft (chip input, section rename) saves as
+    a click would, then refocuses and saves on the next task; a chord inside
+    that gap is swallowed, so one chord is one save. `isSaveShortcut` falls
+    back to `code === "KeyS"` only when the layout types no Latin letter there:
+    Colemak and Dvorak put R and O on that key. Save buttons carry the shortcut
+    as `title` and `aria-keyshortcuts="Meta+S Control+S"`.
+  - *Divider*: an APG window splitter. A focusable `role="separator"` whose
+    value is the EDITOR's share (rounded; `aria-valuetext` names both panes;
+    `aria-controls` the editor pane). Arrows snap to the 5% grid, since a drag
+    leaves fractions; Home/End jump to the limits; Alt/Ctrl/Meta+Arrow pass
+    through as Back/Forward. `relative z-10`, or the positioned preview pane
+    paints over half its focus ring.
+  - *Base studio*: Save is dirty-gated, so ⋯ **Regenerate PDF** (Generate PDF
+    before the first render) is the retry for a failed render, disabled while
+    edits are unsaved; the empty preview points there, and the render-error
+    banner says "save or regenerate", never "save again". A rename re-syncs the
+    saved baseline: `EditableTitle` PATCHes `/identity` and writes the cache,
+    so when the server lands on exactly what the form holds the baseline moves,
+    or the saved name reads as an unsaved edit.
+  - *Tailored studio*: the user-facing signals (status line, Save, stale strip,
+    Re-score hint) read `unsaved`, the diff against what its own last Save
+    sent; `dirty` stays the input to the external-edit adoption guard
+    (SYSTEM.md §12) and the leave-page warning. Until the post-save refetch
+    remounts the editor, `dirty` compares against pre-save values and would
+    report the save just made as unsaved.
+- **`PdfPagesPreview` owns the canvas and the zoom.** Pages sit on
+  `bg-canvas`, so a caller adds no fill of its own. Zoom is a `role="group"`
+  "Zoom" of `aria-pressed` presets (Fit width, Fit page, 100%) on a solid
+  `bg-background` (muted labels are 4.56:1 on the bare canvas), and ONE saved
+  choice (`pdfPreview.zoom`) serves all four surfaces: both studios, the job
+  page's Resume tab and the template editor. The zoom row and the render-error
+  banner sit ABOVE the scroller in normal flow: sticky inside it, the group
+  scrolled away sideways with a 100% page and the banner pushed page 1 below a
+  Fit-page fold. **Fit page is `max-h-[100cqh]`**: the scroller is a size
+  container, so Fit page measures the preview, not the viewport (a `dvh`
+  offset overflowed the job page's 80vh box and the studio pane with
+  Formatting open). The price is a **height contract**: a size container
+  contributes no height, so the parent must give the component its height
+  (fixed, or flex-filled) or it collapses. 100% is print size (natural width ×
+  96 / `PREVIEW_DPI`, pinned equal to the backend's 150); pages stay
+  `invisible` until page 1 reports that width. The scroller is a focusable
+  `role="region"` named "Page preview", so arrow keys scroll it in WebKit (the
+  desktop shell), which does not focus scrollers itself. Its focus ring is an
+  inset overlay sibling (`peer-focus-visible:`): a ring on the scroller paints
+  under its own content, where a page scrolled into the corner hid it.
 - **A picker that belongs to a menu goes in a DIALOG, not inside the menu.**
   `RolePicker` is itself a popup, and a combobox popup nested in a menu popup
   fights the menu for focus and dismissal — and the free-text mapping strip
@@ -175,10 +262,13 @@
   label id down rather than repeating the string.
 - **Reordering is up/down buttons, not drag-and-drop** (`move()` from
   `lib/utils`, as in `editor-scaffold.tsx` and the formatting panel's
-  `section_order` list). No dependency, and it is keyboard- and
-  screen-reader-reachable by construction rather than by extra work; each button
-  carries an `aria-label` naming the row AND the direction, because the icon
-  alone announces nothing. A list-shaped knob also needs an order-sensitive
+  `section_order` list, which has no drag path either). No dependency, and it
+  is keyboard- and screen-reader-reachable by construction rather than by extra
+  work; each button carries an `aria-label` naming the row AND the direction,
+  because the icon alone announces nothing. The section-order buttons are the
+  shared ghost `icon-xs` (24px, 44px on a coarse pointer): they are that list's
+  only pointer path, and two adjacent 18px buttons failed WCAG 2.5.8's target
+  spacing. A list-shaped knob also needs an order-sensitive
   equality in `lib/formatting.ts` `diffFrom` — `!==` on a rebuilt array is always
   true, so reference compare stores a redundant "override" on every render.
 - **Form-control ids come from `useId()`, never from the label text.**
@@ -216,11 +306,29 @@
   for the z-10-link/z-20-actions layering, overriding `pt-0` with `pt-4`. Reach
   for this shell whenever a card's whole face is a link AND it carries an
   actions menu — that pairing is the invariant, a preview image is not.
-- Sidebar: a tonal "New application" pill CTA, then labeled `SidebarGroup`s
+- **Sidebar: one create action, and a current page you can see and hear.** Above
+  the nav groups, New application is M3's extended FAB (`variant: "fab"`,
+  `rounded-[16px]`, since this theme's `rounded-2xl` is 18px). It rests flat
+  and hover raises it one level: a resting shadow read as permanently hovered.
+  It is the one New application per screen, so the Applications header renders
+  its own button only while `useSidebarHidden()` holds (collapsed, or the sheet
+  closed below 768px), exactly when the FAB cannot be seen. The empty
+  tracker's ghost New application is the deliberate exception: an empty state
+  offers its pathway as a control, not only a sentence (NN/g). Every nav link,
+  the FAB included, takes `aria-current` from `navCurrent()` (`lib/nav.ts`):
+  `"page"` on the route, `"true"` inside it (a studio under Base Resumes). The
+  active row is secondary container, semibold, with a primary icon; it used to
+  share the neutral hover fill at about 1.05:1, and hover stays neutral. Keep
+  the paired `data-active:hover:` fill and label classes in
+  `sidebarMenuButtonVariants`: shadcn's `data-active` compiles to a
+  zero-specificity `:where()`, so without them `hover:` wins and the active row
+  goes grey under the pointer. Both sidebar toggles carry a `title` hint
+  (`useModKey`) and `aria-keyshortcuts="Meta+B Control+B"`. Groups:
   **Job search** (Applications, Agent Proposals, Referrals), **Career library** (Career KB,
   Base Resumes, Templates), **Tools** (Chat, Analytics); Profile + Settings
   pinned in `SidebarFooter`. Add new routes to the right group in
-  `components/app-sidebar.tsx` (`NAV_GROUPS`), not a flat list.
+  `components/app-sidebar.tsx` (`NAV_GROUPS`), not a flat list. Pinned by
+  `test_frontend_sidebar_nav.py` and `test_frontend_first_run.py`.
 - Naming: the no-application state is **Saved** everywhere; the tracker
   page/nav is **Applications**. A proposal you passed on is **Skipped**, the
   verb **Skip** — never "Declined"/"Rejected": application `rejected` means
@@ -300,18 +408,32 @@
   top of the card body (never the header — the mutation lives in the editor).
   Anything with a cost or a blast radius keeps a dirty-gated Save, and
   Save/Discard where a discard is meaningful. Errors always toast; successful
-  autosaves never do. See `autosave-status.tsx` for why.
+  autosaves never do, and neither does an explicit studio Save, which reports
+  through the header's status line (the studio bullet above). See
+  `autosave-status.tsx` for why.
 - Settings shows four curated user-voice prompts (cover_letter, qa,
   gap_tailor, chat_system); the other internal prompts sit behind an
   "Advanced prompts" disclosure (`ESSENTIAL_PROMPTS` map in
   components/settings/prompts-section.tsx — update it when adding prompt keys).
 - **Derived setup guidance**: Profile starts with `SetupStatusStrip`, then
   Persona (disabled-until-import "Draft from my career"), Market, Job
-  preferences, and Autofill. The empty tracker places `GettingStartedCard` above its
-  empty-state copy: same six derived steps, deep links, locally dismissible,
-  gone when setup completes. Both surfaces share the `['setup-status']` query
-  and always refetch on mount (bypassing the 30-second stale window);
-  successful Profile saves invalidate the key.
+  preferences, and Autofill. The empty tracker leads with its empty state, what
+  the page is for, and places `GettingStartedCard` BELOW it: the same derived
+  steps, deep links, locally dismissible, gone when setup completes. The
+  API-key and import steps carry a Required badge until done (`required` in
+  `setup-steps.ts`): nothing extracts without a key, nothing scores without a
+  base resume. `["setup-status"]` has three readers (the Profile strip, Getting
+  started, `/new`), each `refetchOnMount: "always"` to bypass the 30-second
+  stale window; Profile's section saves AND the Settings model/key save
+  invalidate it. `/new` names a missing key BEFORE the paste: an amber notice
+  with Add API key, and a disabled Extract whose `aria-describedby` points at
+  it, since a disabled button says nothing about why. A failed status fetch
+  blocks nothing. With no base resume the Score tab offers Import resumes
+  (Run ATS scoring could only return an empty list) and scores once the import
+  dialog CLOSES, on a settled none-to-some change. Scoring sooner unmounted the
+  dialog before the user confirmed each resume's role, and a cached `[]` must
+  not arm it: a run beside the first-visit one collides on the base-score
+  unique key. Pinned by `test_frontend_first_run.py`.
 - Career KB pages follow the Base Resumes read/edit split: one card per
   section, flat rows, hover-or-touch actions, local Save/Cancel editors with
   Escape. Do not regress these surfaces to always-editable form grids.
