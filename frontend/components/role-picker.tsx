@@ -347,7 +347,7 @@ export function RolePicker(props: RolePickerProps) {
 
   const chipsClassName =
     props.className ??
-    "border-input focus-within:ring-ring/50 flex min-h-9 flex-wrap items-center gap-1.5 rounded-md border bg-transparent px-2 py-1.5 text-sm focus-within:ring-2";
+    "border-input focus-within:ring-ring flex min-h-9 flex-wrap items-center gap-1.5 rounded-md border bg-transparent px-2 py-1.5 text-sm focus-within:ring-2";
 
   const list = (
     <>

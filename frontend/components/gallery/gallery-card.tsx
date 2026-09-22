@@ -55,7 +55,7 @@ export function GalleryCard({
         <Link
           href={href}
           aria-label={ariaLabel}
-          className="focus-visible:ring-ring/50 absolute inset-0 z-10 rounded-xl focus-visible:ring-2 focus-visible:outline-none"
+          className="focus-visible:ring-ring absolute inset-0 z-10 rounded-xl focus-visible:ring-2 focus-visible:outline-none"
         />
       )}
       {children}

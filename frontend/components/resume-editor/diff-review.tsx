@@ -527,12 +527,12 @@ function GateRow({ gate }: { gate: HealthGate }) {
   const accent = notAssessed
     ? "border-border bg-muted/40"
     : gate.tier === "fatal"
-      ? "border-red-500/50 bg-red-500/5"
+      ? "border-destructive/50 bg-destructive/5"
       : "border-amber-500/50 bg-amber-500/5";
   const badgeStyle = notAssessed
     ? "bg-muted text-muted-foreground"
     : gate.tier === "fatal"
-      ? "bg-red-500/10 text-red-600 dark:text-red-400"
+      ? "bg-destructive/10 text-destructive"
       : "bg-amber-500/10 text-amber-700 dark:text-amber-400";
   const badgeLabel = notAssessed
     ? "Not assessed"

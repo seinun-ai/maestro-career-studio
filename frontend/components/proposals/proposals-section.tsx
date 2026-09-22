@@ -22,6 +22,7 @@ import {
 import { IconButton } from "@/components/icon-button";
 import { PROPOSAL_STATUS_CHIP } from "@/components/status-chip";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
@@ -601,20 +602,17 @@ export function ProposalsSection() {
                 const label =
                   status === "all" ? "All" : STATUS_LABELS[status];
                 return (
-                  <button
+                  <Button
                     key={status}
-                    type="button"
+                    size="xs"
+                    variant={active ? "tonal" : "outline"}
                     aria-pressed={active}
+                    className="rounded-full"
                     onClick={() => setHistoryStatus(status)}
-                    className={cn(
-                      "inline-flex h-7 items-center rounded-full border px-3 text-xs font-medium",
-                      active
-                        ? "border-transparent bg-primary/10 text-primary"
-                        : "text-muted-foreground hover:bg-muted",
-                    )}
                   >
+                    {active && <Check />}
                     {label}
-                  </button>
+                  </Button>
                 );
               })}
             </div>

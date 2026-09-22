@@ -48,7 +48,7 @@ function SkillPill({
             )}
             title={tooltip}
           >
-            <span className="text-muted-foreground text-[10px] font-semibold tabular-nums">
+            <span className="text-on-secondary-container/80 text-[10px] font-semibold tabular-nums">
               #{skill.rank}
             </span>
             {skill.skill_name}
@@ -129,7 +129,7 @@ export function TopSkillsChart({
         subtitle="Mandatory"
         count={data.meta.top_count}
         skills={data.top}
-        pillClass="border-primary/30 bg-primary/10 text-primary hover:bg-primary/15 dark:bg-primary/20"
+        pillClass="border-transparent bg-secondary-container text-on-secondary-container hover:bg-secondary-container-hover"
         bandClass="bg-muted/30 rounded-lg p-3"
       />
 

@@ -161,6 +161,7 @@ export function FormattingPanel({
           <button
             key={o.value}
             type="button"
+            aria-pressed={current === o.value}
             disabled={disabled}
             onClick={() => onSelect(o.value)}
             className={cn(
@@ -292,7 +293,7 @@ export function FormattingPanel({
             <SlidersHorizontal className="size-3.5" />
             Formatting
             {customized && (
-              <span className="bg-primary/10 text-primary rounded-full px-1.5 py-0.5 text-[0.65rem] font-medium">
+              <span className="bg-secondary-container text-on-secondary-container rounded-full px-1.5 py-0.5 text-[0.65rem] font-medium">
                 Customized
               </span>
             )}

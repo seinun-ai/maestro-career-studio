@@ -18,3 +18,41 @@ test("a sibling sharing a prefix is not current", () => {
 test("an unrelated route is not current", () => {
   assert.equal(navCurrent("/settings", "/profile"), undefined);
 });
+
+test("a job page marks Applications current", () => {
+  assert.equal(navCurrent("/jobs/abc", "/applications", null), "true");
+});
+
+test("a job opened from proposals marks Agent Proposals instead", () => {
+  assert.equal(navCurrent("/jobs/abc", "/proposals", "proposals"), "true");
+  assert.equal(navCurrent("/jobs/abc", "/applications", "proposals"), undefined);
+});
+
+test("the tailor flow follows the job page's section", () => {
+  assert.equal(navCurrent("/jobs/abc/tailor/s1", "/applications", null), "true");
+});
+
+test("a route that only shares the jobs prefix is not Applications", () => {
+  assert.equal(navCurrent("/jobsite", "/applications", null), undefined);
+});
+
+test("a job page whose `from` is not known yet marks no section", () => {
+  // The Suspense fallback: marking Applications would be wrong for a job
+  // opened from proposals, so it marks nothing until the params are read.
+  for (const href of ["/applications", "/proposals", "/referrals"]) {
+    assert.equal(navCurrent("/jobs/abc", href), undefined);
+    assert.equal(navCurrent("/jobs/abc/tailor/s1", href), undefined);
+  }
+});
+
+test("every other route marks the same item whether or not `from` is known", () => {
+  const routes = ["/applications", "/proposals", "/base-resumes/x", "/new", "/settings", "/jobsite"];
+  const hrefs = ["/new", "/applications", "/proposals", "/base-resumes", "/settings"];
+  for (const pathname of routes) {
+    for (const href of hrefs) {
+      const known = navCurrent(pathname, href, null);
+      assert.equal(navCurrent(pathname, href), known, `${pathname} ${href}`);
+      assert.equal(navCurrent(pathname, href, "proposals"), known, `${pathname} ${href}`);
+    }
+  }
+});

@@ -433,7 +433,7 @@ export function ChatPage() {
   const hasThread = (detail.data?.messages.length ?? 0) > 0 || !!streaming;
 
   const composer = (
-    <div className="bg-card focus-within:border-ring/60 rounded-3xl border p-2 shadow-sm transition-[border-color,box-shadow] duration-150 focus-within:shadow-md">
+    <div className="bg-card focus-within:border-ring rounded-3xl border p-2 shadow-sm transition-[border-color,box-shadow] duration-150 focus-within:shadow-md">
       {(selections.length > 0 || attachments.length > 0) && (
         <div className="flex flex-wrap items-center gap-1.5 px-2 pt-1.5">
           {selections.map((s, i) => (
@@ -557,10 +557,10 @@ export function ChatPage() {
         <aside className="hidden w-64 shrink-0 flex-col gap-3 md:flex">
           <div className="flex items-center gap-1">
             <Button
-              variant="ghost"
+              variant="tonal"
               onClick={() => newSession.mutate()}
               disabled={newSession.isPending}
-              className="bg-primary/10 text-primary hover:bg-primary/15 h-10 flex-1 justify-start gap-2 rounded-full px-4"
+              className="h-10 flex-1 justify-start gap-2 rounded-full px-4"
             >
               <Plus className="size-4" /> New chat
             </Button>
@@ -727,13 +727,13 @@ export function ChatPage() {
           </SheetHeader>
           <div className="flex h-full flex-col gap-3 p-3">
             <Button
-              variant="ghost"
+              variant="tonal"
               onClick={() => {
                 newSession.mutate();
                 setHistorySheetOpen(false);
               }}
               disabled={newSession.isPending}
-              className="bg-primary/10 text-primary hover:bg-primary/15 h-10 justify-start gap-2 rounded-full px-4"
+              className="h-10 justify-start gap-2 rounded-full px-4"
             >
               <Plus className="size-4" /> New chat
             </Button>
@@ -773,12 +773,13 @@ function SessionList({
           key={s.id}
           className={cn(
             "group flex items-center gap-1 rounded-full px-3 py-1.5 transition-colors duration-150",
-            activeId === s.id ? "bg-primary/10 text-primary" : "hover:bg-muted",
+            activeId === s.id ? "bg-secondary-container text-on-secondary-container hover:bg-secondary-container-hover font-semibold" : "hover:bg-muted",
           )}
         >
           <button
             type="button"
             className="min-w-0 flex-1 truncate text-left text-sm"
+            aria-current={activeId === s.id ? "true" : undefined}
             onClick={() => onSelect(s)}
           >
             {s.title || "Untitled chat"}

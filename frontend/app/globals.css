@@ -99,10 +99,12 @@
   --muted-foreground: oklch(0.505 0 0);
   --accent: oklch(0.94 0 0);
   --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
+  /* M3 error, one step under tone 40 so text on its own tint clears AA on --canvas. */
+  --destructive: oklch(0.49 0.185 27.3);
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
-  --ring: oklch(0.65 0.09 259);
+  /* Solid ring is at least 3:1 on --canvas. 0.65 was 2.52:1 there. */
+  --ring: oklch(0.57 0.11 259);
   /* Categorical chart palette (Google-family hues), fixed assignment order.
      Validated against the light surface with the dataviz six-check script —
      re-run it if you change any step. */
@@ -147,7 +149,8 @@
   --muted-foreground: oklch(0.708 0 0);
   --accent: oklch(0.269 0 0);
   --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
+  /* M3 error tone 80. */
+  --destructive: oklch(0.838 0.089 26.76);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.62 0.09 259);
@@ -178,7 +181,7 @@
 
 @layer base {
   * {
-    @apply border-border outline-ring/50;
+    @apply border-border outline-ring;
   }
   body {
     @apply bg-background text-foreground;

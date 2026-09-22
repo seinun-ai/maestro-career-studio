@@ -102,7 +102,7 @@ export function ChipListInput({
         // min-w-0: a flex/grid item defaults to min-width:auto, so an editing
         // chip's definite width would push this container past its cell
         // instead of letting the chip's max-width cap it (SYSTEM.md §8).
-        "border-input focus-within:ring-ring/50 flex min-h-9 min-w-0 flex-wrap items-center gap-1.5 rounded-md border bg-transparent px-2 py-1.5 text-sm focus-within:ring-2",
+        "border-input focus-within:ring-ring flex min-h-9 min-w-0 flex-wrap items-center gap-1.5 rounded-md border bg-transparent px-2 py-1.5 text-sm focus-within:ring-2",
         className,
       )}
     >

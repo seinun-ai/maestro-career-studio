@@ -149,7 +149,7 @@ export function HealthListChip({ slug }: { slug: string }) {
       className={cn(
         "relative z-20 shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold",
         blocked
-          ? "bg-red-500/15 text-red-600 dark:text-red-400"
+          ? "bg-destructive/10 text-destructive"
           : (GRADE_STYLES[data.grade] ?? GRADE_STYLES.C),
       )}
       title={summary}

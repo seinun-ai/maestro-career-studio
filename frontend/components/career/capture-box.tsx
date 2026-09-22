@@ -140,7 +140,7 @@ export function CaptureBox() {
             rows={4}
             disabled={capture.isPending}
             aria-describedby="career-capture-help"
-            className="rounded-2xl border-0 bg-background/90 px-4 py-3 shadow-sm ring-1 ring-foreground/10 transition-shadow focus-visible:ring-primary/40"
+            className="rounded-2xl border-0 bg-background/90 px-4 py-3 shadow-sm ring-1 ring-foreground/10 transition-shadow focus-visible:ring-ring"
           />
           <input
             ref={fileInputRef}

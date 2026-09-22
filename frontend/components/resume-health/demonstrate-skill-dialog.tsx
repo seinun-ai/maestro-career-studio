@@ -215,7 +215,7 @@ export function DemonstrateSkillDialog({
                     key={i}
                     className={
                       token.kind === "removed"
-                        ? "bg-red-500/10 text-red-600 line-through dark:text-red-400"
+                        ? "bg-destructive/10 text-destructive line-through"
                         : token.kind === "added"
                           ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
                           : undefined

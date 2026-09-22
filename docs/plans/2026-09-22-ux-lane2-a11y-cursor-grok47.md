@@ -181,12 +181,65 @@ gate table, deviations, anything queued or deferred, and any concerns.
 
 | Task | Planned | Did instead | Why (Goal Card line) |
 |---|---|---|---|
+| 5–10 | Main plan trailer `Co-Authored-By: Claude Opus 5` | `Assisted-by: Grok 4.7 (Cursor CLI)` | This handoff's commit contract. The session is Grok 4.7; a Claude trailer would mis-attribute the work. |
+| 5 | A1 §5 comments quote the empty-state copy | Comments say "empty-state frame"; the user-facing string is the only occurrence | `test_frontend_query_error_states.py` anchors the first occurrence of that copy, and this lane must not edit that file. Accessibility pins stay green. |
+| 6 | `--muted-foreground` pin fails with the new ring and destructive pins | The pin was added and was already green | The token already clears 4.5:1 on `--background` and `--card`. It still lands here because Task 17 cites it. The ring and destructive pins failed first. |
+| 6 | Fold A2 §2's translucent `ring-ring/50` and `outline-ring/60` sites into the solid ring | Left every listed site; see Deferred | None of those files belong to this lane. Lane 3 owns `status-chip.tsx` and `role-category-picker.tsx`. The base-layer outline and the 1px `border-ring` now carry the 3:1; the leftover halos are not on the canvas. |
+| 7 | Pins listed in the task only | Also pinned `from === "proposals" ? "/proposals" : "/applications"` in `nav.ts` | Node tests are not in CI. The mapping has to fail a pytest pin or a later edit can drop it silently. |
+| 10 | Rank label change at `top-skills-chart.tsx` only affects the Top 30% chips | The rank span is shared, so Rest chips use `text-on-secondary-container/80` too | One span paints both bands. A new prop would be extra API the plan doesn't ask for. On the Rest chip's `bg-background` that color is still body text, dark in light mode and light in dark mode. |
+| 10 | Formatting segments optionally become tonal plus a Check | `aria-pressed` only; the solid `bg-primary` fill stays | The plan's minimum. The solid fill already reads as selected, unlike the 1.16:1 tonal fill, and `formatting-panel.tsx` is lane 1's file. |
+| Review | Merge the branch as reported | Claude's review fixes in one commit (Opus 5.5): pinned the hoist and wrapper by the `{renderBody()}` call site; skeleton needs `scores.isSuccess`; import `finalFocus` prefers the opener while mounted; the translucent focus rings folded in (plus the chat composer's `focus-within:border-ring/60`, capture box `ring-primary/40`, destructive Button `border-destructive/40`) with a ratchet; fatal gates on the destructive token; nav fallback marks no section on `/jobs/*`; pins for the focus hand-off, the synchronous rescore and ring offsets; chat's current row semibold | Accessibility is not negotiable; never mislead (a fallback nav marked the wrong section; a skeleton hid a failed fetch). Lane 1's `chat-page.tsx` got two class edits only. |
 
 ## Gate results
 
 | Task | Gate | Result |
 |---|---|---|
+| 5 | New pin failed first, then `test_frontend_first_run.py` + `test_frontend_query_error_states.py` | 48 passed |
+| 5 | `tests/test_frontend_*.py` | 157 passed |
+| 5 | tsc | clean |
+| 5 | lint | 0 errors, 5 warnings (baseline) |
+| 5 | `node --test lib/*.test.ts` | 67 passed |
+| 5 | slop `check frontend` | OK. scan: 517 duplicated lines, 43 clones (ceiling) |
+| 5 | slop `check backend` | OK |
+| 5 | Browser: import → Done on a job with zero bases | No "No ATS scores yet." in a MutationObserver across the close; cards rendered (Best match, Re-score); `document.activeElement` is the wrapper `div` (`tabindex=-1`, `outline-none`) |
+| 6 | New contrast pins failed first, then `test_frontend_color_roles.py` | Passed, including muted-foreground (already green before the token change) |
+| 6 | `tests/test_frontend_*.py` | 164 passed |
+| 6 | tsc | clean |
+| 6 | lint | 0 errors, 5 warnings (baseline) |
+| 6 | slop `check frontend` / `check backend` | Both OK. Frontend scan: 517 duplicated lines, 43 clones |
+| 6 | Browser, light and dark | Tab to the 100% zoom preset: `outline-style: auto`, 1px, color `rgb(78, 119, 184)` (`#4e77b8`, the new light ring). Shift-Tab to Open PDF: 1px border the same color, plus the button's 3px `/50` halo. Dark mode: Open PDF border, the zoom outline, and the Agent SourceToggle outline all match `.dark`'s `--ring`. Light SourceToggle outline matches `#4e77b8`. Render-error banner and "JD asks for…" badge were not on this fixture (render succeeded, no gate warning); their contrast is the computed pin. |
+| 7 | Sidebar pins failed first, then `test_frontend_sidebar_nav.py` + first-run | Passed |
+| 7 | `tests/test_frontend_*.py` | 166 passed |
+| 7 | `node --test lib/*.test.ts` | 71 passed (nav job-page cases included) |
+| 7 | tsc / lint | tsc clean; lint 0 errors, 5 warnings |
+| 7 | `npm run build` | Passed. Static pages generated; no missing-Suspense error |
+| 7 | slop `check frontend` / `check backend` | Both OK. Frontend scan: 517 duplicated lines, 43 clones |
+| 7 | Browser | Collapse: container `inert`, focus on the reveal pill (not inside the sidebar). Eight Tabs stay in the page (New application, search, filters) and never enter the sidebar. `/new` FAB background equals `--primary` with `aria-current="page"`; elsewhere it equals `--primary-container` and omits `aria-current`. `/jobs/{id}` marks Applications `true`; `?from=proposals` marks Agent Proposals `true` instead. At 375px the desktop container is absent and the trigger opens the sheet (`data-mobile="true"`). |
+| 10 | State pins failed first, then `test_frontend_color_roles.py` + query-error | Passed. `bg-primary/10 text-primary` in `components/` is 7, ceiling 7 |
+| 10 | `tests/test_frontend_*.py` | 169 passed |
+| 10 | tsc / lint | tsc clean; lint 0 errors, 5 warnings |
+| 10 | slop `check frontend` / `check backend` | Both OK. Frontend scan: 517 duplicated lines, 43 clones |
+| 10 | `node --test lib/*.test.ts` | 71 passed |
+| 10 | Browser, light and dark | SourceToggle "All" is `aria-pressed` and shows a check in both modes; You and Agent do not. Dark-mode hover on the done setup pill changes its background (`lab(22.1…)` to `oklab(0.33…)`). Focused, its ring offset is `lab(2.75% 0 0)`, a dark band, not white. Top 30% chips did not render on this one-job fixture; they use the same hover token as that pill. |
+| Review | Each new pin mutation-checked (20 mutations: dialog back in the branch, `tabIndex`/`ref` dropped, `finalFocus={rootRef}`, old skeleton condition, deferred `mutate`, each translucent ring, `from={null}` fallback, …) | All 20 killed |
+| Review | `tests/test_frontend_*.py` / ruff | 182 passed / clean |
+| Review | tsc / lint / `node --test lib/*.test.ts` / `npm run build` | clean / 0 errors, 5 warnings / 73 passed / passed |
+| Review | slop `check frontend` / `check backend` | Both OK. Frontend 517 duplicated lines, 43 clones; backend `complexity_hotspots` 424 (scanner split into helpers to stay at baseline) |
+| Review | Browser (`next start` build of this tree; Grok's `next dev` on 3102 held the dev lock) | Import dialog: Cancel and Escape (mouse and keyboard open) return focus to Import resumes; Done after a base lands returns it to the `tabindex=-1` wrapper with no "No ATS scores yet." frame. Scores GET forced to 500 after a `[]`, then client-side away and back: error state and Retry render, no skeleton. Hard load `/jobs/<id>?from=proposals`: rAF + MutationObserver saw only Agent Proposals current, never Applications (plain `/jobs/<id>` marks Applications). Solid rings: Switch 4.51:1 light / 4.90:1 dark on its card, gallery card link 4.51 / 4.90, skip link 4.21 / 5.42 on the page |
 
 ## Queued for Task 18 (SYSTEM.md changes Claude applies)
 
+The Suspense note that sat here moved into `docs/frontend-conventions.md` (sidebar bullet), where the `useSearchParams` pattern is described.
+
+- §11: dark `--ring` on `--primary-container` (the FAB) measures 2.88:1, under 3:1 (light is 3.44:1). Tokens unchanged; `--primary-container` stays out of `test_focus_ring_meets_non_text_contrast`'s surfaces until the dark ring or container moves.
+- §11: the 375px mobile sidebar sheet (pre-existing): Escape drops focus to `<body>`, and the sheet stays open after tapping a nav link.
+- §11: the studio tab panels (section tabs' `TabsContent`) have no visible focus ring when focused.
+
 ## Deferred to merge (edits left for Claude, with file:line)
+
+Task 6, A2 §2 translucent focus halos (drop the alpha). The review commit fixed every other site; these two are lane 3's files and sit in `_PENDING_TRANSLUCENT_FOCUS` (`test_frontend_color_roles.py`). Drop each entry when lane 3's fix lands (the stale check fails until you do).
+
+- `frontend/components/status-chip.tsx:66` `focus-visible:outline-ring/60` (lane 3)
+- `frontend/components/role-category-picker.tsx:149` `focus-within:ring-ring/50` (lane 3)
+
+Seen in passing, not a focus ring: `frontend/components/charts/tailoring-lift-chart.tsx:61` still hand-rolls `text-red-600` (lane 3's file).

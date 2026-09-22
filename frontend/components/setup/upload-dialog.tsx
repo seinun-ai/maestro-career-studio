@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ComponentProps } from "react";
 import Link from "next/link";
 import { ResumeImportPanel } from "@/components/career/resume-import-dialog";
 import { Dropzone } from "@/components/setup/dropzone";
@@ -144,16 +144,18 @@ function DocumentLane({ onClose }: { onClose: () => void }) {
 export function UploadDialog({
   open,
   onOpenChange,
+  finalFocus,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  finalFocus?: ComponentProps<typeof DialogContent>["finalFocus"];
 }) {
   const [lane, setLane] = useState("resumes");
   const close = () => onOpenChange(false);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent size="lg">
+      <DialogContent size="lg" finalFocus={finalFocus}>
         <DialogHeader>
           <DialogTitle>Add your documents</DialogTitle>
           <DialogDescription>

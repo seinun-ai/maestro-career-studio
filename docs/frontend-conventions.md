@@ -11,7 +11,9 @@
 
 - Next.js 16 App Router, React 19, Tailwind v4 tokens in `app/globals.css`
   (oklch; Google-blue primary `oklch(0.48 0.17 259)` light (M3 tone 40) /
-  `oklch(0.76 0.11 259)` dark; blue-tinted focus rings; motion utilities
+  `oklch(0.76 0.11 259)` dark; light focus ring `oklch(0.57 0.11 259)`, dark
+  `oklch(0.62 0.09 259)`, so the solid ring is at least 3:1 on `--canvas`;
+  the base-layer browser outline is that solid ring; motion utilities
   `animate-fade-rise`, `animate-shimmer`, `[data-pending]`).
 - **Colour roles are M3's, pinned for contrast.** `globals.css` derives primary
   and secondary container pairs (`--primary-container`/`--on-primary-container`
@@ -26,13 +28,44 @@
   refuses `text-primary` beside a `bg-primary/N` tint above /15 in light mode
   (/20 only under `dark:`): at `oklch(0.55)` the hand-rolled
   `bg-primary/10 text-primary` fills failed AA (3.8 to 4.3:1) across 25+
-  controls. **A selected tonal toggle also leads with a `Check` and sets
+  controls. `--destructive` is M3 error, tuned for this page and `--canvas`
+  (light `oklch(0.49 0.185 27.3)`, dark tone 80 `oklch(0.838 0.089 26.76)`),
+  and `text-destructive` on its tints is pinned at 4.5:1. `--muted-foreground`
+  on `--background` and `--card` is pinned at 4.5:1 in both modes. **A selected
+  tonal toggle also leads with a `Check` and sets
   `aria-pressed`** (health-report filters, Review changes, the zoom presets):
   the fill is about 1.16:1 against the light page, too faint to say "on" by
-  itself. Several hand-rolled `bg-primary/10 text-primary` selected states
-  (SourceToggle, the proposals filter, chat pills and the active chat session)
-  have not yet moved to secondary container: a known inconsistency tracked for
-  the next plan.
+  itself. **Selected in a set** (a toggle, filter chip, or segment) is `tonal`
+  plus a leading `Check` plus `aria-pressed`. Two exceptions carry the state
+  without a Check: the formatting panel's segmented buttons are solid
+  `bg-primary` plus `aria-pressed` (a full-strength fill needs no second cue,
+  and a Check would widen every segment in a narrow pane), and the Career KB's
+  new-entity section-type cards are a solid `border-primary` outline plus
+  `aria-pressed` (two option cards, each a title and a description line; the
+  outline is the cue, as on a radio card). **Current in a list or nav**
+  (a sidebar row, the open chat) is secondary container, semibold, and
+  `aria-current`, with no Check. **A create or secondary action** is
+  `Button variant="tonal"`. **A non-interactive status chip** is
+  `Badge variant="tonal"` or the secondary-container pair on a custom-sized
+  chip. `bg-primary/N text-primary` is retired as a component fill. Callout
+  containers (`border-primary/25 bg-primary/5` with foreground text) are not
+  component states and stay.
+- **A focus indicator is the solid ring, never a translucent one.**
+  `ring-ring/50` and `outline-ring/60` measure about 1.8 to 2.6:1 against the
+  page, under WCAG 1.4.11's 3:1, so a ring, outline or border on a `focus:`,
+  `focus-visible:`, `focus-within:` or `has-[…:focus-visible]:` variant carries
+  no alpha. The one allowance is the primitives' 3px `/50` halo beside a solid
+  1px `focus-visible:border-ring` (Button, Input, Select, Textarea, Checkbox,
+  Tabs, Badge): the border carries the 3:1 and the halo decorates it. A
+  translucent focus BORDER is never allowed (the destructive Button's was /40,
+  about 2.1:1 in light mode). A `ring-offset-N` names its surface (`ring-offset-background`):
+  the default offset colour is white, a white band around the ring in dark
+  mode. `test_frontend_color_roles.py` pins all three; its allowlist holds the
+  two sites not yet converted (`status-chip.tsx`, `role-category-picker.tsx`)
+  and fails once either is fixed, so the entry goes too. `--ring` is pinned at
+  3:1 on the page, card, sidebar, canvas, muted and secondary-container
+  surfaces; `--primary-container` (the FAB) is not in that set, because the
+  dark ring measures 2.88:1 on it.
 - **Top-left corner belongs to the sidebar reveal pill**
   (`components/sidebar-reveal-trigger.tsx`, owner decision). Clearance is
   **not** a per-page concern: `SidebarGutter` wraps the main area once in
@@ -398,7 +431,9 @@
   actions menu — that pairing is the invariant, a preview image is not.
 - **Sidebar: one create action, and a current page you can see and hear.** Above
   the nav groups, New application is M3's extended FAB (`variant: "fab"`,
-  `rounded-[16px]`, since this theme's `rounded-2xl` is 18px). It rests flat
+  `rounded-[16px]`, since this theme's `rounded-2xl` is 18px). On `/new` it is
+  current and renders with the `default` (primary) variant, keeping that
+  geometry; it stays `fab` on every other route. It rests flat
   and hover raises it one level: a resting shadow read as permanently hovered.
   It is the one New application per screen, so the Applications header renders
   its own button only while `useSidebarHidden()` holds (collapsed, or the sheet
@@ -406,7 +441,20 @@
   tracker's ghost New application is the deliberate exception: an empty state
   offers its pathway as a control, not only a sentence (NN/g). Every nav link,
   the FAB included, takes `aria-current` from `navCurrent()` (`lib/nav.ts`):
-  `"page"` on the route, `"true"` inside it (a studio under Base Resumes). The
+  `"page"` on the route, `"true"` inside it (a studio under Base Resumes).
+  `/jobs/*` is not its own item: `navSection` maps it to Applications, or to
+  Agent Proposals when `?from=proposals`, read with `useSearchParams`.
+  **`useSearchParams` under the root layout needs a `<Suspense>` boundary**:
+  without one `next build` fails (`next dev` does not catch it). With it, the
+  server-rendered HTML holds the FALLBACK until the client reads the params, so
+  the fallback renders the same UI (no layout shift) and must not claim state
+  it cannot know. The sidebar's fallback passes `from` as unknown (`undefined`;
+  `null` means absent), and a job page with an unknown `from` marks no section
+  until the real nav marks the right one; on every other route the fallback
+  equals the final nav (`lib/nav.test.ts`). A
+  collapsed off-canvas sidebar is `inert` (icon mode stays operable); if focus
+  was inside it, the reveal pill takes focus, and opening it returns focus to
+  the in-sidebar trigger when the pill unmounts with focus nowhere. The
   active row is secondary container, semibold, with a primary icon; it used to
   share the neutral hover fill at about 1.05:1, and hover stays neutral. Keep
   the paired `data-active:hover:` fill and label classes in
@@ -523,7 +571,17 @@
   dialog CLOSES, on a settled none-to-some change. Scoring sooner unmounted the
   dialog before the user confirmed each resume's role, and a cached `[]` must
   not arm it: a run beside the first-visit one collides on the base-score
-  unique key. Pinned by `test_frontend_first_run.py`.
+  unique key. The rescore starts inside the close handler, so the render that
+  drops the prompt already sees the run pending, and the run's `onSuccess`
+  returns the refetch, so it stays pending until the list lands: the skeleton
+  hands straight to the cards with no "No ATS scores yet." frame. The dialog
+  renders once, beside the body and never inside the prompt; on close, focus
+  returns to Import resumes while the prompt still shows it (Cancel, Escape,
+  nothing imported), else to the panel's `tabIndex={-1}` wrapper (`finalFocus`
+  as a function). The skeleton that covers the first-visit auto-run requires
+  `scores.isSuccess`: a failed refetch keeps its old `[]`, and without the
+  check the skeleton hid the error and its Retry for good. Pinned by
+  `test_frontend_first_run.py`.
 - Career KB pages follow the Base Resumes read/edit split: one card per
   section, flat rows, hover-or-touch actions, local Save/Cancel editors with
   Escape. Do not regress these surfaces to always-editable form grids.
