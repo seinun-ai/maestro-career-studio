@@ -178,3 +178,45 @@ def test_section_order_has_no_drag_path():
     panel = _read("components/resume-editor/formatting-panel.tsx")
     assert "draggable" not in panel
     assert "cursor-grab" not in panel
+
+
+def test_section_order_buttons_are_24px_targets():
+    # Since the drag path went, these are the ONLY pointer reorder path, and two
+    # adjacent 18px buttons fail WCAG 2.5.8. The shared icon-xs is 24px, 44px
+    # on a coarse pointer, with the standard focus ring.
+    panel = _read("components/resume-editor/formatting-panel.tsx")
+    block = panel[panel.index("const sectionOrderRow = () => {") :]
+    block = block[: block.index("const showContent")]
+    assert 'size="icon-xs"' in block
+    assert 'variant="ghost"' in block
+    assert "<button" not in block
+
+
+def test_preview_scroller_is_keyboard_reachable_and_named():
+    scroller = _PREVIEW[_PREVIEW.index('role="region"') :]
+    scroller = scroller[: scroller.index(">")]
+    assert 'aria-label="Page preview"' in scroller
+    assert "tabIndex={0}" in scroller
+    assert "focus-visible:ring-2" in scroller
+
+
+def test_render_error_banner_sits_above_the_scroller():
+    # Inside the scroller it pushed page 1 below a Fit-page fold and scrolled
+    # away with the pages.
+    assert _PREVIEW.index("Preview is stale") < _PREVIEW.index('role="region"')
+
+
+def test_actual_size_pages_hide_until_their_width_is_known():
+    # The PNG is 150 DPI: unhidden, 100% paints it at 1275px before the onLoad
+    # snaps it to 816px.
+    assert 'zoom === "actual" && naturalWidth === null && "invisible"' in _PREVIEW
+
+
+def test_zoom_buttons_grow_on_a_coarse_pointer():
+    assert "pointer-coarse:min-h-11" in _PREVIEW
+
+
+def test_job_page_preview_box_has_no_hidden_fill():
+    # The preview paints its own canvas over the whole box.
+    panel = _read("components/application-panel.tsx")
+    assert "bg-muted/30 h-[80vh]" not in panel

@@ -348,7 +348,7 @@ export function OutputTab({ app, jobId }: { app: Application; jobId: string }) {
             />
           </div>
           {pdfReady ? (
-            <div className="bg-muted/30 h-[80vh] min-h-[520px] overflow-hidden rounded-md border">
+            <div className="h-[80vh] min-h-[520px] overflow-hidden rounded-md border">
               <PdfPagesPreview
                 basePath={`/api/applications/${app.id}`}
                 version={`${app.updated_at}-${previewVersion}`}

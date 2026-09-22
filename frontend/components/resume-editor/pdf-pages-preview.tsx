@@ -39,6 +39,10 @@ const PAGE_CLASS: Record<PreviewZoom, string> = {
  * viewer chrome. The zoom choice is one preference for every preview surface.
  * `basePath` is e.g. `/api/base-resumes/{slug}` or `/api/applications/{id}`.
  * `version` busts caches whenever the PDF is re-rendered.
+ *
+ * Height contract: the page scroller is a size container, so it contributes no
+ * height of its own. The parent must give this component its height (a fixed
+ * height, or a flex-filled box); under an auto-height parent it collapses.
  */
 export function PdfPagesPreview({
   basePath,
@@ -83,14 +87,17 @@ export function PdfPagesPreview({
 
   return (
     <div className="bg-canvas flex h-full flex-col">
-      {/* A row above the scroller, not a sticky child of it: at 100% the page
-          scrolls sideways, and a sticky child scrolls away with it. In flow,
-          the group wraps in a narrow pane instead of clipping. */}
-      <div className="flex shrink-0 justify-end px-4 pt-2">
+      {/* Fixed chrome above the scroller, not sticky children of it: at 100%
+          the page scrolls sideways and a sticky child scrolls away with it,
+          and the banner would push page 1 below a Fit-page fold. In flow, the
+          zoom group wraps in a narrow pane instead of clipping. */}
+      <div className="flex shrink-0 flex-col gap-2 px-4 pt-2">
+        {/* A solid surface: muted text on the bare canvas is 4.56:1 in light
+            mode, at the AA floor. */}
         <div
           role="group"
           aria-label="Zoom"
-          className="bg-background/90 flex flex-wrap justify-end gap-0.5 rounded-md border p-0.5 shadow-sm"
+          className="bg-background flex flex-wrap justify-end gap-0.5 self-end rounded-md border p-0.5"
         >
           {PREVIEW_ZOOMS.map((option) => (
             <button
@@ -99,7 +106,7 @@ export function PdfPagesPreview({
               aria-pressed={zoom === option.value}
               onClick={() => chooseZoom(option.value)}
               className={cn(
-                "h-6 rounded px-2 text-xs transition-colors",
+                "h-6 rounded px-2 text-xs transition-colors pointer-coarse:min-h-11",
                 zoom === option.value
                   ? "bg-secondary-container text-on-secondary-container font-medium"
                   : "text-muted-foreground hover:text-foreground",
@@ -109,18 +116,26 @@ export function PdfPagesPreview({
             </button>
           ))}
         </div>
-      </div>
-      {/* overflow-auto: 100% scrolls sideways. A size container, so "Fit
-          page" can measure the room it has. */}
-      <div className="min-h-0 flex-1 overflow-auto px-4 pt-2 pb-4 @container-[size]">
         {data.render_error && (
-          <div className="bg-destructive/10 text-destructive mb-3 flex items-start gap-2 rounded-md px-3 py-2 text-xs">
+          <div className="bg-destructive/10 text-destructive flex items-start gap-2 rounded-md px-3 py-2 text-xs">
             <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
             <span>
               Preview is stale: the last PDF render failed. Fix the content or template, then save or regenerate the PDF.
             </span>
           </div>
         )}
+      </div>
+      {/* overflow-auto: 100% scrolls sideways. A size container, so "Fit
+          page" can measure the room it has. Focusable, so the arrow keys
+          scroll it where the browser does not focus scrollers itself (WebKit,
+          which the desktop shell runs on); the ring is inset because every
+          caller clips this box. */}
+      <div
+        role="region"
+        aria-label="Page preview"
+        tabIndex={0}
+        className="focus-visible:ring-ring min-h-0 flex-1 overflow-auto px-4 pt-2 pb-4 outline-none @container-[size] focus-visible:ring-2 focus-visible:ring-inset"
+      >
         {Array.from({ length: data.page_count }, (_, i) => (
           // Raw <img>: these are server-rendered PNGs served through our API
           // proxy with a dynamic page count; next/image's loader/optimizer adds
@@ -142,6 +157,8 @@ export function PdfPagesPreview({
                 ? (e) => setNaturalWidth(e.currentTarget.naturalWidth)
                 : undefined
             }
+            // A failed page 1 must not hide every page at 100%.
+            onError={i === 0 ? () => setNaturalWidth(0) : undefined}
             style={
               zoom === "actual" && naturalWidth
                 ? { width: actualSizeWidthPx(naturalWidth) }
@@ -150,6 +167,9 @@ export function PdfPagesPreview({
             className={cn(
               "mx-auto mb-4 block rounded-[2px] bg-white shadow-lg ring-1 ring-black/5",
               PAGE_CLASS[zoom],
+              // Until page 1 reports its size, 100% has no width to set, and
+              // the 150-DPI PNG would paint at 1275px before snapping to 816.
+              zoom === "actual" && naturalWidth === null && "invisible",
             )}
           />
         ))}

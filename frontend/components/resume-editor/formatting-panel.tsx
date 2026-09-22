@@ -227,7 +227,7 @@ export function FormattingPanel({
             {order.map((section, index) => (
               <li
                 key={section}
-                className="flex items-center justify-between gap-2 rounded px-1.5 py-0.5 text-xs"
+                className="flex items-center justify-between gap-2 rounded px-1.5 text-xs"
               >
                 <span className="min-w-0 truncate">
                   {SECTION_ORDER_LABELS[section] ?? section}
@@ -239,18 +239,23 @@ export function FormattingPanel({
                       ["down", ChevronDown, index + 1, index < order.length - 1],
                     ] as const
                   ).map(([direction, Icon, target, enabled]) => (
-                    <button
+                    // icon-xs: 24px (44px on a coarse pointer). These are
+                    // the only pointer reorder path, and two adjacent 18px
+                    // buttons failed WCAG 2.5.8's target spacing.
+                    <Button
                       key={direction}
                       type="button"
+                      variant="ghost"
+                      size="icon-xs"
                       disabled={disabled || !enabled}
                       aria-label={`Move ${
                         SECTION_ORDER_LABELS[section] ?? section
                       } ${direction}`}
                       onClick={() => setKey(key, move(order, index, target))}
-                      className="text-muted-foreground hover:text-foreground rounded p-0.5 transition-colors disabled:pointer-events-none disabled:opacity-30"
+                      className="text-muted-foreground disabled:opacity-30"
                     >
                       <Icon className="size-3.5" />
-                    </button>
+                    </Button>
                   ))}
                 </span>
               </li>
