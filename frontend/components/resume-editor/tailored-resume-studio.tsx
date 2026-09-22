@@ -58,8 +58,7 @@ import {
   TemplateSelect,
   templateIdFromApi,
   templateIdToApi,
-  useSupportedFmtKeys,
-  useTemplateDefaults,
+  useTemplateBaseline,
 } from "@/components/templates/template-select";
 import { Button } from "@/components/ui/button";
 import { ChipListInput } from "@/components/ui/chip-input";
@@ -74,7 +73,7 @@ import {
   runAtsScoreTarget,
   runCoherenceCheck,
 } from "@/lib/api";
-import { FORMATTING_DEFAULTS, type ResumeFormatting } from "@/lib/formatting";
+import { overlayBaseline, type ResumeFormatting } from "@/lib/formatting";
 import { notifyRenderNote } from "@/lib/render-note";
 import { resumeDataSchema } from "@/lib/resume-schema";
 import {
@@ -439,25 +438,24 @@ function StudioEditor({
   const [formatting, setFormatting] = useState<Partial<ResumeFormatting> | null>(
     (application.formatting as Partial<ResumeFormatting> | null) ?? null,
   );
-  const supportedFmtKeys = useSupportedFmtKeys(templateId);
-  const templateDefaults = useTemplateDefaults(templateId);
-
   // The application inherits the base resume's formatting (backend merges
   // schema <- template default <- base <- application). Fetch the base so the
   // panel anchors on the *inherited* values and only stores genuine overrides of
-  // them.
-  const { data: baseResume } = useQuery({
+  // them. The panel stays locked until BOTH layers are in: an edit diffed
+  // against the template layer alone drops an override equal to it.
+  const templateBaseline = useTemplateBaseline(templateId);
+  const baseResume = useQuery({
     queryKey: ["base-resumes", application.base_resume],
     queryFn: () =>
       apiFetch<BaseResumeDetail>(
         `/api/base-resumes/${application.base_resume}`,
       ),
   });
-  const formattingBaseline: ResumeFormatting = {
-    ...FORMATTING_DEFAULTS,
-    ...templateDefaults,
-    ...((baseResume?.formatting as Partial<ResumeFormatting> | null) ?? {}),
-  };
+  const formattingBaseline = overlayBaseline(
+    templateBaseline,
+    baseResume,
+    "the base resume's formatting",
+  );
 
 
   // --- Review mode: the base→tailored diff, overlaid on the same editor -------
@@ -1037,7 +1035,6 @@ function StudioEditor({
           <FormattingPanel
             value={formatting}
             onChange={setFormatting}
-            supportedKeys={supportedFmtKeys}
             baseline={formattingBaseline}
             inherited={application.formatting == null}
             onRevertToBase={() => setFormatting(null)}

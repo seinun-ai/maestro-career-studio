@@ -294,15 +294,20 @@ export default function TemplateEditorPage() {
             className="min-h-0 flex-1 overflow-y-auto"
           >
             {/* Edits store the diff from schema defaults — exactly the theme's
-                default_formatting overlay. `onChange(null)` clears it. */}
+                default_formatting overlay. `onChange(null)` clears it. The
+                baseline is ready by construction: the schema constant is its
+                only layer, and this branch renders after `tq` resolved. */}
             <FormattingPanel
               value={defaultFormatting}
               onChange={(next) => {
                 setDefaultFormatting(next);
                 scheduleDefaultFmt(next);
               }}
-              supportedKeys={tq.data.supported_fmt_keys}
-              baseline={FORMATTING_DEFAULTS}
+              baseline={{
+                status: "ready",
+                values: FORMATTING_DEFAULTS,
+                supportedKeys: tq.data.supported_fmt_keys,
+              }}
               collapsible={false}
             />
             <p className="text-muted-foreground px-3 py-2 text-xs">

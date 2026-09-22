@@ -103,8 +103,11 @@ export function ChatPage() {
   const [attachments, setAttachments] = useState<ChatAttachmentInfo[]>([]);
   const [scopeOpen, setScopeOpen] = useState(false);
   const [streaming, setStreaming] = useState<StreamingState | null>(null);
-  // Desktop rail tuck-in. Read during render, so a stored "collapsed" paints
-  // on the first frame and a change in another tab updates this one.
+  // Desktop rail tuck-in, read during render so a change in another tab
+  // updates this one. /chat is server-rendered and hydration uses the hook's
+  // null snapshot, so the rail paints OPEN first and a stored "collapsed"
+  // applies right after hydration (a brief flash). Only components that mount
+  // after hydration, like the studio shell, paint the stored value first.
   const [historyCollapsed, setHistoryCollapsed] = useLocalStorageState(
     HISTORY_COLLAPSED_KEY,
     parseFlag,

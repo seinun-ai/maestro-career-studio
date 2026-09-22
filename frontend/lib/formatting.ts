@@ -201,3 +201,78 @@ export function diffFromDefaults(
 ): Partial<ResumeFormatting> | null {
   return diffFrom(FORMATTING_DEFAULTS, value);
 }
+
+/**
+ * The Formatting panel's baseline, and whether EVERY layer of it has loaded.
+ *
+ * A knob edit is stored as `diffFrom(values, …)`, so an edit made against a
+ * baseline with a layer missing drops any explicit override that happens to
+ * equal the incomplete one (a scalar, or `section_order`), and the drop only
+ * shows once the missing layer lands. The panel therefore takes this state,
+ * not a bare value: it enables its knobs only on `"ready"`. A failed layer is
+ * a third state, never "still loading": it names what failed and carries the
+ * retry. `what` is the layer's name as the panel's copy uses it.
+ */
+export type FormattingBaseline =
+  | { status: "loading"; what: string }
+  | { status: "error"; what: string; retry: () => void; retrying: boolean }
+  | {
+      status: "ready";
+      values: ResumeFormatting;
+      /** The `fmt.*` keys the selected template consumes. */
+      supportedKeys: readonly string[];
+    };
+
+/** The slice of a react-query result a baseline layer reads. */
+export type BaselineLayerQuery<T> = {
+  data: T | undefined;
+  isError: boolean;
+  isFetching: boolean;
+  refetch: () => unknown;
+};
+
+/**
+ * The state of a layer that has no data yet: an error (with its retry) once the
+ * query has failed, otherwise loading. Data a query already holds is readiness,
+ * even when a later background refetch failed, so callers ask this only when
+ * `data` is undefined.
+ */
+export function unloadedLayer(
+  query: Omit<BaselineLayerQuery<unknown>, "data">,
+  what: string,
+): Exclude<FormattingBaseline, { status: "ready" }> {
+  return query.isError
+    ? {
+        status: "error",
+        what,
+        retry: () => void query.refetch(),
+        retrying: query.isFetching,
+      }
+    : { status: "loading", what };
+}
+
+/**
+ * Lay a fetched `formatting` layer (the base resume's, under an application)
+ * over `under`. The result is ready only when both are; an error in either
+ * wins over loading, so a failure is never reported as a wait.
+ */
+export function overlayBaseline(
+  under: FormattingBaseline,
+  query: BaselineLayerQuery<{ formatting?: Record<string, unknown> | null }>,
+  what: string,
+): FormattingBaseline {
+  if (under.status === "error") return under;
+  if (query.data === undefined) {
+    return query.isError || under.status === "ready"
+      ? unloadedLayer(query, what)
+      : under;
+  }
+  if (under.status !== "ready") return under;
+  return {
+    ...under,
+    values: {
+      ...under.values,
+      ...((query.data.formatting as Partial<ResumeFormatting> | null) ?? {}),
+    },
+  };
+}

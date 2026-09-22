@@ -8,6 +8,7 @@ import {
   SlidersHorizontal,
 } from "lucide-react";
 
+import { LoadErrorState } from "@/components/load-error-state";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -35,6 +36,7 @@ import {
   SLIDER_RANGES,
   diffFrom,
   shownSectionOrder,
+  type FormattingBaseline,
   type ResumeFormatting,
   type SectionKey,
 } from "@/lib/formatting";
@@ -48,29 +50,30 @@ const UNSUPPORTED = "Selected template doesn't support this";
  * resume falls back to the plain Classic look), so an untouched resume keeps a
  * null `formatting` and inherits/merges correctly on the backend.
  *
- * `supportedKeys` (from the selected template's `supported_fmt_keys`) greys out
- * any knob the template doesn't consume. In the studio, `inherited` +
- * `onRevertToBase` surface the base-resume override relationship, and `baseline`
- * carries the inherited layer (defaults merged with the base resume's
- * formatting) so the controls show the *effective* values and edits store only
- * genuine overrides of what is inherited.
+ * `baseline` is required and says whether the values an edit is diffed against
+ * are complete. The knobs are enabled only while it is `"ready"`: its `values`
+ * are every inherited layer merged (schema defaults, the template's overlay and,
+ * in the application studio, the base resume's formatting), so the controls show
+ * the *effective* values and edits store only genuine overrides of them, and its
+ * `supportedKeys` (the template's `supported_fmt_keys`) grey out any knob the
+ * template doesn't consume. `"loading"` and `"error"` keep every knob disabled
+ * and say which layer is missing; the error offers a retry. In the studio,
+ * `inherited` + `onRevertToBase` surface the base-resume override relationship.
  */
 export function FormattingPanel({
   value,
   onChange,
-  supportedKeys,
+  baseline,
   inherited,
   onRevertToBase,
-  baseline = FORMATTING_DEFAULTS,
   defaultOpen = false,
   collapsible = true,
 }: {
   value: Partial<ResumeFormatting> | null;
   onChange: (next: Partial<ResumeFormatting> | null) => void;
-  supportedKeys?: string[];
+  baseline: FormattingBaseline;
   inherited?: boolean;
   onRevertToBase?: () => void;
-  baseline?: ResumeFormatting;
   defaultOpen?: boolean;
   collapsible?: boolean;
 }) {
@@ -79,29 +82,29 @@ export function FormattingPanel({
   // copy in the base-resume editor, so bare `${key}-label` would collide.
   const uid = useId();
 
-  const effective: ResumeFormatting = { ...baseline, ...(value ?? {}) };
+  // Until every layer is in, the knobs are disabled and show the schema
+  // defaults under the stored value; nothing is diffed against them.
+  const ready = baseline.status === "ready";
+  const inheritedValues = ready ? baseline.values : FORMATTING_DEFAULTS;
+  const effective: ResumeFormatting = { ...inheritedValues, ...(value ?? {}) };
   const customized = value != null && Object.keys(value).length > 0;
 
   function setKey<K extends keyof ResumeFormatting>(
     key: K,
     next: ResumeFormatting[K],
   ) {
-    onChange(diffFrom(baseline, { ...effective, [key]: next }));
+    onChange(diffFrom(inheritedValues, { ...effective, [key]: next }));
   }
 
-  // `undefined` is useSupportedFmtKeys' loading sentinel for the same
-  // ["templates", "all"] query useTemplateDefaults reads. Until it resolves,
-  // the baseline overlay is {} and a knob edit can drop an explicit override.
-  const defaultsPending = supportedKeys === undefined;
-
   const unsupported = (key: keyof ResumeFormatting) =>
-    supportedKeys ? !supportedKeys.includes(key) : false;
+    ready && !baseline.supportedKeys.includes(key);
 
   const isDisabled = (key: keyof ResumeFormatting) =>
-    defaultsPending || unsupported(key);
+    !ready || unsupported(key);
 
-  // The unsupported-knob tooltip only. A control waiting on template defaults
-  // is disabled too, but that reason is the status line below, not this copy.
+  // The unsupported-knob tooltip only. A control waiting on (or failing to
+  // load) a baseline layer is disabled too, but that reason is the status
+  // line at the top of the panel, not this copy.
   const withTooltip = (key: keyof ResumeFormatting, control: ReactNode) =>
     unsupported(key) ? (
       <Tooltip>
@@ -302,10 +305,19 @@ export function FormattingPanel({
 
       {showContent && (
         <div className="space-y-4 px-3 pt-1 pb-3">
-          {defaultsPending && (
-            <p className="text-muted-foreground text-xs">
-              Loading template defaults…
+          {baseline.status === "loading" && (
+            <p role="status" className="text-muted-foreground text-xs">
+              Loading {baseline.what}…
             </p>
+          )}
+          {baseline.status === "error" && (
+            <LoadErrorState
+              className="py-4"
+              title={`Couldn't load ${baseline.what}.`}
+              detail="Formatting stays locked until it loads, so an edit can't overwrite a setting you already saved."
+              retrying={baseline.retrying}
+              onRetry={baseline.retry}
+            />
           )}
           {onRevertToBase && (
             <div className="text-muted-foreground bg-muted/40 flex items-center justify-between gap-2 rounded-md px-2 py-1.5 text-xs">
@@ -318,7 +330,7 @@ export function FormattingPanel({
                 <Button
                   variant="ghost"
                   size="xs"
-                  disabled={defaultsPending}
+                  disabled={!ready}
                   onClick={() => onRevertToBase()}
                 >
                   Revert to base
@@ -468,7 +480,7 @@ export function FormattingPanel({
             <Button
               variant="outline"
               size="sm"
-              disabled={defaultsPending || !customized}
+              disabled={!ready || !customized}
               onClick={() => onChange(null)}
             >
               <RotateCcw />

@@ -187,14 +187,26 @@
     own success path. Every Rebuild also writes its response into the
     `["application", id]` cache, or a remounted clean editor adopts the stale
     copy a banner was about until the refetch lands.
-  - *Formatting controls*: `useTemplateDefaults` is `{}` until the shared
-    `["templates", "all"]` query resolves, and a knob diffed against that empty
-    overlay can drop an explicit override (a scalar, or `section_order`).
-    `useSupportedFmtKeys` reads the same query and returns `undefined` while it
-    is in flight; `FormattingPanel` keeps every knob disabled on that sentinel.
-    The template editor mounts the panel only after its own template query
-    resolves (its baseline is the schema constant, and it passes a concrete
-    `supported_fmt_keys` list).
+  - *Formatting controls*: a knob edit is stored as `diffFrom(baseline, …)`,
+    so an edit made before every layer of the baseline has loaded drops an
+    explicit override equal to the incomplete one (a scalar, or
+    `section_order`), and the drop only shows once the layer lands.
+    `FormattingPanel` therefore takes a required `FormattingBaseline` state
+    (`lib/formatting.ts`), `"loading"` | `"error"` | `"ready"`, and enables its
+    knobs only on `"ready"`. Loading says "Loading the template defaults…";
+    a failed layer is the third state, a compact `LoadErrorState` naming the
+    layer with a retry, and the knobs stay disabled under it (editing against
+    an unknown baseline is the race itself). `useTemplateBaseline`
+    (`template-select.tsx`) is the template layer: it reads the one
+    `["templates", "all"]` query (`useTemplatesQuery`, shared with the picker)
+    and is never ready without it. The application studio lays the base
+    resume's `formatting` on top with `overlayBaseline`, so it also waits on
+    the `["base-resumes", slug]` query; an error in either layer wins over
+    loading, and data a query already holds stays ready through a failed
+    background refetch. The base studio has no further layer (the base's own
+    formatting is the panel's value, not its baseline). The template editor
+    mounts the panel only after its own template query resolves and passes a
+    ready baseline: the schema constant and that row's `supported_fmt_keys`.
 - **`PdfPagesPreview` owns the canvas and the zoom.** Pages sit on
   `bg-canvas`, so a caller adds no fill of its own. Zoom is a `role="group"`
   "Zoom" of `aria-pressed` presets (Fit width, Fit page, 100%) on a solid
