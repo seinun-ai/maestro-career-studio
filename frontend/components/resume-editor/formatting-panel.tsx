@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import {
   ChevronDown,
   ChevronUp,
@@ -88,6 +88,18 @@ export function FormattingPanel({
   const inheritedValues = ready ? baseline.values : FORMATTING_DEFAULTS;
   const effective: ResumeFormatting = { ...inheritedValues, ...(value ?? {}) };
   const customized = value != null && Object.keys(value).length > 0;
+
+  // Recovering from a failed load unmounts the error and its focused Try
+  // again, so focus would land on <body>. A retry marks it; when the baseline
+  // turns ready, focus that lost its place moves to the panel body.
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const refocusWhenReady = useRef(false);
+  useEffect(() => {
+    if (!ready || !refocusWhenReady.current) return;
+    refocusWhenReady.current = false;
+    const active = document.activeElement;
+    if (!active || active === document.body) bodyRef.current?.focus();
+  }, [ready]);
 
   function setKey<K extends keyof ResumeFormatting>(
     key: K,
@@ -305,7 +317,11 @@ export function FormattingPanel({
       )}
 
       {showContent && (
-        <div className="space-y-4 px-3 pt-1 pb-3">
+        <div
+          ref={bodyRef}
+          tabIndex={-1}
+          className="space-y-4 px-3 pt-1 pb-3 outline-none"
+        >
           {baseline.status === "loading" && (
             <p role="status" className="text-muted-foreground text-xs">
               Loading {baseline.what}…
@@ -317,7 +333,10 @@ export function FormattingPanel({
               title={`Couldn't load ${baseline.what}.`}
               detail="Formatting stays locked until it loads, so an edit can't overwrite a setting you already saved."
               retrying={baseline.retrying}
-              onRetry={baseline.retry}
+              onRetry={() => {
+                refocusWhenReady.current = true;
+                baseline.retry();
+              }}
             />
           )}
           {onRevertToBase && (

@@ -232,7 +232,11 @@
     knobs only on `"ready"`. Loading names the layer it waits on ("Loading
     the template defaults…"); a failed layer is the third state, a compact `LoadErrorState` naming the
     layer with a retry, and the knobs stay disabled under it (editing against
-    an unknown baseline is the race itself). `useTemplateBaseline`
+    an unknown baseline is the race itself). A retry stays that error,
+    "Retrying…" (`unloadedLayer` reads `errorUpdateCount`, since react-query
+    refetches a data-less query from pending), with Try again focusable while
+    disabled; when the retry turns the baseline ready, focus that fell to
+    `<body>` moves to the panel body's `tabIndex={-1}` wrapper. `useTemplateBaseline`
     (`template-select.tsx`) is the template layer: it reads the one
     `["templates", "all"]` query (`useTemplatesQuery`, shared with the picker)
     and is never ready without it. The application studio lays the base

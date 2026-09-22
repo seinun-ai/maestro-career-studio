@@ -24,6 +24,9 @@ import { cn } from "@/lib/utils";
  * `title` defaults to the generic sentence; pass one when the surface can name
  * what it was reading ("Couldn't load your applications."). `detail` carries the
  * server's own message where there is one worth showing.
+ *
+ * Try again stays focusable while `retrying` disables it, as the studio Save
+ * does: a disabled native <button> drops a keyboard user's focus to <body>.
  */
 export function LoadErrorState({
   title = "Something didn't load.",
@@ -56,7 +59,13 @@ export function LoadErrorState({
         </p>
       </div>
       {onRetry ? (
-        <Button variant="outline" onClick={onRetry} disabled={retrying}>
+        <Button
+          variant="outline"
+          onClick={onRetry}
+          disabled={retrying}
+          focusableWhenDisabled
+          className="data-disabled:pointer-events-none data-disabled:opacity-50"
+        >
           {retrying ? "Retrying…" : "Try again"}
         </Button>
       ) : null}

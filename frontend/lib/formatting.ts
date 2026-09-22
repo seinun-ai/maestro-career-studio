@@ -228,6 +228,8 @@ export type BaselineLayerQuery<T> = {
   data: T | undefined;
   isError: boolean;
   isFetching: boolean;
+  /** How many times the query has failed; a refetch does not reset it. */
+  errorUpdateCount: number;
   refetch: () => unknown;
 };
 
@@ -236,12 +238,17 @@ export type BaselineLayerQuery<T> = {
  * query has failed, otherwise loading. Data a query already holds is readiness,
  * even when a later background refetch failed, so callers ask this only when
  * `data` is undefined.
+ *
+ * A retry of a failed layer stays the error, retrying: react-query resets a
+ * data-less query to pending when it refetches, which swapped the error for
+ * the loading line and unmounted the focused Try again the moment it was
+ * pressed.
  */
 export function unloadedLayer(
   query: Omit<BaselineLayerQuery<unknown>, "data">,
   what: string,
 ): Exclude<FormattingBaseline, { status: "ready" }> {
-  return query.isError
+  return query.isError || (query.isFetching && query.errorUpdateCount > 0)
     ? {
         status: "error",
         what,

@@ -284,9 +284,26 @@ def test_formatting_panel_reports_a_failed_baseline_with_a_retry():
     error = _PANEL[_PANEL.index('baseline.status === "error" &&') :]
     error = error[: error.index("/>")]
     assert "<LoadErrorState" in error
-    assert "onRetry={baseline.retry}" in error
+    assert "baseline.retry();" in error
     assert "retrying={baseline.retrying}" in error
     assert "Loading {baseline.what}" in _PANEL[loading : loading + 200]
+
+
+def test_formatting_retry_never_drops_focus_to_body():
+    # Try again disables itself while retrying and then unmounts with the error:
+    # a disabled native <button> and an unmounted one both drop focus to <body>.
+    button = _read("components/load-error-state.tsx")
+    assert "focusableWhenDisabled" in button
+    assert "data-disabled:opacity-50" in button
+    # The retry arms the refocus; once ready, focus that fell to <body> moves to
+    # the panel body (lib/formatting.test.ts pins that a retry stays the error).
+    error = _PANEL[_PANEL.index('baseline.status === "error" &&') :]
+    assert "refocusWhenReady.current = true;" in error[: error.index("/>")]
+    effect = _PANEL[_PANEL.index("useEffect(() => {") :]
+    effect = effect[: effect.index("}, [ready]);")]
+    assert "if (!ready || !refocusWhenReady.current) return;" in effect
+    assert "active === document.body) bodyRef.current?.focus();" in effect
+    assert re.search(r"ref=\{bodyRef\}\s*tabIndex=\{-1\}", _PANEL)
 
 
 def test_every_formatting_panel_caller_passes_a_baseline_state():
