@@ -1846,6 +1846,9 @@ Commit: `git commit -m "docs(conventions): colour roles, sidebar FAB and the hon
      Re-score still toasts.
    - devtools: confirm tonal-button text ≥ 4.5:1 and the primary button colour
      `#1358bb` (light).
+   - The flat FAB (no resting shadow since Task 2's review) does not blend into
+     the light sidebar: fill is only ~1.25:1 there, so it relies on its label.
+   - Selected health-report filters and the pressed Review toggle show a check.
 4. Stop every server you started. Record results below.
 
 Then run the goal critique: read the Goal Card, and check the landed branch
@@ -1873,6 +1876,9 @@ Goal Card line it violates.
 
 | Task | Planned | Did instead | Why (Goal Card line) |
 |---|---|---|---|
+| 1 (review) | Task 1 only | Hardened colour pins (fail loudly on unparsed tokens, every tint above ceiling, hover read from CSS); chroma nudged into sRGB; selected tonal toggles (health filters, Review changes) show a Check + `aria-pressed`; conventions primary value | Task 1 made those toggles' "on" state fainter than "off": fixing a regression it introduced (Principles: accessibility) |
+| 2 | Plan code only | Comment above `sidebarMenuButtonVariants` on why the `data-active:hover:` pairing must stay | Unpinned-by-intent class a cleanup would delete |
+| 2 (review) | `data-active:hover:bg-…` only; substring pins; `useModKey` via effect; FAB `shadow-sm` at rest + `shadow-md` on /new | Adds `data-active:hover:text-on-secondary-container`; exact-token pins; `useModKey` via `useSyncExternalStore` (the `use-mobile.ts` pattern); `aria-keyshortcuts` on both sidebar toggles; "Toggle sidebar" sentence case; FAB rests flat, hover +1 (M3 rail FAB elevation 0) | Review findings; accessibility and conventions |
 | 1 | globals.css comment: hover tokens work because "custom properties resolve per element" | Comment says they work because `.dark` sits on `<html>`, the same element `:root` matches; a `.dark` on a subtree would keep the light hover | Accuracy of a comment the next agent will trust (Principles: conventions win); code unchanged |
 
 ## Gate results
