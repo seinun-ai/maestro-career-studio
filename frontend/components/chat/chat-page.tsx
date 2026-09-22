@@ -41,7 +41,11 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
-import { useIsMobile } from "@/hooks/use-mobile";
+import {
+  parseFlag,
+  serializeFlag,
+  useLocalStorageState,
+} from "@/hooks/use-local-storage-state";
 import {
   apiFetch,
   createChatSession,
@@ -99,21 +103,19 @@ export function ChatPage() {
   const [attachments, setAttachments] = useState<ChatAttachmentInfo[]>([]);
   const [scopeOpen, setScopeOpen] = useState(false);
   const [streaming, setStreaming] = useState<StreamingState | null>(null);
-  // Desktop rail tuck-in. Mirrors EditorShell's collapsed/hydrated pattern:
-  // the default (false, i.e. open) matches what a first paint without
-  // localStorage renders, so hydrating in an effect — rather than reading
-  // localStorage during render — never produces a client/server mismatch.
-  const [historyCollapsed, setHistoryCollapsed] = useState(false);
-  const [historyHydrated, setHistoryHydrated] = useState(false);
+  // Desktop rail tuck-in. Read during render, so a stored "collapsed" paints
+  // on the first frame and a change in another tab updates this one.
+  const [historyCollapsed, setHistoryCollapsed] = useLocalStorageState(
+    HISTORY_COLLAPSED_KEY,
+    parseFlag,
+    serializeFlag,
+  );
   // Mobile session list, shown in a Sheet instead of the (hidden) rail. Which
-  // surface is live is decided by CSS (`md:` breakpoints), not this hook —
-  // useIsMobile() resolves in an effect and would render the desktop rail
-  // for one frame on a mobile first paint; a Tailwind media query has no
-  // such flash, so it is what gates the rail/trigger split below. The hook
-  // is still used (see effect below) to close the Sheet when the viewport
-  // crosses to md+, since it is a portal and no `md:` class reaches it.
+  // surface is live is decided by CSS (`md:` breakpoints). A Tailwind media
+  // query has no client/server mismatch, so it gates the rail/trigger split
+  // below. The Sheet is a portal, so a matchMedia listener closes it when
+  // the viewport crosses to md+.
   const [historySheetOpen, setHistorySheetOpen] = useState(false);
-  const isMobile = useIsMobile();
   // False until the pin has been resolved for the open session (see below).
   // Gates the auto-seed so it never overwrites a real choice — including an
   // explicit "No pinned resume".
@@ -131,36 +133,21 @@ export function ChatPage() {
     targetRef.current = target;
   }, [target]);
 
-  // Hydrate the rail's collapsed state from localStorage after mount, same
-  // as EditorShell's preview pane — reading it during render would disagree
-  // with the server-rendered (always-open) markup and trigger a hydration
-  // mismatch.
-  useEffect(() => {
-    const stored = window.localStorage.getItem(HISTORY_COLLAPSED_KEY);
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- hydrating from localStorage after mount
-    if (stored === "1") setHistoryCollapsed(true);
-    setHistoryHydrated(true);
-  }, []);
-
-  useEffect(() => {
-    if (!historyHydrated) return;
-    window.localStorage.setItem(
-      HISTORY_COLLAPSED_KEY,
-      historyCollapsed ? "1" : "0",
-    );
-  }, [historyCollapsed, historyHydrated]);
-
   // The Sheet is a portal (renders under <body>, not this tree), so no
   // `md:` class on its trigger or the rail reaches it — crossing to desktop
   // width does not itself close it. Opened at 400px then resized to 1200px,
   // it would otherwise sit on top of the now-visible desktop rail with no
   // trigger left to dismiss it from (Escape and the backdrop still would,
-  // but nothing here should depend on that). Close it explicitly on the
-  // crossing instead.
+  // but nothing here should depend on that). Close it on the crossing.
+  // Same query as useIsMobile (max-width: 767px).
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- syncing React state to a matchMedia crossing, not derivable during render
-    if (!isMobile) setHistorySheetOpen(false);
-  }, [isMobile]);
+    const mql = window.matchMedia("(max-width: 767px)");
+    const onChange = () => {
+      if (!mql.matches) setHistorySheetOpen(false);
+    };
+    mql.addEventListener("change", onChange);
+    return () => mql.removeEventListener("change", onChange);
+  }, []);
 
   // Event-handler-only (it reads the ref). Selections are paths into the resume
   // they were picked from, so a real switch drops them; an unchanged pin is a
@@ -559,10 +546,10 @@ export function ChatPage() {
           in the Sheet opened from the thread's "Chat history" button. The
           rail itself is `hidden md:flex` gated further by `historyCollapsed`,
           so it never flashes on a mobile first paint (a CSS media query has
-          no client/server mismatch to resolve, unlike useIsMobile()). The
-          Sheet is a portal, though, so its open state is independent React
-          state, not gated by these classes — it is closed on the md
-          crossing by the effect above instead. */}
+          no client/server mismatch to resolve). The Sheet is a portal,
+          though, so its open state is independent React state, not gated by
+          these classes — it is closed on the md crossing by the matchMedia
+          listener above instead. */}
       {!historyCollapsed && (
         <aside className="hidden w-64 shrink-0 flex-col gap-3 md:flex">
           <div className="flex items-center gap-1">

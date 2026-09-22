@@ -19,6 +19,30 @@ def _read(rel: str) -> str:
 _SHELL = _read("components/resume-editor/editor-shell.tsx")
 
 
+def test_divider_has_a_pointer_alternative():
+    assert 'aria-label="Widen preview"' in _SHELL
+    assert 'aria-label="Narrow preview"' in _SHELL
+
+
+def test_divider_tracks_the_pointer_on_the_shell():
+    assert "onPointerCancel=" in _SHELL
+    assert "setPointerCapture(" in _SHELL
+    assert "window.innerWidth" not in _SHELL
+    show = _SHELL.index('aria-label="Show PDF preview"')
+    button = _SHELL.rfind("<button", 0, show)
+    block = _SHELL[button : _SHELL.index("</button>", show)]
+    assert "absolute" not in block
+
+
+def test_stored_preferences_are_not_hydrated_in_an_effect():
+    for rel in (
+        "components/resume-editor/editor-shell.tsx",
+        "components/resume-editor/pdf-pages-preview.tsx",
+        "components/chat/chat-page.tsx",
+    ):
+        assert "set-state-in-effect" not in _read(rel), rel
+
+
 def test_divider_is_keyboard_operable():
     sep = _SHELL[_SHELL.index('role="separator"') :]
     sep = sep[: sep.index("/>")]

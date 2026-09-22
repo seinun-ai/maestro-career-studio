@@ -150,7 +150,13 @@
     `aria-controls` the editor pane). Arrows snap to the 5% grid, since a drag
     leaves fractions; Home/End jump to the limits; Alt/Ctrl/Meta+Arrow pass
     through as Back/Forward. `relative z-10`, or the positioned preview pane
-    paints over half its focus ring.
+    paints over half its focus ring. Widen and Narrow step that same 5% grid,
+    the pointer alternative to dragging; double-click resets to 45%. The drag
+    measures the shell (not the window), captures the pointer, and writes
+    localStorage on release. The collapsed "Show PDF preview" control is a
+    28px rail in normal flow, not an overlay on the editor pane. Width and
+    collapse are `useLocalStorageState` preferences, so a stored value paints
+    on the first frame and stays in sync across tabs.
   - *Base studio*: Save is dirty-gated, so ⋯ **Regenerate PDF** (Generate PDF
     before the first render) is the retry for a failed render, disabled while
     edits are unsaved, and the render-error banner says "save or
@@ -196,7 +202,9 @@
   preset is secondary container led by a `Check`, and each preset is 24px tall
   (`h-6`, 44px on a coarse pointer). ONE saved
   choice (`pdfPreview.zoom`) serves all four surfaces: both studios, the job
-  page's Resume tab and the template editor. The zoom row and the render-error
+  page's Resume tab and the template editor. It is read through
+  `useLocalStorageState` during render, so a stored zoom paints on the first
+  frame and stays in sync across every mounted preview. The zoom row and the render-error
   banner sit ABOVE the scroller in normal flow: sticky inside it, the group
   scrolled away sideways with a 100% page and the banner pushed page 1 below a
   Fit-page fold. **Fit page is `max-h-[100cqh]`**: the scroller is a size

@@ -180,6 +180,7 @@ gate table, deviations, anything queued or deferred, and any concerns.
 | Task | Planned | Did instead | Why (Goal Card line) |
 |---|---|---|---|
 | 4 | Expose a `loaded` flag from `useTemplateDefaults` and pass `defaultsLoaded` into all three FormattingPanel callers. | The panel disables every knob while `supportedKeys === undefined`. That is `useSupportedFmtKeys`' loading sentinel, and both hooks read `["templates", "all"]`. The template editor still mounts the panel only after its own query resolves and passes a concrete key list. Conventions gained a *Formatting controls* sub-bullet plus the Re-score / Generate PDF sentence on *Tailored studio* and *Empty preview*. | The amendment allows gating on the templates query. A `defaultsLoaded` prop on both studio panels extended an existing 21-line clone to 22 and put this lane over its 517-line ceiling. No new dependency; knobs stay disabled until the overlay is real (honesty). |
+| 8 | A2 §6's risk note: give the chat history edge tab the same in-flow rail. The two dismiss cards were optional. | Left the chat tab absolutely positioned and did not adopt the dismiss cards. The sheet-close effect became a `matchMedia` listener so `chat-page.tsx` no longer carries a `set-state-in-effect` disable. | Handoff: chat-page is only the rail preference; lane 2 owns the rest of that file. Dismiss cards are marked optional. The listener keeps the desktop-crossing close without the disable the pin forbids. |
 
 ## Gate results
 
@@ -192,6 +193,13 @@ gate table, deviations, anything queued or deferred, and any concerns.
 | 4 | slop frontend | OK. Duplication 517 lines, 43 clones (lane ceiling; delta 0) |
 | 4 | slop backend | `complexity_hotspots` 424 → 425. The new pin `test_formatting_controls_wait_for_template_defaults` is CC 10 (asserts count). Not re-baselined; Claude re-baselines at merge. |
 | 4 | browser | pass. With `/api/templates` held, the base studio's Formatting panel read "Loading template defaults…" and every knob was disabled. After a normal load, Experience down then up returned "All changes saved" in both studios. On the Harshibar application a 12pt edit kept Certifications in the order (no Custom sections). Saving that edit: Re-score stayed disabled through "Rendering PDF…", then the chain's own re-score ran. |
+| 8 | Task 8 pins plus every `backend/tests/test_frontend_*.py` | pass |
+| 8 | `npx tsc --noEmit` | clean |
+| 8 | `npm run lint` | 0 errors, 5 warnings (baseline) |
+| 8 | `node --test lib/*.test.ts` | 67 pass |
+| 8 | slop frontend | OK. Duplication held at 517 lines, 43 clones. The three hydrate copies were under the 50-token clone threshold, so removing them did not lower the count. |
+| 8 | slop backend | Still 425 hotspots from Task 4's pin (CC 10). This task added none. Not re-baselined. |
+| 8 | browser | pass. Sidebar open: a pointer drag moved the divider (45% → 55%) and localStorage stayed unset until release (`55.3`), then double-click stored `45`. Widen/Narrow stepped 45 → 50 → 45. After reload the separator's first value was the stored 50%, and Fit page was already pressed. The collapsed rail did not overlap Edit contact. |
 
 ## Queued for Task 18 (SYSTEM.md changes Claude applies)
 
