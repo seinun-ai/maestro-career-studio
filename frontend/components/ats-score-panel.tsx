@@ -211,6 +211,9 @@ export function AtsScorePanel({ jobId }: { jobId: string }) {
   const noBases = bases.isSuccess && bases.data.length === 0;
   const baseCount = bases.data?.length ?? 0;
   const [importOpen, setImportOpen] = useState(false);
+  // Focus lands here when the import dialog closes: its opener, the prompt's
+  // button, is gone by then.
+  const rootRef = useRef<HTMLDivElement>(null);
 
   // Open tailoring sessions let a card offer "Resume gap analysis". On
   // loading/error this stays empty, so cards fall back to the normal button.
@@ -231,9 +234,9 @@ export function AtsScorePanel({ jobId }: { jobId: string }) {
 
   const run = useMutation({
     mutationFn: () => runAtsScores(jobId),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["ats-scores", jobId] });
-    },
+    // Returned: the run stays pending until the list has refetched, so the
+    // skeleton hands straight to the cards with no empty-state frame.
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["ats-scores", jobId] }),
     onError: (err: Error) => toast.error(err.message),
   });
 
@@ -317,103 +320,134 @@ export function AtsScorePanel({ jobId }: { jobId: string }) {
     }
   }, [noBases, bases.isFetching, baseCount, importOpen, run.isPending, runMutate]);
 
+  // Score the imported resumes in the SAME event as the close: mutate() marks
+  // the run pending synchronously, and the render that drops the prompt reads
+  // it through useSyncExternalStore, so it paints the skeleton, never the
+  // empty state. The effect above stays as the fallback for a base
+  // list that lands after the dialog closed.
+  const onImportOpenChange = (open: boolean) => {
+    setImportOpen(open);
+    if (!open && sawNoBases.current && baseCount > 0 && !run.isPending) {
+      sawNoBases.current = false;
+      run.mutate();
+    }
+  };
+
   const baseRows = (scores.data ?? [])
     .filter((s) => s.phase === "base")
     .sort((a, b) => b.composite - a.composite);
 
-  if (scores.isLoading || (baseRows.length === 0 && run.isPending)) {
+  function renderBody() {
+    // Idle with an empty list means the first-visit auto-run is about to fire,
+    // so the skeleton shows instead of an empty-state frame.
+    if (
+      scores.isLoading ||
+      (baseRows.length === 0 &&
+        (run.isPending || (run.isIdle && scores.data?.length === 0)))
+    ) {
+      return (
+        <div className="@container">
+          <div className="grid gap-3 @md:grid-cols-2 @3xl:grid-cols-3">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <Skeleton key={i} className="h-64 w-full" />
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    if (scores.isError) {
+      return (
+        <LoadErrorState
+          title="Couldn't load ATS scores."
+          detail={(scores.error as Error)?.message}
+          retrying={scores.isFetching}
+          onRetry={() => void scores.refetch()}
+        />
+      );
+    }
+
+    if (baseRows.length === 0) {
+      // A 422 means the job itself can't be scored (e.g. no extracted skills) —
+      // retrying can't succeed, so show the reason instead of a dead-end button.
+      // It is checked first: an import cannot fix a job-level fact either.
+      const unscorable =
+        run.error instanceof ApiError && run.error.status === 422 ? run.error.message : null;
+      // `importOpen` keeps the prompt behind the open dialog after the import
+      // lands, while its report is still on screen (see the effect above).
+      if (!unscorable && (noBases || importOpen)) {
+        return (
+          <div className="flex flex-col items-center gap-3 py-8 text-center">
+            <p className="text-sm font-medium">No base resumes to score against.</p>
+            <p className="text-muted-foreground max-w-[50ch] text-sm">
+              Import the resumes you already have. Each becomes a base resume, and
+              this job is scored against all of them.
+            </p>
+            <Button size="sm" onClick={() => setImportOpen(true)}>
+              Import resumes
+            </Button>
+          </div>
+        );
+      }
+      return (
+        <div className="flex flex-col items-center gap-3 py-8">
+          <p className="text-muted-foreground text-sm">{unscorable ?? "No ATS scores yet."}</p>
+          {!unscorable && (
+            <Button size="sm" onClick={() => run.mutate()} disabled={run.isPending}>
+              {run.isPending && <Loader2 className="animate-spin" />}
+              {run.isPending ? "Scoring…" : "Run ATS scoring"}
+            </Button>
+          )}
+        </div>
+      );
+    }
+
+    const pendingBase = createSession.isPending ? createSession.variables : null;
+
     return (
-      <div className="@container">
+      <div className="@container space-y-3">
+        <div className="flex items-center justify-end">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => run.mutate()}
+            disabled={run.isPending}
+          >
+            <RefreshCw className={run.isPending ? "animate-spin" : undefined} />
+            {run.isPending ? "Re-scoring…" : "Re-score base resumes"}
+          </Button>
+        </div>
         <div className="grid gap-3 @md:grid-cols-2 @3xl:grid-cols-3">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <Skeleton key={i} className="h-64 w-full" />
+          {baseRows.map((score, i) => (
+            <AtsScoreCard
+              key={score.id}
+              score={score}
+              top={i === 0}
+              index={i}
+              creating={pendingBase === score.target_id}
+              analyzeDisabled={createSession.isPending}
+              onAnalyze={() => createSession.mutate(score.target_id)}
+              jobId={jobId}
+              openSession={openSessionByBase.get(score.target_id) ?? null}
+              onAppliedAsIs={() => appliedAsIsClick(score.target_id)}
+              applyingAsIs={
+                appliedAsIs.isPending && appliedAsIs.variables === score.target_id
+              }
+            />
           ))}
         </div>
       </div>
     );
   }
 
-  if (scores.isError) {
-    return (
-      <LoadErrorState
-        title="Couldn't load ATS scores."
-        detail={(scores.error as Error)?.message}
-        retrying={scores.isFetching}
-        onRetry={() => void scores.refetch()}
-      />
-    );
-  }
-
-  if (baseRows.length === 0) {
-    // A 422 means the job itself can't be scored (e.g. no extracted skills) —
-    // retrying can't succeed, so show the reason instead of a dead-end button.
-    // It is checked first: an import cannot fix a job-level fact either.
-    const unscorable =
-      run.error instanceof ApiError && run.error.status === 422 ? run.error.message : null;
-    // `importOpen` keeps the dialog mounted after the import lands, while
-    // its report is still on screen (see the effect above).
-    if (!unscorable && (noBases || importOpen)) {
-      return (
-        <div className="flex flex-col items-center gap-3 py-8 text-center">
-          <p className="text-sm font-medium">No base resumes to score against.</p>
-          <p className="text-muted-foreground max-w-[50ch] text-sm">
-            Import the resumes you already have. Each becomes a base resume, and
-            this job is scored against all of them.
-          </p>
-          <Button size="sm" onClick={() => setImportOpen(true)}>
-            Import resumes
-          </Button>
-          <UploadDialog open={importOpen} onOpenChange={setImportOpen} />
-        </div>
-      );
-    }
-    return (
-      <div className="flex flex-col items-center gap-3 py-8">
-        <p className="text-muted-foreground text-sm">{unscorable ?? "No ATS scores yet."}</p>
-        {!unscorable && (
-          <Button size="sm" onClick={() => run.mutate()} disabled={run.isPending}>
-            {run.isPending && <Loader2 className="animate-spin" />}
-            {run.isPending ? "Scoring…" : "Run ATS scoring"}
-          </Button>
-        )}
-      </div>
-    );
-  }
-
-  const pendingBase = createSession.isPending ? createSession.variables : null;
-
   return (
-    <div className="@container space-y-3">
-      <div className="flex items-center justify-end">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => run.mutate()}
-          disabled={run.isPending}
-        >
-          <RefreshCw className={run.isPending ? "animate-spin" : undefined} />
-          {run.isPending ? "Re-scoring…" : "Re-score base resumes"}
-        </Button>
-      </div>
-      <div className="grid gap-3 @md:grid-cols-2 @3xl:grid-cols-3">
-        {baseRows.map((score, i) => (
-          <AtsScoreCard
-            key={score.id}
-            score={score}
-            top={i === 0}
-            index={i}
-            creating={pendingBase === score.target_id}
-            analyzeDisabled={createSession.isPending}
-            onAnalyze={() => createSession.mutate(score.target_id)}
-            jobId={jobId}
-            openSession={openSessionByBase.get(score.target_id) ?? null}
-            onAppliedAsIs={() => appliedAsIsClick(score.target_id)}
-            applyingAsIs={
-              appliedAsIs.isPending && appliedAsIs.variables === score.target_id
-            }
-          />
-        ))}
-      </div>
+    <div ref={rootRef} tabIndex={-1} className="outline-none">
+      {renderBody()}
+      <UploadDialog
+        open={importOpen}
+        onOpenChange={onImportOpenChange}
+        finalFocus={rootRef}
+      />
     </div>
   );
 }

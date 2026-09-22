@@ -181,11 +181,21 @@ gate table, deviations, anything queued or deferred, and any concerns.
 
 | Task | Planned | Did instead | Why (Goal Card line) |
 |---|---|---|---|
+| 5–10 | Main plan trailer `Co-Authored-By: Claude Opus 5` | `Assisted-by: Grok 4.7 (Cursor CLI)` | This handoff's commit contract. The session is Grok 4.7; a Claude trailer would mis-attribute the work. |
+| 5 | A1 §5 comments quote the empty-state copy | Comments say "empty-state frame"; the user-facing string is the only occurrence | `test_frontend_query_error_states.py` anchors the first occurrence of that copy, and this lane must not edit that file. Accessibility pins stay green. |
 
 ## Gate results
 
 | Task | Gate | Result |
 |---|---|---|
+| 5 | New pin failed first, then `test_frontend_first_run.py` + `test_frontend_query_error_states.py` | 48 passed |
+| 5 | `tests/test_frontend_*.py` | 157 passed |
+| 5 | tsc | clean |
+| 5 | lint | 0 errors, 5 warnings (baseline) |
+| 5 | `node --test lib/*.test.ts` | 67 passed |
+| 5 | slop `check frontend` | OK. scan: 517 duplicated lines, 43 clones (ceiling) |
+| 5 | slop `check backend` | OK |
+| 5 | Browser: import → Done on a job with zero bases | No "No ATS scores yet." in a MutationObserver across the close; cards rendered (Best match, Re-score); `document.activeElement` is the wrapper `div` (`tabindex=-1`, `outline-none`) |
 
 ## Queued for Task 18 (SYSTEM.md changes Claude applies)
 

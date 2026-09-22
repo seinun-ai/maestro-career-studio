@@ -4,6 +4,7 @@ action per screen, the two required setup steps marked, and no dead ends
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 _FRONTEND = Path(__file__).resolve().parents[2] / "frontend"
@@ -49,6 +50,22 @@ def test_score_tab_offers_import_when_there_is_nothing_to_score():
     assert panel.index("const unscorable") < panel.index(
         "No base resumes to score against."
     )
+
+
+def test_score_tab_import_keeps_focus_and_awaits_the_refetch():
+    """Import → Done must return focus to a stable wrapper, and the run must
+    stay pending until the score list refetches so "No ATS scores yet." never
+    paints between the prompt and the cards."""
+    panel = _read("components/ats-score-panel.tsx")
+    assert re.search(r"onSuccess:\s*\(\)\s*=>\s*qc\.invalidateQueries", panel)
+    assert "finalFocus={rootRef}" in panel
+    assert "onOpenChange={onImportOpenChange}" in panel
+    # The dialog is hoisted once, after renderBody(), so closing it does not
+    # unmount the return-focus target with the empty-state prompt.
+    assert panel.index("renderBody()") < panel.index("<UploadDialog")
+    assert panel.count("<UploadDialog") == 1
+    dialog = _read("components/setup/upload-dialog.tsx")
+    assert "finalFocus" in dialog
 
 
 def test_score_tab_rescores_once_after_an_import_never_twice():
