@@ -50,21 +50,21 @@ def compute_signals(o: dict[str, Any]) -> list[dict[str, str]]:
     accept = opt.get("yes", 0) + opt.get("stem_opt_ok", 0)
     signals.append({
         "title": f"{round(accept / total * 100)}% of JDs explicitly accept OPT",
-        "detail": f"{accept} of {total} say yes or STEM-OPT; the rest are 'no' or unstated.",
+        "detail": f"{accept} of {total} accept OPT or STEM OPT. The rest say no or don't say.",
     })
 
     if o["locations"]:
         top = o["locations"][0]
         signals.append({
             "title": f"Top location: {top['key']} ({top['count']})",
-            "detail": "Highest concentration of JDs by location.",
+            "detail": "More JDs name this location than any other.",
         })
 
     if o["top_required_skills"]:
         s = o["top_required_skills"][0]
         signals.append({
             "title": f"{s['skill_name']} required in {round(s['n'] / total * 100)}% of JDs",
-            "detail": f"Most-required skill — {s['n']} of {total} JDs.",
+            "detail": f"Required in {s['n']} of {total} JDs, more than any other skill.",
         })
 
     paid = [r for r in o["salary_by_role"] if r.get("avg_max")]
@@ -75,8 +75,8 @@ def compute_signals(o: dict[str, Any]) -> list[dict[str, str]]:
         signals.append({
             "title": f"Best-paying track: {best['role_category']}",
             "detail": (
-                f"~{round(best['avg_max'] / 1000)}k{cur_bit} avg max across "
-                f"{best['n']} disclosed JDs."
+                f"Average top of the pay range: about {round(best['avg_max'] / 1000)}k{cur_bit}, "
+                f"from {best['n']} JDs that list pay."
             ),
         })
 
@@ -85,8 +85,7 @@ def compute_signals(o: dict[str, Any]) -> list[dict[str, str]]:
         signals.append({
             "title": f"{round(without / total * 100)}% of JDs state no salary",
             "detail": (
-                f"{without} of {total} omit pay numbers — normal "
-                "(~40%+ US / ~88% DE; IL may only hyperlink a pay page)."
+                f"{without} of {total} leave pay out. That is common, so it is not a red flag."
             ),
         })
 

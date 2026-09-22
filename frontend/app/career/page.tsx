@@ -31,7 +31,7 @@ const ENTITY_TABS: { kind: KBEntityKind; value: string; title: string; singular:
 ];
 
 export default function CareerPage() {
-  const [activeTab, setActiveTab] = useState("profile");
+  const [activeTab, setActiveTab] = useState("basics");
   const [newEntity, setNewEntity] = useState<{ open: boolean; kind: KBEntityKind }>({
     open: false,
     kind: "experience",
@@ -47,7 +47,7 @@ export default function CareerPage() {
   });
 
   const openNewEntity = (kind: KBEntityKind) => setNewEntity({ open: true, kind });
-  // On an entity tab, "New entity" defaults to that kind; on Profile, to experience.
+  // On an entity tab, "New entity" defaults to that kind; on Basics, to experience.
   const activeKind = ENTITY_TABS.find((tab) => tab.value === activeTab)?.kind ?? "experience";
 
   const [importOpen, setImportOpen] = useState(false);
@@ -103,7 +103,7 @@ export default function CareerPage() {
       {/* Anchor: the "Import resumes" setup step links here. */}
       <Tabs id="kb-entities" value={activeTab} onValueChange={setActiveTab} className="gap-5">
         <TabsList className="h-auto flex-wrap rounded-full bg-muted/70 p-1">
-          <TabsTrigger value="profile">Profile</TabsTrigger>
+          <TabsTrigger value="basics">Basics</TabsTrigger>
           {ENTITY_TABS.map((tab) => (
             <TabsTrigger key={tab.value} value={tab.value} className="gap-1.5">
               {tab.title}
@@ -116,7 +116,7 @@ export default function CareerPage() {
           ))}
         </TabsList>
 
-        <TabsContent value="profile" className="space-y-4">
+        <TabsContent value="basics" className="space-y-4">
           <ProfilePanel />
           <CareerExportsCard />
         </TabsContent>

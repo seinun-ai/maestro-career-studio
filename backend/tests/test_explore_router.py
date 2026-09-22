@@ -383,6 +383,36 @@ def test_overview_signals(db_session):
     assert len(body["signals"]) <= 5
 
 
+def test_overview_signal_copy_has_no_em_dash(db_session):
+    """Insight title and detail are sentences. An em dash is a clause joiner, not copy."""
+    j1 = _seed_job(db_session, raw_hash="s1", role_category="data_scientist")
+    j2 = _seed_job(db_session, raw_hash="s2", role_category="data_scientist")
+    paid = _seed_job(db_session, raw_hash="s3", role_category="data_scientist")
+    j1.opt_accepted, j2.opt_accepted, paid.opt_accepted = "yes", "no", "stem_opt_ok"
+    j1.state, j2.state, paid.state = "Texas", "Texas", "Texas"
+    j1.work_mode, j2.work_mode, paid.work_mode = "onsite", "onsite", "onsite"
+    paid.salary_min, paid.salary_max, paid.salary_period, paid.salary_currency = (
+        150000,
+        180000,
+        "year",
+        "USD",
+    )
+    _add_skill(db_session, j1, "Python", requirement="required")
+    _add_skill(db_session, j2, "Python", requirement="required")
+    _add_skill(db_session, paid, "Python", requirement="required")
+    db_session.flush()
+    client = TestClient(app)
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        body = client.get("/api/explore/overview").json()
+    finally:
+        app.dependency_overrides.clear()
+    assert body["signals"], "the paid job should fire the salary branches"
+    for signal in body["signals"]:
+        assert "—" not in signal["title"]
+        assert "—" not in signal["detail"]
+
+
 def test_role_mix_over_time_groups_by_week(db_session):
     _seed_job(
         db_session,

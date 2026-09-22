@@ -116,31 +116,31 @@ export function ExploreOverview({ filters }: { filters: Filters }) {
         ? "mixed"
         : "—";
   const salarySub = o.meta.salary_mixed_currencies
-    ? "filter by currency"
+    ? "Filter by currency"
     : o.meta.jobs_with_salary
-      ? `${o.meta.jobs_with_salary} disclosed · ${o.meta.jobs_without_salary} omit pay`
-      : "year only · omit is normal";
+      ? `${o.meta.jobs_with_salary} list pay · ${o.meta.jobs_without_salary} don't`
+      : "Yearly pay only";
 
   return (
     <div className="flex flex-col gap-4">
       <LowSampleCaption n={total} lowSample={total < 5} unit="jobs" />
       <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-5">
         <StatTile
-          label="total JDs"
+          label="Job descriptions"
           value={String(total)}
-          sub={o.meta.since ? `since ${o.meta.since.slice(0, 10)}` : undefined}
+          sub={o.meta.since ? `Since ${o.meta.since.slice(0, 10)}` : undefined}
         />
         <StatTile
-          label="role categories"
+          label="Role categories"
           value={String(o.meta.role_category_count)}
         />
         <StatTile
-          label="onsite"
+          label="Onsite"
           value={`${pct(onsite, total)}%`}
           sub={`${onsite} of ${total}`}
         />
         <StatTile
-          label="avg yearly salary"
+          label="Avg yearly salary"
           value={salaryAvg}
           sub={salarySub}
         />

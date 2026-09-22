@@ -175,11 +175,18 @@ gate table, deviations, anything queued or deferred, and any concerns.
 
 | Task | Planned | Did instead | Why (Goal Card line) |
 |---|---|---|---|
+| 11–13 | Main plan trailer `Co-Authored-By: Claude Opus 5` | Commit trailer is `Assisted-by: Grok 4.7 (Cursor CLI)` only | This handoff is the binding trailer for this executor. |
+| 11 | Optional naming note in `docs/frontend-conventions.md` | No conventions edit | No existing bullet names the KB Profile tab, and the task marks the note optional. Other lanes edit other bullets of the same file. |
 
 ## Gate results
 
 | Task | Gate | Result |
 |---|---|---|
+| 11 | `test_overview_signals` + `test_overview_signal_copy_has_no_em_dash` | pass (em-dash pin failed on the old skill detail, then passed) |
+| 11 | `pytest tests/test_explore_router.py tests/test_frontend_*.py` | 173 passed |
+| 11 | tsc / lint / `node --test lib/*.test.ts` | tsc clean; lint 0 errors, 5 warnings; 67 passed |
+| 11 | slop `check frontend` and `check backend` | both OK; frontend duplication 517 lines, 43 clones |
+| 11 | browser (scratch stack, 3103) | Basics tab selected on `/career`; Templates subtitle "The look of the PDF."; Job market tiles are sentence case and insight details have no em dash; Needs you chip on `/proposals` uses `bg-orange-500/10 text-orange-700` |
 
 ## Queued for Task 18 (SYSTEM.md changes Claude applies)
 
