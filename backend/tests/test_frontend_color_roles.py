@@ -275,13 +275,6 @@ def test_browser_focus_outline_is_the_solid_ring():
 # part that has to carry the contrast.
 _FOCUS_TOKEN = re.compile(r"[^\s\"'`]*(?:ring|outline|border)-(?:ring|primary|destructive)/\d+")
 _SOLID_FOCUS_BORDER = re.compile(r"(?<![\w:-])focus-visible:border-(?:ring|destructive)(?![/\w-])")
-# Lane 3's files, fixed on that branch. Delete each entry when it lands (the
-# stale check below fails once the site is gone).
-_PENDING_TRANSLUCENT_FOCUS = {
-    "components/status-chip.tsx",
-    "components/role-category-picker.tsx",
-}
-
 
 def _tsx_files():
     for root in ("app", "components"):
@@ -310,10 +303,7 @@ def _translucent_focus_sites():
 
 
 def test_focus_indicators_are_solid():
-    offenders = [
-        site for rel, site in _translucent_focus_sites()
-        if rel not in _PENDING_TRANSLUCENT_FOCUS
-    ]
+    offenders = [site for _, site in _translucent_focus_sites()]
     assert offenders == [], offenders
 
 
@@ -328,11 +318,6 @@ def test_ring_offsets_name_their_surface():
         and not re.search(r"ring-offset-(?:background|card|popover|sidebar|canvas)\b", line)
     ]
     assert offenders == [], offenders
-
-
-def test_pending_translucent_focus_allowlist_is_not_stale():
-    still = {rel for rel, _ in _translucent_focus_sites()}
-    assert _PENDING_TRANSLUCENT_FOCUS <= still, _PENDING_TRANSLUCENT_FOCUS - still
 
 
 # Destructive text sits on its own tints. Worst alpha per surface: Button hover
@@ -436,22 +421,28 @@ def test_copied_tailwind_shades_match_the_installed_theme():
         assert read == pytest.approx(lch), name
 
 
-_NEEDS_YOU = re.search(
-    r'const NEEDS_YOU = \{[^}]*className: "([^"]+)"', _read("components/status-chip.tsx")
-).group(1)
+# Every orange chip in the status vocabulary: Needs you, and Submission
+# uncertain, which shares its tint. Read from the source.
+_ORANGE_CHIPS = re.findall(
+    r'className: "(bg-orange-500/10 [^"]+)"', _read("components/status-chip.tsx")
+)
+
+
+def test_orange_chips_are_found():
+    assert len(_ORANGE_CHIPS) >= 2, _ORANGE_CHIPS
 
 
 @pytest.mark.parametrize("mode", list(_MODES))
-def test_needs_you_chip_text_meets_aa_on_its_tint(mode):
-    """The chip is text on a 10% tint of orange-500, read from the source. Over
-    --muted, orange-700 was 3.98:1."""
-    tint, pct = re.search(r"(?<![\w:-])bg-([a-z]+-\d+)/(\d+)", _NEEDS_YOU).groups()
+@pytest.mark.parametrize("chip", _ORANGE_CHIPS)
+def test_orange_chip_text_meets_aa_on_its_tint(chip, mode):
+    """Text on a 10% tint of orange-500. Over --muted, orange-700 was 3.98:1."""
+    tint, pct = re.search(r"(?<![\w:-])bg-([a-z]+-\d+)/(\d+)", chip).groups()
     text_re = r"(?<![\w:-])text-([a-z]+-\d+)" if mode == "light" else r"dark:text-([a-z]+-\d+)"
-    text = _srgb(_oklab(_TAILWIND[re.search(text_re, _NEEDS_YOU).group(1)]))
+    text = _srgb(_oklab(_TAILWIND[re.search(text_re, chip).group(1)]))
     for surface in ("background", "card", "muted"):
         fill = _over(_srgb(_oklab(_TAILWIND[tint])), _rgb(_MODES[mode], surface), int(pct) / 100)
         ratio = _contrast(text, fill)
-        assert ratio >= 4.5, f"{mode}: Needs you over --{surface} is {ratio:.2f}:1"
+        assert ratio >= 4.5, f"{mode}: {chip} over --{surface} is {ratio:.2f}:1"
 
 
 @pytest.mark.parametrize("mode", list(_MODES))

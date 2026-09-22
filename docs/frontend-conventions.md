@@ -60,9 +60,7 @@
   translucent focus BORDER is never allowed (the destructive Button's was /40,
   about 2.1:1 in light mode). A `ring-offset-N` names its surface (`ring-offset-background`):
   the default offset colour is white, a white band around the ring in dark
-  mode. `test_frontend_color_roles.py` pins all three; its allowlist holds the
-  two sites not yet converted (`status-chip.tsx`, `role-category-picker.tsx`)
-  and fails once either is fixed, so the entry goes too. `--ring` is pinned at
+  mode. `test_frontend_color_roles.py` pins all three, with no exemptions. `--ring` is pinned at
   3:1 on the page, card, sidebar, canvas, muted and secondary-container
   surfaces; `--primary-container` (the FAB) is not in that set, because the
   dark ring measures 2.88:1 on it.

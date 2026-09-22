@@ -129,7 +129,7 @@ export const PROPOSAL_STATUS_CHIP: Record<
   accepted: { label: "Queued", className: "bg-sky-500/10 text-sky-700 dark:text-sky-400" },
   approved: { label: "Approved", className: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" },
   submitted: { label: "Submitted", className: "bg-emerald-500/15 text-emerald-800 dark:text-emerald-300" },
-  submission_uncertain: { label: "Submission uncertain", className: "bg-orange-500/10 text-orange-700 dark:text-orange-400" },
+  submission_uncertain: { label: "Submission uncertain", className: "bg-orange-500/10 text-orange-800 dark:text-orange-400" },
   rejected: { label: "Skipped", className: "text-muted-foreground bg-muted" },
   expired: { label: "Expired", className: "text-muted-foreground bg-muted" },
 };
