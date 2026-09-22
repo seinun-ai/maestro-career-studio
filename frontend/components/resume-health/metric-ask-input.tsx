@@ -119,7 +119,7 @@ export function MetricAskInput({
         {value.unit === "other" && (
           <Input
             aria-label="Custom unit"
-            placeholder="e.g. users"
+            placeholder="e.g. tickets"
             value={value.unitOther}
             onChange={(e) => set({ unitOther: e.target.value })}
             disabled={disabled}

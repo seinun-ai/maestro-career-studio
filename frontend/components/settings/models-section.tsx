@@ -222,7 +222,9 @@ export function ApiKeysSection() {
     >
       {(data) => (
         <div className="space-y-3">
-          <div className="grid gap-3 sm:grid-cols-2">
+          {/* items-end: only a configured key has the hint line, so the two
+              inputs line up at the bottom rather than the captions at the top. */}
+          <div className="grid items-end gap-3 sm:grid-cols-2">
             <KeyField
               label="OpenAI API key"
               placeholderUnset="e.g. sk-..."

@@ -185,6 +185,7 @@ gate table, deviations, anything queued or deferred, and any concerns.
 | 17 | Example prefix is `e.g. ` with a space | Also accept `e.g.` followed by other whitespace | The persona block is already an example, written as `e.g.` then a newline. It was not reformatted |
 | 17 | Ellipsis prompts allowed per file (search, composer, chip add-row) | Exact `(file, prompt)` pairs | `profile-panel.tsx` is both a chip add-row and a hint field. A file-wide allow would let the statement placeholder back in |
 | 17 | End-date hint written on the experience editor | `hint` prop on `Field`, which already renders the label and the input | The hint has to sit between them and carry `aria-describedby` |
+| 17 (review fixes, Claude) | Ratchet as delivered; row 3's `e.g. Data Scientist` as the empty picker's only name | Deviation 3 was rejected by review: a placeholder is not a name, and a picker with a role set had none. Replaced by an `aria-label` on `RolePicker`, defaulted to "Target role" in `RoleCategoryPicker` and "Target role for {name}" in the import dialog; the example stays. The ratchet now fails closed (pass-through list of 5), reads `&&`/`||`/`as`, scans `lib`, and the `https://…` cue is exact. Also: a distinct templates ID error, per-kind entity examples, one Answer label, repeats dropped, two clipping fixes, key inputs aligned | Accessibility is not negotiable; speak the user's language |
 | 17 | Referrals pin is "the string occurs" | The edit row is pinned separately (count 2, next to its `aria-label`) | The create form already contains the same `e.g. Jane Doe` string, so a row-only regression stayed green |
 
 ## Gate results
@@ -204,7 +205,15 @@ gate table, deviations, anything queued or deferred, and any concerns.
 
 ## Queued for Task 18 (SYSTEM.md changes Claude applies)
 
-None. The `--muted-foreground` contrast pin the conventions sentence cites is already in `test_frontend_color_roles.py`. No SYSTEM.md behaviour change.
+No SYSTEM.md behaviour change. The `--muted-foreground` contrast pin the conventions sentence cites is already in `test_frontend_color_roles.py`.
+
+Pre-existing layout issues found in the review's browser pass, for §11:
+- 375px: the New base résumé dialog is too wide (its tab row does not shrink).
+- 375px: the chat composer's Send and the tailor page's "Tailor resume" buttons run off-screen.
+- 375px: the job page's tab row pushes "Q&A" off-screen.
+- 375px: the base studio squeezes the editor to ~64px inputs beside the preview.
+- The LLM-endpoint (`e.g. http://host.docker.internal:11434/v1`) and `/new` Source URL placeholders clip at narrow widths: long URLs, pre-existing.
+- Hardcoded hint ids `new_id_hint` (and the new `new_id_error`), `nbr_name_hint`, `kb-profile-notes-hint`, `job-preferences-locations-hint` copy their controls' pre-existing hardcoded ids. Each component renders once, and moving a pair to `useId()` touches the label, control, hint and pin, not one line, so they were left.
 
 ## Deferred to merge (edits left for Claude, with file:line)
 

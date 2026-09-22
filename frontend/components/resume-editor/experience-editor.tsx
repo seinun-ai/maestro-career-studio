@@ -102,8 +102,10 @@ export function ExperienceEditor({
               </div>
             }
             edit={() => (
-              <div className="grid gap-3">
-                <div className="grid grid-cols-2 gap-3">
+              // Same breakpoint as the contact form: a narrow editor column
+              // stacks the fields instead of clipping them.
+              <div className="@container grid gap-3">
+                <div className="grid gap-3 @md:grid-cols-2">
                   <Field
                     label="Company"
                     value={entry.company}

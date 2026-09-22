@@ -493,6 +493,8 @@ function ReferralEditRow({
           onChange={(e) => setContactName(e.target.value)}
           aria-label="Contact name"
           placeholder="e.g. Jane Doe"
+          // The table scrolls sideways when narrow; this keeps the example whole.
+          className="min-w-32"
         />
       </TableCell>
       <TableCell>

@@ -909,7 +909,11 @@ function AutofillEditor({
                   )
                 }
               />
+              <Label htmlFor={`af-custom-${i}-answer`} className="mt-1.5 text-xs">
+                Answer
+              </Label>
               <Textarea
+                id={`af-custom-${i}-answer`}
                 className="text-sm"
                 rows={2}
                 aria-label={`Answer to custom question ${i + 1}`}

@@ -285,7 +285,11 @@ export function NewEntityDialog({
                       ? "e.g. Best Paper Award"
                       : kind === "project"
                         ? "e.g. Fraud detection pipeline"
-                        : "e.g. Senior Data Scientist"
+                        : kind === "education"
+                          ? "e.g. MSc Computer Science"
+                          : kind === "certification"
+                            ? "e.g. AWS Solutions Architect"
+                            : "e.g. Senior Data Scientist"
                   }
                   autoFocus
                   required
@@ -305,7 +309,11 @@ export function NewEntityDialog({
                   placeholder={
                     kind === "extra"
                       ? "e.g. NeurIPS 2024"
-                      : "e.g. Acme Corp"
+                      : kind === "education"
+                        ? "e.g. University of Toronto"
+                        : kind === "certification"
+                          ? "e.g. Amazon Web Services"
+                          : "e.g. Acme Corp"
                   }
                   disabled={create.isPending}
                 />

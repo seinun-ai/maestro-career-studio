@@ -129,6 +129,10 @@ function AddCustomRoleItem({
 
 type RolePickerBase = {
   id?: string;
+  /** The input's name where no `<Label htmlFor={id}>` gives it one. Without
+   *  either, a screen reader falls back to the placeholder, and once a role is
+   *  set there is none. */
+  "aria-label"?: string;
   className?: string;
   disabled?: boolean;
   placeholder?: string;
@@ -387,6 +391,7 @@ export function RolePicker(props: RolePickerProps) {
         ))}
         <Combobox.Input
           id={props.id}
+          aria-label={props["aria-label"]}
           disabled={props.disabled}
           maxLength={MAX_ROLE_LABEL_CHARS}
           // Native inputs default to size=20 (~20ch). min-w-0 does not override

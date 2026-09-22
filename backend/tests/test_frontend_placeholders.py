@@ -1,27 +1,36 @@
 """Scoped placeholder ratchet.
 
 A placeholder may be an example prefixed ``e.g.`` (a following space or a
-newline, so the persona block's ``e.g.\\n`` still counts), or the URL format
-cue ``https://…``. An ellipsis prompt is allowed only when the file and the
-exact string are on the search / composer / chip-add-row list. Anything else
-fails. ``SelectValue`` and image ``placeholder`` props are not inputs.
+newline, so the persona block's ``e.g.\\n`` still counts), or exactly the URL
+format cue ``https://…``. An ellipsis prompt is allowed only when the file and
+the exact string are on the search / composer / chip-add-row list. Anything
+else fails. ``SelectValue`` and image ``placeholder`` props are not inputs.
 
 Values are the attribute or object-key expressions themselves: string
-literals, template literals, ternaries, ``??``, ``.join()`` constants, and
-identifiers bound to those. A file that merely contains ``e.g.`` somewhere
-does not pass.
+literals, template literals, ternaries, ``??`` and ``||`` (both sides), the
+right side of ``&&``, ``as`` casts, ``.join()`` constants, and identifiers
+bound to those in the same file. A file that merely contains ``e.g.``
+somewhere does not pass.
+
+The scan fails closed. An expression it cannot resolve to strings (a
+concatenation, a member access, a call, a prop filled in by another file)
+fails unless the file and the exact expression are on the pass-through list.
+Those are components that hand a caller's value on; each caller's own
+``placeholder`` is a site the scan reads.
 """
 
 from __future__ import annotations
 
 import re
+from collections.abc import Iterator
 from pathlib import Path
 
 _FRONTEND = Path(__file__).resolve().parents[2] / "frontend"
-_ROOTS = ("app", "components")
+_ROOTS = ("app", "components", "lib")
 _SKIP_TAGS = frozenset({"SelectValue", "PreviewThumbnail"})
-_ELLIPSIS = "\u2026"
+_ELLIPSIS = "…"
 _URL_CUE = "https://" + _ELLIPSIS
+_QUOTES = "\"'`"
 
 # Exact prompts, not whole files. profile-panel.tsx is a chip add-row caller
 # and also had a statement placeholder; a file-wide allow would let that
@@ -44,9 +53,21 @@ _PROMPTS = frozenset(
     }
 )
 
+# The only expressions allowed to stay unresolved: values handed on from a
+# caller (whose own site is scanned) and the image placeholder's type line.
+_PASS_THROUGH = frozenset(
+    {
+        ("components/resume-editor/field.tsx", "placeholder"),
+        ("components/resume-editor/contact-form.tsx", "placeholder"),
+        ("components/settings/autofill-section.tsx", "field.placeholder"),
+        ("components/role-picker.tsx", "props.placeholder"),
+        ("components/gallery/preview-thumbnail.tsx", "string"),
+    }
+)
+
 _NOT_INPUTS = (
     "None",
-    "\u2014",
+    "—",
     "Choose a base resume",
     "Choose base resume",
     "Not rendered yet",
@@ -68,9 +89,24 @@ _MUST_SEE = (
     ("components/role-picker.tsx", "Search roles, or type your own" + _ELLIPSIS),
 )
 
+_IDENT = re.compile(r"[A-Za-z_$][\w$]*")
+_TAG_NAME = re.compile(r"[A-Za-z_$][\w.$]*")
+# `placeholder?:` is a type member, not a value.
+_SITE = re.compile(r"(?<![\w$])placeholder\s*(\?:|=(?![=>])|:)")
+_NO_VALUE = frozenset({"undefined", "null", "true", "false"})
+
+# (line, value, expression); value is None when the expression did not resolve.
+Found = tuple[int, str | None, str]
+
 
 def _line_of(src: str, index: int) -> int:
     return src.count("\n", 0, index) + 1
+
+
+def _skip_ws(src: str, i: int) -> int:
+    while i < len(src) and src[i].isspace():
+        i += 1
+    return i
 
 
 def _decode_escapes(raw: str) -> str:
@@ -94,15 +130,13 @@ def _decode_escapes(raw: str) -> str:
     return "".join(out)
 
 
-def _read_quoted(src: str, i: int) -> tuple[str, int, bool]:
-    """Return decoded text, index after the closer, and whether a template interpolates."""
+def _read_quoted(src: str, i: int) -> tuple[str, int]:
+    """Decoded text (a template keeps its `${…}` verbatim) and the index after the closer."""
     quote = src[i]
     i += 1
     raw: list[str] = []
-    dynamic = False
     while i < len(src):
         if quote == "`" and src.startswith("${", i):
-            dynamic = True
             end = _match_brace(src, i + 1)
             raw.append(src[i:end])
             i = end
@@ -112,29 +146,10 @@ def _read_quoted(src: str, i: int) -> tuple[str, int, bool]:
             i += 2
             continue
         if src[i] == quote:
-            return _decode_escapes("".join(raw)), i + 1, dynamic
+            return _decode_escapes("".join(raw)), i + 1
         raw.append(src[i])
         i += 1
-    return _decode_escapes("".join(raw)), i, dynamic
-
-
-def _match_brace(src: str, open_at: int) -> int:
-    """Index after the `}` matching the `{` at open_at."""
-    depth = 0
-    i = open_at
-    while i < len(src):
-        ch = src[i]
-        if ch in "\"'`":
-            _, i, _ = _read_quoted(src, i)
-            continue
-        if ch == "{":
-            depth += 1
-        elif ch == "}":
-            depth -= 1
-            if depth == 0:
-                return i + 1
-        i += 1
-    return i
+    return _decode_escapes("".join(raw)), i
 
 
 def _skip_string_or_comment(src: str, i: int) -> int | None:
@@ -144,270 +159,85 @@ def _skip_string_or_comment(src: str, i: int) -> int | None:
     if src.startswith("/*", i):
         nxt = src.find("*/", i + 2)
         return len(src) if nxt < 0 else nxt + 2
-    if src[i] in "\"'`":
-        _, end, _ = _read_quoted(src, i)
-        return end
+    if src[i] in _QUOTES:
+        return _read_quoted(src, i)[1]
     return None
 
 
-class _Scan:
-    def __init__(self, src: str) -> None:
-        self.src = src
-        self.resolving: set[str] = set()
-
-    def sites(self) -> list[tuple[int, str | None, str]]:
-        """(index of the value, enclosing JSX tag or None, introducer '=' or ':')."""
-        src = self.src
-        found: list[tuple[int, str | None, str]] = []
-        tag_stack: list[str] = []
-        in_tag = False
-        expr_depth = 0
-        i = 0
-        n = len(src)
-        while i < n:
-            skipped = _skip_string_or_comment(src, i)
-            if skipped is not None:
-                i = skipped
-                continue
-            if not in_tag and expr_depth == 0 and src[i] == "<" and i + 1 < n:
-                nxt = src[i + 1]
-                if nxt.isalpha() or nxt in "_$":
-                    j = i + 1
-                    while j < n and (src[j].isalnum() or src[j] in "._$"):
-                        j += 1
-                    tag_stack.append(src[i + 1 : j])
-                    in_tag = True
-                    i = j
-                    continue
-                if nxt == "/":
-                    in_tag = False
-                    i += 2
-                    continue
-            if in_tag and expr_depth == 0 and src[i] == ">":
-                in_tag = False
-                if tag_stack:
-                    tag_stack.pop()
-                i += 1
-                continue
-            if in_tag and src[i] == "{":
-                expr_depth += 1
-                i += 1
-                continue
-            if expr_depth and src[i] == "{":
-                expr_depth += 1
-                i += 1
-                continue
-            if expr_depth and src[i] == "}":
-                expr_depth -= 1
-                i += 1
-                continue
-            if src.startswith("placeholder", i):
-                before = src[i - 1] if i else " "
-                after_i = i + len("placeholder")
-                after = src[after_i] if after_i < n else " "
-                ident = before.isalnum() or before in "_$" or after.isalnum() or after in "_$"
-                if not ident:
-                    k = after_i
-                    while k < n and src[k] in " \t\n":
-                        k += 1
-                    if src.startswith("?:", k):
-                        i = k + 2
-                        continue
-                    if k < n and src[k] in "=:":
-                        tag = tag_stack[-1] if in_tag and tag_stack else None
-                        found.append((k + 1, tag, src[k]))
-                        i = k + 1
-                        continue
-            i += 1
-        return found
-
-    def values_at(self, value_at: int) -> list[tuple[int, str]]:
-        src = self.src
-        i = value_at
-        while i < len(src) and src[i] in " \t\n":
-            i += 1
-        if i >= len(src):
-            return []
-        if src[i] == "{":
-            end = _match_brace(src, i)
-            return self._strings(src[i + 1 : end - 1], i + 1)
-        if src[i] in "\"'`":
-            text, end, dynamic = _read_quoted(src, i)
-            if dynamic and not text.startswith("e.g."):
-                return [(_line_of(src, i), text)]
-            return [(_line_of(src, i), text)]
-        end = i
-        depth = 0
-        while end < len(src):
-            skipped = _skip_string_or_comment(src, end)
-            if skipped is not None:
-                end = skipped
-                continue
-            ch = src[end]
-            if ch in "([{":
-                depth += 1
-            elif ch in ")]}":
-                if depth == 0:
-                    break
-                depth -= 1
-            elif ch in ",;" and depth == 0:
-                break
-            end += 1
-        return self._strings(src[i:end], i)
-
-    def _strings(self, expr: str, base: int) -> list[tuple[int, str]]:
-        expr_stripped = expr.strip()
-        if not expr_stripped:
-            return []
-        offset = expr.find(expr_stripped)
-        abs_at = base + offset
-        if (
-            expr_stripped[0] == "("
-            and _match_paren(expr_stripped, 0) == len(expr_stripped) - 1
-        ):
-            return self._strings(expr_stripped[1:-1], abs_at + 1)
-        if expr_stripped[0] in "\"'`":
-            text, consumed, _dynamic = _read_quoted(expr_stripped, 0)
-            if consumed >= len(expr_stripped.rstrip()):
-                return [(_line_of(self.src, abs_at), text)]
-        joined = _try_join(expr_stripped)
-        if joined is not None:
-            return [(_line_of(self.src, abs_at), joined)]
-        tern = _split_ternary(expr_stripped)
-        if tern is not None:
-            _cond, then, else_ = tern
-            then_at = abs_at + expr_stripped.find(then)
-            else_at = abs_at + expr_stripped.rfind(else_)
-            return self._strings(then, then_at) + self._strings(else_, else_at)
-        nullish = _split_nullish(expr_stripped)
-        if nullish is not None:
-            left, right = nullish
-            return self._strings(left, abs_at) + self._strings(
-                right, abs_at + expr_stripped.rfind(right)
-            )
-        if re.fullmatch(r"[A-Za-z_$][\w$]*", expr_stripped):
-            if expr_stripped in {"undefined", "null", "true", "false"}:
-                return []
-            return self._resolve(expr_stripped)
-        return []
-
-    def _resolve(self, name: str) -> list[tuple[int, str]]:
-        if name in self.resolving:
-            return []
-        self.resolving.add(name)
-        found: list[tuple[int, str]] = []
-        src = self.src
-        patterns = (
-            re.compile(rf"(?:const|let)\s+{name}\s*="),
-            re.compile(rf"(?<![\w$]){name}\s*="),
-        )
-        seen_at: set[int] = set()
-        for pattern in patterns:
-            for match in pattern.finditer(src):
-                if match.start() in seen_at:
-                    continue
-                # `placeholder={` is a use, not a binding to a literal.
-                value_at = match.end()
-                while value_at < len(src) and src[value_at] in " \t\n":
-                    value_at += 1
-                if value_at < len(src) and src[value_at] == "{":
-                    continue
-                # `name="literal"` is the whole binding. Reading on to the next
-                # comma would swallow the rest of the JSX tag.
-                if value_at < len(src) and src[value_at] in "\"'`":
-                    text, _end, _dynamic = _read_quoted(src, value_at)
-                    found.append((_line_of(src, value_at), text))
-                    seen_at.add(match.start())
-                    continue
-                seen_at.add(match.start())
-                expr_end = value_at
-                depth = 0
-                while expr_end < len(src):
-                    skipped = _skip_string_or_comment(src, expr_end)
-                    if skipped is not None:
-                        expr_end = skipped
-                        continue
-                    ch = src[expr_end]
-                    if ch in "([{":
-                        depth += 1
-                    elif ch in ")]}":
-                        if depth == 0:
-                            break
-                        depth -= 1
-                    elif ch in ",;" and depth == 0:
-                        break
-                    expr_end += 1
-                found.extend(self._strings(src[value_at:expr_end], value_at))
-        self.resolving.remove(name)
-        return found
-
-
-def _match_paren(src: str, open_at: int) -> int:
+def _top_level(expr: str) -> Iterator[tuple[int, int]]:
+    """(index, bracket depth after it) for every character outside strings and comments."""
     depth = 0
-    i = open_at
-    while i < len(src):
-        skipped = _skip_string_or_comment(src, i)
+    i = 0
+    while i < len(expr):
+        skipped = _skip_string_or_comment(expr, i)
         if skipped is not None:
             i = skipped
             continue
-        if src[i] == "(":
-            depth += 1
-        elif src[i] == ")":
-            depth -= 1
-            if depth == 0:
-                return i
+        depth += (expr[i] in "([{") - (expr[i] in ")]}")
+        yield i, depth
         i += 1
-    return -1
+
+
+def _match_brace(src: str, open_at: int) -> int:
+    """Index after the `}` matching the `{` at open_at."""
+    tail = src[open_at:]
+    return open_at + 1 + next((j for j, depth in _top_level(tail) if depth == 0), len(tail) - 1)
+
+
+def _expr_end(src: str, start: int) -> int:
+    """Index of the top-level `,` or `;` ending the expression at start, or of the bracket closing around it."""
+    tail = src[start:]
+    ends = (j for j, depth in _top_level(tail) if depth < 0 or (depth == 0 and tail[j] in ",;"))
+    return start + next(ends, len(tail))
+
+
+def _find_op(expr: str, op: str) -> int | None:
+    return next((i for i, depth in _top_level(expr) if depth == 0 and expr.startswith(op, i)), None)
+
+
+def _wrapped(expr: str) -> bool:
+    """True when a leading `(` closes at the very end."""
+    closes = (i for i, depth in _top_level(expr) if depth == 0)
+    return expr.startswith("(") and next(closes, -1) == len(expr) - 1
+
+
+def _not_conditional(expr: str, i: int) -> bool:
+    """`?.` and `??` are not the conditional operator."""
+    return expr[i] == "?" and (expr.startswith(("?.", "??"), i) or expr[i - 1 : i] == "?")
 
 
 def _split_ternary(expr: str) -> tuple[str, str, str] | None:
-    tern = 0
-    depth = 0
-    q_at = None
-    i = 0
-    while i < len(expr):
-        skipped = _skip_string_or_comment(expr, i)
-        if skipped is not None:
-            i = skipped
+    open_q: list[int] = []
+    for i, depth in _top_level(expr):
+        if depth or expr[i] not in "?:" or _not_conditional(expr, i):
             continue
-        ch = expr[i]
-        if ch in "([{":
-            depth += 1
-        elif ch in ")]}":
-            depth -= 1
-        elif ch == "?" and depth == 0:
-            nxt = expr[i + 1] if i + 1 < len(expr) else ""
-            # `?.` and `??` are not the conditional operator.
-            if nxt in ".?":
-                i += 2
-                continue
-            tern += 1
-            if tern == 1:
-                q_at = i
-        elif ch == ":" and depth == 0 and tern:
-            tern -= 1
-            if tern == 0 and q_at is not None:
+        if expr[i] == "?":
+            open_q.append(i)
+        elif open_q:
+            q_at = open_q.pop()
+            if not open_q:
                 return expr[:q_at], expr[q_at + 1 : i], expr[i + 1 :]
-        i += 1
     return None
 
 
-def _split_nullish(expr: str) -> tuple[str, str] | None:
-    depth = 0
-    i = 0
-    while i < len(expr):
-        skipped = _skip_string_or_comment(expr, i)
-        if skipped is not None:
-            i = skipped
-            continue
-        ch = expr[i]
-        if ch in "([{":
-            depth += 1
-        elif ch in ")]}":
-            depth -= 1
-        elif depth == 0 and expr.startswith("??", i):
-            return expr[:i], expr[i + 2 :]
-        i += 1
+# Binary operators and which operands can be the value: `x as T` keeps x,
+# `a && b` keeps b, `??` and `||` keep both.
+_VALUE_OPS = (("??", "both"), ("||", "both"), ("&&", "right"), (" as ", "left"))
+
+
+def _operands(expr: str) -> list[tuple[int, str]] | None:
+    """(offset, sub-expression) pairs whose values are expr's values, or None for a leaf."""
+    if _wrapped(expr):
+        return [(1, expr[1:-1])]
+    tern = _split_ternary(expr)
+    if tern is not None:
+        cond, then, else_ = tern
+        return [(len(cond) + 1, then), (len(cond) + len(then) + 2, else_)]
+    for op, keep in _VALUE_OPS:
+        at = _find_op(expr, op)
+        if at is not None:
+            left, right = (0, expr[:at]), (at + len(op), expr[at + len(op) :])
+            return {"both": [left, right], "left": [left], "right": [right]}[keep]
     return None
 
 
@@ -426,44 +256,156 @@ def _try_join(expr: str) -> str | None:
     return sep.join(_decode_escapes(part) for _q, part in parts)
 
 
+def _literal(expr: str) -> str | None:
+    if expr[0] in _QUOTES:
+        text, end = _read_quoted(expr, 0)
+        if end == len(expr):
+            return text
+    return _try_join(expr)
+
+
+class _Tags:
+    """The JSX tag the scan is inside: set between `<Name` and its `>`.
+
+    `{…}` attribute values nest, and a `>` inside one (an arrow) does not
+    close the tag.
+    """
+
+    def __init__(self) -> None:
+        self.name: str | None = None
+        self.depth = 0
+
+    def step(self, src: str, i: int) -> int | None:
+        """Index after a tag boundary or attribute brace at i; None when there is none."""
+        ch = src[i]
+        if self.depth or (self.name is not None and ch == "{"):
+            self.depth += (ch == "{") - (ch == "}")
+            return i + 1 if ch in "{}" else None
+        if self.name is None:
+            return self._open(src, i)
+        if ch != ">":
+            return None
+        self.name = None
+        return i + 1
+
+    def _open(self, src: str, i: int) -> int | None:
+        if src[i] != "<":
+            return None
+        match = _TAG_NAME.match(src, i + 1)
+        if match:
+            self.name = match.group()
+            return match.end()
+        return i + 2 if src.startswith("</", i) else None
+
+
+def _site_at(src: str, i: int) -> tuple[int, int | None]:
+    """(where to resume, index of the value) for a placeholder site at i; the value index is None when there is none."""
+    match = _SITE.match(src, i)
+    if not match:
+        return i + 1, None
+    return match.end(), None if match.group(1) == "?:" else match.end()
+
+
+class _Scan:
+    def __init__(self, src: str) -> None:
+        self.src = src
+        self.resolving: set[str] = set()
+        self.sites = self._find_sites()
+        # `placeholder="x"` on a tag is a use, not a binding of the identifier.
+        self.jsx_values = {at for at, tag in self.sites if tag is not None}
+
+    def _find_sites(self) -> list[tuple[int, str | None]]:
+        """(index of the value, enclosing JSX tag or None)."""
+        found: list[tuple[int, str | None]] = []
+        tags = _Tags()
+        i = 0
+        while i < len(self.src):
+            nxt = _skip_string_or_comment(self.src, i)
+            if nxt is None:
+                nxt = tags.step(self.src, i)
+            if nxt is None:
+                nxt, value_at = _site_at(self.src, i)
+                if value_at is not None:
+                    found.append((value_at, tags.name))
+            i = nxt
+        return found
+
+    def values_at(self, value_at: int) -> list[Found]:
+        src = self.src
+        i = _skip_ws(src, value_at)
+        if src[i : i + 1] == "{":
+            return self._strings(src[i + 1 : _match_brace(src, i) - 1], i + 1)
+        end = _read_quoted(src, i)[1] if i < len(src) and src[i] in _QUOTES else _expr_end(src, i)
+        return self._strings(src[i:end], i)
+
+    def _strings(self, expr: str, base: int) -> list[Found]:
+        stripped = expr.strip()
+        if not stripped:
+            return []
+        at = base + expr.find(stripped)
+        parts = _operands(stripped)
+        if parts is not None:
+            return [found for off, part in parts for found in self._strings(part, at + off)]
+        text = _literal(stripped)
+        if text is None and _IDENT.fullmatch(stripped):
+            return self._identifier(stripped, at)
+        return [(_line_of(self.src, at), text, stripped)]
+
+    def _identifier(self, name: str, at: int) -> list[Found]:
+        if name in _NO_VALUE or name in self.resolving:
+            return []
+        self.resolving.add(name)
+        found = [hit for value_at in self._bindings(name) for hit in self.values_at(value_at)]
+        self.resolving.discard(name)
+        return found or [(_line_of(self.src, at), None, name)]
+
+    def _bindings(self, name: str) -> Iterator[int]:
+        """Value indexes of `name = …`: declarations, defaults, and same-file props."""
+        for match in re.finditer(rf"(?<![\w$.]){re.escape(name)}\s*=(?![=>])", self.src):
+            value_at = _skip_ws(self.src, match.end())
+            # `{` is a JSX expression attribute, an object or a destructure.
+            if match.end() not in self.jsx_values and self.src[value_at : value_at + 1] != "{":
+                yield match.end()
+
+
 def _allowed(value: str) -> bool:
-    if value == "":
-        return True
-    if value.startswith("e.g.") and (len(value) == 4 or value[4].isspace()):
-        return True
-    if value == _URL_CUE or value.startswith(_URL_CUE):
-        return True
-    return False
+    return value in ("", _URL_CUE) or re.match(r"e\.g\.(\s|$)", value) is not None
 
 
-def collect() -> list[tuple[str, int, str]]:
-    found: list[tuple[str, int, str]] = []
+def _sources() -> Iterator[tuple[str, str]]:
     for root in _ROOTS:
         for path in sorted((_FRONTEND / root).rglob("*")):
-            if path.suffix not in {".ts", ".tsx"}:
-                continue
-            if ".test." in path.name:
-                continue
-            src = path.read_text()
-            rel = path.relative_to(_FRONTEND).as_posix()
-            scan = _Scan(src)
-            for value_at, tag, _intro in scan.sites():
-                if tag in _SKIP_TAGS:
-                    continue
-                for line, value in scan.values_at(value_at):
-                    found.append((rel, line, value))
+            if path.suffix in {".ts", ".tsx"} and ".test." not in path.name:
+                yield path.relative_to(_FRONTEND).as_posix(), path.read_text()
+
+
+def collect() -> list[tuple[str, int, str | None, str]]:
+    """(file, line, value or None when unresolved, expression) for every input placeholder."""
+    found: list[tuple[str, int, str | None, str]] = []
+    for rel, src in _sources():
+        scan = _Scan(src)
+        for value_at, tag in scan.sites:
+            if tag not in _SKIP_TAGS:
+                found.extend((rel, *hit) for hit in scan.values_at(value_at))
     return found
 
 
+def _passes(rel: str, value: str | None, expr: str) -> bool:
+    if value is None:
+        return (rel, expr) in _PASS_THROUGH
+    return _allowed(value) or ((rel, value) in _PROMPTS and value.endswith(_ELLIPSIS))
+
+
 def violations() -> list[str]:
-    bad: list[str] = []
-    for rel, line, value in collect():
-        if _allowed(value):
-            continue
-        if (rel, value) in _PROMPTS and value.endswith(_ELLIPSIS):
-            continue
-        bad.append(f"{rel}:{line}: {value!r}")
-    return bad
+    return [
+        f"{rel}:{line}: " + (repr(value) if value is not None else f"unresolved {expr!r}")
+        for rel, line, value, expr in collect()
+        if not _passes(rel, value, expr)
+    ]
+
+
+def _seen() -> set[tuple[str, str | None]]:
+    return {(rel, value) for rel, _line, value, _expr in collect()}
 
 
 def test_placeholders_are_examples_or_named_prompts():
@@ -473,31 +415,41 @@ def test_placeholders_are_examples_or_named_prompts():
 
 def test_scanner_reads_indirect_placeholder_values():
     """Object fields, defaults, ternaries and joined constants, not just placeholder=\"...\"."""
-    seen = {(rel, value) for rel, _line, value in collect()}
-    missing = []
-    for rel, prefix in _MUST_SEE:
-        if not any(path == rel and value.startswith(prefix) for path, value in seen):
-            missing.append(f"{rel} :: {prefix!r}")
+    seen = _seen()
+    missing = [
+        f"{rel} :: {prefix!r}"
+        for rel, prefix in _MUST_SEE
+        if not any(path == rel and (value or "").startswith(prefix) for path, value in seen)
+    ]
     assert not missing, "scanner missed:\n" + "\n".join(missing)
 
 
 def test_select_and_image_placeholders_are_not_inputs():
-    values = {value for _rel, _line, value in collect()}
+    values = {value for _rel, value in _seen()}
     leaked = [text for text in _NOT_INPUTS if text in values]
     assert not leaked, leaked
 
 
 def test_named_prompts_are_the_ones_on_screen():
-    seen = {(rel, value) for rel, _line, value in collect()}
-    missing = sorted(f"{rel} :: {value}" for rel, value in _PROMPTS if (rel, value) not in seen)
+    missing = sorted(f"{rel} :: {value}" for rel, value in _PROMPTS - _seen())
     assert not missing, missing
+
+
+def test_pass_through_list_is_current():
+    unresolved = {(rel, expr) for rel, _line, value, expr in collect() if value is None}
+    stale = sorted(f"{rel} :: {expr}" for rel, expr in _PASS_THROUGH - unresolved)
+    assert not stale, stale
+
+
 
 
 def test_conventions_record_the_govuk_deviation():
     doc = (
         Path(__file__).resolve().parents[2] / "docs/frontend-conventions.md"
     ).read_text()
-    assert "a placeholder may hold only an example value" in doc
+    assert re.search(r"a placeholder may hold only an\s+example value", doc)
+    assert re.search(r"Exceptions: a short `…` prompt", doc)
+    assert "fails closed" in doc
     assert "prefixed `e.g.`" in doc
     assert "This deviates from GOV.UK on purpose" in doc
     assert "`--muted-foreground`" in doc
@@ -542,6 +494,8 @@ def test_tracking_url_hint_is_between_the_label_and_the_field():
 def test_question_constraint_is_a_hint():
     src = _src("components/qa-tab.tsx")
     assert "One question per line" + _ELLIPSIS not in src
+    # The hint already says one per line; the name need not say it again.
+    assert 'aria-label="Questions to ask"' in src
     _order(
         src,
         "One question per line.",
@@ -553,6 +507,8 @@ def test_question_constraint_is_a_hint():
 def test_saved_key_is_a_hint_not_a_placeholder():
     src = _src("components/settings/models-section.tsx")
     assert "Saved · type to replace" not in src
+    # Only a configured key has the hint line; the inputs align at the bottom.
+    assert re.search(r'className="grid items-end gap-3 sm:grid-cols-2">\s*<KeyField', src)
     assert 'placeholderUnset="e.g. sk-..."' in src
     assert 'placeholderUnset="e.g. AIza..."' in src
     _order(
@@ -582,12 +538,14 @@ def test_summary_placeholder_is_an_example_and_the_consequence_stays_visible():
     gap = _src("components/gap-analysis/gap-card.tsx")
     controls = _src("components/gap-analysis/resolution-controls.tsx")
     assert "Draft your JD-aligned value proposition" not in gap
-    assert (
-        'isSummary\n                ? "e.g. Data scientist who ships forecasting models to production"'
-        in gap
+    assert re.search(
+        r'isSummary\s*\?\s*"e\.g\. Data scientist who ships forecasting models to production"', gap
     )
-    assert 'hint={isSummary ? "This becomes your summary." : undefined}' in gap
-    assert "Only what you write here is used.{hint ? ` ${hint}` : " in controls
+    # The question above already says it refreshes the summary; a hint saying
+    # so again only repeats the label.
+    assert "This refreshes the summary section." in gap
+    assert "This becomes your summary." not in gap
+    assert "Only what you write here is used.\n" in controls
     _order(controls, "Exact wording", 'placeholder="e.g. PySpark"')
     assert "Exact wording to add" not in controls
 
@@ -602,27 +560,42 @@ def test_demonstrate_skill_has_a_visible_label_and_no_placeholder():
 def test_metric_units_are_examples():
     src = _src("components/resume-health/metric-ask-input.tsx")
     assert 'placeholder="e.g. 5,000"' in src
-    assert 'placeholder="e.g. users"' in src
+    # Not one of the unit options: the custom box is for a unit the list lacks.
+    assert 'placeholder="e.g. tickets"' in src
+    assert '{ id: "tickets"' not in _src("lib/health-report.ts")
     assert 'placeholder="e.g. 6 months"' in src
     assert 'placeholder="unit"' not in src
 
 
-def test_custom_answer_has_no_placeholder():
+def test_custom_answer_has_a_visible_label_not_a_placeholder():
     src = _src("components/settings/autofill-section.tsx")
     assert 'placeholder="Answer"' not in src
+    _order(
+        src,
+        "htmlFor={`af-custom-${i}-answer`}",
+        "Answer",
+        "<Textarea",
+        "id={`af-custom-${i}-answer`}",
+        "aria-label={`Answer to custom question ${i + 1}`}",
+    )
+
+
+# kind -> (title example, organization example). Education and certification
+# used to fall through to the job-title and employer examples.
+_ENTITY_EXAMPLES = {
+    "extra": ("e.g. Best Paper Award", "e.g. NeurIPS 2024"),
+    "project": ("e.g. Fraud detection pipeline", None),
+    "education": ("e.g. MSc Computer Science", "e.g. University of Toronto"),
+    "certification": ("e.g. AWS Solutions Architect", "e.g. Amazon Web Services"),
+}
 
 
 def test_new_entity_placeholders_are_examples():
     src = _src("components/career/new-entity-dialog.tsx")
-    for text in (
-        "e.g. Best Paper Award",
-        "e.g. Fraud detection pipeline",
-        "e.g. Senior Data Scientist",
-        "e.g. NeurIPS 2024",
-        "e.g. Acme Corp",
-        "e.g. Jan 2025",
-        "e.g. Mar 2025",
-    ):
+    for kind, examples in _ENTITY_EXAMPLES.items():
+        for example in filter(None, examples):
+            assert re.search(rf'kind === "{kind}"\s*\?\s*"{re.escape(example)}"', src), example
+    for text in ("e.g. Senior Data Scientist", "e.g. Acme Corp", "e.g. Jan 2025", "e.g. Mar 2025"):
         assert text in src, text
     for retired in (
         "Project name",
@@ -672,6 +645,9 @@ def test_experience_end_date_empty_means_current():
     field = _src("components/resume-editor/field.tsx")
     editor = _src("components/resume-editor/experience-editor.tsx")
     _order(field, "<Label", "id={hintId}", "{hint}", "<Input", "aria-describedby={hint ? hintId : undefined}")
+    # A narrow editor column stacks the fields (as the contact form does)
+    # instead of clipping `e.g. Jan 2023` in a 96px date box.
+    assert re.search(r'"@container grid gap-3">\s*<div className="grid gap-3 @md:grid-cols-2">', editor)
     assert 'placeholder="e.g. Jan 2023"' in editor
     assert 'placeholder="e.g. Mar 2025"' in editor
     assert 'hint="Leave empty for a current role."' in editor
@@ -685,10 +661,13 @@ def test_template_slug_rule_stays_on_screen():
         'htmlFor="new_id"',
         'id="new_id_hint"',
         "Use only lowercase letters, numbers, hyphens, and underscores.",
-        'aria-describedby="new_id_hint"',
+        'aria-describedby={idError ? "new_id_hint new_id_error" : "new_id_hint"}',
         'placeholder="e.g. classic_serif"',
+        'id="new_id_error" role="alert"',
+        "That ID has a character that isn&apos;t allowed.",
     )
-    assert src.count("Use only lowercase letters, numbers, hyphens, and underscores.") == 2
+    # The rule is the hint; the error says what went wrong, not the rule again.
+    assert src.count("Use only lowercase letters, numbers, hyphens, and underscores.") == 1
 
 
 def test_bare_examples_are_prefixed():
@@ -718,8 +697,10 @@ def test_bare_examples_are_prefixed():
     referrals = _src("app/referrals/page.tsx")
     assert referrals.count('placeholder="e.g. Jane Doe"') == 2
     assert referrals.count('placeholder="e.g. Met at the AWS meetup"') == 2
-    assert 'aria-label="Contact name"\n          placeholder="e.g. Jane Doe"' in referrals
-    assert 'aria-label="Notes"\n          placeholder="e.g. Met at the AWS meetup"' in referrals
+    assert re.search(
+        r'aria-label="Contact name"\s*placeholder="e\.g\. Jane Doe"[^>]*className="min-w-32"', referrals
+    )
+    assert re.search(r'aria-label="Notes"\s*placeholder="e\.g\. Met at the AWS meetup"', referrals)
 
 
 def test_retired_non_examples_are_not_placeholder_values():
@@ -745,7 +726,45 @@ def test_retired_non_examples_are_not_placeholder_values():
     }
     leaked = [
         f"{rel}:{line}: {value!r}"
-        for rel, line, value in collect()
+        for rel, line, value, _expr in collect()
         if value in retired
     ]
     assert not leaked, leaked
+
+
+
+def _tags(src: str, name: str) -> list[str]:
+    """The attribute text of each `<name …>` opening tag."""
+    found = []
+    for match in re.finditer(rf"<{name}\b", src):
+        tail = src[match.end() :]
+        found.append(tail[: next(j for j, depth in _top_level(tail) if depth == 0 and tail[j] == ">")])
+    return found
+
+
+def _named(src: str, attrs: str) -> bool:
+    """An aria-label, or a literal id that a `<Label htmlFor>` in the same file points at."""
+    id_match = re.search(r'\bid="([^"]+)"', attrs)
+    return "aria-label=" in attrs or bool(id_match and f'htmlFor="{id_match.group(1)}"' in src)
+
+
+def test_every_role_picker_input_has_a_name():
+    """Base UI's ComboboxInput only takes a name from a Field, and there is none
+    here. Unnamed, the empty picker is read by its placeholder, and a picker
+    with a role set is read as nothing at all."""
+    picker = _src("components/role-picker.tsx")
+    assert re.search(r'<Combobox\.Input\s+id=\{props\.id\}\s+aria-label=\{props\["aria-label"\]\}', picker)
+    category = _src("components/role-category-picker.tsx")
+    assert '"aria-label": ariaLabel = "Target role",' in category
+    # Callers of RoleCategoryPicker may lean on that default; the import
+    # dialog lists several resumes, so it names each one.
+    assert "aria-label={`Target role for ${b.display_name}`}" in _src(
+        "components/career/resume-import-dialog.tsx"
+    )
+    unnamed = [
+        f"{rel}: <RolePicker{attrs[:60]!r}"
+        for rel, src in _sources()
+        for attrs in _tags(src, "RolePicker")
+        if not _named(src, attrs)
+    ]
+    assert not unnamed, unnamed

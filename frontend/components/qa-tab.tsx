@@ -156,7 +156,7 @@ export function QATab({ applicationId }: { applicationId: string }) {
             One question per line.
           </p>
           <Textarea
-            aria-label="Questions to ask, one per line"
+            aria-label="Questions to ask"
             aria-describedby={questionsHintId}
             placeholder="e.g. Why this team?"
             value={questions}

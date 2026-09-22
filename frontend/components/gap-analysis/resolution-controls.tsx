@@ -440,7 +440,6 @@ export function UserInputControls({
   targets,
   selected,
   placeholder = "e.g. Built the ingestion pipeline in Python and Airflow",
-  hint,
   onTextChange,
   onPickTarget,
 }: {
@@ -452,8 +451,6 @@ export function UserInputControls({
   selected: SavedTarget | null;
   /** Override the textarea placeholder (e.g. the summary value-prop draft). */
   placeholder?: string;
-  /** Consequence joined onto the standing constraint, which has to stay visible. */
-  hint?: string;
   onTextChange: (value: string) => void;
   /** Pass a target to attach it, or null to detach the current selection. */
   onPickTarget: (target: PlacementTarget | null) => void;
@@ -467,7 +464,7 @@ export function UserInputControls({
       {/* The constraint has to stay on screen. It used to live in the
           placeholder, so it disappeared the moment you started writing. */}
       <p id={`${questionId}-hint`} className="text-muted-foreground text-xs">
-        Only what you write here is used.{hint ? ` ${hint}` : ""}
+        Only what you write here is used.
       </p>
       <Textarea
         aria-labelledby={questionId}
