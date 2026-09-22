@@ -64,8 +64,10 @@ export type AdoptAction = "none" | "in-place" | "remount" | "banner";
 /**
  * What the tailored studio does when the server's customized_json moves (SYSTEM.md §12).
  * `own`: keys our own Saves returned, oldest first, not yet seen from the server.
+ * - a Rebuild the user confirmed → replace the content (remount), even when its key is also
+ *   one of ours: the user asked for the server copy;
  * - one of ours → move the baseline IN PLACE (the working copy is never replaced);
- * - anyone else's, editor clean, or a Rebuild the user confirmed → replace the content (remount);
+ * - anyone else's over a clean editor → replace the content (remount);
  * - anyone else's over unsaved edits → keep the editor; the banner offers Load latest.
  * A queue, not a single "next key is ours" flag: two Saves inside one refetch window would
  * otherwise flash a false banner, and a Save that returns the adopted key arms nothing.
@@ -78,16 +80,18 @@ export function adoptServerKey(s: {
   forced: string | null;
 }): { action: AdoptAction; own: string[] } {
   if (s.live === "" || s.live === s.adopted) return { action: "none", own: [...s.own] };
+  if (s.live === s.forced) return { action: "remount", own: [] };
   const i = s.own.indexOf(s.live);
   if (i !== -1) return { action: "in-place", own: s.own.slice(i + 1) }; // drops older, unseen own keys too
-  if (!s.dirty || s.live === s.forced) return { action: "remount", own: [] };
+  if (!s.dirty) return { action: "remount", own: [] };
   return { action: "banner", own: [...s.own] };
 }
 
 /** `saved` when `current` still equals what was sent, else `current`: a save's response must not
- *  overwrite an edit made while the save ran. Compared by value (a re-picked equal value is a new object). */
+ *  overwrite an edit made while the save ran. Compared by content ({@link serverKey}): a re-picked
+ *  equal value is a new object, and key order is not content. */
 export function keepIfEdited<T>(current: T, sent: T, saved: T): T {
-  return JSON.stringify(current) === JSON.stringify(sent) ? saved : current;
+  return serverKey(current) === serverKey(sent) ? saved : current;
 }
 
 /** Whether typed JSON would change `value`. Whitespace and object key order are not changes; text
@@ -129,10 +133,12 @@ export function nextPreviewPct(pct: number, key: string): number | null {
 
 /**
  * A dragged preview width, within the limits. Rounds to 0.1 so the stored value never jumps
- * visibly on release (whole-percent rounding jumped up to 0.5%, about 5px).
+ * visibly on release (whole-percent rounding jumped up to 0.5%, about 5px). A non-finite width
+ * (a zero-width shell divides by zero) is the default, never a stored NaN.
  */
 export function clampPreviewPct(pct: number): number {
   const { min, max } = PREVIEW_PCT;
+  if (!Number.isFinite(pct)) return PREVIEW_PCT.default;
   return Math.round(Math.min(max, Math.max(min, pct)) * 10) / 10;
 }
 

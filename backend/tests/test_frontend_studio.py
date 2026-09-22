@@ -239,6 +239,7 @@ def test_section_order_shows_what_diff_compares():
     panel = _read("components/resume-editor/formatting-panel.tsx")
     assert "shownSectionOrder(" in panel
     assert "SECTION_ORDER_FALLBACK" not in panel
+    assert "shownSectionOrder(baseline.section_order)" in _read("lib/formatting.ts")
 
 
 def test_preview_scroller_is_keyboard_reachable_and_named():

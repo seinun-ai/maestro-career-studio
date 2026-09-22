@@ -135,6 +135,29 @@ test("a formatting-only save arms nothing: a later foreign key over unsaved edit
   });
 });
 
+test("a stale own entry equal to the adopted key does not claim a foreign key", () => {
+  // The bug's shape: a formatting-only save that enqueued the key already
+  // adopted. A "next key is ours" flag would adopt the foreign copy over edits.
+  assert.deepEqual(
+    adoptServerKey({ ...adoptIdle, live: "B", adopted: "A", own: ["A"], dirty: true }),
+    { action: "banner", own: ["A"] },
+  );
+});
+
+test("a banner keeps the queue of our own unseen keys", () => {
+  assert.deepEqual(adoptServerKey({ ...adoptIdle, live: "foreign", own: ["k1"], dirty: true }), {
+    action: "banner",
+    own: ["k1"],
+  });
+});
+
+test("our own key at a clean editor moves the baseline in place, never remounts", () => {
+  assert.deepEqual(adoptServerKey({ ...adoptIdle, live: "k1", own: ["k1"] }), {
+    action: "in-place",
+    own: [],
+  });
+});
+
 test("our own save's key moves the baseline in place and prunes the queue through it", () => {
   assert.deepEqual(
     adoptServerKey({ ...adoptIdle, live: "k2", own: ["k1", "k2", "k3"], dirty: true }),
@@ -165,6 +188,13 @@ test("a Rebuild the user confirmed remounts even over unsaved edits", () => {
   );
 });
 
+test("a confirmed Rebuild remounts even when its key is also one of our own", () => {
+  assert.deepEqual(
+    adoptServerKey({ ...adoptIdle, live: "k1", own: ["k1", "k2"], dirty: true, forced: "k1" }),
+    { action: "remount", own: [] },
+  );
+});
+
 test("no server copy, or the adopted one, changes nothing", () => {
   assert.deepEqual(adoptServerKey({ ...adoptIdle, live: "", own: ["k1"], dirty: true }), {
     action: "none",
@@ -180,6 +210,11 @@ test("keepIfEdited takes the saved copy only when nothing changed since the send
   const edited = { summary: "typed during the save" };
   assert.equal(keepIfEdited(edited, sent, saved), edited);
   assert.equal(keepIfEdited(null, null, saved), saved);
+});
+
+test("keepIfEdited treats a key-reordered copy of what was sent as unedited", () => {
+  const saved = { a: 1, b: 2 };
+  assert.equal(keepIfEdited({ b: 2, a: 1 }, { a: 1, b: 2 }, saved), saved);
 });
 
 test("jsonDraftDiffers ignores whitespace and key order, not values or broken JSON", () => {
@@ -201,10 +236,18 @@ test("clampPreviewPct clamps to the limits and rounds to 0.1", () => {
   assert.equal(clampPreviewPct(50), 50);
 });
 
+test("clampPreviewPct of a non-finite width is the default", () => {
+  for (const pct of [NaN, Infinity, -Infinity]) {
+    assert.equal(clampPreviewPct(pct), PREVIEW_PCT.default, String(pct));
+  }
+});
+
 test("parsePreviewPct falls back to the default when absent, garbled or out of range", () => {
   for (const raw of [null, "", "abc", "24", "71"]) {
     assert.equal(parsePreviewPct(raw), PREVIEW_PCT.default, String(raw));
   }
   assert.equal(parsePreviewPct("50"), 50);
   assert.equal(parsePreviewPct("47.5"), 47.5);
+  assert.equal(parsePreviewPct(String(PREVIEW_PCT.min)), PREVIEW_PCT.min);
+  assert.equal(parsePreviewPct(String(PREVIEW_PCT.max)), PREVIEW_PCT.max);
 });
