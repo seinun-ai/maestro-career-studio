@@ -185,16 +185,20 @@ export function EditorShell({
         )}
         {previewStale ? (
           // Not a live region: the header's save-status line already
-          // announces "Unsaved changes". This is the visual half.
-          <div className="flex items-center gap-2 border-b bg-amber-500/10 px-3 py-1.5 text-xs text-amber-800 dark:text-amber-200">
+          // announces "Unsaved changes". This is the visual half. The copy
+          // does not say "your last save": after a failed render the pages
+          // are older than that.
+          <div className="flex items-center gap-2 border-b bg-amber-500/10 px-3 py-1.5 text-xs text-amber-800 dark:text-amber-300">
             <History aria-hidden="true" className="size-3.5 shrink-0" />
-            Preview shows your last save. Save to update it.
+            {"Preview doesn't include your unsaved edits. Save to update it."}
           </div>
         ) : null}
+        {/* Stale dims the page IMAGES only: the render-error banner, the
+            page-count pill and the zoom controls stay at full contrast. */}
         <div
           className={cn(
-            "min-h-0 flex-1 overflow-hidden transition-opacity duration-200",
-            previewStale && "opacity-60",
+            "min-h-0 flex-1 overflow-hidden [&_img]:transition-opacity [&_img]:duration-200",
+            previewStale && "[&_img]:opacity-60",
           )}
         >
           {preview}
@@ -256,6 +260,8 @@ function Splitter({
       tabIndex={0}
       onPointerDown={start}
       onKeyDown={(e) => {
+        // Alt/Cmd+Arrow is the browser's Back/Forward: let it through.
+        if (e.altKey || e.ctrlKey || e.metaKey) return;
         if (onKey(e.key)) e.preventDefault();
       }}
       // `relative z-10`: the preview pane is positioned and paints over a

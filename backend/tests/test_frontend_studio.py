@@ -5,7 +5,6 @@ sits on a canvas with zoom presets."""
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
 _FRONTEND = Path(__file__).resolve().parents[2] / "frontend"
@@ -38,7 +37,7 @@ def test_divider_is_keyboard_operable():
 
 def test_preview_says_when_it_is_stale():
     assert "previewStale" in _SHELL
-    assert "Preview shows your last save. Save to update it." in _SHELL
+    assert "Preview doesn't include your unsaved edits. Save to update it." in _SHELL
 
 
 def test_preview_pane_is_a_canvas():
