@@ -242,6 +242,7 @@ export function ResumeImportPanel({ onClose }: { onClose: () => void }) {
                         roleCategory={b.role_category}
                         roleLabel={b.role_label}
                         proposed={b.proposed}
+                        aria-label={`Target role for ${b.display_name}`}
                         className="w-48 shrink-0"
                       />
                     </li>

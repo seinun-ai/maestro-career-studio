@@ -92,7 +92,7 @@ export function MetricAskInput({
           type="text"
           inputMode="decimal"
           aria-label="Number"
-          placeholder="5,000"
+          placeholder="e.g. 5,000"
           value={value.amount}
           onChange={(e) => set({ amount: e.target.value })}
           disabled={disabled}
@@ -119,7 +119,7 @@ export function MetricAskInput({
         {value.unit === "other" && (
           <Input
             aria-label="Custom unit"
-            placeholder="unit"
+            placeholder="e.g. tickets"
             value={value.unitOther}
             onChange={(e) => set({ unitOther: e.target.value })}
             disabled={disabled}
@@ -128,7 +128,7 @@ export function MetricAskInput({
         )}
         <Input
           aria-label="Timeframe (optional)"
-          placeholder="6 months"
+          placeholder="e.g. 6 months"
           value={value.timeframe}
           onChange={(e) => set({ timeframe: e.target.value })}
           disabled={disabled}

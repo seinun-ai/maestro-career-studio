@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Copy,
@@ -57,6 +57,7 @@ export function QATab({ applicationId }: { applicationId: string }) {
 
   const [questions, setQuestions] = useState("");
   const [tone, setTone] = useState<string>("balanced");
+  const questionsHintId = useId();
 
   const invalidate = () =>
     qc.invalidateQueries({ queryKey: ["qa", applicationId] });
@@ -151,9 +152,13 @@ export function QATab({ applicationId }: { applicationId: string }) {
           <CardTitle>Ask questions</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
+          <p id={questionsHintId} className="text-muted-foreground text-xs">
+            One question per line.
+          </p>
           <Textarea
-            aria-label="Questions to ask, one per line"
-            placeholder="One question per line…"
+            aria-label="Questions to ask"
+            aria-describedby={questionsHintId}
+            placeholder="e.g. Why this team?"
             value={questions}
             onChange={(e) => setQuestions(e.target.value)}
             rows={4}

@@ -178,12 +178,43 @@ gate table, deviations, anything queued or deferred, and any concerns.
 
 | Task | Planned | Did instead | Why (Goal Card line) |
 |---|---|---|---|
+| 17 | B §8's referral create-form rows still unprefixed | Left `ReferralForm` as lane 4 shipped it (`e.g. …`). Prefixed only the two table edit rows | Lane note: re-check rows; that copy was already an example |
+| 17 | Bare-example list omitted capture-box, `sk-...`, and `AIza...` | Prefixed them `e.g. ` | Decision 3: examples stay, prefixed. The ratchet fails them otherwise |
+| 17 | `Set role…` is class I and not in the fix table | `e.g. Data Scientist` on the empty role picker | Every non-example is fixed. The import row is 12rem wide; the shared search prompt would clip. The caption above already says to confirm the target role |
+| 17 | Ratchet allows any value starting `https://` | Only the `https://…` format cue stays unprefixed | Decision 3 prefixes example URLs (`e.g. https://boards.example.com/job/123`) |
+| 17 | Example prefix is `e.g. ` with a space | Also accept `e.g.` followed by other whitespace | The persona block is already an example, written as `e.g.` then a newline. It was not reformatted |
+| 17 | Ellipsis prompts allowed per file (search, composer, chip add-row) | Exact `(file, prompt)` pairs | `profile-panel.tsx` is both a chip add-row and a hint field. A file-wide allow would let the statement placeholder back in |
+| 17 | End-date hint written on the experience editor | `hint` prop on `Field`, which already renders the label and the input | The hint has to sit between them and carry `aria-describedby` |
+| 17 (review fixes, Claude) | Ratchet as delivered; row 3's `e.g. Data Scientist` as the empty picker's only name | Deviation 3 was rejected by review: a placeholder is not a name, and a picker with a role set had none. Replaced by an `aria-label` on `RolePicker`, defaulted to "Target role" in `RoleCategoryPicker` and "Target role for {name}" in the import dialog; the example stays. The ratchet now fails closed (pass-through list of 5), reads `&&`/`||`/`as`, scans `lib`, and the `https://…` cue is exact. Also: a distinct templates ID error, per-kind entity examples, one Answer label, repeats dropped, two clipping fixes, key inputs aligned | Accessibility is not negotiable; speak the user's language |
+| 17 | Referrals pin is "the string occurs" | The edit row is pinned separately (count 2, next to its `aria-label`) | The create form already contains the same `e.g. Jane Doe` string, so a row-only regression stayed green |
 
 ## Gate results
 
 | Task | Gate | Result |
 |---|---|---|
+| 17 | Ratchet, red then green | Failed on the pre-change statements, instructions, label repeats, and bare examples (including data-driven `sk-...` / `AIza...`). 21 passed after the edits |
+| 17 | Mutation check | Each pin was broken and restored from the original file. The edit-row pin missed its first mutation (create form shared the string); the count pin then caught `placeholder="Jane Doe"` on the row. Select/image skip fails if `SelectValue` is dropped from the skip set (`None`, `—`, `Choose a base resume`, `Not rendered yet`, `Not validated`) |
+| 17 | `tests/test_frontend_*.py` | 282 passed |
+| 17 | ruff `tests/test_frontend_placeholders.py` | clean |
+| 17 | `npx tsc --noEmit` | clean |
+| 17 | `npm run lint` | 0 errors, 5 warnings (pre-existing) |
+| 17 | `node --test lib/*.test.ts` | 85/85 |
+| 17 | slop `check frontend` | OK. Duplication 506 lines, 42 clones (ceiling, delta 0) |
+| 17 | slop `check backend` | `complexity_hotspots` 424 → 429 from the new scanner test. Not re-baselined (handoff). Duplication unchanged at 418 lines, 45 clones |
+| 17 | Browser, 768px, throwaway stack on 3105/8775 | Experience card: empty end date shows `e.g. Mar 2025`, hint "Leave empty for a current role." between the label and the input and wired with `aria-describedby`. Typing `Mar 2025` keeps the hint. The hint wraps to two lines in the studio's narrow date column; the card does not otherwise grow. Notes editor: one-line hint above an empty textarea, no placeholder |
 
 ## Queued for Task 18 (SYSTEM.md changes Claude applies)
 
+No SYSTEM.md behaviour change. The `--muted-foreground` contrast pin the conventions sentence cites is already in `test_frontend_color_roles.py`.
+
+Pre-existing layout issues found in the review's browser pass, for §11:
+- 375px: the New base résumé dialog is too wide (its tab row does not shrink).
+- 375px: the chat composer's Send and the tailor page's "Tailor resume" buttons run off-screen.
+- 375px: the job page's tab row pushes "Q&A" off-screen.
+- 375px: the base studio squeezes the editor to ~64px inputs beside the preview.
+- The LLM-endpoint (`e.g. http://host.docker.internal:11434/v1`) and `/new` Source URL placeholders clip at narrow widths: long URLs, pre-existing.
+- Hardcoded hint ids `new_id_hint` (and the new `new_id_error`), `nbr_name_hint`, `kb-profile-notes-hint`, `job-preferences-locations-hint` copy their controls' pre-existing hardcoded ids. Each component renders once, and moving a pair to `useId()` touches the label, control, hint and pin, not one line, so they were left.
+
 ## Deferred to merge (edits left for Claude, with file:line)
+
+None.

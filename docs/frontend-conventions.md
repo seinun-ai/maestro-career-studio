@@ -378,6 +378,11 @@
   `aria-labelledby` at the caption alone for the name. Helpers that render both
   label and control (`choiceRow`/`sliderRow` in `formatting-panel.tsx`) pass a
   label id down rather than repeating the string.
+  `RolePicker` is named by a `<Label htmlFor={id}>` or its `aria-label` prop:
+  Base UI's combobox input takes no name from context here, so an unnamed
+  picker is read by its placeholder, and by nothing once a role is set.
+  `RoleCategoryPicker` defaults to "Target role"; a caller that knows more
+  (the import dialog's per-resume rows) passes its own.
 - **Reordering is up/down buttons, not drag-and-drop** (`move()` from
   `lib/utils`, as in `editor-scaffold.tsx` and the formatting panel's
   `section_order` list, which has no drag path either). No dependency, and it
@@ -503,8 +508,9 @@
   `text-xs`. Never `text-2xl font-semibold` for page titles.
 - Form conventions: optionality lives on the LABEL as a muted "· optional"
   suffix (`<Label optional>` — one definition in `components/ui/label.tsx`),
-  never a placeholder saying "Optional"; placeholders are example values
-  only; page subtitles are one clause; every `SelectValue` gets children
+  never a placeholder saying "Optional"; a placeholder may hold only an
+  example value (see Microcopy rules); page subtitles are one clause; every
+  `SelectValue` gets children
   mapping value → human label (raw sentinels like `__none__` render literally
   otherwise).
 - **A field row is `grid gap-1.5`, never `space-y-*` around a bare
@@ -530,10 +536,23 @@
   - *Hint*: one short sentence. **Delete it if it only restates the label.**
     A hint carries what the label cannot: a consequence, a default, a
     constraint.
-  - *Placeholder*: an example VALUE (`e.g. Acme Corp`), never an instruction,
-    a question, or a statement about the field — it vanishes on the first
-    keystroke, so anything still wanted on screen while typing belongs in hint
-    text.
+  - *Placeholder*: an example VALUE prefixed `e.g.` (`e.g. Acme Corp`), and
+    only when losing it costs nothing. A visible label (or, for a search box,
+    the chat composer or a chip add-row, a named control) already says what
+    the field is. Anything needed while typing, such as a format, a constraint,
+    a default or a consequence, is hint text. Instructions, questions,
+    statements about the field and label restatements are never placeholders.
+    Exceptions: a short `…` prompt in a search box, the composer or a chip
+    add-row (the ratchet's list), and the `https://…` format cue. The ratchet
+    (`backend/tests/test_frontend_placeholders.py`) fails closed: a value it
+    cannot read, such as a concatenation, a call or a prop from another file,
+    fails unless it is on its pass-through list.
+    **This deviates from GOV.UK on purpose:** its text-input guidance forbids
+    placeholders for examples too, because they vanish on typing, not every
+    screen reader reads them, and default styles fail contrast. Here
+    placeholders use `--muted-foreground` (≥4.5:1, pinned), and an example
+    that carries nothing needed is safe to lose. NN/g's exception for one- and
+    two-field forms (search) covers the search boxes and the composer.
   - *The em dash is not a clause joiner in UI copy* — repeated
     "statement — elaboration" reads machine-written. Use two sentences, a
     colon, or cut the clause. The `—` CHARACTER stays correct for the

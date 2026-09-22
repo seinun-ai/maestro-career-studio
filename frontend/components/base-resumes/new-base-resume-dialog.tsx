@@ -433,9 +433,15 @@ function NewBaseResumeForm({
                 <Label htmlFor="nbr_name" optional={mode === "file"}>
                   Name
                 </Label>
+                {mode === "file" ? (
+                  <p id="nbr_name_hint" className="text-muted-foreground text-xs">
+                    Defaults to the file name.
+                  </p>
+                ) : null}
                 <Input
+                  aria-describedby={mode === "file" ? "nbr_name_hint" : undefined}
                   id="nbr_name"
-                  placeholder={mode === "file" ? "Defaults to the file name" : "Machine Learning Engineer"}
+                  placeholder={mode === "file" ? undefined : "e.g. Machine Learning Engineer"}
                   value={name}
                   onChange={(e) => {
                     const next = e.target.value;

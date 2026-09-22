@@ -21,24 +21,33 @@ export function Field({
   value,
   onChange,
   placeholder,
+  hint,
   optional = false,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
+  hint?: string;
   optional?: boolean;
 }) {
   const id = useId();
+  const hintId = useId();
   return (
     <div className="grid gap-1.5">
       <Label htmlFor={id} optional={optional}>
         {label}
       </Label>
+      {hint ? (
+        <p id={hintId} className="text-muted-foreground text-xs">
+          {hint}
+        </p>
+      ) : null}
       <Input
         id={id}
         value={value}
         placeholder={placeholder}
+        aria-describedby={hint ? hintId : undefined}
         onChange={(e) => onChange(e.target.value)}
       />
     </div>

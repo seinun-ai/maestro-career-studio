@@ -182,7 +182,7 @@ function ProfileView({ profile }: { profile: KBProfileOut }) {
                             itemIndex === index ? { ...item, category: event.target.value } : item,
                           ))
                         }
-                        placeholder="ML Ops"
+                        placeholder="e.g. ML Ops"
                       />
                     </div>
                     <div className="grid gap-1.5">
@@ -217,12 +217,15 @@ function ProfileView({ profile }: { profile: KBProfileOut }) {
               <Label htmlFor="kb-profile-notes">
                 Identity notes <span className="text-muted-foreground">· optional</span>
               </Label>
+              <p id="kb-profile-notes-hint" className="text-muted-foreground text-xs">
+                Private context such as visa timeline, target roles, location constraints.
+              </p>
               <Textarea
+                aria-describedby="kb-profile-notes-hint"
                 id="kb-profile-notes"
                 rows={5}
                 value={notes}
                 onChange={(event) => setNotes(event.target.value)}
-                placeholder="Visa timeline, target roles, location constraints, and other private context…"
               />
             </div>
 

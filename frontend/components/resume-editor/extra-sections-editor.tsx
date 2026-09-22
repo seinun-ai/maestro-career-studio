@@ -386,7 +386,7 @@ function EntriesEditor({
                     optional
                     value={entry.date ?? ""}
                     onChange={(v) => update(i, { date: v })}
-                    placeholder="2025"
+                    placeholder="e.g. 2025"
                   />
                   <Field
                     label="Link"
@@ -481,7 +481,7 @@ function AddSectionDialog({
               autoFocus
               aria-invalid={nameCollides}
               value={name}
-              placeholder="Publications"
+              placeholder="e.g. Publications"
               onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter") submit();

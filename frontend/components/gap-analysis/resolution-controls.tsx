@@ -421,13 +421,13 @@ export function AddKeywordControls({
       ))}
       <div className="grid gap-1.5">
         <Label htmlFor={wordingId} className="text-muted-foreground text-xs">
-          Wording
+          Exact wording
         </Label>
         <Input
           id={wordingId}
           value={wording}
           onChange={(event) => onWordingChange(event.target.value)}
-          placeholder="Exact wording to add"
+          placeholder="e.g. PySpark"
         />
       </div>
     </div>

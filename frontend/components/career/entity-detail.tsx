@@ -289,7 +289,7 @@ function EntityHeader({ entity }: { entity: KBEntityDetailType }) {
               id="kb-entity-org"
               value={org}
               onChange={(event) => setOrg(event.target.value)}
-              placeholder="Acme Labs"
+              placeholder="e.g. Acme Labs"
               disabled={save.isPending}
             />
           </div>
@@ -301,7 +301,7 @@ function EntityHeader({ entity }: { entity: KBEntityDetailType }) {
               id="kb-entity-start"
               value={startDate}
               onChange={(event) => setStartDate(event.target.value)}
-              placeholder="Jan 2025"
+              placeholder="e.g. Jan 2025"
               disabled={save.isPending}
             />
           </div>
@@ -313,7 +313,7 @@ function EntityHeader({ entity }: { entity: KBEntityDetailType }) {
               id="kb-entity-end"
               value={endDate}
               onChange={(event) => setEndDate(event.target.value)}
-              placeholder="Present"
+              placeholder="e.g. Mar 2025"
               disabled={save.isPending}
             />
           </div>

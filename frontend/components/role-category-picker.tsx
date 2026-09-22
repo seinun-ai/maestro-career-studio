@@ -90,6 +90,7 @@ export function RoleCategoryPicker({
   roleLabel: label = null,
   proposed = false,
   className,
+  "aria-label": ariaLabel = "Target role",
 }: {
   slug: string;
   roleCategory: string;
@@ -97,6 +98,8 @@ export function RoleCategoryPicker({
   /** True when the import pipeline guessed this role; the chip must look like a guess. */
   proposed?: boolean;
   className?: string;
+  /** The picker's name. There is no visible label beside it, so it needs one. */
+  "aria-label"?: string;
 }) {
   const qc = useQueryClient();
   const { data: options } = useRoleCategories();
@@ -137,6 +140,7 @@ export function RoleCategoryPicker({
     >
       <RolePicker
         mode="single"
+        aria-label={ariaLabel}
         value={value}
         onValueChange={(next) => {
           setConfirmed(true);
@@ -157,7 +161,7 @@ export function RoleCategoryPicker({
           className,
           guessing && "border-dashed",
         )}
-        placeholder={roleCategory === "unknown" && !label ? "Set role…" : ""}
+        placeholder={roleCategory === "unknown" && !label ? "e.g. Data Scientist" : ""}
       />
     </div>
   );

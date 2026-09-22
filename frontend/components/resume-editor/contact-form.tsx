@@ -18,7 +18,7 @@ const FIELDS: {
   {
     key: "email",
     label: "Email",
-    placeholder: "you@example.com",
+    placeholder: "e.g. you@example.com",
     required: true,
   },
   { key: "phone", label: "Phone" },

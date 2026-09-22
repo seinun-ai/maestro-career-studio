@@ -222,10 +222,12 @@ export function ApiKeysSection() {
     >
       {(data) => (
         <div className="space-y-3">
-          <div className="grid gap-3 sm:grid-cols-2">
+          {/* items-end: only a configured key has the hint line, so the two
+              inputs line up at the bottom rather than the captions at the top. */}
+          <div className="grid items-end gap-3 sm:grid-cols-2">
             <KeyField
               label="OpenAI API key"
-              placeholderUnset="sk-..."
+              placeholderUnset="e.g. sk-..."
               configured={data.api_key_configured}
               source={data.openai_key_source}
               value={openaiKey}
@@ -234,7 +236,7 @@ export function ApiKeysSection() {
             />
             <KeyField
               label="Gemini API key"
-              placeholderUnset="AIza..."
+              placeholderUnset="e.g. AIza..."
               configured={data.gemini_api_key_configured}
               source={data.gemini_key_source}
               value={geminiKey}
@@ -288,6 +290,7 @@ function KeyField({
   onChange: (next: string) => void;
 }) {
   const labelId = useId();
+  const hintId = useId();
   return (
     <div className="grid gap-1.5">
       <div className="flex items-center justify-between text-xs">
@@ -305,12 +308,18 @@ function KeyField({
           <span className="text-destructive font-medium">Not configured</span>
         )}
       </div>
+      {configured ? (
+        <p id={hintId} className="text-muted-foreground text-xs">
+          Type a new key to replace the saved one.
+        </p>
+      ) : null}
       <Input
         type="password"
         // Named by the caption alone. The status beside it is live text that
         // would otherwise be read as part of the field's name.
         aria-labelledby={labelId}
-        placeholder={configured ? "Saved · type to replace" : placeholderUnset}
+        aria-describedby={configured ? hintId : undefined}
+        placeholder={configured ? undefined : placeholderUnset}
         value={value ?? ""}
         onChange={(e) => onChange(e.target.value)}
         disabled={disabled}
@@ -381,7 +390,7 @@ function FreeTextModel({
       <Input
         id={id}
         value={draft ?? value}
-        placeholder="llama3.2:3b"
+        placeholder="e.g. llama3.2:3b"
         disabled={disabled}
         onChange={(e) => setDraft(e.target.value)}
         onBlur={() => {

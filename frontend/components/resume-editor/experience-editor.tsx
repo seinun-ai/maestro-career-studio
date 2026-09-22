@@ -102,8 +102,10 @@ export function ExperienceEditor({
               </div>
             }
             edit={() => (
-              <div className="grid gap-3">
-                <div className="grid grid-cols-2 gap-3">
+              // Same breakpoint as the contact form: a narrow editor column
+              // stacks the fields instead of clipping them.
+              <div className="@container grid gap-3">
+                <div className="grid gap-3 @md:grid-cols-2">
                   <Field
                     label="Company"
                     value={entry.company}
@@ -123,13 +125,14 @@ export function ExperienceEditor({
                     label="Start date"
                     value={entry.start_date ?? ""}
                     onChange={(v) => update(i, { start_date: v })}
-                    placeholder="Jan 2023"
+                    placeholder="e.g. Jan 2023"
                   />
                   <Field
                     label="End date"
                     value={entry.end_date ?? ""}
                     onChange={(v) => update(i, { end_date: v })}
-                    placeholder="Present"
+                    placeholder="e.g. Mar 2025"
+                    hint="Leave empty for a current role."
                   />
                 </div>
                 <BulletList
