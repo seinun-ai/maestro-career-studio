@@ -172,6 +172,9 @@ gate table, deviations, anything queued or deferred, and any concerns.
 |---|---|---|---|
 | 14 | Pin "passes `mark=`" and alt mentions "sample", no test file named | New `backend/tests/test_frontend_template_preview.py`. The alt pin matches the alt template literal, and the shell must render `mark` at `top-1.5 right-1.5` | A file-wide "sample" substring already passes: the component comment says "sample resume". No owned pin file covered thumbnails (conventions change with a pin CI actually runs) |
 | 15 | Comment only in `studio-toolbar.tsx` | Same sentence also sits on `const kind = "base"` in `health-report-page.tsx` | The prop is gone; the constant is the only thing stopping a later reader from threading `kind` back in (honesty: the page is base-only, MCP is not) |
+| 16 | Focus the new header button inside `onCreated` | A ref flag set before the cache update, then `useEffect` focuses the button once `populated` is true | The button does not exist until that commit. Focusing in the success handler lands on nothing (accessibility: focus must not drop to `<body>`) |
+| 16 | Hardcoded `referral-*` field ids | `useId()` per field | The form can mount in the empty-state card and in the dialog; conventions say ids come from `useId()` |
+| 16 | B §5 leaves the create-form placeholders unprefixed; edit rows unchanged | New `ReferralForm` placeholders are `e.g. …`. Edit-row placeholders stay `Jane Doe` / `Met at the AWS meetup` | Lane note: new referral UI follows owner decision 3. B §5 says the edit rows are unchanged, so Task 17 still owns those two |
 
 ## Gate results
 
@@ -186,6 +189,10 @@ gate table, deviations, anything queued or deferred, and any concerns.
 | 15 | tsc / lint / node / `npm run build` | clean / 0 errors, 5 warnings / 67/67 / build OK. Route table has `/base-resumes/[slug]/health` and no `/applications/[id]/health` |
 | 15 | slop `check frontend` / `check backend` | OK / OK. Duplication still 517 lines, 43 clones |
 | 15 | browser | `/base-resumes/lane4_sample/health` renders "Resume health report" / "Lane Four" / "No health report yet." `/applications/00000000-0000-4000-8000-000000000001/health` renders "Page not found" |
+| 16 | referrals pin + every `test_frontend_*.py` | 159 passed |
+| 16 | tsc / lint / node | clean / 0 errors, 5 warnings / 67/67 |
+| 16 | slop `check frontend` / `check backend` | OK / OK. Duplication still 517 lines, 43 clones |
+| 16 | browser 768 and 375 | Empty page is the "Add your first referral" form (768). First create moves focus to the header "Add referral" button (`activeElement` is that button, not `<body>`), then the table. Dialog opens with initial focus on Company. At 768 the first two fields are side by side and the dialog fits (512px). At 375 the dialog fits (16px inset, not clipped, fields stacked). Delete button is on the row; `ReferralViewRow` still `await confirm(...)` before delete. The confirm click itself was not completed |
 
 ## Queued for Task 18 (SYSTEM.md changes Claude applies)
 
@@ -195,3 +202,4 @@ Task 15: none. SYSTEM.md does not describe a web tailored-health route. MCP heal
 
 - `frontend/components/templates/template-select.tsx:163` (DialogTitle "Choose a template"): skipped the optional `<DialogDescription>Previews show a sample resume, not yours.</DialogDescription>`. Lane 1 owns this file.
 - Stale-chip tooltip, not fixed (Task 14 step 3). On `/templates`, `elementFromPoint` at the centre of Harshibar's "needs re-validation" chip hits the stretched card link (`aria-label="Open Harshibar layout"`), not the chip. The `title` is set; hover cannot reach it because `GalleryCard`'s link is `absolute inset-0 z-10` and the chip is not lifted to z-20. Picker mode has no stretched link, so that page is the one that hides the tooltip.
+- Picker card accessible names omit "Sample" (not changed). B §6 hides the mark (`aria-hidden`) and puts "sample" in the image alt. In the picker the card is a button, and the a11y-tree names were "Carlito Dense ready latex" with no "sample". Manage-mode links are named "Open {template}". The alt is on the `<img>`, which is a separate node from that link.

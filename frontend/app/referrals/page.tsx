@@ -1,16 +1,30 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useId, useRef, useState, type Ref } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Handshake, Pencil, Trash2 } from "lucide-react";
+import { Handshake, Pencil, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { CompanyMonogram } from "@/components/company-monogram";
-import { EmptyState, TableFrame } from "@/components/empty-state";
+import { TableFrame } from "@/components/empty-state";
 import { useConfirm } from "@/components/confirm-dialog";
 import { IconButton } from "@/components/icon-button";
+import { LoadErrorState } from "@/components/load-error-state";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -30,20 +44,106 @@ import { PageHeader, PageShell } from "@/components/page-shell";
 const REFERRALS_KEY = ["referrals"] as const;
 
 export default function ReferralsPage() {
+  const referrals = useQuery({
+    queryKey: REFERRALS_KEY,
+    queryFn: () => apiFetch<Referral[]>("/api/referrals"),
+  });
+  const [addOpen, setAddOpen] = useState(false);
+  const companyRef = useRef<HTMLInputElement>(null);
+  const addButtonRef = useRef<HTMLButtonElement>(null);
+  // Set in the inline form's success handler, before the cache update renders
+  // the header button. The effect runs after that commit; reading the ref
+  // during render is what the compiler forbids.
+  const focusAddAfterCreate = useRef(false);
+  const rows = referrals.data ?? [];
+  const populated =
+    !referrals.isLoading && !referrals.isError && rows.length > 0;
+
+  useEffect(() => {
+    if (!populated || !focusAddAfterCreate.current) return;
+    addButtonRef.current?.focus();
+    focusAddAfterCreate.current = false;
+  }, [populated]);
+
   return (
     <PageShell>
       <PageHeader
         title="Referrals"
         subtitle="Companies where someone can refer you."
+        actions={
+          populated ? (
+            <Button ref={addButtonRef} onClick={() => setAddOpen(true)}>
+              <Plus aria-hidden="true" /> Add referral
+            </Button>
+          ) : undefined
+        }
       />
-      <CreateReferralCard />
-      <ReferralsTableCard />
+      {referrals.isLoading ? (
+        <Skeleton className="h-40 w-full" />
+      ) : referrals.isError ? (
+        <LoadErrorState
+          title="Couldn't load referrals."
+          detail={(referrals.error as Error).message}
+          retrying={referrals.isFetching}
+          onRetry={() => void referrals.refetch()}
+        />
+      ) : populated ? (
+        <ReferralsTable rows={rows} />
+      ) : (
+        <FirstReferralCard
+          onCreated={() => {
+            focusAddAfterCreate.current = true;
+          }}
+        />
+      )}
+      <Dialog open={addOpen} onOpenChange={setAddOpen}>
+        <DialogContent initialFocus={companyRef}>
+          <DialogHeader>
+            <DialogTitle>Add referral</DialogTitle>
+          </DialogHeader>
+          <ReferralForm
+            companyRef={companyRef}
+            inDialog
+            onCreated={() => setAddOpen(false)}
+          />
+        </DialogContent>
+      </Dialog>
     </PageShell>
   );
 }
 
-function CreateReferralCard() {
+function FirstReferralCard({ onCreated }: { onCreated: () => void }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Handshake className="size-4" aria-hidden="true" />
+          Add your first referral
+        </CardTitle>
+        <CardDescription>A company where someone can refer you.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <ReferralForm onCreated={onCreated} />
+      </CardContent>
+    </Card>
+  );
+}
+
+function ReferralForm({
+  companyRef,
+  onCreated,
+  inDialog = false,
+}: {
+  companyRef?: Ref<HTMLInputElement>;
+  onCreated?: () => void;
+  inDialog?: boolean;
+}) {
   const qc = useQueryClient();
+  const formId = useId();
+  const companyId = useId();
+  const careersUrlId = useId();
+  const contactId = useId();
+  const notesId = useId();
   const [company, setCompany] = useState("");
   const [careersUrl, setCareersUrl] = useState("");
   const [contactName, setContactName] = useState("");
@@ -63,6 +163,9 @@ function CreateReferralCard() {
         body: JSON.stringify(payload),
       }),
     onSuccess: (created) => {
+      // Before the cache update: the inline page unmounts this form and mounts
+      // the header button in the same commit, and that button is what we focus.
+      onCreated?.();
       qc.setQueryData<Referral[]>(REFERRALS_KEY, (prev) =>
         prev ? [created, ...prev] : [created],
       );
@@ -73,134 +176,111 @@ function CreateReferralCard() {
   });
 
   const canSubmit =
-    company.trim().length > 0 && careersUrl.trim().length > 0 && !create.isPending;
+    company.trim().length > 0 &&
+    careersUrl.trim().length > 0 &&
+    !create.isPending;
 
   const submit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!canSubmit) return;
-    const payload: ReferralCreate = {
+    create.mutate({
       company: company.trim(),
       careers_url: careersUrl.trim(),
       contact_name: contactName.trim() ? contactName.trim() : null,
       notes: notes.trim() ? notes.trim() : null,
-    };
-    create.mutate(payload);
+    });
   };
 
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Add referral</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <form className="space-y-4" onSubmit={submit}>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="referral-company">Company</Label>
-              <Input
-                id="referral-company"
-                value={company}
-                onChange={(e) => setCompany(e.target.value)}
-                placeholder="Acme Corp"
-                required
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="referral-careers-url">Careers URL</Label>
-              <Input
-                id="referral-careers-url"
-                type="url"
-                value={careersUrl}
-                onChange={(e) => setCareersUrl(e.target.value)}
-                placeholder="https://example.com/careers"
-                required
-              />
-            </div>
-            <div className="space-y-1.5 sm:col-span-2">
-              <Label htmlFor="referral-contact-name">
-                Contact name{" "}
-                <span className="text-muted-foreground font-normal">
-                  · optional
-                </span>
-              </Label>
-              <Input
-                id="referral-contact-name"
-                value={contactName}
-                onChange={(e) => setContactName(e.target.value)}
-                placeholder="Jane Doe"
-              />
-            </div>
-            <div className="space-y-1.5 sm:col-span-2">
-              <Label htmlFor="referral-notes">
-                Notes{" "}
-                <span className="text-muted-foreground font-normal">
-                  · optional
-                </span>
-              </Label>
-              <Textarea
-                id="referral-notes"
-                rows={3}
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="Met at the AWS meetup"
-              />
-            </div>
-          </div>
-          <div className="flex justify-end">
-            <Button type="submit" disabled={!canSubmit}>
-              {create.isPending ? "Adding…" : "Add referral"}
-            </Button>
-          </div>
-        </form>
-      </CardContent>
-    </Card>
+  const submitButton = (
+    <Button
+      type="submit"
+      form={inDialog ? formId : undefined}
+      disabled={!canSubmit}
+    >
+      {create.isPending ? "Adding…" : "Add referral"}
+    </Button>
   );
-}
-
-function ReferralsTableCard() {
-  const referrals = useQuery({
-    queryKey: REFERRALS_KEY,
-    queryFn: () => apiFetch<Referral[]>("/api/referrals"),
-  });
 
   return (
     <>
-        {referrals.isLoading ? (
-          <Skeleton className="h-40 w-full" />
-        ) : referrals.isError ? (
-          <p className="text-destructive text-sm">
-            Failed to load referrals: {(referrals.error as Error).message}
-          </p>
-        ) : !referrals.data || referrals.data.length === 0 ? (
-          // Same device as Applications. This was a bare muted sentence with
-          // no box and nothing to act on.
-          <EmptyState
-            icon={Handshake}
-            title="No referrals yet"
-            description="Add a company above where someone can refer you."
-          />
-        ) : (
-          <TableFrame>
-          <Table className="min-w-[48rem] table-fixed">
-            <TableHeader>
-              <TableRow className="hover:bg-transparent">
-                <TableHead>Company</TableHead>
-                <TableHead>Careers URL</TableHead>
-                <TableHead>Contact</TableHead>
-                <TableHead>Notes</TableHead>
-                <TableHead className="text-right">Apps</TableHead>
-                <TableHead className="w-20" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {referrals.data.map((referral) => (
-                <ReferralRow key={referral.id} referral={referral} />
-              ))}
-            </TableBody>
-          </Table>
-          </TableFrame>
+      <form id={formId} onSubmit={submit}>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-1.5">
+            <Label htmlFor={companyId}>Company</Label>
+            <Input
+              id={companyId}
+              ref={companyRef}
+              value={company}
+              onChange={(e) => setCompany(e.target.value)}
+              placeholder="e.g. Acme Corp"
+              required
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor={careersUrlId}>Careers URL</Label>
+            <Input
+              id={careersUrlId}
+              type="url"
+              value={careersUrl}
+              onChange={(e) => setCareersUrl(e.target.value)}
+              placeholder="e.g. https://example.com/careers"
+              required
+            />
+          </div>
+          <div className="grid gap-1.5 sm:col-span-2">
+            <Label htmlFor={contactId} optional>
+              Contact name
+            </Label>
+            <Input
+              id={contactId}
+              value={contactName}
+              onChange={(e) => setContactName(e.target.value)}
+              placeholder="e.g. Jane Doe"
+            />
+          </div>
+          <div className="grid gap-1.5 sm:col-span-2">
+            <Label htmlFor={notesId} optional>
+              Notes
+            </Label>
+            <Textarea
+              id={notesId}
+              rows={3}
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="e.g. Met at the AWS meetup"
+            />
+          </div>
+        </div>
+        {inDialog ? null : (
+          <div className="mt-4 flex justify-end">{submitButton}</div>
         )}
+      </form>
+      {inDialog ? <DialogFooter>{submitButton}</DialogFooter> : null}
     </>
+  );
+}
+
+function ReferralsTable({ rows }: { rows: Referral[] }) {
+  return (
+    <TableFrame>
+      <Table className="min-w-[48rem] table-fixed">
+        <TableHeader>
+          <TableRow className="hover:bg-transparent">
+            <TableHead>Company</TableHead>
+            <TableHead>Careers URL</TableHead>
+            <TableHead>Contact</TableHead>
+            <TableHead>Notes</TableHead>
+            <TableHead className="text-right">Apps</TableHead>
+            <TableHead className="w-20" />
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.map((referral) => (
+            <ReferralRow key={referral.id} referral={referral} />
+          ))}
+        </TableBody>
+      </Table>
+    </TableFrame>
   );
 }
 
