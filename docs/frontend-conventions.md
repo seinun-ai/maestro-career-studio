@@ -321,7 +321,9 @@
   and reloads for a state without `__NA`. A Next upgrade re-runs the
   Back/Forward browser checks. `GuardedLink` uses `router.replace` while
   the duplicate is the current entry, so no duplicate is left under the new
-  page.
+  page. Persona, Autofill and Prompts register while their explicit Save is
+  dirty. `/new` registers while a pasted job description has not been
+  extracted, and its Extract button submits through `useSingleFlight`.
 - **`PdfPagesPreview` owns the canvas and the zoom.** Pages sit on
   `bg-canvas`, so a caller adds no fill of its own. Zoom is a `role="group"`
   "Zoom" of `aria-pressed` presets (Fit width, Fit page, 100%) on a solid
@@ -730,7 +732,24 @@
   Save/Discard where a discard is meaningful. Errors always toast; successful
   autosaves never do, and neither does an explicit studio Save, which reports
   through the header's status line (the studio bullet above). See
-  `autosave-status.tsx` for why.
+  `autosave-status.tsx` for why. A debounced autosave (the gap page) says
+  Saving… from the first keystroke until the newest edit is on the server,
+  flushes on unmount, warns on reload while pending, and asks before an
+  in-app exit only after a failed save. Leaving within the debounce saves the
+  pending selection, a `cannot_confirm` included, which then writes its
+  durable KB record: it was the user's choice when they left. While it
+  tailors, every gap control is locked (`GapLocked`: `aria-disabled` buttons,
+  `readOnly` fields, so focus stays), and an edit that slips through is saved
+  if the tailor fails. A stale session shows no Try again (every save 409s;
+  the banner's Start new analysis is the way out), and an edit there reads
+  Save failed and keeps the leave guard. `AutosaveStatus` reports three states:
+  Saving…, Not saved (after a failed write, with Try again where the card
+  holds a value the server lacks), and Saves automatically. A card still
+  holding a value the server lacks registers the leave guard. After a retry
+  lands, both status lines move focus with `focusIfDropped` (only from
+  `<body>`), and a failed retry disarms the move, so a later save never pulls
+  focus out of a field mid-typing. An explicit Save that lands while the user
+  kept typing (Persona, Autofill) keeps the form dirty and the later text.
 - Settings shows four curated user-voice prompts (cover_letter, qa,
   gap_tailor, chat_system); the other internal prompts sit behind an
   "Advanced prompts" disclosure (`ESSENTIAL_PROMPTS` map in

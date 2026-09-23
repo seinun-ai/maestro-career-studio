@@ -1,6 +1,8 @@
 "use client";
 
 import { useId, useState } from "react";
+import { useLeaveGuard } from "@/hooks/use-leave-guard";
+import { useSingleFlight } from "@/hooks/use-single-flight";
 import { GuardedLink as Link } from "@/components/guarded-link";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -71,6 +73,8 @@ export default function NewApplicationPage() {
     },
     onError: (err: Error) => toast.error(err.message),
   });
+  const extract = useSingleFlight(extractJob.mutate);
+  useLeaveGuard(rawText.trim().length > 0 && savedJob === null);
 
   const goToAtsScores = () => {
     if (savedJob) router.push(`/jobs/${savedJob.id}?tab=fit`);
@@ -127,7 +131,7 @@ export default function NewApplicationPage() {
 
       <div className="flex flex-wrap items-center gap-3">
         <Button
-          onClick={() => extractJob.mutate()}
+          onClick={() => extract(undefined)}
           disabled={disabled || busy || needsKey}
           aria-describedby={needsKey ? keyNoticeId : undefined}
         >

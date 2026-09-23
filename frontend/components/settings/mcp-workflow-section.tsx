@@ -60,7 +60,7 @@ export function McpWorkflowSection() {
       {(data) => (
         <>
           <AutosaveRow>
-            <AutosaveStatus pending={save.isPending} />
+            <AutosaveStatus pending={save.isPending} failed={save.isError} />
           </AutosaveRow>
           {/* Same row geometry as the quick-tailor switches. */}
           <div className="flex items-center justify-between gap-4 px-3 py-2.5">
@@ -70,8 +70,9 @@ export function McpWorkflowSection() {
             <Switch
               id={id}
               checked={data.value.hints}
-              disabled={save.isPending}
-              onCheckedChange={(checked) => save.mutate(checked)}
+              onCheckedChange={(checked) => {
+                if (!save.isPending) save.mutate(checked);
+              }}
             />
           </div>
         </>

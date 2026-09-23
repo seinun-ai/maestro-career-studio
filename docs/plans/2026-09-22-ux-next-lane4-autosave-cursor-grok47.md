@@ -168,12 +168,46 @@ table, deviations, anything queued or deferred, and any concerns.
 
 | Task | Planned | Did instead | Why (Goal Card line) |
 |---|---|---|---|
+| 11 | `readOnly` on the note textarea and `UserInputControls` | Threaded `readOnly` through `GapCard` into `UserInputControls`; the note textarea is on the page | The answer field lives in those components. Keyboard edits while tailoring would otherwise be dropped. |
+| 11 | Browser check stops the backend | The failed save was a 500 on the resolutions PATCH | Same failure the page handles. The status, toast, Try again, and leave prompt all showed. |
+| 12 | Browser check stops the backend | Quick-tailor and market PUTs returned 500 | Same failure. Not saved, the toast, Try again, the leave prompt, and the market revert all showed. |
+| review | `readOnly` on two textareas while tailoring; Try again refocuses the status with `.focus()`; the Tailor buttons disabled on `tailor.isPending` | One `GapLocked` context locks every gap control while tailoring (`aria-disabled` chips/segments/Undo/"I can't confirm this", `readOnly` fields) and a failed tailor saves any edit that slipped through; one `runTailor` lock spans confirm, pre-tailor save and tailor, with the buttons `focusableWhenDisabled`; both status lines move focus with `focusIfDropped` in a layout effect and disarm on a failed retry; a stale session hides Try again; Autofill keeps text typed during Save (Claude review fixes) | Never loses typed text; focus never dropped to `<body>`; the status never says saved while something is pending. |
 
 ## Gate results
 
 | Task | Gate | Result |
 |---|---|---|
+| 11 | pins `test_frontend_gap_autosave.py` | 6 passed; each pin failed alone when its guard was broken, then restored |
+| 11 | `pytest tests/test_frontend_*.py` | 446 passed |
+| 11 | tsc / lint / node | tsc clean; lint 0 errors, 5 baseline warnings; node 143 passed |
+| 11 | slop | frontend and backend ratchet OK; duplication 468 lines / 39 clones (ceiling 481/40) |
+| 11 | `npm run build` | OK |
+| 11 | browser | Saving… from the first keystroke and again on the next character; delayed PATCH stays Saving… until it ends, then Saved; reload shows beforeunload; Back and the sidebar flush the note; failed save shows Save failed, a toast, Try again, and "Leave without saving?"; Enter on Try again keeps focus off `<body>` and lands on Saved |
+| 12 | pins `test_frontend_settings_autosave.py` | 4 passed; each pin failed alone when its guard was broken, then restored |
+| 12 | `pytest tests/test_frontend_*.py` | 450 passed |
+| 12 | tsc / lint | tsc clean; lint 0 errors, 5 baseline warnings |
+| 12 | slop | frontend and backend ratchet OK; duplication still 468/39 |
+| 12 | `npm run build` | OK |
+| 13 | pins `test_frontend_unsaved_surfaces.py` | 2 passed; removing each guard failed that pin alone, then restored |
+| 13 | `pytest tests/test_frontend_*.py` | 452 passed |
+| 13 | tsc / lint | tsc clean; lint 0 errors, 5 baseline warnings |
+| 13 | slop | frontend and backend ratchet OK; duplication still 468/39 |
+| 13 | `npm run build` | OK |
+| 13 | node | 143 passed |
+| 13 | browser | Empty `/new` leaves; a pasted description asks. Persona, Autofill (first name) and Prompts (cover letter) ask "Leave without saving?". Extract double-click sent one `POST /api/jobs` (502 from the dummy key). |
+| 12 | browser | Failed quick-tailor switch: Not saved, toast, Try again, leave prompt; Enter on Try again shows Saving… with focus on the button, then Saves automatically with focus on the status. Failed market pick: select reverts, Not saved, no Try again; the next successful pick clears it. |
 
 ## Queued for Task 20 (SYSTEM.md changes Claude applies)
 
+None from Tasks 11-13: they do not close a §11 item. From the Claude review:
+
+- Settings autosave cards show one error toast per keystroke while saves fail
+  (each queued write that fails toasts through the card's `onError`).
+  Pre-existing; one toast per failure streak would do.
+- (Not queued: focus after "Tailor anyway" no longer falls to `<body>`. The
+  Tailor buttons are `focusableWhenDisabled`, so the confirm hands focus back
+  to Tailor resume.)
+
 ## Deferred to merge (edits left for Claude, with file:line)
+
+- (Fixed in the Claude review commit.) Gap page, while tailoring: the Exact wording field (`resolution-controls.tsx` `AddKeywordControls` Input) is still editable from the keyboard. The spec named the note textarea and the Answer textarea. A focused wording field can still change, and `scheduleSave` then returns without saving it.

@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { AutosaveStatus } from "@/components/settings/autosave-status";
+import { useLeaveGuard } from "@/hooks/use-leave-guard";
 import { AutosaveRow, SettingCard } from "@/components/settings/setting-card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -78,14 +79,15 @@ function QuickTailorEditor({ initial }: { initial: QuickTailorProfile }) {
     onError: (error: Error) => toast.error(error.message),
   });
 
-  const { value: profile, update, pending } = useAutosave(initial, (next) =>
+  const { value: profile, update, pending, failed, retry } = useAutosave(initial, (next) =>
     save.mutateAsync(next),
   );
+  useLeaveGuard(failed);
 
   return (
     <div className="space-y-5">
       <AutosaveRow>
-        <AutosaveStatus pending={pending} />
+        <AutosaveStatus pending={pending} failed={failed} onRetry={retry} />
       </AutosaveRow>
 
       <div className="space-y-3">

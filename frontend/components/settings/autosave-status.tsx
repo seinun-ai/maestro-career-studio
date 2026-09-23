@@ -1,4 +1,10 @@
-import { Check, Loader2 } from "lucide-react";
+"use client";
+
+import { useLayoutEffect, useRef } from "react";
+import { Check, Loader2, TriangleAlert } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+import { focusIfDropped } from "@/hooks/use-focus-return";
 
 /**
  * The quiet half of the settings save model.
@@ -14,32 +20,76 @@ import { Check, Loader2 } from "lucide-react";
  * PUTs and stacked several "Job preferences saved" toasts for a single edit.
  * This is an inline, non-interrupting status instead, and it reserves its own
  * width so the row does not reflow as the state changes.
+ *
+ * Three states: Saving…, Not saved (a failed write, with Try again where the
+ * card still holds a value the server lacks), and Saves automatically.
  */
 export function AutosaveStatus({
   pending,
+  failed = false,
+  onRetry,
   className,
 }: {
   pending: boolean;
+  failed?: boolean;
+  onRetry?: () => void;
   className?: string;
 }) {
+  const statusRef = useRef<HTMLSpanElement>(null);
+  const refocus = useRef(false);
+  // Try again stays mounted while the retry runs (`failed` holds until a
+  // success settles). Once the retry settles: a success unmounts it, and the
+  // focus it dropped goes to the status. A failure leaves it, and focus, in
+  // place and disarms, so a later ordinary save never pulls focus mid-typing.
+  // A layout effect, so no frame is painted with focus on <body>.
+  useLayoutEffect(() => {
+    if (!refocus.current || pending) return;
+    refocus.current = false;
+    if (!failed) focusIfDropped(statusRef.current);
+  }, [failed, pending]);
   return (
-    <span
-      className={`text-muted-foreground inline-flex items-center gap-1.5 text-xs ${className ?? ""}`}
-      // polite, not assertive: a save confirmation must never interrupt what a
-      // screen-reader user is doing.
-      aria-live="polite"
-    >
-      {pending ? (
-        <>
-          <Loader2 className="size-3 animate-spin" aria-hidden="true" />
-          Saving…
-        </>
-      ) : (
-        <>
-          <Check className="size-3" aria-hidden="true" />
-          Saves automatically
-        </>
-      )}
+    <span className={`inline-flex items-center gap-2 text-xs ${className ?? ""}`}>
+      <span
+        ref={statusRef}
+        tabIndex={-1}
+        aria-live="polite"
+        className={`inline-flex items-center gap-1.5 ${
+          failed && !pending ? "text-destructive" : "text-muted-foreground"
+        }`}
+      >
+        {pending ? (
+          <>
+            <Loader2 className="size-3 animate-spin" aria-hidden="true" />
+            Saving…
+          </>
+        ) : !failed ? (
+          <>
+            <Check className="size-3" aria-hidden="true" />
+            Saves automatically
+          </>
+        ) : (
+          <>
+            <TriangleAlert className="size-3" aria-hidden="true" />
+            Not saved
+          </>
+        )}
+      </span>
+      {failed && onRetry ? (
+        <Button
+          type="button"
+          variant="link"
+          size="xs"
+          focusableWhenDisabled
+          disabled={pending}
+          className="h-auto p-0 data-disabled:opacity-50"
+          onClick={() => {
+            refocus.current = true;
+            onRetry();
+          }}
+        >
+          Try again
+        </Button>
+      ) : null}
     </span>
   );
 }

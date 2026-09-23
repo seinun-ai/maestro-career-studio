@@ -15,11 +15,14 @@ import { useRef, useState } from "react";
  *   queued value rather than stacking; when the response lands, the newest
  *   value goes out. Queueing every intermediate edit would replay a value the
  *   user has already moved past.
- * - **A single `pending` flag**, so `AutosaveStatus` reads one boolean.
+ * - **A single `pending` flag**, so `AutosaveStatus` reads one boolean, plus
+ *   `failed` when the newest value is not on the server and `retry` to send
+ *   it again.
  *
- * A rejected commit still drains the queue: the caller reports the failure
- * through its own mutation's `onError`, and the next edit is a fresh attempt
- * carrying the latest value, which is the useful retry.
+ * A rejected commit is `failed`. The caller still reports it through its own
+ * `onError`. Each commit sends the whole value, so a later success carries
+ * every earlier change and clears `failed`. An outcome with a newer value
+ * queued behind it decides nothing. `retry` sends the newest value again.
  *
  * Deliberately does NOT re-seed from a background refetch. There is no
  * non-destructive moment to do it — an autosaving card is almost always either
@@ -29,6 +32,7 @@ import { useRef, useState } from "react";
 export function useAutosave<T>(initial: T, commit: (next: T) => Promise<unknown>) {
   const [value, setValue] = useState(initial);
   const [pending, setPending] = useState(false);
+  const [failed, setFailed] = useState(false);
   const queued = useRef(initial);
   const inFlight = useRef<T | null>(null);
 
@@ -36,19 +40,30 @@ export function useAutosave<T>(initial: T, commit: (next: T) => Promise<unknown>
     const next = queued.current;
     inFlight.current = next;
     setPending(true);
-    void commit(next)
-      .catch(() => {
-        // Reported by the caller's own onError; swallowed here so a failed
-        // save cannot reject into an unhandled promise.
-      })
-      .finally(() => {
-        if (queued.current !== inFlight.current) {
-          flush();
-        } else {
-          inFlight.current = null;
-          setPending(false);
-        }
-      });
+    // A rejection is reported by the caller's own onError; here it only
+    // decides `failed`. The rejection handler keeps it off the unhandled path.
+    commit(next).then(
+      () => settle(true),
+      () => settle(false),
+    );
+  };
+
+  // `failed`: the newest value is not on the server. A later success carries
+  // every earlier change and clears it; an outcome with a newer value queued
+  // behind it decides nothing.
+  const settle = (ok: boolean) => {
+    if (queued.current !== inFlight.current) {
+      flush();
+      return;
+    }
+    inFlight.current = null;
+    setPending(false);
+    setFailed(!ok);
+  };
+
+  /** Send the newest value again: the failed state's Try again. */
+  const retry = () => {
+    if (inFlight.current === null) flush();
   };
 
   const update = (getNext: (current: T) => T) => {
@@ -58,5 +73,5 @@ export function useAutosave<T>(initial: T, commit: (next: T) => Promise<unknown>
     if (inFlight.current === null) flush();
   };
 
-  return { value, update, pending };
+  return { value, update, pending, failed, retry };
 }

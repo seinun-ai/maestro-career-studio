@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, type ReactNode } from "react";
+import { createContext, use, useId, type ReactNode } from "react";
 import { Library, Sparkles } from "lucide-react";
 
 import { Input } from "@/components/ui/input";
@@ -229,6 +229,14 @@ function targetKey(target: SavedTarget): string {
   return `${target.section}:${target.section_key ?? ""}:${target.index_or_category}`;
 }
 
+/**
+ * True while the page tailors: every gap control stops editing. Buttons take
+ * `aria-disabled` and ignore presses, fields go `readOnly`. Neither drops
+ * focus, which `disabled` or `inert` would (to <body>). Pointer events are
+ * already off; this closes the keyboard path, whose edits the page could not save.
+ */
+export const GapLocked = createContext(false);
+
 /** Segmented action control — renders ONLY the actions the gap allows. */
 export function ActionSegment({
   actions,
@@ -239,6 +247,7 @@ export function ActionSegment({
   value: GapAction | null;
   onSelect: (action: GapAction) => void;
 }) {
+  const locked = use(GapLocked);
   const manual = actions.filter((action) => SEGMENT_ACTIONS.includes(action));
   if (manual.length === 0) return null;
   return (
@@ -252,9 +261,10 @@ export function ActionSegment({
           key={action}
           type="button"
           aria-pressed={value === action}
-          onClick={() => onSelect(action)}
+          aria-disabled={locked || undefined}
+          onClick={locked ? undefined : () => onSelect(action)}
           className={cn(
-            "h-6 rounded-md px-2 text-xs font-medium transition-colors",
+            "h-6 rounded-md px-2 text-xs font-medium transition-colors aria-disabled:opacity-50",
             value === action
               ? "bg-background text-foreground shadow-sm"
               : "text-muted-foreground hover:text-foreground",
@@ -285,13 +295,15 @@ export function Chip({
   onClick: () => void;
   children: ReactNode;
 }) {
+  const locked = use(GapLocked);
   return (
     <button
       type="button"
       aria-pressed={selected ?? false}
-      onClick={onClick}
+      aria-disabled={locked || undefined}
+      onClick={locked ? undefined : onClick}
       className={cn(
-        "inline-flex h-6 max-w-full items-center gap-1 rounded-full border px-2.5 text-xs font-medium transition-colors",
+        "inline-flex h-6 max-w-full items-center gap-1 rounded-full border px-2.5 text-xs font-medium transition-colors aria-disabled:opacity-50",
         selected
           ? "border-primary bg-primary text-primary-foreground"
           : "border-border bg-background text-muted-foreground hover:bg-muted hover:text-foreground",
@@ -358,6 +370,7 @@ export function AddKeywordControls({
   onWordingChange: (value: string) => void;
 }) {
   const wordingId = useId();
+  const locked = use(GapLocked);
   if (targets === null) {
     if (loadError) {
       return <p className="text-destructive text-xs">{LOAD_ERROR_MESSAGE}</p>;
@@ -426,6 +439,7 @@ export function AddKeywordControls({
         <Input
           id={wordingId}
           value={wording}
+          readOnly={locked}
           onChange={(event) => onWordingChange(event.target.value)}
           placeholder="e.g. PySpark"
         />
@@ -456,6 +470,7 @@ export function UserInputControls({
   onPickTarget: (target: PlacementTarget | null) => void;
 }) {
   const questionId = useId();
+  const locked = use(GapLocked);
   return (
     <div className="space-y-2">
       <p id={questionId} className="text-sm">
@@ -470,6 +485,7 @@ export function UserInputControls({
         aria-labelledby={questionId}
         aria-describedby={`${questionId}-hint`}
         value={text}
+        readOnly={locked}
         onChange={(event) => onTextChange(event.target.value)}
         placeholder={placeholder}
       />

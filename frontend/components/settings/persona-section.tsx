@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
+import { useLeaveGuard } from "@/hooks/use-leave-guard";
 import { SettingCard } from "@/components/settings/setting-card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -115,6 +116,7 @@ function PersonaEditor({
   });
 
   const dirty = value !== saved;
+  useLeaveGuard(dirty);
 
   return (
     <>
