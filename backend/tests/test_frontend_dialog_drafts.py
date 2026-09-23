@@ -42,6 +42,14 @@ _ENTITY = _read("components/career/entity-detail.tsx")
 _NEW_ENTITY = _read("components/career/new-entity-dialog.tsx")
 _CAREER_PAGE = _read("app/career/page.tsx")
 _RESUMES_HOOK = _read("hooks/use-base-resume-label.ts")
+_RESUMES_PAGE = _read("app/base-resumes/page.tsx")
+_ROLE_HOOK = _read("components/role-category-picker.tsx")
+_HEALTH_PAGE = _read("components/resume-health/health-report-page.tsx")
+
+
+def _mounted_for_good(src: str, tag: str) -> bool:
+    """The element is rendered unconditionally: not behind `&&`, `?` or `(`."""
+    return f"<{tag}" in src and not re.search(rf"(&&|\?|\()\s*<{tag}\b", src)
 
 
 def test_dialog_content_can_stay_mounted():
@@ -65,6 +73,24 @@ def test_new_base_resume_keeps_its_form():
     # The pressed button unmounts with the old form; focus goes to the new one.
     assert "focusNext(popupRef);" in start_over
     assert '<DialogContent size="lg" keepMounted ref={popupRef}>' in wrapper
+
+
+def test_the_base_resumes_page_keeps_its_dialog_mounted():
+    assert "<NewBaseResumeDialog open={createOpen}" in _flat(_RESUMES_PAGE)
+    assert _mounted_for_good(_RESUMES_PAGE, "NewBaseResumeDialog")
+
+
+def test_a_kept_new_base_resume_form_fetches_roles_only_when_opened():
+    """Mounted while closed, the form fetched the role vocabulary on every
+    page that holds it. Its pickers get the list from the form ([] while it
+    loads), or each would fetch it itself."""
+    assert "const roles = useRoleCategories({ enabled: open });" in _NBR
+    assert "const roleCategories = roles.data ?? NO_ROLES;" in _NBR
+    assert "roleCategories={roles.data}" not in _NBR
+    assert _NBR.count("roleCategories={roleCategories}") == 3
+    hook = _between(_ROLE_HOOK, "export function useRoleCategories(", "\n}\n")
+    assert "{ enabled = true }: { enabled?: boolean } = {}" in hook
+    assert re.search(r"\benabled,\n", hook)
 
 
 def test_start_over_knows_what_a_draft_is():
@@ -126,19 +152,19 @@ def test_instruct_sheet_keeps_a_proposal_until_applied():
 def test_a_kept_proposal_refuses_to_apply_once_the_resume_moved():
     """Ops edit by index. A proposal made before a Save would PATCH the wrong
     bullets, so each one carries the saved copy it was made against."""
-    assert "const basis = serverKey(resume);" in _SHEET
+    assert "const basis = useMemo(() => serverKey(resume), [resume]);" in _SHEET
     assert "const stale = kept !== null && kept.basis !== basis;" in _SHEET
     propose = _flat(_between(_SHEET, "const propose = useMutation(", "onError:"))
     assert "mutationFn: (sent: { instruction: string; basis: string }) =>" in propose
     assert "body: JSON.stringify({ instruction: sent.instruction })" in propose
     assert ".then((result) => ({ result, basis: sent.basis }))" in propose
     assert "onSuccess: setKept" in propose
-    assert "propose.mutate({ instruction, basis })" in _SHEET
+    assert "onClick={() => proposeOnce({ instruction, basis })}" in _flat(_SHEET)
 
 
 def test_a_stale_proposal_says_so_and_cannot_apply():
-    apply_button = _flat(_SHEET[_SHEET.index("onClick={() => apply.mutate()}") - 400 :])
-    apply_button = apply_button[: apply_button.index("onClick={() => apply.mutate()}")]
+    apply_button = _flat(_SHEET[_SHEET.index("onClick={() => applyOnce()}") - 400 :])
+    apply_button = apply_button[: apply_button.index("onClick={() => applyOnce()}")]
     assert "disabled={busy || stale}" in apply_button
     note = _flat(_between(_SHEET, "{stale ? (", ") : null}"))
     assert "The resume changed since this was proposed." in note
@@ -150,7 +176,7 @@ def test_instruct_sheet_keeps_focus_while_it_works():
     assert "readOnly={busy}" in textarea
     assert "disabled={busy}" not in textarea
     flat = _flat(_SHEET)
-    for click in ("propose.mutate({ instruction, basis })", "apply.mutate()"):
+    for click in ("proposeOnce({ instruction, basis })", "applyOnce()"):
         button = flat[flat.rindex("<Button", 0, flat.index(click)) : flat.index(click)]
         assert "focusableWhenDisabled" in button, click
         assert "data-disabled:opacity-50" in button, click
@@ -174,6 +200,8 @@ def test_findings_keep_one_demonstrate_dialog_per_skill():
     dialogs = flat[flat.index("{data && opened.map((s) => (") :]
     dialogs = dialogs[: dialogs.index("/> ))}")]
     assert "<DemonstrateSkillDialog key={s} open={skill === s}" in dialogs
+    # Closing only closes: the dialog, and its draft, stay in `opened`.
+    assert "onOpenChange={(open) => { if (!open) setSkill(null); }}" in dialogs
     assert "setDoneSkills((d) => new Set(d).add(s));" in dialogs
     assert "onClick={() => !done && openSkill(subject)}" in flat
 
@@ -184,14 +212,32 @@ def test_send_to_resume_stays_mounted():
     assert "sendOpen ? (" not in _ENTITY
     flat = _flat(_ENTITY)
     assert "<SendToResumeDialog key={sendGen} open={sendOpen}" in flat
+    assert _mounted_for_good(_ENTITY, "SendToResumeDialog")
     assert "onSent={() => setSendGen((g) => g + 1)}" in flat
     finish = _flat(_between(_SEND, "const finishPort =", "\n  };\n"))
     assert finish.endswith("onOpenChange(false); onSent();")
-    assert "picked === null ? approvedIds" in _SEND
-    assert "useState(\n    () => new Set(approved" not in _SEND
+
     footer = _flat(_between(_SEND, "<DialogFooter>", "</DialogFooter>"))
     assert "> Close </Button>" in footer
     assert "Cancel" not in footer
+
+
+def test_a_kept_send_selection_follows_the_points():
+    """The dialog outlives many opens: the selection is read against the
+    points as they are NOW, so a point retired or deleted since drops out
+    and one approved since is in (while untouched)."""
+    flat = _flat(_SEND)
+    assert (
+        "const approved = useMemo( () => entity.points.filter((point) => point.state === \"approved\"),"
+        " [entity.points], );" in flat
+    )
+    assert "const approvedIds = useMemo(() => new Set(approved.map((p) => p.id)), [approved]);" in flat
+    assert (
+        "(picked === null ? approvedIds : new Set([...picked].filter((id) => approvedIds.has(id))))"
+        in flat
+    )
+    assert "const next = new Set(current ?? approvedIds);" in flat
+    assert "useState(\n    () => new Set(approved" not in _SEND
 
 
 def test_a_kept_send_dialog_fetches_resumes_only_when_opened():
@@ -201,6 +247,23 @@ def test_a_kept_send_dialog_fetches_resumes_only_when_opened():
     hook = _between(_RESUMES_HOOK, "export function useBaseResumes(", "\n}\n")
     assert "{ enabled = true }: { enabled?: boolean } = {}" in hook
     assert re.search(r"\benabled,\n", hook)
+
+
+def test_a_failed_refresh_keeps_the_career_item_page():
+    """A failed background refetch swapped the page for an error and unmounted
+    the kept Send dialog and any open editor with it."""
+    assert "const loadError = useLoadFailureError(entity);" in _ENTITY
+    assert "entity.error ||" not in _ENTITY
+    body = _ENTITY[_ENTITY.index("export function EntityDetail(") :]
+    assert body.index("if (loadError != null) {") < body.index("if (!entity.data) {")
+
+
+def test_the_findings_filter_hides_notes_instead_of_unmounting_them():
+    """The notes table holds the kept Demonstrate-skill drafts."""
+    flat = _flat(_HEALTH_PAGE)
+    assert "showNotes && notes.length > 0" not in flat
+    assert "{notes.length > 0 && ( <NotesTable hidden={!showNotes}" in flat
+    assert '<section id="notes" hidden={hidden}' in _FINDINGS
 
 
 def test_new_entity_keeps_its_draft():
@@ -242,3 +305,26 @@ def test_a_dialog_creates_once_per_gesture(rel, src, call):
     assert "useSingleFlight(create.mutate)" in src, rel
     assert call in _flat(src), rel
     assert "create.mutate" not in src.replace("useSingleFlight(create.mutate)", ""), rel
+
+
+@pytest.mark.parametrize(
+    ("rel", "src", "mutation", "guarded"),
+    [
+        ("new-base-resume", _NBR, "proposePlan", "proposeOnce"),
+        ("instruct-sheet", _SHEET, "propose", "proposeOnce"),
+        ("instruct-sheet", _SHEET, "apply", "applyOnce"),
+        ("demonstrate-skill", _DEMONSTRATE, "draftMut", "draftOnce"),
+        ("demonstrate-skill", _DEMONSTRATE, "applyMut", "applyOnce"),
+        ("send-to-resume", _SEND, "port", "portOnce"),
+        ("send-to-resume", _SEND, "adapt", "adaptOnce"),
+        ("send-to-resume", _SEND, "apply", "applyOnce"),
+    ],
+    ids=lambda v: v if isinstance(v, str) and len(v) < 20 else "",
+)
+def test_a_dialog_generates_or_applies_once_per_gesture(rel, src, mutation, guarded):
+    """Decision 2: every create and generate button is single-flight. A double
+    click paid for two model calls, or applied ops (add_bullet) twice."""
+    assert f"const {guarded} = useSingleFlight({mutation}.mutate);" in src, rel
+    rest = src.replace(f"useSingleFlight({mutation}.mutate)", "")
+    assert f"{mutation}.mutate" not in rest, f"{rel}: a direct start skips the guard"
+    assert f"onClick={{() => {guarded}(" in rest, rel

@@ -27,6 +27,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { kbAdapt, kbAdaptApply, kbPort } from "@/lib/api";
 import { useBaseResumes } from "@/hooks/use-base-resume-label";
+import { useSingleFlight } from "@/hooks/use-single-flight";
 import { notifyRenderOutcome } from "@/lib/render-note";
 import type {
   KBAdaptAction,
@@ -206,6 +207,11 @@ export function SendToResumeDialog({
     onError: (error: Error) => toast.error(error.message),
   });
 
+  // One request per click: a double click read isPending === false twice
+  // and sent the points, or paid for the adaptation, twice.
+  const portOnce = useSingleFlight(port.mutate);
+  const adaptOnce = useSingleFlight(adapt.mutate);
+  const applyOnce = useSingleFlight(apply.mutate);
   const pending = port.isPending || adapt.isPending || apply.isPending;
 
   const toggle = (pointId: string) =>
@@ -491,7 +497,7 @@ export function SendToResumeDialog({
               <Button
                 className="rounded-full"
                 variant={adaptable ? "outline" : "default"}
-                onClick={() => port.mutate()}
+                onClick={() => portOnce()}
                 disabled={!targetSlug || nothingSelected || pending}
               >
                 {port.isPending
@@ -503,7 +509,7 @@ export function SendToResumeDialog({
               {adaptable ? (
                 <Button
                   className="rounded-full px-4"
-                  onClick={() => adapt.mutate()}
+                  onClick={() => adaptOnce()}
                   disabled={!targetSlug || selected.size === 0 || pending}
                 >
                   <Sparkles aria-hidden="true" />
@@ -523,7 +529,7 @@ export function SendToResumeDialog({
               </Button>
               <Button
                 className="rounded-full px-4"
-                onClick={() => apply.mutate()}
+                onClick={() => applyOnce()}
                 // Also disabled mid-edit: the pending textarea text is not in
                 // `rows` yet, so applying would silently use the old text.
                 disabled={includedCount === 0 || pending || editingKey !== null}

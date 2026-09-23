@@ -866,6 +866,7 @@ export function AskCard({
 
 
 export function NotesTable({
+  hidden,
   notes,
   data,
   kind,
@@ -874,6 +875,9 @@ export function NotesTable({
   locked,
   onReanalyze,
 }: {
+  /** The findings filter leaves notes out: hidden, not unmounted, so its
+   *  kept Demonstrate-skill drafts survive the filter. */
+  hidden?: boolean;
   notes: LintFinding[];
   data?: ResumeData | null;
   kind: "base" | "application";
@@ -926,7 +930,7 @@ export function NotesTable({
   });
 
   return (
-    <section id="notes" className="scroll-mt-6 space-y-2">
+    <section id="notes" hidden={hidden} className="scroll-mt-6 space-y-2">
       <h2 className="text-muted-foreground text-sm font-medium">
         No score impact ({notes.length})
       </h2>

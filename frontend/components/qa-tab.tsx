@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useId, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Copy,
@@ -27,6 +27,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { LoadErrorState } from "@/components/load-error-state";
+import { useEditorFocusReturn } from "@/hooks/use-confirm-discard";
 import { useLeaveGuard } from "@/hooks/use-leave-guard";
 import { useSingleFlight } from "@/hooks/use-single-flight";
 import { apiFetch, apiUrlForBrowserPdf } from "@/lib/api";
@@ -66,9 +67,11 @@ export function QATab({ applicationId }: { applicationId: string }) {
   const invalidate = () =>
     qc.invalidateQueries({ queryKey: ["qa", applicationId] });
 
+  // Takes the text it sends: the box stays editable while it answers, and
+  // only that text is cleared when the answers land.
   const askQuestions = useMutation({
-    mutationFn: () => {
-      const list = questions
+    mutationFn: (sent: string) => {
+      const list = sent
         .split("\n")
         .map((q) => q.trim())
         .filter((q) => q.length > 0);
@@ -81,8 +84,8 @@ export function QATab({ applicationId }: { applicationId: string }) {
         }),
       });
     },
-    onSuccess: () => {
-      setQuestions("");
+    onSuccess: (_answers, sent) => {
+      setQuestions((current) => (current === sent ? "" : current));
       toast.success("Answers generated");
       invalidate();
     },
@@ -161,6 +164,13 @@ export function QATab({ applicationId }: { applicationId: string }) {
       confirmLabel: "Replace",
       destructive: true,
     });
+  // Cover letters open for editing. While one is open no letter is generated
+  // (Generate would replace it under the draft, and the next Save overwrite
+  // the new one), and while a letter generates none opens for editing.
+  const [editingIds, setEditingIds] = useState<string[]>([]);
+  const letterEditing = entries?.some((e) => editingIds.includes(e.id)) ?? false;
+  const setLetterEditing = (id: string, on: boolean) =>
+    setEditingIds((ids) => (on ? [...ids, id] : ids.filter((x) => x !== id)));
   const generateCoverLetter = async () => {
     if (hasCoverLetter && !(await confirmReplaceLetter())) return;
     coverOnce();
@@ -196,7 +206,7 @@ export function QATab({ applicationId }: { applicationId: string }) {
             rows={4}
           />
           <Button
-            onClick={() => askOnce()}
+            onClick={() => askOnce(questions)}
             disabled={askQuestions.isPending}
             focusableWhenDisabled
             className="data-disabled:pointer-events-none data-disabled:opacity-50"
@@ -228,7 +238,7 @@ export function QATab({ applicationId }: { applicationId: string }) {
           </div>
           <Button
             onClick={() => void generateCoverLetter()}
-            disabled={coverLetter.isPending}
+            disabled={coverLetter.isPending || letterEditing}
             focusableWhenDisabled
             className="data-disabled:pointer-events-none data-disabled:opacity-50"
           >
@@ -267,6 +277,10 @@ export function QATab({ applicationId }: { applicationId: string }) {
                 isDeleting={deleteEntry.isPending}
                 isRegenerating={isRegenerating}
                 regenerateBusy={regenerateEntry.isPending}
+                editing={editingIds.includes(entry.id)}
+                onEditingChange={(on) => setLetterEditing(entry.id, on)}
+                letterEditing={letterEditing}
+                generating={coverLetter.isPending}
                 isRendering={isRendering}
                 isSaving={isSaving}
                 onDelete={async () => {
@@ -303,6 +317,10 @@ function QAEntryCard({
   isDeleting,
   isRegenerating,
   regenerateBusy,
+  editing,
+  onEditingChange,
+  letterEditing,
+  generating,
   isRendering,
   isSaving,
   onDelete,
@@ -316,6 +334,13 @@ function QAEntryCard({
   isRegenerating: boolean;
   /** Any entry is regenerating: one generation at a time. */
   regenerateBusy: boolean;
+  /** This letter is open for editing (the state lives in QATab). */
+  editing: boolean;
+  onEditingChange: (editing: boolean) => void;
+  /** Some cover letter is open for editing: no letter regenerates. */
+  letterEditing: boolean;
+  /** Generate cover letter is running: it replaces every saved letter. */
+  generating: boolean;
   isRendering: boolean;
   isSaving: boolean;
   onDelete: () => void;
@@ -324,19 +349,12 @@ function QAEntryCard({
   /** Resolves once the save landed; rejects when it failed. */
   onSave: (answer: string) => Promise<unknown>;
 }) {
-  const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(entry.answer ?? "");
   useLeaveGuard(editing && draft !== (entry.answer ?? ""));
   // Save and Cancel unmount the pressed button with the editor; focus goes
-  // back to Edit (the referrals focusAddAfterCreate pattern).
-  const editRef = useRef<HTMLButtonElement>(null);
-  const focusEditAfterClose = useRef(false);
-  useEffect(() => {
-    if (editing || !focusEditAfterClose.current) return;
-    focusEditAfterClose.current = false;
-    editRef.current?.focus();
-  }, [editing]);
-  const closeEditor = () => { focusEditAfterClose.current = true; setEditing(false); };
+  // back to Edit.
+  const { editRef, returnFocus } = useEditorFocusReturn(editing);
+  const closeEditor = () => { returnFocus(); onEditingChange(false); };
   const isCoverLetter = entry.kind === "cover_letter";
   // Generated documents (vs question answers) get edit-in-place.
   const isDocument = isCoverLetter;
@@ -363,9 +381,9 @@ function QAEntryCard({
               icon={<Pencil />}
               onClick={() => {
                 setDraft(entry.answer ?? "");
-                setEditing(true);
+                onEditingChange(true);
               }}
-              disabled={isSaving || isRendering || isRegenerating}
+              disabled={isSaving || isRendering || isRegenerating || generating}
             />
           ) : null}
           <IconButton
@@ -401,9 +419,9 @@ function QAEntryCard({
                 isRegenerating ? <Loader2 className="animate-spin" /> : <RefreshCw />
               }
               onClick={onRegenerate}
-              // Waits while the letter is open for editing: a new letter
-              // would land under the draft and the next Save overwrite it.
-              disabled={regenerateBusy || isSaving || isRendering || editing}
+              // A letter waits while any letter is open for editing: a new
+              // one would land under the draft and the next Save overwrite it.
+              disabled={regenerateBusy || isSaving || isRendering || (isCoverLetter && letterEditing)}
               focusableWhenDisabled
               className="data-disabled:pointer-events-none data-disabled:opacity-50"
             />
@@ -423,6 +441,8 @@ function QAEntryCard({
               aria-label="Cover letter text"
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
+              // Keys typed after Save would be dropped when the editor closes.
+              readOnly={isSaving}
               rows={10}
               className="text-sm"
             />

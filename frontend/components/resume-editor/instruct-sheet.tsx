@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Loader2, Sparkles } from "lucide-react";
 import { toast } from "sonner";
@@ -18,6 +18,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
+import { useSingleFlight } from "@/hooks/use-single-flight";
 import { apiFetch } from "@/lib/api";
 import { describeEdits } from "@/lib/describe-edit";
 import { notifyRenderNote } from "@/lib/render-note";
@@ -65,7 +66,8 @@ export function InstructSheet({
   // made against, and once the resume moves on it can be read, not applied.
   const [kept, setKept] = useState<{ result: BaseResumeProposal; basis: string } | null>(null);
   const proposal = kept?.result ?? null;
-  const basis = serverKey(resume);
+  // Serializes the whole resume: once per saved copy, not per keystroke.
+  const basis = useMemo(() => serverKey(resume), [resume]);
   const stale = kept !== null && kept.basis !== basis;
 
   const propose = useMutation({
@@ -102,6 +104,10 @@ export function InstructSheet({
     onError: (err: Error) => toast.error(err.message),
   });
 
+  // One request per click: a second Apply repeated the ops (add_bullet,
+  // add_entry twice), and a second Propose paid for two proposals.
+  const proposeOnce = useSingleFlight(propose.mutate);
+  const applyOnce = useSingleFlight(apply.mutate);
   const busy = propose.isPending || apply.isPending;
   const hasOps = (proposal?.ops_count ?? 0) > 0;
 
@@ -155,7 +161,7 @@ export function InstructSheet({
               // focus drops it to the page.
               focusableWhenDisabled
               className="data-disabled:pointer-events-none data-disabled:opacity-50"
-              onClick={() => propose.mutate({ instruction, basis })}
+              onClick={() => proposeOnce({ instruction, basis })}
             >
               {propose.isPending ? (
                 <Loader2 className="animate-spin" />
@@ -211,7 +217,7 @@ export function InstructSheet({
                 disabled={busy || stale}
                 focusableWhenDisabled
                 className="data-disabled:pointer-events-none data-disabled:opacity-50"
-                onClick={() => apply.mutate()}
+                onClick={() => applyOnce()}
               >
                 {apply.isPending
                   ? "Applying…"

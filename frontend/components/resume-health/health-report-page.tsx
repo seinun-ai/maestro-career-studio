@@ -547,8 +547,11 @@ export function HealthReportPage({
               </div>
             )}
 
-            {showNotes && notes.length > 0 && (
+            {/* Hidden, not unmounted, when the filter leaves notes out: it
+                holds the kept Demonstrate-skill drafts. */}
+            {notes.length > 0 && (
               <NotesTable
+                hidden={!showNotes}
                 notes={notes}
                 data={resumeData}
                 kind={kind}

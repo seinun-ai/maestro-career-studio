@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { useSingleFlight } from "@/hooks/use-single-flight";
 import { draftRewrite, applyResumeEdits } from "@/lib/api";
 import { notifyRenderNote } from "@/lib/render-note";
 import {
@@ -135,6 +136,10 @@ export function DemonstrateSkillDialog({
     onError: (err: Error) => toastRewriteError(err, onReanalyze),
   });
 
+  // One request per click: a double click read isPending === false twice.
+  const draftOnce = useSingleFlight(draftMut.mutate);
+  const applyOnce = useSingleFlight(applyMut.mutate);
+
   return (
     // Closing keeps the picked bullet, the prose and a drafted rewrite (it
     // cost a model call); only a successful apply clears them. A draft kept
@@ -236,7 +241,7 @@ export function DemonstrateSkillDialog({
               size="sm"
               disabled={locked || applyMut.isPending}
               title={locked ? STALE_APPLY_HINT : undefined}
-              onClick={() => applyMut.mutate()}
+              onClick={() => applyOnce()}
             >
               {applyMut.isPending ? "Applying…" : "Apply"}
             </Button>
@@ -246,7 +251,7 @@ export function DemonstrateSkillDialog({
               disabled={
                 locked || !picked || prose.trim().length === 0 || draftMut.isPending
               }
-              onClick={() => draftMut.mutate()}
+              onClick={() => draftOnce()}
             >
               {draftMut.isPending ? "Drafting…" : "Draft rewrite"}
             </Button>

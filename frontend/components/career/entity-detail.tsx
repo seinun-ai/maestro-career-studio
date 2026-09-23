@@ -17,6 +17,7 @@ import {
 import { toast } from "sonner";
 
 import { useConfirm } from "@/components/confirm-dialog";
+import { useLoadFailureError } from "@/hooks/use-last-seen";
 import { DocumentsPanel } from "@/components/career/documents-panel";
 import { NotesEditor } from "@/components/career/notes-editor";
 import { PointsList } from "@/components/career/points-list";
@@ -113,26 +114,18 @@ export function EntityDetail({ entityId }: { entityId: string }) {
     if (accepted) remove.mutate();
   };
 
-  if (entity.isLoading) {
-    return (
-      <PageShell>
-        <Skeleton className="h-8 w-36" />
-        <Skeleton className="h-44 w-full rounded-2xl" />
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(18rem,1fr)]">
-          <Skeleton className="h-96 w-full rounded-2xl" />
-          <Skeleton className="h-96 w-full rounded-2xl" />
-        </div>
-      </PageShell>
-    );
-  }
+  // Only a load with NO data fails the page (isLoadFailure). A failed
+  // background refetch keeps the page, and with it the kept Send dialog and
+  // any editor's typed text; the error is remembered through a retry.
+  const loadError = useLoadFailureError(entity);
 
-  if (entity.error || !entity.data) {
+  if (loadError != null) {
     return (
       <PageShell>
         <div role="alert" className="rounded-2xl bg-destructive/10 p-5">
           <p className="font-medium">Couldn&apos;t load this career item.</p>
           <p className="text-muted-foreground mt-1 text-sm">
-            {entity.error?.message ?? "The item may no longer exist."}
+            {loadError instanceof Error ? loadError.message : "The item may no longer exist."}
           </p>
           <div className="mt-4 flex gap-2">
             <Button className="rounded-full" variant="secondary" onClick={() => void entity.refetch()}>
@@ -145,6 +138,19 @@ export function EntityDetail({ entityId }: { entityId: string }) {
               render={<Link href="/career">Back to Career KB</Link>}
             />
           </div>
+        </div>
+      </PageShell>
+    );
+  }
+
+  if (!entity.data) {
+    return (
+      <PageShell>
+        <Skeleton className="h-8 w-36" />
+        <Skeleton className="h-44 w-full rounded-2xl" />
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(18rem,1fr)]">
+          <Skeleton className="h-96 w-full rounded-2xl" />
+          <Skeleton className="h-96 w-full rounded-2xl" />
         </div>
       </PageShell>
     );

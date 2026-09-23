@@ -49,12 +49,13 @@ def test_a_saved_letter_shows_at_once():
 
 
 def test_closing_the_editor_returns_focus_to_edit():
-    """Save and Cancel unmount the pressed button with the editor."""
+    """Save and Cancel unmount the pressed button with the editor. The shared
+    hook moves focus only when it fell to <body>: a slow save must not take
+    it back from wherever the user went meanwhile."""
     flat = _flat(_CARD)
-    assert "const closeEditor = () => { focusEditAfterClose.current = true; setEditing(false); };" in flat
-    effect = _flat(_between(_CARD, "useEffect(() => {", "}, [editing]);"))
-    assert "if (editing || !focusEditAfterClose.current) return;" in effect
-    assert "editRef.current?.focus();" in effect
+    assert "const { editRef, returnFocus } = useEditorFocusReturn(editing);" in flat
+    assert "const closeEditor = () => { returnFocus(); onEditingChange(false); };" in flat
+    assert "useEffect" not in _SRC, "the focus return lives in the hook"
     edit = flat[flat.rindex("<IconButton", 0, flat.index('label="Edit"')) :]
     assert "ref={editRef}" in edit[: edit.index("/>")]
     cancel = _flat(_between(_CARD, 'variant="ghost"', "Cancel"))
@@ -87,6 +88,8 @@ def test_replacing_a_saved_letter_asks():
         in regen
     )
     assert regen.index("confirmReplaceLetter") < regen.index("regenerateOnce(entry)")
+    assert "onClick={() => void generateCoverLetter()}" in _generate_button()
+    assert _TAB.count("coverOnce(") == 1, "Generate starts only through generateCoverLetter"
     generate = _flat(_between(_TAB, "const generateCoverLetter = async () => {", "};"))
     assert 'entries?.some((e) => e.kind === "cover_letter" && e.answer)' in _flat(_TAB)
     assert "if (hasCoverLetter && !(await confirmReplaceLetter())) return;" in generate
@@ -99,8 +102,63 @@ def _regenerate_button() -> str:
 
 
 def test_regenerate_waits_while_the_letter_is_being_edited():
-    disabled = re.search(r"disabled=\{([^}]*)\}", _regenerate_button()).group(1)
-    assert "editing" in disabled.split("||")[-1]
+    """A regenerated letter would land under any open letter draft."""
+    disabled = re.search(r"disabled=\{(.*)\}\n", _regenerate_button()).group(1)
+    assert disabled == "regenerateBusy || isSaving || isRendering || (isCoverLetter && letterEditing)"
+
+
+def _card_props() -> str:
+    return _flat(_between(_TAB, "<QAEntryCard", "/>"))
+
+
+def test_the_editing_state_lives_in_the_tab():
+    """Generate needs to know a letter is open, so the state is lifted."""
+    assert "const [editing, setEditing]" not in _CARD
+    assert "const [editingIds, setEditingIds] = useState<string[]>([]);" in _TAB
+    assert "const letterEditing = entries?.some((e) => editingIds.includes(e.id)) ?? false;" in _TAB
+    assert "setEditingIds((ids) => (on ? [...ids, id] : ids.filter((x) => x !== id)))" in _flat(_TAB)
+    props = _card_props()
+    for prop in (
+        "editing={editingIds.includes(entry.id)}",
+        "onEditingChange={(on) => setLetterEditing(entry.id, on)}",
+        "letterEditing={letterEditing}",
+        "generating={coverLetter.isPending}",
+    ):
+        assert prop in props, prop
+
+
+def _generate_button() -> str:
+    flat = _flat(_TAB)
+    start = flat.rindex("<Button", 0, flat.index('"Generate cover letter"'))
+    return flat[start : flat.index("</Button>", start)]
+
+
+def test_generate_waits_while_a_letter_is_being_edited():
+    """Generate replaces every saved letter: it destroyed the one open in the
+    editor, and the next Save wrote the old draft over the new letter."""
+    assert "disabled={coverLetter.isPending || letterEditing}" in _generate_button()
+
+
+def test_a_letter_does_not_open_for_editing_while_one_generates():
+    """The generation replaces the letter the moment it lands."""
+    edit = re.search(r'label="Edit".*?\n\s*/>\n', _CARD, re.S).group(0)
+    assert "disabled={isSaving || isRendering || isRegenerating || generating}" in edit
+
+
+def test_questions_typed_while_answering_are_kept():
+    """The box stays editable while it answers; only the sent text clears."""
+    ask = _flat(_between(_TAB, "const askQuestions = useMutation(", "onError:"))
+    assert "mutationFn: (sent: string) => { const list = sent .split" in ask
+    assert 'onSuccess: (_answers, sent) => { setQuestions((current) => (current === sent ? "" : current));' in ask
+    assert 'setQuestions("")' not in _SRC
+    assert "onClick={() => askOnce(questions)}" in _flat(_TAB)
+
+
+def test_the_letter_is_read_only_while_it_saves():
+    """Keys typed after Save were dropped when the editor closed."""
+    textarea = _flat(_between(_CARD, "<Textarea", "/>"))
+    assert "readOnly={isSaving}" in textarea
+    assert "disabled=" not in textarea
 
 
 @pytest.mark.parametrize(
@@ -118,7 +176,7 @@ def test_a_generate_starts_one_request_per_gesture(name, guarded):
 def test_generate_buttons_keep_focus_while_they_work():
     """A generate button disables itself on click; it stays focusable."""
     flat = _flat(_SRC)
-    for click in ("onClick={() => askOnce()}", "onClick={() => void generateCoverLetter()}"):
+    for click in ("onClick={() => askOnce(questions)}", "onClick={() => void generateCoverLetter()}"):
         start = flat.rindex("<Button", 0, flat.index(click))
         button = flat[start : flat.index("</Button>", start)]
         assert "focusableWhenDisabled" in button, click

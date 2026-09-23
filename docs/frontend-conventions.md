@@ -329,15 +329,21 @@
   and keeps the editor open with the typed text (closing on the click showed
   the old letter, and the next Edit overwrote the draft). A landed save
   writes the returned entry into the `["qa", applicationId]` cache before the
-  refetch, so the old letter never flashes, and focus returns to Edit after
-  Save or Cancel. An open edit that differs from the saved letter registers
-  the leave guard. Replacing a saved letter asks "Replace your cover
-  letter?": Regenerate on it, and Generate cover letter, which deletes every
-  saved letter before it writes a new one. No "was edited" signal is stored,
-  so any saved text counts. Regenerate waits while the letter is open for
-  editing, and one entry regenerates at a time. Answer questions, Generate
-  and Regenerate submit through `useSingleFlight` and stay focusable while
-  they work. Pinned by `test_frontend_qa_tab.py`.
+  refetch, so the old letter never flashes. The letter is `readOnly` while it
+  saves, and focus returns to Edit after Save or Cancel when it fell to
+  `<body>` (`useEditorFocusReturn`). An open edit that differs from the saved
+  letter registers the leave guard. Replacing a saved letter asks "Replace
+  your cover letter?": Regenerate on it, and Generate cover letter, which
+  replaces every saved letter (`POST /api/qa` deletes them only after the new
+  one is committed, so a failed generation keeps them). No "was edited"
+  signal is stored, so any saved text counts. Which letters are open for
+  editing lives in `QATab`: while one is open, Generate and every letter's
+  Regenerate wait, and while Generate runs no letter opens for editing. One
+  entry regenerates at a time. Answer questions sends the text it read and
+  clears the box only if it still holds that text. Answer questions,
+  Generate and Regenerate submit through `useSingleFlight` and stay
+  focusable while they work. Pinned by `test_frontend_qa_tab.py` and
+  `test_qa_router.py`.
 - **`PdfPagesPreview` owns the canvas and the zoom.** Pages sit on
   `bg-canvas`, so a caller adds no fill of its own. Zoom is a `role="group"`
   "Zoom" of `aria-pressed` presets (Fit width, Fit page, 100%) on a solid
@@ -560,8 +566,14 @@
   flight; every form the page shows reads the shared pending flag and submits
   through `useSingleFlight` (react-query re-renders `isPending` on a
   zero-delay timeout, so a double click read `false` twice and created two
-  rows). A kept query that the closed dialog does not need waits for `open`
-  (`useBaseResumes(false, { enabled: open })`). A kept LLM proposal that edits
+  rows). Each generate and apply button inside such a dialog (Suggest a
+  selection, Propose, Apply, Draft rewrite, Adapt, Send as-is) submits
+  through `useSingleFlight` too. A kept query that the closed dialog does not
+  need waits for `open` (`useBaseResumes(false, { enabled: open })`,
+  `useRoleCategories({ enabled: open })`). The page around a kept dialog
+  stays mounted: a failed background refetch keeps it (`useLoadFailureError`,
+  not `query.error`), and a filter hides the section that holds kept dialogs
+  instead of unmounting it (the health report's notes). A kept LLM proposal that edits
   by index carries the basis it was made against (`serverKey` of the saved
   copy): once the résumé moves on, the proposal is described without names,
   says so, and Apply is disabled. On Referrals the inline empty-state form
@@ -820,10 +832,14 @@
   Escape and Cancel over changed text ask through `useConfirmDiscard`
   ("Discard your changes?" / **Discard** / **Keep editing**, Keep editing
   focused; unchanged text closes at once), and a closing editor returns focus
-  to its Edit button (`useDiscardableEditor` in
-  `hooks/use-confirm-discard.ts`, used by the notes, point and inbox-draft
-  editors). While a save runs the textarea is `readOnly` and Save stays
-  focusable. Quick capture submits through `useSingleFlight`. Pinned by
+  to its Edit button (`useDiscardableEditor({ editing, changed, close, busy })`
+  in `hooks/use-confirm-discard.ts`, used by the notes, point and inbox-draft
+  editors; it returns the textarea's `onKeyDown`, Cancel's `onCancel` and
+  Save's `onSave`, which closes at once when nothing changed, so each editor
+  states its "changed" test once). After a Discard focus goes to Edit; after
+  a save only when it fell to `<body>`. While a save runs
+  (`busy`) the textarea is `readOnly`, Escape and Cancel do nothing, and Save
+  stays focusable. Quick capture submits through `useSingleFlight`. Pinned by
   `test_frontend_kb_editors.py`.
 - **Analytics** (was "Explore"): route `/analytics` (`/explore` is a 307
   redirect — `app/explore/page.tsx` is a stub that `redirect()`s and nothing

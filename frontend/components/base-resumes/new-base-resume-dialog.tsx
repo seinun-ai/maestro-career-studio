@@ -46,6 +46,7 @@ import type {
   BaseResumeSummary,
   FavoredRole,
   KBEntitySummary,
+  RoleCategory,
   RoleMatch,
 } from "@/lib/types";
 
@@ -80,6 +81,8 @@ type Plan = {
 };
 
 type Mode = "kb" | "existing" | "file" | "blank";
+
+const NO_ROLES: RoleCategory[] = [];
 
 const IMPORT_MAX_BYTES = 10 * 1024 * 1024;
 
@@ -163,7 +166,11 @@ function NewBaseResumeForm({
 }) {
   const router = useRouter();
   const qc = useQueryClient();
-  const roles = useRoleCategories();
+  // The form stays mounted while closed: the vocabulary is fetched on open.
+  // The pickers get it from here ([] while it loads), so none fetches it
+  // itself behind the closed dialog.
+  const roles = useRoleCategories({ enabled: open });
+  const roleCategories = roles.data ?? NO_ROLES;
 
   const [mode, setMode] = useState<Mode>(initialMode);
   const [name, setName] = useState("");
@@ -213,7 +220,7 @@ function NewBaseResumeForm({
     if (!entry) return "";
     if (entry.category) return entry.category;
     if (entry.role) {
-      const parent = (roles.data ?? []).find(
+      const parent = roleCategories.find(
         (c) => c.key === entry.role || c.roles.some((r) => r.key === entry.role),
       );
       return parent?.key ?? "";
@@ -274,6 +281,8 @@ function NewBaseResumeForm({
     },
     onError: (err: Error) => toast.error(err.message),
   });
+  // One plan per click: a double click paid for two.
+  const proposeOnce = useSingleFlight(proposePlan.mutate);
 
   const matchName = (typedName: string) => {
     const q = typedName.trim();
@@ -502,7 +511,7 @@ function NewBaseResumeForm({
                     id={ids.role}
                     value={tag}
                     onValueChange={setTag}
-                    roleCategories={roles.data}
+                    roleCategories={roleCategories}
                   />
                 </div>
               )}
@@ -517,7 +526,7 @@ function NewBaseResumeForm({
                     id={ids.role}
                     value={tag}
                     onValueChange={setTag}
-                    roleCategories={roles.data}
+                    roleCategories={roleCategories}
                   />
                 </div>
               )}
@@ -548,7 +557,7 @@ function NewBaseResumeForm({
                   variant="outline"
                   size="sm"
                   disabled={!tag || proposePlan.isPending}
-                  onClick={() => proposePlan.mutate()}
+                  onClick={() => proposeOnce()}
                 >
                   {proposePlan.isPending ? (
                     <Loader2 className="animate-spin" />
@@ -690,7 +699,7 @@ function NewBaseResumeForm({
                       setTag(next);
                       setNameMatchApplied(false);
                     }}
-                    roleCategories={roles.data}
+                    roleCategories={roleCategories}
                   />
                   <p className="text-muted-foreground text-xs">
                     Starts as the source resume&apos;s tag. Typing a Name that

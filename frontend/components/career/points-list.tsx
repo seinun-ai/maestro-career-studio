@@ -126,7 +126,6 @@ function PointRow({ entityId, point }: { entityId: string; point: KBPointOut }) 
   const confirm = useConfirm();
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState(point.text);
-  const { editRef, returnFocus, requestCancel, cancelOnEscape } = useDiscardableEditor(editing);
 
   const invalidate = () => {
     void queryClient.invalidateQueries({ queryKey: ["kb", "entity", entityId] });
@@ -163,16 +162,12 @@ function PointRow({ entityId, point }: { entityId: string; point: KBPointOut }) 
     setText(point.text);
     setEditing(false);
   };
-
-  const saveText = () => {
-    returnFocus(); // Save unmounts itself, even when it only closes.
-    const value = text.trim();
-    if (!value || value === point.text) {
-      cancelEdit();
-      return;
-    }
-    update.mutate({ payload: { text: value }, message: "Point updated" });
-  };
+  const { editRef, onCancel, onKeyDown, onSave } = useDiscardableEditor({
+    editing,
+    changed: text.trim() !== point.text,
+    close: cancelEdit,
+    busy: pending,
+  });
 
   const changeState = (state: KBPointState) => {
     const messages: Record<KBPointState, string> = {
@@ -214,7 +209,7 @@ function PointRow({ entityId, point }: { entityId: string; point: KBPointOut }) 
             rows={3}
             value={text}
             onChange={(event) => setText(event.target.value)}
-            onKeyDown={(event) => cancelOnEscape(event, text.trim() !== point.text, cancelEdit)}
+            onKeyDown={onKeyDown}
             readOnly={pending}
             autoFocus
           />
@@ -223,7 +218,7 @@ function PointRow({ entityId, point }: { entityId: string; point: KBPointOut }) 
               className="rounded-full"
               size="sm"
               variant="ghost"
-              onClick={() => void requestCancel(text.trim() !== point.text, cancelEdit)}
+              onClick={() => void onCancel()}
               disabled={pending}
             >
               <X aria-hidden="true" /> Cancel
@@ -231,7 +226,10 @@ function PointRow({ entityId, point }: { entityId: string; point: KBPointOut }) 
             <Button
               className="rounded-full px-4 data-disabled:pointer-events-none data-disabled:opacity-50"
               size="sm"
-              onClick={saveText}
+              onClick={() =>
+                onSave(() => update.mutate({ payload: { text: text.trim() }, message: "Point updated" }))
+              }
+              // An emptied point is not saved.
               disabled={!text.trim() || pending}
               focusableWhenDisabled
             >

@@ -23,7 +23,6 @@ export function NotesEditor({
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(notes);
-  const { editRef, returnFocus, requestCancel, cancelOnEscape } = useDiscardableEditor(editing);
 
   // Dirtiness tracking for the unmount flush. The UI saves explicitly (Save
   // button), but navigating away mid-edit must not silently drop typed notes:
@@ -92,6 +91,12 @@ export function NotesEditor({
     dirtyRef.current = false;
     setEditing(false);
   };
+  const { editRef, onCancel, onKeyDown, onSave } = useDiscardableEditor({
+    editing,
+    changed: value !== notes,
+    close: cancel,
+    busy: save.isPending,
+  });
 
   const handleChange = (next: string) => {
     setValue(next);
@@ -150,7 +155,7 @@ export function NotesEditor({
               rows={9}
               value={value}
               onChange={(event) => handleChange(event.target.value)}
-              onKeyDown={(event) => cancelOnEscape(event, value !== notes, cancel)}
+              onKeyDown={onKeyDown}
               readOnly={save.isPending}
               autoFocus
             />
@@ -159,7 +164,7 @@ export function NotesEditor({
                 className="rounded-full"
                 size="sm"
                 variant="ghost"
-                onClick={() => void requestCancel(value !== notes, cancel)}
+                onClick={() => void onCancel()}
                 disabled={save.isPending}
               >
                 <X aria-hidden="true" /> Cancel
@@ -167,10 +172,7 @@ export function NotesEditor({
               <Button
                 className="rounded-full px-4 data-disabled:pointer-events-none data-disabled:opacity-50"
                 size="sm"
-                onClick={() => {
-                  returnFocus();
-                  save.mutate(value);
-                }}
+                onClick={() => onSave(() => save.mutate(value))}
                 disabled={save.isPending || value === notes}
                 focusableWhenDisabled
               >

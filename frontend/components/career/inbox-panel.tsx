@@ -265,7 +265,6 @@ function DraftRow({
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState(point.text);
-  const { editRef, returnFocus, requestCancel, cancelOnEscape } = useDiscardableEditor(editing);
 
   const update = useMutation({
     mutationKey: KB_POINT_MUTATION_KEY,
@@ -304,15 +303,12 @@ function DraftRow({
     onDirtyChange(point.id, false);
     setEditing(false);
   };
-  const saveText = () => {
-    returnFocus(); // Save unmounts itself, even when it only closes.
-    const value = text.trim();
-    if (!value || value === point.text) {
-      cancelEdit();
-      return;
-    }
-    update.mutate({ payload: { text: value }, success: "Draft updated" });
-  };
+  const { editRef, onCancel, onKeyDown, onSave } = useDiscardableEditor({
+    editing,
+    changed: text.trim() !== point.text,
+    close: cancelEdit,
+    busy: pending,
+  });
 
   const approve = () => {
     const value = text.trim();
@@ -336,7 +332,7 @@ function DraftRow({
             id={`draft-text-${point.id}`}
             value={text}
             onChange={(event) => changeText(event.target.value)}
-            onKeyDown={(event) => cancelOnEscape(event, text.trim() !== point.text, cancelEdit)}
+            onKeyDown={onKeyDown}
             rows={3}
             readOnly={pending}
             autoFocus
@@ -345,7 +341,10 @@ function DraftRow({
             <Button
               className="rounded-full px-4 data-disabled:pointer-events-none data-disabled:opacity-50"
               size="sm"
-              onClick={saveText}
+              onClick={() =>
+                onSave(() => update.mutate({ payload: { text: text.trim() }, success: "Draft updated" }))
+              }
+              // An emptied draft is not saved.
               disabled={!text.trim() || pending}
               focusableWhenDisabled
             >
@@ -355,7 +354,7 @@ function DraftRow({
               size="sm"
               variant="ghost"
               className="rounded-full"
-              onClick={() => void requestCancel(text.trim() !== point.text, cancelEdit)}
+              onClick={() => void onCancel()}
               disabled={pending}
             >
               <X aria-hidden="true" /> Cancel
