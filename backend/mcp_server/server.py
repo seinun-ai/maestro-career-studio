@@ -313,8 +313,7 @@ def get_job_search_brief() -> Any:
     careers pages (company + careers_url + has_contact), and counts of jobs
     captured in the last 30 days by role category. Call this FIRST in an agentic
     search session (playbook: docs/agentic-job-search.md). The workflow it
-    anchors is capture and score only — browse, extract, store_extracted_jd —
-    never auto-apply."""
+    anchors is capture, score and propose — never apply."""
     return _client.get_job_search_brief()
 
 

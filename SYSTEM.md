@@ -330,7 +330,7 @@ file to open.
   `host` + `first_seen_at` still make the TABLE a record of where you applied
   and when, so `DELETE /telemetry` clears it (count in body) and deliberately
   does NOT touch the capture toggle. Field list/toggle/default-on decision:
-  `extension/README.md`; `…/telemetry/summary` ranks failures + saturation.
+  `extension/INTERNALS.md`; `…/telemetry/summary` ranks failures + saturation.
 - **A frame must EARN the user's data.** `{#inv-frame-earns-data}` `sw.js` authorizes a broadcast at
   the sender, but `broadcastToFrames` targets every frame — a job page carries ad/analytics/chat
   iframes, and the ISOLATED world protects the message in transit, NOT the DOM written into: a frame
@@ -592,7 +592,7 @@ file to open.
   (routing, the /choose batch, `rest_fill` shaping, `QUESTIONY`'s ONE definition)
   and `guided-run.js` (the runner, transport injected).
   **Sender model, the COMMIT GESTURE and the ONE `attachableFileInputs`
-  definition** are reference tier: `extension/README.md` → "Rules the code
+  definition** are reference tier: `extension/INTERNALS.md` → "Rules the code
   depends on". The bridge storage key `widget.session` must NOT be renamed — that
   drops every live entry — and `restoreSession`'s `if (entry.applicationId)`
   guard is the condition of writing an application-less entry at all. Orphan
@@ -600,7 +600,7 @@ file to open.
   languages** — `job_url_match.posting_id` ↔ `decisions.postingId` (LinkedIn
   `currentJobId` / `/jobs/view/<id>`, Indeed `jk`/`vjk`, embedded Greenhouse
   `gh_jid`), pinned by `test_extension_posting_identity.py`; add a key to BOTH.
-  **`extension/README.md` owns the rest.**
+  **`extension/INTERNALS.md` owns the rest.**
 - **Guided fill** (design doc `2026-08-16-guided-apply-design`, unpublished — §10):
   the panel's **Fill** stage — "Start fill" → `panel_prepare` (the
   gesture-backed injection; `preparePage` is the only other injector) → the

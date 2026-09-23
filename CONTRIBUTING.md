@@ -1,10 +1,10 @@
 # Contributing to Maestro CS
 
-Thank you for your interest in improving Maestro CS! This guide covers how to set up your development environment, run the tests, follow project conventions, and contribute cleanly.
+This guide covers setting up a development environment, running the tests, and the project's conventions.
 
 ## 1. Living Architecture Reference (SYSTEM.md)
 
-Before touching code or proposing changes, **read [`SYSTEM.md`](SYSTEM.md) first** (repo root). It is the absolute, living source of truth for repository layout, end-to-end application workflows, cross-cutting invariants, agent surfaces, and historical gotchas. Two reference sections are extracted and indexed from it — entity lifecycles in [`docs/entities/`](docs/entities/) and frontend conventions in [`docs/frontend-conventions.md`](docs/frontend-conventions.md) — and carry the same contract. `CLAUDE.md` and `AGENTS.md` at the root are one-line shims pointing here, so agent tools that auto-load a context file land on the real document.
+Before touching code or proposing changes, **read [`SYSTEM.md`](SYSTEM.md) first** (repo root). It is the reference for repository layout, end-to-end application workflows, cross-cutting invariants, agent surfaces, and historical gotchas. Two reference sections are extracted and indexed from it — entity lifecycles in [`docs/entities/`](docs/entities/) and frontend conventions in [`docs/frontend-conventions.md`](docs/frontend-conventions.md) — and carry the same contract. `CLAUDE.md` and `AGENTS.md` at the root are one-line shims pointing here, so agent tools that auto-load a context file land on the real document.
 
 ### The Deprecation Ledger (§13)
 When contributing features or refactorings, adhere strictly to **`SYSTEM.md` Section 13 (Active migrations & deprecation ledger)**:
@@ -74,30 +74,69 @@ applications tracker. Interest and a design proposal are welcome on any of these
 
 ### Those `.slop*` files are not your problem
 
-You will see `.slopledger.json` at the root and a `.slop-baseline.json` +
-`.slopconfig.json` in `backend/`, `frontend/` and `extension/`. They are frozen
-metrics for an external code-quality ratchet (the `ai-slop-detector` Claude
-skill) that the maintainer runs before a release: it fails if duplication, dead
-code or complexity concentration gets worse than the recorded numbers.
-
-**It is not a CI job and not a PR gate.** Nothing in `.github/workflows/` runs
-it, and you are not expected to install it, run it, or update those files. If
-your change moves a number, the maintainer re-baselines with a stated reason —
-that is a judgement call about whether the increase is earned, which is exactly
-why it is not automated.
-
-`.slopledger.json` is the one to leave alone most carefully: it mirrors the
-removal triggers in `SYSTEM.md` §13, and the two are checked against each
-other. Editing one without the other creates the drift the check exists to
-catch.
+The `.slop*` JSON files are the maintainer's code-quality baselines, not a CI
+job or PR gate: don't run or edit them; the maintainer re-baselines if needed.
 
 ### Looking for something to work on?
 
-[`KNOWN_ISSUES.md`](KNOWN_ISSUES.md) is the honest list: what is solid, what is
-rough, which limitations are deliberate, and a ranked set of gaps that are real
-work rather than invented starter tasks. Start there rather than guessing from
-the issue tracker — several of those items have a decided approach that is not
-visible in the code.
+[`KNOWN_ISSUES.md`](KNOWN_ISSUES.md) is the honest list of what is solid, what
+is rough, and which limitations are deliberate. The gaps below are real work
+rather than invented starter tasks — start here rather than guessing from the
+issue tracker, since several have a decided approach that is not visible in the
+code.
+
+### Where help is wanted
+
+Ordered roughly by how self-contained they are.
+
+**Good first changes**
+
+1. **Server-side tracker pagination** (`SYSTEM.md` §11 item 5). Contained,
+   testable, and it fixes a real slowdown: the client caps at 500 rows.
+2. **URL canonicalization server-side.** Tracking-parameter stripping is
+   currently every caller's job, which means it is done inconsistently.
+
+**Bigger, and genuinely useful**
+
+3. **The "ready to apply" gate** (§11 item 2). High user value. The metadata
+   path it needs already ships.
+4. **Extension coverage for more ATS platforms.** The most valuable
+   contribution anyone could make, and the hardest to fake: it requires meeting
+   a real form. The fixture corpus in `backend/tests/fixtures/autofill/` shows
+   how to add a control shape **without** pasting captured DOM.
+5. **Token-cost visibility.** Show what a tailoring run cost. Makes the
+   local-model argument concrete at the moment it is felt.
+6. **The security hardening KNOWN_ISSUES lists as not yet done.** The
+   isolated render worker and the resource ceilings have the best
+   effort-to-value ratio.
+
+**Wanted, but talk to us first**
+
+7. **Sanctioned job ingest** via an official API, so postings can arrive
+   without anyone scraping.
+8. **Provider-aware model routing** — cheap or local models for mechanical
+   steps, a frontier model for tailoring.
+
+Before you start: read the relevant part of `SYSTEM.md` §6 (most review comments
+here are invariants, not style), and open an issue before a large change.
+
+### Migrations in flight
+
+Three things are deliberately live in two forms at once. `SYSTEM.md` §13
+carries the full ledger with removal triggers.
+
+- **The database, for this one release.** SQLite is the store; the old
+  `postgres` service and its Docker volume stay in the compose file so that an
+  existing install can be imported on its first boot. The next release deletes
+  both.
+- **Two render engines.** LaTeX and Typst are both first-class and both
+  supported. The default is LaTeX; a switch to Typst was considered and is on
+  hold. Without TeX, LaTeX templates fall back to Typst with a `render_note`;
+  the default stays LaTeX where TeX exists. Changes to templates or rendering
+  must handle both.
+- **Autofill profile shapes.** `work_auth` and `education` each have a legacy
+  and a typed form, with readers for both. If you touch autofill, check §13
+  before assuming which shape you have.
 
 ---
 
@@ -106,12 +145,7 @@ visible in the code.
 Maestro CS is **Apache License 2.0**. Opening a pull request licenses your
 contribution to the project under those same terms — that is
 [section 5](LICENSE) of the license, and it is the whole mechanism. There is no
-CLA, no DCO and no sign-off line.
-
-This replaced a CLA that existed to let Seinun LLC sublicense contributions for
-a commercial dual-license tier. Apache 2.0 already permits commercial and
-proprietary use by anyone, so there was no longer any restriction for that tier
-to lift, and the paperwork bought nothing.
+CLA — nothing to sign — and no DCO or sign-off line.
 
 Two things you still owe, and they are about *other people's* code, not yours:
 
@@ -170,10 +204,7 @@ Two consequences worth internalising before you debug a ghost:
 
 - **A frontend-only change still needs the frontend image rebuilt.** A stale
   image once made fixed UI look broken for a whole review. For iteration, the
-  dev overlay is faster than rebuilding — it bind-mounts your source:
-  ```bash
-  docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
-  ```
+  dev overlay (§8) is faster than rebuilding — it bind-mounts your source.
 - **`scripts/update.sh` is not for you.** It moves the checkout to the newest
   released `v*` tag — which is not where you are working. Contributors stay on
   `main` (or their branch) with `--build`; the script's build-mode branch exists
@@ -225,3 +256,31 @@ When submitting a pull request:
 2. Ensure `pytest` passes cleanly across all backend and MCP tests.
 3. Ensure `tsc --noEmit` and `npm run build` succeed for the frontend.
 4. Verify that any updates or architectural changes are reflected directly in `SYSTEM.md`.
+
+## 8. Development mode (hot reload)
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+```
+
+The dev overlay bind-mounts `backend/app` (plus `migrations/` and `tests/`)
+and runs `uvicorn --reload`, and builds the frontend from `Dockerfile.dev`
+with `frontend/app`, `components`, `lib`, `hooks` and `public` mounted under
+`npm run dev`. Plain `docker compose up` stays the production build, because dev
+compilation is slow on cold routes.
+
+To run the frontend natively instead (`cd frontend && npm run dev`) against the
+compose backend, no extra configuration is needed: the browser talks to Next's
+same-origin `/api` proxy, which forwards to `http://127.0.0.1:8001` by default.
+If you moved `BACKEND_HOST_PORT`, point `API_PROXY_BACKEND` (the proxy) and
+`INTERNAL_API_URL` (server-side calls) at it. `NEXT_PUBLIC_API_URL` matters only
+with `NEXT_PUBLIC_API_DIRECT=true`, which skips the proxy.
+
+## 9. LLM tracing (Langfuse, optional)
+
+Every LLM call can be traced to a Langfuse instance you run. Set
+`LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY` and `LANGFUSE_HOST` on a backend
+you run yourself, outside compose. Compose deliberately does not forward them:
+traces contain your prompts, which means your resume text. Tracing stays off
+unless all three are set (`backend/app/services/tracing.py`). The repo
+deliberately ships no Langfuse stack — point it at a host you control.

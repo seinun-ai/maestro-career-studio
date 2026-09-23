@@ -59,13 +59,11 @@ browser treats the app as same-origin, CORS is never consulted, and the page can
 read every endpoint. Rejecting a `Host` header you do not serve on is what stops
 that.
 
-It has to happen on both listening servers, and until 2026-08-19 it only
-happened on one. The backend checked (`ALLOWED_HOSTS`), but you open the app on
-Next at :3000, and Next's `/api` route proxies to the backend while rebuilding
-the request — so the backend saw a trusted `Host` no matter which authority the
-page used, and the check it was doing could not see the attacker. The frontend
-now performs the same check first, in `frontend/proxy.ts` and again inside the
-`/api` route itself.
+It has to happen on both listening servers. You open the app on Next at :3000,
+and Next's `/api` route proxies to the backend while rebuilding the request, so
+the backend always sees a trusted `Host` and cannot see the attacker's. The
+frontend therefore performs the check first, in `frontend/proxy.ts` and again
+inside the `/api` route itself; the backend checks its own `Host` as well.
 
 - `ALLOWED_HOSTS` (backend) — default `localhost,127.0.0.1,backend`.
 - `FRONTEND_ALLOWED_HOSTS` (Next) — default `localhost,127.0.0.1,[::1]`.
@@ -103,17 +101,13 @@ Resume templates are Jinja source stored in the database and editable from the
 web editor, the chat agent and MCP. They render in a `SandboxedEnvironment`, so a
 template body cannot reach Python internals and execute code.
 
-**That sandbox constrains the template language, not the compiler.** This file
-used to say the sandbox made importing someone else's template "merely unwise
-rather than dangerous", and that was wrong. Jinja finishes its work and hands
-LaTeX to `pdflatex`, and TeX has its own file primitives: `\input`,
-`\include` and `\verbatiminput` read whatever the backend process can read.
-`-no-shell-escape` does not touch them — it blocks `\write18`, which is command
-execution, a different thing. The 2026-08-19 audit demonstrated a template
-reading a file outside its working directory and embedding the contents in the
-produced PDF.
+**That sandbox constrains the template language, not the compiler.** Jinja
+finishes its work and hands LaTeX to `pdflatex`, and TeX has its own file
+primitives: `\input`, `\include` and `\verbatiminput` read whatever the
+compiler is allowed to read. `-no-shell-escape` does not touch them — it blocks
+`\write18`, which is command execution, a different thing.
 
-The compiler now runs under kpathsea's paranoid mode (`openin_any=p`,
+The compiler therefore runs under kpathsea's paranoid mode (`openin_any=p`,
 `openout_any=p`, with `TEXMFOUTPUT` pinned to the per-render staging directory),
 which refuses dotfiles, parent-directory traversal, and absolute paths outside
 that directory.
@@ -128,9 +122,8 @@ untrusted code, and do not render one you have not read.**
 A template's id is also a filename. It is validated (lowercase letters, digits,
 hyphen, underscore) in the registry that every surface crosses — REST, chat,
 MCP and seeding — rather than at one door, and the preview path is separately
-checked to resolve inside the preview directory. Before 2026-08-19 the id was
-validated only by the REST schema, so a chat-authored id of `../../logs/pwned`
-persisted and wrote a PDF outside that directory.
+checked to resolve inside the preview directory, so an id like
+`../../logs/pwned` is refused whichever surface it arrives through.
 
 ### PDF compilation cannot run shell commands
 
@@ -170,10 +163,12 @@ afterwards, and the blast radius is bounded by the cap.
 It is **not** a channel we control to you. The agent supplies the consent
 payload when it calls the tool, so what the ledger records is that *the agent
 asserted you said yes*. An agent that has been successfully prompt-injected can
-assert that. The real protection is the one you are already exercising: the
-apply lane runs only in a live session you are watching, on postings you chose,
-with a cap on how many submissions a day are possible at all. Treat the ledger
-as an audit trail and a rate limit, not as a lock. If you want a hard gate,
+assert that. What actually bounds an apply run: it works only on proposals you
+accepted, inside a live agent session holding a browser. It prepares and fills
+each application on its own, asks you only for what it cannot find in your
+data, and submits only after your explicit yes for that application — and the
+daily cap limits how many submissions are possible at all. Treat the ledger as
+an audit trail and a rate limit, not as a lock. If you want a hard gate,
 accept proposals in the web UI (`/proposals`) and keep agent sessions to hunting
 and drafting.
 
@@ -209,9 +204,8 @@ remove it. Never commit any of it.
   records one file per call — model, attempt, sizes, and a sha256 of the prompt
   and the response — written `0600`. Setting `LLM_LOG_CONTENT=true` adds the
   full text, which means a second permanent copy of your resume and every
-  generated answer; the backend warns at startup while it is on. It was
-  unconditional before 2026-08-19. There is not yet a rotation policy or an
-  in-app purge: if you enable it, delete the files yourself afterwards.
+  generated answer; the backend warns at startup while it is on. There is not
+  yet a rotation policy or an in-app purge: if you enable it, delete the files yourself afterwards.
 - The browser extension's telemetry records *which* fields it encountered and
   whether they filled — never a value you typed. The schema has no column for
   one.

@@ -92,10 +92,10 @@ class Settings(BaseSettings):
     # Chat agent needs streaming tool calls; eligibility is the tools probe.
     chat_model: str = "gpt-5.6-luna"
 
-    # Langfuse LLM tracing — off unless both keys are set. No Langfuse stack
-    # ships with this repo (a bundled one meant publishing its session-signing
-    # secrets), so there is no local default host: point this at an instance you
-    # run, or leave it empty and let the SDK use Langfuse Cloud.
+    # Langfuse LLM tracing — off unless both keys AND the host are set
+    # (services/tracing.py). No Langfuse stack ships with this repo (a bundled
+    # one meant publishing its session-signing secrets), so there is no default
+    # host: point it at an instance you run, or at Langfuse Cloud's URL.
     langfuse_public_key: str = ""
     langfuse_secret_key: str = ""
     langfuse_host: str = ""

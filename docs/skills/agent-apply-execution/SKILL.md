@@ -1,15 +1,15 @@
 ---
 name: agent-apply-execution
-description: Use when applying to a job URL via Maestro CS MCP with Playwright MCP or Claude-in-Chrome, including Cowork-hosted sessions.
+description: Use for the browser side of a Maestro CS application — filling and submitting a job application with Playwright MCP or Claude in Chrome. Detailed technique behind the apply-session skill.
 ---
 
 # Agent Apply Execution
 
 ## Operating contract
 
-Use headed real Chrome via Playwright MCP or Claude-in-Chrome; Cowork only hosts. Submission is attended. No headless/stealth or CAPTCHA solving/bypass.
+Use a visible (headed) Chrome through Playwright MCP or Claude in Chrome — never headless or stealth browsing, and never solve or bypass a CAPTCHA. The user is present for the submit.
 
-Maestro CS profile is canonical; distrust ATS-parsed values. Prepare uninterrupted; ask once at submission. The canonical apply playbook owns policy; this skill is its concise execution overlay.
+The user's Maestro CS profile is the source of truth; distrust values an application site parsed from the resume. Prepare without interrupting; ask once, at submission. The Maestro CS tools' descriptions set the rules; this skill is the hands-on technique.
 
 ## Proposal state
 

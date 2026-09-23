@@ -76,6 +76,20 @@ published image tag is the same version with the leading `v` removed (`0.2.0`).
 - psycopg moved into an optional `legacy-postgres` extra, which leaves with the
   `postgres` service next release. A source install that has to import a
   Postgres database needs `pip install -e ".[dev,legacy-postgres]"`.
+- `docs/agent-prompts/` is replaced by generic skills in `docs/skills/`:
+  `job-hunt`, an autonomous `apply-session` (which also replaces
+  `manual-apply-session`), and `customize-job-skills`, which suggests skills
+  from what your agent knows about you and your data, asks a few questions, and
+  builds your own version or a new skill with your client's skill creator and
+  scheduler. `apply-session` asks you only for information the app doesn't
+  have, plus one yes per application before it submits.
+- The user docs are rewritten for someone new: a plain opening and glossary in
+  the README and Getting Started, a five-step first run, and far less jargon.
+  The full update procedure (by hand, backups, rolling back, the Postgres
+  import) moved to [`docs/UPDATING.md`](docs/UPDATING.md); the extension's
+  internals moved to `extension/INTERNALS.md`; development mode and LLM tracing
+  moved to `CONTRIBUTING.md`. The docs no longer point to a `⋯` menu in the
+  extension panel, which no longer exists.
 
 ### Fixed
 

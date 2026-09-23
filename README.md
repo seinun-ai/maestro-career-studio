@@ -18,15 +18,15 @@
      test-count badge are refreshed from the release checklist in
      docs/RELEASING.md; edit them there, not here. -->
 
-**A job-application studio that runs entirely on your machine — and shows you
-a diff of every change the AI makes.**
+**Maestro Career Studio helps you adapt your existing resumes to each job you
+want to apply for.** Save a job posting, compare its requirements with your
+experience, review suggested changes, and download a resume PDF. Your career
+record and application tracker are stored on your computer. When you use AI
+features, resume and job information is sent to the AI service you choose.
 
-Most resume checkers score the same resume differently every run, because they
-ask an LLM to guess. Maestro's ATS engine is deterministic and LLM-free: same
-resume, same job, same score, every time. Tailoring composes from a **Career
-Knowledge Base** of things you actually did — approved evidence lands verbatim,
-every AI edit is a reviewable, revertible diff, and the output is a real
-**LaTeX** or **Typst** PDF compiled locally.
+**Get started:** [install it](#quickstart) → add your resumes → save a job and
+get your tailored resume. New to this? The
+[Getting Started guide](docs/GETTING_STARTED.md) walks you through every step.
 
 <!-- P4 hero.gif — CLEARED for publish 2026-08-20. Recorded on the mock instance:
      contact header scrubbed (ajey@seinun.com, placeholder phone), lift
@@ -36,19 +36,18 @@ every AI edit is a reviewable, revertible diff, and the output is a real
      location stays (already the contact city on the public resume).
      1000px / 10fps / 64 colors, 1.8 MB; re-encode any replacement to match. -->
 
-![Score, tailor, diff of every AI edit, typeset PDF — end to end](docs/assets/hero.gif)
+![Score, tailor, see every AI edit, download the PDF — end to end](docs/assets/hero.gif)
 
-**83 MCP tools** to drive it from Claude, Codex, or the ChatGPT desktop app ·
-**bring your own model** — OpenAI, Gemini, or any OpenAI-compatible
-endpoint; the deterministic core (scoring, rendering, tracking)
-never calls one · **localhost-only, nothing phones home** · **leaves with
-you** — your whole record exports to one `career.md`
+**Works with Claude, Codex or the ChatGPT desktop app** (83 tools) ·
+**bring your own AI key** — OpenAI or Gemini; scoring, PDFs and tracking work
+without one · **runs on your computer, no account** · **take everything with
+you** — your whole record exports to one `career.md` file
 
-> **Single-user and local-first by design.** No login, no tenancy, no server
-> holding your career history — every port binds to `127.0.0.1`, and even the
-> browser extension's telemetry posts only to your own local backend (its
-> schema records zero form-field values). One rule follows: **never expose it
-> to a network.** [`SECURITY.md`](SECURITY.md) has the threat model.
+> **Made for one person on one computer.** There is no login: anything that can
+> reach the app can read and change your whole career record and your saved API
+> keys. Out of the box it only listens on your own machine (`127.0.0.1`), so
+> that's safe. **Never expose it to a network** — not the internet, your home
+> network, or a tunnel. [`SECURITY.md`](SECURITY.md) has the details.
 
 **Contents:** [Why Maestro CS?](#why-maestro-cs) ·
 [Prerequisites](#prerequisites) · [Quickstart](#quickstart) ·
@@ -56,491 +55,240 @@ you** — your whole record exports to one `career.md`
 [Using it well](#using-it-well) ·
 [Driving it from Claude, Codex, or ChatGPT (MCP)](#driving-it-from-claude-codex-or-chatgpt-mcp) ·
 [The rest of the toolkit](#the-rest-of-the-toolkit) ·
-[Execution modes](#execution-modes--docker-compose-stack) ·
-[Directory layout](#project--runtime-directory-layout) ·
+[Where your files live](#where-your-files-live) ·
 [Community & contributing](#community-documentation--contributing) ·
 [Licensing](#licensing) ·
 [Troubleshooting](#troubleshooting--common-questions)
-
-It covers the whole loop — build the career record, target it at a role,
-capture the job, tailor, render, apply, track — across three surfaces that
-share one backend: a web app, a companion browser extension, and an **MCP
-server** so the assistant you already use can drive any of it.
 
 ---
 
 ## Why Maestro CS?
 
 **Your time belongs in your career, not in the paperwork around it.** Most of a
-job search goes into artifacts that are thrown away a week later: a resume
-rebuilt from scratch for each role, a cover letter written again from memory,
-the same "tell us about a time you…" answered for the fourth time. None of that
-effort compounds. The premise here is that it should — you record what you
-actually did once, and every document after that is assembled from that record.
+job search goes into documents thrown away a week later: a resume rebuilt for
+each role, a cover letter written again from memory, the same "tell us about a
+time you…" answered for the fourth time. Here you record what you actually did
+once, and every document after that is assembled from that record.
 
-**One career, one source of truth, all the way to the PDF.** Your work goes into
-a structured **Career KB** once; base resumes compose from *approved* KB points;
-applications tailor from those; templates are only a presentation layer over the
-same structured data. Approved evidence composes **verbatim** — nothing is
-invented at create time, and rewriting a bullet is a separate, explicit step that
-asks you first.
+**It never writes things you didn't do.** Your work goes into one **career
+record** (the Career KB). Resumes are built from the points you approved, word
+for word; rewording a bullet is a separate step that asks you first. When a job
+asks for something your resume doesn't show, Maestro asks you about it — if it's
+true, it's saved for every future application; if not, it stays a gap. Every
+change is saved as a **resume version**, so you can always compare or go back.
 
-**So the document never drifts away from you.** Ask a general-purpose assistant
-for a tailored resume and you get fluent text that no longer quite matches what
-you did, in a layout it reinvents each time, with nothing kept between
-conversations. Here the tailoring is anchored: a **gap** names a job requirement
-your resume does not evidence, and closing one either surfaces something true you
-had not written down yet — which then belongs to you permanently — or it stays a
-gap. Every edit records a **resume version**, so nothing is lost and nothing is
-one-way.
+**Real, professional PDFs without the formatting headache.** You edit content in
+a simple editor — a bullet is a bullet — and a template handles the layout, so
+changing a word can never break the formatting. Switch templates any time
+without touching your content, or bring your own design.
 
-**The typesetting is yours — without the typesetting headache.** Real LaTeX and
-Typst templates, compiled on your machine. You edit *content* in a structured
-editor — a bullet is a bullet, never a paragraph you re-indent or a `.tex` line
-you hand-patch — and the layout stays the template's job, so changing a word is
-easier than in a Word doc and can never break the formatting. A template owns
-presentation and nothing else, so switching one never touches your content — and
-you can adapt a design you found or write your own, instead of accepting
-whatever shape a model felt like producing today.
+**Nothing here is rented.** Free and open source (Apache 2.0), no account, no
+subscription. Use the AI service you choose and pay only for what you use —
+about a penny per application.
 
-**Nothing here is rented.** Apache 2.0 (see [Licensing](#licensing)), runs locally,
-no account, no subscription, no usage tier. The Career KB exports to a single
-`career.md` you can read, diff and take anywhere. Point it at your own choice
-of models and everything keeps working. Tooling for someone's
-career should be infrastructure, not a rental.
+### How it works
 
-That whole cycle — evidence → base resume → application → typeset PDF — is the
-part other tools cannot reproduce. A resume builder gives you the last step with
-no evidence base behind it; a matcher scores a document it did not compose. Here
-the document and the evidence stay connected end to end.
+- **Your career record.** Upload every resume version you have. Maestro merges
+  them into one record of your jobs, projects and skills, removing duplicates.
+  Bullets taken unchanged from your files are approved automatically; anything
+  merged or written by AI waits for your review.
+- **The match score.** Maestro compares your resume with a saved job using
+  fixed scoring rules plus a small model that runs on your computer — no AI
+  service is involved, so the same resume and job always get the same 0–100
+  score. It is **not** an employer's score or a prediction of an interview; use
+  it to compare your own drafts and catch gaps. One thing moves over time:
+  recent experience counts more, so a score can shift slightly as months pass
+  ([`KNOWN_ISSUES.md`](KNOWN_ISSUES.md)).
+- **Tailoring.** Suggested changes arrive as a before/after view you accept or
+  undo, one by one.
+- **PDFs.** Built on your computer with LaTeX or Typst, two professional
+  typesetting systems.
 
 ### How it compares
 
-Only checkable claims — verify any row yourself (columns describe the
-categories as of August 2026; tell us if a row has gone stale):
+Only claims you can check yourself (as of August 2026 — tell us if a row has
+gone stale):
 
 | | Typical AI resume builders | CLI skill frameworks (e.g. career-ops) | **Maestro CS** |
 |---|---|---|---|
-| ATS scoring | LLM or black-box — same input, different score per run | LLM judgment | **Deterministic & LLM-free** — same input, same score, always |
-| Measured tailoring lift | Static score only | Not scored as a lift | **Base → tailored delta, per application** |
-| See what the AI changed | No audit trail | No | **Per-hunk diff, revertible** |
-| Typeset output | House web templates | HTML → PDF | **Real LaTeX and Typst, bring your own template** |
-| Career record | None (per-document) | Flat markdown/YAML files | **Structured, versioned KB — exports to one `career.md`** |
-| Agent access | No | CLI skill files | **MCP server (83 tools) against your own machine** |
-| Auto-submits for you | N/A | Never (stated) | **Never — consent ledger, enforced** |
-| Cost | $15–75/month | Free + tokens | **Free (Apache 2.0) + your own tokens — [≈1¢ per application](#do-you-need-an-api-key)** |
-
-### 🌟 Featured: Career KB Onboarding (Drop in your resumes, get a knowledge base)
-The most powerful feature you can experience in your first ten minutes is automated Career KB consolidation. When you add multiple existing versions of your resume (as `.json` files in `base_resumes/`), on startup the app runs `seeding.seed_career_kb` to automatically consolidate *every* base resume into a unified **Career Knowledge Base**. It performs intelligent entity resolution across your diverse resumes, deduplication, bullet clustering, and profile synthesis into a single structured record of your work history, projects, and skills.
-- *How it works out of the box:* Because we never ship personal data, a fresh git clone includes exactly one synthetic sample (`base_resumes/example.json`). On first run, it seeds your KB from this demonstration file. Once you add your own real resumes and clear the one-shot seeding flag, it synthesizes a comprehensive career graph across all your variants.
-- *Graceful offline retry:* KB seeding requires an active LLM API key. **If no API key is configured at startup, seeding defers cleanly without failing and automatically retries on a later boot** once you add a key in Settings.
-
-### 🛡️ 100% Deterministic ATS Scoring (No LLM in scoring)
-Unlike typical AI wrappers, **scoring is deterministic and LLM-free**. A hybrid scoring engine blends deterministic lexical layers (keyword coverage, section placement, recency weights, title matches, experience gates, and format linting) with a pinned local embedding model (running offline on CPU via fastembed/ONNX) for semantic evaluation.
-- **Anchored Soft-Matching:** A soft semantic match requires both an overlapping lexical anchor token and embedding proximity. This credits genuine industry synonyms and reformulations (e.g., matching "container orchestration" to Kubernetes) without hallucinating unearned skills.
-- The exact same resume, job description, and versioned config produce an
-  identical 0–100 score and diagnostic breakdown, run after run.
-- **One input does move: recency.** Experience is weighted against *today*, so a
-  document scored months apart can shift as the work in it ages. That is the
-  only thing that changes — no run-to-run variance, no model in the loop.
-  [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md) tracks recording `as_of` alongside the
-  score so a stored number says which day it belongs to.
-
-### The trade that buys all of this: no authentication
-
-Single-user and local-first means there is **no login, and no authentication on
-any HTTP or MCP endpoint** — that absence is what removes the accounts, the
-tenancy and the server holding your career history. Compose binds every port to
-`127.0.0.1`, so out of the box nothing outside your machine can reach it.
-
-**One rule follows from that: do not expose it to a network.** Not the public
-internet, not your LAN, not a tunnel. Anything that can reach the API has full
-read and write access to your entire career record and your saved API keys.
-Running it locally is safe by construction; publishing it is not, and no setting
-makes it so. [`SECURITY.md`](SECURITY.md) has the detail and the threat model.
+| Match scoring | An AI guesses — same input, different score each run | AI judgment | **Fixed rules — same input, same score, every time** |
+| Shows whether tailoring helped | Static score only | Not measured | **Score before and after, per application** |
+| See what the AI changed | No history | No | **Every change shown, undoable** |
+| PDF output | House web templates | HTML → PDF | **LaTeX and Typst, bring your own template** |
+| Career record | None (per document) | Plain markdown/YAML files | **Organized, versioned — exports to one `career.md`** |
+| Works with AI assistants | No | Command-line skill files | **83 tools for Claude, Codex, ChatGPT desktop — on your own computer** |
+| Submits applications for you | N/A | Never (stated) | **Never without your yes, per application** |
+| Cost | $15–75/month | Free + AI usage | **Free (Apache 2.0) + your own AI usage — [≈1¢ per application](#do-you-need-an-api-key)** |
 
 ---
 
 ## Prerequisites
-- **Docker Desktop** (or Docker Engine + Compose v2)
-- **Git** — any recent version; it is how you install *and* update (macOS
-  offers to install it on first use, Windows takes
-  [Git for Windows](https://git-scm.com/download/win))
-- **Disk: the three images are about a 1 GB download** (backend ~480 MB,
-  frontend ~360 MB, PostgreSQL ~170 MB compressed), unpacking to roughly
-  3–4 GB of image storage. The backend is the big one — it carries a minimal
-  TeX Live (`scheme-basic` plus exactly the packages the bundled templates
-  use, ~660 MB), Typst, and the pinned embedding model. PostgreSQL is here for
-  this release only: your database is a file now, and the old service survives
-  one release so that an existing install can be imported into it. A fresh
-  install starts it once, finds nothing to import, and never reads it again;
-  the next release drops it.
-- **One API key — OpenAI or Gemini, either alone is a complete setup.** The
-  parts that make Maestro CS fastest day to day run on it: in-app tailoring,
-  the extension's tailor-on-the-go and AI form filling, cover letters and Q&A,
-  KB consolidation, chat. An OpenAI key runs the profile a fresh install ships
-  with (about a penny per application); a Gemini key runs the faster one (under
-  3¢) — see [Choose your models](#5-choose-your-models-deliberately). Without
-  any key you still have the deterministic core, and an MCP client can supply
-  the intelligence itself — see
-  [Do you need an API key?](#do-you-need-an-api-key) (Any OpenAI-compatible
-  endpoint can be configured instead, including local servers — but that path
-  is [untested so far](#local-model-servers-untested).)
+
+- **Docker Desktop** (or Docker Engine + Compose v2). Docker runs the app in a
+  self-contained box on your computer, so you don't install anything else.
+- **Git** — it downloads the app and, later, its updates (macOS offers to
+  install it on first use; Windows takes
+  [Git for Windows](https://git-scm.com/download/win)).
+- **Disk space** — about a 1 GB download, roughly 3–4 GB once unpacked. Most of
+  it is the PDF tools and the small scoring model.
+- **An AI key — OpenAI or Gemini; either one is enough.** It powers tailoring,
+  cover letters and screening answers, building your career record, the
+  extension's form filling, and chat. Without a key, scoring, PDFs and tracking
+  still work — see [Do you need an API key?](#do-you-need-an-api-key)
 
 ---
 
 ## Quickstart
 
 > **New here?** [`docs/GETTING_STARTED.md`](docs/GETTING_STARTED.md) is the
-> hand-holding version of everything below — from installing Docker to your
-> first tailored PDF, in the order that works, including the let-an-AI-agent-
-> set-it-up shortcut.
+> step-by-step version — from installing Docker to your first tailored PDF.
 
-The whole setup is **four pieces, and only the first is required** — the rest
-attach to it whenever you want them:
+The app is the only required piece; the rest are optional and can be added any
+time:
 
 | Piece | What it takes |
 |---|---|
-| **1. The stack** | one `docker compose up -d` (below) — three containers, all on localhost |
-| **2. One API key** | paste into `.env` or **Settings → Models**; OpenAI *or* Gemini, [either alone is a complete setup](#5-choose-your-models-deliberately) |
-| **3. MCP for your assistant** | **optional.** Add this repo as a plugin marketplace in Claude Code or Codex and install `maestro-career-studio` — no host Python, no paths to edit, because the server runs inside the container you just started. Claude Desktop and other stdio clients take one config entry instead ([details](#driving-it-from-claude-codex-or-chatgpt-mcp)) |
-| **4. The browser extension** | `chrome://extensions` → Developer mode → **Load unpacked** → the repo's `extension/` folder. **No ID to copy, nothing to configure**: the extension pins its identity, so the backend already allowlists it out of the box — [full steps](extension/README.md) |
+| **1. The app** | one `docker compose up -d` (below) — runs on your own computer only |
+| **2. An AI key** | **Settings → Models** in the app; OpenAI *or* Gemini, [either alone is enough](#5-choose-your-models-deliberately) |
+| **3. Your AI assistant** | **optional.** Claude: install the `.mcpb` extension from Settings → Extensions. Codex / ChatGPT desktop: add the plugin from Settings → Plugins. [Details](#driving-it-from-claude-codex-or-chatgpt-mcp) |
+| **4. The browser extension** | **optional.** `chrome://extensions` → Developer mode → **Load unpacked** → the repo's `extension/` folder. Nothing to configure — [full steps](extension/README.md) |
 
 ```bash
-# 1. Clone the repository and copy the environment template
+# 1. Download the project and create your settings file
 git clone https://github.com/seinun-ai/maestro-career-studio.git
 cd maestro-career-studio
 cp .env.example .env
 
-# 2. Your API key is added later, INSIDE the app (Settings -> Models) — the
-#    deterministic core runs without one, the AI lanes want one. Only put a
-#    key in .env for headless/scripted setups; a key saved in-app wins over it
-# 3. Start the stack — this PULLS prebuilt multi-arch images (a ~1 GB
-#    download, not a build). Add --build to compile from this checkout instead (several
-#    minutes: it installs TeX Live and downloads the embedding model)
+# 2. Start the app (downloads about 1 GB the first time)
 docker compose up -d
 ```
 
-Then open **http://localhost:3000**.
+Then open **http://localhost:3000** and add your AI key in **Settings →
+Models**. The first start sets up your database and adds a demo resume so you
+have something to look at.
 
-> **Pull or build, same compose file.** `.env.example` ships with
-> `IMAGE_REGISTRY` set, so the command above downloads prebuilt `amd64`/`arm64`
-> images. Comment that line out (or run `--build`) to compile from your own
-> checkout instead — the mode contributors want, since it is the only one that
-> runs your code. Moving an existing install to a newer version is
-> [one command](#updating) either way.
-
-> **Young, but rehearsed.** The stack runs daily on my machine, and the
-> fresh-clone install — clone, compose, first tailoring run — has been verified
-> end to end on a second machine. What it has had little of is testing on
-> machines that aren't mine. If it fails on yours, please
+> **Young, but rehearsed.** The app runs daily on my machine, and a fresh
+> install — clone, start, first tailored resume — has been checked end to end on
+> a second machine. It has had little testing on machines that aren't mine. If
+> it fails on yours, please
 > [open an issue](https://github.com/seinun-ai/maestro-career-studio/issues)
 > with the log — that report is one of the most valuable contributions there is.
 
 ### Do you need an API key?
 
-**Recommended: yes.** The parts that make Maestro CS fastest day to day are
-LLM-backed — in-app tailoring (the guided gap workflow and Quick Tailor), the
-extension's tailor-on-the-go and AI-grounded form filling, cover letters and
-screening answers, Career KB consolidation, and chat.
+**Recommended: yes.** Tailoring, the extension's form filling, cover letters and
+screening answers, building your career record, and chat all use an AI service.
 
-**And it costs far less than people assume — measured, not estimated.** We
-traced real applications end to end with Langfuse (Aug 2026) on the default
-model profile, costed at list price
-([GPT-5.6 Luna](https://developers.openai.com/api/docs/models/gpt-5.6-luna)
-$0.20/M input · $1.20/M output). Your payloads and retries will vary somewhat:
+**It costs far less than you'd think — measured, not estimated.** We traced real
+applications end to end (Aug 2026) on the default model
+([GPT-5.6 Luna](https://developers.openai.com/api/docs/models/gpt-5.6-luna),
+$0.20 per million input tokens, $1.20 per million output tokens):
 
-| Operation | Typical tokens (in / out) | Cost |
-|---|---|---|
-| JD extraction | ~3k / ~1.5k | ~¼¢ |
-| Gap enrichment | ~7k / ~3k | ~½¢ |
-| Tailoring pass | ~11k / ~0.6k | ~¼¢ |
-| Cover letter + screening answers | ~8k / ~0.9k | ~¼¢ |
-| **Capture → tailored resume → full apply package** | | **≈1.3¢** |
-| Career KB consolidation, per imported resume (one-time) | ~7k / ~1.5k | ~⅓¢ |
+| Step | Cost |
+|---|---|
+| Reading the job posting | ~¼¢ |
+| Finding gaps and questions | ~½¢ |
+| Tailoring | ~¼¢ |
+| Cover letter + screening answers | ~¼¢ |
+| **Save a job → tailored resume → full application package** | **≈1.3¢** |
+| Building your career record, per imported resume (once) | ~⅓¢ |
 
-**And your key never leaves your custody.** It lives on your machine — in
-your `.env` or your local database — and is sent to exactly one place: the
-provider endpoint you configured. The API never echoes a stored key back out
-(the settings endpoint reports only *configured: yes/no*); LLM logs record
-metadata, never prompt content or credentials, unless you explicitly opt in;
-and the app refuses a non-`http(s)` model endpoint outright, because that URL
-decides where your key is sent. There is no vendor server in this
-architecture, so there is nowhere else for a key to go.
+A busy month of applications costs about fifty cents; my whole search so far,
+using every feature daily, has cost under **$2**. (The
+[Gemini setup](#5-choose-your-models-deliberately) is faster and costs under 3¢
+per application.)
 
-**Tailoring an application costs about a penny.** A serious month of
-applications: about fifty cents. For calibration, my entire search to date —
-daily use, every feature — has cost under **$2** total. That is what
-token-metered means against the $15–75/month the hosted tools charge. (Prefer
-speed over depth? The
-[Gemini profile](#5-choose-your-models-deliberately) runs under 3¢ per
-application.)
+**Your key stays with you.** It's stored on your computer and sent only to the
+AI service you configured. The app never shows a saved key back; its logs never
+record keys, and record your prompts only if you turn that on.
 
-**No key, but an MCP client? Tailoring and resume upkeep still work.** Over
-MCP, your assistant *is* the model: Claude or Codex extracts the posting,
-authors the tailoring edits, and the server applies them through the same
-honesty gates — the whole capture → score → tailor → render arc, plus Career
-KB and resume maintenance, with zero in-house LLM calls. If you mainly want
-tailoring and a maintained career record driven from the assistant you already
-use, that is a complete setup.
+**No key, but you use Claude or Codex?** Connect them over MCP and your
+assistant does the AI work itself: it reads the posting and writes the tailoring
+edits, and the app applies them with the same honesty checks — no AI key
+needed.
 
-**No key, no MCP? The deterministic core runs regardless:** ATS scoring across
-all bases, gap diagnostics, health reports, full manual tailoring, the raw
-LaTeX/Typst editors, PDF compilation, application tracking, and analytics —
-none of it ever calls a model. Everything else degrades cleanly rather than
-breaking: KB seeding defers and retries on a later boot, pasted-JD extraction
-falls back to manual entry, and the generation features prompt for a key in
-Settings instead of failing.
+**No key at all?** Scoring, gap diagnostics, health reports, manual editing, PDF
+creation, application tracking and analytics all work without one. Features that
+need AI ask you to add a key instead of failing.
 
 ### Local model servers (untested)
 
-The LLM client speaks to any OpenAI-compatible endpoint, so a local server
-(Ollama, LM Studio, vLLM) can be configured by setting `OPENAI_BASE_URL` in
-`.env` (`http://host.docker.internal:<port>/v1` reaches the host from inside
-the container). Being honest, as everywhere else in this README: **we have not
-validated any local model end to end yet**, and the app's heavier demands —
-long tailoring prompts, strict JSON output, streaming tool calls — are exactly
-where small models struggle, so we make no offline promise until we can stand
-behind one ([`KNOWN_ISSUES.md`](KNOWN_ISSUES.md) tracks this).
-
-If you try it anyway: model ids become free text once a base URL is set
-(we cannot enumerate what your server has pulled), so in **Settings → Models**
-press **Test** on each model — Maestro CS needs plain **text**, a **JSON
-object**, and **streaming tool calls**, and only the chat agent needs the
-third. A report of what worked or broke, with the model name, is a genuinely
-useful contribution — please open an issue.
-
-On first boot, Docker will:
-1. Launch PostgreSQL on host port `55432` (`127.0.0.1:55432`, to prevent collisions with any existing Postgres instance on port 5432). This release only: the import checks it, and then it idles.
-2. Create the database file `data/maestro_cs.sqlite3` and run migrations via Alembic.
-3. Import your old Postgres database into that file, verified row for row, if you are updating an install that had one — see [Updating](#updating). A fresh install has nothing to import, and the boot records that too.
-4. Seed demonstration base resumes, compile initial PDF previews, seed default AI prompts, and build your initial demo Career KB (if an API key is present).
-5. Serve the UI on **http://127.0.0.1:3000** and backend API on **http://127.0.0.1:8001**.
+You can point the app at a local AI server (Ollama, LM Studio, vLLM) by setting
+`OPENAI_BASE_URL` in `.env` (`http://host.docker.internal:<port>/v1` reaches your
+computer from inside Docker). **We haven't validated any local model end to end
+yet**, and long prompts and strict JSON output are where small models struggle
+([`KNOWN_ISSUES.md`](KNOWN_ISSUES.md) tracks this). If you try it, press **Test**
+on each model in **Settings → Models** and tell us what worked in an issue.
 
 ---
 
 ## Updating
 
-**One command, from the repo you cloned:**
+**One command, from the folder you cloned:**
 
 ```bash
 ./scripts/update.sh
 ```
 
-It backs up your database first, moves this checkout to the newest released
-`v*` tag, reports any new `.env` keys without editing your file, pulls (or
-rebuilds) the images for that same tag, waits for the stack to come back
-healthy, and then names the two surfaces Docker cannot update for you.
+It backs up your database, moves to the newest release, downloads the matching
+app, and waits until it's healthy again. `./scripts/update.sh --check` tells you
+whether you're up to date without changing anything. (It needs bash — on
+Windows, run it under WSL.)
 
-- `./scripts/update.sh --check` — changes nothing. It answers *am I up to
-  date?*: the running version and schema revision, your checkout, the newest
-  released tag, and any `.env` drift. Every probe says so when it cannot
-  answer (a stopped stack reports "backend: not running" rather than failing).
-- `./scripts/update.sh --force` — proceed even though the working tree is
-  dirty. Without it, local edits stop the update rather than being run over.
-- `./scripts/update.sh --help` — the flags.
+> **Updating an install from before the database moved to a file?** This release
+> moves your data from Postgres into `data/maestro_cs.sqlite3`. The first start
+> imports it and checks the copy before using it; your old data stays in place
+> and nothing is deleted. Leave the `POSTGRES_*` values in `.env` until the
+> import has run. Read [`docs/UPDATING.md`](docs/UPDATING.md) before you update.
 
-It is bash, so on Windows run it under WSL — or use the manual form below.
+**Your data is safe during updates.** Your resumes, applications and settings are
+ordinary folders on your disk, and no update step touches them. **Deleting the
+project folder does delete them**, so keep it.
 
-**Your checkout and your images move together, always.** An install here *is* a
-git checkout: the unpacked extension loads from `extension/` and the MCP
-server's venv sits over `backend/`. A `docker compose pull` on its own updates
-two of the four surfaces and leaves the extension and MCP client running code
-your API no longer has. That is why the script moves the tree to a release tag
-and pins the image pull to that same tag, rather than tracking `main`.
+**After updating,** reload the browser extension (`chrome://extensions` →
+**Reload**, then reload any open job tabs) and restart your AI assistant so it
+sees new tools.
 
-### The manual equivalent
-
-Same thing, in the open, if you would rather see the moving parts:
-
-```bash
-# 1. Back up the database (see "What happens to your data" below). There are
-#    two stores this release, so there are two commands; update.sh picks the
-#    right one for you. The subshell umask keeps the file 0600, like the rest
-#    of your record.
-mkdir -p backups
-
-#    a) The database file exists — the normal case, and safe on a live stack:
-( umask 077; docker compose run --rm -T --no-deps backend python -m app.tools.backup_db --stdout | gzip > backups/db-manual.sqlite3.gz )
-
-#    b) THIS RELEASE ONLY — an install still on Postgres, whose first boot has
-#       not imported it yet (there is no data/maestro_cs.sqlite3):
-docker compose up -d postgres
-docker compose exec -T postgres pg_dump --clean --if-exists -U app maestro_cs | gzip > backups/db-manual.sql.gz
-
-# 2. Move the checkout to the newest released tag
-git fetch --tags origin
-git merge --ff-only "$(git tag -l 'v*' --sort=-v:refname | head -n1)"
-
-# 3. Bring the images to that same tag — note the image tag has NO leading v,
-#    which is why this derives it rather than hardcoding a number that ages
-TAG="$(git describe --tags --abbrev=0)"        # e.g. v0.1.2
-IMAGE_TAG="${TAG#v}" docker compose pull       # e.g. 0.1.2
-IMAGE_TAG="${TAG#v}" docker compose up -d --force-recreate --remove-orphans
-```
-
-> **`docker compose up -d` alone will not fetch a new release.** Compose only
-> downloads an image tag it does not already have locally, so once you have
-> pulled `latest` it keeps using that copy until something pulls again — which
-> is exactly what `update.sh` (and step 3 above) does explicitly. If you ever
-> wonder why a fresh release did not appear, that is why; `docker compose pull`
-> is the one-line answer.
-
-`-U app` and `maestro_cs` in (b) are the compose defaults (`POSTGRES_USER` /
-`POSTGRES_DB`); use your own values if you changed them in `.env`.
-
-**Pinning a version — the `v` is the trap.** The git tag is `v0.1.2`; the
-image tag drops the `v`. Pin with `IMAGE_TAG=0.1.2` — `IMAGE_TAG=v0.1.2` does
-not exist and the pull 404s. Set it in `.env` to make the pin permanent, or
-pass it inline as above for one command (a shell variable beats `.env` in
-Compose, so the inline form needs no edit to a file you own).
-
-**Build mode or pull mode.** `.env.example` ships with `IMAGE_REGISTRY` set,
-so a new install *pulls* published images and an update downloads rather than
-recompiling TeX Live. Installs made before that flip have the line commented
-out and keep building from their checkout; to switch, uncomment it:
-
-```ini
-IMAGE_REGISTRY=ghcr.io/seinun-ai/maestro-career-studio
-```
-
-That is right for users. Contributors building their own changes comment it
-back out — see [`CONTRIBUTING.md`](CONTRIBUTING.md).
-
-### What happens to your data
-
-**Nothing.** `base_resumes/`, `applications/`, `settings/`, `kb_documents/`,
-`exports/` and `logs/` are your files on disk, git-ignored, and no step of an
-update touches them. The database is one more file beside them —
-`data/maestro_cs.sqlite3`, git-ignored the same way, with its `-wal` and
-`-shm` sidecars — and no update step touches it either. It used to live in a
-named Docker volume, so the trade has flipped: `docker compose down -v` no
-longer reaches your data, and deleting the project folder now does.
-
-**This release is the one that moves it.** If you are updating an install that
-ran Postgres, the first boot imports it into the new file and verifies the copy
-row for row — row counts plus a content hash per table — before committing it.
-Your old Docker volume is left exactly where it is, so nothing rides on the
-import working the first time; if it fails, the backend refuses to start rather
-than come up empty, and nothing is deleted (see
-[Troubleshooting](#troubleshooting--common-questions)). Three things follow
-from that:
-
-- **Leave the `POSTGRES_*` values in `.env` as they are** until the import has
-  run. Compose builds the import's source URL out of them.
-- **`./scripts/update.sh --check` tells you where you stand.** It prints a
-  `database:` line naming the store that is live.
-- **Once you are satisfied, the old volume is yours to delete:**
-  `docker volume rm maestro-career-studio_pgdata`. Nothing reads it after a
-  successful import, and the next release drops the `postgres` service
-  entirely.
-
-**Database migrations run themselves.** The backend runs `alembic upgrade head`
-at boot, so there is no migration step for you — but the first boot after a
-schema change is genuinely slower, which is why the script says it is waiting
-rather than sitting silent.
-
-**What the pre-update backup actually covers.** `./scripts/update.sh` backs up
-whichever store is live before it changes anything, into `backups/` and
-readable only by you. Which file you get says which that was:
-
-- **`db-<timestamp>-<version>.sql.gz`** is a `pg_dump`. On the update that
-  performs the import there is no SQLite file yet, so this is the only artifact
-  that update can produce.
-- **`db-<timestamp>-<version>.sqlite3.gz`** is an online snapshot of the
-  database file, and is what every later update writes.
-- **Both**, when both stores hold something and no import marker says which one
-  the backend actually read. The script refuses to guess; it takes both and
-  says so.
-
-It prints the restore command for whatever it just took, and prints it again if
-the stack does not come back healthy. The backup guards that migration, which
-is the one irreversible step in the process. It is *not* "your career data" —
-that is the on-disk directories above, which never needed guarding.
-
-### Rolling back
-
-One recipe — the old git ref, the old images, and the backup — in two forms,
-one per kind of backup file (see above for which you have).
-
-**From a SQLite snapshot (`.sqlite3.gz`)**, with the stack stopped, because
-restoring means replacing a file the backend holds open:
-
-```bash
-docker compose down                                     # the restore needs it stopped
-git checkout v0.1.1                                     # the version you were on
-gunzip -c backups/db-<timestamp>-<version>.sqlite3.gz > data/maestro_cs.sqlite3
-rm -f data/maestro_cs.sqlite3-wal data/maestro_cs.sqlite3-shm
-IMAGE_TAG=0.1.1 docker compose up -d --force-recreate
-```
-
-The two sidecar files have to go: they belong to the database you just
-replaced, and leaving them in place mixes the two. For the same reason, never
-copy the live file out from the host while the backend is running — the copy
-can miss whatever is still in the write-ahead log. Take a snapshot with the
-`backup_db` command in [the manual equivalent](#the-manual-equivalent) above
-instead — it is safe to run against a live stack.
-
-**From a Postgres dump (`.sql.gz`)** — what the update that performed the
-import left behind, and what a rollback to a release that still read Postgres
-needs:
-
-```bash
-git checkout v0.1.1                                     # the version you were on
-IMAGE_TAG=0.1.1 docker compose up -d --force-recreate
-gunzip -c backups/db-<timestamp>-<version>.sql.gz | docker compose exec -T postgres psql -U app maestro_cs
-```
-
-**Never restore a snapshot into a newer schema, and do not reach for an Alembic
-downgrade.** Downgrade functions exist in the migration files, but they have
-never been a supported or tested path here — rolling the schema back means
-rolling the whole stack back to the version that wrote it.
-
-### The two things you still do by hand
-
-Docker cannot reach either of these:
-
-1. **Reload the browser extension** — `chrome://extensions` → **Reload** on the
-   Maestro CS card. Then reload any job tab that was already open: a reload
-   orphans the content script in every open tab, which shows up as "No job
-   description found on this page" over a visible posting. If your install
-   predates the pinned extension `key`, press **Remove** and **Load unpacked**
-   again instead — reloading never re-derives the id
-   ([details](extension/README.md)).
-2. **Restart your MCP client, and re-run `./scripts/setup-mcp.sh`** — new tools
-   stay invisible to Claude, Codex or the ChatGPT desktop app until the client
-   restarts. Re-run the setup script every time, not only when something looks
-   moved: the editable install picks up new code by itself, but not new
-   dependencies.
+[`docs/UPDATING.md`](docs/UPDATING.md) has the rest: updating by hand, pinning a
+version, what the backup covers, and rolling back.
 
 ---
 
 ## Using it well
 
-Maestro CS is built for **few, well-evidenced applications**, not volume. The
-2026 reality is that the average opening draws ~240 applications and most
-employers now filter for resumes that read as machine-written — so the leverage
-is in depth per application, not count. The workflow below reflects that.
+Maestro CS is built for **fewer, stronger applications**, not volume. Most
+openings now draw hundreds of applicants, and many employers filter out resumes
+that read as machine-written — so the leverage is in depth per application.
+
+**Words you'll see:**
+
+- **Career record (Career KB)** — one organized record of your work, built from
+  your resumes.
+- **Base resume** — your main resume for one kind of role (e.g. Data Scientist).
+- **Tailoring** — adjusting a base resume to one job, using only things you
+  actually did.
+- **Match score** — Maestro's comparison of your resume with a saved job
+  description (the app labels it **ATS score**). It is not an employer's score
+  or a prediction of an interview.
+- **AI service** — OpenAI or Gemini, whichever you choose.
 
 ### 1. Feed the Career KB first (once)
 
 ![Drop in your resumes, get a knowledge base](docs/assets/kb-onboarding.png)
 
-Drop **every** resume variant you have into the upload dialog — old ones,
-role-specific ones, the too-long one. Maestro CS resolves duplicate entities
-across them, clusters bullets, and builds one **Career Knowledge Base**: your
-verified history in structured form.
+Upload **every** resume version you have — old ones, role-specific ones, the
+too-long one. Maestro merges duplicates across them and builds one **career
+record**: your verified history in one place.
 
-This is the step that pays off repeatedly. Everything downstream composes from
-approved KB points, so the KB's quality is the ceiling on everything else. Add
-certifications, project write-ups and performance-review notes too — anything
-true about your work is usable evidence later.
+This step pays off every time. Everything later is built from approved points,
+so the record's quality is the ceiling on everything else. Add certifications,
+project write-ups and performance-review notes too — anything true about your
+work can become evidence later.
 
-> **Review the KB inbox before tailoring.** Bullets that arrive unchanged from a
-> file you wrote are approved on import; anything merged across resumes, or
-> written by a model, waits in the review inbox for you. Only approved points
-> compose into a resume, and duplicates across resume variants are common —
-> fixing them once fixes every future application.
+> **Review the inbox before tailoring.** Bullets taken unchanged from your files
+> are approved on import; anything merged across resumes, or written by AI,
+> waits in the review inbox. Only approved points go into a resume, and fixing a
+> duplicate once fixes every future application.
 
 ### 2. Build a base resume per career track
 
@@ -549,106 +297,98 @@ true about your work is usable evidence later.
      ajey@seinun.com); "Liberty Hill, TX" experience location previously
      reviewed and accepted. 1400px wide to match the asset set. -->
 
-![One base resume per track, with its health grade and live typeset preview](docs/assets/base-resume.png)
+![One base resume per track, with its health grade and live preview](docs/assets/base-resume.png)
 
-One base per track you actually target (e.g. *Data Scientist*, *ML Engineer*) —
-not one per job. **New base resume → From Career KB** proposes which entries
-belong, with a reason for each one it leaves off, plus a drafted summary.
+One base per kind of role you actually target (e.g. *Data Scientist*, *ML
+Engineer*) — not one per job. **New base resume → From Career KB** suggests
+which entries belong, with a reason for each one it leaves out, plus a drafted
+summary.
 
 <!-- kb-import.png captured 2026-08-23: the editor's Import from Career KB
      drawer; background contact panel deliberately blurred at capture time. -->
 
-![Importing KB evidence is explicit and versioned — the drawer even tells you what is already in the resume](docs/assets/kb-import.png)
+![Adding points from your career record is explicit and versioned](docs/assets/kb-import.png)
 
-The optional instruction box steers *shape*, not facts: "lead with pipeline and
-cloud work, keep it mid-level, leave off teaching." **Bullets are never
-rewritten at this step** — approved KB points compose verbatim. That is
-deliberate: it is what keeps a generated resume defensible.
+The optional instruction box steers the *shape*, not the facts: "lead with
+pipeline and cloud work, keep it mid-level, leave off teaching." **Bullets are
+never rewritten at this step** — approved points go in word for word, which is
+what keeps a generated resume defensible.
 
-### 3. Capture the job, then close the gaps
+### 3. Save the job, then close the gaps
 
-![Every job you have captured, from saved to signed](docs/assets/applications.png)
+![Every job you have saved, from saved to signed](docs/assets/applications.png)
 
-Paste the JD or capture it with the browser extension. Score it against your
-bases — the ATS engine is deterministic and runs with **no LLM at all**, so the
-same resume and JD always produce the same number and the same diagnostics.
+Paste the job posting or save it with the browser extension, then score it
+against your base resumes. Scoring uses no AI service, so the same resume and
+job always get the same number.
 
 <!-- job-overview.png captured 2026-08-23: real Lightning AI posting kept on
      the same precedent as the Visa posting (employer-published public
      document); the "your profile states 2" line matches the years already
      public in the shipped resume captures. -->
 
-![Extracted fields, and a knock-out pre-scan of the posting's stated requirements against your profile — including the mismatches](docs/assets/job-overview.png)
+![The job's details, and a check of its stated requirements against your profile — including mismatches](docs/assets/job-overview.png)
 
-Every capture also gets a **knock-out pre-scan**: the posting's *stated*
-requirements — work authorization, OPT policy, salary, years of experience —
-checked against your profile before you spend any effort on it, with
-mismatches said out loud rather than discovered at the screening call.
+Every saved job also gets a **requirements check**: what the posting *states*
+about work authorization, visa (OPT) policy, salary and years of experience,
+compared with your profile — so a mismatch shows up now, not at the screening
+call.
 
-Then work the **gap workflow** rather than accepting a rewrite. It asks targeted
-questions to surface things that are true but unwritten. Answers become new KB
-evidence, so closing a gap once improves every future application.
+Then work through the **gaps** rather than accepting a rewrite. Maestro asks
+targeted questions to find things that are true but not yet written down. Your
+answers are saved to your career record, so closing a gap once helps every
+future application.
 
-> **A note on the score.** It is *our* score: deterministic, versioned and
-> reproducible. It is **not** a prediction of what any real ATS shows you — no
-> consumer tool can offer that, and independent tests keep proving the point:
-> the same resume has scored [66–99 across 100 runs](https://danunparsed.com/p/hackerrank-open-source-ats)
-> on a popular LLM-judged checker, and an
+> **About the score.** It's *our* score: fixed and repeatable, but **not** a
+> prediction of what an employer's system shows — no consumer tool can offer
+> that. Independent tests make the point: the same resume scored
+> [66–99 across 100 runs](https://danunparsed.com/p/hackerrank-open-source-ats)
+> on a popular AI-judged checker, with an
 > [18-point spread](https://resumeoptimizerpro.com/blog/ats-resume-checker-tools-compared)
-> across five commercial ones. Use ours to compare your own drafts against one
-> another, and to catch parsing and coverage problems. Chasing 100 produces
-> keyword-stuffed resumes that modern screens flag.
+> across five commercial ones. Use ours to compare your own drafts and catch
+> gaps. Chasing 100 produces keyword-stuffed resumes that modern screens flag.
 >
-> **Language & script scope.** Maestro CS supports English-language resumes
-> and job descriptions, with full support for accented Latin characters (such
-> as *Zürich*, *José*, *Nestlé*, or *São Paulo*). Non-Latin scripts (such as
-> CJK, Cyrillic, Arabic, Hebrew, Devanagari, or Thai) are not supported yet
-> and are refused explicitly at ingest to prevent misleading, zero-coverage scores.
+> **Languages.** English resumes and job postings, including accented letters
+> (*Zürich*, *José*, *São Paulo*). Non-Latin scripts (Chinese, Japanese, Korean,
+> Cyrillic, Arabic, Hebrew, Devanagari, Thai) aren't supported yet and are
+> refused on import rather than given a misleading score.
 
 ### 4. Generate the package, then read it
 
-Cover letter, screening answers, and the rendered PDF. Read the output before it
-goes anywhere — this is your name on it.
+Cover letter, screening answers, and the PDF. Read everything before it goes
+anywhere — it's your name on it.
 
 ### 5. Choose your models deliberately
 
-Three tiers are configured independently in **Settings → Models** — **Fast**
-(extraction, classification, bulk KB work), **Smart** (tailoring, gap
-enrichment, planning) and **Chat** (the interactive agent; needs **streaming
-tool calls**). We benchmarked the combinations on real job postings, every
-call traced, and the result was clearer than expected: **the Fast tier decides
-almost everything** — how much of a posting's requirements get extracted, how
-honest your base score is, and most of the wall-clock — while the Smart-tier
-choice barely moved the outcome. So the decision collapses to two measured
-setups, one per API key:
+**Settings → Models** has three slots: **Fast** (reading postings, bulk work),
+**Smart** (tailoring, finding gaps) and **Chat** (the in-app assistant). We
+tested the combinations on real job postings, and the **Fast** model turned out
+to decide almost everything — how completely a posting's requirements are read,
+how honest your score is, and most of the waiting time. So it comes down to two
+tested setups, one per AI service:
 
-| | **OpenAI** · depth | **Gemini** · speed |
+| | **OpenAI** · most thorough | **Gemini** · fastest |
 |---|---|---|
-| Every tier set to | `gpt-5.6-luna` | `gemini-3.7-flash` |
+| Every slot set to | `gpt-5.6-luna` | `gemini-3.7-flash` |
 | The one key you need | OpenAI | Gemini |
-| JD requirements captured | the most complete extraction we measured | ~¾ of that, strongest on named tools |
-| Capture + tailor feels like | ~40 seconds | ~10 seconds |
+| Job requirements captured | the most complete we measured | about ¾ of that, strongest on named tools |
+| Save + tailor takes | ~40 seconds | ~10 seconds |
 | Cost per application | **about a penny** | **under 3¢** *(Gemini promo pricing doubles Jan 2027)* |
-| Hallucinated skills | zero measured | zero measured |
+| Made-up skills | none measured | none measured |
 
-Neither is a tier above the other, and any OpenAI-compatible model can be
-configured instead — these are simply the two we benchmarked, so you can start
-from a known-good setup rather than guessing. A fresh install ships with the
-OpenAI one already set, because honest scoring starts at extraction: a fast
-model that misses requirements quietly *inflates* your fit score — in our tests,
-by around nine points. Holding only a Gemini key, switch all three tiers in
-**Settings → Models** (or set `FAST_MODEL`/`SMART_MODEL`/`CHAT_MODEL` in
-`.env`). Press **Test** on any model to measure what it actually does. Mixing
-tiers across providers is fully supported; in our tests it bought nothing that
-one of these two doesn't already give you.
+Neither is better overall, and any OpenAI-compatible model can be used instead.
+A fresh install starts with the OpenAI setup, because a model that misses
+requirements quietly *inflates* your score — by about nine points in our tests.
+With only a Gemini key, switch all three slots in **Settings → Models** (or set
+`FAST_MODEL`/`SMART_MODEL`/`CHAT_MODEL` in `.env`). Press **Test** on any model
+to check it works.
 
 ### Driving it from Claude, Codex, or ChatGPT (MCP)
 
-Maestro CS ships an **MCP server** so you can run the whole pipeline
-conversationally — extract a JD, score it, walk the gaps, render the PDF —
-without leaving your assistant, whether that is Claude (Desktop or Code), the
-ChatGPT desktop app, or the Codex CLI. Unlike SaaS-backed job-search MCP servers, it
-runs on **your machine** against **your** database. Nothing is uploaded.
+**MCP** is the connector that lets an AI assistant use the app for you. With it,
+Claude (Desktop or Code), the ChatGPT desktop app or the Codex CLI can run the
+whole process in conversation — read a posting, score it, work the gaps, make
+the PDF. It runs on **your computer** against **your** data.
 
 ![Claude pulling the whole pipeline over MCP and building its own view of it](docs/assets/mcp-dashboard.png)
 
@@ -661,138 +401,105 @@ runs on **your machine** against **your** database. Nothing is uploaded.
      capture is one tool call ending on a question with no result. Re-capture
      against a scored instance, then save here and add below the dashboard. -->
 
-With the backend already running, both clients install by picking something in
-their own settings — no terminal, no config file, nothing to quit:
+With the app running, both install from their own settings — no terminal, no
+config file:
 
 - **Claude** — Settings → **Extensions** → **Install Extension** → select
-  `maestro-career-studio/mcpb/maestro-career-studio.mcpb`, inside the folder the
-  clone above created. One install covers Claude Desktop *and* Claude Code
-  sessions running inside the Claude app.
+  `maestro-career-studio/mcpb/maestro-career-studio.mcpb` inside the folder you
+  cloned. One install covers Claude Desktop *and* Claude Code sessions inside the
+  Claude app.
 - **Codex / ChatGPT desktop** — Settings → **Plugins** → **Add** → add
   `seinun-ai/maestro-career-studio` as a marketplace (ref `main`, sparse paths
   empty), then **Install**.
 
-Neither needs a host Python or a path to edit: both run the same server inside
-the backend container you already started, which is what makes one declaration
-correct on every machine.
+Neither needs Python on your computer: both run inside the app you already
+started.
 
-For **Cursor, Windsurf, other stdio clients, a backend outside Docker, or scoped
-profiles**, the setup script still resolves everything and prints a paste-ready
-block per client:
+**Other assistants** (Cursor, Windsurf, and others) — run the setup script; it
+prints a ready-to-paste config for each one (needs **Python 3.12+**):
 
 ```bash
 ./scripts/setup-mcp.sh
 ```
 
-That route builds a host virtualenv, so it is the one that needs a host
-**Python 3.12+**. Add `--profile hunt` for a scoped profile, or `--print-only`
-to change nothing.
+Or open Claude Code or the Codex CLI in this folder and ask it to run the
+script for you.
 
-> **Or skip the copy-paste entirely.** Open a coding-agent session (Claude
-> Code, Codex CLI) in this repo and ask it to run `./scripts/setup-mcp.sh` —
-> the script knows it may be driven by an agent: it detects a nested Claude
-> Code session, writes the repo-level `.mcp.json` instead of fighting the
-> CLI, and prints the one command that still needs a plain terminal.
+**Tool sets.** All 83 tools are on by default (`full`). Smaller sets — `hunt`,
+`apply`, `explore`, `templates`, `career` — keep a chat focused; pick one in the
+Claude extension's **Tool profile** setting or with
+`setup-mcp.sh --profile`. Use one set at a time.
 
-`BACKEND_URL` must be the **host** port compose publishes — `8001` by default,
-not the container's internal `8000`. The script resolves this for you from
-`BACKEND_HOST_PORT`.
+**Skills.** [`docs/skills/`](docs/skills/) has ready-made skills for a daily job
+hunt and an apply run that works on its own and asks you only for what the app
+doesn't know, plus one yes before each submit. `customize-job-skills` suggests
+skills from what your agent knows about you, asks a few questions, and builds
+them with your assistant's own skill creator and scheduler.
 
-Six profiles keep the tool list relevant per chat: `full` (83 tools), `hunt`,
-`apply`, `explore`, `templates`, `career`. Every install route defaults to
-`full`; a scoped profile is a customization you opt into — the Claude
-extension's **Tool profile** field in its settings, the
-`MAESTRO_CS_MCP_PROFILE` value in a hand-written config entry, or
-`setup-mcp.sh --profile`. Enable one at a time — `full`
-alongside a scoped profile registers each shared tool twice.
+Keep the connection type **STDIO** (the default). The HTTP option would expose
+the app, which has no login — don't. (ChatGPT on the *web* can't reach a local
+app; use the desktop app.)
 
-Doing it by hand instead:
-[`backend/mcp_server/README.md`](backend/mcp_server/README.md) has the manual
-steps and
-[`claude_desktop_config.example.json`](backend/mcp_server/claude_desktop_config.example.json)
-has every profile as a template. (ChatGPT on the *web* takes remote HTTPS
-connectors only; the desktop app is the one that runs local servers.)
-
-Whichever client you use, keep the transport **STDIO**. The HTTP option means
-exposing a deliberately unauthenticated backend that holds your full employment
-history — don't.
-
-Full tool reference, profile table and troubleshooting:
+Manual setup, every tool, and troubleshooting:
 [`backend/mcp_server/README.md`](backend/mcp_server/README.md).
 
 ---
 
 ## The rest of the toolkit
 
-The workflow above is the spine. These are the parts that make each pass through
-it cheaper than the last.
+The steps above are the core. These make each application quicker than the last.
 
 ### Talk to one resume — or one section, or one bullet
 
-The in-app chat is scoped by what you pin. Pin a base resume and it works on that
-one; pin a section, an experience entry or a single bullet and edits outside that
-scope are **refused**, not merely discouraged. Pin a KB entity — a project, a
-role, a certification — to bring its detail into the conversation without letting
-the chat rewrite it. Proposed edits arrive as an approval card you accept or
-discard; nothing lands silently.
+The in-app chat works on what you pin. Pin a base resume and it works on that
+one; pin a section, a job entry or a single bullet and it **refuses** edits
+outside it. Pin a career-record item — a project, a role, a certification — to
+bring its detail into the conversation without letting the chat change it.
+Suggested edits arrive as a card you accept or discard; nothing changes
+silently.
 
 ### No more `resume_v2_FINAL(3).docx`
 
-Somewhere in that folder of copies is the old resume with the one great bullet
-— and no way to tell which file it is. Here there is no folder of copies:
-every write path — a manual edit, a chat edit, a tailoring run, even a restore
-— records an append-only **resume version**. Open the version history on any
-resume to diff two versions or restore one; nothing is ever lost, and nothing
-is one-way. Old variants you no longer target aren't deleted either — they're
-archived, still there when an unusual role calls for one.
+Every change — a manual edit, a chat edit, a tailoring run, even a restore —
+saves a **resume version**. Open a resume's history to compare two versions or
+restore one; nothing is ever lost. Old resumes you no longer use are archived,
+not deleted.
 
 ### Tell it how you sound — once
 
-A **persona** is durable context about you as a candidate: vision, strengths,
-goals, working style, how your writing should read. Set it once in Profile
-(or have it drafted from your Career KB, reviewed and saved by you) and every
-generated document — tailoring, cover letters, screening answers — is written
-in that voice, instead of you re-explaining it in every prompt. It shapes tone
-and emphasis only; it is never a source of new factual claims.
+A **persona** describes you as a candidate: vision, strengths, goals, working
+style, how your writing should sound. Set it once in Profile (or have it drafted
+from your career record, then review and save it), and every generated document
+uses that voice. It shapes tone and emphasis only — never facts.
 
 ### Health Report — is this resume sound at all?
 
-![A job-independent grade, and what each defect is costing you](docs/assets/health-report.png)
+![A grade for the resume on its own, and what each problem is costing you](docs/assets/health-report.png)
 
-A gap needs a job. A **Health Report** does not: it is the deterministic,
-job-independent check on one resume — parseability, dates, evidence quality,
-format gates — and a failing fatal gate **blocks** tailoring outright, because
-tailoring reorders an already-healthy document and cannot repair a broken one.
-Run it per base resume, and overrule a finding deliberately (with a reason on the
-record) if you disagree.
+A gap needs a job. A **Health Report** doesn't: it checks one resume on its own —
+can it be read by application systems, are the dates right, is the evidence
+strong, is the format sound. A serious problem **blocks** tailoring, because
+tailoring can't fix a broken resume. You can overrule a finding, with a reason
+on record.
 
 ### Templates you actually own
 
-![LaTeX and Typst templates, compiled locally](docs/assets/templates.png)
+![LaTeX and Typst templates, built on your computer](docs/assets/templates.png)
 
-How many resume templates have you changed in your lifetime? For most people
-the honest answer is one or two — because in a Word or hand-written LaTeX file,
-a redesign means rebuilding the document. Here it stops being a life decision:
-two engines, both compiled locally — **LaTeX** (pdflatex) and **Typst** — and a
-template carries its own default formatting, layered under per-resume and
-per-application overrides, so the same content renders through any of them
-without being touched. TeX is optional: where `pdflatex` is missing
-(a host-run backend, later the desktop app) a LaTeX template renders through
-the first ready Typst template and the response, the gallery and the setup
-checklist say so — nothing is substituted silently. Switching is a matter of taste and a button. Start from a bundled design, adapt one you liked
-elsewhere, or write your own source in the built-in editor — validation compiles
-a sample PDF and runs the same parse-certification gate either way, so a template
-that would break an ATS parser never reaches `ready`. *(The web "New template"
-flow starts from a LaTeX starter today; Typst templates are created through the
-API or MCP.)*
+Switching templates is a button, not a rebuild: your content stays the same and
+renders through any template. There are two kinds — **LaTeX** and **Typst** —
+both built on your computer. Start from a bundled design, adapt one you liked,
+or write your own in the built-in editor; every template is test-built and
+checked so that one that application systems couldn't read never goes live.
+*(The web "New template" button starts from a LaTeX template; Typst templates
+are created through the API or MCP.)*
 
 ### Quick Tailor, when you already know the answer
 
-The guided gap workflow is the careful path. **Quick Tailor** is the other one:
-one request against a job, resolutions planned from your saved preferences,
-tailored and rendered without opening a tailoring session at all. The honesty
-rule survives it — a keyword the engine found no evidence for can still only land
-in your skills list, never as an invented experience bullet.
+The guided gap process is the careful path. **Quick Tailor** is the fast one:
+one click against a job, answers taken from your saved preferences, tailored and
+rendered in one go. The honesty rule still holds — a skill Maestro found no
+evidence for can only go in your skills list, never into an invented bullet.
 
 ### The browser extension
 
@@ -804,60 +511,47 @@ in your skills list, never as an invented experience bullet.
      "Liberty Hill, TX" experience location reviewed and accepted by the owner.
      1000px / 10fps / 64 colors, 2.6 MB; re-encode any replacement to match. -->
 
-![The extension widget on a job page](docs/assets/extension.gif)
+![The extension on a job page](docs/assets/extension.gif)
 
-A browser side panel: capture a posting from the board you are already
-reading, and fill application forms from your **Autofill Profile**. Its telemetry
-records *which* fields it met and whether they filled — label, kind, rule,
-outcome, host — and structurally cannot store a value you typed: the models have
-no value column.
+A side panel in Chrome: save a posting from the job board you're reading, score
+it, and fill application forms from your **Autofill Profile**. It never fills
+signatures, passwords or government IDs, only ticks agreement boxes if you turn
+that on in Profile, and never submits.
 
-The other half of that sentence is worth saying out loud, because "no values" is
-not the same as "nothing personal". Each row keeps the **hostname** and a
-first-seen timestamp, so what the table accumulates is a record of *which
-companies you applied to, and when*. Three things bound it: it never leaves your
-machine (the extension posts to your own backend on `localhost` — there is no
-collector at the other end, in this repo or anywhere else), capture is a toggle
-in the widget's `⋯` menu, and **Analytics → Autofill coverage → Clear data**
-deletes all of it, whenever you want, without turning capture off.
-
-Signatures, credentials and government IDs sit on a deny-list that both write
-paths consult: never filled, at any setting. Your application's own agreement
-boxes — consent checkboxes, acknowledgements, attestations, terms — are refused
-by default and ticked only if you turn on the standing consent in Profile, beside
-the EEO opt-in; even then the fill only ticks a box you decided to tick, and
-never submits. Neither family is ever shown to a model.
+To improve form filling, it records *which* fields it met and whether they
+filled — never what you typed. That data stays on your computer, but it does
+show which companies you applied to and when. Clear it any time in **Analytics
+→ Autofill coverage → Clear data**. There's no on/off switch in the panel yet;
+[`extension/README.md`](extension/README.md) shows how to turn it off.
 
 ### Analytics: what the market keeps asking you for
 
-![The market you are actually applying into, quantified](docs/assets/analytics.png)
+![The market you are actually applying into, in numbers](docs/assets/analytics.png)
 
-Every captured job builds a picture of the market you are actually applying into
-— top skills, a skill heatmap, role mix over time — filterable by role category,
-seniority level and employment type. The one that pays is **Gaps & growth**: gap
-frequency re-keyed to the engine's canonical skill form and classified against
-your Career KB as *missing*, *already in your KB* or *already on a resume*.
-Frequent and missing is the next thing worth learning; frequent and already in
-your KB is something you have and keep forgetting to say. **Resume fit** shows
-the measured base → tailored lift per base resume, so you can see whether
-tailoring is doing anything at all for you.
+Every saved job adds to a picture of the market you're applying into — top
+skills, a skill heatmap, role mix over time — filterable by role, level and job
+type. The most useful view is **Gaps & growth**: skills jobs keep asking for,
+marked as *missing*, *in your career record* or *already on a resume*. Frequent
+and missing is worth learning next; frequent and already in your record is
+something you have but keep forgetting to say. **Resume fit** shows the score
+before and after tailoring for each base resume, so you can see whether
+tailoring is helping.
 
 ### Hunt with the agent you already use
 
 ![A scheduled hunt reporting back — and stopping at your review](docs/assets/hunt-digest.png)
 
-The MCP server is more than a remote control. `get_job_search_brief` hands an
-agent a composed brief — your stated preferences, your work-authorization answers
-verbatim, and the guardrails you configured — so a Claude or Codex session can go
-find postings on whatever boards it can read, capture them, score them against
-your bases and hand back a ranked shortlist. There is no board integration to be
-locked into and no scraper to break: the agent reads what you would have read.
+Your AI assistant can job-hunt for you. It reads your job preferences from the
+app, finds postings on whatever sites it can use, saves and scores them against
+your resumes, and hands back a ranked shortlist for you to review. There's no
+job-board integration to be locked into.
 
-My own daily prompts — a scheduled hunt and two apply-session
-variants, with the personal parts turned into placeholders — are in
-[`docs/agent-prompts/`](docs/agent-prompts/) as starting points to adapt.
+Ready-made **`job-hunt`** and **`apply-session`** skills are in
+[`docs/skills/`](docs/skills/) — copy them into your assistant's skills folder
+as-is, or run **`customize-job-skills`** to make them yours or build new ones
+(batch tailoring, referral-first hunting, a weekly digest) from your own data.
 
-### Going all the way: the proposal ledger
+### Going all the way: agent applications
 
 <!-- TODO(P4) proposals.png — the /proposals view: the Captured/Proposed/
      Accepted/Approved/Submitted counters, the daily cap chip, and the queued
@@ -867,135 +561,93 @@ variants, with the personal parts turned into placeholders — are in
      to a file; drop it at docs/assets/proposals.png and uncomment: -->
 <!-- ![What the hunt found. Submitting still needs your approval.](docs/assets/proposals.png) -->
 
-Maestro CS can carry an application to the point of submission. This is the
-part to read rather than skim.
+Maestro CS can take an application right up to the submit button. Read this
+part rather than skim it.
 
-A hunted job becomes an **application proposal** in a staged lane: tailored,
-rendered and filled without interrupting you at every page — and then it stops.
-You triage proposals on `/proposals` (accept or decline, in bulk if you want),
-and **apply runs execute only proposals you accepted**. Nothing is ever executed
-*from* the web app: filling and submitting happen only inside a live agent
-session holding a browser, and the final consent lives in that same session, one
-turn before the click — recorded as an append-only consent event and metered by a
-daily cap you set.
+A job your agent finds becomes a **proposal**. You review proposals on the
+**Agent Proposals** page and accept or decline them (in bulk if you like). An
+apply run then works **only the ones you accepted**: it tailors, renders and
+fills each application in a live agent session with a browser, asks you only
+for information the app doesn't have (and hands you logins, CAPTCHAs and
+signatures), and **waits for your yes before each submit**. Nothing is ever submitted from the web app itself, and a daily limit
+you set caps how many submissions are possible.
 
-Be clear-eyed about what that consent event is: the agent writes it when it
-calls the tool, so it records *that the agent said you agreed*. It gives you
-attribution after the fact and a hard ceiling on volume; it is not a lock a
-prompt-injected agent cannot pick. The lane is built to be run while you watch
-it. An agent can
-never self-certify: marking a proposal submitted needs a receipt or your own
-explicit attestation, and a submit click that cannot be verified ends terminally
-as `submission_uncertain` — never retried, never re-clicked.
+Be clear about what that yes is: the agent records it, so the record shows *that
+the agent said you agreed*. It's an audit trail and a volume limit, not a lock
+that a manipulated agent can't pick — so run it while you're watching. An agent
+can't mark an application submitted without a confirmation or your own word,
+and if it can't tell whether a submit went through, it stops and never clicks
+again.
 
-**The risks, plainly.** Letting an agent read job pages and drive a browser for
-you means three real exposures:
+**The risks, plainly.** Letting an agent read job pages and drive a browser
+means three real exposures:
 
-- **Prompt injection.** A job posting is untrusted text. Text inside one can try
-  to instruct the agent reading it.
-- **Unverified employers.** A hunted posting is not a vetted one, and an
-  application carries your contact details and work history to whoever posted it.
+- **Manipulated instructions.** A job posting is untrusted text; text hidden in
+  one can try to instruct the agent reading it.
+- **Unverified employers.** A posting the agent found isn't a vetted one, and an
+  application sends your contact details and history to whoever posted it.
 - **Bot detection.** Some employers filter applications that look automated, and
-  we will not help you hide — no stealth automation, no CAPTCHA bypass, no
-  headless submitting. See [Project Scope](CONTRIBUTING.md#2-project-scope).
+  we won't help you hide it — no stealth browsing, no CAPTCHA bypass, no
+  invisible (headless) submitting. See
+  [Project Scope](CONTRIBUTING.md#2-project-scope).
 
-The consent gate exists because those risks are real and unfixable, not because
-they are hypothetical. Use the lane on jobs you have looked at yourself.
-Everything it does is written down — proposals, consent events, and the evidence
-files behind them.
+Use it on jobs you have looked at yourself. Everything is written down —
+proposals, your yes, and the screenshots behind them.
 
 ### Leave with everything
 
-`career.md` is your whole career record as one deterministic Markdown file — no
-model involved — downloadable from the Career KB page or over MCP. Tailored
-output is filed the same way: every application render lands in
-`applications/` in its own company-and-role-named folder holding the typeset
-source and the exact PDF, so going back to verify what you actually sent is
-opening a folder, not querying a database. The database is yours, the resumes
-are files on your disk, and nothing about leaving is engineered to be
-difficult, because nothing here was ever monetized by making it so.
+`career.md` is your whole career record as one Markdown file — downloadable from
+the Career KB page or over MCP. Every application's PDF is saved in
+`applications/`, in a folder named after the company and role, so checking what
+you actually sent is opening a folder. Your data is yours, in files on your
+disk, and nothing about leaving is made difficult.
 
 ---
 
-## Execution Modes & Docker Compose Stack
+## Where your files live
 
-### 🚀 Production Mode (Default & Fast)
-```bash
-docker compose up --build
-```
-By default, `docker-compose.yml` deploys an optimized production build of the Next.js frontend (`npm start`) and standalone Uvicorn server. In this mode, page shell serving latencies drop from dev-time lags down to **1–2 milliseconds**, providing an instantaneous UX.
+Everything stays inside the folder you cloned. These are yours, never uploaded,
+and ignored by git:
 
-### 🛠️ Development Mode (Hot Reload)
-```bash
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
-```
-To avoid imposing development compilation latency (which can run up to ~1600ms on cold routes) on everyday usage, dev-mode bind mounts and live reload servers are isolated in `docker-compose.dev.yml`. Including this file bind-mounts your local `backend/app` (`uvicorn --reload`) and `frontend/` (`npm run dev`) for instantaneous code iteration.
+- `data/` — the database (`maestro_cs.sqlite3`). Deleting it deletes every
+  application, resume version and career-record entry.
+- `base_resumes/` — your base resumes and their PDFs (plus one demo resume).
+- `applications/` — every application's PDF and source, one folder per company
+  and role.
+- `settings/` — your profile, persona and autofill details.
+- `kb_documents/` — supporting documents you added to your career record.
+- `exports/` — downloads such as `career.md`.
+- `backups/` — database backups made by updates.
+- `logs/` — the app's logs.
 
-### 📊 LLM Tracing (Langfuse, Optional)
-
-Every LLM invocation — prompt, latency, token count, and a feature tag for Q&A,
-JD extraction and tailoring — can be sent to a [Langfuse](https://langfuse.com)
-instance **you** already run, self-hosted or Cloud. All three variables are
-required, and — deliberately — **the compose stack does not forward them**:
-traces contain your prompts, i.e. your resume text, and a stale key pair
-passed through silently would ship that to a third party. To trace, run the
-backend process yourself (outside compose) with:
-
-```bash
-LANGFUSE_PUBLIC_KEY=pk-lf-...
-LANGFUSE_SECRET_KEY=sk-lf-...
-LANGFUSE_HOST=https://your-langfuse-host
-```
-
-Tracing is off whenever any of the three is unset, and the app never requires
-it. Point it at a host you control.
-
-> We deliberately do **not** ship a Langfuse stack in this repo. Bundling one
-> meant shipping a compose file with fixed default secrets (session-signing keys
-> published in a public repository are forgeable), for a component most users
-> never enable. Running your own is a documented, one-command Langfuse install
-> and keeps its secrets yours.
-
----
-
-## Project & Runtime Directory Layout
-
-- `backend/` — FastAPI application, business logic, deterministic ATS engine, database models, and dual-engine PDF renderers (typst + LaTeX).
-- `frontend/` — Next.js 16 (App Router) modern reactive interface with Base UI / Tailwind styling.
-- `extension/` — Companion Chrome extension: a side panel for one-click JD ingestion from job boards and automated form filling. See [`extension/README.md`](extension/README.md).
-- `settings/` — local profile, persona, memory, and autofill runtime state, including `autofill.json`; ignored except for `.gitkeep`, and personal data must never be committed.
-- `base_resumes/` — local runtime repository for base resume JSON payloads and rendered tex/pdf output; ignored except for `.gitkeep` and exactly one synthetic `example.json` shipped as the demo seed. Personal resumes must never be committed.
-- `kb_documents/` — local runtime data directory for supporting knowledge base files and docs; ignored except for `.gitkeep`, and personal documents must never be committed.
-- `exports/` — derived, downloadable personal artifacts such as `career.md`; ignored except for `.gitkeep` and mounted into the backend container.
-- `applications/` — Rendered per-application artifacts organized by company and role (tex, typ, pdf).
-- `logs/` — Application runtime execution logs.
-- `data/` — The database file `maestro_cs.sqlite3` and its `-wal`/`-shm` sidecars; ignored except for `.gitkeep`, and mounted into the backend container. Deleting this directory deletes every application, resume version and KB entry.
-- `docker-compose.yml` — Core production architecture (backend, frontend; postgres one more release, for the import).
-- `docker-compose.dev.yml` — Development overrides for bind mounts and hot real-time reload.
+The code lives in `backend/` (the server), `frontend/` (the web app) and
+`extension/` (the Chrome extension); contributors start at
+[`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ---
 
 ## Community, Documentation & Contributing
 
 **Contribution fast-path:** docs fixes, resume/cover-letter templates and
-extension job-board adapters go straight to PR — no issue needed. Features and
-architecture changes: open an issue first. Every PR gets a human first
-response within 48 hours, and every PR is read by a human — we don't merge
-AI slop.
+extension job-board adapters go straight to a pull request — no issue needed.
+Features and bigger changes: open an issue first. Every pull request gets a
+human reply within 48 hours and is read by a human — we don't merge AI slop.
 
-This is an early release. If something doesn't work, please say so — a clear
-bug report is a contribution, and one of the most valuable kinds right now.
+This is an early release. If something doesn't work, please say so — a clear bug
+report is one of the most valuable contributions right now.
 
-- **Project site:** [maestrocareerstudio.com](https://maestrocareerstudio.com) — the tour in five minutes: what it does, what it costs to run, and how the pieces fit, before you clone anything.
-- **Getting Started guide:** [`docs/GETTING_STARTED.md`](docs/GETTING_STARTED.md) — installation to first tailored PDF, step by step, plus the in-app tour and the agent-assisted setup path.
-- **Known Issues & Where Help Is Wanted:** [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md) — **Start here.** What is solid, what is rough, what is a deliberate limitation rather than a bug, and the specific gaps worth picking up. This project is early and that file says so plainly.
-- **Architecture Source of Truth:** [`SYSTEM.md`](SYSTEM.md) — The living reference for how the system fits together, at the repo root so every agent tool finds it. It holds the orientation tier — layout, architecture, invariants, environment, workflow, and the three ledgers — and indexes the reference tier it delegates to: per-entity lifecycles in [`docs/entities/`](docs/entities/) and UI rules in [`docs/frontend-conventions.md`](docs/frontend-conventions.md). Meant to be searched rather than read front to back; the code cites its section numbers and invariant ids directly. Read the relevant part before altering behaviour.
-- **Domain Glossary:** [`UBIQUITOUS_LANGUAGE.md`](UBIQUITOUS_LANGUAGE.md) — The vocabulary of the domain, and the words to avoid. Worth ten minutes before your first issue or PR.
-- **Contributing Guide:** [`CONTRIBUTING.md`](CONTRIBUTING.md) — Learn how to run automated unit tests, set up dev virtual environments, and file deprecation rows.
-- **Changelog:** [`CHANGELOG.md`](CHANGELOG.md) — What changed in each release, and the versioning policy stated honestly for 0.x: before 1.0 a breaking change may land in a minor version, and every one is listed under a `### Breaking changes` heading. Read that heading before [updating](#updating); migrations never go backwards.
-- **Release Checklist (maintainers):** [`docs/RELEASING.md`](docs/RELEASING.md) — How a release is cut, and the two standing constraints it creates: published history is append-only, and `main` stays compatible with the latest released images.
-- **Security & Privacy Policy:** [`SECURITY.md`](SECURITY.md) — Understand localhost network guidelines and vulnerability reporting protocols.
-- **Open Source License:** [`LICENSE`](LICENSE) — Apache License 2.0, plus [`NOTICE`](NOTICE).
+- **Project site:** [maestrocareerstudio.com](https://maestrocareerstudio.com) — a five-minute tour before you clone anything.
+- **Getting Started:** [`docs/GETTING_STARTED.md`](docs/GETTING_STARTED.md) — install to first tailored PDF, step by step.
+- **Updating:** [`docs/UPDATING.md`](docs/UPDATING.md) — updating by hand, backups, rolling back.
+- **Known issues:** [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md) — what works well, what's rough, and what's a deliberate limitation.
+- **Skills for your AI assistant:** [`docs/skills/`](docs/skills/) — job hunt, apply run, and a skill that builds your own.
+- **Contributing:** [`CONTRIBUTING.md`](CONTRIBUTING.md) — development setup, tests, development mode and LLM tracing, and where help is wanted.
+- **How it's built:** [`SYSTEM.md`](SYSTEM.md) — the architecture reference for contributors and coding agents; read the relevant part before changing behaviour.
+- **Glossary:** [`UBIQUITOUS_LANGUAGE.md`](UBIQUITOUS_LANGUAGE.md) — the project's vocabulary, worth ten minutes before your first contribution.
+- **Changelog:** [`CHANGELOG.md`](CHANGELOG.md) — what changed in each release; read any **Breaking changes** heading before [updating](#updating).
+- **Releasing (maintainers):** [`docs/RELEASING.md`](docs/RELEASING.md).
+- **Security & privacy:** [`SECURITY.md`](SECURITY.md) — the local-only rule and how to report a vulnerability.
+- **License:** [`LICENSE`](LICENSE) — Apache License 2.0, plus [`NOTICE`](NOTICE).
 
 ---
 
@@ -1003,43 +655,40 @@ bug report is a contribution, and one of the most valuable kinds right now.
 
 Maestro CS is free software under the **[Apache License 2.0](LICENSE)**.
 
-**You may use this commercially, and you do not have to publish your changes.**
-Fork it, embed it in a product, run a modified copy as a hosted service, ship it
-inside something closed — all permitted. Apache 2.0 asks three things in return:
-keep the license and copyright notices, state what you changed in the files you
-changed, and pass along the [`NOTICE`](NOTICE) file with any redistribution.
-It also carries an **explicit patent grant** from every contributor, which is
-the main practical reason to prefer it over MIT or BSD.
+**You may use it commercially, and you don't have to publish your changes.**
+Fork it, build it into a product, run a modified copy as a hosted service — all
+permitted. Apache 2.0 asks three things in return: keep the license and
+copyright notices, say what you changed in the files you changed, and pass along
+the [`NOTICE`](NOTICE) file with any redistribution. It also includes an
+**explicit patent grant** from every contributor, the main practical reason to
+prefer it over MIT or BSD.
 
-Attribution for the third-party pieces we redistribute — the LaTeX resume
-template, the XCharter font, the embedding model — is in
-[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md), and that file is part of
-what the license asks you to carry forward.
+Credits for the third-party pieces we redistribute — the LaTeX resume template,
+the XCharter font, the scoring model — are in
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md), which the license also asks
+you to carry forward.
 
-**No CLA.** Contributions are licensed to the project under Apache 2.0 by
-[section 5](LICENSE) of the license itself, which is all this project needs.
-There is nothing to sign. Commercial questions: **ajey@seinun.com**.
+**No CLA.** Contributions are licensed under Apache 2.0 by
+[section 5](LICENSE) of the license itself; there's nothing to sign. Commercial
+questions: **ajey@seinun.com**.
 
 ---
 
 ## Credits & Citation
 
-Maestro CS stands on other people's work. The full inventory — bundled
-sources, the embedding model, the document toolchain, and every runtime
-dependency with its license — is in
+Maestro CS stands on other people's work. The full list — bundled sources, the
+scoring model, the PDF tools, and every dependency with its license — is in
 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md). The ones that shape the
 product most:
 
 - **[Jake's Resume](https://github.com/jakegut/resume)** by Jake Gutierrez (MIT)
-  — the LaTeX resume and cover-letter templates are adapted from it, including
-  the `glyphtounicode` ATS-parseability approach.
+  — the LaTeX resume and cover-letter templates are adapted from it.
 - **[BAAI/bge-small-en-v1.5](https://huggingface.co/BAAI/bge-small-en-v1.5)**
-  (MIT) — the pinned embedding model behind the ATS engine's semantic layer,
-  running locally on CPU. Please cite
-  [C-Pack (arXiv:2309.07597)](https://arxiv.org/abs/2309.07597) if you build on
-  the scoring engine.
+  (MIT) — the small model behind the match score, running on your computer.
+  Please cite [C-Pack (arXiv:2309.07597)](https://arxiv.org/abs/2309.07597) if
+  you build on the scoring engine.
 - **[TeX Live](https://tug.org/texlive/)** and
-  **[Typst](https://github.com/typst/typst)** — the two render engines, with
+  **[Typst](https://github.com/typst/typst)** — the two PDF engines, with
   XCharter and FontAwesome 5 for type and icons.
 - **[Next.js](https://nextjs.org)**, **[React](https://react.dev)**,
   **[Tailwind CSS](https://tailwindcss.com)**, **[Base UI](https://base-ui.com)**,
@@ -1047,43 +696,37 @@ product most:
   **[FastAPI](https://fastapi.tiangolo.com)**, **[SQLAlchemy](https://www.sqlalchemy.org)**,
   and **[fastembed](https://github.com/qdrant/fastembed)** carry the rest.
 
-If you use Maestro CS in published work, cite it via
-[`CITATION.cff`](CITATION.cff) — GitHub turns that file into a **"Cite this
-repository"** button with ready-made APA and BibTeX. Or take the BibTeX
-directly:
-
-```bibtex
-@software{maestro_career_studio,
-  author   = {Loganathan, Ajey Dhayashanker},
-  title    = {Maestro Career Studio: a local-first, evidence-backed
-              job-application copilot},
-  url      = {https://github.com/seinun-ai/maestro-career-studio},
-  license  = {Apache-2.0},
-  year     = {2026}
-}
-```
+Using Maestro CS in published work? Cite it with GitHub's **"Cite this
+repository"** button, which reads [`CITATION.cff`](CITATION.cff).
 
 ---
 
 ## Troubleshooting & Common Questions
 
-**`pdflatex` or `typst` compilation failures on boot:**
-Seeds that need TeX on a host without it are left as drafts with "requires TeX" and validate on the next boot after TeX is installed. `GET /api/setup/status` → `engines` says what the backend found; `MAESTRO_CS_PDFLATEX` names a binary outside the usual locations.
+**"port is already allocated" when starting:**
+Another program is using a port the app needs. Change `FRONTEND_HOST_PORT`
+(3000) or `BACKEND_HOST_PORT` (8001) in `.env` and run `docker compose up -d`
+again (`lsof -i :<port>` shows what's using it). If you change the backend port,
+the browser extension needs the new address too — see
+[`extension/README.md`](extension/README.md). While this release still runs the
+old Postgres service for the import, `POSTGRES_HOST_PORT` (55432) is a third.
 
-**"port is already allocated" on `docker compose up`:**
-Two host ports matter day to day, and both are overridable in `.env` — `BACKEND_HOST_PORT` (8001) and `FRONTEND_HOST_PORT` (3000). `POSTGRES_HOST_PORT` (55432) is the third for this one release only, while the old Postgres service stands by for the import; it is 55432 rather than 5432 so it cannot collide with a PostgreSQL you installed yourself. Find the culprit with `lsof -i :<port>`, change the number, and run `docker compose up -d` again. Only the host side of the mapping moves; the containers keep their internal ports, so nothing else needs editing — except the browser extension's backend/app URLs, which you set under `⋯` on its card. The backend default is already chosen to dodge the usual collision: 8001 rather than 8000 (uvicorn, Django and `python -m http.server` all default to 8000).
-
-**The app came up empty after updating:**
-Your data is not gone. This release moves the database into `data/maestro_cs.sqlite3`, and the first boot after the update imports your old Postgres database into it — which needs the `postgres` service reachable at that moment. Check `docker compose logs backend | grep -i legacy` to see what it said, leave the `POSTGRES_*` values in `.env` exactly as they were, and run `docker compose up -d` again. Nothing was deleted: the old Docker volume still holds every row. `./scripts/update.sh --check` prints a `database:` line saying which store is live.
-
-**The backend refuses to start, saying "Importing the legacy Postgres database failed" or that the source "cannot be reached":**
-That refusal is deliberate — booting on an empty file would leave your data stranded behind a database that has since seeded itself with demo rows. Nothing was deleted, and the import retries on the next boot. The log lines above the message name the cause; fix it and restart. To skip the import entirely, comment the `LEGACY_DATABASE_URL` line out of `docker-compose.yml` (after that, `./scripts/update.sh` needs `--force` to get past its dirty-tree check).
+**AI features fail with "401 Unauthorized" or quota errors:**
+Check the key in **Settings → Models** and press **Test**. If you put the key in
+`.env` after starting, run `docker compose restart backend`.
 
 **"database is locked":**
-SQLite takes one writer at a time, and something else is holding the file. Most often that is a tool on your host that opened `data/maestro_cs.sqlite3` while the stack was running — don't: stop the stack first, or read a snapshot from `backups/` instead. It also happens while a long write is in flight: a Career KB consolidation, or the first-boot import, holds the write lock for its whole run, so give it a few minutes and don't drive the app during one. If your filesystem cannot support WAL at all (some network and bind mounts), set `SQLITE_JOURNAL_MODE=DELETE` in `.env` and restart — Compose passes it through.
+The database takes one writer at a time. Usually a program on your computer
+opened `data/maestro_cs.sqlite3` while the app was running — stop the app first,
+or open a copy from `backups/` instead. It also happens during long writes (like
+building your career record); give it a few minutes. On a drive that doesn't
+support the default mode (some network drives), set
+`SQLITE_JOURNAL_MODE=DELETE` in `.env` and restart.
 
-**LLM calls returning 401 Unauthorized or Quota errors:**
-The backend imports `OPENAI_API_KEY` and `GEMINI_API_KEY` at process initialization. If you modify `.env` after containers start, run `docker compose restart backend`. Settings status indicators confirm real-time detection of configured keys.
+**PDFs fail to build:**
+LaTeX templates need TeX, which the app's Docker image includes. If you run the
+backend outside Docker without TeX, LaTeX templates build through a Typst
+template instead and the app says so.
 
-**Frontend reporting API connection errors outside Compose:**
-In standard Docker usage, internal frontend requests route over the private bridge network (`http://backend:8000`). If testing `npm run dev` natively on your host machine, export `NEXT_PUBLIC_API_URL=http://127.0.0.1:8001` or rely on defaults in `frontend/lib/api.ts`.
+**The app came up empty after updating, or won't start after updating:**
+Your data isn't gone — see [Troubleshooting in `docs/UPDATING.md`](docs/UPDATING.md#troubleshooting).

@@ -53,7 +53,7 @@ enabled = false
 BACKEND_URL = "http://localhost:8001"
 MAESTRO_CS_MCP_PROFILE = "career"
 
-# Job search + propose. Capture and score only — never auto-apply.
+# Job search: capture, score and propose — never apply.
 [mcp_servers.maestro-career-studio-hunt]
 command = "<PYTHON>"
 args = ["-m", "mcp_server.server"]
