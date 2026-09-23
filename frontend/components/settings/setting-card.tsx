@@ -42,6 +42,7 @@ export type SettingQuery<T> = {
   data: T | undefined;
   isError: boolean;
   isFetching: boolean;
+  fetchStatus: "fetching" | "paused" | "idle";
   /** How many times the query has failed; a refetch does not reset it. */
   errorUpdateCount: number;
   error: unknown;

@@ -9,6 +9,7 @@ import { FullscreenEditorPage } from "@/components/resume-editor/fullscreen-edit
 import { LoadErrorState } from "@/components/load-error-state";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useRefreshFailedNotice } from "@/hooks/use-refresh-failed-notice";
 import { apiFetch } from "@/lib/api";
 import { isLoadFailure } from "@/lib/query-state";
 import type { BaseResumeDetail } from "@/lib/types";
@@ -23,6 +24,8 @@ export default function BaseResumeEditorPage({
     queryKey: ["base-resumes", slug],
     queryFn: () => apiFetch<BaseResumeDetail>(`/api/base-resumes/${slug}`),
   });
+
+  useRefreshFailedNotice(query, "this resume");
 
   if (isLoadFailure(query)) {
     return (

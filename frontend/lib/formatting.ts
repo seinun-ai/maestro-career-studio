@@ -228,6 +228,8 @@ export type BaselineLayerQuery<T> = {
   data: T | undefined;
   isError: boolean;
   isFetching: boolean;
+  /** "paused" is a fetch too: a retry waits there while the tab is hidden. */
+  fetchStatus: "fetching" | "paused" | "idle";
   /** How many times the query has failed; a refetch does not reset it. */
   errorUpdateCount: number;
   refetch: () => unknown;
@@ -251,7 +253,7 @@ export function unloadedLayer(
   query: Omit<BaselineLayerQuery<unknown>, "data">,
   what: string,
 ): Exclude<FormattingBaseline, { status: "ready" }> {
-  return query.isError || (query.isFetching && query.errorUpdateCount > 0)
+  return query.isError || (query.fetchStatus !== "idle" && query.errorUpdateCount > 0)
     ? {
         status: "error",
         what,

@@ -9,6 +9,7 @@ import { TailoredResumeStudio } from "@/components/resume-editor/tailored-resume
 import { LoadErrorState } from "@/components/load-error-state";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useRefreshFailedNotice } from "@/hooks/use-refresh-failed-notice";
 import { apiFetch } from "@/lib/api";
 import { isLoadFailure } from "@/lib/query-state";
 import type { ApplicationDetail } from "@/lib/types";
@@ -30,6 +31,8 @@ export default function ApplicationTailoredResumePage({
     queryKey: ["application", id],
     queryFn: () => apiFetch<ApplicationDetail>(`/api/applications/${id}`),
   });
+
+  useRefreshFailedNotice(query, "this tailored resume");
 
   if (isLoadFailure(query)) {
     return (

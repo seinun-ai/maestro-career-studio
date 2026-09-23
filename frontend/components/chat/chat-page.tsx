@@ -125,6 +125,9 @@ export function ChatPage() {
   // explicit "No pinned resume".
   const [pinResolved, setPinResolved] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  const railRef = useRef<HTMLElement>(null);
+  const showRailRef = useRef<HTMLButtonElement>(null);
+  const historyButtonRef = useRef<HTMLButtonElement>(null);
   const sendingRef = useRef(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -151,6 +154,16 @@ export function ChatPage() {
     observer.observe(root);
     return () => observer.disconnect();
   }, []);
+  // Where the Sheet returns focus: its opener, unless the column has grown wide
+  // enough for the rail (Cmd+B collapsing the sidebar closes the Sheet through
+  // the observer above). The opener is `display: none` by then, and focusing it
+  // dropped focus to <body>. The rail holds the same list, so focus continues
+  // there (its first control, New chat), or on its edge button when collapsed.
+  const historySheetFinalFocus = () => {
+    const opener = historyButtonRef.current;
+    if (opener && opener.getClientRects().length > 0) return opener;
+    return railRef.current ?? showRailRef.current;
+  };
 
   // Event-handler-only (it reads the ref). Selections are paths into the resume
   // they were picked from, so a real switch drops them; an unchanged pin is a
@@ -432,6 +445,11 @@ export function ChatPage() {
   // under a greeting; once messages exist it docks to the bottom.
   const hasThread = (detail.data?.messages.length ?? 0) > 0 || !!streaming;
 
+  const pinnedName =
+    target === NO_TARGET
+      ? "No pinned resume"
+      : (resumes.data?.find((r) => r.slug === target)?.display_name ?? target);
+
   const composer = (
     <div className="bg-card focus-within:border-ring rounded-3xl border p-2 shadow-sm transition-[border-color,box-shadow] duration-150 focus-within:shadow-md">
       {(selections.length > 0 || attachments.length > 0) && (
@@ -492,17 +510,18 @@ export function ChatPage() {
           value={target}
           onValueChange={(v) => applyTarget(v ?? NO_TARGET)}
         >
+          {/* max-w-48 + truncate: a long résumé name grew this trigger past the
+              column at 768 (the row does not wrap). The full name stays in the
+              DOM for screen readers and in the title for a pointer. */}
           <SelectTrigger
             size="sm"
             aria-label="Pinned resume"
-            className="text-muted-foreground h-8 w-auto gap-1.5 rounded-full border-0 bg-transparent px-2.5 text-xs shadow-none hover:bg-muted"
+            title={pinnedName}
+            className="text-muted-foreground h-8 w-auto max-w-48 min-w-0 gap-1.5 rounded-full border-0 bg-transparent px-2.5 text-xs shadow-none hover:bg-muted"
           >
             <FileText className="size-3.5" />
-            <SelectValue>
-              {target === NO_TARGET
-                ? "No pinned resume"
-                : (resumes.data?.find((r) => r.slug === target)?.display_name ??
-                  target)}
+            <SelectValue className="min-w-0">
+              <span className="truncate">{pinnedName}</span>
             </SelectValue>
           </SelectTrigger>
           <SelectContent>
@@ -556,7 +575,7 @@ export function ChatPage() {
           mismatch). The Sheet is a portal, so its open state is independent
           React state — a ResizeObserver closes it when the rail can show. */}
       {!historyCollapsed && (
-        <aside className="hidden w-64 shrink-0 flex-col gap-3 @2xl/chat:flex">
+        <aside ref={railRef} className="hidden w-64 shrink-0 flex-col gap-3 @2xl/chat:flex">
           <div className="flex items-center gap-1">
             <Button
               variant="tonal"
@@ -585,6 +604,7 @@ export function ChatPage() {
       )}
       {historyCollapsed && (
         <button
+          ref={showRailRef}
           type="button"
           aria-label="Show chat history"
           onClick={() => setHistoryCollapsed(false)}
@@ -602,6 +622,7 @@ export function ChatPage() {
             is the only way back to past sessions. */}
         <div className="flex items-center pb-2 @2xl/chat:hidden">
           <Button
+            ref={historyButtonRef}
             variant="ghost"
             size="icon-sm"
             aria-label="Chat history"
@@ -719,6 +740,7 @@ export function ChatPage() {
           side="left"
           className="w-72 p-0 sm:max-w-72"
           showCloseButton={false}
+          finalFocus={historySheetFinalFocus}
         >
           <SheetHeader className="sr-only">
             <SheetTitle>Chat history</SheetTitle>

@@ -4,7 +4,9 @@ import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { HeartPulse } from "lucide-react";
 
+import { RetryChip } from "@/components/retry-chip";
 import { GRADE_STYLES } from "@/components/resume-health/finding-cards";
+import { useLoadFailureError } from "@/hooks/use-last-seen";
 import { ApiError, apiFetch, getLintReport } from "@/lib/api";
 import { fatalGateFailed } from "@/lib/health-report";
 import { cn } from "@/lib/utils";
@@ -48,13 +50,17 @@ export function HealthBadges({
   /** Href of the full-page health report. */
   reportHref: string;
 }) {
-  const { data, isError, error, isFetching, refetch } = useQuery({
+  const report = useQuery({
     queryKey: ["resume-lint", kind, resumeKey],
     queryFn: () =>
       apiFetch<LintReport>(`/api/resume-lint/${kind}/${resumeKey}`),
     retry: false,
     staleTime: 60_000,
   });
+  const data = report.data;
+  // Remembered through a retry, so the chip stays mounted (and focused) while
+  // it runs; a 404 is "never analyzed", the Check health link below.
+  const failure = useLoadFailureError(report);
 
   // Both states share the same bordered pill so health reads as one control in
   // the header row rather than loose chips floating between the buttons — it
@@ -63,20 +69,17 @@ export function HealthBadges({
     "hover:bg-muted/60 hover:border-border flex items-center gap-1.5 rounded-md " +
     "border border-transparent bg-muted/40 px-2 py-1 transition-colors";
 
-  const missing =
-    error instanceof ApiError && error.status === 404;
-  if (isError && !missing) {
+  const missing = failure instanceof ApiError && failure.status === 404;
+  if (failure != null && !missing) {
     return (
-      <button
-        type="button"
+      <RetryChip
         className={`${shell} text-muted-foreground hover:text-foreground text-sm`}
         title="Couldn't check this resume's health. Try again."
-        onClick={() => void refetch()}
-        disabled={isFetching}
-      >
-        <HeartPulse className="size-4" />
-        {isFetching ? "Retrying…" : "Couldn't check health"}
-      </button>
+        icon={<HeartPulse className="size-4" />}
+        label="Couldn't check health"
+        retrying={report.isFetching}
+        onRetry={() => void report.refetch()}
+      />
     );
   }
 

@@ -125,7 +125,7 @@ export default function JobDetailPage({
   const confirm = useConfirm();
   const proposalActions = useProposalActions();
 
-  const { data, isLoading, isError, error, isFetching, refetch, errorUpdateCount } = useQuery({
+  const { data, isLoading, isError, error, isFetching, fetchStatus, refetch, errorUpdateCount } = useQuery({
     queryKey: ["job-detail", id],
     queryFn: () => apiFetch<JobDetail>(`/api/jobs/${id}/detail`),
   });
@@ -213,7 +213,7 @@ export default function JobDetailPage({
 
   // Before the loading gate: `data` stays undefined after a failure, so the
   // gate below would hold the skeleton on screen for good.
-  if (isLoadFailure({ data, isError, isFetching, errorUpdateCount })) {
+  if (isLoadFailure({ data, isError, fetchStatus, errorUpdateCount })) {
     return (
       <main className="mx-auto w-full max-w-6xl flex-1 space-y-4 p-6">
         <LoadErrorState

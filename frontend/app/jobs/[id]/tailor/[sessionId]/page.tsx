@@ -1,7 +1,8 @@
 "use client";
 
 import { use, useEffect, useRef, useState } from "react";
-import { useLastSeen } from "@/hooks/use-last-seen";
+import { useLoadFailureError } from "@/hooks/use-last-seen";
+import { useRefreshFailedNotice } from "@/hooks/use-refresh-failed-notice";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -43,7 +44,6 @@ import {
   saveResolutions,
   tailorSession,
 } from "@/lib/api";
-import { isLoadFailure } from "@/lib/query-state";
 import {
   baseResumeLabel,
   isAutoResolved,
@@ -479,14 +479,16 @@ export default function TailorSessionPage({
     tailor.mutate(true);
   };
 
+  useRefreshFailedNotice(session, "this tailoring session");
+
   // --- Render branches --------------------------------------------------------
   // A 404 is "this session is gone", not a generic failure. Remember the error:
-  // a refetch clears it, and the not-found copy would otherwise flash away.
-  const sessionError = useLastSeen(session.error);
-  const sessionMissing =
-    isLoadFailure(session) && sessionError instanceof ApiError && sessionError.status === 404;
+  // a refetch clears it, and the not-found copy would otherwise flash away. A
+  // revisit's first render has none yet and shows the skeleton instead.
+  const sessionError = useLoadFailureError(session);
+  const sessionMissing = sessionError instanceof ApiError && sessionError.status === 404;
 
-  if (isLoadFailure(session)) {
+  if (sessionError != null) {
     if (sessionMissing) {
       return (
         <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col items-center justify-center gap-3 p-6 text-center">

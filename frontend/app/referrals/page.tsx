@@ -86,8 +86,10 @@ export default function ReferralsPage() {
   // render is what the compiler forbids.
   const focusAddAfterCreate = useRef(false);
   const rows = referrals.data ?? [];
-  const populated =
-    !referrals.isLoading && !referrals.isError && rows.length > 0;
+  // Rows held are rows shown, even when a later refresh failed: that failure
+  // keeps the loaded table (isLoadFailure), and `!isError` here swapped it for
+  // the first-referral form, as if there were none.
+  const populated = rows.length > 0;
 
   // One create for the page, not one per form: the dialog's form unmounts on
   // close, and a create it owned kept running with nothing left to say so. A

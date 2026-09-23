@@ -18,7 +18,7 @@ import {
 } from "@/components/resume-health/finding-cards";
 import { BatchAskDialog } from "@/components/resume-health/batch-ask-dialog";
 import { LoadErrorState } from "@/components/load-error-state";
-import { useLastSeen } from "@/hooks/use-last-seen";
+import { useLoadFailureError } from "@/hooks/use-last-seen";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { IconButton } from "@/components/icon-button";
@@ -180,10 +180,12 @@ export function HealthReportPage({
     onError: (err: Error) => toast.error(err.message),
   });
 
-  const reportError = useLastSeen(report.error);
-  const noReportYet =
-    isLoadFailure(report) && reportError instanceof ApiError && reportError.status === 404;
-  const reportFailed = isLoadFailure(report) && !noReportYet;
+  // The report's failure, remembered through a retry: a 404 is "No health report yet", anything
+  // else is the error with its Try again. Both render ahead of the loading gate below, because a
+  // retry puts a data-less query back into `isLoading` and the skeleton unmounted the focused button.
+  const reportError = useLoadFailureError(report);
+  const noReportYet = reportError instanceof ApiError && reportError.status === 404;
+  const reportFailed = reportError != null && !noReportYet;
 
   useEffect(() => {
     if (!report.data || priorScore.current) return;
@@ -241,7 +243,7 @@ export function HealthReportPage({
     );
   }
 
-  if (baseQuery.isLoading || report.isLoading) {
+  if (baseQuery.isLoading || (report.isLoading && reportError == null)) {
     return (
       <PageShell>
         <Skeleton className="h-10 w-60" />

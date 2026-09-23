@@ -1,7 +1,7 @@
 "use client";
 
 import { use, useEffect } from "react";
-import { useLastSeen } from "@/hooks/use-last-seen";
+import { useLoadFailureError } from "@/hooks/use-last-seen";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
@@ -11,7 +11,6 @@ import { LoadErrorState } from "@/components/load-error-state";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ApiError, apiFetch } from "@/lib/api";
-import { isLoadFailure } from "@/lib/query-state";
 import type { ApplicationDetail } from "@/lib/types";
 
 export default function ApplicationDetailRedirect({
@@ -33,9 +32,11 @@ export default function ApplicationDetailRedirect({
     if (query.data?.job_id) router.replace(`/jobs/${query.data.job_id}`);
   }, [query.data?.job_id, router]);
 
-  const lastError = useLastSeen(query.error);
+  // Remembered through a retry, and null on the first render of a revisit, so
+  // "no longer exists" never flashes the generic error (useLoadFailureError).
+  const lastError = useLoadFailureError(query);
 
-  if (isLoadFailure(query)) {
+  if (lastError != null) {
     const missing = lastError instanceof ApiError && lastError.status === 404;
     if (missing) {
       return (

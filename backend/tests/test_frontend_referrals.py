@@ -49,10 +49,10 @@ def test_a_failed_fetch_is_the_shared_error_state():
 
 def test_header_action_shows_only_beside_the_table():
     flat = _squash(_ROOT)
-    assert (
-        "const populated = !referrals.isLoading && !referrals.isError && rows.length > 0;"
-        in flat
-    )
+    # Rows held are shown even after a failed refresh (it keeps the loaded
+    # table); a data-less failure or load has no rows, so no header action.
+    assert "const rows = referrals.data ?? [];" in flat
+    assert "const populated = rows.length > 0;" in flat
     assert "actions={ populated ? ( <Button ref={addButtonRef}" in flat
     assert ") : undefined }" in flat
 

@@ -304,14 +304,24 @@
   tracker showed the new-user onboarding card to whoever's pipeline failed to
   load. Branch on `isLoadFailure(query)` (`lib/query-state.ts`), never on
   `query.isError`: a refetch resets a data-less query to pending with a null
-  error, which unmounted the error state and its focused Try again. The failure
-  branch precedes the loading gate. Render `LoadErrorState`
-  (`components/load-error-state.tsx`), which always offers the retry, keeps its
-  last detail while retrying, and hands focus to the nearest `tabIndex={-1}`
-  ancestor (or the main area) on recovery. A caller that treats a status as a
-  state (a missing application, no health report yet) reads the error through
-  `useLastSeen`. Empty means "there is nothing here", this means "we could not
-  find out". Pinned by `tests/test_frontend_query_error_states.py`.
+  error, which unmounted the error state and its focused Try again, and a retry
+  paused while the tab is hidden reads `isFetching` false, so the predicate
+  reads `fetchStatus`. Only a query with NO data is a load failure: a failed
+  background refetch keeps the content already on screen (swapping a loaded
+  editor for the error lost the text typed since its save), and nothing
+  downstream may read `isError` to hide held data (Referrals showed its
+  first-referral form). The editor routes say a refresh failed with
+  `useRefreshFailedNotice` (a toast). The failure branch precedes the loading
+  gate. Render `LoadErrorState` (`components/load-error-state.tsx`), which
+  always offers the retry, keeps its last detail while retrying, and hands
+  focus to the nearest `tabIndex={-1}` ancestor (or the main area) on recovery;
+  a header chip's retry is `RetryChip`, the same rules at chip size. A caller
+  that treats a status as a state (a missing application or tailoring session,
+  no health report yet) branches on `useLoadFailureError(query)`: the error,
+  remembered through a retry, and null on the first render of a revisit, so a
+  404 shows the skeleton for that moment, never "Couldn't load… Retrying…".
+  Empty means "there is nothing here", this means "we could not find out".
+  Pinned by `tests/test_frontend_query_error_states.py`.
 - **Entry lists own their open card; cards never own it.** Editors map with
   `key={i}`, so React reconciles by POSITION and an uncontrolled `EditableCard`
   keeps edit state against a SLOT — move or delete an entry and a different one
@@ -588,7 +598,10 @@
   rail shows only when the chat column's content box is at least 42rem
   (`@container/chat`, not a viewport breakpoint: at 768 the pinned sidebar
   leaves the column 480px); below that, History opens the same list in a
-  Sheet, which a `ResizeObserver` closes when the rail returns.
+  Sheet, which a `ResizeObserver` closes when the rail returns. Closing it
+  then returns focus to the rail (or its edge button), since the History
+  button is hidden. The composer row does not wrap, so the pinned-résumé
+  trigger caps at `max-w-48` and truncates its name (full name in `title`).
 - **Settings vs Profile — which page does a new setting go on?**
   `/settings` is how the SYSTEM behaves (API keys, models, quick-tailor
   permissions, auto-apply guardrails, agent hints, prompts, appearance).

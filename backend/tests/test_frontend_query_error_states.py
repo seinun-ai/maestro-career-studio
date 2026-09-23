@@ -44,6 +44,7 @@ _ERROR_BRANCH = re.compile(
     r"|if \(error\)"
     r"|!error\b"
     r"|isLoadFailure\("
+    r"|useLoadFailureError\("
 )
 
 # (relpath, empty-state marker that must NOT be reachable on a failed fetch).
@@ -193,11 +194,10 @@ def test_application_detail_distinguishes_missing_from_retryable():
     assert "This application no longer exists." in source
     assert "LoadErrorState" in source
     assert "status === 404" in source
-    assert "useLastSeen(query.error)" in source
-    assert source.index("if (isLoadFailure(query))") < source.index(
+    assert source.index("if (lastError != null) {") < source.index(
         'title="Couldn\'t load this application."'
     )
-    assert source.index("if (isLoadFailure(query))") < source.index(
+    assert source.index("if (lastError != null) {") < source.index(
         "This application no longer exists."
     )
 
@@ -224,6 +224,40 @@ _LOAD_ERROR_CALLERS = sorted(
 )
 
 
+# Each caller's failure BRANCH, exactly: a file-level `"isLoadFailure(" in src`
+# stayed green with one of two branches in a file reverted to `.isError`. The
+# 404-as-state callers read the remembered error instead (pinned below).
+_FAILURE_BRANCHES = {
+    "app/referrals/page.tsx": "{isLoadFailure(referrals) ? (",
+    "app/base-resumes/page.tsx": "{isLoadFailure(resumes) ? (",
+    "app/profile/page.tsx": "{isLoadFailure(setupStatus) ? (",
+    "app/applications/page.tsx": "const loadFailed = isLoadFailure(apps) || isLoadFailure(savedJobs);",
+    "app/applications/[id]/page.tsx": "if (lastError != null) {",
+    "app/templates/page.tsx": "{isLoadFailure(templates) ? (",
+    "app/jobs/[id]/page.tsx": "if (isLoadFailure({ data, isError, fetchStatus, errorUpdateCount })) {",
+    "components/qa-tab.tsx": "{isLoadFailure({ data: entries, isError, fetchStatus, errorUpdateCount }) ? (",
+    "components/ats-score-panel.tsx": "if (isLoadFailure(scores)) {",
+    "components/settings/setting-card.tsx": "const loadFailed = queries.some((q) => isLoadFailure(q));",
+    "components/career/first-run-import-card.tsx": "if (isLoadFailure(entities)) {",
+    "components/resume-health/health-report-page.tsx": "if (isLoadFailure(baseQuery)) {",
+    "components/chat/chat-page.tsx": "{sessionId !== null && isLoadFailure(detail) ? (",
+    "components/setup/getting-started-card.tsx": "if (isLoadFailure(setupStatus)) {",
+    "components/proposals/proposals-section.tsx": "if (isLoadFailure({ data, isError, fetchStatus, errorUpdateCount })) {",
+    "components/proposals/proposal-agent-panel.tsx": "if (isLoadFailure({ data, isError, fetchStatus, errorUpdateCount })) {",
+    "app/base-resumes/[slug]/page.tsx": "if (isLoadFailure(query)) {",
+    "app/applications/[id]/resume/page.tsx": "if (isLoadFailure(query)) {",
+    "app/templates/[id]/page.tsx": "if (isLoadFailure(tq)) {",
+    "app/jobs/[id]/tailor/[sessionId]/page.tsx": "if (sessionError != null) {",
+}
+
+
+def test_every_load_error_caller_has_a_pinned_failure_branch():
+    unpinned = set(_LOAD_ERROR_CALLERS) - set(_FAILURE_BRANCHES) - {
+        "components/resume-editor/formatting-panel.tsx"
+    }
+    assert not unpinned, f"add the failure branch of {sorted(unpinned)} to _FAILURE_BRANCHES"
+
+
 @pytest.mark.parametrize("relpath", _LOAD_ERROR_CALLERS)
 def test_a_retry_keeps_the_error_mounted(relpath: str):
     src = (_FRONTEND / relpath).read_text()
@@ -232,7 +266,7 @@ def test_a_retry_keeps_the_error_mounted(relpath: str):
         # test_frontend_focus.py. The panel does not call isLoadFailure itself.
         assert "baseline.retrying" in src
         return
-    assert "isLoadFailure(" in src
+    assert _FAILURE_BRANCHES[relpath] in src
     assert not re.search(r"\.error as Error\)\.message", src), (
         "a retry clears `error`: use ?."
     )
@@ -266,11 +300,42 @@ def test_load_error_state_hands_off_focus_and_keeps_its_words():
     assert "focusableWhenDisabled" in src
 
 
-def test_a_404_stays_that_state_while_it_refetches():
-    application = (_FRONTEND / "app/applications/[id]/page.tsx").read_text()
-    health = (_FRONTEND / "components/resume-health/health-report-page.tsx").read_text()
-    assert "useLastSeen(query.error)" in application
-    assert "useLastSeen(report.error)" in health
+# A 404-as-state reads the REMEMBERED error (`useLoadFailureError`): a retry
+# clears `query.error`, and a revisit's first render has none yet, so reading
+# `query.error` flashed "Couldn't load… Retrying…" over the 404 wording.
+def test_a_missing_application_reads_the_remembered_error():
+    src = (_FRONTEND / "app/applications/[id]/page.tsx").read_text()
+    assert "const lastError = useLoadFailureError(query);" in src
+    assert "const missing = lastError instanceof ApiError && lastError.status === 404;" in src
+
+
+def test_no_health_report_yet_reads_the_remembered_error_ahead_of_the_skeleton():
+    src = (_FRONTEND / "components/resume-health/health-report-page.tsx").read_text()
+    assert "const reportError = useLoadFailureError(report);" in src
+    assert "const noReportYet = reportError instanceof ApiError && reportError.status === 404;" in src
+    assert "const reportFailed = reportError != null && !noReportYet;" in src
+    # A retry puts the report back into isLoading; the failure and the 404
+    # state must win over the skeleton, or Try again unmounts mid-press.
+    assert "if (baseQuery.isLoading || (report.isLoading && reportError == null)) {" in src
+
+
+def test_a_missing_tailoring_session_reads_the_remembered_error():
+    src = (_FRONTEND / "app/jobs/[id]/tailor/[sessionId]/page.tsx").read_text()
+    assert "const sessionError = useLoadFailureError(session);" in src
+    assert "sessionError instanceof ApiError && sessionError.status === 404;" in src
+
+
+def test_the_remembered_error_is_null_until_one_was_seen():
+    hook = (_FRONTEND / "hooks/use-last-seen.ts").read_text()
+    body = hook[hook.index("export function useLoadFailureError(") :]
+    assert "const error = useLastSeen(query.error);" in body
+    assert "return isLoadFailure(query) ? (error ?? null) : null;" in body
+
+
+def test_load_error_state_shows_the_remembered_detail():
+    src = (_FRONTEND / "components/load-error-state.tsx").read_text()
+    assert "{shownDetail ?? " in src
+    assert "{detail ?? " not in src
 
 
 _ROUTE_ERRORS = [
@@ -286,4 +351,54 @@ def test_a_route_level_error_can_retry(relpath: str):
     src = (_FRONTEND / relpath).read_text()
     assert "<LoadErrorState" in src
     assert "onRetry=" in src
-    assert "isLoadFailure(" in src
+    assert _FAILURE_BRANCHES[relpath] in src
+
+
+# The two hand-rolled header retries (health grade, KB sync pill) used a native
+# `disabled` and unmounted on retry, dropping focus to <body>. They share
+# RetryChip: LoadErrorState's rules at chip size.
+def test_retry_chip_stays_focusable_and_hands_off_focus():
+    chip = (_FRONTEND / "components/retry-chip.tsx").read_text()
+    assert "useFocusHandoff(ref);" in chip
+    assert "aria-disabled={retrying || undefined}" in chip
+    assert "if (!retrying) onRetry();" in chip
+    assert "disabled=" not in chip.replace("aria-disabled=", "")
+
+
+_CHIP_BRANCHES = [
+    ("components/resume-health/health-badges.tsx", "if (failure != null && !missing) {"),
+    ("components/kb-sync-pill.tsx", "if (isLoadFailure(query)) {"),
+]
+
+
+@pytest.mark.parametrize("relpath,branch", _CHIP_BRANCHES)
+def test_a_header_chip_retry_keeps_the_chip_mounted(relpath: str, branch: str):
+    src = (_FRONTEND / relpath).read_text()
+    assert "<RetryChip" in src[src.index(branch) :][:200]
+
+
+def test_the_health_chip_reads_a_404_from_the_remembered_error():
+    src = (_FRONTEND / "components/resume-health/health-badges.tsx").read_text()
+    assert "const failure = useLoadFailureError(report);" in src
+    assert "const missing = failure instanceof ApiError && failure.status === 404;" in src
+
+
+# A failed BACKGROUND refetch keeps the loaded editor (isLoadFailure is false
+# while data is held); the editor routes say so with a toast instead.
+_EDITOR_ROUTES = [
+    ("app/base-resumes/[slug]/page.tsx", 'useRefreshFailedNotice(query, "this resume");'),
+    ("app/applications/[id]/resume/page.tsx", 'useRefreshFailedNotice(query, "this tailored resume");'),
+    ("app/templates/[id]/page.tsx", 'useRefreshFailedNotice(tq, "this template");'),
+    ("app/jobs/[id]/tailor/[sessionId]/page.tsx", 'useRefreshFailedNotice(session, "this tailoring session");'),
+]
+
+
+@pytest.mark.parametrize("relpath,call", _EDITOR_ROUTES)
+def test_an_editor_reports_a_failed_refresh_without_leaving(relpath: str, call: str):
+    assert call in (_FRONTEND / relpath).read_text()
+
+
+def test_the_refresh_notice_fires_only_over_loaded_data():
+    hook = (_FRONTEND / "hooks/use-refresh-failed-notice.ts").read_text()
+    assert "query.isError && query.data !== undefined ? query.errorUpdatedAt : 0" in hook
+    assert "if (!failedAt) return;" in hook

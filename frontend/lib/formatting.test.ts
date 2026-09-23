@@ -64,7 +64,7 @@ const templateLayer: FormattingBaseline = {
   values: { ...FORMATTING_DEFAULTS, font_size: 11 },
   supportedKeys: ["font_size"],
 };
-const pending = { data: undefined, isError: false, isFetching: true, errorUpdateCount: 0, refetch: () => {} };
+const pending = { data: undefined, isError: false, isFetching: true, fetchStatus: "fetching" as const, errorUpdateCount: 0, refetch: () => {} };
 
 test("a layer with no data is loading until its query fails, then an error with a retry", () => {
   assert.deepEqual(unloadedLayer(pending, "the template defaults"), {
@@ -73,7 +73,7 @@ test("a layer with no data is loading until its query fails, then an error with 
   });
   let refetched = 0;
   const failed = unloadedLayer(
-    { isError: true, isFetching: false, errorUpdateCount: 1, refetch: () => refetched++ },
+    { isError: true, isFetching: false, fetchStatus: "idle" as const, errorUpdateCount: 1, refetch: () => refetched++ },
     "the template defaults",
   );
   assert.equal(failed.status, "error");
@@ -96,7 +96,7 @@ test("the base layer in flight keeps the baseline loading, so no edit is diffed 
 });
 
 test("a failed layer is an error, whichever layer failed and whatever the other is doing", () => {
-  const failed = { ...pending, isError: true, isFetching: false, errorUpdateCount: 1 };
+  const failed = { ...pending, isError: true, isFetching: false, fetchStatus: "idle" as const, errorUpdateCount: 1 };
   assert.equal(overlayBaseline(templateLayer, failed, "base").status, "error");
   assert.equal(overlayBaseline({ status: "loading", what: "t" }, failed, "base").status, "error");
   const templateFailed = unloadedLayer({ ...failed }, "the template defaults");
@@ -107,7 +107,7 @@ test("a failed layer is an error, whichever layer failed and whatever the other 
 
 test("a stored override equal to the template layer survives once the base layer is in", () => {
   // The application stores font_size 11 over a base of 10 (template: 11).
-  const base = { ...pending, isFetching: false, data: { formatting: { font_size: 10 } } };
+  const base = { ...pending, isFetching: false, fetchStatus: "idle" as const, data: { formatting: { font_size: 10 } } };
   const full = overlayBaseline(templateLayer, base, "base");
   assert.equal(full.status, "ready");
   if (full.status !== "ready") return;
@@ -120,6 +120,6 @@ test("a stored override equal to the template layer survives once the base layer
 });
 
 test("data already held stays ready through a failed background refetch", () => {
-  const stale = { data: { formatting: null }, isError: true, isFetching: false, errorUpdateCount: 1, refetch: () => {} };
+  const stale = { data: { formatting: null }, isError: true, isFetching: false, fetchStatus: "idle" as const, errorUpdateCount: 1, refetch: () => {} };
   assert.equal(overlayBaseline(templateLayer, stale, "base").status, "ready");
 });

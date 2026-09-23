@@ -186,7 +186,7 @@ function filterProposals(
 }
 
 export function ProposalsSection() {
-  const { data, isLoading, isError, error, isFetching, refetch, errorUpdateCount } = useQuery({
+  const { data, isLoading, isError, error, isFetching, fetchStatus, refetch, errorUpdateCount } = useQuery({
     queryKey: PROPOSALS_KEY,
     queryFn: () =>
       apiFetch<ProposalListResponse>("/api/proposals?limit=500"),
@@ -359,7 +359,7 @@ export function ProposalsSection() {
     actions.bulk.isPending ||
     actions.remove.isPending;
 
-  if (isLoadFailure({ data, isError, isFetching, errorUpdateCount })) {
+  if (isLoadFailure({ data, isError, fetchStatus, errorUpdateCount })) {
     return (
       <div className="flex flex-col gap-5">
         <FunnelStrip />

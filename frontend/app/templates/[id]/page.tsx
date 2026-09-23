@@ -20,6 +20,7 @@ import { LoadErrorState } from "@/components/load-error-state";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useRefreshFailedNotice } from "@/hooks/use-refresh-failed-notice";
 import { apiFetch, apiUrlForBrowserPdf } from "@/lib/api";
 import { isLoadFailure } from "@/lib/query-state";
 import { FORMATTING_DEFAULTS, type ResumeFormatting } from "@/lib/formatting";
@@ -179,6 +180,8 @@ export default function TemplateEditorPage() {
     },
     onError: (err: Error) => toast.error(err.message),
   });
+
+  useRefreshFailedNotice(tq, "this template");
 
   if (isLoadFailure(tq)) {
     return (

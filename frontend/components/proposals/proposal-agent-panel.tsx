@@ -26,13 +26,13 @@ import type { ProposalDetail } from "@/lib/types";
  * in JobExtractedFields. Do not duplicate them here.
  */
 export function ProposalAgentPanel({ proposalId }: { proposalId: string }) {
-  const { data, isLoading, isError, error, isFetching, refetch, errorUpdateCount } = useQuery({
+  const { data, isLoading, isError, error, isFetching, fetchStatus, refetch, errorUpdateCount } = useQuery({
     queryKey: ["proposal", proposalId],
     queryFn: () =>
       apiFetch<ProposalDetail>(`/api/proposals/${proposalId}`),
   });
 
-  if (isLoadFailure({ data, isError, isFetching, errorUpdateCount })) {
+  if (isLoadFailure({ data, isError, fetchStatus, errorUpdateCount })) {
     return (
       <Card>
         <CardHeader className="pb-2">
