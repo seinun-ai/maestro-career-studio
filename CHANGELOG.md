@@ -17,16 +17,18 @@ with the qualification that version 0 actually carries:
 - **Migrations only run forward.** The backend applies `alembic upgrade head` at
   boot. Downgrade functions exist in the migration files but have never been a
   supported path — rolling back means the old git ref, the old images, and the
-  dump `scripts/update.sh` took before it started, together. The
-  [README's Updating section](README.md#updating) has that recipe.
+  backup `scripts/update.sh` took before it started, together.
+  [`docs/UPDATING.md`](docs/UPDATING.md#rolling-back) has that recipe.
 - **Patch releases (`0.1.1`) never change the schema or the `.env` contract.**
   They are safe to take without reading anything.
 
-Version numbers appear in four places that must agree: the git tag (`v0.2.0`),
-`backend/pyproject.toml`, `extension/manifest.json`, and `CITATION.cff`. The
-published image tag is the same version with the leading `v` removed (`0.2.0`).
+Version numbers appear in seven places that must agree — the git tag (`v0.2.0`)
+and six files listed in [`docs/RELEASING.md`](docs/RELEASING.md). The published
+image tag is the same version with the leading `v` removed (`0.2.0`).
 
 ## [Unreleased]
+
+## [0.4.0] — 2026-09-23
 
 ### Breaking changes
 
