@@ -36,7 +36,18 @@
   the referral careers URL's `text-blue-600` had no dark variant and read
   3.77:1 on the dark page. `test_underlined_links_take_a_colour_role` refuses a
   palette `text-*` in any underlined class, and the referral link is measured on
-  the page, a card and a hovered or selected row in both modes. **Selected
+  the page, a card and a hovered or selected row in both modes. **Palette
+  text is measured wherever it is written.** A -600 shade is not text in light
+  mode (emerald-600 read 3.42:1 and amber-600 2.98:1 on the page): plain text
+  is -700 with a `dark:` -400, and text on its own palette tint is -800 where
+  -700 falls short (amber-700 on `amber-500/10` read 4.38:1 on the page, and
+  the grade chips, version-source chips and diff rows sat under it too).
+  `test_every_palette_text_meets_aa_on_page_card_and_popover` computes every
+  class string that sets a palette `text-*`, over its tint, on the page, a card
+  and a popover in both modes (an icon, a class with `size-N`, at 3:1); text
+  that sits on a hovered row, a selected history row or the thumbnail's chip
+  is measured there too (`test_placed_palette_text_meets_aa_where_it_sits`).
+  **Selected
   in a set** (a toggle, filter chip, or segment) is `tonal` plus a leading
   `Check` plus `aria-pressed` (health-report filters, Review changes,
   SourceToggle, the proposals filter, the zoom presets, employment types,
@@ -540,8 +551,16 @@
     career item, a base résumé's Delete), `/new`'s Extract job and Quick
     capture's From document, each dimmed on
     `data-disabled`. A text field a submit would disable goes `readOnly`
-    instead (New career item's). From document opens one file picker per
+    instead (New career item's, and the Role dialog's picker while its pick
+    saves: `RolePicker`'s `readOnly` keeps the list shut and its own
+    Backspace and Enter from committing). From document opens one file picker per
     gesture: a double click's second click (`event.detail > 1`) is ignored.
+  - `RolePicker` refuses Base UI's Escape on a CLOSED list
+    (`preventBaseUIHandler`): Base UI clears the value there and swallows the
+    key, so an Esc meant for the Role dialog PATCHed the role to Unknown, left
+    the dialog open and dropped focus while it saved; in New base résumé it
+    cleared the picked role, and on /profile every favored role. Escape only
+    closes; a role is cleared from Clear role or Backspace.
   - A dialog whose opener goes dead returns elsewhere. Demonstrate skill's
     Apply disables its chip ("· done"), so its `finalFocus` is the opener
     while live, else the next skill still to do, else the notes

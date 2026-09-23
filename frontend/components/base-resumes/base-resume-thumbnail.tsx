@@ -42,7 +42,7 @@ export function BaseResumeThumbnail({
           ? {
               label: "Render failed",
               title: `The last render failed, so this preview is the previous version.\n\n${resume.render_error}`,
-              className: "text-amber-600 dark:text-amber-400",
+              className: "text-amber-700 dark:text-amber-400",
             }
           : undefined
       }

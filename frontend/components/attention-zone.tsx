@@ -20,7 +20,7 @@
 
 /** Inline chip for a finding the health report weights above the others. */
 export const ATTENTION_BADGE =
-  "bg-amber-500/10 text-amber-700 dark:text-amber-400";
+  "bg-amber-500/10 text-amber-800 dark:text-amber-400";
 
 /** One label, so the chip and any future copy cannot drift apart. */
 export const ATTENTION_BADGE_LABEL = "weighted higher";

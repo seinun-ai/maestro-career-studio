@@ -135,6 +135,9 @@ type RolePickerBase = {
   "aria-label"?: string;
   className?: string;
   disabled?: boolean;
+  /** While a pick saves: the list stays shut and nothing commits, but unlike
+   *  `disabled` the input keeps focus (a disabled input drops it to <body>). */
+  readOnly?: boolean;
   placeholder?: string;
   /** When set, skip the internal vocabulary fetch (e.g. a parent already has it). */
   roleCategories?: RoleCategory[];
@@ -413,6 +416,19 @@ export function RolePicker(props: RolePickerProps) {
               : "placeholder:text-muted-foreground min-w-40 flex-1 bg-transparent outline-none"
           }
           onKeyDown={(event) => {
+            if (props.readOnly) return;
+            // Base UI clears the value on Escape while the list is closed and
+            // swallows the key, so an Esc meant for an enclosing dialog wiped
+            // the role (a PATCH in the Role dialog) and left the dialog open.
+            // Escape only closes; a role is cleared from its Clear role row or
+            // Backspace.
+            if (
+              event.key === "Escape" &&
+              event.currentTarget.getAttribute("aria-expanded") !== "true"
+            ) {
+              event.preventBaseUIHandler();
+              return;
+            }
             // Backspace-on-empty clears the single selection, matching the
             // chips convention — Base UI's own Backspace handling is also
             // multiple-mode-only, for the same array-shaped reason as above.
@@ -530,6 +546,7 @@ export function RolePicker(props: RolePickerProps) {
         <Combobox.Root<FavoredRole, true>
           multiple
           disabled={props.disabled}
+          readOnly={props.readOnly}
           items={groups}
           value={props.value}
           onValueChange={(next) => commitRoles(next ?? [])}
@@ -556,6 +573,7 @@ export function RolePicker(props: RolePickerProps) {
       ) : (
         <Combobox.Root<FavoredRole, false>
           disabled={props.disabled}
+          readOnly={props.readOnly}
           items={groups}
           value={props.value}
           onValueChange={(next) =>

@@ -40,7 +40,7 @@ function DeltaBar({ label, value }: { label: string; value: number }) {
         <span
           className={cn(
             "text-xs font-medium tabular-nums",
-            positive ? "text-emerald-600" : "text-destructive",
+            positive ? "text-emerald-700 dark:text-emerald-400" : "text-destructive",
           )}
         >
           {positive ? "+" : ""}
@@ -70,7 +70,7 @@ function SkillStateCell({ row }: { row: AtsSkillRow | null }) {
       <span className="inline-flex flex-wrap items-center gap-1.5">
         <Badge
           variant="outline"
-          className="border-emerald-600/40 text-emerald-600"
+          className="border-emerald-600/40 text-emerald-700 dark:text-emerald-400"
         >
           matched
         </Badge>
@@ -209,7 +209,7 @@ export function AtsComparePanel({
           <span
             className={cn(
               "text-sm font-medium",
-              deltaPositive ? "text-emerald-600" : "text-destructive",
+              deltaPositive ? "text-emerald-700 dark:text-emerald-400" : "text-destructive",
             )}
           >
             ({deltaPositive ? "+" : ""}

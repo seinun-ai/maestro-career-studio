@@ -206,7 +206,7 @@ function DocumentStatus({ status }: { status: string }) {
       className={cn(
         "inline-flex h-6 items-center gap-1.5 rounded-full px-2 text-xs font-medium capitalize",
         failed && "bg-destructive/10 text-destructive",
-        minted && "bg-emerald-600/10 text-emerald-700 dark:bg-emerald-400/15 dark:text-emerald-300",
+        minted && "bg-emerald-600/10 text-emerald-800 dark:bg-emerald-400/15 dark:text-emerald-300",
         !failed && !minted && "bg-muted text-muted-foreground",
       )}
     >

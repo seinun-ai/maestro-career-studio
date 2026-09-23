@@ -630,6 +630,18 @@ _TAILWIND = {
     "emerald-600": (0.596, 0.145, 163.225),
     "emerald-700": (0.508, 0.118, 165.612),
     "emerald-800": (0.432, 0.095, 166.913),
+    "amber-100": (0.962, 0.059, 95.617),
+    "amber-200": (0.924, 0.12, 95.746),
+    "amber-900": (0.414, 0.112, 45.904),
+    "amber-950": (0.279, 0.077, 45.635),
+    "blue-100": (0.932, 0.032, 255.585),
+    "blue-800": (0.424, 0.199, 265.638),
+    "blue-900": (0.379, 0.146, 265.522),
+    "slate-400": (0.704, 0.04, 256.788),
+    "slate-500": (0.554, 0.046, 257.417),
+    "slate-600": (0.446, 0.043, 257.281),
+    "violet-500": (0.606, 0.25, 292.717),
+    "violet-800": (0.432, 0.232, 292.759),
 }
 _TAILWIND_THEME = _FRONTEND / "node_modules" / "tailwindcss" / "theme.css"
 
@@ -745,3 +757,94 @@ def test_tailoring_lift_sign_colours_meet_aa_on_the_card(mode):
     for name, fg in (("gain", gain), ("loss", _rgb(t, "destructive"))):
         ratio = _contrast(fg, _rgb(t, "card"))
         assert ratio >= 4.5, f"{mode}: lift {name} on --card is {ratio:.2f}:1"
+
+
+# Raw palette TEXT is measured wherever it is written, ternary branches
+# included: every class string that sets a light palette text colour, over its
+# own tint if it has one, on the page, a card and a popover, in both modes (a
+# class with no dark text keeps its light one, as the browser does). An icon or
+# an icon holder (a class with `size-N`) is non-text: 3:1. The -600 shades read
+# 3.0 to 3.7:1 as text on the light page (emerald-600 3.42, amber-600 2.98), and
+# a tint darkens the page under a -700 (amber-700 on amber-500/10: 4.67 on a
+# card, 4.38 on the page). Plain text is -700 / dark -400, as the lift figure
+# above; text on its own tint is -800 where -700 falls short, as the status
+# chips are.
+_CLASS_LITERALS = re.compile(r'"([^"\n]*)"')
+_LIGHT_TEXT = re.compile(rf"(?<![\w:/-])text-(?:{_PALETTE})-\d+(?![\w/-])")
+_ICON = re.compile(r"(?<![\w-])size-\d")
+
+
+def _palette_texts():
+    for root in ("app", "components"):
+        for path in sorted((_FRONTEND / root).rglob("*.tsx")):
+            for i, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+                for cls in _CLASS_LITERALS.findall(line):
+                    if _LIGHT_TEXT.search(cls):
+                        yield f"{path.relative_to(_FRONTEND)}:{i}", cls
+
+
+_PALETTE_TEXTS = list(_palette_texts())
+
+
+def _surface(t, name):
+    """A token, or a stacked surface: a hovered row's muted/N on a card, or
+    the thumbnail chip's background/90 over the white rendered page."""
+    m = re.fullmatch(r"muted/(\d+) on card", name)
+    if m:
+        return _over(_rgb(t, "muted"), _rgb(t, "card"), int(m.group(1)) / 100)
+    if name == "background/90 on white":
+        return _over(_rgb(t, "background"), (1.0, 1.0, 1.0), 0.9)
+    return _rgb(t, name)
+
+
+def _palette_ratio(mode, classes, under):
+    """Text over its own tint (if any) over `under`; dark falls back to light."""
+    utils = {(bool(d), k): (c, int(p) / 100 if p else 1.0) for d, k, c, p in _CHIP_UTIL.findall(classes)}
+    dark = mode == "dark"
+    text = utils.get((dark, "text")) or utils[(False, "text")]
+    tint = utils.get((dark, "bg")) or utils.get((False, "bg"))
+    fill = _over(_chip_colour(mode, tint[0]), under, tint[1]) if tint else under
+    return _contrast(_chip_colour(mode, text[0]), fill)
+
+
+def test_every_palette_text_is_found():
+    assert len(_PALETTE_TEXTS) >= 75, len(_PALETTE_TEXTS)
+
+
+@pytest.mark.parametrize("mode", list(_MODES))
+def test_every_palette_text_meets_aa_on_page_card_and_popover(mode):
+    t = _MODES[mode]
+    failures = []
+    for where, cls in _PALETTE_TEXTS:
+        floor = 3.0 if _ICON.search(cls) else 4.5
+        for surface in ("background", "card", "popover"):
+            ratio = _palette_ratio(mode, cls, _rgb(t, surface))
+            if ratio < floor:
+                failures.append(f"{where} {cls!r} on --{surface}: {ratio:.2f}:1")
+    assert failures == [], failures
+
+
+# Palette text whose surface is not just the page, a card or a popover: a
+# hovered table or proposal row, a selected version in the history sheet
+# (--accent), the thumbnail's chip over the rendered page.
+_PLACED_TEXT = [
+    ("components/ats-compare-panel.tsx", '"text-emerald-700 dark:text-emerald-400"', ("card",)),
+    ("components/ats-compare-panel.tsx", '"border-emerald-600/40 text-emerald-700 dark:text-emerald-400"', ("card", "muted/50 on card")),
+    ("components/settings/models-section.tsx", '"font-medium text-emerald-700 dark:text-emerald-400"', ("card",)),
+    ("components/proposals/proposals-section.tsx", '"inline-flex items-center gap-1 text-xs text-amber-700 dark:text-amber-400"', ("card", "muted/40 on card")),
+    ("components/proposals/proposals-section.tsx", '"inline-flex items-center rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-800 dark:text-amber-400"', ("card", "muted/40 on card")),
+    ("components/base-resumes/base-resume-thumbnail.tsx", '"text-amber-700 dark:text-amber-400"', ("background/90 on white",)),
+    ("components/resume-versions/version-history-sheet.tsx", '"bg-violet-500/10 text-violet-800 dark:text-violet-400"', ("popover", "accent")),
+    ("components/resume-versions/version-history-sheet.tsx", '"bg-blue-500/10 text-blue-800 dark:text-blue-400"', ("popover", "accent")),
+    ("components/resume-versions/version-history-sheet.tsx", '"bg-amber-500/10 text-amber-800 dark:text-amber-400"', ("popover", "accent")),
+]
+
+
+@pytest.mark.parametrize("mode", list(_MODES))
+@pytest.mark.parametrize("rel,literal,surfaces", _PLACED_TEXT, ids=[f"{r.rsplit('/', 1)[-1]}:{i}" for i, (r, _, _) in enumerate(_PLACED_TEXT)])
+def test_placed_palette_text_meets_aa_where_it_sits(rel, literal, surfaces, mode):
+    assert literal in _read(rel), f"{rel}: {literal} moved; re-measure it"
+    t = _MODES[mode]
+    for surface in surfaces:
+        ratio = _palette_ratio(mode, literal.strip('"'), _surface(t, surface))
+        assert ratio >= 4.5, f"{mode}: {rel} {literal} on {surface} is {ratio:.2f}:1"

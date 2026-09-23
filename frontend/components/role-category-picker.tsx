@@ -156,7 +156,8 @@ export function RoleCategoryPicker({
           }
           save.mutate(next);
         }}
-        disabled={save.isPending || !options}
+        readOnly={save.isPending}
+        disabled={!options}
         className={cn(
           "border-input focus-within:ring-ring flex min-h-9 flex-wrap items-center gap-1.5 rounded-md border bg-transparent px-2 py-1.5 text-sm focus-within:ring-2",
           className,

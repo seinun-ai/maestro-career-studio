@@ -317,7 +317,7 @@ export const COUNT_META: { key: string; label: string; chip: string }[] = [
   {
     key: "critical",
     label: "Critical",
-    chip: "bg-amber-500/10 text-amber-700 dark:text-amber-400",
+    chip: "bg-amber-500/10 text-amber-800 dark:text-amber-400",
   },
   {
     key: "ask",
@@ -334,7 +334,7 @@ export const COUNT_META: { key: string; label: string; chip: string }[] = [
 const TYPE_CHIP: Record<"fix" | "ask", { label: string; chip: string; card: string }> = {
   fix: {
     label: "Fix",
-    chip: "bg-amber-500/10 text-amber-700 dark:text-amber-400",
+    chip: "bg-amber-500/10 text-amber-800 dark:text-amber-400",
     card: "border-amber-500/40",
   },
   ask: {
@@ -345,10 +345,10 @@ const TYPE_CHIP: Record<"fix" | "ask", { label: string; chip: string; card: stri
 };
 
 export const GRADE_STYLES: Record<string, string> = {
-  A: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
+  A: "bg-emerald-500/15 text-emerald-800 dark:text-emerald-400",
   B: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-500",
-  C: "bg-amber-500/15 text-amber-700 dark:text-amber-400",
-  D: "bg-orange-500/15 text-orange-700 dark:text-orange-400",
+  C: "bg-amber-500/15 text-amber-800 dark:text-amber-400",
+  D: "bg-orange-500/15 text-orange-800 dark:text-orange-400",
   F: "bg-destructive/10 text-destructive",
 };
 
@@ -1162,7 +1162,7 @@ function FailedGate({
             "shrink-0 text-xs",
             gate.tier === "fatal"
               ? "bg-destructive/10 text-destructive"
-              : "bg-amber-500/10 text-amber-700 dark:text-amber-400",
+              : "bg-amber-500/10 text-amber-800 dark:text-amber-400",
           )}
         >
           {gate.tier === "fatal" ? "Blocker" : "Serious"}

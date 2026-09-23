@@ -41,7 +41,7 @@ const STATES: { value: KBPointState; label: string; chip: string; dot: string }[
   {
     value: "approved",
     label: "Approved",
-    chip: "bg-emerald-600/10 text-emerald-700 dark:bg-emerald-400/15 dark:text-emerald-300",
+    chip: "bg-emerald-600/10 text-emerald-800 dark:bg-emerald-400/15 dark:text-emerald-300",
     dot: "bg-emerald-600 dark:bg-emerald-400",
   },
   {

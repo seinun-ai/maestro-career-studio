@@ -599,3 +599,35 @@ def test_deleting_a_card_hands_focus_to_the_next_card():
     ) in page
     button = _button_with(_BASE_LIST, "onClick={() => deleteTarget && del.mutate(deleteTarget.slug)}")
     assert "focusableWhenDisabled" in button and "data-disabled:opacity-50" in button
+
+
+# --- The studio's ⋯ → Role dialog ---------------------------------------------
+
+_ROLE_PICKER = _read("components/role-picker.tsx")
+_ROLE_DIALOG = _read("components/role-category-picker.tsx")
+
+
+def test_the_role_picker_stays_focusable_while_its_pick_saves():
+    # The dialog's picker disabled itself while the PATCH ran, and a disabled
+    # input drops focus to <body> with the dialog still open. Mutants: the save
+    # back in `disabled`; `readOnly` not forwarded to either Combobox.Root; the
+    # picker's own Backspace and Enter handlers still committing while it saves.
+    picker = _squash(_ROLE_DIALOG[_ROLE_DIALOG.index("<RolePicker") : _ROLE_DIALOG.index("/>", _ROLE_DIALOG.index("<RolePicker"))])
+    assert "readOnly={save.isPending}" in picker
+    assert "disabled={!options}" in picker
+    roots = re.findall(r"<Combobox\.Root<[^>]*>[^>]*?>", _ROLE_PICKER, re.S)
+    assert len(roots) == 2 and all("readOnly={props.readOnly}" in root for root in roots), roots
+    keys = _squash(_ROLE_PICKER[_ROLE_PICKER.index("onKeyDown={(event) => {") :])
+    assert keys.startswith("onKeyDown={(event) => { if (props.readOnly) return;"), keys[:120]
+
+
+def test_escape_on_a_closed_role_list_never_clears_the_role():
+    # Base UI clears the value on Escape when the list is closed and swallows
+    # the key, so Esc meant for the Role dialog PATCHed the role to Unknown and
+    # left the dialog open (focus on <body> while it saved). A role is cleared
+    # from its Clear role row or Backspace. Mutant: the guard removed.
+    keys = _squash(_ROLE_PICKER[_ROLE_PICKER.index("onKeyDown={(event) => {") :])
+    assert (
+        'if ( event.key === "Escape" && event.currentTarget.getAttribute("aria-expanded") !== "true" ) '
+        "{ event.preventBaseUIHandler(); return; }"
+    ) in keys

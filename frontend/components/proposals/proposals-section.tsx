@@ -760,7 +760,7 @@ function ProposalRow({
                 </span>
                 {job.disqualifying_for_opt ? (
                   <span
-                    className="inline-flex items-center gap-1 text-xs text-amber-600"
+                    className="inline-flex items-center gap-1 text-xs text-amber-700 dark:text-amber-400"
                     title="Extraction flagged this posting as disqualifying for OPT"
                   >
                     <AlertTriangle className="size-3.5" aria-hidden="true" />
@@ -768,7 +768,7 @@ function ProposalRow({
                   </span>
                 ) : null}
                 {isDup ? (
-                  <span className="inline-flex items-center rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400">
+                  <span className="inline-flex items-center rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-800 dark:text-amber-400">
                     possible duplicate
                   </span>
                 ) : null}

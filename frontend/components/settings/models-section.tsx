@@ -301,7 +301,7 @@ function KeyField({
           // Saying WHERE the key lives matters: one saved here beats .env, so
           // a stale in-app key with a blank .env still reads "configured"
           // while every call 401s.
-          <span className="font-medium text-emerald-600">
+          <span className="font-medium text-emerald-700 dark:text-emerald-400">
             {source === "env" ? "Configured · from .env" : "Configured · in-app"}
           </span>
         ) : (

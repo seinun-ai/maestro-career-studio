@@ -31,9 +31,9 @@ const SOURCE_LABELS: Record<ResumeVersionSource, string> = {
 };
 
 const SOURCE_BADGE: Partial<Record<ResumeVersionSource, string>> = {
-  chat: "bg-violet-500/10 text-violet-600 dark:text-violet-400",
-  tailor: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
-  restore: "bg-amber-500/10 text-amber-700 dark:text-amber-400",
+  chat: "bg-violet-500/10 text-violet-800 dark:text-violet-400",
+  tailor: "bg-blue-500/10 text-blue-800 dark:text-blue-400",
+  restore: "bg-amber-500/10 text-amber-800 dark:text-amber-400",
 };
 
 /** Consecutive manual saves collapse into one expandable group (Figma-style). */
