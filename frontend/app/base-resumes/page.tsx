@@ -2,13 +2,14 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { MoreHorizontal } from "lucide-react";
 import { toast } from "sonner";
 
 import { BaseResumeGallery } from "@/components/base-resumes/base-resume-gallery";
 import { FirstRunImportCard } from "@/components/career/first-run-import-card";
 import { LoadErrorState } from "@/components/load-error-state";
+import { useBaseResumes } from "@/hooks/use-base-resume-label";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -43,13 +44,7 @@ export default function BaseResumesListPage() {
   const router = useRouter();
   const qc = useQueryClient();
   const [showArchived, setShowArchived] = useState(false);
-  const resumes = useQuery({
-    queryKey: ["base-resumes", showArchived],
-    queryFn: () =>
-      apiFetch<BaseResumeSummary[]>(
-        `/api/base-resumes${showArchived ? "?include_archived=true" : ""}`,
-      ),
-  });
+  const resumes = useBaseResumes(showArchived);
 
   const [createOpen, setCreateOpen] = useState(false);
 

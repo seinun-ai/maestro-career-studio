@@ -36,9 +36,9 @@ import {
 } from "@/components/ui/select";
 
 import { JobTrackingUrlField } from "@/components/job-tracking-url-field";
+import { useBaseResumeLabel } from "@/hooks/use-base-resume-label";
 import { apiFetch, apiUrlForBrowserPdf } from "@/lib/api";
 import { notifyRenderNote } from "@/lib/render-note";
-import { baseResumeLabel } from "@/lib/types";
 import type { Application, Referral, RenderResult } from "@/lib/types";
 
 function formatDateInput(value: string | null | undefined): string {
@@ -118,7 +118,17 @@ export function ApplicationDetailsMenu({
   jobSourceUrl?: string | null;
 }) {
   const confirm = useConfirm();
+  const baseName = useBaseResumeLabel();
   const [open, setOpen] = useState(false);
+  // Job detail embeds ApplicationRead, which does not carry the joined name.
+  // The detail endpoint does, including after the résumé is archived or deleted.
+  const named = useQuery({
+    queryKey: ["application", app.id],
+    queryFn: () => apiFetch<Application>(`/api/applications/${app.id}`),
+    enabled: open && !app.base_resume_name,
+  });
+  const resumeName =
+    app.base_resume_name || named.data?.base_resume_name || baseName(app.base_resume);
   const { patch, deleteApp } = useApplicationMutations({
     applicationId: app.id,
     jobId,
@@ -193,7 +203,7 @@ export function ApplicationDetailsMenu({
 
           <div className="grid gap-1">
             <span className="text-muted-foreground text-xs">Base resume</span>
-            <span className="text-sm">{baseResumeLabel(app.base_resume)}</span>
+            <span className="text-sm">{resumeName}</span>
           </div>
 
           <div className="grid gap-1.5">

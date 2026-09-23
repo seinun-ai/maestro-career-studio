@@ -55,7 +55,7 @@ _PRESENT = {
     "gaps-server-label": (_GAPS, "row.category_label ?? null"),
     # Label fallback while the catalog loads or fails: the acronym-safe humanizer.
     "picker-fallback": (_PICKER, "return hit ? hit.label : humanizeSlug(key);"),
-    "resume-fallback": ("lib/types.ts", "return humanizeSlug(slug);"),
+    "resume-fallback": ("lib/types.ts", "return name || humanizeSlug(slug);"),
     "humanizer-slash-pair": ("lib/humanize-slug.ts", 'SLASH_PAIRS = new Set(["ai_ml"'),
     # "Needs you" is one object; the KB section is Basics everywhere.
     "needs-decision": (_CHIP, "needs_decision: NEEDS_YOU,"),

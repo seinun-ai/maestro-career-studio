@@ -46,6 +46,7 @@ import {
   serializeFlag,
   useLocalStorageState,
 } from "@/hooks/use-local-storage-state";
+import { useBaseResumes } from "@/hooks/use-base-resume-label";
 import {
   apiFetch,
   createChatSession,
@@ -203,10 +204,7 @@ export function ChatPage() {
     enabled: sessionId !== null,
   });
 
-  const resumes = useQuery({
-    queryKey: ["base-resumes"],
-    queryFn: () => apiFetch<BaseResumeSummary[]>("/api/base-resumes"),
-  });
+  const resumes = useBaseResumes();
 
   const pinned = useQuery({
     queryKey: ["base-resumes", target],

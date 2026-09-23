@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -21,12 +21,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { apiFetch } from "@/lib/api";
+import { useBaseResumes } from "@/hooks/use-base-resume-label";
 import { notifyRenderOutcome } from "@/lib/render-note";
-import type {
-  BaseResumePortProjectResult,
-  BaseResumeSummary,
-} from "@/lib/types";
-import { baseResumeLabel } from "@/lib/types";
+import { baseResumeLabel, type BaseResumePortProjectResult } from "@/lib/types";
 
 export function ProjectPortDialog({
   open,
@@ -44,11 +41,7 @@ export function ProjectPortDialog({
   const qc = useQueryClient();
   const [targetSlug, setTargetSlug] = useState("");
 
-  const resumes = useQuery({
-    queryKey: ["base-resumes"],
-    queryFn: () => apiFetch<BaseResumeSummary[]>("/api/base-resumes"),
-    enabled: open,
-  });
+  const resumes = useBaseResumes();
 
   const targets = useMemo(
     () => (resumes.data ?? []).filter((r) => r.slug !== sourceSlug),
@@ -71,10 +64,10 @@ export function ProjectPortDialog({
       // The port is committed before the target re-renders, so a render
       // failure comes back beside the success, not instead of it.
       notifyRenderOutcome(result, {
-        staleLabel: baseResumeLabel(result.target_slug),
+        staleLabel: baseResumeLabel(result.target_slug, resumes.data),
       });
       toast.success(
-        `Copied to ${baseResumeLabel(result.target_slug)} as archived`,
+        `Copied to ${baseResumeLabel(result.target_slug, resumes.data)} as archived`,
       );
       qc.invalidateQueries({ queryKey: ["base-resumes", result.target_slug] });
       onOpenChange(false);
@@ -116,7 +109,7 @@ export function ProjectPortDialog({
                   const hit = targets.find((r) => r.slug === value);
                   return hit
                     ? (hit.display_name ?? baseResumeLabel(hit.slug))
-                    : baseResumeLabel(String(value ?? ""));
+                    : baseResumeLabel(String(value ?? ""), resumes.data);
                 }}
               </SelectValue>
             </SelectTrigger>

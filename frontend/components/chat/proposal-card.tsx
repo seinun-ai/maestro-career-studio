@@ -6,9 +6,9 @@ import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useBaseResumeLabel } from "@/hooks/use-base-resume-label";
 import { applyResumeEdits, setChatCardState } from "@/lib/api";
 import { notifyRenderNote } from "@/lib/render-note";
-import { baseResumeLabel } from "@/lib/types";
 import type {
   ChatCardState,
   ChatProposal,
@@ -30,6 +30,7 @@ export function ProposalCard({
   cardState?: ChatCardState;
 }) {
   const qc = useQueryClient();
+  const baseName = useBaseResumeLabel();
   const [resolution, setResolution] = useState<"merged" | "discarded" | null>(
     cardState ? (cardState.status === "applied" ? "merged" : "discarded") : null,
   );
@@ -59,7 +60,7 @@ export function ProposalCard({
 
   const targetLabel =
     proposal.target_kind === "base"
-      ? baseResumeLabel(proposal.target_key)
+      ? baseName(proposal.target_key)
       : "tailored resume";
 
   return (

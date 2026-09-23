@@ -682,9 +682,13 @@
   series so the week still sums. Role text on these charts, the filters, the
   heatmap, and the Job market bars comes from `useRoleLabel`, never the slug.
   While the catalog loads, or when its request fails, the label is
-  `humanizeSlug` (`lib/humanize-slug.ts`, also `baseResumeLabel`'s fallback):
+  `humanizeSlug` (`lib/humanize-slug.ts`):
   the key's own words with the catalog's acronyms cased as its labels case
-  them (AI/ML, MLOps, BI, QA, IT), never blank. A new acronym in the catalog
+  them (AI/ML, MLOps, BI, QA, IT), never blank. A résumé is named by
+  `useBaseResumeLabel()` or a row's `display_name` / `base_resume_name`;
+  `humanizeSlug`, through `baseResumeLabel`, is only the loading, failed, or
+  unknown-slug fallback. `tests/test_frontend_plain_words.py` fails on a bare
+  `baseResumeLabel(slug)`. A new acronym in the catalog
   goes in `TOKEN_CASE`; `test_frontend_analytics.py` fails until it does. The
   fit-distribution legend names each resume by `display_name` and draws at
   most the palette's six. Colours follow that order and are never cycled. **The gap sweeps read ONE base per job.** Both

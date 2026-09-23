@@ -5,6 +5,9 @@
 One per (job, base_resume) in practice. Holds `status`, `applied_at`, `notes`,
 `referral_id`, `customized_json` (the tailored draft), `formatting_json`,
 `template_id`, `pdf_path`/`tex_path`/`pdf_pages`/`render_error`, `user_prompt`.
+The list summary and the detail both carry `base_resume_name`, the résumé's
+own name joined from its row (archived and soft-deleted rows included; null
+when the slug has no row).
 
 - **Status vocabulary is backend-owned**: `ALLOWED_STATUSES` in
   `schemas/application.py` = draft, applied, interviewing, offered, accepted,

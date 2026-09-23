@@ -180,6 +180,10 @@ table, deviations, anything queued or deferred, and any concerns.
 | Task | Planned | Did instead | Why (Goal Card line) |
 |---|---|---|---|
 | 3 | Assign `doc` with no cast | Cast `customized_json` to `ResumeLike` at the assignment | The field is `Record<string, unknown>`; tsc rejects it as `ResumeLike`. Pin strings are unchanged. Speak the user's language. |
+| 4 | Name field only on frontend `ApplicationDetail` | Also on `Application`, which `ApplicationDetail` extends | The details menu is typed as `Application`. Speak the user's language. |
+| 4 | Job detail embeds `ApplicationRead`, which stays without the name | The menu loads `GET /api/applications/{id}` when opened if that record has no name | Otherwise a soft-deleted résumé reads as "Ds Base" there. `jobs.py` is outside this lane's files. Speak the user's language. |
+| 4 | Dialog list queries kept `enabled: open` | `useBaseResumes()` takes no enabled flag | Both dialogs mount only while open, so the fetch still starts then. One list query. |
+| 4 | Picker "no engine" sentence in this task's conventions edit | Left for task 7, which changes the picker | Writing it here would describe code this commit does not contain. Conventions change with the code. |
 
 ## Gate results
 
@@ -191,7 +195,16 @@ table, deviations, anything queued or deferred, and any concerns.
 | 3 | `test_frontend_*.py` | 289 passed |
 | 3 | slop frontend | OK; 495 duplicated lines, 41 clones (ceiling 505/42) |
 | 3 | browser | slow load, failed apply, one-of-two clicks, reload section words, sheet propose-fail then sentence, apply closes. Light 1280 and dark 375. |
+| 4 | pins | slug, archived hook, one list fetch, analytics fallback string. Each failed alone under mutation, then restored |
+| 4 | backend name tests | list/detail name; missing slug is null; archive and soft-delete keep the name. Split so neither test reaches cc 10 |
+| 4 | tsc / lint / node | tsc clean; lint 0 errors, 5 baseline warnings; node 92 passed (unchanged) |
+| 4 | `test_frontend_*.py` | included in the full suite |
+| 4 | full backend + ruff | 4591 passed, 2 skipped; ruff clean on the touched Python |
+| 4 | slop | frontend 495 lines / 41 clones; backend hotspot count stayed 424 |
+| 4 | browser | tracker, proposals pill, score card, apply-as-is confirm, and the details menu show "Data science base". Slow list shows "Ds Base" then the name. A failed list stays "Ds Base", never blank. Archived and soft-deleted rows stay named. Dark 375. |
 
 ## Queued for Task 20 (SYSTEM.md changes Claude applies)
+
+- §11 item 30: delete only the clause that the Applications table's Base column shows `baseResumeLabel(slug)` ("Ds Base") instead of the résumé's `display_name`. Keep the Job market bars, the Analytics Employment/Level filters, and the MCP `explore_*` role-label clauses. Do not delete the whole item.
 
 ## Deferred to merge (edits left for Claude, with file:line)

@@ -1255,8 +1255,9 @@ def list_applications(
     offset: int | None = None,
 ) -> Any:
     """List your applications as a thin paginated summary array. Filter by
-    status/role_category; page with limit/offset. Use get_application(id) for
-    the full record and compare_ats for scores."""
+    status/role_category; page with limit/offset. Rows name their base resume
+    (`base_resume_name`). Use get_application(id) for the full record and
+    compare_ats for scores."""
     return _client.list_applications(
         status=status, role_category=role_category, limit=limit, offset=offset
     )

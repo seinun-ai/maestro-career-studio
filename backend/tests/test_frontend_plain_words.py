@@ -47,3 +47,51 @@ def test_both_surfaces_render_words():
         assert "font-mono" not in src, rel
         assert "describeOp" not in src, rel
     assert "resume={live?.data}" in _read("components/resume-editor/editor-body.tsx")
+
+
+# A bare baseResumeLabel(x) is a slug dressed as a name. Allowed only as the
+# fallback half of `display_name ?? baseResumeLabel(x)` / `|| ...`, or with a list.
+_BARE = re.compile(r"(?<!\?\? )(?<!\|\| )baseResumeLabel\([^,()]*\)")
+
+
+def test_no_resume_is_named_by_its_slug():
+    offenders = [
+        f"{p.relative_to(_FRONTEND)}:{n}"
+        for root in ("app", "components")
+        for p in sorted((_FRONTEND / root).rglob("*.tsx"))
+        for n, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1)
+        if _BARE.search(line)
+    ]
+    assert offenders == [], offenders
+
+
+def test_the_name_hook_reads_the_list_with_archived_rows():
+    hook = _read("hooks/use-base-resume-label.ts")
+    assert '"/api/base-resumes?include_archived=true"' in hook
+    assert "baseResumeLabel(slug, data)" in hook
+    assert 'return ["base-resumes", { includeArchived }] as const;' in hook
+
+
+def test_one_selectable_list_query():
+    """The selectable-list fetch lives in one hook. Prefix invalidation of
+    ["base-resumes"] stays at the call sites; that is not a second fetch."""
+    hook = _read("hooks/use-base-resume-label.ts")
+    assert "export function useBaseResumes(" in hook
+    assert "apiFetch<BaseResumeSummary[]>" in hook
+    callers = (
+        "components/ats-score-panel.tsx",
+        "components/chat/chat-page.tsx",
+        "components/career/send-to-resume-dialog.tsx",
+        "components/resume-editor/project-port-dialog.tsx",
+        "app/base-resumes/page.tsx",
+    )
+    missing = [rel for rel in callers if "useBaseResumes(" not in _read(rel)]
+    copies = [
+        f"{p.relative_to(_FRONTEND)}"
+        for root, pattern in (("app", "*.tsx"), ("components", "*.tsx"), ("hooks", "*.ts"))
+        for p in sorted((_FRONTEND / root).rglob(pattern))
+        if p.name != "use-base-resume-label.ts"
+        and "apiFetch<BaseResumeSummary[]>" in p.read_text(encoding="utf-8")
+    ]
+    assert missing == [], missing
+    assert copies == [], copies

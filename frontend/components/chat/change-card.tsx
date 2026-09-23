@@ -14,14 +14,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { useBaseResumeLabel } from "@/hooks/use-base-resume-label";
 import { restoreResumeVersion } from "@/lib/api";
 import { notifyRenderNote } from "@/lib/render-note";
-import { baseResumeLabel } from "@/lib/types";
 import type { ChatChangeCard } from "@/lib/types";
 
 /** Rendered in the transcript for every mutating tool call ("footprint"). */
 export function ChangeCard({ card }: { card: ChatChangeCard }) {
   const qc = useQueryClient();
+  const baseName = useBaseResumeLabel();
   const [diffOpen, setDiffOpen] = useState(false);
 
   const revert = useMutation({
@@ -43,7 +44,7 @@ export function ChangeCard({ card }: { card: ChatChangeCard }) {
 
   const targetLabel =
     card.resume_kind === "base"
-      ? baseResumeLabel(card.resume_key)
+      ? baseName(card.resume_key)
       : "tailored resume";
 
   return (

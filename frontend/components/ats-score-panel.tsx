@@ -8,6 +8,7 @@ import { Check, Loader2, RefreshCw, Wand2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { useConfirm } from "@/components/confirm-dialog";
+import { useBaseResumeLabel, useBaseResumes } from "@/hooks/use-base-resume-label";
 import { LoadErrorState } from "@/components/load-error-state";
 import { UploadDialog } from "@/components/setup/upload-dialog";
 import { Badge } from "@/components/ui/badge";
@@ -25,9 +26,7 @@ import {
   runAtsScores,
 } from "@/lib/api";
 import {
-  baseResumeLabel,
   type AtsScore,
-  type BaseResumeSummary,
   type TailoringSession,
 } from "@/lib/types";
 
@@ -83,6 +82,7 @@ function AtsScoreCard({
   onAppliedAsIs: () => void;
   applyingAsIs: boolean;
 }) {
+  const baseName = useBaseResumeLabel();
   const gateWarnings = score.subscores_json.gate_warnings ?? [];
   const resolvedCount = openSession?.resolutions_json.length ?? 0;
   return (
@@ -95,7 +95,7 @@ function AtsScoreCard({
     >
       <CardHeader className="flex flex-row items-start justify-between gap-2 pb-2">
         <CardTitle className="min-w-0 text-sm leading-tight font-medium">
-          {baseResumeLabel(score.target_id)}
+          {baseName(score.target_id)}
         </CardTitle>
         {top && <Badge className="shrink-0">Best match</Badge>}
       </CardHeader>
@@ -192,6 +192,7 @@ function AtsScoreCard({
  * creates a tailoring session (LLM enrichment pass) and navigates to it.
  */
 export function AtsScorePanel({ jobId }: { jobId: string }) {
+  const baseName = useBaseResumeLabel();
   const qc = useQueryClient();
   const router = useRouter();
   const confirm = useConfirm();
@@ -204,10 +205,7 @@ export function AtsScorePanel({ jobId }: { jobId: string }) {
   // The engine scores every SELECTABLE base resume, the same set
   // GET /api/base-resumes returns. With none, "Run ATS scoring" can only
   // return an empty list again, so the empty state offers the import instead.
-  const bases = useQuery({
-    queryKey: ["base-resumes"],
-    queryFn: () => apiFetch<BaseResumeSummary[]>("/api/base-resumes"),
-  });
+  const bases = useBaseResumes();
   const noBases = bases.isSuccess && bases.data.length === 0;
   const baseCount = bases.data?.length ?? 0;
   const [importOpen, setImportOpen] = useState(false);
@@ -286,7 +284,7 @@ export function AtsScorePanel({ jobId }: { jobId: string }) {
     const ok = await confirm({
       title: "Applied with base resume?",
       description:
-        `Records an application using ${baseResumeLabel(baseResume)} as-is and marks it Applied. ` +
+        `Records an application using ${baseName(baseResume)} as-is and marks it Applied. ` +
         "Any tailored draft for this job and base is replaced by the base content " +
         "(version history keeps every prior draft), and any open agent proposal " +
         "for this job is closed.",

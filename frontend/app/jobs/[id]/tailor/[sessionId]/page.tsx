@@ -589,7 +589,7 @@ export default function TailorSessionPage({
         <div className="min-w-0 flex-1">
           <h1 className="text-[22px] font-medium tracking-tight">Gap analysis</h1>
           <p className="text-muted-foreground text-sm">
-            {baseResumeLabel(session.data.base_resume)} · score before tailoring:{" "}
+            {baseResume.data?.display_name?.trim() || baseResumeLabel(session.data.base_resume)} · score before tailoring:{" "}
             <span className="text-foreground font-medium tabular-nums">
               {gapsJson.base_composite.toFixed(1)}
             </span>

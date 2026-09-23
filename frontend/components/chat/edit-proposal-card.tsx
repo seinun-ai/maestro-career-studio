@@ -10,8 +10,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { apiFetch, applyResumeEdits, setChatCardState } from "@/lib/api";
 import { describeEdits, type EditWords, type ResumeLike } from "@/lib/describe-edit";
+import { useBaseResumeLabel } from "@/hooks/use-base-resume-label";
 import { notifyRenderNote } from "@/lib/render-note";
-import { baseResumeLabel } from "@/lib/types";
 import type {
   ApplicationDetail,
   BaseResumeDetail,
@@ -40,6 +40,7 @@ export function EditProposalCard({
   onApplied?: (kind: ChatProposalOps["target_kind"], key: string) => void;
 }) {
   const qc = useQueryClient();
+  const baseName = useBaseResumeLabel();
   const [resolution, setResolution] = useState<"applied" | "discarded" | null>(
     cardState?.status ?? null,
   );
@@ -96,7 +97,7 @@ export function EditProposalCard({
 
   const targetLabel =
     proposal.target_kind === "base"
-      ? baseResumeLabel(proposal.target_key)
+      ? base.data?.display_name?.trim() || baseName(proposal.target_key)
       : "tailored resume";
 
   return (

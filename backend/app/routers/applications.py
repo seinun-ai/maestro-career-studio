@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models.application import Application
+from app.models.base_resume import BaseResume
 from app.models.application_proposal import ApplicationProposal
 from app.models.ats_score import AtsScore
 from app.models.job import Job
@@ -58,10 +59,12 @@ def _detail(
 ) -> ApplicationDetail:
     base = ApplicationRead.model_validate(application).model_dump()
     job = db.get(Job, application.job_id)
+    base_row = db.get(BaseResume, application.base_resume)
     return ApplicationDetail(
         **base,
         job=JobRead.model_validate(job) if job else None,
         applied=applied,
+        base_resume_name=(base_row.display_name or None) if base_row else None,
     )
 
 
@@ -179,7 +182,11 @@ def list_applications(
     # Always join the job: the tracker shows company/title on every row, and
     # joining here removes the frontend's third query (full jobs list fetched
     # only to hydrate names client-side — audit C7).
-    stmt = select(Application, Job).join(Job, Job.id == Application.job_id)
+    stmt = (
+        select(Application, Job, BaseResume.display_name)
+        .join(Job, Job.id == Application.job_id)
+        .outerjoin(BaseResume, BaseResume.slug == Application.base_resume)
+    )
     if role_category:
         stmt = stmt.where(Job.role_category == role_category)
     if status:
@@ -192,11 +199,12 @@ def list_applications(
         stmt = stmt.where(Application.created_at <= created_before)
     stmt = stmt.order_by(Application.created_at.desc()).offset(offset).limit(limit)
     summaries: list[ApplicationSummary] = []
-    for application, job in db.execute(stmt):
+    for application, job, base_name in db.execute(stmt):
         summary = ApplicationSummary.model_validate(application)
         summary.job_title = job.title
         summary.job_company = job.company
         summary.job_location = job.location
+        summary.base_resume_name = base_name or None
         summaries.append(summary)
     return summaries
 
