@@ -526,6 +526,49 @@ def test_muted_foreground_meets_aa_on_page_and_card(mode):
         assert ratio >= 4.5, f"{mode}: --muted-foreground on --{surface} is {ratio:.2f}:1"
 
 
+# A link's colour is a ROLE, never a raw palette shade: the referral careers
+# URL was `text-blue-600` with no dark variant, 3.77:1 on the dark page.
+_PALETTE = (
+    "red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|"
+    "violet|purple|fuchsia|pink|rose|slate|gray|zinc|neutral|stone"
+)
+_RAW_TEXT = re.compile(rf"(?<![\w-])(?:[\w-]+:)*text-(?:{_PALETTE})-\d+\b")
+_UNDERLINED = re.compile(r'className="([^"]*(?<![\w-])underline(?![\w-])[^"]*)"')
+
+
+def test_underlined_links_take_a_colour_role():
+    offenders = [
+        f"{path.relative_to(_FRONTEND)}: {cls}"
+        for root in ("app", "components")
+        for path in sorted((_FRONTEND / root).rglob("*.tsx"))
+        for cls in _UNDERLINED.findall(path.read_text(encoding="utf-8"))
+        if _RAW_TEXT.search(cls)
+    ]
+    assert offenders == [], offenders
+
+
+def _referral_link_class() -> str:
+    src = _read("app/referrals/page.tsx")
+    link = src[src.index("href={referral.careers_url}") :]
+    return re.search(r'className="([^"]*)"', link).group(1)
+
+
+@pytest.mark.parametrize("mode", list(_MODES))
+def test_the_referral_link_meets_aa_on_its_row(mode):
+    # Text on the page, a card, and a hovered or selected table row.
+    assert _referral_link_class() == "text-primary underline underline-offset-2"
+    t = _MODES[mode]
+    muted, page = _rgb(t, "muted"), _rgb(t, "background")
+    fg = _rgb(t, "primary")
+    for name, bg in (
+        ("--background", page),
+        ("--card", _rgb(t, "card")),
+        ("muted/50 on the page", _over(muted, page, 0.5)),
+        ("--muted", muted),
+    ):
+        ratio = _contrast(fg, bg)
+        assert ratio >= 4.5, f"{mode}: the referral link over {name} is {ratio:.2f}:1"
+
 def test_theme_exposes_role_utilities():
     for role in (
         "primary-container",

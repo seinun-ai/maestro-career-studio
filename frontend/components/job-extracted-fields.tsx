@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import type { ReactNode } from "react";
 
+import { useRoleLabel } from "@/components/role-category-picker";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -110,7 +111,7 @@ const ENUM_LABELS: Record<string, string> = {
   on_site: "On-site",
 };
 
-function humanizeEnum(value: string | null | undefined): string | null {
+export function humanizeEnum(value: string | null | undefined): string | null {
   if (!value) return null;
   const mapped = ENUM_LABELS[value];
   if (mapped) return mapped;
@@ -205,6 +206,8 @@ export function JobExtractedFields({
   hideTitle?: boolean;
 }) {
   const [showRaw, setShowRaw] = useState(false);
+  // The catalog's label ("AI/ML Engineer"), never the key title-cased.
+  const roleLabelOf = useRoleLabel();
 
   const skills = extractSkills(job.extracted_json);
   const required = skills.filter((s) => s.requirement_level === "required");
@@ -234,7 +237,7 @@ export function JobExtractedFields({
   const optLine = humanizeEnum(job.opt_accepted);
   const roleChips = (
     [
-      ["Role family", humanizeEnum(job.role_category)],
+      ["Role family", job.role_category ? roleLabelOf(job.role_category) : null],
       ["Level", humanizeEnum(job.level)],
       ["Employment type", humanizeEnum(job.employment_type)],
       ["Work mode", humanizeEnum(job.work_mode)],

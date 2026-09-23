@@ -1,7 +1,16 @@
 import assert from "node:assert/strict";
 import { beforeEach, test } from "node:test";
 
-import { FIELD, TABBABLE, focusIfDropped, focusReturnPoint, focusTarget, holdsDraft } from "./focus.ts";
+import {
+  FIELD,
+  TABBABLE,
+  finalFocusOn,
+  focusIfDropped,
+  focusReturnPoint,
+  focusSuccessor,
+  focusTarget,
+  holdsDraft,
+} from "./focus.ts";
 
 /**
  * A stand-in DOM, just enough for these helpers: a tree, `isConnected`, focus, and the three selectors
@@ -25,6 +34,19 @@ class El {
 
   get isConnected(): boolean {
     return this.parentElement ? this.parentElement.isConnected : doc.documentElement === this;
+  }
+
+  private sibling(step: number): El | null {
+    const kids = this.parentElement?.children ?? [];
+    return kids[kids.indexOf(this) + step] ?? null;
+  }
+
+  get nextElementSibling(): El | null {
+    return this.sibling(1);
+  }
+
+  get previousElementSibling(): El | null {
+    return this.sibling(-1);
   }
 
   append(...kids: El[]): this {
@@ -179,6 +201,61 @@ test("with no surviving panel the main area is the return point", () => {
 test("body and nothing have no return point", () => {
   assert.equal(focusReturnPoint(asEl(doc.body))(), null);
   assert.equal(focusReturnPoint(null)(), null);
+});
+
+/** A gallery: three cards (each a link and a ⋯) in a grid inside a `tabIndex={-1}` list, inside the main area. */
+function gallery() {
+  const cards = ["a", "b", "c"].map((id) => h("div", { id }, h("a", { href: `/${id}` }), h("button")));
+  const grid = h("div", {}, ...cards);
+  const list = h("section", { tabindex: "-1" }, grid);
+  const main = h("main", { id: "main-content", tabindex: "-1" }, list);
+  doc.body.append(main);
+  return { cards, grid, list, main };
+}
+
+test("a removed item hands focus to the next item's first tabbable", () => {
+  const { cards } = gallery();
+  const back = focusSuccessor(asEl(cards[1]));
+  assert.equal(back(), cards[2].children[0], "even while the item is still attached");
+  cards[1].remove();
+  assert.equal(back(), cards[2].children[0]);
+});
+
+test("the last item hands focus back to the previous one", () => {
+  const { cards } = gallery();
+  const back = focusSuccessor(asEl(cards[2]));
+  cards[2].remove();
+  assert.equal(back(), cards[1].children[0]);
+});
+
+test("the only item hands focus to the list, then the main area", () => {
+  const { cards, grid, list, main } = gallery();
+  cards[0].remove();
+  cards[2].remove();
+  const back = focusSuccessor(asEl(cards[1]));
+  assert.equal(back(), list, "never the item itself, though it is still attached");
+  grid.remove();
+  assert.equal(back(), list, "the list outlives the grid");
+  list.remove();
+  assert.equal(back(), main);
+});
+
+test("a return target that takes focus is handed to Base UI", () => {
+  const button = h("button", { tabindex: "0" });
+  assert.equal(finalFocusOn(asEl(button)), button);
+});
+
+test("no return target is Base UI's default", () => {
+  assert.equal(finalFocusOn(null), true);
+});
+
+test("a landmark is focused directly once focus has dropped", async () => {
+  const list = h("section", { tabindex: "-1" });
+  doc.body.append(list);
+  assert.equal(finalFocusOn(asEl(list)), false, "Base UI would focus its first tabbable child");
+  assert.equal(doc.activeElement, doc.body, "not before the popup has gone");
+  await Promise.resolve();
+  assert.equal(doc.activeElement, list);
 });
 
 test("a control that takes focus itself is its own target", () => {

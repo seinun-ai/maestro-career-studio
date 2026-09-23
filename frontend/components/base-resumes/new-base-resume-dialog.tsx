@@ -8,7 +8,7 @@ import { Loader2, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
 import { Dropzone, type DropzoneRejection } from "@/components/setup/dropzone";
-import { useFocusOnNextCommit } from "@/hooks/use-focus-return";
+import { useFocusOnNextCommit, useOpenerReturn } from "@/hooks/use-focus-return";
 import { useSingleFlight } from "@/hooks/use-single-flight";
 
 import { useRoleCategories } from "@/components/role-category-picker";
@@ -120,9 +120,13 @@ export function NewBaseResumeDialog({
   // form's first field instead of falling to the page.
   const popupRef = useRef<HTMLDivElement>(null);
   const focusNext = useFocusOnNextCommit();
+  // Kept mounted, the dialog keeps what the role picker's list recorded inside
+  // it: Base UI's default return focused that hidden element. Every close
+  // returns to what opened it.
+  const returnToOpener = useOpenerReturn(open);
   return (
     <Dialog open={open} onOpenChange={(next) => !busy && onOpenChange(next)}>
-      <DialogContent size="lg" keepMounted ref={popupRef}>
+      <DialogContent size="lg" keepMounted ref={popupRef} finalFocus={returnToOpener}>
         <DialogHeader>
           <DialogTitle>New base resume</DialogTitle>
           <DialogDescription>

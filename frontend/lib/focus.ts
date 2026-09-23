@@ -34,6 +34,41 @@ export function focusReturnPoint(el: Element | null): () => HTMLElement | null {
     el.isConnected ? el : (chain.find((a) => a.isConnected) ?? document.getElementById(MAIN_CONTENT_ID));
 }
 
+/**
+ * Where focus goes when a list item disappears: the next item's first field or tabbable while it is still there,
+ * else the previous one's, else the list's nearest `tabIndex={-1}` ancestor (else the main area). The siblings
+ * and the landmark are read NOW, while the item is attached; the item itself is never the answer, because a
+ * caller can ask while the item is still on its way out.
+ */
+export function focusSuccessor(item: Element | null | undefined): () => HTMLElement | null {
+  const siblings = [item?.nextElementSibling, item?.previousElementSibling];
+  const landmark = focusReturnPoint(
+    item?.parentElement?.closest<HTMLElement>('[tabindex="-1"]') ?? document.getElementById(MAIN_CONTENT_ID),
+  );
+  return () => {
+    const sibling = siblings.find((s): s is HTMLElement => s instanceof HTMLElement && s.isConnected);
+    return sibling ? focusTarget(sibling) : landmark();
+  };
+}
+
+/**
+ * A Base UI `finalFocus` value for a return target. Base UI focuses a container's first tabbable child rather
+ * than the container, so a `tabIndex={-1}` landmark (the studio's <main> after Load latest) is focused here once
+ * the popup has gone, and only if focus fell to <body>. No target: Base UI's default.
+ *
+ * Base UI timing this depends on (1.4.1, `FloatingFocusManager`): a function `finalFocus` is read when the popup
+ * UNMOUNTS, not when it opens, and Base UI's own return runs in a microtask queued after that read, so the
+ * microtask here runs first and a `false` leaves it nothing to do. After a Base UI upgrade, re-check in the
+ * browser: Load latest lands on the studio's <main>, Rebuild's Cancel on ⋯, a referral's Delete confirm on
+ * Delete, archiving the last base résumé on the list.
+ */
+export function finalFocusOn(target: HTMLElement | null): HTMLElement | boolean {
+  if (!target) return true;
+  if (target.tabIndex >= 0) return target;
+  queueMicrotask(() => focusIfDropped(target));
+  return false;
+}
+
 /** The element when it takes focus itself, else its first text field, else its first tabbable. */
 export function focusTarget(el: HTMLElement): HTMLElement {
   if (el.matches(TABBABLE)) return el;

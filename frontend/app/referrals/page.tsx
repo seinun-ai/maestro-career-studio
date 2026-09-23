@@ -414,7 +414,7 @@ function ReferralViewRow({
           href={referral.careers_url}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-blue-600 underline underline-offset-2 hover:text-blue-700"
+          className="text-primary underline underline-offset-2"
         >
           {referral.careers_url}
         </a>

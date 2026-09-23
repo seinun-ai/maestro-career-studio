@@ -31,7 +31,12 @@
   controls. `--destructive` is M3 error, tuned for this page and `--canvas`
   (light `oklch(0.49 0.185 27.3)`, dark tone 80 `oklch(0.838 0.089 26.76)`),
   and `text-destructive` on its tints is pinned at 4.5:1. `--muted-foreground`
-  on `--background` and `--card` is pinned at 4.5:1 in both modes. **Selected
+  on `--background` and `--card` is pinned at 4.5:1 in both modes.
+  **A link's colour is a role** (`text-primary`), never a raw palette shade:
+  the referral careers URL's `text-blue-600` had no dark variant and read
+  3.77:1 on the dark page. `test_underlined_links_take_a_colour_role` refuses a
+  palette `text-*` in any underlined class, and the referral link is measured on
+  the page, a card and a hovered or selected row in both modes. **Selected
   in a set** (a toggle, filter chip, or segment) is `tonal` plus a leading
   `Check` plus `aria-pressed` (health-report filters, Review changes,
   SourceToggle, the proposals filter, the zoom presets, employment types,
@@ -529,10 +534,11 @@
   - A button that disables itself while its request runs is
     `focusableWhenDisabled` (Save, Widen/Narrow at their limits, a referral's
     Save and Delete, the Templates Create): a disabled `<button>` drops
-    focus. So is every dialog button that generates, applies or creates
-    (Suggest a selection and Create on New base résumé, Draft rewrite and
-    Apply, Adapt & preview, Send as-is and Apply on Send to résumé, Add
-    career item) and Quick capture's From document, each dimmed on
+    focus. So is every dialog button that generates, applies, creates or
+    deletes (Suggest a selection and Create on New base résumé, Draft rewrite
+    and Apply, Adapt & preview, Send as-is and Apply on Send to résumé, Add
+    career item, a base résumé's Delete), `/new`'s Extract job and Quick
+    capture's From document, each dimmed on
     `data-disabled`. A text field a submit would disable goes `readOnly`
     instead (New career item's). From document opens one file picker per
     gesture: a double click's second click (`event.detail > 1`) is ignored.
@@ -546,6 +552,22 @@
     into an editor (Templates Create, New base résumé) lands on the editor's
     `<main tabIndex={-1}>`: `FullscreenEditorPage` passes it the stable
     `ref={focusIfDropped}`, which runs on mount only.
+  - A dialog kept mounted while closed (`keepMounted`: New base résumé)
+    takes `finalFocus={useOpenerReturn(open)}`, the opener read in a layout
+    effect when it OPENS. Base UI's default return is the last element any
+    popup recorded that is still connected, and a kept dialog keeps what a
+    nested popup recorded inside it (the role picker's list records the
+    dialog's first tab) connected but hidden: every close after the picker
+    was used landed on `<body>`. `test_every_kept_mounted_dialog_names_its_return_target`.
+  - A ⋯ item that removes its own card (a base résumé's Archive while
+    archived ones are hidden, and a confirmed Delete) hands focus to
+    `focusSuccessor(card)`: the next card's link, else the previous card's,
+    else the list's `tabIndex={-1}` section, read when the item is chosen.
+    Archive moves it from the menu's `finalFocus` once the popup is gone (a
+    microtask, returning `false` to Base UI, which reads a function
+    `finalFocus` after a pointer close but does not apply it), because the
+    refetch can remove the card, and the menu with it, before the menu's
+    close; Delete's dialog returns there only after a success, else to ⋯.
   - Every overlay opened from a ⋯ menu takes the trigger as `finalFocus`,
     because the item is gone by the time it closes. The menu itself does not:
     an explicit `finalFocus` on a menu also overrides the initial focus of an
@@ -556,20 +578,23 @@
     (`onOpenChangeComplete` runs just before that, hence the zero-delay
     timeout). A trigger that an open modal hides (`aria-hidden`) is skipped,
     so an overlay an item opened keeps its focus.
-  - Two of these lean on Base UI 1.4.1 timing, noted at each site:
+  - Three of these lean on Base UI 1.4.1 timing, noted at each site:
     `DropdownMenu`'s timeout on `onOpenChangeComplete` firing before
-    the unmount, and `ConfirmDialogProvider`'s `returnTo` on a function
+    the unmount, `finalFocusOn` on a function
     `finalFocus` being read when the popup unmounts (not when it opens) and
-    ahead of Base UI's own return microtask. After a Base UI upgrade,
-    re-check in the browser: a click on ⋯ → Edit raw JSON (or a /templates
-    card's ⋯ → Duplicate) lands on ⋯; ⋯ →
+    ahead of Base UI's own return microtask, and a card's Archive on Base UI
+    reading but not applying that function after a pointer close. After a
+    Base UI upgrade, re-check in the browser: a click on ⋯ → Edit raw JSON
+    (or a /templates card's ⋯ → Duplicate) lands on ⋯; ⋯ →
     History and ⋯ → Rebuild start inside the sheet and the confirm; Load
-    latest lands on the studio's `<main>`.
+    latest lands on the studio's `<main>`; a click on a middle base résumé's
+    ⋯ → Archive lands on the next card.
   - `ConfirmDialogProvider` returns to its opener, or, when the confirmed
     action removed it, to the nearest `tabIndex={-1}` ancestor that survived
     (`returnFocus` names another target: Rebuild returns to ⋯). Base UI would
     focus such a landmark's first tabbable child ("Back to application"), so
-    a `tabIndex={-1}` target is focused directly once the dialog is gone.
+    `finalFocusOn` (`lib/focus.ts`, shared with the two above) focuses a
+    `tabIndex={-1}` target directly once the dialog is gone.
   - Why: Base UI's default return target for a trigger-less dialog is the
     last connected element it saw focused, which can be inside the closing
     dialog (the Role dialog's own picker input), and is `null` once the
@@ -958,7 +983,11 @@
   `lib/analytics-series.ts`) and leaves the tail off the chart, naming the
   hidden count in the caption; role mix folds that tail into one "More roles"
   series so the week still sums. Role text on these charts, the filters, the
-  heatmap, and the Job market bars comes from `useRoleLabel`, never the slug.
+  heatmap, and the Job market bars comes from `useRoleLabel`, never the slug;
+  so does a job's Role family chip and the `/new` summary's role badge (whose
+  level, employment and work-mode badges read `humanizeEnum`'s words, never
+  `full_time`). `test_no_role_key_reaches_the_screen` refuses a humanized or
+  bare `role_category` in JSX.
   Getting started hands New base résumé each suggestion's label with its key
   (`initialRole`), so the dialog's role picker and its create never use the key.
   While the catalog loads, or when its request fails, the label is

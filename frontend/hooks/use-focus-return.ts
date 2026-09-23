@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 
-import { focusIfDropped, focusReturnPoint, focusTarget } from "@/lib/focus";
+import { finalFocusOn, focusIfDropped, focusReturnPoint, focusTarget } from "@/lib/focus";
 
 // The DOM helpers live in `lib/focus.ts` (node-tested); callers keep importing them from here.
 export { focusIfDropped, focusReturnPoint };
@@ -67,4 +67,20 @@ export function useEditToggle<E extends HTMLElement = HTMLDivElement>(initial = 
       focusNext(openerRef);
     },
   };
+}
+
+/**
+ * `finalFocus` for a dialog that stays mounted while closed (`keepMounted`), read when the dialog OPENS: the
+ * element that opened it while still connected, else what `focusReturnPoint` finds. Base UI's default return
+ * target is the last element any popup recorded that is still connected, and a kept dialog keeps what a nested
+ * popup recorded inside it (the role picker's list records the dialog's first tab) connected but hidden, so
+ * every close focused a hidden element: <body>. A LAYOUT effect, because Base UI moves focus into the dialog in
+ * a microtask after this commit.
+ */
+export function useOpenerReturn(open: boolean) {
+  const opener = useRef<() => HTMLElement | null>(() => null);
+  useLayoutEffect(() => {
+    if (open) opener.current = focusReturnPoint(document.activeElement);
+  }, [open]);
+  return useCallback(() => finalFocusOn(opener.current()), []);
 }

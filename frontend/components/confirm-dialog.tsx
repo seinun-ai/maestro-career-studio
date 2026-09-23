@@ -18,7 +18,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { focusIfDropped, focusReturnPoint } from "@/hooks/use-focus-return";
+import { finalFocusOn, focusReturnPoint } from "@/lib/focus";
 
 export interface ConfirmOptions {
   title: string;
@@ -34,27 +34,6 @@ export interface ConfirmOptions {
 }
 
 type ConfirmFn = (opts: ConfirmOptions) => Promise<boolean>;
-
-/**
- * `finalFocus` for a return target. Base UI focuses a container's first
- * tabbable child rather than the container, so a `tabIndex={-1}` landmark
- * (the studio's <main> after Load latest) is focused here once the dialog has
- * gone, and only if focus fell to <body>. Nothing to name: Base UI's default.
- *
- * Base UI timing this depends on (1.4.1, `FloatingFocusManager`): a function
- * `finalFocus` is read when the popup UNMOUNTS, not when it opens, so the
- * opener check and `returnFocus` see the page after the confirmed action ran;
- * and Base UI's own return runs in a microtask queued after that read, so the
- * microtask here runs first and a `false` leaves it nothing to do. After a
- * Base UI upgrade, re-check in the browser: Load latest lands on the studio's
- * <main>, Rebuild's Cancel on ⋯, a referral's Delete confirm on Delete.
- */
-function returnTo(target: HTMLElement | null): HTMLElement | boolean {
-  if (!target) return true;
-  if (target.tabIndex >= 0) return target;
-  queueMicrotask(() => focusIfDropped(target));
-  return false;
-}
 
 const ConfirmContext = createContext<ConfirmFn | null>(null);
 
@@ -76,6 +55,7 @@ export function ConfirmDialogProvider({ children }: { children: ReactNode }) {
   // (Load latest remounts the editor), and Base UI's default then finds nothing
   // to return to and focus falls to <body>. This is the opener while it is
   // still connected, else the nearest `tabIndex={-1}` ancestor that survived.
+  // `finalFocusOn` resolves it on close, so it sees the page the action left.
   const returnPoint = useRef<() => HTMLElement | null>(() => null);
 
   const confirm = useCallback<ConfirmFn>((options) => {
@@ -115,7 +95,7 @@ export function ConfirmDialogProvider({ children }: { children: ReactNode }) {
           showCloseButton={false}
           className="sm:max-w-md"
           initialFocus={opts?.destructive ? cancelRef : confirmRef}
-          finalFocus={() => returnTo(opts?.returnFocus?.() ?? returnPoint.current())}
+          finalFocus={() => finalFocusOn(opts?.returnFocus?.() ?? returnPoint.current())}
         >
           <DialogHeader>
             <DialogTitle>{opts?.title ?? ""}</DialogTitle>

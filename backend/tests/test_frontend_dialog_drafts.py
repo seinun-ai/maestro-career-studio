@@ -72,7 +72,7 @@ def test_new_base_resume_keeps_its_form():
     assert "setFormGen((g) => g + 1);" in start_over
     # The pressed button unmounts with the old form; focus goes to the new one.
     assert "focusNext(popupRef);" in start_over
-    assert '<DialogContent size="lg" keepMounted ref={popupRef}>' in wrapper
+    assert '<DialogContent size="lg" keepMounted ref={popupRef} finalFocus={returnToOpener}>' in wrapper
 
 
 def test_the_base_resumes_page_keeps_its_dialog_mounted():

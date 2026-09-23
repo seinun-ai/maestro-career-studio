@@ -133,6 +133,10 @@ export default function NewApplicationPage() {
         <Button
           onClick={() => extract(undefined)}
           disabled={disabled || busy || needsKey}
+          // Disables itself while extracting: a disabled <button> drops focus
+          // to <body> (dimmed on data-disabled, as Save is).
+          focusableWhenDisabled
+          className="data-disabled:pointer-events-none data-disabled:opacity-50"
           aria-describedby={needsKey ? keyNoticeId : undefined}
         >
           {extractJob.isPending ? "Extracting…" : "Extract job"}

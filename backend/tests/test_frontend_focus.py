@@ -37,11 +37,11 @@ def _fn_body(src: str, head: str) -> str:
 
 def test_the_hooks_use_the_node_tested_helpers():
     # One copy: the hook file re-exports what `lib/focus.ts` defines.
-    assert 'import { focusIfDropped, focusReturnPoint, focusTarget } from "@/lib/focus";' in _HOOK
+    assert 'import { finalFocusOn, focusIfDropped, focusReturnPoint, focusTarget } from "@/lib/focus";' in _HOOK
     assert "export { focusIfDropped, focusReturnPoint };" in _HOOK
-    for name in ("focusIfDropped", "focusReturnPoint", "focusTarget", "holdsDraft"):
+    names = ("focusIfDropped", "focusReturnPoint", "focusSuccessor", "focusTarget", "finalFocusOn", "holdsDraft")
+    for name in names:
         assert f"function {name}(" not in _HOOK, name
-    for name in ("focusIfDropped", "focusReturnPoint", "focusTarget", "holdsDraft"):
         assert f"export function {name}(" in _FOCUS, name
     tests = _read("lib/focus.test.ts")
     assert 'from "./focus.ts";' in tests
@@ -299,12 +299,18 @@ def test_confirm_returns_to_its_opener_or_what_survived_it():
     assert "returnPoint.current = focusReturnPoint(document.activeElement);" in confirm[
         : confirm.index("setOpen(true)")
     ]
-    assert "finalFocus={() => returnTo(opts?.returnFocus?.() ?? returnPoint.current())}" in _squash(src)
+    assert 'import { finalFocusOn, focusReturnPoint } from "@/lib/focus";' in src
+    assert "finalFocus={() => finalFocusOn(opts?.returnFocus?.() ?? returnPoint.current())}" in _squash(src)
+
+
+def test_a_landmark_return_target_is_focused_directly():
     # Base UI would focus a landmark's first tabbable child (Load latest landed
     # on "Back to application"): a tabIndex={-1} target is focused directly.
-    helper = _squash(_function(src, "function returnTo("))
-    assert "if (!target) return true;" in helper
-    assert "if (target.tabIndex >= 0) return target; queueMicrotask(() => focusIfDropped(target)); return false;" in helper
+    # Mutant: the landmark handed back to Base UI.
+    assert _fn_body(_FOCUS, "export function finalFocusOn(") == (
+        "if (!target) return true; if (target.tabIndex >= 0) return target; "
+        "queueMicrotask(() => focusIfDropped(target)); return false;"
+    )
     rebuild = _TAILORED[_TAILORED.index('title: "Rebuild from base resume?"') :]
     assert "returnFocus: () => overflowRef.current," in rebuild[: rebuild.index("});")]
 
@@ -385,6 +391,7 @@ _FINDINGS = _read("components/resume-health/finding-cards.tsx")
 _CAREER_PAGE = _read("app/career/page.tsx")
 _DROPDOWN = _read("components/ui/dropdown-menu.tsx")
 _OVERFLOW = _read("components/resume-editor/studio-overflow.tsx")
+_NEW_JOB = _read("app/new/page.tsx")
 
 
 @pytest.mark.parametrize(
@@ -399,8 +406,9 @@ _OVERFLOW = _read("components/resume-editor/studio-overflow.tsx")
         (_SEND, "onClick={() => applyOnce()}"),  # Apply N to resume
         (_CAPTURE, '"From document"'),  # Read document
         (_NEW_ENTITY, 'form="new-career-entity"'),  # Add career item
+        (_NEW_JOB, "onClick={() => extract(undefined)}"),  # Extract job on /new
     ],
-    ids=["suggest", "nbr-create", "draft", "demo-apply", "send-as-is", "adapt", "send-apply", "from-doc", "add-item"],
+    ids=["suggest", "nbr-create", "draft", "demo-apply", "send-as-is", "adapt", "send-apply", "from-doc", "add-item", "extract"],
 )
 def test_a_button_that_disables_itself_while_it_works_keeps_focus(src, marker):
     # Mutant: `focusableWhenDisabled` dropped (a native `disabled` drops focus to <body>).
@@ -499,3 +507,95 @@ def test_every_editor_takes_a_focus_the_navigation_dropped():
     assert re.search(r"<main\s+tabIndex=\{-1\}\s+className=\"[^\"]*\"\s+ref=\{focusIfDropped\}>", shell)
     for rel in ("app/templates/[id]/page.tsx", "app/base-resumes/[slug]/page.tsx", "app/applications/[id]/resume/page.tsx"):
         assert "<FullscreenEditorPage>" in _read(rel), rel
+
+
+# --- Task 21 sweep: the last focus drops ------------------------------------
+
+
+def test_a_kept_mounted_dialog_returns_to_the_element_that_opened_it():
+    # A kept-mounted dialog keeps what a nested popup recorded (the role
+    # picker's list records the dialog's first tab) connected but hidden, and
+    # Base UI's default return focused it: <body>. Mutants: finalFocus dropped
+    # from the dialog; the opener read in a passive effect (initial focus has
+    # already moved into the dialog by then); read on close instead of open.
+    hook = _squash(_function(_HOOK, "export function useOpenerReturn("))
+    assert (
+        "const opener = useRef<() => HTMLElement | null>(() => null); "
+        "useLayoutEffect(() => { if (open) opener.current = focusReturnPoint(document.activeElement); }, [open]); "
+        "return useCallback(() => finalFocusOn(opener.current()), []);"
+    ) in hook
+    wrapper = _NBR[_NBR.index("export function NewBaseResumeDialog(") : _NBR.index("\nfunction NewBaseResumeForm(")]
+    assert "const returnToOpener = useOpenerReturn(open);" in wrapper
+    assert '<DialogContent size="lg" keepMounted ref={popupRef} finalFocus={returnToOpener}>' in wrapper
+
+
+def test_every_kept_mounted_dialog_names_its_return_target():
+    # Base UI's default return target is only safe when closing unmounts the popup.
+    offenders = [
+        f"{p.relative_to(_FRONTEND)}: {tag}"
+        for root in ("app", "components")
+        for p in sorted((_FRONTEND / root).rglob("*.tsx"))
+        if "components/ui/" not in str(p)
+        for tag in re.findall(r"<(?:Dialog|Sheet)Content\b[^>]*\bkeepMounted\b[^>]*>", p.read_text())
+        if "finalFocus=" not in tag
+    ]
+    assert offenders == [], offenders
+
+
+def test_a_list_item_hands_focus_to_its_neighbour_then_its_landmark():
+    # Mutants: previous before next; the item itself (still connected at menu
+    # close) as the fallback; siblings read late, after the item has gone.
+    body = _fn_body(_FOCUS, "export function focusSuccessor(")
+    assert body == (
+        "const siblings = [item?.nextElementSibling, item?.previousElementSibling]; "
+        "const landmark = focusReturnPoint( "
+        "item?.parentElement?.closest<HTMLElement>('[tabindex=\"-1\"]') ?? document.getElementById(MAIN_CONTENT_ID), ); "
+        "return () => { const sibling = siblings.find((s): s is HTMLElement => s instanceof HTMLElement && s.isConnected); "
+        "return sibling ? focusTarget(sibling) : landmark(); };"
+    )
+
+
+_BASE_LIST = _read("app/base-resumes/page.tsx")
+
+
+def test_archiving_a_card_hands_focus_to_the_next_card():
+    # Archive removes the card and the ⋯ that held focus. Once the menu's popup
+    # is gone, a dropped focus lands on the next card's link, else the previous,
+    # else the list (a refetch can beat the menu's close, and the card's menu
+    # unmounts with it). Only an archive that hides the card moves focus; every
+    # close returns false so an overlay an item opened keeps its focus.
+    # Mutants: the successor read after the refetch; `leaving` never cleared;
+    # the guard on `hidesArchived` dropped (Show archived keeps the card).
+    menu = _squash(_function(_BASE_LIST, "function CardMenu("))
+    assert "const triggerRef = useRef<HTMLButtonElement>(null);" in menu
+    assert "const leaving = useRef<(() => HTMLElement | null) | null>(null);" in menu
+    assert (
+        "finalFocus={() => { const back = leaving.current; leaving.current = null; "
+        "if (back) queueMicrotask(() => focusIfDropped(back())); return false; }}"
+    ) in menu
+    assert (
+        "onClick={() => { if (hidesArchived && !resume.archived_at) "
+        "leaving.current = focusSuccessor(triggerRef.current?.closest('[data-slot=\"card\"]')); onToggleArchive(); }}"
+    ) in menu
+    assert "ref={triggerRef}" in menu
+    page = _squash(_BASE_LIST)
+    assert '<section aria-label="Your base resumes" tabIndex={-1} className="flex flex-col gap-4 outline-none">' in page
+    assert "hidesArchived={!showArchived}" in page
+
+
+def test_deleting_a_card_hands_focus_to_the_next_card():
+    # A confirmed delete removes the card and the ⋯ Base UI would return to.
+    # Mutants: the successor never handed over on success; Cancel sent to the
+    # successor too (it must return to ⋯); Delete natively disabled.
+    menu = _squash(_function(_BASE_LIST, "function CardMenu("))
+    assert "onClick={() => onDelete(focusSuccessor(triggerRef.current?.closest('[data-slot=\"card\"]')))}" in menu
+    page = _squash(_BASE_LIST)
+    assert "onDelete={(next) => { deleteNext.current = next; setDeleteTarget(r); }}" in page
+    success = page[page.index("const del = useMutation(") :]
+    assert 'toast.success("Deleted"); afterDelete.current = deleteNext.current; setDeleteTarget(null);' in success
+    assert (
+        "<DialogContent finalFocus={() => { const back = afterDelete.current; afterDelete.current = null; "
+        "return back ? finalFocusOn(back()) : true; }} >"
+    ) in page
+    button = _button_with(_BASE_LIST, "onClick={() => deleteTarget && del.mutate(deleteTarget.slug)}")
+    assert "focusableWhenDisabled" in button and "data-disabled:opacity-50" in button

@@ -1,8 +1,10 @@
 "use client";
 
 import { GuardedLink as Link } from "@/components/guarded-link";
+import { useRoleLabel } from "@/components/role-category-picker";
 import { Info } from "lucide-react";
 
+import { humanizeEnum } from "@/components/job-extracted-fields";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -32,6 +34,8 @@ export function JobExtractionSummary({
     (job.extracted_json?.skills as ExtractedSkill[] | undefined) ?? [];
   const visible = skills.slice(0, 24);
   const extra = skills.length - visible.length;
+  // Words, never the stored keys (`ai_ml_engineer`, `full_time`, `on_site`).
+  const roleLabelOf = useRoleLabel();
 
   return (
     <Card>
@@ -59,13 +63,13 @@ export function JobExtractionSummary({
       <CardContent className="space-y-4">
         <div className="flex flex-wrap gap-2">
           {job.role_category && (
-            <Badge variant="outline">{job.role_category}</Badge>
+            <Badge variant="outline">{roleLabelOf(job.role_category)}</Badge>
           )}
-          {job.level && <Badge variant="outline">{job.level}</Badge>}
+          {job.level && <Badge variant="outline">{humanizeEnum(job.level)}</Badge>}
           {job.employment_type && (
-            <Badge variant="outline">{job.employment_type}</Badge>
+            <Badge variant="outline">{humanizeEnum(job.employment_type)}</Badge>
           )}
-          {job.work_mode && <Badge variant="outline">{job.work_mode}</Badge>}
+          {job.work_mode && <Badge variant="outline">{humanizeEnum(job.work_mode)}</Badge>}
           {job.location && <Badge variant="outline">{job.location}</Badge>}
         </div>
 

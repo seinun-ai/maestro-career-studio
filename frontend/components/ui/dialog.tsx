@@ -60,7 +60,9 @@ function DialogContent({
   showCloseButton?: boolean
   size?: keyof typeof DIALOG_SIZES
   /** Keep the popup, its state and its requests mounted while closed. The
-   *  closed popup carries `hidden`, which preflight turns into display:none. */
+   *  closed popup carries `hidden`, which preflight turns into display:none.
+   *  Pair it with `finalFocus={useOpenerReturn(open)}`: Base UI's default
+   *  return can land on a hidden element inside the kept popup. */
   keepMounted?: boolean
 }) {
   return (

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { MoreHorizontal } from "lucide-react";
@@ -31,6 +31,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { NewBaseResumeDialog } from "@/components/base-resumes/new-base-resume-dialog";
 import { apiFetch, apiUrlForBrowserPdf } from "@/lib/api";
+import { finalFocusOn, focusIfDropped, focusSuccessor } from "@/lib/focus";
 import { isLoadFailure } from "@/lib/query-state";
 import { notifyRenderNote } from "@/lib/render-note";
 import { uniqueSlug } from "@/lib/slug";
@@ -56,6 +57,11 @@ export default function BaseResumesListPage() {
   const [deleteTarget, setDeleteTarget] = useState<BaseResumeSummary | null>(
     null,
   );
+  // A delete removes the card and its ⋯: once confirmed, the dialog returns to
+  // the next card (else the previous, else the list), read when Delete was
+  // chosen. Cancel returns to ⋯ as before.
+  const deleteNext = useRef<() => HTMLElement | null>(() => null);
+  const afterDelete = useRef<(() => HTMLElement | null) | null>(null);
   const visibleResumes = resumes.data ?? [];
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ["base-resumes"] });
@@ -90,6 +96,7 @@ export default function BaseResumesListPage() {
       apiFetch<void>(`/api/base-resumes/${slug}`, { method: "DELETE" }),
     onSuccess: () => {
       toast.success("Deleted");
+      afterDelete.current = deleteNext.current;
       setDeleteTarget(null);
       invalidate();
     },
@@ -146,69 +153,32 @@ export default function BaseResumesListPage() {
           ))}
         </div>
       ) : (
-        <div className="flex flex-col gap-4">
+        // Where focus lands when archiving removes the last card.
+        <section aria-label="Your base resumes" tabIndex={-1} className="flex flex-col gap-4 outline-none">
           {visibleResumes.length > 0 ? (
             <BaseResumeGallery
               resumes={visibleResumes}
               href={(r) => `/base-resumes/${r.slug}`}
               renderActions={(r) => (
-                <DropdownMenu>
-                  <DropdownMenuTrigger
-                    render={
-                      <Button
-                        size="icon-sm"
-                        variant="ghost"
-                        aria-label={`Actions for ${r.display_name ?? r.slug}`}
-                      >
-                        <MoreHorizontal className="size-4" />
-                      </Button>
-                    }
-                  />
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem
-                      onClick={() => {
-                        setDupSource(r.slug);
-                        setDupDisplay(`${r.display_name ?? r.slug} (copy)`);
-                        setDupOpen(true);
-                      }}
-                    >
-                      Duplicate
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      disabled={!r.pdf_rendered_at}
-                      render={
-                        <a
-                          href={apiUrlForBrowserPdf(
-                            `/api/base-resumes/${r.slug}/pdf`,
-                          )}
-                          download={`${(r.display_name ?? r.slug).replace(
-                            /[^A-Za-z0-9]+/g,
-                            "_",
-                          )}.pdf`}
-                        >
-                          Download PDF
-                        </a>
-                      }
-                    />
-                    <DropdownMenuItem
-                      onClick={() =>
-                        archive.mutate({
-                          slug: r.slug,
-                          archived: !!r.archived_at,
-                        })
-                      }
-                    >
-                      {r.archived_at ? "Unarchive" : "Archive"}
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      variant="destructive"
-                      onClick={() => setDeleteTarget(r)}
-                    >
-                      Delete
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                <CardMenu
+                  resume={r}
+                  hidesArchived={!showArchived}
+                  onDuplicate={() => {
+                    setDupSource(r.slug);
+                    setDupDisplay(`${r.display_name ?? r.slug} (copy)`);
+                    setDupOpen(true);
+                  }}
+                  onToggleArchive={() =>
+                    archive.mutate({
+                      slug: r.slug,
+                      archived: !!r.archived_at,
+                    })
+                  }
+                  onDelete={(next) => {
+                    deleteNext.current = next;
+                    setDeleteTarget(r);
+                  }}
+                />
               )}
             />
           ) : (
@@ -216,7 +186,7 @@ export default function BaseResumesListPage() {
               No career-track resumes yet.
             </p>
           )}
-        </div>
+        </section>
       )}
 
       <NewBaseResumeDialog
@@ -257,7 +227,13 @@ export default function BaseResumesListPage() {
         open={deleteTarget !== null}
         onOpenChange={(o) => !o && setDeleteTarget(null)}
       >
-        <DialogContent>
+        <DialogContent
+          finalFocus={() => {
+            const back = afterDelete.current;
+            afterDelete.current = null;
+            return back ? finalFocusOn(back()) : true;
+          }}
+        >
           <DialogHeader>
             <DialogTitle>Delete {deleteTarget?.slug}?</DialogTitle>
           </DialogHeader>
@@ -273,6 +249,9 @@ export default function BaseResumesListPage() {
               variant="destructive"
               onClick={() => deleteTarget && del.mutate(deleteTarget.slug)}
               disabled={del.isPending}
+              // Disables itself while deleting: a disabled <button> drops focus.
+              focusableWhenDisabled
+              className="data-disabled:pointer-events-none data-disabled:opacity-50"
             >
               {del.isPending ? "Deleting…" : "Delete"}
             </Button>
@@ -280,5 +259,84 @@ export default function BaseResumesListPage() {
         </DialogContent>
       </Dialog>
     </PageShell>
+  );
+}
+
+/**
+ * A card's ⋯ menu. Archive (with archived cards hidden) removes the card and
+ * this trigger with it, so when the menu's popup goes, a focus it dropped moves
+ * to the next card, else the previous one, else the list. Read at the popup's
+ * close, not after the refetch: the refetch can land first, and then this menu
+ * unmounts with its card. The menu moves focus itself (a microtask after the
+ * unmount) because Base UI 1.4.1 reads a function `finalFocus` after a pointer
+ * close but does not apply it. Every close returns `false` to Base UI: an
+ * overlay an item opened (Duplicate, Delete) keeps its initial focus, and the
+ * `DropdownMenu` primitive still moves any other dropped focus back to ⋯.
+ */
+function CardMenu({
+  resume,
+  hidesArchived,
+  onDuplicate,
+  onToggleArchive,
+  onDelete,
+}: {
+  resume: BaseResumeSummary;
+  hidesArchived: boolean;
+  onDuplicate: () => void;
+  onToggleArchive: () => void;
+  /** Gets where focus goes if the delete is confirmed: this card is gone by then. */
+  onDelete: (next: () => HTMLElement | null) => void;
+}) {
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const leaving = useRef<(() => HTMLElement | null) | null>(null);
+  const name = resume.display_name ?? resume.slug;
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={
+          <Button ref={triggerRef} size="icon-sm" variant="ghost" aria-label={`Actions for ${name}`}>
+            <MoreHorizontal className="size-4" />
+          </Button>
+        }
+      />
+      <DropdownMenuContent
+        align="end"
+        finalFocus={() => {
+          const back = leaving.current;
+          leaving.current = null;
+          if (back) queueMicrotask(() => focusIfDropped(back()));
+          return false;
+        }}
+      >
+        <DropdownMenuItem onClick={onDuplicate}>Duplicate</DropdownMenuItem>
+        <DropdownMenuItem
+          disabled={!resume.pdf_rendered_at}
+          render={
+            <a
+              href={apiUrlForBrowserPdf(`/api/base-resumes/${resume.slug}/pdf`)}
+              download={`${name.replace(/[^A-Za-z0-9]+/g, "_")}.pdf`}
+            >
+              Download PDF
+            </a>
+          }
+        />
+        <DropdownMenuItem
+          onClick={() => {
+            if (hidesArchived && !resume.archived_at)
+              leaving.current = focusSuccessor(triggerRef.current?.closest('[data-slot="card"]'));
+            onToggleArchive();
+          }}
+        >
+          {resume.archived_at ? "Unarchive" : "Archive"}
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          variant="destructive"
+          onClick={() => onDelete(focusSuccessor(triggerRef.current?.closest('[data-slot="card"]')))}
+        >
+          Delete
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

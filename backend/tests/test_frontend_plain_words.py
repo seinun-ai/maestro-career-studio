@@ -163,3 +163,42 @@ def test_one_selectable_list_query():
     ]
     assert missing == [], missing
     assert copies == [], copies
+
+
+# A job's role family is the catalog's label, never its key: the job page's
+# chip read "Ai ml engineer" (the key title-cased) and the /new summary badge
+# printed `ai_ml_engineer`. `useRoleLabel` falls back to the acronym-safe
+# humanizer only while the catalog loads or for a key it lacks.
+_FIELDS = _read("components/job-extracted-fields.tsx")
+_SUMMARY = _read("components/job-extraction-summary.tsx")
+
+
+def test_a_job_role_family_is_the_catalog_label():
+    assert 'import { useRoleLabel } from "@/components/role-category-picker";' in _FIELDS
+    assert "const roleLabelOf = useRoleLabel();" in _FIELDS
+    assert '["Role family", job.role_category ? roleLabelOf(job.role_category) : null],' in _FIELDS
+    assert "const roleLabelOf = useRoleLabel();" in _SUMMARY
+    assert "<Badge variant=\"outline\">{roleLabelOf(job.role_category)}</Badge>" in _SUMMARY
+
+
+def test_the_extraction_summary_prints_no_enum_key():
+    # `full_time`, `on_site`: the same words the job page's chips use.
+    assert 'import { humanizeEnum } from "@/components/job-extracted-fields";' in _SUMMARY
+    for field in ("level", "employment_type", "work_mode"):
+        assert f'<Badge variant="outline">{{humanizeEnum(job.{field})}}</Badge>' in _SUMMARY, field
+
+
+_RAW_ROLE = re.compile(
+    r"humanize(?:Enum|Slug)\([^)]*role_category|^\s*\{[\w.?]*role_category\}\s*$|>\{[\w.?]*role_category\}<",
+    re.M,
+)
+
+
+def test_no_role_key_reaches_the_screen():
+    offenders = [
+        f"{p.relative_to(_FRONTEND)}: {m.group(0).strip()}"
+        for root in ("app", "components")
+        for p in sorted((_FRONTEND / root).rglob("*.tsx"))
+        for m in _RAW_ROLE.finditer(p.read_text(encoding="utf-8"))
+    ]
+    assert offenders == [], offenders
