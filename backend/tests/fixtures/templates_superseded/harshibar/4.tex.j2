@@ -108,9 +108,7 @@
 
 %----------HEADING----------
 ((* if fmt.header_align == "left" *))\begin{flushleft}((* elif fmt.header_align == "right" *))\begin{flushright}((* else *))\begin{center}((* endif *))
-((* if resume.contact.name *))
     \textbf{\Huge ((( resume.contact.name|latex_escape )))} \\ \vspace{5pt}
-((* endif *))
     \small
     ((* set pipe = joiner(' \\hspace{1pt} $|$ \\hspace{1pt} ') *))
     ((* if resume.contact.phone *))((( pipe() ))) \faPhone* \texttt{((( resume.contact.phone|latex_escape )))}((* endif *))
@@ -119,12 +117,7 @@
     ((* if resume.contact.github *))((( pipe() ))) \faGithub \hspace{2pt} \texttt{((( resume.contact.github|latex_escape )))}((* endif *))
     ((* if resume.contact.website *))((( pipe() ))) \faLink \hspace{2pt} \texttt{((( resume.contact.website|latex_escape )))}((* endif *))
     ((* if resume.contact.location *))((( pipe() ))) \faMapMarker* \hspace{2pt}\texttt{((( resume.contact.location|latex_escape )))}((* endif *))
-((# A \\ with nothing typeset since the last one is "There's no line here to
-    end": end the contact line only when it holds something. #))
-((* set c = resume.contact *))
-((* if c.phone or c.email or c.linkedin or c.github or c.website or c.location *))
     \\ \vspace{-3pt}
-((* endif *))
 ((* if fmt.header_align == "left" *))\end{flushleft}((* elif fmt.header_align == "right" *))\end{flushright}((* else *))\end{center}((* endif *))
 ((#
   Section bodies are MACROS, emitted by the dispatch loop just before

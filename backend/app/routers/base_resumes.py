@@ -247,7 +247,15 @@ def create_base_resume(
     db.refresh(row)
 
     _write_json_file(payload.slug, data_dict)
-    base_resume_render.render_base_resume(payload.slug, db)
+    # The row is COMMITTED above, so the render degrades instead of raising
+    # (inv-render-fallback-explained): a 500 here reported failure for a resume
+    # that exists, and the retry 409'd on the slug — or, from-kb picking a
+    # fresh slug, minted a second copy.
+    try:
+        base_resume_render.render_base_resume(payload.slug, db)
+    except Exception as e:  # noqa: BLE001 — the create landed; the PDF is missing
+        logger.warning("PDF render failed after creating %s", payload.slug, exc_info=True)
+        base_resume_render.record_render_error(db, payload.slug, str(e))
     db.refresh(row)
     # A create is a render response too (from-kb and /import come through
     # here): without the note a TeX-less host substitutes Typst silently.
@@ -747,7 +755,12 @@ def duplicate_base_resume(
     db.refresh(row)
 
     _write_json_file(payload.new_slug, data_copy)
-    base_resume_render.render_base_resume(payload.new_slug, db)
+    # Committed above: degrade like the create (inv-render-fallback-explained).
+    try:
+        base_resume_render.render_base_resume(payload.new_slug, db)
+    except Exception as e:  # noqa: BLE001 — the duplicate landed; the PDF is missing
+        logger.warning("PDF render failed after duplicating to %s", payload.new_slug, exc_info=True)
+        base_resume_render.record_render_error(db, payload.new_slug, str(e))
     db.refresh(row)
     return _detail(row, render_note=getattr(row, "render_note", None))
 

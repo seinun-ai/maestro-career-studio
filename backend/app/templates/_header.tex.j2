@@ -10,7 +10,9 @@
 % swap them (see LATEX_URL_REPLACEMENTS in app/services/pdf_render.py).
 % ---------------------------------------------------------------------------
 ((* if fmt.header_align == "left" *))\begin{flushleft}((* elif fmt.header_align == "right" *))\begin{flushright}((* else *))\begin{center}((* endif *))
+((* if contact.name *))
     {\Huge \scshape ((( contact.name|latex_escape ))) } \\ \vspace{1pt}
+((* endif *))
 ((* if contact.location *))    ((( contact.location|latex_escape ))) \\ \vspace{1pt}
 ((* endif *))
     \small

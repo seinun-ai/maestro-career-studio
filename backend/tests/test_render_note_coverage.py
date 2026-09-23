@@ -27,13 +27,15 @@ RENDER_CALL = "render_base_resume"
 ALLOWED: dict[str, str] = {
     "app/routers/base_resumes.py:create_base_resume": (
         "BaseResumeDetail.render_note (POST /base-resumes, and /import + /from-kb, "
-        "which answer through this handler)"
+        "which answer through this handler); a failed render answers with "
+        "render_error instead"
     ),
     "app/routers/base_resumes.py:update_base_resume": (
         "BaseResumeDetail.render_note (PUT /base-resumes/{slug})"
     ),
     "app/routers/base_resumes.py:duplicate_base_resume": (
-        "BaseResumeDetail.render_note (POST /{slug}/duplicate)"
+        "BaseResumeDetail.render_note (POST /{slug}/duplicate); a failed render "
+        "answers with render_error instead"
     ),
     "app/routers/base_resumes.py:port_project_to_base_resume": (
         "BaseResumePortProjectResult.render_note; a failed render answers with "

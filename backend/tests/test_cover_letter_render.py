@@ -248,3 +248,42 @@ def _cover_letter_tex(contact: dict) -> str:
 )
 def test_header_compiles_without_a_location(render, contact, tmp_path):
     assert pdf_render.compile_pdf(render(contact), tmp_path).exists()
+
+
+# --- ...and without a name ----------------------------------------------------
+# The web "Blank" tab creates a base resume whose contact is all "" — the name
+# included — and `{\Huge \scshape } \\` ends a line that holds nothing: the
+# same "There's no line here to end." as the location case, on the DEFAULT
+# template, so every blank resume failed its first render.
+
+BLANK_TAB_RESUME = {  # frontend/components/base-resumes/new-base-resume-dialog.tsx EMPTY_DATA
+    "contact": {"name": "", "email": "", "phone": "", "location": ""},
+    "summary": "",
+    "skills": [],
+    "experience": [],
+    "projects": [],
+    "education": [],
+    "certifications": [],
+}
+
+
+def _nameless_sample() -> dict:
+    data = copy.deepcopy(SAMPLE_RESUME)
+    data["contact"]["name"] = ""
+    return data
+
+
+@pytest.mark.skipif(shutil.which("pdflatex") is None, reason="pdflatex not installed")
+@pytest.mark.parametrize("label,source", AUDIT_SOURCES, ids=[label for label, _ in AUDIT_SOURCES])
+@pytest.mark.parametrize(
+    "data", [BLANK_TAB_RESUME, _nameless_sample()], ids=["blank_tab", "sample_without_name"]
+)
+def test_every_shipped_latex_source_compiles_without_a_name(label, source, data, tmp_path):
+    tex = pdf_render.render_tex_from_source(source, data)
+    assert pdf_render.compile_pdf(tex, tmp_path).exists(), label
+
+
+@pytest.mark.skipif(shutil.which("pdflatex") is None, reason="pdflatex not installed")
+def test_cover_letter_compiles_without_a_name(tmp_path):
+    tex = _cover_letter_tex({"name": "", "email": ""})
+    assert pdf_render.compile_pdf(tex, tmp_path).exists()

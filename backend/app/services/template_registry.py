@@ -129,7 +129,9 @@ STARTER_SOURCE = r"""\documentclass[11pt]{article}
 \par
 ((* endif *))((* endmacro *))
 \begin{center}
+((* if resume.contact.name *))
 {\LARGE\bfseries ((( resume.contact.name|latex_escape )))}\\[3pt]
+((* endif *))
 \small ((( resume.contact.email|latex_escape )))((* if resume.contact.phone *)) ~$\cdot$~ ((( resume.contact.phone|latex_escape )))((* endif *))((* if resume.contact.location *)) ~$\cdot$~ ((( resume.contact.location|latex_escape )))((* endif *))
 ((* if resume.contact.linkedin or resume.contact.github or resume.contact.website *))
 \\[1pt] \small
@@ -369,6 +371,9 @@ SUPERSEDED_SEED_DIGESTS: dict[str, frozenset[str]] = {
         "a7de33995feedd47bf8021b9ab89d3c74614477ce7d20c1c22a6f7692b55f29b",
         "32a6aef985681c89664187cfc70c53de0f642e53335574ec541e3ce894b9af20",
         "167050b70047a07e0ad3111e51fbc82bfe4724a69ae7de65a19a21424401b8bb",
+        # 590cb2d5: \href targets fixed; the name line still ended an empty
+        # line when contact.name was blank (the web Blank tab).
+        "7a7484a25d6f93db395899e63084ad1f9f9d317f6c8f727ef475df8979102b8e",
     }),
     "harshibar": frozenset({
         # e81696be, c4b40be0, c27b05d4 (last change on main; identical at
@@ -377,6 +382,16 @@ SUPERSEDED_SEED_DIGESTS: dict[str, frozenset[str]] = {
         "a676b9f7f9a44fb8e3f77fc1c5beddc419ff3efff24fff452e3d85a45ed3c546",
         "b3dc762c7e52b134cc39f98d584eeef329086673045c51efcb0a460a0813498f",
         "5bdc42534d3f8f9f03de09f7455b0a8ac813b759d5b86232ffc188698051ee89",
+        # 590cb2d5: \href fixed; a contact line with nothing on it still
+        # ended with a bare \\ (the web Blank tab).
+        "4ec93a33152635603d7d8d2281cf5e8c23db964cd36ac818f22c9346493473c6",
+    }),
+    "xcharter_serif": frozenset({
+        # e81696be, c4b40be0, c27b05d4 (identical at 8878731d): all three end
+        # an empty name line with \\ when contact.name is blank.
+        "3b69c685a8f9ca528886432fc16a71bd36b4ae3720cd39f99b8f306915aae0a6",
+        "6fbbb40605eaefd3994104866540dc297a827292edcb955709db05f637a7f979",
+        "7f577cd106ad0bbe6e2ccff58131d68da3c967597c802215d10dcb9d0ce4f289",
     }),
 }
 
@@ -387,8 +402,9 @@ SUPERSEDED_SEED_DIGESTS: dict[str, frozenset[str]] = {
 # release will carry, and the resync can only recognise what was pinned.
 # Update it LAST, after the fixture and the SUPERSEDED_SEED_DIGESTS entry.
 CURRENT_SEED_DIGESTS: dict[str, str] = {
-    "carlito_dense": "7a7484a25d6f93db395899e63084ad1f9f9d317f6c8f727ef475df8979102b8e",
-    "harshibar": "4ec93a33152635603d7d8d2281cf5e8c23db964cd36ac818f22c9346493473c6",
+    "carlito_dense": "f6f0203fc1d6ab08a03827d20172118edc417989e4d893a9aba2af68c2bb38ea",
+    "harshibar": "d9853145206988204e1b8e9b15838d64efefc5bbbc49ae99655b29426586023c",
+    "xcharter_serif": "a06c8ecba153c566efeab09470152d931bc3dab1b737830dad583bbc25797e45",
 }
 
 

@@ -2,6 +2,7 @@
 missing pdflatex is an actionable error, never a 500 from FileNotFoundError."""
 import json
 import shutil
+import subprocess
 from copy import deepcopy
 from datetime import UTC, datetime
 from pathlib import Path
@@ -16,7 +17,7 @@ from app.models.application import Application
 from app.models.base_resume import BaseResume
 from app.models.template import Template
 from app.routers import applications as applications_router
-from app.services import base_resume_render, engines, pdf_render, resume_lint
+from app.services import base_resume_render, career_kb, engines, pdf_render, resume_lint
 from app.services.chat_tools import ToolContext, tool_edit_resume
 from app.services import template_registry as reg
 from app.services import template_validation as tv
@@ -24,6 +25,7 @@ from app.services.resume_versions import record_version
 from app.services.template_validation import SAMPLE_RESUME
 from tests.test_applications_router import _job
 from tests.test_base_resumes_router import _override_db, _seed
+from tests.test_cover_letter_render import BLANK_TAB_RESUME
 from tests.test_kb_import import _json_upload
 from tests.test_kb_port import _make_entity
 
@@ -835,3 +837,105 @@ def test_kb_port_adapt_apply_without_a_typst_fallback_degrades_too(
     resume = r.json()["resume"]
     assert resume["render_note"] is None
     assert "needs TeX" in resume["render_error"]
+
+
+# --- Creating a base resume: the row commits BEFORE the render ---------------
+# POST /base-resumes (and /import, /from-kb, which answer through it) and
+# /duplicate commit the new row, then render. A failed render used to escape as
+# a 500 over a resume that exists — the UI reported failure, and a retry 409'd
+# on the slug or (from-KB picks a fresh slug) minted a duplicate.
+
+PDFLATEX_ERROR = "! LaTeX Error: There's no line here to end."
+
+
+def _pdflatex_fails(monkeypatch):
+    """pdflatex is installed, runs, and exits 1 — faked at the one spawn, so
+    everything above it (compile check, error extraction, the router's
+    handling) is the real code."""
+    _with_tex(monkeypatch)
+
+    def failed(source_path, out_dir, stem):
+        return subprocess.CompletedProcess(
+            args=["pdflatex"], returncode=1, stdout=PDFLATEX_ERROR + "\n", stderr=""
+        )
+
+    monkeypatch.setattr(pdf_render, "_run_pdflatex", failed)
+
+
+FAILURES = {
+    "pdflatex_fails": (_pdflatex_fails, True, "no line here to end"),
+    "no_tex_no_typst": (_no_tex, False, "needs TeX"),
+}
+
+
+def _create_side_requests(client, db_session):
+    """Every create-side route, each minting its own slug. Yields (label, response, slug)."""
+    yield "create", client.post(
+        "/api/base-resumes",
+        json={"slug": "made_here", "role_category": "data_scientist", "data": SAMPLE_RESUME},
+    ), "made_here"
+    yield "import", client.post(
+        "/api/base-resumes/import",
+        data={"slug": "made_import"},
+        files={"file": ("resume.json", json.dumps(SAMPLE_RESUME), "application/json")},
+    ), "made_import"
+    career_kb.get_or_create_profile(db_session).contact_json = SAMPLE_RESUME["contact"]
+    entity, _ = _make_entity(
+        db_session, kind="project", title="RAG Chatbot",
+        points=[("Built a retrieval pipeline.", "approved")],
+    )
+    db_session.commit()
+    yield "from-kb", client.post(
+        "/api/base-resumes/from-kb",
+        json={"slug": "made_kb", "role_category": "data_scientist", "entity_ids": [str(entity.id)]},
+    ), "made_kb"
+    yield "duplicate", client.post(
+        "/api/base-resumes/made_here/duplicate", json={"new_slug": "made_copy"}
+    ), "made_copy"
+
+
+@pytest.mark.parametrize("failure", FAILURES, ids=list(FAILURES))
+def test_a_failed_render_after_a_create_is_recorded_not_a_500(
+    db_session, tmp_path, monkeypatch, failure
+):
+    """inv-render-fallback-explained: the create COMMITTED, so the render
+    degrades — 200 with the new row, `render_error` on the body AND the row
+    (the stale-PDF banner), no note (nothing was substituted)."""
+    switch, typst_ready, expected = FAILURES[failure]
+    switch(monkeypatch)
+    _seed_rows(db_session, typst_ready=typst_ready)
+    monkeypatch.setattr(app_settings, "base_resumes_dir", tmp_path)
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        client = TestClient(app, raise_server_exceptions=False)
+        for label, r, slug in _create_side_requests(client, db_session):
+            assert r.status_code == 200, f"{label}: {r.status_code} {r.text}"
+            body = r.json()
+            assert body["slug"] == slug, label
+            assert expected in (body["render_error"] or ""), label
+            assert body["render_note"] is None, label
+            row = db_session.get(BaseResume, slug)
+            db_session.refresh(row)
+            assert expected in (row.render_error or ""), label
+    finally:
+        app.dependency_overrides.clear()
+
+
+@pytest.mark.skipif(shutil.which("pdflatex") is None, reason="pdflatex not installed")
+def test_a_blank_tab_resume_renders_on_the_default_template(db_session, tmp_path, monkeypatch):
+    """The trigger behind the 500 above, end to end with real pdflatex: the web
+    Blank tab sends every contact field as "" and the default header ended its
+    empty name line with a bare \\\\."""
+    _seed_rows(db_session)
+    monkeypatch.setattr(app_settings, "base_resumes_dir", tmp_path)
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        r = TestClient(app, raise_server_exceptions=False).post(
+            "/api/base-resumes",
+            json={"slug": "blank", "role_category": "data_scientist", "data": BLANK_TAB_RESUME},
+        )
+    finally:
+        app.dependency_overrides.clear()
+    assert r.status_code == 200, r.text
+    assert r.json()["render_error"] is None
+    assert (tmp_path / "pdfs" / "blank.pdf").exists()

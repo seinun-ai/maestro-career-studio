@@ -76,9 +76,7 @@
 %----------HEADING----------
 ((* set contact = resume.contact *))
 ((* if fmt.header_align == "left" *))\begin{flushleft}((* elif fmt.header_align == "right" *))\begin{flushright}((* else *))\begin{center}((* endif *))
-((* if contact.name *))
     {\LARGE \bfseries ((( contact.name|latex_escape )))} \\ \vspace{2pt}
-((* endif *))
     \small
     ((( contact.location|latex_escape ))) $|$ ((( contact.phone|latex_escape ))) $|$
     \href{mailto:((( contact.email|latex_escape_url )))}{((( contact.email|latex_escape )))} $|$
