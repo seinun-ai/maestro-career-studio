@@ -184,6 +184,11 @@ table, deviations, anything queued or deferred, and any concerns.
 | 16 | Focus return | Unconditional `editRef.current?.focus()` once `editing` turns false (the appendix's shape), not `focusIfDropped` | After Discard focus sits in the closing confirm, so an "only from `<body>`" check misses the drop |
 | 16 | Capture box: single-flight only | Also `readOnly` textarea and a focusable Add to inbox while capturing; the point and draft Save arm the focus return on the unchanged-text close too | Focus never dropped to `<body>` |
 | all | — | Extra commit `98c0b260` splits two Task 14 pins (cc 10 and 11) | Backend `complexity_hotspots` had moved 424 → 426 |
+| review | F4's single-flight inventory for these dialogs (create buttons) | **Planner decision (M6):** decision 2 ("every create/generate button") also covers Suggest a selection (New base résumé), Propose and Apply (Ask for changes), Draft rewrite and Apply (Demonstrate skill), Adapt / Send as-is / Apply (Send to résumé); all submit through `useSingleFlight` | F4's inventory missed them; a double click paid for two model calls or applied `add_bullet` ops twice |
+| review | 15: Generate asks because `routers/qa.py` deletes saved letters before generating | **Backend fixed (4a):** `POST /api/qa` reads the prior ids, ends the read transaction, generates (commits the new row), then deletes the prior rows, commits, and removes their PDFs (`_remove_entries`, §6 inv-staged-artifact-removal kept). The confirm stays: a landed Generate still replaces the saved letter | "Never loses typed text": a failed generation lost the saved (maybe hand-edited) letter, over the web and MCP `generate_cover_letter` alike |
+| review | 16: `useDiscardableEditor(editing)` with `requestCancel(changed, close)` / `cancelOnEscape(...)`; unconditional focus return | `useDiscardableEditor({ editing, changed, close, busy })` returns `onKeyDown` / `onCancel` / `onSave` (one "changed" per editor; save-or-close moved into the hook, which also removed the point/draft editors' clone: duplication 468 → 457 lines, 39 → 38 clones) and ignores Esc/Cancel while `busy`; `useEditorFocusReturn(editing)` (also used by Q&A) focuses Edit unconditionally after a Discard, and after a save only when focus fell to `<body>` | Review M1/M2/M3/M4: Discard during a pending save closed the editor and the save then toasted "saved"; a slow save pulled focus back from where the user went |
+| review | 15: editing state per card | Lifted into `QATab` (`editingIds`): Generate and every letter's Regenerate wait while a letter is open, Edit waits while Generate runs; the letter is `readOnly` while saving; Answer questions clears only the text it sent | Review I1/I2/I3: text typed during a request or a save was wiped, and Generate destroyed an open letter draft |
+| review | 14: kept dialogs | The health report hides `NotesTable` (`hidden`) instead of unmounting it on a filter change; the career item page fails only a load with no data (`useLoadFailureError`); `useRoleCategories` takes `{ enabled }` and the kept New base résumé form passes `open` (its pickers get `[]` while it loads so none self-fetches); `serverKey` memoised | Review I5/M5/M7/M8: a filter change or a failed background refetch unmounted kept drafts |
 
 ## Gate results
 
@@ -200,6 +205,12 @@ table, deviations, anything queued or deferred, and any concerns.
 | final | full backend `pytest tests/ mcp_server/tests/ -q` (on `98c0b260`) | 4829 passed, 2 skipped (base 4780 + 49 new pins); pins 528 |
 | final | `slop_scan.py check frontend` / `check backend` | ratchet OK / ratchet OK (hotspots 424 after `98c0b260`); frontend measured 468 lines, 39 clones on a clean tree before the build |
 | final | ruff (new and edited pin files) / `npm run build` / `check_system_md.py` | All checks passed / OK / OK, 999/1000 (SYSTEM.md untouched) |
+| review `b729848e` | backend 4a | `test_qa_router.py` 22 pass: the delete-before-generation test rewritten (generation runs outside a transaction, the saved letter stays until then), the failed-generation test fakes `llm.call_openai` and now asserts the letter and its PDF survive; 4 router mutants killed |
+| review `64c5a6bf` | pins / mutants | pins 528 → 548 (`test_frontend_dialog_drafts.py` 31, `test_frontend_qa_tab.py` 16, `test_frontend_kb_editors.py` 22); 56 mutants (I1–I5, M1–M8, the reviewer's survivors), each killed by exactly the pin(s) that name it |
+| review | full backend `pytest tests/ mcp_server/tests/ -q` / ruff | 4849 passed, 2 skipped / All checks passed |
+| review | tsc / lint / node / `npm run build` | clean / 0 errors, 5 baseline warnings / 143 pass / OK |
+| review | slop `check frontend` / `check backend` (clean `git archive HEAD` export) | ratchet OK, 457 lines, 38 clones / ratchet OK, `complexity_hotspots` 423 (base 424) |
+| review | browser | not run by the fixer (the controller re-runs them on the merged branch) |
 
 **Browser checks** (Playwright, headless Chrome, real keys and pointer, throwaway stack on 8775/3105, made-up seed; LLM
 endpoints answered by a fetch wrapper with made-up bodies and forced delays/failures; `MAESTRO_CS_PDFLATEX=/nonexistent`
@@ -244,9 +255,9 @@ because every base résumé create 500'd on pdflatex here, see *Deferred*):
 - §11 candidates found in passing (not fixed, backend, out of this lane's scope): (a) `POST /api/base-resumes` and
   `POST /api/base-resumes/from-kb` return **500** "pdflatex failed" (`LaTeX Error: There's no line here to end`) on this
   machine's TeX for a blank and a KB-composed résumé, yet the row is created: §6 inv-render-fallback-explained says a
-  committed write degrades to a persisted `render_error`, never a 500. (b) `POST /api/qa` with `cover_letter` deletes and
-  commits every saved cover letter BEFORE the LLM call (`routers/qa.py`), so a failed generation loses the saved letter;
-  the new confirm names the loss, but the order is still lossy.
+  committed write degrades to a persisted `render_error`, never a 500. (b) ~~`POST /api/qa` with `cover_letter` deletes
+  every saved cover letter BEFORE the LLM call~~: fixed in the review round (the prior letters go after the new one is
+  committed); nothing to queue unless §6/§11 names the old order.
 
 ## Deferred to merge (edits left for Claude, with file:line)
 
