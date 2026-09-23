@@ -440,6 +440,7 @@ export function UserInputControls({
   targets,
   selected,
   placeholder = "e.g. Built the ingestion pipeline in Python and Airflow",
+  readOnly = false,
   onTextChange,
   onPickTarget,
 }: {
@@ -451,6 +452,8 @@ export function UserInputControls({
   selected: SavedTarget | null;
   /** Override the textarea placeholder (e.g. the summary value-prop draft). */
   placeholder?: string;
+  /** Keeps focus while tailoring; a disabled field would drop it to the page. */
+  readOnly?: boolean;
   onTextChange: (value: string) => void;
   /** Pass a target to attach it, or null to detach the current selection. */
   onPickTarget: (target: PlacementTarget | null) => void;
@@ -470,6 +473,7 @@ export function UserInputControls({
         aria-labelledby={questionId}
         aria-describedby={`${questionId}-hint`}
         value={text}
+        readOnly={readOnly}
         onChange={(event) => onTextChange(event.target.value)}
         placeholder={placeholder}
       />

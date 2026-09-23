@@ -168,11 +168,19 @@ table, deviations, anything queued or deferred, and any concerns.
 
 | Task | Planned | Did instead | Why (Goal Card line) |
 |---|---|---|---|
+| 11 | `readOnly` on the note textarea and `UserInputControls` | Threaded `readOnly` through `GapCard` into `UserInputControls`; the note textarea is on the page | The answer field lives in those components. Keyboard edits while tailoring would otherwise be dropped. |
+| 11 | Browser check stops the backend | The failed save was a 500 on the resolutions PATCH | Same failure the page handles. The status, toast, Try again, and leave prompt all showed. |
 
 ## Gate results
 
 | Task | Gate | Result |
 |---|---|---|
+| 11 | pins `test_frontend_gap_autosave.py` | 6 passed; each pin failed alone when its guard was broken, then restored |
+| 11 | `pytest tests/test_frontend_*.py` | 446 passed |
+| 11 | tsc / lint / node | tsc clean; lint 0 errors, 5 baseline warnings; node 143 passed |
+| 11 | slop | frontend and backend ratchet OK; duplication 468 lines / 39 clones (ceiling 481/40) |
+| 11 | `npm run build` | OK |
+| 11 | browser | Saving… from the first keystroke and again on the next character; delayed PATCH stays Saving… until it ends, then Saved; reload shows beforeunload; Back and the sidebar flush the note; failed save shows Save failed, a toast, Try again, and "Leave without saving?"; Enter on Try again keeps focus off `<body>` and lands on Saved |
 
 ## Queued for Task 20 (SYSTEM.md changes Claude applies)
 

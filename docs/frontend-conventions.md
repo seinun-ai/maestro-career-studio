@@ -730,7 +730,10 @@
   Save/Discard where a discard is meaningful. Errors always toast; successful
   autosaves never do, and neither does an explicit studio Save, which reports
   through the header's status line (the studio bullet above). See
-  `autosave-status.tsx` for why.
+  `autosave-status.tsx` for why. A debounced autosave (the gap page) says
+  Saving… from the first keystroke until the newest edit is on the server,
+  flushes on unmount, warns on reload while pending, and asks before an
+  in-app exit only after a failed save.
 - Settings shows four curated user-voice prompts (cover_letter, qa,
   gap_tailor, chat_system); the other internal prompts sit behind an
   "Advanced prompts" disclosure (`ESSENTIAL_PROMPTS` map in

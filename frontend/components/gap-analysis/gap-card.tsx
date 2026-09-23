@@ -289,6 +289,7 @@ export function GapCard({
   targets,
   projects,
   baseResumeError = false,
+  readOnly = false,
   onChange,
 }: {
   gap: Gap;
@@ -299,6 +300,8 @@ export function GapCard({
   projects: string[] | null;
   /** True when the base resume failed to load — chip actions show an error line. */
   baseResumeError?: boolean;
+  /** Tailoring is in flight: keep focus, but stop the keyboard from editing. */
+  readOnly?: boolean;
   onChange: (resolution: Resolution | null) => void;
 }) {
   // Missing-skill gap: the skill is absent from the resume, so an add_keyword is
@@ -702,6 +705,7 @@ export function GapCard({
             text={text}
             targets={inputTargets}
             selected={inputTarget}
+            readOnly={readOnly}
             onTextChange={(value) => {
               setText(value);
               if (value.trim()) {

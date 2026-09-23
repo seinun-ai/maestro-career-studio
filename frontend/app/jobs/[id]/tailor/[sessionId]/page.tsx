@@ -2,6 +2,7 @@
 
 import { use, useEffect, useRef, useState } from "react";
 import { GuardedLink as Link } from "@/components/guarded-link";
+import { useLeaveGuard } from "@/hooks/use-leave-guard";
 import { useLoadFailureError } from "@/hooks/use-last-seen";
 import { useRefreshFailedNotice } from "@/hooks/use-refresh-failed-notice";
 import { useRouter } from "next/navigation";
@@ -55,18 +56,64 @@ import {
 
 type SaveState = "idle" | "saving" | "saved" | "error";
 
-function SaveIndicator({ state }: { state: SaveState }) {
-  if (state === "idle") return null;
+function SaveIndicator({
+  state,
+  onRetry,
+}: {
+  state: SaveState;
+  onRetry: () => Promise<boolean>;
+}) {
+  const statusRef = useRef<HTMLSpanElement>(null);
+  const refocus = useRef(false);
+  // A state, not the ref: whether the button renders is decided during render,
+  // where the compiler forbids ref reads. It keeps Try again mounted (and
+  // focused) while the retry runs, since `state` flips to "saving" at once.
+  const [retrying, setRetrying] = useState(false);
+  // Try again unmounts once the retry lands; move focus to the status, not <body>.
+  useEffect(() => {
+    if (retrying || state !== "saved" || !refocus.current) return;
+    refocus.current = false;
+    statusRef.current?.focus();
+  }, [state, retrying]);
   return (
-    <span
-      className={cn(
-        "flex items-center gap-1 text-xs",
-        state === "error" ? "text-destructive" : "text-muted-foreground",
-      )}
-      aria-live="polite"
-    >
-      {state === "saving" && <Loader2 className="size-3 animate-spin" />}
-      {state === "saving" ? "Saving…" : state === "saved" ? "Saved" : "Save failed"}
+    <span className="flex items-center gap-2 text-xs">
+      <span
+        ref={statusRef}
+        tabIndex={-1}
+        aria-live="polite"
+        className={cn(
+          "flex items-center gap-1",
+          state === "error" ? "text-destructive" : "text-muted-foreground",
+        )}
+      >
+        {state === "saving" && (
+          <Loader2 className="size-3 animate-spin" aria-hidden="true" />
+        )}
+        {state === "saving"
+          ? "Saving…"
+          : state === "saved"
+            ? "Saved"
+            : state === "error"
+              ? "Save failed"
+              : null}
+      </span>
+      {state === "error" || retrying ? (
+        <Button
+          type="button"
+          variant="link"
+          size="xs"
+          className="h-auto p-0 data-disabled:opacity-50"
+          focusableWhenDisabled
+          disabled={retrying}
+          onClick={() => {
+            refocus.current = true;
+            setRetrying(true);
+            void onRetry().finally(() => setRetrying(false));
+          }}
+        >
+          Try again
+        </Button>
+      ) : null}
     </span>
   );
 }
@@ -77,6 +124,7 @@ function CategorySection({
   targets,
   projects,
   baseResumeError,
+  readOnly = false,
   onChange,
 }: {
   category: GapCategory;
@@ -84,6 +132,7 @@ function CategorySection({
   targets: PlacementTarget[] | null;
   projects: string[] | null;
   baseResumeError: boolean;
+  readOnly?: boolean;
   onChange: (gapId: string, resolution: Resolution | null) => void;
 }) {
   const [open, setOpen] = useState(true);
@@ -120,6 +169,7 @@ function CategorySection({
               targets={targets}
               projects={projects}
               baseResumeError={baseResumeError}
+              readOnly={readOnly}
               onChange={(resolution) => onChange(gap.gap_id, resolution)}
             />
           ))}
@@ -190,12 +240,9 @@ export default function TailorSessionPage({
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const chainRef = useRef<Promise<void>>(Promise.resolve());
-  useEffect(
-    () => () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-    },
-    [],
-  );
+  // Bumped by every edit. A save reports "Saved"/"Save failed" only if no edit
+  // came after it began; otherwise a newer save is queued and will report.
+  const editGen = useRef(0);
 
   const saveNow = async (): Promise<boolean> => {
     if (timerRef.current) {
@@ -206,6 +253,7 @@ export default function TailorSessionPage({
     // misleading toast. The user must Start Over — nothing to save here.
     if (staleReason) return true;
     if (latestRef.current === null && promptRef.current === null) return true; // nothing edited yet
+    const gen = editGen.current;
     setSaveState("saving");
     // Serialize behind any in-flight save so responses can't land out of order;
     // each attempt reads the refs at execution time, so the last write wins.
@@ -226,10 +274,10 @@ export default function TailorSessionPage({
     );
     try {
       await run;
-      setSaveState("saved");
+      if (editGen.current === gen) setSaveState("saved");
       return true;
     } catch (error) {
-      setSaveState("error");
+      if (editGen.current === gen) setSaveState("error");
       if (error instanceof ApiError && error.status === 409) {
         // Surface the SERVER detail (e.g. "This gap analysis is stale — …")
         // rather than a hardcoded "no longer open" — the session may well be
@@ -245,6 +293,25 @@ export default function TailorSessionPage({
       return false;
     }
   };
+
+  // saveNow changes every render; the unmount cleanup must call the newest one.
+  const saveNowRef = useRef(saveNow);
+  useEffect(() => {
+    saveNowRef.current = saveNow;
+  });
+  // Leaving within the debounce saves instead of dropping the tail.
+  useEffect(
+    () => () => {
+      if (!timerRef.current) return;
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+      void saveNowRef.current();
+    },
+    [],
+  );
+  // Reload/close cannot flush; an in-app exit can. A failed save is unsaved either way.
+  useLeaveGuard(saveState === "saving", { reloadOnly: true });
+  useLeaveGuard(saveState === "error");
 
   // --- Tailor ---------------------------------------------------------------
   const tailor = useMutation({
@@ -328,6 +395,21 @@ export default function TailorSessionPage({
     },
   });
 
+  // One schedule for both handlers. "Saving…" covers the debounce: an edit
+  // waiting its turn is being saved.
+  const scheduleSave = () => {
+    editGen.current += 1;
+    if (timerRef.current) clearTimeout(timerRef.current);
+    // No autosave while tailoring (the pre-tailor flush already ran, and a PATCH
+    // landing after the tailor commits would 409) or while stale (every save
+    // 409s — the user must Start Over).
+    if (tailor.isPending || staleReason) return;
+    setSaveState("saving");
+    timerRef.current = setTimeout(() => {
+      void saveNow();
+    }, 800);
+  };
+
   const handleChange = (gapId: string, resolution: Resolution | null) => {
     let next: Resolution[];
     if (resolution === null) {
@@ -339,26 +421,13 @@ export default function TailorSessionPage({
     }
     latestRef.current = next;
     setEdited(next);
-    if (timerRef.current) clearTimeout(timerRef.current);
-    // No autosave while tailoring (the pre-tailor flush already ran, and a PATCH
-    // landing after the tailor commits would 409) or while stale (every save
-    // 409s — the user must Start Over).
-    if (!tailor.isPending && !staleReason) {
-      timerRef.current = setTimeout(() => {
-        void saveNow();
-      }, 800);
-    }
+    scheduleSave();
   };
 
   const handlePromptChange = (value: string) => {
     promptRef.current = value;
     setPromptDraft(value);
-    if (timerRef.current) clearTimeout(timerRef.current);
-    if (!tailor.isPending && !staleReason) {
-      timerRef.current = setTimeout(() => {
-        void saveNow();
-      }, 800);
-    }
+    scheduleSave();
   };
 
   // --- Use base resume as-is (perfect-fit / nothing-to-tailor escape hatch) ----
@@ -675,6 +744,7 @@ export default function TailorSessionPage({
             targets={targets}
             projects={projects}
             baseResumeError={baseResume.isError}
+            readOnly={tailor.isPending}
             onChange={handleChange}
           />
         ))}
@@ -687,6 +757,7 @@ export default function TailorSessionPage({
           <Textarea
             id="tailor-instructions"
             value={userPrompt}
+            readOnly={tailor.isPending}
             onChange={(event) => handlePromptChange(event.target.value)}
             placeholder="e.g. emphasize leadership, keep it to one page, lead with the fintech project…"
             rows={3}
@@ -702,7 +773,7 @@ export default function TailorSessionPage({
             <span className="text-foreground font-medium">{open}</span> open
           </p>
           <div className="ml-auto flex items-center gap-3">
-            <SaveIndicator state={saveState} />
+            <SaveIndicator state={saveState} onRetry={saveNow} />
             {addressed === 0 && (
               <Button
                 variant="outline"
