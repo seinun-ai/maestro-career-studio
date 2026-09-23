@@ -65,7 +65,11 @@ def test_new_base_resume_keeps_its_form():
     # The pressed button unmounts with the old form; focus goes to the new one.
     assert "focusNext(popupRef);" in start_over
     assert '<DialogContent size="lg" keepMounted ref={popupRef}>' in wrapper
-    # The kept form must not fetch the KB on every /base-resumes visit.
+
+
+def test_start_over_knows_what_a_draft_is():
+    """Start over shows once anything differs from a fresh form; switching tabs
+    is not a draft. The kept form must not fetch the KB on every visit."""
     assert 'enabled: open && mode === "kb"' in _NBR
     touched = _flat(_between(_NBR, "const touched =", ";"))
     for field in ("name", "instruction", "selected.size", "plan", "source", "file"):
@@ -130,6 +134,9 @@ def test_a_kept_proposal_refuses_to_apply_once_the_resume_moved():
     assert ".then((result) => ({ result, basis: sent.basis }))" in propose
     assert "onSuccess: setKept" in propose
     assert "propose.mutate({ instruction, basis })" in _SHEET
+
+
+def test_a_stale_proposal_says_so_and_cannot_apply():
     apply_button = _flat(_SHEET[_SHEET.index("onClick={() => apply.mutate()}") - 400 :])
     apply_button = apply_button[: apply_button.index("onClick={() => apply.mutate()}")]
     assert "disabled={busy || stale}" in apply_button
