@@ -105,8 +105,9 @@ export function NewBaseResumeDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   initialMode?: Mode;
-  /** Pre-select a target role, e.g. from a suggested-base prompt. */
-  initialRole?: string;
+  /** Pre-select a target role, e.g. from a suggested-base prompt: a catalog
+   *  key with its label, which the picker shows and a create sends. */
+  initialRole?: { role_category: string; label: string };
   existingResumes: BaseResumeSummary[];
 }) {
   // Lifted only so a backdrop/Esc close cannot yank the dialog mid-create.
@@ -161,7 +162,7 @@ function NewBaseResumeForm({
   onOpenChange: (open: boolean) => void;
   onBusyChange: (busy: boolean) => void;
   initialMode: Mode;
-  initialRole?: string;
+  initialRole?: { role_category: string; label: string };
   existingResumes: BaseResumeSummary[];
 }) {
   const router = useRouter();
@@ -178,9 +179,7 @@ function NewBaseResumeForm({
   // endpoint still wants a coarse key, derived on demand by coarseFromTag —
   // one picker state, not a parallel kbRole that could disagree with it.
   const [initialTag] = useState<FavoredRole | null>(() =>
-    initialRole
-      ? favoredRoleFromTag(initialRole, null, undefined)
-      : null,
+    initialRole ? { role: initialRole.role_category, label: initialRole.label, category: null } : null,
   );
   const [tag, setTag] = useState<FavoredRole | null>(initialTag);
   const [nameMatchApplied, setNameMatchApplied] = useState(false);
@@ -557,6 +556,10 @@ function NewBaseResumeForm({
                   variant="outline"
                   size="sm"
                   disabled={!tag || proposePlan.isPending}
+                  // Stays focusable while it suggests: a disabled button that
+                  // has focus drops it to the page.
+                  focusableWhenDisabled
+                  className="data-disabled:pointer-events-none data-disabled:opacity-50"
                   onClick={() => proposeOnce()}
                 >
                   {proposePlan.isPending ? (
@@ -767,7 +770,12 @@ function NewBaseResumeForm({
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>
             Close
           </Button>
-          <Button onClick={() => submit()} disabled={!canCreate || busy}>
+          <Button
+            onClick={() => submit()}
+            disabled={!canCreate || busy}
+            focusableWhenDisabled
+            className="data-disabled:pointer-events-none data-disabled:opacity-50"
+          >
             {busy ? <Loader2 className="animate-spin" /> : null}
             {busy && mode === "file" ? "Parsing…" : "Create"}
           </Button>

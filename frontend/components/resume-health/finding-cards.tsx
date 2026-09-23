@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { GuardedLink as Link } from "@/components/guarded-link";
 import {
   ATTENTION_BADGE,
@@ -62,6 +62,7 @@ import {
   textAtLocation,
   shortFindingLabel,
 } from "@/lib/health-report";
+import { focusIfDropped } from "@/hooks/use-focus-return";
 import { notifyRenderNote } from "@/lib/render-note";
 import { wordDiff } from "@/lib/word-diff";
 import { cn } from "@/lib/utils";
@@ -896,6 +897,21 @@ export function NotesTable({
     setSkill(subject);
   };
   const [doneSkills, setDoneSkills] = useState<Set<string>>(new Set());
+  // An Apply marks its chip "· done", which disables it, and Base UI's return
+  // to a disabled button lands on <body>. Focus goes to the opener while it is
+  // live, else the next skill still to do, else the notes section itself (a
+  // tabIndex={-1} target Base UI would pass to its first tabbable child).
+  const sectionRef = useRef<HTMLElement>(null);
+  const returnFrom = (subject: string) => () => {
+    const chips = Array.from(
+      sectionRef.current?.querySelectorAll<HTMLButtonElement>("button[data-skill]") ?? [],
+    );
+    const at = Math.max(0, chips.findIndex((chip) => chip.dataset.skill === subject));
+    const live = [...chips.slice(at), ...chips.slice(0, at)].find((chip) => !chip.disabled);
+    if (live) return live;
+    queueMicrotask(() => focusIfDropped(sectionRef.current));
+    return false;
+  };
   const [expandedQuotes, setExpandedQuotes] = useState<Set<string>>(new Set());
   const [condenseDraft, setCondenseDraft] = useState<{
     finding: LintFinding;
@@ -930,7 +946,7 @@ export function NotesTable({
   });
 
   return (
-    <section id="notes" hidden={hidden} className="scroll-mt-6 space-y-2">
+    <section ref={sectionRef} id="notes" tabIndex={-1} hidden={hidden} className="scroll-mt-6 space-y-2 outline-none">
       <h2 className="text-muted-foreground text-sm font-medium">
         No score impact ({notes.length})
       </h2>
@@ -963,6 +979,7 @@ export function NotesTable({
                             <button
                               key={subject}
                               type="button"
+                              data-skill={subject}
                               className={cn(
                                 "rounded-full border px-2 py-0.5 text-xs",
                                 done
@@ -1098,6 +1115,7 @@ export function NotesTable({
             onApplied();
           }}
           onReanalyze={onReanalyze}
+          finalFocus={returnFrom(s)}
         />
       ))}
     </section>

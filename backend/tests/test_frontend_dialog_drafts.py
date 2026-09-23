@@ -126,13 +126,31 @@ def test_getting_started_keeps_one_draft_per_suggestion():
     """Closing suggestion A and opening B used to unmount A's form."""
     assert "composeSuggestion" not in _GETTING_STARTED
     flat = _flat(_GETTING_STARTED)
-    assert "setOpened((keys) => (keys.includes(role) ? keys : [...keys, role]));" in flat
-    dialogs = flat[flat.index("{opened.map((role) => (") :]
+    assert (
+        "setOpened((all) => all.some((s) => s.role_category === suggestion.role_category) "
+        "? all : [...all, suggestion], );"
+    ) in flat
+    dialogs = flat[flat.index("{opened.map((suggestion) => (") :]
     dialogs = dialogs[: dialogs.index("))}")]
-    assert "<NewBaseResumeDialog key={role} open={openRole === role}" in dialogs
-    assert "initialRole={role}" in dialogs
+    assert (
+        "<NewBaseResumeDialog key={suggestion.role_category} "
+        "open={openRole === suggestion.role_category}"
+    ) in dialogs
+    assert "initialRole={suggestion}" in dialogs
     assert "if (!next) setOpenRole(null);" in dialogs
-    assert "onClick={() => compose(suggestion.role_category)}" in flat
+    assert "onClick={() => compose(suggestion)}" in flat
+
+
+def test_a_suggested_role_is_named_by_its_label():
+    """The suggestion's picker showed the raw key ("ai_ml_engineer"), and a
+    create sent it as the role label. The caller hands over the catalog label
+    it already has (mutant: the key as the label)."""
+    assert "initialRole?: { role_category: string; label: string };" in _NBR
+    initial = _flat(_between(_NBR, "const [initialTag] = useState<FavoredRole | null>(() =>", ");"))
+    assert (
+        "initialRole ? { role: initialRole.role_category, label: initialRole.label, category: null } : null"
+    ) in initial
+    assert "favoredRoleFromTag(initialRole" not in _NBR
 
 
 def test_instruct_sheet_keeps_a_proposal_until_applied():
@@ -263,14 +281,14 @@ def test_the_findings_filter_hides_notes_instead_of_unmounting_them():
     flat = _flat(_HEALTH_PAGE)
     assert "showNotes && notes.length > 0" not in flat
     assert "{notes.length > 0 && ( <NotesTable hidden={!showNotes}" in flat
-    assert '<section id="notes" hidden={hidden}' in _FINDINGS
+    assert "<section ref={sectionRef} id=\"notes\" tabIndex={-1} hidden={hidden}" in _FINDINGS
 
 
 def test_new_entity_keeps_its_draft():
     """SYSTEM.md §11 item 32: Esc or an overlay click reset the form."""
     assert "<Dialog open={open} onOpenChange={onOpenChange}>" in _flat(_NEW_ENTITY)
     assert _NEW_ENTITY.count("reset();") == 1
-    success = _between(_NEW_ENTITY, "onSuccess: (entity) =>", "onError:")
+    success = _between(_NEW_ENTITY, "onSuccess: async (entity) =>", "onError:")
     assert "reset();" in success
     assert "key={newEntity.kind}" not in _CAREER_PAGE
     footer = _flat(_between(_NEW_ENTITY, "<DialogFooter>", "</DialogFooter>"))
@@ -281,15 +299,19 @@ def test_new_entity_keeps_its_draft():
 
 def test_a_new_default_kind_moves_only_an_untouched_draft():
     """Opened from another tab: an empty form takes that tab's kind; typed text
-    keeps the kind it was typed for."""
+    keeps the kind it was typed for. Checked on every OPEN, not only when the
+    tab changes: a title cleared and closed on Projects, reopened on Education,
+    stayed a Project (mutant: the old `defaultKind !== shownDefault` check)."""
     pristine = _flat(_between(_NEW_ENTITY, "const pristine =", ";"))
     for field in ("title", "org", "startDate", "endDate"):
         assert f"!{field}.trim()" in pristine, field
     assert 'sectionTitle === (defaultSectionTitle ?? "")' in pristine
     assert 'sectionKey === (defaultSectionKey ?? "")' in pristine
-    adjust = _flat(_between(_NEW_ENTITY, "if (defaultKind !== shownDefault) {", "}"))
-    assert "setShownDefault(defaultKind);" in adjust
-    assert "if (pristine) setKind(defaultKind);" in adjust
+    assert "const [wasOpen, setWasOpen] = useState(open);" in _NEW_ENTITY
+    adjust = _flat(_between(_NEW_ENTITY, "if (open !== wasOpen) {", "}"))
+    assert "setWasOpen(open);" in adjust
+    assert "if (open && pristine) setKind(defaultKind);" in adjust
+    assert "shownDefault" not in _NEW_ENTITY
 
 
 @pytest.mark.parametrize(

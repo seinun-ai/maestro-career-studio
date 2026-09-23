@@ -4,11 +4,49 @@ import * as React from "react"
 import { Menu as MenuPrimitive } from "@base-ui/react/menu"
 
 import { POPUP_SURFACE } from "@/components/ui/popover"
+import { focusIfDropped } from "@/hooks/use-focus-return"
 import { cn } from "@/lib/utils"
 import { ChevronRightIcon, CheckIcon } from "lucide-react"
 
-function DropdownMenu({ ...props }: MenuPrimitive.Root.Props) {
-  return <MenuPrimitive.Root data-slot="dropdown-menu" {...props} />
+/**
+ * Focus returns to the trigger when the menu closes (APG menu button). Base UI
+ * does that after a key press but nowhere after a click (the item it left is
+ * gone), so once the popup has unmounted a focus that fell to <body> moves to
+ * the trigger. An overlay an item opened keeps its focus: that focus is not
+ * <body>, and a modal one hides the page (`aria-hidden`), trigger included.
+ *
+ * Base UI timing this depends on (1.4.1): `onOpenChangeComplete(false)` runs
+ * just BEFORE the popup unmounts, with focus still on the item, so the check
+ * waits a task. After an upgrade, re-check in the browser: a click on a
+ * /templates card's ⋯ → Duplicate lands on ⋯, and the studio's ⋯ → History /
+ * Rebuild start inside the sheet / confirm, not on ⋯.
+ */
+function DropdownMenu({
+  onOpenChange,
+  onOpenChangeComplete,
+  ...props
+}: MenuPrimitive.Root.Props) {
+  const trigger = React.useRef<Element | undefined>(undefined)
+  return (
+    <MenuPrimitive.Root
+      data-slot="dropdown-menu"
+      onOpenChange={(open, details) => {
+        if (open) trigger.current = details.trigger
+        onOpenChange?.(open, details)
+      }}
+      onOpenChangeComplete={(open) => {
+        onOpenChangeComplete?.(open)
+        // Called just BEFORE the popup unmounts (focus is still on the item).
+        if (!open) setTimeout(() => returnToTrigger(trigger.current), 0)
+      }}
+      {...props}
+    />
+  )
+}
+
+function returnToTrigger(trigger: Element | undefined) {
+  if (!(trigger instanceof HTMLElement) || trigger.closest('[aria-hidden="true"], [inert]')) return
+  focusIfDropped(trigger)
 }
 
 function DropdownMenuPortal({ ...props }: MenuPrimitive.Portal.Props) {

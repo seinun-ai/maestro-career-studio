@@ -21,7 +21,7 @@ _SHELL = _read("components/resume-editor/editor-shell.tsx")
 
 def test_template_editor_fills_the_viewport_and_contact_fits():
     page = _read("app/templates/[id]/page.tsx")
-    assert "<FullscreenEditorPage>" in page
+    assert re.search(r"<FullscreenEditorPage\b[^>]*>", page)  # a `ref` may ride along
     contact = _read("components/resume-editor/contact-form.tsx")
     assert "minmax(0,1fr)" in contact
     assert "wrap-anywhere" in contact

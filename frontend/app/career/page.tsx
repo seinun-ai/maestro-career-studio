@@ -150,6 +150,12 @@ export default function CareerPage() {
         open={newEntity.open}
         defaultKind={newEntity.kind}
         onOpenChange={(open) => setNewEntity((current) => ({ ...current, open }))}
+        // The new card, when the open tab lists it; otherwise the opener.
+        landOn={(id) =>
+          document.querySelector<HTMLElement>(
+            `#kb-entities [role="tabpanel"]:not([inert]) a[href="/career/${id}"]`,
+          )
+        }
       />
       <UploadDialog open={importOpen} onOpenChange={setImportOpen} />
     </PageShell>

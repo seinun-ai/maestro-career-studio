@@ -500,7 +500,9 @@
   runs off BOTH viewport edges. A call site managing its own inner scroll
   region still wins; its classes merge over the primitive's.
 - **Initial focus in a dialog is Base UI's `initialFocus`, not React's
-  `autoFocus`** (which does nothing here). `ConfirmDialogProvider` names the
+  `autoFocus`**, which focuses the field before Base UI records the opener,
+  so every close returned to the unmounted field: `<body>` (New career
+  item's title, `initialFocus={titleRef}` now). `ConfirmDialogProvider` names the
   element: Cancel for a `destructive` confirm (a reflex Enter must not
   confirm an irreversible delete), the affirmative button otherwise. **Known
   open defect:** a confirm opened from a `DropdownMenu` ends up with focus on
@@ -527,21 +529,40 @@
   - A button that disables itself while its request runs is
     `focusableWhenDisabled` (Save, Widen/Narrow at their limits, a referral's
     Save and Delete, the Templates Create): a disabled `<button>` drops
-    focus.
+    focus. So is every dialog button that generates, applies or creates
+    (Suggest a selection and Create on New base résumé, Draft rewrite and
+    Apply, Adapt & preview, Send as-is and Apply on Send to résumé, Add
+    career item) and Quick capture's From document, each dimmed on
+    `data-disabled`. A text field a submit would disable goes `readOnly`
+    instead (New career item's). From document opens one file picker per
+    gesture: a double click's second click (`event.detail > 1`) is ignored.
+  - A dialog whose opener goes dead returns elsewhere. Demonstrate skill's
+    Apply disables its chip ("· done"), so its `finalFocus` is the opener
+    while live, else the next skill still to do, else the notes
+    `<section tabIndex={-1}>`. New career item closes after a create only
+    once the refetched list holds the new card, and lands on it (on another
+    tab, the opener). Adapt & preview leaves with the select step; its
+    success arms `useFocusOnNextCommit` with Apply. A create that navigates
+    (Templates Create → `/templates/<id>`) lands on the editor's `<main
+    tabIndex={-1}>` once it loads (`<FullscreenEditorPage
+    ref={focusIfDropped}>`, a stable ref that runs on mount only).
   - Every overlay opened from a ⋯ menu takes the trigger as `finalFocus`,
     because the item is gone by the time it closes. The menu itself does not:
     an explicit `finalFocus` on a menu also overrides the initial focus of an
     overlay an item opens (History opened from the keyboard landed back on
     ⋯). Its default returns to ⋯ after a key press but nowhere after a click,
-    so `StudioOverflowMenu` moves a dropped focus to ⋯ once the popup has
-    unmounted (`onOpenChangeComplete` runs just before that, hence the
-    zero-delay timeout).
+    so the `DropdownMenu` primitive moves a dropped focus to the trigger once
+    the popup has unmounted, for every menu in the app
+    (`onOpenChangeComplete` runs just before that, hence the zero-delay
+    timeout). A trigger that an open modal hides (`aria-hidden`) is skipped,
+    so an overlay an item opened keeps its focus.
   - Two of these lean on Base UI 1.4.1 timing, noted at each site:
-    `StudioOverflowMenu`'s timeout on `onOpenChangeComplete` firing before
+    `DropdownMenu`'s timeout on `onOpenChangeComplete` firing before
     the unmount, and `ConfirmDialogProvider`'s `returnTo` on a function
     `finalFocus` being read when the popup unmounts (not when it opens) and
     ahead of Base UI's own return microtask. After a Base UI upgrade,
-    re-check in the browser: a click on ⋯ → Edit raw JSON lands on ⋯; ⋯ →
+    re-check in the browser: a click on ⋯ → Edit raw JSON (or a /templates
+    card's ⋯ → Duplicate) lands on ⋯; ⋯ →
     History and ⋯ → Rebuild start inside the sheet and the confirm; Load
     latest lands on the studio's `<main>`.
   - `ConfirmDialogProvider` returns to its opener, or, when the confirmed
@@ -938,6 +959,8 @@
   hidden count in the caption; role mix folds that tail into one "More roles"
   series so the week still sums. Role text on these charts, the filters, the
   heatmap, and the Job market bars comes from `useRoleLabel`, never the slug.
+  Getting started hands New base résumé each suggestion's label with its key
+  (`initialRole`), so the dialog's role picker and its create never use the key.
   While the catalog loads, or when its request fails, the label is
   `humanizeSlug` (`lib/humanize-slug.ts`):
   the key's own words with the catalog's acronyms cased as its labels case

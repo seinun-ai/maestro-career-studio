@@ -17,6 +17,8 @@ import { apiFetch } from "@/lib/api";
 import { isLoadFailure } from "@/lib/query-state";
 import type { SetupStatus } from "@/lib/types";
 
+type Suggestion = SetupStatus["suggested_bases"][number];
+
 const DISMISS_KEY = "maestro-cs:getting-started-dismissed";
 
 /** Verb for each step's action button. The step list itself lives in
@@ -38,13 +40,18 @@ export function GettingStartedCard() {
       typeof window !== "undefined" &&
       window.localStorage.getItem(DISMISS_KEY) === "1",
   );
-  // One kept dialog per suggestion the user has opened (role keys, in open
-  // order): closing A and opening B keeps A's draft for when A comes back.
-  const [opened, setOpened] = useState<string[]>([]);
+  // One kept dialog per suggestion the user has opened (in open order):
+  // closing A and opening B keeps A's draft for when A comes back. Each keeps
+  // its label, which its role picker shows in place of the key.
+  const [opened, setOpened] = useState<Suggestion[]>([]);
   const [openRole, setOpenRole] = useState<string | null>(null);
-  const compose = (role: string) => {
-    setOpened((keys) => (keys.includes(role) ? keys : [...keys, role]));
-    setOpenRole(role);
+  const compose = (suggestion: Suggestion) => {
+    setOpened((all) =>
+      all.some((s) => s.role_category === suggestion.role_category)
+        ? all
+        : [...all, suggestion],
+    );
+    setOpenRole(suggestion.role_category);
   };
   const [uploadOpen, setUploadOpen] = useState(false);
   const pathname = usePathname();
@@ -170,7 +177,7 @@ export function GettingStartedCard() {
                       type="button"
                       size="sm"
                       variant="outline"
-                      onClick={() => compose(suggestion.role_category)}
+                      onClick={() => compose(suggestion)}
                     >
                       Compose from KB
                     </Button>
@@ -182,12 +189,12 @@ export function GettingStartedCard() {
         </CardContent>
       </Card>
       <UploadDialog open={uploadOpen} onOpenChange={setUploadOpen} />
-      {opened.map((role) => (
+      {opened.map((suggestion) => (
         <NewBaseResumeDialog
-          key={role}
-          open={openRole === role}
+          key={suggestion.role_category}
+          open={openRole === suggestion.role_category}
           initialMode="kb"
-          initialRole={role}
+          initialRole={suggestion}
           existingResumes={[]}
           onOpenChange={(next) => {
             if (!next) setOpenRole(null);

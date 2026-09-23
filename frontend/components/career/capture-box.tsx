@@ -167,9 +167,16 @@ export function CaptureBox() {
                 type="button"
                 variant="ghost"
                 size="sm"
-                className="text-muted-foreground rounded-full"
+                // Focusable while it reads, as Add to inbox is while it captures.
+                className="text-muted-foreground rounded-full data-disabled:pointer-events-none data-disabled:opacity-50"
                 disabled={ingest.isPending}
-                onClick={() => fileInputRef.current?.click()}
+                focusableWhenDisabled
+                // One picker per gesture: a double click's second click
+                // (detail 2) opened a second one.
+                onClick={(event) => {
+                  if (event.detail > 1) return;
+                  fileInputRef.current?.click();
+                }}
               >
                 {ingest.isPending ? (
                   <Loader2 className="size-4 animate-spin" aria-hidden="true" />

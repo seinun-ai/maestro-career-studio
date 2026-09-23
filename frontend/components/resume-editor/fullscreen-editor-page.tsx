@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { ReactNode, Ref } from "react";
 
 /**
  * Fullscreen document-editor page contract.
@@ -9,10 +9,19 @@ import type { ReactNode } from "react";
  *
  * `tabIndex={-1}`: when a studio remounts its editor (Load latest, Rebuild),
  * focus inside it lands here, the studio's own landmark, rather than on
- * <body>. A container, not a control, so no outline.
+ * <body>. A container, not a control, so no outline. `ref` lets a page take a
+ * focus its arrival dropped (the template editor after a Create).
  */
-export function FullscreenEditorPage({ children }: { children: ReactNode }) {
+export function FullscreenEditorPage({
+  children,
+  ref,
+}: {
+  children: ReactNode;
+  ref?: Ref<HTMLElement>;
+}) {
   return (
-    <main tabIndex={-1} className="flex h-dvh flex-col overflow-hidden outline-none">{children}</main>
+    <main tabIndex={-1} className="flex h-dvh flex-col overflow-hidden outline-none" ref={ref}>
+      {children}
+    </main>
   );
 }

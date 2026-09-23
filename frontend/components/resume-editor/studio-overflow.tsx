@@ -10,7 +10,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { focusIfDropped } from "@/hooks/use-focus-return";
 
 /**
  * The ⋯ trigger plus the two overflow items BOTH studios carry — the raw-JSON
@@ -28,16 +27,9 @@ import { focusIfDropped } from "@/hooks/use-focus-return";
  * The overlays take it as `finalFocus`. The menu itself does not: an explicit
  * `finalFocus` also overrides an overlay's initial focus (History opened from
  * the keyboard landed back on ⋯), and its default already returns there after
- * a key press. After a click it returns nowhere, so once the popup is gone a
- * focus that fell to <body> moves to ⋯ (and only then: an overlay that took
- * focus keeps it).
- *
- * Base UI timing this depends on (1.4.1): `onOpenChangeComplete(false)` runs
- * just BEFORE the popup unmounts, with focus still on the item, so the check
- * waits a task. Sooner, it sees the item focused and does nothing; if Base UI
- * ever calls it after the unmount, the timeout is merely late. After an
- * upgrade, re-check in the browser: a click on ⋯ → Edit raw JSON lands on ⋯,
- * and ⋯ → History / Rebuild start inside the sheet / confirm, not on ⋯.
+ * a key press. After a click it returns nowhere; the `DropdownMenu` primitive
+ * then moves a focus that fell to <body> to ⋯ (and only then: an overlay that
+ * took focus keeps it). A click on ⋯ → Edit raw JSON lands on ⋯.
  */
 export function StudioOverflowMenu({
   triggerRef,
@@ -60,12 +52,7 @@ export function StudioOverflowMenu({
   children?: React.ReactNode;
 }) {
   return (
-    <DropdownMenu
-      onOpenChangeComplete={(open) => {
-        // Called just BEFORE the popup unmounts (focus is still on the item).
-        if (!open) setTimeout(() => focusIfDropped(triggerRef.current), 0);
-      }}
-    >
+    <DropdownMenu>
       <DropdownMenuTrigger
         render={
           <Button

@@ -11,6 +11,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import pytest
+
 _FRONTEND = Path(__file__).resolve().parents[2] / "frontend"
 
 
@@ -248,12 +250,9 @@ def test_overflow_menu_and_its_overlays_return_to_the_trigger():
     assert "ref={triggerRef}" in menu
     # Not an explicit finalFocus on the menu: that also overrode the initial
     # focus of an overlay an item opened. After a click the default returns
-    # nowhere, so a dropped focus moves once the popup has unmounted.
+    # nowhere; the `DropdownMenu` primitive moves a dropped focus to ⋯ (pinned
+    # by test_every_menu_returns_a_dropped_focus_to_its_trigger).
     assert "finalFocus" not in _squash(menu[menu.index("<DropdownMenuContent") :])
-    assert (
-        "onOpenChangeComplete={(open) => { // Called just BEFORE the popup unmounts (focus is still on the item)."
-        " if (!open) setTimeout(() => focusIfDropped(triggerRef.current), 0); }}"
-    ) in _squash(menu)
 
 
 def test_every_overlay_the_menu_opens_takes_a_return_target():
@@ -366,3 +365,132 @@ def test_a_deleted_referral_hands_focus_to_what_survived_it():
     # The last delete unmounts the whole table for the first-referral form.
     assert "useFocusHandoff(rootRef);" in table
     assert '<div ref={rootRef} tabIndex={-1} className="outline-none">' in table
+
+
+# --- Browser verification: focus drops the lanes left behind -----------------
+
+
+def _button_with(src: str, marker: str) -> str:
+    """The `<Button …>…</Button>` element whose source contains `marker`, whitespace squashed."""
+    at = src.index(marker)
+    return _squash(src[src.rfind("<Button", 0, at) : src.index("</Button>", at)])
+
+
+_NBR = _read("components/base-resumes/new-base-resume-dialog.tsx")
+_DEMONSTRATE = _read("components/resume-health/demonstrate-skill-dialog.tsx")
+_SEND = _read("components/career/send-to-resume-dialog.tsx")
+_CAPTURE = _read("components/career/capture-box.tsx")
+_NEW_ENTITY = _read("components/career/new-entity-dialog.tsx")
+_FINDINGS = _read("components/resume-health/finding-cards.tsx")
+_CAREER_PAGE = _read("app/career/page.tsx")
+_DROPDOWN = _read("components/ui/dropdown-menu.tsx")
+_OVERFLOW = _read("components/resume-editor/studio-overflow.tsx")
+
+
+@pytest.mark.parametrize(
+    ("src", "marker"),
+    [
+        (_NBR, "onClick={() => proposeOnce()}"),  # Suggest a selection
+        (_NBR, "onClick={() => submit()}"),  # Create
+        (_DEMONSTRATE, "onClick={() => draftOnce()}"),  # Draft rewrite
+        (_DEMONSTRATE, "onClick={() => applyOnce()}"),  # Apply
+        (_SEND, "onClick={() => portOnce()}"),  # Send as-is
+        (_SEND, "onClick={() => adaptOnce()}"),  # Adapt & preview
+        (_SEND, "onClick={() => applyOnce()}"),  # Apply N to resume
+        (_CAPTURE, '"From document"'),  # Read document
+        (_NEW_ENTITY, 'form="new-career-entity"'),  # Add career item
+    ],
+    ids=["suggest", "nbr-create", "draft", "demo-apply", "send-as-is", "adapt", "send-apply", "from-doc", "add-item"],
+)
+def test_a_button_that_disables_itself_while_it_works_keeps_focus(src, marker):
+    # Mutant: `focusableWhenDisabled` dropped (a native `disabled` drops focus to <body>).
+    button = _button_with(src, marker)
+    assert "focusableWhenDisabled" in button, marker
+    assert "data-disabled:opacity-50" in button, marker
+    assert "data-disabled:pointer-events-none" in button, marker
+
+
+def test_read_document_opens_one_picker_per_gesture():
+    # Mutant: the guard removed (a double click opened two file pickers).
+    button = _button_with(_CAPTURE, '"From document"')
+    assert "onClick={(event) => { if (event.detail > 1) return; fileInputRef.current?.click(); }}" in button
+
+
+def test_adapt_hands_focus_to_the_review_apply():
+    # Adapt's button unmounts with the select step; its success lands on Apply.
+    success = _squash(_SEND[_SEND.index("const adapt = useMutation(") : _SEND.index("const apply = useMutation(")])
+    assert 'setStep("review"); focusNext(applyRef);' in success
+    assert "const focusNext = useFocusOnNextCommit();" in _SEND
+    assert "ref={applyRef}" in _button_with(_SEND, "onClick={() => applyOnce()}")
+    assert _SEND.count("ref={applyRef}") == 1
+
+
+def test_a_demonstrated_skill_returns_focus_to_a_live_chip():
+    # Apply disables the chip that opened the dialog ("· done"): Base UI's
+    # return to it landed on <body>. Mutants: no finalFocus, or the opener
+    # returned even when disabled.
+    assert re.search(r"<DialogContent\b[^>]*\bfinalFocus=\{finalFocus\}", _DEMONSTRATE)
+    body = _squash(_function(_FINDINGS, "function NotesTable("))
+    assert (
+        "const returnFrom = (subject: string) => () => { "
+        'const chips = Array.from( sectionRef.current?.querySelectorAll<HTMLButtonElement>("button[data-skill]") ?? [], ); '
+        "const at = Math.max(0, chips.findIndex((chip) => chip.dataset.skill === subject)); "
+        "const live = [...chips.slice(at), ...chips.slice(0, at)].find((chip) => !chip.disabled); "
+        "if (live) return live; queueMicrotask(() => focusIfDropped(sectionRef.current)); return false; };"
+    ) in body
+    assert "finalFocus={returnFrom(s)}" in body
+    assert "data-skill={subject}" in body
+    assert '<section ref={sectionRef} id="notes" tabIndex={-1} hidden={hidden} className="' in body
+
+
+def test_new_career_item_returns_focus_to_its_opener_or_the_new_card():
+    # `autoFocus` focused the title before Base UI recorded the opener, so every
+    # close returned focus to the unmounted title: <body>.
+    assert not re.search(r"(?<![`\w])autoFocus(?![`\w])", _NEW_ENTITY), "an autoFocus prop"
+    assert re.search(r"<DialogContent\b[^>]*\binitialFocus=\{titleRef\}", _NEW_ENTITY)
+    assert _NEW_ENTITY.count("ref={titleRef}") == 1
+    title = _squash(_NEW_ENTITY)
+    title = title[title.index('<Input id="career-entity-title"') :]
+    assert "ref={titleRef}" in title[: title.index("/>")]
+    # A create closes once the refetched list holds the new card, and lands on it.
+    success = _squash(_NEW_ENTITY[_NEW_ENTITY.index("onSuccess: async (entity) =>") :])
+    success = success[: success.index("onError:")]
+    assert (
+        'created.current = entity.id; await queryClient.invalidateQueries({ queryKey: ["kb", "entities"] }); '
+        "onOpenChange(false); reset();"
+    ) in success
+    assert (
+        "finalFocus={() => { const id = created.current; created.current = null; "
+        "return (id ? landOn?.(id) : null) ?? true; }}"
+    ) in _squash(_NEW_ENTITY)
+    assert (
+        "landOn={(id) => document.querySelector<HTMLElement>( "
+        '`#kb-entities [role="tabpanel"]:not([inert]) a[href="/career/${id}"]`, ) }'
+    ) in _squash(_CAREER_PAGE)
+
+
+def test_every_menu_returns_a_dropped_focus_to_its_trigger():
+    # One fix in the primitive: after a click Base UI returns focus nowhere.
+    # Mutants: the timeout removed, or the modal guard removed (focus stolen
+    # from behind an overlay an item opened).
+    menu = _squash(_function(_DROPDOWN, "function DropdownMenu("))
+    assert "if (open) trigger.current = details.trigger onOpenChange?.(open, details)" in menu
+    assert (
+        "onOpenChangeComplete?.(open) "
+        "// Called just BEFORE the popup unmounts (focus is still on the item). "
+        "if (!open) setTimeout(() => returnToTrigger(trigger.current), 0)"
+    ) in menu
+    helper = _squash(_function(_DROPDOWN, "function returnToTrigger("))
+    assert (
+        "if (!(trigger instanceof HTMLElement) || trigger.closest('[aria-hidden=\"true\"], [inert]')) return "
+        "focusIfDropped(trigger)"
+    ) in helper
+    # The studio's own copy is gone: the primitive covers it.
+    assert "onOpenChangeComplete={" not in _OVERFLOW
+
+
+def test_the_template_editor_takes_a_focus_the_navigation_dropped():
+    page = _read("app/templates/[id]/page.tsx")
+    assert "<FullscreenEditorPage ref={focusIfDropped}>" in page
+    shell = _read("components/resume-editor/fullscreen-editor-page.tsx")
+    assert re.search(r"<main\s+tabIndex=\{-1\}\s+className=\"[^\"]*\"\s+ref=\{ref\}>", shell)

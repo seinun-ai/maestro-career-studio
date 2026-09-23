@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useId, useState } from "react";
+import { FormEvent, useId, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Check } from "lucide-react";
 import { toast } from "sonner";
@@ -55,6 +55,7 @@ export function NewEntityDialog({
   defaultSectionKey,
   defaultSectionTitle,
   defaultSectionType = "entries",
+  landOn,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -62,6 +63,8 @@ export function NewEntityDialog({
   defaultSectionKey?: string;
   defaultSectionTitle?: string;
   defaultSectionType?: "entries" | "bullets";
+  /** The new item's element once the list shows it, for focus after a create. */
+  landOn?: (id: string) => HTMLElement | null;
 }) {
   const queryClient = useQueryClient();
   const presetsLabelId = useId();
@@ -90,8 +93,8 @@ export function NewEntityDialog({
   };
 
   // Closing keeps the draft (Esc, the overlay, Close); only a create clears
-  // it. Opened from another tab, an untouched form takes that tab's kind,
-  // while typed text keeps the kind it was typed for.
+  // it. Each open hands an untouched form the opener's kind (the tab it was
+  // opened from), while typed text keeps the kind it was typed for.
   const pristine =
     !title.trim() &&
     !org.trim() &&
@@ -99,11 +102,19 @@ export function NewEntityDialog({
     !endDate.trim() &&
     sectionTitle === (defaultSectionTitle ?? "") &&
     sectionKey === (defaultSectionKey ?? "");
-  const [shownDefault, setShownDefault] = useState(defaultKind);
-  if (defaultKind !== shownDefault) {
-    setShownDefault(defaultKind);
-    if (pristine) setKind(defaultKind);
+  const [wasOpen, setWasOpen] = useState(open);
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open && pristine) setKind(defaultKind);
   }
+
+  // Focus never falls to <body>. Initial focus is Base UI's `initialFocus`:
+  // an `autoFocus` title took focus before Base UI recorded the opener, so
+  // every close returned to the unmounted title. A create returns to the new
+  // item instead. Text fields go read-only, not disabled, while a create
+  // runs: Enter submits from one, and a disabled field drops its focus.
+  const titleRef = useRef<HTMLInputElement>(null);
+  const created = useRef<string | null>(null);
 
   const titleCollides = kind === "extra" && isCoreSectionTitle(sectionTitle);
 
@@ -139,9 +150,11 @@ export function NewEntityDialog({
         status,
       });
     },
-    onSuccess: (entity) => {
+    onSuccess: async (entity) => {
       toast.success(`${entity.title} added to Career KB`);
-      void queryClient.invalidateQueries({ queryKey: ["kb", "entities"] });
+      // Close once the list holds the new card, so focus can land on it.
+      created.current = entity.id;
+      await queryClient.invalidateQueries({ queryKey: ["kb", "entities"] });
       onOpenChange(false);
       reset();
     },
@@ -163,7 +176,15 @@ export function NewEntityDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent size="sm">
+      <DialogContent
+        size="sm"
+        initialFocus={titleRef}
+        finalFocus={() => {
+          const id = created.current;
+          created.current = null;
+          return (id ? landOn?.(id) : null) ?? true;
+        }}
+      >
         <DialogHeader>
           <DialogTitle>New career item</DialogTitle>
           <DialogDescription>
@@ -238,7 +259,7 @@ export function NewEntityDialog({
                   placeholder="e.g. Publications, Volunteer Work"
                   required
                   aria-invalid={titleCollides}
-                  disabled={create.isPending}
+                  readOnly={create.isPending}
                 />
                 {titleCollides && (
                   <span className="text-destructive text-xs">
@@ -309,9 +330,9 @@ export function NewEntityDialog({
                             ? "e.g. AWS Solutions Architect"
                             : "e.g. Senior Data Scientist"
                   }
-                  autoFocus
+                  ref={titleRef}
                   required
-                  disabled={create.isPending}
+                  readOnly={create.isPending}
                 />
               </div>
 
@@ -333,7 +354,7 @@ export function NewEntityDialog({
                           ? "e.g. Amazon Web Services"
                           : "e.g. Acme Corp"
                   }
-                  disabled={create.isPending}
+                  readOnly={create.isPending}
                 />
               </div>
 
@@ -347,7 +368,7 @@ export function NewEntityDialog({
                     value={startDate}
                     onChange={(event) => setStartDate(event.target.value)}
                     placeholder="e.g. Jan 2025"
-                    disabled={create.isPending}
+                    readOnly={create.isPending}
                   />
                 </div>
                 <div className="grid gap-1.5">
@@ -359,7 +380,7 @@ export function NewEntityDialog({
                     value={endDate}
                     onChange={(event) => setEndDate(event.target.value)}
                     placeholder="e.g. Mar 2025"
-                    disabled={create.isPending}
+                    readOnly={create.isPending}
                   />
                 </div>
               </div>
@@ -405,8 +426,10 @@ export function NewEntityDialog({
           <Button
             type="submit"
             form="new-career-entity"
-            className="rounded-full px-4"
+            // Focusable while it adds: a disabled button drops focus.
+            className="rounded-full px-4 data-disabled:pointer-events-none data-disabled:opacity-50"
             disabled={!isValid || create.isPending}
+            focusableWhenDisabled
           >
             {create.isPending ? "Adding…" : "Add career item"}
           </Button>

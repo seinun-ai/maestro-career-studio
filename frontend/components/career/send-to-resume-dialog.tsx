@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
@@ -27,6 +27,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { kbAdapt, kbAdaptApply, kbPort } from "@/lib/api";
 import { useBaseResumes } from "@/hooks/use-base-resume-label";
+import { useFocusOnNextCommit } from "@/hooks/use-focus-return";
 import { useSingleFlight } from "@/hooks/use-single-flight";
 import { notifyRenderOutcome } from "@/lib/render-note";
 import type {
@@ -99,6 +100,9 @@ export function SendToResumeDialog({
   const [existingBullets, setExistingBullets] = useState<string[]>([]);
   const [editingKey, setEditingKey] = useState<number | null>(null);
   const [editText, setEditText] = useState("");
+  // Adapt's button goes with the select step; its success lands on Apply.
+  const applyRef = useRef<HTMLButtonElement>(null);
+  const focusNext = useFocusOnNextCommit();
 
   // Certifications and custom sections port directly — there is nothing to adapt.
   const adaptable = entity.kind !== "certification" && entity.kind !== "extra";
@@ -184,6 +188,7 @@ export function SendToResumeDialog({
       setExistingBullets(proposal.existing_bullets);
       setEditingKey(null);
       setStep("review");
+      focusNext(applyRef);
     },
     onError: (error: Error) => toast.error(error.message),
   });
@@ -495,10 +500,13 @@ export function SendToResumeDialog({
                 Close
               </Button>
               <Button
-                className="rounded-full"
+                className="rounded-full data-disabled:pointer-events-none data-disabled:opacity-50"
                 variant={adaptable ? "outline" : "default"}
                 onClick={() => portOnce()}
                 disabled={!targetSlug || nothingSelected || pending}
+                // These three stay focusable while they work: a disabled
+                // button that has focus drops it to the page.
+                focusableWhenDisabled
               >
                 {port.isPending
                   ? "Sending…"
@@ -508,9 +516,10 @@ export function SendToResumeDialog({
               </Button>
               {adaptable ? (
                 <Button
-                  className="rounded-full px-4"
+                  className="rounded-full px-4 data-disabled:pointer-events-none data-disabled:opacity-50"
                   onClick={() => adaptOnce()}
                   disabled={!targetSlug || selected.size === 0 || pending}
+                  focusableWhenDisabled
                 >
                   <Sparkles aria-hidden="true" />
                   {adapt.isPending ? "Adapting…" : "Adapt & preview"}
@@ -528,11 +537,13 @@ export function SendToResumeDialog({
                 <ArrowLeft aria-hidden="true" /> Back
               </Button>
               <Button
-                className="rounded-full px-4"
+                ref={applyRef}
+                className="rounded-full px-4 data-disabled:pointer-events-none data-disabled:opacity-50"
                 onClick={() => applyOnce()}
                 // Also disabled mid-edit: the pending textarea text is not in
                 // `rows` yet, so applying would silently use the old text.
                 disabled={includedCount === 0 || pending || editingKey !== null}
+                focusableWhenDisabled
               >
                 {apply.isPending
                   ? "Applying…"

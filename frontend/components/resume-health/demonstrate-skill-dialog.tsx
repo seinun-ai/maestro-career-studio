@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useMemo, useState } from "react";
+import { useId, useMemo, useState, type ComponentProps } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
 
@@ -23,6 +23,8 @@ import {
 import { toastRewriteError } from "./report-errors";
 import { wordDiff } from "@/lib/word-diff";
 import type { ResumeData } from "@/lib/types";
+
+type DialogContentProps = ComponentProps<typeof DialogContent>;
 
 type PickedBullet = {
   section: "experience" | "projects";
@@ -69,6 +71,7 @@ export function DemonstrateSkillDialog({
   locked,
   onApplied,
   onReanalyze,
+  finalFocus,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -79,6 +82,8 @@ export function DemonstrateSkillDialog({
   locked?: boolean;
   onApplied: () => void;
   onReanalyze?: () => void;
+  /** Where focus goes when the dialog closes: an Apply disables its opener. */
+  finalFocus?: DialogContentProps["finalFocus"];
 }) {
   const groups = useMemo(() => experienceProjects(data), [data]);
   const [picked, setPicked] = useState<PickedBullet | null>(null);
@@ -145,7 +150,7 @@ export function DemonstrateSkillDialog({
     // cost a model call); only a successful apply clears them. A draft kept
     // past a re-analysis is safe: the apply carries its content hash.
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[80vh] w-[min(92vw,34rem)] max-w-[min(92vw,34rem)] flex-col overflow-hidden">
+      <DialogContent finalFocus={finalFocus} className="flex max-h-[80vh] w-[min(92vw,34rem)] max-w-[min(92vw,34rem)] flex-col overflow-hidden">
         <DialogHeader>
           <DialogTitle>Demonstrate {skill}</DialogTitle>
         </DialogHeader>
@@ -241,6 +246,10 @@ export function DemonstrateSkillDialog({
               size="sm"
               disabled={locked || applyMut.isPending}
               title={locked ? STALE_APPLY_HINT : undefined}
+              // Both stay focusable while they work: a disabled button that
+              // has focus drops it to the page.
+              focusableWhenDisabled
+              className="data-disabled:pointer-events-none data-disabled:opacity-50"
               onClick={() => applyOnce()}
             >
               {applyMut.isPending ? "Applying…" : "Apply"}
@@ -251,6 +260,8 @@ export function DemonstrateSkillDialog({
               disabled={
                 locked || !picked || prose.trim().length === 0 || draftMut.isPending
               }
+              focusableWhenDisabled
+              className="data-disabled:pointer-events-none data-disabled:opacity-50"
               onClick={() => draftOnce()}
             >
               {draftMut.isPending ? "Drafting…" : "Draft rewrite"}
