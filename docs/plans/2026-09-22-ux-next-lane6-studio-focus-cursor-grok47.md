@@ -1,7 +1,8 @@
 # UX next, wave 2 lane 6: Studio focus, Cmd/Ctrl+S and one submit per click — handoff to Cursor CLI / Grok 4.7
 
-**Target agent/model:** Cursor CLI (`agent`), **Grok 4.7** (xhigh). If your session runs a
-different model, stop and say so: the review tier depends on it.
+**Target agent/model:** written for Cursor CLI (`agent`), Grok 4.7 (xhigh). **Executed by a
+Claude Opus 5.5 subagent** after the owner stopped Cursor; commits carry a
+`Co-Authored-By: Claude Opus 5.5` trailer instead of `Assisted-by: Grok 4.7`.
 **Tasks:** 17, 18, 19 of `docs/plans/2026-09-22-ux-next.md`, in that order.
 **Branch:** `grok/ux-next-lane6-studio-focus` (from `claude/ux-next-plan` at `the commit that added this doc`).
 **Worktree:** `/Users/ajeyds/Projects/maestro-ux-lanes/next-lane6-studio-focus` (dependencies are installed). Work only there.
@@ -171,12 +172,39 @@ table, deviations, anything queued or deferred, and any concerns.
 
 | Task | Planned | Did instead | Why (Goal Card line) |
 |---|---|---|---|
+| 17 | Diagnose "Edit raw JSON" (F1 §C) | Observed with focusin/focusout logging in Playwright (headless Chrome), both studios, before any change. **Keyboard** (⋯, Enter, ArrowDown, Enter): the trigger got `focusin` ~200 ms after the item's `focusout` and kept it for 6 s, so no drop. **Click**: the trigger never got `focusin`; the item's `focusout` fired with `relatedTarget: null` when the popup unmounted and focus stayed on BODY. Instrumenting `HTMLElement.prototype.focus` showed Base UI's focus-outside handler refocusing the (disappearing) popup and no call on the trigger | Focus never dropped to `<body>` |
+| 17 | `finalFocus={triggerRef}` on the ⋯ menu | No `finalFocus` on the menu; `onOpenChangeComplete(false)` schedules `focusIfDropped(trigger)` on a zero-delay timeout. The explicit `finalFocus` did not fix the click path (still BODY) and it also overrode an overlay's initial focus: keyboard ⋯ → History opened with focus back on ⋯, outside the modal sheet. `onOpenChangeComplete` fires just before the popup unmounts (logged: focus still on the item), hence the timeout. The click path shows BODY for one ~30 ms sample before ⋯ | Focus never dropped to `<body>`; don't break initial focus |
+| 17 | Confirm `finalFocus={() => opts?.returnFocus?.() ?? returnPoint.current() ?? true}` | Same resolution through a `returnTo` helper: a `tabIndex={-1}` target is focused by us (microtask, `focusIfDropped`) and Base UI gets `false`. Base UI focuses a container's first tabbable child, so Load latest landed on "Back to application", not `<main>` (decision 11) | Decision 11 |
+| 17 | Studio `onClose` arms `focusNext(overflowRef)` for the raw pane's Apply and Cancel | Also a new optional `exitFocus` prop on `RawJsonToggle`, passed as the discard confirm's `returnFocus` (Cancel while it is still connected, else ⋯). Cancel with a pending draft confirms first, and the pane unmounts behind the dialog, so the studio's arming ran while focus was still in the dialog and the dialog then returned to `<main>` | Every exit lands on ⋯ |
+| 17 | `useFocusOnNextCommit` inside `EditableCard`'s setter | Same, plus a small local `EditPane` component: `edit(close)` is called during render, and a closure over the focus refs passed into it fails the React Compiler `refs` lint; as a prop of a child component it passes | Lint at error level |
+| 17 | `useEditToggle` as `toggle.*` | Destructured at every caller, and the hook takes a type parameter for the edit view (`<tr>` for a referral row). The lint reads `toggle.editRef` as a ref read during render | Lint at error level |
+| 17 | `useFocusHandoff` on `ReferralsTable` for the LAST delete | Also: `focusableWhenDisabled` on each row's Delete and Save, a handoff on each view row, and a `tabIndex={-1}` wrapper around the table as the row's return target. The probe before any change showed a slow DELETE on a MIDDLE row also dropping focus to BODY (the confirm returned to a Delete button that had disabled itself) | Focus never dropped to `<body>` (same class, same file) |
+| 17 | `finalFocus={overflowRef}` on `InstructSheet` (4 overlays in the base studio) | Not passed: `instruct-sheet.tsx` is lane 5's. Pin asserts 3. In the browser Escape from Ask for changes returned to ⋯ by Base UI's default on both paths (key and click). See *Deferred to merge* | Scope: lane 5 owns the file |
 
 ## Gate results
 
 | Task | Gate | Result |
 |---|---|---|
+| 17 | pins | `test_frontend_focus.py` 20 passed (12 new, seen failing first: 11 failed before the code); every `test_frontend_*.py` 491 passed |
+| 17 | mutation check | 28 mutants, 28 killed, each by exactly the pin that names it (`/tmp/maestro-next-lane6/muts17.json`) |
+| 17 | tsc / lint / node | clean / 0 errors, 5 baseline warnings / 143 of 143 |
+| 17 | build | `npm run build` OK |
+| 17 | slop | frontend OK, duplication 448 lines / 39 → 37 clones (ceiling 468/39; clean `git archive` export); backend OK, `complexity_hotspots` 424 (one new pin reached cc 13 and was split) |
+| 17 | browser | Playwright (headless Chrome, real keys and clicks), both studios, light and dark: every control in F1's list lands on a named target, never BODY (see report) |
 
 ## Queued for Task 20 (SYSTEM.md changes Claude applies)
 
+- **§11 item 29** (Task 17): deleting the last referral now hands focus to `#main-content`
+  (and any other delete to the table). Narrow the item to: "Focus lands on `<body>`: Escape on
+  the <768px sidebar sheet (which also stays open after a nav link is tapped)."
+
 ## Deferred to merge (edits left for Claude, with file:line)
+
+- **Task 17, `InstructSheet` return target** (lane 5 owns the file): add
+  `finalFocus?: RefObject<HTMLElement | null>` to `InstructSheet` and pass it to its
+  `<SheetContent>` (`frontend/components/resume-editor/instruct-sheet.tsx:110` at `8878731d`);
+  pass `finalFocus={overflowRef}` at the base studio's `<InstructSheet`
+  (`frontend/components/resume-editor/editor-body.tsx:618` on this branch); bump the count in
+  `backend/tests/test_frontend_focus.py::test_every_overlay_the_menu_opens_takes_a_return_target`
+  from 3 to 4. Today Escape returns to ⋯ through Base UI's default (verified by key and click),
+  so this makes it deterministic rather than fixing a live drop.

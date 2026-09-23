@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useState, type RefObject } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
@@ -198,16 +198,24 @@ export function RoleCategoryDialog({
   roleLabel: label = null,
   open,
   onOpenChange,
+  finalFocus,
 }: {
   slug: string;
   roleCategory: string;
   roleLabel?: string | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /**
+   * Where focus returns on close. Opened from a menu, pass the menu's trigger:
+   * Base UI's default is the last element it saw focused, and the picker's own
+   * input records itself when its popup opens, so Escape "returned" focus to an
+   * input the dialog was removing.
+   */
+  finalFocus?: RefObject<HTMLElement | null>;
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent finalFocus={finalFocus}>
         <DialogHeader>
           <DialogTitle>Target role</DialogTitle>
           <DialogDescription>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode, type Ref } from "react";
 import {
   ArrowDown,
   ArrowUp,
@@ -17,6 +17,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useFocusOnNextCommit } from "@/hooks/use-focus-return";
 import { cn } from "@/lib/utils";
 
 export interface EditableCardAction {
@@ -55,9 +56,15 @@ export function EditableCard({
 }) {
   const [editingState, setEditingState] = useState(initialEditing);
   const editing = editingProp ?? editingState;
+  // Edit and Done each unmount themselves: opening focuses the editor's first
+  // field, closing (Done, or the editor's own `close`) the pencil.
+  const pencilRef = useRef<HTMLButtonElement>(null);
+  const editRef = useRef<HTMLDivElement>(null);
+  const focusNext = useFocusOnNextCommit();
   const setEditing = (next: boolean) => {
     if (onEditingChange) onEditingChange(next);
     if (editingProp === undefined) setEditingState(next);
+    focusNext(next ? editRef : pencilRef);
   };
   const hasMenu = Boolean(
     onMoveUp || onMoveDown || onDelete || extraActions?.length,
@@ -75,6 +82,7 @@ export function EditableCard({
       {!editing && (
         <div className="pointer-coarse:opacity-100 absolute top-2 right-2 flex items-center gap-0.5 opacity-0 transition-opacity group-hover/card:opacity-100 focus-within:opacity-100">
           <Button
+            ref={pencilRef}
             size="icon-sm"
             variant="ghost"
             aria-label="Edit"
@@ -130,17 +138,36 @@ export function EditableCard({
       )}
 
       {editing ? (
-        <div className="flex flex-col gap-3">
-          {edit(() => setEditing(false))}
-          <div className="flex justify-end">
-            <Button size="sm" onClick={() => setEditing(false)}>
-              Done
-            </Button>
-          </div>
-        </div>
+        <EditPane ref={editRef} edit={edit} onClose={() => setEditing(false)} />
       ) : (
         read
       )}
+    </div>
+  );
+}
+
+/**
+ * The open editor and its Done. `onClose` returns focus to the pencil, so it
+ * reaches `edit` as a prop: called straight from the card's render, a closure
+ * over the focus refs fails the React Compiler lint.
+ */
+function EditPane({
+  ref,
+  edit,
+  onClose,
+}: {
+  ref: Ref<HTMLDivElement>;
+  edit: (close: () => void) => ReactNode;
+  onClose: () => void;
+}) {
+  return (
+    <div ref={ref} className="flex flex-col gap-3">
+      {edit(onClose)}
+      <div className="flex justify-end">
+        <Button size="sm" onClick={onClose}>
+          Done
+        </Button>
+      </div>
     </div>
   );
 }

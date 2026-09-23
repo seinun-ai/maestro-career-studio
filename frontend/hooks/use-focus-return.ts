@@ -76,11 +76,13 @@ export function useFocusHandoff(ref: RefObject<HTMLElement | null>) {
 
 /**
  * A read view that swaps for an edit view and back. Each swap unmounts the button that was pressed:
- * opening moves focus to the edit view's first field, and Done moves it back to the pencil.
+ * opening moves focus to the edit view's first field, and Done moves it back to the pencil. `E` is
+ * the edit view's element (a table row edits in a `<tr>`). Destructure the result: the React Compiler
+ * lint reads `toggle.editRef` as a ref read during render.
  */
-export function useEditToggle(initial = false) {
+export function useEditToggle<E extends HTMLElement = HTMLDivElement>(initial = false) {
   const [editing, setEditing] = useState(initial);
-  const editRef = useRef<HTMLDivElement>(null);
+  const editRef = useRef<E>(null);
   const openerRef = useRef<HTMLButtonElement>(null);
   const focusNext = useFocusOnNextCommit();
   return {

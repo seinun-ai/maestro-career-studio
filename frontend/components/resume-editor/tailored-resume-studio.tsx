@@ -25,6 +25,7 @@ import { toast } from "sonner";
 
 import { useConfirm } from "@/components/confirm-dialog";
 import { IconButton } from "@/components/icon-button";
+import { useFocusOnNextCommit } from "@/hooks/use-focus-return";
 import { useLeaveGuard } from "@/hooks/use-leave-guard";
 import { PageHeader } from "@/components/page-shell";
 import { ContactForm } from "@/components/resume-editor/contact-form";
@@ -435,6 +436,10 @@ function StudioEditor({
   const [rawMode, setRawMode] = useState(false);
   const raw = useRawJsonDraft();
   const [historyOpen, setHistoryOpen] = useState(false);
+  // The ⋯ trigger: focus returns here from the menu, History, Rebuild's
+  // confirm, and the raw pane's exits (the pressed button unmounts).
+  const overflowRef = useRef<HTMLButtonElement>(null);
+  const focusNext = useFocusOnNextCommit();
   const [formatting, setFormatting] = useState<Partial<ResumeFormatting> | null>(
     (application.formatting as Partial<ResumeFormatting> | null) ?? null,
   );
@@ -847,6 +852,7 @@ function StudioEditor({
                   }
                   overflow={
                     <StudioOverflowMenu
+                      triggerRef={overflowRef}
                       rawMode={rawMode}
                       onToggleRaw={() =>
                         rawMode
@@ -887,6 +893,10 @@ function StudioEditor({
                                 "This erases the tailored resume content, the rendered PDF, and any unsaved edits in the studio. This can't be undone.",
                               confirmLabel: "Rebuild from base",
                               destructive: true,
+                              // The item is gone once the menu closes: Cancel
+                              // and "Rebuilding…" keep focus on ⋯, and the
+                              // remount hands it to the page's <main>.
+                              returnFocus: () => overflowRef.current,
                             });
                             if (ok) onRebuild();
                           }}
@@ -907,7 +917,11 @@ function StudioEditor({
                 {...raw.bind}
                 value={data}
                 onChange={setData}
-                onClose={() => setRawMode(false)}
+                onClose={() => {
+                  setRawMode(false);
+                  focusNext(overflowRef);
+                }}
+                exitFocus={() => overflowRef.current}
               />
             ) : (
               <>
@@ -1055,6 +1069,7 @@ function StudioEditor({
         resumeKey={applicationId}
         open={historyOpen}
         onOpenChange={setHistoryOpen}
+        finalFocus={overflowRef}
         onRestored={() =>
           qc.invalidateQueries({ queryKey: ["application", applicationId] })
         }

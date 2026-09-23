@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type RefObject } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
@@ -52,12 +52,15 @@ export function KbImportDrawer({
   onImported,
   targetSlug,
   targetData,
+  finalFocus,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onImported: (result: BaseResumeDetail) => void;
   targetSlug: string;
   targetData: ResumeData;
+  /** Where focus returns on close; the base studio passes its ⋯ trigger. */
+  finalFocus?: RefObject<HTMLElement | null>;
 }) {
   const queryClient = useQueryClient();
   const [selection, setSelection] = useState<EntitySelection>({});
@@ -163,7 +166,7 @@ export function KbImportDrawer({
 
   return (
     <Sheet open={open} onOpenChange={handleOpenChange}>
-      <SheetContent side="right" className="w-full sm:max-w-2xl">
+      <SheetContent side="right" className="w-full sm:max-w-2xl" finalFocus={finalFocus}>
         <SheetHeader>
           <SheetTitle>Import from Career KB</SheetTitle>
           <p className="text-muted-foreground text-sm">

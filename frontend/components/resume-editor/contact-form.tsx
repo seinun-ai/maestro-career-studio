@@ -1,11 +1,11 @@
 "use client";
 
-import { useState } from "react";
 import { Pencil } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useEditToggle } from "@/hooks/use-focus-return";
 import type { ContactInfo } from "@/lib/types";
 
 const FIELDS: {
@@ -35,7 +35,9 @@ export function ContactForm({
   value: ContactInfo;
   onChange: (next: ContactInfo) => void;
 }) {
-  const [editing, setEditing] = useState(false);
+  // The pencil and Done each unmount themselves: opening focuses Name, Done
+  // the pencil.
+  const { editing, editRef, openerRef, open, close } = useEditToggle();
 
   const update = (key: keyof ContactInfo, next: string) => {
     onChange({ ...value, [key]: next });
@@ -43,7 +45,7 @@ export function ContactForm({
 
   if (editing) {
     return (
-      <div className="@container grid gap-3">
+      <div ref={editRef} className="@container grid gap-3">
         <div className="grid gap-3 @md:grid-cols-2">
           {FIELDS.map(({ key, label, placeholder, required }) => (
             <div key={key} className="grid gap-1.5">
@@ -61,7 +63,7 @@ export function ContactForm({
           ))}
         </div>
         <div className="flex justify-end">
-          <Button size="sm" onClick={() => setEditing(false)}>
+          <Button size="sm" onClick={close}>
             Done
           </Button>
         </div>
@@ -93,11 +95,12 @@ export function ContactForm({
         })}
       </dl>
       <Button
+        ref={openerRef}
         size="icon-sm"
         variant="ghost"
         aria-label="Edit contact"
         className="pointer-coarse:opacity-100 absolute top-2 right-2 opacity-0 transition-opacity group-hover/contact:opacity-100 focus-within:opacity-100"
-        onClick={() => setEditing(true)}
+        onClick={open}
       >
         <Pencil className="size-3.5" />
       </Button>

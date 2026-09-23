@@ -94,3 +94,185 @@ def test_the_qa_history_is_a_named_focus_target():
         r"<h3 id=\{historyHeadingId\}",
         qa,
     )
+
+
+# --- Task 17: studio focus never drops (F1, decision 11) -------------------
+
+
+def _squash(source: str) -> str:
+    return re.sub(r"\s+", " ", source)
+
+
+def _function(src: str, head: str) -> str:
+    """One top-level function, from its signature to its closing brace."""
+    start = src.index(head)
+    return src[start : src.index("\n}\n", start)]
+
+
+def _element(src: str, label: str, tag: str) -> str:
+    """The JSX element carrying `aria-label="<label>"`, from `<tag` to `</tag>`."""
+    at = src.index(f'aria-label="{label}"')
+    start = src.rfind(f"<{tag}", 0, at)
+    return src[start : src.index(f"</{tag}>", at)]
+
+
+_SHELL = _read("components/resume-editor/editor-shell.tsx")
+_BASE_STUDIO = _read("components/resume-editor/editor-body.tsx")
+_TAILORED = _read("components/resume-editor/tailored-resume-studio.tsx")
+
+
+def test_read_edit_blocks_focus_their_field_and_return_to_the_pencil():
+    contact = _read("components/resume-editor/contact-form.tsx")
+    for block in (
+        _function(_BASE_STUDIO, "function SummaryBlock("),
+        _function(_BASE_STUDIO, "function CertificationsBlock("),
+        _function(contact, "export function ContactForm("),
+    ):
+        assert "const { editing, editRef, openerRef, open, close } = useEditToggle();" in block
+        # Opening lands in the edit view's first field; Done lands on the pencil.
+        assert "ref={editRef}" in block and "ref={openerRef}" in block
+        assert "onClick={open}" in block and "onClick={close}" in block
+        assert "setEditing(" not in block, "a bare toggle unmounts the pressed button"
+
+
+def test_preview_toggles_hand_focus_to_each_other():
+    show = _squash(_element(_SHELL, "Show PDF preview", "button"))
+    assert "ref={showRef}" in show
+    assert "onClick={() => { setCollapsed(false); focusNext(hideRef); }}" in show
+    hide = _squash(_element(_SHELL, "Hide PDF preview", "Button"))
+    assert "ref={hideRef}" in hide
+    assert "onClick={() => { setCollapsed(true); focusNext(showRef); }}" in hide
+    assert "const focusNext = useFocusOnNextCommit();" in _SHELL
+
+
+def test_widen_and_narrow_keep_focus_at_their_limits():
+    for label in ("Widen preview", "Narrow preview"):
+        button = _element(_SHELL, label, "Button")
+        assert "focusableWhenDisabled" in button, label
+        assert "data-disabled:opacity-50" in button, label
+
+
+def test_a_studio_remount_hands_focus_to_the_page_landmark():
+    assert "useFocusHandoff(rootRef);" in _SHELL
+    # Both branches' root is the same <div>; the ref must be on each.
+    assert _SHELL.count('<div ref={rootRef} className="flex min-h-0 w-full flex-1">') == 2
+    page = _read("components/resume-editor/fullscreen-editor-page.tsx")
+    assert re.search(r"<main\s+tabIndex=\{-1\}\s+className=\"[^\"]*\boutline-none\b", page)
+
+
+def test_overflow_menu_and_its_overlays_return_to_the_trigger():
+    menu = _read("components/resume-editor/studio-overflow.tsx")
+    assert "triggerRef: RefObject<HTMLButtonElement | null>;" in menu
+    assert "ref={triggerRef}" in menu
+    # Not an explicit finalFocus on the menu: that also overrode the initial
+    # focus of an overlay an item opened. After a click the default returns
+    # nowhere, so a dropped focus moves once the popup has unmounted.
+    assert "finalFocus" not in _squash(menu[menu.index("<DropdownMenuContent") :])
+    assert (
+        "onOpenChangeComplete={(open) => { // Called just BEFORE the popup unmounts (focus is still on the item)."
+        " if (!open) setTimeout(() => focusIfDropped(triggerRef.current), 0); }}"
+    ) in _squash(menu)
+
+
+def test_every_overlay_the_menu_opens_takes_a_return_target():
+    assert re.search(
+        r"<DialogContent\b[^>]*\bfinalFocus=\{finalFocus\}",
+        _read("components/role-category-picker.tsx"),
+    )
+    for rel in (
+        "components/resume-versions/version-history-sheet.tsx",
+        "components/resume-editor/kb-import-drawer.tsx",
+    ):
+        assert re.search(r"<SheetContent\b[^>]*\bfinalFocus=\{finalFocus\}", _read(rel)), rel
+    for studio in (_BASE_STUDIO, _TAILORED):
+        assert "const overflowRef = useRef<HTMLButtonElement>(null);" in studio
+        assert "triggerRef={overflowRef}" in studio
+    # role, history, import (Ask for changes is lane 5's file: deferred)
+    assert _BASE_STUDIO.count("finalFocus={overflowRef}") == 3
+    assert _TAILORED.count("finalFocus={overflowRef}") == 1  # history
+
+
+def test_leaving_the_raw_pane_returns_to_the_menu():
+    for studio in (_BASE_STUDIO, _TAILORED):
+        pane = _squash(studio[studio.index("<RawJsonToggle") :])
+        pane = pane[: pane.index("/>")]
+        # Apply and an unconfirmed Cancel unmount the pressed button.
+        assert "onClose={() => { setRawMode(false); focusNext(overflowRef); }}" in pane
+        # A confirmed discard closes behind its dialog, which then returns here.
+        assert "exitFocus={() => overflowRef.current}" in pane
+    toggle = _squash(_read("components/resume-editor/raw-json-toggle.tsx"))
+    assert (
+        "returnFocus: () => cancelRef.current?.isConnected ? cancelRef.current : (exitFocus?.() ?? null),"
+        in toggle
+    )
+    assert "ref={cancelRef}" in toggle
+
+
+def test_confirm_returns_to_its_opener_or_what_survived_it():
+    src = _read("components/confirm-dialog.tsx")
+    confirm = src[src.index("const confirm = useCallback<ConfirmFn>(") :]
+    # Taken when the confirm OPENS: the confirmed action can remove the opener.
+    assert "returnPoint.current = focusReturnPoint(document.activeElement);" in confirm[
+        : confirm.index("setOpen(true)")
+    ]
+    assert "finalFocus={() => returnTo(opts?.returnFocus?.() ?? returnPoint.current())}" in _squash(src)
+    # Base UI would focus a landmark's first tabbable child (Load latest landed
+    # on "Back to application"): a tabIndex={-1} target is focused directly.
+    helper = _squash(_function(src, "function returnTo("))
+    assert "if (!target) return true;" in helper
+    assert "if (target.tabIndex >= 0) return target; queueMicrotask(() => focusIfDropped(target)); return false;" in helper
+    rebuild = _TAILORED[_TAILORED.index('title: "Rebuild from base resume?"') :]
+    assert "returnFocus: () => overflowRef.current," in rebuild[: rebuild.index("});")]
+
+
+def test_entry_cards_focus_their_editor_and_return_to_the_pencil():
+    card = _read("components/resume-editor/editable-card.tsx")
+    setter = _squash(card[card.index("const setEditing = (next: boolean) =>") :])
+    setter = setter[: setter.index("};")]
+    assert "focusNext(next ? editRef : pencilRef);" in setter
+    assert "ref={pencilRef}" in _element(card, "Edit", "Button")
+    assert "<EditPane ref={editRef} edit={edit} onClose={() => setEditing(false)} />" in card
+    assert "<div ref={ref} className=\"flex flex-col gap-3\">" in card
+
+
+def test_chat_rail_toggles_hand_focus_to_each_other():
+    chat = _read("components/chat/chat-page.tsx")
+    hide = _squash(_element(chat, "Hide chat history", "Button"))
+    assert "ref={hideRailRef}" in hide
+    assert "onClick={() => { setHistoryCollapsed(true); focusNext(showRailRef); }}" in hide
+    show = _squash(_element(chat, "Show chat history", "button"))
+    assert "ref={showRailRef}" in show
+    assert "onClick={() => { setHistoryCollapsed(false); focusNext(hideRailRef); }}" in show
+
+
+_REFERRALS = _read("app/referrals/page.tsx")
+
+
+def _icon_button(src: str, label: str) -> str:
+    """A self-closing `<IconButton label="<label>" … />`."""
+    at = src.index(f'label="{label}"')
+    start = src.rfind("<IconButton", 0, at)
+    return src[start : at + re.search(r"\n\s*/>", src[at:]).end()]
+
+
+def test_referral_rows_move_focus_into_the_edit_row_and_back():
+    row = _function(_REFERRALS, "function ReferralRow(")
+    assert "useEditToggle<HTMLTableRowElement>();" in row
+    assert "rowRef={editRef}" in row and "onDone={close}" in row
+    assert "editButtonRef={openerRef}" in _squash(row) and "onEdit={open}" in row
+    assert "ref={editButtonRef}" in _icon_button(_REFERRALS, "Edit")
+    edit_row = _function(_REFERRALS, "function ReferralEditRow(")
+    assert "<TableRow ref={rowRef}>" in edit_row
+    # Save disables itself while it runs; a disabled <button> drops focus.
+    save = edit_row[edit_row.index("onClick={save}") :]
+    assert "focusableWhenDisabled" in save[: save.index("</Button>")]
+
+
+def test_a_deleted_referral_hands_focus_to_what_survived_it():
+    view = _function(_REFERRALS, "function ReferralViewRow(")
+    assert "useFocusHandoff(rowRef);" in view and '<TableRow ref={rowRef} className="group">' in view
+    assert "focusableWhenDisabled" in _icon_button(_REFERRALS, "Delete referral")
+    table = _function(_REFERRALS, "function ReferralsTable(")
+    # The last delete unmounts the whole table for the first-referral form.
+    assert "useFocusHandoff(rootRef);" in table
+    assert '<div ref={rootRef} tabIndex={-1} className="outline-none">' in table

@@ -199,7 +199,8 @@
     confirms; in the tailored studio, Load latest and Rebuild also drop a
     draft, behind their own confirms. The pane survives a Save, so a value
     that changes under text still matching the PREVIOUS value re-syncs it to
-    the saved copy.
+    the saved copy. Leaving the pane (Apply, Cancel, a confirmed discard,
+    Form view) returns focus to ⋯.
   - *Divider*: an APG window splitter. A focusable `role="separator"` whose
     value is the EDITOR's share (rounded; `aria-valuetext` names both panes;
     `aria-controls` the editor pane). Arrows snap to the 5% grid, since a drag
@@ -211,7 +212,8 @@
     localStorage on release. The collapsed "Show PDF preview" control is a
     28px rail in normal flow, not an overlay on the editor pane. Width and
     collapse are `useLocalStorageState` preferences, so a stored value paints
-    on the first frame and stays in sync across tabs.
+    on the first frame and stays in sync across tabs. The two preview toggles
+    hand focus to each other.
   - *Base studio*: Save is dirty-gated, so ⋯ **Regenerate PDF** (Generate PDF
     before the first render) is the retry for a failed render, disabled while
     edits are unsaved, and the render-error banner says "save or
@@ -472,6 +474,41 @@
   the menu item — the menu's focus restore races the dialog's initial focus.
   Not reproducible under automation (`document.hasFocus()` is false in the
   browser pane, which suppresses initial-focus); verify by hand.
+- **Focus never falls to `<body>`** (`hooks/use-focus-return.ts`; pinned by
+  `test_frontend_focus.py`). Focus moves only when it fell to `<body>`, never
+  away from where the user put it.
+  - A control that unmounts itself arms `useFocusOnNextCommit` with what
+    replaces it: the counterpart toggle (Hide/Show PDF preview, Hide/Show chat
+    history), the first field of the editor it opened, or the pencil on Done.
+    `useEditToggle` wraps the read/edit case (Summary, Contact,
+    Certifications, a referral row); destructure its result, because the
+    React Compiler lint reads `toggle.editRef` as a ref read during render.
+    `EditableCard` arms from its own setter.
+  - A subtree that can vanish while holding focus calls `useFocusHandoff`:
+    `LoadErrorState`, `EditorShell` (a studio remount lands on
+    `FullscreenEditorPage`'s `<main tabIndex={-1}>`), a referral row and the
+    referrals table (a deleted row lands on the table, the last one on
+    `#main-content`).
+  - A button that disables itself while its request runs is
+    `focusableWhenDisabled` (Save, Widen/Narrow at their limits, a referral's
+    Save and Delete): a disabled `<button>` drops focus.
+  - Every overlay opened from a ⋯ menu takes the trigger as `finalFocus`,
+    because the item is gone by the time it closes. The menu itself does not:
+    an explicit `finalFocus` on a menu also overrides the initial focus of an
+    overlay an item opens (History opened from the keyboard landed back on
+    ⋯). Its default returns to ⋯ after a key press but nowhere after a click,
+    so `StudioOverflowMenu` moves a dropped focus to ⋯ once the popup has
+    unmounted (`onOpenChangeComplete` runs just before that, hence the
+    zero-delay timeout).
+  - `ConfirmDialogProvider` returns to its opener, or, when the confirmed
+    action removed it, to the nearest `tabIndex={-1}` ancestor that survived
+    (`returnFocus` names another target: Rebuild returns to ⋯). Base UI would
+    focus such a landmark's first tabbable child ("Back to application"), so
+    a `tabIndex={-1}` target is focused directly once the dialog is gone.
+  - Why: Base UI's default return target for a trigger-less dialog is the
+    last connected element it saw focused, which can be inside the closing
+    dialog (the Role dialog's own picker input), and is `null` once the
+    opener is gone (Load latest).
 - **`TabsContent` hides de-selected panels with `[&[inert]]:hidden`** — do not
   remove it. Base UI clears `hidden` only when a CLOSING transition finishes;
   these panels have none, so every visited panel would stay behind, visible.

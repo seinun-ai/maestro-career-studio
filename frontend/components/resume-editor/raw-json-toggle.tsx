@@ -48,6 +48,7 @@ export function RawJsonToggle({
   onChange,
   onClose,
   onPendingChange,
+  exitFocus,
   ref,
 }: {
   value: ResumeData;
@@ -55,9 +56,16 @@ export function RawJsonToggle({
   onClose: () => void;
   /** Whether typed JSON differs from `value`: the studio counts it as unsaved. */
   onPendingChange: (pending: boolean) => void;
+  /**
+   * Where focus goes once a confirmed discard closes the pane: its Cancel is
+   * gone by the time the confirm closes. (Apply and an unconfirmed Cancel close
+   * straight away, and the studio moves focus itself.)
+   */
+  exitFocus?: () => HTMLElement | null;
   ref?: Ref<RawJsonHandle>;
 }) {
   const confirm = useConfirm();
+  const cancelRef = useRef<HTMLButtonElement>(null);
   const [text, setText] = useState(() => JSON.stringify(value, null, 2));
   const [error, setError] = useState<string | null>(null);
   // A value that changes under an untouched pane (a save's normalized copy)
@@ -127,6 +135,9 @@ export function RawJsonToggle({
         description: "The JSON you typed has not been applied. This can't be undone.",
         confirmLabel: "Discard",
         destructive: true,
+        // Kept: back to Cancel. Discarded: the pane is gone.
+        returnFocus: () =>
+          cancelRef.current?.isConnected ? cancelRef.current : (exitFocus?.() ?? null),
       }))
     )
       return;
@@ -146,7 +157,7 @@ export function RawJsonToggle({
       )}
       <div className="flex gap-2">
         <Button onClick={apply}>Apply JSON</Button>
-        <Button variant="outline" onClick={cancel}>
+        <Button ref={cancelRef} variant="outline" onClick={cancel}>
           Cancel
         </Button>
       </div>

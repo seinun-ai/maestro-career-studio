@@ -17,6 +17,7 @@ import { toast } from "sonner";
 
 import { IconButton } from "@/components/icon-button";
 import { KbSyncPill } from "@/components/kb-sync-pill";
+import { useFocusOnNextCommit, useEditToggle } from "@/hooks/use-focus-return";
 import { useLeaveGuard } from "@/hooks/use-leave-guard";
 import { PageHeader } from "@/components/page-shell";
 import { ContactForm } from "@/components/resume-editor/contact-form";
@@ -100,6 +101,10 @@ export function EditorBody({
   const [instructOpen, setInstructOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [roleOpen, setRoleOpen] = useState(false);
+  // The ⋯ trigger: focus returns here from the menu, from every overlay it
+  // opens, and from the raw pane's exits (the pressed button unmounts).
+  const overflowRef = useRef<HTMLButtonElement>(null);
+  const focusNext = useFocusOnNextCommit();
   // Same shared vocabulary query the picker uses, for the menu item's label.
   const { data: roleCategories } = useRoleCategories();
   const [templateId, setTemplateId] = useState(
@@ -399,6 +404,7 @@ export function EditorBody({
                   }
                   overflow={
                     <StudioOverflowMenu
+                      triggerRef={overflowRef}
                       /* Props in the order the menu renders them: this item,
                          the shared pair, then `children`. First, and labelled
                          with its value: this is the only place the role is
@@ -488,7 +494,11 @@ export function EditorBody({
                 {...raw.bind}
                 value={data}
                 onChange={setData}
-                onClose={() => setRawMode(false)}
+                onClose={() => {
+                  setRawMode(false);
+                  focusNext(overflowRef);
+                }}
+                exitFocus={() => overflowRef.current}
               />
             ) : (
               <>
@@ -592,6 +602,7 @@ export function EditorBody({
         resumeKey={slug}
         open={historyOpen}
         onOpenChange={setHistoryOpen}
+        finalFocus={overflowRef}
         onRestored={() =>
           qc.invalidateQueries({ queryKey: ["base-resumes", slug] })
         }
@@ -602,6 +613,7 @@ export function EditorBody({
         roleLabel={live?.role_label ?? initial.role_label}
         open={roleOpen}
         onOpenChange={setRoleOpen}
+        finalFocus={overflowRef}
       />
       <InstructSheet
         open={instructOpen}
@@ -615,6 +627,7 @@ export function EditorBody({
       <KbImportDrawer
         open={importOpen}
         onOpenChange={setImportOpen}
+        finalFocus={overflowRef}
         onImported={(result) => {
           adoptBaseResumeDetail(result);
         }}
@@ -625,6 +638,8 @@ export function EditorBody({
   );
 }
 
+// The pencil and Done each unmount themselves (`useEditToggle`): opening
+// focuses the edit view's first field, Done the pencil.
 function SummaryBlock({
   value,
   onChange,
@@ -632,10 +647,10 @@ function SummaryBlock({
   value: string;
   onChange: (next: string) => void;
 }) {
-  const [editing, setEditing] = useState(false);
+  const { editing, editRef, openerRef, open, close } = useEditToggle();
   if (editing) {
     return (
-      <div className="grid gap-2">
+      <div ref={editRef} className="grid gap-2">
         <Label htmlFor="summary">Summary</Label>
         <Textarea
           id="summary"
@@ -644,7 +659,7 @@ function SummaryBlock({
           onChange={(e) => onChange(e.target.value)}
         />
         <div className="flex justify-end">
-          <Button size="sm" onClick={() => setEditing(false)}>
+          <Button size="sm" onClick={close}>
             Done
           </Button>
         </div>
@@ -667,11 +682,12 @@ function SummaryBlock({
         )}
       </p>
       <Button
+        ref={openerRef}
         size="icon-sm"
         variant="ghost"
         aria-label="Edit summary"
         className="pointer-coarse:opacity-100 absolute top-2 right-2 opacity-0 transition-opacity group-hover/sum:opacity-100 focus-within:opacity-100"
-        onClick={() => setEditing(true)}
+        onClick={open}
       >
         <Pencil className="size-3.5" />
       </Button>
@@ -686,10 +702,10 @@ function CertificationsBlock({
   value: string[];
   onChange: (next: string[]) => void;
 }) {
-  const [editing, setEditing] = useState(false);
+  const { editing, editRef, openerRef, open, close } = useEditToggle();
   if (editing) {
     return (
-      <div className="grid gap-2">
+      <div ref={editRef} className="grid gap-2">
         <Label htmlFor="certs">Certifications</Label>
         <ChipListInput
           id="certs"
@@ -698,7 +714,7 @@ function CertificationsBlock({
           placeholder="Add certification…"
         />
         <div className="flex justify-end">
-          <Button size="sm" onClick={() => setEditing(false)}>
+          <Button size="sm" onClick={close}>
             Done
           </Button>
         </div>
@@ -719,11 +735,12 @@ function CertificationsBlock({
         </p>
       )}
       <Button
+        ref={openerRef}
         size="icon-sm"
         variant="ghost"
         aria-label="Edit certifications"
         className="pointer-coarse:opacity-100 absolute top-2 right-2 opacity-0 transition-opacity group-hover/certs:opacity-100 focus-within:opacity-100"
-        onClick={() => setEditing(true)}
+        onClick={open}
       >
         <Pencil className="size-3.5" />
       </Button>
