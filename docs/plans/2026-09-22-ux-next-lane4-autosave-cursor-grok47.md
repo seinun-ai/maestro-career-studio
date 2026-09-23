@@ -187,8 +187,19 @@ table, deviations, anything queued or deferred, and any concerns.
 | 12 | tsc / lint | tsc clean; lint 0 errors, 5 baseline warnings |
 | 12 | slop | frontend and backend ratchet OK; duplication still 468/39 |
 | 12 | `npm run build` | OK |
+| 13 | pins `test_frontend_unsaved_surfaces.py` | 2 passed; removing each guard failed that pin alone, then restored |
+| 13 | `pytest tests/test_frontend_*.py` | 452 passed |
+| 13 | tsc / lint | tsc clean; lint 0 errors, 5 baseline warnings |
+| 13 | slop | frontend and backend ratchet OK; duplication still 468/39 |
+| 13 | `npm run build` | OK |
+| 13 | node | 143 passed |
+| 13 | browser | Empty `/new` leaves; a pasted description asks. Persona, Autofill (first name) and Prompts (cover letter) ask "Leave without saving?". Extract double-click sent one `POST /api/jobs` (502 from the dummy key). |
 | 12 | browser | Failed quick-tailor switch: Not saved, toast, Try again, leave prompt; Enter on Try again shows Saving… with focus on the button, then Saves automatically with focus on the status. Failed market pick: select reverts, Not saved, no Try again; the next successful pick clears it. |
 
 ## Queued for Task 20 (SYSTEM.md changes Claude applies)
 
+None. These tasks do not close a §11 item.
+
 ## Deferred to merge (edits left for Claude, with file:line)
+
+- Gap page, while tailoring: the Exact wording field (`resolution-controls.tsx` `AddKeywordControls` Input) is still editable from the keyboard. The spec named the note textarea and the Answer textarea. A focused wording field can still change, and `scheduleSave` then returns without saving it.

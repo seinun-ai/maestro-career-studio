@@ -321,7 +321,9 @@
   and reloads for a state without `__NA`. A Next upgrade re-runs the
   Back/Forward browser checks. `GuardedLink` uses `router.replace` while
   the duplicate is the current entry, so no duplicate is left under the new
-  page.
+  page. Persona, Autofill and Prompts register while their explicit Save is
+  dirty. `/new` registers while a pasted job description has not been
+  extracted, and its Extract button submits through `useSingleFlight`.
 - **`PdfPagesPreview` owns the canvas and the zoom.** Pages sit on
   `bg-canvas`, so a caller adds no fill of its own. Zoom is a `role="group"`
   "Zoom" of `aria-pressed` presets (Fit width, Fit page, 100%) on a solid

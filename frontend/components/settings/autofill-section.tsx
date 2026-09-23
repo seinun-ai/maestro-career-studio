@@ -6,6 +6,7 @@ import { Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { useConfirm } from "@/components/confirm-dialog";
+import { useLeaveGuard } from "@/hooks/use-leave-guard";
 import { SettingCard } from "@/components/settings/setting-card";
 import { Button } from "@/components/ui/button";
 import { CardSection } from "@/components/ui/card";
@@ -678,6 +679,7 @@ function AutofillEditor({
     },
     onError: (err: Error) => toast.error(err.message),
   });
+  useLeaveGuard(dirty);
 
   return (
     // Five groups ran together as one column of fields because a bare

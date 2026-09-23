@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronDownIcon, ChevronRightIcon } from "lucide-react";
 import { toast } from "sonner";
 
+import { useLeaveGuard } from "@/hooks/use-leave-guard";
 import { SettingCard } from "@/components/settings/setting-card";
 import { Button } from "@/components/ui/button";
 import { CardSection } from "@/components/ui/card";
@@ -149,6 +150,7 @@ function PromptCard({
     },
     onError: (err: Error) => toast.error(err.message),
   });
+  useLeaveGuard(value !== prompt.value);
 
   return (
     <CardSection className="p-0">
