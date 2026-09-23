@@ -154,8 +154,8 @@ export function QATab({ applicationId }: { applicationId: string }) {
   const regenerateOnce = useSingleFlight(regenerateEntry.mutate);
 
   // No "was edited" signal is stored, so any saved letter may hold the
-  // user's own edits: replacing it asks. Generate deletes every saved letter
-  // before it writes a new one, so it asks too.
+  // user's own edits: replacing it asks. Generate replaces every saved letter
+  // once the new one is written, so it asks too.
   const hasCoverLetter = entries?.some((e) => e.kind === "cover_letter" && e.answer) ?? false;
   const confirmReplaceLetter = () =>
     confirm({

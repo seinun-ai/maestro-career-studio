@@ -37,8 +37,6 @@
   SourceToggle, the proposals filter, the zoom presets, employment types,
   section presets, and the template picker): the tonal fill is
   about 1.16:1 against the light page, too faint to say "on" by itself.
-  The picker also draws a primary edge INSIDE the chosen card, because the
-  card is mostly image.
   `test_selected_tonal_toggles_show_a_check` pins the first four. Three exceptions carry the state
   without a Check: the formatting panel's segmented buttons are solid
   `bg-primary` plus `aria-pressed` (a full-strength fill needs no second cue,
@@ -200,7 +198,7 @@
     draft that differs from the form's copy (`jsonDraftDiffers`: whitespace
     and key order are not changes, unparseable text is) through
     `useRawJsonDraft`, and each studio folds `raw.pending` into its unsaved
-    signals: status line, Save, stale strip, leave-page warning and, in the
+    signals: status line, Save, stale strip, leave guard and, in the
     tailored studio, `dirty`, so a foreign edit shows the banner instead of
     remounting over the draft. The base studio adopts no server copy under a
     pending draft, since a later Apply would overwrite it. Save and "Form
@@ -297,7 +295,10 @@
   confirmed sets a bypass so the browser does not ask a second time, and the
   next client navigation clears it. A `router.push` or `router.replace` from a
   page that registers goes through `useConfirmLeave()` first: nothing wraps
-  the router, and the studios and the template editor call neither. Browser
+  the router, and the studios and the template editor call neither. The gap
+  page's own navigations (after Tailor, Use base resume as-is, Start new
+  analysis) do not ask: Tailor saves first, and the other two make the edits
+  moot. Browser
   Back and Forward ask too while the scope is `"all"`. The first unsaved edit
   pushes a duplicate (the sentinel) of the editor's history entry; Back from
   it lands on the real entry, same URL and page still mounted, and asks.
@@ -337,7 +338,7 @@
   the duplicate is the current entry, so no duplicate is left under the new
   page. Persona, Autofill and Prompts register while their explicit Save is
   dirty. `/new` registers while a pasted job description has not been
-  extracted, and its Extract button submits through `useSingleFlight`.
+  extracted.
 - **The Q&A cover-letter editor closes only after its save lands**
   (`components/qa-tab.tsx`). Save awaits `mutateAsync`: a failed save toasts
   and keeps the editor open with the typed text (closing on the click showed
@@ -504,7 +505,8 @@
   confirm an irreversible delete), the affirmative button otherwise. **Known
   open defect:** a confirm opened from a `DropdownMenu` ends up with focus on
   the menu item — the menu's focus restore races the dialog's initial focus.
-  Not reproducible under automation (`document.hasFocus()` is false in the
+  The studio's ⋯ menu does not (its Rebuild confirm starts inside the dialog;
+  see the next bullet). Not reproducible under automation (`document.hasFocus()` is false in the
   browser pane, which suppresses initial-focus); verify by hand.
 - **Focus never falls to `<body>`** (`hooks/use-focus-return.ts`, its DOM
   helpers in `lib/focus.ts` with node tests; pinned by
@@ -646,7 +648,7 @@
   `test_frontend_referrals.py` and `test_frontend_single_flight.py` (Extract
   by `test_frontend_unsaved_surfaces.py`).
 - Route-level `app/error.tsx` + `app/global-error.tsx` + `app/not-found.tsx`
-  catch components that throw; page-level `isError` branches handle query
+  catch components that throw; page-level `isLoadFailure` branches handle query
   failures. `next.config.ts` sets nosniff / DENY / no-referrer /
   Permissions-Policy on every route; a CSP is deferred (App Router inline
   bootstrap scripts need per-request nonces via middleware).
@@ -660,9 +662,9 @@
   `ApplicationDetailsMenu` (status lives in the chip, not the menu). "Needs
   you" (`needs_decision` and `needs_human`) is ONE `NEEDS_YOU` object:
   `text-orange-800` on `bg-orange-500/10`, `dark:text-orange-400`; "Submission
-  uncertain" is its own entry with the same classes. Every tinted chip is text
-  one step darker than its tint in light mode (800 on amber, green, sky,
-  emerald and orange; the monogram's green, amber, rose and cyan too).
+  uncertain" is its own entry with the same classes. Light-mode chip text is
+  800 on amber, green, sky, emerald and orange tints (the monogram's green,
+  amber, rose and cyan too) and 700 on blue, violet and red.
   `test_frontend_color_roles.py` finds every chip literal in `status-chip.tsx`,
   `career/entity-card.tsx` and `company-monogram.tsx` and computes it over the
   page, a card, `--muted` and a hovered row in both modes; the three amber
@@ -899,8 +901,8 @@
   focused; unchanged text closes at once), and a closing editor returns focus
   to its Edit button (`useDiscardableEditor({ editing, changed, close, busy })`
   in `hooks/use-confirm-discard.ts`, used by the notes, point and inbox-draft
-  editors; it returns the textarea's `onKeyDown`, Cancel's `onCancel` and
-  Save's `onSave`, which closes at once when nothing changed, so each editor
+  editors; it returns Edit's `editRef`, the textarea's `onKeyDown`, Cancel's
+  `onCancel` and Save's `onSave`, which closes at once when nothing changed, so each editor
   states its "changed" test once). After a Discard focus goes to Edit; after
   a save only when it fell to `<body>`. While a save runs
   (`busy`) the textarea is `readOnly`, Escape and Cancel do nothing, and Save

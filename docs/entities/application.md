@@ -7,8 +7,8 @@ One per (job, base_resume) in practice. Holds `status`, `applied_at`, `notes`,
 `template_id`, `pdf_path`/`tex_path`/`pdf_pages`/`render_error`, `user_prompt`.
 The list summary, the detail and the extension's `GET /api/jobs/match` summary
 all carry `base_resume_name`, the résumé's own name read from its row
-(`base_resume_data.display_name_of`; archived and soft-deleted rows included;
-null when the slug has no row).
+(`base_resume_data.display_name_of`, or an outer join in the list; archived
+and soft-deleted rows included; null when the slug has no row).
 
 - **Status vocabulary is backend-owned**: `ALLOWED_STATUSES` in
   `schemas/application.py` = draft, applied, interviewing, offered, accepted,

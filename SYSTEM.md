@@ -37,10 +37,9 @@
 > that fails if it breaks — and is pinned in `.system_md_enforcement.json`.
 > **Do not accrete "Prior:" entries in this header** — REPLACE the latest
 > entry per line; older change history lives in `git log SYSTEM.md`.
-> Last full revision: 2026-08-28, doc↔code audit: §6's extension-policy and EEO
-> invariants rewritten onto the two-list consent model, counts and paths corrected,
-> §13's work-auth reader set completed. §13 is machine-checked via
-> `.slopledger.json`; the whole file via `scripts/check_system_md.py`.
+> Last full revision: 2026-08-28, doc↔code audit (§6 consent invariants, counts, paths,
+> §13 work-auth readers). §13 is machine-checked via `.slopledger.json`; the whole file via
+> `scripts/check_system_md.py`.
 
 **Contents**
 - [§1 What this is](#1-what-this-is) — the product in one paragraph
@@ -819,33 +818,35 @@ citation. Priority lives in the item text, not in the ordinal.
     concurrent writer waits `busy_timeout` (30 s), then fails "database is locked". Fix: compute every LLM
     result first, then write in one short transaction, keeping the seeder's `commit=False` contract.
 26. Tailored-studio adoption gaps (`TailoredResumeStudio`): (a) two Saves in one refetch window, the second
-    returning to the adopted content — `onSaved` queues no key equal to `adoptedKey`, so once the first key is
-    adopted in place the second reads as foreign: a false "changed outside the editor" banner until Load latest
-    or Save; (b) the parent-held `templateId` is never re-synced from the server, so it survives Rebuild and
-    Load latest, and a foreign template-only change reads as a local unsaved edit.
+    returning to adopted content, read as foreign (`onSaved` queues no key equal to `adoptedKey`): a false
+    "changed outside the editor" banner; (b) the parent-held `templateId` never re-syncs from the server, so it
+    survives Rebuild and Load latest, and a foreign template-only change reads as an unsaved local edit.
 27. `FullscreenEditorPage` is `h-dvh` (both studios, the template editor), and `VersionBanner` renders above
     it in `SidebarGutter`, so the page overflows by the banner's height whenever the banner shows.
-28. Contrast and focus visibility (WCAG 1.4.11, 2.4.7): the agent-pipeline data bar
-    (`analytics/agent-pipeline-card.tsx`, `bg-primary/10` on a `bg-muted/50` track) is ~1.16:1 (solid
-    `bg-primary`: ~6:1); dark `--ring` on `--primary-container` (the FAB) is 2.88:1, which is why that surface
-    is not in `_RING_SURFACES`; the studio section tabs' `TabsContent` panels take focus with no visible ring.
-29. Focus lands on `<body>`: Escape on the <768px sidebar sheet (which also stays open after a nav link is
-    tapped), and deleting the LAST referral (the table unmounts for the empty-state form; other deletes land on
-    "Add referral").
+28. Contrast (WCAG 1.4.11): the agent-pipeline data bar (`analytics/agent-pipeline-card.tsx`, `bg-primary/10` on a
+    `bg-muted/50` track) is ~1.16:1 (solid `bg-primary`: ~6:1); dark `--ring` on `--primary-container` (the FAB)
+    is 2.88:1, which is why that surface is not in `_RING_SURFACES`.
+29. Focus lands on `<body>` on Escape from the <768px sidebar sheet, which also stays open after a nav link is tapped.
 30. Raw keys still reach the user or an agent: Job market's work-mode, OPT, sponsorship and level bars
-    (`toBars` in `explore/explore-overview.tsx`); the Analytics Employment and Level filters (`full_time`,
-    `mid`); MCP `explore_*` results carry role slugs with no `role_label`; the Applications table's Base column
-    shows `baseResumeLabel(slug)` ("Ds Base") instead of the résumé's `display_name`.
+    (`toBars` in `explore/explore-overview.tsx`); the Analytics Employment and Level filters (`full_time`, `mid`);
+    MCP `explore_*` results carry role slugs with no `role_label`; the base-résumé delete dialog names the slug,
+    the KB inbox prints `resume_key`, the KB import drawer a raw `status`; chat's Edited and project cards call an
+    application target only "tailored resume".
 31. Narrow widths (375px unless noted): the New base résumé dialog's tab row does not shrink; the chat
     composer's Send and the tailor page's "Tailor resume" run off-screen; the job page's tab row pushes Q&A
     off-screen; the base studio squeezes the editor to ~64px inputs beside the preview; the LLM-endpoint and
     `/new` Source URL placeholders clip at 768 and 375.
 32. Small UI gaps: `/base-resumes/<unknown>/health` shows a skeleton ~7 s before its error (the 404 takes
     react-query's three default retries; `app/providers.tsx` sets no `retry`); the studio template button says
-    "Template: Default" while the picker names what the default resolves to; `NewEntityDialog` calls `reset()`
-    on close, so Esc or an overlay click loses typed text (Referrals keeps its draft); `/templates`' stale-chip
-    tooltip sits under `GalleryCard`'s `z-10` stretched link; four hint/control pairs keep hardcoded ids
-    (`new_id_hint`/`new_id_error`, `nbr_name_hint`, `kb-profile-notes-hint`, `job-preferences-locations-hint`).
+    "Template: Default" while the picker names what the default resolves to; `/templates`' stale-chip tooltip
+    sits under `GalleryCard`'s `z-10` stretched link; three hint/control pairs keep hardcoded ids
+    (`new_id_hint`/`new_id_error`, `kb-profile-notes-hint`, `job-preferences-locations-hint`); the template
+    editor's compile toast says "LaTeX error" for Typst too; Escape out of the job Details date field blur-saves
+    `applied_at: null`; a chat edit card's Discard stays clickable while Apply runs; a failing settings autosave
+    toasts once per keystroke.
+33. inv-render-fallback-explained gaps: `PUT /base-resumes/{slug}` commits, then a pdflatex failure is a 500 over
+    the saved change; `POST /{slug}/render` answers 500, not 400, on a generic failure; the preview-page route's
+    unlocked `exists()` can race a re-render; `STARTER_SOURCE` fails on a blank email with a link present.
 
 ## 12. Gotchas that have bitten before
 
@@ -895,12 +896,12 @@ citation. Priority lives in the item text, not in the ordinal.
   set after refresh, never columns — don't "fix" them into the ORM.
 - **score_target(result=...)**: passes a precomputed engine result to persist; the double-run it replaced was
   audit finding C18 — don't re-add a second run.
-- **Studio external-edit dirty-guard: the query cache keeps old key order** (2026-09-22): structural sharing reuses
-  the old object in every unchanged subtree, so `JSON.stringify` of a refetch ≠ the mutation response once the server
-  reorders keys (PATCH re-dumps in schema order), and an own Save read as foreign. `TailoredResumeStudio` compares by
-  `serverKey` (sorted keys): its own Save's key moves the baseline in place (no remount); any other key remounts only
-  a clean editor or a confirmed Rebuild, else shows Load latest. Formatting, template and a pending raw-JSON draft
-  count as unsaved. Known gaps: §11 item 26.
+- **The query cache keeps old key order** (2026-09-22): structural sharing reuses unchanged subtrees, so
+  `JSON.stringify` of a refetch ≠ the PATCH response and a studio's own Save read as foreign. `TailoredResumeStudio`
+  compares `serverKey` (sorted keys); adoption rules: frontend-conventions. Known gaps: §11 item 26.
+- **PDFium is not thread-safe** (2026-09-23): `/templates` fetched gallery previews in parallel on the threadpool
+  and segfaulted libpdfium (`FPDF_LoadPage`). Every PDFium use under `app/` holds
+  `services/pdfium_lock.PDFIUM_LOCK`, pinned by an AST scan in `tests/test_pdfium_lock.py`.
 - **MCP clients truncate tool descriptions at ~2048 dedented chars**: keep `__doc__` ≤2000 (ratchet test) or
   put the fact on a param `Field(description=…)`.
 - **Worktree subagents**: agents may edit the MAIN checkout instead of the worktree — hand them absolute worktree

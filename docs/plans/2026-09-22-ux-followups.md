@@ -698,45 +698,5 @@ A1 §3 (`focusableWhenDisabled`).
 
 ## Next plan (from Task 19's goal critique and browser sweep)
 
-All of these predate `a3c800bb`; none blocks this branch. Fixing them widens scope, so
-they are the owner's call. Ordered by the Goal Card line they break.
-
-**Losing typed text / "saved" while pending (Principle 1)**
-1. Leaving an editor through an in-app link loses unsaved edits: `useUnsavedChangesWarning`
-   guards only reload and tab close. Studio back arrows (`editor-body.tsx`,
-   `tailored-resume-studio.tsx`), sidebar links, and the template editor (no guard at all).
-   Next 16.3's `<Link onNavigate>` can `preventDefault()`.
-2. Gap-answer page (`app/jobs/[id]/tailor/[sessionId]/page.tsx`): "Saved" stays while a
-   newer edit waits; leaving within 800 ms drops the last keystrokes (the unmount cancels
-   the timer instead of saving; `notes-editor.tsx` shows the fix).
-3. Dialogs that drop typed text or paid-for LLM output on Esc: new base résumé
-   (`new-base-resume-dialog.tsx`), Ask for changes (`instruct-sheet.tsx`), demonstrate
-   skill, send-to-resume, and `NewEntityDialog` (§11 item 32). The referral dialog's
-   page-owned draft is the pattern.
-4. Q&A answer editor closes before the save lands (`qa-tab.tsx`); notes editor's Esc
-   discards silently; settings show "Saves automatically" after a failed autosave.
-
-**Plain words (no ids, no slugs)**
-5. Chat suggestion cards and the Ask-for-changes sheet list `replace_bullet ·
-   experience[0].bullets[1]` (`edit-proposal-card.tsx`).
-6. `humanizeSlug` as the permanent résumé name ("Ds Base") in chat cards, application
-   panel, score panel, proposals, the tailor page and the Applications Base column (§11 item
-   30 names only the last); the template gallery's `latex` engine chip.
-
-**Accessibility**
-7. Focus drops to `<body>`: Edit summary/contact, Hide/Show PDF preview, ⋯ Edit raw JSON /
-   Role (after Esc), confirming Load latest or Rebuild, and Try again on most other
-   `LoadErrorState` screens (the refetch resets a data-less query to pending and unmounts
-   the button).
-8. Status chips under AA over `--muted`/page (Interviewing, Accepted, Queued, Approved);
-   the orange pin covers only orange chips.
-9. Selection without `aria-pressed` or a Check: new-entity section presets, gap-target
-   chips, employment-type toggles; the template picker's focus ring and selected ring look
-   identical.
-10. Studio section tab panels have no visible focus ring (§11 item 28; likely one class).
-
-**Minor**
-11. Keystrokes typed in the same instant as Cmd/Ctrl+S are lost (blur, refocus next tick);
-    an instant double-click on the referral submit creates two rows (`isPending` not yet
-    rendered); the chat composer also overflows at 768 with the history rail open.
-
+All eleven items shipped in `docs/plans/2026-09-22-ux-next.md` (Tasks 1–19, branch
+`claude/ux-next-plan`); what is left over lives in SYSTEM.md §11 items 26–33.
