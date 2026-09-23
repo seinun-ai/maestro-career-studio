@@ -49,6 +49,29 @@ def test_both_surfaces_render_words():
     assert "resume={live?.data}" in _read("components/resume-editor/editor-body.tsx")
 
 
+_CARD = _read("components/chat/edit-proposal-card.tsx")
+
+
+def _block(src: str, start: str, end: str) -> str:
+    i = src.index(start)
+    return src[i : src.index(end, i)]
+
+
+def test_resolved_words_freeze_and_a_failed_apply_thaws_them():
+    # Discard freezes the words it showed: the card stops fetching the document.
+    discard = _block(_CARD, "onClick={() => {", "Discard")
+    assert 'setResolution("discarded")' in discard
+    assert "setFrozen(edits);" in discard
+    # A failed Apply unfreezes: the card is live again and must track the document.
+    assert "setFrozen(null);" in _block(_CARD, "onError:", "},")
+
+
+def test_the_words_list_is_prose_not_code():
+    words = _read("components/edit-words-list.tsx")
+    assert "<ul" in words
+    assert not re.search(r"font-mono|<code|<pre", words)
+
+
 # A bare baseResumeLabel(x) is a slug dressed as a name. Allowed only as the
 # fallback half of `display_name ?? baseResumeLabel(x)` / `|| ...`, or with a list.
 _BARE = re.compile(r"(?<!\?\? )(?<!\|\| )baseResumeLabel\([^,()]*\)")
@@ -65,11 +88,55 @@ def test_no_resume_is_named_by_its_slug():
     assert offenders == [], offenders
 
 
+_HOOK = _read("hooks/use-base-resume-label.ts")
+
+
 def test_the_name_hook_reads_the_list_with_archived_rows():
-    hook = _read("hooks/use-base-resume-label.ts")
-    assert '"/api/base-resumes?include_archived=true"' in hook
-    assert "baseResumeLabel(slug, data)" in hook
-    assert 'return ["base-resumes", { includeArchived }] as const;' in hook
+    assert '"/api/base-resumes?include_archived=true"' in _HOOK
+    assert "baseResumeLabel(slug, data)" in _HOOK
+    assert 'return ["base-resumes", { includeArchived }] as const;' in _HOOK
+    for hook in ("useBaseResumeLabel", "useBaseResumeName"):
+        body = _block(_HOOK, f"export function {hook}(", "\n}")
+        assert "useBaseResumes(true)" in body, hook
+
+
+def test_a_soft_deleted_resume_is_named_from_its_own_row():
+    body = _block(_HOOK, "export function useBaseResumeName(", "\n}")
+    # Same key as the studios' and the edit card's detail query.
+    assert 'queryKey: ["base-resumes", slug]' in body
+    # Only once the list has loaded WITHOUT the slug, and only when asked.
+    assert "enabled: enabled && list.isSuccess && !listed," in body
+
+
+# Every surface that names ONE résumé that may be soft-deleted goes through
+# useBaseResumeName, so they all say the same thing.
+_ONE_SLUG_SURFACES = {
+    "components/chat/change-card.tsx": "useBaseResumeName(card.resume_key,",
+    "components/chat/proposal-card.tsx": "useBaseResumeName(proposal.target_key,",
+    "components/chat/edit-proposal-card.tsx": "useBaseResumeName(proposal.target_key,",
+    "components/proposals/proposals-section.tsx": "useBaseResumeName(base ??",
+    "components/application-panel.tsx": "useBaseResumeName(app.base_resume, open && !app.base_resume_name)",
+}
+
+
+def test_one_resume_surfaces_share_the_name_hook():
+    missing = [rel for rel, call in _ONE_SLUG_SURFACES.items() if call not in _read(rel)]
+    assert missing == [], missing
+    assert "{baseName}" in _read("components/proposals/proposals-section.tsx")
+    tracker = _read("app/applications/page.tsx")
+    assert "r.app.base_resume_name || baseName(r.app.base_resume)" in tracker
+
+
+def test_humanize_slug_names_no_resume():
+    """The slug's words are a FALLBACK inside baseResumeLabel. The one other
+    caller is the role picker's own fallback, for role keys."""
+    callers = [
+        f"{p.relative_to(_FRONTEND)}"
+        for root in ("app", "components", "hooks")
+        for p in sorted((_FRONTEND / root).rglob("*.ts*"))
+        if "humanizeSlug(" in p.read_text(encoding="utf-8")
+    ]
+    assert callers == ["components/role-category-picker.tsx"], callers
 
 
 def test_one_selectable_list_query():

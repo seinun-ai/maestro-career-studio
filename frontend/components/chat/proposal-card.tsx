@@ -6,7 +6,7 @@ import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { useBaseResumeLabel } from "@/hooks/use-base-resume-label";
+import { useBaseResumeName } from "@/hooks/use-base-resume-label";
 import { applyResumeEdits, setChatCardState } from "@/lib/api";
 import { notifyRenderNote } from "@/lib/render-note";
 import type {
@@ -30,7 +30,7 @@ export function ProposalCard({
   cardState?: ChatCardState;
 }) {
   const qc = useQueryClient();
-  const baseName = useBaseResumeLabel();
+  const baseName = useBaseResumeName(proposal.target_key, proposal.target_kind === "base");
   const [resolution, setResolution] = useState<"merged" | "discarded" | null>(
     cardState ? (cardState.status === "applied" ? "merged" : "discarded") : null,
   );
@@ -58,10 +58,7 @@ export function ProposalCard({
     onError: (err: Error) => toast.error(err.message),
   });
 
-  const targetLabel =
-    proposal.target_kind === "base"
-      ? baseName(proposal.target_key)
-      : "tailored resume";
+  const targetLabel = proposal.target_kind === "base" ? baseName : "tailored resume";
 
   return (
     <div className="rounded-md border border-dashed px-3 py-2">

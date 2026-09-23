@@ -37,7 +37,8 @@
   SourceToggle, the proposals filter, the zoom presets, employment types,
   section presets, and the template picker): the tonal fill is
   about 1.16:1 against the light page, too faint to say "on" by itself.
-  The picker also keeps a primary edge, because the card is mostly image.
+  The picker also draws a primary edge INSIDE the chosen card, because the
+  card is mostly image.
   `test_selected_tonal_toggles_show_a_check` pins the first four. Three exceptions carry the state
   without a Check: the formatting panel's segmented buttons are solid
   `bg-primary` plus `aria-pressed` (a full-strength fill needs no second cue,
@@ -46,9 +47,12 @@
   `aria-pressed` (two option cards, each a title and a description line; the
   outline is the cue, as on a radio card), and the gap-target chips are solid
   `bg-primary` plus `aria-pressed` (dense truncating chips, and the fill is
-  the gap's answer). Selection never borrows the focus ring's shape. A
-  selectable card's focus ring is offset onto the surface, and its selection
-  is its own edge plus a Check. **Current in a list or nav**
+  the gap's answer). Selection never borrows the focus ring's place. A
+  selectable card's focus ring is the only thing OUTSIDE it (2px off, on the
+  surface); its selection is an edge INSIDE the card (an `::after` overlay
+  above the preview) plus a Check. `--card` equals `--popover`, so an outside
+  selection ring and the offset focus ring merged into one 4px blue band
+  (ring against primary is 1.49:1 light, 1.70:1 dark). **Current in a list or nav**
   (a sidebar row, the open chat) is secondary container, semibold, and
   `aria-current`, with no Check. **A create or secondary action** is
   `Button variant="tonal"`. **A non-interactive status chip** is
@@ -72,8 +76,11 @@
   3:1 on the page, card, sidebar, canvas, muted and secondary-container
   surfaces; `--primary-container` (the FAB) is not in that set, because the
   dark ring measures 2.88:1 on it (SYSTEM.md §11 item 28). `outline-none`
-  sets `--tw-outline-style: none`, and `outline-2` then reads that variable,
-  so the two together paint nothing.
+  (and `outline-hidden`) sets `--tw-outline-style: none`, and `outline-2` then
+  reads that variable, so the two together paint nothing. An element paints
+  its own outline BEFORE its positioned and transformed descendants, so a
+  container's ring over `relative` cards (or a finished `animate-fade-rise`,
+  whose fill-mode transform lingers) is an overlay, as `TabsContent` draws it.
 - **Top-left corner belongs to the sidebar reveal pill**
   (`components/sidebar-reveal-trigger.tsx`, owner decision). Clearance is
   **not** a per-page concern: `SidebarGutter` wraps the main area once in
@@ -95,7 +102,10 @@
   accessible name is invisible to sighted users. The picker shows no engine
   chip and no status badge. The manage gallery and the editor say LaTeX or
   Typst, and Ready or Draft. In the dialog the focus ring sits 2px off the
-  card on the popover surface, and a Check marks the chosen card.
+  card on the popover surface; the chosen card has a primary edge inside it
+  and a Check before its name, and says so with `aria-pressed`. The card's
+  accessible name is only the template's name, so the default mark and the
+  warning badges (requires TeX, ATS spacing) are its `aria-describedby`.
 - **One page shell: `PageShell` + `PageHeader`** (`components/page-shell.tsx`).
   Every top-level route renders `PageShell` — `max-w-6xl`, `p-6`, `gap-6` —
   and `PageHeader` for its title block. Never assign per-page widths or
@@ -318,9 +328,12 @@
   of Data Scientist at Acme"); with no document, or an index it does not have,
   they name the section only. The card freezes those words when the user
   applies or discards, because the document has moved; after a reload a
-  resolved card has no frozen copy and describes at section level.
-  `tests/test_frontend_plain_words.py` fails when a backend op kind has no
-  `case`, or when either surface renders the op path.
+  resolved card has no frozen copy and describes at section level; a failed
+  Apply unfreezes them. A tailored target is "tailored resume for <job>" while
+  the card has the application loaded, else "tailored resume" (the payload
+  carries only its id). `tests/test_frontend_plain_words.py` fails when a
+  backend op kind has no `case`, when either surface renders the op path, or
+  when the freeze/unfreeze or the list's prose styling goes.
 - **A failed fetch is a THIRD state, never the empty one.** react-query leaves
   `data` undefined after an error, so `if (isLoading || !data)` holds its
   skeleton forever and any `data ?? []` list renders its EMPTY branch — the
@@ -393,9 +406,15 @@
   `inert` is the signal to key on (Base UI sets it as `!open`). Panels stay
   MOUNTED after first visit — inert and display:none — so treat a tab panel as
   "cheap to re-show, not free to first open". The open panel is a tab stop
-  (Base UI, APG); its focus indicator is an inset solid outline,
-  `-outline-offset-2`, so a scrolling pane cannot clip it and its cards cannot
-  cover it. Never put `outline-none` beside an `outline-N`.
+  (Base UI, APG). Its focus indicator is a `focus-visible:after:` overlay on a
+  `relative isolate` panel: a 2px `--ring` border 4px outside the panel (room
+  every call site has, so a scroller does not clip it and it does not touch
+  the panel's text), at `z-50` so no `relative` or animated card covers it;
+  `isolate` keeps that z-index inside the panel. A panel that scrolls itself
+  (`overflow-y-auto`, the chat scope picker) keeps a solid inset outline
+  instead, because an absolute overlay scrolls with the content. A call site
+  never passes `outline-*`, `after:hidden` or another `overflow-*` to a panel
+  (pinned).
 - **Landmarks: the PAGE owns `<main>`, the shell owns layout.**
   `SidebarInset` is a `<div>` (shadcn ships it as `<main>`, which nests a
   second main landmark). Every route must render exactly one `<main>` in EVERY
@@ -463,10 +482,13 @@
   `text-orange-800` on `bg-orange-500/10`, `dark:text-orange-400`; "Submission
   uncertain" is its own entry with the same classes. Every tinted chip is text
   one step darker than its tint in light mode (800 on amber, green, sky,
-  emerald and orange). `test_frontend_color_roles.py` finds every chip literal
-  in `status-chip.tsx` and `career/entity-card.tsx` and computes it over the
-  page, a card and `--muted` in both modes. A new shade must be copied into
-  its `_TAILWIND` table.
+  emerald and orange; the monogram's green, amber, rose and cyan too).
+  `test_frontend_color_roles.py` finds every chip literal in `status-chip.tsx`,
+  `career/entity-card.tsx` and `company-monogram.tsx` and computes it over the
+  page, a card, `--muted` and a hovered row in both modes; the three amber
+  template labels (requires TeX, ATS spacing, unsaved) are computed over the
+  page, a card and the popover. A new shade must be copied into its
+  `_TAILWIND` table.
 - **Card galleries**: Templates and Base Resumes are the same image-first
   card grid, so the shell lives once in `components/gallery/` (`GalleryGrid`,
   `GalleryCard`, `GalleryCardActions` — the z-20 wrapper — and
@@ -702,10 +724,15 @@
   `humanizeSlug` (`lib/humanize-slug.ts`):
   the key's own words with the catalog's acronyms cased as its labels case
   them (AI/ML, MLOps, BI, QA, IT), never blank. A résumé is named by
-  `useBaseResumeLabel()` or a row's `display_name` / `base_resume_name`;
-  `humanizeSlug`, through `baseResumeLabel`, is only the loading, failed, or
-  unknown-slug fallback. `tests/test_frontend_plain_words.py` fails on a bare
-  `baseResumeLabel(slug)`. A new acronym in the catalog
+  a row's `display_name` / `base_resume_name` when the payload has one, else by
+  `useBaseResumeLabel()` (lists of slugs) or `useBaseResumeName(slug)` (one
+  slug that may be soft-deleted: chat cards, the Proposals pill, the job
+  page's Details menu). The name hook reads the archived-inclusive list, and
+  for a slug it lacks, that résumé's own row — so every surface names a
+  soft-deleted résumé the same way. `humanizeSlug`, through `baseResumeLabel`,
+  is only the loading, failed, or unknown-slug fallback.
+  `tests/test_frontend_plain_words.py` fails on a bare
+  `baseResumeLabel(slug)` or a `humanizeSlug(` at a naming call site. A new acronym in the catalog
   goes in `TOKEN_CASE`; `test_frontend_analytics.py` fails until it does. The
   fit-distribution legend names each resume by `display_name` and draws at
   most the palette's six. Colours follow that order and are never cycled. **The gap sweeps read ONE base per job.** Both

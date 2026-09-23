@@ -36,7 +36,7 @@ import {
 } from "@/components/ui/select";
 
 import { JobTrackingUrlField } from "@/components/job-tracking-url-field";
-import { useBaseResumeLabel } from "@/hooks/use-base-resume-label";
+import { useBaseResumeName } from "@/hooks/use-base-resume-label";
 import { apiFetch, apiUrlForBrowserPdf } from "@/lib/api";
 import { notifyRenderNote } from "@/lib/render-note";
 import type { Application, Referral, RenderResult } from "@/lib/types";
@@ -118,17 +118,12 @@ export function ApplicationDetailsMenu({
   jobSourceUrl?: string | null;
 }) {
   const confirm = useConfirm();
-  const baseName = useBaseResumeLabel();
   const [open, setOpen] = useState(false);
-  // Job detail embeds ApplicationRead, which does not carry the joined name.
-  // The detail endpoint does, including after the résumé is archived or deleted.
-  const named = useQuery({
-    queryKey: ["application", app.id],
-    queryFn: () => apiFetch<Application>(`/api/applications/${app.id}`),
-    enabled: open && !app.base_resume_name,
-  });
-  const resumeName =
-    app.base_resume_name || named.data?.base_resume_name || baseName(app.base_resume);
+  // Job detail embeds ApplicationRead, which carries no joined name. The hook
+  // names it from the list, and reads the résumé's own row only when the list
+  // lacks it (soft-deleted) and the menu is open.
+  const listedName = useBaseResumeName(app.base_resume, open && !app.base_resume_name);
+  const resumeName = app.base_resume_name || listedName;
   const { patch, deleteApp } = useApplicationMutations({
     applicationId: app.id,
     jobId,

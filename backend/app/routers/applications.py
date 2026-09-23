@@ -59,12 +59,11 @@ def _detail(
 ) -> ApplicationDetail:
     base = ApplicationRead.model_validate(application).model_dump()
     job = db.get(Job, application.job_id)
-    base_row = db.get(BaseResume, application.base_resume)
     return ApplicationDetail(
         **base,
         job=JobRead.model_validate(job) if job else None,
         applied=applied,
-        base_resume_name=(base_row.display_name or None) if base_row else None,
+        base_resume_name=base_resume_data.display_name_of(db, application.base_resume),
     )
 
 

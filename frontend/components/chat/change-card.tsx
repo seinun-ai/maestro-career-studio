@@ -14,7 +14,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useBaseResumeLabel } from "@/hooks/use-base-resume-label";
+import { useBaseResumeName } from "@/hooks/use-base-resume-label";
 import { restoreResumeVersion } from "@/lib/api";
 import { notifyRenderNote } from "@/lib/render-note";
 import type { ChatChangeCard } from "@/lib/types";
@@ -22,7 +22,7 @@ import type { ChatChangeCard } from "@/lib/types";
 /** Rendered in the transcript for every mutating tool call ("footprint"). */
 export function ChangeCard({ card }: { card: ChatChangeCard }) {
   const qc = useQueryClient();
-  const baseName = useBaseResumeLabel();
+  const baseName = useBaseResumeName(card.resume_key, card.resume_kind === "base");
   const [diffOpen, setDiffOpen] = useState(false);
 
   const revert = useMutation({
@@ -42,10 +42,9 @@ export function ChangeCard({ card }: { card: ChatChangeCard }) {
     onError: (err: Error) => toast.error(err.message),
   });
 
-  const targetLabel =
-    card.resume_kind === "base"
-      ? baseName(card.resume_key)
-      : "tailored resume";
+  // The card carries only the application's id, no job words, so a tailored
+  // target stays "tailored resume" here.
+  const targetLabel = card.resume_kind === "base" ? baseName : "tailored resume";
 
   return (
     <div className="border-primary/30 bg-primary/5 rounded-md border px-3 py-2">

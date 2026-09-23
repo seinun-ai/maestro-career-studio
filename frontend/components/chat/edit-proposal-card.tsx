@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { apiFetch, applyResumeEdits, setChatCardState } from "@/lib/api";
 import { describeEdits, type EditWords, type ResumeLike } from "@/lib/describe-edit";
-import { useBaseResumeLabel } from "@/hooks/use-base-resume-label";
+import { useBaseResumeName } from "@/hooks/use-base-resume-label";
 import { notifyRenderNote } from "@/lib/render-note";
 import type {
   ApplicationDetail,
@@ -40,7 +40,7 @@ export function EditProposalCard({
   onApplied?: (kind: ChatProposalOps["target_kind"], key: string) => void;
 }) {
   const qc = useQueryClient();
-  const baseName = useBaseResumeLabel();
+  const baseName = useBaseResumeName(proposal.target_key, proposal.target_kind === "base");
   const [resolution, setResolution] = useState<"applied" | "discarded" | null>(
     cardState?.status ?? null,
   );
@@ -95,10 +95,16 @@ export function EditProposalCard({
     },
   });
 
+  // A tailored target is named by its job while the card has the application
+  // loaded (it fetches it for the words); the payload itself carries only the
+  // id, so a resolved card after a reload says "tailored resume".
+  const job = app.data?.job;
   const targetLabel =
     proposal.target_kind === "base"
-      ? base.data?.display_name?.trim() || baseName(proposal.target_key)
-      : "tailored resume";
+      ? baseName
+      : job?.title
+        ? `tailored resume for ${job.company ? `${job.title} at ${job.company}` : job.title}`
+        : "tailored resume";
 
   return (
     <div className="rounded-xl border border-dashed px-3 py-2.5">
