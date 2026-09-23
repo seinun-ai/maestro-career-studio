@@ -8,6 +8,8 @@ from pathlib import Path
 
 import pypdfium2 as pdfium
 
+from app.services.pdfium_lock import PDFIUM_LOCK
+
 DPI = 150
 # pypdfium2 renders at 72 DPI when scale=1. Note it ceils the pixel dimensions
 # from a float, so US Letter comes out 1275x1651 where PyMuPDF gave 1275x1650 —
@@ -22,23 +24,29 @@ def pages_dir(pdf_path: Path) -> Path:
 
 
 def ensure_page_images(pdf_path: Path) -> list[Path]:
-    """Return per-page PNGs, regenerating only when the PDF is newer."""
-    out_dir = pages_dir(pdf_path)
-    pdf_mtime = pdf_path.stat().st_mtime
-    existing = sorted(out_dir.glob("page-*.png")) if out_dir.is_dir() else []
-    if existing and all(p.stat().st_mtime >= pdf_mtime for p in existing):
-        return existing
+    """Return per-page PNGs, regenerating only when the PDF is newer.
 
-    out_dir.mkdir(parents=True, exist_ok=True)
-    for stale in out_dir.glob("page-*.png"):
-        stale.unlink()
-    paths: list[Path] = []
-    pdf = pdfium.PdfDocument(pdf_path)
-    try:
-        for i in range(len(pdf)):
-            path = out_dir / f"page-{i + 1}.png"
-            pdf[i].render(scale=_SCALE).to_pil().save(path)
-            paths.append(path)
-    finally:
-        pdf.close()
-    return paths
+    The whole call holds PDFIUM_LOCK, not just the rasterizing: PDFium is not
+    thread-safe, and two calls on one PDF would otherwise unlink and rewrite
+    each other's PNGs (or return a list of files another thread is replacing).
+    """
+    with PDFIUM_LOCK:
+        out_dir = pages_dir(pdf_path)
+        pdf_mtime = pdf_path.stat().st_mtime
+        existing = sorted(out_dir.glob("page-*.png")) if out_dir.is_dir() else []
+        if existing and all(p.stat().st_mtime >= pdf_mtime for p in existing):
+            return existing
+
+        out_dir.mkdir(parents=True, exist_ok=True)
+        for stale in out_dir.glob("page-*.png"):
+            stale.unlink()
+        paths: list[Path] = []
+        pdf = pdfium.PdfDocument(pdf_path)
+        try:
+            for i in range(len(pdf)):
+                path = out_dir / f"page-{i + 1}.png"
+                pdf[i].render(scale=_SCALE).to_pil().save(path)
+                paths.append(path)
+        finally:
+            pdf.close()
+        return paths

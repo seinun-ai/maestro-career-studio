@@ -11,6 +11,7 @@ Shapes provided:
   image_pdf_bytes(overlay, ...)   certificate shape: full-page image + short
                                   text overlay (drives the vision fallback)
   small_png(...)                  raster bytes for embedding or upload tests
+  image_pages_pdf_bytes(pages)    one full-page image per page (rasterizer stress)
 """
 
 from __future__ import annotations
@@ -93,6 +94,16 @@ def image_pdf_bytes(overlay_text: str, *, png: bytes | None = None) -> bytes:
         f"#let body = {_typ_str(overlay_text)}\n"
         "#place(top + left, dx: 1cm, dy: 1cm, text(size: 11pt, body))\n",
         {"bg.png": png or small_png(600, 800)},
+    )
+
+
+def image_pages_pdf_bytes(pages: int) -> bytes:
+    """`pages` pages, each one full-page image — rasterizing it makes PDFium do
+    colour-space setup on every page (where its thread-unsafety crashed)."""
+    page = '#place(top + left, image("bg.png", width: 100%, height: 100%))'
+    return _compile(
+        "#set page(margin: 0cm)\n" + "\n#pagebreak()\n".join([page] * pages) + "\n",
+        {"bg.png": small_png(600, 800)},
     )
 
 

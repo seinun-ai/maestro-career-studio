@@ -20,6 +20,8 @@ import io
 import logging
 from pathlib import Path
 
+from app.services.pdfium_lock import PDFIUM_LOCK
+
 logger = logging.getLogger(__name__)
 
 _TEXT_SUFFIXES = {".md", ".markdown", ".txt", ".tex"}
@@ -65,14 +67,15 @@ def _pdf_page_pngs(data: bytes, scale: float) -> list[bytes]:
     import pypdfium2 as pdfium
 
     out: list[bytes] = []
-    pdf = pdfium.PdfDocument(data)
-    try:
-        for i in range(min(len(pdf), VISION_MAX_PAGES)):
-            buf = io.BytesIO()
-            pdf[i].render(scale=scale).to_pil().save(buf, format="PNG")
-            out.append(buf.getvalue())
-    finally:
-        pdf.close()
+    with PDFIUM_LOCK:  # PDFium is not thread-safe (see pdfium_lock)
+        pdf = pdfium.PdfDocument(data)
+        try:
+            for i in range(min(len(pdf), VISION_MAX_PAGES)):
+                buf = io.BytesIO()
+                pdf[i].render(scale=scale).to_pil().save(buf, format="PNG")
+                out.append(buf.getvalue())
+        finally:
+            pdf.close()
     return out
 
 

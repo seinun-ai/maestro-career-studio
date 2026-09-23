@@ -65,6 +65,11 @@ def _inspect_pdf(pdf_path: Path) -> dict[str, Any]:
     }
 
 
+# PDFium is not thread-safe (the backend serializes it behind
+# app.services.pdfium_lock.PDFIUM_LOCK). This process needs no lock today:
+# FastMCP calls sync tools directly on its event-loop thread, so these two
+# helpers never run concurrently. If a tool ever reaches them from a thread
+# (asyncio.to_thread, a threaded HTTP transport), take a lock here too.
 def _render_pdf_previews(pdf_path: Path, target_id: str) -> dict[str, Any]:
     """Render one PNG per page next to the PDF and scan for em dashes (U+2014).
 
