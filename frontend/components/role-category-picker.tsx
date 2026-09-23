@@ -27,11 +27,12 @@ import type { BaseResumeDetail, FavoredRole, RoleCategory } from "@/lib/types";
 /** The vocabulary, fetched once. Deliberately NOT duplicated client-side: it
  *  lives in backend/app/services/ats/data/role_categories.yaml, and a second
  *  copy here would recreate exactly the drift that file was written to end. */
-export function useRoleCategories() {
+export function useRoleCategories({ enabled = true }: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: ["role-categories"],
     queryFn: () => apiFetch<RoleCategory[]>("/api/role-categories"),
     staleTime: 60 * 60 * 1000, // vocabulary changes only on deploy
+    enabled,
   });
 }
 

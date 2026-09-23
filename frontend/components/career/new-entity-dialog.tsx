@@ -6,6 +6,7 @@ import { Check } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { useSingleFlight } from "@/hooks/use-single-flight";
 import {
   Dialog,
   DialogContent,
@@ -88,6 +89,22 @@ export function NewEntityDialog({
     setSectionType(defaultSectionType);
   };
 
+  // Closing keeps the draft (Esc, the overlay, Close); only a create clears
+  // it. Opened from another tab, an untouched form takes that tab's kind,
+  // while typed text keeps the kind it was typed for.
+  const pristine =
+    !title.trim() &&
+    !org.trim() &&
+    !startDate.trim() &&
+    !endDate.trim() &&
+    sectionTitle === (defaultSectionTitle ?? "") &&
+    sectionKey === (defaultSectionKey ?? "");
+  const [shownDefault, setShownDefault] = useState(defaultKind);
+  if (defaultKind !== shownDefault) {
+    setShownDefault(defaultKind);
+    if (pristine) setKind(defaultKind);
+  }
+
   const titleCollides = kind === "extra" && isCoreSectionTitle(sectionTitle);
 
   const create = useMutation({
@@ -138,19 +155,14 @@ export function NewEntityDialog({
         (sectionType === "bullets" || title.trim())
       : title.trim();
 
+  const createOnce = useSingleFlight(create.mutate);
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (isValid) create.mutate();
+    if (isValid) createOnce();
   };
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(next) => {
-        onOpenChange(next);
-        if (!next && !create.isPending) reset();
-      }}
-    >
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent size="sm">
         <DialogHeader>
           <DialogTitle>New career item</DialogTitle>
@@ -385,13 +397,10 @@ export function NewEntityDialog({
             variant="outline"
             type="button"
             className="rounded-full"
-            onClick={() => {
-              reset();
-              onOpenChange(false);
-            }}
+            onClick={() => onOpenChange(false)}
             disabled={create.isPending}
           >
-            Cancel
+            Close
           </Button>
           <Button
             type="submit"

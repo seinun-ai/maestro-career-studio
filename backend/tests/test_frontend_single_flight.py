@@ -3,7 +3,8 @@
 `isPending` cannot guard a double click: react-query re-renders its observers
 on a zero-delay timeout, so a second click already queued reads `false` and
 starts a second request (two referral rows). Each create button and each
-studio's Save starts its request through `useSingleFlight`, and nothing else
+studio's Save, and every create, generate and apply button in a dialog
+that keeps its draft, starts its request through `useSingleFlight`, and nothing else
 calls the guarded `mutate`, or the guard never clears (the hook's docstring).
 The hook's own shape is pinned in `test_frontend_focus.py`.
 """
@@ -23,6 +24,22 @@ _SITES = [
     ("app/templates/page.tsx", "duplicate"),
     ("components/resume-editor/editor-body.tsx", "save"),
     ("components/resume-editor/tailored-resume-studio.tsx", "save"),
+    # The dialogs and editors that keep drafts (Tasks 14-16).
+    ("components/base-resumes/new-base-resume-dialog.tsx", "create"),
+    ("components/base-resumes/new-base-resume-dialog.tsx", "proposePlan"),
+    ("components/career/new-entity-dialog.tsx", "create"),
+    ("components/career/capture-box.tsx", "capture"),
+    ("components/career/capture-box.tsx", "ingest"),
+    ("components/career/send-to-resume-dialog.tsx", "port"),
+    ("components/career/send-to-resume-dialog.tsx", "adapt"),
+    ("components/career/send-to-resume-dialog.tsx", "apply"),
+    ("components/resume-editor/instruct-sheet.tsx", "propose"),
+    ("components/resume-editor/instruct-sheet.tsx", "apply"),
+    ("components/resume-health/demonstrate-skill-dialog.tsx", "draftMut"),
+    ("components/resume-health/demonstrate-skill-dialog.tsx", "applyMut"),
+    ("components/qa-tab.tsx", "askQuestions"),
+    ("components/qa-tab.tsx", "coverLetter"),
+    ("components/qa-tab.tsx", "regenerateEntry"),
 ]
 
 

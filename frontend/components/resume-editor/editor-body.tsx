@@ -620,6 +620,7 @@ export function EditorBody({
       />
       <InstructSheet
         open={instructOpen}
+        finalFocus={overflowRef}
         onOpenChange={setInstructOpen}
         targetSlug={slug}
         resume={live?.data}

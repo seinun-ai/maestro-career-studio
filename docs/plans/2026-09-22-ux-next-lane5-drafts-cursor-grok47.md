@@ -1,7 +1,9 @@
 # UX next, wave 2 lane 5: Dialogs, Q&A and KB editors keep text — handoff to Cursor CLI / Grok 4.7
 
-**Target agent/model:** Cursor CLI (`agent`), **Grok 4.7** (xhigh). If your session runs a
-different model, stop and say so: the review tier depends on it.
+**Target agent/model:** written for Cursor CLI (`agent`), Grok 4.7 (xhigh). **Executed by a
+Claude Opus 5.5 subagent**: the owner stopped Cursor, so the controller handed this lane to Claude
+(commit trailers say `Co-Authored-By: Claude Opus 5.5`, and the duplication ceiling is the
+post-lane-4 468 lines / 39 clones).
 **Tasks:** 14, 15, 16 of `docs/plans/2026-09-22-ux-next.md`, in that order.
 **Branch:** `grok/ux-next-lane5-drafts` (from `claude/ux-next-plan` at `the commit that added this doc`).
 **Worktree:** `/Users/ajeyds/Projects/maestro-ux-lanes/next-lane5-drafts` (dependencies are installed). Work only there.
@@ -170,12 +172,100 @@ table, deviations, anything queued or deferred, and any concerns.
 
 | Task | Planned | Did instead | Why (Goal Card line) |
 |---|---|---|---|
+| 14 | `InstructSheet` takes a `basis` prop; `editor-body.tsx` passes `basis={serverKey(live.data)}` | The sheet computes `serverKey(resume)` from the `resume={live?.data}` prop it already gets (lane 2); `editor-body.tsx` is untouched | The same saved copy, and no edit in lane 6's file |
+| 14 | Proposal state `{ result, basis }` read as `proposal.result.*` | State `kept`, with `const proposal = kept?.result ?? null`; a stale proposal is described with `describeEdits(proposal.ops, stale ? null : resume)`; lane 2's pin in `test_frontend_plain_words.py` updated to that | Words computed against the moved copy would name the wrong bullet ("never mislead") |
+| 14 | New base résumé keeps its fixed `nbr_*` ids | Ids from `useId` (`ids.name`, …); `test_frontend_placeholders.py`'s hint-order pin follows, and its `_named` helper accepts a `useId` expression id | Getting started now keeps several forms mounted: a fixed id named the first (hidden) form's field, so the open form's label and hint pointed at nothing (a11y). Closes §11 item 32's `nbr_name_hint` clause |
+| 14 | Start over clears the form | …and moves focus to the new form's first field (`useFocusOnNextCommit` on the popup) | The pressed button unmounts with the old form; focus is never dropped to `<body>` |
+| 14 | Files named in the lane doc | Also edited the two callers the appendix names: `resume-health/finding-cards.tsx` (U3.3, one dialog per skill) and `app/career/page.tsx` (U3.5, drop `key`) | No other lane owns them; the fix needs the caller |
+| 15 | Decision 10: Regenerate over a saved letter asks | Generate cover letter asks the same question when a saved letter exists | `routers/qa.py` deletes every saved cover letter before generating a new one, so Generate loses the edited letter too ("if a gesture could lose typed text, it asks") |
+| 15 | Single-flight on Answer questions and Generate | Also Regenerate (one entry at a time: every Regenerate is disabled while one runs), and Regenerate waits while the letter is open for editing | "Every create and generate button"; a regenerate landing under an open draft would be overwritten by the next Save |
+| 15 | Save gets `focusableWhenDisabled` | Answer questions, Generate cover letter and Regenerate too | They disable themselves on click, which dropped focus to `<body>` |
+| 16 | `useConfirmDiscard` beside `useConfirm` in `components/confirm-dialog.tsx` | New `hooks/use-confirm-discard.ts` with `useConfirmDiscard` and `useDiscardableEditor(editing)` (`requestCancel(changed, close)`, `cancelOnEscape(event, changed, close)`, `returnFocus`, `editRef`), used by all three editors | `confirm-dialog.tsx` is lane 6's; one hook keeps the three editors from cloning the Escape and focus code (duplication stays at 468/39) |
+| 16 | Focus return | Unconditional `editRef.current?.focus()` once `editing` turns false (the appendix's shape), not `focusIfDropped` | After Discard focus sits in the closing confirm, so an "only from `<body>`" check misses the drop |
+| 16 | Capture box: single-flight only | Also `readOnly` textarea and a focusable Add to inbox while capturing; the point and draft Save arm the focus return on the unchanged-text close too | Focus never dropped to `<body>` |
+| all | — | Extra commit `98c0b260` splits two Task 14 pins (cc 10 and 11) | Backend `complexity_hotspots` had moved 424 → 426 |
+| review | F4's single-flight inventory for these dialogs (create buttons) | **Planner decision (M6):** decision 2 ("every create/generate button") also covers Suggest a selection (New base résumé), Propose and Apply (Ask for changes), Draft rewrite and Apply (Demonstrate skill), Adapt / Send as-is / Apply (Send to résumé); all submit through `useSingleFlight` | F4's inventory missed them; a double click paid for two model calls or applied `add_bullet` ops twice |
+| review | 15: Generate asks because `routers/qa.py` deletes saved letters before generating | **Backend fixed (4a):** `POST /api/qa` reads the prior ids, ends the read transaction, generates (commits the new row), then deletes the prior rows, commits, and removes their PDFs (`_remove_entries`, §6 inv-staged-artifact-removal kept). The confirm stays: a landed Generate still replaces the saved letter | "Never loses typed text": a failed generation lost the saved (maybe hand-edited) letter, over the web and MCP `generate_cover_letter` alike |
+| review | 16: `useDiscardableEditor(editing)` with `requestCancel(changed, close)` / `cancelOnEscape(...)`; unconditional focus return | `useDiscardableEditor({ editing, changed, close, busy })` returns `onKeyDown` / `onCancel` / `onSave` (one "changed" per editor; save-or-close moved into the hook, which also removed the point/draft editors' clone: duplication 468 → 457 lines, 39 → 38 clones) and ignores Esc/Cancel while `busy`; `useEditorFocusReturn(editing)` (also used by Q&A) focuses Edit unconditionally after a Discard, and after a save only when focus fell to `<body>` | Review M1/M2/M3/M4: Discard during a pending save closed the editor and the save then toasted "saved"; a slow save pulled focus back from where the user went |
+| review | 15: editing state per card | Lifted into `QATab` (`editingIds`): Generate and every letter's Regenerate wait while a letter is open, Edit waits while Generate runs; the letter is `readOnly` while saving; Answer questions clears only the text it sent | Review I1/I2/I3: text typed during a request or a save was wiped, and Generate destroyed an open letter draft |
+| review | 14: kept dialogs | The health report hides `NotesTable` (`hidden`) instead of unmounting it on a filter change; the career item page fails only a load with no data (`useLoadFailureError`); `useRoleCategories` takes `{ enabled }` and the kept New base résumé form passes `open` (its pickers get `[]` while it loads so none self-fetches); `serverKey` memoised | Review I5/M5/M7/M8: a filter change or a failed background refetch unmounted kept drafts |
 
 ## Gate results
 
 | Task | Gate | Result |
 |---|---|---|
+| base `8878731d` | pins / full backend / node / lint / duplication | 479 / 4780 passed, 2 skipped / 143 / 0 errors, 5 warnings / 468 lines, 39 clones |
+| 14 `622275e1` | new pins | `test_frontend_dialog_drafts.py` 16 tests (18 after the split) seen to FAIL first; 35 mutants, each killed by exactly its pin (incl. lane 2's plain-words pin and the placeholders pin for ids) |
+| 14 | tsc / lint / node / pins / slop | clean / 0 errors, 5 warnings / 143 pass / 495 pass / frontend 467 lines, 39 clones |
+| 14 | browser | see *Browser checks* below: all pass |
+| 15 `70cb7011` | new pins | `test_frontend_qa_tab.py` 11 tests seen to FAIL first; 18 mutants killed, each by its pin |
+| 15 | tsc / lint / pins / slop | clean / 0 errors, 5 warnings / 506 pass / frontend 467 lines, 39 clones |
+| 16 `f5723b07` | new pins | `test_frontend_kb_editors.py` 20 tests seen to FAIL first; 28 mutants killed, each by its pin |
+| 16 | tsc / lint / pins / slop | clean / 0 errors, 5 warnings / 526 pass / frontend 468 lines, 39 clones (476/40 before the Escape handler moved into the hook) |
+| final | full backend `pytest tests/ mcp_server/tests/ -q` (on `98c0b260`) | 4829 passed, 2 skipped (base 4780 + 49 new pins); pins 528 |
+| final | `slop_scan.py check frontend` / `check backend` | ratchet OK / ratchet OK (hotspots 424 after `98c0b260`); frontend measured 468 lines, 39 clones on a clean tree before the build |
+| final | ruff (new and edited pin files) / `npm run build` / `check_system_md.py` | All checks passed / OK / OK, 999/1000 (SYSTEM.md untouched) |
+| review `b729848e` | backend 4a | `test_qa_router.py` 22 pass: the delete-before-generation test rewritten (generation runs outside a transaction, the saved letter stays until then), the failed-generation test fakes `llm.call_openai` and now asserts the letter and its PDF survive; 4 router mutants killed |
+| review `64c5a6bf` | pins / mutants | pins 528 → 548 (`test_frontend_dialog_drafts.py` 31, `test_frontend_qa_tab.py` 16, `test_frontend_kb_editors.py` 22); 56 mutants (I1–I5, M1–M8, the reviewer's survivors), each killed by exactly the pin(s) that name it |
+| review | full backend `pytest tests/ mcp_server/tests/ -q` / ruff | 4849 passed, 2 skipped / All checks passed |
+| review | tsc / lint / node / `npm run build` | clean / 0 errors, 5 baseline warnings / 143 pass / OK |
+| review | slop `check frontend` / `check backend` (clean `git archive HEAD` export) | ratchet OK, 457 lines, 38 clones / ratchet OK, `complexity_hotspots` 423 (base 424) |
+| review | browser | not run by the fixer (the controller re-runs them on the merged branch) |
+
+**Browser checks** (Playwright, headless Chrome, real keys and pointer, throwaway stack on 8775/3105, made-up seed; LLM
+endpoints answered by a fetch wrapper with made-up bodies and forced delays/failures; `MAESTRO_CS_PDFLATEX=/nonexistent`
+because every base résumé create 500'd on pdflatex here, see *Deferred*):
+- **14 New base résumé:** the kept popup is in the DOM `hidden`/`display:none`; opening it adds no KB fetch of its own (the one
+  on `/base-resumes` is `FirstRunImportCard`'s). Name + role + instruction, Suggest (2.5 s), Esc mid-"Suggesting": reopened,
+  the name and instruction are kept and the plan landed into the closed form (Summary, Left off, pre-ticked entry). Overlay
+  click: kept. Start over (keyboard): cleared, focus on the new Name field. Same-task double click on Create: one
+  `POST /from-kb`, studio opened. The Name label names the visible input.
+- **14 Getting started** (tracker faked empty, two faked suggestions): A typed, Esc (focus back on Compose), B opens empty,
+  B typed, Close, A reopens with A's text, B with B's; label association holds with two forms mounted.
+- **14 Ask for changes:** Propose from the keyboard keeps focus on the button ("Thinking…"), the textarea is read-only;
+  Esc and reopen keep instruction + proposal; after a studio Save the note shows, words drop to "Rewrite a bullet in
+  Experience", Apply is disabled and a forced click sends no PATCH; Propose again applies (server bullet changed); reopening
+  after Apply is empty.
+- **14 Demonstrate skill** (no-LLM health report): draft for Kubernetes, Esc, Terraform opens fresh, typed, Close;
+  Kubernetes reopens with prose and draft, Apply lands (real content hash), chip "· done"; Terraform keeps its prose.
+- **14 Send to résumé:** zero résumé-list fetches before opening; a point retired on the page drops out of the selection and
+  a restored one is pre-selected (3/3); Adapt, edit a row, Esc, reopen keeps the review step and the edit; Esc during a 2.5 s
+  Apply and reopen shows "Applying…" disabled with one request; after success reopening starts fresh.
+- **14 New career item:** Projects draft kept through Esc and overlay, opened from Education it stays Project; an emptied
+  form follows the tab (Experience, Education); same-task double click creates one entity; a forced 500 keeps the draft and the
+  retry creates one.
+- **15 Q&A:** Regenerate disabled while editing; forced 500 on Save: "Saving…" keeps focus, then the editor stays open with
+  the text and focus on Save; a sidebar link asks "Leave without saving?" and Stay keeps it; the real Save shows the new letter
+  with no frame of the old one (frames: EDITOR → NEW), focus on Edit; Regenerate and Generate on a saved letter ask "Replace
+  your cover letter?" (Cancel focused) and Cancel sends nothing; a question's Regenerate double click and Answer questions
+  double click each send one request.
+- **16 KB editors:** notes: unchanged Esc closes at once (focus on Edit); changed Esc asks with Keep editing focused; Keep
+  editing returns to the textarea with the text; Discard closes with focus on Edit and nothing saved; Cancel asks too; a
+  keyboard Save keeps focus while saving (textarea read-only) and lands focus on Edit; a forced 500 keeps editor and text.
+  Point editor: Cancel over a change asks, Discard focuses Edit point; an unchanged Save closes onto Edit point. Inbox draft:
+  Esc asks, Keep editing keeps the text, Discard focuses Edit draft. Quick capture: same-task double click sends one capture
+  and focus stays on the button; two file picks in one task send one ingest.
+- Not run: light/dark and 375 px passes (no layout or colour changed), a real LLM.
 
 ## Queued for Task 20 (SYSTEM.md changes Claude applies)
 
+- §11 item 32: delete the clause "`NewEntityDialog` calls `reset()` on close, so Esc or an overlay click loses typed text
+  (Referrals keeps its draft);" (Task 14), and drop `nbr_name_hint` from the hardcoded-ids list ("four hint/control
+  pairs" becomes three: `new_id_hint`/`new_id_error`, `kb-profile-notes-hint`, `job-preferences-locations-hint`).
+- §11 candidates found in passing (not fixed, backend, out of this lane's scope): (a) `POST /api/base-resumes` and
+  `POST /api/base-resumes/from-kb` return **500** "pdflatex failed" (`LaTeX Error: There's no line here to end`) on this
+  machine's TeX for a blank and a KB-composed résumé, yet the row is created: §6 inv-render-fallback-explained says a
+  committed write degrades to a persisted `render_error`, never a 500. (b) ~~`POST /api/qa` with `cover_letter` deletes
+  every saved cover letter BEFORE the LLM call~~: fixed in the review round (the prior letters go after the new one is
+  committed); nothing to queue unless §6/§11 names the old order.
+
 ## Deferred to merge (edits left for Claude, with file:line)
+
+- Lane 6 (Task 17, F1 §C) wants `finalFocus={overflowRef}` on `InstructSheet`, which takes no such prop: add
+  `finalFocus?: RefObject<HTMLElement | null>` and pass it to `<SheetContent>` at
+  `frontend/components/resume-editor/instruct-sheet.tsx:110`; `editor-body.tsx:606` then passes it.
+- `docs/frontend-conventions.md:543` ("A dialog keeps what the user typed, or paid for, across close") now carries F4's
+  `useSingleFlight` sentence for dialog forms; lane 6's Task 19 (Referrals) may add the same sentence to the old bullet it
+  replaced. Keep one.
+- `useConfirmDiscard` lives in `frontend/hooks/use-confirm-discard.ts`, not `components/confirm-dialog.tsx` (lane 6's), so
+  there is no conflict there; if lane 6 wants it beside `useConfirm`, move it at merge.

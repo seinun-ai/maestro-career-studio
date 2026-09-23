@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { useDiscardableEditor } from "@/hooks/use-confirm-discard";
 import { patchKbEntity } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -90,6 +91,12 @@ export function NotesEditor({
     dirtyRef.current = false;
     setEditing(false);
   };
+  const { editRef, onCancel, onKeyDown, onSave } = useDiscardableEditor({
+    editing,
+    changed: value !== notes,
+    close: cancel,
+    busy: save.isPending,
+  });
 
   const handleChange = (next: string) => {
     setValue(next);
@@ -119,6 +126,7 @@ export function NotesEditor({
         </div>
         {!editing ? (
           <Button
+            ref={editRef}
             size="sm"
             variant="ghost"
             className={cn(
@@ -147,20 +155,27 @@ export function NotesEditor({
               rows={9}
               value={value}
               onChange={(event) => handleChange(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Escape") {
-                  event.preventDefault();
-                  cancel();
-                }
-              }}
-              disabled={save.isPending}
+              onKeyDown={onKeyDown}
+              readOnly={save.isPending}
               autoFocus
             />
             <div className="flex items-center justify-end gap-2">
-              <Button className="rounded-full" size="sm" variant="ghost" onClick={cancel} disabled={save.isPending}>
+              <Button
+                className="rounded-full"
+                size="sm"
+                variant="ghost"
+                onClick={() => void onCancel()}
+                disabled={save.isPending}
+              >
                 <X aria-hidden="true" /> Cancel
               </Button>
-              <Button className="rounded-full px-4" size="sm" onClick={() => save.mutate(value)} disabled={save.isPending || value === notes}>
+              <Button
+                className="rounded-full px-4 data-disabled:pointer-events-none data-disabled:opacity-50"
+                size="sm"
+                onClick={() => onSave(() => save.mutate(value))}
+                disabled={save.isPending || value === notes}
+                focusableWhenDisabled
+              >
                 {save.isPending ? "Saving…" : "Save notes"}
               </Button>
             </div>

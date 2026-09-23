@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { useSingleFlight } from "@/hooks/use-single-flight";
 import { kbCapture, kbIngestDocument } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { DOCUMENT_ACCEPT } from "@/lib/upload-accept";
@@ -68,10 +69,15 @@ export function CaptureBox() {
     onError: (error: Error) => toast.error(error.message),
   });
 
+  // One request per click: a double click read isPending === false twice and
+  // ran two extractions, two sets of draft points.
+  const captureOnce = useSingleFlight(capture.mutate);
+  const ingestOnce = useSingleFlight(ingest.mutate);
+
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const value = text.trim();
-    if (value) capture.mutate(value);
+    if (value) captureOnce(value);
   };
 
   const onPickFile = (file: File | undefined) => {
@@ -80,7 +86,7 @@ export function CaptureBox() {
       toast.info("Still reading the previous document. Try again in a moment.");
       return;
     }
-    ingest.mutate(file);
+    ingestOnce(file);
   };
 
   const isFileDrag = (event: DragEvent) =>
@@ -138,7 +144,7 @@ export function CaptureBox() {
             onChange={(event) => setText(event.target.value)}
             placeholder="e.g. This week I shipped…"
             rows={4}
-            disabled={capture.isPending}
+            readOnly={capture.isPending}
             aria-describedby="career-capture-help"
             className="rounded-2xl border-0 bg-background/90 px-4 py-3 shadow-sm ring-1 ring-foreground/10 transition-shadow focus-visible:ring-ring"
           />
@@ -173,9 +179,12 @@ export function CaptureBox() {
                 {ingest.isPending ? "Reading document…" : "From document"}
               </Button>
               <Button
-                className="rounded-full px-4"
+                // Stays focusable while it captures: a disabled button that
+                // has focus drops it to the page.
+                className="rounded-full px-4 data-disabled:pointer-events-none data-disabled:opacity-50"
                 type="submit"
                 disabled={!text.trim() || capture.isPending}
+                focusableWhenDisabled
               >
                 {capture.isPending ? "Capturing…" : "Add to inbox"}
               </Button>

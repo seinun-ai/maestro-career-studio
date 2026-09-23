@@ -525,11 +525,11 @@ def test_file_import_name_defaults_in_a_hint():
     assert 'placeholder={mode === "file" ? "Defaults to the file name"' not in src
     _order(
         src,
-        'htmlFor="nbr_name"',
-        'id="nbr_name_hint"',
+        "htmlFor={ids.name}",
+        "id={ids.nameHint}",
         "Defaults to the file name.",
-        'aria-describedby={mode === "file" ? "nbr_name_hint" : undefined}',
-        'id="nbr_name"',
+        'aria-describedby={mode === "file" ? ids.nameHint : undefined}',
+        "id={ids.name}",
         'placeholder={mode === "file" ? undefined : "e.g. Machine Learning Engineer"}',
     )
 
@@ -743,9 +743,10 @@ def _tags(src: str, name: str) -> list[str]:
 
 
 def _named(src: str, attrs: str) -> bool:
-    """An aria-label, or a literal id that a `<Label htmlFor>` in the same file points at."""
-    id_match = re.search(r'\bid="([^"]+)"', attrs)
-    return "aria-label=" in attrs or bool(id_match and f'htmlFor="{id_match.group(1)}"' in src)
+    """An aria-label, or an id (literal or a `useId` expression) that a `<Label htmlFor>`
+    in the same file points at."""
+    id_match = re.search(r'\bid=("[^"]+"|\{[^}]+\})', attrs)
+    return "aria-label=" in attrs or bool(id_match and f"htmlFor={id_match.group(1)}" in src)
 
 
 def test_every_role_picker_input_has_a_name():

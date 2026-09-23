@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { useDiscardableEditor } from "@/hooks/use-confirm-discard";
 import { deleteKbPoint, patchKbPoint } from "@/lib/api";
 import type { KBPointOut, KBPointPatch, KBPointProvenance, KBPointState } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -161,15 +162,12 @@ function PointRow({ entityId, point }: { entityId: string; point: KBPointOut }) 
     setText(point.text);
     setEditing(false);
   };
-
-  const saveText = () => {
-    const value = text.trim();
-    if (!value || value === point.text) {
-      cancelEdit();
-      return;
-    }
-    update.mutate({ payload: { text: value }, message: "Point updated" });
-  };
+  const { editRef, onCancel, onKeyDown, onSave } = useDiscardableEditor({
+    editing,
+    changed: text.trim() !== point.text,
+    close: cancelEdit,
+    busy: pending,
+  });
 
   const changeState = (state: KBPointState) => {
     const messages: Record<KBPointState, string> = {
@@ -211,20 +209,30 @@ function PointRow({ entityId, point }: { entityId: string; point: KBPointOut }) 
             rows={3}
             value={text}
             onChange={(event) => setText(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Escape") {
-                event.preventDefault();
-                cancelEdit();
-              }
-            }}
-            disabled={pending}
+            onKeyDown={onKeyDown}
+            readOnly={pending}
             autoFocus
           />
           <div className="flex justify-end gap-2">
-            <Button className="rounded-full" size="sm" variant="ghost" onClick={cancelEdit} disabled={pending}>
+            <Button
+              className="rounded-full"
+              size="sm"
+              variant="ghost"
+              onClick={() => void onCancel()}
+              disabled={pending}
+            >
               <X aria-hidden="true" /> Cancel
             </Button>
-            <Button className="rounded-full px-4" size="sm" onClick={saveText} disabled={!text.trim() || pending}>
+            <Button
+              className="rounded-full px-4 data-disabled:pointer-events-none data-disabled:opacity-50"
+              size="sm"
+              onClick={() =>
+                onSave(() => update.mutate({ payload: { text: text.trim() }, message: "Point updated" }))
+              }
+              // An emptied point is not saved.
+              disabled={!text.trim() || pending}
+              focusableWhenDisabled
+            >
               Save
             </Button>
           </div>
@@ -236,6 +244,7 @@ function PointRow({ entityId, point }: { entityId: string; point: KBPointOut }) 
           </p>
           <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity duration-150 group-hover/point:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100">
             <Button
+              ref={editRef}
               size="icon-sm"
               variant="ghost"
               aria-label="Edit point"

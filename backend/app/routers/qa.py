@@ -79,34 +79,49 @@ def _run_qa(payload: QARequest, db: Session) -> QAResponse:
     if payload.cover_letter is not None:
         tone = payload.cover_letter.tone
         if payload.application_id is not None:
-            prior = db.scalars(
-                select(QAEntry).where(
-                    QAEntry.application_id == payload.application_id,
-                    QAEntry.kind == "cover_letter",
+            # The saved letter goes only once its replacement exists: a failed
+            # generation (provider down, a bad key) keeps it. The ids are read
+            # first and that read transaction is ENDED before the call, so no
+            # lock or snapshot is held across the LLM's whole run (tens of
+            # seconds; design §3.2) — nothing was written, so this commit
+            # writes nothing. `generate_cover_letter` commits the new row.
+            prior_ids = list(
+                db.scalars(
+                    select(QAEntry.id).where(
+                        QAEntry.application_id == payload.application_id,
+                        QAEntry.kind == "cover_letter",
+                    )
                 )
-            ).all()
-            # Stage the paths, delete the rows, COMMIT, then touch the disk —
-            # §6 {#inv-staged-artifact-removal}: a rendered file is never
-            # removed inside a transaction that can still roll back, or a
-            # rollback leaves rows whose pdf_path names a deleted file.
-            # The commit is also what keeps the write lock off the generation
-            # call below: a merely flushed DELETE would hold it for the LLM's
-            # whole run (tens of seconds), so every other writer would wait out
-            # busy_timeout and then fail (design §3.2).
-            stale = [Path(entry.pdf_path) for entry in prior if entry.pdf_path]
-            for entry in prior:
-                db.delete(entry)
+            )
             db.commit()
-            artifacts.remove_files(stale)
             response.cover_letter = qa_service.generate_cover_letter(
                 payload.application_id, tone, db
             )
+            _remove_entries(db, prior_ids)
         else:
             response.cover_letter = qa_service.generate_cover_letter_for_job(
                 payload.job_id, tone, db, payload.base
             )
 
     return response
+
+
+def _remove_entries(db: Session, ids: list[UUID]) -> None:
+    """Delete these entries, COMMIT, then remove their rendered files.
+
+    §6 {#inv-staged-artifact-removal}: a rendered file is never removed inside
+    a transaction that can still roll back, or a rollback leaves rows whose
+    pdf_path names a deleted file. The rows are re-read here, so a PDF rendered
+    while the replacement was being generated goes with its row.
+    """
+    if not ids:
+        return
+    rows = db.scalars(select(QAEntry).where(QAEntry.id.in_(ids))).all()
+    stale = [Path(entry.pdf_path) for entry in rows if entry.pdf_path]
+    for entry in rows:
+        db.delete(entry)
+    db.commit()
+    artifacts.remove_files(stale)
 
 
 @router.get("", response_model=list[QAEntryRead])

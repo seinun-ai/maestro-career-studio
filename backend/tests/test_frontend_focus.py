@@ -264,13 +264,14 @@ def test_every_overlay_the_menu_opens_takes_a_return_target():
     for rel in (
         "components/resume-versions/version-history-sheet.tsx",
         "components/resume-editor/kb-import-drawer.tsx",
+        "components/resume-editor/instruct-sheet.tsx",
     ):
         assert re.search(r"<SheetContent\b[^>]*\bfinalFocus=\{finalFocus\}", _read(rel)), rel
     for studio in (_BASE_STUDIO, _TAILORED):
         assert "const overflowRef = useRef<HTMLButtonElement>(null);" in studio
         assert "triggerRef={overflowRef}" in studio
-    # role, history, import (Ask for changes is lane 5's file: deferred)
-    assert _BASE_STUDIO.count("finalFocus={overflowRef}") == 3
+    # role, history, import, Ask for changes
+    assert _BASE_STUDIO.count("finalFocus={overflowRef}") == 4
     assert _TAILORED.count("finalFocus={overflowRef}") == 1  # history
 
 

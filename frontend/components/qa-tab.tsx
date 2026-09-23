@@ -27,6 +27,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { LoadErrorState } from "@/components/load-error-state";
+import { useEditorFocusReturn } from "@/hooks/use-confirm-discard";
+import { useLeaveGuard } from "@/hooks/use-leave-guard";
+import { useSingleFlight } from "@/hooks/use-single-flight";
 import { apiFetch, apiUrlForBrowserPdf } from "@/lib/api";
 import { isLoadFailure } from "@/lib/query-state";
 import { notifyRenderNote } from "@/lib/render-note";
@@ -64,9 +67,11 @@ export function QATab({ applicationId }: { applicationId: string }) {
   const invalidate = () =>
     qc.invalidateQueries({ queryKey: ["qa", applicationId] });
 
+  // Takes the text it sends: the box stays editable while it answers, and
+  // only that text is cleared when the answers land.
   const askQuestions = useMutation({
-    mutationFn: () => {
-      const list = questions
+    mutationFn: (sent: string) => {
+      const list = sent
         .split("\n")
         .map((q) => q.trim())
         .filter((q) => q.length > 0);
@@ -79,8 +84,8 @@ export function QATab({ applicationId }: { applicationId: string }) {
         }),
       });
     },
-    onSuccess: () => {
-      setQuestions("");
+    onSuccess: (_answers, sent) => {
+      setQuestions((current) => (current === sent ? "" : current));
       toast.success("Answers generated");
       invalidate();
     },
@@ -129,12 +134,47 @@ export function QATab({ applicationId }: { applicationId: string }) {
         method: "PATCH",
         body: JSON.stringify({ answer }),
       }),
-    onSuccess: () => {
+    onSuccess: (updated) => {
+      // Show the saved text at once: the editor closes on this, not before
+      // it, and the refetch below would otherwise flash the old letter.
+      qc.setQueryData<QAEntry[]>(["qa", applicationId], (prev) =>
+        prev?.map((e) => (e.id === updated.id ? updated : e)),
+      );
       toast.success("Saved");
       invalidate();
     },
+    // Toasts; the card stays in edit mode with the typed text.
     onError: (err: Error) => toast.error(err.message),
   });
+
+  // One request per click: a double click read isPending === false twice and
+  // paid for two generations.
+  const askOnce = useSingleFlight(askQuestions.mutate);
+  const coverOnce = useSingleFlight(coverLetter.mutate);
+  const regenerateOnce = useSingleFlight(regenerateEntry.mutate);
+
+  // No "was edited" signal is stored, so any saved letter may hold the
+  // user's own edits: replacing it asks. Generate deletes every saved letter
+  // before it writes a new one, so it asks too.
+  const hasCoverLetter = entries?.some((e) => e.kind === "cover_letter" && e.answer) ?? false;
+  const confirmReplaceLetter = () =>
+    confirm({
+      title: "Replace your cover letter?",
+      description: "A new letter replaces the saved one, including any edits you made to it.",
+      confirmLabel: "Replace",
+      destructive: true,
+    });
+  // Cover letters open for editing. While one is open no letter is generated
+  // (Generate would replace it under the draft, and the next Save overwrite
+  // the new one), and while a letter generates none opens for editing.
+  const [editingIds, setEditingIds] = useState<string[]>([]);
+  const letterEditing = entries?.some((e) => editingIds.includes(e.id)) ?? false;
+  const setLetterEditing = (id: string, on: boolean) =>
+    setEditingIds((ids) => (on ? [...ids, id] : ids.filter((x) => x !== id)));
+  const generateCoverLetter = async () => {
+    if (hasCoverLetter && !(await confirmReplaceLetter())) return;
+    coverOnce();
+  };
 
   const renderEntry = useMutation({
     mutationFn: (id: string) =>
@@ -166,8 +206,10 @@ export function QATab({ applicationId }: { applicationId: string }) {
             rows={4}
           />
           <Button
-            onClick={() => askQuestions.mutate()}
+            onClick={() => askOnce(questions)}
             disabled={askQuestions.isPending}
+            focusableWhenDisabled
+            className="data-disabled:pointer-events-none data-disabled:opacity-50"
           >
             {askQuestions.isPending ? "Answering…" : "Answer questions"}
           </Button>
@@ -195,8 +237,10 @@ export function QATab({ applicationId }: { applicationId: string }) {
             </Select>
           </div>
           <Button
-            onClick={() => coverLetter.mutate()}
-            disabled={coverLetter.isPending}
+            onClick={() => void generateCoverLetter()}
+            disabled={coverLetter.isPending || letterEditing}
+            focusableWhenDisabled
+            className="data-disabled:pointer-events-none data-disabled:opacity-50"
           >
             {coverLetter.isPending ? "Generating…" : "Generate cover letter"}
           </Button>
@@ -232,6 +276,11 @@ export function QATab({ applicationId }: { applicationId: string }) {
                 index={i}
                 isDeleting={deleteEntry.isPending}
                 isRegenerating={isRegenerating}
+                regenerateBusy={regenerateEntry.isPending}
+                editing={editingIds.includes(entry.id)}
+                onEditingChange={(on) => setLetterEditing(entry.id, on)}
+                letterEditing={letterEditing}
+                generating={coverLetter.isPending}
                 isRendering={isRendering}
                 isSaving={isSaving}
                 onDelete={async () => {
@@ -247,9 +296,12 @@ export function QATab({ applicationId }: { applicationId: string }) {
                   if (!ok) return;
                   deleteEntry.mutate(entry.id);
                 }}
-                onRegenerate={() => regenerateEntry.mutate(entry)}
+                onRegenerate={async () => {
+                  if (entry.kind === "cover_letter" && entry.answer && !(await confirmReplaceLetter())) return;
+                  regenerateOnce(entry);
+                }}
                 onRender={() => renderEntry.mutate(entry.id)}
-                onSave={(answer) => editEntry.mutate({ id: entry.id, answer })}
+                onSave={(answer) => editEntry.mutateAsync({ id: entry.id, answer })}
               />
             );
           })
@@ -264,6 +316,11 @@ function QAEntryCard({
   index,
   isDeleting,
   isRegenerating,
+  regenerateBusy,
+  editing,
+  onEditingChange,
+  letterEditing,
+  generating,
   isRendering,
   isSaving,
   onDelete,
@@ -275,15 +332,29 @@ function QAEntryCard({
   index: number;
   isDeleting: boolean;
   isRegenerating: boolean;
+  /** Any entry is regenerating: one generation at a time. */
+  regenerateBusy: boolean;
+  /** This letter is open for editing (the state lives in QATab). */
+  editing: boolean;
+  onEditingChange: (editing: boolean) => void;
+  /** Some cover letter is open for editing: no letter regenerates. */
+  letterEditing: boolean;
+  /** Generate cover letter is running: it replaces every saved letter. */
+  generating: boolean;
   isRendering: boolean;
   isSaving: boolean;
   onDelete: () => void;
   onRegenerate: () => void;
   onRender: () => void;
-  onSave: (answer: string) => void;
+  /** Resolves once the save landed; rejects when it failed. */
+  onSave: (answer: string) => Promise<unknown>;
 }) {
-  const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(entry.answer ?? "");
+  useLeaveGuard(editing && draft !== (entry.answer ?? ""));
+  // Save and Cancel unmount the pressed button with the editor; focus goes
+  // back to Edit.
+  const { editRef, returnFocus } = useEditorFocusReturn(editing);
+  const closeEditor = () => { returnFocus(); onEditingChange(false); };
   const isCoverLetter = entry.kind === "cover_letter";
   // Generated documents (vs question answers) get edit-in-place.
   const isDocument = isCoverLetter;
@@ -305,13 +376,14 @@ function QAEntryCard({
         <div className="flex shrink-0 gap-1">
           {isDocument && !editing ? (
             <IconButton
+              ref={editRef}
               label="Edit"
               icon={<Pencil />}
               onClick={() => {
                 setDraft(entry.answer ?? "");
-                setEditing(true);
+                onEditingChange(true);
               }}
-              disabled={isSaving || isRendering || isRegenerating}
+              disabled={isSaving || isRendering || isRegenerating || generating}
             />
           ) : null}
           <IconButton
@@ -347,7 +419,11 @@ function QAEntryCard({
                 isRegenerating ? <Loader2 className="animate-spin" /> : <RefreshCw />
               }
               onClick={onRegenerate}
-              disabled={isRegenerating || isSaving || isRendering}
+              // A letter waits while any letter is open for editing: a new
+              // one would land under the draft and the next Save overwrite it.
+              disabled={regenerateBusy || isSaving || isRendering || (isCoverLetter && letterEditing)}
+              focusableWhenDisabled
+              className="data-disabled:pointer-events-none data-disabled:opacity-50"
             />
           ) : null}
           <IconButton
@@ -365,27 +441,29 @@ function QAEntryCard({
               aria-label="Cover letter text"
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
+              // Keys typed after Save would be dropped when the editor closes.
+              readOnly={isSaving}
               rows={10}
               className="text-sm"
             />
             <div className="flex gap-2">
               <Button
                 size="sm"
-                onClick={() => {
-                  onSave(draft);
-                  setEditing(false);
-                }}
                 disabled={isSaving}
+                focusableWhenDisabled
+                className="data-disabled:pointer-events-none data-disabled:opacity-50"
+                onClick={async () => {
+                  // A failed save stays open with the text intact.
+                  try { await onSave(draft); } catch { return; }
+                  closeEditor();
+                }}
               >
-                {isSaving ? "Saving..." : "Save"}
+                {isSaving ? "Saving…" : "Save"}
               </Button>
               <Button
                 size="sm"
                 variant="ghost"
-                onClick={() => {
-                  setDraft(entry.answer ?? "");
-                  setEditing(false);
-                }}
+                onClick={() => { setDraft(entry.answer ?? ""); closeEditor(); }}
                 disabled={isSaving}
               >
                 Cancel

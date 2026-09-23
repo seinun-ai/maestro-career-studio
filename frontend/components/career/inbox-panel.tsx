@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
+import { useDiscardableEditor } from "@/hooks/use-confirm-discard";
 import { deleteKbPoint, patchKbPoint, bulkKbPointState } from "@/lib/api";
 import type { KBEntitySummary, KBInboxPoint, KBPointPatch, UUID } from "@/lib/types";
 
@@ -302,14 +303,12 @@ function DraftRow({
     onDirtyChange(point.id, false);
     setEditing(false);
   };
-  const saveText = () => {
-    const value = text.trim();
-    if (!value || value === point.text) {
-      cancelEdit();
-      return;
-    }
-    update.mutate({ payload: { text: value }, success: "Draft updated" });
-  };
+  const { editRef, onCancel, onKeyDown, onSave } = useDiscardableEditor({
+    editing,
+    changed: text.trim() !== point.text,
+    close: cancelEdit,
+    busy: pending,
+  });
 
   const approve = () => {
     const value = text.trim();
@@ -333,25 +332,29 @@ function DraftRow({
             id={`draft-text-${point.id}`}
             value={text}
             onChange={(event) => changeText(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Escape") {
-                event.preventDefault();
-                cancelEdit();
-              }
-            }}
+            onKeyDown={onKeyDown}
             rows={3}
-            disabled={pending}
+            readOnly={pending}
             autoFocus
           />
           <div className="flex gap-2">
-            <Button className="rounded-full px-4" size="sm" onClick={saveText} disabled={!text.trim() || pending}>
+            <Button
+              className="rounded-full px-4 data-disabled:pointer-events-none data-disabled:opacity-50"
+              size="sm"
+              onClick={() =>
+                onSave(() => update.mutate({ payload: { text: text.trim() }, success: "Draft updated" }))
+              }
+              // An emptied draft is not saved.
+              disabled={!text.trim() || pending}
+              focusableWhenDisabled
+            >
               Save
             </Button>
             <Button
               size="sm"
               variant="ghost"
               className="rounded-full"
-              onClick={cancelEdit}
+              onClick={() => void onCancel()}
               disabled={pending}
             >
               <X aria-hidden="true" /> Cancel
@@ -362,6 +365,7 @@ function DraftRow({
         <div className="flex items-start gap-2">
           <p className="min-w-0 flex-1 text-sm leading-relaxed">{point.text}</p>
           <Button
+            ref={editRef}
             size="icon-sm"
             variant="ghost"
             className="opacity-0 transition-opacity duration-150 group-hover/draft:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100"

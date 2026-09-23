@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { useSingleFlight } from "@/hooks/use-single-flight";
 import { draftRewrite, applyResumeEdits } from "@/lib/api";
 import { notifyRenderNote } from "@/lib/render-note";
 import {
@@ -135,14 +136,15 @@ export function DemonstrateSkillDialog({
     onError: (err: Error) => toastRewriteError(err, onReanalyze),
   });
 
+  // One request per click: a double click read isPending === false twice.
+  const draftOnce = useSingleFlight(draftMut.mutate);
+  const applyOnce = useSingleFlight(applyMut.mutate);
+
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(next) => {
-        if (!next) reset();
-        onOpenChange(next);
-      }}
-    >
+    // Closing keeps the picked bullet, the prose and a drafted rewrite (it
+    // cost a model call); only a successful apply clears them. A draft kept
+    // past a re-analysis is safe: the apply carries its content hash.
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[80vh] w-[min(92vw,34rem)] max-w-[min(92vw,34rem)] flex-col overflow-hidden">
         <DialogHeader>
           <DialogTitle>Demonstrate {skill}</DialogTitle>
@@ -231,22 +233,15 @@ export function DemonstrateSkillDialog({
           </div>
         )}
         <DialogFooter>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => {
-              reset();
-              onOpenChange(false);
-            }}
-          >
-            Cancel
+          <Button size="sm" variant="ghost" onClick={() => onOpenChange(false)}>
+            Close
           </Button>
           {draft ? (
             <Button
               size="sm"
               disabled={locked || applyMut.isPending}
               title={locked ? STALE_APPLY_HINT : undefined}
-              onClick={() => applyMut.mutate()}
+              onClick={() => applyOnce()}
             >
               {applyMut.isPending ? "Applying…" : "Apply"}
             </Button>
@@ -256,7 +251,7 @@ export function DemonstrateSkillDialog({
               disabled={
                 locked || !picked || prose.trim().length === 0 || draftMut.isPending
               }
-              onClick={() => draftMut.mutate()}
+              onClick={() => draftOnce()}
             >
               {draftMut.isPending ? "Drafting…" : "Draft rewrite"}
             </Button>

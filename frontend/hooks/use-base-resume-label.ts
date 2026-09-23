@@ -18,8 +18,13 @@ export function baseResumesKey(includeArchived: boolean) {
 }
 
 /** The selectable list, or the same list with archived rows. One query for the
- *  grid, the score panel, chat's pin picker, and the two port dialogs. */
-export function useBaseResumes(includeArchived = false) {
+ *  grid, the score panel, chat's pin picker, and the two port dialogs.
+ *  `enabled`: a caller mounted before it needs the list (a dialog kept
+ *  mounted with its page) fetches nothing until it opens. */
+export function useBaseResumes(
+  includeArchived = false,
+  { enabled = true }: { enabled?: boolean } = {},
+) {
   return useQuery({
     queryKey: baseResumesKey(includeArchived),
     queryFn: () =>
@@ -28,6 +33,7 @@ export function useBaseResumes(includeArchived = false) {
           ? "/api/base-resumes?include_archived=true"
           : "/api/base-resumes",
       ),
+    enabled,
   });
 }
 

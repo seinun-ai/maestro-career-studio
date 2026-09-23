@@ -27,6 +27,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { kbAdapt, kbAdaptApply, kbPort } from "@/lib/api";
 import { useBaseResumes } from "@/hooks/use-base-resume-label";
+import { useSingleFlight } from "@/hooks/use-single-flight";
 import { notifyRenderOutcome } from "@/lib/render-note";
 import type {
   KBAdaptAction,
@@ -54,13 +55,21 @@ const ACTION_CHIPS: Record<KBAdaptAction, { label: string; chip: string }> = {
   kept: { label: "Kept as-is", chip: "bg-muted text-muted-foreground" },
 };
 
+/**
+ * Mounted for the page's lifetime: closing keeps the selection, the target, an
+ * adapt proposal (a model call) and any row edits, and a reopen mid-Apply shows
+ * that Apply still running. The caller re-keys it on `onSent`, the only clear.
+ */
 export function SendToResumeDialog({
   open,
   onOpenChange,
+  onSent,
   entity,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** A port or apply landed: the caller starts the next send fresh. */
+  onSent: () => void;
   entity: KBEntityDetail;
 }) {
   const queryClient = useQueryClient();
@@ -73,8 +82,14 @@ export function SendToResumeDialog({
     () => new Map(entity.points.map((point) => [point.id, point.text])),
     [entity.points],
   );
-  const [selected, setSelected] = useState(
-    () => new Set(approved.map((point) => point.id)),
+  // null = untouched: every approved point, as of now. The dialog outlives
+  // many opens, so points approved since mount are included and deleted ones
+  // drop out.
+  const [picked, setPicked] = useState<Set<string> | null>(null);
+  const approvedIds = useMemo(() => new Set(approved.map((p) => p.id)), [approved]);
+  const selected = useMemo(
+    () => (picked === null ? approvedIds : new Set([...picked].filter((id) => approvedIds.has(id)))),
+    [picked, approvedIds],
   );
   const [targetSlug, setTargetSlug] = useState("");
   const [step, setStep] = useState<"select" | "review">("select");
@@ -88,7 +103,7 @@ export function SendToResumeDialog({
   // Certifications and custom sections port directly — there is nothing to adapt.
   const adaptable = entity.kind !== "certification" && entity.kind !== "extra";
 
-  const resumes = useBaseResumes();
+  const resumes = useBaseResumes(false, { enabled: open });
   const targets = resumes.data ?? [];
   const selectedTarget = targets.find((resume) => resume.slug === targetSlug);
   const targetLabel = selectedTarget
@@ -119,6 +134,7 @@ export function SendToResumeDialog({
       },
     );
     onOpenChange(false);
+    onSent();
   };
 
   const port = useMutation({
@@ -191,11 +207,16 @@ export function SendToResumeDialog({
     onError: (error: Error) => toast.error(error.message),
   });
 
+  // One request per click: a double click read isPending === false twice
+  // and sent the points, or paid for the adaptation, twice.
+  const portOnce = useSingleFlight(port.mutate);
+  const adaptOnce = useSingleFlight(adapt.mutate);
+  const applyOnce = useSingleFlight(apply.mutate);
   const pending = port.isPending || adapt.isPending || apply.isPending;
 
   const toggle = (pointId: string) =>
-    setSelected((current) => {
-      const next = new Set(current);
+    setPicked((current) => {
+      const next = new Set(current ?? approvedIds);
       if (next.has(pointId)) next.delete(pointId);
       else next.add(pointId);
       return next;
@@ -471,12 +492,12 @@ export function SendToResumeDialog({
                 onClick={() => onOpenChange(false)}
                 disabled={pending}
               >
-                Cancel
+                Close
               </Button>
               <Button
                 className="rounded-full"
                 variant={adaptable ? "outline" : "default"}
-                onClick={() => port.mutate()}
+                onClick={() => portOnce()}
                 disabled={!targetSlug || nothingSelected || pending}
               >
                 {port.isPending
@@ -488,7 +509,7 @@ export function SendToResumeDialog({
               {adaptable ? (
                 <Button
                   className="rounded-full px-4"
-                  onClick={() => adapt.mutate()}
+                  onClick={() => adaptOnce()}
                   disabled={!targetSlug || selected.size === 0 || pending}
                 >
                   <Sparkles aria-hidden="true" />
@@ -508,7 +529,7 @@ export function SendToResumeDialog({
               </Button>
               <Button
                 className="rounded-full px-4"
-                onClick={() => apply.mutate()}
+                onClick={() => applyOnce()}
                 // Also disabled mid-edit: the pending textarea text is not in
                 // `rows` yet, so applying would silently use the old text.
                 disabled={includedCount === 0 || pending || editingKey !== null}

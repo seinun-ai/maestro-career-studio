@@ -338,6 +338,26 @@
   page. Persona, Autofill and Prompts register while their explicit Save is
   dirty. `/new` registers while a pasted job description has not been
   extracted, and its Extract button submits through `useSingleFlight`.
+- **The Q&A cover-letter editor closes only after its save lands**
+  (`components/qa-tab.tsx`). Save awaits `mutateAsync`: a failed save toasts
+  and keeps the editor open with the typed text (closing on the click showed
+  the old letter, and the next Edit overwrote the draft). A landed save
+  writes the returned entry into the `["qa", applicationId]` cache before the
+  refetch, so the old letter never flashes. The letter is `readOnly` while it
+  saves, and focus returns to Edit after Save or Cancel when it fell to
+  `<body>` (`useEditorFocusReturn`). An open edit that differs from the saved
+  letter registers the leave guard. Replacing a saved letter asks "Replace
+  your cover letter?": Regenerate on it, and Generate cover letter, which
+  replaces every saved letter (`POST /api/qa` deletes them only after the new
+  one is committed, so a failed generation keeps them). No "was edited"
+  signal is stored, so any saved text counts. Which letters are open for
+  editing lives in `QATab`: while one is open, Generate and every letter's
+  Regenerate wait, and while Generate runs no letter opens for editing. One
+  entry regenerates at a time. Answer questions sends the text it read and
+  clears the box only if it still holds that text. Answer questions,
+  Generate and Regenerate submit through `useSingleFlight` and stay
+  focusable while they work. Pinned by `test_frontend_qa_tab.py` and
+  `test_qa_router.py`.
 - **`PdfPagesPreview` owns the canvas and the zoom.** Pages sit on
   `bg-canvas`, so a caller adds no fill of its own. Zoom is a `role="group"`
   "Zoom" of `aria-pressed` presets (Fit width, Fit page, 100%) on a solid
@@ -585,26 +605,46 @@
   Several resume entry cards are open at once, so a text-derived id repeats
   across them and clicking one entry's label focuses another's input; a caller
   `idPrefix` only moves the collision one level out.
-- **A dialog holding a create form keeps its draft across close until the
-  create succeeds**: `DialogContent` unmounts on close, so Esc or an overlay
-  click would drop typed text; the field state lives in the component that
-  owns the dialog (Referrals' `draft`, pinned by `test_frontend_referrals.py`).
-  The create mutation lives there too, one per page: a mutation inside the
-  form dies with it, so a reopened dialog showed the kept draft with an
-  enabled submit while the first POST was still in flight. Every form the
-  page shows reads the shared pending flag and submits through
-  `useSingleFlight` (`hooks/use-single-flight.ts`): react-query re-renders
-  `isPending` on a zero-delay timeout, so a double click read `false` twice
-  and created two rows. So do the Templates Create and Duplicate, `/new`'s
-  Extract and both studios' Save (the chat composer's `sendingRef` is the same guard,
-  inline). Nothing else calls, hands on or resets a guarded mutation (the
-  pin rejects any `.mutate` or `.reset` reference outside the guard, called
-  or not), or the guard never clears. The lock itself is
-  `lib/single-flight.ts`. Pinned by `test_frontend_single_flight.py` (Extract
-  by `test_frontend_unsaved_surfaces.py`). On Referrals the inline
-  empty-state form shares the same draft, so text left by a failed dialog
-  create pre-fills it once the last row is deleted. `NewEntityDialog` still
-  resets on close (SYSTEM.md §11 item 32).
+- **A dialog keeps what the user typed, or paid for, across close.**
+  `DialogContent` unmounts on close, so Esc, an overlay click or the dismiss
+  button would drop typed text and a proposal a model call produced. The
+  field state and the one request live in the component that owns the dialog
+  (Referrals' `draft`, `NewEntityDialog`, `InstructSheet`, Send to résumé,
+  Demonstrate skill), or the popup stays mounted (`DialogContent
+  keepMounted`, New base résumé, whose twelve fields and two requests live in
+  the popup). A caller mounts such a dialog for the page's lifetime, never
+  `{open ? <Dialog/> : null}`, with one instance per subject where there are
+  several (Getting started's suggestions, the health report's skills), and a
+  kept-mounted form takes its ids from `useId`, since several copies share
+  the page. Only a success clears the draft (a key bump or a reset in
+  `onSuccess`), plus **Start over** on New base résumé, shown once the draft
+  differs from a fresh one, with no confirm because its label names the loss.
+  The dismiss button reads **Close**, never Cancel: it cancels nothing. A
+  mutation inside the form would die with it, so a reopened dialog showed the
+  kept draft with an enabled submit while the first POST was still in
+  flight; every form the page shows reads the shared pending flag and submits
+  through `useSingleFlight` (react-query re-renders `isPending` on a
+  zero-delay timeout, so a double click read `false` twice and created two
+  rows). Each generate and apply button inside such a dialog (Suggest a
+  selection, Propose, Apply, Draft rewrite, Adapt, Send as-is) submits
+  through `useSingleFlight` too, and so do the Templates Create and Duplicate,
+  `/new`'s Extract and both studios' Save (the chat composer's `sendingRef` is
+  the same guard, inline). Nothing else calls, hands on or resets a guarded
+  mutation (the pin rejects any `.mutate` or `.reset` reference outside the
+  guard, called or not), or the guard never clears; the lock itself is
+  `lib/single-flight.ts`. A kept query that the closed dialog does not
+  need waits for `open` (`useBaseResumes(false, { enabled: open })`,
+  `useRoleCategories({ enabled: open })`). The page around a kept dialog
+  stays mounted: a failed background refetch keeps it (`useLoadFailureError`,
+  not `query.error`), and a filter hides the section that holds kept dialogs
+  instead of unmounting it (the health report's notes). A kept LLM proposal that edits
+  by index carries the basis it was made against (`serverKey` of the saved
+  copy): once the résumé moves on, the proposal is described without names,
+  says so, and Apply is disabled. On Referrals the inline empty-state form
+  shares the same draft, so text left by a failed dialog create pre-fills it
+  once the last row is deleted. Pinned by `test_frontend_dialog_drafts.py`,
+  `test_frontend_referrals.py` and `test_frontend_single_flight.py` (Extract
+  by `test_frontend_unsaved_surfaces.py`).
 - Route-level `app/error.tsx` + `app/global-error.tsx` + `app/not-found.tsx`
   catch components that throw; page-level `isError` branches handle query
   failures. `next.config.ts` sets nosniff / DENY / no-referrer /
@@ -854,6 +894,18 @@
 - Career KB pages follow the Base Resumes read/edit split: one card per
   section, flat rows, hover-or-touch actions, local Save/Cancel editors with
   Escape. Do not regress these surfaces to always-editable form grids.
+  Escape and Cancel over changed text ask through `useConfirmDiscard`
+  ("Discard your changes?" / **Discard** / **Keep editing**, Keep editing
+  focused; unchanged text closes at once), and a closing editor returns focus
+  to its Edit button (`useDiscardableEditor({ editing, changed, close, busy })`
+  in `hooks/use-confirm-discard.ts`, used by the notes, point and inbox-draft
+  editors; it returns the textarea's `onKeyDown`, Cancel's `onCancel` and
+  Save's `onSave`, which closes at once when nothing changed, so each editor
+  states its "changed" test once). After a Discard focus goes to Edit; after
+  a save only when it fell to `<body>`. While a save runs
+  (`busy`) the textarea is `readOnly`, Escape and Cancel do nothing, and Save
+  stays focusable. Quick capture submits through `useSingleFlight`. Pinned by
+  `test_frontend_kb_editors.py`.
 - **Analytics** (was "Explore"): route `/analytics` (`/explore` is a 307
   redirect — `app/explore/page.tsx` is a stub that `redirect()`s and nothing
   else, NOT a next.config rule; the charts live in
