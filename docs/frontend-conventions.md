@@ -584,7 +584,11 @@
     (`${company} — ${role}`); those are typography, not prose.
 - Chat page is Gemini-styled: centered greeting + floating pill composer
   when empty, docked composer with inline pinned-resume picker otherwise;
-  user messages are muted tonal bubbles, assistant text plain.
+  user messages are muted tonal bubbles, assistant text plain. The sessions
+  rail shows only when the chat column's content box is at least 42rem
+  (`@container/chat`, not a viewport breakpoint: at 768 the pinned sidebar
+  leaves the column 480px); below that, History opens the same list in a
+  Sheet, which a `ResizeObserver` closes when the rail returns.
 - **Settings vs Profile — which page does a new setting go on?**
   `/settings` is how the SYSTEM behaves (API keys, models, quick-tailor
   permissions, auto-apply guardrails, agent hints, prompts, appearance).

@@ -114,16 +114,17 @@ export function ChatPage() {
     parseFlag,
     serializeFlag,
   );
-  // Mobile session list, shown in a Sheet instead of the (hidden) rail. Which
-  // surface is live is decided by CSS (`md:` breakpoints). A Tailwind media
-  // query has no client/server mismatch, so it gates the rail/trigger split
-  // below. The Sheet is a portal, so a matchMedia listener closes it when
-  // the viewport crosses to md+.
+  // Session list in a Sheet when the rail cannot fit. Which surface is live is
+  // a container query on the chat column (`@container/chat`), not the viewport:
+  // at 768 the pinned sidebar leaves the column 480px. CSS has no client/server
+  // mismatch. The Sheet is a portal, so a ResizeObserver closes it when the
+  // column grows wide enough for the rail.
   const [historySheetOpen, setHistorySheetOpen] = useState(false);
   // False until the pin has been resolved for the open session (see below).
   // Gates the auto-seed so it never overwrites a real choice — including an
   // explicit "No pinned resume".
   const [pinResolved, setPinResolved] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
   const sendingRef = useRef(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -137,20 +138,18 @@ export function ChatPage() {
     targetRef.current = target;
   }, [target]);
 
-  // The Sheet is a portal (renders under <body>, not this tree), so no
-  // `md:` class on its trigger or the rail reaches it — crossing to desktop
-  // width does not itself close it. Opened at 400px then resized to 1200px,
-  // it would otherwise sit on top of the now-visible desktop rail with no
-  // trigger left to dismiss it from (Escape and the backdrop still would,
-  // but nothing here should depend on that). Close it on the crossing.
-  // Same query as useIsMobile (max-width: 767px).
+  // The Sheet is a portal, so no container query reaches it. Close it when the
+  // chat column grows wide enough to show the rail (the `@2xl/chat` breakpoint,
+  // 42rem), or it would sit over the rail with no trigger left.
   useEffect(() => {
-    const mql = window.matchMedia("(max-width: 767px)");
-    const onChange = () => {
-      if (!mql.matches) setHistorySheetOpen(false);
-    };
-    mql.addEventListener("change", onChange);
-    return () => mql.removeEventListener("change", onChange);
+    const root = rootRef.current;
+    if (!root) return;
+    const observer = new ResizeObserver(([entry]) => {
+      const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+      if (entry.contentRect.width >= 42 * rem) setHistorySheetOpen(false);
+    });
+    observer.observe(root);
+    return () => observer.disconnect();
   }, []);
 
   // Event-handler-only (it reads the ref). Selections are paths into the resume
@@ -545,17 +544,19 @@ export function ChatPage() {
   return (
     // relative: anchors the floating "Show chat history" edge button that
     // appears once the rail is collapsed (mirrors EditorShell's preview pane).
-    <div className="relative flex h-[calc(100svh-1rem)] gap-4 p-4">
-      {/* Sessions rail — desktop only (md+); below that, the same list lives
-          in the Sheet opened from the thread's "Chat history" button. The
-          rail itself is `hidden md:flex` gated further by `historyCollapsed`,
-          so it never flashes on a mobile first paint (a CSS media query has
-          no client/server mismatch to resolve). The Sheet is a portal,
-          though, so its open state is independent React state, not gated by
-          these classes — it is closed on the md crossing by the matchMedia
-          listener above instead. */}
+    <div
+      ref={rootRef}
+      className="@container/chat relative flex h-[calc(100svh-1rem)] gap-4 p-4"
+    >
+      {/* Sessions rail — only when this column's content box is at least 42rem
+          (`@2xl/chat`). Below that, the same list lives in the Sheet opened
+          from the thread's "Chat history" button. The rail is `hidden` until
+          that container query, gated further by `historyCollapsed`, so it
+          never flashes on a narrow first paint (CSS has no client/server
+          mismatch). The Sheet is a portal, so its open state is independent
+          React state — a ResizeObserver closes it when the rail can show. */}
       {!historyCollapsed && (
-        <aside className="hidden w-64 shrink-0 flex-col gap-3 md:flex">
+        <aside className="hidden w-64 shrink-0 flex-col gap-3 @2xl/chat:flex">
           <div className="flex items-center gap-1">
             <Button
               variant="tonal"
@@ -587,7 +588,7 @@ export function ChatPage() {
           type="button"
           aria-label="Show chat history"
           onClick={() => setHistoryCollapsed(false)}
-          className="bg-background hover:bg-muted text-muted-foreground hover:text-foreground absolute top-1/2 left-0 z-10 hidden h-20 w-7 -translate-y-1/2 items-center justify-center gap-1 rounded-r-md border border-l-0 shadow-md transition-colors md:flex"
+          className="bg-background hover:bg-muted text-muted-foreground hover:text-foreground absolute top-1/2 left-0 z-10 hidden h-20 w-7 -translate-y-1/2 items-center justify-center gap-1 rounded-r-md border border-l-0 shadow-md transition-colors @2xl/chat:flex"
         >
           <ChevronRight className="size-4" />
         </button>
@@ -597,10 +598,9 @@ export function ChatPage() {
           <aside> of past sessions beside it, so the landmark belongs on the
           conversation column, not on the two-column wrapper. */}
       <main tabIndex={-1} className="flex min-w-0 flex-1 flex-col outline-none">
-        {/* Below md, the rail is `hidden` outright (see above), so this is
-            the only way back to past sessions — without it, chats would be
-            completely unreachable on mobile. */}
-        <div className="flex items-center pb-2 md:hidden">
+        {/* Below the rail's container breakpoint the rail is `hidden`, so this
+            is the only way back to past sessions. */}
+        <div className="flex items-center pb-2 @2xl/chat:hidden">
           <Button
             variant="ghost"
             size="icon-sm"

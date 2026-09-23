@@ -202,7 +202,13 @@ table, deviations, anything queued or deferred, and any concerns.
 | 9 | `npm run build` | succeeded |
 | 9 | slop frontend / backend | frontend 491 duplicated lines, 41 clones (under 505/42); backend hotspots 424 |
 | 9 | browser | Playwright on the throwaway stack. Referrals, Applications, health, the base studio, and Profile: while retrying, focus stayed on Try again (`aria-disabled`, label Retrying…, detail unchanged); after recovery focus was `#main-content`, never `body`. A double-click sent one refetch and did not crash. With the route still aborted, focus stayed on the button until Try again re-enabled. An unknown application stayed "no longer exists" across a window blur and focus. |
+| 10 | `pytest tests/test_frontend_chat_layout.py` plus `tests/test_frontend_*.py` | 2 new pins passed, and each failed alone when its guarded line was broken. Full frontend pin suite: 324 passed |
+| 10 | `tsc --noEmit`, `npm run lint` | tsc clean; lint 0 errors, 5 baseline warnings |
+| 10 | slop frontend / backend | frontend 491 duplicated lines, 41 clones; backend hotspots 424 |
+| 10 | browser | 768×900, sidebar pinned (256px), light and dark: no horizontal scroll, Send on screen, rail `display: none`, History button visible and opens the Sheet. Cmd+B collapses the sidebar and the rail appears (256×852); the open Sheet is gone. 1280: rail shown; Hide and Show chat history both work; no sideways scroll. 375: Send still overflows (`scrollWidth` 424), so §11 item 31's chat clause stays. |
 
 ## Queued for Task 20 (SYSTEM.md changes Claude applies)
+
+- Do not narrow §11 item 31's chat clause. Task 10 is option (a) only. At 375 the composer still overflows (measured `scrollWidth` 424 against a 375px viewport).
 
 ## Deferred to merge (edits left for Claude, with file:line)
