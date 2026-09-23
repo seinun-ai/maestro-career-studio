@@ -607,6 +607,7 @@ export function EditorBody({
         open={instructOpen}
         onOpenChange={setInstructOpen}
         targetSlug={slug}
+        resume={live?.data}
         onApplied={(result) => {
           adoptBaseResumeDetail(result);
         }}

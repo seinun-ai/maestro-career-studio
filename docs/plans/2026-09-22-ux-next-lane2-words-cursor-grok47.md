@@ -179,11 +179,18 @@ table, deviations, anything queued or deferred, and any concerns.
 
 | Task | Planned | Did instead | Why (Goal Card line) |
 |---|---|---|---|
+| 3 | Assign `doc` with no cast | Cast `customized_json` to `ResumeLike` at the assignment | The field is `Record<string, unknown>`; tsc rejects it as `ResumeLike`. Pin strings are unchanged. Speak the user's language. |
 
 ## Gate results
 
 | Task | Gate | Result |
 |---|---|---|
+| 3 | pins `test_frontend_plain_words.py` | 4 passed; each pin failed alone under mutation, then restored |
+| 3 | node `lib/*.test.ts` | 92 passed (6 new) |
+| 3 | tsc / lint | tsc clean; lint 0 errors, 5 baseline warnings |
+| 3 | `test_frontend_*.py` | 289 passed |
+| 3 | slop frontend | OK; 495 duplicated lines, 41 clones (ceiling 505/42) |
+| 3 | browser | slow load, failed apply, one-of-two clicks, reload section words, sheet propose-fail then sentence, apply closes. Light 1280 and dark 375. |
 
 ## Queued for Task 20 (SYSTEM.md changes Claude applies)
 

@@ -299,6 +299,17 @@
   then one warning naming what kept its previous PDF. Never hand-roll either:
   six callers had copied the path ternary and four the note-plus-warning pair,
   which is how the same block became a duplication regression twice.
+- **An edit is described, never printed.** Chat's suggestion card and the
+  studio's Ask for changes sheet list resume edits through `describeEdits`
+  (`lib/describe-edit.ts`) and one `EditWordsList`. Ops apply in order, so the
+  describer keeps a copy-on-write shadow of the arrays an op can shift and
+  never mutates the cached document. Words name the entry ("Rewrite bullet 2
+  of Data Scientist at Acme"); with no document, or an index it does not have,
+  they name the section only. The card freezes those words when the user
+  applies or discards, because the document has moved; after a reload a
+  resolved card has no frozen copy and describes at section level.
+  `tests/test_frontend_plain_words.py` fails when a backend op kind has no
+  `case`, or when either surface renders the op path.
 - **A failed fetch is a THIRD state, never the empty one.** react-query leaves
   `data` undefined after an error, so `if (isLoading || !data)` holds its
   skeleton forever and any `data ?? []` list renders its EMPTY branch — the

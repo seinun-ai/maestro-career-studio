@@ -1,45 +1,24 @@
 "use client";
 
 import { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
+import { EditWordsList } from "@/components/edit-words-list";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { applyResumeEdits, setChatCardState } from "@/lib/api";
+import { apiFetch, applyResumeEdits, setChatCardState } from "@/lib/api";
+import { describeEdits, type EditWords, type ResumeLike } from "@/lib/describe-edit";
 import { notifyRenderNote } from "@/lib/render-note";
 import { baseResumeLabel } from "@/lib/types";
 import type {
+  ApplicationDetail,
+  BaseResumeDetail,
   ChatCardState,
   ChatProposalOps,
   UUID,
 } from "@/lib/types";
-
-/** One line per op: "replace_bullet · experience[0].bullets[1] — “new text…”".
- *  Shared with the base-resume instruction sheet, which renders the same op
- *  vocabulary for the same one-click apply. */
-export function describeOp(op: Record<string, unknown>): string {
-  const kind = String(op.kind ?? "?");
-  let path = "";
-  if (op.section != null) {
-    path = String(op.section);
-    if (op.index != null) path += `[${op.index}]`;
-    if (op.bullet_index != null) path += `.bullets[${op.bullet_index}]`;
-  } else if (op.section_key != null) {
-    path = String(op.section_key);
-  } else if (op.category != null) {
-    path = `skills · ${op.category}`;
-  }
-  const value = op.value ?? op.text ?? op.item ?? op.items;
-  let preview = "";
-  if (typeof value === "string") {
-    preview = value.length > 90 ? `${value.slice(0, 90)}…` : value;
-  } else if (Array.isArray(value)) {
-    preview = value.filter((v) => typeof v === "string").join(" · ").slice(0, 90);
-  }
-  return [kind, path, preview && `“${preview}”`].filter(Boolean).join(" · ");
-}
 
 /**
  * Staged edit ops from propose_edits: the user approves the suggestion as one
@@ -64,6 +43,28 @@ export function EditProposalCard({
   const [resolution, setResolution] = useState<"applied" | "discarded" | null>(
     cardState?.status ?? null,
   );
+  const pending = resolution === null;
+  // The document Apply will hit. Same keys the studios and chat's pinned-resume
+  // query use, so an open chat usually has it cached.
+  const base = useQuery({
+    queryKey: ["base-resumes", proposal.target_key],
+    queryFn: () => apiFetch<BaseResumeDetail>(`/api/base-resumes/${proposal.target_key}`),
+    enabled: pending && proposal.target_kind === "base",
+  });
+  const app = useQuery({
+    queryKey: ["application", proposal.target_key],
+    queryFn: () => apiFetch<ApplicationDetail>(`/api/applications/${proposal.target_key}`),
+    enabled: pending && proposal.target_kind === "application",
+  });
+  // customized_json is an untyped record; the describer only reads known fields.
+  const doc = (
+    proposal.target_kind === "base" ? base.data?.data : app.data?.customized_json
+  ) as ResumeLike | null | undefined;
+  // Words freeze when the card resolves: after Apply the document has moved, and
+  // a remove_entry's index would name the NEXT entry. After a reload there is no
+  // frozen copy, so a resolved card describes without names (never wrong ones).
+  const [frozen, setFrozen] = useState<EditWords[] | null>(null);
+  const edits = frozen ?? describeEdits(proposal.ops, pending ? doc : null);
 
   const stamp = (status: "applied" | "discarded") => {
     if (messageId) {
@@ -76,6 +77,7 @@ export function EditProposalCard({
   const apply = useMutation({
     mutationFn: () =>
       applyResumeEdits(proposal.target_kind, proposal.target_key, proposal.ops),
+    onMutate: () => setFrozen(describeEdits(proposal.ops, doc)),
     onSuccess: (result) => {
       setResolution("applied");
       stamp("applied");
@@ -86,7 +88,10 @@ export function EditProposalCard({
       notifyRenderNote(result);
       toast.success("Suggestion applied to the resume");
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => {
+      setFrozen(null);
+      toast.error(err.message);
+    },
   });
 
   const targetLabel =
@@ -105,13 +110,7 @@ export function EditProposalCard({
         ) : null}
         <span className="text-muted-foreground text-xs">→ {targetLabel}</span>
       </div>
-      <ul className="text-muted-foreground mt-2 space-y-1 text-xs">
-        {proposal.ops.map((op, i) => (
-          <li key={i} className="truncate font-mono">
-            {describeOp(op)}
-          </li>
-        ))}
-      </ul>
+      <EditWordsList edits={edits} />
       <div className="mt-2 flex justify-end gap-2">
         {resolution ? (
           <span className="text-muted-foreground text-xs">
@@ -124,6 +123,7 @@ export function EditProposalCard({
               size="sm"
               className="rounded-full"
               onClick={() => {
+                setFrozen(edits);
                 setResolution("discarded");
                 stamp("discarded");
               }}
