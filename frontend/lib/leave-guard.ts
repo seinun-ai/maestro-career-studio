@@ -48,3 +48,29 @@ export function consumeLeaveBypass(): boolean {
 export function clearLeaveBypass(): void {
   unloadBypass = false;
 }
+
+const SENTINEL = "__leaveGuard";
+
+/** True when the current entry is the duplicate parked over an unsaved page. */
+export function onSentinel(): boolean {
+  const state = window.history.state as Record<string, unknown> | null;
+  return Boolean(state?.[SENTINEL]);
+}
+
+/**
+ * Park a duplicate of the current entry above the real one.
+ *
+ * Next 16.3.0 patches `history.pushState` in
+ * `next/dist/client/components/app-router.js`. A state object that already
+ * carries `__NA` is passed straight through, with no router action. Spreading
+ * `history.state` keeps that marker and Next's tree, so a later traverse to
+ * this duplicate still renders this route. This is an internal, not a public
+ * API: a Next upgrade has to re-run browser check U1-7.
+ */
+export function pushSentinel(): void {
+  const state = window.history.state as Record<string, unknown> | null;
+  // No `__NA` means this entry was not written by the app router. Pushing a
+  // duplicate then would make Next reload the page on the way back.
+  if (!state || state.__NA !== true) return;
+  window.history.pushState({ ...state, [SENTINEL]: true }, "", window.location.href);
+}

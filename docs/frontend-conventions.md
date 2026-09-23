@@ -263,7 +263,23 @@
   confirmed sets a bypass so the browser does not ask a second time, and the
   next client navigation clears it. A `router.push` or `router.replace` from a
   page that registers goes through `useConfirmLeave()` first: nothing wraps
-  the router, and the studios and the template editor call neither.
+  the router, and the studios and the template editor call neither. Browser
+  Back and Forward ask too, while the scope is `"all"`. The first unsaved edit
+  pushes a duplicate of the current history entry. Next 16.3.0's patched
+  `history.pushState` (`next/dist/client/components/app-router.js`) passes a
+  state that already carries `__NA` straight through, so the duplicate keeps
+  Next's tree and a later traverse still renders this route. That is an
+  internal: a Next upgrade re-runs browser check U1-7. Back steps onto the real
+  entry (same URL). A capture-phase `popstate` listener runs before Next's
+  bubble listener, and `stopImmediatePropagation` keeps Next from rendering a
+  destination. Stay re-parks the duplicate. Leave calls `history.back()` so
+  Next does render the previous entry. The first edit drops whatever was in
+  front of this page, the same as any other navigation. After a reload the
+  duplicate is still there, so the first Back is a same-URL no-op. A second
+  Back while the question is open is stopped and undone with `history.go`
+  before Stay or Leave applies. `GuardedLink` uses `router.replace` while that
+  duplicate is the current entry, so a later Back does not land on a dead
+  same-URL step.
 - **`PdfPagesPreview` owns the canvas and the zoom.** Pages sit on
   `bg-canvas`, so a caller adds no fill of its own. Zoom is a `role="group"`
   "Zoom" of `aria-pressed` presets (Fit width, Fit page, 100%) on a solid

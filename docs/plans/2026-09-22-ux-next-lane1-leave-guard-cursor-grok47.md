@@ -184,6 +184,9 @@ table, deviations, anything queued or deferred, and any concerns.
 | 1 | Conventions bullet covers Back/Forward in Task 1 | Task 1 bullet covers links, reload, and `useConfirmLeave`. Task 2 adds the Back/Forward sentences to that same bullet | Don't document a guard this commit does not implement. |
 | 1 | Handoff file list stops at `providers.tsx` | Added `components/leave-guard-listeners.tsx` | The pin and U1 name that file as the one `beforeunload` listener. |
 | 1 | Leave the tailored comment that the leave warning reads `dirty` | Comment now says the leave guard reads `unsaved` | The sentence would be false once the call moved below `unsaved`. |
+| 2 | The appendix snippet only | Also count Back presses while the dialog is open, undo them with `history.go`, then apply Stay or Leave | U1's edge table and browser check 8. A second Back otherwise renders that page under the dialog. Honesty about unsaved work. |
+| 2 | Call `history.back()` from inside the `popstate` handler | `setTimeout(0)` before that call | Chrome ignores `history.back()` dispatched during `popstate`. |
+| 2 | Browser check drives Back with the keyboard shortcut as well as `page.goBack()` | `page.goBack()` passed, including a second Back. `Meta+[`, `Alt+Left`, and `Meta+Left` did not invoke Chrome's Back command | Playwright delivers those chords to the page. Chrome handles them in the browser chrome. `goBack` is the traversal those shortcuts perform. |
 
 ## Gate results
 
@@ -198,6 +201,15 @@ table, deviations, anything queued or deferred, and any concerns.
 | 1 | slop backend | check OK; `complexity_hotspots` 424 |
 | 1 | `npm run build` | passed |
 | 1 | browser U1 1–6 plus slow save, failed save, double-click | 15/15 passed. Playwright on Chrome, `http://localhost:3101`, made-up River Hale data. Stay took initial focus and returned to the link (including the 375px sheet). Leave did not raise `beforeunload`. Save-then-Back on the tailored studio did not ask while the refetch was held. Template reload raised one `beforeunload`; Save then Back did not ask |
+| 2 | sentinel pin | passed. Failed alone when capture was removed, when the `__NA` spread was removed, and when `onSentinel()` no longer selected `router.replace`. Restored from backup copies |
+| 2 | `node --test lib/leave-guard.test.ts` | 6 passed |
+| 2 | `tsc --noEmit` | clean |
+| 2 | `npm run lint` | 0 errors, 5 baseline warnings |
+| 2 | `pytest tests/test_frontend_*.py` | 294 passed (9 in the leave-guard file) |
+| 2 | slop frontend | check OK; duplication 505 lines / 42 clones |
+| 2 | slop backend | check OK; `complexity_hotspots` 424 |
+| 2 | `npm run build` | passed |
+| 2 | browser U1 7–8 | Passed with `page.goBack()`. Clean studio: one Back, no prompt. Dirty: Back asks, Stay keeps the URL and the edit, Leave goes back one entry. Save, then Back: one press, no prompt, sentinel already popped. Two client-side Backs while the dialog is open: Stay returns to the studio with the edit. A full `page.goto` history entry cannot be stopped (the document unloads); the check used link clicks |
 
 ## Queued for Task 20 (SYSTEM.md changes Claude applies)
 

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { type ComponentProps, useCallback } from "react";
 
 import { useConfirm } from "@/components/confirm-dialog";
-import { allowLeave, leaveBlocked } from "@/lib/leave-guard";
+import { allowLeave, leaveBlocked, onSentinel } from "@/lib/leave-guard";
 
 /** True at once when nothing is unsaved, else asks. The one copy of the question. */
 export function useConfirmLeave() {
@@ -51,7 +51,9 @@ export function GuardedLink({ href, replace, scroll, ...props }: GuardedLinkProp
         void confirmLeave().then((leave) => {
           if (!leave) return;
           allowLeave();
-          if (replace) router.replace(href, { scroll });
+          // A push while the sentinel is current would leave that duplicate
+          // under the new page, so Back would land on a dead same-URL step.
+          if (replace || onSentinel()) router.replace(href, { scroll });
           else router.push(href, { scroll });
         });
       }}

@@ -109,6 +109,24 @@ def test_leave_store_is_pure():
     )[-1]
 
 
+def test_back_forward_sentinel_stops_next_before_it_renders():
+    # Next's own popstate listener is on window, bubble phase (app-router.js).
+    # Capture runs first. stopImmediatePropagation keeps Next from rendering
+    # the destination after the URL has already moved.
+    listeners = _read("components/leave-guard-listeners.tsx")
+    assert 'addEventListener("popstate", onPopState, { capture: true })' in listeners
+    assert "stopImmediatePropagation()" in listeners
+    store = _read("lib/leave-guard.ts")
+    # Next 16.3.0's patched pushState passes a state that already carries
+    # `__NA` straight through. The sentinel must spread that state or a
+    # traverse to it does not render this route.
+    assert "state.__NA" in store
+    assert "history.pushState({ ...state," in store
+    link = _read("components/guarded-link.tsx")
+    sentinel = link.index("onSentinel()")
+    assert sentinel < link.index("router.replace(", sentinel)
+
+
 def test_registered_editors_have_no_router():
     # A router.refresh/replace on these pages would let HistoryUpdater drop the
     # Back/Forward sentinel's marker (U1 option A). Re-check before adding one.
