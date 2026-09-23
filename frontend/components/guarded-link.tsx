@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { type ComponentProps, useCallback } from "react";
 
 import { useConfirm } from "@/components/confirm-dialog";
-import { allowLeave, leaveBlocked, onSentinel } from "@/lib/leave-guard";
+import { allowLeave, isSentinelState, leaveBlocked } from "@/lib/leave-guard";
 
 /** True at once when nothing is unsaved, else asks. The one copy of the question. */
 export function useConfirmLeave() {
@@ -33,8 +33,9 @@ type GuardedLinkProps = Omit<ComponentProps<typeof Link>, "href" | "onNavigate">
  * unsaved it IS Link. With unsaved work it cancels first and asks second: Link reads
  * `preventDefault` the moment `onNavigate` returns (next/dist/client/app-dir/link.js),
  * so an awaited confirm would be too late. On "Leave" it replays the navigation through
- * the router. Modifier-clicks, downloads and external URLs never reach `onNavigate`, and
- * none of them unmounts this page.
+ * the router; the replay drops Link's `transitionTypes` and its link status
+ * (`useLinkStatus`), which nothing uses today. Modifier-clicks, downloads and external
+ * URLs never reach `onNavigate`, and none of them unmounts this page.
  */
 export function GuardedLink({ href, replace, scroll, ...props }: GuardedLinkProps) {
   const router = useRouter();
@@ -51,9 +52,9 @@ export function GuardedLink({ href, replace, scroll, ...props }: GuardedLinkProp
         void confirmLeave().then((leave) => {
           if (!leave) return;
           allowLeave();
-          // A push while the sentinel is current would leave that duplicate
-          // under the new page, so Back would land on a dead same-URL step.
-          if (replace || onSentinel()) router.replace(href, { scroll });
+          // The sentinel is current: replace it rather than leave a duplicate of
+          // this page under the new one.
+          if (replace || isSentinelState(window.history.state)) router.replace(href, { scroll });
           else router.push(href, { scroll });
         });
       }}

@@ -264,22 +264,36 @@
   next client navigation clears it. A `router.push` or `router.replace` from a
   page that registers goes through `useConfirmLeave()` first: nothing wraps
   the router, and the studios and the template editor call neither. Browser
-  Back and Forward ask too, while the scope is `"all"`. The first unsaved edit
-  pushes a duplicate of the current history entry. Next 16.3.0's patched
-  `history.pushState` (`next/dist/client/components/app-router.js`) passes a
-  state that already carries `__NA` straight through, so the duplicate keeps
-  Next's tree and a later traverse still renders this route. That is an
-  internal: a Next upgrade re-runs browser check U1-7. Back steps onto the real
-  entry (same URL). A capture-phase `popstate` listener runs before Next's
-  bubble listener, and `stopImmediatePropagation` keeps Next from rendering a
-  destination. Stay re-parks the duplicate. Leave calls `history.back()` so
-  Next does render the previous entry. The first edit drops whatever was in
-  front of this page, the same as any other navigation. After a reload the
-  duplicate is still there, so the first Back is a same-URL no-op. A second
-  Back while the question is open is stopped and undone with `history.go`
-  before Stay or Leave applies. `GuardedLink` uses `router.replace` while that
-  duplicate is the current entry, so a later Back does not land on a dead
-  same-URL step.
+  Back and Forward ask too while the scope is `"all"`. The first unsaved edit
+  pushes a duplicate (the sentinel) of the editor's history entry; Back from
+  it lands on the real entry, same URL and page still mounted, and asks.
+  Stay goes back to the duplicate; Leave goes one real entry back (to the
+  app's home, `/`, through the router when the tab was opened on the editor
+  and has nothing earlier). The decisions live in a pure machine in
+  `lib/leave-guard.ts`; `LeaveGuardListeners` feeds it every `popstate`
+  from a capture-phase listener (Next's is bubble phase) and stops Next with
+  `stopImmediatePropagation` only when the machine says so. Every entry the
+  app router writes carries its position in the tab's history, stamped by a
+  patch under Next's own `pushState`/`replaceState`, so a pop knows its
+  direction and distance: extra Back or Forward presses while the question
+  is open are undone exactly before Stay or Leave applies. A pop with no
+  state (a `#fragment` link such as Skip to content) is ignored, as Next
+  ignores it. A duplicate left over after a save, an undo or a Leave is
+  stepped over, never a dead press: Back from it takes the step the user
+  asked for, and Forward onto its page moves on to it. A Leave's bypass ends
+  on the next `popstate`, and a Leave that brings neither a `popstate` nor
+  an unload within 1.5 s falls back to the home page. Accepted costs: the
+  first edit drops whatever was in front of the page, as any navigation
+  does; and a Forward onto a leftover duplicate whose position this document
+  never saw (after a reload) is one no-op press. Next internals relied on
+  (Next 16.3.0, `next/dist/client/components/app-router.js`): its patched
+  `pushState`/`replaceState` pass a state that carries `__NA` straight
+  through, so the duplicate and the stamp (both spread Next's state) keep
+  its tree; its `popstate` listener is bubble phase, ignores a null state
+  and reloads for a state without `__NA`. A Next upgrade re-runs the
+  Back/Forward browser checks. `GuardedLink` uses `router.replace` while
+  the duplicate is the current entry, so no duplicate is left under the new
+  page.
 - **`PdfPagesPreview` owns the canvas and the zoom.** Pages sit on
   `bg-canvas`, so a caller adds no fill of its own. Zoom is a `role="group"`
   "Zoom" of `aria-pressed` presets (Fit width, Fit page, 100%) on a solid
