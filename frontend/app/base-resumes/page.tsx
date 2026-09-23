@@ -31,6 +31,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { NewBaseResumeDialog } from "@/components/base-resumes/new-base-resume-dialog";
 import { apiFetch, apiUrlForBrowserPdf } from "@/lib/api";
+import { isLoadFailure } from "@/lib/query-state";
 import { notifyRenderNote } from "@/lib/render-note";
 import { uniqueSlug } from "@/lib/slug";
 import type {
@@ -131,7 +132,7 @@ export default function BaseResumesListPage() {
 
       <FirstRunImportCard />
 
-      {resumes.isError ? (
+      {isLoadFailure(resumes) ? (
         <LoadErrorState
           title="Couldn't load your base resumes."
           detail={(resumes.error as Error)?.message}

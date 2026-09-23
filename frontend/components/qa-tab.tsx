@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/select";
 import { LoadErrorState } from "@/components/load-error-state";
 import { apiFetch, apiUrlForBrowserPdf } from "@/lib/api";
+import { isLoadFailure } from "@/lib/query-state";
 import { notifyRenderNote } from "@/lib/render-note";
 import type { QAEntry, QAResponse } from "@/lib/types";
 
@@ -47,7 +48,7 @@ const KIND_LABELS: Record<string, string> = {
 export function QATab({ applicationId }: { applicationId: string }) {
   const qc = useQueryClient();
   const confirm = useConfirm();
-  const { data: entries, isError, error, isFetching, refetch } = useQuery({
+  const { data: entries, isError, error, isFetching, fetchStatus, refetch, errorUpdateCount } = useQuery({
     queryKey: ["qa", applicationId],
     queryFn: () =>
       apiFetch<QAEntry[]>(
@@ -58,6 +59,7 @@ export function QATab({ applicationId }: { applicationId: string }) {
   const [questions, setQuestions] = useState("");
   const [tone, setTone] = useState<string>("balanced");
   const questionsHintId = useId();
+  const historyHeadingId = useId();
 
   const invalidate = () =>
     qc.invalidateQueries({ queryKey: ["qa", applicationId] });
@@ -201,9 +203,11 @@ export function QATab({ applicationId }: { applicationId: string }) {
         </CardContent>
       </Card>
 
-      <div className="space-y-3">
-        <h3 className="text-sm font-semibold">History</h3>
-        {isError ? (
+      {/* tabIndex={-1}: where focus lands when the error below recovers. Named
+          by its heading, since it can hold focus. */}
+      <section tabIndex={-1} aria-labelledby={historyHeadingId} className="space-y-3 outline-none">
+        <h3 id={historyHeadingId} className="text-sm font-semibold">History</h3>
+        {isLoadFailure({ data: entries, isError, fetchStatus, errorUpdateCount }) ? (
           <LoadErrorState
             className="py-8"
             title="Couldn't load Q&A."
@@ -250,7 +254,7 @@ export function QATab({ applicationId }: { applicationId: string }) {
             );
           })
         )}
-      </div>
+      </section>
     </>
   );
 }

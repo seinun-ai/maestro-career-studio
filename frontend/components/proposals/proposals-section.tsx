@@ -36,6 +36,7 @@ import { LoadErrorState } from "@/components/load-error-state";
 import { useBaseResumeName } from "@/hooks/use-base-resume-label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch } from "@/lib/api";
+import { isLoadFailure } from "@/lib/query-state";
 import { cn } from "@/lib/utils";
 import {
   type Proposal,
@@ -185,7 +186,7 @@ function filterProposals(
 }
 
 export function ProposalsSection() {
-  const { data, isLoading, isError, error, isFetching, refetch } = useQuery({
+  const { data, isLoading, isError, error, isFetching, fetchStatus, refetch, errorUpdateCount } = useQuery({
     queryKey: PROPOSALS_KEY,
     queryFn: () =>
       apiFetch<ProposalListResponse>("/api/proposals?limit=500"),
@@ -358,17 +359,7 @@ export function ProposalsSection() {
     actions.bulk.isPending ||
     actions.remove.isPending;
 
-  if (isLoading) {
-    return (
-      <div className="flex flex-col gap-3">
-        <Skeleton className="h-10 w-full" />
-        <Skeleton className="h-20 w-full" />
-        <Skeleton className="h-20 w-full" />
-      </div>
-    );
-  }
-
-  if (isError) {
+  if (isLoadFailure({ data, isError, fetchStatus, errorUpdateCount })) {
     return (
       <div className="flex flex-col gap-5">
         <FunnelStrip />
@@ -378,6 +369,16 @@ export function ProposalsSection() {
           retrying={isFetching}
           onRetry={() => void refetch()}
         />
+      </div>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col gap-3">
+        <Skeleton className="h-10 w-full" />
+        <Skeleton className="h-20 w-full" />
+        <Skeleton className="h-20 w-full" />
       </div>
     );
   }

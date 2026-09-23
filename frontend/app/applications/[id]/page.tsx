@@ -2,6 +2,7 @@
 
 import { use, useEffect } from "react";
 import { GuardedLink as Link } from "@/components/guarded-link";
+import { useLoadFailureError } from "@/hooks/use-last-seen";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { FileX2 } from "lucide-react";
@@ -20,7 +21,7 @@ export default function ApplicationDetailRedirect({
   const { id } = use(params);
   const router = useRouter();
 
-  const { data, isError, error, isFetching, refetch } = useQuery({
+  const query = useQuery({
     queryKey: ["application", id],
     queryFn: () => apiFetch<ApplicationDetail>(`/api/applications/${id}`),
     staleTime: 60_000,
@@ -28,11 +29,15 @@ export default function ApplicationDetailRedirect({
   });
 
   useEffect(() => {
-    if (data?.job_id) router.replace(`/jobs/${data.job_id}`);
-  }, [data?.job_id, router]);
+    if (query.data?.job_id) router.replace(`/jobs/${query.data.job_id}`);
+  }, [query.data?.job_id, router]);
 
-  if (isError) {
-    const missing = error instanceof ApiError && error.status === 404;
+  // Remembered through a retry, and null on the first render of a revisit, so
+  // "no longer exists" never flashes the generic error (useLoadFailureError).
+  const lastError = useLoadFailureError(query);
+
+  if (lastError != null) {
+    const missing = lastError instanceof ApiError && lastError.status === 404;
     if (missing) {
       return (
         <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
@@ -52,9 +57,9 @@ export default function ApplicationDetailRedirect({
       <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col items-center justify-center p-6">
         <LoadErrorState
           title="Couldn't load this application."
-          detail={(error as Error)?.message}
-          retrying={isFetching}
-          onRetry={() => void refetch()}
+          detail={lastError instanceof Error ? lastError.message : undefined}
+          retrying={query.isFetching}
+          onRetry={() => void query.refetch()}
           action={
             <Button
               variant="outline"

@@ -177,12 +177,39 @@ table, deviations, anything queued or deferred, and any concerns.
 
 | Task | Planned | Did instead | Why (Goal Card line) |
 |---|---|---|---|
+| 8 | Handoff pin asserts `"useEffect(" not in body` | Strip `useLayoutEffect(` before that check | The planned assert cannot pass: `useLayoutEffect(` contains `useEffect(`. Swapping the layout effect for `useEffect` still fails the pin. Accessibility: the cleanup must run before React detaches the subtree. |
+| 8 | `use-last-seen.ts` snippet has no directive | Added `"use client"`, matching every other file in `hooks/` | No new dependencies; the hook uses `useState` and the rest of the folder is a client boundary. |
+| 8 | Appendix pins only the three focus asserts in `test_frontend_focus.py`; the single-flight guard pin is in wave 2's `test_frontend_single_flight.py` | Also pin `isLoadFailure`, the `unloadedLayer` copy, `useLastSeen`, and the guard flip in `test_frontend_focus.py` | Node tests are not in CI, and this lane builds the helpers with no call sites yet. The call-site parametrize stays in wave 2. |
+| 8 | `lib/formatting.ts` is listed on Task 9 | The `isLoadFailure` parity comment landed in this commit | The comment is the reason the two copies exist, and the Task 8 parity pin reads it. Task 9 still owns the panel simplification. |
+| 9 | Loading-gate pin is `index("isLoadFailure(") < index(marker)` | The applications pin compares `loadFailed ? (` with the skeleton | The const sits above the JSX, so the planned index passes even when the skeleton still renders first. |
+| 9 | `queries.some(isLoadFailure)` | `queries.some((q) => isLoadFailure(q))` | The planned call does not contain `isLoadFailure(`, so the caller pin would fail the code the appendix shows. |
+| 9 | Four route errors become a `LoadErrorState` swap; only health and the application page remember a 404 | The tailor route keeps "Tailoring session not found" and reads it through `useLastSeen`; `LoadErrorState` is the other failure | That page already treated 404 as its own state. A refetch would have flashed the generic error. Same Goal Card rule as the two named callers. |
+| 9 | F2's closer targets are optional | `tabIndex={-1}` on the chat column and the Q&A History section | Recovery would otherwise land on `#main-content`, far from the content that just loaded. |
+| Review (Claude) | F2 edge case: a failed background refetch over data "behaves exactly as today" (the error replaces it); 404 screens remember the error with `useLastSeen`; hand-rolled chip retries out of scope | **Planner decision:** `isLoadFailure` is error-or-retrying AND no data, reading `fetchStatus` (a paused retry is a fetch); loaded content stays on a failed refresh, the four editor routes toast it (`useRefreshFailedNotice`), Referrals' `populated` stops reading `isError`. 404 screens branch on `useLoadFailureError` (null on a revisit's first render: skeleton, never the generic error). Health report's failure and 404 state win over its loading gate. Health and KB chips move onto `RetryChip`. Chat: pinned-name trigger `max-w-48` + truncate; the History Sheet returns focus to the rail when its opener is hidden (Cmd+B). Q&A History is a named `<section>`. Pins per branch; `useSingleFlight` documents the reset / bare-`mutate` lock (clearing on the mutation's own settle needs the mutation object, a wave-2 call-site change) | Owner rule "never lose typed text": the base studio lost text typed after Cmd+S when a refetch failed; 17 of 19 screens swapped loaded content for the error. Focus never drops to `<body>`. |
 
 ## Gate results
 
 | Task | Gate | Result |
 |---|---|---|
+| 8 | `node --test lib/*.test.ts` | 92 passed (6 new in `query-state.test.ts`) |
+| 8 | `pytest tests/test_frontend_focus.py` | 6 passed; each pin failed alone when its guarded line was broken, then restored |
+| 8 | `pytest tests/test_frontend_*.py` | 291 passed |
+| 8 | `tsc --noEmit` | clean |
+| 8 | `npm run lint` | 0 errors, 5 baseline warnings |
+| 8 | slop frontend | 505 duplicated lines, 42 clones (delta 0) |
+| 8 | slop backend | `complexity_hotspots` 424 (delta 0) |
+| 9 | `pytest tests/test_frontend_*.py` | 322 passed. New pins failed alone when the guarded line was broken, then restored |
+| 9 | `tsc --noEmit`, `npm run lint` | tsc clean; lint 0 errors, 5 baseline warnings |
+| 9 | `npm run build` | succeeded |
+| 9 | slop frontend / backend | frontend 491 duplicated lines, 41 clones (under 505/42); backend hotspots 424 |
+| 9 | browser | Playwright on the throwaway stack. Referrals, Applications, health, the base studio, and Profile: while retrying, focus stayed on Try again (`aria-disabled`, label Retrying…, detail unchanged); after recovery focus was `#main-content`, never `body`. A double-click sent one refetch and did not crash. With the route still aborted, focus stayed on the button until Try again re-enabled. An unknown application stayed "no longer exists" across a window blur and focus. |
+| 10 | `pytest tests/test_frontend_chat_layout.py` plus `tests/test_frontend_*.py` | 2 new pins passed, and each failed alone when its guarded line was broken. Full frontend pin suite: 324 passed |
+| 10 | `tsc --noEmit`, `npm run lint` | tsc clean; lint 0 errors, 5 baseline warnings |
+| 10 | slop frontend / backend | frontend 491 duplicated lines, 41 clones; backend hotspots 424 |
+| 10 | browser | 768×900, sidebar pinned (256px), light and dark: no horizontal scroll, Send on screen, rail `display: none`, History button visible and opens the Sheet. Cmd+B collapses the sidebar and the rail appears (256×852); the open Sheet is gone. 1280: rail shown; Hide and Show chat history both work; no sideways scroll. 375: Send still overflows (`scrollWidth` 424), so §11 item 31's chat clause stays. |
 
 ## Queued for Task 20 (SYSTEM.md changes Claude applies)
+
+- Do not narrow §11 item 31's chat clause. Task 10 is option (a) only. At 375 the composer still overflows (measured `scrollWidth` 424 against a 375px viewport).
 
 ## Deferred to merge (edits left for Claude, with file:line)

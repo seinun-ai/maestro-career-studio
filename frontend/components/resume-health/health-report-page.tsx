@@ -18,6 +18,7 @@ import {
 } from "@/components/resume-health/finding-cards";
 import { BatchAskDialog } from "@/components/resume-health/batch-ask-dialog";
 import { LoadErrorState } from "@/components/load-error-state";
+import { useLoadFailureError } from "@/hooks/use-last-seen";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { IconButton } from "@/components/icon-button";
@@ -31,6 +32,7 @@ import {
   overrideLevel,
   runLintReport,
 } from "@/lib/api";
+import { isLoadFailure } from "@/lib/query-state";
 import {
   explainScoreDelta,
   filterFindings,
@@ -178,9 +180,12 @@ export function HealthReportPage({
     onError: (err: Error) => toast.error(err.message),
   });
 
-  const noReportYet =
-    report.isError && report.error instanceof ApiError && report.error.status === 404;
-  const reportFailed = report.isError && !noReportYet;
+  // The report's failure, remembered through a retry: a 404 is "No health report yet", anything
+  // else is the error with its Try again. Both render ahead of the loading gate below, because a
+  // retry puts a data-less query back into `isLoading` and the skeleton unmounted the focused button.
+  const reportError = useLoadFailureError(report);
+  const noReportYet = reportError instanceof ApiError && reportError.status === 404;
+  const reportFailed = reportError != null && !noReportYet;
 
   useEffect(() => {
     if (!report.data || priorScore.current) return;
@@ -218,7 +223,7 @@ export function HealthReportPage({
     qc.invalidateQueries({ queryKey: ["resume-lint", kind, resumeKey] });
   };
 
-  if (baseQuery.isError) {
+  if (isLoadFailure(baseQuery)) {
     return (
       <PageShell>
         <LoadErrorState
@@ -238,7 +243,7 @@ export function HealthReportPage({
     );
   }
 
-  if (baseQuery.isLoading || report.isLoading) {
+  if (baseQuery.isLoading || (report.isLoading && reportError == null)) {
     return (
       <PageShell>
         <Skeleton className="h-10 w-60" />
@@ -324,7 +329,7 @@ export function HealthReportPage({
       {reportFailed ? (
         <LoadErrorState
           title="Couldn't load this health report."
-          detail={(report.error as Error)?.message}
+          detail={reportError instanceof Error ? reportError.message : undefined}
           retrying={report.isFetching}
           onRetry={() => void report.refetch()}
         />

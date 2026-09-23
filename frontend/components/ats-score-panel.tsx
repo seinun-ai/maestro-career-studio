@@ -15,6 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { isLoadFailure } from "@/lib/query-state";
 import { cn } from "@/lib/utils";
 import {
   ApiError,
@@ -343,6 +344,17 @@ export function AtsScorePanel({ jobId }: { jobId: string }) {
     .sort((a, b) => b.composite - a.composite);
 
   function renderBody() {
+    if (isLoadFailure(scores)) {
+      return (
+        <LoadErrorState
+          title="Couldn't load ATS scores."
+          detail={(scores.error as Error)?.message}
+          retrying={scores.isFetching}
+          onRetry={() => void scores.refetch()}
+        />
+      );
+    }
+
     // Idle with a SETTLED empty list means the first-visit auto-run is about
     // to fire, so the skeleton shows instead of an empty-state frame. A failed
     // refetch keeps its old `[]` in `data`, and the auto-run waits for success,
@@ -360,17 +372,6 @@ export function AtsScorePanel({ jobId }: { jobId: string }) {
             ))}
           </div>
         </div>
-      );
-    }
-
-    if (scores.isError) {
-      return (
-        <LoadErrorState
-          title="Couldn't load ATS scores."
-          detail={(scores.error as Error)?.message}
-          retrying={scores.isFetching}
-          onRetry={() => void scores.refetch()}
-        />
       );
     }
 

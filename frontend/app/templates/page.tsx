@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { useConfirm } from "@/components/confirm-dialog";
 import { TemplateGallery } from "@/components/templates/template-gallery";
 import { LoadErrorState } from "@/components/load-error-state";
+import { isLoadFailure } from "@/lib/query-state";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -185,7 +186,7 @@ export default function TemplatesListPage() {
         }
       />
 
-      {templates.isError ? (
+      {isLoadFailure(templates) ? (
         <LoadErrorState
           title="Couldn't load templates."
           detail={(templates.error as Error)?.message}

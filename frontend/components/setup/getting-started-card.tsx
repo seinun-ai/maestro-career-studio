@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { apiFetch } from "@/lib/api";
+import { isLoadFailure } from "@/lib/query-state";
 import type { SetupStatus } from "@/lib/types";
 
 const DISMISS_KEY = "maestro-cs:getting-started-dismissed";
@@ -50,7 +51,7 @@ export function GettingStartedCard() {
 
   const status = setupStatus.data;
   if (dismissed) return null;
-  if (setupStatus.isError) {
+  if (isLoadFailure(setupStatus)) {
     return (
       <LoadErrorState
         className="py-8"

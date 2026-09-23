@@ -54,6 +54,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { apiFetch, promoteJobToAgentQueue } from "@/lib/api";
+import { isLoadFailure } from "@/lib/query-state";
 import { cn } from "@/lib/utils";
 import {
   APPLICATION_STATUSES,
@@ -329,7 +330,7 @@ function ApplicationsContent() {
   // Checked BEFORE the empty state, which is the whole bug: with `data`
   // undefined after a failure, `filtered.length === 0` is true and the branch
   // below hands a user with a full pipeline the brand-new-user onboarding card.
-  const loadFailed = apps.isError || savedJobs.isError;
+  const loadFailed = isLoadFailure(apps) || isLoadFailure(savedJobs);
 
   const writeUrl = (nextFilter: Filter, nextSource: SourceFilter) => {
     const params = new URLSearchParams();
@@ -471,13 +472,7 @@ function ApplicationsContent() {
         </div>
       </div>
 
-      {loading ? (
-        <div className="space-y-2">
-          <Skeleton className="animate-shimmer h-12 w-full" />
-          <Skeleton className="animate-shimmer h-12 w-full" />
-          <Skeleton className="animate-shimmer h-12 w-full" />
-        </div>
-      ) : loadFailed ? (
+      {loadFailed ? (
         <LoadErrorState
           title="Couldn't load your applications."
           detail={
@@ -491,6 +486,12 @@ function ApplicationsContent() {
             void savedJobs.refetch();
           }}
         />
+      ) : loading ? (
+        <div className="space-y-2">
+          <Skeleton className="animate-shimmer h-12 w-full" />
+          <Skeleton className="animate-shimmer h-12 w-full" />
+          <Skeleton className="animate-shimmer h-12 w-full" />
+        </div>
       ) : filtered.length === 0 ? (
         <div className="space-y-5">
           {/* The task leads and the setup checklist supports it: a new user

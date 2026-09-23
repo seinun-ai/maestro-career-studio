@@ -18,10 +18,13 @@ import { EditorShell } from "@/components/resume-editor/editor-shell";
 import { FullscreenEditorPage } from "@/components/resume-editor/fullscreen-editor-page";
 import { Badge } from "@/components/ui/badge";
 import { IconButton } from "@/components/icon-button";
+import { LoadErrorState } from "@/components/load-error-state";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useRefreshFailedNotice } from "@/hooks/use-refresh-failed-notice";
 import { apiFetch, apiUrlForBrowserPdf } from "@/lib/api";
+import { isLoadFailure } from "@/lib/query-state";
 import { FORMATTING_DEFAULTS, type ResumeFormatting } from "@/lib/formatting";
 import type { TemplateDetail, TemplateValidationResult } from "@/lib/types";
 
@@ -181,16 +184,23 @@ export default function TemplateEditorPage() {
     onError: (err: Error) => toast.error(err.message),
   });
 
-  if (tq.isError) {
+  useRefreshFailedNotice(tq, "this template");
+
+  if (isLoadFailure(tq)) {
     return (
       <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-4 p-6">
-        <p className="text-destructive">
-          {(tq.error as Error)?.message ?? "Failed to load template."}
-        </p>
-        <Button
-          render={<Link href="/templates">Back to templates</Link>}
-          nativeButton={false}
-          variant="outline"
+        <LoadErrorState
+          title="Couldn't load this template."
+          detail={(tq.error as Error | null)?.message}
+          retrying={tq.isFetching}
+          onRetry={() => void tq.refetch()}
+          action={
+            <Button
+              render={<Link href="/templates">Back to templates</Link>}
+              nativeButton={false}
+              variant="outline"
+            />
+          }
         />
       </main>
     );

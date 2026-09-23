@@ -2,6 +2,8 @@
 
 import { use, useEffect, useRef, useState } from "react";
 import { GuardedLink as Link } from "@/components/guarded-link";
+import { useLoadFailureError } from "@/hooks/use-last-seen";
+import { useRefreshFailedNotice } from "@/hooks/use-refresh-failed-notice";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -26,6 +28,7 @@ import {
 import { IconButton } from "@/components/icon-button";
 import { useConfirm } from "@/components/confirm-dialog";
 import { Badge } from "@/components/ui/badge";
+import { LoadErrorState } from "@/components/load-error-state";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -476,41 +479,54 @@ export default function TailorSessionPage({
     tailor.mutate(true);
   };
 
+  useRefreshFailedNotice(session, "this tailoring session");
+
   // --- Render branches --------------------------------------------------------
-  if (session.isLoading) {
+  // A 404 is "this session is gone", not a generic failure. Remember the error:
+  // a refetch clears it, and the not-found copy would otherwise flash away. A
+  // revisit's first render has none yet and shows the skeleton instead.
+  const sessionError = useLoadFailureError(session);
+  const sessionMissing = sessionError instanceof ApiError && sessionError.status === 404;
+
+  if (sessionError != null) {
+    if (sessionMissing) {
+      return (
+        <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
+          <h1 className="text-lg font-medium">Tailoring session not found</h1>
+          <p className="text-muted-foreground text-sm">
+            It may have been deleted along with its job.
+          </p>
+          <Button
+            nativeButton={false}
+            render={<Link href={`/jobs/${jobId}`}>Back to job</Link>}
+          />
+        </main>
+      );
+    }
+    return (
+      <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
+        <LoadErrorState
+          title="Couldn't load this tailoring session."
+          detail={sessionError instanceof Error ? sessionError.message : undefined}
+          retrying={session.isFetching}
+          onRetry={() => void session.refetch()}
+          action={
+            <Button
+              nativeButton={false}
+              render={<Link href={`/jobs/${jobId}`}>Back to job</Link>}
+            />
+          }
+        />
+      </main>
+    );
+  }
+
+  if (session.isLoading || !session.data) {
     return (
       <main className="mx-auto w-full max-w-4xl flex-1 space-y-4 p-6">
         <Skeleton className="h-10 w-1/2" />
         <Skeleton className="h-40 w-full" />
         <Skeleton className="h-40 w-full" />
-      </main>
-    );
-  }
-
-  if (session.isError || !session.data) {
-    const notFound =
-      session.error instanceof ApiError && session.error.status === 404;
-    return (
-      <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
-        <h1 className="text-lg font-medium">
-          {notFound ? "Tailoring session not found" : "Failed to load session"}
-        </h1>
-        <p className="text-muted-foreground text-sm">
-          {notFound
-            ? "It may have been deleted along with its job."
-            : (session.error instanceof Error ? session.error.message : "Unknown error")}
-        </p>
-        <div className="flex gap-2">
-          {!notFound && (
-            <Button variant="outline" onClick={() => session.refetch()}>
-              Retry
-            </Button>
-          )}
-          <Button
-            nativeButton={false}
-            render={<Link href={`/jobs/${jobId}`}>Back to job</Link>}
-          />
-        </div>
       </main>
     );
   }

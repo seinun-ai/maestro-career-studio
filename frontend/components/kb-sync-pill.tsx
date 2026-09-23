@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 
+import { RetryChip } from "@/components/retry-chip";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -16,6 +17,7 @@ import {
 } from "@/components/ui/popover";
 import { applyKbSync, getKbSyncStatus } from "@/lib/api";
 import { formatTimeAgo } from "@/lib/format-date";
+import { isLoadFailure } from "@/lib/query-state";
 import type { SyncStatus } from "@/lib/types";
 
 /** Every state renders at this height, so the toolbar row keeps its baseline
@@ -137,19 +139,18 @@ export function KbSyncPill({ slug }: { slug: string }) {
   });
 
   // The error branch comes FIRST: a failed status fetch must not be able to
-  // render as the reassuring "up to date" chip.
-  if (query.isError) {
+  // render as the reassuring "up to date" chip. `isLoadFailure` keeps it
+  // mounted through a retry; a status already loaded stays on a failed refresh.
+  if (isLoadFailure(query)) {
     return (
-      <button
-        type="button"
+      <RetryChip
         className={`${CHIP} text-muted-foreground hover:text-foreground hover:bg-muted/60 hover:border-border cursor-pointer transition-colors`}
         title="Couldn't check Career KB sync. Try again."
-        onClick={() => void query.refetch()}
-        disabled={query.isFetching}
-      >
-        <RefreshCw className="size-3.5" />
-        {query.isFetching ? "Retrying…" : "KB sync unavailable"}
-      </button>
+        icon={<RefreshCw className="size-3.5" />}
+        label="KB sync unavailable"
+        retrying={query.isFetching}
+        onRetry={() => void query.refetch()}
+      />
     );
   }
 

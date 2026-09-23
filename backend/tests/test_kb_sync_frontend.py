@@ -42,10 +42,11 @@ def test_api_exposes_kb_sync_status_and_apply_fetchers():
 
 def test_kb_sync_pill_error_branch_precedes_the_reassuring_state():
     source = (_FRONTEND / "components/kb-sync-pill.tsx").read_text()
-    assert "isError" in source
+    # `isLoadFailure`, not `isError`: a retry keeps the chip mounted (RetryChip).
+    assert "if (isLoadFailure(query)) {" in source
     assert "Sync now" in source
     assert "/career" in source
-    error_at = source.index("isError")
+    error_at = source.index("if (isLoadFailure(query)) {")
     # The clean chip's title, not its "KB synced" label: the label's words also
     # appear in comments above the component, where index() would find them.
     clean_at = source.index("Career KB up to date")
