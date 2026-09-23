@@ -170,6 +170,7 @@ table, deviations, anything queued or deferred, and any concerns.
 |---|---|---|---|
 | 11 | `readOnly` on the note textarea and `UserInputControls` | Threaded `readOnly` through `GapCard` into `UserInputControls`; the note textarea is on the page | The answer field lives in those components. Keyboard edits while tailoring would otherwise be dropped. |
 | 11 | Browser check stops the backend | The failed save was a 500 on the resolutions PATCH | Same failure the page handles. The status, toast, Try again, and leave prompt all showed. |
+| 12 | Browser check stops the backend | Quick-tailor and market PUTs returned 500 | Same failure. Not saved, the toast, Try again, the leave prompt, and the market revert all showed. |
 
 ## Gate results
 
@@ -181,6 +182,12 @@ table, deviations, anything queued or deferred, and any concerns.
 | 11 | slop | frontend and backend ratchet OK; duplication 468 lines / 39 clones (ceiling 481/40) |
 | 11 | `npm run build` | OK |
 | 11 | browser | Saving… from the first keystroke and again on the next character; delayed PATCH stays Saving… until it ends, then Saved; reload shows beforeunload; Back and the sidebar flush the note; failed save shows Save failed, a toast, Try again, and "Leave without saving?"; Enter on Try again keeps focus off `<body>` and lands on Saved |
+| 12 | pins `test_frontend_settings_autosave.py` | 4 passed; each pin failed alone when its guard was broken, then restored |
+| 12 | `pytest tests/test_frontend_*.py` | 450 passed |
+| 12 | tsc / lint | tsc clean; lint 0 errors, 5 baseline warnings |
+| 12 | slop | frontend and backend ratchet OK; duplication still 468/39 |
+| 12 | `npm run build` | OK |
+| 12 | browser | Failed quick-tailor switch: Not saved, toast, Try again, leave prompt; Enter on Try again shows Saving… with focus on the button, then Saves automatically with focus on the status. Failed market pick: select reverts, Not saved, no Try again; the next successful pick clears it. |
 
 ## Queued for Task 20 (SYSTEM.md changes Claude applies)
 

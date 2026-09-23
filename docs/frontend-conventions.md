@@ -733,7 +733,10 @@
   `autosave-status.tsx` for why. A debounced autosave (the gap page) says
   Saving… from the first keystroke until the newest edit is on the server,
   flushes on unmount, warns on reload while pending, and asks before an
-  in-app exit only after a failed save.
+  in-app exit only after a failed save. `AutosaveStatus` reports three states:
+  Saving…, Not saved (after a failed write, with Try again where the card
+  holds a value the server lacks), and Saves automatically. A card whose
+  write failed registers the leave guard.
 - Settings shows four curated user-voice prompts (cover_letter, qa,
   gap_tailor, chat_system); the other internal prompts sit behind an
   "Advanced prompts" disclosure (`ESSENTIAL_PROMPTS` map in

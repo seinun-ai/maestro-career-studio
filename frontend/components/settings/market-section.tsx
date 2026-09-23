@@ -68,7 +68,7 @@ export function MarketSection() {
         return (
           <div className="grid gap-4">
             <AutosaveRow>
-              <AutosaveStatus pending={save.isPending} />
+              <AutosaveStatus pending={save.isPending} failed={save.isError} />
             </AutosaveRow>
             <div className="grid max-w-sm gap-1.5">
               <Label htmlFor="market-select" id="market-select-label">
