@@ -817,6 +817,14 @@
 - Career KB pages follow the Base Resumes read/edit split: one card per
   section, flat rows, hover-or-touch actions, local Save/Cancel editors with
   Escape. Do not regress these surfaces to always-editable form grids.
+  Escape and Cancel over changed text ask through `useConfirmDiscard`
+  ("Discard your changes?" / **Discard** / **Keep editing**, Keep editing
+  focused; unchanged text closes at once), and a closing editor returns focus
+  to its Edit button (`useDiscardableEditor` in
+  `hooks/use-confirm-discard.ts`, used by the notes, point and inbox-draft
+  editors). While a save runs the textarea is `readOnly` and Save stays
+  focusable. Quick capture submits through `useSingleFlight`. Pinned by
+  `test_frontend_kb_editors.py`.
 - **Analytics** (was "Explore"): route `/analytics` (`/explore` is a 307
   redirect — `app/explore/page.tsx` is a stub that `redirect()`s and nothing
   else, NOT a next.config rule; the charts live in

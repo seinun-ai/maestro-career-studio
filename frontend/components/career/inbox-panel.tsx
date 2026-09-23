@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
+import { useDiscardableEditor } from "@/hooks/use-confirm-discard";
 import { deleteKbPoint, patchKbPoint, bulkKbPointState } from "@/lib/api";
 import type { KBEntitySummary, KBInboxPoint, KBPointPatch, UUID } from "@/lib/types";
 
@@ -264,6 +265,7 @@ function DraftRow({
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState(point.text);
+  const { editRef, returnFocus, requestCancel, cancelOnEscape } = useDiscardableEditor(editing);
 
   const update = useMutation({
     mutationKey: KB_POINT_MUTATION_KEY,
@@ -303,6 +305,7 @@ function DraftRow({
     setEditing(false);
   };
   const saveText = () => {
+    returnFocus(); // Save unmounts itself, even when it only closes.
     const value = text.trim();
     if (!value || value === point.text) {
       cancelEdit();
@@ -333,25 +336,26 @@ function DraftRow({
             id={`draft-text-${point.id}`}
             value={text}
             onChange={(event) => changeText(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Escape") {
-                event.preventDefault();
-                cancelEdit();
-              }
-            }}
+            onKeyDown={(event) => cancelOnEscape(event, text.trim() !== point.text, cancelEdit)}
             rows={3}
-            disabled={pending}
+            readOnly={pending}
             autoFocus
           />
           <div className="flex gap-2">
-            <Button className="rounded-full px-4" size="sm" onClick={saveText} disabled={!text.trim() || pending}>
+            <Button
+              className="rounded-full px-4 data-disabled:pointer-events-none data-disabled:opacity-50"
+              size="sm"
+              onClick={saveText}
+              disabled={!text.trim() || pending}
+              focusableWhenDisabled
+            >
               Save
             </Button>
             <Button
               size="sm"
               variant="ghost"
               className="rounded-full"
-              onClick={cancelEdit}
+              onClick={() => void requestCancel(text.trim() !== point.text, cancelEdit)}
               disabled={pending}
             >
               <X aria-hidden="true" /> Cancel
@@ -362,6 +366,7 @@ function DraftRow({
         <div className="flex items-start gap-2">
           <p className="min-w-0 flex-1 text-sm leading-relaxed">{point.text}</p>
           <Button
+            ref={editRef}
             size="icon-sm"
             variant="ghost"
             className="opacity-0 transition-opacity duration-150 group-hover/draft:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100"
