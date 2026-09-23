@@ -24,7 +24,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useRefreshFailedNotice } from "@/hooks/use-refresh-failed-notice";
 import { apiFetch, apiUrlForBrowserPdf } from "@/lib/api";
-import { focusIfDropped } from "@/hooks/use-focus-return";
 import { isLoadFailure } from "@/lib/query-state";
 import { FORMATTING_DEFAULTS, type ResumeFormatting } from "@/lib/formatting";
 import type { TemplateDetail, TemplateValidationResult } from "@/lib/types";
@@ -229,11 +228,7 @@ export default function TemplateEditorPage() {
   const previewVersion = `${tq.data.validated_at ?? ""}:${previewNonce}`;
 
   return (
-    // A navigation here (Create on /templates, a gallery card) unmounts what
-    // held focus: once the template loads, a focus left on <body> lands on
-    // the editor's landmark. A module function, so the ref is stable and runs
-    // on mount only.
-    <FullscreenEditorPage ref={focusIfDropped}>
+    <FullscreenEditorPage>
     <EditorShell
       fullHeightLeft
       storageKey="templateEditor"

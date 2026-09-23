@@ -543,9 +543,9 @@
     once the refetched list holds the new card, and lands on it (on another
     tab, the opener). Adapt & preview leaves with the select step; its
     success arms `useFocusOnNextCommit` with Apply. A create that navigates
-    (Templates Create → `/templates/<id>`) lands on the editor's `<main
-    tabIndex={-1}>` once it loads (`<FullscreenEditorPage
-    ref={focusIfDropped}>`, a stable ref that runs on mount only).
+    into an editor (Templates Create, New base résumé) lands on the editor's
+    `<main tabIndex={-1}>`: `FullscreenEditorPage` passes it the stable
+    `ref={focusIfDropped}`, which runs on mount only.
   - Every overlay opened from a ⋯ menu takes the trigger as `finalFocus`,
     because the item is gone by the time it closes. The menu itself does not:
     an explicit `finalFocus` on a menu also overrides the initial focus of an

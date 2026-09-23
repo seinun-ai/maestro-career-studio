@@ -489,8 +489,13 @@ def test_every_menu_returns_a_dropped_focus_to_its_trigger():
     assert "onOpenChangeComplete={" not in _OVERFLOW
 
 
-def test_the_template_editor_takes_a_focus_the_navigation_dropped():
-    page = _read("app/templates/[id]/page.tsx")
-    assert "<FullscreenEditorPage ref={focusIfDropped}>" in page
+def test_every_editor_takes_a_focus_the_navigation_dropped():
+    # Create on /templates or New base résumé navigates into an editor: what
+    # held focus unmounts, so the editor's landmark takes a focus left on
+    # <body>. The shell does it, so all three editors (both studios and the
+    # template editor) get it; a stable module ref runs on mount only.
     shell = _read("components/resume-editor/fullscreen-editor-page.tsx")
-    assert re.search(r"<main\s+tabIndex=\{-1\}\s+className=\"[^\"]*\"\s+ref=\{ref\}>", shell)
+    assert 'import { focusIfDropped } from "@/lib/focus";' in shell
+    assert re.search(r"<main\s+tabIndex=\{-1\}\s+className=\"[^\"]*\"\s+ref=\{focusIfDropped\}>", shell)
+    for rel in ("app/templates/[id]/page.tsx", "app/base-resumes/[slug]/page.tsx", "app/applications/[id]/resume/page.tsx"):
+        assert "<FullscreenEditorPage>" in _read(rel), rel
