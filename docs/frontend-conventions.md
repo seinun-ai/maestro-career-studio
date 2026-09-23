@@ -175,10 +175,22 @@
     studio's toolbar is. The chord is always swallowed (the browser's Save
     page saves app HTML) but never saves on repeat, mid-IME, once another
     handler claimed it, or from inside a dialog, where "Load the latest
-    version?" would be overwritten. It blurs a focused field first, so a
-    blur-committed draft (chip input, section rename) saves as a click would,
-    then refocuses and saves on the next task; a chord inside that gap is
-    swallowed, so one chord is one save. Save (key or click)
+    version?" would be overwritten. It blurs a focused field inside
+    `flushSync`, so a blur-committed draft (chip input, section rename) is
+    committed before it saves, as a click would, and puts focus back before
+    the handler returns, so keys typed right after the chord land in the
+    field (a refocus on the next task dropped them on `<body>`). A field that
+    unmounts on blur (an inline chip edit, a section rename, the base
+    studio's title) moves focus itself in that commit: to the add row, the
+    rename button, the pencil. It arms that move only for a blur with no
+    destination (`relatedTarget === null`, as the chord's is), plus Enter
+    and Escape: a click or Tab out of it is the user's own move, and arming
+    on every blur took focus back mid-move (text typed into Summary landed
+    in the chip add row). Such a field's Enter handler calls
+    `preventDefault`, or Enter's activation presses the button focus just
+    moved to (the rename reopened). One chord or click is one save: the key
+    is gated by `canSave` and both go through `useSingleFlight`.
+    Save (key or click)
     applies a pending raw-JSON draft first and saves exactly what it applied;
     an invalid draft saves nothing. `isSaveShortcut` falls back to
     `code === "KeyS"` only when the layout types no Latin letter there:
@@ -199,7 +211,8 @@
     confirms; in the tailored studio, Load latest and Rebuild also drop a
     draft, behind their own confirms. The pane survives a Save, so a value
     that changes under text still matching the PREVIOUS value re-syncs it to
-    the saved copy.
+    the saved copy. Leaving the pane (Apply, Cancel, a confirmed discard,
+    Form view) returns focus to ⋯.
   - *Divider*: an APG window splitter. A focusable `role="separator"` whose
     value is the EDITOR's share (rounded; `aria-valuetext` names both panes;
     `aria-controls` the editor pane). Arrows snap to the 5% grid, since a drag
@@ -211,7 +224,8 @@
     localStorage on release. The collapsed "Show PDF preview" control is a
     28px rail in normal flow, not an overlay on the editor pane. Width and
     collapse are `useLocalStorageState` preferences, so a stored value paints
-    on the first frame and stays in sync across tabs.
+    on the first frame and stays in sync across tabs. The two preview toggles
+    hand focus to each other.
   - *Base studio*: Save is dirty-gated, so ⋯ **Regenerate PDF** (Generate PDF
     before the first render) is the retry for a failed render, disabled while
     edits are unsaved, and the render-error banner says "save or
@@ -472,6 +486,51 @@
   the menu item — the menu's focus restore races the dialog's initial focus.
   Not reproducible under automation (`document.hasFocus()` is false in the
   browser pane, which suppresses initial-focus); verify by hand.
+- **Focus never falls to `<body>`** (`hooks/use-focus-return.ts`, its DOM
+  helpers in `lib/focus.ts` with node tests; pinned by
+  `test_frontend_focus.py`). Focus moves only when it fell to `<body>`, never
+  away from where the user put it.
+  - A control that unmounts itself arms `useFocusOnNextCommit` with what
+    replaces it: the counterpart toggle (Hide/Show PDF preview, Hide/Show chat
+    history), the first field of the editor it opened, or the pencil on Done.
+    `useEditToggle` wraps the read/edit case (Summary, Contact,
+    Certifications, a referral row); destructure its result, because the
+    React Compiler lint reads `toggle.editRef` as a ref read during render.
+    `EditableCard` arms from its own setter.
+  - A subtree that can vanish while holding focus calls `useFocusHandoff`:
+    `LoadErrorState`, `EditorShell` (a studio remount lands on
+    `FullscreenEditorPage`'s `<main tabIndex={-1}>`), a referral row and the
+    referrals table (a deleted row lands on the table, the last one on
+    `#main-content`).
+  - A button that disables itself while its request runs is
+    `focusableWhenDisabled` (Save, Widen/Narrow at their limits, a referral's
+    Save and Delete, the Templates Create): a disabled `<button>` drops
+    focus.
+  - Every overlay opened from a ⋯ menu takes the trigger as `finalFocus`,
+    because the item is gone by the time it closes. The menu itself does not:
+    an explicit `finalFocus` on a menu also overrides the initial focus of an
+    overlay an item opens (History opened from the keyboard landed back on
+    ⋯). Its default returns to ⋯ after a key press but nowhere after a click,
+    so `StudioOverflowMenu` moves a dropped focus to ⋯ once the popup has
+    unmounted (`onOpenChangeComplete` runs just before that, hence the
+    zero-delay timeout).
+  - Two of these lean on Base UI 1.4.1 timing, noted at each site:
+    `StudioOverflowMenu`'s timeout on `onOpenChangeComplete` firing before
+    the unmount, and `ConfirmDialogProvider`'s `returnTo` on a function
+    `finalFocus` being read when the popup unmounts (not when it opens) and
+    ahead of Base UI's own return microtask. After a Base UI upgrade,
+    re-check in the browser: a click on ⋯ → Edit raw JSON lands on ⋯; ⋯ →
+    History and ⋯ → Rebuild start inside the sheet and the confirm; Load
+    latest lands on the studio's `<main>`.
+  - `ConfirmDialogProvider` returns to its opener, or, when the confirmed
+    action removed it, to the nearest `tabIndex={-1}` ancestor that survived
+    (`returnFocus` names another target: Rebuild returns to ⋯). Base UI would
+    focus such a landmark's first tabbable child ("Back to application"), so
+    a `tabIndex={-1}` target is focused directly once the dialog is gone.
+  - Why: Base UI's default return target for a trigger-less dialog is the
+    last connected element it saw focused, which can be inside the closing
+    dialog (the Role dialog's own picker input), and is `null` once the
+    opener is gone (Load latest).
 - **`TabsContent` hides de-selected panels with `[&[inert]]:hidden`** — do not
   remove it. Base UI clears `hidden` only when a CLOSING transition finishes;
   these panels have none, so every visited panel would stay behind, visible.
@@ -533,7 +592,16 @@
   The create mutation lives there too, one per page: a mutation inside the
   form dies with it, so a reopened dialog showed the kept draft with an
   enabled submit while the first POST was still in flight. Every form the
-  page shows reads the shared pending flag. On Referrals the inline
+  page shows reads the shared pending flag and submits through
+  `useSingleFlight` (`hooks/use-single-flight.ts`): react-query re-renders
+  `isPending` on a zero-delay timeout, so a double click read `false` twice
+  and created two rows. So do the Templates Create and Duplicate, `/new`'s
+  Extract and both studios' Save (the chat composer's `sendingRef` is the same guard,
+  inline). Nothing else calls, hands on or resets a guarded mutation (the
+  pin rejects any `.mutate` or `.reset` reference outside the guard, called
+  or not), or the guard never clears. The lock itself is
+  `lib/single-flight.ts`. Pinned by `test_frontend_single_flight.py` (Extract
+  by `test_frontend_unsaved_surfaces.py`). On Referrals the inline
   empty-state form shares the same draft, so text left by a failed dialog
   create pre-fills it once the last row is deleted. `NewEntityDialog` still
   resets on close (SYSTEM.md §11 item 32).

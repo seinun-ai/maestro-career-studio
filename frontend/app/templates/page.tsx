@@ -7,6 +7,7 @@ import { MoreHorizontal } from "lucide-react";
 import { toast } from "sonner";
 
 import { useConfirm } from "@/components/confirm-dialog";
+import { useSingleFlight } from "@/hooks/use-single-flight";
 import { TemplateGallery } from "@/components/templates/template-gallery";
 import { LoadErrorState } from "@/components/load-error-state";
 import { isLoadFailure } from "@/lib/query-state";
@@ -82,6 +83,9 @@ export default function TemplatesListPage() {
     },
     onError: (err: Error) => toast.error(err.message),
   });
+  // One POST per click: a double click read `isPending` false twice and the
+  // second create came back 409 "already exists" over the first's success.
+  const createOnce = useSingleFlight(create.mutate);
 
   const duplicate = useMutation({
     mutationFn: async (template: TemplateSummary) => {
@@ -105,6 +109,9 @@ export default function TemplatesListPage() {
     },
     onError: (err: Error) => toast.error(err.message),
   });
+  // The same guard: a second Duplicate before the first lands POSTs the same
+  // `<id>_copy` again and comes back 409 over the first's success.
+  const duplicateOnce = useSingleFlight(duplicate.mutate);
 
   const setDefault = useMutation({
     mutationFn: (id: string) =>
@@ -230,7 +237,7 @@ export default function TemplatesListPage() {
                 >
                   Set default
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => duplicate.mutate(t)}>
+                <DropdownMenuItem onClick={() => duplicateOnce(t)}>
                   Duplicate
                 </DropdownMenuItem>
                 <DropdownMenuItem
@@ -299,8 +306,12 @@ export default function TemplatesListPage() {
               Cancel
             </Button>
             <Button
-              onClick={() => create.mutate()}
+              onClick={() => createOnce()}
               disabled={!idValid || create.isPending}
+              // Disables itself while creating: a disabled <button> drops
+              // focus to <body> (dimmed on data-disabled, as Save is).
+              focusableWhenDisabled
+              className="data-disabled:pointer-events-none data-disabled:opacity-50"
             >
               {create.isPending ? "Creating…" : "Create"}
             </Button>

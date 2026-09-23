@@ -47,6 +47,7 @@ import {
   useLocalStorageState,
 } from "@/hooks/use-local-storage-state";
 import { useBaseResumes } from "@/hooks/use-base-resume-label";
+import { useFocusOnNextCommit } from "@/hooks/use-focus-return";
 import {
   apiFetch,
   createChatSession,
@@ -128,6 +129,10 @@ export function ChatPage() {
   const rootRef = useRef<HTMLDivElement>(null);
   const railRef = useRef<HTMLElement>(null);
   const showRailRef = useRef<HTMLButtonElement>(null);
+  const hideRailRef = useRef<HTMLButtonElement>(null);
+  // Hide and Show live in different branches, so the pressed one unmounts:
+  // each hands focus to the other.
+  const focusNext = useFocusOnNextCommit();
   const historyButtonRef = useRef<HTMLButtonElement>(null);
   const sendingRef = useRef(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -584,10 +589,14 @@ export function ChatPage() {
               <Plus className="size-4" /> New chat
             </Button>
             <Button
+              ref={hideRailRef}
               variant="ghost"
               size="icon-sm"
               aria-label="Hide chat history"
-              onClick={() => setHistoryCollapsed(true)}
+              onClick={() => {
+                setHistoryCollapsed(true);
+                focusNext(showRailRef);
+              }}
             >
               <ChevronLeft className="size-4" />
             </Button>
@@ -605,7 +614,10 @@ export function ChatPage() {
           ref={showRailRef}
           type="button"
           aria-label="Show chat history"
-          onClick={() => setHistoryCollapsed(false)}
+          onClick={() => {
+            setHistoryCollapsed(false);
+            focusNext(hideRailRef);
+          }}
           className="bg-background hover:bg-muted text-muted-foreground hover:text-foreground absolute top-1/2 left-0 z-10 hidden h-20 w-7 -translate-y-1/2 items-center justify-center gap-1 rounded-r-md border border-l-0 shadow-md transition-colors @2xl/chat:flex"
         >
           <ChevronRight className="size-4" />

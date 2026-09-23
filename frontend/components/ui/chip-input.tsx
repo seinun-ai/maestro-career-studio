@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { X } from "lucide-react";
 
+import { useFocusOnNextCommit } from "@/hooks/use-focus-return";
 import { cn } from "@/lib/utils";
 
 /**
@@ -29,6 +30,13 @@ export function ChipListInput({
   const [draft, setDraft] = useState("");
   const dragFrom = useRef<number | null>(null);
 
+  // Closing an inline edit (Enter, Esc, or a blur the save shortcut forced)
+  // unmounts its input: focus that fell to <body> moves to the add row. Only
+  // a blur with no destination arms it: a click or Tab out is the user's own
+  // move, and an armed commit took focus back mid-move (typing into Summary
+  // landed in the add row).
+  const addRowRef = useRef<HTMLInputElement>(null);
+  const focusNext = useFocusOnNextCommit();
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editDraft, setEditDraft] = useState("");
   // Unmounting the edit <input> (Esc, or the slot disappearing) fires a
@@ -75,11 +83,12 @@ export function ChipListInput({
     setEditDraft(text);
   };
 
-  const commitEdit = () => {
+  const commitEdit = (refocus = true) => {
     const session = editSession.current;
     if (session.done || session.index === null) return;
     session.done = true;
     setEditingIndex(null);
+    if (refocus) focusNext(addRowRef);
     // value can shrink out from under a mid-edit chip (e.g. a KB import
     // rewriting the list); the index is only trustworthy if that slot still
     // holds what editing started on.
@@ -94,6 +103,7 @@ export function ChipListInput({
   const cancelEdit = () => {
     editSession.current.done = true;
     setEditingIndex(null);
+    focusNext(addRowRef);
   };
 
   return (
@@ -142,7 +152,7 @@ export function ChipListInput({
                     cancelEdit();
                   }
                 }}
-                onBlur={commitEdit}
+                onBlur={(e) => commitEdit(e.relatedTarget === null)}
                 className="min-w-0 max-w-full bg-transparent outline-none"
                 style={{ width: `${Math.max(editDraft.length + 1, 4)}ch` }}
                 aria-label={`Edit ${item}`}
@@ -171,6 +181,7 @@ export function ChipListInput({
         );
       })}
       <input
+        ref={addRowRef}
         id={id}
         value={draft}
         placeholder={value.length === 0 ? placeholder : ""}

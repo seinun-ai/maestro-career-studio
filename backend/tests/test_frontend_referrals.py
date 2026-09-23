@@ -147,8 +147,8 @@ def test_one_create_and_the_page_owns_it():
     assert _ROOT.count("useMutation(") == 1
     assert "const create = useMutation(" in _ROOT
     assert _squash(_ROOT).count(
-        "adding={create.isPending} onAdd={create.mutate}"
-    ) == 2, "the inline form and the dialog share the one create"
+        "adding={create.isPending} onAdd={add}"
+    ) == 2, "the inline form and the dialog share the one create (and its guard)"
 
 
 def test_submit_waits_for_the_shared_create():

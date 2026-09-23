@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type RefObject } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { History, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
@@ -68,12 +68,15 @@ export function VersionHistorySheet({
   open,
   onOpenChange,
   onRestored,
+  finalFocus,
 }: {
   kind: "base" | "application";
   resumeKey: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onRestored?: () => void;
+  /** Where focus returns on close; the studios pass their ⋯ trigger. */
+  finalFocus?: RefObject<HTMLElement | null>;
 }) {
   const qc = useQueryClient();
   const confirm = useConfirm();
@@ -181,7 +184,7 @@ export function VersionHistorySheet({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-full">
+      <SheetContent side="right" className="w-full" finalFocus={finalFocus}>
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
             <History className="size-4" /> Version history

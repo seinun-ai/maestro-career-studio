@@ -33,6 +33,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { useFocusOnNextCommit } from "@/hooks/use-focus-return";
 import {
   SECTION_PRESETS,
   SECTION_TYPE_LABELS,
@@ -138,12 +139,17 @@ function SectionCard({
   // would collide with a core section header (which the schema also rejects).
   const renameOriginalRef = useRef(section.title);
   const titleCollides = renaming && isCoreSectionTitle(section.title);
+  // Enter, Escape and Done (and a blur the save shortcut forced) unmount the
+  // name input: focus moves to the rename button. Not after a blur INTO
+  // something (a click, Tab): that is where the user put focus.
+  const renameButtonRef = useRef<HTMLButtonElement>(null);
+  const focusNext = useFocusOnNextCommit();
 
   const startRename = () => {
     renameOriginalRef.current = section.title;
     setRenaming(true);
   };
-  const commitRename = () => {
+  const commitRename = (refocus = true) => {
     // Never commit an empty title (schema contract) or one that duplicates a
     // core section header — deny it here so Save can't fail on it later.
     if (!section.title.trim()) {
@@ -152,6 +158,7 @@ function SectionCard({
       onChange({ ...section, title: renameOriginalRef.current });
     }
     setRenaming(false);
+    if (refocus) focusNext(renameButtonRef);
   };
 
   return (
@@ -175,11 +182,16 @@ function SectionCard({
                   if (e.key === "Escape") {
                     onChange({ ...section, title: renameOriginalRef.current });
                     setRenaming(false);
+                    focusNext(renameButtonRef);
                   } else if (e.key === "Enter" && !titleCollides) {
+                    // Focus moves to the rename button in this same event:
+                    // left alone, Enter's activation then pressed it and
+                    // reopened the rename.
+                    e.preventDefault();
                     commitRename();
                   }
                 }}
-                onBlur={commitRename}
+                onBlur={(e) => commitRename(e.relatedTarget === null)}
                 className="h-7 w-56"
               />
             ) : (
@@ -221,6 +233,7 @@ function SectionCard({
             />
           </label>
           <Button
+            ref={renameButtonRef}
             size="icon-sm"
             variant="ghost"
             aria-label={renaming ? "Done renaming" : "Rename section"}

@@ -1,7 +1,8 @@
 # UX next, wave 2 lane 6: Studio focus, Cmd/Ctrl+S and one submit per click — handoff to Cursor CLI / Grok 4.7
 
-**Target agent/model:** Cursor CLI (`agent`), **Grok 4.7** (xhigh). If your session runs a
-different model, stop and say so: the review tier depends on it.
+**Target agent/model:** written for Cursor CLI (`agent`), Grok 4.7 (xhigh). **Executed by a
+Claude Opus 5.5 subagent** after the owner stopped Cursor; commits carry a
+`Co-Authored-By: Claude Opus 5.5` trailer instead of `Assisted-by: Grok 4.7`.
 **Tasks:** 17, 18, 19 of `docs/plans/2026-09-22-ux-next.md`, in that order.
 **Branch:** `grok/ux-next-lane6-studio-focus` (from `claude/ux-next-plan` at `the commit that added this doc`).
 **Worktree:** `/Users/ajeyds/Projects/maestro-ux-lanes/next-lane6-studio-focus` (dependencies are installed). Work only there.
@@ -171,12 +172,75 @@ table, deviations, anything queued or deferred, and any concerns.
 
 | Task | Planned | Did instead | Why (Goal Card line) |
 |---|---|---|---|
+| 17 | Diagnose "Edit raw JSON" (F1 §C) | Observed with focusin/focusout logging in Playwright (headless Chrome), both studios, before any change. **Keyboard** (⋯, Enter, ArrowDown, Enter): the trigger got `focusin` ~200 ms after the item's `focusout` and kept it for 6 s, so no drop. **Click**: the trigger never got `focusin`; the item's `focusout` fired with `relatedTarget: null` when the popup unmounted and focus stayed on BODY. Instrumenting `HTMLElement.prototype.focus` showed Base UI's focus-outside handler refocusing the (disappearing) popup and no call on the trigger | Focus never dropped to `<body>` |
+| 17 | `finalFocus={triggerRef}` on the ⋯ menu | No `finalFocus` on the menu; `onOpenChangeComplete(false)` schedules `focusIfDropped(trigger)` on a zero-delay timeout. The explicit `finalFocus` did not fix the click path (still BODY) and it also overrode an overlay's initial focus: keyboard ⋯ → History opened with focus back on ⋯, outside the modal sheet. `onOpenChangeComplete` fires just before the popup unmounts (logged: focus still on the item), hence the timeout. The click path shows BODY for one ~30 ms sample before ⋯ | Focus never dropped to `<body>`; don't break initial focus |
+| 17 | Confirm `finalFocus={() => opts?.returnFocus?.() ?? returnPoint.current() ?? true}` | Same resolution through a `returnTo` helper: a `tabIndex={-1}` target is focused by us (microtask, `focusIfDropped`) and Base UI gets `false`. Base UI focuses a container's first tabbable child, so Load latest landed on "Back to application", not `<main>` (decision 11) | Decision 11 |
+| 17 | Studio `onClose` arms `focusNext(overflowRef)` for the raw pane's Apply and Cancel | Also a new optional `exitFocus` prop on `RawJsonToggle`, passed as the discard confirm's `returnFocus` (Cancel while it is still connected, else ⋯). Cancel with a pending draft confirms first, and the pane unmounts behind the dialog, so the studio's arming ran while focus was still in the dialog and the dialog then returned to `<main>` | Every exit lands on ⋯ |
+| 17 | `useFocusOnNextCommit` inside `EditableCard`'s setter | Same, plus a small local `EditPane` component: `edit(close)` is called during render, and a closure over the focus refs passed into it fails the React Compiler `refs` lint; as a prop of a child component it passes | Lint at error level |
+| 17 | `useEditToggle` as `toggle.*` | Destructured at every caller, and the hook takes a type parameter for the edit view (`<tr>` for a referral row). The lint reads `toggle.editRef` as a ref read during render | Lint at error level |
+| 17 | `useFocusHandoff` on `ReferralsTable` for the LAST delete | Also: `focusableWhenDisabled` on each row's Delete and Save, a handoff on each view row, and a `tabIndex={-1}` wrapper around the table as the row's return target. The probe before any change showed a slow DELETE on a MIDDLE row also dropping focus to BODY (the confirm returned to a Delete button that had disabled itself) | Focus never dropped to `<body>` (same class, same file) |
+| 17 | `finalFocus={overflowRef}` on `InstructSheet` (4 overlays in the base studio) | Not passed: `instruct-sheet.tsx` is lane 5's. Pin asserts 3. In the browser Escape from Ask for changes returned to ⋯ by Base UI's default on both paths (key and click). See *Deferred to merge* | Scope: lane 5 owns the file |
+| 18 | Arm `focusNext` in the rename's `commitRename` and Escape | Also `e.preventDefault()` in the rename input's Enter branch. Focus now moves to the rename button inside Enter's keydown, and Enter's activation then pressed that button and reopened the rename (seen in the browser; the chip edit and the title already prevented default) | Focus lands somewhere sensible; no surprise reopen |
+| 18 | Browser: `keyboard.down("Meta")`, press, up, then type | Both that and a burst (the chord and the keys sent over CDP without waiting between them, so they queue behind the chord). A/B against the old hook: it lost the typed keys in every case (Playwright sequence: `abc` kept, `xyz` lost; burst, mid-caret and Ctrl+S too); the new hook kept all of them | Never lose typed text |
+| 19 | F4's pin `f"{name}.mutate(" not in …` | `f"{name}.mutate" not in …` (no parenthesis), plus no `.reset(`. The mutation check showed the call-only form missing `onAdd={create.mutate}` (a guarded mutation handed on unguarded) | Pins that catch the regression they name |
+| 19 | New `test_frontend_single_flight.py` with F4's full `_SITES` | This lane's four sites only (Referrals, Templates, both studios' Save); lane 5 owns the other five. See *Deferred to merge* | Scope |
+| review | Pins as written; `focusNext` armed on every blur of the chip edit, title and section rename | Fix commit `40534148` (Claude, at merge). **C1:** arm only when the blur has no destination (`relatedTarget === null`, the Cmd/Ctrl+S forced blur) or on Enter / Escape / Done. Arming on every blur ran the move in React's microtask commit while `<body>` was active and cancelled the user's own click or Tab (A/B in Playwright: before, " TYPED" clicked into Summary landed in the chip add row, the title case left BODY focused; after, all three land in Summary). **I1:** 13 of 15 reviewer mutants survived text pins, so the focus helpers moved to `lib/focus.ts`, the lock to `lib/single-flight.ts` and the chord predicate to `lib/shortcuts.ts` (`isLiveSaveChord`), each node-tested, plus behaviour-shaped structural pins; 29 mutants, 29 killed. **Minor:** Templates Create `focusableWhenDisabled`, Duplicate single-flight, the `.reset` pin rejects uncalled references, Base UI timing dependencies documented. **Left open (by design):** a click on a non-focusable spot also blurs with `relatedTarget === null`, so it still arms and focus lands on the add row / pencil / rename button rather than `<body>` (not browser-checked) | Never lose typed text; focus never dropped to `<body>`; pins that catch the regression they name |
 
 ## Gate results
 
 | Task | Gate | Result |
 |---|---|---|
+| 17 | pins | `test_frontend_focus.py` 20 passed (12 new, seen failing first: 11 failed before the code); every `test_frontend_*.py` 491 passed |
+| 17 | mutation check | 28 mutants, 28 killed, each by exactly the pin that names it (`/tmp/maestro-next-lane6/muts17.json`) |
+| 17 | tsc / lint / node | clean / 0 errors, 5 baseline warnings / 143 of 143 |
+| 17 | build | `npm run build` OK |
+| 17 | slop | frontend OK, duplication 448 lines / 37 clones, down from 468/39 (the ceiling; clean `git archive` export); backend OK, `complexity_hotspots` 424 (one new pin reached cc 13 and was split) |
+| 17 | browser | Playwright (headless Chrome, real keys and clicks), both studios, light and dark: every control in F1's list lands on a named target, never BODY (see report) |
+| 18 | pins | `test_frontend_studio.py` 60 passed (4 new, seen failing first); every `test_frontend_*.py` 495 passed |
+| 18 | mutation check | 14 mutants, 14 killed by the pin that names them (`muts18.json`, `muts18b.json`) |
+| 18 | tsc / lint / node / build | clean / 0 errors, 5 warnings / 143 of 143 / OK |
+| 18 | slop | frontend OK, 448/37 (clean export); backend OK, hotspots 424 |
+| 18 | browser | Playwright, real key events: Summary (tailored) and a contact field keep every key typed with the chord (end and mid-text caret), Ctrl+S too; the chip add row's `Kafka` is saved and `Flink` lands in the add row; an inline chip edit, a section rename and the title save and hand focus to the add row, the rename button, the pencil; two chords 50 ms apart made one PUT |
+| 19 | pins | `test_frontend_single_flight.py` 8 passed (new, 8 failed first), `test_frontend_referrals.py` updated; every `test_frontend_*.py` 503 passed |
+| 19 | mutation check | 6 mutants, 6 killed by the pins that name them (`muts19.json`) |
+| 19 | tsc / lint / node / build | clean / 0 errors, 5 warnings / 143 of 143 / OK |
+| 19 | slop | frontend OK, 448/37 (clean export); backend OK, hotspots 424 |
+| 19 | browser | Before the fix: a same-task double click, a real `dblclick` and Enter twice each made two referral rows; Templates made a 200 then a 409; each studio's Save made two writes. After: one request each; a forced 500 then a retry makes exactly one row / one save (the guard clears on error) |
+| all | full backend | `pytest tests/ mcp_server/tests/ -q`: 4804 passed, 2 skipped (base 4780 + 24 new pins) |
+| all | ruff / SYSTEM.md gate | `ruff check` on the three pin files: clean / `check_system_md.py` OK, 999/1000 |
+| review | pins | every `test_frontend_*.py` 511 passed (8 new: focus 20 → 25, studio 60 → 61, single-flight 8 → 10); C1 pins seen failing on the pre-fix code |
+| review | mutation check | 29 mutants (C1 ×9, M1–M12 and M14 with lib and hook variants, 3 minor), 29 killed, each only by the pin that names it; lib mutants also fail their node test |
+| review | tsc / lint / node / build | clean / 0 errors, 5 baseline warnings / 160 of 160 (17 new) / `npm run build` OK |
+| review | slop | frontend OK, duplication 448 lines / 37 clones on a clean `git archive HEAD` export (unchanged from `0bdc1eef`); backend OK, `complexity_hotspots` 424 (one pin split at cc 12) |
+| review | full backend / ruff | `pytest tests/ mcp_server/tests/ -q`: 4812 passed, 2 skipped / `ruff check .` clean |
+| review | browser (C1) | Playwright, system Chrome headless, real mouse and keys, seeded base résumé: from the chip edit, the title and the section rename, a click into Summary leaves `activeElement` on `TEXTAREA#summary` and the typed text lands there (the edit commits); Tab stays on the element Tab moved to (its `relatedTarget`); Cmd+S keeps every typed character (`CKAZq9`, `Riley DataZq9`, `PublicationsZq9`) and lands on the add row (keys typed after it land there), the pencil, the rename button |
+| review | browser (minor) | Both studios: a click on ⋯ → History starts on the sheet's Close, Escape returns to ⋯; ⋯ → Edit raw JSON lands on ⋯; tailored ⋯ → Rebuild starts on the confirm's Cancel, Escape returns to ⋯. Templates Create during a slow POST keeps focus on "Creating…" (data-disabled); before the fix, BODY. A real double-click on Duplicate made one POST before and after the guard (the menu closes on the first click), so the guard is defence in depth |
 
 ## Queued for Task 20 (SYSTEM.md changes Claude applies)
 
+- **§11 item 29** (Task 17): deleting the last referral now hands focus to `#main-content`
+  (and any other delete to the table). Narrow the item to: "Focus lands on `<body>`: Escape on
+  the <768px sidebar sheet (which also stays open after a nav link is tapped)."
+- **§11 candidate, not this lane's scope (owner's call)**: the throwaway backend segfaulted
+  twice during these checks inside `libpdfium` (`FPDF_LoadPage`, crash reports
+  `~/Library/Logs/DiagnosticReports/python3.13-2026-09-23-*.ips`) while `/templates` fired its
+  gallery previews in parallel. `app/services/pdf_preview.py` calls `pypdfium2` with no lock,
+  and PDFium is not thread-safe; FastAPI runs those sync handlers on a thread pool.
+
 ## Deferred to merge (edits left for Claude, with file:line)
+
+- **Task 17, `InstructSheet` return target** (lane 5 owns the file): add
+  `finalFocus?: RefObject<HTMLElement | null>` to `InstructSheet` and pass it to its
+  `<SheetContent>` (`frontend/components/resume-editor/instruct-sheet.tsx:110` at `8878731d`);
+  pass `finalFocus={overflowRef}` at the base studio's `<InstructSheet`
+  (`frontend/components/resume-editor/editor-body.tsx:618` on this branch); bump the count in
+  `backend/tests/test_frontend_focus.py::test_every_overlay_the_menu_opens_takes_a_return_target`
+  from 3 to 4. Today Escape returns to ⋯ through Base UI's default (verified by key and click),
+  so this makes it deterministic rather than fixing a live drop.
+
+- **Task 19, lane 5's single-flight sites**: this lane created
+  `backend/tests/test_frontend_single_flight.py` with its own four sites in `_SITES`. If lane 5
+  also creates that file (F4 names it), merge the two `_SITES` lists into one parametrized
+  test (add-add conflict). Then widen the conventions sentence in the dialog-draft bullet
+  ("So do the Templates Create, `/new`'s Extract and both studios' Save") to lane 5's sites
+  (New career item, Capture/Read document, New base résumé, the Q&A generate buttons).

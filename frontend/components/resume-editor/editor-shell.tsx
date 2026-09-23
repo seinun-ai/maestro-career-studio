@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { useFocusHandoff, useFocusOnNextCommit } from "@/hooks/use-focus-return";
 import {
   parseFlag,
   serializeFlag,
@@ -81,6 +82,15 @@ export function EditorShell({
   const [dragPct, setDragPct] = useState<number | null>(null);
   const previewPct = dragPct ?? storedPct;
   const editorPaneId = useId();
+  // A remount of the studio around the shell (Load latest, Rebuild, a foreign
+  // edit adopted while clean) removes it with focus inside: focus moves to the
+  // page's <main>. The two preview toggles live in different branches, so the
+  // pressed one unmounts and hands focus to its counterpart.
+  const rootRef = useRef<HTMLDivElement>(null);
+  useFocusHandoff(rootRef);
+  const hideRef = useRef<HTMLButtonElement>(null);
+  const showRef = useRef<HTMLButtonElement>(null);
+  const focusNext = useFocusOnNextCommit();
 
   // `min-w-0` on both: a flex item defaults to min-width:auto, so the pane
   // refuses to shrink below its content's min-content width and pushes the
@@ -95,16 +105,20 @@ export function EditorShell({
 
   if (collapsed) {
     return (
-      <div className="flex min-h-0 w-full flex-1">
+      <div ref={rootRef} className="flex min-h-0 w-full flex-1">
         <div className={leftClass}>{editor}</div>
         {/* In flow, not an overlay: an absolutely-placed tab covered the left
             pane's scrollbar and its right-aligned controls. */}
         <div className="bg-canvas flex w-7 shrink-0 items-center border-l">
           <button
+            ref={showRef}
             type="button"
             aria-label="Show PDF preview"
             title="Show PDF preview"
-            onClick={() => setCollapsed(false)}
+            onClick={() => {
+              setCollapsed(false);
+              focusNext(hideRef);
+            }}
             className="text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-ring flex h-20 w-full items-center justify-center transition-colors outline-none focus-visible:ring-2 focus-visible:ring-inset"
           >
             <ChevronLeft className="size-4" aria-hidden="true" />
@@ -115,7 +129,7 @@ export function EditorShell({
   }
 
   return (
-    <div className="flex min-h-0 w-full flex-1">
+    <div ref={rootRef} className="flex min-h-0 w-full flex-1">
       <div
         id={editorPaneId}
         className={leftOpenClass}
@@ -176,6 +190,11 @@ export function EditorShell({
               variant="ghost"
               aria-label="Widen preview"
               title="Widen preview"
+              // Pressed until it reaches its limit, it disables itself: a
+              // disabled <button> drops focus, so it stays focusable (dimmed
+              // on data-disabled, as Save is).
+              focusableWhenDisabled
+              className="data-disabled:pointer-events-none data-disabled:opacity-50"
               disabled={previewPct >= PREVIEW_PCT.max}
               onClick={() =>
                 setStoredPct(nextPreviewPct(previewPct, "ArrowLeft") ?? previewPct)
@@ -188,6 +207,9 @@ export function EditorShell({
               variant="ghost"
               aria-label="Narrow preview"
               title="Narrow preview"
+              // Focusable at its limit, like Widen.
+              focusableWhenDisabled
+              className="data-disabled:pointer-events-none data-disabled:opacity-50"
               disabled={previewPct <= PREVIEW_PCT.min}
               onClick={() =>
                 setStoredPct(nextPreviewPct(previewPct, "ArrowRight") ?? previewPct)
@@ -196,10 +218,14 @@ export function EditorShell({
               <ArrowRightToLine className="size-4" />
             </Button>
             <Button
+              ref={hideRef}
               size="icon-sm"
               variant="ghost"
               aria-label="Hide PDF preview"
-              onClick={() => setCollapsed(true)}
+              onClick={() => {
+                setCollapsed(true);
+                focusNext(showRef);
+              }}
             >
               <ChevronRight className="size-4" />
             </Button>

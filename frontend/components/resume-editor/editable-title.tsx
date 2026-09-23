@@ -7,6 +7,7 @@ import { toast } from "sonner";
 
 import { IconButton } from "@/components/icon-button";
 import { Input } from "@/components/ui/input";
+import { useFocusOnNextCommit } from "@/hooks/use-focus-return";
 import { apiFetch } from "@/lib/api";
 import type { BaseResumeDetail } from "@/lib/types";
 
@@ -42,6 +43,11 @@ export function EditableTitle({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
   const committed = useRef(value);
+  // Enter, Escape and a blur (the save shortcut forces one) unmount the input:
+  // focus moves back to the pencil. Not after a blur INTO something (a click,
+  // Tab): that is where the user put focus.
+  const pencilRef = useRef<HTMLButtonElement>(null);
+  const focusNext = useFocusOnNextCommit();
 
   const save = useMutation({
     mutationFn: (next: string) =>
@@ -62,8 +68,9 @@ export function EditableTitle({
     },
   });
 
-  const commit = () => {
+  const commit = (refocus = true) => {
     setEditing(false);
+    if (refocus) focusNext(pencilRef);
     const next = draft.trim();
     if (next === committed.current) return;
     onChange(next);
@@ -78,7 +85,7 @@ export function EditableTitle({
         value={draft}
         disabled={save.isPending}
         onChange={(e) => setDraft(e.target.value)}
-        onBlur={commit}
+        onBlur={(e) => commit(e.relatedTarget === null)}
         onKeyDown={(e) => {
           if (e.key === "Enter") {
             e.preventDefault();
@@ -87,6 +94,7 @@ export function EditableTitle({
             e.preventDefault();
             setDraft(committed.current);
             setEditing(false);
+            focusNext(pencilRef);
           }
         }}
         className="h-9 max-w-md text-[22px] font-medium tracking-tight"
@@ -101,6 +109,7 @@ export function EditableTitle({
     <span className="group/title inline-flex items-center gap-1.5">
       {value || slug}
       <IconButton
+        ref={pencilRef}
         label="Rename resume"
         icon={<Pencil className="size-3.5" />}
         size="icon-xs"

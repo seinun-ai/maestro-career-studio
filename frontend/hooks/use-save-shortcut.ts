@@ -1,19 +1,12 @@
 "use client";
 
 import { useEffect, useEffectEvent } from "react";
+import { flushSync } from "react-dom";
 
-import { isSaveShortcut } from "@/lib/shortcuts";
+import { focusIfDropped, focusReturnPoint, holdsDraft } from "@/lib/focus";
+import { isLiveSaveChord, isSaveShortcut } from "@/lib/shortcuts";
 
 const DIALOG = '[role="dialog"], [role="alertdialog"]';
-
-/** A field that can hold a draft only its blur commits. */
-function holdsDraft(el: Element | null): el is HTMLElement {
-  return (
-    el instanceof HTMLInputElement ||
-    el instanceof HTMLTextAreaElement ||
-    (el instanceof HTMLElement && el.isContentEditable)
-  );
-}
 
 /**
  * Cmd/Ctrl+S saves the studio. The browser's own "Save page" dialog is
@@ -28,23 +21,26 @@ function holdsDraft(el: Element | null): el is HTMLElement {
  *
  * Clicking Save blurs the focused field first, and some fields (a chip
  * input's pending text, a section rename) commit only on blur. The key does
- * the same: blur, let React commit that draft, then re-focus the field and
- * save, so the key never saves less than the button would.
+ * the same, so it never saves less than the button would: it blurs inside
+ * `flushSync`, which commits that draft (and updates `save`) before it
+ * returns, then puts focus back and saves, all before the handler returns.
+ * Keys typed right after the chord are queued behind it, so they land in the
+ * field; a refocus on the next task let them fall on <body> and be lost. A
+ * field that unmounts on blur (an inline chip edit, a rename, the title)
+ * moves focus itself in that same commit; otherwise it goes back to the
+ * field, or the nearest container that survived it.
  */
 export function useSaveShortcut(onSave: () => void, canSave: boolean) {
   const save = useEffectEvent(() => {
     if (canSave) onSave();
   });
   useEffect(() => {
-    let timer: ReturnType<typeof setTimeout> | undefined;
     const onKeyDown = (event: KeyboardEvent) => {
       if (!isSaveShortcut(event)) return;
-      const claimed = event.defaultPrevented;
+      // Read before swallowing it: `defaultPrevented` says another handler claimed it.
+      const live = isLiveSaveChord(event);
       event.preventDefault();
-      // A draft commit is pending and will save: a second chord in that gap
-      // would find focus on the body and save a second time.
-      if (timer !== undefined) return;
-      if (claimed || event.repeat || event.isComposing) return;
+      if (!live) return;
       if (event.target instanceof Element && event.target.closest(DIALOG)) return;
 
       const field = document.activeElement;
@@ -52,19 +48,12 @@ export function useSaveShortcut(onSave: () => void, canSave: boolean) {
         save();
         return;
       }
-      field.blur();
-      // A blur is a discrete event, so React has committed the draft (and
-      // `save` reads the new props) by the next task.
-      timer = setTimeout(() => {
-        timer = undefined;
-        if (field.isConnected) field.focus({ preventScroll: true });
-        save();
-      }, 0);
+      const back = focusReturnPoint(field);
+      flushSync(() => field.blur());
+      focusIfDropped(back());
+      save();
     };
     window.addEventListener("keydown", onKeyDown);
-    return () => {
-      window.removeEventListener("keydown", onKeyDown);
-      clearTimeout(timer);
-    };
+    return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 }

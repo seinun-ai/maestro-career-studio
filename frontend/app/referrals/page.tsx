@@ -47,6 +47,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
+import { useEditToggle, useFocusHandoff } from "@/hooks/use-focus-return";
+import { useSingleFlight } from "@/hooks/use-single-flight";
 import { apiFetch } from "@/lib/api";
 import { isLoadFailure } from "@/lib/query-state";
 import type { Referral, ReferralCreate, ReferralPatch } from "@/lib/types";
@@ -115,6 +117,9 @@ export default function ReferralsPage() {
     },
     onError: (err: Error) => toast.error(err.message),
   });
+  // Both forms submit through this: `isPending` re-renders a tick late, so an
+  // instant double click (or Enter twice) read it false and made two rows.
+  const add = useSingleFlight(create.mutate);
 
   useEffect(() => {
     if (!populated || !focusAddAfterCreate.current) return;
@@ -151,7 +156,7 @@ export default function ReferralsPage() {
           draft={draft}
           onDraftChange={setDraft}
           adding={create.isPending}
-          onAdd={create.mutate}
+          onAdd={add}
         />
       )}
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
@@ -166,7 +171,7 @@ export default function ReferralsPage() {
             draft={draft}
             onDraftChange={setDraft}
             adding={create.isPending}
-            onAdd={create.mutate}
+            onAdd={add}
             companyRef={companyRef}
             inDialog
           />
@@ -310,48 +315,67 @@ function ReferralForm({
 }
 
 function ReferralsTable({ rows }: { rows: Referral[] }) {
+  // A deleted row hands focus here (the nearest container that survived it),
+  // and deleting the LAST row unmounts the table for the first-referral form,
+  // so the table hands it on to the main area.
+  const rootRef = useRef<HTMLDivElement>(null);
+  useFocusHandoff(rootRef);
   return (
-    <TableFrame>
-      <Table className="min-w-[48rem] table-fixed">
-        <TableHeader>
-          <TableRow className="hover:bg-transparent">
-            <TableHead>Company</TableHead>
-            <TableHead>Careers URL</TableHead>
-            <TableHead>Contact</TableHead>
-            <TableHead>Notes</TableHead>
-            <TableHead className="text-right">Apps</TableHead>
-            <TableHead className="w-20" />
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {rows.map((referral) => (
-            <ReferralRow key={referral.id} referral={referral} />
-          ))}
-        </TableBody>
-      </Table>
-    </TableFrame>
+    <div ref={rootRef} tabIndex={-1} className="outline-none">
+      <TableFrame>
+        <Table className="min-w-[48rem] table-fixed">
+          <TableHeader>
+            <TableRow className="hover:bg-transparent">
+              <TableHead>Company</TableHead>
+              <TableHead>Careers URL</TableHead>
+              <TableHead>Contact</TableHead>
+              <TableHead>Notes</TableHead>
+              <TableHead className="text-right">Apps</TableHead>
+              <TableHead className="w-20" />
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.map((referral) => (
+              <ReferralRow key={referral.id} referral={referral} />
+            ))}
+          </TableBody>
+        </Table>
+      </TableFrame>
+    </div>
   );
 }
 
 function ReferralRow({ referral }: { referral: Referral }) {
-  const [editing, setEditing] = useState(false);
+  // Edit, Save and Cancel each unmount the row they sit in: Edit lands on
+  // Company, Save and Cancel back on the row's Edit.
+  const { editing, editRef, openerRef, open, close } =
+    useEditToggle<HTMLTableRowElement>();
 
   return editing ? (
-    <ReferralEditRow referral={referral} onDone={() => setEditing(false)} />
+    <ReferralEditRow referral={referral} rowRef={editRef} onDone={close} />
   ) : (
-    <ReferralViewRow referral={referral} onEdit={() => setEditing(true)} />
+    <ReferralViewRow
+      referral={referral}
+      editButtonRef={openerRef}
+      onEdit={open}
+    />
   );
 }
 
 function ReferralViewRow({
   referral,
+  editButtonRef,
   onEdit,
 }: {
   referral: Referral;
+  editButtonRef: Ref<HTMLButtonElement>;
   onEdit: () => void;
 }) {
   const qc = useQueryClient();
   const confirm = useConfirm();
+  // A delete removes this row with focus on its Delete button.
+  const rowRef = useRef<HTMLTableRowElement>(null);
+  useFocusHandoff(rowRef);
 
   const remove = useMutation({
     mutationFn: () =>
@@ -378,7 +402,7 @@ function ReferralViewRow({
   };
 
   return (
-    <TableRow className="group">
+    <TableRow ref={rowRef} className="group">
       <TableCell className="font-medium">
         <div className="flex items-center gap-3">
           <CompanyMonogram name={referral.company} />
@@ -410,6 +434,7 @@ function ReferralViewRow({
       <TableCell>
         <div className="flex justify-end gap-1">
           <IconButton
+            ref={editButtonRef}
             label="Edit"
             icon={<Pencil />}
             onClick={onEdit}
@@ -420,7 +445,10 @@ function ReferralViewRow({
             icon={<Trash2 />}
             onClick={onDelete}
             disabled={remove.isPending}
-            className="opacity-0 transition-opacity duration-150 group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100"
+            // Disabled while the delete runs, and the confirm returns focus
+            // here: a disabled <button> would drop it to <body>.
+            focusableWhenDisabled
+            className="opacity-0 transition-opacity duration-150 group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100 data-disabled:pointer-events-none data-disabled:opacity-50"
           />
         </div>
       </TableCell>
@@ -430,9 +458,11 @@ function ReferralViewRow({
 
 function ReferralEditRow({
   referral,
+  rowRef,
   onDone,
 }: {
   referral: Referral;
+  rowRef: Ref<HTMLTableRowElement>;
   onDone: () => void;
 }) {
   const qc = useQueryClient();
@@ -474,7 +504,7 @@ function ReferralEditRow({
   };
 
   return (
-    <TableRow>
+    <TableRow ref={rowRef}>
       <TableCell>
         <Input
           value={company}
@@ -514,7 +544,14 @@ function ReferralEditRow({
       </TableCell>
       <TableCell>
         <div className="flex justify-end gap-2">
-          <Button size="sm" onClick={save} disabled={!canSave}>
+          <Button
+            size="sm"
+            onClick={save}
+            disabled={!canSave}
+            // Disables itself while saving; focus stays until the row closes.
+            focusableWhenDisabled
+            className="data-disabled:pointer-events-none data-disabled:opacity-50"
+          >
             {update.isPending ? "Saving…" : "Save"}
           </Button>
           <Button

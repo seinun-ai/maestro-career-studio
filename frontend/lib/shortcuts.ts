@@ -40,3 +40,13 @@ export function isSaveShortcut(e: KeyLike): boolean {
     (e.key.toLowerCase() === "s" || (e.code === "KeyS" && !/^[a-z]$/i.test(e.key)))
   );
 }
+
+type ChordLike = { defaultPrevented: boolean; repeat: boolean; isComposing: boolean };
+
+/**
+ * Whether a save chord should save: not claimed by another handler first, not a held key's repeat (one
+ * press, one save), not mid-IME composition (the chord belongs to the input method).
+ */
+export function isLiveSaveChord(e: ChordLike): boolean {
+  return !e.defaultPrevented && !e.repeat && !e.isComposing;
+}
