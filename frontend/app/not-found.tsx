@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { GuardedLink as Link } from "@/components/guarded-link";
 import { FileQuestion } from "lucide-react";
 
 import { Button } from "@/components/ui/button";

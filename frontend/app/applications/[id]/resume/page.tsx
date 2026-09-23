@@ -1,7 +1,7 @@
 "use client";
 
 import { use } from "react";
-import Link from "next/link";
+import { GuardedLink as Link } from "@/components/guarded-link";
 import { useQuery } from "@tanstack/react-query";
 
 import { FullscreenEditorPage } from "@/components/resume-editor/fullscreen-editor-page";

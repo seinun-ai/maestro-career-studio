@@ -1,7 +1,7 @@
 "use client";
 
 import { use, useEffect } from "react";
-import Link from "next/link";
+import { GuardedLink as Link } from "@/components/guarded-link";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { FileX2 } from "lucide-react";

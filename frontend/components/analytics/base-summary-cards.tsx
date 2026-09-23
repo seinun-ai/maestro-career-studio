@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { GuardedLink as Link } from "@/components/guarded-link";
 import { InlineStat } from "@/components/analytics/stat-tile";
 import { useQuery } from "@tanstack/react-query";
 

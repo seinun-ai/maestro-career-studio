@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import Link from "next/link";
+import { GuardedLink as Link } from "@/components/guarded-link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
@@ -17,7 +17,7 @@ import { toast } from "sonner";
 
 import { IconButton } from "@/components/icon-button";
 import { KbSyncPill } from "@/components/kb-sync-pill";
-import { useUnsavedChangesWarning } from "@/hooks/use-unsaved-changes-warning";
+import { useLeaveGuard } from "@/hooks/use-leave-guard";
 import { PageHeader } from "@/components/page-shell";
 import { ContactForm } from "@/components/resume-editor/contact-form";
 import { EditableTitle } from "@/components/resume-editor/editable-title";
@@ -274,7 +274,7 @@ export function EditorBody({
   const hasUnsavedChanges = raw.pending || currentSnapshot !== lastSyncedSnapshot;
   // This flag already existed but only ever gated the KB-import button, so a
   // reload or a closed tab discarded the edits without a word.
-  useUnsavedChangesWarning(hasUnsavedChanges);
+  useLeaveGuard(hasUnsavedChanges);
   const status = saveStatus({
     dirty: hasUnsavedChanges,
     saving: save.isPending,

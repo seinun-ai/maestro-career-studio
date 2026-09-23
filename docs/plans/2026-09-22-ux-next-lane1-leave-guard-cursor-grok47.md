@@ -178,11 +178,40 @@ table, deviations, anything queued or deferred, and any concerns.
 
 | Task | Planned | Did instead | Why (Goal Card line) |
 |---|---|---|---|
+| 1 | `leave-guard.ts` comment names `beforeunload` | Comment says "page unload" | The one-listener pin counts that word. A comment is not a second listener, and the pin stays strict. |
+| 1 | Hook comment quotes "Leave without saving?" | Comment says "ask before leaving" | The copy pin requires that sentence once, in `useConfirmLeave`. |
+| 1 | Pin matches `from "next/link"` only | Also matches single quotes, and `\bawait\b` rather than the substring | A quote swap would miss the pin. The appendix comment says "awaited" before `preventDefault`, which is not the keyword. |
+| 1 | Conventions bullet covers Back/Forward in Task 1 | Task 1 bullet covers links, reload, and `useConfirmLeave`. Task 2 adds the Back/Forward sentences to that same bullet | Don't document a guard this commit does not implement. |
+| 1 | Handoff file list stops at `providers.tsx` | Added `components/leave-guard-listeners.tsx` | The pin and U1 name that file as the one `beforeunload` listener. |
+| 1 | Leave the tailored comment that the leave warning reads `dirty` | Comment now says the leave guard reads `unsaved` | The sentence would be false once the call moved below `unsaved`. |
+| 2 | The appendix snippet only | Also count Back presses while the dialog is open, undo them with `history.go`, then apply Stay or Leave | U1's edge table and browser check 8. A second Back otherwise renders that page under the dialog. Honesty about unsaved work. |
+| 2 | Call `history.back()` from inside the `popstate` handler | `setTimeout(0)` before that call | Chrome ignores `history.back()` dispatched during `popstate`. |
+| 2 | Browser check drives Back with the keyboard shortcut as well as `page.goBack()` | `page.goBack()` passed, including a second Back. `Meta+[`, `Alt+Left`, and `Meta+Left` did not invoke Chrome's Back command | Playwright delivers those chords to the page. Chrome handles them in the browser chrome. `goBack` is the traversal those shortcuts perform. |
+| 2 (review fixes, Claude) | Sentinel plus a capture-phase listener with a swallow counter and an `armed` flag | A pure machine in `lib/leave-guard.ts` (`stepGuard`) fed every `popstate`; a patch under Next's `pushState`/`replaceState` stamps each app-router entry with its position, so pops know direction and distance. Stateless (`#fragment`) pops are ignored, a leftover duplicate is stepped over, a Leave with no earlier page goes to `/` through the router, and a Leave whose `history.go` brings neither a popstate nor an unload within 1.5 s also goes to `/` through the router (a popstate always ends the bypass). Node tests drive a simulated tab; pins tie the listeners to the machine | Reviewers reproduced I1 (skip link read as Back, stuck bypass), I2 (dead Back after Stay), A/B/m1 (extra presses corrupted history) and C (dead same-URL entries). History must never be corrupted beyond the accepted costs; the reload cost is now gone for Back. |
+| 2 (re-review fixes, Claude) | Push stamped `history.length - 1`; `placeFragment` detected a new fragment by a growing length | A push is the entry it left + 1 (relative numbers); a new fragment is one above where we were, and at the cap the length-free neighbour check places it. Dropped two unreachable branches (the forget after a fragment, the same-URL check in `blockedChanged`). The machine lives on the history patch's slot, so a hot reload keeps one machine; a replace that lands on another entry than the machine's (Next's `HistoryUpdater` committing between a traversal and its popstate, seen after a hot reload) no longer stands in for the move. The simulated tab now drops its oldest entry at 50, defers traversals, models the back/forward cache and logs Next's renders, and never checks stamps against its own positions | Chrome caps session history at 50 and stops growing `history.length`, so every push got the same number: the first Back was dead and Stay corrupted history (C1, reproduced by the re-review). History must never be corrupted beyond the accepted costs. |
 
 ## Gate results
 
 | Task | Gate | Result |
 |---|---|---|
+| 1 | pins | 8 passed. Each pin failed alone when its guarded line was broken, then restored from a backup copy |
+| 1 | `node --test lib/*.test.ts` | 92 passed (6 new) |
+| 1 | `tsc --noEmit` | clean |
+| 1 | `npm run lint` | 0 errors, 5 baseline warnings |
+| 1 | `pytest tests/test_frontend_*.py` | 293 passed |
+| 1 | slop frontend | check OK; duplication 505 lines / 42 clones |
+| 1 | slop backend | check OK; `complexity_hotspots` 424 |
+| 1 | `npm run build` | passed |
+| 1 | browser U1 1–6 plus slow save, failed save, double-click | 15/15 passed. Playwright on Chrome, `http://localhost:3101`, made-up River Hale data. Stay took initial focus and returned to the link (including the 375px sheet). Leave did not raise `beforeunload`. Save-then-Back on the tailored studio did not ask while the refetch was held. Template reload raised one `beforeunload`; Save then Back did not ask |
+| 2 | sentinel pin | passed. Failed alone when capture was removed, when the `__NA` spread was removed, and when `onSentinel()` no longer selected `router.replace`. Restored from backup copies |
+| 2 | `node --test lib/leave-guard.test.ts` | 6 passed |
+| 2 | `tsc --noEmit` | clean |
+| 2 | `npm run lint` | 0 errors, 5 baseline warnings |
+| 2 | `pytest tests/test_frontend_*.py` | 294 passed (9 in the leave-guard file) |
+| 2 | slop frontend | check OK; duplication 505 lines / 42 clones |
+| 2 | slop backend | check OK; `complexity_hotspots` 424 |
+| 2 | `npm run build` | passed |
+| 2 | browser U1 7–8 | Passed with `page.goBack()`. Clean studio: one Back, no prompt. Dirty: Back asks, Stay keeps the URL and the edit, Leave goes back one entry. Save, then Back: one press, no prompt, sentinel already popped. Two client-side Backs while the dialog is open: Stay returns to the studio with the edit. A full `page.goto` history entry cannot be stopped (the document unloads); the check used link clicks |
 
 ## Queued for Task 20 (SYSTEM.md changes Claude applies)
 

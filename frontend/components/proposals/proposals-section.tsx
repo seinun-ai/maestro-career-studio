@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useQuery } from "@tanstack/react-query";
-import Link from "next/link";
+import { GuardedLink as Link } from "@/components/guarded-link";
 import {
   AlertTriangle,
   Check,

@@ -1,7 +1,7 @@
 "use client";
 
 import { AlertTriangle, CircleCheck, CircleHelp, ShieldAlert } from "lucide-react";
-import Link from "next/link";
+import { GuardedLink as Link } from "@/components/guarded-link";
 import type { ReactNode } from "react";
 
 import type { KnockoutCheck, KnockoutScan, KnockoutStatus } from "@/lib/types";

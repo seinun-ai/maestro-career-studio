@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { GuardedLink as Link } from "@/components/guarded-link";
 import { useQuery } from "@tanstack/react-query";
 import { HeartPulse } from "lucide-react";
 

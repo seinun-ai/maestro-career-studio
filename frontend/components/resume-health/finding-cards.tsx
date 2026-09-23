@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import Link from "next/link";
+import { GuardedLink as Link } from "@/components/guarded-link";
 import {
   ATTENTION_BADGE,
   ATTENTION_BADGE_LABEL,

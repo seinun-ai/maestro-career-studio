@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type ComponentProps } from "react";
-import Link from "next/link";
+import { GuardedLink as Link } from "@/components/guarded-link";
 import { ResumeImportPanel } from "@/components/career/resume-import-dialog";
 import { Dropzone } from "@/components/setup/dropzone";
 import { RowIcon } from "@/components/setup/row-icon";

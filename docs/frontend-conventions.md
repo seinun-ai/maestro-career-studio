@@ -206,7 +206,7 @@
     Save stored. Re-score and Generate PDF also stay disabled while a render is
     in flight. `render.isPending` is not part of `busy`, so Save still accepts
     an edit typed mid-render. `dirty` stays the input to the external-edit
-    adoption guard (SYSTEM.md §12) and the leave-page warning. Its own Save moves the
+    adoption guard (SYSTEM.md §12); the leave guard reads `unsaved`. Its own Save moves the
     editor's baseline IN PLACE: the parent queues the `serverKey` each Save
     returned and adopts it without a remount when the refetch brings it, so
     the working copy, focus, section tab, Formatting panel, scroll, raw mode
@@ -247,6 +247,61 @@
     formatting is the panel's value, not its baseline). The template editor
     mounts the panel only after its own template query resolves and passes a
     ready baseline: the schema constant and that row's `supported_fmt_keys`.
+- **Leaving with unsaved work asks.** `useLeaveGuard(when, { reloadOnly })`
+  registers while `when` holds. Scope `"all"` (the default) makes an in-app
+  exit ask and a reload or tab close warn; `"unload"` (`reloadOnly`) warns
+  only on reload or close, for work an in-app exit still saves (it flushes on
+  unmount, and a page unload runs no cleanup). `GuardedLink`
+  (`components/guarded-link.tsx`) is the only importer of `next/link`, so a
+  link added later inside an editor cannot skip the question; with nothing
+  registered it is `Link`. `onNavigate` is synchronous — Next reads
+  `preventDefault` as the call returns (`next/dist/client/app-dir/link.js`) —
+  so the guard cancels first, asks with `useConfirmLeave` ("Leave without
+  saving?" / **Leave** / **Stay**, Stay focused), and on Leave replays through
+  the router. One `beforeunload` listener (`LeaveGuardListeners`, inside
+  `ConfirmDialogProvider`) reads the registry at unload time. A Leave already
+  confirmed sets a bypass so the browser does not ask a second time, and the
+  next client navigation clears it. A `router.push` or `router.replace` from a
+  page that registers goes through `useConfirmLeave()` first: nothing wraps
+  the router, and the studios and the template editor call neither. Browser
+  Back and Forward ask too while the scope is `"all"`. The first unsaved edit
+  pushes a duplicate (the sentinel) of the editor's history entry; Back from
+  it lands on the real entry, same URL and page still mounted, and asks.
+  Stay goes back to the duplicate; Leave goes one real entry back (to the
+  app's home, `/`, through the router when the tab was opened on the editor
+  and has nothing earlier). The decisions live in a pure machine in
+  `lib/leave-guard.ts`; `LeaveGuardListeners` feeds it every `popstate`
+  from a capture-phase listener (Next's is bubble phase) and stops Next with
+  `stopImmediatePropagation` only when the machine says so. Every entry the
+  app router writes carries a number, stamped by a patch under Next's own
+  `pushState`/`replaceState`: the entry it left + 1. A pop compares numbers,
+  so it knows its direction and distance, and extra Back or Forward presses
+  while the question is open are undone exactly before Stay or Leave
+  applies. The numbers are relative, not `history.length - 1`: Chrome keeps
+  50 entries and drops the oldest on a push without renumbering, so
+  distances stay exact at the cap. A replace that lands on another entry
+  than the machine's (Next committing a render between a traversal and its
+  `popstate`) leaves the move to that `popstate`. A pop with no
+  state (a `#fragment` link such as Skip to content) is ignored, as Next
+  ignores it. A duplicate left over after a save, an undo or a Leave is
+  stepped over, never a dead press: Back from it takes the step the user
+  asked for, and Forward onto its page moves on to it. A Leave's bypass ends
+  on the next `popstate`, and a Leave that brings neither a `popstate` nor
+  an unload within 1.5 s falls back to the home page. Accepted costs: the
+  first edit drops whatever was in front of the page, as any navigation
+  does; a Forward onto a leftover duplicate whose position this document
+  never saw (after a reload) is one no-op press; and at the 50-entry cap, if
+  the editor's own entry is the oldest one left, a Back off a leftover
+  duplicate has nowhere to go (a Leave from there falls back to the home
+  page). Next internals relied on
+  (Next 16.3.0, `next/dist/client/components/app-router.js`): its patched
+  `pushState`/`replaceState` pass a state that carries `__NA` straight
+  through, so the duplicate and the stamp (both spread Next's state) keep
+  its tree; its `popstate` listener is bubble phase, ignores a null state
+  and reloads for a state without `__NA`. A Next upgrade re-runs the
+  Back/Forward browser checks. `GuardedLink` uses `router.replace` while
+  the duplicate is the current entry, so no duplicate is left under the new
+  page.
 - **`PdfPagesPreview` owns the canvas and the zoom.** Pages sit on
   `bg-canvas`, so a caller adds no fill of its own. Zoom is a `role="group"`
   "Zoom" of `aria-pressed` presets (Fit width, Fit page, 100%) on a solid
