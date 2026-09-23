@@ -1,7 +1,8 @@
 "use client";
 
-import { use, useEffect, useRef, useState } from "react";
+import { use, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { GuardedLink as Link } from "@/components/guarded-link";
+import { focusIfDropped } from "@/hooks/use-focus-return";
 import { useLeaveGuard } from "@/hooks/use-leave-guard";
 import { useLoadFailureError } from "@/hooks/use-last-seen";
 import { useRefreshFailedNotice } from "@/hooks/use-refresh-failed-notice";
@@ -24,6 +25,7 @@ import { GapCard } from "@/components/gap-analysis/gap-card";
 import {
   buildPlacementTargets,
   enabledProjectNames,
+  GapLocked,
   type PlacementTarget,
 } from "@/components/gap-analysis/resolution-controls";
 import { IconButton } from "@/components/icon-button";
@@ -61,7 +63,8 @@ function SaveIndicator({
   onRetry,
 }: {
   state: SaveState;
-  onRetry: () => Promise<boolean>;
+  /** Omitted for a stale session: every save 409s, and the banner's action is the way out. */
+  onRetry?: () => Promise<boolean>;
 }) {
   const statusRef = useRef<HTMLSpanElement>(null);
   const refocus = useRef(false);
@@ -69,11 +72,13 @@ function SaveIndicator({
   // where the compiler forbids ref reads. It keeps Try again mounted (and
   // focused) while the retry runs, since `state` flips to "saving" at once.
   const [retrying, setRetrying] = useState(false);
-  // Try again unmounts once the retry lands; move focus to the status, not <body>.
-  useEffect(() => {
+  // Try again unmounts once the retry lands; focus it dropped goes to the status.
+  // Only dropped focus: the user may already be typing in a field again. A
+  // layout effect, so no frame is painted with focus on <body>.
+  useLayoutEffect(() => {
     if (retrying || state !== "saved" || !refocus.current) return;
     refocus.current = false;
-    statusRef.current?.focus();
+    focusIfDropped(statusRef.current);
   }, [state, retrying]);
   return (
     <span className="flex items-center gap-2 text-xs">
@@ -97,7 +102,7 @@ function SaveIndicator({
               ? "Save failed"
               : null}
       </span>
-      {state === "error" || retrying ? (
+      {onRetry && (state === "error" || retrying) ? (
         <Button
           type="button"
           variant="link"
@@ -108,7 +113,12 @@ function SaveIndicator({
           onClick={() => {
             refocus.current = true;
             setRetrying(true);
-            void onRetry().finally(() => setRetrying(false));
+            void onRetry().then((ok) => {
+              // A failed retry keeps Try again, and focus, where they are: the
+              // next ordinary save must not pull focus to the status.
+              if (!ok) refocus.current = false;
+              setRetrying(false);
+            });
           }}
         >
           Try again
@@ -124,7 +134,6 @@ function CategorySection({
   targets,
   projects,
   baseResumeError,
-  readOnly = false,
   onChange,
 }: {
   category: GapCategory;
@@ -132,7 +141,6 @@ function CategorySection({
   targets: PlacementTarget[] | null;
   projects: string[] | null;
   baseResumeError: boolean;
-  readOnly?: boolean;
   onChange: (gapId: string, resolution: Resolution | null) => void;
 }) {
   const [open, setOpen] = useState(true);
@@ -169,7 +177,6 @@ function CategorySection({
               targets={targets}
               projects={projects}
               baseResumeError={baseResumeError}
-              readOnly={readOnly}
               onChange={(resolution) => onChange(gap.gap_id, resolution)}
             />
           ))}
@@ -309,6 +316,17 @@ export default function TailorSessionPage({
     },
     [],
   );
+  // One tailor per gesture: the lock spans the confirm, the pre-tailor save and
+  // the ~30 s LLM call. `tailor.isPending` stays false until the save lands, so
+  // a second click in that window sent a second tailor. While it holds, every
+  // gap input is locked (`GapLocked`) and autosave holds back.
+  const tailorLock = useRef(false);
+  const [tailorBusy, setTailorBusy] = useState(false);
+  const endTailor = () => {
+    tailorLock.current = false;
+    setTailorBusy(false);
+  };
+
   // Reload/close cannot flush; an in-app exit can. A failed save is unsaved either way.
   useLeaveGuard(saveState === "saving", { reloadOnly: true });
   useLeaveGuard(saveState === "error");
@@ -400,10 +418,15 @@ export default function TailorSessionPage({
   const scheduleSave = () => {
     editGen.current += 1;
     if (timerRef.current) clearTimeout(timerRef.current);
-    // No autosave while tailoring (the pre-tailor flush already ran, and a PATCH
-    // landing after the tailor commits would 409) or while stale (every save
-    // 409s — the user must Start Over).
-    if (tailor.isPending || staleReason) return;
+    // A stale session rejects every save (409). The edit stays on screen
+    // unsaved, so say so, which also keeps the leave guard up.
+    if (staleReason) {
+      setSaveState("error");
+      return;
+    }
+    // No autosave while tailoring: a PATCH landing after the tailor commits
+    // would 409. `runTailor` saves anything held back if the tailor fails.
+    if (tailorLock.current) return;
     setSaveState("saving");
     timerRef.current = setTimeout(() => {
       void saveNow();
@@ -499,6 +522,29 @@ export default function TailorSessionPage({
   const strongMatch = substantiveGaps.length === 0;
   const hasSummaryGap = gaps.some((gap) => gap.kind === "summary");
 
+  /** Confirm, flush the pending save, then tailor: one sequence, one lock. */
+  const runTailor = async (ask: () => Promise<boolean>, applyProfile?: boolean) => {
+    if (tailorLock.current) return;
+    tailorLock.current = true;
+    setTailorBusy(true);
+    if (!(await ask())) return endTailor();
+    // Flush any pending debounced save so the tailor sees the latest edits.
+    const gen = editGen.current;
+    const saved = await saveNow();
+    if (!saved) return endTailor();
+    tailor.mutate(applyProfile, {
+      // Success navigates away with the lock still held.
+      onError: () => {
+        endTailor();
+        // An edit that slipped in while tailoring was held back; the user is
+        // still here, so save it now. Not after Quick tailor: its onError
+        // drops the working copy for the server's list, and a save from this
+        // render's copy could overwrite the profile fill it committed.
+        if (editGen.current !== gen && !applyProfile) scheduleSave();
+      },
+    });
+  };
+
   const onTailorClick = async () => {
     if (!session.data) return;
     if (addressed === 0) {
@@ -507,19 +553,16 @@ export default function TailorSessionPage({
       );
       return;
     }
-    if (open > 0) {
-      const ok = await confirm({
-        title: `${open} ${open === 1 ? "gap is" : "gaps are"} still open`,
-        description:
-          "Open gaps are left as-is. The tailored resume reflects only the resolutions you made.",
-        confirmLabel: "Tailor anyway",
-      });
-      if (!ok) return;
-    }
-    // Flush any pending debounced save so the tailor sees the latest edits.
-    const saved = await saveNow();
-    if (!saved) return;
-    tailor.mutate(undefined);
+    await runTailor(async () =>
+      open > 0
+        ? confirm({
+            title: `${open} ${open === 1 ? "gap is" : "gaps are"} still open`,
+            description:
+              "Open gaps are left as-is. The tailored resume reflects only the resolutions you made.",
+            confirmLabel: "Tailor anyway",
+          })
+        : true,
+    );
   };
 
   /**
@@ -533,19 +576,19 @@ export default function TailorSessionPage({
    */
   const onQuickTailorClick = async () => {
     if (!session.data) return;
-    const ok = await confirm({
-      title: `Quick tailor ${open} open ${open === 1 ? "gap" : "gaps"}?`,
-      description:
-        "Applies your saved quick-tailor defaults to every gap you haven't " +
-        "answered, then tailors. Gaps you've already resolved are left exactly " +
-        "as they are. Every change is listed with its source in the review step " +
-        "afterward, and can be reverted one at a time.",
-      confirmLabel: "Quick tailor",
-    });
-    if (!ok) return;
-    const saved = await saveNow();
-    if (!saved) return;
-    tailor.mutate(true);
+    await runTailor(
+      () =>
+        confirm({
+          title: `Quick tailor ${open} open ${open === 1 ? "gap" : "gaps"}?`,
+          description:
+            "Applies your saved quick-tailor defaults to every gap you haven't " +
+            "answered, then tailors. Gaps you've already resolved are left exactly " +
+            "as they are. Every change is listed with its source in the review step " +
+            "afterward, and can be reverted one at a time.",
+          confirmLabel: "Quick tailor",
+        }),
+      true,
+    );
   };
 
   useRefreshFailedNotice(session, "this tailoring session");
@@ -690,9 +733,10 @@ export default function TailorSessionPage({
       <div
         className={cn(
           "flex flex-1 flex-col gap-5",
-          tailor.isPending && "pointer-events-none opacity-60",
+          tailorBusy && "pointer-events-none opacity-60",
         )}
       >
+        <GapLocked value={tailorBusy}>
         {gapsJson.coverage_warning && (
           <div className="border-amber-500/30 bg-amber-500/10 animate-fade-rise flex items-start gap-3 rounded-xl border p-4 text-amber-900 dark:text-amber-200">
             <TriangleAlert className="size-5 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
@@ -744,10 +788,10 @@ export default function TailorSessionPage({
             targets={targets}
             projects={projects}
             baseResumeError={baseResume.isError}
-            readOnly={tailor.isPending}
             onChange={handleChange}
           />
         ))}
+        </GapLocked>
 
         <section className="space-y-2">
           <Label htmlFor="tailor-instructions" className="font-medium">
@@ -757,7 +801,7 @@ export default function TailorSessionPage({
           <Textarea
             id="tailor-instructions"
             value={userPrompt}
-            readOnly={tailor.isPending}
+            readOnly={tailorBusy}
             onChange={(event) => handlePromptChange(event.target.value)}
             placeholder="e.g. emphasize leadership, keep it to one page, lead with the fintech project…"
             rows={3}
@@ -773,7 +817,7 @@ export default function TailorSessionPage({
             <span className="text-foreground font-medium">{open}</span> open
           </p>
           <div className="ml-auto flex items-center gap-3">
-            <SaveIndicator state={saveState} onRetry={saveNow} />
+            <SaveIndicator state={saveState} onRetry={staleReason ? undefined : saveNow} />
             {addressed === 0 && (
               <Button
                 variant="outline"
@@ -794,7 +838,7 @@ export default function TailorSessionPage({
                   }
                   useAsIs.mutate();
                 }}
-                disabled={useAsIs.isPending || tailor.isPending || !!staleReason}
+                disabled={useAsIs.isPending || tailorBusy || !!staleReason}
               >
                 {useAsIs.isPending && <Loader2 className="animate-spin" />}
                 Use base resume as-is
@@ -803,17 +847,22 @@ export default function TailorSessionPage({
             {open > 0 && (
               <Button
                 variant="outline"
+                className="data-disabled:opacity-50"
                 onClick={onQuickTailorClick}
-                disabled={tailor.isPending || useAsIs.isPending || !!staleReason}
+                focusableWhenDisabled
+                disabled={tailorBusy || useAsIs.isPending || !!staleReason}
                 title="Fill the open gaps from your saved defaults, then tailor"
               >
                 <Zap />
                 Quick tailor
               </Button>
             )}
+            {/* Focusable while disabled: the confirm hands focus back here as the lock takes it. */}
             <Button
+              className="data-disabled:opacity-50"
               onClick={onTailorClick}
-              disabled={tailor.isPending || useAsIs.isPending || !!staleReason}
+              focusableWhenDisabled
+              disabled={tailorBusy || useAsIs.isPending || !!staleReason}
             >
               {tailor.isPending ? <Loader2 className="animate-spin" /> : <Wand2 />}
               {tailor.isPending ? "Tailoring, about 30s" : "Tailor resume"}

@@ -171,6 +171,7 @@ table, deviations, anything queued or deferred, and any concerns.
 | 11 | `readOnly` on the note textarea and `UserInputControls` | Threaded `readOnly` through `GapCard` into `UserInputControls`; the note textarea is on the page | The answer field lives in those components. Keyboard edits while tailoring would otherwise be dropped. |
 | 11 | Browser check stops the backend | The failed save was a 500 on the resolutions PATCH | Same failure the page handles. The status, toast, Try again, and leave prompt all showed. |
 | 12 | Browser check stops the backend | Quick-tailor and market PUTs returned 500 | Same failure. Not saved, the toast, Try again, the leave prompt, and the market revert all showed. |
+| review | `readOnly` on two textareas while tailoring; Try again refocuses the status with `.focus()`; the Tailor buttons disabled on `tailor.isPending` | One `GapLocked` context locks every gap control while tailoring (`aria-disabled` chips/segments/Undo/"I can't confirm this", `readOnly` fields) and a failed tailor saves any edit that slipped through; one `runTailor` lock spans confirm, pre-tailor save and tailor, with the buttons `focusableWhenDisabled`; both status lines move focus with `focusIfDropped` in a layout effect and disarm on a failed retry; a stale session hides Try again; Autofill keeps text typed during Save (Claude review fixes) | Never loses typed text; focus never dropped to `<body>`; the status never says saved while something is pending. |
 
 ## Gate results
 
@@ -198,8 +199,15 @@ table, deviations, anything queued or deferred, and any concerns.
 
 ## Queued for Task 20 (SYSTEM.md changes Claude applies)
 
-None. These tasks do not close a §11 item.
+None from Tasks 11-13: they do not close a §11 item. From the Claude review:
+
+- Settings autosave cards show one error toast per keystroke while saves fail
+  (each queued write that fails toasts through the card's `onError`).
+  Pre-existing; one toast per failure streak would do.
+- (Not queued: focus after "Tailor anyway" no longer falls to `<body>`. The
+  Tailor buttons are `focusableWhenDisabled`, so the confirm hands focus back
+  to Tailor resume.)
 
 ## Deferred to merge (edits left for Claude, with file:line)
 
-- Gap page, while tailoring: the Exact wording field (`resolution-controls.tsx` `AddKeywordControls` Input) is still editable from the keyboard. The spec named the note textarea and the Answer textarea. A focused wording field can still change, and `scheduleSave` then returns without saving it.
+- (Fixed in the Claude review commit.) Gap page, while tailoring: the Exact wording field (`resolution-controls.tsx` `AddKeywordControls` Input) is still editable from the keyboard. The spec named the note textarea and the Answer textarea. A focused wording field can still change, and `scheduleSave` then returns without saving it.

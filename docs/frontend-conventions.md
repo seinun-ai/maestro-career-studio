@@ -735,10 +735,21 @@
   `autosave-status.tsx` for why. A debounced autosave (the gap page) says
   Saving… from the first keystroke until the newest edit is on the server,
   flushes on unmount, warns on reload while pending, and asks before an
-  in-app exit only after a failed save. `AutosaveStatus` reports three states:
+  in-app exit only after a failed save. Leaving within the debounce saves the
+  pending selection, a `cannot_confirm` included, which then writes its
+  durable KB record: it was the user's choice when they left. While it
+  tailors, every gap control is locked (`GapLocked`: `aria-disabled` buttons,
+  `readOnly` fields, so focus stays), and an edit that slips through is saved
+  if the tailor fails. A stale session shows no Try again (every save 409s;
+  the banner's Start new analysis is the way out), and an edit there reads
+  Save failed and keeps the leave guard. `AutosaveStatus` reports three states:
   Saving…, Not saved (after a failed write, with Try again where the card
-  holds a value the server lacks), and Saves automatically. A card whose
-  write failed registers the leave guard.
+  holds a value the server lacks), and Saves automatically. A card still
+  holding a value the server lacks registers the leave guard. After a retry
+  lands, both status lines move focus with `focusIfDropped` (only from
+  `<body>`), and a failed retry disarms the move, so a later save never pulls
+  focus out of a field mid-typing. An explicit Save that lands while the user
+  kept typing (Persona, Autofill) keeps the form dirty and the later text.
 - Settings shows four curated user-voice prompts (cover_letter, qa,
   gap_tailor, chat_system); the other internal prompts sit behind an
   "Advanced prompts" disclosure (`ESSENTIAL_PROMPTS` map in

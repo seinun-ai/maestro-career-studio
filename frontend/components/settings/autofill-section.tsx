@@ -470,6 +470,9 @@ function AutofillEditor({
   const [profile, setProfile] = useState<Profile>(() => profileForEditing(initial));
   const profileRef = useRef<Profile>(profileForEditing(initial));
   const [dirty, setDirty] = useState(false);
+  // Bumped by every edit, so a save that lands can tell whether the user typed
+  // while it was in flight (Persona's rule).
+  const editRevision = useRef(0);
   const [lastInitial, setLastInitial] = useState(initial);
   const [isFillingFromResume, setIsFillingFromResume] = useState(false);
   const [consent, setConsent] = useState<EeoConsent>(initialConsent);
@@ -499,6 +502,7 @@ function AutofillEditor({
   const education = educationList(profile);
 
   const updateProfile = (updater: (current: Profile) => Profile) => {
+    editRevision.current += 1;
     const next = updater(profileRef.current);
     profileRef.current = next;
     setProfile(next);
@@ -666,15 +670,18 @@ function AutofillEditor({
   };
 
   const save = useMutation({
-    mutationFn: () =>
+    mutationFn: ({ value, revision }: { value: Profile; revision: number }) =>
       apiFetch<{ key: string; value: Profile }>("/api/settings/autofill", {
         method: "PUT",
-        body: JSON.stringify({ value: profile }),
-      }),
-    onSuccess: (result) => {
+        body: JSON.stringify({ value }),
+      }).then((result) => ({ result, revision })),
+    onSuccess: ({ result, revision }) => {
       qc.setQueryData(["settings", "autofill"], result);
       qc.invalidateQueries({ queryKey: ["setup-status"] });
-      setDirty(false);
+      // Clean only when nothing changed since the save was sent: the re-seed
+      // above then adopts the server copy. An edit made meanwhile keeps the
+      // form dirty, so it is neither overwritten nor left without a Save.
+      if (editRevision.current === revision) setDirty(false);
       toast.success("Autofill profile saved");
     },
     onError: (err: Error) => toast.error(err.message),
@@ -950,7 +957,12 @@ function AutofillEditor({
       </fieldset>
 
       <div className="flex justify-end">
-        <Button onClick={() => save.mutate()} disabled={save.isPending || !dirty}>
+        <Button
+          onClick={() =>
+            save.mutate({ value: profileRef.current, revision: editRevision.current })
+          }
+          disabled={save.isPending || !dirty}
+        >
           {save.isPending ? "Saving…" : "Save autofill profile"}
         </Button>
       </div>

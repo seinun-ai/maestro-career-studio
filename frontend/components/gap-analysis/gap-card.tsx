@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { use, useRef, useState } from "react";
 import { Ban, Check, Library, Undo2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   ActionSegment,
+  GapLocked,
   AddKeywordControls,
   AttachProjectControls,
   CANNOT_CONFIRM_EXPLANATION,
@@ -283,13 +284,29 @@ function EvidenceLine({ gap }: { gap: Gap }) {
  * Commits a Resolution upward on every meaningful change (parent debounces
  * the save); commits `null` when the draft becomes invalid/unresolved.
  */
+/** Undo on a resolved row. While tailoring it stays focusable but ignores presses. */
+function UndoButton({ onClick }: { onClick: () => void }) {
+  const locked = use(GapLocked);
+  return (
+    <Button
+      variant="ghost"
+      size="xs"
+      className="data-disabled:opacity-50"
+      focusableWhenDisabled
+      disabled={locked}
+      onClick={onClick}
+    >
+      <Undo2 /> Undo
+    </Button>
+  );
+}
+
 export function GapCard({
   gap,
   resolution,
   targets,
   projects,
   baseResumeError = false,
-  readOnly = false,
   onChange,
 }: {
   gap: Gap;
@@ -300,14 +317,14 @@ export function GapCard({
   projects: string[] | null;
   /** True when the base resume failed to load — chip actions show an error line. */
   baseResumeError?: boolean;
-  /** Tailoring is in flight: keep focus, but stop the keyboard from editing. */
-  readOnly?: boolean;
   onChange: (resolution: Resolution | null) => void;
 }) {
   // Missing-skill gap: the skill is absent from the resume, so an add_keyword is
   // unverified — restrict placement to skills and warn the user.
   const isMissingSkill =
     gap.kind === "skill" && gap.diagnostic.fix_hint === "absent";
+  // Tailoring: "I can't confirm this" stays focusable but inert (Undo: `UndoButton`).
+  const locked = use(GapLocked);
 
   const [editing, setEditing] = useState(resolution === undefined);
   const [action, setAction] = useState<GapAction | null>(resolution?.action ?? null);
@@ -504,9 +521,7 @@ export function GapCard({
             <span className="block text-xs">{CANNOT_CONFIRM_EXPLANATION}</span>
           </span>
         </span>
-        <Button variant="ghost" size="xs" onClick={reopenGap}>
-          <Undo2 /> Undo
-        </Button>
+        <UndoButton onClick={reopenGap} />
       </div>
     );
   }
@@ -515,9 +530,7 @@ export function GapCard({
     return (
       <div className="text-muted-foreground flex items-center justify-between gap-2 rounded-xl border border-dashed py-1.5 pr-1.5 pl-4 text-sm">
         <span className="truncate">{title} — skipped</span>
-        <Button variant="ghost" size="xs" onClick={reopenGap}>
-          <Undo2 /> Undo
-        </Button>
+        <UndoButton onClick={reopenGap} />
       </div>
     );
   }
@@ -544,16 +557,12 @@ export function GapCard({
         <Button variant="ghost" size="xs" onClick={() => setEditing(true)}>
           Change
         </Button>
-        <Button
-          variant="ghost"
-          size="xs"
+        <UndoButton
           onClick={() => {
             setAction("skip");
             commit("skip", {});
           }}
-        >
-          <Undo2 /> Undo
-        </Button>
+        />
       </div>
     );
   }
@@ -628,7 +637,9 @@ export function GapCard({
             <Button
               variant="outline"
               size="xs"
-              className="text-muted-foreground"
+              className="text-muted-foreground data-disabled:opacity-50"
+              focusableWhenDisabled
+              disabled={locked}
               onClick={() => {
                 setAction("cannot_confirm");
                 setEditing(false);
@@ -705,7 +716,6 @@ export function GapCard({
             text={text}
             targets={inputTargets}
             selected={inputTarget}
-            readOnly={readOnly}
             onTextChange={(value) => {
               setText(value);
               if (value.trim()) {

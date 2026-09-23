@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useLayoutEffect, useRef } from "react";
 import { Check, Loader2, TriangleAlert } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { focusIfDropped } from "@/hooks/use-focus-return";
 
 /**
  * The quiet half of the settings save model.
@@ -37,12 +38,15 @@ export function AutosaveStatus({
   const statusRef = useRef<HTMLSpanElement>(null);
   const refocus = useRef(false);
   // Try again stays mounted while the retry runs (`failed` holds until a
-  // success settles), so focus moves to the status only once it unmounts.
-  useEffect(() => {
-    if (failed || !refocus.current) return;
+  // success settles). Once the retry settles: a success unmounts it, and the
+  // focus it dropped goes to the status. A failure leaves it, and focus, in
+  // place and disarms, so a later ordinary save never pulls focus mid-typing.
+  // A layout effect, so no frame is painted with focus on <body>.
+  useLayoutEffect(() => {
+    if (!refocus.current || pending) return;
     refocus.current = false;
-    statusRef.current?.focus();
-  }, [failed]);
+    if (!failed) focusIfDropped(statusRef.current);
+  }, [failed, pending]);
   return (
     <span className={`inline-flex items-center gap-2 text-xs ${className ?? ""}`}>
       <span
