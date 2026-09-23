@@ -177,11 +177,22 @@ table, deviations, anything queued or deferred, and any concerns.
 
 | Task | Planned | Did instead | Why (Goal Card line) |
 |---|---|---|---|
+| 8 | Handoff pin asserts `"useEffect(" not in body` | Strip `useLayoutEffect(` before that check | The planned assert cannot pass: `useLayoutEffect(` contains `useEffect(`. Swapping the layout effect for `useEffect` still fails the pin. Accessibility: the cleanup must run before React detaches the subtree. |
+| 8 | `use-last-seen.ts` snippet has no directive | Added `"use client"`, matching every other file in `hooks/` | No new dependencies; the hook uses `useState` and the rest of the folder is a client boundary. |
+| 8 | Appendix pins only the three focus asserts in `test_frontend_focus.py`; the single-flight guard pin is in wave 2's `test_frontend_single_flight.py` | Also pin `isLoadFailure`, the `unloadedLayer` copy, `useLastSeen`, and the guard flip in `test_frontend_focus.py` | Node tests are not in CI, and this lane builds the helpers with no call sites yet. The call-site parametrize stays in wave 2. |
+| 8 | `lib/formatting.ts` is listed on Task 9 | The `isLoadFailure` parity comment landed in this commit | The comment is the reason the two copies exist, and the Task 8 parity pin reads it. Task 9 still owns the panel simplification. |
 
 ## Gate results
 
 | Task | Gate | Result |
 |---|---|---|
+| 8 | `node --test lib/*.test.ts` | 92 passed (6 new in `query-state.test.ts`) |
+| 8 | `pytest tests/test_frontend_focus.py` | 6 passed; each pin failed alone when its guarded line was broken, then restored |
+| 8 | `pytest tests/test_frontend_*.py` | 291 passed |
+| 8 | `tsc --noEmit` | clean |
+| 8 | `npm run lint` | 0 errors, 5 baseline warnings |
+| 8 | slop frontend | 505 duplicated lines, 42 clones (delta 0) |
+| 8 | slop backend | `complexity_hotspots` 424 (delta 0) |
 
 ## Queued for Task 20 (SYSTEM.md changes Claude applies)
 

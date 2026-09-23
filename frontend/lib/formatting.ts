@@ -243,6 +243,9 @@ export type BaselineLayerQuery<T> = {
  * data-less query to pending when it refetches, which swapped the error for
  * the loading line and unmounted the focused Try again the moment it was
  * pressed.
+ *
+ * The same rule as `isLoadFailure` (lib/query-state.ts); a lib file cannot
+ * value-import another, so the parity test pins them together.
  */
 export function unloadedLayer(
   query: Omit<BaselineLayerQuery<unknown>, "data">,
