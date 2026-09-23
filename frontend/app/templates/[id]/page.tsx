@@ -253,7 +253,7 @@ export default function TemplateEditorPage() {
               </Badge>
               {!tq.data.engine_available && <RequiresTexBadge />}
               {dirty && (
-                <span className="text-xs text-amber-600">unsaved</span>
+                <span className="text-xs text-amber-700 dark:text-amber-400">unsaved</span>
               )}
             </div>
             <TabsList>

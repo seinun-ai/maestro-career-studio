@@ -452,9 +452,12 @@
   `ApplicationDetailsMenu` (status lives in the chip, not the menu). "Needs
   you" (`needs_decision` and `needs_human`) is ONE `NEEDS_YOU` object:
   `text-orange-800` on `bg-orange-500/10`, `dark:text-orange-400`; "Submission
-  uncertain" is its own entry with the same classes. Orange-700 measured
-  3.98:1 over `--muted`; `test_frontend_color_roles.py` finds every orange chip
-  in the file and computes it over background, card and muted in both modes.
+  uncertain" is its own entry with the same classes. Every tinted chip is text
+  one step darker than its tint in light mode (800 on amber, green, sky,
+  emerald and orange). `test_frontend_color_roles.py` finds every chip literal
+  in `status-chip.tsx` and `career/entity-card.tsx` and computes it over the
+  page, a card and `--muted` in both modes. A new shade must be copied into
+  its `_TAILWIND` table.
 - **Card galleries**: Templates and Base Resumes are the same image-first
   card grid, so the shell lives once in `components/gallery/` (`GalleryGrid`,
   `GalleryCard`, `GalleryCardActions` — the z-20 wrapper — and

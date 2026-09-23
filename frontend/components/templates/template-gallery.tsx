@@ -55,7 +55,7 @@ function TemplateBadgeStrip({ template }: { template: TemplateSummary }) {
       {isReady && template.parse_certified === false && (
         <Badge
           variant="outline"
-          className="border-amber-500/40 text-amber-600 dark:text-amber-400"
+          className="border-amber-500/40 text-amber-700 dark:text-amber-400"
           title="A strict PDF text extractor joins words in this template's output, so some ATS may misread it. Prefer a certified template."
         >
           ⚠ ATS spacing

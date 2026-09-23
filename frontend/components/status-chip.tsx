@@ -28,7 +28,7 @@ const STATUS_STYLES: Record<
   },
   interviewing: {
     label: "Interviewing",
-    chip: "bg-amber-500/15 text-amber-700 dark:bg-amber-400/15 dark:text-amber-300",
+    chip: "bg-amber-500/15 text-amber-800 dark:bg-amber-400/15 dark:text-amber-300",
     dot: "bg-amber-500 dark:bg-amber-400",
   },
   offered: {
@@ -38,7 +38,7 @@ const STATUS_STYLES: Record<
   },
   accepted: {
     label: "Accepted",
-    chip: "bg-green-600/10 text-green-700 dark:bg-green-400/15 dark:text-green-300",
+    chip: "bg-green-600/10 text-green-800 dark:bg-green-400/15 dark:text-green-300",
     dot: "bg-green-600 dark:bg-green-400",
   },
   rejected: {
@@ -126,8 +126,8 @@ export const PROPOSAL_STATUS_CHIP: Record<
   pending_review: { label: "Proposed", className: "bg-blue-500/10 text-blue-700 dark:text-blue-400" },
   needs_decision: NEEDS_YOU,
   needs_human: NEEDS_YOU,
-  accepted: { label: "Queued", className: "bg-sky-500/10 text-sky-700 dark:text-sky-400" },
-  approved: { label: "Approved", className: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" },
+  accepted: { label: "Queued", className: "bg-sky-500/10 text-sky-800 dark:text-sky-400" },
+  approved: { label: "Approved", className: "bg-emerald-500/10 text-emerald-800 dark:text-emerald-400" },
   submitted: { label: "Submitted", className: "bg-emerald-500/15 text-emerald-800 dark:text-emerald-300" },
   submission_uncertain: { label: "Submission uncertain", className: "bg-orange-500/10 text-orange-800 dark:text-orange-400" },
   rejected: { label: "Skipped", className: "text-muted-foreground bg-muted" },

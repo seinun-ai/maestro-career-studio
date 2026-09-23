@@ -414,8 +414,39 @@ _TAILWIND = {
     "orange-400": (0.75, 0.183, 55.934),
     "orange-500": (0.705, 0.213, 47.604),
     "orange-800": (0.47, 0.157, 37.304),
+    "blue-300": (0.809, 0.105, 251.813),
+    "blue-400": (0.707, 0.165, 254.624),
+    "blue-500": (0.623, 0.214, 259.815),
+    "blue-600": (0.546, 0.245, 262.881),
+    "blue-700": (0.488, 0.243, 264.376),
+    "amber-300": (0.879, 0.169, 91.605),
+    "amber-400": (0.828, 0.189, 84.429),
+    "amber-500": (0.769, 0.188, 70.08),
+    "amber-700": (0.555, 0.163, 48.998),
+    "amber-800": (0.473, 0.137, 46.201),
+    "violet-300": (0.811, 0.111, 293.571),
+    "violet-400": (0.702, 0.183, 293.541),
+    "violet-600": (0.541, 0.281, 293.009),
+    "violet-700": (0.491, 0.27, 292.581),
+    "green-300": (0.871, 0.15, 154.449),
+    "green-400": (0.792, 0.209, 151.711),
+    "green-600": (0.627, 0.194, 149.214),
+    "green-700": (0.527, 0.154, 150.069),
+    "green-800": (0.448, 0.119, 151.328),
+    "red-300": (0.808, 0.114, 19.571),
+    "red-400": (0.704, 0.191, 22.216),
+    "red-600": (0.577, 0.245, 27.325),
+    "red-700": (0.505, 0.213, 27.518),
+    "sky-400": (0.746, 0.16, 232.661),
+    "sky-500": (0.685, 0.169, 237.323),
+    "sky-700": (0.5, 0.134, 242.749),
+    "sky-800": (0.443, 0.11, 240.79),
+    "emerald-300": (0.845, 0.143, 164.978),
     "emerald-400": (0.765, 0.177, 163.223),
+    "emerald-500": (0.696, 0.17, 162.48),
+    "emerald-600": (0.596, 0.145, 163.225),
     "emerald-700": (0.508, 0.118, 165.612),
+    "emerald-800": (0.432, 0.095, 166.913),
 }
 _TAILWIND_THEME = _FRONTEND / "node_modules" / "tailwindcss" / "theme.css"
 
@@ -430,28 +461,61 @@ def test_copied_tailwind_shades_match_the_installed_theme():
         assert read == pytest.approx(lch), name
 
 
-# Every orange chip in the status vocabulary: Needs you, and Submission
-# uncertain, which shares its tint. Read from the source.
-_ORANGE_CHIPS = re.findall(
-    r'className: "(bg-orange-500/10 [^"]+)"', _read("components/status-chip.tsx")
+# Every tinted chip in the status vocabulary (and the KB entity chips, which
+# copy its shape): text on its own tint, over the page, a card and --muted
+# (a selected tracker row), both modes. A chip's dark text and tint fall back
+# to the light ones when it declares none, as the browser does.
+_CHIP_SOURCES = ("components/status-chip.tsx", "components/career/entity-card.tsx")
+_CHIP_CLASS = re.compile(r'(?:chip|className):\s*"([^"]*\bbg-[^"]*)"')
+_CHIP_UTIL = re.compile(
+    r"(?<![\w:/-])(dark:)?(bg|text)-([a-z]+-\d+|muted(?:-foreground)?)(?:/(\d+))?(?![\w/-])"
 )
+_CHIPS = [(rel, cls) for rel in _CHIP_SOURCES for cls in _CHIP_CLASS.findall(_read(rel))]
 
 
-def test_orange_chips_are_found():
-    assert len(_ORANGE_CHIPS) >= 2, _ORANGE_CHIPS
+def test_every_tinted_chip_is_found():
+    found = {rel: sum(1 for r, _ in _CHIPS if r == rel) for rel in _CHIP_SOURCES}
+    # 7 application statuses + Needs you + 7 proposal entries; 3 KB states + fallback.
+    assert found == {
+        "components/status-chip.tsx": 15,
+        "components/career/entity-card.tsx": 4,
+    }, found
+
+
+def _chip_colour(mode, name):
+    if name.startswith("muted"):
+        return _rgb(_MODES[mode], name)
+    assert name in _TAILWIND, f"copy --color-{name} from tailwindcss/theme.css into _TAILWIND"
+    return _srgb(_oklab(_TAILWIND[name]))
 
 
 @pytest.mark.parametrize("mode", list(_MODES))
-@pytest.mark.parametrize("chip", _ORANGE_CHIPS)
-def test_orange_chip_text_meets_aa_on_its_tint(chip, mode):
-    """Text on a 10% tint of orange-500. Over --muted, orange-700 was 3.98:1."""
-    tint, pct = re.search(r"(?<![\w:-])bg-([a-z]+-\d+)/(\d+)", chip).groups()
-    text_re = r"(?<![\w:-])text-([a-z]+-\d+)" if mode == "light" else r"dark:text-([a-z]+-\d+)"
-    text = _srgb(_oklab(_TAILWIND[re.search(text_re, chip).group(1)]))
+@pytest.mark.parametrize(
+    "rel,chip", _CHIPS, ids=[f"{r.rsplit('/', 1)[-1]}:{i}" for i, (r, _) in enumerate(_CHIPS)]
+)
+def test_chip_text_meets_aa_on_its_tint(rel, chip, mode):
+    utils = {
+        (bool(dark), kind): (colour, int(pct) / 100 if pct else 1.0)
+        for dark, kind, colour, pct in _CHIP_UTIL.findall(chip)
+    }
+    dark = mode == "dark"
+    text = utils.get((dark, "text")) or utils[(False, "text")]
+    tint = utils.get((dark, "bg")) or utils[(False, "bg")]
     for surface in ("background", "card", "muted"):
-        fill = _over(_srgb(_oklab(_TAILWIND[tint])), _rgb(_MODES[mode], surface), int(pct) / 100)
-        ratio = _contrast(text, fill)
-        assert ratio >= 4.5, f"{mode}: {chip} over --{surface} is {ratio:.2f}:1"
+        fill = _over(_chip_colour(mode, tint[0]), _rgb(_MODES[mode], surface), tint[1])
+        ratio = _contrast(_chip_colour(mode, text[0]), fill)
+        assert ratio >= 4.5, f"{mode}: {rel} {chip!r} over --{surface} is {ratio:.2f}:1"
+
+
+def test_template_warnings_are_not_amber_600():
+    for rel in (
+        "components/templates/requires-tex-badge.tsx",
+        "components/templates/template-gallery.tsx",
+        "app/templates/[id]/page.tsx",
+    ):
+        assert "text-amber-600" not in _read(rel), rel
+    page = _read("app/templates/[id]/page.tsx")
+    assert "text-amber-700" in page and "dark:text-amber-400" in page
 
 
 @pytest.mark.parametrize("mode", list(_MODES))
