@@ -10,7 +10,7 @@ import {
   useRef,
   useState,
 } from "react";
-import Link from "next/link";
+import { GuardedLink as Link } from "@/components/guarded-link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
@@ -25,7 +25,7 @@ import { toast } from "sonner";
 
 import { useConfirm } from "@/components/confirm-dialog";
 import { IconButton } from "@/components/icon-button";
-import { useUnsavedChangesWarning } from "@/hooks/use-unsaved-changes-warning";
+import { useLeaveGuard } from "@/hooks/use-leave-guard";
 import { PageHeader } from "@/components/page-shell";
 import { ContactForm } from "@/components/resume-editor/contact-form";
 import {
@@ -589,8 +589,6 @@ function StudioEditor({
     ],
   );
 
-  useUnsavedChangesWarning(dirty);
-
   // Report dirty state up so the parent adopts foreign server changes only when
   // it's safe (no unsaved edits).
   useEffect(() => {
@@ -602,8 +600,9 @@ function StudioEditor({
   // compares against the PRE-save server values; this keeps the status line,
   // Save and the stale strip from reporting the save we just made as unsaved.
   // An edit made after the Save differs from it and reads as unsaved at once.
-  // `dirty` itself stays as it is: the parent's adoption guard and the
-  // leave-page warning read it.
+  // `dirty` itself stays the adoption guard's input. The leave guard reads
+  // `unsaved` below, which is false in that gap, so leaving right after a
+  // Save does not ask about a save that already landed.
   const [savedSnapshot, setSavedSnapshot] = useState<string | null>(null);
   // Before the first Save there is nothing to compare, so `unsaved` is `dirty`.
   // A pending raw draft is unsaved whatever the snapshot says.
@@ -613,6 +612,8 @@ function StudioEditor({
       (savedSnapshot === null ||
         snapshotOf(data, formatting, templateIdToApi(templateId)) !==
           savedSnapshot));
+
+  useLeaveGuard(unsaved);
 
   const save = useMutation({
     mutationFn: async (sent: SaveSent) => {

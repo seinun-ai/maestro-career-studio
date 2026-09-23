@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import Link from "next/link";
+import { GuardedLink as Link } from "@/components/guarded-link";
 
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";

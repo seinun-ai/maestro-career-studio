@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { GuardedLink as Link } from "@/components/guarded-link";
 import { Info } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";

@@ -6,6 +6,7 @@ import { ThemeProvider } from "next-themes";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ConfirmDialogProvider } from "@/components/confirm-dialog";
+import { LeaveGuardListeners } from "@/components/leave-guard-listeners";
 
 export function Providers({ children }: { children: ReactNode }) {
   const [client] = useState(
@@ -93,6 +94,7 @@ export function Providers({ children }: { children: ReactNode }) {
         <TooltipProvider delay={350}>
           <ConfirmDialogProvider>
             {children}
+            <LeaveGuardListeners />
             <Toaster richColors closeButton position="bottom-right" offset={16} duration={3500} />
           </ConfirmDialogProvider>
         </TooltipProvider>

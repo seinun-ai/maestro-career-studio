@@ -178,11 +178,26 @@ table, deviations, anything queued or deferred, and any concerns.
 
 | Task | Planned | Did instead | Why (Goal Card line) |
 |---|---|---|---|
+| 1 | `leave-guard.ts` comment names `beforeunload` | Comment says "page unload" | The one-listener pin counts that word. A comment is not a second listener, and the pin stays strict. |
+| 1 | Hook comment quotes "Leave without saving?" | Comment says "ask before leaving" | The copy pin requires that sentence once, in `useConfirmLeave`. |
+| 1 | Pin matches `from "next/link"` only | Also matches single quotes, and `\bawait\b` rather than the substring | A quote swap would miss the pin. The appendix comment says "awaited" before `preventDefault`, which is not the keyword. |
+| 1 | Conventions bullet covers Back/Forward in Task 1 | Task 1 bullet covers links, reload, and `useConfirmLeave`. Task 2 adds the Back/Forward sentences to that same bullet | Don't document a guard this commit does not implement. |
+| 1 | Handoff file list stops at `providers.tsx` | Added `components/leave-guard-listeners.tsx` | The pin and U1 name that file as the one `beforeunload` listener. |
+| 1 | Leave the tailored comment that the leave warning reads `dirty` | Comment now says the leave guard reads `unsaved` | The sentence would be false once the call moved below `unsaved`. |
 
 ## Gate results
 
 | Task | Gate | Result |
 |---|---|---|
+| 1 | pins | 8 passed. Each pin failed alone when its guarded line was broken, then restored from a backup copy |
+| 1 | `node --test lib/*.test.ts` | 92 passed (6 new) |
+| 1 | `tsc --noEmit` | clean |
+| 1 | `npm run lint` | 0 errors, 5 baseline warnings |
+| 1 | `pytest tests/test_frontend_*.py` | 293 passed |
+| 1 | slop frontend | check OK; duplication 505 lines / 42 clones |
+| 1 | slop backend | check OK; `complexity_hotspots` 424 |
+| 1 | `npm run build` | passed |
+| 1 | browser U1 1–6 plus slow save, failed save, double-click | 15/15 passed. Playwright on Chrome, `http://localhost:3101`, made-up River Hale data. Stay took initial focus and returned to the link (including the 375px sheet). Leave did not raise `beforeunload`. Save-then-Back on the tailored studio did not ask while the refetch was held. Template reload raised one `beforeunload`; Save then Back did not ask |
 
 ## Queued for Task 20 (SYSTEM.md changes Claude applies)
 

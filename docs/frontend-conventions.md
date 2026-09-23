@@ -206,7 +206,7 @@
     Save stored. Re-score and Generate PDF also stay disabled while a render is
     in flight. `render.isPending` is not part of `busy`, so Save still accepts
     an edit typed mid-render. `dirty` stays the input to the external-edit
-    adoption guard (SYSTEM.md §12) and the leave-page warning. Its own Save moves the
+    adoption guard (SYSTEM.md §12); the leave guard reads `unsaved`. Its own Save moves the
     editor's baseline IN PLACE: the parent queues the `serverKey` each Save
     returned and adopts it without a remount when the refetch brings it, so
     the working copy, focus, section tab, Formatting panel, scroll, raw mode
@@ -247,6 +247,23 @@
     formatting is the panel's value, not its baseline). The template editor
     mounts the panel only after its own template query resolves and passes a
     ready baseline: the schema constant and that row's `supported_fmt_keys`.
+- **Leaving with unsaved work asks.** `useLeaveGuard(when, { reloadOnly })`
+  registers while `when` holds. Scope `"all"` (the default) makes an in-app
+  exit ask and a reload or tab close warn; `"unload"` (`reloadOnly`) warns
+  only on reload or close, for work an in-app exit still saves (it flushes on
+  unmount, and a page unload runs no cleanup). `GuardedLink`
+  (`components/guarded-link.tsx`) is the only importer of `next/link`, so a
+  link added later inside an editor cannot skip the question; with nothing
+  registered it is `Link`. `onNavigate` is synchronous — Next reads
+  `preventDefault` as the call returns (`next/dist/client/app-dir/link.js`) —
+  so the guard cancels first, asks with `useConfirmLeave` ("Leave without
+  saving?" / **Leave** / **Stay**, Stay focused), and on Leave replays through
+  the router. One `beforeunload` listener (`LeaveGuardListeners`, inside
+  `ConfirmDialogProvider`) reads the registry at unload time. A Leave already
+  confirmed sets a bypass so the browser does not ask a second time, and the
+  next client navigation clears it. A `router.push` or `router.replace` from a
+  page that registers goes through `useConfirmLeave()` first: nothing wraps
+  the router, and the studios and the template editor call neither.
 - **`PdfPagesPreview` owns the canvas and the zoom.** Pages sit on
   `bg-canvas`, so a caller adds no fill of its own. Zoom is a `role="group"`
   "Zoom" of `aria-pressed` presets (Fit width, Fit page, 100%) on a solid

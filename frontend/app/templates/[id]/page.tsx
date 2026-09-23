@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import Link from "next/link";
+import { GuardedLink as Link } from "@/components/guarded-link";
 
 import { ArrowLeft } from "lucide-react";
 import { useParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
+import { useLeaveGuard } from "@/hooks/use-leave-guard";
 import { FormattingPanel } from "@/components/resume-editor/formatting-panel";
 import { PdfPagesPreview } from "@/components/resume-editor/pdf-pages-preview";
 import { LatexEditor } from "@/components/templates/latex-editor";
@@ -35,6 +36,7 @@ export default function TemplateEditorPage() {
   const [tab, setTab] = useState("knobs");
   const [source, setSource] = useState("");
   const [dirty, setDirty] = useState(false);
+  useLeaveGuard(dirty);
   const [previewNonce, setPreviewNonce] = useState(0);
   const [defaultFormatting, setDefaultFormatting] =
     useState<Partial<ResumeFormatting> | null>(null);
