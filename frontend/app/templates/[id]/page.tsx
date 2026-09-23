@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { FormattingPanel } from "@/components/resume-editor/formatting-panel";
 import { PdfPagesPreview } from "@/components/resume-editor/pdf-pages-preview";
 import { LatexEditor } from "@/components/templates/latex-editor";
+import { ENGINE_LABEL, STATUS_LABEL } from "@/components/templates/template-gallery";
 import { RequiresTexBadge } from "@/components/templates/requires-tex-badge";
 import { EditorShell } from "@/components/resume-editor/editor-shell";
 import { FullscreenEditorPage } from "@/components/resume-editor/fullscreen-editor-page";
@@ -245,12 +246,10 @@ export default function TemplateEditorPage() {
                 {tq.data.display_name ?? id}
               </h1>
               <Badge variant={status === "ready" ? "secondary" : "outline"}>
-                {status}
+                {STATUS_LABEL[status]}
               </Badge>
-              {tq.data.is_default && <Badge variant="secondary">default</Badge>}
-              <Badge variant="outline" className="font-mono">
-                {tq.data.engine}
-              </Badge>
+              {tq.data.is_default && <Badge variant="secondary">Default</Badge>}
+              <Badge variant="outline">{ENGINE_LABEL[tq.data.engine]}</Badge>
               {!tq.data.engine_available && <RequiresTexBadge />}
               {dirty && (
                 <span className="text-xs text-amber-700 dark:text-amber-400">unsaved</span>

@@ -34,15 +34,21 @@
   on `--background` and `--card` is pinned at 4.5:1 in both modes. **Selected
   in a set** (a toggle, filter chip, or segment) is `tonal` plus a leading
   `Check` plus `aria-pressed` (health-report filters, Review changes,
-  SourceToggle, the proposals filter, the zoom presets): the tonal fill is
+  SourceToggle, the proposals filter, the zoom presets, employment types,
+  section presets, and the template picker): the tonal fill is
   about 1.16:1 against the light page, too faint to say "on" by itself.
-  `test_selected_tonal_toggles_show_a_check` pins the first four. Two exceptions carry the state
+  The picker also keeps a primary edge, because the card is mostly image.
+  `test_selected_tonal_toggles_show_a_check` pins the first four. Three exceptions carry the state
   without a Check: the formatting panel's segmented buttons are solid
   `bg-primary` plus `aria-pressed` (a full-strength fill needs no second cue,
-  and a Check would widen every segment in a narrow pane), and the Career KB's
+  and a Check would widen every segment in a narrow pane), the Career KB's
   new-entity section-type cards are a solid `border-primary` outline plus
   `aria-pressed` (two option cards, each a title and a description line; the
-  outline is the cue, as on a radio card). **Current in a list or nav**
+  outline is the cue, as on a radio card), and the gap-target chips are solid
+  `bg-primary` plus `aria-pressed` (dense truncating chips, and the fill is
+  the gap's answer). Selection never borrows the focus ring's shape. A
+  selectable card's focus ring is offset onto the surface, and its selection
+  is its own edge plus a Check. **Current in a list or nav**
   (a sidebar row, the open chat) is secondary container, semibold, and
   `aria-current`, with no Check. **A create or secondary action** is
   `Button variant="tonal"`. **A non-interactive status chip** is
@@ -86,7 +92,10 @@
   both studio toolbars past their pane. The button carries a visible muted
   "Template:" prefix: a template's display name is a look's name ("XCharter
   Serif"), which bare reads as a font picker — a category word only in the
-  accessible name is invisible to sighted users.
+  accessible name is invisible to sighted users. The picker shows no engine
+  chip and no status badge. The manage gallery and the editor say LaTeX or
+  Typst, and Ready or Draft. In the dialog the focus ring sits 2px off the
+  card on the popover surface, and a Check marks the chosen card.
 - **One page shell: `PageShell` + `PageHeader`** (`components/page-shell.tsx`).
   Every top-level route renders `PageShell` — `max-w-6xl`, `p-6`, `gap-6` —
   and `PageHeader` for its title block. Never assign per-page widths or

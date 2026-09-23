@@ -212,6 +212,40 @@ def test_fab_variant_uses_primary_container():
     assert "text-on-primary-container" in fab
 
 
+def test_every_selection_set_carries_its_state():
+    prefs = _read("components/settings/job-preferences-section.tsx")
+    assert 'variant={selected ? "tonal" : "outline"}' in prefs
+    assert "aria-pressed={selected}" in prefs and "{selected && <Check" in prefs
+    assert 'role="group" aria-labelledby={employmentLabelId}' in prefs
+    dialog = _read("components/career/new-entity-dialog.tsx")
+    assert 'variant={on ? "tonal" : "outline"} aria-pressed={on}' in dialog
+    assert "{on && <Check" in dialog
+    chips = _read("components/gap-analysis/resolution-controls.tsx")
+    assert "aria-pressed={selected ?? false}" in chips
+    # Alpha on 10px text failed AA (2.96 and 3.99:1 light).
+    assert "text-muted-foreground/70" not in chips and "text-primary-foreground/70" not in chips
+
+
+def test_template_picker_focus_and_selection_differ():
+    gallery = _read("components/templates/template-gallery.tsx")
+    assert "focus-visible:ring-offset-2 focus-visible:ring-offset-popover" in gallery
+    assert 'selected && "ring-2 ring-primary"' in gallery
+    assert "{selected && <Check" in gallery
+    select = _read("components/templates/template-select.tsx")
+    assert "{value === DEFAULT_TEMPLATE && <Check" in select
+    assert "overflow-y-auto p-1" in select  # the offset ring is not clipped
+
+
+def test_the_picker_hides_the_engine_and_nothing_prints_a_raw_engine():
+    gallery = _read("components/templates/template-gallery.tsx")
+    assert "{!picking && <Badge" in gallery
+    for rel in (
+        "components/templates/template-gallery.tsx",
+        "app/templates/[id]/page.tsx",
+    ):
+        assert not re.search(r"\{(?:template|tq\.data)\.(?:engine|status)\}", _read(rel)), rel
+
+
 def test_selected_tonal_toggles_show_a_check():
     # The secondary container is a quiet fill (1.16:1 against the light page)
     # and its text is lighter than an outline button's, so `tonal` alone no

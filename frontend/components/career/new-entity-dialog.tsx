@@ -1,7 +1,8 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useId, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Check } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -62,6 +63,7 @@ export function NewEntityDialog({
   defaultSectionType?: "entries" | "bullets";
 }) {
   const queryClient = useQueryClient();
+  const presetsLabelId = useId();
   const [kind, setKind] = useState<KBEntityKind>(defaultKind);
   const [title, setTitle] = useState("");
   const [org, setOrg] = useState("");
@@ -182,32 +184,36 @@ export function NewEntityDialog({
           {kind === "extra" && (
             <div className="space-y-4 rounded-xl border p-3.5 bg-muted/20">
               <div className="grid gap-1.5">
-                <Label>Section Presets</Label>
-                <div className="flex flex-wrap gap-1.5">
-                  {SECTION_PRESETS.map((preset) => (
-                    <Button
-                      key={preset.id}
-                      type="button"
-                      variant={sectionTitle === preset.title ? "default" : "outline"}
-                      size="sm"
-                      className="text-xs"
-                      onClick={() => {
-                        setSectionTitle(preset.title);
-                        setSectionKey(preset.id);
-                        setSectionType(preset.type);
-                        if (preset.type === "bullets") {
-                          setTitle(preset.title);
-                        }
-                      }}
-                    >
-                      {preset.label}
-                    </Button>
-                  ))}
+                <Label id={presetsLabelId}>Section presets</Label>
+                <div role="group" aria-labelledby={presetsLabelId} className="flex flex-wrap gap-1.5">
+                  {SECTION_PRESETS.map((preset) => {
+                    const on = sectionTitle === preset.title;
+                    return (
+                      <Button
+                        key={preset.id}
+                        type="button"
+                        size="sm"
+                        className="text-xs"
+                        variant={on ? "tonal" : "outline"} aria-pressed={on}
+                        onClick={() => {
+                          setSectionTitle(preset.title);
+                          setSectionKey(preset.id);
+                          setSectionType(preset.type);
+                          if (preset.type === "bullets") {
+                            setTitle(preset.title);
+                          }
+                        }}
+                      >
+                        {on && <Check />}
+                        {preset.label}
+                      </Button>
+                    );
+                  })}
                 </div>
               </div>
 
               <div className="grid gap-1.5">
-                <Label htmlFor="career-section-name">Section Name</Label>
+                <Label htmlFor="career-section-name">Section name</Label>
                 <Input
                   id="career-section-name"
                   value={sectionTitle}
@@ -230,7 +236,7 @@ export function NewEntityDialog({
               </div>
 
               <div className="grid gap-1.5">
-                <Label>Section Type</Label>
+                <Label>Section type</Label>
                 <div className="flex gap-1.5">
                   <button
                     type="button"

@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { Star } from "lucide-react";
+import { Check, Star } from "lucide-react";
 
 import {
   GalleryCard,
@@ -29,28 +29,35 @@ export function knobCoverage(template: TemplateSummary): string {
   return `${supported}/${Object.keys(FORMATTING_DEFAULTS).length}`;
 }
 
+export const ENGINE_LABEL: Record<TemplateSummary["engine"], string> = {
+  latex: "LaTeX",
+  typst: "Typst",
+};
+export const STATUS_LABEL: Record<TemplateSummary["status"], string> = {
+  ready: "Ready",
+  draft: "Draft",
+};
+
 /**
- * Status and engine only.
- *
- * The knob count moved off the face into the title tooltip: it is a property
- * you check when something is wrong, not one you scan a gallery by, and the
- * template editor (one click away now that the card links there) has a whole
- * Knobs tab. The ATS-spacing warning stays, because it is conditional, rare,
- * and reports an actual defect in the rendered output — burying that would be
- * hiding a problem rather than reducing noise.
+ * Status and engine only, and only when authoring. The picker is choosing a
+ * look, so both chips are noise there; the "can't render here" fact stays
+ * the Requires TeX badge.
  */
-function TemplateBadgeStrip({ template }: { template: TemplateSummary }) {
+function TemplateBadgeStrip({
+  template,
+  picking,
+}: {
+  template: TemplateSummary;
+  picking?: boolean;
+}) {
   const isReady = template.status === "ready";
 
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-1">
       {template.archived_at && <Badge variant="secondary">Archived</Badge>}
-      <Badge variant={isReady ? "default" : "secondary"}>
-        {template.status}
-      </Badge>
-      <Badge variant="outline" className="font-mono">
-        {template.engine}
-      </Badge>
+      {/* Choosing a look, the engine and status are noise; authoring, they are the source language and state. */}
+      {!picking && <Badge variant={isReady ? "default" : "secondary"}>{STATUS_LABEL[template.status]}</Badge>}
+      {!picking && <Badge variant="outline">{ENGINE_LABEL[template.engine]}</Badge>}
       {!template.engine_available && <RequiresTexBadge />}
       {isReady && template.parse_certified === false && (
         <Badge
@@ -68,9 +75,13 @@ function TemplateBadgeStrip({ template }: { template: TemplateSummary }) {
 function TemplateCardBody({
   template,
   actions,
+  picking,
+  selected,
 }: {
   template: TemplateSummary;
   actions?: ReactNode;
+  picking?: boolean;
+  selected?: boolean;
 }) {
   const isReady = template.status === "ready";
   return (
@@ -98,7 +109,7 @@ function TemplateCardBody({
               you choose by; the id stays one hover away, and the Edit link is
               /templates/<id> whenever you actually need to copy it. */}
           <CardTitle
-            className="min-w-0 truncate text-base"
+            className="flex min-w-0 items-center gap-1.5 text-base"
             title={[
               template.display_name && template.display_name !== template.id
                 ? `${template.display_name} · ${template.id}`
@@ -106,12 +117,13 @@ function TemplateCardBody({
               `Knobs ${knobCoverage(template)}`,
             ].join("\n")}
           >
-            {template.display_name ?? template.id}
+            {selected && <Check className="text-primary size-4 shrink-0" aria-hidden="true" />}
+            <span className="truncate">{template.display_name ?? template.id}</span>
           </CardTitle>
           {/* Actions share the badges' row so they cost no extra height, and
               being the last row puts them at the card's bottom-right. */}
           <div className="flex items-end gap-2">
-            <TemplateBadgeStrip template={template} />
+            <TemplateBadgeStrip template={template} picking={picking} />
             {actions && <GalleryCardActions>{actions}</GalleryCardActions>}
           </div>
         </div>
@@ -181,8 +193,11 @@ export function TemplateGallery({
               key={t.id}
               type="button"
               aria-pressed={selected}
+              aria-label={t.display_name ?? t.id}
               onClick={() => onSelect(t)}
-              className="rounded-xl text-left focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+              // Focus is a ring OUTSIDE the card, 2px off it; selection is the card's own
+              // primary edge plus a Check. Both used to be one 2px blue ring on one edge.
+              className="rounded-xl text-left focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-popover focus-visible:outline-none"
             >
               <GalleryCard
                 className={cn(
@@ -190,7 +205,7 @@ export function TemplateGallery({
                   selected && "ring-2 ring-primary",
                 )}
               >
-                <TemplateCardBody template={t} />
+                <TemplateCardBody template={t} picking selected={selected} />
               </GalleryCard>
             </button>
           );

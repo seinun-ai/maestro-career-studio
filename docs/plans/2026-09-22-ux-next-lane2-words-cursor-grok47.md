@@ -186,6 +186,7 @@ table, deviations, anything queued or deferred, and any concerns.
 | 4 | Picker "no engine" sentence in this task's conventions edit | Left for task 7, which changes the picker | Writing it here would describe code this commit does not contain. Conventions change with the code. |
 | 5 | Appendix comment names the utility `outline-none` inside `TabsContent` | Comment says "never set the outline style to none" and does not contain that token | The pin rejects the token anywhere in the panel function, including a comment. The trap is still stated. Accessibility is not negotiable. |
 | 6 | `company-monogram.tsx` copies the old Interviewing and Accepted chip classes | Left unchanged | Those strings are outside this task's files, and the pin does not read that file. Same pairs can still fail there. Flagged, not fixed. |
+| 7 | Appendix badge strip hides only the engine chip in the picker | Also hid the status badge while picking | Owner decision 14: the picker lists only ready templates and shows no status badge. |
 
 ## Gate results
 
@@ -213,6 +214,9 @@ table, deviations, anything queued or deferred, and any concerns.
 | 6 | theme shades | copied OKLCH values match the installed Tailwind theme |
 | 6 | lint / slop | lint 0 errors, 5 baseline warnings; frontend and backend ratchets OK |
 | 6 | browser pixels | Interviewing 5.93 page / 5.67 hovered row; Accepted 5.97 light / 11.03 dark; Queued 6.78 light / 7.22 dark; Completed 5.89; ATS spacing 5.03 light / 10.41 dark. Approved was not pixel-sampled: reaching that status requires final_review evidence. The pin covers it. |
+| 7 | selection and picker pins | failed before the controls changed; removing the employment Check failed that pin alone; restored and passing |
+| 7 | tsc / lint / slop | tsc clean; lint 0 errors, 5 baseline warnings; frontend 495 lines / 41 clones |
+| 7 | browser | Employment types: press shows a Check and `aria-pressed`, a second click releases, the group is named, including dark. A section preset presses and releases when the section name is typed. Picker: no LaTeX/Ready chips; default choice shows a Check; Tab lands on a card whose ring is offset 2px. Manage gallery says Ready and LaTeX. Gap-target chips were not opened: the scratch stack had no tailoring session. The pin covers their pressed state and the alpha removal. |
 
 ## Queued for Task 20 (SYSTEM.md changes Claude applies)
 

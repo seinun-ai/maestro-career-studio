@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { LayoutGrid } from "lucide-react";
+import { LayoutGrid, Check } from "lucide-react";
 
 import { apiFetch } from "@/lib/api";
 import {
@@ -187,12 +187,15 @@ export function TemplateSelect({
                 : "hover:bg-muted/50",
             )}
           >
-            <span className="text-sm font-medium">Use the default template</span>
+            <span className="flex items-center gap-2 text-sm font-medium">
+              {value === DEFAULT_TEMPLATE && <Check className="text-primary size-4 shrink-0" aria-hidden="true" />}
+              Use the default template
+            </span>
             <span className="text-muted-foreground text-xs">
               {defaultTemplate?.display_name ?? "server default"}
             </span>
           </button>
-          <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+          <div className="min-h-0 flex-1 overflow-y-auto p-1">
             {selectable.length === 0 ? (
               <p className="text-muted-foreground text-sm">
                 {ready.length === 0
