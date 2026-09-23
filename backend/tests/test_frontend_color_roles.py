@@ -307,6 +307,15 @@ def test_focus_indicators_are_solid():
     assert offenders == [], offenders
 
 
+def test_tab_panels_show_a_solid_inset_focus_outline():
+    tabs = _read("components/ui/tabs.tsx")
+    panel = tabs[tabs.index("function TabsContent") : tabs.index("export {")]
+    assert "focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring" in panel
+    # outline-none zeroes --tw-outline-style, which outline-2 reads: no ring at all.
+    assert "outline-none" not in panel
+    assert "[&[inert]]:hidden" in panel
+
+
 def test_ring_offsets_name_their_surface():
     """A ring offset paints `--tw-ring-offset-color`, white by default: a white
     band around the focus ring in dark mode. Every offset names its surface."""

@@ -184,6 +184,7 @@ table, deviations, anything queued or deferred, and any concerns.
 | 4 | Job detail embeds `ApplicationRead`, which stays without the name | The menu loads `GET /api/applications/{id}` when opened if that record has no name | Otherwise a soft-deleted résumé reads as "Ds Base" there. `jobs.py` is outside this lane's files. Speak the user's language. |
 | 4 | Dialog list queries kept `enabled: open` | `useBaseResumes()` takes no enabled flag | Both dialogs mount only while open, so the fetch still starts then. One list query. |
 | 4 | Picker "no engine" sentence in this task's conventions edit | Left for task 7, which changes the picker | Writing it here would describe code this commit does not contain. Conventions change with the code. |
+| 5 | Appendix comment names the utility `outline-none` inside `TabsContent` | Comment says "never set the outline style to none" and does not contain that token | The pin rejects the token anywhere in the panel function, including a comment. The trap is still stated. Accessibility is not negotiable. |
 
 ## Gate results
 
@@ -202,9 +203,15 @@ table, deviations, anything queued or deferred, and any concerns.
 | 4 | full backend + ruff | 4591 passed, 2 skipped; ruff clean on the touched Python |
 | 4 | slop | frontend 495 lines / 41 clones; backend hotspot count stayed 424 |
 | 4 | browser | tracker, proposals pill, score card, apply-as-is confirm, and the details menu show "Data science base". Slow list shows "Ds Base" then the name. A failed list stays "Ds Base", never blank. Archived and soft-deleted rows stay named. Dark 375. |
+| 5 | pin `test_tab_panels_show_a_solid_inset_focus_outline` | failed before the class swap; failed again when `outline-none` was put back; passes restored |
+| 5 | `test_frontend_color_roles.py` + plain words | color roles green after the comment fix; plain words still green |
+| 5 | lint | 0 errors, 5 baseline warnings |
+| 5 | slop frontend | ratchet OK |
+| 5 | browser | Tab into a studio panel: 2px inset outline, light 4.21:1, dark 5.42:1. Arrow keys still move tabs. A click focuses the panel and paints no outline. Analytics panel matches. |
 
 ## Queued for Task 20 (SYSTEM.md changes Claude applies)
 
 - §11 item 30: delete only the clause that the Applications table's Base column shows `baseResumeLabel(slug)` ("Ds Base") instead of the résumé's `display_name`. Keep the Job market bars, the Analytics Employment/Level filters, and the MCP `explore_*` role-label clauses. Do not delete the whole item.
+- §11 item 28: delete only the clause that the studio section tabs' `TabsContent` panels take focus with no visible ring. Keep the agent-pipeline bar and the dark ring on the FAB. Do not delete the whole item.
 
 ## Deferred to merge (edits left for Claude, with file:line)

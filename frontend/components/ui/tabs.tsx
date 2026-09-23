@@ -81,7 +81,12 @@ function TabsContent({ className, ...props }: TabsPrimitive.Panel.Props) {
     <TabsPrimitive.Panel
       data-slot="tabs-content"
       className={cn(
-        "flex-1 text-sm outline-none",
+        // Base UI makes the open panel a tab stop (APG). The indicator is an
+        // INSET outline: it paints above the panel's cards and no scrolling
+        // ancestor can clip it. Never set the outline style to none beside
+        // outline-2: that zeroes --tw-outline-style, which outline-2 reads,
+        // and the ring never paints.
+        "flex-1 text-sm focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring",
         // Hide de-selected panels. Base UI hides a panel by setting `hidden`
         // from its `mounted` state, and `mounted` is only cleared by
         // useOpenChangeComplete once the CLOSING transition finishes. These

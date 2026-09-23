@@ -65,7 +65,9 @@
   under `app/` and `components/`. `--ring` is pinned at
   3:1 on the page, card, sidebar, canvas, muted and secondary-container
   surfaces; `--primary-container` (the FAB) is not in that set, because the
-  dark ring measures 2.88:1 on it (SYSTEM.md §11 item 28).
+  dark ring measures 2.88:1 on it (SYSTEM.md §11 item 28). `outline-none`
+  sets `--tw-outline-style: none`, and `outline-2` then reads that variable,
+  so the two together paint nothing.
 - **Top-left corner belongs to the sidebar reveal pill**
   (`components/sidebar-reveal-trigger.tsx`, owner decision). Clearance is
   **not** a per-page concern: `SidebarGutter` wraps the main area once in
@@ -381,7 +383,10 @@
   these panels have none, so every visited panel would stay behind, visible.
   `inert` is the signal to key on (Base UI sets it as `!open`). Panels stay
   MOUNTED after first visit — inert and display:none — so treat a tab panel as
-  "cheap to re-show, not free to first open".
+  "cheap to re-show, not free to first open". The open panel is a tab stop
+  (Base UI, APG); its focus indicator is an inset solid outline,
+  `-outline-offset-2`, so a scrolling pane cannot clip it and its cards cannot
+  cover it. Never put `outline-none` beside an `outline-N`.
 - **Landmarks: the PAGE owns `<main>`, the shell owns layout.**
   `SidebarInset` is a `<div>` (shadcn ships it as `<main>`, which nests a
   second main landmark). Every route must render exactly one `<main>` in EVERY
