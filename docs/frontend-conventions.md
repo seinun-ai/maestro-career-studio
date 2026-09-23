@@ -324,6 +324,20 @@
   page. Persona, Autofill and Prompts register while their explicit Save is
   dirty. `/new` registers while a pasted job description has not been
   extracted, and its Extract button submits through `useSingleFlight`.
+- **The Q&A cover-letter editor closes only after its save lands**
+  (`components/qa-tab.tsx`). Save awaits `mutateAsync`: a failed save toasts
+  and keeps the editor open with the typed text (closing on the click showed
+  the old letter, and the next Edit overwrote the draft). A landed save
+  writes the returned entry into the `["qa", applicationId]` cache before the
+  refetch, so the old letter never flashes, and focus returns to Edit after
+  Save or Cancel. An open edit that differs from the saved letter registers
+  the leave guard. Replacing a saved letter asks "Replace your cover
+  letter?": Regenerate on it, and Generate cover letter, which deletes every
+  saved letter before it writes a new one. No "was edited" signal is stored,
+  so any saved text counts. Regenerate waits while the letter is open for
+  editing, and one entry regenerates at a time. Answer questions, Generate
+  and Regenerate submit through `useSingleFlight` and stay focusable while
+  they work. Pinned by `test_frontend_qa_tab.py`.
 - **`PdfPagesPreview` owns the canvas and the zoom.** Pages sit on
   `bg-canvas`, so a caller adds no fill of its own. Zoom is a `role="group"`
   "Zoom" of `aria-pressed` presets (Fit width, Fit page, 100%) on a solid
