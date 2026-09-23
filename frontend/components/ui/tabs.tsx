@@ -81,7 +81,23 @@ function TabsContent({ className, ...props }: TabsPrimitive.Panel.Props) {
     <TabsPrimitive.Panel
       data-slot="tabs-content"
       className={cn(
-        "flex-1 text-sm outline-none",
+        // Base UI makes the open panel a tab stop (APG). Its indicator is an
+        // OVERLAY, not the panel's own outline: an element paints its outline
+        // BEFORE its positioned and transformed descendants, so a `relative`
+        // card or a finished `animate-fade-rise` (a fill-mode transform)
+        // covered all but one edge of an inset outline. The ::after comes
+        // last and sits on top (z-50); `isolate` keeps that z-index inside the
+        // panel, so it never climbs over a sticky header outside it. It
+        // reaches 4px past the panel so the ring does not touch the text at
+        // the panel's edge; every call site has that room (browser-measured).
+        // The panel's own outline is hidden, and never beside an outline-N:
+        // outline-hidden zeroes --tw-outline-style, which outline-N reads.
+        "relative isolate flex-1 text-sm focus-visible:outline-hidden",
+        "focus-visible:after:pointer-events-none focus-visible:after:absolute focus-visible:after:-inset-1 focus-visible:after:z-50 focus-visible:after:rounded-md focus-visible:after:border-2 focus-visible:after:border-ring",
+        // A panel that scrolls ITSELF (the chat scope picker's) would carry an
+        // absolute overlay away with its content, so it keeps a solid inset
+        // outline instead; nothing positioned sits in those lists.
+        "[&.overflow-y-auto]:focus-visible:after:hidden [&.overflow-y-auto]:focus-visible:outline-2 [&.overflow-y-auto]:focus-visible:outline-solid [&.overflow-y-auto]:focus-visible:-outline-offset-2 [&.overflow-y-auto]:focus-visible:outline-ring",
         // Hide de-selected panels. Base UI hides a panel by setting `hidden`
         // from its `mounted` state, and `mounted` is only cleared by
         // useOpenChangeComplete once the CLOSING transition finishes. These

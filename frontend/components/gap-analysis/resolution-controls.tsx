@@ -288,7 +288,7 @@ export function Chip({
   return (
     <button
       type="button"
-      aria-pressed={selected}
+      aria-pressed={selected ?? false}
       onClick={onClick}
       className={cn(
         "inline-flex h-6 max-w-full items-center gap-1 rounded-full border px-2.5 text-xs font-medium transition-colors",
@@ -304,7 +304,7 @@ export function Chip({
         <span
           className={cn(
             "shrink-0 text-[10px] tabular-nums",
-            selected ? "text-primary-foreground/70" : "text-muted-foreground/70",
+            selected ? "text-primary-foreground" : "text-muted-foreground",
           )}
         >
           {date}
@@ -315,7 +315,7 @@ export function Chip({
           className={cn(
             "shrink-0 rounded px-1 text-[10px] font-medium",
             selected
-              ? "bg-primary-foreground/20 text-primary-foreground"
+              ? "bg-primary-foreground/10 text-primary-foreground"
               : "bg-muted text-muted-foreground",
           )}
         >

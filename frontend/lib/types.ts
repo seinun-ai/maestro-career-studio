@@ -99,6 +99,9 @@ export interface Application {
   template_id: string | null;
   created_at: string;
   updated_at: string;
+  /** Joined like the job fields. Optional: a backend that predates it omits it.
+   *  Null when the résumé has no row. Archived and soft-deleted rows still name it. */
+  base_resume_name?: string | null;
 }
 
 export interface ApplicationDetail extends Application {
@@ -119,6 +122,8 @@ export interface ApplicationSummary {
   job_title: string | null;
   job_company: string | null;
   job_location: string | null;
+  /** Joined like the job fields. Optional: a backend that predates it omits it. */
+  base_resume_name?: string | null;
 }
 
 export type KnockoutStatus =
@@ -1042,12 +1047,15 @@ export interface ReferralPatch {
   notes?: string | null;
 }
 
-export function baseResumeLabel(slug: string): string {
-  // Base resumes are user-created with arbitrary slugs. This used to look up a
-  // hardcoded 5-entry list, so ANY resume outside it (data_scientist_new,
-  // business_analyst, example, ...) rendered as a raw slug. Prefer the row's
-  // display_name where the caller has it; this is the fallback.
-  return humanizeSlug(slug);
+export function baseResumeLabel(
+  slug: string,
+  rows?: readonly Pick<BaseResumeSummary, "slug" | "display_name">[] | null,
+): string {
+  // The resume's own name when a list is at hand (useBaseResumeLabel reads the
+  // cached one). The slug's words only while it loads, after it fails, or for a
+  // resume no list has (a deleted one): never blank, never the raw slug.
+  const name = rows?.find((r) => r.slug === slug)?.display_name?.trim();
+  return name || humanizeSlug(slug);
 }
 
 type TemplateStatus = "draft" | "ready";

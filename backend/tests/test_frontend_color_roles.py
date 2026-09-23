@@ -212,6 +212,108 @@ def test_fab_variant_uses_primary_container():
     assert "text-on-primary-container" in fab
 
 
+def test_employment_types_carry_their_state():
+    prefs = _read("components/settings/job-preferences-section.tsx")
+    assert 'variant={selected ? "tonal" : "outline"}' in prefs
+    assert "aria-pressed={selected}" in prefs
+    assert "{selected && <Check" in prefs
+    assert 'role="group" aria-labelledby={employmentLabelId}' in prefs
+
+
+def test_section_presets_carry_their_state():
+    dialog = _read("components/career/new-entity-dialog.tsx")
+    assert 'variant={on ? "tonal" : "outline"} aria-pressed={on}' in dialog
+    assert "{on && <Check" in dialog
+
+
+_CHIP_SRC = _read("components/gap-analysis/resolution-controls.tsx")
+_GAP_CHIP = _CHIP_SRC[_CHIP_SRC.index("export function Chip(") : _CHIP_SRC.index("const LOAD_ERROR_MESSAGE")]
+_SELECTED_OR_NOT = re.compile(r'selected\s*\?\s*"([^"]*)"\s*:\s*"([^"]*)"')
+_TOKEN_UTIL = re.compile(
+    r"(?<![\w:/-])(bg|text)-(primary-foreground|primary|muted-foreground|muted|background)(?:/(\d+))?(?![\w/-])"
+)
+
+
+def _ink(tokens, classes, under):
+    """(text, fill) of a class string drawn over `under`: its own bg tint
+    composited first, then its text alpha over that fill."""
+    util = {kind: (name, int(pct) / 100 if pct else 1.0) for kind, name, pct in _TOKEN_UTIL.findall(classes)}
+    fill = under
+    if "bg" in util:
+        fill = _over(_rgb(tokens, util["bg"][0]), under, util["bg"][1])
+    text = _over(_rgb(tokens, util["text"][0]), fill, util["text"][1])
+    return text, fill
+
+
+def test_gap_target_chips_are_pressed_whatever_the_caller_passes():
+    assert "aria-pressed={selected ?? false}" in _GAP_CHIP
+
+
+@pytest.mark.parametrize("mode", list(_MODES))
+def test_gap_target_chip_text_meets_aa(mode):
+    """The chip's fill, its date and its "recent" tag, selected and not: the
+    10px date and tag once used alpha (2.96, 3.99 and 4.24:1 light). Computed
+    from the classes the chip ships, so any alpha that slips under 4.5 fails."""
+    t = _MODES[mode]
+    fills, *inner = _SELECTED_OR_NOT.findall(_GAP_CHIP)
+    assert len(inner) == 2, "expected the date and the recent tag"
+    for side in (0, 1):
+        _, chip = _ink(t, fills[side], _rgb(t, "background"))
+        for classes in (fills[side], *(pair[side] for pair in inner)):
+            ratio = _contrast(*_ink(t, classes, chip))
+            assert ratio >= 4.5, f"{mode}: gap chip {classes!r} is {ratio:.2f}:1"
+
+
+_GALLERY = _read("components/templates/template-gallery.tsx")
+_PICKER_BRANCH = _GALLERY[_GALLERY.index("if (onSelect) {") : _GALLERY.index("</button>")]
+
+
+def test_template_picker_focus_is_outside_and_selection_inside():
+    # Focus: the button's ring, 2px off the card. Selection: an edge INSIDE the
+    # card plus a Check. --card equals --popover, so an outside selection ring
+    # and the offset focus ring merged into one blue band.
+    assert "focus-visible:ring-offset-2 focus-visible:ring-offset-popover" in _PICKER_BRANCH
+    assert "selected && SELECTED_CARD_EDGE" in _PICKER_BRANCH
+    edge = re.search(r'const SELECTED_CARD_EDGE =\s*"([^"]*)"', _GALLERY).group(1)
+    for part in ("after:absolute", "after:inset-0", "after:border-2", "after:border-primary"):
+        assert part in edge, part
+    assert "ring-primary" not in _GALLERY
+    assert "{selected && <Check" in _GALLERY
+    select = _read("components/templates/template-select.tsx")
+    assert "{value === DEFAULT_TEMPLATE && <Check" in select
+    assert "overflow-y-auto p-1" in select  # the offset ring is not clipped
+
+
+def test_template_picker_button_states_choice_and_warnings():
+    assert "aria-pressed={selected}" in _PICKER_BRANCH
+    body = re.search(r"<TemplateCardBody\b[^>]*/>", _PICKER_BRANCH).group(0)
+    # The Check and the hidden engine/status both depend on these two props.
+    assert re.search(r"\bpicking\b", body) and "selected={selected}" in body, body
+    # aria-label replaces the content, so the warnings ride on the description.
+    assert "aria-label={t.display_name ?? t.id}" in _PICKER_BRANCH
+    assert "${describedBy}-badges" in _PICKER_BRANCH
+    assert "id={describedBy && `${describedBy}-badges`}" in _GALLERY
+    assert "id={describedBy && `${describedBy}-default`}" in _GALLERY
+    assert '<span className="sr-only">Default template</span>' in _GALLERY
+
+
+def test_the_picker_hides_the_engine_and_status_chips():
+    strip = _GALLERY[_GALLERY.index("function TemplateBadgeStrip(") : _GALLERY.index("function TemplateCardBody(")]
+    chips = [line for line in strip.splitlines() if "ENGINE_LABEL[" in line or "STATUS_LABEL[" in line]
+    assert len(chips) == 2, chips
+    for line in chips:
+        assert "{!picking && <Badge" in line, line
+
+
+def test_nothing_prints_a_raw_engine_or_status():
+    page = _read("app/templates/[id]/page.tsx")
+    assert "{ENGINE_LABEL[tq.data.engine]}" in page
+    assert "{STATUS_LABEL[status]}" in page
+    raw = re.compile(r"(?:\{|\$\{|String\()\s*(?:tq\.data\.|template\.|t\.)?(?:engine|status)\s*[)}]")
+    for rel, src in (("gallery", _GALLERY), ("editor", page)):
+        assert not raw.search(src), rel
+
+
 def test_selected_tonal_toggles_show_a_check():
     # The secondary container is a quiet fill (1.16:1 against the light page)
     # and its text is lighter than an outline button's, so `tonal` alone no
@@ -304,6 +406,45 @@ def _translucent_focus_sites():
 
 def test_focus_indicators_are_solid():
     offenders = [site for _, site in _translucent_focus_sites()]
+    assert offenders == [], offenders
+
+
+_TABS = _read("components/ui/tabs.tsx")
+_PANEL = _TABS[_TABS.index("function TabsContent") : _TABS.index("export {")]
+
+
+def test_tab_panels_draw_their_focus_ring_above_their_content():
+    # An element paints its own outline BEFORE its positioned and transformed
+    # descendants, so cards covered an inset outline. The ring is an ::after
+    # overlay, last and on top, kept inside the panel by `isolate`.
+    assert "relative isolate" in _PANEL
+    overlay = "focus-visible:after:absolute focus-visible:after:-inset-1 focus-visible:after:z-50"
+    assert overlay in _PANEL
+    assert "focus-visible:after:border-2 focus-visible:after:border-ring" in _PANEL
+    assert "focus-visible:outline-hidden" in _PANEL
+    # outline-none zeroes --tw-outline-style, which outline-2 reads: no ring at all.
+    assert "outline-none" not in _PANEL
+    assert "[&[inert]]:hidden" in _PANEL
+
+
+def test_a_self_scrolling_tab_panel_keeps_a_solid_inset_outline():
+    # An absolute overlay scrolls away with a scroller's content.
+    for part in ("after:hidden", "outline-2", "outline-solid", "-outline-offset-2", "outline-ring"):
+        assert f"[&.overflow-y-auto]:focus-visible:{part}" in _PANEL, part
+
+
+_TABS_CONTENT_TAG = re.compile(r"<TabsContent\b[^>]*>")
+
+
+def test_no_tab_panel_call_site_undoes_the_ring():
+    offenders = []
+    for path in _tsx_files():
+        for tag in _TABS_CONTENT_TAG.findall(path.read_text(encoding="utf-8")):
+            bad = re.search(r"outline-(?:none|hidden|0)\b|after:hidden|\bisolation-auto\b", tag)
+            # The scroller fallback keys on exactly `overflow-y-auto`.
+            other_scroll = re.search(r"\boverflow-(?!y-auto\b)[\w-]+", tag)
+            if bad or other_scroll:
+                offenders.append(f"{path.relative_to(_FRONTEND)}: {tag}")
     assert offenders == [], offenders
 
 
@@ -405,8 +546,47 @@ _TAILWIND = {
     "orange-400": (0.75, 0.183, 55.934),
     "orange-500": (0.705, 0.213, 47.604),
     "orange-800": (0.47, 0.157, 37.304),
+    "blue-300": (0.809, 0.105, 251.813),
+    "blue-400": (0.707, 0.165, 254.624),
+    "blue-500": (0.623, 0.214, 259.815),
+    "blue-600": (0.546, 0.245, 262.881),
+    "blue-700": (0.488, 0.243, 264.376),
+    "amber-300": (0.879, 0.169, 91.605),
+    "amber-400": (0.828, 0.189, 84.429),
+    "amber-500": (0.769, 0.188, 70.08),
+    "amber-700": (0.555, 0.163, 48.998),
+    "amber-800": (0.473, 0.137, 46.201),
+    "violet-300": (0.811, 0.111, 293.571),
+    "violet-400": (0.702, 0.183, 293.541),
+    "violet-600": (0.541, 0.281, 293.009),
+    "violet-700": (0.491, 0.27, 292.581),
+    "green-300": (0.871, 0.15, 154.449),
+    "green-400": (0.792, 0.209, 151.711),
+    "green-600": (0.627, 0.194, 149.214),
+    "green-700": (0.527, 0.154, 150.069),
+    "green-800": (0.448, 0.119, 151.328),
+    "rose-300": (0.81, 0.117, 11.638),
+    "rose-400": (0.712, 0.194, 13.428),
+    "rose-600": (0.586, 0.253, 17.585),
+    "rose-800": (0.455, 0.188, 13.697),
+    "cyan-300": (0.865, 0.127, 207.078),
+    "cyan-400": (0.789, 0.154, 211.53),
+    "cyan-600": (0.609, 0.126, 221.723),
+    "cyan-800": (0.45, 0.085, 224.283),
+    "red-300": (0.808, 0.114, 19.571),
+    "red-400": (0.704, 0.191, 22.216),
+    "red-600": (0.577, 0.245, 27.325),
+    "red-700": (0.505, 0.213, 27.518),
+    "sky-400": (0.746, 0.16, 232.661),
+    "sky-500": (0.685, 0.169, 237.323),
+    "sky-700": (0.5, 0.134, 242.749),
+    "sky-800": (0.443, 0.11, 240.79),
+    "emerald-300": (0.845, 0.143, 164.978),
     "emerald-400": (0.765, 0.177, 163.223),
+    "emerald-500": (0.696, 0.17, 162.48),
+    "emerald-600": (0.596, 0.145, 163.225),
     "emerald-700": (0.508, 0.118, 165.612),
+    "emerald-800": (0.432, 0.095, 166.913),
 }
 _TAILWIND_THEME = _FRONTEND / "node_modules" / "tailwindcss" / "theme.css"
 
@@ -421,28 +601,95 @@ def test_copied_tailwind_shades_match_the_installed_theme():
         assert read == pytest.approx(lch), name
 
 
-# Every orange chip in the status vocabulary: Needs you, and Submission
-# uncertain, which shares its tint. Read from the source.
-_ORANGE_CHIPS = re.findall(
-    r'className: "(bg-orange-500/10 [^"]+)"', _read("components/status-chip.tsx")
+# Every tinted chip in the status vocabulary (and the KB entity chips, which
+# copy its shape): text on its own tint, over the page, a card and --muted
+# (a selected tracker row), both modes. A chip's dark text and tint fall back
+# to the light ones when it declares none, as the browser does.
+_CHIP_SOURCES = (
+    "components/status-chip.tsx",
+    "components/career/entity-card.tsx",
+    "components/company-monogram.tsx",
 )
+# `chip: "..."` / `className: "..."` entries, or a bare string in a list
+# (the monogram's TONES).
+_CHIP_CLASS = re.compile(r'(?:(?:chip|className):\s*|^\s*)"([^"]*\bbg-[^"]*)"', re.M)
+_CHIP_UTIL = re.compile(
+    r"(?<![\w:/-])(dark:)?(bg|text)-([a-z]+-\d+|muted(?:-foreground)?)(?:/(\d+))?(?![\w/-])"
+)
+_CHIPS = [(rel, cls) for rel in _CHIP_SOURCES for cls in _CHIP_CLASS.findall(_read(rel))]
 
 
-def test_orange_chips_are_found():
-    assert len(_ORANGE_CHIPS) >= 2, _ORANGE_CHIPS
+def test_every_tinted_chip_is_found():
+    found = {rel: sum(1 for r, _ in _CHIPS if r == rel) for rel in _CHIP_SOURCES}
+    # 7 application statuses + Needs you + 7 proposal entries; 3 KB states + fallback.
+    assert found == {
+        "components/status-chip.tsx": 15,
+        "components/career/entity-card.tsx": 4,
+        "components/company-monogram.tsx": 6,
+    }, found
+
+
+def _chip_surfaces(t):
+    """Where chips and monograms sit: the page, a card, a selected row
+    (--muted), and a hovered row (Table's muted/50 on the page, the Proposals
+    row's muted/40 on its card)."""
+    muted = _rgb(t, "muted")
+    return {
+        "--background": _rgb(t, "background"),
+        "--card": _rgb(t, "card"),
+        "--muted": muted,
+        "muted/50 on the page": _over(muted, _rgb(t, "background"), 0.5),
+        "muted/40 on a card": _over(muted, _rgb(t, "card"), 0.4),
+    }
+
+
+def _chip_colour(mode, name):
+    if name.startswith("muted"):
+        return _rgb(_MODES[mode], name)
+    assert name in _TAILWIND, f"copy --color-{name} from tailwindcss/theme.css into _TAILWIND"
+    return _srgb(_oklab(_TAILWIND[name]))
 
 
 @pytest.mark.parametrize("mode", list(_MODES))
-@pytest.mark.parametrize("chip", _ORANGE_CHIPS)
-def test_orange_chip_text_meets_aa_on_its_tint(chip, mode):
-    """Text on a 10% tint of orange-500. Over --muted, orange-700 was 3.98:1."""
-    tint, pct = re.search(r"(?<![\w:-])bg-([a-z]+-\d+)/(\d+)", chip).groups()
-    text_re = r"(?<![\w:-])text-([a-z]+-\d+)" if mode == "light" else r"dark:text-([a-z]+-\d+)"
-    text = _srgb(_oklab(_TAILWIND[re.search(text_re, chip).group(1)]))
-    for surface in ("background", "card", "muted"):
-        fill = _over(_srgb(_oklab(_TAILWIND[tint])), _rgb(_MODES[mode], surface), int(pct) / 100)
-        ratio = _contrast(text, fill)
-        assert ratio >= 4.5, f"{mode}: {chip} over --{surface} is {ratio:.2f}:1"
+@pytest.mark.parametrize(
+    "rel,chip", _CHIPS, ids=[f"{r.rsplit('/', 1)[-1]}:{i}" for i, (r, _) in enumerate(_CHIPS)]
+)
+def test_chip_text_meets_aa_on_its_tint(rel, chip, mode):
+    utils = {
+        (bool(dark), kind): (colour, int(pct) / 100 if pct else 1.0)
+        for dark, kind, colour, pct in _CHIP_UTIL.findall(chip)
+    }
+    dark = mode == "dark"
+    text = utils.get((dark, "text")) or utils[(False, "text")]
+    tint = utils.get((dark, "bg")) or utils[(False, "bg")]
+    for surface, under in _chip_surfaces(_MODES[mode]).items():
+        fill = _over(_chip_colour(mode, tint[0]), under, tint[1])
+        ratio = _contrast(_chip_colour(mode, text[0]), fill)
+        assert ratio >= 4.5, f"{mode}: {rel} {chip!r} over {surface} is {ratio:.2f}:1"
+
+
+# Decision 16: the three amber template labels, as text on the surfaces they
+# sit on (the gallery's cards, the picker's popover, the editor's page).
+_AMBER_LABELS = {
+    "Requires TeX": ("components/templates/requires-tex-badge.tsx", "requires TeX"),
+    "ATS spacing": ("components/templates/template-gallery.tsx", "⚠ ATS spacing"),
+    "unsaved": ("app/templates/[id]/page.tsx", ">unsaved<"),
+}
+
+
+def _class_before(rel: str, marker: str) -> str:
+    source = _read(rel)
+    return re.findall(r'className="([^"]*)"', source[: source.index(marker)])[-1]
+
+
+@pytest.mark.parametrize("mode", list(_MODES))
+@pytest.mark.parametrize("label", list(_AMBER_LABELS))
+def test_template_warning_labels_meet_aa(label, mode):
+    utils = {(bool(d), k): c for d, k, c, _ in _CHIP_UTIL.findall(_class_before(*_AMBER_LABELS[label]))}
+    text = _chip_colour(mode, utils.get((mode == "dark", "text")) or utils[(False, "text")])
+    for surface in ("background", "card", "popover"):
+        ratio = _contrast(text, _rgb(_MODES[mode], surface))
+        assert ratio >= 4.5, f"{mode}: {label} on --{surface} is {ratio:.2f}:1"
 
 
 @pytest.mark.parametrize("mode", list(_MODES))

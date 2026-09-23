@@ -57,12 +57,12 @@ import { apiFetch, promoteJobToAgentQueue } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
   APPLICATION_STATUSES,
-  baseResumeLabel,
   type ApplicationStatus,
   type ApplicationSummary,
   type Job,
 } from "@/lib/types";
 import { PageHeader, PageShell } from "@/components/page-shell";
+import { useBaseResumeLabel } from "@/hooks/use-base-resume-label";
 
 // "saved" is the synthetic no-application state (a captured job you haven't
 // started on) — one name everywhere, not aspiring/not-applied/jobs.
@@ -168,6 +168,7 @@ function ApplicationsContent() {
   const qc = useQueryClient();
   const confirm = useConfirm();
   const sidebarHidden = useSidebarHidden();
+  const baseName = useBaseResumeLabel();
   const [filter, setFilter] = useState<Filter>(() => {
     const v = searchParams.get("status") ?? storedValue(FILTER_STORE_KEY);
     return v && (FILTERS as readonly string[]).includes(v)
@@ -601,7 +602,7 @@ function ApplicationsContent() {
                       </div>
                     </TableCell>
                     <TableCell className="text-muted-foreground max-w-0 truncate text-xs">
-                      {r.kind === "saved" ? "—" : baseResumeLabel(r.app.base_resume)}
+                      {r.kind === "saved" ? "—" : r.app.base_resume_name || baseName(r.app.base_resume)}
                     </TableCell>
                     <TableCell>
                       {r.kind === "saved" ? (

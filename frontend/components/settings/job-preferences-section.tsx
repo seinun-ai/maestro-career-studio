@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Check } from "lucide-react";
 import { toast } from "sonner";
 
 import { RolePicker } from "@/components/role-picker";
@@ -31,14 +32,19 @@ type JobPreferencesSetting = SettingEnvelope<JobPreferences>;
 
 const NOT_SPECIFIED = "__not_specified__";
 const REMOTE_OPTIONS = ["remote", "hybrid", "onsite", "any"] as const;
-const EMPLOYMENT_TYPES = ["full_time", "contract", "part_time", "internship"];
-
-function humanize(value: string) {
-  return value
-    .split("_")
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(" ");
-}
+const EMPLOYMENT_TYPES = ["full_time", "contract", "part_time", "internship"] as const;
+const EMPLOYMENT_LABEL = {
+  full_time: "Full-time",
+  contract: "Contract",
+  part_time: "Part-time",
+  internship: "Internship",
+} as const;
+const REMOTE_LABEL = {
+  remote: "Remote",
+  hybrid: "Hybrid",
+  onsite: "On-site",
+  any: "Any",
+} as const;
 
 function isRemoteOption(
   value: string,
@@ -86,6 +92,7 @@ function JobPreferencesEditor({
   roleCategories?: RoleCategory[];
 }) {
   const qc = useQueryClient();
+  const employmentLabelId = useId();
   const [locationsText, setLocationsText] = useState(initial.locations.join("\n"));
 
   const save = useMutation({
@@ -189,14 +196,18 @@ function JobPreferencesEditor({
           >
             <SelectTrigger id="job-preferences-remote" className="w-full">
               <SelectValue>
-                {remote === NOT_SPECIFIED ? "Not specified" : humanize(remote)}
+                {remote === NOT_SPECIFIED
+                  ? "Not specified"
+                  : isRemoteOption(remote)
+                    ? REMOTE_LABEL[remote]
+                    : remote}
               </SelectValue>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value={NOT_SPECIFIED}>Not specified</SelectItem>
               {REMOTE_OPTIONS.map((option) => (
                 <SelectItem key={option} value={option}>
-                  {humanize(option)}
+                  {REMOTE_LABEL[option]}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -249,10 +260,10 @@ function JobPreferencesEditor({
       </div>
 
       <div className="grid gap-1.5">
-        <Label className="text-xs" optional>
+        <Label id={employmentLabelId} className="text-xs" optional>
           Employment types
         </Label>
-        <div className="flex flex-wrap gap-2">
+        <div role="group" aria-labelledby={employmentLabelId} className="flex flex-wrap gap-2">
           {EMPLOYMENT_TYPES.map((type) => {
             const selected = preferences.employment_types.includes(type);
             return (
@@ -260,11 +271,12 @@ function JobPreferencesEditor({
                 key={type}
                 type="button"
                 size="sm"
-                variant={selected ? "default" : "outline"}
-                onClick={() => toggleEmployment(type)}
+                variant={selected ? "tonal" : "outline"}
                 aria-pressed={selected}
+                onClick={() => toggleEmployment(type)}
               >
-                {humanize(type)}
+                {selected && <Check />}
+                {EMPLOYMENT_LABEL[type]}
               </Button>
             );
           })}

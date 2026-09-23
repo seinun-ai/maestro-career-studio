@@ -179,12 +179,61 @@ table, deviations, anything queued or deferred, and any concerns.
 
 | Task | Planned | Did instead | Why (Goal Card line) |
 |---|---|---|---|
+| 3 | Assign `doc` with no cast | Cast `customized_json` to `ResumeLike` at the assignment | The field is `Record<string, unknown>`; tsc rejects it as `ResumeLike`. Pin strings are unchanged. Speak the user's language. |
+| 4 | Name field only on frontend `ApplicationDetail` | Also on `Application`, which `ApplicationDetail` extends | The details menu is typed as `Application`. Speak the user's language. |
+| 4 | Job detail embeds `ApplicationRead`, which stays without the name | The menu loads `GET /api/applications/{id}` when opened if that record has no name | Otherwise a soft-deleted résumé reads as "Ds Base" there. `jobs.py` is outside this lane's files. Speak the user's language. |
+| 4 | Dialog list queries kept `enabled: open` | `useBaseResumes()` takes no enabled flag | Both dialogs mount only while open, so the fetch still starts then. One list query. |
+| 4 | Picker "no engine" sentence in this task's conventions edit | Left for task 7, which changes the picker | Writing it here would describe code this commit does not contain. Conventions change with the code. |
+| 5 | Appendix comment names the utility `outline-none` inside `TabsContent` | Comment says "never set the outline style to none" and does not contain that token | The pin rejects the token anywhere in the panel function, including a comment. The trap is still stated. Accessibility is not negotiable. |
+| 6 | `company-monogram.tsx` copies the old Interviewing and Accepted chip classes | Left unchanged | Those strings are outside this task's files, and the pin does not read that file. Same pairs can still fail there. Flagged, not fixed. |
+| 7 | Appendix badge strip hides only the engine chip in the picker | Also hid the status badge while picking | Owner decision 14: the picker lists only ready templates and shows no status badge. |
+| 3–7 (review) | Lane as delivered | Claude review fixes, one commit: `TabsContent`'s ring is a `focus-visible:after:` overlay (z-50, `isolate`, 4px outside) because a panel's own outline paints under `relative`/animated cards (self-scrolling panels keep an inset outline); picker selection moved INSIDE the card (overlay edge + Check) so the offset ring is only focus, with `aria-describedby` for the default mark and warning badges; `useBaseResumeName` names one possibly soft-deleted résumé the same everywhere (list, else its own row), replacing the Details menu's per-open application fetch; `base_resume_name` on `/api/jobs/match`; monogram shades to AA; decision 16's computed contrast pin (Requires TeX, ATS spacing, unsaved over page/card/popover, both modes) now delivered, replacing the `amber-600` ban; 18 pins that let their regressions through now catch them (39/39 mutants killed) | Accessibility is not negotiable; speak the user's language; contrast pinned by computed tests |
 
 ## Gate results
 
 | Task | Gate | Result |
 |---|---|---|
+| 3 | pins `test_frontend_plain_words.py` | 4 passed; each pin failed alone under mutation, then restored |
+| 3 | node `lib/*.test.ts` | 92 passed (6 new) |
+| 3 | tsc / lint | tsc clean; lint 0 errors, 5 baseline warnings |
+| 3 | `test_frontend_*.py` | 289 passed |
+| 3 | slop frontend | OK; 495 duplicated lines, 41 clones (ceiling 505/42) |
+| 3 | browser | slow load, failed apply, one-of-two clicks, reload section words, sheet propose-fail then sentence, apply closes. Light 1280 and dark 375. |
+| 4 | pins | slug, archived hook, one list fetch, analytics fallback string. Each failed alone under mutation, then restored |
+| 4 | backend name tests | list/detail name; missing slug is null; archive and soft-delete keep the name. Split so neither test reaches cc 10 |
+| 4 | tsc / lint / node | tsc clean; lint 0 errors, 5 baseline warnings; node 92 passed (unchanged) |
+| 4 | `test_frontend_*.py` | included in the full suite |
+| 4 | full backend + ruff | 4591 passed, 2 skipped; ruff clean on the touched Python |
+| 4 | slop | frontend 495 lines / 41 clones; backend hotspot count stayed 424 |
+| 4 | browser | tracker, proposals pill, score card, apply-as-is confirm, and the details menu show "Data science base". Slow list shows "Ds Base" then the name. A failed list stays "Ds Base", never blank. Archived and soft-deleted rows stay named. Dark 375. |
+| 5 | pin `test_tab_panels_show_a_solid_inset_focus_outline` | failed before the class swap; failed again when `outline-none` was put back; passes restored |
+| 5 | `test_frontend_color_roles.py` + plain words | color roles green after the comment fix; plain words still green |
+| 5 | lint | 0 errors, 5 baseline warnings |
+| 5 | slop frontend | ratchet OK |
+| 5 | browser | Tab into a studio panel: 2px inset outline, light 4.21:1, dark 5.42:1. Arrow keys still move tabs. A click focuses the panel and paints no outline. Analytics panel matches. |
+| 6 | generalised chip pin | before the shade move it failed on Interviewing 4.23, Accepted 4.14, Queued 4.49, Approved 4.14, Completed 4.46. After the move, 39 chip tests passed. Reverting Interviewing to amber-700 failed that one case at 4.23, then restored |
+| 6 | theme shades | copied OKLCH values match the installed Tailwind theme |
+| 6 | lint / slop | lint 0 errors, 5 baseline warnings; frontend and backend ratchets OK |
+| 6 | browser pixels | Interviewing 5.93 page / 5.67 hovered row; Accepted 5.97 light / 11.03 dark; Queued 6.78 light / 7.22 dark; Completed 5.89; ATS spacing 5.03 light / 10.41 dark. Approved was not pixel-sampled: reaching that status requires final_review evidence. The pin covers it. |
+| 7 | selection and picker pins | failed before the controls changed; removing the employment Check failed that pin alone; restored and passing |
+| 7 | tsc / lint / slop | tsc clean; lint 0 errors, 5 baseline warnings; frontend 495 lines / 41 clones |
+| 7 | browser | Employment types: press shows a Check and `aria-pressed`, a second click releases, the group is named, including dark. A section preset presses and releases when the section name is typed. Picker: no LaTeX/Ready chips; default choice shows a Check; Tab lands on a card whose ring is offset 2px. Manage gallery says Ready and LaTeX. Gap-target chips were not opened: the scratch stack had no tailoring session. The pin covers their pressed state and the alpha removal. |
+| review | fixes commit | pins 361 (`test_frontend_*`), full backend 4662 passed / 2 skipped, ruff clean; tsc clean, lint 0 errors / 5 warnings, node 92, build OK; slop backend OK (hotspots 424) and frontend OK (495 lines / 41 clones), on a clean copy; 39/39 mutants killed (the review's 18 survivors + 21 for this commit), each by its intended pin; real Chrome, light and dark: panel ring on studio, `/career`, job Overview and Score & Tailor, Analytics (all four visible edges, 4.21:1 light / 5.42:1 dark, no `relative` descendant moved, ≥20px clip slack), click paints nothing, scope picker keeps its inset outline after scrolling; picker bands `RR..PP` (focus 2px outside, selection inside), descriptions read "Default template requires TeX" / "requires TeX ⚠ ATS spacing"; soft-deleted base named "Legacy analyst résumé" on every chat card, the Proposals pill and the Details menu; monogram worst 5.21:1 light / 7.52:1 dark incl. hovered rows |
 
 ## Queued for Task 20 (SYSTEM.md changes Claude applies)
+
+- §11 item 30: delete only the clause that the Applications table's Base column shows `baseResumeLabel(slug)` ("Ds Base") instead of the résumé's `display_name`. Keep the Job market bars, the Analytics Employment/Level filters, and the MCP `explore_*` role-label clauses. Do not delete the whole item.
+- §11 item 28: delete only the clause that the studio section tabs' `TabsContent` panels take focus with no visible ring. Keep the agent-pipeline bar and the dark ring on the FAB. Do not delete the whole item.
+
+- §11 (pre-existing, found in the lane-2 review, out of this lane's scope; fold into item 32 or a new item):
+  `app/base-resumes/page.tsx:~261` asks "Delete {slug}?" (a slug, not the name);
+  `components/career/inbox-panel.tsx:~388` prints `{source.resume_key}`;
+  `components/resume-editor/kb-import-drawer.tsx:~330` prints the raw `{entity.status}`;
+  the template editor's compile toast says "LaTeX error" for Typst templates too;
+  the job page's Details date field blur-saves `applied_at: null` when Escape leaves it;
+  a chat edit card's Discard stays clickable while Apply is in flight.
+- §11 (noted, not fixed): the chat "Edited" card and the project card name an APPLICATION target only as
+  "tailored resume" — their payloads carry the application id and no job words. The edit card names the
+  job ("tailored resume for Data Scientist at Acme") while it has the application loaded, i.e. while pending.
 
 ## Deferred to merge (edits left for Claude, with file:line)

@@ -1,7 +1,7 @@
 "use client";
 
-import type { ReactNode } from "react";
-import { Star } from "lucide-react";
+import { useId, type ReactNode } from "react";
+import { Check, Star } from "lucide-react";
 
 import {
   GalleryCard,
@@ -29,33 +29,49 @@ export function knobCoverage(template: TemplateSummary): string {
   return `${supported}/${Object.keys(FORMATTING_DEFAULTS).length}`;
 }
 
+/** A chosen picker card's edge: an overlay INSIDE the card, above the preview
+ *  image and the default star (z-20), so it never touches the focus ring's
+ *  outside band. The card is `isolate`, so z-30 stays inside it. */
+const SELECTED_CARD_EDGE =
+  "after:pointer-events-none after:absolute after:inset-0 after:z-30 after:rounded-xl after:border-2 after:border-primary";
+
+export const ENGINE_LABEL: Record<TemplateSummary["engine"], string> = {
+  latex: "LaTeX",
+  typst: "Typst",
+};
+export const STATUS_LABEL: Record<TemplateSummary["status"], string> = {
+  ready: "Ready",
+  draft: "Draft",
+};
+
 /**
- * Status and engine only.
- *
- * The knob count moved off the face into the title tooltip: it is a property
- * you check when something is wrong, not one you scan a gallery by, and the
- * template editor (one click away now that the card links there) has a whole
- * Knobs tab. The ATS-spacing warning stays, because it is conditional, rare,
- * and reports an actual defect in the rendered output — burying that would be
- * hiding a problem rather than reducing noise.
+ * Status and engine only, and only when authoring. The picker is choosing a
+ * look, so both chips are noise there; the "can't render here" fact stays
+ * the Requires TeX badge.
  */
-function TemplateBadgeStrip({ template }: { template: TemplateSummary }) {
+function TemplateBadgeStrip({
+  template,
+  picking,
+  id,
+}: {
+  template: TemplateSummary;
+  picking?: boolean;
+  /** The picker button's description: its name is only the template's. */
+  id?: string;
+}) {
   const isReady = template.status === "ready";
 
   return (
-    <div className="flex min-w-0 flex-wrap items-center gap-1">
+    <div id={id} className="flex min-w-0 flex-wrap items-center gap-1">
       {template.archived_at && <Badge variant="secondary">Archived</Badge>}
-      <Badge variant={isReady ? "default" : "secondary"}>
-        {template.status}
-      </Badge>
-      <Badge variant="outline" className="font-mono">
-        {template.engine}
-      </Badge>
+      {/* Choosing a look, the engine and status are noise; authoring, they are the source language and state. */}
+      {!picking && <Badge variant={isReady ? "default" : "secondary"}>{STATUS_LABEL[template.status]}</Badge>}
+      {!picking && <Badge variant="outline">{ENGINE_LABEL[template.engine]}</Badge>}
       {!template.engine_available && <RequiresTexBadge />}
       {isReady && template.parse_certified === false && (
         <Badge
           variant="outline"
-          className="border-amber-500/40 text-amber-600 dark:text-amber-400"
+          className="border-amber-500/40 text-amber-700 dark:text-amber-400"
           title="A strict PDF text extractor joins words in this template's output, so some ATS may misread it. Prefer a certified template."
         >
           ⚠ ATS spacing
@@ -68,23 +84,33 @@ function TemplateBadgeStrip({ template }: { template: TemplateSummary }) {
 function TemplateCardBody({
   template,
   actions,
+  picking,
+  selected,
+  describedBy,
 }: {
   template: TemplateSummary;
   actions?: ReactNode;
+  picking?: boolean;
+  selected?: boolean;
+  /** Id prefix for the default mark and the badge strip, which the picker
+   *  button names in `aria-describedby`. */
+  describedBy?: string;
 }) {
   const isReady = template.status === "ready";
   return (
     <>
       {/* Default is a corner mark, not a status pill — keeps the badge strip
           from competing for horizontal space. It sits top-LEFT because the
-          top-right corner now belongs to the actions menu. */}
+          top-right corner now belongs to the actions menu. Its words are
+          real (sr-only) text, so a description that points here reads them. */}
       {template.is_default && (
         <span
+          id={describedBy && `${describedBy}-default`}
           className="text-primary bg-background/85 absolute top-2.5 left-2.5 z-20 rounded-full p-1 backdrop-blur"
           title="Default template"
-          aria-label="Default template"
         >
           <Star className="size-3.5 fill-current" aria-hidden="true" />
+          <span className="sr-only">Default template</span>
         </span>
       )}
       <TemplateThumbnail template={template} />
@@ -98,7 +124,7 @@ function TemplateCardBody({
               you choose by; the id stays one hover away, and the Edit link is
               /templates/<id> whenever you actually need to copy it. */}
           <CardTitle
-            className="min-w-0 truncate text-base"
+            className="flex min-w-0 items-center gap-1.5 text-base"
             title={[
               template.display_name && template.display_name !== template.id
                 ? `${template.display_name} · ${template.id}`
@@ -106,12 +132,17 @@ function TemplateCardBody({
               `Knobs ${knobCoverage(template)}`,
             ].join("\n")}
           >
-            {template.display_name ?? template.id}
+            {selected && <Check className="text-primary size-4 shrink-0" aria-hidden="true" />}
+            <span className="truncate">{template.display_name ?? template.id}</span>
           </CardTitle>
           {/* Actions share the badges' row so they cost no extra height, and
               being the last row puts them at the card's bottom-right. */}
           <div className="flex items-end gap-2">
-            <TemplateBadgeStrip template={template} />
+            <TemplateBadgeStrip
+              template={template}
+              picking={picking}
+              id={describedBy && `${describedBy}-badges`}
+            />
             {actions && <GalleryCardActions>{actions}</GalleryCardActions>}
           </div>
         </div>
@@ -148,6 +179,7 @@ export function TemplateGallery({
   /** Manage mode: the corner menu. Rendered ABOVE the stretched link. */
   renderActions?: (t: TemplateSummary) => ReactNode;
 }) {
+  const idPrefix = useId();
   return (
     <GalleryGrid>
       {templates.map((t) => {
@@ -169,6 +201,7 @@ export function TemplateGallery({
 
         if (onSelect) {
           const selected = selectedId === t.id;
+          const describedBy = `${idPrefix}-${t.id}`;
           return (
             // The button only supplies interaction affordances (focus ring,
             // text alignment). GalleryCard owns every visual — including the
@@ -181,16 +214,32 @@ export function TemplateGallery({
               key={t.id}
               type="button"
               aria-pressed={selected}
+              // The name is the template's; the default mark and the warning
+              // badges (requires TeX, ATS spacing) are its description.
+              aria-label={t.display_name ?? t.id}
+              aria-describedby={
+                t.is_default ? `${describedBy}-default ${describedBy}-badges` : `${describedBy}-badges`
+              }
               onClick={() => onSelect(t)}
-              className="rounded-xl text-left focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+              // Focus is only ever the ring OUTSIDE the card, 2px off it.
+              // Selection lives INSIDE the card: a 2px primary edge drawn over
+              // the preview, plus a Check before the name. `--card` equals
+              // `--popover`, so an outside selection ring and the offset focus
+              // ring used to merge into one 4px blue band.
+              className="rounded-xl text-left focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-popover focus-visible:outline-none"
             >
               <GalleryCard
                 className={cn(
-                  "h-full transition-shadow hover:ring-foreground/20",
-                  selected && "ring-2 ring-primary",
+                  "isolate h-full transition-shadow hover:ring-foreground/20",
+                  selected && SELECTED_CARD_EDGE,
                 )}
               >
-                <TemplateCardBody template={t} />
+                <TemplateCardBody
+                  template={t}
+                  picking
+                  selected={selected}
+                  describedBy={describedBy}
+                />
               </GalleryCard>
             </button>
           );

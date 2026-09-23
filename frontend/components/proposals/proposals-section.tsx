@@ -33,11 +33,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { LoadErrorState } from "@/components/load-error-state";
+import { useBaseResumeName } from "@/hooks/use-base-resume-label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
-  baseResumeLabel,
   type Proposal,
   type ProposalListResponse,
   type ProposalStatus,
@@ -723,6 +723,7 @@ function ProposalRow({
 }) {
   const job = proposal.job;
   const base = chosenBase(proposal);
+  const baseName = useBaseResumeName(base ?? "", base !== null);
   const score = chosenScore(proposal);
   const isDup = duplicateKeys.has(duplicateKey(proposal));
   const showCheckbox = lane === "triage";
@@ -779,7 +780,7 @@ function ProposalRow({
             </div>
             {base ? (
               <span className="text-muted-foreground hidden shrink-0 rounded-full bg-muted/70 px-2 py-0.5 text-xs sm:inline-flex">
-                {baseResumeLabel(base)}
+                {baseName}
                 {score != null ? ` · ${score}` : ""}
               </span>
             ) : null}

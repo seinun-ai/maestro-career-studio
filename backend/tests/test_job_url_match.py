@@ -207,6 +207,33 @@ def test_match_exact_url_returns_job_and_newest_application(db_session):
     assert body["application"]["job_title"] == "Data Scientist"
 
 
+def test_match_names_the_application_base_resume_even_after_a_delete(db_session):
+    from app.models.base_resume import BaseResume
+
+    job = _job(LEVER, "named")
+    db_session.add(job)
+    db_session.add(
+        BaseResume(
+            slug="ds_named",
+            display_name="Data science base",
+            data_json={"contact": {"name": "Ada Madeup"}},
+            deleted_at=datetime(2026, 9, 1, tzinfo=UTC),
+        )
+    )
+    db_session.flush()
+    db_session.add(Application(job_id=job.id, base_resume="ds_named", status="applied"))
+    db_session.commit()
+
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        response = TestClient(app).get("/api/jobs/match", params={"url": LEVER})
+    finally:
+        app.dependency_overrides.clear()
+
+    # Same joined name as GET /api/applications: a soft-deleted base keeps it.
+    assert response.json()["application"]["base_resume_name"] == "Data science base"
+
+
 def test_match_unknown_page_returns_none(db_session):
     # The NULL-source_url row is here to show a link-less job is harmless, not
     # to guard anything: is_same_posting(None, ...) returns False rather than

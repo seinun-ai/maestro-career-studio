@@ -34,6 +34,7 @@ from app.schemas.job_match import JobMatchResult
 from app.schemas.job_search_brief import JobSearchBriefResponse
 from app.services import (
     artifacts,
+    base_resume_data,
     jd_extraction,
     job_search_brief,
     job_url_match,
@@ -475,6 +476,7 @@ def match_job_by_url(url: str, db: Annotated[Session, Depends(get_db)]):
         summary.job_title = job.title
         summary.job_company = job.company
         summary.job_location = job.location
+        summary.base_resume_name = base_resume_data.display_name_of(db, application.base_resume)
 
     return JobMatchResult(
         match="exact",

@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Pencil, Plus, Sparkles, X } from "lucide-react";
 import { toast } from "sonner";
@@ -25,10 +25,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { apiFetch, kbAdapt, kbAdaptApply, kbPort } from "@/lib/api";
+import { kbAdapt, kbAdaptApply, kbPort } from "@/lib/api";
+import { useBaseResumes } from "@/hooks/use-base-resume-label";
 import { notifyRenderOutcome } from "@/lib/render-note";
 import type {
-  BaseResumeSummary,
   KBAdaptAction,
   KBAdaptDropped,
   KBEntityDetail,
@@ -88,11 +88,7 @@ export function SendToResumeDialog({
   // Certifications and custom sections port directly — there is nothing to adapt.
   const adaptable = entity.kind !== "certification" && entity.kind !== "extra";
 
-  const resumes = useQuery({
-    queryKey: ["base-resumes"],
-    queryFn: () => apiFetch<BaseResumeSummary[]>("/api/base-resumes"),
-    enabled: open,
-  });
+  const resumes = useBaseResumes();
   const targets = resumes.data ?? [];
   const selectedTarget = targets.find((resume) => resume.slug === targetSlug);
   const targetLabel = selectedTarget

@@ -36,9 +36,9 @@ import {
 } from "@/components/ui/select";
 
 import { JobTrackingUrlField } from "@/components/job-tracking-url-field";
+import { useBaseResumeName } from "@/hooks/use-base-resume-label";
 import { apiFetch, apiUrlForBrowserPdf } from "@/lib/api";
 import { notifyRenderNote } from "@/lib/render-note";
-import { baseResumeLabel } from "@/lib/types";
 import type { Application, Referral, RenderResult } from "@/lib/types";
 
 function formatDateInput(value: string | null | undefined): string {
@@ -119,6 +119,11 @@ export function ApplicationDetailsMenu({
 }) {
   const confirm = useConfirm();
   const [open, setOpen] = useState(false);
+  // Job detail embeds ApplicationRead, which carries no joined name. The hook
+  // names it from the list, and reads the résumé's own row only when the list
+  // lacks it (soft-deleted) and the menu is open.
+  const listedName = useBaseResumeName(app.base_resume, open && !app.base_resume_name);
+  const resumeName = app.base_resume_name || listedName;
   const { patch, deleteApp } = useApplicationMutations({
     applicationId: app.id,
     jobId,
@@ -193,7 +198,7 @@ export function ApplicationDetailsMenu({
 
           <div className="grid gap-1">
             <span className="text-muted-foreground text-xs">Base resume</span>
-            <span className="text-sm">{baseResumeLabel(app.base_resume)}</span>
+            <span className="text-sm">{resumeName}</span>
           </div>
 
           <div className="grid gap-1.5">

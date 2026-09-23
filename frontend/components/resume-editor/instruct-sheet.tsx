@@ -5,7 +5,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Loader2, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
-import { describeOp } from "@/components/chat/edit-proposal-card";
+import { EditWordsList } from "@/components/edit-words-list";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -19,8 +19,9 @@ import {
 } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 import { apiFetch } from "@/lib/api";
+import { describeEdits } from "@/lib/describe-edit";
 import { notifyRenderNote } from "@/lib/render-note";
-import type { BaseResumeDetail, BaseResumeProposal } from "@/lib/types";
+import type { BaseResumeDetail, BaseResumeProposal, ResumeData } from "@/lib/types";
 
 /** Starters, not a menu: each one seeds the textarea and stays editable. The
  *  first three are edits, the last two are questions — the sheet answers both
@@ -44,11 +45,15 @@ export function InstructSheet({
   open,
   onOpenChange,
   targetSlug,
+  resume,
   onApplied,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   targetSlug: string;
+  /** The SERVER copy the proposal was made against and Apply will hit, never
+   *  the unsaved form: its entries are what the ops' indices point at. */
+  resume: ResumeData | null | undefined;
   /** The PATCHed record, so the editor adopts it instead of a stale form. */
   onApplied: (result: BaseResumeDetail) => void;
 }) {
@@ -172,13 +177,7 @@ export function InstructSheet({
                 <p className="mt-2 text-sm whitespace-pre-wrap">{proposal.notes}</p>
               ) : null}
               {hasOps ? (
-                <ul className="text-muted-foreground mt-2 space-y-1 text-xs">
-                  {proposal.ops.map((op, i) => (
-                    <li key={i} className="truncate font-mono">
-                      {describeOp(op)}
-                    </li>
-                  ))}
-                </ul>
+                <EditWordsList edits={describeEdits(proposal.ops, resume)} />
               ) : (
                 <p className="text-muted-foreground mt-2 text-xs">
                   No edits proposed. Ask for a change in those words if you

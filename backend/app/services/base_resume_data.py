@@ -62,6 +62,16 @@ def selectable_base_resume_slugs(session: Session) -> list[str]:
     )
 
 
+def display_name_of(session: Session, slug: str) -> str | None:
+    """A base resume's own name for a payload that references it by slug.
+
+    Reads the row whatever its state: an application outlives both archiving
+    and a soft delete, so it keeps naming its resume. None when the row is
+    gone or carries no name (the client falls back to the slug's words)."""
+    row = session.get(BaseResume, slug)
+    return (row.display_name or None) if row is not None else None
+
+
 def write_base_resume_json(slug: str, data: dict) -> None:
     """Mirror a base resume's JSON data to disk (canonical write helper).
 

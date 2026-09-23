@@ -2036,3 +2036,54 @@ def test_coherence_check_409_when_not_tailored_and_flags_pass_through(
 
     assert response.status_code == 200
     assert response.json() == {"flags": [{"issue": "tense"}]}
+
+
+def _named_base_pair(db_session):
+    from app.models.base_resume import BaseResume
+
+    job = _job(db_session, role_category="data_engineer")
+    db_session.add(
+        BaseResume(
+            slug="ds_named",
+            display_name="Data science base",
+            data_json={"contact": {"name": "Ada Madeup", "email": "ada@example.invalid"}},
+        )
+    )
+    named = Application(job_id=job.id, base_resume="ds_named", status="draft")
+    missing = Application(job_id=job.id, base_resume="no_such_base", status="draft")
+    db_session.add_all([named, missing])
+    db_session.commit()
+    return named
+
+
+def test_list_and_detail_name_the_base_resume(db_session):
+    named = _named_base_pair(db_session)
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        client = TestClient(app)
+        listed = client.get("/api/applications").json()
+        detail = client.get(f"/api/applications/{named.id}")
+    finally:
+        app.dependency_overrides.clear()
+    by_slug = {row["base_resume"]: row["base_resume_name"] for row in listed}
+    assert by_slug["ds_named"] == "Data science base"
+    assert by_slug["no_such_base"] is None
+    assert detail.status_code == 200
+    assert detail.json()["base_resume_name"] == "Data science base"
+
+
+def test_archived_and_deleted_base_keeps_its_name(db_session):
+    named = _named_base_pair(db_session)
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        client = TestClient(app)
+        archived = client.post("/api/base-resumes/ds_named/archive")
+        after_archive = client.get(f"/api/applications/{named.id}")
+        deleted = client.delete("/api/base-resumes/ds_named")
+        after_delete = client.get(f"/api/applications/{named.id}")
+    finally:
+        app.dependency_overrides.clear()
+    assert archived.status_code == 200
+    assert after_archive.json()["base_resume_name"] == "Data science base"
+    assert deleted.status_code == 204
+    assert after_delete.json()["base_resume_name"] == "Data science base"

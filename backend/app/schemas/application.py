@@ -66,6 +66,10 @@ class ApplicationSummary(BaseModel):
     job_title: str | None = None
     job_company: str | None = None
     job_location: str | None = None
+    # The base resume's own name, joined like the job fields. Archived and
+    # soft-deleted rows are included, since the application outlives both.
+    # Null when it has none.
+    base_resume_name: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -97,6 +101,10 @@ class ApplicationRead(BaseModel):
 
 class ApplicationDetail(ApplicationRead):
     job: JobRead | None = None
+    # The base resume's own name, joined like the job fields. Archived and
+    # soft-deleted rows are included, since the application outlives both.
+    # Null when it has none.
+    base_resume_name: str | None = None
     # Present on PATCH /edits responses: per-op echo of which full-array entries
     # were touched (index includes enabled:false rows omitted from PDF render).
     applied: list[dict[str, Any]] | None = None
