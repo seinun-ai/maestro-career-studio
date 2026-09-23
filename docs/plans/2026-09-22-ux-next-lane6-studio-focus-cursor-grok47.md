@@ -180,6 +180,8 @@ table, deviations, anything queued or deferred, and any concerns.
 | 17 | `useEditToggle` as `toggle.*` | Destructured at every caller, and the hook takes a type parameter for the edit view (`<tr>` for a referral row). The lint reads `toggle.editRef` as a ref read during render | Lint at error level |
 | 17 | `useFocusHandoff` on `ReferralsTable` for the LAST delete | Also: `focusableWhenDisabled` on each row's Delete and Save, a handoff on each view row, and a `tabIndex={-1}` wrapper around the table as the row's return target. The probe before any change showed a slow DELETE on a MIDDLE row also dropping focus to BODY (the confirm returned to a Delete button that had disabled itself) | Focus never dropped to `<body>` (same class, same file) |
 | 17 | `finalFocus={overflowRef}` on `InstructSheet` (4 overlays in the base studio) | Not passed: `instruct-sheet.tsx` is lane 5's. Pin asserts 3. In the browser Escape from Ask for changes returned to ⋯ by Base UI's default on both paths (key and click). See *Deferred to merge* | Scope: lane 5 owns the file |
+| 18 | Arm `focusNext` in the rename's `commitRename` and Escape | Also `e.preventDefault()` in the rename input's Enter branch. Focus now moves to the rename button inside Enter's keydown, and Enter's activation then pressed that button and reopened the rename (seen in the browser; the chip edit and the title already prevented default) | Focus lands somewhere sensible; no surprise reopen |
+| 18 | Browser: `keyboard.down("Meta")`, press, up, then type | Both that and a burst (the chord and the keys sent over CDP without waiting between them, so they queue behind the chord). A/B against the old hook: it lost the typed keys in every case (Playwright sequence: `abc` kept, `xyz` lost; burst, mid-caret and Ctrl+S too); the new hook kept all of them | Never lose typed text |
 
 ## Gate results
 
@@ -191,6 +193,11 @@ table, deviations, anything queued or deferred, and any concerns.
 | 17 | build | `npm run build` OK |
 | 17 | slop | frontend OK, duplication 448 lines / 39 → 37 clones (ceiling 468/39; clean `git archive` export); backend OK, `complexity_hotspots` 424 (one new pin reached cc 13 and was split) |
 | 17 | browser | Playwright (headless Chrome, real keys and clicks), both studios, light and dark: every control in F1's list lands on a named target, never BODY (see report) |
+| 18 | pins | `test_frontend_studio.py` 60 passed (4 new, seen failing first); every `test_frontend_*.py` 495 passed |
+| 18 | mutation check | 14 mutants, 14 killed by the pin that names them (`muts18.json`, `muts18b.json`) |
+| 18 | tsc / lint / node / build | clean / 0 errors, 5 warnings / 143 of 143 / OK |
+| 18 | slop | frontend OK, 448/37 (clean export); backend OK, hotspots 424 |
+| 18 | browser | Playwright, real key events: Summary (tailored) and a contact field keep every key typed with the chord (end and mid-text caret), Ctrl+S too; the chip add row's `Kafka` is saved and `Flink` lands in the add row; an inline chip edit, a section rename and the title save and hand focus to the add row, the rename button, the pencil; two chords 50 ms apart made one PUT |
 
 ## Queued for Task 20 (SYSTEM.md changes Claude applies)
 

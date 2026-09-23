@@ -175,10 +175,16 @@
     studio's toolbar is. The chord is always swallowed (the browser's Save
     page saves app HTML) but never saves on repeat, mid-IME, once another
     handler claimed it, or from inside a dialog, where "Load the latest
-    version?" would be overwritten. It blurs a focused field first, so a
-    blur-committed draft (chip input, section rename) saves as a click would,
-    then refocuses and saves on the next task; a chord inside that gap is
-    swallowed, so one chord is one save. Save (key or click)
+    version?" would be overwritten. It blurs a focused field inside
+    `flushSync`, so a blur-committed draft (chip input, section rename) is
+    committed before it saves, as a click would, and puts focus back before
+    the handler returns, so keys typed right after the chord land in the
+    field (a refocus on the next task dropped them on `<body>`). A field that
+    unmounts on blur (an inline chip edit, a section rename, the base
+    studio's title) moves focus itself in that commit: to the add row, the
+    rename button, the pencil. Such a field's Enter handler calls
+    `preventDefault`, or Enter's activation presses the button focus just
+    moved to (the rename reopened). Save (key or click)
     applies a pending raw-JSON draft first and saves exactly what it applied;
     an invalid draft saves nothing. `isSaveShortcut` falls back to
     `code === "KeyS"` only when the layout types no Latin letter there:

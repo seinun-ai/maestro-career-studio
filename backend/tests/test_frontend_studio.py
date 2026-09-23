@@ -602,3 +602,64 @@ def test_job_page_preview_box_has_no_hidden_fill():
     tokens = re.findall(r'<div className="([^"]*)"', head)[-1].split()
     assert "h-[80vh]" in tokens
     assert not [t for t in tokens if t.split(":")[-1].lstrip("!").startswith("bg-")]
+
+
+# --- Task 18: keys typed with Cmd/Ctrl+S are never lost (F3) --------------
+
+
+def _squash(source: str) -> str:
+    return re.sub(r"\s+", " ", source)
+
+
+def _body(src: str, head: str, end: str = "\n  };\n") -> str:
+    start = src.index(head)
+    return src[start : src.index(end, start)]
+
+
+_SHORTCUT = _read("hooks/use-save-shortcut.ts")
+
+
+def test_save_shortcut_commits_a_draft_with_no_gap():
+    handler = _body(_SHORTCUT, "const onKeyDown = (event: KeyboardEvent) =>", "\n    };\n")
+    # The blur's commit lands NOW, and focus is back before the handler
+    # returns, so a key queued behind the chord lands in the field.
+    assert "setTimeout" not in _SHORTCUT, "a refocus on the next task drops the keys typed in between"
+    assert "const back = focusReturnPoint(field);" in handler[: handler.index("flushSync(")]
+    tail = handler[handler.index("flushSync(() => field.blur());") :]
+    assert tail.index("focusIfDropped(back());") < tail.index("save();")
+    assert 'import { flushSync } from "react-dom";' in _SHORTCUT
+
+
+def test_a_chip_edit_that_closes_hands_focus_to_the_add_row():
+    chips = _read("components/ui/chip-input.tsx")
+    assert "const focusNext = useFocusOnNextCommit();" in chips
+    for head in ("const commitEdit = () =>", "const cancelEdit = () =>"):
+        body = _body(chips, head)
+        # Armed before any early exit that follows the close.
+        assert "setEditingIndex(null);\n    focusNext(addRowRef);" in body, head
+    add_row = chips[chips.rindex("<input") :]
+    assert "ref={addRowRef}" in add_row[: add_row.index("/>")]
+
+
+def test_a_rename_that_closes_hands_focus_to_its_button():
+    sections = _read("components/resume-editor/extra-sections-editor.tsx")
+    commit = _body(sections, "const commitRename = () =>")
+    assert "setRenaming(false);\n    focusNext(renameButtonRef);" in commit
+    escape = _squash(sections[sections.index('if (e.key === "Escape") {') :])
+    escape = escape[: escape.index("} else if")]
+    assert "setRenaming(false); focusNext(renameButtonRef);" in escape
+    # Focus lands on the button during Enter's keydown; without this, Enter's
+    # activation pressed it and reopened the rename.
+    enter = _squash(sections[sections.index('} else if (e.key === "Enter" && !titleCollides) {') :])
+    assert "e.preventDefault(); commitRename();" in enter[: enter.index("}", 1)]
+    button = sections[sections.index("ref={renameButtonRef}") :]
+    assert button.index('aria-label={renaming ? "Done renaming" : "Rename section"}') < 200
+
+
+def test_the_title_input_hands_focus_back_to_its_pencil():
+    title = _read("components/resume-editor/editable-title.tsx")
+    assert "setEditing(false);\n    focusNext(pencilRef);" in _body(title, "const commit = () =>")
+    escape = _squash(title[title.index('} else if (e.key === "Escape") {') :])
+    assert "setEditing(false); focusNext(pencilRef);" in escape[: escape.index("}", 1)]
+    pencil = title[title.index("<IconButton") :]
+    assert "ref={pencilRef}" in pencil[: re.search(r"\n\s*/>", pencil).end()]
