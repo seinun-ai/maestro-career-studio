@@ -48,6 +48,7 @@ import {
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { apiFetch } from "@/lib/api";
+import { isLoadFailure } from "@/lib/query-state";
 import type { Referral, ReferralCreate, ReferralPatch } from "@/lib/types";
 import { PageHeader, PageShell } from "@/components/page-shell";
 
@@ -132,15 +133,15 @@ export default function ReferralsPage() {
           ) : undefined
         }
       />
-      {referrals.isLoading ? (
-        <Skeleton className="h-40 w-full" />
-      ) : referrals.isError ? (
+      {isLoadFailure(referrals) ? (
         <LoadErrorState
           title="Couldn't load referrals."
-          detail={(referrals.error as Error).message}
+          detail={(referrals.error as Error | null)?.message}
           retrying={referrals.isFetching}
           onRetry={() => void referrals.refetch()}
         />
+      ) : referrals.isLoading ? (
+        <Skeleton className="h-40 w-full" />
       ) : populated ? (
         <ReferralsTable rows={rows} />
       ) : (

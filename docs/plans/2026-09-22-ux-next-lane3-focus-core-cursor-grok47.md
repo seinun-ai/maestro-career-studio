@@ -181,6 +181,10 @@ table, deviations, anything queued or deferred, and any concerns.
 | 8 | `use-last-seen.ts` snippet has no directive | Added `"use client"`, matching every other file in `hooks/` | No new dependencies; the hook uses `useState` and the rest of the folder is a client boundary. |
 | 8 | Appendix pins only the three focus asserts in `test_frontend_focus.py`; the single-flight guard pin is in wave 2's `test_frontend_single_flight.py` | Also pin `isLoadFailure`, the `unloadedLayer` copy, `useLastSeen`, and the guard flip in `test_frontend_focus.py` | Node tests are not in CI, and this lane builds the helpers with no call sites yet. The call-site parametrize stays in wave 2. |
 | 8 | `lib/formatting.ts` is listed on Task 9 | The `isLoadFailure` parity comment landed in this commit | The comment is the reason the two copies exist, and the Task 8 parity pin reads it. Task 9 still owns the panel simplification. |
+| 9 | Loading-gate pin is `index("isLoadFailure(") < index(marker)` | The applications pin compares `loadFailed ? (` with the skeleton | The const sits above the JSX, so the planned index passes even when the skeleton still renders first. |
+| 9 | `queries.some(isLoadFailure)` | `queries.some((q) => isLoadFailure(q))` | The planned call does not contain `isLoadFailure(`, so the caller pin would fail the code the appendix shows. |
+| 9 | Four route errors become a `LoadErrorState` swap; only health and the application page remember a 404 | The tailor route keeps "Tailoring session not found" and reads it through `useLastSeen`; `LoadErrorState` is the other failure | That page already treated 404 as its own state. A refetch would have flashed the generic error. Same Goal Card rule as the two named callers. |
+| 9 | F2's closer targets are optional | `tabIndex={-1}` on the chat column and the Q&A History section | Recovery would otherwise land on `#main-content`, far from the content that just loaded. |
 
 ## Gate results
 
@@ -193,6 +197,11 @@ table, deviations, anything queued or deferred, and any concerns.
 | 8 | `npm run lint` | 0 errors, 5 baseline warnings |
 | 8 | slop frontend | 505 duplicated lines, 42 clones (delta 0) |
 | 8 | slop backend | `complexity_hotspots` 424 (delta 0) |
+| 9 | `pytest tests/test_frontend_*.py` | 322 passed. New pins failed alone when the guarded line was broken, then restored |
+| 9 | `tsc --noEmit`, `npm run lint` | tsc clean; lint 0 errors, 5 baseline warnings |
+| 9 | `npm run build` | succeeded |
+| 9 | slop frontend / backend | frontend 491 duplicated lines, 41 clones (under 505/42); backend hotspots 424 |
+| 9 | browser | Playwright on the throwaway stack. Referrals, Applications, health, the base studio, and Profile: while retrying, focus stayed on Try again (`aria-disabled`, label Retrying…, detail unchanged); after recovery focus was `#main-content`, never `body`. A double-click sent one refetch and did not crash. With the route still aborted, focus stayed on the button until Try again re-enabled. An unknown application stayed "no longer exists" across a window blur and focus. |
 
 ## Queued for Task 20 (SYSTEM.md changes Claude applies)
 

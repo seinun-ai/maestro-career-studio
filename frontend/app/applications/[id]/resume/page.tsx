@@ -6,9 +6,11 @@ import { useQuery } from "@tanstack/react-query";
 
 import { FullscreenEditorPage } from "@/components/resume-editor/fullscreen-editor-page";
 import { TailoredResumeStudio } from "@/components/resume-editor/tailored-resume-studio";
+import { LoadErrorState } from "@/components/load-error-state";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch } from "@/lib/api";
+import { isLoadFailure } from "@/lib/query-state";
 import type { ApplicationDetail } from "@/lib/types";
 
 export default function ApplicationTailoredResumePage({
@@ -29,14 +31,21 @@ export default function ApplicationTailoredResumePage({
     queryFn: () => apiFetch<ApplicationDetail>(`/api/applications/${id}`),
   });
 
-  if (query.isError) {
+  if (isLoadFailure(query)) {
     return (
       <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-4 p-6">
-        <p className="text-destructive">Failed to load application.</p>
-        <Button
-          variant="outline"
-          nativeButton={false}
-          render={<Link href={`/applications/${id}`}>Back to application</Link>}
+        <LoadErrorState
+          title="Couldn't load this application."
+          detail={(query.error as Error | null)?.message}
+          retrying={query.isFetching}
+          onRetry={() => void query.refetch()}
+          action={
+            <Button
+              variant="outline"
+              nativeButton={false}
+              render={<Link href={`/applications/${id}`}>Back to application</Link>}
+            />
+          }
         />
       </main>
     );

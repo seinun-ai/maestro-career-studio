@@ -6,9 +6,11 @@ import { useQuery } from "@tanstack/react-query";
 
 import { EditorBody } from "@/components/resume-editor/editor-body";
 import { FullscreenEditorPage } from "@/components/resume-editor/fullscreen-editor-page";
+import { LoadErrorState } from "@/components/load-error-state";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch } from "@/lib/api";
+import { isLoadFailure } from "@/lib/query-state";
 import type { BaseResumeDetail } from "@/lib/types";
 
 export default function BaseResumeEditorPage({
@@ -22,14 +24,21 @@ export default function BaseResumeEditorPage({
     queryFn: () => apiFetch<BaseResumeDetail>(`/api/base-resumes/${slug}`),
   });
 
-  if (query.isError) {
+  if (isLoadFailure(query)) {
     return (
       <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-4 p-6">
-        <p className="text-destructive">Failed to load resume.</p>
-        <Button
-          render={<Link href="/base-resumes">Back to list</Link>}
-          nativeButton={false}
-          variant="outline"
+        <LoadErrorState
+          title="Couldn't load this resume."
+          detail={(query.error as Error | null)?.message}
+          retrying={query.isFetching}
+          onRetry={() => void query.refetch()}
+          action={
+            <Button
+              render={<Link href="/base-resumes">Back to list</Link>}
+              nativeButton={false}
+              variant="outline"
+            />
+          }
         />
       </main>
     );

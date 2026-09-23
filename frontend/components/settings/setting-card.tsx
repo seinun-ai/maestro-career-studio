@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 
 import { LoadErrorState } from "@/components/load-error-state";
+import { isLoadFailure } from "@/lib/query-state";
 import {
   Card,
   CardContent,
@@ -41,6 +42,8 @@ export type SettingQuery<T> = {
   data: T | undefined;
   isError: boolean;
   isFetching: boolean;
+  /** How many times the query has failed; a refetch does not reset it. */
+  errorUpdateCount: number;
   error: unknown;
   refetch: () => unknown;
 };
@@ -78,7 +81,7 @@ export function SettingCard<T>({
 }) {
   const queries: SettingQuery<unknown>[] = [query, ...(also ?? [])];
   const ready = queries.every((q) => q.data !== undefined);
-  const loadFailed = queries.some((q) => q.isError);
+  const loadFailed = queries.some((q) => isLoadFailure(q));
 
   return (
     <Card id={id}>

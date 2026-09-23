@@ -232,11 +232,10 @@
     knobs only on `"ready"`. Loading names the layer it waits on ("Loading
     the template defaults…"); a failed layer is the third state, a compact `LoadErrorState` naming the
     layer with a retry, and the knobs stay disabled under it (editing against
-    an unknown baseline is the race itself). A retry stays that error,
-    "Retrying…" (`unloadedLayer` reads `errorUpdateCount`, since react-query
-    refetches a data-less query from pending), with Try again focusable while
-    disabled; when the retry turns the baseline ready, focus that fell to
-    `<body>` moves to the panel body's `tabIndex={-1}` wrapper. `useTemplateBaseline`
+    an unknown baseline is the race itself). A retry stays that error
+    (`unloadedLayer`, the same rule as `isLoadFailure`), and recovery hands
+    focus to the panel body's `tabIndex={-1}` wrapper through `LoadErrorState`.
+    `useTemplateBaseline`
     (`template-select.tsx`) is the template layer: it reads the one
     `["templates", "all"]` query (`useTemplatesQuery`, shared with the picker)
     and is never ready without it. The application studio lays the base
@@ -303,10 +302,16 @@
   `data` undefined after an error, so `if (isLoading || !data)` holds its
   skeleton forever and any `data ?? []` list renders its EMPTY branch — the
   tracker showed the new-user onboarding card to whoever's pipeline failed to
-  load. Branch on `isError` before the empty state and render `LoadErrorState`
-  (`components/load-error-state.tsx`), which always offers the retry: empty means
-  "there is nothing here", this means "we could not find out". Pinned by
-  `tests/test_frontend_query_error_states.py`.
+  load. Branch on `isLoadFailure(query)` (`lib/query-state.ts`), never on
+  `query.isError`: a refetch resets a data-less query to pending with a null
+  error, which unmounted the error state and its focused Try again. The failure
+  branch precedes the loading gate. Render `LoadErrorState`
+  (`components/load-error-state.tsx`), which always offers the retry, keeps its
+  last detail while retrying, and hands focus to the nearest `tabIndex={-1}`
+  ancestor (or the main area) on recovery. A caller that treats a status as a
+  state (a missing application, no health report yet) reads the error through
+  `useLastSeen`. Empty means "there is nothing here", this means "we could not
+  find out". Pinned by `tests/test_frontend_query_error_states.py`.
 - **Entry lists own their open card; cards never own it.** Editors map with
   `key={i}`, so React reconciles by POSITION and an uncontrolled `EditableCard`
   keeps edit state against a SLOT — move or delete an entry and a different one
@@ -594,8 +599,8 @@
   skeleton, and the one `LoadErrorState` with retry. Do not hand-roll
   `Card → isError → isLoading → editor` again — the copies drifted into four
   different failure behaviours, three of which showed the user nothing.
-  Readiness is `data !== undefined`, never `!isLoading`. Appearance is the
-  one exemption: it fetches nothing.
+  Readiness is `data !== undefined`, never `!isLoading`; failure is
+  `isLoadFailure`. Appearance is the one exemption: it fetches nothing.
 - **Two save models, and only two.** A pure preference autosaves through
   `useAutosave` and reports with `AutosaveStatus` inside `AutosaveRow` at the
   top of the card body (never the header — the mutation lives in the editor).

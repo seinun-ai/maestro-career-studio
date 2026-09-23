@@ -51,6 +51,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { apiFetch, promoteJobToAgentQueue } from "@/lib/api";
+import { isLoadFailure } from "@/lib/query-state";
 import { cn } from "@/lib/utils";
 import type { Job, JobDetail, ProposalStatus } from "@/lib/types";
 
@@ -124,7 +125,7 @@ export default function JobDetailPage({
   const confirm = useConfirm();
   const proposalActions = useProposalActions();
 
-  const { data, isLoading, isError, error, isFetching, refetch } = useQuery({
+  const { data, isLoading, isError, error, isFetching, refetch, errorUpdateCount } = useQuery({
     queryKey: ["job-detail", id],
     queryFn: () => apiFetch<JobDetail>(`/api/jobs/${id}/detail`),
   });
@@ -212,7 +213,7 @@ export default function JobDetailPage({
 
   // Before the loading gate: `data` stays undefined after a failure, so the
   // gate below would hold the skeleton on screen for good.
-  if (isError) {
+  if (isLoadFailure({ data, isError, isFetching, errorUpdateCount })) {
     return (
       <main className="mx-auto w-full max-w-6xl flex-1 space-y-4 p-6">
         <LoadErrorState

@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/select";
 import { LoadErrorState } from "@/components/load-error-state";
 import { apiFetch, apiUrlForBrowserPdf } from "@/lib/api";
+import { isLoadFailure } from "@/lib/query-state";
 import { notifyRenderNote } from "@/lib/render-note";
 import type { QAEntry, QAResponse } from "@/lib/types";
 
@@ -47,7 +48,7 @@ const KIND_LABELS: Record<string, string> = {
 export function QATab({ applicationId }: { applicationId: string }) {
   const qc = useQueryClient();
   const confirm = useConfirm();
-  const { data: entries, isError, error, isFetching, refetch } = useQuery({
+  const { data: entries, isError, error, isFetching, refetch, errorUpdateCount } = useQuery({
     queryKey: ["qa", applicationId],
     queryFn: () =>
       apiFetch<QAEntry[]>(
@@ -201,9 +202,9 @@ export function QATab({ applicationId }: { applicationId: string }) {
         </CardContent>
       </Card>
 
-      <div className="space-y-3">
+      <div tabIndex={-1} className="space-y-3 outline-none">
         <h3 className="text-sm font-semibold">History</h3>
-        {isError ? (
+        {isLoadFailure({ data: entries, isError, isFetching, errorUpdateCount }) ? (
           <LoadErrorState
             className="py-8"
             title="Couldn't load Q&A."

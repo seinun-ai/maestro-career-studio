@@ -1,9 +1,11 @@
 "use client";
 
 import { TriangleAlert } from "lucide-react";
-import type { ReactNode } from "react";
+import { useRef, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
+import { useFocusHandoff } from "@/hooks/use-focus-return";
+import { useLastSeen } from "@/hooks/use-last-seen";
 import { cn } from "@/lib/utils";
 
 /**
@@ -27,6 +29,11 @@ import { cn } from "@/lib/utils";
  *
  * Try again stays focusable while `retrying` disables it, as the studio Save
  * does: a disabled native <button> drops a keyboard user's focus to <body>.
+ *
+ * A retry keeps this block mounted (`isLoadFailure` in the caller: react-query
+ * clears the error while a data-less refetch runs) and keeps the last detail
+ * while that refetch is in flight. When recovery unmounts it, focus moves to
+ * the nearest `tabIndex={-1}` ancestor, or the main area.
  */
 export function LoadErrorState({
   title = "Something didn't load.",
@@ -43,8 +50,15 @@ export function LoadErrorState({
   action?: ReactNode;
   className?: string;
 }) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  // Recovery unmounts this block, focused Try again included. Focus moves to the nearest tabIndex={-1}
+  // ancestor (a panel that opted in: the Formatting panel's body, the ATS score panel) or the main area.
+  useFocusHandoff(rootRef);
+  // A retry clears the query's error while it runs; keep the words until it answers.
+  const shownDetail = useLastSeen(detail);
   return (
     <div
+      ref={rootRef}
       role="alert"
       className={cn(
         "flex flex-col items-center gap-3 rounded-xl border border-dashed py-16 text-center",
@@ -55,7 +69,7 @@ export function LoadErrorState({
       <div className="min-w-0 px-6">
         <p className="text-sm font-medium">{title}</p>
         <p className="text-muted-foreground mt-1 text-sm">
-          {detail ?? "The request failed. It may just be the backend restarting."}
+          {shownDetail ?? "The request failed. It may just be the backend restarting."}
         </p>
       </div>
       {onRetry ? (

@@ -1,6 +1,7 @@
 "use client";
 
 import { use, useEffect } from "react";
+import { useLastSeen } from "@/hooks/use-last-seen";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
@@ -10,6 +11,7 @@ import { LoadErrorState } from "@/components/load-error-state";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ApiError, apiFetch } from "@/lib/api";
+import { isLoadFailure } from "@/lib/query-state";
 import type { ApplicationDetail } from "@/lib/types";
 
 export default function ApplicationDetailRedirect({
@@ -20,7 +22,7 @@ export default function ApplicationDetailRedirect({
   const { id } = use(params);
   const router = useRouter();
 
-  const { data, isError, error, isFetching, refetch } = useQuery({
+  const query = useQuery({
     queryKey: ["application", id],
     queryFn: () => apiFetch<ApplicationDetail>(`/api/applications/${id}`),
     staleTime: 60_000,
@@ -28,11 +30,13 @@ export default function ApplicationDetailRedirect({
   });
 
   useEffect(() => {
-    if (data?.job_id) router.replace(`/jobs/${data.job_id}`);
-  }, [data?.job_id, router]);
+    if (query.data?.job_id) router.replace(`/jobs/${query.data.job_id}`);
+  }, [query.data?.job_id, router]);
 
-  if (isError) {
-    const missing = error instanceof ApiError && error.status === 404;
+  const lastError = useLastSeen(query.error);
+
+  if (isLoadFailure(query)) {
+    const missing = lastError instanceof ApiError && lastError.status === 404;
     if (missing) {
       return (
         <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
@@ -52,9 +56,9 @@ export default function ApplicationDetailRedirect({
       <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col items-center justify-center p-6">
         <LoadErrorState
           title="Couldn't load this application."
-          detail={(error as Error)?.message}
-          retrying={isFetching}
-          onRetry={() => void refetch()}
+          detail={lastError instanceof Error ? lastError.message : undefined}
+          retrying={query.isFetching}
+          onRetry={() => void query.refetch()}
           action={
             <Button
               variant="outline"

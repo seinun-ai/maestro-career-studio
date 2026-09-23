@@ -55,6 +55,7 @@ import {
   streamChatMessage,
   uploadChatAttachment,
 } from "@/lib/api";
+import { isLoadFailure } from "@/lib/query-state";
 import { notifyRenderNote } from "@/lib/render-note";
 import { cn } from "@/lib/utils";
 import { DOCUMENT_ACCEPT } from "@/lib/upload-accept";
@@ -595,7 +596,7 @@ export function ChatPage() {
       {/* Thread + composer. This is the page's <main> — the chat layout has an
           <aside> of past sessions beside it, so the landmark belongs on the
           conversation column, not on the two-column wrapper. */}
-      <main className="flex min-w-0 flex-1 flex-col">
+      <main tabIndex={-1} className="flex min-w-0 flex-1 flex-col outline-none">
         {/* Below md, the rail is `hidden` outright (see above), so this is
             the only way back to past sessions — without it, chats would be
             completely unreachable on mobile. */}
@@ -609,7 +610,7 @@ export function ChatPage() {
             <History className="size-4" />
           </Button>
         </div>
-        {sessionId !== null && detail.isError ? (
+        {sessionId !== null && isLoadFailure(detail) ? (
           <div className="flex flex-1 flex-col items-center justify-center px-4">
             <LoadErrorState
               title="Couldn't load this conversation."

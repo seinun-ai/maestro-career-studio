@@ -43,6 +43,7 @@ _ERROR_BRANCH = re.compile(
     r"|error \?(?!\?)"
     r"|if \(error\)"
     r"|!error\b"
+    r"|isLoadFailure\("
 )
 
 # (relpath, empty-state marker that must NOT be reachable on a failed fetch).
@@ -192,10 +193,11 @@ def test_application_detail_distinguishes_missing_from_retryable():
     assert "This application no longer exists." in source
     assert "LoadErrorState" in source
     assert "status === 404" in source
-    assert source.index("if (isError)") < source.index(
+    assert "useLastSeen(query.error)" in source
+    assert source.index("if (isLoadFailure(query))") < source.index(
         'title="Couldn\'t load this application."'
     )
-    assert source.index("if (isError)") < source.index(
+    assert source.index("if (isLoadFailure(query))") < source.index(
         "This application no longer exists."
     )
 
@@ -212,3 +214,76 @@ def test_new_application_clears_cached_job_when_source_url_changes():
         "source_url onChange must clear the cached extraction, same as raw text; "
         "otherwise a URL-only edit silently reuses the previous job."
     )
+
+
+_LOAD_ERROR_CALLERS = sorted(
+    str(p.relative_to(_FRONTEND))
+    for d in ("app", "components")
+    for p in (_FRONTEND / d).rglob("*.tsx")
+    if "<LoadErrorState" in p.read_text() and p.name != "load-error-state.tsx"
+)
+
+
+@pytest.mark.parametrize("relpath", _LOAD_ERROR_CALLERS)
+def test_a_retry_keeps_the_error_mounted(relpath: str):
+    src = (_FRONTEND / relpath).read_text()
+    if relpath.endswith("formatting-panel.tsx"):
+        # unloadedLayer is the same rule, parity-tested in node and in
+        # test_frontend_focus.py. The panel does not call isLoadFailure itself.
+        assert "baseline.retrying" in src
+        return
+    assert "isLoadFailure(" in src
+    assert not re.search(r"\.error as Error\)\.message", src), (
+        "a retry clears `error`: use ?."
+    )
+
+
+# The RENDERED failure must precede the loading gate. A const earlier in the
+# file is not the branch: applications computes `loadFailed` above the JSX,
+# so the gate is the ternary, not the first `isLoadFailure(`.
+_LOADING_GATES = [
+    ("app/referrals/page.tsx", '<Skeleton className="h-40 w-full" />', "isLoadFailure(referrals) ?"),
+    ("app/applications/page.tsx", "animate-shimmer h-12", "loadFailed ? ("),
+    ("components/proposals/proposals-section.tsx", "if (isLoading) {", "if (isLoadFailure("),
+    ("components/ats-score-panel.tsx", "scores.isLoading ||", "if (isLoadFailure(scores))"),
+]
+
+
+@pytest.mark.parametrize("relpath,marker,branch", _LOADING_GATES)
+def test_a_retry_does_not_fall_into_the_skeleton(relpath: str, marker: str, branch: str):
+    src = (_FRONTEND / relpath).read_text()
+    assert src.index(branch) < src.index(marker), (
+        f"{relpath}: the failure branch must render before the loading gate, "
+        "or a retry of a data-less query paints the skeleton and drops focus."
+    )
+
+
+def test_load_error_state_hands_off_focus_and_keeps_its_words():
+    src = (_FRONTEND / "components/load-error-state.tsx").read_text()
+    assert "useFocusHandoff(rootRef)" in src
+    assert "ref={rootRef}" in src
+    assert "useLastSeen(detail)" in src
+    assert "focusableWhenDisabled" in src
+
+
+def test_a_404_stays_that_state_while_it_refetches():
+    application = (_FRONTEND / "app/applications/[id]/page.tsx").read_text()
+    health = (_FRONTEND / "components/resume-health/health-report-page.tsx").read_text()
+    assert "useLastSeen(query.error)" in application
+    assert "useLastSeen(report.error)" in health
+
+
+_ROUTE_ERRORS = [
+    "app/base-resumes/[slug]/page.tsx",
+    "app/applications/[id]/resume/page.tsx",
+    "app/templates/[id]/page.tsx",
+    "app/jobs/[id]/tailor/[sessionId]/page.tsx",
+]
+
+
+@pytest.mark.parametrize("relpath", _ROUTE_ERRORS)
+def test_a_route_level_error_can_retry(relpath: str):
+    src = (_FRONTEND / relpath).read_text()
+    assert "<LoadErrorState" in src
+    assert "onRetry=" in src
+    assert "isLoadFailure(" in src

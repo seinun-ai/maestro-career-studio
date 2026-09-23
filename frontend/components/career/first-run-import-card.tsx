@@ -9,6 +9,7 @@ import { LoadErrorState } from "@/components/load-error-state";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { apiFetch } from "@/lib/api";
+import { isLoadFailure } from "@/lib/query-state";
 import type { KBEntitySummary } from "@/lib/types";
 
 const DISMISS_KEY = "maestro-cs:first-run-import-dismissed";
@@ -39,7 +40,7 @@ export function FirstRunImportCard() {
   // fetch (that would tell someone with a full KB they have never imported),
   // and never show it once the KB has content.
   if (dismissed) return null;
-  if (entities.isError) {
+  if (isLoadFailure(entities)) {
     return (
       <LoadErrorState
         className="py-8"

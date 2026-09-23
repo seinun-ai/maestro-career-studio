@@ -42,7 +42,7 @@ def test_score_tab_offers_import_when_there_is_nothing_to_score():
     assert "<UploadDialog" in panel
     # A failed list fetch must never read as "you have none" (conventions).
     assert "bases.isSuccess && bases.data.length === 0" in panel
-    assert panel.index("scores.isError") < panel.index(
+    assert panel.index("if (isLoadFailure(scores))") < panel.index(
         "No base resumes to score against."
     )
     # A job the engine cannot score (422) is a job-level fact an import cannot

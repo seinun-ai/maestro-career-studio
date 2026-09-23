@@ -16,6 +16,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { LoadErrorState } from "@/components/load-error-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch } from "@/lib/api";
+import { isLoadFailure } from "@/lib/query-state";
 import { formatAbsoluteDateTime } from "@/lib/format-date";
 import type { ProposalDetail } from "@/lib/types";
 
@@ -25,13 +26,13 @@ import type { ProposalDetail } from "@/lib/types";
  * in JobExtractedFields. Do not duplicate them here.
  */
 export function ProposalAgentPanel({ proposalId }: { proposalId: string }) {
-  const { data, isLoading, isError, error, isFetching, refetch } = useQuery({
+  const { data, isLoading, isError, error, isFetching, refetch, errorUpdateCount } = useQuery({
     queryKey: ["proposal", proposalId],
     queryFn: () =>
       apiFetch<ProposalDetail>(`/api/proposals/${proposalId}`),
   });
 
-  if (isError) {
+  if (isLoadFailure({ data, isError, isFetching, errorUpdateCount })) {
     return (
       <Card>
         <CardHeader className="pb-2">

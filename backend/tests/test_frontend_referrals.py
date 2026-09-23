@@ -40,7 +40,9 @@ def _create_success() -> str:
 
 
 def test_a_failed_fetch_is_the_shared_error_state():
-    branch = _ROOT[_ROOT.index("referrals.isError ?") : _ROOT.index(") : populated ?")]
+    branch = _ROOT[
+        _ROOT.index("isLoadFailure(referrals) ?") : _ROOT.index(") : referrals.isLoading ?")
+    ]
     assert "<LoadErrorState" in branch, "a failed fetch renders LoadErrorState"
     assert "onRetry=" in branch, "the error state offers a retry"
 

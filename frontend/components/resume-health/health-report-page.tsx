@@ -18,6 +18,7 @@ import {
 } from "@/components/resume-health/finding-cards";
 import { BatchAskDialog } from "@/components/resume-health/batch-ask-dialog";
 import { LoadErrorState } from "@/components/load-error-state";
+import { useLastSeen } from "@/hooks/use-last-seen";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { IconButton } from "@/components/icon-button";
@@ -31,6 +32,7 @@ import {
   overrideLevel,
   runLintReport,
 } from "@/lib/api";
+import { isLoadFailure } from "@/lib/query-state";
 import {
   explainScoreDelta,
   filterFindings,
@@ -178,9 +180,10 @@ export function HealthReportPage({
     onError: (err: Error) => toast.error(err.message),
   });
 
+  const reportError = useLastSeen(report.error);
   const noReportYet =
-    report.isError && report.error instanceof ApiError && report.error.status === 404;
-  const reportFailed = report.isError && !noReportYet;
+    isLoadFailure(report) && reportError instanceof ApiError && reportError.status === 404;
+  const reportFailed = isLoadFailure(report) && !noReportYet;
 
   useEffect(() => {
     if (!report.data || priorScore.current) return;
@@ -218,7 +221,7 @@ export function HealthReportPage({
     qc.invalidateQueries({ queryKey: ["resume-lint", kind, resumeKey] });
   };
 
-  if (baseQuery.isError) {
+  if (isLoadFailure(baseQuery)) {
     return (
       <PageShell>
         <LoadErrorState
@@ -324,7 +327,7 @@ export function HealthReportPage({
       {reportFailed ? (
         <LoadErrorState
           title="Couldn't load this health report."
-          detail={(report.error as Error)?.message}
+          detail={reportError instanceof Error ? reportError.message : undefined}
           retrying={report.isFetching}
           onRetry={() => void report.refetch()}
         />
