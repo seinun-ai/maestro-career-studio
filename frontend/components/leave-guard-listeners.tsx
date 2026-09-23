@@ -44,8 +44,9 @@ const LEAVE_FALLBACK = "/";
 const STALL_MS = 1500;
 
 // One tab, one history, one machine. Module state, like the registry: the writers
-// are the history patch and event handlers, and nothing renders from it.
-let guard: GuardState | null = null;
+// are the history patch and event handlers, and nothing renders from it. The
+// machine lives on the history patch's slot (below), so a hot reload of this
+// module keeps one machine for the patch and the listener alike.
 let replaying = false;
 let stallTimer: ReturnType<typeof setTimeout> | undefined;
 let pageSnapshot: { state: object; href: string } | null = null;
@@ -55,13 +56,14 @@ function currentEntry(): HistoryEntry {
 }
 
 function machine(): GuardState {
-  guard ??= startGuard(currentEntry(), window.history.length, leaveBlocked("in-app"));
-  return guard;
+  const slot = stampHooks();
+  slot.guard ??= startGuard(currentEntry(), window.history.length, leaveBlocked("in-app"));
+  return slot.guard;
 }
 
 function feed(event: GuardEvent): GuardCommand[] {
   const [next, commands] = stepGuard(machine(), event);
-  guard = next;
+  stampHooks().guard = next;
   // The page's own entry, for a Stay the machine cannot place (restorePage).
   const state = window.history.state as object | null;
   if (state && next.here.kind === "next" && next.here.url === next.page) {
@@ -73,17 +75,25 @@ function feed(event: GuardEvent): GuardCommand[] {
 interface StampHooks {
   replace: History["replaceState"];
   afterWrite?: (how: "push" | "replace", before: HistoryEntry) => void;
+  guard?: GuardState;
 }
 const HOOKS = Symbol.for("maestro.leaveGuard.history");
+type PatchedHistory = History & { [HOOKS]?: StampHooks };
+
+/** Installed at module scope, before anything reads it. */
+function stampHooks(): StampHooks {
+  return (window.history as PatchedHistory)[HOOKS] as StampHooks;
+}
 
 /**
- * Stamp every entry the app router writes with its position in the tab's history,
+ * Stamp every entry the app router writes with its number (the entry it left + 1),
  * so each popstate knows how far and in which direction it moved. The patch sits
  * under Next's own (this module runs before Next's app router effect captures
- * `history.pushState`) and is installed once; a hot reload swaps only `afterWrite`.
+ * `history.pushState`) and is installed once; a hot reload swaps `afterWrite` and
+ * keeps the machine on the same slot.
  */
 function installPositionStamps() {
-  const history = window.history as History & { [HOOKS]?: StampHooks };
+  const history = window.history as PatchedHistory;
   let hooks = history[HOOKS];
   if (!hooks) {
     const push = history.pushState.bind(history);
@@ -117,8 +127,7 @@ if (typeof window !== "undefined") installPositionStamps();
 /** Stamp the current entry if Next wrote it before the patch was in place. */
 function stampCurrentEntry() {
   const here = currentEntry();
-  const hooks = (window.history as History & { [HOOKS]?: StampHooks })[HOOKS];
-  if (here.kind === "next" && here.at === null) hooks?.afterWrite?.("replace", here);
+  if (here.kind === "next" && here.at === null) stampHooks().afterWrite?.("replace", here);
 }
 
 /**

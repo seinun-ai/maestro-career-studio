@@ -195,6 +195,34 @@ def test_the_position_stamp_spreads_next_state():
     assert "const push = history.pushState.bind(history);" in src
 
 
+def test_entry_numbers_survive_the_history_cap():
+    # Chrome keeps 50 entries and drops the oldest on a push; history.length
+    # stops growing. A push numbered `length - 1` would give every new entry
+    # the same number at the cap (first Back dead, Stay corrupting history), so
+    # a push is the entry it left + 1, and a new fragment is one above.
+    store = _read("lib/leave-guard.ts")
+    fn = store[store.index("export function stampAfterWrite(") : store.index("export type GuardPhase")]
+    assert 'if (how === "push") return { at: (before.at ?? believedAt ?? length - 2) + 1,' in fn
+    frag = store[store.index("function placeFragment(") : store.index("function popped(")]
+    assert "if (length > s.length) return from + 1;" in frag
+    assert "length - 1" not in frag
+    # Next can commit a render (HistoryUpdater's replaceState) after the browser
+    # moved but before its popstate; that write must not stand in for the move.
+    wrote = store[store.index("function wrote(") : store.index("function placeFragment(")]
+    guard = 'if (how === "replace" && entry.at !== null && s.here.at !== null && entry.at !== s.here.at) {'
+    assert guard in wrote
+    assert wrote.index(guard) < wrote.index("here: entry")
+
+
+def test_one_machine_across_hot_reloads():
+    # The history patch is installed once; the machine lives on its slot, so
+    # the listener and the patch never feed two machines.
+    src = _listeners()
+    assert "slot.guard ??= startGuard(" in src
+    assert "stampHooks().guard = next;" in src
+    assert "let guard" not in src
+
+
 def test_sentinel_duplicates_only_app_router_entries():
     src = _listeners()
     fn = src[src.index("function pushSentinel()") : src.index("function restorePage()")]

@@ -16,9 +16,15 @@ import {
 
 /**
  * A tab's history, Next's popstate listener and our listeners, reduced to what the
- * machine sees. `shown` is the page Next rendered; `url` is the address bar.
+ * machine sees. `shown` is the page Next rendered; `url` is the address bar. The
+ * tab keeps at most 50 entries and drops the oldest on a push, as Chrome does.
+ * Expectations come from the tab (slots, index, shown), never from the stamps.
+ * Traversals are asynchronous, as in a browser: our `history.go` calls queue and
+ * run after the action, or when a test calls `settle()` in `manual` mode.
  */
 type Slot = { url: string; kind: EntryKind | "other-site"; sentinel: boolean; at: number | null };
+
+const CAP = 50;
 
 class Tab {
   slots: Slot[];
@@ -28,7 +34,14 @@ class Tab {
   asking = false;
   bypass = false;
   unloaded: "quiet" | "warned" | null = null;
+  away = false;
   blocked = false;
+  manual = false;
+  /** Next's HistoryUpdater replaceState lands between each traversal and its popstate. */
+  racingRender = false;
+  queue: number[] = [];
+  /** Every render Next did (a traverse it was not stopped from, a navigation). */
+  renders: string[] = [];
 
   constructor(url: string, otherSiteBefore = 0) {
     this.slots = Array.from({ length: otherSiteBefore }, () => ({
@@ -66,16 +79,20 @@ class Tab {
       this.slots.splice(this.index + 1);
       this.slots.push({ url, kind: "next", sentinel, at: null });
       this.index += 1;
+      if (this.slots.length > CAP) {
+        this.slots.shift();
+        this.index -= 1;
+      }
     } else this.slots[this.index] = { url, kind: "next", sentinel, at: before.at };
     const stamp = stampAfterWrite(how, before, this.entry(), this.slots.length, this.s.here.at);
     Object.assign(this.slots[this.index], stamp);
-    assert.equal(stamp.at, this.index, "the stamp is the entry's position");
     this.run(this.feed({ type: "wrote", how, entry: this.entry(), length: this.slots.length }));
   }
 
   /** A clean in-app link (GuardedLink passes straight through). */
   link(url: string) {
     assert.equal(this.blocked, false);
+    this.renders.push(url);
     this.write("push", url, false);
     this.shown = url;
   }
@@ -90,7 +107,7 @@ class Tab {
 
   setBlocked(blocked: boolean) {
     this.blocked = blocked;
-    this.run(this.feed({ type: "blocked", blocked }));
+    this.act(() => this.run(this.feed({ type: "blocked", blocked })));
   }
 
   /** The skip link (#main-content): a fragment navigation fires popstate with no state. */
@@ -98,24 +115,58 @@ class Tab {
     this.slots.splice(this.index + 1);
     this.slots.push({ url: this.url, kind: "none", sentinel: false, at: null });
     this.index += 1;
-    this.pop();
+    if (this.slots.length > CAP) {
+      this.slots.shift();
+      this.index -= 1;
+    }
+    this.act(() => this.pop());
   }
 
   back() {
-    return this.go(-1);
+    return this.press(-1);
   }
 
   forward() {
-    return this.go(1);
+    return this.press(1);
   }
 
-  /** A browser traversal. False when there is no entry there. */
+  /** A user's Back/Forward (or a long-press jump). False when there is no entry there. */
+  press(delta: number): boolean {
+    let moved = false;
+    this.act(() => {
+      moved = this.go(delta);
+    });
+    return moved;
+  }
+
+  /** A browser traversal. */
   go(delta: number): boolean {
     const target = this.index + delta;
-    if (target < 0 || target >= this.slots.length || this.unloaded) return false;
-    this.index = target;
+    if (target < 0 || target >= this.slots.length) return false;
     if (this.slots[target].kind === "other-site") {
-      this.unloaded = this.blocked && !this.bypass ? "warned" : "quiet";
+      if (!this.away && this.blocked && !this.bypass) {
+        this.unloaded = "warned"; // the browser asks; the test dismisses it
+        return false;
+      }
+      if (!this.away) this.unloaded = "quiet";
+      this.away = true;
+      this.index = target;
+      return true;
+    }
+    this.index = target;
+    if (this.racingRender && !this.away) {
+      // Next commits a render after the move but before the popstate: its
+      // HistoryUpdater rewrites the entry the browser is now on.
+      const slot = this.slots[target];
+      if (slot.kind === "next") this.write("replace", slot.url, slot.sentinel);
+    }
+    if (this.away) {
+      // Back into our document from the back/forward cache: Next's pageshow
+      // handler renders the current entry, and the listeners report it.
+      this.away = false;
+      this.renders.push(this.url);
+      this.render(this.url);
+      this.run(this.feed({ type: "restored", entry: this.entry(), length: this.slots.length }));
       return true;
     }
     this.pop();
@@ -126,14 +177,21 @@ class Tab {
     const commands = this.feed({ type: "pop", entry: this.entry(), length: this.slots.length });
     const stopped = commands.some((c) => c.type === "stop");
     // Next's bubble listener: ignores a stateless entry, renders an app-router one.
-    if (!stopped && this.slots[this.index].kind === "next") this.render(this.url);
+    if (!stopped && this.slots[this.index].kind === "next") {
+      this.renders.push(this.url);
+      this.render(this.url);
+    }
     this.run(commands);
   }
 
   answer(leave: boolean) {
     assert.equal(this.asking, true, "the question is open");
     this.asking = false;
-    this.run(this.feed({ type: "answer", leave }));
+    this.act(() => this.run(this.feed({ type: "answer", leave })));
+  }
+
+  stalled() {
+    this.act(() => this.run(this.feed({ type: "stalled" })));
   }
 
   reload() {
@@ -143,7 +201,7 @@ class Tab {
     this.s = startGuard(this.entry(), this.slots.length, false);
   }
 
-  /** Next rendered a different page: the editor unmounts and unregisters. */
+  /** Next rendered a page: a different one unmounts the editor, which unregisters. */
   render(url: string) {
     if (url !== this.shown && this.blocked) {
       this.blocked = false;
@@ -158,16 +216,32 @@ class Tab {
       if (c.type === "stop") continue;
       if (c.type === "ask") this.asking = true;
       else if (c.type === "setBypass") this.bypass = c.on;
-      else if (c.type === "go") this.go(c.delta);
+      else if (c.type === "go") this.queue.push(c.delta);
       else if (c.type === "pushSentinel") this.write("push", this.url, true);
-      else if (c.type === "replay") this.render(this.url);
-      else if (c.type === "renderHere") {
+      else if (c.type === "replay") {
+        this.renders.push(this.url);
+        this.render(this.url);
+      } else if (c.type === "renderHere") {
+        this.renders.push(this.url);
         this.write("replace", this.url, false);
         this.render(this.url);
       } else if (c.type === "navigateAway") {
+        this.renders.push("/applications");
         this.render("/applications");
         this.write("push", "/applications", false);
       } else if (c.type === "restorePage") this.write("push", this.shown, false);
+    }
+  }
+
+  act(fn: () => void) {
+    fn();
+    if (!this.manual) this.settle();
+  }
+
+  /** Let queued traversals land. */
+  settle() {
+    for (let delta = this.queue.shift(); delta !== undefined; delta = this.queue.shift()) {
+      this.go(delta);
     }
   }
 
@@ -375,7 +449,12 @@ test("after a reload: a fragment is placed, and a Forward onto a leftover duplic
   const tab = dirtyStudio(["/a", "/list"]);
   tab.reload();
   tab.fragment();
-  assert.equal(tab.s.here.at, tab.index, "a new fragment entry is the last one");
+  tab.back(); // back onto the duplicate: the same page
+  assert.equal(tab.asking, false);
+  tab.agrees();
+  tab.back(); // off the leftover duplicate: one press to the page before
+  tab.agrees();
+  assert.equal(tab.shown, "/list");
   const other = dirtyStudio(["/a", "/list"]);
   other.back();
   other.answer(true);
@@ -470,6 +549,187 @@ test("a clean Back onto another page's #fragment entry: Next ignores it, the nex
   assert.equal(tab.shown, "/list");
 });
 
+/** A tab already at Chrome's 50-entry cap, then /base-resumes and a dirty studio. */
+function dirtyStudioAtCap(): Tab {
+  const tab = new Tab("/p0");
+  for (let i = 1; i < 55; i++) tab.link(`/p${i}`);
+  tab.link("/list");
+  tab.link("/studio");
+  tab.edit();
+  assert.equal(tab.slots.length, CAP);
+  assert.equal(tab.slots[tab.index].sentinel, true);
+  return tab;
+}
+
+test("at the 50-entry cap: the first Back asks, Stay keeps URL and page together", () => {
+  const tab = dirtyStudioAtCap();
+  tab.back();
+  assert.equal(tab.asking, true, "the first Back asks");
+  assert.equal(tab.url, "/studio");
+  tab.answer(false);
+  tab.agrees();
+  tab.back();
+  assert.equal(tab.asking, true, "and the next one too");
+  tab.answer(true);
+  tab.agrees();
+  assert.equal(tab.shown, "/list");
+  assert.deepEqual(tab.walkBack().slice(0, 3), ["/p54", "/p53", "/p52"]);
+});
+
+test("at the cap: extra Backs while asking are undone exactly; after a save Back takes one press", () => {
+  const tab = dirtyStudioAtCap();
+  tab.back();
+  tab.back();
+  tab.back();
+  tab.answer(false);
+  tab.agrees();
+  assert.equal(tab.shown, "/studio");
+  tab.saved();
+  tab.back();
+  tab.agrees();
+  assert.equal(tab.shown, "/list");
+});
+
+test("at the cap: a skip-link fragment while parked asks nothing and stays guarded", () => {
+  const tab = dirtyStudioAtCap();
+  tab.fragment();
+  assert.equal(tab.slots.length, CAP);
+  assert.equal(tab.asking, false);
+  tab.back(); // onto the duplicate: same page
+  assert.equal(tab.asking, false);
+  tab.agrees();
+  tab.back();
+  assert.equal(tab.asking, true);
+  tab.answer(true);
+  tab.agrees();
+  assert.equal(tab.shown, "/list");
+});
+
+for (const atCap of [false, true]) {
+  test(`${atCap ? "at the cap: " : ""}a Back onto another page's #fragment entry while asking: Stay returns exactly`, () => {
+    const tab = new Tab("/a");
+    for (let i = 0; atCap && i < 55; i++) tab.link(`/p${i}`);
+    tab.link("/list");
+    tab.fragment(); // the skip link on /list
+    tab.link("/studio");
+    tab.edit();
+    const entries = tab.slots.length;
+    tab.back(); // asks
+    tab.back(); // onto /list#main-content, a stateless entry
+    tab.answer(false);
+    tab.agrees();
+    assert.equal(tab.slots.length, entries, "history kept, nothing pushed over it");
+    assert.equal(tab.slots[tab.index].sentinel, true);
+    tab.back();
+    tab.answer(true);
+    tab.agrees();
+    assert.equal(tab.shown, "/list");
+  });
+}
+
+test("resting on the editor's own entry under a leftover duplicate: Forward moves on in one press", () => {
+  const tab = dirtyStudio(["/a", "/list"]);
+  tab.saved();
+  tab.link("/other");
+  tab.press(-2); // a long-press jump straight onto the studio's own entry
+  tab.agrees();
+  assert.equal(tab.shown, "/studio");
+  tab.forward();
+  tab.agrees();
+  assert.equal(tab.shown, "/other", "the leftover duplicate is stepped over");
+});
+
+test("no sentinel: Forward back onto the editor while asking, Stay parks there", () => {
+  const tab = new Tab("/list");
+  tab.link("/studio");
+  tab.fragment();
+  tab.edit();
+  tab.back(); // the studio's own entry
+  tab.back(); // another page: asks
+  tab.forward(); // back onto the studio's own entry while the question is open
+  tab.answer(false);
+  tab.agrees();
+  assert.equal(tab.slots[tab.index].sentinel, true, "parked");
+  tab.back();
+  assert.equal(tab.asking, true);
+  assert.equal(tab.url, "/studio", "the URL stays on the editor during the question");
+});
+
+test("Stay never hands the page to Next: no render while the answer puts the URL back", () => {
+  const tab = dirtyStudio(["/a", "/list"]);
+  tab.back();
+  tab.back();
+  const before = tab.renders.length;
+  tab.answer(false);
+  tab.agrees();
+  assert.equal(tab.renders.length, before, "Next rendered nothing");
+});
+
+test("a Back pressed before Stay's return has landed asks again and keeps the edit", () => {
+  const tab = dirtyStudio(["/a", "/list"]);
+  tab.manual = true;
+  tab.back();
+  tab.back();
+  tab.settle();
+  tab.answer(false); // queues the return to the duplicate
+  tab.back(); // the user presses Back first
+  tab.settle();
+  assert.equal(tab.asking, true, "asked again");
+  assert.equal(tab.shown, "/studio");
+  assert.equal(tab.blocked, true, "the edit is still there");
+  tab.answer(false);
+  tab.settle();
+  tab.agrees();
+});
+
+test("a fresh tab with a leftover duplicate: Back goes to the app's home, not a dead press", () => {
+  const tab = new Tab("/studio");
+  tab.edit();
+  tab.saved();
+  tab.back();
+  tab.agrees();
+  assert.equal(tab.shown, "/applications");
+});
+
+test("back from another site into a cached page: the machine follows the entry Next restores", () => {
+  const tab = new Tab("/list", 1);
+  tab.link("/studio");
+  tab.press(-2); // to the other site: the page goes into the back/forward cache
+  assert.equal(tab.away, true);
+  tab.forward(); // restored on /list
+  tab.agrees();
+  assert.equal(tab.shown, "/list");
+  tab.forward();
+  tab.agrees();
+  assert.equal(tab.shown, "/studio");
+});
+
+test("a Next render between a traversal and its popstate does not hide the Back", () => {
+  const tab = dirtyStudio(["/a", "/list"]);
+  tab.racingRender = true;
+  tab.back();
+  assert.equal(tab.asking, true, "the Back still asks");
+  tab.back();
+  tab.answer(false);
+  tab.agrees();
+  tab.back();
+  tab.answer(true);
+  tab.agrees();
+  assert.equal(tab.shown, "/list");
+});
+
+test("a Leave that stalls goes home through the router", () => {
+  const tab = dirtyStudio(["/a", "/list"]);
+  tab.manual = true;
+  tab.back();
+  tab.settle();
+  tab.answer(true);
+  tab.queue.length = 0; // the traversal went nowhere
+  tab.stalled();
+  tab.agrees();
+  assert.equal(tab.shown, "/applications");
+});
+
 test("stamps spread Next's state and keep __NA and the tree", () => {
   const next = { __NA: true, __PRIVATE_NEXTJS_INTERNALS_TREE: { tree: 1 } };
   const stamped = stampState(next, 4, true);
@@ -481,11 +741,11 @@ test("stamps spread Next's state and keep __NA and the tree", () => {
   assert.equal(readEntry({ other: 1 }, "/x").kind, "foreign");
 });
 
-test("a replace keeps the position, and the sentinel only while the URL is the same", () => {
+test("a push is the entry it left + 1; a replace keeps the number, and the sentinel only while the URL is the same", () => {
   const before = { at: 5, kind: "next" as const, sentinel: true, url: "/studio" };
   const refreshed = { at: null, kind: "next" as const, sentinel: false, url: "/studio" };
   assert.deepEqual(stampAfterWrite("replace", before, refreshed, 9, 5), { at: 5, sentinel: true });
   const elsewhere = { ...refreshed, url: "/other" };
   assert.deepEqual(stampAfterWrite("replace", before, elsewhere, 9, 5), { at: 5, sentinel: false });
-  assert.deepEqual(stampAfterWrite("push", before, refreshed, 9, 5), { at: 8, sentinel: false });
+  assert.deepEqual(stampAfterWrite("push", before, refreshed, 9, 5), { at: 6, sentinel: false });
 });

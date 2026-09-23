@@ -57,9 +57,11 @@ export function clearLeaveBypass(): void {
 // While an editor has in-app unsaved work, a duplicate of its history entry
 // (the sentinel) sits above the real one. Back from the sentinel lands on the
 // real entry, same URL and page still mounted, and that is the press we ask
-// about. Every entry the app router writes carries its position in the tab's
-// history (stamped by the listeners), so each popstate knows how far and in
-// which direction it moved. Extra presses while the question is open are undone
+// about. Every entry the app router writes carries a number (stamped by the
+// listeners): the previous entry's number + 1. A popstate compares numbers, so
+// it knows how far and in which direction it moved. The numbers are relative on
+// purpose: Chrome keeps at most 50 entries and drops the oldest on a push
+// without renumbering anything, so differences stay exact at the cap. Extra presses while the question is open are undone
 // exactly, and a sentinel that is no longer needed is stepped over instead of
 // being a dead press.
 // ---------------------------------------------------------------------------
@@ -80,7 +82,7 @@ export type EntryKind =
   | "foreign";
 
 export interface HistoryEntry {
-  /** Position in the tab's history, or null when unstamped and not placeable. */
+  /** The entry's number (see above), or null when unstamped and not placeable. */
   at: number | null;
   kind: EntryKind;
   /** Our duplicate, parked above an editor's own entry. */
@@ -124,11 +126,11 @@ export function stampState(state: object, at: number, sentinel: boolean): Record
 }
 
 /**
- * The stamp for an entry a pushState/replaceState just wrote. A push is always the
- * tab's last entry (it drops everything in front of it), so its position is
- * `length - 1`, even with stateless fragment entries below it. A replace keeps the
- * position, and keeps the sentinel flag while the URL stays the same (a
- * `router.refresh` rewrites the state without our fields).
+ * The stamp for an entry a pushState/replaceState just wrote. A push is the entry
+ * it left + 1 (not `history.length - 1`: at Chrome's 50-entry cap the length stops
+ * growing and every push would get the same number). A replace keeps the number,
+ * and keeps the sentinel flag while the URL stays the same (a `router.refresh`
+ * rewrites the state without our fields).
  */
 export function stampAfterWrite(
   how: "push" | "replace",
@@ -137,7 +139,7 @@ export function stampAfterWrite(
   length: number,
   believedAt: number | null,
 ): { at: number | null; sentinel: boolean } {
-  if (how === "push") return { at: length - 1, sentinel: written.sentinel };
+  if (how === "push") return { at: (before.at ?? believedAt ?? length - 2) + 1, sentinel: written.sentinel };
   return {
     at: written.at ?? before.at ?? believedAt,
     sentinel: written.sentinel || (before.sentinel && before.url === written.url),
@@ -203,7 +205,9 @@ const NAVIGATE_AWAY: GuardCommand = { type: "navigateAway" };
 const RENDER_HERE: GuardCommand = { type: "renderHere" };
 
 export function startGuard(entry: HistoryEntry, length: number, blocked: boolean): GuardState {
-  // Unstamped at load: a fresh navigation (a new tab, a typed URL) is the last entry.
+  // Unstamped at load: a fresh navigation (a new tab, a typed URL) is the last
+  // entry. So number 0 is a tab's first entry, and "below 0" means nothing earlier
+  // (the cap only ever removes entries, it never adds earlier ones).
   const here = { ...entry, at: entry.at ?? length - 1 };
   return {
     here,
@@ -250,6 +254,12 @@ function forget(seen: Record<number, HistoryEntry>, at: number) {
 }
 
 function wrote(s: GuardState, how: "push" | "replace", entry: HistoryEntry, length: number): Step {
+  if (how === "replace" && entry.at !== null && s.here.at !== null && entry.at !== s.here.at) {
+    // A replace on another entry than ours: the browser has already moved and its
+    // popstate is still to come (Next committed a render in between). Leave the
+    // move to that popstate, or it would lose where it came from.
+    return [{ ...s, length, seen: remember(s.seen, entry) }, []];
+  }
   const seen = how === "push" && entry.at !== null ? forget(s.seen, entry.at) : s.seen;
   const home = entry.kind === "next" ? entry.at : s.home;
   const phase = how === "push" ? IDLE : s.phase;
@@ -257,14 +267,16 @@ function wrote(s: GuardState, how: "push" | "replace", entry: HistoryEntry, leng
 }
 
 /**
- * Where a stateless (fragment) entry sits. One that grew `history.length` is a new
- * fragment navigation, so it is the last entry. Otherwise it is a one-step
- * traversal onto the neighbour we have not seen as an app-router entry.
+ * Where a stateless (fragment) entry sits: one step from where we were. A pop that
+ * grew `history.length` is a new fragment navigation, one above. At the 50-entry
+ * cap the length no longer grows, so otherwise it is the neighbour we have not
+ * seen as an app-router entry (a skip link on the sentinel: the entry below is
+ * the editor's own, so the fragment is above).
  */
 function placeFragment(s: GuardState, length: number): number | null {
-  if (length !== s.length) return length - 1;
   const from = s.here.at;
   if (from === null) return null;
+  if (length > s.length) return from + 1;
   const open = [from - 1, from + 1].filter(
     (at) => at >= 0 && (s.seen[at] === undefined || s.seen[at].kind === "none"),
   );
@@ -272,10 +284,9 @@ function placeFragment(s: GuardState, length: number): number | null {
 }
 
 function popped(s: GuardState, entry: HistoryEntry, length: number): Step {
-  const fresh = entry.kind === "none" && length !== s.length;
   const at = entry.at ?? (entry.kind === "none" ? placeFragment(s, length) : null);
   const here = { ...entry, at };
-  const seen = remember(fresh && at !== null ? forget(s.seen, at) : s.seen, here);
+  const seen = remember(s.seen, here);
   const t: GuardState = { ...s, here, length, seen };
   const out: GuardCommand[] = [];
   const leaving = s.phase.kind === "moving" && s.phase.then === "leave";
@@ -365,9 +376,11 @@ function skip(t: GuardState, from: number, target: number, out: GuardCommand[]):
 }
 
 function blockedChanged(t: GuardState): Step {
+  // Idle on an app-router entry means that entry is the page on screen: every
+  // path that ends idle there has set `page` to its url.
   const h = t.here;
   const park = t.blocked && t.phase.kind === "idle" && h.kind === "next" && !h.sentinel;
-  return [t, park && h.url === t.page ? [PUSH_SENTINEL] : []];
+  return [t, park ? [PUSH_SENTINEL] : []];
 }
 
 function answered(

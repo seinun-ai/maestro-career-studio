@@ -273,10 +273,15 @@
   `lib/leave-guard.ts`; `LeaveGuardListeners` feeds it every `popstate`
   from a capture-phase listener (Next's is bubble phase) and stops Next with
   `stopImmediatePropagation` only when the machine says so. Every entry the
-  app router writes carries its position in the tab's history, stamped by a
-  patch under Next's own `pushState`/`replaceState`, so a pop knows its
-  direction and distance: extra Back or Forward presses while the question
-  is open are undone exactly before Stay or Leave applies. A pop with no
+  app router writes carries a number, stamped by a patch under Next's own
+  `pushState`/`replaceState`: the entry it left + 1. A pop compares numbers,
+  so it knows its direction and distance, and extra Back or Forward presses
+  while the question is open are undone exactly before Stay or Leave
+  applies. The numbers are relative, not `history.length - 1`: Chrome keeps
+  50 entries and drops the oldest on a push without renumbering, so
+  distances stay exact at the cap. A replace that lands on another entry
+  than the machine's (Next committing a render between a traversal and its
+  `popstate`) leaves the move to that `popstate`. A pop with no
   state (a `#fragment` link such as Skip to content) is ignored, as Next
   ignores it. A duplicate left over after a save, an undo or a Leave is
   stepped over, never a dead press: Back from it takes the step the user
@@ -284,8 +289,11 @@
   on the next `popstate`, and a Leave that brings neither a `popstate` nor
   an unload within 1.5 s falls back to the home page. Accepted costs: the
   first edit drops whatever was in front of the page, as any navigation
-  does; and a Forward onto a leftover duplicate whose position this document
-  never saw (after a reload) is one no-op press. Next internals relied on
+  does; a Forward onto a leftover duplicate whose position this document
+  never saw (after a reload) is one no-op press; and at the 50-entry cap, if
+  the editor's own entry is the oldest one left, a Back off a leftover
+  duplicate has nowhere to go (a Leave from there falls back to the home
+  page). Next internals relied on
   (Next 16.3.0, `next/dist/client/components/app-router.js`): its patched
   `pushState`/`replaceState` pass a state that carries `__NA` straight
   through, so the duplicate and the stamp (both spread Next's state) keep
