@@ -31,6 +31,13 @@ import { focusIfDropped } from "@/hooks/use-focus-return";
  * a key press. After a click it returns nowhere, so once the popup is gone a
  * focus that fell to <body> moves to ⋯ (and only then: an overlay that took
  * focus keeps it).
+ *
+ * Base UI timing this depends on (1.4.1): `onOpenChangeComplete(false)` runs
+ * just BEFORE the popup unmounts, with focus still on the item, so the check
+ * waits a task. Sooner, it sees the item focused and does nothing; if Base UI
+ * ever calls it after the unmount, the timeout is merely late. After an
+ * upgrade, re-check in the browser: a click on ⋯ → Edit raw JSON lands on ⋯,
+ * and ⋯ → History / Rebuild start inside the sheet / confirm, not on ⋯.
  */
 export function StudioOverflowMenu({
   triggerRef,

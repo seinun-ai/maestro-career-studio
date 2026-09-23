@@ -1,7 +1,9 @@
 """Pins for the focus-return and single-flight helpers (UX next, Task 8).
 
-Node tests cover `isLoadFailure`'s behaviour; they are not in CI, so the
-predicate and the hook shapes are pinned here as source text.
+Node tests cover `isLoadFailure`, the focus helpers (`lib/focus.test.ts`) and
+the single-flight lock (`lib/single-flight.test.ts`); they are not in CI, so
+the predicates and the hook shapes are pinned here as source text. Each pin
+below was seen to fail on the mutant it names.
 """
 
 from __future__ import annotations
@@ -17,11 +19,74 @@ def _read(rel: str) -> str:
 
 
 _HOOK = _read("hooks/use-focus-return.ts")
+_FOCUS = _read("lib/focus.ts")
+
+
+def _squash(source: str) -> str:
+    return re.sub(r"\s+", " ", source)
+
+
+def _fn_body(src: str, head: str) -> str:
+    """A function's body, whitespace squashed, from after its first `{` to its closing brace."""
+    start = src.index(head)
+    body = src[src.index("{\n", start) + 1 : src.index("\n}\n", start)]
+    return _squash(body).strip()
+
+
+def test_the_hooks_use_the_node_tested_helpers():
+    # One copy: the hook file re-exports what `lib/focus.ts` defines.
+    assert 'import { focusIfDropped, focusReturnPoint, focusTarget } from "@/lib/focus";' in _HOOK
+    assert "export { focusIfDropped, focusReturnPoint };" in _HOOK
+    for name in ("focusIfDropped", "focusReturnPoint", "focusTarget", "holdsDraft"):
+        assert f"function {name}(" not in _HOOK, name
+    for name in ("focusIfDropped", "focusReturnPoint", "focusTarget", "holdsDraft"):
+        assert f"export function {name}(" in _FOCUS, name
+    tests = _read("lib/focus.test.ts")
+    assert 'from "./focus.ts";' in tests
 
 
 def test_focus_helpers_move_only_a_dropped_focus():
-    body = _HOOK[_HOOK.index("export function focusIfDropped(") :]
-    assert "active !== document.body" in body[: body.index("\n}\n")]
+    # Mutant: the guard neutered (`&& false`) takes focus from where the user put it.
+    assert _fn_body(_FOCUS, "export function focusIfDropped(") == (
+        "const active = document.activeElement; "
+        "if (active && active !== document.body) return; "
+        "target?.focus({ preventScroll: true });"
+    )
+
+
+def test_an_opened_editor_lands_in_its_first_text_field():
+    # Mutant: any tabbable before a field (the edit view's first button won).
+    assert _fn_body(_FOCUS, "export function focusTarget(") == (
+        "if (el.matches(TABBABLE)) return el; "
+        "return el.querySelector<HTMLElement>(FIELD) ?? el.querySelector<HTMLElement>(TABBABLE) ?? el;"
+    )
+    assert "export const FIELD =\n  'input:not([type=\"hidden\"]):not(:disabled), textarea:not(:disabled), select:not(:disabled)';" in _FOCUS
+
+
+def test_the_save_shortcut_blurs_every_draft_holding_field():
+    # Mutant: textareas only (a chip or title input kept its draft uncommitted).
+    assert _fn_body(_FOCUS, "export function holdsDraft(") == (
+        "return ( el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || "
+        "(el instanceof HTMLElement && el.isContentEditable) );"
+    )
+
+
+def test_an_armed_move_runs_after_every_commit():
+    # Mutant: `[]` deps (mount-only) never runs for a later click's commit.
+    assert _fn_body(_HOOK, "export function useFocusOnNextCommit(") == (
+        "const pending = useRef<RefObject<HTMLElement | null> | null>(null); "
+        "// No deps: it runs after every commit of this component and does nothing unless a handler armed it. "
+        "useEffect(() => { const target = pending.current; if (!target) return; pending.current = null; "
+        "if (target.current) focusIfDropped(focusTarget(target.current)); }); "
+        "return useCallback((target: RefObject<HTMLElement | null>) => { pending.current = target; }, []);"
+    )
+
+
+def test_the_edit_toggle_arms_both_directions():
+    # Mutants: `open` or `close` stops arming (the pressed button unmounts, focus drops).
+    body = _fn_body(_HOOK, "export function useEditToggle<")
+    assert "open: () => { setEditing(true); focusNext(editRef); }," in body
+    assert "close: () => { setEditing(false); focusNext(openerRef); }," in body
 
 
 def test_handoff_reads_focus_before_react_detaches_the_subtree():
@@ -38,12 +103,16 @@ def test_handoff_reads_focus_before_react_detaches_the_subtree():
 
 
 def test_return_point_is_remembered_while_attached_and_ends_at_the_main_area():
-    body = _HOOK[_HOOK.index("export function focusReturnPoint(") :]
+    body = _squash(_FOCUS[_FOCUS.index("export function focusReturnPoint(") :])
     assert "closest<HTMLElement>('[tabindex=\"-1\"]')" in body
     # An opted-in tabIndex={-1} ancestor wins over the main area.
     assert "chain.push(a);" in body
-    assert "(chain.find((a) => a.isConnected) ?? document.getElementById(MAIN_CONTENT_ID))" in body
-    assert '"main-content"' in _HOOK
+    # Mutant: never the element itself (a confirm skipped its still-connected opener).
+    assert (
+        "return () => el.isConnected ? el : "
+        "(chain.find((a) => a.isConnected) ?? document.getElementById(MAIN_CONTENT_ID));"
+    ) in body
+    assert 'const MAIN_CONTENT_ID = "main-content";' in _FOCUS
     gutter = _read("components/sidebar-reveal-trigger.tsx")
     assert 'id="main-content"' in gutter and "tabIndex={-1}" in gutter
 
@@ -78,13 +147,18 @@ def test_last_seen_keeps_a_value_a_refetch_cleared():
 
 def test_the_guard_flips_before_the_request_and_clears_on_settle():
     hook = _read("hooks/use-single-flight.ts")
-    body = hook[hook.index("return (vars) =>") :]
-    assert (
-        body.index("if (inFlight.current) return;")
-        < body.index("inFlight.current = true;")
-        < body.index("mutate(vars")
+    assert 'import { startOnce } from "@/lib/single-flight";' in hook
+    assert _fn_body(hook, "export function useSingleFlight<") == (
+        "const inFlight = useRef(false); return (vars) => startOnce(inFlight, mutate, vars);"
     )
-    assert "onSettled: () => { inFlight.current = false; }" in re.sub(r"\s+", " ", body)
+    lock = _read("lib/single-flight.ts")
+    # Mutant: the lock cleared right after `mutate` (a second click got through).
+    # It opens in `onSettled` and nowhere else.
+    assert _fn_body(lock, "export function startOnce<") == (
+        "if (lock.current) return; lock.current = true; "
+        "mutate(vars, { onSettled: () => { lock.current = false; }, });"
+    )
+    assert 'from "./single-flight.ts";' in _read("lib/single-flight.test.ts")
 
 
 def test_the_qa_history_is_a_named_focus_target():
@@ -97,10 +171,6 @@ def test_the_qa_history_is_a_named_focus_target():
 
 
 # --- Task 17: studio focus never drops (F1, decision 11) -------------------
-
-
-def _squash(source: str) -> str:
-    return re.sub(r"\s+", " ", source)
 
 
 def _function(src: str, head: str) -> str:
@@ -133,6 +203,18 @@ def test_read_edit_blocks_focus_their_field_and_return_to_the_pencil():
         assert "ref={editRef}" in block and "ref={openerRef}" in block
         assert "onClick={open}" in block and "onClick={close}" in block
         assert "setEditing(" not in block, "a bare toggle unmounts the pressed button"
+        _assert_refs_sit_on_the_edit_root_and_the_pencil(block)
+
+
+def _assert_refs_sit_on_the_edit_root_and_the_pencil(block: str) -> None:
+    # Mutant: `editRef` on the Done row (opening landed on Done, not the
+    # first field). It is the edit view's root, the first thing returned.
+    edit_view = _squash(block[block.index("if (editing) {") :])
+    assert edit_view.startswith("if (editing) { return ( <div ref={editRef} className="), block[:60]
+    assert block.count("ref={editRef}") == 1
+    assert block.count("ref={openerRef}") == 1
+    pencil = _squash(block[block.index("ref={openerRef}") :])
+    assert "onClick={open}" in pencil[: pencil.index("</Button>")]
 
 
 def test_preview_toggles_hand_focus_to_each_other():
@@ -205,7 +287,9 @@ def test_leaving_the_raw_pane_returns_to_the_menu():
         "returnFocus: () => cancelRef.current?.isConnected ? cancelRef.current : (exitFocus?.() ?? null),"
         in toggle
     )
-    assert "ref={cancelRef}" in toggle
+    # Mutant: the ref on Apply (a kept draft returned focus to Apply).
+    assert '<Button onClick={apply}>Apply JSON</Button> <Button ref={cancelRef} variant="outline" onClick={cancel}>' in toggle
+    assert toggle.count("ref={cancelRef}") == 1
 
 
 def test_confirm_returns_to_its_opener_or_what_survived_it():
@@ -232,7 +316,12 @@ def test_entry_cards_focus_their_editor_and_return_to_the_pencil():
     assert "focusNext(next ? editRef : pencilRef);" in setter
     assert "ref={pencilRef}" in _element(card, "Edit", "Button")
     assert "<EditPane ref={editRef} edit={edit} onClose={() => setEditing(false)} />" in card
-    assert "<div ref={ref} className=\"flex flex-col gap-3\">" in card
+    # Mutants: Done doing nothing, or the editor handed a no-op `close`.
+    # Both must close through `onClose`, which returns focus to the pencil.
+    assert _squash(_function(card, "function EditPane(")).endswith(
+        '}) { return ( <div ref={ref} className="flex flex-col gap-3"> {edit(onClose)} '
+        '<div className="flex justify-end"> <Button size="sm" onClick={onClose}> Done </Button> </div> </div> );'
+    )
 
 
 def test_chat_rail_toggles_hand_focus_to_each_other():

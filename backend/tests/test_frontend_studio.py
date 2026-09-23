@@ -628,23 +628,71 @@ def test_save_shortcut_commits_a_draft_with_no_gap():
     tail = handler[handler.index("flushSync(() => field.blur());") :]
     assert tail.index("focusIfDropped(back());") < tail.index("save();")
     assert 'import { flushSync } from "react-dom";' in _SHORTCUT
+    # Mutant: the flushSync blur limited to textareas. Every draft-holding
+    # field (`holdsDraft`, node-tested in lib/focus.test.ts) is blurred.
+    assert (
+        "const field = document.activeElement; if (!holdsDraft(field)) { save(); return; } "
+        "const back = focusReturnPoint(field); flushSync(() => field.blur()); focusIfDropped(back()); save();"
+    ) in _squash(handler)
+    assert 'import { focusIfDropped, focusReturnPoint, holdsDraft } from "@/lib/focus";' in _SHORTCUT
+
+
+def test_save_shortcut_saves_only_what_the_button_would():
+    # Mutant: `if (canSave)` dropped (a clean or busy studio saved anyway).
+    # Read at call time, after the blur's commit made the studio dirty.
+    assert "const save = useEffectEvent(() => { if (canSave) onSave(); });" in _squash(_SHORTCUT)
+    # Mutant: the `isComposing` check dropped (an IME's Cmd+S saved mid-word).
+    # The predicate is node-tested in lib/shortcuts.test.ts.
+    handler = _squash(_body(_SHORTCUT, "const onKeyDown = (event: KeyboardEvent) =>", "\n    };\n"))
+    assert (
+        "if (!isSaveShortcut(event)) return; "
+        "// Read before swallowing it: `defaultPrevented` says another handler claimed it. "
+        "const live = isLiveSaveChord(event); event.preventDefault(); if (!live) return;"
+    ) in handler
+    shortcuts = _read("lib/shortcuts.ts")
+    live = shortcuts[shortcuts.index("export function isLiveSaveChord(") :]
+    assert "return !e.defaultPrevented && !e.repeat && !e.isComposing;" in live[: live.index("\n}\n")]
+
+
+def _blur_arms_only_without_a_destination(src: str, commit: str, arm: str) -> None:
+    """C1: a click or Tab out of an inline edit is the user's own move.
+
+    Arming on every blur ran the move while the browser's focus change was in
+    flight (focusout is discrete, so React commits in a microtask while
+    <body> is active) and cancelled it: text typed into Summary went into the
+    chip add row. Only a blur with nowhere to go (the save shortcut's) arms;
+    Enter, Escape and Done call `commit()` and arm through the default.
+    """
+    body = _body(src, f"const {commit} = (refocus = true) =>")
+    assert f"if (refocus) {arm}" in body
+    assert body.count("focusNext(") == 1
+    assert f"onBlur={{(e) => {commit}(e.relatedTarget === null)}}" in src
+    assert f"onBlur={{{commit}}}" not in src
+    # Every other caller takes the default (it closes with focus on the input).
+    others = src.replace(f"{commit}(e.relatedTarget === null)", "")
+    assert f"{commit}(false" not in others and f"{commit}(true" not in others
 
 
 def test_a_chip_edit_that_closes_hands_focus_to_the_add_row():
     chips = _read("components/ui/chip-input.tsx")
     assert "const focusNext = useFocusOnNextCommit();" in chips
-    for head in ("const commitEdit = () =>", "const cancelEdit = () =>"):
-        body = _body(chips, head)
-        # Armed before any early exit that follows the close.
-        assert "setEditingIndex(null);\n    focusNext(addRowRef);" in body, head
+    _blur_arms_only_without_a_destination(chips, "commitEdit", "focusNext(addRowRef);")
+    commit = _body(chips, "const commitEdit = (refocus = true) =>")
+    # Armed before any early exit that follows the close.
+    assert "setEditingIndex(null);\n    if (refocus) focusNext(addRowRef);" in commit
+    assert "setEditingIndex(null);\n    focusNext(addRowRef);" in _body(chips, "const cancelEdit = () =>")
+    enter = _squash(chips[chips.index('if (e.key === "Enter") {') :])
+    assert enter.startswith('if (e.key === "Enter") { e.preventDefault(); commitEdit(); }')
     add_row = chips[chips.rindex("<input") :]
     assert "ref={addRowRef}" in add_row[: add_row.index("/>")]
 
 
 def test_a_rename_that_closes_hands_focus_to_its_button():
     sections = _read("components/resume-editor/extra-sections-editor.tsx")
-    commit = _body(sections, "const commitRename = () =>")
-    assert "setRenaming(false);\n    focusNext(renameButtonRef);" in commit
+    _blur_arms_only_without_a_destination(sections, "commitRename", "focusNext(renameButtonRef);")
+    commit = _body(sections, "const commitRename = (refocus = true) =>")
+    assert "setRenaming(false);\n    if (refocus) focusNext(renameButtonRef);" in commit
+    assert "onClick={() => (renaming ? commitRename() : startRename())}" in sections
     escape = _squash(sections[sections.index('if (e.key === "Escape") {') :])
     escape = escape[: escape.index("} else if")]
     assert "setRenaming(false); focusNext(renameButtonRef);" in escape
@@ -658,7 +706,12 @@ def test_a_rename_that_closes_hands_focus_to_its_button():
 
 def test_the_title_input_hands_focus_back_to_its_pencil():
     title = _read("components/resume-editor/editable-title.tsx")
-    assert "setEditing(false);\n    focusNext(pencilRef);" in _body(title, "const commit = () =>")
+    _blur_arms_only_without_a_destination(title, "commit", "focusNext(pencilRef);")
+    assert "setEditing(false);\n    if (refocus) focusNext(pencilRef);" in _body(
+        title, "const commit = (refocus = true) =>"
+    )
+    enter = _squash(title[title.index('if (e.key === "Enter") {') :])
+    assert enter.startswith('if (e.key === "Enter") { e.preventDefault(); commit(); }')
     escape = _squash(title[title.index('} else if (e.key === "Escape") {') :])
     assert "setEditing(false); focusNext(pencilRef);" in escape[: escape.index("}", 1)]
     pencil = title[title.index("<IconButton") :]

@@ -10,6 +10,7 @@ The hook's own shape is pinned in `test_frontend_focus.py`.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -19,6 +20,7 @@ _FRONTEND = Path(__file__).resolve().parents[2] / "frontend"
 _SITES = [
     ("app/referrals/page.tsx", "create"),
     ("app/templates/page.tsx", "create"),
+    ("app/templates/page.tsx", "duplicate"),
     ("components/resume-editor/editor-body.tsx", "save"),
     ("components/resume-editor/tailored-resume-studio.tsx", "save"),
 ]
@@ -32,7 +34,9 @@ def test_a_submit_starts_one_request_per_gesture(rel: str, name: str):
     rest = src.replace(guarded, "")
     # Neither called nor handed on (`onAdd={create.mutate}`) around the guard.
     assert f"{name}.mutate" not in rest, f"{rel}: {name}.mutate is reachable without the guard"
-    assert f"{name}.reset(" not in rest, f"{rel}: reset() drops the call that clears the guard"
+    # Called or handed on (`onClick={save.reset}`): reset() drops the call
+    # that clears the guard.
+    assert not re.search(rf"\b{name}\.reset\b", rest), f"{rel}: {name}.reset is reachable"
 
 
 def test_both_referral_forms_share_the_one_guard():
@@ -42,10 +46,21 @@ def test_both_referral_forms_share_the_one_guard():
     assert "onAdd={create.mutate}" not in page
 
 
-def test_template_create_button_goes_through_the_guard():
+def test_template_create_and_duplicate_go_through_the_guard():
     page = (_FRONTEND / "app/templates/page.tsx").read_text()
     assert "const createOnce = useSingleFlight(create.mutate);" in page
     assert "onClick={() => createOnce()}" in page
+    assert "const duplicateOnce = useSingleFlight(duplicate.mutate);" in page
+    assert "<DropdownMenuItem onClick={() => duplicateOnce(t)}>" in page
+
+
+def test_template_create_keeps_focus_while_it_runs():
+    page = (_FRONTEND / "app/templates/page.tsx").read_text()
+    create = page[page.index("onClick={() => createOnce()}") :]
+    create = create[: create.index("</Button>")]
+    # It disables itself while creating: a native `disabled` drops focus.
+    assert "focusableWhenDisabled" in create
+    assert "data-disabled:pointer-events-none data-disabled:opacity-50" in create
 
 
 @pytest.mark.parametrize(

@@ -44,7 +44,8 @@ export function EditableTitle({
   const [draft, setDraft] = useState(value);
   const committed = useRef(value);
   // Enter, Escape and a blur (the save shortcut forces one) unmount the input:
-  // focus moves back to the pencil.
+  // focus moves back to the pencil. Not after a blur INTO something (a click,
+  // Tab): that is where the user put focus.
   const pencilRef = useRef<HTMLButtonElement>(null);
   const focusNext = useFocusOnNextCommit();
 
@@ -67,9 +68,9 @@ export function EditableTitle({
     },
   });
 
-  const commit = () => {
+  const commit = (refocus = true) => {
     setEditing(false);
-    focusNext(pencilRef);
+    if (refocus) focusNext(pencilRef);
     const next = draft.trim();
     if (next === committed.current) return;
     onChange(next);
@@ -84,7 +85,7 @@ export function EditableTitle({
         value={draft}
         disabled={save.isPending}
         onChange={(e) => setDraft(e.target.value)}
-        onBlur={commit}
+        onBlur={(e) => commit(e.relatedTarget === null)}
         onKeyDown={(e) => {
           if (e.key === "Enter") {
             e.preventDefault();

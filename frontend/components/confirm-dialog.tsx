@@ -40,6 +40,14 @@ type ConfirmFn = (opts: ConfirmOptions) => Promise<boolean>;
  * tabbable child rather than the container, so a `tabIndex={-1}` landmark
  * (the studio's <main> after Load latest) is focused here once the dialog has
  * gone, and only if focus fell to <body>. Nothing to name: Base UI's default.
+ *
+ * Base UI timing this depends on (1.4.1, `FloatingFocusManager`): a function
+ * `finalFocus` is read when the popup UNMOUNTS, not when it opens, so the
+ * opener check and `returnFocus` see the page after the confirmed action ran;
+ * and Base UI's own return runs in a microtask queued after that read, so the
+ * microtask here runs first and a `false` leaves it nothing to do. After a
+ * Base UI upgrade, re-check in the browser: Load latest lands on the studio's
+ * <main>, Rebuild's Cancel on ⋯, a referral's Delete confirm on Delete.
  */
 function returnTo(target: HTMLElement | null): HTMLElement | boolean {
   if (!target) return true;

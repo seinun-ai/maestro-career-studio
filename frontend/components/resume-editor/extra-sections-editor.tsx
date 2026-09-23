@@ -140,7 +140,8 @@ function SectionCard({
   const renameOriginalRef = useRef(section.title);
   const titleCollides = renaming && isCoreSectionTitle(section.title);
   // Enter, Escape and Done (and a blur the save shortcut forced) unmount the
-  // name input: focus moves to the rename button.
+  // name input: focus moves to the rename button. Not after a blur INTO
+  // something (a click, Tab): that is where the user put focus.
   const renameButtonRef = useRef<HTMLButtonElement>(null);
   const focusNext = useFocusOnNextCommit();
 
@@ -148,7 +149,7 @@ function SectionCard({
     renameOriginalRef.current = section.title;
     setRenaming(true);
   };
-  const commitRename = () => {
+  const commitRename = (refocus = true) => {
     // Never commit an empty title (schema contract) or one that duplicates a
     // core section header — deny it here so Save can't fail on it later.
     if (!section.title.trim()) {
@@ -157,7 +158,7 @@ function SectionCard({
       onChange({ ...section, title: renameOriginalRef.current });
     }
     setRenaming(false);
-    focusNext(renameButtonRef);
+    if (refocus) focusNext(renameButtonRef);
   };
 
   return (
@@ -190,7 +191,7 @@ function SectionCard({
                     commitRename();
                   }
                 }}
-                onBlur={commitRename}
+                onBlur={(e) => commitRename(e.relatedTarget === null)}
                 className="h-7 w-56"
               />
             ) : (

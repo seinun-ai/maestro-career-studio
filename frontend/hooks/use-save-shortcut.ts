@@ -3,19 +3,10 @@
 import { useEffect, useEffectEvent } from "react";
 import { flushSync } from "react-dom";
 
-import { focusIfDropped, focusReturnPoint } from "@/hooks/use-focus-return";
-import { isSaveShortcut } from "@/lib/shortcuts";
+import { focusIfDropped, focusReturnPoint, holdsDraft } from "@/lib/focus";
+import { isLiveSaveChord, isSaveShortcut } from "@/lib/shortcuts";
 
 const DIALOG = '[role="dialog"], [role="alertdialog"]';
-
-/** A field that can hold a draft only its blur commits. */
-function holdsDraft(el: Element | null): el is HTMLElement {
-  return (
-    el instanceof HTMLInputElement ||
-    el instanceof HTMLTextAreaElement ||
-    (el instanceof HTMLElement && el.isContentEditable)
-  );
-}
 
 /**
  * Cmd/Ctrl+S saves the studio. The browser's own "Save page" dialog is
@@ -46,9 +37,10 @@ export function useSaveShortcut(onSave: () => void, canSave: boolean) {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (!isSaveShortcut(event)) return;
-      const claimed = event.defaultPrevented;
+      // Read before swallowing it: `defaultPrevented` says another handler claimed it.
+      const live = isLiveSaveChord(event);
       event.preventDefault();
-      if (claimed || event.repeat || event.isComposing) return;
+      if (!live) return;
       if (event.target instanceof Element && event.target.closest(DIALOG)) return;
 
       const field = document.activeElement;

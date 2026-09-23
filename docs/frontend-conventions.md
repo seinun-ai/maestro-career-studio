@@ -182,7 +182,11 @@
     field (a refocus on the next task dropped them on `<body>`). A field that
     unmounts on blur (an inline chip edit, a section rename, the base
     studio's title) moves focus itself in that commit: to the add row, the
-    rename button, the pencil. Such a field's Enter handler calls
+    rename button, the pencil. It arms that move only for a blur with no
+    destination (`relatedTarget === null`, as the chord's is), plus Enter
+    and Escape: a click or Tab out of it is the user's own move, and arming
+    on every blur took focus back mid-move (text typed into Summary landed
+    in the chip add row). Such a field's Enter handler calls
     `preventDefault`, or Enter's activation presses the button focus just
     moved to (the rename reopened). One chord or click is one save: the key
     is gated by `canSave` and both go through `useSingleFlight`.
@@ -482,7 +486,8 @@
   the menu item — the menu's focus restore races the dialog's initial focus.
   Not reproducible under automation (`document.hasFocus()` is false in the
   browser pane, which suppresses initial-focus); verify by hand.
-- **Focus never falls to `<body>`** (`hooks/use-focus-return.ts`; pinned by
+- **Focus never falls to `<body>`** (`hooks/use-focus-return.ts`, its DOM
+  helpers in `lib/focus.ts` with node tests; pinned by
   `test_frontend_focus.py`). Focus moves only when it fell to `<body>`, never
   away from where the user put it.
   - A control that unmounts itself arms `useFocusOnNextCommit` with what
@@ -499,7 +504,8 @@
     `#main-content`).
   - A button that disables itself while its request runs is
     `focusableWhenDisabled` (Save, Widen/Narrow at their limits, a referral's
-    Save and Delete): a disabled `<button>` drops focus.
+    Save and Delete, the Templates Create): a disabled `<button>` drops
+    focus.
   - Every overlay opened from a ⋯ menu takes the trigger as `finalFocus`,
     because the item is gone by the time it closes. The menu itself does not:
     an explicit `finalFocus` on a menu also overrides the initial focus of an
@@ -508,6 +514,14 @@
     so `StudioOverflowMenu` moves a dropped focus to ⋯ once the popup has
     unmounted (`onOpenChangeComplete` runs just before that, hence the
     zero-delay timeout).
+  - Two of these lean on Base UI 1.4.1 timing, noted at each site:
+    `StudioOverflowMenu`'s timeout on `onOpenChangeComplete` firing before
+    the unmount, and `ConfirmDialogProvider`'s `returnTo` on a function
+    `finalFocus` being read when the popup unmounts (not when it opens) and
+    ahead of Base UI's own return microtask. After a Base UI upgrade,
+    re-check in the browser: a click on ⋯ → Edit raw JSON lands on ⋯; ⋯ →
+    History and ⋯ → Rebuild start inside the sheet and the confirm; Load
+    latest lands on the studio's `<main>`.
   - `ConfirmDialogProvider` returns to its opener, or, when the confirmed
     action removed it, to the nearest `tabIndex={-1}` ancestor that survived
     (`returnFocus` names another target: Rebuild returns to ⋯). Base UI would
@@ -581,10 +595,12 @@
   page shows reads the shared pending flag and submits through
   `useSingleFlight` (`hooks/use-single-flight.ts`): react-query re-renders
   `isPending` on a zero-delay timeout, so a double click read `false` twice
-  and created two rows. So do the Templates Create, `/new`'s Extract and
-  both studios' Save (the chat composer's `sendingRef` is the same guard,
-  inline). Nothing else calls, hands on or resets a guarded mutation, or the
-  guard never clears. Pinned by `test_frontend_single_flight.py` (Extract
+  and created two rows. So do the Templates Create and Duplicate, `/new`'s
+  Extract and both studios' Save (the chat composer's `sendingRef` is the same guard,
+  inline). Nothing else calls, hands on or resets a guarded mutation (the
+  pin rejects any `.mutate` or `.reset` reference outside the guard, called
+  or not), or the guard never clears. The lock itself is
+  `lib/single-flight.ts`. Pinned by `test_frontend_single_flight.py` (Extract
   by `test_frontend_unsaved_surfaces.py`). On Referrals the inline
   empty-state form shares the same draft, so text left by a failed dialog
   create pre-fills it once the last row is deleted. `NewEntityDialog` still

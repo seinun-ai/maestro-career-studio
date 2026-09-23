@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { isSaveShortcut, modKeyFor, shortcutLabel } from "./shortcuts.ts";
+import { isLiveSaveChord, isSaveShortcut, modKeyFor, shortcutLabel } from "./shortcuts.ts";
 
 test("Apple platforms get Command, everything else Control", () => {
   assert.equal(modKeyFor("MacIntel"), "⌘");
@@ -44,4 +44,12 @@ test("a Latin layout that moves S keeps the letter, not the position", () => {
   const base = { code: "KeyS", metaKey: true, ctrlKey: false, altKey: false, shiftKey: false };
   assert.equal(isSaveShortcut({ ...base, key: "r" }), false);
   assert.equal(isSaveShortcut({ ...base, key: "o" }), false);
+});
+
+test("a save chord saves unless claimed, repeated or mid-composition", () => {
+  const chord = { defaultPrevented: false, repeat: false, isComposing: false };
+  assert.equal(isLiveSaveChord(chord), true);
+  assert.equal(isLiveSaveChord({ ...chord, defaultPrevented: true }), false);
+  assert.equal(isLiveSaveChord({ ...chord, repeat: true }), false);
+  assert.equal(isLiveSaveChord({ ...chord, isComposing: true }), false);
 });

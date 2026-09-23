@@ -109,6 +109,9 @@ export default function TemplatesListPage() {
     },
     onError: (err: Error) => toast.error(err.message),
   });
+  // The same guard: a second Duplicate before the first lands POSTs the same
+  // `<id>_copy` again and comes back 409 over the first's success.
+  const duplicateOnce = useSingleFlight(duplicate.mutate);
 
   const setDefault = useMutation({
     mutationFn: (id: string) =>
@@ -234,7 +237,7 @@ export default function TemplatesListPage() {
                 >
                   Set default
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => duplicate.mutate(t)}>
+                <DropdownMenuItem onClick={() => duplicateOnce(t)}>
                   Duplicate
                 </DropdownMenuItem>
                 <DropdownMenuItem
@@ -305,6 +308,10 @@ export default function TemplatesListPage() {
             <Button
               onClick={() => createOnce()}
               disabled={!idValid || create.isPending}
+              // Disables itself while creating: a disabled <button> drops
+              // focus to <body> (dimmed on data-disabled, as Save is).
+              focusableWhenDisabled
+              className="data-disabled:pointer-events-none data-disabled:opacity-50"
             >
               {create.isPending ? "Creating…" : "Create"}
             </Button>

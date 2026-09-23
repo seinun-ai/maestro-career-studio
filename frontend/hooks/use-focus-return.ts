@@ -2,41 +2,10 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 
-/** SidebarGutter's id: the skip link's target, the one `tabIndex={-1}` element every route shares. */
-const MAIN_CONTENT_ID = "main-content";
-const FIELD = 'input:not([type="hidden"]):not(:disabled), textarea:not(:disabled), select:not(:disabled)';
-const TABBABLE = `${FIELD}, button:not(:disabled), a[href], [tabindex]:not([tabindex="-1"])`;
+import { focusIfDropped, focusReturnPoint, focusTarget } from "@/lib/focus";
 
-/** Focus `target` only when focus has fallen to <body>: never take it from where the user put it. */
-export function focusIfDropped(target: HTMLElement | null | undefined): void {
-  const active = document.activeElement;
-  if (active && active !== document.body) return;
-  target?.focus({ preventScroll: true });
-}
-
-/**
- * Where focus goes back to if `el` disappears. The ancestors are read NOW, while `el` is attached: a removed
- * subtree has no path back to the document. The answer is `el` while it is still connected, else the nearest
- * `tabIndex={-1}` ancestor still connected (a panel that opted in), else the main area.
- */
-export function focusReturnPoint(el: Element | null): () => HTMLElement | null {
-  if (!(el instanceof HTMLElement) || el === document.body) return () => null;
-  const chain: HTMLElement[] = [];
-  for (
-    let a = el.parentElement?.closest<HTMLElement>('[tabindex="-1"]');
-    a;
-    a = a.parentElement?.closest<HTMLElement>('[tabindex="-1"]')
-  )
-    chain.push(a);
-  return () =>
-    el.isConnected ? el : (chain.find((a) => a.isConnected) ?? document.getElementById(MAIN_CONTENT_ID));
-}
-
-/** The element when it takes focus itself, else its first text field, else its first tabbable. */
-function focusTarget(el: HTMLElement): HTMLElement {
-  if (el.matches(TABBABLE)) return el;
-  return el.querySelector<HTMLElement>(FIELD) ?? el.querySelector<HTMLElement>(TABBABLE) ?? el;
-}
+// The DOM helpers live in `lib/focus.ts` (node-tested); callers keep importing them from here.
+export { focusIfDropped, focusReturnPoint };
 
 /**
  * For a control that unmounts itself (a pencil that becomes its editor, Done, a collapse toggle). Call the
