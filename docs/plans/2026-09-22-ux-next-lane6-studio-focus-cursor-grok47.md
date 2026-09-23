@@ -182,6 +182,8 @@ table, deviations, anything queued or deferred, and any concerns.
 | 17 | `finalFocus={overflowRef}` on `InstructSheet` (4 overlays in the base studio) | Not passed: `instruct-sheet.tsx` is lane 5's. Pin asserts 3. In the browser Escape from Ask for changes returned to ⋯ by Base UI's default on both paths (key and click). See *Deferred to merge* | Scope: lane 5 owns the file |
 | 18 | Arm `focusNext` in the rename's `commitRename` and Escape | Also `e.preventDefault()` in the rename input's Enter branch. Focus now moves to the rename button inside Enter's keydown, and Enter's activation then pressed that button and reopened the rename (seen in the browser; the chip edit and the title already prevented default) | Focus lands somewhere sensible; no surprise reopen |
 | 18 | Browser: `keyboard.down("Meta")`, press, up, then type | Both that and a burst (the chord and the keys sent over CDP without waiting between them, so they queue behind the chord). A/B against the old hook: it lost the typed keys in every case (Playwright sequence: `abc` kept, `xyz` lost; burst, mid-caret and Ctrl+S too); the new hook kept all of them | Never lose typed text |
+| 19 | F4's pin `f"{name}.mutate(" not in …` | `f"{name}.mutate" not in …` (no parenthesis), plus no `.reset(`. The mutation check showed the call-only form missing `onAdd={create.mutate}` (a guarded mutation handed on unguarded) | Pins that catch the regression they name |
+| 19 | New `test_frontend_single_flight.py` with F4's full `_SITES` | This lane's four sites only (Referrals, Templates, both studios' Save); lane 5 owns the other five. See *Deferred to merge* | Scope |
 
 ## Gate results
 
@@ -191,19 +193,31 @@ table, deviations, anything queued or deferred, and any concerns.
 | 17 | mutation check | 28 mutants, 28 killed, each by exactly the pin that names it (`/tmp/maestro-next-lane6/muts17.json`) |
 | 17 | tsc / lint / node | clean / 0 errors, 5 baseline warnings / 143 of 143 |
 | 17 | build | `npm run build` OK |
-| 17 | slop | frontend OK, duplication 448 lines / 39 → 37 clones (ceiling 468/39; clean `git archive` export); backend OK, `complexity_hotspots` 424 (one new pin reached cc 13 and was split) |
+| 17 | slop | frontend OK, duplication 448 lines / 37 clones, down from 468/39 (the ceiling; clean `git archive` export); backend OK, `complexity_hotspots` 424 (one new pin reached cc 13 and was split) |
 | 17 | browser | Playwright (headless Chrome, real keys and clicks), both studios, light and dark: every control in F1's list lands on a named target, never BODY (see report) |
 | 18 | pins | `test_frontend_studio.py` 60 passed (4 new, seen failing first); every `test_frontend_*.py` 495 passed |
 | 18 | mutation check | 14 mutants, 14 killed by the pin that names them (`muts18.json`, `muts18b.json`) |
 | 18 | tsc / lint / node / build | clean / 0 errors, 5 warnings / 143 of 143 / OK |
 | 18 | slop | frontend OK, 448/37 (clean export); backend OK, hotspots 424 |
 | 18 | browser | Playwright, real key events: Summary (tailored) and a contact field keep every key typed with the chord (end and mid-text caret), Ctrl+S too; the chip add row's `Kafka` is saved and `Flink` lands in the add row; an inline chip edit, a section rename and the title save and hand focus to the add row, the rename button, the pencil; two chords 50 ms apart made one PUT |
+| 19 | pins | `test_frontend_single_flight.py` 8 passed (new, 8 failed first), `test_frontend_referrals.py` updated; every `test_frontend_*.py` 503 passed |
+| 19 | mutation check | 6 mutants, 6 killed by the pins that name them (`muts19.json`) |
+| 19 | tsc / lint / node / build | clean / 0 errors, 5 warnings / 143 of 143 / OK |
+| 19 | slop | frontend OK, 448/37 (clean export); backend OK, hotspots 424 |
+| 19 | browser | Before the fix: a same-task double click, a real `dblclick` and Enter twice each made two referral rows; Templates made a 200 then a 409; each studio's Save made two writes. After: one request each; a forced 500 then a retry makes exactly one row / one save (the guard clears on error) |
+| all | full backend | `pytest tests/ mcp_server/tests/ -q`: 4804 passed, 2 skipped (base 4780 + 24 new pins) |
+| all | ruff / SYSTEM.md gate | `ruff check` on the three pin files: clean / `check_system_md.py` OK, 999/1000 |
 
 ## Queued for Task 20 (SYSTEM.md changes Claude applies)
 
 - **§11 item 29** (Task 17): deleting the last referral now hands focus to `#main-content`
   (and any other delete to the table). Narrow the item to: "Focus lands on `<body>`: Escape on
   the <768px sidebar sheet (which also stays open after a nav link is tapped)."
+- **§11 candidate, not this lane's scope (owner's call)**: the throwaway backend segfaulted
+  twice during these checks inside `libpdfium` (`FPDF_LoadPage`, crash reports
+  `~/Library/Logs/DiagnosticReports/python3.13-2026-09-23-*.ips`) while `/templates` fired its
+  gallery previews in parallel. `app/services/pdf_preview.py` calls `pypdfium2` with no lock,
+  and PDFium is not thread-safe; FastAPI runs those sync handlers on a thread pool.
 
 ## Deferred to merge (edits left for Claude, with file:line)
 
@@ -215,3 +229,10 @@ table, deviations, anything queued or deferred, and any concerns.
   `backend/tests/test_frontend_focus.py::test_every_overlay_the_menu_opens_takes_a_return_target`
   from 3 to 4. Today Escape returns to ⋯ through Base UI's default (verified by key and click),
   so this makes it deterministic rather than fixing a live drop.
+
+- **Task 19, lane 5's single-flight sites**: this lane created
+  `backend/tests/test_frontend_single_flight.py` with its own four sites in `_SITES`. If lane 5
+  also creates that file (F4 names it), merge the two `_SITES` lists into one parametrized
+  test (add-add conflict). Then widen the conventions sentence in the dialog-draft bullet
+  ("So do the Templates Create, `/new`'s Extract and both studios' Save") to lane 5's sites
+  (New career item, Capture/Read document, New base résumé, the Q&A generate buttons).

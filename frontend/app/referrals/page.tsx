@@ -48,6 +48,7 @@ import {
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { useEditToggle, useFocusHandoff } from "@/hooks/use-focus-return";
+import { useSingleFlight } from "@/hooks/use-single-flight";
 import { apiFetch } from "@/lib/api";
 import { isLoadFailure } from "@/lib/query-state";
 import type { Referral, ReferralCreate, ReferralPatch } from "@/lib/types";
@@ -116,6 +117,9 @@ export default function ReferralsPage() {
     },
     onError: (err: Error) => toast.error(err.message),
   });
+  // Both forms submit through this: `isPending` re-renders a tick late, so an
+  // instant double click (or Enter twice) read it false and made two rows.
+  const add = useSingleFlight(create.mutate);
 
   useEffect(() => {
     if (!populated || !focusAddAfterCreate.current) return;
@@ -152,7 +156,7 @@ export default function ReferralsPage() {
           draft={draft}
           onDraftChange={setDraft}
           adding={create.isPending}
-          onAdd={create.mutate}
+          onAdd={add}
         />
       )}
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
@@ -167,7 +171,7 @@ export default function ReferralsPage() {
             draft={draft}
             onDraftChange={setDraft}
             adding={create.isPending}
-            onAdd={create.mutate}
+            onAdd={add}
             companyRef={companyRef}
             inDialog
           />

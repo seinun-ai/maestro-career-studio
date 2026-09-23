@@ -184,7 +184,9 @@
     studio's title) moves focus itself in that commit: to the add row, the
     rename button, the pencil. Such a field's Enter handler calls
     `preventDefault`, or Enter's activation presses the button focus just
-    moved to (the rename reopened). Save (key or click)
+    moved to (the rename reopened). One chord or click is one save: the key
+    is gated by `canSave` and both go through `useSingleFlight`.
+    Save (key or click)
     applies a pending raw-JSON draft first and saves exactly what it applied;
     an invalid draft saves nothing. `isSaveShortcut` falls back to
     `code === "KeyS"` only when the layout types no Latin letter there:
@@ -576,7 +578,14 @@
   The create mutation lives there too, one per page: a mutation inside the
   form dies with it, so a reopened dialog showed the kept draft with an
   enabled submit while the first POST was still in flight. Every form the
-  page shows reads the shared pending flag. On Referrals the inline
+  page shows reads the shared pending flag and submits through
+  `useSingleFlight` (`hooks/use-single-flight.ts`): react-query re-renders
+  `isPending` on a zero-delay timeout, so a double click read `false` twice
+  and created two rows. So do the Templates Create, `/new`'s Extract and
+  both studios' Save (the chat composer's `sendingRef` is the same guard,
+  inline). Nothing else calls, hands on or resets a guarded mutation, or the
+  guard never clears. Pinned by `test_frontend_single_flight.py` (Extract
+  by `test_frontend_unsaved_surfaces.py`). On Referrals the inline
   empty-state form shares the same draft, so text left by a failed dialog
   create pre-fills it once the last row is deleted. `NewEntityDialog` still
   resets on close (SYSTEM.md §11 item 32).

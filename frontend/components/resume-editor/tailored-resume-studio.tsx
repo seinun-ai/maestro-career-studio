@@ -27,6 +27,7 @@ import { useConfirm } from "@/components/confirm-dialog";
 import { IconButton } from "@/components/icon-button";
 import { useFocusOnNextCommit } from "@/hooks/use-focus-return";
 import { useLeaveGuard } from "@/hooks/use-leave-guard";
+import { useSingleFlight } from "@/hooks/use-single-flight";
 import { PageHeader } from "@/components/page-shell";
 import { ContactForm } from "@/components/resume-editor/contact-form";
 import {
@@ -684,11 +685,15 @@ function StudioEditor({
     rescoring: rescore.isPending,
   });
   const canSave = unsaved && !busy;
+  // The button and Cmd/Ctrl+S both call `onSave`. One save per gesture:
+  // `isPending` re-renders a tick late, so a double click or two fast chords
+  // read it false and wrote twice (two versions, two renders).
+  const saveOnce = useSingleFlight(save.mutate);
   // Applies a pending raw draft first and saves exactly that (`setData` has
   // not landed yet); an invalid draft saves nothing and the pane says why.
   const onSave = () =>
     raw.commitThen(setData, (applied) =>
-      save.mutate({ data: applied ?? data, formatting, templateId }),
+      saveOnce({ data: applied ?? data, formatting, templateId }),
     );
   const pdfHref = apiUrlForBrowserPdf(`/api/applications/${applicationId}/pdf`);
   const pdfFilename =

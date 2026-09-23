@@ -7,6 +7,7 @@ import { MoreHorizontal } from "lucide-react";
 import { toast } from "sonner";
 
 import { useConfirm } from "@/components/confirm-dialog";
+import { useSingleFlight } from "@/hooks/use-single-flight";
 import { TemplateGallery } from "@/components/templates/template-gallery";
 import { LoadErrorState } from "@/components/load-error-state";
 import { isLoadFailure } from "@/lib/query-state";
@@ -82,6 +83,9 @@ export default function TemplatesListPage() {
     },
     onError: (err: Error) => toast.error(err.message),
   });
+  // One POST per click: a double click read `isPending` false twice and the
+  // second create came back 409 "already exists" over the first's success.
+  const createOnce = useSingleFlight(create.mutate);
 
   const duplicate = useMutation({
     mutationFn: async (template: TemplateSummary) => {
@@ -299,7 +303,7 @@ export default function TemplatesListPage() {
               Cancel
             </Button>
             <Button
-              onClick={() => create.mutate()}
+              onClick={() => createOnce()}
               disabled={!idValid || create.isPending}
             >
               {create.isPending ? "Creating…" : "Create"}

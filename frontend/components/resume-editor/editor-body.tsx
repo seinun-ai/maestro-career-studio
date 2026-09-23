@@ -19,6 +19,7 @@ import { IconButton } from "@/components/icon-button";
 import { KbSyncPill } from "@/components/kb-sync-pill";
 import { useFocusOnNextCommit, useEditToggle } from "@/hooks/use-focus-return";
 import { useLeaveGuard } from "@/hooks/use-leave-guard";
+import { useSingleFlight } from "@/hooks/use-single-flight";
 import { PageHeader } from "@/components/page-shell";
 import { ContactForm } from "@/components/resume-editor/contact-form";
 import { EditableTitle } from "@/components/resume-editor/editable-title";
@@ -287,10 +288,12 @@ export function EditorBody({
     rescoring: false,
   });
   const canSave = hasUnsavedChanges && !save.isPending && !regenerate.isPending;
+  // One save per gesture, button or Cmd/Ctrl+S (see the tailored studio's).
+  const saveOnce = useSingleFlight(save.mutate);
   // Applies a pending raw draft first (see the tailored studio's `onSave`).
   const onSave = () =>
     raw.commitThen(setData, (applied) =>
-      save.mutate({ data: applied ?? data, displayName, formatting, templateId }),
+      saveOnce({ data: applied ?? data, displayName, formatting, templateId }),
     );
 
   return (
