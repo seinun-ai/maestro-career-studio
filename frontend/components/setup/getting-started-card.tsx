@@ -38,9 +38,14 @@ export function GettingStartedCard() {
       typeof window !== "undefined" &&
       window.localStorage.getItem(DISMISS_KEY) === "1",
   );
-  const [composeSuggestion, setComposeSuggestion] = useState<
-    SetupStatus["suggested_bases"][number] | null
-  >(null);
+  // One kept dialog per suggestion the user has opened (role keys, in open
+  // order): closing A and opening B keeps A's draft for when A comes back.
+  const [opened, setOpened] = useState<string[]>([]);
+  const [openRole, setOpenRole] = useState<string | null>(null);
+  const compose = (role: string) => {
+    setOpened((keys) => (keys.includes(role) ? keys : [...keys, role]));
+    setOpenRole(role);
+  };
   const [uploadOpen, setUploadOpen] = useState(false);
   const pathname = usePathname();
   const setupStatus = useQuery({
@@ -165,7 +170,7 @@ export function GettingStartedCard() {
                       type="button"
                       size="sm"
                       variant="outline"
-                      onClick={() => setComposeSuggestion(suggestion)}
+                      onClick={() => compose(suggestion.role_category)}
                     >
                       Compose from KB
                     </Button>
@@ -177,18 +182,18 @@ export function GettingStartedCard() {
         </CardContent>
       </Card>
       <UploadDialog open={uploadOpen} onOpenChange={setUploadOpen} />
-      {composeSuggestion ? (
+      {opened.map((role) => (
         <NewBaseResumeDialog
-          key={composeSuggestion.role_category}
-          open
+          key={role}
+          open={openRole === role}
           initialMode="kb"
-          initialRole={composeSuggestion.role_category}
+          initialRole={role}
           existingResumes={[]}
           onOpenChange={(next) => {
-            if (!next) setComposeSuggestion(null);
+            if (!next) setOpenRole(null);
           }}
         />
-      ) : null}
+      ))}
     </>
   );
 }

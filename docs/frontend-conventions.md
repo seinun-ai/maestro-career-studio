@@ -526,17 +526,34 @@
   Several resume entry cards are open at once, so a text-derived id repeats
   across them and clicking one entry's label focuses another's input; a caller
   `idPrefix` only moves the collision one level out.
-- **A dialog holding a create form keeps its draft across close until the
-  create succeeds**: `DialogContent` unmounts on close, so Esc or an overlay
-  click would drop typed text; the field state lives in the component that
-  owns the dialog (Referrals' `draft`, pinned by `test_frontend_referrals.py`).
-  The create mutation lives there too, one per page: a mutation inside the
-  form dies with it, so a reopened dialog showed the kept draft with an
-  enabled submit while the first POST was still in flight. Every form the
-  page shows reads the shared pending flag. On Referrals the inline
-  empty-state form shares the same draft, so text left by a failed dialog
-  create pre-fills it once the last row is deleted. `NewEntityDialog` still
-  resets on close (SYSTEM.md §11 item 32).
+- **A dialog keeps what the user typed, or paid for, across close.**
+  `DialogContent` unmounts on close, so Esc, an overlay click or the dismiss
+  button would drop typed text and a proposal a model call produced. The
+  field state and the one request live in the component that owns the dialog
+  (Referrals' `draft`, `NewEntityDialog`, `InstructSheet`, Send to résumé,
+  Demonstrate skill), or the popup stays mounted (`DialogContent
+  keepMounted`, New base résumé, whose twelve fields and two requests live in
+  the popup). A caller mounts such a dialog for the page's lifetime, never
+  `{open ? <Dialog/> : null}`, with one instance per subject where there are
+  several (Getting started's suggestions, the health report's skills), and a
+  kept-mounted form takes its ids from `useId`, since several copies share
+  the page. Only a success clears the draft (a key bump or a reset in
+  `onSuccess`), plus **Start over** on New base résumé, shown once the draft
+  differs from a fresh one, with no confirm because its label names the loss.
+  The dismiss button reads **Close**, never Cancel: it cancels nothing. A
+  mutation inside the form would die with it, so a reopened dialog showed the
+  kept draft with an enabled submit while the first POST was still in
+  flight; every form the page shows reads the shared pending flag and submits
+  through `useSingleFlight` (react-query re-renders `isPending` on a
+  zero-delay timeout, so a double click read `false` twice and created two
+  rows). A kept query that the closed dialog does not need waits for `open`
+  (`useBaseResumes(false, { enabled: open })`). A kept LLM proposal that edits
+  by index carries the basis it was made against (`serverKey` of the saved
+  copy): once the résumé moves on, the proposal is described without names,
+  says so, and Apply is disabled. On Referrals the inline empty-state form
+  shares the same draft, so text left by a failed dialog create pre-fills it
+  once the last row is deleted. Pinned by `test_frontend_dialog_drafts.py`
+  and `test_frontend_referrals.py`.
 - Route-level `app/error.tsx` + `app/global-error.tsx` + `app/not-found.tsx`
   catch components that throw; page-level `isError` branches handle query
   failures. `next.config.ts` sets nosniff / DENY / no-referrer /

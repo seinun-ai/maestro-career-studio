@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -8,6 +8,8 @@ import { Loader2, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
 import { Dropzone, type DropzoneRejection } from "@/components/setup/dropzone";
+import { useFocusOnNextCommit } from "@/hooks/use-focus-return";
+import { useSingleFlight } from "@/hooks/use-single-flight";
 
 import { useRoleCategories } from "@/components/role-category-picker";
 import {
@@ -106,9 +108,17 @@ export function NewBaseResumeDialog({
 }) {
   // Lifted only so a backdrop/Esc close cannot yank the dialog mid-create.
   const [busy, setBusy] = useState(false);
+  // The draft is kept across close: the popup stays mounted, so a typed name,
+  // a picked selection and a plan the model is still writing all survive Esc
+  // or an overlay click. Start over bumps the key, the one way to clear it.
+  const [formGen, setFormGen] = useState(0);
+  // Start over unmounts the button that was pressed; focus goes to the new
+  // form's first field instead of falling to the page.
+  const popupRef = useRef<HTMLDivElement>(null);
+  const focusNext = useFocusOnNextCommit();
   return (
     <Dialog open={open} onOpenChange={(next) => !busy && onOpenChange(next)}>
-      <DialogContent size="lg">
+      <DialogContent size="lg" keepMounted ref={popupRef}>
         <DialogHeader>
           <DialogTitle>New base resume</DialogTitle>
           <DialogDescription>
@@ -116,10 +126,13 @@ export function NewBaseResumeDialog({
             parse a resume file, or start from an empty document.
           </DialogDescription>
         </DialogHeader>
-        {/* Remount per open: field state resets by construction, with no
-            reset-in-an-effect to keep in sync. */}
         <NewBaseResumeForm
-          key={open ? "open" : "closed"}
+          key={formGen}
+          open={open}
+          onStartOver={() => {
+            setFormGen((g) => g + 1);
+            focusNext(popupRef);
+          }}
           onOpenChange={onOpenChange}
           onBusyChange={setBusy}
           initialMode={initialMode}
@@ -132,12 +145,16 @@ export function NewBaseResumeDialog({
 }
 
 function NewBaseResumeForm({
+  open,
+  onStartOver,
   onOpenChange,
   onBusyChange,
   initialMode,
   initialRole,
   existingResumes,
 }: {
+  open: boolean;
+  onStartOver: () => void;
   onOpenChange: (open: boolean) => void;
   onBusyChange: (busy: boolean) => void;
   initialMode: Mode;
@@ -153,11 +170,12 @@ function NewBaseResumeForm({
   // ALL three tabs share the free-text tag picker now. The KB tab's plan
   // endpoint still wants a coarse key, derived on demand by coarseFromTag —
   // one picker state, not a parallel kbRole that could disagree with it.
-  const [tag, setTag] = useState<FavoredRole | null>(() =>
+  const [initialTag] = useState<FavoredRole | null>(() =>
     initialRole
       ? favoredRoleFromTag(initialRole, null, undefined)
       : null,
   );
+  const [tag, setTag] = useState<FavoredRole | null>(initialTag);
   const [nameMatchApplied, setNameMatchApplied] = useState(false);
   const pendingNameMatch = useRef<string | null>(null);
   const [instruction, setInstruction] = useState("");
@@ -172,6 +190,20 @@ function NewBaseResumeForm({
   const [file, setFile] = useState<File | null>(null);
   const [fileRejected, setFileRejected] = useState<DropzoneRejection[]>([]);
   const slugsTaken = existingResumes.map((r) => r.slug);
+  // Per instance: Getting started keeps one form per suggestion mounted at
+  // once, and a fixed id would name the first (hidden) form's field.
+  const fieldId = useId();
+  const ids = {
+    name: `${fieldId}-name`,
+    nameHint: `${fieldId}-name-hint`,
+    role: `${fieldId}-role`,
+    instruction: `${fieldId}-instruction`,
+    instructionHint: `${fieldId}-instruction-hint`,
+    summary: `${fieldId}-summary`,
+    summaryHint: `${fieldId}-summary-hint`,
+    source: `${fieldId}-source`,
+    copyRole: `${fieldId}-copy-role`,
+  };
 
   // The coarse key a FavoredRole implies, for the two KB calls that need one.
   // A confirmed mapping wins; a catalog pick resolves through the catalog (a
@@ -201,7 +233,8 @@ function NewBaseResumeForm({
   const entities = useQuery({
     queryKey: ["kb", "entities"],
     queryFn: () => apiFetch<KBEntitySummary[]>("/api/kb/entities"),
-    enabled: mode === "kb",
+    // The form stays mounted while closed; it fetches nothing until opened.
+    enabled: open && mode === "kb",
   });
   // Experience and projects render FROM their bullets, so one with no approved
   // points would be an empty entry. Certifications render as a bare title and
@@ -391,7 +424,12 @@ function NewBaseResumeForm({
           ? Boolean(file)
           : Boolean(name.trim());
 
-  const submit = () => create.mutate();
+  const submit = useSingleFlight(create.mutate);
+
+  // What Start over would throw away. Switching tabs is not a draft.
+  const touched =
+    Boolean(name || instruction || selected.size || plan || source || file) ||
+    tag !== initialTag;
 
   const toggle = (id: string) =>
     setSelected((current) => {
@@ -430,17 +468,17 @@ function NewBaseResumeForm({
           <div className="grid gap-4 pt-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="grid gap-1.5">
-                <Label htmlFor="nbr_name" optional={mode === "file"}>
+                <Label htmlFor={ids.name} optional={mode === "file"}>
                   Name
                 </Label>
                 {mode === "file" ? (
-                  <p id="nbr_name_hint" className="text-muted-foreground text-xs">
+                  <p id={ids.nameHint} className="text-muted-foreground text-xs">
                     Defaults to the file name.
                   </p>
                 ) : null}
                 <Input
-                  aria-describedby={mode === "file" ? "nbr_name_hint" : undefined}
-                  id="nbr_name"
+                  aria-describedby={mode === "file" ? ids.nameHint : undefined}
+                  id={ids.name}
                   placeholder={mode === "file" ? undefined : "e.g. Machine Learning Engineer"}
                   value={name}
                   onChange={(e) => {
@@ -454,14 +492,14 @@ function NewBaseResumeForm({
               </div>
               {mode === "kb" && (
                 <div className="grid gap-1.5">
-                  <Label htmlFor="nbr_role">Target role</Label>
+                  <Label htmlFor={ids.role}>Target role</Label>
                   {/* The same searchable picker as the other two tabs — the
                       coarse dropdown here was the one hold-out, reported from
                       live use. The plan endpoint still wants a coarse key;
                       `coarseFromTag` derives it below. */}
                   <RolePicker
                     mode="single"
-                    id="nbr_role"
+                    id={ids.role}
                     value={tag}
                     onValueChange={setTag}
                     roleCategories={roles.data}
@@ -470,13 +508,13 @@ function NewBaseResumeForm({
               )}
               {(mode === "blank" || mode === "file") && (
                 <div className="grid gap-1.5">
-                  <Label htmlFor="nbr_role">
+                  <Label htmlFor={ids.role}>
                     Target role
                     <span className="text-muted-foreground"> (optional)</span>
                   </Label>
                   <RolePicker
                     mode="single"
-                    id="nbr_role"
+                    id={ids.role}
                     value={tag}
                     onValueChange={setTag}
                     roleCategories={roles.data}
@@ -487,16 +525,16 @@ function NewBaseResumeForm({
 
             <TabsContent value="kb" className="grid gap-4">
               <div className="grid gap-1.5">
-                <Label htmlFor="nbr_instruction" optional>
+                <Label htmlFor={ids.instruction} optional>
                   How should this resume be shaped?
                 </Label>
-                <p id="nbr_instruction_hint" className="text-muted-foreground text-xs">
+                <p id={ids.instructionHint} className="text-muted-foreground text-xs">
                   Steers which entries are picked and the tone of the summary.
                   Your bullets are used exactly as written.
                 </p>
                 <Textarea
-                  id="nbr_instruction"
-                  aria-describedby="nbr_instruction_hint"
+                  id={ids.instruction}
+                  aria-describedby={ids.instructionHint}
                   rows={3}
                   placeholder="e.g. Lead with production ML work, senior in tone"
                   value={instruction}
@@ -578,19 +616,19 @@ function NewBaseResumeForm({
 
               {plan && (
                 <div className="grid gap-1.5">
-                  <Label htmlFor="nbr_summary" optional>
+                  <Label htmlFor={ids.summary} optional>
                     Summary
                   </Label>
                   {/* This was a placeholder, which is the wrong place for a
                       statement about the field: it vanishes as soon as you
                       type, so the reasoning disappears exactly when you act
                       on it. */}
-                  <p id="nbr_summary_hint" className="text-muted-foreground text-xs">
+                  <p id={ids.summaryHint} className="text-muted-foreground text-xs">
                     Left blank on purpose. A wrong summary is worse than none.
                   </p>
                   <Textarea
-                    id="nbr_summary"
-                    aria-describedby="nbr_summary_hint"
+                    id={ids.summary}
+                    aria-describedby={ids.summaryHint}
                     rows={3}
                     value={summary}
                     onChange={(e) => setSummary(e.target.value)}
@@ -601,12 +639,12 @@ function NewBaseResumeForm({
 
             <TabsContent value="existing" className="grid gap-4">
               <div className="grid gap-1.5">
-                <Label htmlFor="nbr_source">Copy from</Label>
+                <Label htmlFor={ids.source}>Copy from</Label>
                 <Select
                   value={source}
                   onValueChange={(v) => selectSource(v as string)}
                 >
-                  <SelectTrigger id="nbr_source" size="sm" className="w-full">
+                  <SelectTrigger id={ids.source} size="sm" className="w-full">
                     <SelectValue placeholder="Choose a base resume">
                       {(value) => {
                         const hit = existingResumes.find((r) => r.slug === value);
@@ -632,7 +670,7 @@ function NewBaseResumeForm({
               {source && (
                 <div className="grid gap-1.5">
                   <div className="flex items-center justify-between gap-2">
-                    <Label htmlFor="nbr_copy_role">Target role</Label>
+                    <Label htmlFor={ids.copyRole}>Target role</Label>
                     {nameMatchApplied && (
                       <Button
                         type="button"
@@ -646,7 +684,7 @@ function NewBaseResumeForm({
                   </div>
                   <RolePicker
                     mode="single"
-                    id="nbr_copy_role"
+                    id={ids.copyRole}
                     value={tag}
                     onValueChange={(next) => {
                       setTag(next);
@@ -705,10 +743,22 @@ function NewBaseResumeForm({
         </Tabs>
 
         <DialogFooter>
+          {/* Closing keeps the draft, so the one discard is named for what it
+              does. No confirm: the label says what is lost. */}
+          {touched && (
+            <Button
+              variant="ghost"
+              className="sm:mr-auto"
+              disabled={busy}
+              onClick={onStartOver}
+            >
+              Start over
+            </Button>
+          )}
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>
-            Cancel
+            Close
           </Button>
-          <Button onClick={submit} disabled={!canCreate || busy}>
+          <Button onClick={() => submit()} disabled={!canCreate || busy}>
             {busy ? <Loader2 className="animate-spin" /> : null}
             {busy && mode === "file" ? "Parsing…" : "Create"}
           </Button>

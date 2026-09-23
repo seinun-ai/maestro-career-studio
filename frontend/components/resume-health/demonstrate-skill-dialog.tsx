@@ -136,13 +136,10 @@ export function DemonstrateSkillDialog({
   });
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(next) => {
-        if (!next) reset();
-        onOpenChange(next);
-      }}
-    >
+    // Closing keeps the picked bullet, the prose and a drafted rewrite (it
+    // cost a model call); only a successful apply clears them. A draft kept
+    // past a re-analysis is safe: the apply carries its content hash.
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[80vh] w-[min(92vw,34rem)] max-w-[min(92vw,34rem)] flex-col overflow-hidden">
         <DialogHeader>
           <DialogTitle>Demonstrate {skill}</DialogTitle>
@@ -231,15 +228,8 @@ export function DemonstrateSkillDialog({
           </div>
         )}
         <DialogFooter>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => {
-              reset();
-              onOpenChange(false);
-            }}
-          >
-            Cancel
+          <Button size="sm" variant="ghost" onClick={() => onOpenChange(false)}>
+            Close
           </Button>
           {draft ? (
             <Button

@@ -83,6 +83,8 @@ export function EntityDetail({ entityId }: { entityId: string }) {
   const queryClient = useQueryClient();
   const confirm = useConfirm();
   const [sendOpen, setSendOpen] = useState(false);
+  // Bumped when a send lands: the kept dialog's draft is cleared by remounting.
+  const [sendGen, setSendGen] = useState(0);
   const entity = useQuery({
     queryKey: ["kb", "entity", entityId],
     queryFn: () => getKbEntity(entityId),
@@ -192,13 +194,13 @@ export function EntityDetail({ entityId }: { entityId: string }) {
           </div>
         </div>
       </PageShell>
-      {sendOpen ? (
-        <SendToResumeDialog
-          open={sendOpen}
-          onOpenChange={setSendOpen}
-          entity={entity.data}
-        />
-      ) : null}
+      <SendToResumeDialog
+        key={sendGen}
+        open={sendOpen}
+        onOpenChange={setSendOpen}
+        onSent={() => setSendGen((g) => g + 1)}
+        entity={entity.data}
+      />
     </>
   );
 }

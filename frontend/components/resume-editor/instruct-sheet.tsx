@@ -21,6 +21,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { apiFetch } from "@/lib/api";
 import { describeEdits } from "@/lib/describe-edit";
 import { notifyRenderNote } from "@/lib/render-note";
+import { serverKey } from "@/lib/studio";
 import type { BaseResumeDetail, BaseResumeProposal, ResumeData } from "@/lib/types";
 
 /** Starters, not a menu: each one seeds the textarea and stays editable. The
@@ -59,24 +60,21 @@ export function InstructSheet({
 }) {
   const qc = useQueryClient();
   const [instruction, setInstruction] = useState("");
-  const [proposal, setProposal] = useState<BaseResumeProposal | null>(null);
-
-  const reset = () => {
-    setInstruction("");
-    setProposal(null);
-  };
-  const handleOpenChange = (next: boolean) => {
-    onOpenChange(next);
-    if (!next) reset();
-  };
+  // Kept across close (Esc, the overlay, Close): the proposal cost a model
+  // call. Its ops edit by index, so each one carries the saved copy it was
+  // made against, and once the resume moves on it can be read, not applied.
+  const [kept, setKept] = useState<{ result: BaseResumeProposal; basis: string } | null>(null);
+  const proposal = kept?.result ?? null;
+  const basis = serverKey(resume);
+  const stale = kept !== null && kept.basis !== basis;
 
   const propose = useMutation({
-    mutationFn: () =>
+    mutationFn: (sent: { instruction: string; basis: string }) =>
       apiFetch<BaseResumeProposal>(`/api/base-resumes/${targetSlug}/propose`, {
         method: "POST",
-        body: JSON.stringify({ instruction }),
-      }),
-    onSuccess: setProposal,
+        body: JSON.stringify({ instruction: sent.instruction }),
+      }).then((result) => ({ result, basis: sent.basis })),
+    onSuccess: setKept,
     onError: (err: Error) => toast.error(err.message),
   });
 
@@ -97,7 +95,9 @@ export function InstructSheet({
       toast.success(
         `Applied ${proposal?.ops_count ?? 0} ${proposal?.ops_count === 1 ? "edit" : "edits"}. PDF re-rendered.`,
       );
-      handleOpenChange(false);
+      setInstruction("");
+      setKept(null);
+      onOpenChange(false);
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -106,7 +106,7 @@ export function InstructSheet({
   const hasOps = (proposal?.ops_count ?? 0) > 0;
 
   return (
-    <Sheet open={open} onOpenChange={handleOpenChange}>
+    <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full sm:max-w-2xl">
         <SheetHeader>
           <SheetTitle>Ask for changes</SheetTitle>
@@ -125,7 +125,7 @@ export function InstructSheet({
               rows={4}
               placeholder="e.g. Tighten the summary and lead with the platform work"
               value={instruction}
-              disabled={busy}
+              readOnly={busy}
               onChange={(e) => setInstruction(e.target.value)}
             />
             <div className="flex flex-wrap gap-1.5">
@@ -151,7 +151,11 @@ export function InstructSheet({
               variant={proposal ? "outline" : "default"}
               size="sm"
               disabled={!instruction.trim() || busy}
-              onClick={() => propose.mutate()}
+              // Stays focusable while it works: a disabled button that has
+              // focus drops it to the page.
+              focusableWhenDisabled
+              className="data-disabled:pointer-events-none data-disabled:opacity-50"
+              onClick={() => propose.mutate({ instruction, basis })}
             >
               {propose.isPending ? (
                 <Loader2 className="animate-spin" />
@@ -176,8 +180,16 @@ export function InstructSheet({
               {proposal.notes ? (
                 <p className="mt-2 text-sm whitespace-pre-wrap">{proposal.notes}</p>
               ) : null}
+              {stale ? (
+                <p className="text-muted-foreground mt-2 text-xs">
+                  The resume changed since this was proposed. Propose again to
+                  get edits for this version.
+                </p>
+              ) : null}
               {hasOps ? (
-                <EditWordsList edits={describeEdits(proposal.ops, resume)} />
+                // A stale proposal is described without names: its indices
+                // point into a copy the resume no longer is.
+                <EditWordsList edits={describeEdits(proposal.ops, stale ? null : resume)} />
               ) : (
                 <p className="text-muted-foreground mt-2 text-xs">
                   No edits proposed. Ask for a change in those words if you
@@ -192,10 +204,15 @@ export function InstructSheet({
           <SheetClose render={<Button variant="ghost">Close</Button>} />
           {proposal && hasOps && (
             <>
-              <Button variant="outline" disabled={busy} onClick={() => setProposal(null)}>
+              <Button variant="outline" disabled={busy} onClick={() => setKept(null)}>
                 Discard
               </Button>
-              <Button disabled={busy} onClick={() => apply.mutate()}>
+              <Button
+                disabled={busy || stale}
+                focusableWhenDisabled
+                className="data-disabled:pointer-events-none data-disabled:opacity-50"
+                onClick={() => apply.mutate()}
+              >
                 {apply.isPending
                   ? "Applying…"
                   : `Apply ${proposal.ops_count} ${proposal.ops_count === 1 ? "edit" : "edits"}`}

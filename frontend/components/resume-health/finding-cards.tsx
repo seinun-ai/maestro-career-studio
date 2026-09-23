@@ -884,6 +884,13 @@ export function NotesTable({
 }) {
   const groups = groupNotesByRule(notes);
   const [skill, setSkill] = useState<string | null>(null);
+  // One kept dialog per skill the user has opened, so a drafted rewrite
+  // survives closing it and opening another skill.
+  const [opened, setOpened] = useState<string[]>([]);
+  const openSkill = (subject: string) => {
+    setOpened((s) => (s.includes(subject) ? s : [...s, subject]));
+    setSkill(subject);
+  };
   const [doneSkills, setDoneSkills] = useState<Set<string>>(new Set());
   const [expandedQuotes, setExpandedQuotes] = useState<Set<string>>(new Set());
   const [condenseDraft, setCondenseDraft] = useState<{
@@ -958,7 +965,7 @@ export function NotesTable({
                                   ? "text-muted-foreground line-through"
                                   : "hover:bg-muted",
                               )}
-                              onClick={() => !done && setSkill(subject)}
+                              onClick={() => !done && openSkill(subject)}
                               disabled={done || locked || !data}
                             >
                               {subject}
@@ -1070,24 +1077,25 @@ export function NotesTable({
           </tbody>
         </table>
       </div>
-      {skill && data && (
+      {data && opened.map((s) => (
         <DemonstrateSkillDialog
-          open={Boolean(skill)}
+          key={s}
+          open={skill === s}
           onOpenChange={(open) => {
             if (!open) setSkill(null);
           }}
-          skill={skill}
+          skill={s}
           data={data}
           kind={kind}
           resumeKey={resumeKey}
           locked={locked}
           onApplied={() => {
-            setDoneSkills((s) => new Set(s).add(skill));
+            setDoneSkills((d) => new Set(d).add(s));
             onApplied();
           }}
           onReanalyze={onReanalyze}
         />
-      )}
+      ))}
     </section>
   );
 }

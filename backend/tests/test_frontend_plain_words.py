@@ -41,7 +41,8 @@ def test_both_surfaces_render_words():
     sheet = _read("components/resume-editor/instruct-sheet.tsx")
     assert "describeEdits(proposal.ops, pending ? doc : null)" in card
     assert "onMutate: () => setFrozen(describeEdits(proposal.ops, doc))" in card
-    assert "describeEdits(proposal.ops, resume)" in sheet
+    # A stale kept proposal (UX next Task 14) names nothing from the moved copy.
+    assert "describeEdits(proposal.ops, stale ? null : resume)" in sheet
     for rel, src in (("card", card), ("sheet", sheet)):
         assert "<EditWordsList edits=" in src, rel
         assert "font-mono" not in src, rel

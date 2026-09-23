@@ -54,13 +54,17 @@ function DialogContent({
   children,
   showCloseButton = true,
   size = "default",
+  keepMounted = false,
   ...props
 }: DialogPrimitive.Popup.Props & {
   showCloseButton?: boolean
   size?: keyof typeof DIALOG_SIZES
+  /** Keep the popup, its state and its requests mounted while closed. The
+   *  closed popup carries `hidden`, which preflight turns into display:none. */
+  keepMounted?: boolean
 }) {
   return (
-    <DialogPortal>
+    <DialogPortal keepMounted={keepMounted}>
       <DialogOverlay />
       <DialogPrimitive.Popup
         data-slot="dialog-content"

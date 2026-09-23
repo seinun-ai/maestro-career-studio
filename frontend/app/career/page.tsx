@@ -147,7 +147,6 @@ export default function CareerPage() {
       </Tabs>
 
       <NewEntityDialog
-        key={newEntity.kind}
         open={newEntity.open}
         defaultKind={newEntity.kind}
         onOpenChange={(open) => setNewEntity((current) => ({ ...current, open }))}
