@@ -861,7 +861,7 @@
   template labels (Needs setup, ATS may misread, Unsaved changes) are computed over the
   page, a card and the popover. A new shade must be copied into its
   `_TAILWIND` table.
-- **Card galleries**: Templates and Base Resumes are the same image-first
+- **Card galleries**: Templates and Base resumes are the same image-first
   card grid, so the shell lives once in `components/gallery/` (`GalleryGrid`,
   `GalleryCard`, `GalleryCardActions` — the z-20 wrapper — and
   `PreviewThumbnail`). A gallery supplies only what differs: preview URL,
