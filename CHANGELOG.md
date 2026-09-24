@@ -95,6 +95,9 @@ image tag is the same version with the leading `v` removed (`0.2.0`).
 
 ### Fixed
 
+- **Security:** Next.js 16.3.6, which fixes a critical remote-code-execution
+  advisory in its image optimizer (GHSA-2xp9-vwfh-vxw4), plus updated
+  `fast-uri`, `hono`, `js-yaml`, `qs` and `sharp` for their advisories.
 - Cover-letter regeneration and document upload commit before their LLM call,
   so a slow model no longer holds the database's write lock while it thinks.
 - Contact URLs with `~`/`_` in the shared header partial no longer corrupt the
