@@ -414,7 +414,7 @@ function QAEntryCard({
           ) : null}
           {isRegenerable ? (
             <IconButton
-              label="Regenerate"
+              label="Write a new version"
               icon={
                 isRegenerating ? <Loader2 className="animate-spin" /> : <RefreshCw />
               }

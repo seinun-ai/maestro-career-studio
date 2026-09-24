@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { apiFetch } from "@/lib/api";
+import { ATS_SCORE_LEAD_ALL_JOBS } from "@/lib/ats-words";
 import type { Job } from "@/lib/types";
 import { PageHeader, PageShell } from "@/components/page-shell";
 
@@ -223,6 +224,8 @@ function AnalyticsContent() {
         </TabsContent>
 
         <TabsContent value="fit" className="grid gap-4">
+          {/* "ATS score" spelled out once, above the tab's first card. */}
+          <p className="text-muted-foreground max-w-[60ch] text-sm">{ATS_SCORE_LEAD_ALL_JOBS}</p>
           <BaseSummaryCards />
           {filterRow}
           <div className="grid gap-4 lg:grid-cols-2">
@@ -230,8 +233,7 @@ function AnalyticsContent() {
               <CardHeader>
                 <CardTitle>ATS score over time</CardTitle>
                 <p className="text-muted-foreground text-sm font-normal">
-                  Weekly average ATS score (how an applicant tracking system
-                  rates a resume for a job).
+                  Weekly average ATS score.
                 </p>
               </CardHeader>
               <CardContent>

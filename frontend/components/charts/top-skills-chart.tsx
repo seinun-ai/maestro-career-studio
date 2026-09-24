@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import { apiFetch } from "@/lib/api";
 import { errorDetail } from "@/lib/error-text";
 import { isLoadFailure } from "@/lib/query-state";
+import { skillName } from "@/lib/skill-name";
 import type { TopSkillRow, TopSkillsResponse } from "@/lib/types";
 import { LowSampleBadge } from "@/components/explore/low-sample-hint";
 
@@ -54,7 +55,7 @@ function SkillPill({
             <span className="text-on-secondary-container/80 text-[10px] font-semibold tabular-nums">
               #{skill.rank}
             </span>
-            {skill.skill_name}
+            {skillName(skill.skill_name)}
             <LowSampleBadge n={skill.n} lowSample={skill.low_sample} unit="jobs" />
           </span>
         }

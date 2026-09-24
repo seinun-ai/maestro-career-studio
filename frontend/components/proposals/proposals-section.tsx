@@ -67,6 +67,7 @@ import {
   laneOf,
   selectedAmong,
 } from "@/lib/inbox-lanes";
+import { jobMetaLine } from "@/lib/job-meta";
 import { isLoadFailure } from "@/lib/query-state";
 import { cn } from "@/lib/utils";
 import {
@@ -387,7 +388,7 @@ export function ProposalsSection() {
       <EmptyState
         icon={Bot}
         title="No proposals yet"
-        description="Proposals come from an AI agent you connect over MCP (Claude, Codex, the ChatGPT desktop app), never from the app itself. Nothing is submitted without your yes."
+        description="Proposals come from an AI agent you connect over MCP, the standard way AI apps connect to tools: Claude, Codex or the ChatGPT desktop app. The app never proposes jobs itself. Nothing is submitted without your yes."
         action={
           <div className="flex max-w-full flex-col items-center gap-2 px-4">
             {/* Links styled as buttons, not Buttons rendered as links: Base UI's Button
@@ -395,7 +396,7 @@ export function ProposalsSection() {
                 The first label is long; it wraps at 375 instead of overflowing. */}
             <a href={JOB_HUNT_SKILL_URL} target="_blank" rel="noopener noreferrer" className={cn(buttonVariants(), "h-auto min-h-8 max-w-full py-1.5 whitespace-normal")}>
               <BookOpen className="size-4" aria-hidden="true" />
-              Start a hunt: install the ready-made job-hunt skill
+              Start a hunt: install the job-hunt skill, ready-made instructions for your agent
             </a>
             <div className="flex flex-wrap justify-center gap-2">
               <a href={AGENT_APPLICATIONS_URL} target="_blank" rel="noopener noreferrer" className={buttonVariants({ variant: "ghost" })}>
@@ -816,10 +817,10 @@ function ProposalRow({
                 {job.disqualifying_for_opt ? (
                   <span
                     className="inline-flex items-center gap-1 text-xs text-amber-700 dark:text-amber-400"
-                    title="This job may not accept OPT"
+                    title="OPT is the US student work permit"
                   >
                     <AlertTriangle className="size-3.5" aria-hidden="true" />
-                    OPT
+                    May not accept OPT
                   </span>
                 ) : null}
                 {isDup ? (
@@ -829,9 +830,7 @@ function ProposalRow({
                 ) : null}
               </div>
               <div className="text-muted-foreground truncate text-xs">
-                {[job.company, job.location, humanizeEnum(job.work_mode)]
-                  .filter(Boolean)
-                  .join(" · ")}
+                {jobMetaLine([job.company, job.location, humanizeEnum(job.work_mode)])}
               </div>
               <div className="text-muted-foreground truncate text-xs" title={meta}>
                 {meta}

@@ -10,6 +10,7 @@ import { LoadErrorState } from "@/components/load-error-state";
 import { apiFetch } from "@/lib/api";
 import { requirementLabel } from "@/lib/ats-words";
 import { errorDetail } from "@/lib/error-text";
+import { skillName } from "@/lib/skill-name";
 import { isLoadFailure } from "@/lib/query-state";
 import type {
   BuildAreaRow,
@@ -178,7 +179,7 @@ function GapRow({ row, maxJobs }: { row: BuildAreaRow; maxJobs: number }) {
   return (
     <div className="py-3">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-sm font-medium">{row.skill}</span>
+        <span className="text-sm font-medium">{skillName(row.skill)}</span>
         {requirementLabel(row.requirement_level) ? (
           <span className="text-muted-foreground text-xs">
             {requirementLabel(row.requirement_level)}
@@ -206,7 +207,8 @@ function GapRow({ row, maxJobs }: { row: BuildAreaRow; maxJobs: number }) {
         />
       </div>
       <p className="text-muted-foreground mt-1.5 text-xs">
-        Missing in {row.n_jobs} {row.n_jobs === 1 ? "job" : "jobs"} · about{" "}
+        {/* A surface row is on your resumes already: "missing" was false there. */}
+        {isSurface ? "A gap in" : "Missing in"} {row.n_jobs} {row.n_jobs === 1 ? "job" : "jobs"} · about{" "}
         {row.avg_potential_points} points each
         {row.kb_entities.length > 0 ? (
           <>
@@ -228,8 +230,7 @@ function WordingFootnote({ rows }: { rows: BuildAreaRow[] }) {
         <span className="text-foreground font-medium">Wording only:</span>{" "}
         {rows.length} {rows.length === 1 ? "skill" : "skills"} your resume
         already covers. Using the job&apos;s exact words won&apos;t change your
-        ATS score. Quick tailor adds them when “Use the job
-        description&apos;s wording” is on.
+        ATS score. Quick tailor adds them when “Use the job description&apos;s wording when your experience backs it up” is on.
       </summary>
       <ul className="mt-2 grid gap-1">
         {rows.map((row) => (
@@ -237,7 +238,7 @@ function WordingFootnote({ rows }: { rows: BuildAreaRow[] }) {
             key={row.skill}
             className="flex items-center justify-between gap-3 text-xs"
           >
-            <span className="min-w-0 truncate">{row.skill}</span>
+            <span className="min-w-0 truncate">{skillName(row.skill)}</span>
             <span className="text-muted-foreground shrink-0">
               {row.wording_jobs} {row.wording_jobs === 1 ? "job" : "jobs"}
             </span>

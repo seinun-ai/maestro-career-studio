@@ -14,7 +14,7 @@ import {
 } from "recharts";
 
 import { Skeleton } from "@/components/ui/skeleton";
-import { CHART_COLORS as COLORS, TOOLTIP_CONTENT_STYLE, TOOLTIP_ITEM_STYLE, TOOLTIP_LABEL_STYLE } from "@/components/charts/chart-kit";
+import { CHART_COLORS as COLORS, TOOLTIP_CONTENT_STYLE, TOOLTIP_ITEM_STYLE, TOOLTIP_LABEL_STYLE, weekLabel, weekTick } from "@/components/charts/chart-kit";
 import { useRoleLabel } from "@/components/role-category-picker";
 import { splitTopSeries } from "@/lib/analytics-series";
 import { apiFetch } from "@/lib/api";
@@ -67,9 +67,9 @@ export function RoleMixChart() {
     <ResponsiveContainer width="100%" height={320}>
       <AreaChart data={chartData}>
         <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
-        <XAxis dataKey="week" />
+        <XAxis dataKey="week" tickFormatter={weekTick} />
         <YAxis allowDecimals={false} />
-        <Tooltip contentStyle={TOOLTIP_CONTENT_STYLE} labelStyle={TOOLTIP_LABEL_STYLE} itemStyle={TOOLTIP_ITEM_STYLE} />
+        <Tooltip labelFormatter={weekLabel} contentStyle={TOOLTIP_CONTENT_STYLE} labelStyle={TOOLTIP_LABEL_STYLE} itemStyle={TOOLTIP_ITEM_STYLE} />
         <Legend />
         {categories.map((cat, i) => (
           <Area

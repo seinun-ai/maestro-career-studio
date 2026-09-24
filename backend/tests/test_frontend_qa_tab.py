@@ -98,7 +98,7 @@ def test_replacing_a_saved_letter_asks():
 
 def _regenerate_button() -> str:
     """The Regenerate IconButton's props (its icon holds `/>` of its own)."""
-    return re.search(r'label="Regenerate".*?\n\s*/>\n', _CARD, re.S).group(0)
+    return re.search(r'label="Write a new version".*?\n\s*/>\n', _CARD, re.S).group(0)
 
 
 def test_regenerate_waits_while_the_letter_is_being_edited():

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { formatShortDate } from "./format-date.ts";
+import { formatShortDate, formatWeekOf } from "./format-date.ts";
 
 const NOW = new Date(2026, 8, 24, 12);
 
@@ -25,4 +25,9 @@ test("a timestamp reads as its local day", () => {
 
 test("an unreadable value is empty, never Invalid Date", () => {
   assert.equal(formatShortDate("not a date", NOW), "");
+});
+
+test("a weekly point reads as the week it starts", () => {
+  assert.equal(formatWeekOf("2026-09-21"), "Week of Sep 21");
+  assert.equal(formatWeekOf("not a date"), "");
 });

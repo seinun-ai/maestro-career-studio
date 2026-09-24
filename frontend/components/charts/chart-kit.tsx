@@ -12,6 +12,11 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import type { TopSkillsFilters } from "@/components/charts/top-skills-chart";
 import { couldnt } from "@/lib/error-text";
+import { formatShortDate, formatWeekOf } from "@/lib/format-date";
+
+/** A weekly chart's axis ("Sep 21") and tooltip ("Week of Sep 21"): an ISO day read as machine output. */
+export const weekTick = (value: unknown) => formatShortDate(String(value));
+export const weekLabel = (value: unknown) => formatWeekOf(String(value));
 
 /**
  * Categorical palette, fixed assignment order (never cycle or generate hues).

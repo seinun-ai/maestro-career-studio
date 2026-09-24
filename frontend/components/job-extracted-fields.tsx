@@ -322,7 +322,7 @@ export function JobExtractedFields({
             />
             <StatLine
               icon={<CheckCircle2 />}
-              label="OPT accepted"
+              label="OPT (US student work permit) accepted"
               value={optLine}
             />
           </dl>

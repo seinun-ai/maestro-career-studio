@@ -3,14 +3,16 @@
 import { useQuery } from "@tanstack/react-query";
 import { StatTile } from "@/components/analytics/stat-tile";
 
-import { humanizeEnum } from "@/components/job-extracted-fields";
+import { formatSalary, humanizeEnum } from "@/components/job-extracted-fields";
 import { LoadErrorState } from "@/components/load-error-state";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch } from "@/lib/api";
 import { errorDetail } from "@/lib/error-text";
 import { formatShortDate } from "@/lib/format-date";
+import { countryName, placeName } from "@/lib/place-name";
 import { isLoadFailure } from "@/lib/query-state";
+import { skillName } from "@/lib/skill-name";
 import type { ExploreCountRow, ExploreOverview } from "@/lib/types";
 import { LowSampleCaption } from "@/components/explore/low-sample-hint";
 import { useRoleLabel } from "@/components/role-category-picker";
@@ -38,12 +40,9 @@ function buildPath(filters: Filters): string {
 
 const pct = (n: number, total: number) =>
   total > 0 ? Math.round((n / total) * 100) : 0;
-const fmtK = (n: number | null, currency?: string | null) => {
-  if (n == null) return "—";
-  const code = currency || "";
-  const amount = `${Math.round(n / 1000)}k`;
-  return code ? `${code} ${amount}` : `$${amount}`;
-};
+/** Pay the way the job header shows it ("$171K–$214K", "£70K–£90K"): one money format. */
+const payRange = (min: number | null, max: number | null, currency?: string | null) =>
+  formatSalary(min, max, null, currency ?? null) ?? "—";
 
 
 function BarList({
@@ -82,8 +81,11 @@ function BarList({
   );
 }
 
-const toBars = (rows: ExploreCountRow[]) =>
-  rows.map((r) => ({ label: r.key, count: r.count }));
+/** Location keys are a state, else a city, else a country: "CA" read as Canada or California. */
+const toPlaceBars = (rows: ExploreCountRow[]) =>
+  rows.map((r) => ({ label: placeName(r.key), count: r.count }));
+const toCountryBars = (rows: ExploreCountRow[]) =>
+  rows.map((r) => ({ label: countryName(r.key), count: r.count }));
 /** Bars whose keys are stored enums (`onsite`, `stem_opt_ok`): words, never the key. */
 const toEnumBars = (rows: ExploreCountRow[]) =>
   rows.map((r) => ({ label: humanizeEnum(r.key) ?? r.key, count: r.count }));
@@ -132,7 +134,7 @@ export function ExploreOverview({ filters }: { filters: Filters }) {
     !o.meta.salary_mixed_currencies &&
     o.meta.salary_year_avg_min != null &&
     o.meta.salary_year_avg_max != null
-      ? `${fmtK(o.meta.salary_year_avg_min, o.meta.salary_year_currency)}–${fmtK(o.meta.salary_year_avg_max, o.meta.salary_year_currency)}`
+      ? payRange(o.meta.salary_year_avg_min, o.meta.salary_year_avg_max, o.meta.salary_year_currency)
       : o.meta.salary_mixed_currencies
         ? "Mixed currencies"
         : "—";
@@ -166,9 +168,10 @@ export function ExploreOverview({ filters }: { filters: Filters }) {
           sub={salarySub}
         />
         <StatTile
-          label="OPT accepted"
+          // OPT spelled out where the tab first shows it.
+          label="OPT (US student work permit)"
           value={`${pct(optAccept, total)}%`}
-          sub={`${optAccept} of ${total}`}
+          sub={`${optAccept} of ${total} accept it`}
         />
       </div>
 
@@ -206,7 +209,7 @@ export function ExploreOverview({ filters }: { filters: Filters }) {
           <CardContent>
             <BarList
               rows={o.top_required_skills.map((s) => ({
-                label: s.skill_name,
+                label: skillName(s.skill_name),
                 count: s.n,
               }))}
               empty="No required skills found"
@@ -227,7 +230,7 @@ export function ExploreOverview({ filters }: { filters: Filters }) {
           <CardHeader>
             <CardTitle>Level</CardTitle>
             <p className="text-muted-foreground text-xs font-normal">
-              As written in each job.
+              Sorted from each job description into one of these levels.
             </p>
           </CardHeader>
           <CardContent>
@@ -241,7 +244,7 @@ export function ExploreOverview({ filters }: { filters: Filters }) {
           </CardHeader>
           <CardContent>
             <BarList
-              rows={toBars(o.locations)}
+              rows={toPlaceBars(o.locations)}
               empty="No locations found"
             />
           </CardContent>
@@ -253,7 +256,7 @@ export function ExploreOverview({ filters }: { filters: Filters }) {
           </CardHeader>
           <CardContent>
             <BarList
-              rows={toBars(o.countries ?? [])}
+              rows={toCountryBars(o.countries ?? [])}
               empty="No countries found"
             />
           </CardContent>
@@ -303,10 +306,10 @@ export function ExploreOverview({ filters }: { filters: Filters }) {
                       {r.currency ? ` · ${r.currency}` : ""}
                     </p>
                     <p className="text-foreground text-base font-medium">
-                      {fmtK(r.avg_min, r.currency)}–{fmtK(r.avg_max, r.currency)}
+                      {payRange(r.avg_min, r.avg_max, r.currency)}
                     </p>
                     <p className="text-muted-foreground mt-0.5 text-xs">
-                      {r.n} {r.n === 1 ? "job" : "jobs"}
+                      {r.n} {r.n === 1 ? "job" : "jobs"} with pay listed
                     </p>
                   </div>
                 ))}

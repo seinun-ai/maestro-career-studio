@@ -12,7 +12,7 @@ test("every engine placement reads as words", () => {
 });
 
 test("every engine fix hint reads as words", () => {
-  for (const key of ["absent", "mirror_wording", "dual_place", "resurface_recent", "credential_only", "adjacent_available"]) {
+  for (const key of ["absent", "mirror_wording", "dual_place", "resurface_recent", "credential_only", "adjacent_available", "extra_only"]) {
     const label = fixHintLabel(key);
     assert.ok(label && !label.includes("_"), key);
   }
@@ -28,4 +28,8 @@ test("an unknown or missing key shows nothing, never the key", () => {
 test("a requirement level reads capitalized, and an unknown one shows nothing", () => {
   assert.equal(requirementLabel("preferred"), "Preferred");
   assert.equal(requirementLabel("nice_to_have"), null);
+});
+
+test("a skill the resume lacks says so, and never tells you to add it", () => {
+  assert.equal(fixHintLabel("absent"), "Not on your resume");
 });

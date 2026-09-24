@@ -482,7 +482,8 @@ function ApplicationsContent() {
     <PageShell>
       <PageHeader
         title="Applications"
-        subtitle="Every job you've saved or applied to."
+        // Agent-found jobs sit under Agents by design (SYSTEM §5 step 2); All says so.
+        subtitle="Every job you've saved or applied to. Jobs a connected agent found are under Agents."
         actions={
           // The sidebar's FAB is THE Add job while it is showing (M3:
           // a FAB's action is not repeated on its screen). The sidebar slides

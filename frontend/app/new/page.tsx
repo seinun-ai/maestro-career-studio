@@ -68,7 +68,7 @@ export default function NewApplicationPage() {
       qc.invalidateQueries({ queryKey: ["jobs"] });
       qc.invalidateQueries({ queryKey: ["applications"] });
       if (job.already_existed) {
-        toast.info("You already saved this job.");
+        toast.info("This job is already saved.");
       } else {
         toast.success("Job saved.");
       }

@@ -9,6 +9,7 @@ import { useRoleLabel } from "@/components/role-category-picker";
 import { apiFetch } from "@/lib/api";
 import type { HeatmapRow } from "@/lib/types";
 import type { TopSkillsFilters } from "@/components/charts/top-skills-chart";
+import { skillName } from "@/lib/skill-name";
 
 function cellColor(pct: number): string {
   // Sequential single-hue ramp from the theme's primary blue (theme-aware,
@@ -59,7 +60,7 @@ export function HeatmapChart({
   return (
     <div className="overflow-x-auto">
       <p className="text-muted-foreground mb-3 text-xs">
-        Share of jobs in each role that ask for each skill.
+        Share of jobs in each role that ask for each skill. Shows the top 30% of skills, the ones jobs ask for most.
       </p>
       <table className="border-separate border-spacing-0.5 text-xs">
         <thead>
@@ -79,14 +80,14 @@ export function HeatmapChart({
           {skills.map((skill) => (
             <tr key={skill}>
               <th className="sticky left-0 bg-background pr-2 text-left font-medium whitespace-nowrap">
-                {skill}
+                {skillName(skill)}
               </th>
               {roles.map((role) => {
                 const pct = matrix.get(`${skill}|${role}`) ?? 0;
                 return (
                   <td
                     key={role}
-                    title={`${skill} · ${label(role)}: ${pct}%`}
+                    title={`${skillName(skill)} · ${label(role)}: ${pct}%`}
                     className="h-8 min-w-12 rounded text-center align-middle text-[10px]"
                     style={{ backgroundColor: cellColor(pct) }}
                   >

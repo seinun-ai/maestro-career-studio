@@ -49,7 +49,7 @@ export function JobExtractionSummary({
             className="mt-1 flex items-center gap-2 rounded-lg border border-blue-500/40 bg-blue-500/10 p-3 text-sm text-blue-900 dark:text-blue-100"
           >
             <Info className="size-4 shrink-0" aria-hidden="true" />
-            You already saved this job.
+            This job is already saved.
           </div>
         ) : (
           <p className="text-muted-foreground text-sm">

@@ -86,7 +86,7 @@ export function BaseSummaryCards() {
               </span>
             ) : (
               <span className="text-muted-foreground inline-flex h-6 shrink-0 items-center rounded-full bg-muted px-2 text-xs">
-                No health check
+                Health not checked yet
               </span>
             )}
           </CardHeader>

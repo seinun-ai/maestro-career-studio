@@ -63,3 +63,9 @@ export function formatShortDate(value: string | Date, now: Date = new Date()): s
     ...(date.getFullYear() === now.getFullYear() ? {} : { year: "numeric" }),
   });
 }
+
+/** A weekly chart's point: "Week of Sep 21" ("" when unreadable, like formatShortDate). */
+export function formatWeekOf(value: string | Date): string {
+  if (!formatShortDate(value)) return "";
+  return `Week of ${formatShortDate(value)}`;
+}

@@ -1064,9 +1064,10 @@
     score points stay "points". **Add to career history**, **Add from career
     history**, **Add to a resume**, **Copy to another resume**, **Import
     resumes**, never Sync to KB, Send to resume or Port. **ATS score**,
-    spelled out once per surface where it first appears ("how an applicant
-    tracking system rates a resume for this job"), never composite or fit
-    score; lift is **Score gain**. **job description** (never JD or
+    spelled out once per surface where it first appears ("An ATS score (0 to
+    100) is our estimate of how an applicant tracking system would rate each
+    resume for this job.": it is the app's estimate, `lib/ats-words.ts`
+    `ATS_SCORE_LEAD`), never composite or fit score; lift is **Score gain**. **job description** (never JD or
     posting), **job**, **job link**, **careers page**. **Add job** (the
     sidebar, the tracker, `/new`'s title "Add a job") and **Save job** (its
     submit), never New application or Extract job: a job becomes an
@@ -1075,7 +1076,8 @@
     **Quick tailor**, always capitalized, never Fast tailor; its settings are
     Quick tailor settings. **Create PDF** and **Update PDF**, never render or
     compile (the template editor's button is **Update preview**). **Update
-    score**, never re-score. **Hide**, **Show**, **Hidden** for a resume
+    score**, never re-score; the noun follows the count (**Update scores** on
+    Score and tailor, which scores every base resume). **Hide**, **Show**, **Hidden** for a resume
     entry; **Archive** and **Restore** for a base resume or a template.
     **Other sections**, never extra or custom sections. **Must fix**, **Mark
     as OK** and **Undo** for health checks, never gate, blocker or waive;

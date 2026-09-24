@@ -20,7 +20,7 @@ import { apiFetch } from "@/lib/api";
 import { errorDetail } from "@/lib/error-text";
 import { proposalByLine } from "@/lib/agent-name";
 import { isLoadFailure } from "@/lib/query-state";
-import { formatAbsoluteDateTime } from "@/lib/format-date";
+import { formatAbsoluteDateTime, formatShortDate } from "@/lib/format-date";
 import type { ProposalDetail } from "@/lib/types";
 
 /**
@@ -81,15 +81,19 @@ export function ProposalAgentPanel({ proposalId }: { proposalId: string }) {
       </CardHeader>
       <CardContent className="flex flex-col gap-5 text-sm">
         {/* Meta labels match JobExtractedFields StatLine (uppercase 11px). */}
-        <dl className="flex flex-wrap gap-x-6 gap-y-3">
-          <Fact label="Date">
-            {formatAbsoluteDateTime(data.created_at)}
-          </Fact>
-          <Fact label="Expires">
-            {data.expires_at ? formatAbsoluteDateTime(data.expires_at) : "—"}
-          </Fact>
-          {data.reason ? <Fact label="Reason">{reasonLabel(data.reason)}</Fact> : null}
-        </dl>
+        {/* "Proposed Sep 24 · expires Oct 1": the day in words, the exact time on hover. */}
+        <p
+          className="text-muted-foreground text-xs"
+          title={formatAbsoluteDateTime(data.created_at)}
+        >
+          Proposed {formatShortDate(data.created_at)}
+          {data.expires_at ? ` · expires ${formatShortDate(data.expires_at)}` : ""}
+        </p>
+        {data.reason ? (
+          <dl className="flex flex-wrap gap-x-6 gap-y-3">
+            <Fact label="Reason">{reasonLabel(data.reason)}</Fact>
+          </dl>
+        ) : null}
 
         {companyNote ? (
           <section>

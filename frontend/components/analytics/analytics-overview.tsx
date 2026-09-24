@@ -106,7 +106,8 @@ export function AnalyticsOverview({
             sub="Applied, interviewing or offer"
           />
           <StatTile
-            label="Reached interviews"
+            // explore_activity: applications CURRENTLY at interview or later, per application.
+            label="At interview or later"
             value={
               totals?.interview_rate != null
                 ? `${Math.round(totals.interview_rate * 100)}%`
@@ -114,7 +115,7 @@ export function AnalyticsOverview({
             }
             sub={
               totals?.submitted
-                ? `of ${totals.submitted} applications`
+                ? `now, of ${totals.submitted} applications`
                 : "No applications yet"
             }
           />
