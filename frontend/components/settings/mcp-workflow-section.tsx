@@ -51,8 +51,8 @@ export function McpWorkflowSection() {
   return (
     <SettingCard
       id="agent-hints"
-      title="Agent workflow hints"
-      description="Adds a suggested next step to Career Studio's MCP tool results, so Claude or Codex can walk the tailoring workflow without being told each step. Turn it off to keep responses minimal."
+      title="Next-step hints for connected agents"
+      description="Adds a suggested next step to what the app tells a connected agent, so Claude or Codex can walk the tailoring workflow without being told each step. Turn it off to keep responses minimal."
       errorTitle="Couldn't load this setting."
       skeleton="h-11 w-full"
       query={setting}
@@ -62,7 +62,7 @@ export function McpWorkflowSection() {
           <SettingCardAction>
             <AutosaveStatus pending={save.isPending} failed={save.isError} />
           </SettingCardAction>
-          <SwitchRow htmlFor={id} label="Suggest the next step in MCP tool results">
+          <SwitchRow htmlFor={id} label="Suggest the next step to connected agents">
             <Switch
               id={id}
               checked={data.value.hints}

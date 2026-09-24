@@ -121,7 +121,7 @@ export function InstructSheet({
           <SheetTitle>Ask for changes</SheetTitle>
           <p className="text-muted-foreground text-sm">
             Describe an edit, or ask for ideas. Nothing changes until you apply
-            a proposal, and the model may not invent facts that are not on the
+            a suggestion, and the model may not invent facts that are not on the
             resume.
           </p>
         </SheetHeader>
@@ -171,7 +171,7 @@ export function InstructSheet({
               ) : (
                 <Sparkles aria-hidden />
               )}
-              {propose.isPending ? "Thinking…" : proposal ? "Propose again" : "Propose"}
+              {propose.isPending ? "Thinking…" : proposal ? "Suggest again" : "Suggest edits"}
             </Button>
           </div>
 
@@ -191,8 +191,8 @@ export function InstructSheet({
               ) : null}
               {stale ? (
                 <p className="text-muted-foreground mt-2 text-xs">
-                  The resume changed since this was proposed. Propose again to
-                  get edits for this version.
+                  The resume changed since these edits were suggested. Suggest
+                  again to get edits for this version.
                 </p>
               ) : null}
               {hasOps ? (
@@ -201,7 +201,7 @@ export function InstructSheet({
                 <EditWordsList edits={describeEdits(proposal.ops, stale ? null : resume)} />
               ) : (
                 <p className="text-muted-foreground mt-2 text-xs">
-                  No edits proposed. Ask for a change in those words if you
+                  No edits suggested. Ask for a change in those words if you
                   want one made.
                 </p>
               )}

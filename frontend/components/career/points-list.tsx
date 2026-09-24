@@ -55,9 +55,9 @@ const STATES: { value: KBPointState; label: string; chip: string; dot: string }[
 const ORIGIN_LABELS: Record<KBPointOut["origin"], string> = {
   manual: "Manual",
   ingested: "Document",
-  chat: "Capture",
+  chat: "Assistant",
   consolidated: "Consolidated",
-  mcp: "Agent",
+  mcp: "Connected agent",
   gap_elicitation: "Gap answer",
   base_sync: "Base sync",
 };

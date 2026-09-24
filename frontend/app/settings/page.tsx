@@ -6,6 +6,7 @@ import { BookOpen } from "lucide-react";
 import { AboutSection } from "@/components/settings/about-section";
 import { AppearanceSection } from "@/components/settings/appearance-section";
 import { AutoApplySection } from "@/components/settings/auto-apply-section";
+import { ConnectedAgentsCard } from "@/components/settings/connected-agents-card";
 import { McpWorkflowSection } from "@/components/settings/mcp-workflow-section";
 import {
   ApiKeysSection,
@@ -75,7 +76,7 @@ export default function SettingsPage({
           tailoring: <QuickTailorSection />,
           agents: (
             <>
-              {/* Connected agents explainer (wave 2, id="connected-agents") mounts here, first. */}
+              <ConnectedAgentsCard />
               <McpWorkflowSection />
               <AutoApplySection />
             </>

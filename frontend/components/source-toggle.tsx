@@ -7,8 +7,8 @@ import { cn } from "@/lib/utils";
 export const SOURCES = ["all", "user", "agent"] as const;
 export type SourceFilter = (typeof SOURCES)[number];
 
-/** Segmented All / You / Agent provenance filter — shared by Applications
- * tracker and Analytics Overview. */
+/** Segmented All / You / Agents provenance filter — shared by Applications
+ * tracker and Analytics Overview. "Agents" are connected agents (MCP clients). */
 export function SourceToggle({
   value,
   onChange,
@@ -46,7 +46,7 @@ export function SourceToggle({
           )}
         >
           {value === s && <Check className="size-3" aria-hidden="true" />}
-          {s === "all" ? "All" : s === "user" ? "You" : "Agent"}
+          {s === "all" ? "All" : s === "user" ? "You" : "Agents"}
         </button>
       ))}
     </div>

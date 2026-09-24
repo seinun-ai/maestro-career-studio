@@ -294,7 +294,7 @@ Once your assistant is connected, it can run the whole loop.
 [`docs/skills/`](skills/) has ready-made skills for it:
 
 - **`job-hunt`** — finds recent postings that fit you, saves and scores them,
-  and proposes the best ones. You decide on **Agent Proposals**. It can run on
+  and proposes the best ones. You decide in the **Agent inbox**. It can run on
   a daily schedule, and can check the careers pages of companies where you
   have contacts (added under **Referrals**).
 - **`apply-session`** — works through the jobs you accepted. It prepares each

@@ -185,7 +185,7 @@ def test_a_stale_proposal_says_so_and_cannot_apply():
     apply_button = apply_button[: apply_button.index("onClick={() => applyOnce()}")]
     assert "disabled={busy || stale}" in apply_button
     note = _flat(_between(_SHEET, "{stale ? (", ") : null}"))
-    assert "The resume changed since this was proposed." in note
+    assert "The resume changed since these edits were suggested." in note
 
 
 def test_instruct_sheet_keeps_focus_while_it_works():

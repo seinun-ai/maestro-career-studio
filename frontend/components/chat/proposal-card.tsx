@@ -64,7 +64,7 @@ export function ProposalCard({
     <div className="rounded-md border border-dashed px-3 py-2">
       <div className="flex items-center gap-2 text-sm">
         <Badge variant="outline" className="text-xs">
-          Proposed project
+          Suggested project
         </Badge>
         <span className="font-medium">{proposal.project.name}</span>
         <span className="text-muted-foreground text-xs">→ {targetLabel}</span>

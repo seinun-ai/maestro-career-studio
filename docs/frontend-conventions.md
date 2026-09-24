@@ -934,6 +934,14 @@
   (`DeclineDialog`, `onDecline`, `DECLINE_REASONS`) and the API `reason`
   value `"declined by user"` (agent-visible vocabulary echoed verbatim by
   `list_proposals`/`get_proposal`); only its label reads "skipped by you".
+  **One word per kind of agent**: **Assistant** (the in-app chat),
+  **connected agents** (MCP clients; **Connected agents** in Settings, whose
+  first card says what one is and what it cannot do), **Companion** (the
+  browser extension; "the Companion" in a sentence), **Suggested edits** and
+  **Suggested project** (chat's and the studio's approval cards). "Proposal"
+  means only a job an agent filed; bare "Agent" only inside Agent inbox, the
+  source toggle's "Agents" and Agent pipeline. Pinned by
+  `test_frontend_agent_words.py`.
 - Design language: tonal fills over borders, pill chips, 8px rhythm,
   `ease-out` micro-interactions ≤200ms, `active:scale-[0.97]` on pressables,
   `prefers-reduced-motion` respected globally, `pointer-coarse:` variants for
@@ -1030,7 +1038,8 @@
   trigger caps at `max-w-48` and truncates its name (full name in `title`).
 - **Settings vs Profile — which page does a new setting go on?**
   `/settings` is how the SYSTEM behaves (API keys, models, quick-tailor
-  permissions, auto-apply guardrails, agent hints, prompts, appearance).
+  permissions, connected agents (the explainer, next-step hints, Auto-apply
+  limits), prompts, appearance).
   `/profile` is who the CANDIDATE is (persona, market, job preferences,
   autofill answers). Both write `/api/settings/*` and both draw from
   `components/settings/` — the folder is not the split, this rule is. When a
@@ -1061,7 +1070,8 @@
   `Card → isError → isLoading → editor` again — the copies drifted into four
   different failure behaviours, three of which showed the user nothing.
   Readiness is `data !== undefined`, never `!isLoading`; failure is
-  `isLoadFailure`. Appearance is the one exemption: it fetches nothing.
+  `isLoadFailure`. Appearance and the Connected agents explainer
+  (`connected-agents-card.tsx`) are the exemptions: they fetch nothing.
   Its header has one action slot. The body renders into it with
   `SettingCardAction`, a portal, so the controlling state stays in the editor,
   and a screen reader reads the action after the title. The title is a level-2

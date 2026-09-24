@@ -1,0 +1,198 @@
+"""Pins: one word per kind of agent (UX IA plan, Task 15; appendix A5 and A8).
+
+The Assistant is the in-app chat, connected agents are MCP clients, Companion
+is the browser extension, and chat's approval cards are suggestions, so
+"proposal" means only a job an agent filed. Each row is a string that left the
+screen and the one that replaced it; identifiers and the API stay. The words
+are the glossary's (appendix D0, planner decisions 19 and 20): "Quick tailor",
+never "Fast tailor", and "Companion" as a proper name ("the Companion" in a
+sentence).
+
+The Settings › Connected agents tab opens with an explainer card; its mount
+order is pinned in test_frontend_settings_pages.py.
+"""
+
+from __future__ import annotations
+
+import re
+from pathlib import Path
+
+import pytest
+
+_ROOT = Path(__file__).resolve().parents[2]
+_FRONTEND = _ROOT / "frontend"
+
+
+def _read(rel: str) -> str:
+    return (_FRONTEND / rel).read_text(encoding="utf-8")
+
+
+# (file, gone, present)
+_WORDS = [
+    ("components/source-toggle.tsx", '"You" : "Agent"}', '"You" : "Agents"}'),
+    ("components/career/points-list.tsx", 'mcp: "Agent",', 'mcp: "Connected agent",'),
+    ("components/career/points-list.tsx", 'chat: "Capture",', 'chat: "Assistant",'),
+    ("components/settings/mcp-workflow-section.tsx", 'title="Agent workflow hints"',
+     'title="Next-step hints for connected agents"'),
+    ("components/settings/mcp-workflow-section.tsx", "Career Studio's MCP tool results",
+     "Adds a suggested next step to what the app tells a connected agent,"),
+    ("components/settings/mcp-workflow-section.tsx", "Suggest the next step in MCP tool results",
+     "Suggest the next step to connected agents"),
+    ("components/settings/auto-apply-section.tsx", "Guardrails for the agent hunt-and-apply lane.",
+     "Limits on what connected agents may do when they find and apply to jobs."),
+    ("components/settings/auto-apply-section.tsx", "Approving a proposal reserves a slot",
+     "Your yes before a submit reserves a slot for 24 hours."),
+    ("components/settings/auto-apply-section.tsx", '"Proposals per hunt run"', '"Proposals per hunt"'),
+    ("components/settings/auto-apply-section.tsx", "The hunt never captures or proposes",
+     "A connected agent never saves or proposes jobs at these companies."),
+    ("components/settings/auto-apply-section.tsx", "Skipping a single", "Skipping one job does not block"),
+    ("components/ats-score-panel.tsx", "any open agent proposal", "any open proposal in your Agent inbox"),
+    ("components/chat/proposal-card.tsx", "Proposed project", "Suggested project"),
+    ("components/chat/edit-proposal-card.tsx", "/> Suggested edit\n",
+     '{`Suggested ${proposal.ops_count === 1 ? "edit" : "edits"}`}'),
+    ("components/resume-editor/instruct-sheet.tsx", '"Propose again" : "Propose"',
+     '"Suggest again" : "Suggest edits"'),
+    ("components/resume-editor/instruct-sheet.tsx", "No edits proposed.", "No edits suggested."),
+    ("components/resume-editor/instruct-sheet.tsx", "you apply\n            a proposal,",
+     "you apply\n            a suggestion,"),
+    ("components/settings/quick-tailor-section.tsx", "Fast tailor",
+     "Used by Quick tailor, on the gap analysis page and in the Companion."),
+    ("components/settings/autofill-section.tsx", "Preset answers the browser extension uses",
+     "Preset answers the Companion uses to fill job-application forms."),
+    ("components/settings/autofill-section.tsx", "Allow extension to fill these answers",
+     "Allow Companion to fill these answers"),
+    ("components/settings/autofill-section.tsx", "Allow extension to tick agreement boxes",
+     "Allow Companion to tick agreement boxes"),
+    ("components/settings/autofill-section.tsx", "matching the extension&apos;s",
+     "matching the Companion&apos;s repeated form blocks."),
+    ("components/analytics/autofill-coverage-card.tsx", "extension card's", "Turn it off in the Companion's ⋯ menu."),
+    ("components/analytics/autofill-coverage-card.tsx", "where the extension's fill pipeline",
+     "where the Companion's fill pipeline fails."),
+    ("components/analytics/autofill-coverage-card.tsx", "with the extension to start capturing",
+     "with the Companion to start capturing"),
+]
+
+
+@pytest.mark.parametrize(
+    ("rel", "gone", "present"),
+    _WORDS,
+    ids=[f"{rel.rsplit('/', 1)[-1]}:{i}" for i, (rel, _, _) in enumerate(_WORDS)],
+)
+def test_one_word_per_kind_of_agent(rel: str, gone: str, present: str):
+    src = _read(rel)
+    assert gone not in src, f"{rel} still says {gone!r}"
+    assert present in src, f"{rel} lost {present!r}"
+
+
+# Lane 5 (the Agent inbox) rewrites these files' words in the same wave; the
+# sweep covers them once both lanes are merged (drop this set then).
+_INBOX_LANE_FILES = {"app/applications/page.tsx", "components/analytics/agent-pipeline-card.tsx"}
+
+
+def test_no_screen_says_swarm_or_the_chat_agent():
+    for root in ("app", "components"):
+        for path in (_FRONTEND / root).rglob("*.tsx"):
+            rel = path.relative_to(_FRONTEND).as_posix()
+            if rel in _INBOX_LANE_FILES:
+                continue
+            src = path.read_text(encoding="utf-8")
+            for word in ("hunt swarm", "the chat agent", "Found by agent", "Agent lane"):
+                assert word not in src, f"{rel}: {word!r}"
+
+
+def test_the_source_toggle_keeps_its_preview():
+    """The segment reads "Agents"; lane 2's hover and focus preview stays wired."""
+    src = _read("components/source-toggle.tsx")
+    assert "onPointerEnter={() => onPreview?.(s)}" in src
+    assert "onFocus={() => onPreview?.(s)}" in src
+
+
+# --------------------------------------------------------------- Connected agents card
+
+def _card() -> str:
+    return _read("components/settings/connected-agents-card.tsx")
+
+
+def test_the_connected_agents_card_explains_before_the_limits():
+    card = _card()
+    assert '<Card id="connected-agents">' in card
+    assert "<SettingCard" not in card  # fetches nothing: the Appearance precedent
+    assert '<CardTitle role="heading" aria-level={2}>' in card
+    assert '<CardContent className="@container/setting">' in card
+    # MCP is the one term that stays; it is spelled out where it first appears.
+    assert "MCP (Model Context Protocol)" in card
+    assert "setup-mcp.sh" not in card  # only Cursor and others need it; the guide covers it
+
+
+def test_the_card_keeps_the_honesty_nuance():
+    """Nothing is submitted without a yes, and that yes is a record, not a lock
+    (README, "Going all the way"). The app itself never hunts or applies."""
+    flat = " ".join(_card().split())
+    assert "Maestro CS itself never looks for jobs or submits an application." in flat
+    assert "an audit trail, not a lock, so run apply sessions while you watch." in flat
+    for cant in ("Apply to more jobs a day than you allow below.", "Delete anything in your career history.",
+                 "Connect from claude.ai or chatgpt.com in a browser."):
+        assert cant in flat, cant
+
+
+def test_the_card_names_the_two_helpers_that_are_not_connected_agents():
+    """The glossary's one sentence that says what Companion is (appendix D0)."""
+    flat = " ".join(_card().split())
+    assert "Companion, the Maestro CS browser extension," in flat
+    assert "the Assistant, which you talk to inside this app," in flat
+
+
+def test_each_list_is_named_by_its_heading():
+    card = _card()
+    for var in ("canId", "cantId"):
+        assert f"<h3 id={{{var}}}" in card, var
+        assert f"<ul aria-labelledby={{{var}}}" in card, var
+
+
+def test_the_card_links_open_where_they_say():
+    card = _card()
+    assert '<Link href="/proposals" className="text-primary underline underline-offset-4">' in card
+    # One external-link shape for the three guides: a new tab, no opener, no referrer.
+    for name in ("CONNECT_AGENT_GUIDE_URL", "JOB_HUNT_SKILL_URL", "AGENT_APPLICATIONS_URL"):
+        assert f"{{ href: {name}, label: " in card, name
+    assert len(re.findall(r"<a\s", card)) == 1
+    flat = " ".join(card.split())
+    assert '<a key={href} href={href} target="_blank" rel="noopener noreferrer"' in flat
+    # A link that looks like a button is still a link: Base UI's Button gives the <a> it
+    # renders role="button".
+    assert 'className={buttonVariants({ variant: "outline", size: "sm" })}' in flat
+    assert "nativeButton" not in card
+
+
+def _github_slug(heading: str) -> str:
+    return re.sub(r"[^\w\- ]", "", heading.strip().lower()).replace(" ", "-")
+
+
+def _link_definitions() -> str:
+    """Where the card's URL constants are defined: the card itself until the
+    Agent inbox lane's `lib/agent-links.ts` lands, that file after."""
+    lib = _FRONTEND / "lib/agent-links.ts"
+    return _card() + (lib.read_text(encoding="utf-8") if lib.exists() else "")
+
+
+def test_the_card_links_point_at_real_headings():
+    """A renamed README section fails here instead of breaking a link."""
+    defs = _link_definitions()
+    for name in ("CONNECT_AGENT_GUIDE_URL", "JOB_HUNT_SKILL_URL", "AGENT_APPLICATIONS_URL"):
+        # One definition: a copy left in the card after the lib lands would drift.
+        assert len(re.findall(rf"\bconst {name} = ", defs)) == 1, name
+    readme = (_ROOT / "README.md").read_text(encoding="utf-8")
+    section = re.search(r"^### (Going all the way: .+)$", readme, re.M).group(1)
+    assert f"/README.md#{_github_slug(section)}`" in defs
+    guide = (_ROOT / "docs/GETTING_STARTED.md").read_text(encoding="utf-8")
+    step = re.search(r"^## (5\. Connect .+)$", guide, re.M).group(1)
+    assert f"/docs/GETTING_STARTED.md#{_github_slug(step)}`" in defs
+    assert (_ROOT / "docs/skills/README.md").exists()
+    assert "/docs/skills/README.md`" in defs
+
+
+def test_the_guides_call_the_page_the_agent_inbox():
+    for rel in ("README.md", "docs/GETTING_STARTED.md"):
+        doc = (_ROOT / rel).read_text(encoding="utf-8")
+        assert "Agent Proposals" not in doc, rel
+        assert "**Agent inbox**" in doc, rel
