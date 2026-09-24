@@ -633,6 +633,9 @@ export interface KBDocumentOut {
   size_bytes: number;
   ingest_status: string;
   ingest_summary: string | null;
+  /** Text was read from the file. A `failed` document with text failed at
+   *  suggesting bullets, not at reading. */
+  has_text: boolean;
   created_at: string;
 }
 
@@ -912,7 +915,11 @@ export interface SyncStatus {
 }
 
 export interface SyncResult {
+  /** Draft bullets written. */
   created: number;
+  /** Career history items this sync created (a new job, school, certification
+   *  or other-section item). Items that bring bullets are counted here too. */
+  items_added: number;
   drifted: number;
   skipped: Record<string, unknown>[];
   /** CATEGORY names, one per category written. NEVER count these — two new

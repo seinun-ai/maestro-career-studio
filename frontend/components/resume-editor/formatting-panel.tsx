@@ -35,6 +35,8 @@ import {
   SKILLS_LAYOUT_OPTIONS,
   SLIDER_RANGES,
   diffFrom,
+  inchLabel,
+  pointsLabel,
   shownSectionOrder,
   type FormattingBaseline,
   type ResumeFormatting,
@@ -42,7 +44,7 @@ import {
 } from "@/lib/formatting";
 import { cn, move } from "@/lib/utils";
 
-const UNSUPPORTED = "Selected template doesn't support this";
+const UNSUPPORTED = "This template doesn't support this setting";
 
 /**
  * Jobright-style collapsible formatting controls rendered inside the preview
@@ -126,19 +128,28 @@ export function FormattingPanel({
   const choiceRow = (
     key: keyof ResumeFormatting,
     label: string,
-    control: (labelId: string) => ReactNode,
+    control: (labelId: string, hintId?: string) => ReactNode,
+    hint?: string,
   ) => {
     const disabled = isDisabled(key);
     const labelId = rowLabelId(key);
+    const hintId = hint ? `${labelId}-hint` : undefined;
     return (
       <div className="flex items-center justify-between gap-3 py-1">
-        <span
-          id={labelId}
-          className={cn("text-sm", disabled && "text-muted-foreground/60")}
-        >
-          {label}
+        <span className="grid gap-0.5">
+          <span
+            id={labelId}
+            className={cn("text-sm", disabled && "text-muted-foreground/60")}
+          >
+            {label}
+          </span>
+          {hint ? (
+            <span id={hintId} className="text-muted-foreground text-xs">
+              {hint}
+            </span>
+          ) : null}
         </span>
-        {withTooltip(key, control(labelId))}
+        {withTooltip(key, control(labelId, hintId))}
       </div>
     );
   };
@@ -147,14 +158,16 @@ export function FormattingPanel({
     key: keyof ResumeFormatting,
     labelId: string,
     current: T,
-    options: readonly { value: T; label: string }[],
+    options: readonly { value: T; label: string; name?: string }[],
     onSelect: (v: T) => void,
+    hintId?: string,
   ) => {
     const disabled = isDisabled(key);
     return (
       <div
         role="group"
         aria-labelledby={labelId}
+        aria-describedby={hintId}
         className="border-input inline-flex rounded-md border p-0.5"
       >
         {options.map((o) => (
@@ -162,6 +175,7 @@ export function FormattingPanel({
             key={o.value}
             type="button"
             aria-pressed={current === o.value}
+            aria-label={o.name}
             disabled={disabled}
             onClick={() => onSelect(o.value)}
             className={cn(
@@ -294,7 +308,7 @@ export function FormattingPanel({
             Formatting
             {customized && (
               <span className="bg-secondary-container text-on-secondary-container rounded-full px-1.5 py-0.5 text-[0.65rem] font-medium">
-                Customized
+                Changed
               </span>
             )}
           </span>
@@ -315,7 +329,7 @@ export function FormattingPanel({
             <LoadErrorState
               className="py-4"
               title={`Couldn't load ${baseline.what}.`}
-              detail="Formatting stays locked until it loads, so an edit can't overwrite a setting you already saved."
+              detail="You can change formatting once it loads."
               retrying={baseline.retrying}
               onRetry={baseline.retry}
             />
@@ -324,8 +338,8 @@ export function FormattingPanel({
             <div className="text-muted-foreground bg-muted/40 flex items-center justify-between gap-2 rounded-md px-2 py-1.5 text-xs">
               <span>
                 {inherited && !customized
-                  ? "Inherited from base resume"
-                  : "Overriding base resume formatting"}
+                  ? "Same as base resume"
+                  : "Changed from base resume"}
               </span>
               {customized && (
                 <Button
@@ -334,13 +348,13 @@ export function FormattingPanel({
                   disabled={!ready}
                   onClick={() => onRevertToBase()}
                 >
-                  Revert to base
+                  Match base resume
                 </Button>
               )}
             </div>
           )}
 
-          <Group title="Content Style">
+          <Group title="Content style">
             {choiceRow(
               "date_format",
               "Date format",
@@ -378,18 +392,21 @@ export function FormattingPanel({
             {choiceRow(
               "bullet_icon",
               "Bullet style",
-              (labelId) =>
+              (labelId, hintId) =>
                 segmented(
                 "bullet_icon",
                 labelId,
                 effective.bullet_icon,
                 BULLET_ICON_OPTIONS,
                 (v) => setKey("bullet_icon", v),
+                hintId,
               ),
+              // Not the bullets themselves: the glyph in front of each one.
+              "The symbol before each bullet.",
             )}
             {choiceRow(
               "hide_divider",
-              "Hide section divider",
+              "Hide section lines",
               (labelId) => (
                 <Switch
                   aria-labelledby={labelId}
@@ -405,7 +422,7 @@ export function FormattingPanel({
             {sectionOrderRow()}
             {choiceRow(
               "header_align",
-              "Header alignment",
+              "Name alignment",
               (labelId) =>
                 segmented(
                 "header_align",
@@ -441,7 +458,7 @@ export function FormattingPanel({
             )}
           </Group>
 
-          <Group title="Spacing & Margin">
+          <Group title="Spacing and margins">
             {choiceRow(
               "font_size",
               "Font size",
@@ -454,18 +471,18 @@ export function FormattingPanel({
                 (v) => setKey("font_size", v),
               ),
             )}
-            {sliderRow("section_spacing", "Section spacing", (n) => `${n}pt`)}
-            {sliderRow("entry_spacing", "Entry spacing", (n) => `${n}pt`)}
+            {sliderRow("section_spacing", "Section spacing", pointsLabel)}
+            {sliderRow("entry_spacing", "Item spacing", pointsLabel)}
             {sliderRow("line_spacing", "Line spacing", (n) => n.toFixed(1))}
             {sliderRow(
               "top_bottom_margin",
-              "Top & bottom margin",
-              (n) => `${n.toFixed(2)}in`,
+              "Top and bottom margins",
+              inchLabel,
             )}
-            {sliderRow("side_margins", "Side margins", (n) => `${n.toFixed(2)}in`)}
+            {sliderRow("side_margins", "Side margins", inchLabel)}
             {choiceRow(
               "justify",
-              "Align text left & right",
+              "Justify text",
               (labelId) => (
                 <Switch
                   aria-labelledby={labelId}

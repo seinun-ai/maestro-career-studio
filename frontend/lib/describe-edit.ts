@@ -141,7 +141,7 @@ function describeOne(op: EditOp, s: Shadow): EditWords {
   const extraAt = extraIndex(s, op.section_key);
   const extraTitle =
     text(field(s.extras[extraAt], "title")) ?? text(field(op.value, "title"));
-  const extra = extraTitle ? `the ${extraTitle} section` : "a custom section";
+  const extra = extraTitle ? `the ${extraTitle} section` : "another section";
 
   switch (op.kind) {
     case "replace_summary": {
@@ -152,8 +152,8 @@ function describeOne(op: EditOp, s: Shadow): EditWords {
     }
     case "toggle_entry":
       return op.enabled === false
-        ? { action: `Hide ${name ?? `an entry in ${sectionWord}`} from the PDF`, detail: null }
-        : { action: `Show ${name ?? `an entry in ${sectionWord}`} on the PDF`, detail: null };
+        ? { action: `Hide ${name ?? `an item in ${sectionWord}`} from the PDF`, detail: null }
+        : { action: `Show ${name ?? `an item in ${sectionWord}`} on the PDF`, detail: null };
     case "replace_bullet":
       return {
         action: bullet ? `Rewrite ${bullet}` : `Rewrite a bullet in ${sectionWord}`,
@@ -172,18 +172,18 @@ function describeOne(op: EditOp, s: Shadow): EditWords {
     case "add_entry": {
       const added = section ? entryName(section, op.value) : null;
       return {
-        action: added ? `Add ${added} to ${sectionWord}` : `Add an entry to ${sectionWord}`,
+        action: added ? `Add ${added} to ${sectionWord}` : `Add an item to ${sectionWord}`,
         detail: null,
       };
     }
     case "replace_entry":
-      return { action: target ? `Edit ${target}` : `Edit an entry in ${sectionWord}`, detail: null };
+      return { action: target ? `Edit ${target}` : `Edit an item in ${sectionWord}`, detail: null };
     case "remove_entry":
-      return { action: target ? `Remove ${target}` : `Remove an entry from ${sectionWord}`, detail: null };
+      return { action: target ? `Remove ${target}` : `Remove an item from ${sectionWord}`, detail: null };
     case "replace_skills_group": {
       const category = text(field(skillGroup(s, op.category), "category")) ?? text(op.category);
       return {
-        action: category ? `Replace the ${category} skills` : "Replace a skills group",
+        action: category ? `Replace the ${category} skills` : "Replace a skill group",
         detail: short(op.items),
       };
     }
@@ -194,7 +194,7 @@ function describeOne(op: EditOp, s: Shadow): EditWords {
       if (!category) return { action: `Add ${item} to the skills`, detail: null };
       // "New" only when the document is known to lack the group.
       return s.known && group === undefined
-        ? { action: `Add ${item} to a new ${category} skills group`, detail: null }
+        ? { action: `Add ${item} to a new ${category} skill group`, detail: null }
         : { action: `Add ${item} to the ${category} skills`, detail: null };
     }
     case "replace_contact":
@@ -203,11 +203,11 @@ function describeOne(op: EditOp, s: Shadow): EditWords {
       const detail = short(op.items);
       return detail
         ? { action: "Replace the certifications", detail }
-        : { action: "Remove every certification", detail: null };
+        : { action: "Remove all certifications", detail: null };
     }
     case "add_extra_section": {
       const title = text(field(op.value, "title"));
-      return { action: title ? `Add the ${title} section` : "Add a custom section", detail: null };
+      return { action: title ? `Add the ${title} section` : "Add another section", detail: null };
     }
     case "replace_extra_section":
       return { action: `Rewrite ${extra}`, detail: null };
@@ -309,4 +309,175 @@ export function describeEdits(
     advance(op, shadow);
     return words;
   });
+}
+
+// Where a check failed, in the user's words. The studios' Save and the code
+// view check the resume against its schema; a raw path (`experience.2.bullets.0`)
+// never reaches the screen, it reads as a place.
+const PATH_SECTION: Record<string, string> = {
+  contact: "Contact",
+  summary: "Summary",
+  skills: "Skills",
+  experience: "Experience",
+  projects: "Projects",
+  education: "Education",
+  certifications: "Certifications",
+  extra_sections: "Other sections",
+};
+
+// What a numbered row is called inside its list.
+const ROW_NOUN: Record<string, string> = {
+  bullets: "bullet",
+  skills: "group",
+  items: "skill",
+  certifications: "certification",
+  coursework: "course",
+  extra_sections: "section",
+};
+
+// Lists whose name the row's noun already says ("bullet 2", not "bullets, bullet 2").
+const SILENT_LISTS = new Set(["bullets", "items", "entries", "coursework"]);
+
+// A field by the label its editor shows (contact-form, the experience,
+// project, education, skills and other-sections editors): "School", never
+// "institution". `test_frontend_resume_review.py` holds each word to a label on
+// screen.
+const FIELD_WORDS: Record<string, string> = {
+  name: "Name",
+  email: "Email",
+  phone: "Phone",
+  location: "Location",
+  linkedin: "LinkedIn",
+  github: "GitHub",
+  website: "Website",
+  company: "Company",
+  role: "Role",
+  start_date: "Start date",
+  end_date: "End date",
+  institution: "School",
+  degree: "Degree",
+  field: "Field of study",
+  graduation_date: "Graduation date",
+  gpa: "GPA",
+  tech: "Tools used",
+  link: "Link",
+  date: "Date",
+  category: "Group name",
+  heading: "Heading",
+  subheading: "Subheading",
+  title: "Section name",
+  type: "Layout",
+};
+
+/** One failed field as words: `["experience", 2, "bullets", 0]` reads
+ *  "Experience, item 3, bullet 1". Never prints a key, a dot or an index from 0. */
+export function describeFieldPath(path: readonly PropertyKey[]): string {
+  const words: string[] = [];
+  let parent = "";
+  for (const seg of path) {
+    if (typeof seg === "number") {
+      words.push(`${ROW_NOUN[parent] ?? "item"} ${seg + 1}`);
+    } else if (typeof seg === "string") {
+      if (words.length === 0) words.push(PATH_SECTION[seg] ?? seg.replace(/_/g, " "));
+      else if (!SILENT_LISTS.has(seg)) words.push(FIELD_WORDS[seg] ?? seg.replace(/_/g, " "));
+      parent = seg;
+    }
+  }
+  const joined = words.join(", ");
+  return joined ? joined.charAt(0).toUpperCase() + joined.slice(1) : "The resume";
+}
+
+/** "Some fields need fixing: Experience, item 3, bullet 1." for a failed
+ *  save: the places, deduplicated, at most three. */
+export function fieldsNeedFixing(paths: readonly (readonly PropertyKey[])[]): string {
+  const places = [...new Set(paths.map(describeFieldPath))];
+  const shown = places.slice(0, 3).join(". ");
+  const more = places.length > 3 ? `. And ${places.length - 3} more` : "";
+  return `Some fields need fixing: ${shown}${more}.`;
+}
+
+/** A schema check's failure, as the code view reports it: the place, then what is wrong with it. */
+type SchemaIssue = {
+  readonly path: readonly PropertyKey[];
+  readonly code: string;
+  readonly message: string;
+  readonly expected?: unknown;
+  readonly origin?: unknown;
+};
+
+const EXPECTED_WORDS: Record<string, string> = {
+  string: "must be text",
+  number: "must be a number",
+  boolean: "must be true or false",
+  array: "must be a list",
+  object: "must be a group of fields",
+};
+
+// The schema's own messages are sentences for the user ("Enter your name");
+// the library's defaults ("Invalid input: expected string, received number")
+// are not, and are replaced by words.
+const LIBRARY_MESSAGE = /^(Invalid|Too (small|big)|Expected)/;
+
+function issueWords(issue: SchemaIssue): string {
+  const place = describeFieldPath(issue.path);
+  if (!LIBRARY_MESSAGE.test(issue.message)) return `${place}: ${issue.message}`;
+  if (issue.code === "invalid_type") {
+    if (/received undefined$/.test(issue.message)) return `${place} is missing`;
+    return `${place} ${EXPECTED_WORDS[String(issue.expected)] ?? "has the wrong kind of value"}`;
+  }
+  if (issue.code === "too_small" && issue.origin === "string") return `${place} can't be empty`;
+  if (issue.code === "invalid_union" || issue.code === "invalid_value") {
+    return `${place} isn't one of the allowed choices`;
+  }
+  return `${place} isn't valid`;
+}
+
+/** "Couldn't apply: Contact, Email must be text. Fix it and choose Apply again." At most three places. */
+export function schemaIssuesWords(issues: readonly SchemaIssue[]): string {
+  const lines = [...new Set(issues.map(issueWords))];
+  const shown = lines.slice(0, 3).join(". ");
+  const more = lines.length > 3 ? `. And ${lines.length - 3} more` : "";
+  return `Couldn't apply: ${shown}${more}. Fix ${lines.length === 1 ? "it" : "them"} and choose Apply again.`;
+}
+
+/**
+ * Code the parser can't read, by its line: "Couldn't read the code at line 3. Check for a missing comma or
+ * quote." Chrome says "(line 3 column 2)", older engines only "at position 11", Safari neither.
+ */
+export function jsonErrorWords(text: string, thrown: unknown): string {
+  // Only the line number is read from the parser's words; they never reach the screen.
+  const parser = thrown instanceof Error ? thrown.message : "";
+  const said = /line (\d+)/.exec(parser);
+  const at = /position (\d+)/.exec(parser);
+  const line = said ? Number(said[1]) : at ? text.slice(0, Number(at[1])).split("\n").length : null;
+  return `Couldn't read the code${line ? ` at line ${line}` : ""}. Check for a missing comma or quote.`;
+}
+
+// A version change's section, as the server stores it (`resume_versions.diff_versions`).
+const CHANGE_SECTION: Record<string, string> = { ...PATH_SECTION, extra: "Other sections", resume: "Resume" };
+
+/** One change in Version history: its section in words, and its label only when it adds something. */
+export function diffChangeWords(change: { section: string; label: string }): { section: string; label: string | null } {
+  const section = CHANGE_SECTION[change.section] ?? change.section.replace(/_/g, " ");
+  const same = change.label.trim().toLowerCase() === section.toLowerCase();
+  return { section, label: same ? null : change.label };
+}
+
+/**
+ * A version's stored one-line summary ("Updated summary · Summary; Added experience · Acme") in words:
+ * sections named as on screen, a label that repeats its section dropped ("Updated Summary"). Anything else
+ * the server wrote passes through: old summaries keep their words.
+ */
+export function versionSummaryWords(summary: string): string {
+  return summary
+    .split("; ")
+    .map((part) => {
+      const hit = /^(Added|Removed|Updated) (\S+) · (.+)$/.exec(part);
+      if (!hit) return part;
+      // "Added resume · Initial version" is the first version: its label says it.
+      if (hit[2] === "resume") return hit[3];
+      const { section, label } = diffChangeWords({ section: hit[2], label: hit[3] });
+      return label ? `${hit[1]} ${section} · ${label}` : `${hit[1]} ${section}`;
+    })
+    .join("; ");
 }

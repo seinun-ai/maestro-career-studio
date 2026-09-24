@@ -59,8 +59,11 @@ def test_apply_creates_missing_entities_via_identity_keys(db_session, tmp_path, 
         certifications=["AWS SAA"],
     )
     _seed_base(db_session, tmp_path, monkeypatch, data)
-    kb_base_sync.apply(db_session, "hybrid")
+    result = kb_base_sync.apply(db_session, "hybrid")
     ents = db_session.scalars(select(KBEntity)).all()
+    # Three items, one bullet: the education and certification adds write no
+    # bullet, and the toast reads them from `items_added`, not `created`.
+    assert (result["items_added"], result["created"]) == (3, 1)
     by_kind = {e.kind: e for e in ents}
     assert by_kind["experience"].org == "OtherCo"
     assert by_kind["experience"].title == "Lead"
@@ -149,6 +152,7 @@ def test_apply_twice_is_a_noop(db_session, tmp_path, monkeypatch):
     n_logs = db_session.query(KBPortLog).count()
     second = kb_base_sync.apply(db_session, "hybrid")
     assert second["created"] == 0
+    assert second["items_added"] == 0
     assert second["drifted"] == 0
     assert second["skills"] == []
     assert db_session.query(KBPoint).count() == n_points
@@ -168,6 +172,7 @@ def test_apply_twice_on_a_drifting_resume_is_a_noop(db_session, tmp_path, monkey
 
     second = kb_base_sync.apply(db_session, "hybrid")
     assert second["created"] == 0
+    assert second["items_added"] == 0
     assert second["drifted"] == 0
     assert second["skipped"] == []
     assert db_session.query(KBPoint).count() == n_points

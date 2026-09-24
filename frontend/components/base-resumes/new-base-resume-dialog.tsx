@@ -7,6 +7,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
+import { KB_KIND_LABELS } from "@/components/career/career-labels";
 import { Dropzone, type DropzoneRejection } from "@/components/setup/dropzone";
 import { useFocusOnNextCommit, useOpenerReturn } from "@/hooks/use-focus-return";
 import { useSingleFlight } from "@/hooks/use-single-flight";
@@ -38,16 +39,18 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { apiFetch } from "@/lib/api";
+import { couldnt } from "@/lib/error-text";
 import { notifyRenderNote } from "@/lib/render-note";
 import { uniqueSlug } from "@/lib/slug";
 import { RESUME_FILE_ACCEPT } from "@/lib/upload-accept";
-import type {
-  BaseResumeDetail,
-  BaseResumeSummary,
-  FavoredRole,
-  KBEntitySummary,
-  RoleCategory,
-  RoleMatch,
+import {
+  baseResumeLabel,
+  type BaseResumeDetail,
+  type BaseResumeSummary,
+  type FavoredRole,
+  type KBEntitySummary,
+  type RoleCategory,
+  type RoleMatch,
 } from "@/lib/types";
 
 const EMPTY_DATA = {
@@ -66,14 +69,6 @@ function rendersWithoutPoints(kind: KBEntitySummary["kind"]) {
   return kind === "certification" || kind === "education";
 }
 
-const KIND_LABELS: Record<KBEntitySummary["kind"], string> = {
-  experience: "Experience",
-  project: "Project",
-  education: "Education",
-  certification: "Certification",
-  extra: "Custom section",
-};
-
 type Plan = {
   include: string[];
   exclude: { id: string; title: string; reason: string }[];
@@ -81,6 +76,17 @@ type Plan = {
 };
 
 type Mode = "kb" | "existing" | "file" | "blank";
+
+/** What Create still needs, per tab, in the order the form asks for it. */
+function createBlockedReason(
+  mode: Mode,
+  form: { tag: unknown; selected: ReadonlySet<string>; source: string; file: File | null; name: string },
+): string {
+  if (mode === "kb") return form.tag ? "Choose at least one item to include." : "Choose a target role to create it.";
+  if (mode === "existing") return "Choose a resume to copy.";
+  if (mode === "file") return "Choose a file to create it.";
+  return form.name.trim() ? "" : "Enter a name to create it.";
+}
 
 const NO_ROLES: RoleCategory[] = [];
 
@@ -130,8 +136,7 @@ export function NewBaseResumeDialog({
         <DialogHeader>
           <DialogTitle>New base resume</DialogTitle>
           <DialogDescription>
-            Build it from your Career Knowledge Base, copy one you already have,
-            parse a resume file, or start from an empty document.
+            Start from your career history, a copy, a file or a blank page.
           </DialogDescription>
         </DialogHeader>
         <NewBaseResumeForm
@@ -213,6 +218,7 @@ function NewBaseResumeForm({
     summaryHint: `${fieldId}-summary-hint`,
     source: `${fieldId}-source`,
     copyRole: `${fieldId}-copy-role`,
+    blocked: `${fieldId}-blocked`,
   };
 
   // The coarse key a FavoredRole implies, for the two KB calls that need one.
@@ -249,10 +255,14 @@ function NewBaseResumeForm({
   // Experience and projects render FROM their bullets, so one with no approved
   // points would be an empty entry. Certifications render as a bare title and
   // education from institution/degree/dates, so those are fine at zero.
+  // Only approved bullets go on the new resume, so drafts are not counted.
+  // (`point_count` also holds bullets marked Not used: the list endpoint sends
+  // no approved count yet, see the lane doc's Deferred to merge.)
+  const approvedCount = (e: KBEntitySummary) => e.point_count - e.draft_count;
   const selectable = (entities.data ?? []).filter(
     (e) =>
       e.status !== "archived" &&
-      (e.point_count > 0 || rendersWithoutPoints(e.kind)),
+      (approvedCount(e) > 0 || rendersWithoutPoints(e.kind)),
   );
 
   const done = (created: BaseResumeDetail) => {
@@ -262,7 +272,7 @@ function NewBaseResumeForm({
     if (created.parse_warnings && created.parse_warnings.length > 0) {
       // The parser dropped rows it could not read rather than failing the
       // file; the user should know what to look for in the editor.
-      toast.warning(`Imported with gaps: ${created.parse_warnings.join("; ")}`);
+      toast.warning(`Imported. Some parts need checking: ${created.parse_warnings.join("; ")}`);
     }
     onOpenChange(false);
     router.push(`/base-resumes/${created.slug}`);
@@ -279,10 +289,10 @@ function NewBaseResumeForm({
       setSelected(new Set(result.include));
       setSummary(result.summary);
       if (result.include.length === 0) {
-        toast.warning("Nothing was selected. Pick entries yourself below.");
+        toast.warning("No suggestions for this role. Pick items below.");
       }
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(couldnt("suggest items", err)),
   });
   // One plan per click: a double click paid for two.
   const proposeOnce = useSingleFlight(proposePlan.mutate);
@@ -421,7 +431,7 @@ function NewBaseResumeForm({
     mutationFn: request,
     onMutate: () => onBusyChange(true),
     onSuccess: done,
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(couldnt("create the resume", err)),
     onSettled: () => onBusyChange(false),
   });
 
@@ -437,6 +447,8 @@ function NewBaseResumeForm({
           : Boolean(name.trim());
 
   const submit = useSingleFlight(create.mutate);
+  // Why Create is off, said beside it: a dimmed button alone never said.
+  const blocked = busy || canCreate ? null : createBlockedReason(mode, { tag, selected, source, file, name });
 
   // What Start over would throw away. Switching tabs is not a draft.
   const touched =
@@ -471,8 +483,8 @@ function NewBaseResumeForm({
     <>
         <Tabs value={mode} onValueChange={(v) => setMode(v as Mode)}>
           <TabsList>
-            <TabsTrigger value="kb">From Career KB</TabsTrigger>
-            <TabsTrigger value="existing">From existing</TabsTrigger>
+            <TabsTrigger value="kb">From career history</TabsTrigger>
+            <TabsTrigger value="existing">Copy a resume</TabsTrigger>
             <TabsTrigger value="file">From file</TabsTrigger>
             <TabsTrigger value="blank">Blank</TabsTrigger>
           </TabsList>
@@ -491,7 +503,6 @@ function NewBaseResumeForm({
                 <Input
                   aria-describedby={mode === "file" ? ids.nameHint : undefined}
                   id={ids.name}
-                  placeholder={mode === "file" ? undefined : "e.g. Machine Learning Engineer"}
                   value={name}
                   onChange={(e) => {
                     const next = e.target.value;
@@ -520,9 +531,8 @@ function NewBaseResumeForm({
               )}
               {(mode === "blank" || mode === "file") && (
                 <div className="grid gap-1.5">
-                  <Label htmlFor={ids.role}>
+                  <Label htmlFor={ids.role} optional>
                     Target role
-                    <span className="text-muted-foreground"> (optional)</span>
                   </Label>
                   <RolePicker
                     mode="single"
@@ -538,17 +548,16 @@ function NewBaseResumeForm({
             <TabsContent value="kb" className="grid gap-4">
               <div className="grid gap-1.5">
                 <Label htmlFor={ids.instruction} optional>
-                  How should this resume be shaped?
+                  Focus
                 </Label>
                 <p id={ids.instructionHint} className="text-muted-foreground text-xs">
-                  Steers which entries are picked and the tone of the summary.
-                  Your bullets are used exactly as written.
+                  Guides which items are picked and the tone of the summary.
+                  Your bullets are never rewritten.
                 </p>
                 <Textarea
                   id={ids.instruction}
                   aria-describedby={ids.instructionHint}
                   rows={3}
-                  placeholder="e.g. Lead with production ML work, senior in tone"
                   value={instruction}
                   onChange={(e) => setInstruction(e.target.value)}
                 />
@@ -571,7 +580,7 @@ function NewBaseResumeForm({
                   ) : (
                     <Sparkles aria-hidden />
                   )}
-                  {plan ? "Suggest again" : "Suggest a selection"}
+                  {plan ? "Suggest again" : "Suggest items"}
                 </Button>
                 {!tag && (
                   <span className="text-muted-foreground ml-2 text-xs">
@@ -581,11 +590,11 @@ function NewBaseResumeForm({
               </div>
 
               {entities.isLoading ? (
-                <p className="text-muted-foreground text-sm">Loading Career KB…</p>
+                <p className="text-muted-foreground text-sm">Loading your career history…</p>
               ) : selectable.length === 0 ? (
                 <p className="text-muted-foreground text-sm">
-                  Your Career KB has no entries with approved points yet. Import
-                  a resume first.
+                  Nothing to pick yet. Import a resume into your career history
+                  first.
                 </p>
               ) : (
                 <ul className="max-h-64 divide-y overflow-y-auto rounded-lg border px-3">
@@ -598,14 +607,14 @@ function NewBaseResumeForm({
                             {entity.title}
                           </span>
                           <span className="text-muted-foreground block text-xs">
-                            {KIND_LABELS[entity.kind]}
+                            {KB_KIND_LABELS[entity.kind]}
                             {entity.org ? ` · ${entity.org}` : ""}
                             {/* A bullet count is only meaningful where the
-                                section renders FROM bullets. "0 points" on a
+                                section renders FROM bullets. "0 bullets" on a
                                 certification reads as a defect; it is not. */}
                             {rendersWithoutPoints(entity.kind)
                               ? ""
-                              : ` · ${entity.point_count} point${entity.point_count === 1 ? "" : "s"}`}
+                              : ` · ${approvedCount(entity)} ${approvedCount(entity) === 1 ? "bullet" : "bullets"}`}
                           </span>
                         </span>
                       </label>
@@ -616,16 +625,16 @@ function NewBaseResumeForm({
 
               {plan && plan.exclude.length > 0 && (
                 <div className="grid gap-1">
-                  <p className="text-sm font-medium">Left off</p>
+                  <p className="text-sm font-medium">Not included</p>
                   <ul className="text-muted-foreground space-y-0.5 text-xs">
                     {plan.exclude.map((x) => (
                       <li key={x.id}>
-                        <span className="font-medium">{x.title}</span> — {x.reason}
+                        <span className="font-medium">{x.title}</span>: {x.reason}
                       </li>
                     ))}
                   </ul>
                   <p className="text-muted-foreground text-xs">
-                    Tick any of these above to put them back on.
+                    Select any above to include it.
                   </p>
                 </div>
               )}
@@ -635,12 +644,11 @@ function NewBaseResumeForm({
                   <Label htmlFor={ids.summary} optional>
                     Summary
                   </Label>
-                  {/* This was a placeholder, which is the wrong place for a
-                      statement about the field: it vanishes as soon as you
-                      type, so the reasoning disappears exactly when you act
-                      on it. */}
+                  {/* The plan drafts this summary (base_from_kb_plan), so the
+                      field arrives filled: the hint asks for a check. It sits
+                      between label and field, where it survives typing. */}
                   <p id={ids.summaryHint} className="text-muted-foreground text-xs">
-                    Left blank on purpose. A wrong summary is worse than none.
+                    Check this summary, or clear it.
                   </p>
                   <Textarea
                     id={ids.summary}
@@ -661,11 +669,11 @@ function NewBaseResumeForm({
                   onValueChange={(v) => selectSource(v as string)}
                 >
                   <SelectTrigger id={ids.source} size="sm" className="w-full">
-                    <SelectValue placeholder="Choose a base resume">
+                    <SelectValue placeholder="Choose a resume">
                       {(value) => {
                         const hit = existingResumes.find((r) => r.slug === value);
                         return hit
-                          ? (hit.display_name ?? hit.slug)
+                          ? baseResumeLabel(hit.slug, [hit])
                           : String(value ?? "");
                       }}
                     </SelectValue>
@@ -673,7 +681,7 @@ function NewBaseResumeForm({
                   <SelectContent>
                     {existingResumes.map((r) => (
                       <SelectItem key={r.slug} value={r.slug}>
-                        {r.display_name ?? r.slug}
+                        {baseResumeLabel(r.slug, [r])}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -709,8 +717,8 @@ function NewBaseResumeForm({
                     roleCategories={roleCategories}
                   />
                   <p className="text-muted-foreground text-xs">
-                    Starts as the source resume&apos;s tag. Typing a Name that
-                    matches the catalog pre-fills a suggestion you can clear.
+                    Copied from the original. Typing a name may suggest a new
+                    role.
                   </p>
                 </div>
               )}
@@ -722,7 +730,7 @@ function NewBaseResumeForm({
                 maxFiles={1}
                 maxBytes={IMPORT_MAX_BYTES}
                 disabled={busy}
-                hint="PDF, DOCX, Markdown, text, or the app’s own JSON · one file, up to 10 MB"
+                hint="PDF, Word or text file, up to 10 MB"
                 onFiles={(picked, rejected) => {
                   setFile(picked[0] ?? null);
                   setFileRejected(rejected);
@@ -744,9 +752,9 @@ function NewBaseResumeForm({
                 </ul>
               )}
               <p className="text-muted-foreground text-xs">
-                The file is parsed into this app’s resume structure and becomes a
-                new base resume you can edit. Your Career KB is not changed — use
-                the resume’s Sync to KB pill later if you want it there too.
+                We&apos;ll turn the file into a resume you can edit. It won&apos;t be
+                added to your career history. You can add it later from the
+                resume.
               </p>
             </TabsContent>
 
@@ -774,14 +782,20 @@ function NewBaseResumeForm({
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>
             Close
           </Button>
+          {blocked ? (
+            <p id={ids.blocked} className="text-muted-foreground self-center text-xs">
+              {blocked}
+            </p>
+          ) : null}
           <Button
             onClick={() => submit()}
             disabled={!canCreate || busy}
             focusableWhenDisabled
+            aria-describedby={blocked ? ids.blocked : undefined}
             className="data-disabled:pointer-events-none data-disabled:opacity-50"
           >
             {busy ? <Loader2 className="animate-spin" /> : null}
-            {busy && mode === "file" ? "Parsing…" : "Create"}
+            {busy && mode === "file" ? "Reading file…" : "Create"}
           </Button>
         </DialogFooter>
     </>

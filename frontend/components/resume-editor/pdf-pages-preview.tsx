@@ -116,7 +116,7 @@ export function PdfPagesPreview({
           <div className="bg-destructive/10 text-destructive flex items-start gap-2 rounded-md px-3 py-2 text-xs">
             <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
             <span>
-              Preview is stale: the last PDF render failed. Fix the content or template, then save or regenerate the PDF.
+              This preview is out of date because the PDF couldn&apos;t be updated. Check your last change, then update the PDF.
             </span>
           </div>
         )}

@@ -102,7 +102,7 @@ export function DemonstrateSkillDialog({
 
   const draftMut = useMutation({
     mutationFn: () => {
-      if (!picked) throw new Error("Pick a bullet first");
+      if (!picked) throw new Error("Pick a bullet first.");
       return draftRewrite(kind, resumeKey, {
         location: {
           section: picked.section,
@@ -114,12 +114,12 @@ export function DemonstrateSkillDialog({
       });
     },
     onSuccess: (result) => setDraft(result),
-    onError: (err: Error) => toastRewriteError(err, onReanalyze),
+    onError: (err: Error) => toastRewriteError(err, onReanalyze, "write new wording"),
   });
 
   const applyMut = useMutation({
     mutationFn: async () => {
-      if (!picked || !draft) throw new Error("Nothing to apply");
+      if (!picked || !draft) throw new Error("Write the new wording first.");
       return applyResumeEdits(kind, resumeKey, [
         {
           kind: "replace_bullet",
@@ -152,10 +152,10 @@ export function DemonstrateSkillDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent finalFocus={finalFocus} className="flex max-h-[80vh] w-[min(92vw,34rem)] max-w-[min(92vw,34rem)] flex-col overflow-hidden">
         <DialogHeader>
-          <DialogTitle>Demonstrate {skill}</DialogTitle>
+          <DialogTitle>Show where you used {skill}</DialogTitle>
         </DialogHeader>
         <p className="text-muted-foreground -mt-2 text-xs">
-          Pick one bullet, then one line on how {skill} shows up there.
+          Pick a bullet, then say in one line how you used {skill} there.
         </p>
         <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
           {groups.map((group) => (
@@ -208,7 +208,7 @@ export function DemonstrateSkillDialog({
               {" · "}
               <span className="italic">{picked.text}</span>
             </p>
-            <Label htmlFor={rewriteId}>How {skill} shows up in this bullet</Label>
+            <Label htmlFor={rewriteId}>How you used {skill} in this bullet</Label>
             <Textarea
               id={rewriteId}
               rows={2}
@@ -264,7 +264,7 @@ export function DemonstrateSkillDialog({
               className="data-disabled:pointer-events-none data-disabled:opacity-50"
               onClick={() => draftOnce()}
             >
-              {draftMut.isPending ? "Drafting…" : "Draft rewrite"}
+              {draftMut.isPending ? "Writing…" : "Write new wording"}
             </Button>
           )}
         </DialogFooter>

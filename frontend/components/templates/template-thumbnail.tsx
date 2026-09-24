@@ -42,15 +42,14 @@ export function TemplateThumbnail({
   return (
     <PreviewThumbnail
       src={src}
-      alt={`${template.display_name ?? template.id} preview, rendered with a sample resume`}
-      placeholder="Not validated"
+      alt={`Preview of ${template.display_name ?? "this template"} with a sample resume`}
+      placeholder="No preview yet"
       mark="Sample"
       chip={
         isThumbnailStale(template)
           ? {
-              label: "needs re-validation",
-              title:
-                "Edited since its last validation, so the preview shows the previous design. Use Re-validate in the card menu to refresh.",
+              label: "Preview out of date",
+              title: "Changed since this preview. Choose Check again in the ⋯ menu to update it.",
             }
           : undefined
       }

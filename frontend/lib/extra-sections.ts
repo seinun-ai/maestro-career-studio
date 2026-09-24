@@ -56,9 +56,11 @@ export function uniqueSectionKey(
   return candidate;
 }
 
+/** An other section's layout, in words: items that each have a heading, dates
+ *  and bullets, or one plain list. "Item", never "entry" (the glossary). */
 export const SECTION_TYPE_LABELS: Record<ExtraSectionType, string> = {
-  entries: "Entries",
-  bullets: "Bullets",
+  entries: "Items with dates",
+  bullets: "Simple list",
 };
 
 const EMPTY_ENTRY: ExtraSectionEntry = {
@@ -100,16 +102,18 @@ export interface SectionPreset {
 /**
  * Presets only prefill title + type; the stored shape is identical to a
  * hand-built section. Synchronized with backend/app/services/extra_section_presets.py.
+ * The chip `label` is sentence case, like every button; the `title` written
+ * onto the PDF keeps the resume's Title Case.
  */
 export const SECTION_PRESETS: SectionPreset[] = [
   { id: "publications", label: "Publications", title: "Publications", type: "entries" },
-  { id: "presentations", label: "Presentations & Talks", title: "Presentations & Talks", type: "entries" },
-  { id: "volunteer", label: "Volunteer Experience", title: "Volunteer Experience", type: "entries" },
-  { id: "awards", label: "Awards & Honors", title: "Awards & Honors", type: "bullets" },
+  { id: "presentations", label: "Talks and presentations", title: "Presentations & Talks", type: "entries" },
+  { id: "volunteer", label: "Volunteer experience", title: "Volunteer Experience", type: "entries" },
+  { id: "awards", label: "Awards and honors", title: "Awards & Honors", type: "bullets" },
   { id: "languages", label: "Languages", title: "Languages", type: "bullets" },
   { id: "licenses", label: "Licenses", title: "Licenses", type: "bullets" },
-  { id: "clearance", label: "Security Clearance", title: "Security Clearance", type: "bullets" },
-  { id: "memberships", label: "Professional Affiliations", title: "Professional Affiliations", type: "bullets" },
+  { id: "clearance", label: "Security clearance", title: "Security Clearance", type: "bullets" },
+  { id: "memberships", label: "Professional affiliations", title: "Professional Affiliations", type: "bullets" },
 ];
 
 export function isEnabled(value: { enabled?: boolean }): boolean {

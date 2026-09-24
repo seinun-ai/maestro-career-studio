@@ -9,7 +9,8 @@ import { IconButton } from "@/components/icon-button";
 import { Input } from "@/components/ui/input";
 import { useFocusOnNextCommit } from "@/hooks/use-focus-return";
 import { apiFetch } from "@/lib/api";
-import type { BaseResumeDetail } from "@/lib/types";
+import { couldnt } from "@/lib/error-text";
+import { baseResumeLabel, type BaseResumeDetail } from "@/lib/types";
 
 /**
  * The base resume's display name, edited in place as the page title.
@@ -61,7 +62,7 @@ export function EditableTitle({
       committed.current = updated.display_name ?? "";
     },
     onError: (err: Error) => {
-      toast.error(err.message);
+      toast.error(couldnt("rename the resume", err));
       // Put the visible name back to what the server still holds.
       setDraft(committed.current);
       onChange(committed.current);
@@ -81,7 +82,7 @@ export function EditableTitle({
     return (
       <Input
         autoFocus
-        aria-label="Display name"
+        aria-label="Resume name"
         value={draft}
         disabled={save.isPending}
         onChange={(e) => setDraft(e.target.value)}
@@ -107,7 +108,8 @@ export function EditableTitle({
     // there is no hover — the failure mode that made every edit control in this
     // directory unusable on a tablet.
     <span className="group/title inline-flex items-center gap-1.5">
-      {value || slug}
+      {/* Unnamed: the slug's words, as the gallery card names it. */}
+      {value || baseResumeLabel(slug)}
       <IconButton
         ref={pencilRef}
         label="Rename resume"

@@ -14,7 +14,7 @@ export default function BaseResumeHealthPage({
     <HealthReportPage
       resumeKey={slug}
       backHref={`/base-resumes/${slug}`}
-      backLabel="Back to editor"
+      backLabel="Back to resume"
     />
   );
 }

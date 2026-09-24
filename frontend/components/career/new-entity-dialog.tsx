@@ -5,12 +5,12 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Check } from "lucide-react";
 import { toast } from "sonner";
 
+import { KB_KIND_LABELS, KB_STATUS_LABELS } from "@/components/career/career-labels";
 import { Button } from "@/components/ui/button";
 import { useSingleFlight } from "@/hooks/use-single-flight";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -25,8 +25,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { createKbEntity } from "@/lib/api";
+import { couldnt } from "@/lib/error-text";
 import {
   SECTION_PRESETS,
+  SECTION_TYPE_LABELS,
   TITLE_COLLISION_MESSAGE,
   isCoreSectionTitle,
   slugifyKey,
@@ -34,19 +36,33 @@ import {
 import type { KBEntityKind, KBEntityStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-const KINDS: { value: KBEntityKind; label: string }[] = [
-  { value: "experience", label: "Experience" },
-  { value: "project", label: "Project" },
-  { value: "education", label: "Education" },
-  { value: "certification", label: "Certification" },
-  { value: "extra", label: "Custom section" },
-];
+const KINDS = (Object.keys(KB_KIND_LABELS) as KBEntityKind[]).map((value) => ({
+  value,
+  label: KB_KIND_LABELS[value],
+}));
 
-const STATUSES: { value: KBEntityStatus; label: string }[] = [
-  { value: "ongoing", label: "Ongoing" },
-  { value: "completed", label: "Completed" },
-  { value: "archived", label: "Archived" },
-];
+const STATUSES = (Object.keys(KB_STATUS_LABELS) as KBEntityStatus[]).map((value) => ({
+  value,
+  label: KB_STATUS_LABELS[value],
+}));
+
+// What the title and organization fields are called for each kind. A school
+// is a School (the glossary), a certificate is Issued by, and an other-section
+// entry's second line is its Subheading (the resume editor's word for it).
+const TITLE_LABELS: Record<KBEntityKind, string> = {
+  experience: "Job title",
+  project: "Project name",
+  education: "Degree",
+  certification: "Certification",
+  extra: "Heading",
+};
+const ORG_LABELS: Record<KBEntityKind, string> = {
+  experience: "Organization",
+  project: "Organization",
+  education: "School",
+  certification: "Issued by",
+  extra: "Subheading",
+};
 
 export function NewEntityDialog({
   open,
@@ -75,7 +91,7 @@ export function NewEntityDialog({
   const [endDate, setEndDate] = useState("");
   const [status, setStatus] = useState<KBEntityStatus>("ongoing");
 
-  // Custom section fields
+  // Other-section fields
   const [sectionTitle, setSectionTitle] = useState(defaultSectionTitle ?? "");
   const [sectionKey, setSectionKey] = useState(defaultSectionKey ?? "");
   const [sectionType, setSectionType] = useState<"entries" | "bullets">(defaultSectionType);
@@ -151,14 +167,14 @@ export function NewEntityDialog({
       });
     },
     onSuccess: async (entity) => {
-      toast.success(`${entity.title} added to Career KB`);
+      toast.success(`${entity.title} added`);
       // Close once the list holds the new card, so focus can land on it.
       created.current = entity.id;
       await queryClient.invalidateQueries({ queryKey: ["kb", "entities"] });
       onOpenChange(false);
       reset();
     },
-    onError: (error: Error) => toast.error(error.message),
+    onError: (error: Error) => toast.error(couldnt("add the item", error)),
   });
 
   const isValid =
@@ -186,14 +202,11 @@ export function NewEntityDialog({
         }}
       >
         <DialogHeader>
-          <DialogTitle>New career item</DialogTitle>
-          <DialogDescription>
-            Add a career record manually.
-          </DialogDescription>
+          <DialogTitle>Add item</DialogTitle>
         </DialogHeader>
         <form id="new-career-entity" className="grid gap-4" onSubmit={submit}>
           <div className="grid gap-1.5">
-            <Label htmlFor="career-entity-kind">Category</Label>
+            <Label htmlFor="career-entity-kind">Type</Label>
             <Select
               value={kind}
               onValueChange={(value) =>
@@ -217,7 +230,7 @@ export function NewEntityDialog({
           {kind === "extra" && (
             <div className="space-y-4 rounded-xl border p-3.5 bg-muted/20">
               <div className="grid gap-1.5">
-                <Label id={presetsLabelId}>Section presets</Label>
+                <Label id={presetsLabelId}>Common sections</Label>
                 <div role="group" aria-labelledby={presetsLabelId} className="flex flex-wrap gap-1.5">
                   {SECTION_PRESETS.map((preset) => {
                     const on = sectionTitle === preset.title;
@@ -256,7 +269,6 @@ export function NewEntityDialog({
                       setSectionKey(slugifyKey(e.target.value));
                     }
                   }}
-                  placeholder="e.g. Publications, Volunteer Work"
                   required
                   aria-invalid={titleCollides}
                   readOnly={create.isPending}
@@ -269,7 +281,7 @@ export function NewEntityDialog({
               </div>
 
               <div className="grid gap-1.5">
-                <Label>Section type</Label>
+                <Label>Layout</Label>
                 <div className="flex gap-1.5">
                   <button
                     type="button"
@@ -282,8 +294,8 @@ export function NewEntityDialog({
                         : "border-input hover:border-border text-muted-foreground",
                     )}
                   >
-                    <span className="text-xs font-semibold text-foreground">Entries</span>
-                    <span className="text-[11px] text-muted-foreground">Titled items with heading & details</span>
+                    <span className="text-xs font-semibold text-foreground">{SECTION_TYPE_LABELS.entries}</span>
+                    <span className="text-[11px] text-muted-foreground">Each with a title and details</span>
                   </button>
                   <button
                     type="button"
@@ -301,8 +313,8 @@ export function NewEntityDialog({
                         : "border-input hover:border-border text-muted-foreground",
                     )}
                   >
-                    <span className="text-xs font-semibold text-foreground">Bullets</span>
-                    <span className="text-[11px] text-muted-foreground">Simple list of bullet points</span>
+                    <span className="text-xs font-semibold text-foreground">{SECTION_TYPE_LABELS.bullets}</span>
+                    <span className="text-[11px] text-muted-foreground">A simple list</span>
                   </button>
                 </div>
               </div>
@@ -313,23 +325,12 @@ export function NewEntityDialog({
             <>
               <div className="grid gap-1.5">
                 <Label htmlFor="career-entity-title">
-                  {kind === "extra" ? "Entry Heading" : kind === "project" ? "Project Name" : "Title / Role"}
+                  {TITLE_LABELS[kind]}
                 </Label>
                 <Input
                   id="career-entity-title"
                   value={title}
                   onChange={(event) => setTitle(event.target.value)}
-                  placeholder={
-                    kind === "extra"
-                      ? "e.g. Best Paper Award"
-                      : kind === "project"
-                        ? "e.g. Fraud detection pipeline"
-                        : kind === "education"
-                          ? "e.g. MSc Computer Science"
-                          : kind === "certification"
-                            ? "e.g. AWS Solutions Architect"
-                            : "e.g. Senior Data Scientist"
-                  }
                   ref={titleRef}
                   required
                   readOnly={create.isPending}
@@ -337,49 +338,41 @@ export function NewEntityDialog({
               </div>
 
               <div className="grid gap-1.5">
-                <Label htmlFor="career-entity-org">
-                  {kind === "extra" ? "Subheading / Issuer" : "Organization"}{" "}
-                  <span className="text-muted-foreground">· optional</span>
+                <Label htmlFor="career-entity-org" optional>
+                  {ORG_LABELS[kind]}
                 </Label>
                 <Input
                   id="career-entity-org"
                   value={org}
                   onChange={(event) => setOrg(event.target.value)}
-                  placeholder={
-                    kind === "extra"
-                      ? "e.g. NeurIPS 2024"
-                      : kind === "education"
-                        ? "e.g. University of Toronto"
-                        : kind === "certification"
-                          ? "e.g. Amazon Web Services"
-                          : "e.g. Acme Corp"
-                  }
                   readOnly={create.isPending}
                 />
               </div>
 
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-3 sm:grid-cols-2 sm:items-end">
                 <div className="grid gap-1.5">
-                  <Label htmlFor="career-entity-start">
-                    Start date <span className="text-muted-foreground">· optional</span>
+                  <Label htmlFor="career-entity-start" optional>
+                    Start date
                   </Label>
+                  <p id="career-entity-start-hint" className="text-muted-foreground text-xs">
+                    Month and year, like Jan 2025.
+                  </p>
                   <Input
                     id="career-entity-start"
+                    aria-describedby="career-entity-start-hint"
                     value={startDate}
                     onChange={(event) => setStartDate(event.target.value)}
-                    placeholder="e.g. Jan 2025"
                     readOnly={create.isPending}
                   />
                 </div>
                 <div className="grid gap-1.5">
-                  <Label htmlFor="career-entity-end">
-                    End date <span className="text-muted-foreground">· optional</span>
+                  <Label htmlFor="career-entity-end" optional>
+                    End date
                   </Label>
                   <Input
                     id="career-entity-end"
                     value={endDate}
                     onChange={(event) => setEndDate(event.target.value)}
-                    placeholder="e.g. Mar 2025"
                     readOnly={create.isPending}
                   />
                 </div>
@@ -409,7 +402,7 @@ export function NewEntityDialog({
             </>
           ) : (
             <p className="text-xs text-muted-foreground italic">
-              Creating this bullet-list section entity in the Knowledge Base. You can add and approve bullet points on it after creation.
+              You can add bullets after you create it.
             </p>
           )}
         </form>
@@ -431,7 +424,7 @@ export function NewEntityDialog({
             disabled={!isValid || create.isPending}
             focusableWhenDisabled
           >
-            {create.isPending ? "Adding…" : "Add career item"}
+            {create.isPending ? "Adding…" : "Add item"}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -51,6 +51,8 @@ export function notifyRenderOutcome(
 ): void {
   notifyRenderNote(data);
   if (data?.render_error) {
-    toast.warning(`${staleLabel} kept its previous PDF: the re-render failed.`);
+    toast.warning(
+      `${staleLabel}: the PDF couldn't be updated, so it shows the previous version. Update the PDF to try again.`,
+    );
   }
 }

@@ -356,3 +356,130 @@ def test_longer_words_wrap_instead_of_squeezing():
     assert "shrink-0 text-sm whitespace-nowrap tabular-nums" in page
     compare = _read("components/ats-compare-panel.tsx")
     assert 'CardHeader className="flex flex-row flex-wrap items-start justify-between gap-2 pb-2"' in compare
+
+
+# --- Task 19 (appendix D §4): resumes, studios, health, templates -----------
+
+
+def test_a_bullet_label_is_singular_in_its_slot():
+    # D10.8: the group label ("Bullets") named each row: "Bullets 2 of 5",
+    # "Move bullets 2 up". Each row reads its own singular label.
+    src = _read("components/resume-editor/bullet-list.tsx")
+    assert 'label = "Bullets",' in src and 'itemLabel = "Bullet",' in src
+    assert "aria-label={`${itemLabel} ${i + 1} of ${value.length}`}" in src
+    for verb in ("Move ${itemLabel.toLowerCase()} ${i + 1} up", "Move ${itemLabel.toLowerCase()} ${i + 1} down",
+                 "Delete ${itemLabel.toLowerCase()} ${i + 1}"):
+        assert f"aria-label={{`{verb}`}}" in src, verb
+    assert "${label} ${i + 1}" not in src
+    assert "label.toLowerCase()" not in src.replace("itemLabel.toLowerCase()", "")
+
+
+def test_new_base_summary_hint_matches_a_prefilled_field():
+    # D10.5: the plan drafts the summary (base_from_kb_plan), so the field is
+    # filled when it shows. "Left blank on purpose" was false.
+    src = _read("components/base-resumes/new-base-resume-dialog.tsx")
+    assert "Left blank on purpose" not in src
+    assert "Check this summary, or clear it." in src
+
+
+def test_undo_claims_match_version_history():
+    # D10.10: both write a version first (stage_resume_update, and the saved
+    # resume for a section delete), so "can't be undone" was false.
+    studio = _read("components/resume-editor/tailored-resume-studio.tsx")
+    start_over = _block(studio, 'title: "Start over from your base resume?"', "confirmLabel")
+    extra = _read("components/resume-editor/extra-sections-editor.tsx")
+    section_delete = _block(extra, "title: `Delete ${sectionName}?`", "confirmLabel")
+    for name, confirm in (("start over", start_over), ("section delete", section_delete)):
+        assert "can't be undone" not in confirm and "You can't undo this." not in confirm, name
+        assert "Version history keeps" in confirm, name
+
+
+def test_a_failed_save_names_places_not_schema_paths():
+    # A studio Save names where the form failed ("Experience, item 3, bullet 1"),
+    # never `experience.2.bullets.0`; the raw path stays in the code view only.
+    for rel in ("components/resume-editor/editor-body.tsx", "components/resume-editor/tailored-resume-studio.tsx"):
+        src = _read(rel)
+        assert "throw new Error(fieldsNeedFixing(validated.error.issues.map((i) => i.path)));" in src, rel
+        assert 'path.join(".")' not in src, rel
+    # The code view names fields too (lane 8 review I6): no path anywhere.
+    assert 'path.join(".")' not in _read("components/resume-editor/raw-json-toggle.tsx")
+    words = _block(_DESCRIBER, "export function describeFieldPath(", "\n}")
+    assert 'words.push(`${ROW_NOUN[parent] ?? "item"} ${seg + 1}`);' in words
+    assert 'FIELD_WORDS[seg] ?? seg.replace(/_/g, " ")' in words
+    assert 'extra_sections: "Other sections",' in _DESCRIBER
+    assert "return `Some fields need fixing: ${shown}${more}.`;" in _DESCRIBER
+
+
+def test_health_counts_agree_with_their_nouns():
+    # D10.8: "3 Note", "1 Gate", "2 gate · 1 note". Every count chip and the
+    # studio's health summary go through countWords.
+    cards = _read("components/resume-health/finding-cards.tsx")
+    assert '{ key: "ask", one: "question", many: "questions",' in _flat(cards)
+    assert "const noun = meta ? (count === 1 ? meta.one : meta.many) : key;" in cards
+    assert "{countWords(key, count)}" in _read("components/resume-health/health-report-page.tsx")
+    badges = _read("components/resume-health/health-badges.tsx")
+    assert "[countWords(key, count)]" in badges
+    assert "${count} ${key}" not in badges
+
+
+def _flat(src: str) -> str:
+    return " ".join(src.split())
+
+
+# --- Task 20 (appendix D §5): Career history --------------------------------
+
+
+def test_an_item_without_org_or_dates_claims_nothing():
+    # D10.7: a card with no organization and no dates read "Independent".
+    card = _read("components/career/entity-card.tsx")
+    assert '"Independent"' not in card
+    assert "{entity.org || dateRange ? (" in card
+
+
+def test_item_counts_agree_with_their_nouns():
+    # D10.8: "1 points", "1 drafts", "1 docs". Each Metric takes both nouns.
+    card = _read("components/career/entity-card.tsx")
+    for bare in ('label="points"', 'label="drafts"', 'label="docs"'):
+        assert bare not in card, bare
+    assert 'one="bullet" many="bullets"' in card
+    assert 'one="document" many="documents"' in card
+    assert "{value} {value === 1 ? one : many}" in card
+
+
+def test_add_files_names_what_it_opens():
+    # D10.6: "Add documents" opened the upload dialog on its Resumes tab.
+    # The dialog's own title is components/setup/upload-dialog.tsx (lane 9).
+    page = _read("app/career/page.tsx")
+    assert "Add documents" not in page
+    assert '<Upload aria-hidden="true" /> Add files' in page
+    assert "<UploadDialog open={importOpen} onOpenChange={setImportOpen} />" in page
+
+
+# One table names every item kind and status, so a kind is never "Custom
+# section" on one screen and "Other section" on the next, and a status never
+# prints its stored key.
+_KIND_TABLE_USERS = (
+    "components/career/entity-card.tsx",
+    "components/career/entity-detail.tsx",
+    "components/career/new-entity-dialog.tsx",
+    "components/career/merge-entity-dialog.tsx",
+    "components/base-resumes/new-base-resume-dialog.tsx",
+)
+
+
+def test_career_kinds_and_statuses_have_one_table():
+    labels = _read("components/career/career-labels.ts")
+    assert 'extra: "Other section",' in labels
+    assert ': "Unknown";' in labels
+    for rel in _KIND_TABLE_USERS:
+        src = _read(rel)
+        assert "KB_KIND_LABELS[" in src, rel
+        assert "custom section" not in src.lower(), rel
+    assert "kbStatusLabel(entity.status)" in _read("components/resume-editor/kb-import-drawer.tsx")
+    assert "kbStatusLabel(entity.status)" in _read("components/career/entity-card.tsx")
+
+
+def test_the_studio_pill_adds_to_career_history():
+    pill = _read("components/kb-sync-pill.tsx")
+    assert "Add to career history ({count})" in pill
+    assert "Sync to KB" not in pill.replace("// ", "")

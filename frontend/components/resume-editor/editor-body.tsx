@@ -61,10 +61,12 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { apiFetch, apiUrlForBrowserPdf } from "@/lib/api";
+import { fieldsNeedFixing } from "@/lib/describe-edit";
+import { couldnt } from "@/lib/error-text";
 import { type ResumeFormatting } from "@/lib/formatting";
 import { notifyRenderNote } from "@/lib/render-note";
 import { resumeDataSchema } from "@/lib/resume-schema";
-import { emptyPreviewMessage, keepIfEdited, saveStatus } from "@/lib/studio";
+import { emptyPreviewMessage, keepIfEdited, pdfActionWords, saveStatus } from "@/lib/studio";
 import type { BaseResumeDetail, ResumeData } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -208,11 +210,7 @@ export function EditorBody({
     mutationFn: async (sent: BaseSaveSent) => {
       const validated = resumeDataSchema.safeParse(sent.data);
       if (!validated.success) {
-        throw new Error(
-          validated.error.issues
-            .map((i) => `${i.path.join(".")}: ${i.message}`)
-            .join("; "),
-        );
+        throw new Error(fieldsNeedFixing(validated.error.issues.map((i) => i.path)));
       }
       return apiFetch<BaseResumeDetail>(`/api/base-resumes/${slug}`, {
         method: "PUT",
@@ -249,7 +247,7 @@ export function EditorBody({
       qc.invalidateQueries({ queryKey: ["setup-status"] });
       notifyRenderNote(result);
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(couldnt("save the resume", err)),
   });
 
   // Recovery for a render that FAILED. Save is dirty-gated, so with nothing to
@@ -268,7 +266,8 @@ export function EditorBody({
       qc.invalidateQueries({ queryKey: ["pdf-preview"] });
       notifyRenderNote(result);
     },
-    onError: (err: Error) => toast.error(err.message),
+    // The verb the menu showed: an update that fails is not a failed create.
+    onError: (err: Error) => toast.error(couldnt(pdfActionWords(Boolean(live?.pdf_path)).failure, err)),
   });
 
   const currentSnapshot = JSON.stringify({
@@ -442,10 +441,8 @@ export function EditorBody({
                       >
                         <RefreshCw />
                         {regenerate.isPending
-                          ? "Generating…"
-                          : live.pdf_path
-                            ? "Regenerate PDF"
-                            : "Generate PDF"}
+                          ? pdfActionWords(Boolean(live.pdf_path)).pending
+                          : pdfActionWords(Boolean(live.pdf_path)).label}
                       </DropdownMenuItem>
                       {/* A free instruction against this document — an edit
                           or a question. Applying goes through PATCH /edits on
@@ -467,24 +464,22 @@ export function EditorBody({
                         onClick={() => setImportOpen(true)}
                       >
                         <Download />
-                        Import from Career KB
+                        Add from career history…
                       </DropdownMenuItem>
-                      {/* The slug left the header; MCP tools and the on-disk
-                          filename still speak it, so it stays one click away
-                          rather than something to retype off the URL. Named
-                          with its value, like the Role item above: "slug" is
-                          developer vocabulary, and showing the value is what
-                          tells a reader what they would be copying. */}
+                      {/* The slug left the header; connected agents and the
+                          on-disk filename still speak it, so it stays one click
+                          away rather than something to retype off the URL. The
+                          label says who it is for: it is not the resume's name. */}
                       <DropdownMenuItem
                         onClick={() => {
                           navigator.clipboard
                             .writeText(slug)
-                            .then(() => toast.success(`Copied ${slug}`))
-                            .catch(() => toast.error("Could not copy slug"));
+                            .then(() => toast.success("ID copied. Connected agents find this resume by it."))
+                            .catch((err) => toast.error(couldnt("copy the ID", err)));
                         }}
                       >
                         <Copy />
-                        {`Copy slug: ${slug}`}
+                        Copy ID for connected agents
                       </DropdownMenuItem>
                     </StudioOverflowMenu>
                   }
@@ -527,7 +522,7 @@ export function EditorBody({
                     <TabsTrigger value="certifications">
                       Certifications
                     </TabsTrigger>
-                    <TabsTrigger value="extra">Extra sections</TabsTrigger>
+                    <TabsTrigger value="extra">Other sections</TabsTrigger>
                   </TabsList>
 
                   <TabsContent value="contact">
@@ -682,7 +677,7 @@ function SummaryBlock({
       </div>
       <p className="text-foreground/90 pr-10 text-sm whitespace-pre-wrap">
         {value || (
-          <span className="text-muted-foreground italic">No summary</span>
+          <span className="text-muted-foreground italic">No summary yet</span>
         )}
       </p>
       <Button

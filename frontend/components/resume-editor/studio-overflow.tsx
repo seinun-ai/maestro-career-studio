@@ -69,8 +69,8 @@ export function StudioOverflowMenu({
       {/* Sized to its labels. The primitive anchors a menu to its trigger's
           width, and this trigger is a 28px icon, so every item wrapped at the
           128px floor. Capped at the room Base UI measures beside the trigger,
-          so a long "Copy slug: …" stays on screen; a slug's underscores are no
-          break opportunity, so it wraps anywhere rather than clipping. */}
+          so a long label (a role name) stays on screen, and wraps anywhere
+          rather than clipping. */}
       <DropdownMenuContent
         align="end"
         className="w-auto min-w-56 max-w-(--available-width) wrap-anywhere"
@@ -79,11 +79,11 @@ export function StudioOverflowMenu({
         {/* Rare, once-a-session — see StudioToolbar's overflow rule. */}
         <DropdownMenuItem onClick={onToggleRaw}>
           <Braces />
-          {rawMode ? "Form view" : "Edit raw JSON"}
+          {rawMode ? "Back to form" : "Edit as code (advanced)"}
         </DropdownMenuItem>
         <DropdownMenuItem onClick={onHistory}>
           <HistoryIcon />
-          History
+          Version history
         </DropdownMenuItem>
         {children}
       </DropdownMenuContent>

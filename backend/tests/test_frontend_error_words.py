@@ -63,44 +63,7 @@ _ALLOWED: dict[str, int] = {
 # task, so two lanes never edit the same lines. A task lowers its counts as it
 # goes and deletes its block when it lands. Tasks 22-23 have no block: the
 # Companion panel and the server are not scanned here.
-_PENDING_T19: dict[str, int] = {  # D §4 resumes, studios, health, templates
-    "app/applications/[id]/resume/page.tsx": 1,
-    "app/base-resumes/[slug]/page.tsx": 1,
-    "app/base-resumes/page.tsx": 4,
-    "app/templates/[id]/page.tsx": 5,
-    "app/templates/page.tsx": 7,
-    "components/base-resumes/new-base-resume-dialog.tsx": 2,
-    "components/resume-editor/editable-title.tsx": 1,
-    "components/resume-editor/editor-body.tsx": 2,
-    "components/resume-editor/instruct-sheet.tsx": 2,
-    "components/resume-editor/kb-import-drawer.tsx": 4,
-    "components/resume-editor/project-port-dialog.tsx": 1,
-    "components/resume-editor/tailored-resume-studio.tsx": 4,
-    "components/resume-health/batch-ask-dialog.tsx": 1,
-    "components/resume-health/finding-cards.tsx": 5,
-    "components/resume-health/health-report-page.tsx": 3,
-    "components/resume-health/report-errors.ts": 1,
-    "components/resume-versions/version-history-sheet.tsx": 1,
-    "components/role-category-picker.tsx": 1,
-}
-_PENDING_T20: dict[str, int] = {  # D §5 Career history
-    "app/career/page.tsx": 2,
-    "components/career/capture-box.tsx": 2,
-    "components/career/documents-panel.tsx": 3,
-    "components/career/entity-detail.tsx": 3,
-    "components/career/exports-card.tsx": 2,
-    "components/career/first-run-import-card.tsx": 1,
-    "components/career/inbox-panel.tsx": 4,
-    "components/career/merge-entity-dialog.tsx": 2,
-    "components/career/new-entity-dialog.tsx": 1,
-    "components/career/notes-editor.tsx": 1,
-    "components/career/points-list.tsx": 2,
-    "components/career/profile-panel.tsx": 2,
-    "components/career/resume-import-dialog.tsx": 2,
-    "components/career/send-to-resume-dialog.tsx": 4,
-    "components/kb-sync-pill.tsx": 1,
-}
-_BLOCKS = (_PENDING_T19, _PENDING_T20)
+_BLOCKS: tuple[dict[str, int], ...] = ()
 _PENDING: dict[str, int] = {rel: n for block in _BLOCKS for rel, n in block.items()}
 
 

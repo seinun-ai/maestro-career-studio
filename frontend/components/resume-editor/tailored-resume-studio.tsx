@@ -76,12 +76,15 @@ import {
   runCoherenceCheck,
 } from "@/lib/api";
 import { overlayBaseline, type ResumeFormatting } from "@/lib/formatting";
+import { fieldsNeedFixing } from "@/lib/describe-edit";
+import { couldnt } from "@/lib/error-text";
 import { notifyRenderNote } from "@/lib/render-note";
 import { resumeDataSchema } from "@/lib/resume-schema";
 import {
   adoptServerKey,
   emptyPreviewMessage,
   keepIfEdited,
+  pdfActionWords,
   saveStatus,
   serverKey,
 } from "@/lib/studio";
@@ -190,12 +193,15 @@ export function TailoredResumeStudio({
     onSuccess: (_data, opts: { announce?: boolean } | undefined) => {
       qc.invalidateQueries({ queryKey: ["ats-compare", applicationId] });
       qc.invalidateQueries({ queryKey: ["ats-scores", jobId] });
-      // Only the manual Re-score confirms. The Save chain reports through the
+      // Only the manual Update score confirms. The Save chain reports through the
       // header's status line, not a third toast.
-      if (opts?.announce) toast.success("Tailored resume re-scored");
+      if (opts?.announce) toast.success("ATS score updated");
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(couldnt("update the ATS score", err)),
   });
+  // One re-score per gesture, shared with the Save chain's: a double click on
+  // Update score sent two scoring requests (two "tailored" score rows).
+  const rescoreOnce = useSingleFlight(rescore.mutate);
 
   const render = useMutation({
     mutationFn: (opts?: { thenRescore?: boolean }) =>
@@ -219,9 +225,10 @@ export function TailoredResumeStudio({
       // A standalone re-render (the ⋯ recovery item) doesn't pass this, so a
       // retry of a FAILED render doesn't add a new "tailored" trajectory row
       // for content that hasn't changed.
-      if (opts?.thenRescore) rescore.mutate({ announce: false });
+      if (opts?.thenRescore) rescoreOnce({ announce: false });
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) =>
+      toast.error(couldnt(pdfActionWords(Boolean(application.pdf_path)).failure, err)),
   });
 
   // Dirty-guard (SYSTEM.md §12). Server copies compare by `serverKey`
@@ -301,9 +308,9 @@ export function TailoredResumeStudio({
       qc.setQueryData(["application", applicationId], result);
       qc.invalidateQueries({ queryKey: ["job-detail", jobId] });
       qc.invalidateQueries({ queryKey: ["application", applicationId] });
-      toast.success("Draft built from the base resume");
+      toast.success("Draft created from your base resume");
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(couldnt("create the draft", err)),
   });
   // Build draft and Rebuild share one guard: a double click sent two POSTs.
   const materializeOnce = useSingleFlight(materialize.mutate);
@@ -335,6 +342,7 @@ export function TailoredResumeStudio({
       onTemplateChange={setTemplateId}
       render={render}
       rescore={rescore}
+      rescoreOnce={rescoreOnce}
       pdfNonce={pdfNonce}
       serverChanged={serverChanged}
       onLoadLatest={() => replaceEditor(customizedKey)}
@@ -391,13 +399,12 @@ function BuildDraft({
       <div className="space-y-3 rounded-lg border p-6">
         {parseFailed ? (
           <p className="text-destructive text-sm">
-            Stored resume data is invalid. Rebuild from the base resume to
-            replace it.
+            This tailored resume couldn&apos;t be opened. Choose Create draft to
+            start again from your base resume.
           </p>
         ) : (
           <p className="text-muted-foreground text-sm">
-            No tailored resume yet. Build a draft from your base resume, then
-            refine it here and generate a PDF.
+            No tailored resume yet. Start with a copy of your base resume.
           </p>
         )}
         <Button
@@ -406,7 +413,7 @@ function BuildDraft({
           className="data-disabled:pointer-events-none data-disabled:opacity-50"
           onClick={onBuild}
         >
-          {pending ? "Building…" : "Build draft from base resume"}
+          {pending ? "Creating…" : "Create draft"}
         </Button>
       </div>
     </div>
@@ -426,6 +433,7 @@ function StudioEditor({
   onTemplateChange,
   render,
   rescore,
+  rescoreOnce,
   pdfNonce,
   serverChanged,
   onLoadLatest,
@@ -447,10 +455,9 @@ function StudioEditor({
     mutate: (opts?: { thenRescore?: boolean }) => void;
     isPending: boolean;
   };
-  rescore: {
-    mutate: (opts?: { announce?: boolean }) => void;
-    isPending: boolean;
-  };
+  rescore: { isPending: boolean };
+  /** The parent's one guard over the re-score, shared with the Save chain. */
+  rescoreOnce: (opts: { announce?: boolean } | undefined) => void;
   pdfNonce: number;
   // Dirty-guard wiring (see TailoredResumeStudio): the parent adopts newer
   // server snapshots; this editor reports its dirty state up, hands up the key
@@ -532,7 +539,7 @@ function StudioEditor({
     const next = revertHunk(data, hunk);
     if (!next) {
       toast.error(
-        "Couldn't revert this change automatically — it no longer matches the draft. Edit the section directly.",
+        "Couldn't undo this change because the text has changed since. Edit it yourself.",
       );
       return;
     }
@@ -560,7 +567,7 @@ function StudioEditor({
         appliedKeys: new Set(),
       });
     } catch {
-      toast.error("Review checks failed — try again.");
+      toast.error("Couldn't run the checks. Try again.");
       setCoherence((prev) => ({ ...prev, loading: false }));
     }
   };
@@ -571,7 +578,7 @@ function StudioEditor({
     const next = applyCoherenceProposal(data, flag);
     if (!next) {
       toast.error(
-        "Couldn't locate the flagged text — it may have been edited. Apply it manually.",
+        "Couldn't find that text. It may have changed. Make the fix yourself.",
       );
       return;
     }
@@ -657,11 +664,7 @@ function StudioEditor({
     mutationFn: async (sent: SaveSent) => {
       const validated = resumeDataSchema.safeParse(sent.data);
       if (!validated.success) {
-        throw new Error(
-          validated.error.issues
-            .map((i) => `${i.path.join(".")}: ${i.message}`)
-            .join("; "),
-        );
+        throw new Error(fieldsNeedFixing(validated.error.issues.map((i) => i.path)));
       }
       return apiFetch<Application>(`/api/applications/${applicationId}`, {
         method: "PATCH",
@@ -706,7 +709,7 @@ function StudioEditor({
       // silently after an edit (`rescore` is lifted for the same reason).
       render.mutate({ thenRescore: true });
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(couldnt("save the resume", err)),
   });
 
   const busy = save.isPending || rescore.isPending || materializePending;
@@ -776,7 +779,7 @@ function StudioEditor({
             {serverChanged && dirty && (
               <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-500/40 bg-amber-500/[0.08] px-3 py-2 text-sm dark:border-amber-400/40 dark:bg-amber-400/[0.08]">
                 <span className="text-amber-700 dark:text-amber-300">
-                  This draft changed outside the editor.
+                  This tailored resume was changed somewhere else.
                 </span>
                 <Button
                   variant="outline"
@@ -786,7 +789,7 @@ function StudioEditor({
                     const ok = await confirm({
                       title: "Load the latest version?",
                       description:
-                        "This replaces the editor with the newer saved copy and discards your unsaved edits. This can't be undone.",
+                        "Your unsaved edits will be lost. You can't undo this.",
                       confirmLabel: "Load latest",
                       destructive: true,
                     });
@@ -859,24 +862,30 @@ function StudioEditor({
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => rescore.mutate({ announce: true })}
+                        onClick={() => rescoreOnce({ announce: true })}
                         disabled={busy || render.isPending || unsaved}
+                        // Disables itself while scoring: a native `disabled`
+                        // dropped focus to <body>.
+                        focusableWhenDisabled
+                        className="data-disabled:pointer-events-none data-disabled:opacity-50"
                         // No re-score while a render is out: the save chain
                         // re-scores itself when it lands. The gate reads
                         // `unsaved`, same as the hint, so the post-save gap
                         // does not block a re-score of work already saved.
+                        // ATS is spelled out once, here, where it first appears.
                         title={
                           unsaved
-                            ? "Save your edits first. Re-scoring runs on the saved resume."
-                            : undefined
+                            ? "Save first to update the ATS score."
+                            : "Update the ATS score: how an applicant tracking system rates this resume for the job."
                         }
+                        aria-description="The ATS score is how an applicant tracking system rates this resume for the job."
                       >
                         {rescore.isPending ? (
                           <Loader2 className="animate-spin" />
                         ) : (
                           <RefreshCw />
                         )}
-                        {rescore.isPending ? "Re-scoring…" : "Re-score"}
+                        {rescore.isPending ? "Updating…" : "Update score"}
                       </Button>
                     </>
                   }
@@ -898,7 +907,7 @@ function StudioEditor({
                       }
                       onHistory={() => setHistoryOpen(true)}
                     >
-                      {/* The recovery path, and the only job "Generate PDF"
+                      {/* The recovery path, and the only job "Create PDF"
                             ever really had: Save auto-renders, so the one case
                             a manual trigger covers is a render that FAILED —
                             without this, a failed render with nothing left to
@@ -911,27 +920,28 @@ function StudioEditor({
                           <RefreshCw />
                           {/* Same verb as the job page's Resume tab, which is
                               the OTHER place this operation is offered:
-                              generate when there is no PDF, regenerate when
-                              there is. Two names for one action is how a
+                              create when there is no PDF, update when there
+                              is. Two names for one action is how a
                               vocabulary forks. */}
                           {render.isPending
-                            ? "Generating…"
-                            : application.pdf_path
-                              ? "Regenerate PDF"
-                              : "Generate PDF"}
+                            ? pdfActionWords(Boolean(application.pdf_path)).pending
+                            : pdfActionWords(Boolean(application.pdf_path)).label}
                         </DropdownMenuItem>
                         <DropdownMenuItem
                           variant="destructive"
                           disabled={busy}
                           onClick={async () => {
                             const ok = await confirm({
-                              title: "Rebuild from base resume?",
+                              title: "Start over from your base resume?",
+                              // materialize-resume records a version first
+                              // (stage_resume_update), so the saved content
+                              // can be restored, and the confirm says where.
                               description:
-                                "This erases the tailored resume content, the rendered PDF, and any unsaved edits in the studio. This can't be undone.",
-                              confirmLabel: "Rebuild from base",
+                                "This replaces the tailored resume with a fresh copy of your base resume, removes its PDF and drops unsaved edits. Version history keeps the saved version.",
+                              confirmLabel: "Start over",
                               destructive: true,
                               // The item is gone once the menu closes: Cancel
-                              // and "Rebuilding…" keep focus on ⋯, and the
+                              // and "Starting over…" keep focus on ⋯, and the
                               // remount hands it to the page's <main>.
                               returnFocus: () => overflowRef.current,
                             });
@@ -940,8 +950,8 @@ function StudioEditor({
                         >
                           <RefreshCw />
                           {materializePending
-                            ? "Rebuilding…"
-                            : "Rebuild from base"}
+                            ? "Starting over…"
+                            : "Start over"}
                         </DropdownMenuItem>
                     </StudioOverflowMenu>
                   }
@@ -1020,7 +1030,7 @@ function StudioEditor({
                       {changeBadge("certifications")}
                     </TabsTrigger>
                     <TabsTrigger value="extra">
-                      Extra sections
+                      Other sections
                       {changeBadge("extra")}
                     </TabsTrigger>
                   </TabsList>

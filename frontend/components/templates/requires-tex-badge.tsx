@@ -10,9 +10,11 @@ export function RequiresTexBadge() {
     <Badge
       variant="outline"
       className="border-amber-500/40 text-amber-700 dark:text-amber-400"
-      title="TeX is not installed where the backend runs. A resume using this template renders through a Typst template instead, and the render says so, until TeX is installed."
+      // pdf_render.resolve_render_template: the first ready template that
+      // doesn't need TeX stands in; with none, there is no PDF.
+      title="This template needs TeX, which isn't installed on this computer. Until it is, resumes that use it are made with another ready template that doesn't need TeX."
     >
-      requires TeX
+      Needs setup
     </Badge>
   );
 }

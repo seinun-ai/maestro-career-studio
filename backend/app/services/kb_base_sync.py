@@ -505,6 +505,10 @@ def apply(db: Session, slug: str) -> dict:
     db.flush()
     return {
         "created": created_points,
+        # Items this sync created. An education, certification or other-section
+        # add writes an item and no bullet ("entity_only"), so `created` alone
+        # under-reports it; an item that brings bullets counts here too.
+        "items_added": len(created_entities),
         "drifted": drifted,
         # Entities renamed to the base resume's richer role title on a near
         # match. Empty on every ordinary sync.

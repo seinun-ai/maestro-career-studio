@@ -28,14 +28,12 @@ export function TimelinePanel({ events }: { events: KBTimelineEvent[] }) {
   return (
     <Card className="rounded-2xl">
       <CardHeader>
-        <CardTitle>Timeline</CardTitle>
-        <p className="text-muted-foreground text-sm">Recent changes to this career item.</p>
+        <CardTitle>Activity</CardTitle>
       </CardHeader>
       <CardContent>
         {ordered.length === 0 ? (
           <div className="rounded-xl bg-muted/45 px-5 py-7 text-center">
             <p className="text-sm font-medium">No activity yet</p>
-            <p className="text-muted-foreground mt-1 text-xs">Changes will appear here as they happen.</p>
           </div>
         ) : (
           <ol className="space-y-4">

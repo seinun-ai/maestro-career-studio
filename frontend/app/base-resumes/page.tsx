@@ -31,13 +31,15 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { NewBaseResumeDialog } from "@/components/base-resumes/new-base-resume-dialog";
 import { apiFetch, apiUrlForBrowserPdf } from "@/lib/api";
+import { couldnt, errorDetail } from "@/lib/error-text";
 import { finalFocusOn, focusIfDropped, focusSuccessor } from "@/lib/focus";
 import { isLoadFailure } from "@/lib/query-state";
 import { notifyRenderNote } from "@/lib/render-note";
 import { uniqueSlug } from "@/lib/slug";
-import type {
-  BaseResumeDetail,
-  BaseResumeSummary,
+import {
+  baseResumeLabel,
+  type BaseResumeDetail,
+  type BaseResumeSummary,
 } from "@/lib/types";
 import { PageHeader, PageShell } from "@/components/page-shell";
 
@@ -68,7 +70,7 @@ export default function BaseResumesListPage() {
 
   const duplicate = useMutation({
     mutationFn: () => {
-      if (!dupSource) throw new Error("missing source slug");
+      if (!dupSource) throw new Error("Choose a resume to copy.");
       return apiFetch<BaseResumeDetail>(
         `/api/base-resumes/${dupSource}/duplicate`,
         {
@@ -88,19 +90,19 @@ export default function BaseResumesListPage() {
       notifyRenderNote(created);
       router.push(`/base-resumes/${created.slug}`);
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(couldnt("duplicate the resume", err)),
   });
 
   const del = useMutation({
     mutationFn: (slug: string) =>
       apiFetch<void>(`/api/base-resumes/${slug}`, { method: "DELETE" }),
     onSuccess: () => {
-      toast.success("Deleted");
+      toast.success("Resume deleted");
       afterDelete.current = deleteNext.current;
       setDeleteTarget(null);
       invalidate();
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(couldnt("delete the resume", err)),
   });
 
   const archive = useMutation({
@@ -110,22 +112,22 @@ export default function BaseResumesListPage() {
         { method: "POST" },
       ),
     onSuccess: (_data, vars) => {
-      toast.success(vars.archived ? "Restored" : "Archived");
+      toast.success(vars.archived ? "Resume restored" : "Resume archived");
       invalidate();
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error, vars) =>
+      toast.error(couldnt(vars.archived ? "restore the resume" : "archive the resume", err)),
   });
 
   return (
     <PageShell>
       <PageHeader
-        title="Base Resumes"
-        subtitle="One source of truth per career track. Edits auto-render a fresh PDF."
+        title="Base resumes"
+        subtitle="One resume for each kind of job you apply for."
         actions={
           <>
             <label className="text-muted-foreground mr-2 flex items-center gap-2 text-sm">
               <Switch
-                aria-label="Show archived base resumes"
                 checked={showArchived}
                 onCheckedChange={setShowArchived}
               />
@@ -142,7 +144,7 @@ export default function BaseResumesListPage() {
       {isLoadFailure(resumes) ? (
         <LoadErrorState
           title="Couldn't load your base resumes."
-          detail={(resumes.error as Error)?.message}
+          detail={errorDetail(resumes.error)}
           retrying={resumes.isFetching}
           onRetry={() => void resumes.refetch()}
         />
@@ -165,7 +167,7 @@ export default function BaseResumesListPage() {
                   hidesArchived={!showArchived}
                   onDuplicate={() => {
                     setDupSource(r.slug);
-                    setDupDisplay(`${r.display_name ?? r.slug} (copy)`);
+                    setDupDisplay(`${baseResumeLabel(r.slug, [r])} (copy)`);
                     setDupOpen(true);
                   }}
                   onToggleArchive={() =>
@@ -183,7 +185,7 @@ export default function BaseResumesListPage() {
             />
           ) : (
             <p className="text-muted-foreground text-sm">
-              No career-track resumes yet.
+              No base resumes yet. Create one to start.
             </p>
           )}
         </section>
@@ -198,13 +200,14 @@ export default function BaseResumesListPage() {
       <Dialog open={dupOpen} onOpenChange={setDupOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Duplicate {dupSource}</DialogTitle>
+            <DialogTitle>
+              Duplicate {dupSource ? baseResumeLabel(dupSource, visibleResumes) : "resume"}
+            </DialogTitle>
           </DialogHeader>
           <div className="grid gap-1.5">
             <Label htmlFor="dup_display">New name</Label>
             <Input
               id="dup_display"
-              placeholder="e.g. Data Scientist (1 page)"
               value={dupDisplay}
               onChange={(e) => setDupDisplay(e.target.value)}
             />
@@ -235,11 +238,16 @@ export default function BaseResumesListPage() {
           }}
         >
           <DialogHeader>
-            <DialogTitle>Delete {deleteTarget?.slug}?</DialogTitle>
+            <DialogTitle>
+              Delete {deleteTarget ? baseResumeLabel(deleteTarget.slug, [deleteTarget]) : "resume"}?
+            </DialogTitle>
           </DialogHeader>
+          {/* A soft delete (routers/base_resumes.delete_base_resume): the row
+              leaves every list and nothing in the app brings it back; its files
+              stay on disk. An archived resume is already out of the way. */}
           <p className="text-muted-foreground text-sm">
-            This removes the resume, its rendered PDF, and the JSON file. This
-            can&apos;t be undone.
+            This removes the resume from your base resumes. You can&apos;t undo this.
+            {deleteTarget?.archived_at ? null : " To keep it out of the way instead, archive it."}
           </p>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeleteTarget(null)}>
@@ -289,7 +297,7 @@ function CardMenu({
 }) {
   const triggerRef = useRef<HTMLButtonElement>(null);
   const leaving = useRef<(() => HTMLElement | null) | null>(null);
-  const name = resume.display_name ?? resume.slug;
+  const name = baseResumeLabel(resume.slug, [resume]);
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
@@ -327,7 +335,7 @@ function CardMenu({
             onToggleArchive();
           }}
         >
-          {resume.archived_at ? "Unarchive" : "Archive"}
+          {resume.archived_at ? "Restore" : "Archive"}
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem

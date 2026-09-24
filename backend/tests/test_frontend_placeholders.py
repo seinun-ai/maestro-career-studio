@@ -63,56 +63,13 @@ _PROMPTS = frozenset(
 # lines; a task lowers its counts as it goes and deletes its block when it
 # lands. The wave-2 lanes already removed the Agent inbox's score example and
 # the examples in the Settings cards they rewrote.
-_PENDING_EXAMPLES_T19: dict[tuple[str, str], int] = {  # D §4 resumes, studios, health, templates
-    ("app/base-resumes/page.tsx", "e.g. Data Scientist (1 page)"): 1,
-    ("app/templates/page.tsx", "e.g. classic_serif"): 1,
-    ("components/base-resumes/new-base-resume-dialog.tsx", "e.g. Lead with production ML work, senior in tone"): 1,
-    ("components/base-resumes/new-base-resume-dialog.tsx", "e.g. Machine Learning Engineer"): 1,
-    ("components/resume-editor/contact-form.tsx", "e.g. you@example.com"): 1,
-    ("components/resume-editor/experience-editor.tsx", "e.g. Jan 2023"): 1,
-    ("components/resume-editor/experience-editor.tsx", "e.g. Mar 2025"): 1,
-    ("components/resume-editor/extra-sections-editor.tsx", "e.g. 2025"): 1,
-    ("components/resume-editor/extra-sections-editor.tsx", "e.g. Publications"): 1,
-    ("components/resume-editor/extra-sections-editor.tsx", "https://" + _ELLIPSIS): 1,
-    ("components/resume-editor/instruct-sheet.tsx", "e.g. Tighten the summary and lead with the platform work"): 1,
-    ("components/resume-health/finding-cards.tsx", "e.g. this metric lives in the next bullet"): 1,
-    ("components/resume-health/finding-cards.tsx", "e.g. this template is certified elsewhere"): 1,
-    ("components/resume-health/metric-ask-input.tsx", "e.g. 5,000"): 1,
-    ("components/resume-health/metric-ask-input.tsx", "e.g. 6 months"): 1,
-    ("components/resume-health/metric-ask-input.tsx", "e.g. tickets"): 1,
-    ("components/role-category-picker.tsx", "e.g. Data Scientist"): 1,
-}
-_PENDING_EXAMPLES_T20: dict[tuple[str, str], int] = {  # D §5 Career history
-    ("components/career/capture-box.tsx", "e.g. This week I shipped" + _ELLIPSIS): 1,
-    ("components/career/entity-detail.tsx", "e.g. Acme Labs"): 1,
-    ("components/career/entity-detail.tsx", "e.g. Jan 2025"): 1,
-    ("components/career/entity-detail.tsx", "e.g. Mar 2025"): 1,
-    ("components/career/new-entity-dialog.tsx", "e.g. AWS Solutions Architect"): 1,
-    ("components/career/new-entity-dialog.tsx", "e.g. Acme Corp"): 1,
-    ("components/career/new-entity-dialog.tsx", "e.g. Amazon Web Services"): 1,
-    ("components/career/new-entity-dialog.tsx", "e.g. Best Paper Award"): 1,
-    ("components/career/new-entity-dialog.tsx", "e.g. Fraud detection pipeline"): 1,
-    ("components/career/new-entity-dialog.tsx", "e.g. Jan 2025"): 1,
-    ("components/career/new-entity-dialog.tsx", "e.g. MSc Computer Science"): 1,
-    ("components/career/new-entity-dialog.tsx", "e.g. Mar 2025"): 1,
-    ("components/career/new-entity-dialog.tsx", "e.g. NeurIPS 2024"): 1,
-    ("components/career/new-entity-dialog.tsx", "e.g. Publications, Volunteer Work"): 1,
-    ("components/career/new-entity-dialog.tsx", "e.g. Senior Data Scientist"): 1,
-    ("components/career/new-entity-dialog.tsx", "e.g. University of Toronto"): 1,
-    ("components/career/profile-panel.tsx", "e.g. ML Ops"): 1,
-}
-_EXAMPLE_BLOCKS = (
-    _PENDING_EXAMPLES_T19,
-    _PENDING_EXAMPLES_T20,
-)
+_EXAMPLE_BLOCKS: tuple[dict[tuple[str, str], int], ...] = ()
 _PENDING_EXAMPLES: dict[tuple[str, str], int] = {key: n for block in _EXAMPLE_BLOCKS for key, n in block.items()}
 
 # The only expressions allowed to stay unresolved: values handed on from a
 # caller (whose own site is scanned) and the image placeholder's type line.
 _PASS_THROUGH = frozenset(
     {
-        ("components/resume-editor/field.tsx", "placeholder"),
-        ("components/resume-editor/contact-form.tsx", "placeholder"),
         ("components/role-picker.tsx", "props.placeholder"),
         ("components/gallery/preview-thumbnail.tsx", "string"),
     }
@@ -121,10 +78,9 @@ _PASS_THROUGH = frozenset(
 _NOT_INPUTS = (
     "None",
     "—",
-    "Choose a base resume",
-    "Choose base resume",
-    "Not rendered yet",
-    "Not validated",
+    "Choose a resume",
+    "No PDF yet",
+    "No preview yet",
 )
 
 # Real indirect values the scanner must keep reading (a default parameter,
@@ -601,8 +557,9 @@ def test_file_import_name_defaults_in_a_hint():
         "Defaults to the file name.",
         'aria-describedby={mode === "file" ? ids.nameHint : undefined}',
         "id={ids.name}",
-        'placeholder={mode === "file" ? undefined : "e.g. Machine Learning Engineer"}',
     )
+    # No field holds text; the one placeholder left is the copy tab's select prompt.
+    assert src.count("placeholder=") == src.count("<SelectValue placeholder=") == 1
 
 
 def test_summary_field_has_no_placeholder_and_the_consequence_stays_visible():
@@ -623,17 +580,19 @@ def test_summary_field_has_no_placeholder_and_the_consequence_stays_visible():
 def test_demonstrate_skill_has_a_visible_label_and_no_placeholder():
     src = _src("components/resume-health/demonstrate-skill-dialog.tsx")
     assert "placeholder=" not in src
-    assert "How {skill} shows up in this bullet" in src
+    assert "How you used {skill} in this bullet" in src
     assert "<Label" in src
 
 
-def test_metric_units_are_examples():
+def test_metric_fields_have_visible_labels():
     src = _src("components/resume-health/metric-ask-input.tsx")
-    assert 'placeholder="e.g. 5,000"' in src
+    # Each field is named on screen; none holds an example.
+    assert "placeholder=" not in src
+    assert ">Number</Label>" in src
+    assert ">Your unit</Label>" in src
+    assert "optional>Time period</Label>" in src
     # Not one of the unit options: the custom box is for a unit the list lacks.
-    assert 'placeholder="e.g. tickets"' in src
     assert '{ id: "tickets"' not in _src("lib/health-report.ts")
-    assert 'placeholder="e.g. 6 months"' in src
     assert 'placeholder="unit"' not in src
 
 
@@ -651,25 +610,14 @@ def test_custom_answer_has_a_visible_label_not_a_placeholder():
     )
 
 
-# kind -> (title example, organization example). Education and certification
-# used to fall through to the job-title and employer examples.
-_ENTITY_EXAMPLES = {
-    "extra": ("e.g. Best Paper Award", "e.g. NeurIPS 2024"),
-    "project": ("e.g. Fraud detection pipeline", None),
-    "education": ("e.g. MSc Computer Science", "e.g. University of Toronto"),
-    "certification": ("e.g. AWS Solutions Architect", "e.g. Amazon Web Services"),
-}
-
-
-def test_new_entity_placeholders_are_examples():
+def test_new_item_dialog_has_no_placeholders():
     src = _src("components/career/new-entity-dialog.tsx")
-    for kind, examples in _ENTITY_EXAMPLES.items():
-        for example in filter(None, examples):
-            assert re.search(rf'kind === "{kind}"\s*\?\s*"{re.escape(example)}"', src), example
-    for text in ("e.g. Senior Data Scientist", "e.g. Acme Corp", "e.g. Jan 2025", "e.g. Mar 2025"):
-        assert text in src, text
+    # No example in any field: a format is hint text between label and field.
+    assert "placeholder=" not in src
+    assert "Month and year, like Jan 2025." in src
+    assert 'aria-describedby="career-entity-start-hint"' in src
+    # ("Project name" is the project kind's label now, not a placeholder.)
     for retired in (
-        "Project name",
         "Role or title",
         "Conference, publisher, or org",
         "Company, institution, or issuer",
@@ -679,11 +627,10 @@ def test_new_entity_placeholders_are_examples():
         assert retired not in src, retired
 
 
-def test_entity_dates_are_examples_not_the_ongoing_word():
+def test_item_dates_are_hints_not_the_ongoing_word():
     src = _src("components/career/entity-detail.tsx")
-    assert 'placeholder="e.g. Acme Labs"' in src
-    assert 'placeholder="e.g. Jan 2025"' in src
-    assert 'placeholder="e.g. Mar 2025"' in src
+    assert "placeholder=" not in src
+    assert "Month and year, like Jan 2025." in src
     assert 'placeholder="Present"' not in src
 
 
@@ -691,13 +638,13 @@ def test_profile_and_notes_statements_are_hints():
     profile = _src("components/career/profile-panel.tsx")
     notes = _src("components/career/notes-editor.tsx")
     assert 'placeholder="ML Ops"' not in profile
-    assert 'placeholder="e.g. ML Ops"' in profile
+    assert "e.g." not in profile
     assert "Visa timeline, target roles" not in profile
     _order(
         profile,
         'htmlFor="kb-profile-notes"',
         'id="kb-profile-notes-hint"',
-        "Private context such as visa timeline, target roles, location constraints.",
+        "Only you and the AI see these, such as visa timing or where you can work.",
         'aria-describedby="kb-profile-notes-hint"',
         'id="kb-profile-notes"',
     )
@@ -706,7 +653,7 @@ def test_profile_and_notes_statements_are_hints():
         notes,
         "htmlFor={`kb-notes-${entityId}`}",
         "id={`kb-notes-${entityId}-hint`}",
-        "Stack, scale, constraints, collaborators, and what you owned.",
+        "Tools, team size, limits, who you worked with, and what you owned.",
         "aria-describedby={`kb-notes-${entityId}-hint`}",
         "id={`kb-notes-${entityId}`}",
     )
@@ -717,12 +664,13 @@ def test_experience_end_date_empty_means_current():
     editor = _src("components/resume-editor/experience-editor.tsx")
     _order(field, "<Label", "id={hintId}", "{hint}", "<Input", "aria-describedby={hint ? hintId : undefined}")
     # A narrow editor column stacks the fields (as the contact form does)
-    # instead of clipping `e.g. Jan 2023` in a 96px date box.
+    # instead of clipping them in a 96px date box.
     assert re.search(r'"@container grid gap-3">\s*<div className="grid gap-3 @md:grid-cols-2">', editor)
-    assert 'placeholder="e.g. Jan 2023"' in editor
-    assert 'placeholder="e.g. Mar 2025"' in editor
-    assert 'hint="Leave empty for a current role."' in editor
-    assert 'placeholder="Present"' not in editor
+    # The format is a hint above the field, never an example inside it.
+    assert "placeholder=" not in editor
+    assert "placeholder=" not in field and "placeholder?:" not in field
+    assert 'hint="Month and year, like Jan 2023."' in editor
+    assert 'hint="Leave empty if you still work here."' in editor
 
 
 def test_template_slug_rule_stays_on_screen():
@@ -733,10 +681,10 @@ def test_template_slug_rule_stays_on_screen():
         'id="new_id_hint"',
         "Use only lowercase letters, numbers, hyphens, and underscores.",
         'aria-describedby={idError ? "new_id_hint new_id_error" : "new_id_hint"}',
-        'placeholder="e.g. classic_serif"',
         'id="new_id_error" role="alert"',
-        "That ID has a character that isn&apos;t allowed.",
+        "That short name has a character that isn&apos;t allowed.",
     )
+    assert "placeholder=" not in src
     # The rule is the hint; the error says what went wrong, not the rule again.
     assert src.count("Use only lowercase letters, numbers, hyphens, and underscores.") == 1
 

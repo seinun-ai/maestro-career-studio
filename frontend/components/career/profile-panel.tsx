@@ -26,6 +26,7 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { getKbProfile, patchKbProfile } from "@/lib/api";
+import { couldnt, errorDetail } from "@/lib/error-text";
 import type { ContactInfo, KBProfileOut, SkillGroup } from "@/lib/types";
 
 export function ProfilePanel() {
@@ -38,8 +39,10 @@ export function ProfilePanel() {
   if (profile.error) {
     return (
       <div role="alert" className="rounded-2xl bg-destructive/10 p-5">
-        <p className="text-sm font-medium">Couldn&apos;t load your KB profile.</p>
-        <p className="text-muted-foreground mt-1 text-xs">{profile.error.message}</p>
+        <p className="text-sm font-medium">Couldn&apos;t load your profile.</p>
+        {errorDetail(profile.error) ? (
+          <p className="text-muted-foreground mt-1 text-xs">{errorDetail(profile.error)}</p>
+        ) : null}
         <Button className="mt-3 rounded-full" size="sm" variant="secondary" onClick={() => void profile.refetch()}>
           Try again
         </Button>
@@ -103,7 +106,7 @@ function ProfileView({ profile }: { profile: KBProfileOut }) {
       setEditing(false);
       toast.success("Career profile saved");
     },
-    onError: (error: Error) => toast.error(error.message),
+    onError: (error: Error) => toast.error(couldnt("save your profile", error)),
   });
 
   const updateContact = (field: keyof ContactInfo, value: string) =>
@@ -119,7 +122,7 @@ function ProfileView({ profile }: { profile: KBProfileOut }) {
             </span>
             Edit career profile
           </CardTitle>
-          <p className="text-muted-foreground text-sm">Shared identity, skills, and generation context.</p>
+          <p className="text-muted-foreground text-sm">Your contact details and skills. Resumes built from your career history start from these.</p>
         </CardHeader>
         <CardContent>
           <form
@@ -145,8 +148,8 @@ function ProfileView({ profile }: { profile: KBProfileOut }) {
             </section>
 
             <div className="grid gap-1.5">
-              <Label htmlFor="kb-profile-summary">
-                Summary <span className="text-muted-foreground">· optional</span>
+              <Label htmlFor="kb-profile-summary" optional>
+                Summary
               </Label>
               <Textarea id="kb-profile-summary" rows={4} value={summary} onChange={(event) => setSummary(event.target.value)} />
             </div>
@@ -154,8 +157,8 @@ function ProfileView({ profile }: { profile: KBProfileOut }) {
             <section className="space-y-3">
               <div className="flex items-center justify-between gap-2">
                 <div>
-                  <Label>Skill inventory</Label>
-                  <p className="text-muted-foreground text-xs">Named groups can be merged into base resumes.</p>
+                  <Label>Skills</Label>
+                  <p className="text-muted-foreground text-xs">Group your skills. You can add a group to any resume.</p>
                 </div>
                 <Button
                   type="button"
@@ -173,7 +176,7 @@ function ProfileView({ profile }: { profile: KBProfileOut }) {
                 skills.map((group, index) => (
                   <div key={index} className="grid gap-2 rounded-xl bg-muted/35 p-3 sm:grid-cols-[12rem_1fr_auto] sm:items-start">
                     <div className="grid gap-1.5">
-                      <Label htmlFor={`kb-skill-category-${index}`}>Category</Label>
+                      <Label htmlFor={`kb-skill-category-${index}`}>Group name</Label>
                       <Input
                         id={`kb-skill-category-${index}`}
                         value={group.category}
@@ -182,7 +185,6 @@ function ProfileView({ profile }: { profile: KBProfileOut }) {
                             itemIndex === index ? { ...item, category: event.target.value } : item,
                           ))
                         }
-                        placeholder="e.g. ML Ops"
                       />
                     </div>
                     <div className="grid gap-1.5">
@@ -214,11 +216,11 @@ function ProfileView({ profile }: { profile: KBProfileOut }) {
             </section>
 
             <div className="grid gap-1.5">
-              <Label htmlFor="kb-profile-notes">
-                Identity notes <span className="text-muted-foreground">· optional</span>
+              <Label htmlFor="kb-profile-notes" optional>
+                Private notes
               </Label>
               <p id="kb-profile-notes-hint" className="text-muted-foreground text-xs">
-                Private context such as visa timeline, target roles, location constraints.
+                Only you and the AI see these, such as visa timing or where you can work.
               </p>
               <Textarea
                 aria-describedby="kb-profile-notes-hint"
@@ -263,7 +265,7 @@ function ProfileView({ profile }: { profile: KBProfileOut }) {
             </span>
             Career profile
           </CardTitle>
-          <p className="text-muted-foreground mt-1 text-sm">Shared identity, skills, and generation context.</p>
+          <p className="text-muted-foreground mt-1 text-sm">Your contact details and skills. Resumes built from your career history start from these.</p>
         </div>
         <Button
           size="sm"
@@ -338,11 +340,11 @@ function ProfileView({ profile }: { profile: KBProfileOut }) {
         </section>
 
         <section className="pt-5">
-          <h3 className="text-muted-foreground mb-2 text-xs font-semibold uppercase tracking-[0.12em]">Identity notes</h3>
+          <h3 className="text-muted-foreground mb-2 text-xs font-semibold uppercase tracking-[0.12em]">Private notes</h3>
           {profile.notes.trim() ? (
             <p className="max-w-4xl text-sm leading-7 whitespace-pre-wrap">{profile.notes}</p>
           ) : (
-            <p className="text-muted-foreground text-sm">No private identity notes added.</p>
+            <p className="text-muted-foreground text-sm">No private notes.</p>
           )}
         </section>
       </CardContent>
@@ -368,8 +370,8 @@ function ContactField({
   const id = `kb-profile-${field}`;
   return (
     <div className="grid gap-1.5">
-      <Label htmlFor={id}>
-        {label} {optional ? <span className="text-muted-foreground">· optional</span> : null}
+      <Label htmlFor={id} optional={optional}>
+        {label}
       </Label>
       <Input id={id} value={value} onChange={(event) => onChange(field, event.target.value)} autoFocus={autoFocus} />
     </div>

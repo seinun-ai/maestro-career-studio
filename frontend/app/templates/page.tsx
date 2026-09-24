@@ -8,7 +8,7 @@ import { toast } from "sonner";
 
 import { useConfirm } from "@/components/confirm-dialog";
 import { useSingleFlight } from "@/hooks/use-single-flight";
-import { TemplateGallery } from "@/components/templates/template-gallery";
+import { TemplateGallery, templateName } from "@/components/templates/template-gallery";
 import { LoadErrorState } from "@/components/load-error-state";
 import { isLoadFailure } from "@/lib/query-state";
 import { Button } from "@/components/ui/button";
@@ -30,6 +30,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch } from "@/lib/api";
+import { couldnt, errorDetail } from "@/lib/error-text";
 import type { TemplateDetail, TemplateSummary } from "@/lib/types";
 import { PageHeader, PageShell } from "@/components/page-shell";
 
@@ -81,7 +82,7 @@ export default function TemplatesListPage() {
       invalidate();
       router.push(`/templates/${created.id}`);
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(couldnt("create the template", err)),
   });
   // One POST per click: a double click read `isPending` false twice and the
   // second create came back 409 "already exists" over the first's success.
@@ -104,10 +105,10 @@ export default function TemplatesListPage() {
       });
     },
     onSuccess: () => {
-      toast.success("Duplicated");
+      toast.success("Template duplicated");
       invalidate();
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(couldnt("duplicate the template", err)),
   });
   // The same guard: a second Duplicate before the first lands POSTs the same
   // `<id>_copy` again and comes back 409 over the first's success.
@@ -119,10 +120,10 @@ export default function TemplatesListPage() {
         method: "POST",
       }),
     onSuccess: () => {
-      toast.success("Default updated");
+      toast.success("Default template changed");
       invalidate();
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(couldnt("set the default template", err)),
   });
 
   const revalidate = useMutation({
@@ -133,10 +134,11 @@ export default function TemplatesListPage() {
       ),
     onSuccess: (res) => {
       invalidate();
-      if (res.ok) toast.success("Re-validated");
-      else toast.error(res.error ?? "Validation failed");
+      // The compiler's own words stay in the editor, never in a toast.
+      if (res.ok) toast.success("Template checked");
+      else toast.error("This template has errors. Open it to see them.");
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(couldnt("check the template", err)),
   });
 
   const archive = useMutation({
@@ -146,27 +148,30 @@ export default function TemplatesListPage() {
         { method: "POST" },
       ),
     onSuccess: (_d, vars) => {
-      toast.success(vars.archived ? "Restored" : "Archived");
+      toast.success(vars.archived ? "Template restored" : "Template archived");
       invalidate();
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error, vars) =>
+      toast.error(couldnt(vars.archived ? "restore the template" : "archive the template", err)),
   });
 
   const del = useMutation({
     mutationFn: (id: string) =>
       apiFetch<void>(`/api/templates/${id}`, { method: "DELETE" }),
     onSuccess: () => {
-      toast.success("Deleted");
+      toast.success("Template deleted");
       invalidate();
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(couldnt("delete the template", err)),
   });
 
   const onDelete = async (template: TemplateSummary) => {
     const ok = await confirm({
-      title: `Delete ${template.display_name ?? template.id}?`,
+      title: `Delete ${template.display_name ?? "this template"}?`,
+      // template_registry falls back to the default for a resume whose
+      // template no longer resolves.
       description:
-        "This removes the template source and its compiled assets. This can't be undone.",
+        "This deletes the template. Resumes using it switch to the default template. You can't undo this.",
       confirmLabel: "Delete",
       destructive: true,
     });
@@ -182,7 +187,6 @@ export default function TemplatesListPage() {
           <div className="flex items-center gap-3">
             <label className="text-muted-foreground flex items-center gap-2 text-sm">
               <Switch
-                aria-label="Show archived templates"
                 checked={showArchived}
                 onCheckedChange={setShowArchived}
               />
@@ -196,7 +200,7 @@ export default function TemplatesListPage() {
       {isLoadFailure(templates) ? (
         <LoadErrorState
           title="Couldn't load templates."
-          detail={(templates.error as Error)?.message}
+          detail={errorDetail(templates.error)}
           retrying={templates.isFetching}
           onRetry={() => void templates.refetch()}
         />
@@ -218,7 +222,7 @@ export default function TemplatesListPage() {
                   <Button
                     size="icon-sm"
                     variant="ghost"
-                    aria-label={`Actions for ${t.display_name ?? t.id}`}
+                    aria-label={`Actions for ${templateName(t)}`}
                   >
                     <MoreHorizontal className="size-4" />
                   </Button>
@@ -229,13 +233,13 @@ export default function TemplatesListPage() {
                   disabled={revalidate.isPending}
                   onClick={() => revalidate.mutate(t.id)}
                 >
-                  Re-validate
+                  Check again
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   disabled={t.status !== "ready" || t.is_default}
                   onClick={() => setDefault.mutate(t.id)}
                 >
-                  Set default
+                  Make default
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => duplicateOnce(t)}>
                   Duplicate
@@ -274,26 +278,26 @@ export default function TemplatesListPage() {
           </DialogHeader>
           <div className="grid gap-3">
             <div className="grid gap-1.5">
-              <Label htmlFor="new_id">ID</Label>
+              <Label htmlFor="new_id">Short name</Label>
               <p id="new_id_hint" className="text-muted-foreground text-xs">
+                Used in this template&apos;s web address and by connected agents.
                 Use only lowercase letters, numbers, hyphens, and underscores.
               </p>
               <Input
                 id="new_id"
                 aria-describedby={idError ? "new_id_hint new_id_error" : "new_id_hint"}
-                placeholder="e.g. classic_serif"
                 value={newId}
                 onChange={(e) => setNewId(e.target.value)}
                 aria-invalid={idError}
               />
               {idError && (
                 <p id="new_id_error" role="alert" className="text-destructive text-xs">
-                  That ID has a character that isn&apos;t allowed.
+                  That short name has a character that isn&apos;t allowed.
                 </p>
               )}
             </div>
             <div className="grid gap-1.5">
-              <Label htmlFor="new_display">Display name</Label>
+              <Label htmlFor="new_display">Name</Label>
               <Input
                 id="new_display"
                 value={newDisplay}

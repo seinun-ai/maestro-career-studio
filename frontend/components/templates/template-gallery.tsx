@@ -11,22 +11,24 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { FORMATTING_DEFAULTS } from "@/lib/formatting";
+import { templateHasErrors } from "@/lib/template-status";
 import type { TemplateSummary } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 import { RequiresTexBadge } from "./requires-tex-badge";
 import { TemplateThumbnail } from "./template-thumbnail";
 
-/** `Knobs n/13`, for the hover summary rather than the card face.
+/** "Supports 9 of 13 formatting options", for the hover summary rather than
+ * the card face.
  *
  * supported_fmt_keys is raw scanner output over the source — filter to keys the
  * frontend actually recognizes so a typo'd `fmt.*` (e.g. `font_sizes`) can't
  * inflate the numerator past the denominator. */
-export function knobCoverage(template: TemplateSummary): string {
+function formattingCoverage(template: TemplateSummary): string {
   const supported = (template.supported_fmt_keys ?? []).filter(
     (k) => k in FORMATTING_DEFAULTS,
   ).length;
-  return `${supported}/${Object.keys(FORMATTING_DEFAULTS).length}`;
+  return `Supports ${supported} of ${Object.keys(FORMATTING_DEFAULTS).length} formatting options`;
 }
 
 /** A chosen picker card's edge: an overlay INSIDE the card, above the preview
@@ -34,6 +36,11 @@ export function knobCoverage(template: TemplateSummary): string {
  *  outside band. The card is `isolate`, so z-30 stays inside it. */
 const SELECTED_CARD_EDGE =
   "after:pointer-events-none after:absolute after:inset-0 after:z-30 after:rounded-xl after:border-2 after:border-primary";
+
+/** A template's own name; its id never stands in for one. */
+export function templateName(template: Pick<TemplateSummary, "display_name">): string {
+  return template.display_name ?? "Untitled template";
+}
 
 export const ENGINE_LABEL: Record<TemplateSummary["engine"], string> = {
   latex: "LaTeX",
@@ -45,9 +52,9 @@ export const STATUS_LABEL: Record<TemplateSummary["status"], string> = {
 };
 
 /**
- * Status and engine only, and only when authoring. The picker is choosing a
- * look, so both chips are noise there; the "can't render here" fact stays
- * the Requires TeX badge.
+ * Status only, and only when authoring. The picker is choosing a look, so the
+ * chip is noise there; the "can't render here" fact stays the Needs setup
+ * badge. The engine (LaTeX, Typst) is named in the template editor only.
  */
 function TemplateBadgeStrip({
   template,
@@ -64,18 +71,17 @@ function TemplateBadgeStrip({
   return (
     <div id={id} className="flex min-w-0 flex-wrap items-center gap-1">
       {template.archived_at && <Badge variant="secondary">Archived</Badge>}
-      {/* Choosing a look, the engine and status are noise; authoring, they are the source language and state. */}
+      {/* Choosing a look, the status is noise; authoring, it is the template's state. */}
       {!picking && <Badge variant={isReady ? "default" : "secondary"}>{STATUS_LABEL[template.status]}</Badge>}
-      {!picking && <Badge variant="outline">{ENGINE_LABEL[template.engine]}</Badge>}
       {!template.engine_available && <RequiresTexBadge />}
       {isReady && template.parse_certified === false && (
-        <Badge
-          variant="outline"
-          className="border-amber-500/40 text-amber-700 dark:text-amber-400"
-          title="A strict PDF text extractor joins words in this template's output, so some ATS may misread it. Prefer a certified template."
-        >
-          ⚠ ATS spacing
-        </Badge>
+        // The words say it on the card, not only in a hover: ATS is spelled
+        // out once here, where it first appears.
+        <p className="basis-full text-xs text-amber-700 dark:text-amber-400">
+          <span aria-hidden="true">⚠</span> Applicant tracking systems (ATS)
+          may read some words as joined together. Pick another template to be
+          safe.
+        </p>
       )}
     </div>
   );
@@ -121,19 +127,14 @@ function TemplateCardBody({
               vertical space on every card — and for any template created
               without a display name it printed the SAME string twice, once as
               the title and once below it. The thumbnail plus the name is what
-              you choose by; the id stays one hover away, and the Edit link is
-              /templates/<id> whenever you actually need to copy it. */}
+              you choose by, and the Edit link is /templates/<id> whenever you
+              actually need to copy it. */}
           <CardTitle
             className="flex min-w-0 items-center gap-1.5 text-base"
-            title={[
-              template.display_name && template.display_name !== template.id
-                ? `${template.display_name} · ${template.id}`
-                : template.id,
-              `Knobs ${knobCoverage(template)}`,
-            ].join("\n")}
+            title={[templateName(template), formattingCoverage(template)].join("\n")}
           >
             {selected && <Check className="text-primary size-4 shrink-0" aria-hidden="true" />}
-            <span className="truncate">{template.display_name ?? template.id}</span>
+            <span className="truncate">{templateName(template)}</span>
           </CardTitle>
           {/* Actions share the badges' row so they cost no extra height, and
               being the last row puts them at the card's bottom-right. */}
@@ -150,14 +151,12 @@ function TemplateCardBody({
       {/* Rendered ONLY when there is an error. An always-present CardContent
           left an empty padded block under every healthy card — the band of
           dead space at the bottom of the grid. */}
-      {!isReady && template.last_error && (
+      {/* The compiler's words stay in the editor (its preview pane). A LaTeX
+          template on a computer without TeX has nothing to fix: the Needs
+          setup badge says so, alone. */}
+      {!isReady && templateHasErrors(template) && (
         <CardContent className="pt-0 text-xs">
-          <p
-            className="text-muted-foreground truncate"
-            title={template.last_error}
-          >
-            {template.last_error}
-          </p>
+          <p className="text-muted-foreground truncate">Has errors. Open to fix.</p>
         </CardContent>
       )}
     </>
@@ -191,7 +190,7 @@ export function TemplateGallery({
             <GalleryCard
               key={t.id}
               href={href?.(t)}
-              ariaLabel={`Open ${t.display_name ?? t.id}`}
+              ariaLabel={`Open ${templateName(t)}`}
               className="group/tpl"
             >
               <TemplateCardBody template={t} actions={renderActions?.(t)} />
@@ -216,7 +215,7 @@ export function TemplateGallery({
               aria-pressed={selected}
               // The name is the template's; the default mark and the warning
               // badges (requires TeX, ATS spacing) are its description.
-              aria-label={t.display_name ?? t.id}
+              aria-label={templateName(t)}
               aria-describedby={
                 t.is_default ? `${describedBy}-default ${describedBy}-badges` : `${describedBy}-badges`
               }

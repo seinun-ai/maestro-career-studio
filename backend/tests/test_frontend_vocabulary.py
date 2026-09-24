@@ -114,8 +114,6 @@ _RULES: tuple[tuple[str, re.Pattern[str], str], ...] = (
 # (file, phrase): deliberate exceptions. Each must still occur, so the list shrinks.
 _ALLOWED: frozenset[tuple[str, str]] = frozenset(
     {
-        # Kilobytes in a file size, not the product.
-        ("frontend/components/career/documents-panel.tsx", "KB"),
         # The ONE sentence that says what the Companion is (appendix A8):
         # "Companion, the Maestro CS browser extension".
         ("frontend/components/settings/connected-agents-card.tsx", "browser extension"),
@@ -485,54 +483,6 @@ def _counts() -> Counter[str]:
 # counts as it goes and deletes its block when it lands; the last one deletes
 # `_PENDING` itself. Task 23 (D §9, server-written messages) has no block:
 # this scan reads the frontend and the Companion panel only.
-_PENDING_T19: dict[str, int] = {  # D §4 resumes, studios, health, templates
-    "frontend/app/base-resumes/page.tsx": 5,
-    "frontend/app/templates/[id]/page.tsx": 7,
-    "frontend/app/templates/page.tsx": 1,
-    "frontend/components/base-resumes/base-resume-thumbnail.tsx": 3,
-    "frontend/components/base-resumes/new-base-resume-dialog.tsx": 13,
-    "frontend/components/resume-editor/diff-review.tsx": 10,
-    "frontend/components/resume-editor/editor-body.tsx": 4,
-    "frontend/components/resume-editor/extra-sections-editor.tsx": 5,
-    "frontend/components/resume-editor/formatting-panel.tsx": 1,
-    "frontend/components/resume-editor/instruct-sheet.tsx": 2,
-    "frontend/components/resume-editor/kb-import-drawer.tsx": 10,
-    "frontend/components/resume-editor/pdf-pages-preview.tsx": 1,
-    "frontend/components/resume-editor/project-editor.tsx": 1,
-    "frontend/components/resume-editor/project-port-dialog.tsx": 2,
-    "frontend/components/resume-editor/tailored-resume-studio.tsx": 6,
-    "frontend/components/resume-health/finding-cards.tsx": 27,
-    "frontend/components/resume-health/health-badges.tsx": 2,
-    "frontend/components/resume-health/health-report-page.tsx": 4,
-    "frontend/components/resume-versions/version-diff-view.tsx": 1,
-    "frontend/components/resume-versions/version-history-sheet.tsx": 1,
-    "frontend/components/role-category-picker.tsx": 2,
-    "frontend/components/templates/requires-tex-badge.tsx": 2,
-    "frontend/components/templates/template-gallery.tsx": 2,
-    "frontend/components/templates/template-thumbnail.tsx": 1,
-    "frontend/lib/describe-edit.ts": 5,
-    "frontend/lib/extra-sections.ts": 1,
-    "frontend/lib/health-report.ts": 4,
-    "frontend/lib/render-note.ts": 1,
-    "frontend/lib/resume-schema.ts": 2,
-    "frontend/lib/studio.ts": 2,
-}
-_PENDING_T20: dict[str, int] = {  # D §5 Career history
-    "frontend/app/career/page.tsx": 5,
-    "frontend/components/career/capture-box.tsx": 1,
-    "frontend/components/career/documents-panel.tsx": 8,
-    "frontend/components/career/entity-detail.tsx": 4,
-    "frontend/components/career/exports-card.tsx": 1,
-    "frontend/components/career/first-run-import-card.tsx": 2,
-    "frontend/components/career/inbox-panel.tsx": 5,
-    "frontend/components/career/merge-entity-dialog.tsx": 6,
-    "frontend/components/career/new-entity-dialog.tsx": 15,
-    "frontend/components/career/points-list.tsx": 9,
-    "frontend/components/career/profile-panel.tsx": 2,
-    "frontend/components/career/resume-import-dialog.tsx": 5,
-    "frontend/components/career/send-to-resume-dialog.tsx": 10,
-    "frontend/components/kb-sync-pill.tsx": 12,
-}
 _PENDING_T22: dict[str, int] = {  # D §8 the Companion panel
     "extension/panel/actions/fill.js": 3,
     "extension/panel/actions/job.js": 3,
@@ -547,7 +497,7 @@ _PENDING_T22: dict[str, int] = {  # D §8 the Companion panel
     "extension/panel/stages/score.js": 2,
     "extension/panel/stages/track.js": 1,
 }
-_BLOCKS = (_PENDING_T19, _PENDING_T20, _PENDING_T22)
+_BLOCKS = (_PENDING_T22,)
 _PENDING: dict[str, int] = {rel: n for block in _BLOCKS for rel, n in block.items()}
 
 

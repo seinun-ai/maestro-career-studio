@@ -293,6 +293,9 @@ class KBDocumentOut(BaseModel):
     size_bytes: int
     ingest_status: str
     ingest_summary: str | None = None
+    # KBDocument.has_text: tells a document that couldn't be read from one read
+    # whose bullets couldn't be suggested (both are ingest_status "failed").
+    has_text: bool = False
     created_at: datetime
 
 

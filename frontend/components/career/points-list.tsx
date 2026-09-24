@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState, type ComponentType } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Archive,
@@ -26,9 +26,13 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { useResumeKeyLabel } from "@/components/career/use-resume-key-label";
 import { useDiscardableEditor } from "@/hooks/use-confirm-discard";
+import { focusIfDropped } from "@/hooks/use-focus-return";
+import { useSingleFlight } from "@/hooks/use-single-flight";
 import { agentDisplayName } from "@/lib/agent-name";
 import { deleteKbPoint, patchKbPoint } from "@/lib/api";
+import { couldnt } from "@/lib/error-text";
 import type { KBPointOut, KBPointPatch, KBPointProvenance, KBPointState } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -47,27 +51,66 @@ const STATES: { value: KBPointState; label: string; chip: string; dot: string }[
   },
   {
     value: "retired",
-    label: "Retired",
+    label: "Not used",
     chip: "bg-muted text-muted-foreground",
     dot: "bg-muted-foreground/45",
   },
 ];
 
+// Where a bullet came from, in the user's words, never the pipeline's.
 const ORIGIN_LABELS: Record<KBPointOut["origin"], string> = {
-  manual: "Manual",
+  manual: "You",
   ingested: "Document",
   chat: "Assistant",
-  consolidated: "Consolidated",
+  consolidated: "Merged",
   mcp: "Connected agent",
-  gap_elicitation: "Gap answer",
-  base_sync: "Base sync",
+  gap_elicitation: "Your answer",
+  base_sync: "From a resume",
 };
 
+/** A connected agent's bullet names the agent ("From Claude") when it said who it is. */
+function originLabel(point: Pick<KBPointOut, "origin" | "origin_detail">): string {
+  const agent = point.origin === "mcp" ? agentDisplayName(point.origin_detail) : null;
+  return agent ? `From ${agent}` : ORIGIN_LABELS[point.origin];
+}
+
+// How sure the words are. `user_authored` is also what a bullet drafted from
+// your document or resume carries, so it says where it came from, not that you
+// typed it.
 const PROVENANCE_LABELS: Record<KBPointProvenance, string> = {
-  user_authored: "Authored",
-  user_stated: "Stated",
-  derived_unverified: "Derived",
-  user_cannot_confirm: "Can't confirm",
+  user_authored: "From your own material",
+  user_stated: "You said it",
+  derived_unverified: "AI inferred",
+  user_cannot_confirm: "You couldn't confirm this",
+};
+
+/**
+ * The one button beside a bullet that moves it on: Approve a draft, Stop using
+ * an approved bullet, Use again a retired one. ONE element whose props change,
+ * so the button the user pressed is the button that keeps focus.
+ */
+const STATE_ACTIONS: Record<
+  KBPointState,
+  { label: string; hint: string; to: KBPointState; icon: ComponentType<{ "aria-hidden"?: boolean }> }
+> = {
+  draft: {
+    label: "Approve bullet",
+    hint: "Approve bullet",
+    to: "approved",
+    icon: Check,
+  },
+  approved: {
+    label: "Stop using",
+    hint: "Stop offering this bullet. Resumes that have it keep it.",
+    to: "retired",
+    icon: Archive,
+  },
+  retired: {
+    label: "Use again",
+    hint: "Offer this bullet again",
+    to: "approved",
+    icon: RotateCcw,
+  },
 };
 
 const STATE_ORDER: Record<KBPointState, number> = {
@@ -93,21 +136,21 @@ export function PointsList({
     <Card className="rounded-2xl">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          Career points
+          Bullets
           <Badge className="rounded-full" variant="secondary">
             {points.length}
           </Badge>
         </CardTitle>
         <p className="text-muted-foreground text-sm">
-          Approved points are ready to send to a resume.
+          Approved bullets are ready to add to a resume.
         </p>
       </CardHeader>
       <CardContent className="px-0">
         {ordered.length === 0 ? (
           <div className="mx-4 rounded-xl bg-muted/45 px-5 py-8 text-center">
-            <p className="text-sm font-medium">No career points yet</p>
+            <p className="text-sm font-medium">No bullets yet</p>
             <p className="text-muted-foreground mt-1 text-xs">
-              Capture an update or upload a source document to get started.
+              Add an update or a document to start.
             </p>
           </div>
         ) : (
@@ -128,35 +171,45 @@ function PointRow({ entityId, point }: { entityId: string; point: KBPointOut }) 
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState(point.text);
 
-  const invalidate = () => {
-    void queryClient.invalidateQueries({ queryKey: ["kb", "entity", entityId] });
-    void queryClient.invalidateQueries({ queryKey: ["kb", "entities"] });
-    void queryClient.invalidateQueries({ queryKey: ["kb", "drafts"] });
-  };
+  // The row's one state button. A state change re-sorts the list (drafts,
+  // then approved, then not used), and moving a row can drop its focus: once
+  // the list has refetched, a dropped focus comes back here.
+  const actionRef = useRef<HTMLButtonElement>(null);
+
+  const invalidate = () =>
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["kb", "entity", entityId] }),
+      queryClient.invalidateQueries({ queryKey: ["kb", "entities"] }),
+      queryClient.invalidateQueries({ queryKey: ["kb", "drafts"] }),
+    ]);
 
   const update = useMutation({
     mutationFn: ({ payload }: { payload: KBPointPatch; message: string }) =>
       patchKbPoint(point.id, payload),
-    onSuccess: (updated, variables) => {
+    onSuccess: async (updated, variables) => {
       setText(updated.text);
       setEditing(false);
       toast.success(variables.message);
-      invalidate();
+      await invalidate();
+      if (variables.payload.state) focusIfDropped(actionRef.current);
     },
-    onError: (error: Error) => toast.error(error.message),
+    onError: (error: Error) => toast.error(couldnt("update the bullet", error)),
   });
+  // One write per gesture: a double click on Approve sent two PATCHes.
+  const updateOnce = useSingleFlight(update.mutate);
 
   const remove = useMutation({
     mutationFn: () => deleteKbPoint(point.id),
     onSuccess: () => {
-      toast.success("Point deleted");
+      toast.success("Bullet deleted");
       invalidate();
     },
-    onError: (error: Error) => toast.error(error.message),
+    onError: (error: Error) => toast.error(couldnt("delete the bullet", error)),
   });
 
   const pending = update.isPending || remove.isPending;
   const usageKeys = [...new Set(point.usage.map((usage) => usage.resume_key))];
+  const resumeName = useResumeKeyLabel(usageKeys);
   const hasDrift = point.usage.some((usage) => usage.drifted);
 
   const cancelEdit = () => {
@@ -172,21 +225,23 @@ function PointRow({ entityId, point }: { entityId: string; point: KBPointOut }) 
 
   const changeState = (state: KBPointState) => {
     const messages: Record<KBPointState, string> = {
-      draft: "Point moved to drafts",
-      approved: point.state === "retired" ? "Point restored" : "Point approved",
-      retired: "Point retired",
+      draft: "Bullet moved to drafts",
+      approved: point.state === "retired" ? "Using this bullet again" : "Bullet approved",
+      retired: "Won't be offered again",
     };
-    update.mutate({ payload: { state }, message: messages[state] });
+    updateOnce({ payload: { state }, message: messages[state] });
   };
+  const action = STATE_ACTIONS[point.state];
+  const ActionIcon = action.icon;
 
   const requestDelete = async () => {
     const accepted = await confirm({
-      title: "Delete this point?",
+      title: "Delete this bullet?",
       description:
         point.usage.length > 0
-          ? "Its prior resume usage stays in historical resume versions, but this provenance link will be removed."
-          : "This permanently removes the point from the Career KB.",
-      confirmLabel: "Delete point",
+          ? "This permanently deletes the bullet. Resumes that used it keep their text. You can't undo this."
+          : "This permanently deletes the bullet. You can't undo this.",
+      confirmLabel: "Delete bullet",
       destructive: true,
     });
     if (accepted) remove.mutate();
@@ -203,7 +258,7 @@ function PointRow({ entityId, point }: { entityId: string; point: KBPointOut }) 
       {editing ? (
         <div className="space-y-2">
           <Label htmlFor={`kb-point-${point.id}`} className="sr-only">
-            Edit career point
+            Edit bullet
           </Label>
           <Textarea
             id={`kb-point-${point.id}`}
@@ -228,9 +283,9 @@ function PointRow({ entityId, point }: { entityId: string; point: KBPointOut }) 
               className="rounded-full px-4 data-disabled:pointer-events-none data-disabled:opacity-50"
               size="sm"
               onClick={() =>
-                onSave(() => update.mutate({ payload: { text: text.trim() }, message: "Point updated" }))
+                onSave(() => updateOnce({ payload: { text: text.trim() }, message: "Bullet updated" }))
               }
-              // An emptied point is not saved.
+              // An emptied bullet is not saved.
               disabled={!text.trim() || pending}
               focusableWhenDisabled
             >
@@ -248,8 +303,8 @@ function PointRow({ entityId, point }: { entityId: string; point: KBPointOut }) 
               ref={editRef}
               size="icon-sm"
               variant="ghost"
-              aria-label="Edit point"
-              title="Edit point"
+              aria-label="Edit bullet"
+              title="Edit bullet"
               onClick={() => {
                 setText(point.text);
                 setEditing(true);
@@ -258,48 +313,26 @@ function PointRow({ entityId, point }: { entityId: string; point: KBPointOut }) 
             >
               <Pencil aria-hidden="true" />
             </Button>
-            {point.state === "draft" ? (
-              <Button
-                size="icon-sm"
-                variant="ghost"
-                aria-label="Approve point"
-                title="Approve point"
-                onClick={() => changeState("approved")}
-                disabled={pending}
-              >
-                <Check aria-hidden="true" />
-              </Button>
-            ) : null}
-            {point.state === "approved" ? (
-              <Button
-                size="icon-sm"
-                variant="ghost"
-                aria-label="Retire point"
-                title="Retire point"
-                onClick={() => changeState("retired")}
-                disabled={pending}
-              >
-                <Archive aria-hidden="true" />
-              </Button>
-            ) : null}
-            {point.state === "retired" ? (
-              <Button
-                size="icon-sm"
-                variant="ghost"
-                aria-label="Restore point"
-                title="Restore point"
-                onClick={() => changeState("approved")}
-                disabled={pending}
-              >
-                <RotateCcw aria-hidden="true" />
-              </Button>
-            ) : null}
+            <Button
+              ref={actionRef}
+              size="icon-sm"
+              variant="ghost"
+              aria-label={action.label}
+              title={action.hint}
+              onClick={() => changeState(action.to)}
+              disabled={pending}
+              // Disables itself while it works: a native `disabled` drops focus.
+              focusableWhenDisabled
+              className="data-disabled:pointer-events-none data-disabled:opacity-50"
+            >
+              <ActionIcon aria-hidden />
+            </Button>
             <Button
               size="icon-sm"
               variant="ghost"
               className="text-destructive hover:text-destructive"
-              aria-label="Delete point"
-              title="Delete point"
+              aria-label="Delete bullet"
+              title="Delete bullet"
               onClick={() => void requestDelete()}
               disabled={pending}
             >
@@ -315,22 +348,25 @@ function PointRow({ entityId, point }: { entityId: string; point: KBPointOut }) 
           className="text-muted-foreground inline-flex h-6 items-center rounded-full bg-muted/70 px-2 text-xs"
           title={point.origin_detail ? `Written by ${agentDisplayName(point.origin_detail) ?? point.origin_detail}` : undefined}
         >
-          {ORIGIN_LABELS[point.origin]}
+          {originLabel(point)}
         </span>
         {point.usage.length > 0 ? (
           <span
             className="text-muted-foreground inline-flex h-6 items-center rounded-full bg-primary/10 px-2 text-xs"
-            title={`Used in: ${usageKeys.join(", ")}`}
+            title={`Used in: ${usageKeys.map(resumeName).join(", ")}`}
           >
-            in {usageKeys.length} {usageKeys.length === 1 ? "resume" : "resumes"}
+            {/* A bullet no longer offered can still sit on resumes it was
+                added to: "Still on", so the chip never reads as offered. */}
+            {point.state === "retired" ? "Still on" : "On"} {usageKeys.length}{" "}
+            {usageKeys.length === 1 ? "resume" : "resumes"}
           </span>
         ) : null}
         {hasDrift ? (
           <span
             className="inline-flex h-6 items-center gap-1 rounded-full bg-amber-500/15 px-2 text-xs text-amber-800 dark:text-amber-200"
-            title="At least one resume still has an older phrasing"
+            title="A resume still uses older wording."
           >
-            <TriangleAlert className="size-3" aria-hidden="true" /> Drifted
+            <TriangleAlert className="size-3" aria-hidden="true" /> Wording differs
           </span>
         ) : null}
         {point.tags.map((tag) => (
@@ -338,18 +374,21 @@ function PointRow({ entityId, point }: { entityId: string; point: KBPointOut }) 
             {tag}
           </Badge>
         ))}
-        <span
-          className="text-muted-foreground inline-flex h-6 items-center rounded-full bg-muted/70 px-2 text-xs"
-          title={
-            point.provenance
-              ? undefined
-              : "This point predates groundedness labels"
-          }
-        >
-          {point.provenance
-            ? (PROVENANCE_LABELS[point.provenance] ?? "unlabeled")
-            : "unlabeled"}
-        </span>
+        {/* "You · You said it" said one thing twice. */}
+        {point.origin === "manual" && point.provenance === "user_stated" ? null : (
+          <span
+            className="text-muted-foreground inline-flex h-6 items-center rounded-full bg-muted/70 px-2 text-xs"
+            title={
+              point.provenance
+                ? undefined
+                : "Added before we tracked where bullets come from."
+            }
+          >
+            {point.provenance
+              ? (PROVENANCE_LABELS[point.provenance] ?? "Unknown source")
+              : "Unknown source"}
+          </span>
+        )}
       </div>
     </article>
   );
@@ -372,10 +411,12 @@ function PointStateChip({
         render={
           <button
             type="button"
-            disabled={pending}
-            aria-label={`Point state: ${current.label}. Change state`}
+            // Not a native `disabled`: the menu returns focus here, and a
+            // disabled trigger dropped it to <body> while the change saved.
+            aria-disabled={pending}
+            aria-label={`Status: ${current.label}. Change status`}
             className={cn(
-              "inline-flex h-6 items-center gap-1.5 rounded-full px-2 text-xs font-medium transition-[transform,box-shadow] duration-150 ease-out hover:shadow-sm active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-50",
+              "inline-flex h-6 items-center gap-1.5 rounded-full px-2 text-xs font-medium transition-[transform,box-shadow] duration-150 ease-out hover:shadow-sm active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-ring aria-disabled:opacity-50",
               current.chip,
             )}
           >
@@ -390,7 +431,7 @@ function PointStateChip({
           <DropdownMenuItem
             key={item.value}
             onClick={() => {
-              if (item.value !== state) onSelect(item.value);
+              if (!pending && item.value !== state) onSelect(item.value);
             }}
           >
             <span className={cn("size-2 rounded-full", item.dot)} />

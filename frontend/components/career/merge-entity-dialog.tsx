@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Search } from "lucide-react";
 import { toast } from "sonner";
 
+import { KB_KIND_LABELS } from "@/components/career/career-labels";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -15,7 +16,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { useSingleFlight } from "@/hooks/use-single-flight";
+import { finalFocusOn } from "@/lib/focus";
 import { ApiError, listKbEntities, mergeKbEntity } from "@/lib/api";
+import { couldnt } from "@/lib/error-text";
 import type { KBEntitySummary } from "@/lib/types";
 
 /**
@@ -43,6 +47,9 @@ export function MergeEntityDialog({
   const [picked, setPicked] = useState<KBEntitySummary | null>(null);
   const filterRef = useRef<HTMLInputElement>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
+  // The item merged INTO: its card takes the focus once the dialog closes. The
+  // ⋯ that opened the dialog belongs to the item that is now gone.
+  const survivor = useRef<string | null>(null);
 
   // Same query key and fetcher as the /career page, so this reads the list
   // already in the react-query cache rather than adding a prop that both the
@@ -88,15 +95,16 @@ export function MergeEntityDialog({
       // points plus the moved ones. What moved is what the source held.
       const moved = source.point_count;
       toast.success(
-        `Merged into ${target.title} — ${moved} ${moved === 1 ? "point" : "points"} moved`,
+        `Merged into ${target.title}. Moved ${moved} ${moved === 1 ? "bullet" : "bullets"}.`,
       );
       void queryClient.invalidateQueries({ queryKey: ["kb", "entities"] });
       void queryClient.invalidateQueries({ queryKey: ["kb", "drafts"] });
       void queryClient.invalidateQueries({ queryKey: ["kb", "entity", target.id] });
+      survivor.current = target.id;
       close();
     },
     onError: (error: Error) => {
-      toast.error(error.message);
+      toast.error(couldnt("merge the items", error));
       // 409 means the list on screen is a lie — the source is already gone.
       // Refetching is the only useful next step, so close and show reality
       // instead of leaving a dialog aimed at a row that no longer exists.
@@ -108,6 +116,8 @@ export function MergeEntityDialog({
       // stays open with the server's sentence in the toast.
     },
   });
+  // One merge per gesture: the second click's merge came back "not found".
+  const mergeOnce = useSingleFlight(merge.mutate);
 
   // Confirming is irreversible, and the Enter that picked a target is the same
   // key a reflex press sends — so the confirm step lands on Cancel. `picked` is
@@ -118,7 +128,10 @@ export function MergeEntityDialog({
   }, [picked]);
 
   const kindLabel =
-    source.kind === "extra" ? source.section_title || "custom section" : source.kind;
+    source.kind === "extra" && source.section_title
+      ? source.section_title
+      : KB_KIND_LABELS[source.kind].toLowerCase();
+  const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
   return (
     <Dialog
@@ -148,13 +161,21 @@ export function MergeEntityDialog({
           incident). This dialog opens FROM a dropdown menu — exactly the case
           where the menu's own focus restore won the race and focus stayed
           OUTSIDE the modal. */}
-      <DialogContent initialFocus={filterRef}>
+      <DialogContent
+        initialFocus={filterRef}
+        finalFocus={() => {
+          const id = survivor.current;
+          if (!id) return true;
+          survivor.current = null;
+          return finalFocusOn(document.querySelector<HTMLElement>(`a[href="/career/${id}"]`));
+        }}
+      >
         <DialogHeader>
           <DialogTitle>{picked ? "Merge these two?" : "Merge into…"}</DialogTitle>
           <DialogDescription>
             {picked
-              ? `Moves ${source.point_count} ${source.point_count === 1 ? "point" : "points"} and ${source.document_count} ${source.document_count === 1 ? "document" : "documents"} onto ${picked.title}; ${source.title} is removed. This cannot be undone.`
-              : `Fold ${source.title} into another ${kindLabel} entry. Its points and documents move across; it is removed.`}
+              ? `${plural(source.point_count, "bullet", "bullets")} and ${plural(source.document_count, "document", "documents")} move to ${picked.title}, and ${source.title} is deleted. You can't undo this.`
+              : `Combine ${source.title} with another ${kindLabel} item. Its bullets and documents move over.`}
           </DialogDescription>
         </DialogHeader>
 
@@ -167,7 +188,7 @@ export function MergeEntityDialog({
               />
               <Input
                 ref={filterRef}
-                aria-label="Filter merge targets by title"
+                aria-label="Search by title"
                 placeholder="Search by title…"
                 className="h-9 pl-8"
                 value={filter}
@@ -181,14 +202,12 @@ export function MergeEntityDialog({
               </p>
             ) : entities.error ? (
               <p role="alert" className="text-destructive text-xs">
-                {entities.error.message}
+                {couldnt("load your items", entities.error)}
               </p>
             ) : shown.length === 0 ? (
               <p className="text-muted-foreground rounded-xl bg-muted/45 p-3 text-xs">
                 {candidates.length === 0
-                  ? source.kind === "extra"
-                    ? `Nothing to merge into — a target has to be another active entry under ${kindLabel}.`
-                    : "Nothing to merge into — a target has to be another active entry of the same kind."
+                  ? `Nothing to combine with. You need another ${kindLabel} item that isn't archived.`
                   : "No match for that title."}
               </p>
             ) : (
@@ -207,7 +226,7 @@ export function MergeEntityDialog({
                         {[
                           entity.org,
                           [entity.start_date, entity.end_date].filter(Boolean).join(" – "),
-                          `${entity.point_count} ${entity.point_count === 1 ? "point" : "points"}`,
+                          plural(entity.point_count, "bullet", "bullets"),
                         ]
                           .filter(Boolean)
                           .join(" · ")}
@@ -222,9 +241,7 @@ export function MergeEntityDialog({
             <p aria-live="polite" className="text-muted-foreground text-xs">
               {entities.isLoading || entities.error
                 ? ""
-                : `${shown.length} ${shown.length === 1 ? "target" : "targets"}${
-                    needle ? ` matching “${filter.trim()}”` : ""
-                  }`}
+                : plural(shown.length, "result", "results")}
             </p>
           </div>
         )}
@@ -250,10 +267,12 @@ export function MergeEntityDialog({
                 Cancel
               </Button>
               <Button
-                className="rounded-full px-4"
+                className="rounded-full px-4 data-disabled:pointer-events-none data-disabled:opacity-50"
                 variant="destructive"
-                onClick={() => merge.mutate(picked)}
+                onClick={() => mergeOnce(picked)}
                 disabled={merge.isPending}
+                // Disables itself while merging: a native `disabled` drops focus.
+                focusableWhenDisabled
               >
                 {merge.isPending ? "Merging…" : "Merge"}
               </Button>

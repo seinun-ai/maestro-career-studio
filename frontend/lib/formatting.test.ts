@@ -5,7 +5,10 @@ import {
   diffFrom,
   FORMATTING_DEFAULTS,
   type FormattingBaseline,
+  FONT_SIZE_OPTIONS,
+  inchLabel,
   overlayBaseline,
+  pointsLabel,
   type ResumeFormatting,
   SECTION_ORDER_FALLBACK,
   type SectionKey,
@@ -122,4 +125,13 @@ test("a stored override equal to the template layer survives once the base layer
 test("data already held stays ready through a failed background refetch", () => {
   const stale = { data: { formatting: null }, isError: true, isFetching: false, fetchStatus: "idle" as const, errorUpdateCount: 1, refetch: () => {} };
   assert.equal(overlayBaseline(templateLayer, stale, "base").status, "ready");
+});
+
+test("sizes and margins are spelled out, never 6pt or 0.30in", () => {
+  assert.equal(pointsLabel(6), "6 points");
+  assert.equal(pointsLabel(1), "1 point");
+  assert.equal(inchLabel(0.3), "0.3 inch");
+  assert.equal(inchLabel(0.75), "0.75 inch");
+  assert.equal(inchLabel(1), "1 inch");
+  assert.deepEqual(FONT_SIZE_OPTIONS.map((o) => o.label), ["10 points", "11 points", "12 points"]);
 });

@@ -24,21 +24,22 @@ export type SaveStatus = { label: string; tone: "busy" | "dirty" | "clean" };
 export function saveStatus(s: SaveStatusInput): SaveStatus {
   if (s.saving) return { label: "Saving…", tone: "busy" };
   if (s.dirty) return { label: "Unsaved changes", tone: "dirty" };
-  if (s.rendering) return { label: "Rendering PDF…", tone: "busy" };
-  if (s.rescoring) return { label: "Re-scoring…", tone: "busy" };
+  if (s.rendering) return { label: "Updating PDF…", tone: "busy" };
+  if (s.rescoring) return { label: "Updating score…", tone: "busy" };
   return { label: "All changes saved", tone: "clean" };
 }
 
 /**
  * What an empty studio preview says: the action that is enabled right now.
  * Save is dirty-gated, so a clean studio with no PDF (just after Build draft
- * or Rebuild from base) cannot save, and ⋯ Generate PDF is disabled while
- * edits are unsaved. "More resume actions" is the ⋯ trigger's accessible name.
+ * or Start over) cannot save, and ⋯ Create PDF is disabled while edits are
+ * unsaved. It names the menu by the ⋯ a sighted user sees, never by its
+ * screen-reader name.
  */
 export function emptyPreviewMessage(unsaved: boolean): string {
   return unsaved
-    ? "No PDF yet. Save to render one."
-    : "No PDF yet. Generate one from More resume actions (⋯).";
+    ? "No PDF yet. Save to create one."
+    : "No PDF yet. Choose Create PDF in the ⋯ menu.";
 }
 
 /**
@@ -170,4 +171,14 @@ export const PREVIEW_DPI = 150;
 /** CSS width for true print size (a CSS inch is 96px). */
 export function actualSizeWidthPx(naturalWidthPx: number): number {
   return Math.round((naturalWidthPx * 96) / PREVIEW_DPI);
+}
+
+/**
+ * The ⋯ menu's PDF item: Create when there is no PDF yet, Update when there is. Its pending label and its
+ * failure say the same verb ("Updating…", "Couldn't update the PDF"), never "Creating…" over an update.
+ */
+export function pdfActionWords(hasPdf: boolean): { label: string; pending: string; failure: string } {
+  return hasPdf
+    ? { label: "Update PDF", pending: "Updating…", failure: "update the PDF" }
+    : { label: "Create PDF", pending: "Creating…", failure: "create the PDF" };
 }

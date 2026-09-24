@@ -25,12 +25,13 @@ export function SkillsEditor({
       {value.map((group, i) => (
         <EditableCard
           key={i}
+          name={group.category || "untitled group"}
           {...entryEditingProps(i)}
           read={
             <div className="grid grid-cols-[10rem_1fr] items-baseline gap-4 pr-16">
               <span className="text-muted-foreground text-sm font-medium">
                 {group.category || (
-                  <span className="italic opacity-60">Untitled</span>
+                  <span className="italic opacity-60">Untitled group</span>
                 )}
               </span>
               <span className="text-foreground/90 text-sm">
@@ -46,7 +47,7 @@ export function SkillsEditor({
                     ))}
                   </span>
                 ) : (
-                  <span className="text-muted-foreground italic">No items</span>
+                  <span className="text-muted-foreground italic">No skills yet</span>
                 )}
               </span>
             </div>
@@ -54,7 +55,7 @@ export function SkillsEditor({
           edit={() => (
             <div className="grid gap-3">
               <div className="grid gap-1.5">
-                <Label htmlFor={`skill_cat_${i}`}>Category</Label>
+                <Label htmlFor={`skill_cat_${i}`}>Group name</Label>
                 <Input
                   id={`skill_cat_${i}`}
                   value={group.category}
@@ -62,7 +63,7 @@ export function SkillsEditor({
                 />
               </div>
               <div className="grid gap-1.5">
-                <Label htmlFor={`skill_items_${i}`}>Items</Label>
+                <Label htmlFor={`skill_items_${i}`}>Skills</Label>
                 <ChipListInput
                   id={`skill_items_${i}`}
                   value={group.items}

@@ -18,6 +18,7 @@ import { toast } from "sonner";
 
 import { useConfirm } from "@/components/confirm-dialog";
 import { useLoadFailureError } from "@/hooks/use-last-seen";
+import { KB_KIND_LABELS, KB_STATUS_LABELS, kbStatusLabel } from "@/components/career/career-labels";
 import { DocumentsPanel } from "@/components/career/documents-panel";
 import { NotesEditor } from "@/components/career/notes-editor";
 import { PointsList } from "@/components/career/points-list";
@@ -42,42 +43,35 @@ import {
 import { PageShell } from "@/components/page-shell";
 import { Skeleton } from "@/components/ui/skeleton";
 import { deleteKbEntity, getKbEntity, patchKbEntity } from "@/lib/api";
+import { couldnt, errorDetail } from "@/lib/error-text";
 import type {
   KBEntityDetail as KBEntityDetailType,
-  KBEntityKind,
   KBEntityPatch,
   KBEntityStatus,
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
+// Words from the one table (career-labels.ts); only the colours are this screen's.
 const STATUSES: { value: KBEntityStatus; label: string; chip: string; dot: string }[] = [
   {
     value: "ongoing",
-    label: "Ongoing",
+    label: KB_STATUS_LABELS.ongoing,
     chip: "bg-blue-600/10 text-blue-700 dark:bg-blue-400/15 dark:text-blue-300",
     dot: "bg-blue-600 dark:bg-blue-400",
   },
   {
     value: "completed",
-    label: "Completed",
+    label: KB_STATUS_LABELS.completed,
     chip: "bg-emerald-600/10 text-emerald-800 dark:bg-emerald-400/15 dark:text-emerald-300",
     dot: "bg-emerald-600 dark:bg-emerald-400",
   },
   {
     value: "archived",
-    label: "Archived",
+    label: KB_STATUS_LABELS.archived,
     chip: "bg-muted text-muted-foreground",
     dot: "bg-muted-foreground/50",
   },
 ];
-
-const KIND_LABELS: Record<KBEntityKind, string> = {
-  experience: "Experience",
-  project: "Project",
-  education: "Education",
-  certification: "Certification",
-  extra: "Custom section",
-};
 
 export function EntityDetail({ entityId }: { entityId: string }) {
   const router = useRouter();
@@ -99,7 +93,7 @@ export function EntityDetail({ entityId }: { entityId: string }) {
       void queryClient.invalidateQueries({ queryKey: ["kb", "drafts"] });
       router.push("/career");
     },
-    onError: (error: Error) => toast.error(error.message),
+    onError: (error: Error) => toast.error(couldnt("delete the item", error)),
   });
 
   const requestDelete = async () => {
@@ -107,8 +101,8 @@ export function EntityDetail({ entityId }: { entityId: string }) {
     const accepted = await confirm({
       title: `Delete ${entity.data.title}?`,
       description:
-        "This permanently removes the entity, its points, source documents, and provenance history.",
-      confirmLabel: "Delete career item",
+        "This permanently deletes the item, its bullets and documents. You can't undo this.",
+      confirmLabel: "Delete item",
       destructive: true,
     });
     if (accepted) remove.mutate();
@@ -125,7 +119,7 @@ export function EntityDetail({ entityId }: { entityId: string }) {
         <div role="alert" className="rounded-2xl bg-destructive/10 p-5">
           <p className="font-medium">Couldn&apos;t load this career item.</p>
           <p className="text-muted-foreground mt-1 text-sm">
-            {loadError instanceof Error ? loadError.message : "The item may no longer exist."}
+            {errorDetail(loadError) ?? "The item may no longer exist."}
           </p>
           <div className="mt-4 flex gap-2">
             <Button className="rounded-full" variant="secondary" onClick={() => void entity.refetch()}>
@@ -135,7 +129,7 @@ export function EntityDetail({ entityId }: { entityId: string }) {
               className="rounded-full"
               variant="ghost"
               nativeButton={false}
-              render={<Link href="/career">Back to Career KB</Link>}
+              render={<Link href="/career">Back to career history</Link>}
             />
           </div>
         </div>
@@ -167,13 +161,13 @@ export function EntityDetail({ entityId }: { entityId: string }) {
             nativeButton={false}
             render={
               <Link href="/career">
-                <ArrowLeft aria-hidden="true" /> Career KB
+                <ArrowLeft aria-hidden="true" /> Career history
               </Link>
             }
           />
           <div className="flex items-center gap-2">
             <Button className="rounded-full px-4" onClick={() => setSendOpen(true)}>
-              <Send aria-hidden="true" /> Send to resume
+              <Send aria-hidden="true" /> Add to a resume
             </Button>
             <Button
               className="rounded-full"
@@ -249,7 +243,7 @@ function EntityHeader({ entity }: { entity: KBEntityDetailType }) {
       if (variables.exitEdit) setEditing(false);
       toast.success(variables.success);
     },
-    onError: (error: Error) => toast.error(error.message),
+    onError: (error: Error) => toast.error(couldnt("save the item", error)),
   });
 
   const submit = (event: FormEvent<HTMLFormElement>) => {
@@ -275,7 +269,9 @@ function EntityHeader({ entity }: { entity: KBEntityDetailType }) {
     return (
       <section className="animate-fade-rise rounded-2xl bg-muted/45 p-5 sm:p-6">
         <form
-          className="grid gap-4 sm:grid-cols-2"
+          // The start date carries a hint the end date lacks: inputs align on
+          // their bottom edge, not their labels.
+          className="grid gap-4 sm:grid-cols-2 sm:items-end"
           onSubmit={submit}
         >
           <div className="grid gap-1.5 sm:col-span-2">
@@ -290,38 +286,39 @@ function EntityHeader({ entity }: { entity: KBEntityDetailType }) {
             />
           </div>
           <div className="grid gap-1.5 sm:col-span-2">
-            <Label htmlFor="kb-entity-org">
-              Organization <span className="text-muted-foreground">· optional</span>
+            <Label htmlFor="kb-entity-org" optional>
+              Organization
             </Label>
             <Input
               id="kb-entity-org"
               value={org}
               onChange={(event) => setOrg(event.target.value)}
-              placeholder="e.g. Acme Labs"
               disabled={save.isPending}
             />
           </div>
           <div className="grid gap-1.5">
-            <Label htmlFor="kb-entity-start">
-              Start date <span className="text-muted-foreground">· optional</span>
+            <Label htmlFor="kb-entity-start" optional>
+              Start date
             </Label>
+            <p id="kb-entity-start-hint" className="text-muted-foreground text-xs">
+              Month and year, like Jan 2025.
+            </p>
             <Input
               id="kb-entity-start"
+              aria-describedby="kb-entity-start-hint"
               value={startDate}
               onChange={(event) => setStartDate(event.target.value)}
-              placeholder="e.g. Jan 2025"
               disabled={save.isPending}
             />
           </div>
           <div className="grid gap-1.5">
-            <Label htmlFor="kb-entity-end">
-              End date <span className="text-muted-foreground">· optional</span>
+            <Label htmlFor="kb-entity-end" optional>
+              End date
             </Label>
             <Input
               id="kb-entity-end"
               value={endDate}
               onChange={(event) => setEndDate(event.target.value)}
-              placeholder="e.g. Mar 2025"
               disabled={save.isPending}
             />
           </div>
@@ -365,7 +362,7 @@ function EntityHeader({ entity }: { entity: KBEntityDetailType }) {
             <span className="bg-background/80 text-muted-foreground inline-flex h-6 items-center rounded-full px-2.5 text-xs font-medium">
               {entity.kind === "extra" && entity.section_title
                 ? entity.section_title
-                : KIND_LABELS[entity.kind]}
+                : KB_KIND_LABELS[entity.kind]}
             </span>
             <EntityStatusChip
               status={entity.status}
@@ -451,5 +448,5 @@ function EntityStatusChip({
 }
 
 function statusLabel(status: KBEntityStatus) {
-  return STATUSES.find((item) => item.value === status)?.label ?? status;
+  return kbStatusLabel(status);
 }

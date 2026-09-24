@@ -5,32 +5,31 @@ import { useQuery } from "@tanstack/react-query";
 import { HeartPulse } from "lucide-react";
 
 import { RetryChip } from "@/components/retry-chip";
-import { GRADE_STYLES } from "@/components/resume-health/finding-cards";
+import { COUNT_META, countWords, GRADE_STYLES } from "@/components/resume-health/finding-cards";
 import { useLoadFailureError } from "@/hooks/use-last-seen";
 import { ApiError, apiFetch, getLintReport } from "@/lib/api";
-import { fatalGateFailed } from "@/lib/health-report";
+import { fatalGateFailed, healthCounts } from "@/lib/health-report";
+import type { LintGate } from "@/lib/types";
 import { cn } from "@/lib/utils";
-
-/** Severity keys, worst first — they double as the tooltip's labels. */
-const SEVERITIES = ["gate", "critical", "ask", "note"] as const;
 
 type LintReport = {
   score: number;
   grade: string;
   counts: Record<string, number>;
+  gates?: LintGate[];
   created_at: string;
 };
 
 /**
- * "2 gate · 8 ask", worst first, skipping severities with nothing in them —
- * or "no findings" when a report came back with every severity at zero.
+ * "2 must fix, 8 questions", worst first, skipping severities with nothing in
+ * them, or "No issues" when a report came back with every severity at zero.
  */
 function summarizeCounts(counts: Record<string, number> | undefined): string {
-  const parts = SEVERITIES.flatMap((key) => {
+  const parts = COUNT_META.flatMap(({ key }) => {
     const count = counts?.[key] ?? 0;
-    return count === 0 ? [] : [`${count} ${key}`];
+    return count === 0 ? [] : [countWords(key, count)];
   });
-  return parts.length === 0 ? "no findings" : parts.join(" · ");
+  return parts.length === 0 ? "No issues" : parts.join(", ");
 }
 
 /**
@@ -98,8 +97,8 @@ export function HealthBadges({
   // The counts only live in the tooltip now, and a tooltip is mouse-only —
   // aria-label carries the same sentence to screen readers and touch.
   const summary =
-    `Grade ${data.grade} · score ${data.score} · ` +
-    `${summarizeCounts(data.counts)} — open report`;
+    `Grade ${data.grade}, score ${data.score}. ` +
+    `${summarizeCounts(healthCounts(data))}. Open report.`;
 
   return (
     <Link
@@ -126,8 +125,8 @@ export function HealthBadges({
 }
 
 /**
- * Compact grade chip for a Base Resumes gallery row. 404 → render nothing
- * (this base has never been analyzed). A failing fatal gate is "Blocked" —
+ * Compact grade chip for a Base resumes gallery row. 404 → render nothing
+ * (this base has never been analyzed). A failing fatal gate is "Must fix" —
  * the state that otherwise first appears as a tailoring 409.
  */
 export function HealthListChip({ slug }: { slug: string }) {
@@ -143,8 +142,8 @@ export function HealthListChip({ slug }: { slug: string }) {
 
   const blocked = fatalGateFailed(data.gates);
   const summary = blocked
-    ? `Blocked — a fatal health gate is failing. Open the report.`
-    : `Grade ${data.grade} · score ${data.score} — open report`;
+    ? "Has a must-fix problem. Open the report."
+    : `Grade ${data.grade}, score ${data.score}. Open report.`;
 
   return (
     <Link
@@ -159,7 +158,7 @@ export function HealthListChip({ slug }: { slug: string }) {
       aria-label={summary}
       onClick={(event) => event.stopPropagation()}
     >
-      {blocked ? "Blocked" : data.grade}
+      {blocked ? "Must fix" : data.grade}
     </Link>
   );
 }

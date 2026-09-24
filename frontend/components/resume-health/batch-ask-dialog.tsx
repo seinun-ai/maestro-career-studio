@@ -24,10 +24,11 @@ import {
   STALE_APPLY_HINT,
   type StoredAskAnswer,
 } from "@/lib/health-report";
+import { couldnt } from "@/lib/error-text";
 import { notifyRenderNote } from "@/lib/render-note";
 import { toastRewriteError } from "./report-errors";
 import { wordDiff } from "@/lib/word-diff";
-import { textAtLocation } from "@/lib/health-report";
+import { addNumbersLabel, textAtLocation } from "@/lib/health-report";
 import type { LintFinding, ResumeData } from "@/lib/types";
 
 type RowState = {
@@ -146,7 +147,7 @@ export function BatchAskDialog({
             return;
           }
           patch(index, { pending: false });
-          toast.error(err instanceof Error ? err.message : String(err));
+          toast.error(couldnt("write new wording", err));
         }
       });
     } finally {
@@ -207,9 +208,7 @@ export function BatchAskDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[85vh] w-[min(96vw,48rem)] max-w-[min(96vw,48rem)] flex-col overflow-hidden">
         <DialogHeader>
-          <DialogTitle>
-            Answer the number questions ({findings.length})
-          </DialogTitle>
+          <DialogTitle>{addNumbersLabel(findings.length)}</DialogTitle>
         </DialogHeader>
         <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
           {rows.map((row, index) => {
@@ -242,11 +241,11 @@ export function BatchAskDialog({
                     </p>
                   ) : row.error === "422" ? (
                     <p className="text-muted-foreground text-xs">
-                      Couldn&apos;t safely rewrite
+                      Couldn&apos;t rewrite this one. Edit it yourself.
                     </p>
                   ) : row.error === "409" ? (
                     <p className="text-amber-700 dark:text-amber-400 text-xs">
-                      Stale — re-analyze
+                      Changed. Check again.
                     </p>
                   ) : (
                     <MetricAskInput
@@ -298,7 +297,9 @@ export function BatchAskDialog({
               disabled={locked || drafting || readyCount === 0}
               onClick={() => void draftAll()}
             >
-              {drafting ? "Drafting…" : `Draft ${readyCount} rewrite${readyCount === 1 ? "" : "s"}`}
+              {drafting
+                ? "Writing…"
+                : `Write ${readyCount} new ${readyCount === 1 ? "version" : "versions"}`}
             </Button>
           )}
         </DialogFooter>

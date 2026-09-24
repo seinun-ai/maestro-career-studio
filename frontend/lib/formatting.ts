@@ -55,16 +55,16 @@ export const FORMATTING_DEFAULTS: ResumeFormatting = {
 };
 
 /**
- * Row labels for the section-order control. "Custom sections" names the whole
+ * Row labels for the section-order control. "Other sections" names the whole
  * `extra_sections` RUN: this knob moves the block, while the editor's
- * move-section buttons order the custom sections among themselves — two
+ * move-section buttons order those sections among themselves — two
  * mechanisms, and the label is what keeps the split legible.
  */
 export const SECTION_ORDER_LABELS: Record<SectionKey, string> = {
   summary: "Summary",
   experience: "Experience",
   projects: "Projects",
-  extra_sections: "Custom sections",
+  extra_sections: "Other sections",
   skills: "Skills",
   education: "Education",
   certifications: "Certifications",
@@ -102,9 +102,14 @@ export const DATE_FORMAT_OPTIONS: { value: ResumeFormatting["date_format"]; labe
   { value: "numeric", label: "06/2026" },
 ];
 
-export const BULLET_ICON_OPTIONS: { value: ResumeFormatting["bullet_icon"]; label: string }[] = [
-  { value: "bullet", label: "•" },
-  { value: "dash", label: "–" },
+/** The glyph is the label; `name` is what a screen reader says for it. */
+export const BULLET_ICON_OPTIONS: {
+  value: ResumeFormatting["bullet_icon"];
+  label: string;
+  name: string;
+}[] = [
+  { value: "bullet", label: "•", name: "Dot" },
+  { value: "dash", label: "–", name: "Dash" },
 ];
 
 export const HEADER_ALIGN_OPTIONS: { value: ResumeFormatting["header_align"]; label: string }[] = [
@@ -122,14 +127,24 @@ export const EDUCATION_ORDER_OPTIONS: {
 ];
 
 export const SKILLS_LAYOUT_OPTIONS: { value: ResumeFormatting["skills_layout"]; label: string }[] = [
-  { value: "inline", label: "Inline" },
-  { value: "bulleted", label: "Bulleted" },
+  { value: "inline", label: "One line" },
+  { value: "bulleted", label: "List" },
 ];
 
+/** "6 points", "1 point": a size in typographer's points, spelled out. */
+export function pointsLabel(n: number): string {
+  return `${n} ${n === 1 ? "point" : "points"}`;
+}
+
+/** "0.3 inch", "1 inch": a margin, spelled out, with no trailing zeros. */
+export function inchLabel(n: number): string {
+  return `${Number(n.toFixed(2))} inch`;
+}
+
 export const FONT_SIZE_OPTIONS: { value: ResumeFormatting["font_size"]; label: string }[] = [
-  { value: 10, label: "10pt" },
-  { value: 11, label: "11pt" },
-  { value: 12, label: "12pt" },
+  { value: 10, label: pointsLabel(10) },
+  { value: 11, label: pointsLabel(11) },
+  { value: 12, label: pointsLabel(12) },
 ];
 
 /** Slider ranges mirror the Pydantic `Field(ge=…, le=…)` bounds. */

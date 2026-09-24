@@ -127,7 +127,8 @@ def test_base_studio_save_is_dirty_gated_and_keyed():
 
 def test_base_studio_can_rerender_with_nothing_to_save():
     assert "/render`" in _BASE
-    assert '"Regenerate PDF"' in _BASE
+    assert "pdfActionWords(Boolean(live.pdf_path)).label" in _BASE and '"Regenerate PDF"' not in _BASE
+    assert 'label: "Update PDF"' in _read("lib/studio.ts")
 
 
 def test_base_studio_reports_save_in_the_header_not_a_toast():
@@ -155,11 +156,12 @@ def test_tailored_save_chain_fires_no_success_toasts():
     assert "toast.success(" not in _mutation(_TAILORED, "save")
     render = _mutation(_TAILORED, "render")
     assert "toast.success(" not in render
-    assert "rescore.mutate({ announce: false })" in render
+    # Through the one guard the Update score button uses.
+    assert "rescoreOnce({ announce: false })" in render
     rescore = _mutation(_TAILORED, "rescore")
     assert rescore.count("toast.success(") == 1
-    assert 'if (opts?.announce) toast.success("Tailored resume re-scored");' in rescore
-    assert "rescore.mutate({ announce: true })" in _TAILORED
+    assert 'if (opts?.announce) toast.success("ATS score updated");' in rescore
+    assert "rescoreOnce({ announce: true })" in _TAILORED
 
 
 def test_tailored_studio_status_shortcut_and_stale_preview():
@@ -192,7 +194,9 @@ def test_base_empty_preview_points_at_generate_not_save():
     # Save is dirty-gated, so a clean resume with no PDF cannot be saved.
     assert "Save the resume to render one." not in _BASE
     assert "emptyMessage={emptyPreviewMessage(hasUnsavedChanges)}" in _BASE
-    assert "No PDF yet. Generate one from More resume actions (⋯)." in _STUDIO_LIB
+    # Names the ⋯ a sighted user sees, not the trigger's screen-reader name.
+    assert "No PDF yet. Choose Create PDF in the ⋯ menu." in _STUDIO_LIB
+    assert "More resume actions" not in _STUDIO_LIB
     overflow = _read("components/resume-editor/studio-overflow.tsx")
     assert 'aria-label="More resume actions"' in overflow
 
@@ -203,7 +207,7 @@ def test_tailored_empty_preview_never_points_at_a_disabled_save():
     # Save while edits are unsaved, the ⋯ menu's Generate PDF otherwise.
     assert "Save your edits and it renders automatically." not in _TAILORED
     assert "emptyMessage={emptyPreviewMessage(unsaved)}" in _TAILORED
-    assert '"No PDF yet. Save to render one."' in _STUDIO_LIB
+    assert '"No PDF yet. Save to create one."' in _STUDIO_LIB
 
 
 def test_base_regenerate_refreshes_the_gallery():
@@ -221,7 +225,7 @@ def test_tailored_rescore_hint_reads_unsaved():
     busy = _TAILORED[_TAILORED.index("const busy =") :]
     busy = busy[: busy.index(";")]
     assert "render.isPending" not in busy
-    block = _TAILORED[_TAILORED.index("rescore.mutate({ announce: true })") :]
+    block = _TAILORED[_TAILORED.index("rescoreOnce({ announce: true })") :]
     block = block[: block.index("</Button>")]
     assert "disabled={busy || render.isPending || unsaved}" in block
     assert re.search(r"title=\{\s*unsaved\s*\?", block)
@@ -422,7 +426,7 @@ def test_save_applies_a_pending_raw_draft_first():
 
 
 def test_raw_json_cancel_confirms_before_discarding():
-    assert "Discard your JSON edits?" in _RAW_JSON
+    assert "Discard your code edits?" in _RAW_JSON
     assert re.search(r"if \(\s*pending &&\s*!\(await confirm\(", _RAW_JSON)
     # Wired: an unwired `cancel` leaves the button closing the pane silently.
     assert "onClick={cancel}" in _RAW_JSON
@@ -464,8 +468,8 @@ def test_raw_json_pane_resyncs_to_the_saved_copy():
 def test_studio_overflow_menu_sizes_to_its_labels():
     # The primitive anchors a menu to its trigger's width: 28px for the ⋯
     # button, so every label wrapped at the 128px floor. Capped at the room
-    # Base UI measures, so a long "Copy slug: …" cannot leave a narrow viewport,
-    # and wrapped anywhere, since a slug's underscores never break.
+    # Base UI measures, so a long label cannot leave a narrow viewport, and
+    # wrapped anywhere, since a long unbroken word never breaks.
     overflow = _read("components/resume-editor/studio-overflow.tsx")
     assert (
         'className="w-auto min-w-56 max-w-(--available-width) wrap-anywhere"'
@@ -493,7 +497,9 @@ def test_preview_dpi_matches_the_backend_rasterizer():
 def test_preview_render_error_does_not_ask_for_a_dirty_gated_save():
     # Both studios' Save is disabled with nothing to save.
     assert "and save again" not in _PREVIEW
-    assert "Fix the content or template, then save or regenerate the PDF." in _PREVIEW
+    # Not "save again": with nothing to save, the recovery is Update PDF.
+    assert "then save again" not in _PREVIEW
+    assert "Check your last change, then update the PDF." in _PREVIEW
 
 
 def test_fit_page_is_bounded_by_the_preview_not_the_viewport():
@@ -556,7 +562,7 @@ def test_preview_scroller_is_keyboard_reachable_and_named():
 def test_render_error_banner_sits_above_the_scroller():
     # Inside the scroller it pushed page 1 below a Fit-page fold and scrolled
     # away with the pages.
-    assert _PREVIEW.index("Preview is stale") < _PREVIEW.index('role="region"')
+    assert _PREVIEW.index("This preview is out of date") < _PREVIEW.index('role="region"')
 
 
 def test_actual_size_pages_hide_until_their_width_is_known():

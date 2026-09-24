@@ -44,12 +44,13 @@ def test_kb_sync_pill_error_branch_precedes_the_reassuring_state():
     source = (_FRONTEND / "components/kb-sync-pill.tsx").read_text()
     # `isLoadFailure`, not `isError`: a retry keeps the chip mounted (RetryChip).
     assert "if (isLoadFailure(query)) {" in source
-    assert "Sync now" in source
+    assert "Add now" in source
     assert "/career" in source
     error_at = source.index("if (isLoadFailure(query)) {")
-    # The clean chip's title, not its "KB synced" label: the label's words also
-    # appear in comments above the component, where index() would find them.
-    clean_at = source.index("Career KB up to date")
+    # The clean chip's title, not its "Career history up to date" label: the
+    # label's words also appear in comments above the component, where index()
+    # would find them.
+    clean_at = source.index("Career history up to date, last updated")
     assert error_at < clean_at, (
         "a failed status fetch must not be able to render as the in-sync chip"
     )
@@ -61,12 +62,15 @@ def test_kb_sync_pill_count_excludes_recorded_drift():
     already filed, and summing that in is what made the old bar nag about a
     resume with nothing to do.
     """
+    # The count moved to lib/kb-sync-words.ts (node-tested) with the words.
     source = (_FRONTEND / "components/kb-sync-pill.tsx").read_text()
-    block = source.split("function actionableCount")[1].split("\n}")[0]
+    words = (_FRONTEND / "lib/kb-sync-words.ts").read_text()
+    block = words.split("export function syncActionableCount")[1].split("\n}")[0]
     assert "counts.new" in block
     assert "counts.drift" in block
-    assert "skillsNew" in block
+    assert "counts.skills_new" in block
     assert "recorded_drift" not in block
+    assert "const count = syncActionableCount(status);" in source
     # recorded_drift still has to reach the UI — as its own muted line.
     assert "recorded_drift" in source
 
@@ -78,10 +82,14 @@ def test_kb_sync_pill_toast_counts_skill_items_not_categories():
     assert "onSuccess:" in source, "mutation success handler anchor is gone"
     assert "onError:" in source, "mutation error handler anchor is gone"
     block = source.split("onSuccess:")[1].split("onError:")[0]
-    assert "skills_added.length" in block
-    assert "result.skills.length" not in block
+    assert "syncResultSentence(result)" in block
+    # The words moved to lib/kb-sync-words.ts, which counts the skills.
+    words = (_FRONTEND / "lib/kb-sync-words.ts").read_text()
+    fn = words.split("export function syncResultSentence")[1].split("\n}")[0]
+    assert "skills_added.length" in fn
+    assert "result.skills.length" not in fn
     # Singular/plural, now that the number is worth reading.
-    assert 'skill${added === 1 ? "" : "s"}' in block
+    assert 'plural(result.skills_added.length, "skill", "skills")' in fn
 
 
 def test_types_sync_result_carries_skills_added():
@@ -119,8 +127,8 @@ def test_kb_sync_card_is_gone():
 
 def test_points_list_null_provenance_renders_unlabeled():
     source = (_FRONTEND / "components/career/points-list.tsx").read_text()
-    assert '"unlabeled"' in source
-    unlabeled_block_start = source.index("unlabeled")
+    assert '"Unknown source"' in source
+    unlabeled_block_start = source.index('"Unknown source"')
     window = source[unlabeled_block_start : unlabeled_block_start + 400]
     assert "bg-emerald" not in window
     assert "bg-primary" not in window

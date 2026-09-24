@@ -5,9 +5,11 @@ import {
   AddEntryButton,
   useEntryEditing,
   createEnableAction,
+  BulletsRead,
+  HiddenBadge,
   isEntryEnabled,
 } from "@/components/resume-editor/editor-scaffold";
-import { Badge } from "@/components/ui/badge";
+import { entryName } from "@/lib/describe-edit";
 import type { ExperienceEntry } from "@/lib/types";
 import { Field } from "@/components/resume-editor/field";
 
@@ -46,6 +48,7 @@ export function ExperienceEditor({
         return (
           <EditableCard
             key={i}
+            name={entryName("experience", entry) ?? "untitled role"}
             muted={!enabled}
             {...entryEditingProps(i)}
             extraActions={[
@@ -66,11 +69,7 @@ export function ExperienceEditor({
                         </>
                       )}
                     </span>
-                    {!enabled && (
-                      <Badge variant="secondary" className="text-xs">
-                        Archived
-                      </Badge>
-                    )}
+                    <HiddenBadge enabled={enabled} />
                   </div>
                   <div className="text-muted-foreground text-xs whitespace-nowrap">
                     {[entry.start_date, entry.end_date || "Present"]
@@ -83,22 +82,7 @@ export function ExperienceEditor({
                     {entry.location}
                   </div>
                 )}
-                {entry.bullets.length > 0 ? (
-                  <ul className="text-foreground/90 ml-4 list-disc space-y-1 text-sm">
-                    {entry.bullets.map((b, bi) => (
-                      <li
-                        key={bi}
-                        className="rounded-sm"
-                      >
-                        {b}
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="text-muted-foreground text-xs italic">
-                    No bullets
-                  </p>
-                )}
+                <BulletsRead bullets={entry.bullets} />
               </div>
             }
             edit={() => (
@@ -125,14 +109,13 @@ export function ExperienceEditor({
                     label="Start date"
                     value={entry.start_date ?? ""}
                     onChange={(v) => update(i, { start_date: v })}
-                    placeholder="e.g. Jan 2023"
+                    hint="Month and year, like Jan 2023."
                   />
                   <Field
                     label="End date"
                     value={entry.end_date ?? ""}
                     onChange={(v) => update(i, { end_date: v })}
-                    placeholder="e.g. Mar 2025"
-                    hint="Leave empty for a current role."
+                    hint="Leave empty if you still work here."
                   />
                 </div>
                 <BulletList

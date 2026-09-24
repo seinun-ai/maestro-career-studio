@@ -9,10 +9,14 @@ import { move } from "@/lib/utils";
 
 export function BulletList({
   label = "Bullets",
+  itemLabel = "Bullet",
   value,
   onChange,
 }: {
+  /** The group's name ("Bullets"). */
   label?: string;
+  /** One row's name ("Bullet"): "Bullet 2 of 5", never "Bullets 2 of 5". */
+  itemLabel?: string;
   value: string[];
   onChange: (next: string[]) => void;
 }) {
@@ -28,7 +32,7 @@ export function BulletList({
             rows={2}
             // Position matters here — the reorder buttons beside each row are
             // only meaningful if you can tell which bullet you are on.
-            aria-label={`${label} ${i + 1} of ${value.length}`}
+            aria-label={`${itemLabel} ${i + 1} of ${value.length}`}
             value={bullet}
             onChange={(e) =>
               onChange(value.map((b, idx) => (idx === i ? e.target.value : b)))
@@ -42,7 +46,7 @@ export function BulletList({
             <Button
               size="icon-sm"
               variant="ghost"
-              aria-label={`Move ${label.toLowerCase()} ${i + 1} up`}
+              aria-label={`Move ${itemLabel.toLowerCase()} ${i + 1} up`}
               onClick={() => onChange(move(value, i, i - 1))}
               disabled={i === 0}
             >
@@ -51,7 +55,7 @@ export function BulletList({
             <Button
               size="icon-sm"
               variant="ghost"
-              aria-label={`Move ${label.toLowerCase()} ${i + 1} down`}
+              aria-label={`Move ${itemLabel.toLowerCase()} ${i + 1} down`}
               onClick={() => onChange(move(value, i, i + 1))}
               disabled={i === value.length - 1}
             >
@@ -60,7 +64,7 @@ export function BulletList({
             <Button
               size="icon-sm"
               variant="ghost"
-              aria-label={`Delete ${label.toLowerCase()} ${i + 1}`}
+              aria-label={`Delete ${itemLabel.toLowerCase()} ${i + 1}`}
               onClick={() => onChange(value.filter((_, idx) => idx !== i))}
             >
               <Trash2 />

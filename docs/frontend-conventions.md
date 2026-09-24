@@ -56,8 +56,8 @@
   `test_selected_tonal_toggles_show_a_check` pins the first four. Three exceptions carry the state
   without a Check: the formatting panel's segmented buttons are solid
   `bg-primary` plus `aria-pressed` (a full-strength fill needs no second cue,
-  and a Check would widen every segment in a narrow pane), the Career KB's
-  new-entity section-type cards are a solid `border-primary` outline plus
+  and a Check would widen every segment in a narrow pane), Career history's
+  Add item layout cards are a solid `border-primary` outline plus
   `aria-pressed` (two option cards, each a title and a description line; the
   outline is the cue, as on a radio card), and the gap-target chips are solid
   `bg-primary` plus `aria-pressed` (dense truncating chips, and the fill is
@@ -117,12 +117,12 @@
   "Template:" prefix: a template's display name is a look's name ("XCharter
   Serif"), which bare reads as a font picker — a category word only in the
   accessible name is invisible to sighted users. The picker shows no engine
-  chip and no status badge. The manage gallery and the editor say LaTeX or
-  Typst, and Ready or Draft. In the dialog the focus ring sits 2px off the
+  chip and no status badge. The manage gallery says Ready or Draft; only the
+  template editor names the engine (LaTeX or Typst). In the dialog the focus ring sits 2px off the
   card on the popover surface; the chosen card has a primary edge inside it
   and a Check before its name, and says so with `aria-pressed`. The card's
   accessible name is only the template's name, so the default mark and the
-  warning badges (requires TeX, ATS spacing) are its `aria-describedby`.
+  warning badges (Needs setup, ATS may misread) are its `aria-describedby`.
 - **One page shell: `PageShell` + `PageHeader`** (`components/page-shell.tsx`).
   Every top-level route renders `PageShell` — `max-w-6xl`, `p-6`, `gap-6` —
   and `PageHeader` for its title block. Never assign per-page widths or
@@ -130,7 +130,7 @@
   **A narrow reading measure is a BODY concern (`PageMeasure` or
   `max-w-[65ch]` on the sentences), never a shell concern.** The health
   report is two-pane at ≥1024px: a sticky ~300px rail (grade, composition,
-  jump list, filters, batch number-asks, Re-analyze) and a finding stream; the ~65ch measure
+  jump list, filters, batch number-asks, Check again) and a finding stream; the ~65ch measure
   lives inside card prose, not as `PageMeasure` around the page. Below 1024px
   the rail stacks above the stream. `PageHeader` owns the type scale; call sites pass
   `title`/`subtitle`/`actions`/`leading` and do not restate classes; its
@@ -148,27 +148,27 @@
 - **The base-resume studio header is the NAME; its subtitle is the save
   status, never an identity line.** Display name is
   the title (`EditableTitle`, instant PATCH `/identity`); the slug is the URL
-  plus a "Copy slug" item; the target role is the ⋯ menu's FIRST item, which
+  plus a "Copy resume ID" item; the target role is the ⋯ menu's FIRST item, which
   names its own value ("Role: Data Scientist" / "Role not set") and opens
   `RoleCategoryDialog`. Three identity lines used to stack in the header
   saying the same words, because the slug derives from the name and the name
   from the role. A menu item that names a value goes in `StudioOverflowMenu`'s
-  `leading` slot, above the shared raw-JSON/History pair; ordinary
+  `leading` slot, above the shared code-view and Version history pair; ordinary
   studio-specific actions stay in `children`, below it. The menu is `w-auto
   min-w-56 max-w-(--available-width) wrap-anywhere`: the primitive sizes a menu
   to its trigger, a 28px icon, which wrapped every item at the 128px floor; the
-  cap keeps "Copy slug: …" on screen, and a slug has no break opportunity.
+  cap keeps a long role name on screen, wrapping anywhere.
 - **The studio is honest about its page.** A resume Save stays explicit (it
   writes a version, renders and re-scores), so both studios earn trust through
   status instead of autosave. Pinned by `test_frontend_studio.py`; the pure
   helpers in `lib/studio.ts` and `lib/shortcuts.ts` by `node --test`.
   - *Status line*: `SaveStatusText` (`role="status"`) renders `saveStatus()`
     in the header subtitle (all of it in the base studio, after the job label
-    in the tailored one): Saving… > Unsaved changes > Rendering PDF… >
-    Re-scoring… > All changes saved. Unsaved outranks the render because an
+    in the tailored one): Saving… > Unsaved changes > Updating PDF… >
+    Updating score… > All changes saved. Unsaved outranks the render because an
     edit typed mid-render is not in that PDF. It IS the success report: a
     studio Save fires no success toast (a tailored Save used to fire three),
-    errors still toast, and only the manual Re-score confirms (`announce:
+    errors still toast, and only the manual Update score confirms (`announce:
     true`; the Save chain passes `false`). The line also carries the words
     while a save runs: `StudioSaveButton` keeps its "Save" label and leads
     with a spinner, because a "Saving…" label widened it from 52 to 89px. It
@@ -176,11 +176,12 @@
     matches only the native attribute): Save disables itself on every save,
     and a disabled `<button>` drops focus to `<body>`.
   - *Empty preview*: both studios pass `emptyPreviewMessage(unsaved)`, which
-    names the action enabled right now: "No PDF yet. Save to render one." with
-    unsaved edits, otherwise "No PDF yet. Generate one from More resume actions
-    (⋯)." (the ⋯ trigger's accessible name). Save is dirty-gated, so a clean
-    studio with no PDF (after Build draft or Rebuild from base) cannot save,
-    and ⋯ Generate PDF is disabled while edits are unsaved or a PDF is rendering.
+    names the action enabled right now: "No PDF yet. Save to create one." with
+    unsaved edits, otherwise "No PDF yet. Choose Create PDF in the ⋯ menu."
+    (the ⋯ trigger's accessible name, "More resume actions", is never quoted in
+    visible text). Save is dirty-gated, so a clean studio with no PDF (after
+    Create draft or Start over) cannot save, and ⋯ Create PDF is disabled while
+    edits are unsaved or a PDF is updating.
   - *Stale preview*: `EditorShell previewStale` adds an amber strip ("Preview
     doesn't include your unsaved edits. Save to update it.") and dims the page
     IMAGES only, so the render-error banner, page-count pill and zoom keep full
@@ -225,11 +226,11 @@
     its `role="alert"` error and saves nothing. The error describes a draft,
     so it clears once the text matches the form's copy again (an edit back,
     or a Save with no draft). Cancel is the pane's only discard, and it
-    confirms; in the tailored studio, Load latest and Rebuild also drop a
+    confirms; in the tailored studio, Load latest and Start over also drop a
     draft, behind their own confirms. The pane survives a Save, so a value
     that changes under text still matching the PREVIOUS value re-syncs it to
     the saved copy. Leaving the pane (Apply, Cancel, a confirmed discard,
-    Form view) returns focus to ⋯.
+    Back to form) returns focus to ⋯.
   - *Divider*: an APG window splitter. A focusable `role="separator"` whose
     value is the EDITOR's share (rounded; `aria-valuetext` names both panes;
     `aria-controls` the editor pane). Arrows snap to the 5% grid, since a drag
@@ -243,10 +244,10 @@
     collapse are `useLocalStorageState` preferences, so a stored value paints
     on the first frame and stays in sync across tabs. The two preview toggles
     hand focus to each other.
-  - *Base studio*: Save is dirty-gated, so ⋯ **Regenerate PDF** (Generate PDF
-    before the first render) is the retry for a failed render, disabled while
-    edits are unsaved, and the render-error banner says "save or
-    regenerate", never "save again". A Save's response replaces only the
+  - *Base studio*: Save is dirty-gated, so ⋯ **Update PDF** (Create PDF
+    before the first PDF) is the retry for a failed render, disabled while
+    edits are unsaved, and the render-error banner says "update the PDF",
+    never "save again". A Save's response replaces only the
     fields unchanged since the send (`keepIfEdited`, the tailored studio's
     rule too): the PUT renders inline, so a save runs for seconds, and an edit
     typed meanwhile stays and reads as unsaved. A rename re-syncs the
@@ -254,8 +255,8 @@
     so when the server lands on exactly what the form holds the baseline moves,
     or the saved name reads as an unsaved edit.
   - *Tailored studio*: the user-facing signals (status line, Save, stale strip,
-    Re-score, ⋯ Generate PDF) read `unsaved`, the diff against what its own last
-    Save stored. Re-score and Generate PDF also stay disabled while a render is
+    Update score, ⋯ Create PDF) read `unsaved`, the diff against what its own last
+    Save stored. Update score and Create PDF also stay disabled while a render is
     in flight. `render.isPending` is not part of `busy`, so Save still accepts
     an edit typed mid-render. `dirty` stays the input to the external-edit
     adoption guard (SYSTEM.md §12); the leave guard reads `unsaved`. Its own Save moves the
@@ -268,9 +269,9 @@
     against pre-save values and would report the save just made as unsaved.
     The editor remounts (`editorGen`) only when a server copy REPLACES its
     content: a foreign edit over a clean editor, Load latest, or a confirmed
-    Rebuild. A Rebuild whose content equals the adopted or live copy moves no
+    Start over. A Start over whose content equals the adopted or live copy moves no
     key, so the adoption effect never runs; it replaces the editor from its
-    own success path. Every Rebuild also writes its response into the
+    own success path. Every Start over also writes its response into the
     `["application", id]` cache, or a remounted clean editor adopts the stale
     copy a banner was about until the refetch lands. Two known gaps (two Saves
     in one refetch window; the parent's `templateId` is never re-synced) are
@@ -617,7 +618,7 @@
   otherwise. **Known
   open defect:** a confirm opened from a `DropdownMenu` ends up with focus on
   the menu item — the menu's focus restore races the dialog's initial focus.
-  The studio's ⋯ menu does not (its Rebuild confirm starts inside the dialog;
+  The studio's ⋯ menu does not (its Start over confirm starts inside the dialog;
   see the next bullet). Not reproducible under automation (`document.hasFocus()` is false in the
   browser pane, which suppresses initial-focus); verify by hand.
 - **Focus never falls to `<body>`** (`hooks/use-focus-return.ts`, its DOM
@@ -640,21 +641,21 @@
     `focusableWhenDisabled` (Save, Widen/Narrow at their limits, a referral's
     Save and Delete, the Templates Create): a disabled `<button>` drops
     focus. So is every dialog button that generates, applies, creates or
-    deletes (Suggest a selection and Create on New base resume, Draft rewrite
-    and Apply, Adapt & preview, Send as-is and Apply on Send to resume, Add
-    career item, a base resume's Delete), `/new`'s Save job and Quick
-    capture's From document, each dimmed on
+    deletes (Suggest items and Create on New base resume, Write new wording
+    and Apply, Adapt and preview, Add as is and Add N to resume on Add to a resume, Add
+    item, a base resume's Delete), `/new`'s Save job and Quick
+    capture's Add document, each dimmed on
     `data-disabled`. So are Queue for agent (a tracker row's and the job
-    header's) and the tailored studio's Build draft; each leaves once its
+    header's) and the tailored studio's Create draft; each leaves once its
     request lands, so focus is handed on: the row's ⋯, the header's first
     control, the studio's `<main>` (`BuildDraft`'s `useFocusHandoff`). A text
-    field a submit would disable goes `readOnly` instead (New career item's,
+    field a submit would disable goes `readOnly` instead (Add item's,
     the API key and Custom AI server fields while they save, and the Role
     dialog's picker while its pick saves: `RolePicker`'s `readOnly` keeps the
     list shut and its own Backspace and Enter from committing). A `Select`
     that saves on pick does the same (the Models role pickers, JSON mode):
     Base UI's `readOnly`, never `disabled`, or the trigger the list closes
-    onto drops focus to `<body>`. From document opens one file picker per
+    onto drops focus to `<body>`. Add document opens one file picker per
     gesture: a double click's second click (`event.detail > 1`) is ignored.
   - `RolePicker` refuses Base UI's Escape on a CLOSED list
     (`preventBaseUIHandler`): Base UI clears the value there and swallows the
@@ -665,9 +666,9 @@
   - A dialog whose opener goes dead returns elsewhere. Demonstrate skill's
     Apply disables its chip ("· done"), so its `finalFocus` is the opener
     while live, else the next skill still to do, else the notes
-    `<section tabIndex={-1}>`. New career item closes after a create only
+    `<section tabIndex={-1}>`. Add item closes after a create only
     once the refetched list holds the new card, and lands on it (on another
-    tab, the opener). Adapt & preview leaves with the select step; its
+    tab, the opener). Adapt and preview leaves with the select step; its
     success arms `useFocusOnNextCommit` with Apply. A create that navigates
     into an editor (Templates Create, New base resume) lands on the editor's
     `<main tabIndex={-1}>`: `FullscreenEditorPage` passes it the stable
@@ -711,14 +712,14 @@
     `finalFocus` being read when the popup unmounts (not when it opens) and
     ahead of Base UI's own return microtask, and a card's Archive on Base UI
     reading but not applying that function after a pointer close. After a
-    Base UI upgrade, re-check in the browser: a click on ⋯ → Edit raw JSON
+    Base UI upgrade, re-check in the browser: a click on ⋯ → Edit as code
     (or a /templates card's ⋯ → Duplicate) lands on ⋯; ⋯ →
-    History and ⋯ → Rebuild start inside the sheet and the confirm; Load
+    Version history and ⋯ → Start over start inside the sheet and the confirm; Load
     latest lands on the studio's `<main>`; a click on a middle base resume's
     ⋯ → Archive lands on the next card.
   - `ConfirmDialogProvider` returns to its opener, or, when the confirmed
     action removed it, to the nearest `tabIndex={-1}` ancestor that survived
-    (`returnFocus` names another target: Rebuild returns to ⋯). Base UI would
+    (`returnFocus` names another target: Start over returns to ⋯). Base UI would
     focus such a landmark's first tabbable child ("Back to application"), so
     `finalFocusOn` (`lib/focus.ts`, shared with the two above) focuses a
     `tabIndex={-1}` target directly once the dialog is gone.
@@ -796,7 +797,7 @@
   `DialogContent` unmounts on close, so Esc, an overlay click or the dismiss
   button would drop typed text and a proposal a model call produced. The
   field state and the one request live in the component that owns the dialog
-  (Referrals' `draft`, `NewEntityDialog`, `InstructSheet`, Send to resume,
+  (Referrals' `draft`, `NewEntityDialog`, `InstructSheet`, Add to a resume,
   Demonstrate skill), or the popup stays mounted (`DialogContent
   keepMounted`, New base resume, whose twelve fields and two requests live in
   the popup). A caller mounts such a dialog for the page's lifetime, never
@@ -812,11 +813,11 @@
   flight; every form the page shows reads the shared pending flag and submits
   through `useSingleFlight` (react-query re-renders `isPending` on a
   zero-delay timeout, so a double click read `false` twice and created two
-  rows). Each generate and apply button inside such a dialog (Suggest a
-  selection, Propose, Apply, Draft rewrite, Adapt, Send as-is) submits
+  rows). Each generate and apply button inside such a dialog (Suggest
+  items, Suggest edits, Apply, Write new wording, Adapt, Add as is) submits
   through `useSingleFlight` too, and so do the Templates Create and Duplicate,
-  `/new`'s Save job, both studios' Save, the tailored studio's Build draft and
-  Rebuild (one guard), Queue for agent (tracker row and job header), every
+  `/new`'s Save job, both studios' Save, the tailored studio's Create draft and
+  Start over (one guard), Queue for agent (tracker row and job header), every
   explicit settings Save (API keys, Prompts' Save and Reset, Auto-apply,
   Persona and its Draft, Custom AI server) and Available models' + and Remove
   (the chat composer's `sendingRef` is the same guard, inline). A write whose
@@ -859,10 +860,10 @@
   `test_frontend_color_roles.py` finds every chip literal in `status-chip.tsx`,
   `career/entity-card.tsx` and `company-monogram.tsx` and computes it over the
   page, a card, `--muted` and a hovered row in both modes; the three amber
-  template labels (requires TeX, ATS spacing, unsaved) are computed over the
+  template labels (Needs setup, ATS may misread, Unsaved changes) are computed over the
   page, a card and the popover. A new shade must be copied into its
   `_TAILWIND` table.
-- **Card galleries**: Templates and Base Resumes are the same image-first
+- **Card galleries**: Templates and Base resumes are the same image-first
   card grid, so the shell lives once in `components/gallery/` (`GalleryGrid`,
   `GalleryCard`, `GalleryCardActions` — the z-20 wrapper — and
   `PreviewThumbnail`). A gallery supplies only what differs: preview URL,
@@ -1262,14 +1263,14 @@
   `scores.isSuccess`: a failed refetch keeps its old `[]`, and without the
   check the skeleton hid the error and its Retry for good. Pinned by
   `test_frontend_first_run.py`.
-- Career KB pages follow the Base Resumes read/edit split: one card per
+- Career history pages follow the Base resumes read/edit split: one card per
   section, flat rows, hover-or-touch actions, local Save/Cancel editors with
   Escape. Do not regress these surfaces to always-editable form grids.
   Escape and Cancel over changed text ask through `useConfirmDiscard`
   ("Discard your changes?" / **Discard** / **Keep editing**, Keep editing
   focused; unchanged text closes at once), and a closing editor returns focus
   to its Edit button (`useDiscardableEditor({ editing, changed, close, busy })`
-  in `hooks/use-confirm-discard.ts`, used by the notes, point and inbox-draft
+  in `hooks/use-confirm-discard.ts`, used by the notes, bullet and draft-review
   editors; it returns Edit's `editRef`, the textarea's `onKeyDown`, Cancel's
   `onCancel` and Save's `onSave`, which closes at once when nothing changed, so each editor
   states its "changed" test once). After a Discard focus goes to Edit; after

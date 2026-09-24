@@ -11,7 +11,19 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useDiscardableEditor } from "@/hooks/use-confirm-discard";
 import { patchKbEntity } from "@/lib/api";
+import { couldnt } from "@/lib/error-text";
 import { cn } from "@/lib/utils";
+
+// The importer prefixes a line it thinks may be out of date with this mark.
+const STALE_MARK = "⚠ stale?";
+
+/** The notes as the user reads them: each line's mark dropped, its text kept. */
+function withoutStaleMarks(notes: string): string {
+  return notes
+    .split("\n")
+    .map((line) => (line.trim().startsWith(STALE_MARK) ? line.trim().slice(STALE_MARK.length).trim() : line))
+    .join("\n");
+}
 
 export function NotesEditor({
   entityId,
@@ -48,9 +60,9 @@ export function NotesEditor({
       setValue(saved);
       setEditing(false);
       invalidate();
-      toast.success("Context notes saved");
+      toast.success("Notes saved");
     },
-    onError: (error: Error) => toast.error(`Notes not saved: ${error.message}`),
+    onError: (error: Error) => toast.error(couldnt("save your notes", error)),
   });
 
   const mutateRef = useRef(save.mutate);
@@ -111,7 +123,9 @@ export function NotesEditor({
       visibleNotes
         .split("\n")
         .map((line) => line.trim())
-        .filter((line) => line.startsWith("⚠ stale?")),
+        .filter((line) => line.startsWith(STALE_MARK))
+        // The marker is the importer's, not a word for the user.
+        .map((line) => line.slice(STALE_MARK.length).trim()),
     [visibleNotes],
   );
 
@@ -119,9 +133,9 @@ export function NotesEditor({
     <Card className="group/notes rounded-2xl">
       <CardHeader className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
         <div>
-          <CardTitle>Context notes</CardTitle>
+          <CardTitle>Notes</CardTitle>
           <p className="text-muted-foreground mt-1 text-sm">
-            Private context for future AI-generated career materials.
+            Private details that help AI write about this. Never shown on a resume.
           </p>
         </div>
         {!editing ? (
@@ -144,10 +158,10 @@ export function NotesEditor({
         {editing ? (
           <>
             <Label htmlFor={`kb-notes-${entityId}`} className="sr-only">
-              Career item context notes
+              Notes
             </Label>
             <p id={`kb-notes-${entityId}-hint`} className="text-muted-foreground text-xs">
-              Stack, scale, constraints, collaborators, and what you owned.
+              Tools, team size, limits, who you worked with, and what you owned.
             </p>
             <Textarea
               aria-describedby={`kb-notes-${entityId}-hint`}
@@ -181,12 +195,12 @@ export function NotesEditor({
             </div>
           </>
         ) : notes.trim() ? (
-          <div className="text-sm leading-7 whitespace-pre-wrap">{notes}</div>
+          <div className="text-sm leading-7 whitespace-pre-wrap">{withoutStaleMarks(notes)}</div>
         ) : (
           <div className="rounded-xl bg-muted/45 px-5 py-7 text-center">
-            <p className="text-sm font-medium">No context notes yet</p>
+            <p className="text-sm font-medium">No notes yet</p>
             <p className="text-muted-foreground mt-1 text-xs">
-              Add details that do not belong on a resume.
+              Add details that don&apos;t belong on a resume.
             </p>
           </div>
         )}
@@ -195,7 +209,7 @@ export function NotesEditor({
           <div role="alert" className="rounded-xl bg-amber-500/15 p-3 text-amber-900 dark:text-amber-100">
             <p className="flex items-center gap-2 text-xs font-semibold">
               <TriangleAlert className="size-4" aria-hidden="true" />
-              Review possibly stale facts
+              Check these: they may be out of date
             </p>
             <ul className="mt-2 list-disc space-y-1 pl-5 text-xs">
               {staleLines.map((line, index) => (

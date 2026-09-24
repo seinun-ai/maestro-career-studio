@@ -290,7 +290,7 @@ def test_template_picker_button_states_choice_and_warnings():
     # The Check and the hidden engine/status both depend on these two props.
     assert re.search(r"\bpicking\b", body) and "selected={selected}" in body, body
     # aria-label replaces the content, so the warnings ride on the description.
-    assert "aria-label={t.display_name ?? t.id}" in _PICKER_BRANCH
+    assert "aria-label={templateName(t)}" in _PICKER_BRANCH
     assert "${describedBy}-badges" in _PICKER_BRANCH
     assert "id={describedBy && `${describedBy}-badges`}" in _GALLERY
     assert "id={describedBy && `${describedBy}-default`}" in _GALLERY
@@ -299,8 +299,10 @@ def test_template_picker_button_states_choice_and_warnings():
 
 def test_the_picker_hides_the_engine_and_status_chips():
     strip = _GALLERY[_GALLERY.index("function TemplateBadgeStrip(") : _GALLERY.index("function TemplateCardBody(")]
-    chips = [line for line in strip.splitlines() if "ENGINE_LABEL[" in line or "STATUS_LABEL[" in line]
-    assert len(chips) == 2, chips
+    # The engine (LaTeX, Typst) is named in the template editor only (appendix D4.7).
+    assert "ENGINE_LABEL[" not in strip
+    chips = [line for line in strip.splitlines() if "STATUS_LABEL[" in line]
+    assert len(chips) == 1, chips
     for line in chips:
         assert "{!picking && <Badge" in line, line
 
@@ -772,9 +774,10 @@ def test_chip_text_meets_aa_on_its_tint(rel, chip, mode):
 # Decision 16: the three amber template labels, as text on the surfaces they
 # sit on (the gallery's cards, the picker's popover, the editor's page).
 _AMBER_LABELS = {
-    "Requires TeX": ("components/templates/requires-tex-badge.tsx", "requires TeX"),
-    "ATS spacing": ("components/templates/template-gallery.tsx", "⚠ ATS spacing"),
-    "unsaved": ("app/templates/[id]/page.tsx", ">unsaved<"),
+    "Needs setup": ("components/templates/requires-tex-badge.tsx", "Needs setup"),
+    # The warning is a sentence on the card now, not a hover (lane 8 review).
+    "ATS may read words as joined": ("components/templates/template-gallery.tsx", "may read some words as joined together"),
+    "Unsaved changes": ("app/templates/[id]/page.tsx", ">Unsaved changes<"),
 }
 
 

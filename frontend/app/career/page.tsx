@@ -19,7 +19,9 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { listKbDrafts, listKbEntities } from "@/lib/api";
-import type { KBEntityKind, KBEntitySummary } from "@/lib/types";
+import { errorDetail } from "@/lib/error-text";
+import { SECTION_TYPE_LABELS } from "@/lib/extra-sections";
+import type { ExtraSectionType, KBEntityKind, KBEntitySummary } from "@/lib/types";
 import { PageHeader, PageShell } from "@/components/page-shell";
 
 const ENTITY_TABS: { kind: KBEntityKind; value: string; title: string; singular: string }[] = [
@@ -27,7 +29,7 @@ const ENTITY_TABS: { kind: KBEntityKind; value: string; title: string; singular:
   { kind: "project", value: "project", title: "Projects", singular: "project" },
   { kind: "education", value: "education", title: "Education", singular: "education" },
   { kind: "certification", value: "certification", title: "Certifications", singular: "certification" },
-  { kind: "extra", value: "extra", title: "Custom sections", singular: "custom section" },
+  { kind: "extra", value: "extra", title: "Other sections", singular: "section" },
 ];
 
 export default function CareerPage() {
@@ -47,7 +49,7 @@ export default function CareerPage() {
   });
 
   const openNewEntity = (kind: KBEntityKind) => setNewEntity({ open: true, kind });
-  // On an entity tab, "New entity" defaults to that kind; on Basics, to experience.
+  // On an item tab, "Add item" defaults to that kind; on Basics, to experience.
   const activeKind = ENTITY_TABS.find((tab) => tab.value === activeTab)?.kind ?? "experience";
 
   const [importOpen, setImportOpen] = useState(false);
@@ -60,8 +62,8 @@ export default function CareerPage() {
     <PageShell>
       <PageHeader
         className="animate-fade-rise"
-        title="Career Knowledge Base"
-        subtitle="Your living record of roles, projects, education, and credentials."
+        title="Career history"
+        subtitle="Your jobs, projects, education and certifications, in one place."
         actions={
           <>
             {/* Same endpoint as the first-run card — one pipeline, two entry
@@ -73,19 +75,21 @@ export default function CareerPage() {
               className="rounded-full px-4"
               onClick={() => setImportOpen(true)}
             >
-              <Upload aria-hidden="true" /> Add documents
+              <Upload aria-hidden="true" /> Add files
             </Button>
             <Button
               className="rounded-full px-4"
               onClick={() => openNewEntity(activeKind)}
             >
-              <Plus aria-hidden="true" /> New entity
+              <Plus aria-hidden="true" /> Add item
             </Button>
           </>
         }
       />
 
-      <div className="grid gap-6">
+      {/* One column that may shrink below its content's widest line: the cards
+          wrap inside it (at 375 an auto track grew to 317px in a 271px column). */}
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-6">
         <FirstRunImportCard />
         <CaptureBox />
         {/* Anchor: the document lane's summary links here to review drafts. */}
@@ -175,13 +179,13 @@ function CustomSectionsTab({
   onRetry: () => void;
   onAdd: () => void;
 }) {
-  const groups: { key: string; title: string; type: string; entities: KBEntitySummary[] }[] = [];
+  const groups: { key: string; title: string; type: ExtraSectionType; entities: KBEntitySummary[] }[] = [];
   const groupMap = new Map<string, (typeof groups)[0]>();
 
   for (const item of items) {
     const sKey = item.section_key || "other";
     const sTitle = item.section_title || sKey;
-    const sType = item.section_type || "entries";
+    const sType: ExtraSectionType = item.section_type || "entries";
     let g = groupMap.get(sKey);
     if (!g) {
       g = { key: sKey, title: sTitle, type: sType, entities: [] };
@@ -195,35 +199,35 @@ function CustomSectionsTab({
     <section className="space-y-6">
       <div className="flex items-center justify-between gap-3">
         <p className="text-muted-foreground text-sm">
-          Custom sections (publications, awards, volunteer work, certifications) and the career facts connected to them.
+          Publications, awards, volunteering and more.
         </p>
         <Button className="rounded-full" size="sm" variant="secondary" onClick={onAdd}>
-          <Plus aria-hidden="true" /> Add custom section
+          <Plus aria-hidden="true" /> Add section
         </Button>
       </div>
 
       {isLoading ? (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3" aria-label="Loading custom sections">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3" aria-label="Loading other sections">
           {Array.from({ length: 3 }).map((_, index) => (
             <Skeleton key={index} className="h-40 w-full" />
           ))}
         </div>
       ) : error ? (
         <div role="alert" className="rounded-2xl bg-destructive/10 p-5">
-          <p className="text-sm font-medium">Couldn&apos;t load custom sections.</p>
-          <p className="text-muted-foreground mt-1 text-xs">{error.message}</p>
+          <p className="text-sm font-medium">Couldn&apos;t load other sections.</p>
+          <LoadDetail error={error} />
           <Button className="mt-3" size="sm" variant="outline" onClick={onRetry}>
             Try again
           </Button>
         </div>
       ) : items.length === 0 ? (
         <div className="rounded-2xl bg-muted/45 p-10 text-center">
-          <p className="text-sm font-medium">No custom sections yet</p>
+          <p className="text-sm font-medium">No other sections yet</p>
           <p className="text-muted-foreground mx-auto mt-1 max-w-md text-xs">
-            Add custom sections like publications, awards, presentations, or clearances to your Career Knowledge Base.
+            Add publications, awards, talks and more.
           </p>
           <Button className="mt-4 rounded-full" size="sm" onClick={onAdd}>
-            <Plus aria-hidden="true" /> Add custom section
+            <Plus aria-hidden="true" /> Add section
           </Button>
         </div>
       ) : (
@@ -234,8 +238,8 @@ function CustomSectionsTab({
                 <h3 className="text-sm font-semibold tracking-tight text-foreground">
                   {group.title}
                 </h3>
-                <Badge variant="outline" className="text-[11px] font-normal uppercase tracking-wider">
-                  {group.type}
+                <Badge variant="outline" className="text-[11px] font-normal">
+                  {SECTION_TYPE_LABELS[group.type] ?? SECTION_TYPE_LABELS.entries}
                 </Badge>
                 <span className="text-xs text-muted-foreground ml-auto">
                   {group.entities.length} {group.entities.length === 1 ? "item" : "items"}
@@ -273,10 +277,7 @@ function EntityTab({
 }) {
   return (
     <section className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-muted-foreground text-sm">
-          {title} and the career facts connected to them.
-        </p>
+      <div className="flex items-center justify-end gap-3">
         <Button className="rounded-full" size="sm" variant="secondary" onClick={onAdd}>
           <Plus aria-hidden="true" /> Add {singular}
         </Button>
@@ -291,7 +292,7 @@ function EntityTab({
       ) : error ? (
         <div role="alert" className="rounded-2xl bg-destructive/10 p-5">
           <p className="text-sm font-medium">Couldn&apos;t load {title.toLowerCase()}.</p>
-          <p className="text-muted-foreground mt-1 text-xs">{error.message}</p>
+          <LoadDetail error={error} />
           <Button className="mt-3" size="sm" variant="outline" onClick={onRetry}>
             Try again
           </Button>
@@ -300,7 +301,7 @@ function EntityTab({
         <div className="rounded-2xl bg-muted/45 p-10 text-center">
           <p className="text-sm font-medium">No {title.toLowerCase()} yet</p>
           <p className="text-muted-foreground mx-auto mt-1 max-w-md text-xs">
-            Capture a career update and let the AI create one, or add your first {singular} manually.
+            Use Quick capture above, or add one yourself.
           </p>
           <Button className="mt-4 rounded-full" size="sm" onClick={onAdd}>
             <Plus aria-hidden="true" /> Add {singular}
@@ -315,4 +316,10 @@ function EntityTab({
       )}
     </section>
   );
+}
+
+/** A failed load's reason, only when the server wrote a plain sentence. */
+function LoadDetail({ error }: { error: Error }) {
+  const detail = errorDetail(error);
+  return detail ? <p className="text-muted-foreground mt-1 text-xs">{detail}</p> : null;
 }

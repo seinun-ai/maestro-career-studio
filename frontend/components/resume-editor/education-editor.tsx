@@ -8,6 +8,7 @@ import { AddEntryButton, useEntryEditing } from "@/components/resume-editor/edit
 import { Button } from "@/components/ui/button";
 import { ChipListInput } from "@/components/ui/chip-input";
 import { Label } from "@/components/ui/label";
+import { entryName } from "@/lib/describe-edit";
 import type { EducationEntry } from "@/lib/types";
 import { Field } from "@/components/resume-editor/field";
 
@@ -50,6 +51,7 @@ export function EducationEditor({
         return (
           <EditableCard
             key={i}
+            name={entryName("education", entry) ?? "untitled school"}
             {...entryEditingProps(i)}
             read={
               <div className="flex flex-col gap-2 pr-16">
@@ -91,7 +93,7 @@ export function EducationEditor({
               <div className="grid gap-3">
                 <div className="grid grid-cols-2 gap-3">
                   <Field
-                    label="Institution"
+                    label="School"
                     value={entry.institution}
                     onChange={(v) => update(i, { institution: v })}
                   />
@@ -101,7 +103,7 @@ export function EducationEditor({
                     onChange={(v) => update(i, { degree: v })}
                   />
                   <Field
-                    label="Field"
+                    label="Field of study"
                     value={entry.field ?? ""}
                     onChange={(v) => update(i, { field: v })}
                   />
@@ -121,7 +123,8 @@ export function EducationEditor({
                     onChange={(v) => update(i, { end_date: v })}
                   />
                   <Field
-                    label="Graduation"
+                    label="Graduation date"
+                    hint="Shown instead of the start and end dates."
                     value={entry.graduation_date ?? ""}
                     onChange={(v) => update(i, { graduation_date: v })}
                   />

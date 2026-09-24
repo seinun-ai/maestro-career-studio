@@ -1,8 +1,8 @@
 import { z } from "zod";
 
 export const contactSchema = z.object({
-  name: z.string().min(1, "Name is required"),
-  email: z.string().email("Invalid email"),
+  name: z.string().min(1, "Enter your name"),
+  email: z.string().email("Enter an email address like name@example.com"),
   phone: z.string().nullable().optional(),
   location: z.string().nullable().optional(),
   linkedin: z.string().nullable().optional(),
@@ -83,9 +83,11 @@ export const CORE_SECTION_TITLES = new Set([
   "certifications",
 ]);
 
-/** Shared with backend `TITLE_COLLISION_MESSAGE` (keep the copy identical). */
+/** Shown under a section name that matches a core header. The backend's
+ *  `TITLE_COLLISION_MESSAGE` (app/schemas/resume.py) says the same thing; keep
+ *  the two in step. */
 export const TITLE_COLLISION_MESSAGE =
-  "Title collides with a core section header. Choose a different title.";
+  "A section with this name already exists. Choose another name.";
 
 /** True when `title` (trimmed, case-folded) matches a core section header. */
 export function isCoreSectionTitle(title: string): boolean {
@@ -95,8 +97,8 @@ export function isCoreSectionTitle(title: string): boolean {
 /** Lowercase slug: starts alphanumeric, then alphanumeric / underscore / hyphen. */
 export const SECTION_KEY_RE = /^[a-z0-9][a-z0-9_-]*$/;
 
-const SECTION_KEY_MESSAGE =
-  "section key must be a lowercase slug (alphanumeric, '_' or '-'), e.g. 'publications'";
+// Reached only in the code view, where the key is visible.
+const SECTION_KEY_MESSAGE = "Section key: use lowercase letters, numbers, - and _ only.";
 
 /** Non-empty title that must not collide with a core section header. */
 const extraSectionTitleSchema = z

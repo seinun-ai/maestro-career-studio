@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { useState } from "react";
 import { Share2 } from "lucide-react";
 
 import { BulletList } from "@/components/resume-editor/bullet-list";
@@ -8,12 +8,13 @@ import {
   AddEntryButton,
   useEntryEditing,
   createEnableAction,
+  BulletsRead,
+  HiddenBadge,
   isEntryEnabled,
 } from "@/components/resume-editor/editor-scaffold";
+import { Field } from "@/components/resume-editor/field";
 import { ProjectPortDialog } from "@/components/resume-editor/project-port-dialog";
-import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { entryName } from "@/lib/describe-edit";
 import type { ProjectEntry } from "@/lib/types";
 
 const EMPTY: ProjectEntry = {
@@ -32,7 +33,7 @@ export function ProjectEditor({
 }: {
   value: ProjectEntry[];
   onChange: (next: ProjectEntry[]) => void;
-  /** When set (base resume editor), each project can be ported to another base resume. */
+  /** When set (base resume editor), each project can be copied to another base resume. */
   sourceSlug?: string;
   /** Location keys of the recruiter/ATS "hot zone" (from lib/health-zones). */
 }) {
@@ -55,6 +56,7 @@ export function ProjectEditor({
         return (
           <EditableCard
             key={i}
+            name={entryName("projects", entry) ?? "untitled project"}
             muted={!enabled}
             {...entryEditingProps(i)}
             extraActions={[
@@ -62,7 +64,7 @@ export function ProjectEditor({
               ...(sourceSlug
                 ? [
                     {
-                      label: "Port to another base resume",
+                      label: "Copy to another resume",
                       icon: <Share2 className="size-3.5" />,
                       onClick: () => setPortIndex(i),
                     },
@@ -78,11 +80,7 @@ export function ProjectEditor({
                         <em className="opacity-60">Untitled project</em>
                       )}
                     </span>
-                    {!enabled && (
-                      <Badge variant="secondary" className="text-xs">
-                        Archived
-                      </Badge>
-                    )}
+                    <HiddenBadge enabled={enabled} />
                   </div>
                   <div className="text-muted-foreground text-xs whitespace-nowrap">
                     {entry.date || "—"}
@@ -93,43 +91,30 @@ export function ProjectEditor({
                     {entry.tech}
                   </div>
                 )}
-                {entry.bullets.length > 0 ? (
-                  <ul className="text-foreground/90 ml-4 list-disc space-y-1 text-sm">
-                    {entry.bullets.map((b, bi) => (
-                      <li
-                        key={bi}
-                        className="rounded-sm"
-                      >
-                        {b}
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="text-muted-foreground text-xs italic">
-                    No bullets
-                  </p>
-                )}
+                <BulletsRead bullets={entry.bullets} />
               </div>
             }
             edit={() => (
               <div className="grid gap-3">
-                <div className="grid grid-cols-2 gap-3">
-                  <ProjField
+                {/* Bottom-aligned: Link's hint line would push its box below Date's. */}
+                <div className="grid grid-cols-2 gap-3 sm:items-end">
+                  <Field
                     label="Name"
                     value={entry.name}
                     onChange={(v) => update(i, { name: v })}
                   />
-                  <ProjField
-                    label="Tech"
+                  <Field
+                    label="Tools used"
                     value={entry.tech ?? ""}
                     onChange={(v) => update(i, { tech: v })}
                   />
-                  <ProjField
+                  <Field
                     label="Link"
+                    hint="Starts with https://"
                     value={entry.link ?? ""}
                     onChange={(v) => update(i, { link: v })}
                   />
-                  <ProjField
+                  <Field
                     label="Date"
                     value={entry.date ?? ""}
                     onChange={(v) => update(i, { date: v })}
@@ -161,26 +146,6 @@ export function ProjectEditor({
           projectName={value[portIndex]?.name ?? ""}
         />
       )}
-    </div>
-  );
-}
-
-function ProjField({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-}) {
-  // Per-instance id — several project cards can be in edit mode at once, and
-  // `proj_${label}` gave every one of them the same id. See field.tsx.
-  const id = useId();
-  return (
-    <div className="grid gap-1.5">
-      <Label htmlFor={id}>{label}</Label>
-      <Input id={id} value={value} onChange={(e) => onChange(e.target.value)} />
     </div>
   );
 }

@@ -15,6 +15,10 @@ import {
   punctFixOps,
   reportIsStale,
   scoreCompositionLine,
+  healthCounts,
+  leftToFix,
+  checkDoneWords,
+  addNumbersLabel,
   stripTrailingPunct,
   contentHash16,
   staleFindingIds,
@@ -28,26 +32,55 @@ test("reportIsStale treats missing as false", () => {
   assert.equal(reportIsStale({ stale: true }), true);
 });
 
-test("scoreCompositionLine names the cap tier", () => {
+test("scoreCompositionLine names the real count and tier that capped the score", () => {
+  const capped = (capped_by: "fatal" | "serious" | null) => ({ raw_score: 88, e_hot: 0.9, n_scoreable: 12, capped_by });
   assert.equal(scoreCompositionLine(83, null), null);
+  assert.equal(scoreCompositionLine(88, capped(null), []), null);
+  // One serious check caps at 69: it is not a must-fix problem.
   assert.equal(
-    scoreCompositionLine(69, {
-      raw_score: 88,
-      e_hot: 0.9,
-      n_scoreable: 12,
-      capped_by: "serious",
-    }),
-    "mean evidence 88 · capped to 69 by one serious gate",
+    scoreCompositionLine(69, capped("serious"), [{ tier: "serious", status: "fail" }]),
+    "Score limited to 69 by 1 serious problem",
   );
   assert.equal(
-    scoreCompositionLine(88, {
-      raw_score: 88,
-      e_hot: null,
-      n_scoreable: 12,
-      capped_by: null,
-    }),
-    "mean evidence 88",
+    scoreCompositionLine(54, capped("fatal"), [
+      { tier: "fatal", status: "fail" },
+      { tier: "fatal", status: "fail" },
+      { tier: "serious", status: "waived" },
+    ]),
+    "Score limited to 54 by 2 must-fix problems",
   );
+  // Two serious checks cap like a must-fix one, and are named as what they are.
+  assert.equal(
+    scoreCompositionLine(54, capped("fatal"), [
+      { tier: "serious", status: "fail" },
+      { tier: "serious", status: "fail" },
+    ]),
+    "Score limited to 54 by 2 serious problems",
+  );
+});
+
+test("must fix counts only failed fatal checks, and left to fix agrees with it", () => {
+  const counts = healthCounts({
+    counts: { gate: 3, critical: 2, ask: 1, note: 4 },
+    gates: [
+      { tier: "fatal", status: "fail" },
+      { tier: "serious", status: "fail" },
+      { tier: "fatal", status: "waived" },
+      { tier: "fatal", status: "not_assessed" },
+      { tier: "fatal", status: "pass" },
+    ],
+  });
+  assert.deepEqual(counts, { gate: 1, serious: 1, critical: 2, ask: 1, note: 4 });
+  // "1 must fix" never sits beside "0 left to fix".
+  assert.equal(leftToFix(counts, 0), 2);
+  assert.equal(leftToFix(healthCounts({ counts: {}, gates: [] }), 3), 3);
+});
+
+test("a check with too little to grade never announces a grade", () => {
+  assert.equal(checkDoneWords({ grade: "F", insufficient_evidence: true }), "Check done. Too little to grade yet.");
+  assert.equal(checkDoneWords({ grade: "B" }), "Check done. Grade B.");
+  assert.equal(addNumbersLabel(2), "Add numbers to 2 bullets");
+  assert.equal(addNumbersLabel(1), "Add numbers to 1 bullet");
 });
 
 test("potentialPoints is 100 × (1 − level) / n_scoreable", () => {
@@ -120,7 +153,7 @@ test("groupNotesByRule counts subjects inline", () => {
     },
   ]);
   assert.equal(groups.length, 2);
-  assert.equal(groups[0].title, "Listed but never demonstrated");
+  assert.equal(groups[0].title, "Skill not shown in any bullet");
   assert.equal(groups[0].count, 2);
   assert.deepEqual(groups[0].subjects, ["Docker", "Git"]);
   assert.equal(groups[1].count, 1);
@@ -235,7 +268,7 @@ test("explainScoreDelta names implied Awards bullets entering the score", () => 
     explainScoreDelta(prior, next, (key) =>
       key === "extra:awards" ? "Awards & Honors" : key,
     ),
-    "+2 bullets in Awards & Honors entered at implied.",
+    "2 new bullets in Awards & Honors.",
   );
 });
 
@@ -272,7 +305,7 @@ test("groupNotesByRule keeps rule-keyed titles for advisory notes", () => {
       id: "n2",
     } as never,
   ]);
-  assert.equal(groups[0].title, "Listed but never demonstrated");
+  assert.equal(groups[0].title, "Skill not shown in any bullet");
   assert.equal(groups[0].shapeNote, false);
 });
 

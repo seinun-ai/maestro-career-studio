@@ -10,6 +10,7 @@ import {
   MoreHorizontal,
 } from "lucide-react";
 
+import { KB_KIND_LABELS, kbStatusLabel } from "@/components/career/career-labels";
 import { MergeEntityDialog } from "@/components/career/merge-entity-dialog";
 import { GalleryCard, GalleryCardActions } from "@/components/gallery/gallery-card";
 import { Button } from "@/components/ui/button";
@@ -24,35 +25,24 @@ import { formatAbsoluteDateTime, formatTimeAgo } from "@/lib/format-date";
 import type { KBEntityStatus, KBEntitySummary } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-const STATUS_STYLES: Record<KBEntityStatus, { label: string; chip: string; dot: string }> = {
+// Colours only: the words come from career-labels (one table for every surface).
+const STATUS_STYLES: Record<KBEntityStatus, { chip: string; dot: string }> = {
   ongoing: {
-    label: "Ongoing",
     chip: "bg-blue-600/10 text-blue-700 dark:bg-blue-400/15 dark:text-blue-300",
     dot: "bg-blue-600 dark:bg-blue-400",
   },
   completed: {
-    label: "Completed",
     chip: "bg-emerald-600/10 text-emerald-800 dark:bg-emerald-400/15 dark:text-emerald-300",
     dot: "bg-emerald-600 dark:bg-emerald-400",
   },
   archived: {
-    label: "Archived",
     chip: "bg-muted text-muted-foreground",
     dot: "bg-muted-foreground/50",
   },
 };
 
-const KIND_LABELS: Record<KBEntitySummary["kind"], string> = {
-  experience: "Experience",
-  project: "Project",
-  education: "Education",
-  certification: "Certification",
-  extra: "Custom section",
-};
-
 export function EntityCard({ entity }: { entity: KBEntitySummary }) {
   const status = STATUS_STYLES[entity.status] ?? {
-    label: entity.status || "Unknown",
     chip: "bg-muted text-muted-foreground",
     dot: "bg-muted-foreground/50",
   };
@@ -75,12 +65,16 @@ export function EntityCard({ entity }: { entity: KBEntitySummary }) {
           <p className="text-muted-foreground mb-1 text-[0.7rem] font-medium uppercase tracking-[0.14em]">
             {entity.kind === "extra" && entity.section_title
               ? entity.section_title
-              : KIND_LABELS[entity.kind]}
+              : KB_KIND_LABELS[entity.kind]}
           </p>
           <CardTitle className="truncate">{entity.title}</CardTitle>
-          <p className="text-muted-foreground mt-0.5 truncate text-sm">
-            {entity.org || dateRange || "Independent"}
-          </p>
+          {/* No organization and no dates: no second line. Independent was
+              a claim the user never made. */}
+          {entity.org || dateRange ? (
+            <p className="text-muted-foreground mt-0.5 truncate text-sm">
+              {entity.org || dateRange}
+            </p>
+          ) : null}
           {entity.org && dateRange ? (
             <p className="text-muted-foreground mt-0.5 truncate text-xs">{dateRange}</p>
           ) : null}
@@ -122,13 +116,13 @@ export function EntityCard({ entity }: { entity: KBEntitySummary }) {
             )}
           >
             <span className={cn("size-1.5 rounded-full", status.dot)} />
-            {status.label}
+            {kbStatusLabel(entity.status)}
           </span>
-          <Metric icon={ListChecks} value={entity.point_count} label="points" />
+          <Metric icon={ListChecks} value={entity.point_count} one="bullet" many="bullets" />
           {entity.draft_count > 0 ? (
-            <Metric icon={BookOpen} value={entity.draft_count} label="drafts" />
+            <Metric icon={BookOpen} value={entity.draft_count} one="draft" many="drafts" />
           ) : null}
-          <Metric icon={FileText} value={entity.document_count} label="docs" />
+          <Metric icon={FileText} value={entity.document_count} one="document" many="documents" />
         </div>
         <p
           className="text-muted-foreground text-xs"
@@ -147,19 +141,22 @@ export function EntityCard({ entity }: { entity: KBEntitySummary }) {
   );
 }
 
+/** A count and its noun, in agreement: "1 bullet", "3 bullets". */
 function Metric({
   icon: Icon,
   value,
-  label,
+  one,
+  many,
 }: {
   icon: typeof ListChecks;
   value: number;
-  label: string;
+  one: string;
+  many: string;
 }) {
   return (
     <span className="text-muted-foreground inline-flex h-6 items-center gap-1 rounded-full bg-background/70 px-2">
       <Icon className="size-3.5" aria-hidden="true" />
-      {value} {label}
+      {value} {value === 1 ? one : many}
     </span>
   );
 }

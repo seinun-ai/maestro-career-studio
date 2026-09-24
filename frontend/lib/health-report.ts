@@ -27,11 +27,9 @@ export type StreamFilter = "all" | "fix" | "ask" | "note";
 
 export const CONTENT_CHANGED_PREFIX = "content changed since analysis";
 
-export const STALE_APPLY_HINT =
-  "This text changed since the analysis — re-analyze before applying.";
+export const STALE_APPLY_HINT = "This text changed. Check again before applying.";
 
-export const CONTENT_CHANGED_HINT =
-  "This text changed since the analysis — re-analyze to get fresh suggestions";
+export const CONTENT_CHANGED_HINT = "This text changed. Check again for new suggestions.";
 
 /** Backend may land after this branch: missing `stale` is current, not stale. */
 export function reportIsStale(report: { stale?: boolean } | null | undefined): boolean {
@@ -54,19 +52,64 @@ export function isContentChangedError(err: {
   );
 }
 
+type GateLike = { tier: string; status: string };
+
+const problems = (n: number, tier: string) => `${n} ${tier} ${n === 1 ? "problem" : "problems"}`;
+
 /**
- * "mean evidence 88 · capped to 69 by one serious gate"
- * Returns null when the backend has not yet sent `score_breakdown`.
+ * "Score limited to 54 by 1 must-fix problem" when failed checks cap the score, naming the real count and
+ * tier (`health_score.gate_cap_tier`: one failed must-fix check, or two serious ones, cap at 54; one serious
+ * check at 69). Null when nothing capped the score, and when the server sent no `score_breakdown`.
  */
 export function scoreCompositionLine(
   score: number,
   breakdown: ScoreBreakdown | null | undefined,
+  gates: readonly GateLike[] = [],
 ): string | null {
-  if (!breakdown) return null;
-  if (breakdown.capped_by) {
-    return `mean evidence ${breakdown.raw_score} · capped to ${score} by one ${breakdown.capped_by} gate`;
+  if (!breakdown?.capped_by) return null;
+  const failed = gates.filter((g) => g.status === "fail");
+  const fatal = failed.filter((g) => g.tier === "fatal").length;
+  const serious = failed.filter((g) => g.tier === "serious").length;
+  if (breakdown.capped_by === "fatal" && fatal > 0) {
+    return `Score limited to ${score} by ${problems(fatal, "must-fix")}`;
   }
-  return `mean evidence ${breakdown.raw_score}`;
+  if (serious > 0) return `Score limited to ${score} by ${problems(serious, "serious")}`;
+  return `Score limited to ${score} by a failed check`;
+}
+
+/**
+ * The report's counts with the checks counted by tier. "Must fix" is the fatal tier only, and only a check
+ * that failed (`status === "fail"`: a waived or unchecked one fixes nothing), so the chips, the summary, the
+ * studio's health link and "left to fix" all say one number. The server's `counts.gate` counts every failed
+ * check, serious ones too; it is replaced here, never shown.
+ */
+export function healthCounts(report: {
+  counts?: Record<string, number>;
+  gates?: readonly GateLike[];
+}): Record<string, number> {
+  const failed = (report.gates ?? []).filter((g) => g.status === "fail");
+  return {
+    ...report.counts,
+    gate: failed.filter((g) => g.tier === "fatal").length,
+    serious: failed.filter((g) => g.tier === "serious").length,
+  };
+}
+
+/** Everything still asking for work: failed checks, fixes and questions (never notes). */
+export function leftToFix(counts: Record<string, number>, findingsLeft: number): number {
+  return (counts.gate ?? 0) + (counts.serious ?? 0) + findingsLeft;
+}
+
+/** The toast after a check: never a grade the rail says it can't give. */
+export function checkDoneWords(report: { grade: string; insufficient_evidence?: boolean }): string {
+  return reportInsufficientEvidence(report)
+    ? "Check done. Too little to grade yet."
+    : `Check done. Grade ${report.grade}.`;
+}
+
+/** "Add numbers to 2 bullets": the button that opens the number questions. */
+export function addNumbersLabel(n: number): string {
+  return `Add numbers to ${n} ${n === 1 ? "bullet" : "bullets"}`;
 }
 
 export function potentialPoints(
@@ -220,16 +263,16 @@ export type NoteRuleGroup<T> = {
 };
 
 const RULE_TITLES: Record<string, string> = {
-  "skills.undemonstrated": "Listed but never demonstrated",
-  "skills.trailing_punct": "Trailing punctuation on a skill",
-  "certifications.trailing_punct": "Trailing punctuation on a certification",
-  "skills.duplicate_across_groups": "Skill listed in more than one group",
-  "certifications.duplicate": "Duplicate certification",
+  "skills.undemonstrated": "Skill not shown in any bullet",
+  "skills.trailing_punct": "Extra punctuation after a skill",
+  "certifications.trailing_punct": "Extra punctuation after a certification",
+  "skills.duplicate_across_groups": "Skill in more than one group",
+  "certifications.duplicate": "Certification listed twice",
   "skills.sentence_like": "Skill reads like a sentence",
   "bullet.too_long": "Bullet is too long",
   "bullet.too_short": "Bullet is too short",
   "entry.too_many_bullets": "Too many bullets",
-  "summary.missing": "Summary is missing",
+  "summary.missing": "No summary",
 };
 
 export function groupNotesByRule<
@@ -351,13 +394,14 @@ export type MetricUnit =
   | "other";
 
 export const METRIC_UNITS: { id: MetricUnit; label: string }[] = [
+  // "rows" stays a unit id (an answer saved with it still composes) but is no
+  // longer offered: engineer shorthand.
   { id: "users", label: "users" },
-  { id: "rows", label: "rows" },
   { id: "percent", label: "%" },
   { id: "hours", label: "hours saved" },
   { id: "minutes", label: "minutes saved" },
   { id: "dollars", label: "$" },
-  { id: "other", label: "other" },
+  { id: "other", label: "Other" },
 ];
 
 export function composeMetricContext(parts: {
@@ -477,33 +521,23 @@ export function explainScoreDelta(
     }
     if (byGroup.size > 2) return null;
     for (const [key, list] of byGroup) {
-      const levels = [
-        ...new Set(
-          list
-            .map((finding) => finding.classification_level)
-            .filter((level): level is string => Boolean(level)),
-        ),
-      ];
-      const levelBit = levels.length === 1 ? ` at ${levels[0]}` : "";
+      // The rating a bullet entered at is the scorer's key: never printed.
       const n = list.length;
-      clauses.push(
-        `+${n} bullet${n === 1 ? "" : "s"} in ${titleFor(key)} entered${levelBit}`,
-      );
+      clauses.push(`${n} new ${n === 1 ? "bullet" : "bullets"} in ${titleFor(key)}`);
     }
   }
   if (resolved.length > 0) {
     clauses.push(
-      `${resolved.length} finding${resolved.length === 1 ? "" : "s"} resolved`,
+      `${resolved.length} ${resolved.length === 1 ? "issue" : "issues"} fixed`,
     );
   }
   if (reclass > 0) {
     clauses.push(
-      `${reclass} classification${reclass === 1 ? "" : "s"} changed`,
+      `${reclass} ${reclass === 1 ? "rating" : "ratings"} changed`,
     );
   }
   if (clauses.length === 0 || clauses.length > 3) return null;
-  const sentence = clauses.join("; ");
-  return sentence.charAt(0).toUpperCase() + sentence.slice(1) + ".";
+  return clauses.map((clause) => `${clause}.`).join(" ");
 }
 
 
