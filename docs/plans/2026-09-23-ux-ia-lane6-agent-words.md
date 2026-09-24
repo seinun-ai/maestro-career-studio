@@ -75,12 +75,44 @@ Adapt *how* when the plan conflicts with the code and log it below. If a change 
 
 | Task | Planned | Did instead | Why (Goal Card line) |
 |---|---|---|---|
+| 15 | A8 card links the guide §5 and the skills README; this doc says the skills README and the README's agent-applications section | All three: "How to connect an agent", "Ready-made skills", "How agent applications work"; anchors pinned against the local headings | A Connected agents tab with no "how to connect" is a dead end; both specs hold |
+| 15 | A8 guide links as `Button nativeButton={false} render={<a>}` | `<a className={buttonVariants({ variant: "outline", size: "sm" })}>` | Base UI gives that `<a>` `role="button"` (seen in the browser): a link announced as a button (WCAG 2.2 AA) |
+| 15 | A8 sub-heads as `<p>`; `sm:grid-cols-2`; `mb-1.5`, `space-y-1` | `<h3>` naming each list; `CardContent @container/setting` + `@lg/setting:grid-cols-2`; grid gaps | Card titles are level-2 headings since wave 1; the rhythm pin refuses viewport columns and margins |
+| 15 | A8 copy ("career record", "job postings", "daily submission cap below", "This web app never submits anything") | D0 words: career history, jobs, MCP spelled out once, "Apply to more jobs a day than you allow below.", "Maestro CS itself never looks for jobs or submits an application." Added one paragraph naming the Assistant and Companion ("Companion, the Maestro CS browser extension") | Planner decision 19; D0 puts the one Companion sentence on this tab; this doc: never imply the app hunts or applies |
+| 15 | A8 imports the URLs from `lib/agent-links.ts` | Local constants in the card; the pin allows exactly one definition across the card and that lib | `lib/agent-links.ts` is lane 5's file (deferred to merge below) |
+| 15 | A5 row 21 (`Written by` through `agentDisplayName`) | Not done | Needs lane 5's `lib/agent-name.ts` (deferred to merge below) |
+| 15 | A5 row 23 (`llm-endpoint.tsx` "the chat agent") | No edit | Lane 4 already moved it to `models-section.tsx` as `gates: "the Assistant"` |
+| 15 | A5 rows 40–47 and 30 as written | "Quick tailor", not "Fast tailor"; "Companion" bare in labels ("Allow Companion to …"), "the Companion" in sentences; "Skipping one job", not "posting" | Planner decisions 19 and 20 |
+| 15 | A §5 sweep pin over every file | Skips `app/applications/page.tsx` and `agent-pipeline-card.tsx` | Lane 5 rewrites those words in the same wave (deferred to merge below) |
+| 15 | Drop `connected-agents` from `_RESERVED_CARD_IDS` | Removed the set and its use | It would have been empty |
+| 15 | — | `auto-apply-section.tsx` comment: "The Agent inbox and Analytics' Agent pipeline read the cap." (A2's row in this lane's file); README "decline" → "skip" beside the A10 rename | The funnel strip it named goes in lane 5; "Skip" is the app's verb (conventions, Naming) |
 
 ## Gate results
 
 | Task | Gate | Result |
 |---|---|---|
+| 15 | new pins seen failing first | 34 failed (31 in `test_frontend_agent_words.py`, 2 settings-pages, 1 dialog-drafts), 50 passed |
+| 15 | mutation checks | 47 mutations (every word row, the sweep, the preview, 15 card mutations incl. a duplicate constant in `lib/agent-links.ts` and a renamed README heading, mount removed and reordered, both guides, the stale note): each failed exactly its pin; removing the card's id or its mount also failed the tab-table equality pin, as intended |
+| 15 | `test_frontend_*.py` | 816 passed |
+| 15 | full backend `pytest tests/ mcp_server/tests/ -q` (on `16cc4373`) | 5183 passed, 3 skipped (5149 + the 34 new) |
+| 15 | `ruff check .` | All checks passed |
+| 15 | tsc / lint / node | clean / 0 errors, 5 baseline warnings / 200 passed |
+| 15 | `npm run build` (last) | OK |
+| 15 | slop, clean export of the committed tree (`868842fe`) | frontend duplication 437 lines / 36 clones; `check frontend` OK; `check backend` OK; backend hotspots 424 |
+| 15 | `check_system_md.py` | OK, 1000/1000 |
+| 15 | browser (8852/3252, light and dark) | Connected agents tab by mouse and keyboard at 1280/768/375: order explainer → hints → Auto-apply; two columns at 1280, stacked at 768 and 375; no page overflow; lists named "They can" / "They can't"; Tab order panel → Agent inbox → the three guides → Auto-apply fields, each with a visible ring; Agent inbox by click and by Enter opens `/proposals` in place; each guide opens a new tab with no opener; `/settings#connected-agents` and `?tab=agents#connected-agents` select the tab and ring the card. Every changed string seen in both themes: hints and Auto-apply cards, Quick tailor, Profile › Autofill, Analytics coverage card and its Clear confirm, All · You · Agents on Analytics and the tracker, Career history chips (origins mocked), chat Suggested edit / edits / project (session mocked), the Applied-with-base confirm, Ask for changes (Suggest edits → Suggest again, No edits suggested, and the stale note after a studio Save) |
 
 ## Queued for Task 24 (SYSTEM.md changes Claude applies)
 
+- §7 vocabulary: the in-app chat is the **Assistant**, MCP clients are **connected agents** (Settings › Connected agents opens with the explainer card), the extension is **Companion**.
+- Task 16's vocabulary ratchet: add `("frontend/components/settings/connected-agents-card.tsx", "browser extension")` to `_ALLOWED` (D0's one Companion sentence lives in this card), and let "MCP" stand in that card only.
+- §11 candidates (pre-existing, not fixed here): (a) every `variant="outline"` Button loses its solid focus border in dark mode: `dark:border-input` beats `focus-visible:border-ring` (`components/ui/button.tsx:29`), so only the /50 halo shows (measured on Settings' "Getting started guide"); (b) about 40 `Button nativeButton={false} render={<a …>}` sites are announced as buttons (`role="button"` on the `<a>`), including Settings' "Getting started guide" and the About card's releases link.
+- README and `docs/GETTING_STARTED.md` beyond A10's rows: the guide's "Words used in this guide" still says "Career record (Career KB)" and §4 "The browser extension".
+
 ## Deferred to merge (edits left for Claude, with file:line)
+
+- `frontend/components/settings/connected-agents-card.tsx:16-21`: delete `REPO` and the three URL constants; `import { AGENT_APPLICATIONS_URL, CONNECT_AGENT_GUIDE_URL, JOB_HUNT_SKILL_URL } from "@/lib/agent-links";` (lane 5's file). `test_the_card_links_point_at_real_headings` fails while both files define them, by design.
+- `frontend/components/career/points-list.tsx:315`: A5 row 21, ``title={point.origin_detail ? `Written by ${agentDisplayName(point.origin_detail) ?? point.origin_detail}` : undefined}`` with `import { agentDisplayName } from "@/lib/agent-name";`, plus a row in `_WORDS` (`test_frontend_agent_words.py`). The browser showed "Written by claude-ai" until then.
+- `backend/tests/test_frontend_agent_words.py:87-89,96-97`: delete `_INBOX_LANE_FILES` and its skip once lane 5's tracker and Agent pipeline words are in.
+- `docs/frontend-conventions.md`, Naming bullet ("One word per kind of agent"): append A10's "A filer is named through `lib/agent-name.ts`, never printed raw." if lane 5 did not.
+- `frontend/lib/settings-tabs.ts:26`: the comment "`connected-agents` is the explainer card wave 2 mounts first in this tab" can drop "wave 2" (not this lane's file).
