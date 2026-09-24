@@ -21,8 +21,9 @@ export const GROUP_HEADING =
 /** The last row of a card body: Save and its siblings, right-aligned, secondary first. */
 export const ACTION_ROW = "flex flex-wrap items-center justify-end gap-2";
 
-/** A labelled switch. 44px tall, so the label (which toggles it) is a full-size target. The label
- *  keeps its default size; `leading-snug` only spaces its lines when it wraps at 375. */
+/** A labelled switch, at least 44px tall. The label (which toggles it) fills the row, height, width
+ *  and the gap before the switch, so a tap anywhere on the row toggles. It keeps its default size;
+ *  `leading-snug` only spaces its lines when it wraps at 375. */
 export function SwitchRow({
   htmlFor,
   label,
@@ -33,8 +34,8 @@ export function SwitchRow({
   children: ReactNode;
 }) {
   return (
-    <div className="flex min-h-11 items-center justify-between gap-4 py-1.5">
-      <Label htmlFor={htmlFor} className="leading-snug">
+    <div className="flex min-h-11 items-center justify-between">
+      <Label htmlFor={htmlFor} className="flex-1 self-stretch py-1.5 pr-4 leading-snug">
         {label}
       </Label>
       {children}

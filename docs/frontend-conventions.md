@@ -929,8 +929,9 @@
   heading, and `CardContent` is `@container/setting`, which every card's column
   breakpoints read.
 - **Two save models, and only two.** A pure preference autosaves through
-  `useAutosave` and reports with `AutosaveStatus` in the card header, right of
-  the title, through `SettingCardAction`. The mutation stays in the editor, and
+  `useAutosave` and reports with `AutosaveStatus` in the card header, through
+  `SettingCardAction`: right of the title while the header is at least 28rem
+  wide, under the description when it is narrower. The mutation stays in the editor, and
   the status reserves its width (`min-w-36`) so the description never re-wraps.
   Anything with a cost or a blast radius keeps a dirty-gated Save, and
   Save/Discard where a discard is meaningful. Errors always toast; successful

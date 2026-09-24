@@ -181,7 +181,9 @@ function AutoApplyEditor({ initial }: { initial: AutoApplySettings }) {
             {value.company_blocklist.map((name) => (
               <span
                 key={name}
-                className="bg-muted inline-flex h-7 items-center gap-1 rounded-full pr-0.5 pl-3 text-xs"
+                // min-h, not h: on a coarse pointer the × is 44px, and a
+                // fixed 28px chip let it overlap the row below.
+                className="bg-muted inline-flex min-h-7 items-center gap-1 rounded-full pr-0.5 pl-3 text-xs"
               >
                 {name}
                 <IconButton

@@ -19,6 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { isRemoteEndpoint } from "@/lib/model-catalog";
 import type { OpenAIInfo } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -42,12 +43,18 @@ export function CustomEndpointSection() {
         <EndpointDisclosure
           info={data}
           disabled={save.isPending}
-          onSave={(patch) => save.mutate(patch)}
+          onSave={(patch, onSuccess) => save.mutate(patch, { onSuccess })}
         />
       )}
     </SettingCard>
   );
 }
+
+/** A server-settings write. `onSuccess` runs only once the server has taken it. */
+type SaveEndpoint = (
+  patch: { base_url?: string | null; json_mode?: string },
+  onSuccess?: () => void,
+) => void;
 
 /** Starts collapsed unless something is set. `hidden`, not unmounted: a typed
  *  address survives a collapse. */
@@ -58,7 +65,7 @@ function EndpointDisclosure({
 }: {
   info: OpenAIInfo;
   disabled: boolean;
-  onSave: (patch: { base_url?: string | null; json_mode?: string }) => void;
+  onSave: SaveEndpoint;
 }) {
   const [open, setOpen] = useState(Boolean(info.base_url) || info.json_mode !== "auto");
   const panelId = useId();
@@ -96,30 +103,6 @@ function EndpointDisclosure({
   );
 }
 
-/** True when the endpoint is neither empty nor a local address.
- *
- * Whatever is configured here receives the stored API key AND the prompt bodies
- * (resume text, job descriptions), because the OpenAI client is constructed with
- * both. That is fine for a local model server and worth one sentence of warning
- * for anything else — the field accepts any host on purpose, so the check is
- * advisory, not a block. */
-function isRemoteEndpoint(raw: string): boolean {
-  const value = raw.trim();
-  if (!value) return false;
-  try {
-    const host = new URL(value).hostname;
-    return !(
-      host === "localhost" ||
-      host === "127.0.0.1" ||
-      host === "::1" ||
-      host === "host.docker.internal" ||
-      host.endsWith(".local")
-    );
-  } catch {
-    return false; // not a parseable URL yet — the backend rejects it on save
-  }
-}
-
 function EndpointControls({
   info,
   disabled,
@@ -127,7 +110,7 @@ function EndpointControls({
 }: {
   info: OpenAIInfo;
   disabled: boolean;
-  onSave: (patch: { base_url?: string | null; json_mode?: string }) => void;
+  onSave: SaveEndpoint;
 }) {
   const [draft, setDraft] = useState<string | null>(null);
   const value = draft ?? info.base_url ?? "";
@@ -155,13 +138,16 @@ function EndpointControls({
             disabled={disabled}
             onChange={(e) => setDraft(e.target.value)}
           />
+          {/* The draft clears only once the server takes it: a rejected
+              address stays in the field to fix. Focusable while it saves. */}
           <Button
             variant="outline"
+            focusableWhenDisabled
             disabled={disabled || draft === null}
-            onClick={() => {
-              onSave({ base_url: draft?.trim() || null });
-              setDraft(null);
-            }}
+            className="data-disabled:pointer-events-none data-disabled:opacity-50"
+            onClick={() =>
+              onSave({ base_url: draft?.trim() || null }, () => setDraft(null))
+            }
           >
             Save
           </Button>

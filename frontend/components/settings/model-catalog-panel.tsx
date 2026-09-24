@@ -50,9 +50,9 @@ function ModelCatalogPanel({ info }: { info: OpenAIInfo }) {
   } | null>(null);
   const [syncing, setSyncing] = useState<SyncProvider | null>(null);
   const listRef = useRef<HTMLUListElement>(null);
-  // Armed by a Remove click: where focus goes once the removed row (and the
-  // focused button in it) has left the list.
-  const leaving = useRef<(() => HTMLElement | null) | null>(null);
+  // Armed by a Remove click: the model going, and where focus goes once its
+  // row (and the focused button in it) has left the list.
+  const leaving = useRef<{ id: string; next: () => HTMLElement | null } | null>(null);
 
   const sync = useMutation({
     mutationFn: (provider: SyncProvider) =>
@@ -127,12 +127,13 @@ function ModelCatalogPanel({ info }: { info: OpenAIInfo }) {
   });
 
   // After the list re-renders without the removed row: its focused Remove
-  // went with it, so focus fell to <body>.
+  // went with it, so focus fell to <body>. An Add that lands mid-removal
+  // re-renders the list with the row still in it, so wait for the row to go.
   useEffect(() => {
-    const next = leaving.current;
-    if (!next) return;
+    const pending = leaving.current;
+    if (!pending || info.model_options.some((option) => option.id === pending.id)) return;
     leaving.current = null;
-    focusIfDropped(next());
+    focusIfDropped(pending.next());
   }, [info.model_options]);
 
   const removeRow = (li: HTMLElement | null, id: string) => {
@@ -142,7 +143,10 @@ function ModelCatalogPanel({ info }: { info: OpenAIInfo }) {
     const pick = (el: Element | null | undefined) =>
       el?.querySelector<HTMLElement>("button") ?? null;
     const neighbour = pick(li?.nextElementSibling) ?? pick(li?.previousElementSibling);
-    leaving.current = () => (neighbour?.isConnected ? neighbour : listRef.current);
+    leaving.current = {
+      id,
+      next: () => (neighbour?.isConnected ? neighbour : listRef.current),
+    };
     remove.mutate(id);
   };
 

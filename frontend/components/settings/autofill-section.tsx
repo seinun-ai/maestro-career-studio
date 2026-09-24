@@ -716,7 +716,9 @@ function AutofillEditor({
             type="button"
             variant="ghost"
             size="xs"
+            focusableWhenDisabled
             disabled={!contactReady || isFillingFromResume}
+            className="data-disabled:pointer-events-none data-disabled:opacity-50"
             onClick={fillFromResume}
           >
             {isFillingFromResume ? "Filling…" : "Fill from resume"}

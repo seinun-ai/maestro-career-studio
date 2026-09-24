@@ -276,21 +276,20 @@ function CapabilityMark({
   gates: string;
   error: string | undefined;
 }) {
+  const reason = ok
+    ? `${label}: supported. Enables ${gates}`
+    : `${label}: ${error ?? "unsupported"}. Disables ${gates}`;
+  // The reason is read as text, not only from `title`, which a keyboard or a
+  // screen reader never reaches. The mark and the chip say it visually.
   return (
-    <span
-      className="flex items-center gap-1"
-      title={
-        ok
-          ? `${label}: supported. Enables ${gates}`
-          : `${label}: ${error ?? "unsupported"}. Disables ${gates}`
-      }
-    >
+    <span className="flex items-center gap-1" title={reason}>
       {ok ? (
-        <Check className="size-3 text-emerald-600" />
+        <Check className="size-3 text-emerald-600" aria-hidden="true" />
       ) : (
-        <X className="text-destructive size-3" />
+        <X className="text-destructive size-3" aria-hidden="true" />
       )}
-      {label}
+      <span aria-hidden="true">{label}</span>
+      <span className="sr-only">{reason}</span>
     </span>
   );
 }
