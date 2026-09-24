@@ -18,6 +18,10 @@ from app.models.resume_version import ResumeVersion
 from app.services import artifacts
 from app.services.resume_versions import record_version
 
+# The one sentence for an application with no tailored resume to read yet:
+# scoring it, checking its health, or reviewing its changes all need one.
+NO_TAILORED_RESUME = "This application has no tailored resume yet. Tailor it first."
+
 
 def stage_resume_update(
     db: Session,

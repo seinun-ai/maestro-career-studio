@@ -108,7 +108,9 @@ def create_proposal(
     company = (job.company or "").strip().lower()
 
     if company and company in {c.strip().lower() for c in cfg.company_blocklist}:
-        raise HTTPException(409, detail="company is blocklisted")
+        raise HTTPException(
+            409, detail="This company is on your Companies to skip list in Settings › "
+            "Connected agents.")
 
     # One open proposal per job, with no unique index to say so: two creates that both check
     # before either inserts both insert (a double click on Queue for agent filed two accepted
@@ -160,7 +162,8 @@ def create_proposal(
     )
     if declined:
         raise HTTPException(
-            409, detail="job was declined — delete the rejected proposal to re-propose",
+            409, detail="You skipped this job before. Delete the skipped proposal in the "
+            "Agent inbox to queue it again.",
         )
 
     if payload.application_id is not None:
@@ -294,7 +297,7 @@ def delete_proposal(proposal_id: UUID, db: Annotated[Session, Depends(get_db)]):
         # application first if the whole record must go.
         raise HTTPException(
             409,
-            detail="cannot delete a submitted proposal — it is the submission audit trail",
+            detail="This proposal was submitted, so its record is kept as proof.",
         )
     # Staged artifact removal (SYSTEM §6): resolve files first, delete the row,
     # COMMIT, only then unlink. ConsentEvents go via the DB-level FK cascade.

@@ -219,7 +219,7 @@ def test_custom_prompt_keeps_role_label_pure_and_injects_context_once(
 
 
 def test_plan_on_an_empty_kb_is_a_value_error(db_session):
-    with pytest.raises(ValueError, match="Career KB"):
+    with pytest.raises(ValueError, match="Your career history is empty"):
         base_from_kb_plan.plan(db_session, "data_scientist", "")
 
 

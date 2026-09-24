@@ -389,6 +389,11 @@ def test_duplicate_base_resume_copies_data(db_session, tmp_path, monkeypatch):
     assert response.json()["slug"] == "data_scientist_v2"
     assert response.json()["display_name"] == "DS v2"
     assert db_session.get(BaseResume, "data_scientist_v2") is not None
+    # The version summary names the source resume in words, never its slug.
+    from app.services import resume_versions
+
+    [version] = resume_versions.get_versions(db_session, "base", "data_scientist_v2")
+    assert version.summary == "Duplicated from Data Scientist"
 
 
 def test_get_base_resume_pdf_returns_file(db_session, tmp_path):

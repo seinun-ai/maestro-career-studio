@@ -104,7 +104,7 @@ def update_template(
     if payload.engine is not None and payload.engine != row.engine:
         raise HTTPException(
             status_code=400,
-            detail="engine is immutable after creation — create a new template instead",
+            detail="A template's type can't change. Create a new template instead.",
         )
     row = reg.update_draft(
         db, template_id, source=payload.source, display_name=payload.display_name

@@ -72,6 +72,12 @@ def display_name_of(session: Session, slug: str) -> str | None:
     return (row.display_name or None) if row is not None else None
 
 
+def resume_label(session: Session, slug: str) -> str:
+    """A base resume's name for a sentence the user reads (a version summary,
+    a timeline row): its display name, else the slug's words, never the slug."""
+    return display_name_of(session, slug) or slug.replace("_", " ").replace("-", " ").title()
+
+
 def write_base_resume_json(slug: str, data: dict) -> None:
     """Mirror a base resume's JSON data to disk (canonical write helper).
 

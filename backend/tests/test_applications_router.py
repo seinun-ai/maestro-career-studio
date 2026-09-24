@@ -1863,6 +1863,8 @@ def test_resume_diff_409_when_customized_json_empty(db_session):
         app.dependency_overrides.clear()
 
     assert response.status_code == 409
+    assert response.json()["detail"] == (
+        "This application has no tailored resume yet. Tailor it first.")
 
 
 def test_resume_diff_happy_path_attributes_via_newest_session(db_session, monkeypatch):

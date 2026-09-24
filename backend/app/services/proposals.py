@@ -37,6 +37,15 @@ ALLOWED = {
     # submitted / rejected / expired are terminal
 }
 
+# A proposal status in the Agent inbox's words, lower case for a sentence (the
+# bulk toast prints this refusal). The keys stay what agents and the API use.
+_STATUS_WORDS = {
+    "pending_review": "proposed", "needs_decision": "waiting on you",
+    "needs_human": "waiting on you", "accepted": "queued", "approved": "approved",
+    "submitted": "applied", "submission_uncertain": "marked Check if sent",
+    "rejected": "skipped", "expired": "expired",
+}
+
 CONSENT_REQUIRED = {"accepted", "approved", "rejected"}
 CONSENT_CHANNELS = ("chat", "slack", "frontend", "mcp")
 
@@ -116,7 +125,9 @@ def transition(session: Session, prop: ApplicationProposal, new_status: str,
                intervention: dict | None = None,
                attested: bool = False) -> ApplicationProposal:
     if new_status not in ALLOWED.get(prop.status, set()):
-        raise TransitionError(f"cannot go {prop.status} -> {new_status}")
+        raise TransitionError(
+            f"This proposal is already {_STATUS_WORDS.get(prop.status, prop.status)} "
+            "and can't be changed that way.")
     if new_status in CONSENT_REQUIRED:
         if not consent or consent.get("channel") not in CONSENT_CHANNELS:
             raise TransitionError(f"{new_status} requires consent with a valid channel")

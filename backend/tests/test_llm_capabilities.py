@@ -96,10 +96,10 @@ def test_require_names_the_missing_capability(db_session):
         llm_capabilities.require(db_session, "llama3.2:3b", "tools")
 
     message = str(exc.value)
-    assert "tools" in message
-    assert "streamed no tool call" in message
-    # Points at the way out: the three models are configured separately.
-    assert "configured separately" in message
+    assert message == (
+        "llama3.2:3b can't use tools (model streamed no tool call). Pick a different "
+        "model in Settings › AI & models. The Fast, Smart and Assistant models are set "
+        "separately.")
 
 
 class _RecordingClient:

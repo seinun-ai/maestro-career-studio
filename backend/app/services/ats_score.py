@@ -9,6 +9,7 @@ from app.models.application import Application
 from app.models.ats_score import AtsScore
 from app.models.base_resume import BaseResume
 from app.models.job import Job
+from app.services.application_writes import NO_TAILORED_RESUME
 from app.services import gap_analysis
 from app.services.ats import score_resume
 from app.services.ats.jd_normalizer import normalize_jd
@@ -43,7 +44,7 @@ def _resolve_resume_data(session: Session, target_type: str, target_id: str) -> 
         if application is None:
             raise ValueError(f"Application not found: {target_id}")
         if not application.customized_json:
-            raise ValueError("This application has no tailored resume yet. Tailor it first.")
+            raise ValueError(NO_TAILORED_RESUME)
         return application.customized_json, application.id
     raise ValueError(f"Unknown target_type: {target_type}")
 

@@ -62,7 +62,7 @@ from app.services import kb_adapt
 from app.services import kb_consolidation
 from app.services import kb_ingest
 from app.services import exports as career_exports
-from app.services.attachment_extract import extract_text
+from app.services.attachment_extract import extract_text, plain_read_error
 from app.write_origin import WriteOrigin, get_write_origin
 
 logger = logging.getLogger(__name__)
@@ -271,7 +271,7 @@ def merge_entity(
         # double-submit is not a race and gets the clean 404 above.
         raise HTTPException(
             status_code=409,
-            detail="This entity was merged by another request; refresh and retry",
+            detail="This item was just merged elsewhere. Refresh the page and try again.",
         ) from e
     db.commit()
     db.refresh(target)
@@ -430,7 +430,7 @@ def patch_point(
     if data.get("entity_id") is not None:
         target = db.get(KBEntity, data["entity_id"])
         if target is None:
-            raise HTTPException(status_code=404, detail="Target entity not found")
+            raise HTTPException(status_code=404, detail="That item no longer exists.")
         point.entity_id = data["entity_id"]
     if data.get("state") is not None:
         _apply_point_state(point, data["state"])
@@ -492,8 +492,9 @@ def ingest_document_first(
     except kb_ingest.DocumentTextError as e:
         raise HTTPException(
             status_code=422,
-            detail=f"Couldn't read the document ({e}). Create the entity manually "
-            "and attach the file from its page.",
+            detail=(f"Couldn't find anything to add in this file ({e.insufficient}). "
+                    if e.insufficient else "Couldn't read this file. ")
+            + "Create the item yourself, then attach the file on its page.",
         ) from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
@@ -534,7 +535,7 @@ def upload_document(
     except Exception as exc:  # noqa: BLE001 — unsupported, empty, OR corrupt/unparseable
         text = ""
         ingest_status = "failed"
-        ingest_summary = str(exc)
+        ingest_summary = plain_read_error(exc)
 
     document = kb_ingest.store_document(
         db,
@@ -812,7 +813,7 @@ def import_resumes_endpoint(
         try:
             uploads.append((name, f.content_type, f.file.read()))
         except OSError as exc:
-            raise HTTPException(status_code=400, detail=f"{name}: could not read upload") from exc
+            raise HTTPException(status_code=400, detail=f"Couldn't read {name}. Try again.") from exc
 
     result = kb_import.import_resumes(db, uploads, consolidate=consolidate)
     if not result.bases and result.skipped:

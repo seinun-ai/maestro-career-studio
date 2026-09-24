@@ -190,10 +190,11 @@ def test_custom_endpoint_skips_response_format(tmp_path, monkeypatch):
     assert "response_format" not in client.chat.completions.create.call_args.kwargs
 
 
-def test_missing_key_names_both_ways_to_fix_it(monkeypatch):
+def test_missing_key_names_both_ways_to_fix_it(monkeypatch, caplog):
     """No key anywhere used to become api_key="local" and an opaque 401 from
     api.openai.com. A first-run user cannot act on that; the error must name the
-    two places a key can go."""
+    two places a key can go: the user's (Settings › AI & models, a key or a
+    model on this computer) in the sentence, the operator's (.env) in the log."""
     from app.services import model_settings
 
     monkeypatch.setattr(llm.settings, "openai_api_key", None)
@@ -203,12 +204,33 @@ def test_missing_key_names_both_ways_to_fix_it(monkeypatch):
     monkeypatch.setattr(llm, "_client", None)
     monkeypatch.setattr(llm, "_client_key", None)
 
-    with pytest.raises(llm.LLMProviderError) as exc:
+    with caplog.at_level("WARNING", logger="app.services.llm"), pytest.raises(
+            llm.LLMProviderError) as exc:
         llm._get_client()
 
     message = str(exc.value)
-    assert "Settings" in message
-    assert "OPENAI_API_KEY" in message
+    assert message == (
+        "No API key is set. Add one in Settings › AI & models › API keys. To use a "
+        "model on your computer instead, add its address in Settings › AI & models "
+        "› Custom AI server.")
+    assert "OPENAI_API_KEY" in caplog.text
+
+
+def test_a_failed_request_is_a_sentence_and_keeps_the_providers_words():
+    """The user reads a sentence with a few words of cause; what the provider
+    said stays on the error for the log and for the capability probe, which
+    classifies a 401 or a lost connection as "never reached the model"."""
+    import openai as openai_pkg
+
+    from app.services import llm_capabilities
+
+    err = llm._no_answer("error 401",
+                         "OpenAI API request failed: Error code: 401 - Incorrect API key")
+    assert str(err) == (
+        "The AI model didn't answer (error 401). Try again, or check your key in "
+        "Settings › AI & models.")
+    assert llm_capabilities._never_reached_the_model(err)
+    assert llm._openai_reason(openai_pkg.APIConnectionError(request=None)) == "no connection"
 
 
 def test_custom_endpoint_still_works_without_a_key(monkeypatch):

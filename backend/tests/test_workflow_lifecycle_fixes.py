@@ -309,7 +309,7 @@ def test_re_extract_400_for_capture_path_job(db_session):
     finally:
         app.dependency_overrides.clear()
     assert response.status_code == 400
-    assert "re-ingest" in response.json()["detail"]
+    assert "Add the job again" in response.json()["detail"]
 
 
 def test_create_job_with_different_text_at_reused_url_is_a_new_job(db_session, monkeypatch):

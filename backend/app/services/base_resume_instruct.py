@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import json
+import logging
 from string import Template
 from typing import Any
 
@@ -28,6 +29,8 @@ from app.models.base_resume import BaseResume
 from app.schemas.resume_edit import ResumeEdit, ResumeEditRequest, render_ops_shapes
 from app.services import llm, model_settings, prompts
 from app.services.resume_edit import apply_edits
+
+logger = logging.getLogger(__name__)
 
 MAX_INSTRUCTION_CHARS = 4000
 
@@ -110,4 +113,6 @@ def propose(session: Session, row: BaseResume, instruction: str) -> Proposal:
             return _read(result, resume)
         except ValueError as exc:
             correction = str(exc)
-    raise ValueError(f"The model could not produce edits that apply to this resume: {correction}")
+    # The model's last correction is for the log; the sentence is for the user.
+    logger.info("instruct gave up after its retry: %s", correction)
+    raise ValueError("That change couldn't be made. Try rewording it.")

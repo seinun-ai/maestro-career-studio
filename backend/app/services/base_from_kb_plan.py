@@ -80,7 +80,7 @@ def _selectable(session: Session) -> tuple[list[KBEntity], dict[UUID, int]]:
         )
     )
     if not entities:
-        raise ValueError("Career KB is empty — import a resume first.")
+        raise ValueError("Your career history is empty. Import a resume first.")
 
     approved = {
         e.id: sum(1 for p in e.points if p.state == "approved") for e in entities

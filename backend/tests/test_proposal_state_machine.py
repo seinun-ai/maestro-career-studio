@@ -75,8 +75,11 @@ def test_illegal_transitions_rejected(db_session):
     prop = _mk_proposal(db_session)
     svc.transition(db_session, prop, "rejected",
                    consent={"channel": "chat", "note": "not a fit"}, reason="not a fit")
-    with pytest.raises(svc.TransitionError):   # rejected is terminal
+    with pytest.raises(svc.TransitionError) as refused:   # rejected is terminal
         svc.transition(db_session, prop, "approved", consent={"channel": "chat"})
+    # The bulk toast prints this: the Agent inbox's word, never a raw status.
+    assert str(refused.value) == (
+        "This proposal is already skipped and can't be changed that way.")
 
 
 def test_needs_human_can_return_to_approved(db_session):

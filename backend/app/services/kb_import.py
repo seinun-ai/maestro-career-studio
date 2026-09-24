@@ -48,7 +48,7 @@ from app.services import (
     pdf_render,
     role_categories,
 )
-from app.services.attachment_extract import extract_text
+from app.services.attachment_extract import UnreadableFile, extract_text, plain_read_error
 from app.services.resume_versions import record_version
 
 logger = logging.getLogger(__name__)
@@ -208,7 +208,7 @@ def import_resumes(
         safe = Path(filename or "upload").name or "upload"
         try:
             if len(blob) > MAX_BYTES:
-                raise ValueError("file exceeds the 10 MB limit")
+                raise UnreadableFile("This file is over 10 MB.")
 
             parse_warnings: list[str] = []
             if _is_json(safe, mime):
@@ -237,14 +237,14 @@ def import_resumes(
         except Exception as exc:  # noqa: BLE001 — one bad file must not fail the batch
             session.rollback()
             logger.info("import: skipping %s: %s", safe, exc)
-            result.skipped.append(SkippedFile(filename=safe, reason=str(exc)[:300]))
+            result.skipped.append(SkippedFile(filename=safe, reason=plain_read_error(exc)))
 
     if len(uploads) > MAX_FILES:
         for filename, _, _ in uploads[MAX_FILES:]:
             result.skipped.append(
                 SkippedFile(
                     filename=Path(filename or "upload").name,
-                    reason=f"only the first {MAX_FILES} files are imported at once",
+                    reason=f"Only the first {MAX_FILES} files are imported at once.",
                 )
             )
 

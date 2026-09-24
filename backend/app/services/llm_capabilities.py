@@ -160,7 +160,9 @@ _UNREACHABLE_SIGNS = (
 
 
 def _never_reached_the_model(exc: Exception) -> bool:
-    text = str(exc).lower()
+    # What the PROVIDER said (`LLMProviderError.provider_detail`), never the
+    # sentence written for the user, which names no status code.
+    text = str(getattr(exc, "provider_detail", None) or exc).lower()
     return any(sign in text for sign in _UNREACHABLE_SIGNS)
 
 
@@ -226,6 +228,12 @@ class CapabilityMissing(RuntimeError):
     """A surface needs something the configured model was measured not to do."""
 
 
+# A capability as the sentence a user reads says it.
+_CAPABILITY_WORDS = {
+    "text": "write text", "json": "return structured answers", "tools": "use tools",
+}
+
+
 def require(session: Session, model: str, capability: str) -> None:
     """Raise a message that names the capability, not a bare "request failed".
 
@@ -237,8 +245,7 @@ def require(session: Session, model: str, capability: str) -> None:
         return
     reason = report.errors.get(capability, "the capability probe found it unsupported")
     raise CapabilityMissing(
-        f"{model!r} does not support {capability}: {reason}. "
-        f"Choose a {capability}-capable model in Settings — the fast, smart and "
-        f"chat models are configured separately, so a local model can keep doing "
-        f"the rest."
+        f"{model} can't {_CAPABILITY_WORDS.get(capability, capability)} ({reason}). "
+        "Pick a different model in Settings › AI & models. The Fast, Smart and "
+        "Assistant models are set separately."
     )

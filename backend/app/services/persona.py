@@ -40,7 +40,7 @@ def draft_persona(session: Session) -> str:
     from app.services import career_kb, job_preferences, llm, model_settings, prompts
 
     if not (session.scalar(select(func.count()).select_from(KBEntity)) or 0):
-        raise ValueError("Career KB is empty — import a resume first, then draft.")
+        raise ValueError("Your career history is empty. Import a resume first.")
 
     resume = career_kb.compose_resume_data(session)
     memory_text = career_kb.compose_context(session)

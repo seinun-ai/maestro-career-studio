@@ -21,6 +21,7 @@ import logging
 from pathlib import Path
 
 from app.services.pdfium_lock import PDFIUM_LOCK
+from app.services.script_guard import UnsupportedScriptError
 
 logger = logging.getLogger(__name__)
 
@@ -126,6 +127,24 @@ def _docx_text(data: bytes) -> str:
     return "\n".join(parts)
 
 
+class UnreadableFile(ValueError):
+    """A file this app cannot read, and its message is a sentence for the user
+    (the Assistant's attachment 400, an import report's reason)."""
+
+
+UNSUPPORTED_TYPE = "Use a PDF, Word, text or image file."
+
+
+def plain_read_error(exc: Exception) -> str:
+    """Why a file could not be read, as a sentence for the user: the error's
+    own words when it was written for them, else the generic one."""
+    from app.services.llm import LLMProviderError  # lazy, as above: llm is heavy
+
+    if isinstance(exc, (UnreadableFile, UnsupportedScriptError, LLMProviderError)):
+        return str(exc)
+    return "Couldn't read this file."
+
+
 def extract_text(filename: str, mime: str | None, data: bytes) -> str:
     suffix = Path(filename or "").suffix.lower()
     mime = (mime or "").lower().split(";")[0].strip()
@@ -144,18 +163,15 @@ def extract_text(filename: str, mime: str | None, data: bytes) -> str:
         try:
             pages = _image_png(data)
         except Exception as exc:  # corrupt/undecodable image bytes
-            raise ValueError(f"Attachment {filename!r} is not a readable image: {exc}") from exc
+            raise UnreadableFile(f"{Path(filename or 'This file').name} isn't a readable image.") from exc
         transcript = _transcribe_images(pages, filename)
         text = f"{VISION_MARKER}\n{transcript}" if transcript else ""
     elif suffix in _TEXT_SUFFIXES or mime in _TEXT_MIMES:
         text = data.decode("utf-8", errors="replace")
     else:
-        raise ValueError(
-            f"Unsupported attachment type: {filename!r} ({mime or 'unknown mime'}). "
-            "Supported: .pdf, .docx, .md, .txt, .tex, .png, .jpg, .webp"
-        )
+        raise UnreadableFile(UNSUPPORTED_TYPE)
 
     text = text.strip()
     if not text:
-        raise ValueError(f"Attachment {filename!r} contained no extractable text")
+        raise UnreadableFile(f"No text could be read in {Path(filename or 'this file').name}.")
     return text[:MAX_CHARS]

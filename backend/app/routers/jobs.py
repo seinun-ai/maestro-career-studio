@@ -584,8 +584,8 @@ def re_extract_job(job_id: UUID, db: Annotated[Session, Depends(get_db)]):
     if not (job.raw_text or "").strip():
         raise HTTPException(
             status_code=400,
-            detail="Job has no raw JD text to re-extract from (captured via "
-            "pre-extracted ingest); re-ingest it instead.",
+            detail="This job was saved without its original text, so it can't be read "
+            "again. Add the job again from its job page.",
         )
 
     extraction = jd_extraction.extract_jd(job.raw_text, db)

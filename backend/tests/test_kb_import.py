@@ -194,6 +194,18 @@ def test_json_upload_needs_no_llm(db_session, tmp_path, monkeypatch):
     assert resp.status_code == 200
 
 
+def test_a_skipped_file_is_reported_in_words(db_session, tmp_path, monkeypatch):
+    """The import report's reason is a sentence for the user; pydantic's field
+    paths from a malformed JSON file are not."""
+    _stub_pipeline(monkeypatch, tmp_path)
+    resp = _client(db_session).post(
+        "/api/kb/import",
+        files=[("files", ("broken.json", io.BytesIO(b"{not json"), "application/json"))])
+    assert resp.status_code == 422
+    assert resp.json()["detail"] == (
+        "No resumes could be imported. broken.json: Couldn't read this file.")
+
+
 def test_consolidation_source_key_is_the_slug_not_the_filename(db_session, tmp_path, monkeypatch):
     """KBPortLog.resume_key and merge_sources_json store this; everywhere else it
     is a slug, so a filename there points at nothing."""

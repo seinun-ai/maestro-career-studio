@@ -120,7 +120,8 @@ def test_ingest_no_text_422(db_session, monkeypatch, tmp_path):
     monkeypatch.setattr("app.services.kb_ingest.settings.kb_documents_dir", tmp_path)
     resp = _post(db_session, filename="scan.png", content=b"\x89PNG...", mime="image/png")
     assert resp.status_code == 422
-    assert "Couldn't read the document" in resp.json()["detail"]
+    assert resp.json()["detail"] == (
+        "Couldn't read this file. Create the item yourself, then attach the file on its page.")
     assert db_session.query(KBDocument).count() == 0
     assert db_session.query(KBEntity).count() == 0
 
@@ -226,7 +227,8 @@ def test_openai_sdk_errors_normalize_to_runtime_error(monkeypatch):
     try:
         llm_module._call_model("hi", "gpt-4o", "text")
     except RuntimeError as exc:
-        assert "OpenAI API request failed" in str(exc)
+        assert "The AI model didn't answer (no connection)" in str(exc)
+        assert "OpenAI API request failed" in exc.provider_detail
     else:
         raise AssertionError("expected RuntimeError")
 

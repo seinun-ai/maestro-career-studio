@@ -31,7 +31,14 @@ _DETAIL_KEYS = ("tech", "link", "field")
 
 
 class DocumentTextError(ValueError):
-    """The document yielded no usable text (unsupported, empty, or corrupt)."""
+    """The document yielded no usable text (unsupported, empty, or corrupt).
+
+    `insufficient` carries the model's reason when the text WAS read but holds
+    nothing to add (only a person's name): the user is told why, not only that."""
+
+    def __init__(self, message: str, insufficient: str | None = None) -> None:
+        super().__init__(message)
+        self.insufficient = insufficient
 
 
 def _normalize(text: str) -> str:
@@ -297,7 +304,7 @@ def ingest_document(
         # name) instead of inventing an entity; surface that as unreadable (422).
         reason = result.get("insufficient")
         if isinstance(reason, str) and reason.strip():
-            raise DocumentTextError(reason.strip())
+            raise DocumentTextError(reason.strip(), insufficient=reason.strip())
         raise ValueError("document ingest returned neither an entity_id nor a new_entity")
 
     document = store_document(
