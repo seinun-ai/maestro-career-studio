@@ -75,12 +75,51 @@ Adapt *how* when the plan conflicts with the code and log it below. If a change 
 
 | Task | Planned | Did instead | Why (Goal Card line) |
 |---|---|---|---|
+| 10–12 | Pins in `test_frontend_settings_pages.py` sections "Models" and "Rhythm" | Own file `backend/tests/test_frontend_settings_cards.py` | Lane 3 writes `test_frontend_settings_pages.py` at the same time; two files never conflict (C, *File ownership*, allows it) |
+| 10 | Status right of the title at 1280 and 768 | Right of the title at 1280; below the description at 768 and 375 | C's own `@max-md/card-header` threshold: the header measures 432px at 768 (< 28rem). Beside the title it would squeeze the description to ~284px |
+| 10 | C6 header code as written | `CardTitle`/`CardDescription` carry `col-start-1`; stacked action children `justify-start` | Without it a narrow header auto-placed the description into the action column, and the width-reserving status sat indented |
+| 10 | Focus pin marker "Draft from my career" | Marker `onClick={() => draft.mutate(editRevision.current)}` | The phrase first appears in a prop docstring, so `_button_with` found no button |
+| 11 | C7 copy | D words where C proposed copy (planner decisions 19, 20): titles Available models and Custom AI server; D's role hints and "Assistant model"; D's footnote; "Find OpenAI/Gemini models"; D's discovery line; "Server settings saved"; D's chip labels (Writing, Structured answers, Assistant) and gates; the probe toasts that name the chips; D's model note (the old one said "JD" and used em dashes). Models description is "Which model does each job." | One word per thing; C's second description sentence repeated D's footnote |
+| 11 | `RemoveButton` in Task 12 | Created in Task 11 (`setting-layout.tsx`), extended in Task 12 | The model list needs it first |
+| 11 | `"<SettingCard" in source` pins | Regex `<SettingCard[\s>]` / `<SettingCard\s+id=…` | `<SettingCardAction>` also starts with "<SettingCard", so the substring pins passed with no shell |
+| 12 | Education Remove named "Remove education entry N" | "Remove school N" | D's delta on C ("entry" is banned by the glossary) |
+| 12 | A removed education row hands focus to Add education | Removing the last row hands focus to Add; removing another row leaves focus on the same-position Remove, now the next school's | Rows are keyed by index, so that button never unmounts and focus never drops |
+| 12 | C8 table | Also: every explicit Save/Reset/Discard is `focusableWhenDisabled`; Persona's Save row and Auto-apply's Discard hand focus on (textarea, Save); a removed blocklist company hands focus to the add field; Autofill's field grid is `items-end`; `SwitchRow` labels are `leading-snug`; the label pin also bans a `text-sm` override | "Focus never to `<body>`" (C, Global constraints); 14px labels wrap in Autofill's three columns and at 375 |
+| 12 | Placeholders untouched by C | Removed the unpinned `e.g.` placeholders in the cards rewritten here (Standing instruction, blocklist company, years, locations, salary, custom question). The pinned ones stay (Deferred) | Owner decision 13; the handoff's "no example text in the cards you rewrite" |
+| 12 | One commit per task | Extra commit `87af0ee1` splitting four new pins | Each assert counts as a branch; the pins pushed backend hotspots to 427 (ceiling 424). Now 423 |
+| 11–12 | Browser checks on the lane's own page | A temporary, uncommitted mount of `ModelCatalogSection` and `CustomEndpointSection` in `app/settings/page.tsx`, restored before every commit | That page is lane 3's; see Deferred |
 
 ## Gate results
 
 | Task | Gate | Result |
 |---|---|---|
+| 10 | new pins seen failing | 8 failed before the change |
+| 10 | mutation | 8/8 mutants killed (slot ref, effect-filled slot, heading role, status back in body ×2, no reserved width, Draft drops focus, reason back in `title`) |
+| 10 | `test_frontend_*.py`, tsc, lint, node, build | 655 passed; clean; 0 errors / 5 warnings; 166/166; build OK |
+| 11 | new pins seen failing | cards file missing (collection error); 4 focus/shell rows failed; node test failed (no module) |
+| 11 | mutation | 15/15 pin mutants killed; node-test mutant (`trim()` dropped) killed |
+| 11 | `test_frontend_*.py`, tsc, lint, node, build | 669 passed; clean; 0/5; 169/169; build OK |
+| 12 | new pins seen failing | 11 failed before the change |
+| 12 | mutation | 23/23 killed (after one pin was strengthened when the Persona Save mutant survived) |
+| 12 | `test_frontend_*.py` + autofill parity, tsc, lint, node, build | 684 passed; clean; 0/5; 169/169; build OK |
+| all | every mutant re-run on the final pins | 38/38 + Task 10's 8/8 killed (one pin re-scoped to `ModelCapability` after the re-run) |
+| all | `pytest tests/ mcp_server/tests/ -q` | 5001 passed, 2 skipped (at `fa35b134`; `87af0ee1` changes only card pins: 683 frontend pins pass) |
+| all | `ruff check .` | All checks passed |
+| all | frontend duplication, clean `git archive HEAD` | 437 lines / 36 clones (ceiling 437 / 36) |
+| all | `slop_scan.py check frontend`, `check backend` (export root) | both OK; backend `complexity_hotspots` 423 (ceiling 424) |
+| all | `scripts/check_system_md.py` | OK, 1000/1000 |
+| all | final tsc, build (run last) | clean; OK |
 
 ## Queued for Task 24 (SYSTEM.md changes Claude applies)
 
+- §11 item 31: re-check "the LLM-endpoint … placeholder clips at 768 and 375". The Custom AI server's fields are one column below a 36rem body now, so 768 likely no longer clips; 375 not measured. The placeholder itself goes in wave 3.
+- §11 item 32: "a failing settings autosave toasts once per keystroke" still holds (the status moved, the toast did not).
+- README and `docs/GETTING_STARTED.md`: Settings › AI & models now has the cards API keys, Models, Available models, Custom AI server; the model roles are Fast, Smart and Assistant; "Sync" is "Find OpenAI models" / "Find Gemini models"; "press **Test** next to each model" still holds (each role has its own Test).
+
 ## Deferred to merge (edits left for Claude, with file:line)
+
+- `frontend/app/settings/page.tsx` (lane 3): render `<ModelCatalogSection />` (`components/settings/model-catalog-panel.tsx`) and `<CustomEndpointSection />` (`components/settings/llm-endpoint.tsx`) after `<ModelsSection />`, as C2's code does. **On this branch alone the page shows neither card.** Card ids stay `model-catalog` and `custom-endpoint` for lane 3's anchors.
+- `docs/frontend-conventions.md` leave-guard bullet (~:352): this lane changed "Persona, Autofill and Prompts register…" to add Auto-apply and API keys; lane 3 appends to the same bullet, so expect an adjacent-line conflict.
+- Lane 6 (A5 row 23): `CAPABILITY_LABELS` moved to `components/settings/models-section.tsx`; its gate already reads "the Assistant".
+- Wave 3, Task 16: placeholders the pins still require, kept: `models-section.tsx` `placeholderUnset="e.g. sk-..."`, `"e.g. AIza..."`, `placeholder="e.g. llama3.2:3b"` (FreeTextModel); `llm-endpoint.tsx` `placeholder="e.g. http://host.docker.internal:11434/v1"`; `persona-section.tsx` `PLACEHOLDER` ("e.g.\nVision: …"); `autofill-section.tsx` field-table placeholders ("e.g. Apt 4B" is in `_MUST_SEE`). The pending counts must not list the ones this lane removed (job preferences ×3, quick tailor, auto-apply, the custom question).
+- Wave 3, Task 21 (D6.1 rows already done here, skip them): card titles and descriptions of the three model cards, ROLES, the footnote, chip labels and gates, probe toasts :99 and :102, the model note, Find buttons, discovery line, find toasts, "Server settings saved", "Remove school N". Still to do: the Custom AI server's field copy (incl. the D10.2 OpenRouter promise), API keys description, statuses and "Save API keys", the stale option "«…» · unavailable", the unreachable-probe toast, add/remove toasts by label, `err.message` toasts. Also: at 14px the `Label` "· optional" suffix sits at the far right of a wrapped label in Autofill's three columns ("Previously employed by the company…", "Subject to a non-compete…"); D1.2's "(optional)" rewrite of `label.tsx` should wrap inline.
