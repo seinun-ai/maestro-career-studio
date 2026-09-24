@@ -54,6 +54,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { agentMarkLabel, queuedToast } from "@/lib/agent-name";
 import { apiFetch, promoteJobToAgentQueue } from "@/lib/api";
 import { focusIfDropped, focusReturnPoint, focusSuccessor } from "@/lib/focus";
 import { isListCapped } from "@/lib/list-cap";
@@ -273,8 +274,9 @@ function ApplicationsContent() {
   // captures that missed the hunt's per-run proposal cap.
   const promoteJob = useMutation({
     mutationFn: (jobId: string) => promoteJobToAgentQueue(jobId),
-    onSuccess: () => {
-      toast.success("Queued for the next apply run");
+    onSuccess: (queue) => toast.success(queuedToast(queue)),
+    // Whatever happened, a proposal may now exist (filed, then the accept failed): show it.
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: ["jobs", "without-application"] });
       qc.invalidateQueries({ queryKey: ["proposals"] });
     },
@@ -534,7 +536,7 @@ function ApplicationsContent() {
               ) : null}
               {laneOptions.length > 0 ? (
                 <SelectGroup>
-                  <SelectLabel>Agent lane</SelectLabel>
+                  <SelectLabel>Agent inbox</SelectLabel>
                   {laneOptions.map(filterOption)}
                 </SelectGroup>
               ) : null}
@@ -638,6 +640,10 @@ function ApplicationsContent() {
                     : `/jobs/${r.app.job_id}`;
                 const company = rowCompany(r) || "—";
                 const title = rowTitle(r) || "Untitled role";
+                // Only a saved job carries its newest proposal's filer.
+                const mark = agentMarkLabel(
+                  r.kind === "saved" ? r.job.proposal_proposed_by : null,
+                );
 
                 return (
                   <TableRow
@@ -670,10 +676,13 @@ function ApplicationsContent() {
                             <span className="truncate">{company}</span>
                             {(r.kind === "saved" ? r.job.source : r.app.source) ===
                             "agent" ? (
-                              <Bot
-                                className="text-muted-foreground size-3.5 shrink-0"
-                                aria-label="Found by agent"
-                              />
+                              // An SVG with only aria-label is announced
+                              // unevenly; the sr-only words join the row
+                              // link's name everywhere.
+                              <span className="inline-flex shrink-0" title={mark}>
+                                <Bot className="text-muted-foreground size-3.5" aria-hidden="true" />
+                                <span className="sr-only">{mark}</span>
+                              </span>
                             ) : null}
                           </p>
                           <p className="text-muted-foreground truncate text-xs">
@@ -724,7 +733,7 @@ function ApplicationsContent() {
                       <div className="flex items-center justify-end gap-1">
                         {r.kind === "saved" && !r.job.proposal_status ? (
                           <IconButton
-                            label="Queue for agent apply"
+                            label="Queue in Agent inbox"
                             icon={<SendHorizontal />}
                             // Focusable while it queues: a disabled button dropped focus to <body>.
                             focusableWhenDisabled

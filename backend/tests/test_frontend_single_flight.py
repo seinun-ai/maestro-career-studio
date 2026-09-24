@@ -56,6 +56,11 @@ _SITES = [
     ("components/resume-editor/tailored-resume-studio.tsx", "materialize"),
     ("app/applications/page.tsx", "promoteJob"),
     ("app/jobs/[id]/page.tsx", "promote"),
+    # The Agent inbox's triage: a row's Queue, Skip or Delete, the bulk bar's Queue and Skip, and the job
+    # header's (a double click on Queue sent two PATCHes, the second "cannot go accepted -> accepted").
+    ("components/proposals/triage-actions.tsx", "transition"),
+    ("components/proposals/triage-actions.tsx", "bulk"),
+    ("components/proposals/triage-actions.tsx", "remove"),
 ]
 
 
@@ -161,4 +166,7 @@ def test_a_queue_race_never_accepts_twice():
     api = (_FRONTEND / "lib/api.ts").read_text()
     fn = api[api.index("export async function promoteJobToAgentQueue(") :]
     fn = fn[: fn.index("\n}\n")]
-    assert fn.index('if (prop.status === "accepted") return;') < fn.index('method: "PATCH"')
+    assert fn.index('if (prop.status === "pending_review") {') < fn.index('method: "PATCH"')
+    # The PATCH is the guarded block's only statement.
+    guarded = fn[fn.index('if (prop.status === "pending_review") {') :]
+    assert guarded.index('method: "PATCH"') < guarded.index("\n  }\n")

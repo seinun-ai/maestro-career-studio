@@ -111,8 +111,9 @@ const NEEDS_YOU = {
  * The tracker's wording wins because it is the DOCUMENTED one: SYSTEM.md §5
  * step 2 defines the agent lane as proposed / queued / needs_you / skipped, and
  * `AGENT_LANE_LABELS` in the Applications filter already says exactly that.
- * The four states the tracker never renders (approved, submitted,
- * submission_uncertain) keep their literal names.
+ * Of the states the tracker never renders, approved keeps its literal name;
+ * submitted reads Applied and submission_uncertain Check if sent (the owner's
+ * chip words, appendix D §0).
  *
  * Consequence worth stating: the Proposals page no longer distinguishes
  * `needs_decision` from `needs_human` in the badge. That is deliberate — it
@@ -128,8 +129,8 @@ export const PROPOSAL_STATUS_CHIP: Record<
   needs_human: NEEDS_YOU,
   accepted: { label: "Queued", className: "bg-sky-500/10 text-sky-800 dark:text-sky-400" },
   approved: { label: "Approved", className: "bg-emerald-500/10 text-emerald-800 dark:text-emerald-400" },
-  submitted: { label: "Submitted", className: "bg-emerald-500/15 text-emerald-800 dark:text-emerald-300" },
-  submission_uncertain: { label: "Submission uncertain", className: "bg-orange-500/10 text-orange-800 dark:text-orange-400" },
+  submitted: { label: "Applied", className: "bg-emerald-500/15 text-emerald-800 dark:text-emerald-300" },
+  submission_uncertain: { label: "Check if sent", className: "bg-orange-500/10 text-orange-800 dark:text-orange-400" },
   rejected: { label: "Skipped", className: "text-muted-foreground bg-muted" },
   expired: { label: "Expired", className: "text-muted-foreground bg-muted" },
 };

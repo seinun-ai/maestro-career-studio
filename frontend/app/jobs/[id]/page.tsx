@@ -51,8 +51,9 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useSingleFlight } from "@/hooks/use-single-flight";
+import { proposalByLine, queuedToast } from "@/lib/agent-name";
 import { apiFetch, promoteJobToAgentQueue } from "@/lib/api";
-import { focusIfDropped, focusTarget } from "@/lib/focus";
+import { finalFocusOn, focusIfDropped, focusTarget } from "@/lib/focus";
 import { isLoadFailure } from "@/lib/query-state";
 import { cn } from "@/lib/utils";
 import type { Job, JobDetail, ProposalStatus } from "@/lib/types";
@@ -125,7 +126,26 @@ export default function JobDetailPage({
   const qc = useQueryClient();
   const router = useRouter();
   const confirm = useConfirm();
-  const proposalActions = useProposalActions();
+  const actionsRef = useRef<HTMLDivElement>(null);
+  // Queue, Skip and Delete proposal leave the header with the status they change, taking focus with
+  // them: the header's first control takes it, in the commit that changes the status. A Skip's dialog
+  // closes first, so it hands focus there itself.
+  const triaged = useRef(false);
+  const skipped = useRef(false);
+  const proposalActions = useProposalActions({
+    onDone: (_ids, became) => {
+      if (became === "accepted") toast.success("Queued. A connected agent can apply to it now.");
+      if (became === "rejected") {
+        toast.success("Skipped");
+        skipped.current = true;
+        setDeclineOpen(false);
+      }
+    },
+    onUndone: () => {
+      triaged.current = false;
+    },
+  });
+  const headerFirst = () => actionsRef.current && focusTarget(actionsRef.current);
 
   const { data, isLoading, isError, error, isFetching, fetchStatus, refetch, errorUpdateCount } = useQuery({
     queryKey: ["job-detail", id],
@@ -152,13 +172,13 @@ export default function JobDetailPage({
   // Queue for agent leaves the header once the job has a proposal, taking focus with it: the
   // header's first control (the new proposal's Skip) takes it, in the commit that drops the button.
   const queued = useRef(false);
-  const actionsRef = useRef<HTMLDivElement>(null);
   // One-click promote into the agent queue (same rule as the tracker action:
   // only offered when the job has no proposal yet).
   const promote = useMutation({
     mutationFn: () => promoteJobToAgentQueue(id),
-    onSuccess: () => {
-      toast.success("Queued for the next apply run");
+    onSuccess: (queue) => toast.success(queuedToast(queue)),
+    // Whatever happened, a proposal may now exist (filed, then the accept failed): show it.
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: ["job-detail", id] });
       qc.invalidateQueries({ queryKey: ["proposals"] });
       qc.invalidateQueries({ queryKey: ["jobs", "without-application"] });
@@ -176,6 +196,12 @@ export default function JobDetailPage({
     queued.current = false;
     if (actionsRef.current) focusIfDropped(focusTarget(actionsRef.current));
   }, [hasProposal]);
+  const triagedStatus = data?.job.proposal_status;
+  useLayoutEffect(() => {
+    if (!triaged.current) return;
+    triaged.current = false;
+    focusIfDropped(actionsRef.current && focusTarget(actionsRef.current));
+  }, [triagedStatus]);
 
   // Prev/next: proposals list writes cs-proposals-seq; Applications writes
   // cs-tracker-seq. ?from=proposals selects which queue and back target.
@@ -276,6 +302,8 @@ export default function JobDetailPage({
 
   const proposalStatus = job.proposal_status ?? null;
   const proposalId = job.proposal_id ?? null;
+  const proposalBy = proposalStatus
+    ? proposalByLine(job.proposal_proposed_by, proposalStatus) : null;
   const isProposalStatus = (s: string | null): s is ProposalStatus =>
     !!s && s in STATUS_LABELS;
 
@@ -291,8 +319,7 @@ export default function JobDetailPage({
       proposalStatus === "needs_human" ||
       proposalStatus === "rejected" ||
       proposalStatus === "expired");
-  const triagePending =
-    proposalActions.transition.isPending || proposalActions.remove.isPending;
+  const triagePending = proposalActions.pending;
 
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-1 gap-1 p-6 sm:gap-2">
@@ -305,7 +332,7 @@ export default function JobDetailPage({
             <IconButton
               label={
                 fromProposals
-                  ? "Previous proposal in list"
+                  ? "Previous job in Agent inbox"
                   : "Previous job in list"
               }
               icon={<ChevronLeft className="size-4" />}
@@ -330,7 +357,7 @@ export default function JobDetailPage({
             so the page rendered with no title at all below ~600px. */}
         <header className="flex flex-wrap items-start gap-3">
           <IconButton
-            label={fromProposals ? "Back to proposals" : "Back to applications"}
+            label={fromProposals ? "Back to Agent inbox" : "Back to applications"}
             icon={<ArrowLeft className="size-4" />}
             size="icon-sm"
             className="mt-1.5 shrink-0"
@@ -360,7 +387,12 @@ export default function JobDetailPage({
               <Badge
                 className={cn("shrink-0", STATUS_BADGE_CLASS[proposalStatus])}
                 variant="secondary"
+                title={proposalBy ?? undefined}
               >
+                {/* The status is the pill's text (the ONE status vocabulary);
+                    who filed it is heard first and shown on hover. The
+                    Overview card shows it visibly. */}
+                {proposalBy ? <span className="sr-only">{proposalBy}, status </span> : null}
                 {STATUS_LABELS[proposalStatus]}
               </Badge>
             ) : proposalStatus ? (
@@ -371,18 +403,16 @@ export default function JobDetailPage({
                 size="sm"
                 variant="outline"
                 disabled={triagePending}
+                // Focusable while it runs: a natively disabled button dropped focus to <body>.
+                focusableWhenDisabled
+                className="data-disabled:pointer-events-none data-disabled:opacity-50"
                 onClick={() => {
-                  proposalActions.transition.mutate(
-                    { id: proposalId, status: "accepted" },
-                    {
-                      onSuccess: () =>
-                        toast.success("Accepted — queued for apply"),
-                    },
-                  );
+                  triaged.current = true;
+                  proposalActions.transition({ id: proposalId, status: "accepted" });
                 }}
               >
                 <Check className="size-3.5" />
-                Accept
+                Queue
               </Button>
             ) : null}
             {showDecline && proposalId ? (
@@ -390,6 +420,8 @@ export default function JobDetailPage({
                 size="sm"
                 variant="outline"
                 disabled={triagePending}
+                focusableWhenDisabled
+                className="data-disabled:pointer-events-none data-disabled:opacity-50"
                 onClick={() => setDeclineOpen(true)}
               >
                 <X className="size-3.5" />
@@ -401,7 +433,12 @@ export default function JobDetailPage({
                 size="sm"
                 variant="ghost"
                 disabled={triagePending}
-                onClick={() => proposalActions.remove.mutate(proposalId)}
+                focusableWhenDisabled
+                className="data-disabled:pointer-events-none data-disabled:opacity-50"
+                onClick={() => {
+                  triaged.current = true;
+                  proposalActions.remove({ id: proposalId, next: headerFirst });
+                }}
               >
                 <Trash2 className="size-3.5" />
                 Delete proposal
@@ -421,7 +458,7 @@ export default function JobDetailPage({
                 }}
               >
                 <SendHorizontal />
-                {promote.isPending ? "Queueing…" : "Queue for agent"}
+                {promote.isPending ? "Queueing…" : "Queue in Agent inbox"}
               </Button>
             ) : null}
             {hasApp && application ? (
@@ -545,17 +582,15 @@ export default function JobDetailPage({
           <DeclineDialog
             open={declineOpen}
             onOpenChange={setDeclineOpen}
-            pending={proposalActions.transition.isPending}
+            pending={triagePending}
+            finalFocus={() => {
+              if (!skipped.current) return true; // cancelled: back to Skip
+              skipped.current = false;
+              return finalFocusOn(headerFirst());
+            }}
             onConfirm={(reason) => {
-              proposalActions.transition.mutate(
-                { id: proposalId, status: "rejected", reason },
-                {
-                  onSuccess: () => {
-                    toast.success("Skipped");
-                    setDeclineOpen(false);
-                  },
-                },
-              );
+              triaged.current = true;
+              proposalActions.transition({ id: proposalId, status: "rejected", reason });
             }}
           />
         ) : null}
@@ -566,7 +601,7 @@ export default function JobDetailPage({
           {nextJobId ? (
             <IconButton
               label={
-                fromProposals ? "Next proposal in list" : "Next job in list"
+                fromProposals ? "Next job in Agent inbox" : "Next job in list"
               }
               icon={<ChevronRight className="size-4" />}
               size="icon-sm"

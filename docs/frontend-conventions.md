@@ -50,7 +50,7 @@
   **Selected
   in a set** (a toggle, filter chip, or segment) is `tonal` plus a leading
   `Check` plus `aria-pressed` (health-report filters, Review changes,
-  SourceToggle, the proposals filter, the zoom presets, employment types,
+  SourceToggle, the Agent inbox's history filter, the zoom presets, employment types,
   section presets, and the template picker): the tonal fill is
   about 1.16:1 against the light page, too faint to say "on" by itself.
   `test_selected_tonal_toggles_show_a_check` pins the first four. Three exceptions carry the state
@@ -548,7 +548,10 @@
   table's body. On `<html>` for every
   focus it counted the toolbar's own height, so focusing a toolbar control
   or opening its popup scrolled the page to "clear" it. A new sticky element
-  adds its height to those variables.
+  adds its height to those variables. The Agent inbox's fixed bulk bar gets
+  the same from below (`scroll-padding-bottom: 5rem` while
+  `[data-slot="bulk-bar"]` is open), scoped to focus in the list the same way,
+  so its lanes stay later siblings of the `ListToolbar`.
   **Stacking and offsets:**
   - the toolbar is z-30, over a gallery card's z-20 actions;
   - the header is z-10 inside its table;
@@ -891,7 +894,7 @@
   the FAB included, takes `aria-current` from `navCurrent()` (`lib/nav.ts`):
   `"page"` on the route, `"true"` inside it (a studio under Base Resumes).
   `/jobs/*` is not its own item: `navSection` maps it to Applications, or to
-  Agent Proposals when `?from=proposals`, read with `useSearchParams`.
+  the Agent inbox when `?from=proposals`, read with `useSearchParams`.
   **`useSearchParams` under the root layout needs a `<Suspense>` boundary**:
   without one `next build` fails (`next dev` does not catch it). With it, the
   server-rendered HTML holds the FALLBACK until the client reads the params, so
@@ -910,13 +913,20 @@
   zero-specificity `:where()`, so without them `hover:` wins and the active row
   goes grey under the pointer. Both sidebar toggles carry a `title` hint
   (`useModKey`) and `aria-keyshortcuts="Meta+B Control+B"`. Groups:
-  **Job search** (Applications, Agent Proposals, Referrals), **Career library** (Career KB,
-  Base Resumes, Templates), **Tools** (Chat, Analytics); Profile + Settings
-  pinned in `SidebarFooter`. Add new routes to the right group in
+  **Job search** (Applications, Agent inbox, Referrals), **Career library** (Career KB,
+  Base Resumes, Templates), **Tools** (Assistant, Analytics); Profile + Settings
+  pinned in `SidebarFooter`. The Agent inbox item carries a Needs-you count:
+  it counts the Needs you lane's statuses (`NEEDS_YOU_STATUSES`, `lib/inbox-lanes.ts`),
+  `needsYouBadge` (`lib/needs-you.ts`) hides it at 0 or while unknown, the pill
+  is `aria-hidden` and the link's `aria-label` reads "Agent inbox, N need you"
+  (an sr-only span, out of flow, made Chrome's name "Agent inbox , N…"); it
+  polls every 60 s (a connected agent changes proposals outside the tab), and
+  its orange is measured on all four row states
+  (`test_the_needs_you_badge_meets_aa_on_every_sidebar_row_state`). Add new routes to the right group in
   `components/app-sidebar.tsx` (`NAV_GROUPS`), not a flat list. Pinned by
   `test_frontend_sidebar_nav.py` and `test_frontend_first_run.py`.
 - **Tracker filter** (`app/applications/page.tsx`): three groups, All/Saved,
-  Your applications (`APPLICATION_STATUSES`) and Agent lane (from the newest
+  Your applications (`APPLICATION_STATUSES`) and Agent inbox (from the newest
   `proposal_status` via `rowFilterKey`). `FILTERS` derives from those groups,
   so a key can never filter rows yet never appear as an option. **Empty
   buckets are hidden**: an option renders iff `count > 0 || f === "all" || f

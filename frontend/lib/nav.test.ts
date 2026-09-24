@@ -23,7 +23,7 @@ test("a job page marks Applications current", () => {
   assert.equal(navCurrent("/jobs/abc", "/applications", null), "true");
 });
 
-test("a job opened from proposals marks Agent Proposals instead", () => {
+test("a job opened from the Agent inbox marks it instead", () => {
   assert.equal(navCurrent("/jobs/abc", "/proposals", "proposals"), "true");
   assert.equal(navCurrent("/jobs/abc", "/applications", "proposals"), undefined);
 });

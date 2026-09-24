@@ -586,6 +586,7 @@ def test_theme_exposes_role_utilities():
 # CI's backend job installs no node_modules, so the shades these pins use are
 # copied here and checked against the installed theme wherever it exists.
 _TAILWIND = {
+    "orange-300": (0.837, 0.128, 66.29),
     "orange-400": (0.75, 0.183, 55.934),
     "orange-500": (0.705, 0.213, 47.604),
     "orange-800": (0.47, 0.157, 37.304),
@@ -848,3 +849,26 @@ def test_placed_palette_text_meets_aa_where_it_sits(rel, literal, surfaces, mode
     for surface in surfaces:
         ratio = _palette_ratio(mode, literal.strip('"'), _surface(t, surface))
         assert ratio >= 4.5, f"{mode}: {rel} {literal} on {surface} is {ratio:.2f}:1"
+
+
+_SIDEBAR_BADGE = "bg-orange-500/10 text-orange-800 dark:text-orange-300"
+
+
+@pytest.mark.parametrize("mode", list(_MODES))
+def test_the_needs_you_badge_meets_aa_on_every_sidebar_row_state(mode):
+    """The Agent inbox count sits on the sidebar at rest, on a hovered row
+    (--sidebar-accent), on the current row (secondary container) and on the
+    current row under the pointer (its hover mix). The Needs you chip's own
+    dark text, orange-400, reads 3.88:1 on that last one."""
+    assert f'const NEEDS_YOU_BADGE = "{_SIDEBAR_BADGE}";' in _read("components/app-sidebar.tsx")
+    t = _MODES[mode]
+    mix = _HOVER_MIX["secondary-container"]
+    surfaces = {
+        "sidebar": _rgb(t, "sidebar"),
+        "sidebar-accent": _rgb(t, "sidebar-accent"),
+        "secondary-container": _rgb(t, "secondary-container"),
+        "secondary-container-hover": _hover(t, "secondary-container", "on-secondary-container", mix[2]),
+    }
+    for name, under in surfaces.items():
+        ratio = _palette_ratio(mode, _SIDEBAR_BADGE, under)
+        assert ratio >= 4.5, f"{mode}: needs-you badge on {name} is {ratio:.2f}:1"

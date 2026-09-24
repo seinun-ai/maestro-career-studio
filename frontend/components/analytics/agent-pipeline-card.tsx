@@ -1,9 +1,7 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
-
 import { ChartCard } from "@/components/charts/chart-kit";
-import { apiFetch } from "@/lib/api";
+import { useProposalFunnel } from "@/hooks/use-proposal-funnel";
 import type { ProposalFunnel } from "@/lib/types";
 
 const STAGES: Array<{
@@ -11,21 +9,18 @@ const STAGES: Array<{
   label: string;
   optional?: boolean;
 }> = [
-  { key: "captured", label: "Captured" },
+  { key: "captured", label: "Found" },
   { key: "proposed", label: "Proposed" },
-  { key: "accepted", label: "Accepted", optional: true },
+  { key: "accepted", label: "Queued", optional: true },
   { key: "approved", label: "Approved" },
-  { key: "submitted", label: "Submitted" },
+  { key: "submitted", label: "Applied" },
   { key: "interviewing", label: "Interviewing" },
 ];
 
 /** Horizontal agent-hunt funnel for Analytics Overview. Returns null when
  * nothing has been captured — no card noise for non-hunt users. */
 export function AgentPipelineCard() {
-  const { data, isLoading, error } = useQuery({
-    queryKey: ["proposals", "funnel"],
-    queryFn: () => apiFetch<ProposalFunnel>("/api/proposals/funnel"),
-  });
+  const { data, isLoading, error } = useProposalFunnel();
 
   if (!isLoading && !error && (data?.captured ?? 0) === 0) return null;
 
@@ -38,7 +33,7 @@ export function AgentPipelineCard() {
   return (
     <ChartCard
       title="Agent pipeline"
-      description="What the hunt swarm captured and how far each stage got."
+      description="Jobs your connected agents saved, and how far each one got."
       isLoading={isLoading}
       error={error as Error | null}
     >

@@ -255,6 +255,7 @@ _SLOT_OWNERS = {
     "list-toolbar": ("components/list-toolbar.tsx", "export function ListToolbar("),
     "table-header": ("components/ui/table.tsx", "function TableHeader("),
     "table-body": ("components/ui/table.tsx", "function TableBody("),
+    "bulk-bar": ("components/proposals/triage-actions.tsx", "export function BulkBar("),
 }
 
 
@@ -477,3 +478,14 @@ def test_the_draft_inbox_says_when_it_is_cut_off():
         r'<ListCapNotice loaded=\{drafts\.length\} limit=\{KB_DRAFTS_LIMIT\} noun="draft bullets" order="oldest" />',
         src,
     )
+
+
+def test_the_inbox_toolbar_sticks_and_its_cap_uses_the_server_total():
+    """B8: the Agent inbox's toolbar is a ListToolbar outside any Lane (a Lane
+    scrolls sideways, and a sticky child of a scroller sticks to it), and its
+    cap notice is exact because the endpoint counts every proposal."""
+    src = _read("components/proposals/proposals-section.tsx")
+    assert "<ListToolbar>" in src
+    assert "ListToolbar" not in _body(src, "function Lane(")
+    assert "/api/proposals?limit=${PROPOSALS_LIMIT}" in src and "limit=500" not in src
+    assert "total={data?.total}" in src and 'noun="proposals"' in src
