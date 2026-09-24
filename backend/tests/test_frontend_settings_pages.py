@@ -54,6 +54,22 @@ def test_the_tab_table_is_node_loadable_and_resolves_card_bodies_by_prefix():
         assert f'label: "{label}"' in _TABS_LIB, label
 
 
+def _card_ids_by_panel(page: str, values: list[str]) -> dict[str, set[str]]:
+    """The card ids each panel of `page` renders, read from the settings components it imports."""
+    src = _read(page)
+    files = {
+        name.strip(): f"components/settings/{mod}.tsx"
+        for names, mod in _IMPORT.findall(src)
+        for name in names.split(",")
+        if name.strip()
+    }
+    found: dict[str, set[str]] = {}
+    for value, body in _panels(src, values).items():
+        rendered = {n for n in re.findall(r"<(\w+)\b", body) if n in files}
+        found[value] = {i for n in rendered for i in _CARD_ID.findall(_read(files[n]))}
+    return found
+
+
 @pytest.mark.parametrize(
     ("page", "table"),
     [("app/settings/page.tsx", "SETTINGS_TABS"), ("app/profile/page.tsx", "PROFILE_TABS")],
@@ -62,26 +78,21 @@ def test_every_card_id_resolves_to_the_tab_that_renders_it(page, table):
     """A deep link opens the tab `tabForAnchor` names. A card moved to another panel without
     its id moving in lib/settings-tabs.ts would land on the wrong tab, ringing nothing."""
     tabs = _tab_table(table)
-    src = _read(page)
-    files = {
-        name.strip(): f"components/settings/{mod}.tsx"
-        for names, mod in _IMPORT.findall(src)
-        for name in names.split(",")
-        if name.strip()
-    }
-    for value, body in _panels(src, list(tabs)).items():
-        rendered = {n for n in re.findall(r"<(\w+)\b", body) if n in files}
-        assert rendered, f"{page}: panel {value} renders no settings card"
-        ids = {i for n in rendered for i in _CARD_ID.findall(_read(files[n]))}
-        assert ids and ids <= tabs[value], (page, value, sorted(ids - tabs[value]))
+    for value, ids in _card_ids_by_panel(page, list(tabs)).items():
+        assert ids, f"{page}: panel {value} renders no settings card"
+        assert ids <= tabs[value], (page, value, sorted(ids - tabs[value]))
 
 
-def test_tab_panels_stay_mounted_and_the_url_is_written_natively():
+def test_tab_panels_stay_mounted():
     src = _read("components/settings/settings-tabs.tsx")
     panel = src[src.index("<TabsContent") : src.index("</TabsContent>")]
     assert "keepMounted" in panel
     assert "data-settings-tab={t.value}" in panel
     assert "id=" not in panel  # Base UI's panel id is the tab's aria-controls target
+
+
+def test_the_tab_is_read_live_and_written_natively():
+    src = _read("components/settings/settings-tabs.tsx")
     select = src[src.index("const select = (") :]
     assert 'window.history.replaceState(null, "", tabHref(page, value));' in select
     # A router.replace fetches the page's RSC payload on every click.
