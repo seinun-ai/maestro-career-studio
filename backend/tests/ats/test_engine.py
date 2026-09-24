@@ -77,3 +77,19 @@ def test_score_resume_minimal_resume_does_not_crash():
     assert all(row["matched"] is False for row in result.skill_table)
     assert result.gate_warnings      # 0 dated years vs JD min 5
     assert result.format_flags       # missing contact + empty sections
+
+
+def test_the_coverage_warning_says_what_it_measured():
+    """It fires when the RESUME shows under a quarter of the job's skills, or
+    when the job named none. It used to say "I could not read this posting",
+    which was untrue of the first case (the posting was read fine)."""
+    from types import SimpleNamespace
+
+    from app.services.ats.engine import _calc_coverage_signal
+
+    rows = [SimpleNamespace(matched=i == 0, match_form=None) for i in range(8)]
+    assert _calc_coverage_signal(8, rows) == (
+        1, 0.125, "Your resume shows only 1 of this job's 8 skills (13%).")
+    assert _calc_coverage_signal(0, [])[2] == "No skills were found in this job's description."
+    enough = [SimpleNamespace(matched=True, match_form=None)] * 2 + rows[1:7]
+    assert _calc_coverage_signal(8, enough)[2] is None

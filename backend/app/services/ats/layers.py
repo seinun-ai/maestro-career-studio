@@ -662,6 +662,17 @@ def _a(word: str) -> str:
     return f"{'an' if word[:1] in 'aeiou' else 'a'} {word}"
 
 
+def _years_warning(asked: int, index: ResumeIndex) -> str:
+    """0.0 years with no readable span is not "no experience": it is dates the
+    indexer could not read, and the sentence says so instead of "about 0"."""
+    readable = any(e.section == "experience" and e.date_parse_ok for e in index.entries)
+    if not readable:
+        return (f"The job asks for {asked}+ years. We couldn't find readable job dates "
+                "on your resume, so we can't count yours.")
+    return (f"The job asks for {asked}+ years. "
+            f"Your dates show about {round(index.total_experience_years)}.")
+
+
 def l4_gate(profile: JdProfile, index: ResumeIndex) -> list[str]:
     """Advisory warnings ONLY. engine.py builds the composite from `subscores`,
     so nothing here moves the score — by design. Education and years are enforced
@@ -670,10 +681,7 @@ def l4_gate(profile: JdProfile, index: ResumeIndex) -> list[str]:
     warnings: list[str] = []
     years = index.total_experience_years
     if profile.years_experience_min is not None and years < profile.years_experience_min - 0.25:
-        warnings.append(
-            f"The job asks for {profile.years_experience_min}+ years. "
-            f"Your dates show about {round(years)}."
-        )
+        warnings.append(_years_warning(profile.years_experience_min, index))
     asked = degrees.required_degree_level(profile.requirement_lines)
     shown = index.degree_level
     # Fail-silent: warn only on a POSITIVE reading that the resume is short. An

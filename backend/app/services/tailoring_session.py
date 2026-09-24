@@ -74,7 +74,7 @@ def staleness_reason(tailoring: "TailoringSession", session: Session) -> str | N
         if job is None or not job.extracted_json:
             return "the job was deleted"
         if _content_hash(job.extracted_json) != tailoring.jd_extraction_hash:
-            reasons.append("the job description was read again")
+            reasons.append("the job details were refreshed")
     if not reasons:
         return None
     return " and ".join(reasons)

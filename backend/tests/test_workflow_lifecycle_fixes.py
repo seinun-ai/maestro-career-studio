@@ -505,7 +505,8 @@ def test_jd_reextract_makes_session_stale(db_session, tmp_path, monkeypatch):
     db_session.commit()
 
     reason = tailoring_session.staleness_reason(row, db_session)
-    assert reason and "job description" in reason
+    # The glossary's word for re-reading a job is "Refresh details".
+    assert reason == "the job details were refreshed"
 
 
 def test_legacy_session_without_hashes_is_treated_fresh(db_session, tmp_path, monkeypatch):
