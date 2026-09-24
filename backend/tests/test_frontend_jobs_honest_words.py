@@ -49,17 +49,22 @@ def test_an_unstated_knockout_says_what_it_could_not_check():
     card = _read("components/job-knockout-card.tsx")
     assert "\"Nothing here to check. That doesn't mean you qualify.\"" in card
     assert '`Can\'t check ${what} yet: add your ${fields}.`' in card
-    # Which check, and which of the two salary fields it reads (knockout reads
-    # preferences.desired_salary, the Autofill tab's, not Job preferences' Minimum salary).
+    assert 'job.salary_period === "year" || (job.salary_period == null && ceiling >= 10000)' in card
+    assert 'anchorHref("/profile", "autofill-preferences")' in card
+    assert 'anchorHref("/profile", "job-preferences-years")' in card
+    assert "<JobKnockoutCard scan={data?.knockout} job={job} />" in _read(_JOB_PAGE)
+
+
+def test_an_unrun_knockout_names_the_check_and_its_salary_field():
+    """Which check, and which of the two salary fields it reads: knockout reads
+    preferences.desired_salary (the Autofill tab's), not Job preferences' Minimum salary."""
+    src = Path(knockout.__file__).read_text(encoding="utf-8")
+    card = _read("components/job-knockout-card.tsx")
     assert "return `${what.charAt(0).toUpperCase()}${what.slice(1)} check: not run yet`;" in card
     assert 'label: "Not checked yet"' not in card
     assert '(preferences or {}).get("desired_salary")' in src
     assert 'field: "desired salary (Profile › Autofill)",' in card
     assert 'field: "years of experience (Profile › About you)",' in card
-    assert 'job.salary_period === "year" || (job.salary_period == null && ceiling >= 10000)' in card
-    assert 'anchorHref("/profile", "autofill-preferences")' in card
-    assert 'anchorHref("/profile", "job-preferences-years")' in card
-    assert "<JobKnockoutCard scan={data?.knockout} job={job} />" in _read(_JOB_PAGE)
 
 
 # --- The gap page ---------------------------------------------------------------

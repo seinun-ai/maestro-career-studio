@@ -1,5 +1,6 @@
 from datetime import UTC, datetime
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.db import get_db
@@ -614,12 +615,21 @@ def test_a_count_of_one_job_is_one_job():
         "Required in 1 of 1 job, more than any other skill.")
     assert copy["Best-paying role: Data Scientist"] == (
         "Average top of the pay range: about $150K, from 1 job that lists pay.")
-    for code, pay in (("EUR", "€150K"), ("CHF", "150K CHF")):
-        other = {**one, "salary_by_role": [{**one["salary_by_role"][0], "currency": code}]}
-        assert {s["title"]: s["detail"] for s in explore_overview.candidate_signals(other)}[
-            "Best-paying role: Data Scientist"] == (
-            f"Average top of the pay range: about {pay}, from 1 job that lists pay.")
     six = {**one, "meta": {**one["meta"], "total_jobs": 6},
            "work_mode": [{"key": "remote", "count": 1}, {"key": "onsite", "count": 5}]}
     remote = {s["title"]: s["detail"] for s in explore_overview.candidate_signals(six)}
     assert remote["Remote roles are scarce (17%)"] == "Only 1 of 6 jobs is remote."
+
+
+@pytest.mark.parametrize("code,pay", [("USD", "$150K"), ("EUR", "€150K"), ("CHF", "150K CHF")])
+def test_best_paying_pay_reads_like_the_web_app(code, pay):
+    """One money format, the web app's `formatMoney` ("$214K"), never "214k USD"."""
+    one = {
+        "meta": {"total_jobs": 1, "jobs_without_salary": 0, "salary_year_currency": "USD"},
+        "work_auth": {"opt": []}, "locations": [], "top_required_skills": [],
+        "salary_by_role": [{"role_category": "data_scientist", "avg_max": 150000, "n": 1, "currency": code}],
+        "work_mode": [{"key": "onsite", "count": 1}],
+    }
+    copy = {s["title"]: s["detail"] for s in explore_overview.candidate_signals(one)}
+    assert copy["Best-paying role: Data Scientist"] == (
+        f"Average top of the pay range: about {pay}, from 1 job that lists pay.")

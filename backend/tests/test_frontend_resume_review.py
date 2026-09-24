@@ -332,11 +332,16 @@ def test_career_copy_first_read():
     drawer = _read("components/resume-editor/kb-import-drawer.tsx")
     assert "unapproved" not in drawer and "bulletsAdded" in drawer
     assert '{entity.draft_count === 1 ? "draft bullet" : "draft bullets"} not shown' in drawer
+    assert "Refresh" in _read("components/career/exports-card.tsx")
+
+
+def test_the_career_text_copy_says_who_it_is_for():
     exports = _read("components/career/exports-card.tsx")
     # Who the text copy is for, and that it keeps itself current (every read rebuilds it).
     assert "A text copy for you and connected agents" in exports
     assert "It updates itself when your career history changes." in exports
-    assert "Career history file" not in exports and "Update file" not in exports
+    assert "Career history file" not in exports
+    assert "Update file" not in exports
 
 
 def test_studio_copy_first_read():
@@ -421,12 +426,19 @@ def test_marking_a_check_ok_moves_focus_to_what_replaced_the_button():
     assert "useLandFocus(land, openerRef);" in failed
     land = _block(cards, "function useLandFocus(", "\n}")
     assert "if (land) focusIfDropped(actionRef.current);" in land
+    assert "const actionRef = useLandFocus(land);" in _block(cards, "function WaivedGate(", "\nfunction NotAssessedGate(")
+
+
+def test_the_landing_row_takes_focus_before_paint():
+    """Regression sweep: focus sat on <body> for a frame or two before Undo. The new row
+    mounts already knowing to land (set BEFORE the refetch that swaps the rows), and a
+    layout effect focuses it in the swap's own commit, before paint."""
+    cards = _read("components/resume-health/finding-cards.tsx")
+    land = _block(cards, "function useLandFocus(", "\n}")
+    assert "useLayoutEffect(() => {" in land
+    assert "useEffect(" not in land
+    failed = _block(cards, "function FailedGate(", "\nfunction WaivedGate(")
     waived = _block(cards, "function WaivedGate(", "\nfunction NotAssessedGate(")
-    assert "const actionRef = useLandFocus(land);" in waived
-    # Regression sweep: focus sat on <body> for a frame or two before Undo. The new row
-    # mounts already knowing to land (set BEFORE the refetch that swaps the rows), and
-    # a layout effect focuses it in the swap's own commit, before paint.
-    assert "useLayoutEffect(() => {" in land and "useEffect(" not in land
     for row, request in ((failed, "await waiveGate("), (waived, "await unwaiveGate(")):
         fn = _block(row, "mutationFn: async () => {", "\n    },")
         assert fn.index(request) < fn.index("onLanded(gate.id);") < fn.index("await onChanged();")

@@ -210,9 +210,6 @@ def test_an_empty_inbox_says_where_proposals_come_from():
     empty = _SECTION[_SECTION.index("if (items.length === 0) {") : _SECTION.index("const rowProps")]
     assert 'title="No proposals yet"' in empty
     assert "The app never proposes jobs itself." in empty
-    # The consent line is said once on the page: the header carries it, the empty state doesn't repeat it.
-    assert "Nothing is submitted without your yes." not in empty
-    assert "<p>Jobs your connected agents found. Nothing is submitted without your yes.</p>" in _PAGE
     assert "href={JOB_HUNT_SKILL_URL}" in empty
     assert "href={AGENT_APPLICATIONS_URL}" in empty
     assert empty.count('target="_blank" rel="noopener noreferrer"') == 2
@@ -741,20 +738,27 @@ def test_a_question_from_the_agent_can_be_answered_here():
     row = _block(_SECTION, "function ProposalRow(", "\n}\n")
     assert 'const showKeep = lane === "needs_you" && proposal.status === "needs_decision";' in row
     keep = _block(row, "{showKeep ? (", ") : null}")
-    assert 'label="Keep it"' in keep and 'data-row-action="keep"' in keep and 'onClick={act("keep")}' in keep
     # Single-flight (the hook's transitionOnce), and focusable while it runs.
-    assert "disabled={pending}" in keep and "focusableWhenDisabled" in keep
+    for attr in ('label="Keep it"', 'data-row-action="keep"', 'onClick={act("keep")}',
+                 "disabled={pending}", "focusableWhenDisabled"):
+        assert attr in keep, attr
     assert 'else if (action === "keep") actions.transition({ id: p.id, status: "pending_review" });' in _SECTION
     # The agent's words on the row, and how each kind is answered under the lane's heading.
     assert "const needs = lane === \"needs_you\" ? needsYouLine(proposal.status, proposal.reason) : null;" in row
     assert "help={needsYouHelp(needsYou.map((p) => p.status))}" in _SECTION
-    # The job page: Keep it links the job's application only for a proposal linked to none.
+
+
+def test_the_job_page_keeps_a_question_with_the_jobs_application():
+    """Keep it links the job's application only for a proposal linked to none."""
     assert 'const showKeep = proposalStatus === "needs_decision";' in _JOB
     job_keep = _block(_JOB, "{showKeep && proposalId ? (", ") : null}")
-    assert 'status: "pending_review",' in job_keep
-    assert "applicationId: asked.data?.application ? undefined : application?.id," in job_keep
-    assert "disabled={triagePending || !asked.data}" in job_keep and "triaged.current = true;" in job_keep
+    for part in ('status: "pending_review",', "applicationId: asked.data?.application ? undefined : application?.id,",
+                 "disabled={triagePending || !asked.data}", "triaged.current = true;"):
+        assert part in job_keep, part
     assert 'if (became === "pending_review") toast.success("Kept. It\'s back in To review.");' in _JOB
+
+
+def test_keep_it_patches_to_review_without_consent():
     # The PATCH: no consent for a return to To review, the application when given.
     assert '...(status === "pending_review" ? {} : { consent: { channel: "frontend" } }),' in _TRIAGE
     assert "...(applicationId ? { application_id: applicationId } : {})," in _TRIAGE
@@ -768,3 +772,10 @@ def test_the_needs_you_help_says_where_a_stop_is_answered():
     assert decision == ["Keep it answers yes: the job goes back to To review. Skip answers no."]
     assert human == ["Where your agent stopped, finish that step in your agent's own chat. "
                      "It carries on from there."]
+
+
+def test_the_consent_line_is_said_once_on_the_inbox():
+    """The header carries it; the empty state doesn't repeat it (first-read pass)."""
+    empty = _SECTION[_SECTION.index("if (items.length === 0) {") : _SECTION.index("const rowProps")]
+    assert "Nothing is submitted without your yes." not in empty
+    assert "<p>Jobs your connected agents found. Nothing is submitted without your yes.</p>" in _PAGE

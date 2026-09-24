@@ -436,9 +436,6 @@ def test_errors_and_setup_speak_plainly():
     assert '!(row.id === "engines" && row.done && status.engines.pdflatex.available)' in card
     strip = _flat(_read("components/setup/setup-status-strip.tsx"))
     assert '<span className="text-muted-foreground text-xs font-medium">Setup steps:</span>' in strip
-    # Done or not done as a mark on every chip, and in its name.
-    assert '<Circle aria-hidden="true" className="size-3" />' in strip
-    assert 'return `${step.label}, ${step.done ? "done" : "not done"}`;' in strip
     assert '<Check aria-hidden="true" className="size-3" />' in strip
     assert "<DialogTitle>Import resumes and documents</DialogTitle>" in _read("components/setup/upload-dialog.tsx")
 
@@ -561,6 +558,9 @@ def test_a_key_in_the_wrong_shape_is_refused_at_save():
     assert 'gemini: { prefix: "AIza", named: "A Gemini" },' in fmt
     assert 'if (!typed || (provider === "openai" && customServer)) return undefined;' in fmt
     assert "API key starts with ${prefix}. Check that you copied the whole key." in fmt
+
+
+def test_a_wrong_key_is_never_sent_and_its_field_says_why():
     models = _read("components/settings/models-section.tsx")
     save = _between(models, "  const onSave = (customServer: boolean) => {", "\n  };")
     assert save.index("if (openaiWrong || geminiWrong) {") < save.index("saveKeysOnce(")
@@ -623,3 +623,9 @@ def test_the_web_app_recognises_every_key_sentence_the_server_writes():
         assert refused.search(text), text
     # Not every sentence that names a key is a refusal.
     assert not refused.search("The Assistant needs an API key. Add one in Settings › AI & models.")
+
+
+def test_every_setup_chip_marks_done_or_not_done():
+    strip = _read("components/setup/setup-status-strip.tsx")
+    assert '<Circle aria-hidden="true" className="size-3" />' in strip
+    assert 'return `${step.label}, ${step.done ? "done" : "not done"}`;' in strip
