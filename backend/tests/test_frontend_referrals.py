@@ -99,10 +99,12 @@ def test_optional_fields_say_so_on_the_label():
     assert "<Label htmlFor={careersUrlId}>" in _FORM
 
 
-def test_create_form_placeholders_are_examples():
-    placeholders = re.findall(r'placeholder="([^"]*)"', _FORM)
-    assert len(placeholders) == 4
-    assert all(p.startswith("e.g. ") for p in placeholders), placeholders
+def test_create_form_has_no_placeholders():
+    """A blank field holds no text (conventions, Microcopy rules): the labels
+    name each field, and the edit row's inputs carry an aria-label."""
+    assert "placeholder=" not in _PAGE
+    assert "Careers URL" not in _PAGE
+    assert "<Label htmlFor={careersUrlId}>Careers page</Label>" in _FORM
 
 
 def test_field_ids_come_from_use_id():

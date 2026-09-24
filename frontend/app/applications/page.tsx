@@ -56,7 +56,9 @@ import {
 } from "@/components/ui/table";
 import { agentMarkLabel, queuedToast } from "@/lib/agent-name";
 import { apiFetch, promoteJobToAgentQueue } from "@/lib/api";
+import { couldnt, errorDetail } from "@/lib/error-text";
 import { focusIfDropped, focusReturnPoint, focusSuccessor } from "@/lib/focus";
+import { formatShortDate } from "@/lib/format-date";
 import { isListCapped } from "@/lib/list-cap";
 import { isLoadFailure } from "@/lib/query-state";
 import { cn } from "@/lib/utils";
@@ -96,7 +98,7 @@ type Filter = (typeof FILTERS)[number];
 type AgentLaneFilter = (typeof AGENT_LANE_FILTERS)[number];
 
 const AGENT_LANE_LABELS: Record<AgentLaneFilter, string> = {
-  proposed: "Proposed",
+  proposed: "To review",
   queued: "Queued",
   needs_you: "Needs you",
   skipped: "Skipped",
@@ -177,8 +179,7 @@ function rowFilterKey(r: Row): Exclude<Filter, "all"> {
 }
 
 function formatDate(value: string | null): string {
-  if (!value) return "—";
-  return value.slice(0, 10);
+  return (value && formatShortDate(value)) || "—";
 }
 
 function rowCompany(r: Row): string {
@@ -253,7 +254,7 @@ function ApplicationsContent() {
     },
     onError: (err: Error) => {
       leaving.current = null;
-      toast.error(err.message);
+      toast.error(couldnt("change the status", err));
     },
   });
 
@@ -265,7 +266,7 @@ function ApplicationsContent() {
       qc.invalidateQueries({ queryKey: ["applications"] });
       qc.invalidateQueries({ queryKey: ["jobs"] });
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(couldnt("delete the application", err)),
   });
 
   // Promote a scored-but-unproposed capture into the agent queue: file a
@@ -282,7 +283,7 @@ function ApplicationsContent() {
     },
     onError: (err: Error) => {
       queued.current = null;
-      toast.error(err.message);
+      toast.error(couldnt("queue the job", err));
     },
   });
   // A double click filed two accepted proposals for one job.
@@ -296,7 +297,7 @@ function ApplicationsContent() {
       qc.invalidateQueries({ queryKey: ["jobs"] });
       qc.invalidateQueries({ queryKey: ["applications"] });
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(couldnt("delete the job", err)),
   });
 
   const allRows = useMemo<Row[]>(() => {
@@ -481,9 +482,10 @@ function ApplicationsContent() {
     <PageShell>
       <PageHeader
         title="Applications"
-        subtitle="Every job you've captured, from saved to signed."
+        // Agent-found jobs sit under Agents by design (SYSTEM §5 step 2); All says so.
+        subtitle="Every job you've saved or applied to. Jobs a connected agent found are under Agents."
         actions={
-          // The sidebar's FAB is THE New application while it is showing (M3:
+          // The sidebar's FAB is THE Add job while it is showing (M3:
           // a FAB's action is not repeated on its screen). The sidebar slides
           // off-canvas when collapsed and below 768px; then this is the only
           // way to start one, so it renders exactly when the FAB cannot be seen.
@@ -493,7 +495,7 @@ function ApplicationsContent() {
               render={
                 <Link href="/new">
                   <FilePlus2 className="size-4" />
-                  New application
+                  Add job
                 </Link>
               }
             />
@@ -502,7 +504,7 @@ function ApplicationsContent() {
       />
 
       <ListToolbar>
-        <ListSearch label="Search applications" value={q} onChange={setQ} />
+        <ListSearch label="Search jobs" value={q} onChange={setQ} />
         <div className="flex flex-wrap items-center gap-1.5">
           <Select
             value={filter}
@@ -558,11 +560,7 @@ function ApplicationsContent() {
       {loadFailed ? (
         <LoadErrorState
           title="Couldn't load your applications."
-          detail={
-            (apps.error as Error)?.message ??
-            (savedJobs.error as Error)?.message ??
-            undefined
-          }
+          detail={errorDetail(apps.error ?? savedJobs.error)}
           retrying={apps.isFetching || savedJobs.isFetching}
           onRetry={() => {
             void apps.refetch();
@@ -588,7 +586,7 @@ function ApplicationsContent() {
             }
             description={
               allRows.length === 0
-                ? "Capture a job description to get started."
+                ? "Add a job to get started."
                 : "Try a different status or clear the search."
             }
             action={
@@ -602,7 +600,7 @@ function ApplicationsContent() {
                   render={
                     <Link href="/new">
                       <FilePlus2 className="size-4" />
-                      New application
+                      Add job
                     </Link>
                   }
                 />
@@ -624,7 +622,7 @@ function ApplicationsContent() {
             <TableHeader>
               <TableRow className="hover:bg-transparent">
                 {header("role", "Role", "w-[42%]")}
-                <TableHead className="w-[16%]">Base</TableHead>
+                <TableHead className="w-[16%]">Resume</TableHead>
                 {header("status", "Status", "w-[14%]")}
                 {header("applied_at", "Applied", "w-[12%]")}
                 {header("created_at", "Added", "w-[12%]")}
@@ -766,7 +764,7 @@ function ApplicationsContent() {
                                 onClick={async () => {
                                   const ok = await confirm({
                                     title: "Delete this job?",
-                                    description: `${company} · ${title}. The job description and extracted metadata will be removed.`,
+                                    description: `${company} · ${title}. This deletes the job and everything saved with it.`,
                                     confirmLabel: "Delete",
                                     destructive: true,
                                   });
@@ -782,7 +780,7 @@ function ApplicationsContent() {
                                 onClick={async () => {
                                   const ok = await confirm({
                                     title: "Delete this application?",
-                                    description: `${company} · ${title}. Its tailored resume, Q&A history, and rendered PDF will be removed. The job stays saved.`,
+                                    description: `${company} · ${title}. This deletes its tailored resume, answers and PDF. The job stays saved.`,
                                     confirmLabel: "Delete",
                                     destructive: true,
                                   });

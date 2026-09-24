@@ -70,18 +70,18 @@ export function TailoringLiftChart({ filters }: { filters: TopSkillsFilters }) {
             {overall.avg_lift.toFixed(1)})
           </span>{" "}
           across {overall.n} application{overall.n === 1 ? "" : "s"}
-          {overall.low_sample ? " · directional only" : ""}.
+          {overall.low_sample ? " (small sample)" : ""}.
         </p>
       ) : null}
       {chartData.some((r) => r.low_sample) && !overall?.low_sample ? (
         <p className="text-muted-foreground mb-2 text-xs">
-          Some roles have fewer than 5 applications · those bars are directional
-          only.
+          Some roles have fewer than 5 applications, so treat those bars as
+          rough.
         </p>
       ) : null}
       {chartData.length === 0 ? (
         <p className="text-muted-foreground text-sm">
-          No per-role tailoring pairs yet.
+          No tailored resumes to compare yet.
         </p>
       ) : (
         <ResponsiveContainer width="100%" height={320}>

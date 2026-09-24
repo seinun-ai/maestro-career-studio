@@ -176,16 +176,20 @@ _SUMMARY = _read("components/job-extraction-summary.tsx")
 def test_a_job_role_family_is_the_catalog_label():
     assert 'import { useRoleLabel } from "@/components/role-category-picker";' in _FIELDS
     assert "const roleLabelOf = useRoleLabel();" in _FIELDS
-    assert '["Role family", job.role_category ? roleLabelOf(job.role_category) : null],' in _FIELDS
+    assert '["Role", job.role_category ? roleLabelOf(job.role_category) : null],' in _FIELDS
     assert "const roleLabelOf = useRoleLabel();" in _SUMMARY
     assert "<Badge variant=\"outline\">{roleLabelOf(job.role_category)}</Badge>" in _SUMMARY
 
 
 def test_the_extraction_summary_prints_no_enum_key():
-    # `full_time`, `on_site`: the same words the job page's chips use.
+    # `full_time`, `onsite`: the same words the job page's chips use.
     assert 'import { humanizeEnum } from "@/components/job-extracted-fields";' in _SUMMARY
     for field in ("level", "employment_type", "work_mode"):
         assert f'<Badge variant="outline">{{humanizeEnum(job.{field})}}</Badge>' in _SUMMARY, field
+    # The map keys the STORED value: `on_site` never matched, so every on-site
+    # job read "Onsite" (appendix D10.4).
+    assert 'onsite: "On-site"' in _FIELDS
+    assert "on_site:" not in _FIELDS
 
 
 _RAW_ROLE = re.compile(
@@ -202,3 +206,153 @@ def test_no_role_key_reaches_the_screen():
         for m in _RAW_ROLE.finditer(p.read_text(encoding="utf-8"))
     ]
     assert offenders == [], offenders
+
+
+# Jobs and tracking (plan Task 17, appendix D §2). Node tests cover
+# lib/format-date.ts and lib/ats-words.ts; they are not in CI, so the branches
+# that matter are pinned here too.
+
+
+def test_analytics_never_calls_the_top_skills_mandatory():
+    """D10.3: the top 30% is a cut by how many jobs ask, not a requirement."""
+    assert "mandatory" not in _read("app/analytics/page.tsx").lower()
+    chart = _read("components/charts/top-skills-chart.tsx")
+    assert 'subtitle="Mandatory"' not in chart
+    assert 'subtitle="Most asked for"' in chart
+
+
+def test_status_maps_never_print_a_key():
+    chip = _read("components/status-chip.tsx")
+    assert chip.count('?? "Unknown"') == 2
+    assert "?? status;" not in chip
+
+
+def test_a_day_reads_as_words_and_never_shifts():
+    lib = _read("lib/format-date.ts")
+    # A date-only value is a calendar day: `new Date("2026-09-14")` is UTC
+    # midnight, which read as Sep 13 west of Greenwich.
+    assert "const DAY_ONLY = /^(\\d{4})-(\\d{2})-(\\d{2})$/;" in lib
+    assert "new Date(Number(day[1]), Number(day[2]) - 1, Number(day[3]))" in lib
+    assert "date.getFullYear() === now.getFullYear() ? {} : { year: \"numeric\" }" in lib
+    assert not re.search(r"^import ", lib, re.M)
+    tracker = _read("app/applications/page.tsx")
+    assert 'return (value && formatShortDate(value)) || "—";' in tracker
+    assert ".slice(0, 10)" not in tracker
+    assert "tickFormatter={(value: string) => formatShortDate(value)}" in _read(
+        "components/analytics/activity-chart.tsx"
+    )
+    assert "`Since ${formatShortDate(o.meta.since)}`" in _read("components/explore/explore-overview.tsx")
+
+
+def test_ats_keys_have_one_set_of_words():
+    words = _read("lib/ats-words.ts")
+    for pair in ('experience_only: "Experience"', 'mirror_wording: "Use the job\'s words"',
+                 'placement_recency", label: "Recent experience"', 'mentioned: "Mentioned"'):
+        assert pair in words, pair
+    assert not re.search(r"^import ", words, re.M)
+    compare = _read("components/ats-compare-panel.tsx")
+    assert "placementLabel(row.placement) : fixHintLabel(row.fix_hint)" in compare
+    for raw in ("{row.placement}", "{row.fix_hint}", "const SUBSCORE_LABELS"):
+        assert raw not in compare, raw
+    assert "const SUBSCORE_LABELS" not in _read("components/ats-score-panel.tsx")
+
+
+def test_the_score_tab_spells_out_the_ats_score():
+    panel = _read("components/ats-score-panel.tsx")
+    assert "{ATS_SCORE_LEAD}" in panel
+    # Above the cards, and in the empty state: wherever the tab first shows a score.
+    assert panel.count("<AtsScoreLead />") == 2
+
+
+def test_a_skip_reason_reads_as_words():
+    triage = _read("components/proposals/triage-actions.tsx")
+    assert '"declined by user": "Not interested",' in triage
+    assert ': "skipped by you"' not in triage
+    panel = _read("components/proposals/proposal-agent-panel.tsx")
+    assert '<Fact label="Reason">{reasonLabel(data.reason)}</Fact>' in panel
+
+
+def test_job_market_bars_and_filters_print_words():
+    market = _read("components/explore/explore-overview.tsx")
+    for field in ("o.work_mode", "o.level_breakdown", "o.work_auth.opt", "o.work_auth.sponsorship"):
+        assert f"toEnumBars({field})" in market, field
+    page = _read("app/analytics/page.tsx")
+    assert '{filterSelect("level", "Level", level, setLevel, options.levels, enumLabel)}' in page
+    assert '"Employment type",' in page and "options.employment,\n        enumLabel," in page
+
+
+def test_the_pipeline_card_says_the_cap_as_the_inbox_does():
+    pipeline = _read("components/analytics/agent-pipeline-card.tsx")
+    assert '<CapToday className="text-muted-foreground mt-0" />' in pipeline
+    assert "remaining" not in pipeline
+
+
+def test_autofill_coverage_names_field_kinds_in_words():
+    card = _read("components/analytics/autofill-coverage-card.tsx")
+    # The chart's rows carry the word (the tooltip reads it back); the table maps its own.
+    assert "kind: kindLabel(kind.kind)," in card
+    assert "{kindLabel(row.kind)}" in card
+    assert card.count("{row.kind}") == 1  # RateTooltip, on a row already mapped
+
+
+# The gap page (plan Task 18, appendix D §3).
+_GAP_PAGE = "app/jobs/[id]/tailor/[sessionId]/page.tsx"
+
+
+def test_the_gap_page_still_matches_the_server_quick_tailor_answer():
+    # The one string code compares: D §9 keeps the server's "No actionable
+    # resolutions to tailor" because this line reads it to pick its own words.
+    page = _read(_GAP_PAGE)
+    assert 'error.message === "No actionable resolutions to tailor"' in page
+    assert '"Quick tailor had nothing to add here. Answer a gap yourself, or use your resume as is."' in page
+
+
+def test_tailoring_notes_have_a_label_a_hint_and_no_placeholder():
+    page = _read(_GAP_PAGE)
+    notes = page[page.index('<Label htmlFor="tailor-instructions"') : page.index("rows={3}")]
+    assert "optional>" in notes and "Tailoring notes" in notes
+    assert "<p id={notesHintId}" in notes and "What to stress, or limits like page count." in notes
+    assert "aria-describedby={notesHintId}" in notes
+    assert "placeholder=" not in page
+    assert "const notesHintId = useId();" in page
+
+
+def test_the_honesty_warning_keeps_every_clause():
+    """inv-honesty's screen half: shorter, but it still says the resume does
+    not show the skill, to add it only if true, and that recruiters may ask."""
+    controls = _read("components/gap-analysis/resolution-controls.tsx")
+    assert (
+        '"Your resume doesn\'t show this skill. Add it only if you have it. Recruiters may ask."'
+        in controls
+    )
+    assert "{UNVERIFIED_WARNING}" in controls
+    # cannot_confirm keeps its "never used" promise in plain words.
+    assert '"We won\'t ask again, and it won\'t go on your resume."' in controls
+
+
+def test_the_gap_page_says_done_and_gap_analysis():
+    page = _read(_GAP_PAGE)
+    assert '? "Not saved"' in page
+    assert "Save failed" not in page
+    assert "</span> answered\n" in page
+    assert "gaps addressed" not in page
+    assert "This gap analysis is out of date because {staleReason}." in page
+
+
+def test_gap_cards_print_no_engine_key():
+    card = _read("components/gap-analysis/gap-card.tsx")
+    assert "placementLabel(diagnostic.placement)" in card
+    assert "title tier:" not in card
+    assert "match_form}" not in card
+    assert "{requirementLabel(gap.requirement_level)}" in card
+
+
+def test_longer_words_wrap_instead_of_squeezing():
+    """Browser-found at 375: the plainer words are longer. The gap page footer
+    squeezed its counts into a column, and the compare card's title ran one
+    word per line beside Update score."""
+    page = _read(_GAP_PAGE)
+    assert 'className="mx-auto flex w-full max-w-4xl flex-wrap items-center gap-x-3 gap-y-2"' in page
+    assert "shrink-0 text-sm whitespace-nowrap tabular-nums" in page
+    compare = _read("components/ats-compare-panel.tsx")
+    assert 'CardHeader className="flex flex-row flex-wrap items-start justify-between gap-2 pb-2"' in compare

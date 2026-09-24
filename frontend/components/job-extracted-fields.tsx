@@ -91,9 +91,9 @@ export function formatSalary(
 function formatYears(min: number | null, max: number | null): string | null {
   if (min === null && max === null) return null;
   if (min !== null && max !== null)
-    return min === max ? `${min} yrs` : `${min}–${max} yrs`;
-  if (min !== null) return `${min}+ yrs`;
-  return `up to ${max} yrs`;
+    return min === max ? `${min} years` : `${min}–${max} years`;
+  if (min !== null) return `${min}+ years`;
+  return `up to ${max} years`;
 }
 
 function formatLocationLine(job: Job): string | null {
@@ -104,11 +104,22 @@ function formatLocationLine(job: Job): string | null {
   return job.location_raw ?? job.location ?? null;
 }
 
-/** Stored enum → label where plain capitalization reads wrong. */
+/**
+ * Stored enum → label where plain capitalization reads wrong. Keys are the
+ * STORED values (`extract_jd.txt`, `schemas/job_extraction.py`): work mode is
+ * `onsite`, so a key of `on_site` never matched and every on-site job read
+ * "Onsite".
+ */
 const ENUM_LABELS: Record<string, string> = {
   full_time: "Full-time",
   part_time: "Part-time",
-  on_site: "On-site",
+  onsite: "On-site",
+  citizen_or_gc_required: "Citizen or green card required",
+  no_sponsorship: "No sponsorship",
+  sponsorship_available: "Sponsorship available",
+  stem_opt_ok: "STEM OPT accepted",
+  unstated: "Not stated",
+  unknown: "Not stated",
 };
 
 export function humanizeEnum(value: string | null | undefined): string | null {
@@ -230,14 +241,14 @@ export function JobExtractedFields({
   const salaryDisplay =
     salaryLine ??
     (job.salary_source_url
-      ? "Pay scale linked"
+      ? "See pay range"
       : null); // null pay is normal — omit the row rather than dash-warn
   const yearsLine = formatYears(job.years_experience_min, job.years_experience_max);
   const workAuthLine = humanizeEnum(job.work_authorization);
   const optLine = humanizeEnum(job.opt_accepted);
   const roleChips = (
     [
-      ["Role family", job.role_category ? roleLabelOf(job.role_category) : null],
+      ["Role", job.role_category ? roleLabelOf(job.role_category) : null],
       ["Level", humanizeEnum(job.level)],
       ["Employment type", humanizeEnum(job.employment_type)],
       ["Work mode", humanizeEnum(job.work_mode)],
@@ -254,11 +265,11 @@ export function JobExtractedFields({
                 {job.company ?? "—"} · {job.title ?? "—"}
               </CardTitle>
               <p className="text-muted-foreground text-xs">
-                Extracted job description
+                Job description
               </p>
             </div>
           ) : (
-            <p className="text-muted-foreground text-sm">Extracted fields</p>
+            <p className="text-muted-foreground text-sm">Job details</p>
           )}
           {actionsSlot}
         </CardHeader>
@@ -291,7 +302,7 @@ export function JobExtractedFields({
                       rel="noreferrer"
                       className="text-foreground underline-offset-2 hover:underline"
                     >
-                      Pay scale linked
+                      See pay range
                     </a>
                   ) : (
                     salaryDisplay
@@ -301,7 +312,7 @@ export function JobExtractedFields({
             ) : null}
             <StatLine
               icon={<Clock />}
-              label="Years experience"
+              label="Years of experience"
               value={yearsLine}
             />
             <StatLine
@@ -311,7 +322,7 @@ export function JobExtractedFields({
             />
             <StatLine
               icon={<CheckCircle2 />}
-              label="OPT accepted"
+              label="OPT (US student work permit) accepted"
               value={optLine}
             />
           </dl>
@@ -360,7 +371,7 @@ export function JobExtractedFields({
       <div className="mt-5 space-y-3">
         <Button variant="outline" size="sm" onClick={() => setShowRaw((s) => !s)}>
           <FileText />
-          {showRaw ? "Hide raw JD" : "Show raw JD"}
+          {showRaw ? "Hide full job description" : "Show full job description"}
         </Button>
         {showRaw && (
           <pre className="bg-muted max-h-96 overflow-auto rounded-md p-3 text-xs whitespace-pre-wrap">

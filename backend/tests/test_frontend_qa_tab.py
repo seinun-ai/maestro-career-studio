@@ -98,7 +98,7 @@ def test_replacing_a_saved_letter_asks():
 
 def _regenerate_button() -> str:
     """The Regenerate IconButton's props (its icon holds `/>` of its own)."""
-    return re.search(r'label="Regenerate".*?\n\s*/>\n', _CARD, re.S).group(0)
+    return re.search(r'label="Write a new version".*?\n\s*/>\n', _CARD, re.S).group(0)
 
 
 def test_regenerate_waits_while_the_letter_is_being_edited():
@@ -129,7 +129,7 @@ def test_the_editing_state_lives_in_the_tab():
 
 def _generate_button() -> str:
     flat = _flat(_TAB)
-    start = flat.rindex("<Button", 0, flat.index('"Generate cover letter"'))
+    start = flat.rindex("<Button", 0, flat.index('"Write cover letter"'))
     return flat[start : flat.index("</Button>", start)]
 
 

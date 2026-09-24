@@ -17,6 +17,7 @@ import {
   type TopSkillsFilters,
 } from "@/components/charts/top-skills-chart";
 import { ExploreOverview } from "@/components/explore/explore-overview";
+import { humanizeEnum } from "@/components/job-extracted-fields";
 import { useRoleLabel } from "@/components/role-category-picker";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -29,10 +30,14 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { apiFetch } from "@/lib/api";
+import { ATS_SCORE_LEAD_ALL_JOBS } from "@/lib/ats-words";
 import type { Job } from "@/lib/types";
 import { PageHeader, PageShell } from "@/components/page-shell";
 
 const ANY = "__any__";
+
+/** A stored level or employment type in words (`full_time` → "Full-time"). */
+const enumLabel = (value: string) => humanizeEnum(value) ?? value;
 const TABS = ["overview", "market", "fit", "gaps"] as const;
 type TabValue = (typeof TABS)[number];
 
@@ -138,19 +143,20 @@ function AnalyticsContent() {
     <div className="flex flex-wrap items-end gap-3">
       {filterSelect(
         "role_category",
-        "Role category",
+        "Role",
         roleCategory,
         setRoleCategory,
         options.roles,
         label,
       )}
-      {filterSelect("level", "Level", level, setLevel, options.levels)}
+      {filterSelect("level", "Level", level, setLevel, options.levels, enumLabel)}
       {filterSelect(
         "employment_type",
-        "Employment",
+        "Employment type",
         employmentType,
         setEmploymentType,
         options.employment,
+        enumLabel,
       )}
       {filterSelect("country", "Country", country, setCountry, options.countries)}
       {filterSelect(
@@ -168,7 +174,7 @@ function AnalyticsContent() {
       <PageHeader
         className="animate-fade-rise"
         title="Analytics"
-        subtitle="Your job search, quantified."
+        subtitle="How your job search is going."
       />
 
       <Tabs value={tab} onValueChange={changeTab} className="gap-5">
@@ -176,7 +182,7 @@ function AnalyticsContent() {
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="market">Job market</TabsTrigger>
           <TabsTrigger value="fit">Resume fit</TabsTrigger>
-          <TabsTrigger value="gaps">Gaps &amp; growth</TabsTrigger>
+          <TabsTrigger value="gaps">Skill gaps</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview">
@@ -191,8 +197,7 @@ function AnalyticsContent() {
               <CardHeader>
                 <CardTitle>Top skills</CardTitle>
                 <p className="text-muted-foreground text-sm font-normal">
-                  Skills ranked by how often they appear. Top 30% are mandatory;
-                  the rest follow below.
+                  Skills ranked by how many jobs ask for them.
                 </p>
               </CardHeader>
               <CardContent>
@@ -201,9 +206,7 @@ function AnalyticsContent() {
             </Card>
             <Card>
               <CardHeader>
-                <CardTitle>
-                  Skill coverage by role category
-                </CardTitle>
+                <CardTitle>Skills by role</CardTitle>
               </CardHeader>
               <CardContent>
                 <HeatmapChart filters={filters} />
@@ -211,7 +214,7 @@ function AnalyticsContent() {
             </Card>
             <Card>
               <CardHeader>
-                <CardTitle>Role mix over time</CardTitle>
+                <CardTitle>Roles over time</CardTitle>
               </CardHeader>
               <CardContent>
                 <RoleMixChart />
@@ -221,6 +224,8 @@ function AnalyticsContent() {
         </TabsContent>
 
         <TabsContent value="fit" className="grid gap-4">
+          {/* "ATS score" spelled out once, above the tab's first card. */}
+          <p className="text-muted-foreground max-w-[60ch] text-sm">{ATS_SCORE_LEAD_ALL_JOBS}</p>
           <BaseSummaryCards />
           {filterRow}
           <div className="grid gap-4 lg:grid-cols-2">
@@ -228,8 +233,7 @@ function AnalyticsContent() {
               <CardHeader>
                 <CardTitle>ATS score over time</CardTitle>
                 <p className="text-muted-foreground text-sm font-normal">
-                  Weekly average ATS composite. Tailored resumes are solid
-                  lines, base resumes dashed.
+                  Weekly average ATS score.
                 </p>
               </CardHeader>
               <CardContent>
@@ -238,10 +242,9 @@ function AnalyticsContent() {
             </Card>
             <Card>
               <CardHeader>
-                <CardTitle>Base → tailored lift</CardTitle>
+                <CardTitle>Score gain from tailoring</CardTitle>
                 <p className="text-muted-foreground text-sm font-normal">
-                  Average ATS composite before and after tailoring, by role
-                  category.
+                  Average ATS score before and after tailoring, by role.
                 </p>
               </CardHeader>
               <CardContent>
@@ -250,7 +253,7 @@ function AnalyticsContent() {
             </Card>
             <Card className="lg:col-span-2">
               <CardHeader>
-                <CardTitle>Fit score distribution</CardTitle>
+                <CardTitle>ATS scores by resume</CardTitle>
               </CardHeader>
               <CardContent>
                 <FitDistributionChart />
@@ -265,10 +268,8 @@ function AnalyticsContent() {
             <CardHeader>
               <CardTitle>Skill gaps</CardTitle>
               <p className="text-muted-foreground text-sm font-normal">
-                Split by what would actually fix them: skills to learn vs.
-                evidence to move. From your best-scoring resume per job.
-                Wording-only mismatches sit in a footnote — they don&rsquo;t move
-                your score.
+                Skills to learn, and skills to show better. Based on your
+                best-scoring resume for each job.
               </p>
             </CardHeader>
             <CardContent>

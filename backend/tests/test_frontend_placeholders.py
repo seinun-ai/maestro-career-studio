@@ -63,25 +63,6 @@ _PROMPTS = frozenset(
 # lines; a task lowers its counts as it goes and deletes its block when it
 # lands. The wave-2 lanes already removed the Agent inbox's score example and
 # the examples in the Settings cards they rewrote.
-_PENDING_EXAMPLES_T17: dict[tuple[str, str], int] = {  # D §2 jobs and tracking
-    ("app/new/page.tsx", "e.g. https://boards.example.com/job/123"): 1,
-    ("app/referrals/page.tsx", "e.g. Acme Corp"): 1,
-    ("app/referrals/page.tsx", "e.g. https://example.com/careers"): 1,
-    ("app/referrals/page.tsx", "e.g. Jane Doe"): 2,
-    ("app/referrals/page.tsx", "e.g. Met at the AWS meetup"): 2,
-    ("components/job-tracking-url-field.tsx", "https://" + _ELLIPSIS): 1,
-    ("components/proposals/triage-actions.tsx", "e.g. hiring freeze announced"): 1,
-    ("components/qa-tab.tsx", "e.g. Why this team?"): 1,
-}
-_PENDING_EXAMPLES_T18: dict[tuple[str, str], int] = {  # D §3 the gap page
-    (
-        "app/jobs/[id]/tailor/[sessionId]/page.tsx",
-        "e.g. emphasize leadership, keep it to one page, lead with the fintech project" + _ELLIPSIS,
-    ): 1,
-    ("components/gap-analysis/gap-card.tsx", "e.g. Data scientist who ships forecasting models to production"): 1,
-    ("components/gap-analysis/resolution-controls.tsx", "e.g. PySpark"): 1,
-    ("components/gap-analysis/resolution-controls.tsx", "e.g. Built the ingestion pipeline in Python and Airflow"): 2,
-}
 _PENDING_EXAMPLES_T19: dict[tuple[str, str], int] = {  # D §4 resumes, studios, health, templates
     ("app/base-resumes/page.tsx", "e.g. Data Scientist (1 page)"): 1,
     ("app/templates/page.tsx", "e.g. classic_serif"): 1,
@@ -121,8 +102,6 @@ _PENDING_EXAMPLES_T20: dict[tuple[str, str], int] = {  # D §5 Career history
     ("components/career/profile-panel.tsx", "e.g. ML Ops"): 1,
 }
 _EXAMPLE_BLOCKS = (
-    _PENDING_EXAMPLES_T17,
-    _PENDING_EXAMPLES_T18,
     _PENDING_EXAMPLES_T19,
     _PENDING_EXAMPLES_T20,
 )
@@ -589,13 +568,9 @@ def test_question_constraint_is_a_hint():
     src = _src("components/qa-tab.tsx")
     assert "One question per line" + _ELLIPSIS not in src
     # The hint already says one per line; the name need not say it again.
-    assert 'aria-label="Questions to ask"' in src
-    _order(
-        src,
-        "One question per line.",
-        "aria-describedby={questionsHintId}",
-        'placeholder="e.g. Why this team?"',
-    )
+    assert 'aria-label="Application questions"' in src
+    _order(src, "One question per line.", "aria-describedby={questionsHintId}")
+    assert "placeholder=" not in src
 
 
 def test_saved_key_is_a_hint_not_a_placeholder():
@@ -630,19 +605,18 @@ def test_file_import_name_defaults_in_a_hint():
     )
 
 
-def test_summary_placeholder_is_an_example_and_the_consequence_stays_visible():
+def test_summary_field_has_no_placeholder_and_the_consequence_stays_visible():
     gap = _src("components/gap-analysis/gap-card.tsx")
     controls = _src("components/gap-analysis/resolution-controls.tsx")
     assert "Draft your JD-aligned value proposition" not in gap
-    assert re.search(
-        r'isSummary\s*\?\s*"e\.g\. Data scientist who ships forecasting models to production"', gap
-    )
-    # The question above already says it refreshes the summary; a hint saying
+    assert "placeholder=" not in gap
+    # The question above already says it replaces the summary; a hint saying
     # so again only repeats the label.
-    assert "This refreshes the summary section." in gap
+    assert "This replaces your current summary." in gap
     assert "This becomes your summary." not in gap
     assert "Only what you write here is used.\n" in controls
-    _order(controls, "Exact wording", 'placeholder="e.g. PySpark"')
+    assert "placeholder=" not in controls
+    assert "Exact wording" in controls
     assert "Exact wording to add" not in controls
 
 

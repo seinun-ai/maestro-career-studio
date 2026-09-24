@@ -40,3 +40,32 @@ export function formatAbsoluteDateTime(value: string | Date): string {
   if (Number.isNaN(date.getTime())) return "";
   return date.toLocaleString();
 }
+
+const DAY_ONLY = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+/**
+ * A day in words: "Sep 14", with the year when it is not this year ("Sep 14,
+ * 2025"). An ISO day ("2026-09-14") read as machine output. A date-only value
+ * is a calendar day, so it is read in local time: `new Date("2026-09-14")` is
+ * UTC midnight, which shows Sep 13 west of Greenwich. "" when unreadable.
+ */
+export function formatShortDate(value: string | Date, now: Date = new Date()): string {
+  const day = typeof value === "string" ? DAY_ONLY.exec(value) : null;
+  const date = day
+    ? new Date(Number(day[1]), Number(day[2]) - 1, Number(day[3]))
+    : value instanceof Date
+      ? value
+      : new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    ...(date.getFullYear() === now.getFullYear() ? {} : { year: "numeric" }),
+  });
+}
+
+/** A weekly chart's point: "Week of Sep 21" ("" when unreadable, like formatShortDate). */
+export function formatWeekOf(value: string | Date): string {
+  if (!formatShortDate(value)) return "";
+  return `Week of ${formatShortDate(value)}`;
+}

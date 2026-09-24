@@ -23,14 +23,12 @@ import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -50,6 +48,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useEditToggle, useFocusHandoff } from "@/hooks/use-focus-return";
 import { useSingleFlight } from "@/hooks/use-single-flight";
 import { apiFetch } from "@/lib/api";
+import { couldnt, errorDetail } from "@/lib/error-text";
 import { isLoadFailure } from "@/lib/query-state";
 import type { Referral, ReferralCreate, ReferralPatch } from "@/lib/types";
 import { PageHeader, PageShell } from "@/components/page-shell";
@@ -115,7 +114,7 @@ export default function ReferralsPage() {
       setDraft(EMPTY_DRAFT);
       setAddOpen(false);
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(couldnt("add the referral", err)),
   });
   // Both forms submit through this: `isPending` re-renders a tick late, so an
   // instant double click (or Enter twice) read it false and made two rows.
@@ -143,7 +142,7 @@ export default function ReferralsPage() {
       {isLoadFailure(referrals) ? (
         <LoadErrorState
           title="Couldn't load referrals."
-          detail={(referrals.error as Error | null)?.message}
+          detail={errorDetail(referrals.error)}
           retrying={referrals.isFetching}
           onRetry={() => void referrals.refetch()}
         />
@@ -163,9 +162,6 @@ export default function ReferralsPage() {
         <DialogContent initialFocus={companyRef}>
           <DialogHeader>
             <DialogTitle>Add referral</DialogTitle>
-            <DialogDescription>
-              A company where someone can refer you.
-            </DialogDescription>
           </DialogHeader>
           <ReferralForm
             draft={draft}
@@ -197,7 +193,6 @@ function FirstReferralCard(draftProps: DraftProps) {
           <Handshake className="size-4" aria-hidden="true" />
           Add your first referral
         </CardTitle>
-        <CardDescription>A company where someone can refer you.</CardDescription>
       </CardHeader>
       <CardContent>
         <ReferralForm {...draftProps} />
@@ -249,6 +244,10 @@ function ReferralForm({
     <Button
       type="submit"
       form={inDialog ? formId : undefined}
+      // Focusable while it adds and after a failed add: a natively disabled
+      // submit dropped focus to <body>. `submit` checks `canSubmit` itself.
+      className="data-disabled:pointer-events-none data-disabled:opacity-50"
+      focusableWhenDisabled
       disabled={!canSubmit}
     >
       {adding ? "Adding…" : "Add referral"}
@@ -266,18 +265,16 @@ function ReferralForm({
               ref={companyRef}
               value={company}
               onChange={edit("company")}
-              placeholder="e.g. Acme Corp"
               required
             />
           </div>
           <div className="grid gap-1.5">
-            <Label htmlFor={careersUrlId}>Careers URL</Label>
+            <Label htmlFor={careersUrlId}>Careers page</Label>
             <Input
               id={careersUrlId}
               type="url"
               value={careersUrl}
               onChange={edit("careersUrl")}
-              placeholder="e.g. https://example.com/careers"
               required
             />
           </div>
@@ -289,7 +286,6 @@ function ReferralForm({
               id={contactId}
               value={contactName}
               onChange={edit("contactName")}
-              placeholder="e.g. Jane Doe"
             />
           </div>
           <div className="grid gap-1.5 sm:col-span-2">
@@ -301,7 +297,6 @@ function ReferralForm({
               rows={3}
               value={notes}
               onChange={edit("notes")}
-              placeholder="e.g. Met at the AWS meetup"
             />
           </div>
         </div>
@@ -327,10 +322,10 @@ function ReferralsTable({ rows }: { rows: Referral[] }) {
           <TableHeader>
             <TableRow className="hover:bg-transparent">
               <TableHead>Company</TableHead>
-              <TableHead>Careers URL</TableHead>
+              <TableHead>Careers page</TableHead>
               <TableHead>Contact</TableHead>
               <TableHead>Notes</TableHead>
-              <TableHead className="text-right">Apps</TableHead>
+              <TableHead className="text-right">Applications</TableHead>
               <TableHead className="w-20" />
             </TableRow>
           </TableHeader>
@@ -386,14 +381,14 @@ function ReferralViewRow({
       );
       toast.success(`Deleted referral for ${referral.company}`);
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(couldnt("delete the referral", err)),
   });
 
   const onDelete = async () => {
     if (remove.isPending) return;
     const ok = await confirm({
       title: "Delete this referral?",
-      description: `Referral for ${referral.company} will be removed. Applications already linked to it are unaffected.`,
+      description: "Applications linked to it won't change.",
       confirmLabel: "Delete",
       destructive: true,
     });
@@ -435,7 +430,7 @@ function ReferralViewRow({
         <div className="flex justify-end gap-1">
           <IconButton
             ref={editButtonRef}
-            label="Edit"
+            label="Edit referral"
             icon={<Pencil />}
             onClick={onEdit}
             className="opacity-0 transition-opacity duration-150 group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100"
@@ -484,7 +479,7 @@ function ReferralEditRow({
       toast.success(`Updated referral for ${updated.company}`);
       onDone();
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(couldnt("save the referral", err)),
   });
 
   const canSave =
@@ -517,7 +512,7 @@ function ReferralEditRow({
           type="url"
           value={careersUrl}
           onChange={(e) => setCareersUrl(e.target.value)}
-          aria-label="Careers URL"
+          aria-label="Careers page"
         />
       </TableCell>
       <TableCell>
@@ -525,9 +520,6 @@ function ReferralEditRow({
           value={contactName}
           onChange={(e) => setContactName(e.target.value)}
           aria-label="Contact name"
-          placeholder="e.g. Jane Doe"
-          // The table scrolls sideways when narrow; this keeps the example whole.
-          className="min-w-32"
         />
       </TableCell>
       <TableCell>
@@ -536,7 +528,6 @@ function ReferralEditRow({
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
           aria-label="Notes"
-          placeholder="e.g. Met at the AWS meetup"
         />
       </TableCell>
       <TableCell className="text-right tabular-nums text-muted-foreground">

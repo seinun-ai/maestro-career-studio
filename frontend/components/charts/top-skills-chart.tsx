@@ -9,8 +9,12 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { buildQuery } from "@/components/charts/chart-kit";
+import { LoadErrorState } from "@/components/load-error-state";
 import { cn } from "@/lib/utils";
 import { apiFetch } from "@/lib/api";
+import { errorDetail } from "@/lib/error-text";
+import { isLoadFailure } from "@/lib/query-state";
+import { skillName } from "@/lib/skill-name";
 import type { TopSkillRow, TopSkillsResponse } from "@/lib/types";
 import { LowSampleBadge } from "@/components/explore/low-sample-hint";
 
@@ -23,7 +27,7 @@ export interface TopSkillsFilters {
 }
 
 function jobCountLabel(n: number): string {
-  return `${n} job description${n === 1 ? "" : "s"}`;
+  return `${n} ${n === 1 ? "job" : "jobs"}`;
 }
 
 function SkillPill({
@@ -34,8 +38,8 @@ function SkillPill({
   pillClass: string;
 }) {
   const tooltip = skill.low_sample
-    ? `${jobCountLabel(skill.n)} · Rank #${skill.rank} · directional only`
-    : `${jobCountLabel(skill.n)} · Rank #${skill.rank}`;
+    ? `${jobCountLabel(skill.n)} · Rank ${skill.rank} · small sample`
+    : `${jobCountLabel(skill.n)} · Rank ${skill.rank}`;
 
   return (
     <Tooltip>
@@ -51,7 +55,7 @@ function SkillPill({
             <span className="text-on-secondary-container/80 text-[10px] font-semibold tabular-nums">
               #{skill.rank}
             </span>
-            {skill.skill_name}
+            {skillName(skill.skill_name)}
             <LowSampleBadge n={skill.n} lowSample={skill.low_sample} unit="jobs" />
           </span>
         }
@@ -88,7 +92,7 @@ function SkillTileSection({
         </div>
         <div className="flex min-w-0 flex-1 flex-wrap gap-2">
           {skills.length === 0 ? (
-            <p className="text-muted-foreground py-1 text-sm">No skills in this tier.</p>
+            <p className="text-muted-foreground py-1 text-sm">No skills here.</p>
           ) : (
             skills.map((skill) => (
               <SkillPill
@@ -111,12 +115,25 @@ export function TopSkillsChart({
   filters: TopSkillsFilters;
   limit?: number;
 }) {
-  const { data, isLoading } = useQuery({
+  const query = useQuery({
     queryKey: ["explore", "top-skills", filters, limit],
     queryFn: () =>
       apiFetch<TopSkillsResponse>(`/api/explore/top-skills?${buildQuery(filters, { limit })}`),
   });
+  const { data, isLoading } = query;
 
+  // A failed fetch is its own state, never "No data yet." (conventions).
+  if (isLoadFailure(query)) {
+    return (
+      <LoadErrorState
+        className="py-8"
+        title="Couldn't load the top skills."
+        detail={errorDetail(query.error)}
+        retrying={query.isFetching}
+        onRetry={() => void query.refetch()}
+      />
+    );
+  }
   if (isLoading) return <Skeleton className="h-48 w-full" />;
   if (!data || (data.top.length === 0 && data.rest.length === 0)) {
     return <p className="text-muted-foreground text-sm">No data yet.</p>;
@@ -126,7 +143,7 @@ export function TopSkillsChart({
     <div className="space-y-0">
       <SkillTileSection
         label="Top 30%"
-        subtitle="Mandatory"
+        subtitle="Most asked for"
         count={data.meta.top_count}
         skills={data.top}
         pillClass="border-transparent bg-secondary-container text-on-secondary-container hover:bg-secondary-container-hover"
@@ -136,7 +153,7 @@ export function TopSkillsChart({
       <div className="border-border my-5 border-t" />
 
       <SkillTileSection
-        label="Rest"
+        label="Others"
         count={data.meta.total_skills - data.meta.top_count}
         skills={data.rest}
         pillClass="border-border bg-background text-foreground hover:bg-muted/60 text-xs"

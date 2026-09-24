@@ -15,10 +15,12 @@ import type { ReactNode } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { LoadErrorState } from "@/components/load-error-state";
 import { Skeleton } from "@/components/ui/skeleton";
+import { reasonLabel } from "@/components/proposals/triage-actions";
 import { apiFetch } from "@/lib/api";
+import { errorDetail } from "@/lib/error-text";
 import { proposalByLine } from "@/lib/agent-name";
 import { isLoadFailure } from "@/lib/query-state";
-import { formatAbsoluteDateTime } from "@/lib/format-date";
+import { formatAbsoluteDateTime, formatShortDate } from "@/lib/format-date";
 import type { ProposalDetail } from "@/lib/types";
 
 /**
@@ -43,7 +45,7 @@ export function ProposalAgentPanel({ proposalId }: { proposalId: string }) {
           <LoadErrorState
             className="py-8"
             title="Couldn't load this proposal."
-            detail={(error as Error)?.message}
+            detail={errorDetail(error)}
             retrying={isFetching}
             onRetry={() => void refetch()}
           />
@@ -79,15 +81,19 @@ export function ProposalAgentPanel({ proposalId }: { proposalId: string }) {
       </CardHeader>
       <CardContent className="flex flex-col gap-5 text-sm">
         {/* Meta labels match JobExtractedFields StatLine (uppercase 11px). */}
-        <dl className="flex flex-wrap gap-x-6 gap-y-3">
-          <Fact label="Date">
-            {formatAbsoluteDateTime(data.created_at)}
-          </Fact>
-          <Fact label="Expires">
-            {data.expires_at ? formatAbsoluteDateTime(data.expires_at) : "—"}
-          </Fact>
-          {data.reason ? <Fact label="Reason">{data.reason}</Fact> : null}
-        </dl>
+        {/* "Proposed Sep 24 · expires Oct 1": the day in words, the exact time on hover. */}
+        <p
+          className="text-muted-foreground text-xs"
+          title={formatAbsoluteDateTime(data.created_at)}
+        >
+          Proposed {formatShortDate(data.created_at)}
+          {data.expires_at ? ` · expires ${formatShortDate(data.expires_at)}` : ""}
+        </p>
+        {data.reason ? (
+          <dl className="flex flex-wrap gap-x-6 gap-y-3">
+            <Fact label="Reason">{reasonLabel(data.reason)}</Fact>
+          </dl>
+        ) : null}
 
         {companyNote ? (
           <section>
@@ -131,7 +137,7 @@ export function ProposalAgentPanel({ proposalId }: { proposalId: string }) {
 
         {evidence.length > 0 ? (
           <section>
-            <SectionHeading icon={<Images />}>Evidence</SectionHeading>
+            <SectionHeading icon={<Images />}>Screenshots</SectionHeading>
             <div className="flex flex-wrap gap-2">
               {evidence.map((e) => {
                 const name = e.path.split("/").pop() ?? e.path;

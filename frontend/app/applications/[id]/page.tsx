@@ -11,6 +11,7 @@ import { LoadErrorState } from "@/components/load-error-state";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ApiError, apiFetch } from "@/lib/api";
+import { errorDetail } from "@/lib/error-text";
 import type { ApplicationDetail } from "@/lib/types";
 
 export default function ApplicationDetailRedirect({
@@ -48,7 +49,7 @@ export default function ApplicationDetailRedirect({
           <Button
             variant="outline"
             nativeButton={false}
-            render={<Link href="/applications">Back to Applications</Link>}
+            render={<Link href="/applications">Back to applications</Link>}
           />
         </main>
       );
@@ -57,14 +58,14 @@ export default function ApplicationDetailRedirect({
       <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col items-center justify-center p-6">
         <LoadErrorState
           title="Couldn't load this application."
-          detail={lastError instanceof Error ? lastError.message : undefined}
+          detail={errorDetail(lastError)}
           retrying={query.isFetching}
           onRetry={() => void query.refetch()}
           action={
             <Button
               variant="outline"
               nativeButton={false}
-              render={<Link href="/applications">Back to Applications</Link>}
+              render={<Link href="/applications">Back to applications</Link>}
             />
           }
         />

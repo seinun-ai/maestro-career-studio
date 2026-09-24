@@ -119,7 +119,7 @@ def test_indicator_live_region_is_always_mounted():
 
 
 def test_try_again_retries_and_stays_mounted_while_it_runs():
-    assert "Save failed" in _INDICATOR
+    assert "Not saved" in _INDICATOR and "Save failed" not in _INDICATOR
     assert "focusableWhenDisabled" in _INDICATOR
     # `|| retrying`: state flips to "saving" at once; without it the focused
     # button unmounts mid-retry and focus drops to <body>.
@@ -147,7 +147,7 @@ def test_a_stale_session_offers_no_dead_try_again():
 
 
 def test_an_edit_on_a_stale_session_admits_it_is_unsaved():
-    # The error state keeps "Save failed" up and the leave guard on.
+    # The error state keeps "Not saved" up and the leave guard on.
     stale = _flat(_SCHEDULE[_SCHEDULE.index("if (staleReason)") :])
     assert stale.startswith('if (staleReason) { setSaveState("error"); return; }')
 

@@ -1,6 +1,8 @@
 "use client";
 
 import { use, useRef, useState } from "react";
+
+import { useFocusOnNextCommit } from "@/hooks/use-focus-return";
 import { Ban, Check, Library, Undo2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -13,12 +15,15 @@ import {
   AttachProjectControls,
   CANNOT_CONFIRM_EXPLANATION,
   LibraryCandidateChips,
+  TARGET_SECTION_WORD,
   UserInputControls,
   candidateKey,
   targetsEqual,
   type PlacementTarget,
   type SavedTarget,
 } from "@/components/gap-analysis/resolution-controls";
+import { placementLabel, requirementLabel } from "@/lib/ats-words";
+import { skillName } from "@/lib/skill-name";
 import {
   isAutoResolved,
   resolutionProvenance,
@@ -126,10 +131,10 @@ function userInputPayload(
 
 function gapTitle(gap: Gap): string {
   if (gap.kind === "skill") return gap.jd_skill ?? gap.gap_id;
-  if (gap.kind === "title") return "Title alignment";
-  if (gap.kind === "gate") return "Experience gate";
+  if (gap.kind === "title") return "Job title";
+  if (gap.kind === "gate") return "Experience requirement";
   if (gap.kind === "summary") return "Professional summary";
-  if (gap.kind === "requirement") return gap.jd_skill ?? "Responsibility coverage";
+  if (gap.kind === "requirement") return gap.jd_skill ?? "Job duty";
   return "Format";
 }
 
@@ -141,7 +146,7 @@ function gapTitle(gap: Gap): string {
  */
 function formatPotentialPoints(value: number | undefined): string | null {
   if (typeof value !== "number" || !(value > 0)) return null;
-  return `up to +${value.toFixed(1)} pts`;
+  return `up to +${value.toFixed(1)} points`;
 }
 
 function truncate(text: string, max: number): string {
@@ -167,8 +172,8 @@ function resolutionSummary(
       targets?.find((t) => targetsEqual(t, saved))?.label ??
       (typeof saved.index_or_category === "string"
         ? saved.index_or_category
-        : saved.section);
-    return `add “${payloadString(resolution.payload, "wording")}” → ${label}`;
+        : TARGET_SECTION_WORD[saved.section]);
+    return `add “${payloadString(resolution.payload, "wording")}” to ${label}`;
   }
   if (resolution.action === "user_input") {
     return `answered: “${truncate(payloadString(resolution.payload, "text"), 80)}”`;
@@ -178,20 +183,17 @@ function resolutionSummary(
   }
   if (resolution.action === "enable_entry") {
     const name = payloadString(resolution.payload, "name");
-    const section = payloadString(resolution.payload, "section") || "entry";
-    return name
-      ? `unhide “${name}” from your ${section}`
-      : `unhide a hidden ${section} entry`;
+    return name ? `show hidden “${name}”` : "show a hidden item";
   }
   if (resolution.action === "port_kb_point") {
     const saved = payloadTarget(resolution.payload);
     const wording = truncate(payloadString(resolution.payload, "wording"), 60);
     const label = saved
-      ? (targets?.find((t) => targetsEqual(t, saved))?.label ?? saved.section)
+      ? (targets?.find((t) => targetsEqual(t, saved))?.label ?? TARGET_SECTION_WORD[saved.section])
       : null;
     return label
-      ? `add “${wording}” from your Career KB → ${label}`
-      : `add “${wording}” from your Career KB`;
+      ? `add “${wording}” from your career history to ${label}`
+      : `add “${wording}” from your career history`;
   }
   if (resolution.action === "cannot_confirm") {
     return "can't confirm";
@@ -209,17 +211,15 @@ function provenanceLine(resolution: Resolution): string | null {
   if (!provenance) return null;
   if (provenance.source === "library_auto") {
     const name = payloadString(resolution.payload, "name");
-    return name
-      ? `Auto-resolved from your library by enabling ${name}`
-      : "Auto-resolved from your library";
+    return name ? `Filled in: showed ${name} from your resume` : "Filled in from your resume";
   }
   if (provenance.source === "kb_profile") {
-    return "Auto-resolved from your Career KB profile";
+    return "Filled in from your career history";
   }
   if (provenance.source === "wording_auto") {
-    return "Auto-added the JD's exact term — this skill is already evidenced on your resume";
+    return "Added the job's exact words. Your resume already shows this skill.";
   }
-  return "Auto-resolved from your Career KB";
+  return "Filled in from your career history";
 }
 
 /**
@@ -249,20 +249,22 @@ function selectedCandidateKey(
   return null;
 }
 
+/** The resume's matching term as people write it: the job's own casing when it is the same word. */
+function matchedName(term: string, jdSkill: string | null | undefined): string {
+  return jdSkill && jdSkill.toLowerCase() === term.toLowerCase() ? jdSkill : skillName(term);
+}
+
 /** Diagnostic evidence: match form, placement, recency, evidence entries. */
 function EvidenceLine({ gap }: { gap: Gap }) {
   const diagnostic = gap.diagnostic;
   const bits: string[] = [];
-  if (diagnostic.matched && diagnostic.match_form) {
-    bits.push(
-      diagnostic.matched_term
-        ? `matched via ${diagnostic.match_form} (“${diagnostic.matched_term}”)`
-        : `matched via ${diagnostic.match_form}`,
-    );
+  // `match_form` and the title `tier` are engine keys: the words say what matched.
+  if (diagnostic.matched && diagnostic.matched_term) {
+    bits.push(`Matches “${matchedName(diagnostic.matched_term, gap.jd_skill)}”`);
   }
-  if (diagnostic.placement) bits.push(diagnostic.placement.replace(/_/g, " "));
+  const placement = placementLabel(diagnostic.placement);
+  if (placement) bits.push(placement);
   if (diagnostic.last_used) bits.push(`last used ${diagnostic.last_used}`);
-  if (diagnostic.tier) bits.push(`title tier: ${diagnostic.tier}`);
   const entries = diagnostic.evidence_entries ?? [];
   if (bits.length === 0 && entries.length === 0) return null;
   return (
@@ -270,9 +272,14 @@ function EvidenceLine({ gap }: { gap: Gap }) {
       {bits.length > 0 && (
         <span className="text-muted-foreground text-xs">{bits.join(" · ")}</span>
       )}
+      {/* The entries the engine found the skill in (ats/layers.py, `evidence_entries`), never
+          suggestions. Their labels are "Company — Role"; the dash reads aloud, a comma does not. */}
+      {entries.length > 0 ? (
+        <span className="text-muted-foreground text-xs">Mentioned in:</span>
+      ) : null}
       {entries.map((entry) => (
-        <Badge key={entry} variant="outline" className="font-normal">
-          {entry}
+        <Badge key={entry} variant="outline" className="h-auto font-normal whitespace-normal">
+          {entry.replace(" — ", ", ")}
         </Badge>
       ))}
     </div>
@@ -325,6 +332,12 @@ export function GapCard({
     gap.kind === "skill" && gap.diagnostic.fix_hint === "absent";
   // Tailoring: "I can't confirm this" stays focusable but inert (Undo: `UndoButton`).
   const locked = use(GapLocked);
+  // Skip, I can't confirm this, Undo, Edit and Done each swap this card for another view, which
+  // unmounts the pressed button: focus went to <body>. Every view carries `rootRef`, and a handler
+  // calls `handOff()` so the replacement's first control (or the row itself) takes focus.
+  const rootRef = useRef<HTMLDivElement & HTMLButtonElement>(null);
+  const focusNext = useFocusOnNextCommit();
+  const handOff = () => focusNext(rootRef);
 
   const [editing, setEditing] = useState(resolution === undefined);
   const [action, setAction] = useState<GapAction | null>(resolution?.action ?? null);
@@ -395,6 +408,7 @@ export function GapCard({
     if (next === "skip") {
       setEditing(false);
       commit("skip", {});
+      handOff();
       return;
     }
     // Switching back to an action whose draft is still valid re-commits it;
@@ -433,6 +447,7 @@ export function GapCard({
     ) {
       setAction("enable_entry");
       setEditing(false);
+      handOff();
       commit("enable_entry", {
         section: candidate.section,
         index: candidate.index,
@@ -449,6 +464,7 @@ export function GapCard({
     ) {
       setAction("port_kb_point");
       setEditing(false);
+      handOff();
       commit("port_kb_point", {
         kb_point_id: candidate.point_id,
         ...(candidate.entity_id ? { kb_entity_id: candidate.entity_id } : {}),
@@ -491,6 +507,7 @@ export function GapCard({
     clear();
     setAction(null);
     setEditing(true);
+    handOff();
   };
 
   const title = gapTitle(gap);
@@ -510,13 +527,15 @@ export function GapCard({
   // Career KB page is where it's managed).
   if (!editing && resolution?.action === "cannot_confirm") {
     return (
-      <div className="text-muted-foreground flex items-center justify-between gap-2 rounded-xl border py-2 pr-1.5 pl-4 text-sm">
+      <div
+        ref={rootRef}
+        className="text-muted-foreground flex items-center justify-between gap-2 rounded-xl border py-2 pr-1.5 pl-4 text-sm"
+      >
         <span className="flex min-w-0 items-start gap-2">
           <Ban className="mt-0.5 size-4 shrink-0" />
           <span className="min-w-0">
-            <span className="block truncate">
-              <span className="text-foreground font-medium">{title}</span> — can&apos;t
-              confirm
+            <span className="block break-words">
+              Can&apos;t confirm <span className="text-foreground font-medium">{title}</span>
             </span>
             <span className="block text-xs">{CANNOT_CONFIRM_EXPLANATION}</span>
           </span>
@@ -528,8 +547,13 @@ export function GapCard({
 
   if (!editing && resolution?.action === "skip") {
     return (
-      <div className="text-muted-foreground flex items-center justify-between gap-2 rounded-xl border border-dashed py-1.5 pr-1.5 pl-4 text-sm">
-        <span className="truncate">{title} — skipped</span>
+      <div
+        ref={rootRef}
+        className="text-muted-foreground flex items-center justify-between gap-2 rounded-xl border border-dashed py-1.5 pr-1.5 pl-4 text-sm"
+      >
+        <span className="min-w-0 break-words">
+          Skipped <span className="text-foreground font-medium">{title}</span>
+        </span>
         <UndoButton onClick={reopenGap} />
       </div>
     );
@@ -542,7 +566,10 @@ export function GapCard({
   // summary used to fall through to.
   if (!editing && resolution && isAutoResolved(resolution)) {
     return (
-      <div className="border-primary/25 bg-primary/[0.04] flex flex-wrap items-center gap-2 rounded-xl border px-4 py-2.5 text-sm">
+      <div
+        ref={rootRef}
+        className="border-primary/25 bg-primary/[0.04] flex flex-wrap items-center gap-2 rounded-xl border px-4 py-2.5 text-sm"
+      >
         <Library className="text-primary size-4 shrink-0" />
         <span className="min-w-0 flex-1">
           <span className="font-medium">{title}</span>
@@ -554,13 +581,21 @@ export function GapCard({
             {provenanceLine(resolution)}
           </span>
         </span>
-        <Button variant="ghost" size="xs" onClick={() => setEditing(true)}>
-          Change
+        <Button
+          variant="ghost"
+          size="xs"
+          onClick={() => {
+            setEditing(true);
+            handOff();
+          }}
+        >
+          Edit
         </Button>
         <UndoButton
           onClick={() => {
             setAction("skip");
             commit("skip", {});
+            handOff();
           }}
         />
       </div>
@@ -570,8 +605,12 @@ export function GapCard({
   if (!editing && resolution) {
     return (
       <button
+        ref={rootRef}
         type="button"
-        onClick={() => setEditing(true)}
+        onClick={() => {
+          setEditing(true);
+          handOff();
+        }}
         className="bg-card ring-foreground/10 hover:ring-primary/40 flex w-full items-center gap-2 rounded-xl px-4 py-2.5 text-left text-sm ring-1 transition-shadow"
       >
         <Check className="text-primary size-4 shrink-0" />
@@ -588,23 +627,23 @@ export function GapCard({
   }
 
   return (
-    <Card size="sm">
+    <Card ref={rootRef} size="sm">
       <CardContent className="space-y-3">
         <div className="flex flex-wrap items-center gap-2">
           {resolution && resolution.action !== "skip" && (
             <Check className="text-primary size-4 shrink-0" />
           )}
           <span className="text-sm font-medium">{title}</span>
-          {gap.kind === "skill" && gap.requirement_level && (
-            <Badge variant={REQUIREMENT_VARIANTS[gap.requirement_level] ?? "outline"}>
-              {gap.requirement_level}
+          {gap.kind === "skill" && requirementLabel(gap.requirement_level) && (
+            <Badge variant={REQUIREMENT_VARIANTS[gap.requirement_level ?? ""] ?? "outline"}>
+              {requirementLabel(gap.requirement_level)}
             </Badge>
           )}
           {potentialPointsLabel && (
             <Badge
               variant="outline"
               className="font-normal"
-              title="Coarse upper bound if this were the only fix. A relative signal, not an exact promise."
+              title="The most this fix could add on its own. An estimate."
             >
               {potentialPointsLabel}
             </Badge>
@@ -614,7 +653,10 @@ export function GapCard({
               variant="ghost"
               size="xs"
               className="ml-auto"
-              onClick={() => setEditing(false)}
+              onClick={() => {
+                setEditing(false);
+                handOff();
+              }}
             >
               Done
             </Button>
@@ -627,8 +669,8 @@ export function GapCard({
         {gap.score_effect && (
           <p className="text-muted-foreground text-xs">
             {gap.score_effect === "hygiene"
-              ? "Exact-token hygiene: helps recruiter keyword search, but will not change the score."
-              : "Semantic match: adding the literal JD token adds keyword credit."}
+              ? "Uses the job's exact words. Helps recruiter searches, but won't change your ATS score."
+              : "Your resume says this differently. Using the job's exact words raises your ATS score."}
           </p>
         )}
         <ActionSegment actions={gap.actions} value={action} onSelect={selectAction} />
@@ -644,6 +686,7 @@ export function GapCard({
                 setAction("cannot_confirm");
                 setEditing(false);
                 commit("cannot_confirm", {});
+                handOff();
               }}
             >
               <Ban /> I can&apos;t confirm this
@@ -702,16 +745,11 @@ export function GapCard({
           <UserInputControls
             question={
               isSummary
-                ? "Rewrite your summary as a JD-aligned value proposition. This refreshes the summary section."
+                ? "Rewrite your summary for this job. This replaces your current summary."
                 : gap.enrichment?.elicitation_question ??
                   (gap.kind === "requirement"
                     ? "How does your experience cover this responsibility?"
-                    : "What's your actual experience with this?")
-            }
-            placeholder={
-              isSummary
-                ? "e.g. Data scientist who ships forecasting models to production"
-                : undefined
+                    : "What's your experience with this?")
             }
             text={text}
             targets={inputTargets}

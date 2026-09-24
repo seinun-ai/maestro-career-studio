@@ -14,6 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { apiFetch } from "@/lib/api";
+import { couldnt } from "@/lib/error-text";
 import { ingestJob } from "@/lib/ingest-job";
 import { anchorHref } from "@/lib/settings-tabs";
 import type { Job, SetupStatus } from "@/lib/types";
@@ -67,12 +68,12 @@ export default function NewApplicationPage() {
       qc.invalidateQueries({ queryKey: ["jobs"] });
       qc.invalidateQueries({ queryKey: ["applications"] });
       if (job.already_existed) {
-        toast.info("Already tracked. This job matches one you saved earlier.");
+        toast.info("This job is already saved.");
       } else {
-        toast.success("Job extracted. Listed under Saved.");
+        toast.success("Job saved.");
       }
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(couldnt("save the job", err)),
   });
   const extract = useSingleFlight(extractJob.mutate);
   useLeaveGuard(rawText.trim().length > 0 && savedJob === null);
@@ -87,14 +88,14 @@ export default function NewApplicationPage() {
   return (
     <PageShell>
       <PageHeader
-        title="New application"
+        title="Add a job"
         subtitle="Paste a job description to get started."
       />
 
       {needsKey ? (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-amber-500/40 bg-amber-500/[0.08] px-3 py-2 text-sm dark:border-amber-400/40 dark:bg-amber-400/[0.08]">
           <span id={keyNoticeId} className="text-amber-800 dark:text-amber-200">
-            Extract reads the posting with a model, so it needs a provider API key.
+            Saving a job reads its description with AI, so it needs an API key.
           </span>
           <Button
             size="sm"
@@ -120,10 +121,9 @@ export default function NewApplicationPage() {
         </div>
 
         <div className="grid gap-1.5">
-          <Label htmlFor="source_url" optional>Source URL</Label>
+          <Label htmlFor="source_url" optional>Job link</Label>
           <Input
             id="source_url"
-            placeholder="e.g. https://boards.example.com/job/123"
             value={sourceUrl}
             onChange={(e) => onSourceUrlChange(e.target.value)}
           />
@@ -134,19 +134,20 @@ export default function NewApplicationPage() {
         <Button
           onClick={() => extract(undefined)}
           disabled={disabled || busy || needsKey}
-          // Disables itself while extracting: a disabled <button> drops focus
+          // Disables itself while saving: a disabled <button> drops focus
           // to <body> (dimmed on data-disabled, as Save is).
           focusableWhenDisabled
           className="data-disabled:pointer-events-none data-disabled:opacity-50"
           aria-describedby={needsKey ? keyNoticeId : undefined}
         >
-          {extractJob.isPending ? "Extracting…" : "Extract job"}
+          {extractJob.isPending ? "Saving…" : "Save job"}
         </Button>
-        <p className="text-muted-foreground text-sm">
-          {needsKey
-            ? "Add an API key to extract."
-            : "The job is listed under Saved. Scoring comes next."}
-        </p>
+        {/* No key: the amber notice above already says why, and names the button. */}
+        {needsKey ? null : (
+          <p className="text-muted-foreground text-sm">
+            Saved jobs appear in Applications, ready to score.
+          </p>
+        )}
       </div>
 
       {savedJob && (

@@ -18,6 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useSingleFlight } from "@/hooks/use-single-flight";
 import { apiFetch } from "@/lib/api";
+import { couldnt, isPlainSentence } from "@/lib/error-text";
 import type {
   Proposal,
   ProposalBulkResponse,
@@ -34,12 +35,20 @@ const DECLINE_REASONS = [
   "duplicate",
 ] as const;
 
-// Display-only rename. The VALUE stays "declined by user" because it is sent as
-// the API `reason` field and read back verbatim by list_proposals/get_proposal —
-// an agent-visible vocabulary. Only the label follows the Skip/Skipped wording.
-const REASON_LABEL: Partial<Record<(typeof DECLINE_REASONS)[number], string>> = {
-  "declined by user": "skipped by you",
+// Display only. The VALUES stay as they are because they are sent as the API
+// `reason` field and read back verbatim by list_proposals/get_proposal: an
+// agent-visible vocabulary. "skipped by you" as a reason for skipping was circular.
+const REASON_LABEL: Record<(typeof DECLINE_REASONS)[number], string> = {
+  "declined by user": "Not interested",
+  "no longer relevant": "No longer relevant",
+  "position closed": "Position closed",
+  duplicate: "Duplicate",
 };
+
+/** A stored skip reason in words; a reason the user typed shows as typed. */
+export function reasonLabel(reason: string): string {
+  return REASON_LABEL[reason as (typeof DECLINE_REASONS)[number]] ?? reason;
+}
 
 type BulkStatus = "accepted" | "rejected";
 
@@ -87,7 +96,7 @@ export function useProposalActions(events: ProposalActionEvents = {}) {
       events.onDone?.([vars.id], vars.status);
     },
     onError: (err: Error) => {
-      toast.error(err.message);
+      toast.error(couldnt("update the proposal", err));
       events.onUndone?.();
     },
   });
@@ -116,16 +125,15 @@ export function useProposalActions(events: ProposalActionEvents = {}) {
       events.onDone?.(vars.ids, vars.status);
       const failed = data.results.filter((r) => !r.ok);
       if (failed.length === 0) return;
-      // "queued": Accept's result is a Queued chip (the ONE status vocabulary).
-      const verb =
-        vars.status === "accepted" ? "queued" : "skipped";
-      const sample = failed[0]?.detail ?? "already terminal";
-      toast.error(
-        `${failed.length} of ${vars.ids.length} could not be ${verb}: ${sample}`,
-      );
+      // "queue": Accept's result is a Queued chip (the ONE status vocabulary).
+      const verb = vars.status === "accepted" ? "queue" : "skip";
+      // The server's reason, only when it is a sentence written for the user.
+      const sample = failed[0]?.detail ?? "";
+      const why = isPlainSentence(sample) ? sample : "Try again.";
+      toast.error(`Couldn't ${verb} ${failed.length} of ${vars.ids.length}. ${why}`);
     },
     onError: (err: Error) => {
-      toast.error(err.message);
+      toast.error(couldnt("update the proposals", err));
       events.onUndone?.();
     },
   });
@@ -137,8 +145,7 @@ export function useProposalActions(events: ProposalActionEvents = {}) {
       let confirmed = false;
       confirmed = await confirm({
         title: "Delete this proposal?",
-        description:
-          "Its evidence screenshots are removed. Submitted proposals cannot be deleted.",
+        description: "This also deletes its screenshots.",
         confirmLabel: "Delete",
         destructive: true,
         returnFocus: () => (confirmed && next ? next() : null),
@@ -157,7 +164,7 @@ export function useProposalActions(events: ProposalActionEvents = {}) {
       events.onDone?.([id], "deleted");
     },
     onError: (err: Error) => {
-      toast.error(err.message);
+      toast.error(couldnt("delete the proposal", err));
       events.onUndone?.();
     },
   });
@@ -203,9 +210,9 @@ export function DeclineDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent size="sm" finalFocus={finalFocus}>
         <DialogHeader>
-          <DialogTitle>Skip this posting?</DialogTitle>
+          <DialogTitle>Skip this job?</DialogTitle>
           <DialogDescription>
-            Skips only this posting. The company is not affected.
+            Other jobs at this company aren&apos;t affected.
           </DialogDescription>
         </DialogHeader>
         <fieldset className="grid gap-2">
@@ -223,17 +230,16 @@ export function DeclineDialog({
                 onChange={() => setPreset(reason)}
                 className="size-3.5 accent-primary"
               />
-              {REASON_LABEL[reason] ?? reason}
+              {REASON_LABEL[reason]}
             </label>
           ))}
         </fieldset>
         <div className="grid gap-1.5">
-          <Label htmlFor="decline-override">
-            Custom reason <span className="text-muted-foreground">· optional</span>
+          <Label htmlFor="decline-override" optional>
+            Other reason
           </Label>
           <Input
             id="decline-override"
-            placeholder="e.g. hiring freeze announced"
             value={override}
             onChange={(e) => setOverride(e.target.value)}
           />

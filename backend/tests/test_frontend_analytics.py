@@ -37,7 +37,7 @@ _PRESENT = {
     "series-split": (_SERIES, "shown: ranked.slice(0, max), hidden: ranked.slice(max)"),
     # Charts draw the head and name the tail; they never cycle the palette.
     "ats-split": (_ATS, "splitTopSeries(data, (row) => row.role_category, (row) => row.n)"),
-    "ats-hidden-caption": (_ATS, "Pick a role category above to see the other ${hidden.length}."),
+    "ats-hidden-caption": (_ATS, "Pick a role above to see the other ${hidden.length}."),
     "mix-split": (_MIX, "splitTopSeries("),
     "mix-more-roles": (_MIX, 'name={cat === MORE_ROLES ? "More roles" : label(cat)}'),
     "fit-cap-at-palette": (_FIT, "(row) => row.n,\n      COLORS.length,"),

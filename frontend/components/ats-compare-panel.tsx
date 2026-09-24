@@ -17,16 +17,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ApiError, getAtsCompare, runAtsScoreTarget } from "@/lib/api";
+import { SUBSCORE_LABELS, fixHintLabel, placementLabel } from "@/lib/ats-words";
+import { couldnt } from "@/lib/error-text";
 import { cn } from "@/lib/utils";
 import type { Application, AtsSkillRow } from "@/lib/types";
-
-const SUBSCORE_LABELS: { key: string; label: string }[] = [
-  { key: "keyword", label: "Keywords" },
-  { key: "placement_recency", label: "Placement & recency" },
-  { key: "semantic_fit", label: "Semantic fit" },
-  { key: "title", label: "Title" },
-  { key: "format", label: "Format" },
-];
 
 /** Signed subscore delta (0–1 float) as a green/red bar with a ±points label. */
 function DeltaBar({ label, value }: { label: string; value: number }) {
@@ -60,43 +54,36 @@ function DeltaBar({ label, value }: { label: string; value: number }) {
   );
 }
 
-/** Compact before/after cell: matched → placement; missing → fix hint. */
+/** Compact before-and-after cell: matched → where; missing → what would fix it. */
 function SkillStateCell({ row }: { row: AtsSkillRow | null }) {
   if (!row) {
     return <span className="text-muted-foreground">—</span>;
   }
-  if (row.matched) {
-    return (
-      <span className="inline-flex flex-wrap items-center gap-1.5">
+  const note = row.matched ? placementLabel(row.placement) : fixHintLabel(row.fix_hint);
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1.5">
+      {row.matched ? (
         <Badge
           variant="outline"
           className="border-emerald-600/40 text-emerald-700 dark:text-emerald-400"
         >
-          matched
+          Matched
         </Badge>
-        {row.placement ? (
-          <span className="text-muted-foreground text-xs">{row.placement}</span>
-        ) : null}
-      </span>
-    );
-  }
-  return (
-    <span className="inline-flex flex-wrap items-center gap-1.5">
-      <Badge variant="outline" className="text-muted-foreground">
-        missing
-      </Badge>
-      {row.fix_hint ? (
-        <span className="text-muted-foreground text-xs">{row.fix_hint}</span>
-      ) : null}
+      ) : (
+        <Badge variant="outline" className="text-muted-foreground">
+          Missing
+        </Badge>
+      )}
+      {note ? <span className="text-muted-foreground text-xs">{note}</span> : null}
     </span>
   );
 }
 
 /**
- * Before/after ATS compare for a tailored application: composite headline,
- * subscore delta bars, and the per-JD-skill diff. A 422 from the compare
+ * Before-and-after ATS score for a tailored application: the headline score,
+ * subscore delta bars, and the per-skill diff. A 422 from the compare
  * endpoint (engine/config version drift between the stored base and tailored
- * rows) is recoverable by re-scoring both phases.
+ * rows) is recoverable by scoring both again.
  */
 export function AtsComparePanel({
   app,
@@ -127,19 +114,19 @@ export function AtsComparePanel({
       await runAtsScoreTarget(jobId, "application", app.id, "tailored");
     },
     onSuccess: () => {
-      toast.success("Both phases re-scored");
+      toast.success("ATS scores updated");
       invalidate();
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(couldnt("update the scores", err)),
   });
 
   const rescoreTailored = useMutation({
     mutationFn: () => runAtsScoreTarget(jobId, "application", app.id, "tailored"),
     onSuccess: () => {
-      toast.success("Tailored resume re-scored");
+      toast.success("ATS score updated");
       invalidate();
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(couldnt("update the score", err)),
   });
 
   if (compare.isLoading) {
@@ -152,10 +139,10 @@ export function AtsComparePanel({
     return (
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle>ATS before / after</CardTitle>
+          <CardTitle>ATS score before and after</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          <p className="text-muted-foreground text-sm">{err.message}</p>
+          <p className="text-muted-foreground text-sm">{couldnt("compare the scores", err)}</p>
           {recoverable ? (
             <Button
               variant="outline"
@@ -168,7 +155,7 @@ export function AtsComparePanel({
               ) : (
                 <RefreshCw />
               )}
-              {rescoreBoth.isPending ? "Re-scoring…" : "Re-score both phases"}
+              {rescoreBoth.isPending ? "Updating…" : "Update both scores"}
             </Button>
           ) : null}
         </CardContent>
@@ -184,8 +171,9 @@ export function AtsComparePanel({
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-start justify-between gap-2 pb-2">
-        <CardTitle>ATS before / after</CardTitle>
+      {/* Wraps: at 375 the title kept one word per line beside the button. */}
+      <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-2 pb-2">
+        <CardTitle>ATS score before and after</CardTitle>
         <Button
           variant="outline"
           size="sm"
@@ -196,7 +184,7 @@ export function AtsComparePanel({
           <RefreshCw
             className={rescoreTailored.isPending ? "animate-spin" : undefined}
           />
-          {rescoreTailored.isPending ? "Re-scoring…" : "Re-score"}
+          {rescoreTailored.isPending ? "Updating…" : "Update score"}
         </Button>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -231,7 +219,7 @@ export function AtsComparePanel({
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>JD skill</TableHead>
+                <TableHead>Skill</TableHead>
                 <TableHead>Before</TableHead>
                 <TableHead>After</TableHead>
               </TableRow>
@@ -268,7 +256,7 @@ export function AtsComparePanel({
           </Table>
         ) : (
           <p className="text-muted-foreground text-sm">
-            No skill rows to compare.
+            No skill changes.
           </p>
         )}
       </CardContent>

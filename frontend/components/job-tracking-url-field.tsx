@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { apiFetch } from "@/lib/api";
+import { couldnt } from "@/lib/error-text";
 import type { Job } from "@/lib/types";
 
 function normalizeUrl(value: string): string | null {
@@ -20,8 +21,8 @@ export function JobTrackingUrlField({
   sourceUrl,
   queryKeys = [["job-detail", jobId], ["jobs"]],
   id = "job-tracking-url",
-  label = "Application URL",
-  description = "Job posting or employer portal. Open it to check status.",
+  label = "Job link",
+  description = "The job post or employer portal where you check your status.",
 }: {
   jobId: string;
   sourceUrl: string | null;
@@ -51,7 +52,7 @@ export function JobTrackingUrlField({
         qc.invalidateQueries({ queryKey: key });
       }
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(couldnt("save the job link", err)),
   });
 
   const save = () => {
@@ -89,7 +90,6 @@ export function JobTrackingUrlField({
       <Input
         id={id}
         type="url"
-        placeholder="https://…"
         className="h-8 text-sm"
         value={draft}
         onChange={(e) => setDraft(e.target.value)}

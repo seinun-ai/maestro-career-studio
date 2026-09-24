@@ -22,6 +22,7 @@ import {
 } from "@/components/charts/chart-kit";
 import type { SourceFilter } from "@/components/source-toggle";
 import { apiFetch } from "@/lib/api";
+import { formatShortDate } from "@/lib/format-date";
 import type { ActivityResponse } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -56,7 +57,7 @@ export function ActivityChart({
   return (
     <ChartCard
       title="Application activity"
-      description="Drafts started and applications submitted over time."
+      description="Drafts started and jobs applied to over time."
       isLoading={isLoading}
       error={error as Error | null}
     >
@@ -64,7 +65,7 @@ export function ActivityChart({
           still let the user reach the longer Week window. */}
       <div
         role="group"
-        aria-label="Activity granularity"
+        aria-label="Group by"
         className="mb-3 inline-flex rounded-full bg-muted/70 p-1"
       >
         {GRANULARITIES.map((option) => (
@@ -86,7 +87,7 @@ export function ActivityChart({
       </div>
       {!hasAny ? (
         <p className="text-muted-foreground text-sm">
-          No application activity in this window yet.
+          No activity in this period yet.
         </p>
       ) : (
         <ResponsiveContainer width="100%" height={260}>
@@ -94,7 +95,7 @@ export function ActivityChart({
             <CartesianGrid strokeDasharray="3 3" opacity={0.3} vertical={false} />
             <XAxis
               dataKey="bucket_start"
-              tickFormatter={(value: string) => value.slice(5)}
+              tickFormatter={(value: string) => formatShortDate(value)}
               fontSize={11}
               tickLine={false}
               axisLine={false}
@@ -108,16 +109,17 @@ export function ActivityChart({
               width={28}
             />
             <Tooltip
+              labelFormatter={(value) => formatShortDate(String(value))}
               contentStyle={TOOLTIP_CONTENT_STYLE}
               labelStyle={TOOLTIP_LABEL_STYLE}
               itemStyle={TOOLTIP_ITEM_STYLE}
               cursor={{ fill: "var(--muted)", opacity: 0.4 }}
             />
             <Legend wrapperStyle={{ fontSize: 12 }} />
-            {/* Emphasis: submitted is the story (accent); drafted is context. */}
+            {/* Emphasis: applied is the story (accent); drafted is context. */}
             <Bar
               dataKey="submitted"
-              name="Submitted"
+              name="Applied"
               fill={CHART_COLORS[0]}
               radius={[4, 4, 0, 0]}
             />

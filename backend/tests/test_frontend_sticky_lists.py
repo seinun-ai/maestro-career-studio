@@ -313,7 +313,7 @@ def test_the_tracker_search_is_the_shared_list_search():
     assert 'placeholder="Search company or role…"' in _SEARCH
     assert "aria-label={label}" in _SEARCH
     toolbar = _TRACKER[_TRACKER.index("<ListToolbar>") : _TRACKER.index("</ListToolbar>")]
-    assert '<ListSearch label="Search applications" value={q} onChange={setQ} />' in toolbar
+    assert '<ListSearch label="Search jobs" value={q} onChange={setQ} />' in toolbar
     # No second copy of the box left behind in the page.
     assert "placeholder=" not in _TRACKER
     assert "<Input" not in _TRACKER

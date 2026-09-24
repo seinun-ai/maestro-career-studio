@@ -5,7 +5,7 @@ import { GuardedLink as Link } from "@/components/guarded-link";
 import type { ReactNode } from "react";
 
 import { anchorHref } from "@/lib/settings-tabs";
-import type { KnockoutCheck, KnockoutScan, KnockoutStatus } from "@/lib/types";
+import type { Job, KnockoutCheck, KnockoutScan, KnockoutStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 const STATUS_COPY: Record<
@@ -13,29 +13,29 @@ const STATUS_COPY: Record<
   { label: string; detail: string; icon: ReactNode; tone: string }
 > = {
   conflict: {
-    label: "Knock-out conflict",
-    detail: "A stated requirement contradicts your profile.",
+    label: "You may not qualify",
+    detail: "The job lists a requirement your profile doesn't meet.",
     icon: <ShieldAlert />,
     tone: "border-destructive/40 bg-destructive/5 text-destructive",
   },
+  // `clear` is any pass or warning (knockout.py): a warning row can sit under it, and a check the
+  // profile could not answer is left out, so it claims only that nothing conflicts.
   clear: {
-    label: "Stated requirements clear",
-    detail:
-      "Work authorization, OPT, salary, and experience match your profile where the posting states them.",
+    label: "Nothing rules you out",
+    detail: "Nothing the job lists conflicts with your profile.",
     icon: <CircleCheck />,
     tone: "border-emerald-500/40 bg-emerald-500/5 text-emerald-700 dark:text-emerald-400",
   },
   incomplete_profile: {
-    label: "Profile can’t answer a stated requirement",
-    detail: "Fill the missing answer in your profile to screen this posting.",
+    label: "Your profile is missing an answer",
+    detail: "Add it to your profile to check this job.",
     icon: <CircleHelp />,
     tone: "border-amber-500/40 bg-amber-500/5 text-amber-700 dark:text-amber-400",
   },
-  // Deliberately NOT phrased as a pass: the posting states nothing to check.
+  // Deliberately NOT phrased as a pass: nothing the job lists could be checked.
   unstated: {
-    label: "No screening requirements stated",
-    detail:
-      "The posting states no work-authorization, OPT, salary, or experience screens — that’s absence of signal, not a green light.",
+    label: "No requirements listed",
+    detail: "Nothing here to check. That doesn't mean you qualify.",
     icon: <CircleHelp />,
     tone: "border-border bg-muted/40 text-muted-foreground",
   },
@@ -68,9 +68,61 @@ function autofillHref(scan: KnockoutScan): string {
   return anchorHref("/profile", group ? `autofill-${group}` : "autofill");
 }
 
-export function JobKnockoutCard({ scan }: { scan: KnockoutScan | null | undefined }) {
+type Unchecked = { what: string; field: string; href: string; link: string };
+
+/**
+ * What the job lists that the scan could not compare. knockout.py leaves the salary check out when the
+ * profile has no desired salary (or the pay is not yearly) and the experience check out when the profile
+ * has no years, and says nothing, so "unstated" read "No requirements listed" on a job listing both.
+ * The yearly rule mirrors `_salary_check`.
+ */
+function uncheckedItems(job: Job, scan: KnockoutScan): Unchecked[] {
+  const has = (kind: KnockoutCheck["kind"]) => scan.checks.some((c) => c.kind === kind);
+  const ceiling = Number(job.salary_max ?? job.salary_min ?? Number.NaN);
+  const yearly =
+    Number.isFinite(ceiling) &&
+    (job.salary_period === "year" || (job.salary_period == null && ceiling >= 10000));
+  const items: Unchecked[] = [];
+  if (yearly && !has("salary")) {
+    items.push({
+      what: "pay",
+      field: "desired salary",
+      href: anchorHref("/profile", "autofill-preferences"),
+      link: "Add your desired salary",
+    });
+  }
+  if (job.years_experience_min != null && !has("experience")) {
+    items.push({
+      what: "experience",
+      field: "years of experience",
+      href: anchorHref("/profile", "job-preferences-years"),
+      link: "Add your years of experience",
+    });
+  }
+  return items;
+}
+
+function uncheckedSentence(items: Unchecked[]): string {
+  const what = items.map((i) => i.what).join(" or ");
+  const fields = items.map((i) => i.field).join(" and ");
+  return `Can't check ${what} yet: add your ${fields} to your profile.`;
+}
+
+export function JobKnockoutCard({
+  scan,
+  job,
+}: {
+  scan: KnockoutScan | null | undefined;
+  job: Job;
+}) {
   if (!scan) return null;
-  const copy = STATUS_COPY[scan.status];
+  const unchecked = uncheckedItems(job, scan);
+  const missing = unchecked.length > 0 ? uncheckedSentence(unchecked) : null;
+  // A job that lists pay or years the profile can't answer is not "no requirements listed".
+  const notChecked = scan.status === "unstated" && missing !== null;
+  const copy = notChecked
+    ? { ...STATUS_COPY.unstated, label: "Not checked yet", detail: missing }
+    : STATUS_COPY[scan.status];
   const rows = scan.checks.filter((c) => ROW_RESULTS.has(c.result) && c.message);
 
   return (
@@ -93,12 +145,22 @@ export function JobKnockoutCard({ scan }: { scan: KnockoutScan | null | undefine
           ))}
         </ul>
       )}
+      {missing && !notChecked ? <p className="text-muted-foreground mt-1 text-xs">{missing}</p> : null}
+      {unchecked.map((item) => (
+        <Link
+          key={item.what}
+          href={item.href}
+          className="mt-2 mr-3 inline-block text-xs underline underline-offset-2"
+        >
+          {item.link}
+        </Link>
+      ))}
       {scan.status === "incomplete_profile" && (
         <Link
           href={autofillHref(scan)}
           className="mt-2 inline-block text-xs underline underline-offset-2"
         >
-          Complete your autofill profile
+          Complete your profile
         </Link>
       )}
     </div>

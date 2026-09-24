@@ -86,12 +86,10 @@ def test_the_header_keeps_only_cap_today():
     assert "useProposalFunnel()" in cap
     # The failure is its own state, decided before the readout.
     assert cap.index("if (isLoadFailure(query))") < cap.index(
-        "Cap today {cap.reserved_last_24h}/{cap.max_per_day}"
+        "Applications per day: {cap.reserved_last_24h} of {cap.max_per_day} used in the last 24 hours"
     )
-    assert "used in the last 24 hours" in cap  # "today" is a rolling window
-    # Seen, not read twice: the ratio is hidden and the words are spoken.
-    readout = cap[cap.index("Cap today {") - 200 :]
-    assert readout.index('aria-hidden="true"') < readout.index("Cap today {")
+    # One line, seen and spoken the same: "today" was a rolling window, so it says the last 24 hours.
+    assert "sr-only" not in cap and "Cap today" not in cap
     hook = _read("hooks/use-proposal-funnel.ts")
     assert 'queryKey: ["proposals", "funnel"]' in hook
     pipeline = _read("components/analytics/agent-pipeline-card.tsx")
@@ -210,7 +208,7 @@ def _github_slug(heading: str) -> str:
 def test_an_empty_inbox_says_where_proposals_come_from():
     empty = _SECTION[_SECTION.index("if (items.length === 0) {") : _SECTION.index("const rowProps")]
     assert 'title="No proposals yet"' in empty
-    assert "never from the app itself. Nothing is submitted without your yes." in empty
+    assert "The app never proposes jobs itself. Nothing is submitted without your yes." in empty
     assert "href={JOB_HUNT_SKILL_URL}" in empty
     assert "href={AGENT_APPLICATIONS_URL}" in empty
     assert empty.count('target="_blank" rel="noopener noreferrer"') == 2
@@ -282,7 +280,7 @@ def test_every_proposal_surface_names_who_filed_it():
     # It truncates in a narrow row: the whole of it on hover.
     assert '<div className="text-muted-foreground truncate text-xs" title={meta}>' in row
     assert '<CardTitle>{proposalByLine(data.proposed_by, data.status) ?? "Agent inbox"}</CardTitle>' in _PANEL
-    assert '<Fact label="Date">' in _PANEL and '<Fact label="Proposed">' not in _PANEL
+    assert "Proposed {formatShortDate(data.created_at)}" in _PANEL and '<Fact label="Proposed">' not in _PANEL
     assert "? proposalByLine(job.proposal_proposed_by, proposalStatus) : null;" in _JOB
     pill = _JOB[_JOB.index("title={proposalBy ?? undefined}") :]
     assert pill.index('<span className="sr-only">{proposalBy}, status </span>') < pill.index(
@@ -420,11 +418,15 @@ def test_queue_and_accept_say_queued():
         assert old not in _TRACKER, old
 
 
-def test_a_bulk_queue_that_partly_fails_says_queued():
+def test_a_bulk_queue_that_partly_fails_says_queue():
+    """The toast names the verb the inbox uses (Queue), and a server reason
+    only when it is a sentence for the user (D §2.7)."""
     bulk = _TRIAGE[_TRIAGE.index("onSuccess: (data, vars) => {") :]
     bulk = bulk[: bulk.index("onError")]
-    assert '"queued" : "skipped"' in bulk
-    assert "could not be ${verb}: ${sample}" in bulk
+    assert '"queue" : "skip"' in bulk
+    assert "`Couldn't ${verb} ${failed.length} of ${vars.ids.length}. ${why}`" in bulk
+    assert 'const why = isPlainSentence(sample) ? sample : "Try again.";' in bulk
+    assert "could not be" not in bulk
     assert " — " not in bulk
 
 
