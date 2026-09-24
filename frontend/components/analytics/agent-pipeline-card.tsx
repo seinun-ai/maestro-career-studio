@@ -9,11 +9,11 @@ const STAGES: Array<{
   label: string;
   optional?: boolean;
 }> = [
-  { key: "captured", label: "Captured" },
+  { key: "captured", label: "Found" },
   { key: "proposed", label: "Proposed" },
   { key: "accepted", label: "Queued", optional: true },
   { key: "approved", label: "Approved" },
-  { key: "submitted", label: "Submitted" },
+  { key: "submitted", label: "Applied" },
   { key: "interviewing", label: "Interviewing" },
 ];
 

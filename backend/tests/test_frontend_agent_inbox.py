@@ -130,8 +130,23 @@ def test_the_toolbar_is_one_row_like_applications():
 
 def test_the_sort_values_describe_themselves():
     for label in ('score: "Best score first"', 'newest: "Newest first"',
-                  'role: "Role A–Z"', 'company: "Company A–Z"'):
+                  'title: "Job title A–Z"', 'company: "Company A–Z"'):
         assert label in _SECTION, label
+    # It sorts by job title, not by the Role filter's role category: its label says so.
+    assert 'case "title":\n        return (a.job.title ?? "").localeCompare(b.job.title ?? "");' in _SECTION
+    assert "Role A–Z" not in _SECTION
+
+
+def test_the_filters_share_a_line_on_a_phone_where_they_fit():
+    """At 375 min-w-[10rem] put the four pills one per line. Below sm they
+    take their own width and grow into the line: two to a line at 375, and a
+    long value (a board's host) wraps to its own line instead of clipping."""
+    toolbar = _toolbar()
+    assert '<div className="flex flex-wrap items-center gap-1.5">' in toolbar
+    for cls, label in re.findall(r'<SelectTrigger\s+className="([^"]*)"\s+aria-label="([^"]+)"', toolbar):
+        classes = cls.split()
+        assert {"shrink-0", "grow", "sm:grow-0"} <= set(classes), label
+        assert not [c for c in classes if c.startswith("min-w-")], label  # only from sm up
 
 
 def test_the_search_box_is_the_shared_one():
@@ -180,8 +195,8 @@ def test_the_bulk_bar_leaves_room_below_a_focused_row():
     assert 'data-slot="bulk-bar"' in _TRIAGE[_TRIAGE.index("export function BulkBar(") :]
     css = _read("app/globals.css")
     rule = css[css.index('html:has([data-slot="bulk-bar"])') :]
+    assert rule.startswith('html:has([data-slot="bulk-bar"]):has([data-slot="list-toolbar"] ~ :focus-within) {')  # M24
     rule = rule[: rule.index("}")]
-    assert ':has([data-slot="list-toolbar"] ~ :focus-within)' in rule
     assert "scroll-padding-bottom: 5rem;" in rule
 
 
@@ -199,8 +214,22 @@ def test_an_empty_inbox_says_where_proposals_come_from():
     assert "href={JOB_HUNT_SKILL_URL}" in empty
     assert "href={AGENT_APPLICATIONS_URL}" in empty
     assert empty.count('target="_blank" rel="noopener noreferrer"') == 2
-    assert "<Link href={CONNECTED_AGENTS_SETTINGS}>" in empty
+    assert '<Link href={CONNECTED_AGENTS_SETTINGS} className={buttonVariants({ variant: "ghost" })}>' in empty
     assert "ListToolbar" not in empty and "ListCapNotice" not in empty
+
+
+def test_the_empty_states_links_are_announced_as_links():
+    """I1: `Button nativeButton={false} render={<a>}` gives a link role="button"."""
+    empty = _SECTION[_SECTION.index("if (items.length === 0) {") : _SECTION.index("const rowProps")]
+    assert "nativeButton={false}" not in empty and "<Button" not in empty
+    assert (
+        '<a href={JOB_HUNT_SKILL_URL} target="_blank" rel="noopener noreferrer" '
+        'className={cn(buttonVariants(), "h-auto min-h-8 max-w-full py-1.5 whitespace-normal")}>'
+    ) in empty
+    assert (
+        '<a href={AGENT_APPLICATIONS_URL} target="_blank" rel="noopener noreferrer" '
+        'className={buttonVariants({ variant: "ghost" })}>'
+    ) in empty
 
 
 def test_the_empty_state_links_point_at_real_headings():
@@ -233,6 +262,8 @@ def test_the_inbox_says_at_its_end_when_the_list_was_cut():
         '<ListCapNotice loaded={items.length} limit={PROPOSALS_LIMIT} total={data?.total} noun="proposals" />'
     )
     assert _SECTION.index("History ·") < notice < _SECTION.index("<BulkBar")
+    # After the lanes' ternary, not inside it: a filter that hides every row still says the list was cut (M10).
+    assert "          </section>\n        </>\n      )}\n\n      <ListCapNotice" in _SECTION
 
 
 # ── A9: who proposed it ─────────────────────────────────────────────────────
@@ -254,7 +285,8 @@ def test_every_proposal_surface_names_who_filed_it():
 
 
 def test_the_tracker_mark_names_the_filer_in_words_a_reader_hears():
-    assert "agentMarkLabel(" in _TRACKER
+    # Only a saved job carries its newest proposal's filer (M7).
+    assert "agentMarkLabel(\n                  r.kind === \"saved\" ? r.job.proposal_proposed_by : null,\n" in _TRACKER
     assert "Found by agent" not in _TRACKER
     mark = _TRACKER[_TRACKER.index("title={mark}") :]
     assert mark.index('aria-hidden="true"') < mark.index('<span className="sr-only">{mark}</span>')
@@ -341,6 +373,36 @@ def test_a_queue_refreshes_whatever_happened():
         assert "onSuccess: (queue) => toast.success(queuedToast(queue))," in promote
 
 
+def test_queue_is_the_word_for_what_becomes_queued():
+    """Decision 19, D2.7 and D2.2: the row's, the bar's and the job header's
+    button make a Queued chip, so they say Queue."""
+    row = _SECTION[_SECTION.index("function ProposalRow(") :]
+    assert 'label="Queue"' in row and 'label="Accept"' not in row
+    bar = _TRIAGE[_TRIAGE.index("export function BulkBar(") :]
+    assert "\n          Queue\n        </Button>" in bar and "Accept" not in bar
+    assert "\n                Queue\n              </Button>" in _JOB
+    assert "\n                Accept\n              </Button>" not in _JOB
+
+
+def test_history_and_the_pipeline_use_the_owners_chip_words():
+    """D §0: Applied (not Submitted), Check if sent (not Submission uncertain), Found (not Captured)."""
+    chip = _read("components/status-chip.tsx")
+    assert 'submitted: { label: "Applied",' in chip
+    assert 'submission_uncertain: { label: "Check if sent",' in chip
+    pipeline = _read("components/analytics/agent-pipeline-card.tsx")
+    assert '{ key: "captured", label: "Found" },' in pipeline
+    assert '{ key: "submitted", label: "Applied" },' in pipeline
+    for old in ('"Captured"', '"Submitted"'):
+        assert old not in pipeline, old
+    for old in ('label: "Submitted"', 'label: "Submission uncertain"'):
+        assert old not in chip, old
+
+
+def test_a_row_checkbox_names_its_job():
+    row = _SECTION[_SECTION.index("function ProposalRow(") :]
+    assert 'aria-label={`Select ${job.title ?? "Untitled role"}${job.company ? ` at ${job.company}` : ""}`}' in row
+
+
 def test_queue_and_accept_say_queued():
     """Decision 19: the result of Accept is a Queued chip, so its words say Queued."""
     assert 'toast.success("Queued. A connected agent can apply to it now.")' in _JOB
@@ -399,6 +461,8 @@ def test_needs_you_is_one_list_of_statuses():
     # Under ["proposals"]: every triage invalidation refreshes the count.
     assert 'queryKey: ["proposals", "needs-you-count"]' in hook
     assert "refetchInterval: 60_000" in hook
+    # It pauses while the tab is hidden (M4) and always runs (M5).
+    assert "refetchIntervalInBackground" not in hook and "enabled:" not in hook
 
 
 def test_the_badge_hides_at_zero_and_caps_at_99():
@@ -587,7 +651,7 @@ def test_a_confirmed_delete_returns_focus_where_the_caller_says():
 
 def test_the_job_header_triage_keeps_focus_in_the_header():
     job = _JOB
-    for label in ("Accept", "Skip", "Delete proposal"):
+    for label in ("Queue", "Skip", "Delete proposal"):
         at = job.index(f"\n                {label}\n              </Button>")
         button = job[job.rfind("<Button", 0, at) : at]
         assert "focusableWhenDisabled" in button, label

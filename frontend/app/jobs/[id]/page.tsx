@@ -412,7 +412,7 @@ export default function JobDetailPage({
                 }}
               >
                 <Check className="size-3.5" />
-                Accept
+                Queue
               </Button>
             ) : null}
             {showDecline && proposalId ? (

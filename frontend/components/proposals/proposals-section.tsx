@@ -29,7 +29,7 @@ import {
 import { IconButton } from "@/components/icon-button";
 import { PROPOSAL_STATUS_CHIP } from "@/components/status-chip";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Select,
@@ -108,13 +108,14 @@ type Leaving =
   | { kind: "row"; id: string; lane: InboxLane | null; next: () => HTMLElement | null }
   | { kind: "bar"; next: () => HTMLElement | null };
 
-type SortKey = "score" | "newest" | "role" | "company";
+type SortKey = "score" | "newest" | "title" | "company";
 
-// Values that describe themselves: the toolbar has no captions.
+// Values that describe themselves: the toolbar has no captions. "Job title",
+// not "Role": the Role filter is the role category, this is the posting's title.
 const SORT_LABELS: Record<SortKey, string> = {
   score: "Best score first",
   newest: "Newest first",
-  role: "Role A–Z",
+  title: "Job title A–Z",
   company: "Company A–Z",
 };
 
@@ -149,7 +150,7 @@ function sortProposals(items: Proposal[], sort: SortKey): Proposal[] {
     switch (sort) {
       case "newest":
         return b.created_at.localeCompare(a.created_at);
-      case "role":
+      case "title":
         return (a.job.title ?? "").localeCompare(b.job.title ?? "");
       case "company":
         return (a.job.company ?? "").localeCompare(b.job.company ?? "");
@@ -387,37 +388,21 @@ export function ProposalsSection() {
         description="Proposals come from an AI agent you connect over MCP (Claude, Codex, the ChatGPT desktop app), never from the app itself. Nothing is submitted without your yes."
         action={
           <div className="flex max-w-full flex-col items-center gap-2 px-4">
-            {/* The label is long; let it wrap at 375 instead of overflowing. */}
-            <Button
-              nativeButton={false}
-              className="h-auto min-h-8 max-w-full py-1.5 whitespace-normal"
-              render={
-                <a href={JOB_HUNT_SKILL_URL} target="_blank" rel="noopener noreferrer">
-                  <BookOpen className="size-4" aria-hidden="true" />
-                  Start a hunt: install the ready-made job-hunt skill
-                </a>
-              }
-            />
+            {/* Links styled as buttons, not Buttons rendered as links: Base UI's Button
+                gives its element role="button", so these were announced as buttons.
+                The first label is long; it wraps at 375 instead of overflowing. */}
+            <a href={JOB_HUNT_SKILL_URL} target="_blank" rel="noopener noreferrer" className={cn(buttonVariants(), "h-auto min-h-8 max-w-full py-1.5 whitespace-normal")}>
+              <BookOpen className="size-4" aria-hidden="true" />
+              Start a hunt: install the ready-made job-hunt skill
+            </a>
             <div className="flex flex-wrap justify-center gap-2">
-              <Button
-                variant="ghost"
-                nativeButton={false}
-                render={
-                  <a href={AGENT_APPLICATIONS_URL} target="_blank" rel="noopener noreferrer">
-                    How agent applications work
-                  </a>
-                }
-              />
-              <Button
-                variant="ghost"
-                nativeButton={false}
-                render={
-                  <Link href={CONNECTED_AGENTS_SETTINGS}>
-                    <SettingsIcon className="size-4" aria-hidden="true" />
-                    Connect an agent
-                  </Link>
-                }
-              />
+              <a href={AGENT_APPLICATIONS_URL} target="_blank" rel="noopener noreferrer" className={buttonVariants({ variant: "ghost" })}>
+                How agent applications work
+              </a>
+              <Link href={CONNECTED_AGENTS_SETTINGS} className={buttonVariants({ variant: "ghost" })}>
+                <SettingsIcon className="size-4" aria-hidden="true" />
+                Connect an agent
+              </Link>
             </div>
           </div>
         }
@@ -456,12 +441,14 @@ export function ProposalsSection() {
           `[data-slot="list-toolbar"] ~ :focus-within`. */}
       <ListToolbar>
         <ListSearch label="Search the Agent inbox" value={q} onChange={setQ} />
+        {/* On a phone the pills share a line wherever two fit whole (min-w-10rem put
+            one per line), and a value is never clipped: they wrap instead. */}
         <div className="flex flex-wrap items-center gap-1.5">
           <Select
             value={sort}
             onValueChange={(v) => setSort((v as SortKey) ?? "score")}
           >
-            <SelectTrigger className="h-8 min-w-[10rem] rounded-full" aria-label="Sort">
+            <SelectTrigger className="h-8 shrink-0 grow rounded-full sm:grow-0 sm:min-w-[10rem]" aria-label="Sort">
               <SelectValue>{SORT_LABELS[sort]}</SelectValue>
             </SelectTrigger>
             <SelectContent align="start" alignItemWithTrigger={false} className="w-auto min-w-[12rem]">
@@ -473,7 +460,7 @@ export function ProposalsSection() {
             </SelectContent>
           </Select>
           <Select value={role} onValueChange={(v) => setRole(v ?? "all")}>
-            <SelectTrigger className="h-8 min-w-[10rem] rounded-full" aria-label="Role">
+            <SelectTrigger className="h-8 shrink-0 grow rounded-full sm:grow-0 sm:min-w-[10rem]" aria-label="Role">
               <SelectValue>{role === "all" ? "All roles" : roleLabel(role)}</SelectValue>
             </SelectTrigger>
             <SelectContent align="start" alignItemWithTrigger={false} className="w-auto min-w-[12rem]">
@@ -486,7 +473,7 @@ export function ProposalsSection() {
             </SelectContent>
           </Select>
           <Select value={board} onValueChange={(v) => setBoard(v ?? "all")}>
-            <SelectTrigger className="h-8 min-w-[10rem] rounded-full" aria-label="Job board">
+            <SelectTrigger className="h-8 shrink-0 grow rounded-full sm:grow-0 sm:min-w-[10rem]" aria-label="Job board">
               <SelectValue>{board === "all" ? "All boards" : board}</SelectValue>
             </SelectTrigger>
             <SelectContent align="start" alignItemWithTrigger={false} className="w-auto min-w-[12rem]">
@@ -504,7 +491,7 @@ export function ProposalsSection() {
               setMinScore(v && v !== "any" ? (Number(v) as ScoreFloor) : null)
             }
           >
-            <SelectTrigger className="h-8 min-w-[8rem] rounded-full" aria-label="Minimum score">
+            <SelectTrigger className="h-8 shrink-0 grow rounded-full sm:grow-0 sm:min-w-[8rem]" aria-label="Minimum score">
               <SelectValue>{scoreLabel(minScore)}</SelectValue>
             </SelectTrigger>
             <SelectContent align="start" alignItemWithTrigger={false} className="w-auto min-w-[10rem]">
@@ -689,7 +676,7 @@ export function ProposalsSection() {
       <BulkBar
         selectedCount={selectedShown.length}
         pending={actions.pending}
-        onAccept={() => {
+        onQueue={() => {
           leaveBar();
           actions.bulk({ ids: selectedShown, status: "accepted" });
         }}
@@ -802,8 +789,11 @@ function ProposalRow({
         <div className="flex items-stretch gap-1">
           {showCheckbox ? (
             <label className="flex items-center px-3">
-              <Checkbox checked={selected.has(proposal.id)} onCheckedChange={(next) =>
-                  onToggleSelected(proposal.id, next)} />
+              <Checkbox
+                checked={selected.has(proposal.id)}
+                onCheckedChange={(next) => onToggleSelected(proposal.id, next)}
+                aria-label={`Select ${job.title ?? "Untitled role"}${job.company ? ` at ${job.company}` : ""}`}
+              />
             </label>
           ) : null}
           <Link
@@ -862,7 +852,7 @@ function ProposalRow({
             {lane === "triage" ? (
               <>
                 <IconButton
-                  label="Accept"
+                  label="Queue"
                   icon={<Check />}
                   data-row-action="queue"
                   disabled={pending}

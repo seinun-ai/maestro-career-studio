@@ -268,13 +268,13 @@ export function DeclineDialog({
 
 export function BulkBar({
   selectedCount,
-  onAccept,
+  onQueue,
   onDecline,
   onClear,
   pending,
 }: {
   selectedCount: number;
-  onAccept: () => void;
+  onQueue: () => void;
   onDecline: () => void;
   onClear: () => void;
   pending?: boolean;
@@ -296,11 +296,11 @@ export function BulkBar({
           type="button"
           size="sm"
           className="rounded-full data-disabled:pointer-events-none data-disabled:opacity-50"
-          onClick={onAccept}
+          onClick={onQueue}
           disabled={pending}
           focusableWhenDisabled
         >
-          Accept
+          Queue
         </Button>
         <Button
           type="button"
