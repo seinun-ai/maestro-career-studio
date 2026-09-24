@@ -29,6 +29,14 @@ TEMPLATE_DIR = Path(__file__).parent.parent / "templates"
 RESUME_TEMPLATE = "resume.tex.j2"
 
 
+def _extras_unsupported(renderable: list[dict[str, Any]]) -> str:
+    """The one sentence for a template that would drop the resume's other
+    sections, named by their titles as the editor shows them."""
+    titles = ", ".join(str(s.get("title") or s.get("key") or "?") for s in renderable)
+    return (f"This template can't show your other sections ({titles}). "
+            "Pick a template that can, or hide those sections.")
+
+
 class TemplateMissingExtraSectionsError(ValueError):
     """A resume has enabled, non-empty custom (extra) sections but the chosen
     template's source never references ``extra_sections`` — rendering would
@@ -279,14 +287,7 @@ def render_tex_from_source(
     if enforce_extras_support:
         renderable = _renderable_extra_sections(normalized)
         if renderable and not source_references_extras(source):
-            keys = ", ".join(str(s.get("key", "?")) for s in renderable)
-            raise TemplateMissingExtraSectionsError(
-                "This resume has custom section(s) "
-                f"[{keys}] but the selected template cannot render custom "
-                "sections, so they would be silently dropped. Choose a "
-                "template that supports custom sections, or disable those "
-                "sections before rendering."
-            )
+            raise TemplateMissingExtraSectionsError(_extras_unsupported(renderable))
     resume = ResumeData.model_validate(normalized)
     fmt = merge_formatting(formatting)
     template = _environment().from_string(source)
@@ -481,14 +482,7 @@ def build_typst_sys_inputs(
     if enforce_extras_support:
         renderable = _renderable_extra_sections(normalized)
         if renderable and not typst_source_references_extras(source):
-            keys = ", ".join(str(s.get("key", "?")) for s in renderable)
-            raise TemplateMissingExtraSectionsError(
-                "This resume has custom section(s) "
-                f"[{keys}] but the selected template cannot render custom "
-                "sections, so they would be silently dropped. Choose a "
-                "template that supports custom sections, or disable those "
-                "sections before rendering."
-            )
+            raise TemplateMissingExtraSectionsError(_extras_unsupported(renderable))
     fmt = merge_formatting(formatting)
     resume = ResumeData.model_validate(normalized).model_dump(mode="json")
     # Match LaTeX Jinja truthiness: '' / whitespace-only optional strings become
@@ -555,15 +549,16 @@ class RenderedDoc:
 
 
 TEX_MISSING_NO_TYPST = (
-    "This template needs TeX, which is not installed on this machine. "
-    "Install TeX or pick a Typst template."
+    "This template needs a tool that isn't installed. Pick another template."
 )
 
 
 def tex_fallback_note(substitute: str, requested: str) -> str:
+    # The words a user reads in a toast: no engine names (the log line in
+    # `resolve_render_template` keeps those, with the probe's reason).
     return (
-        "TeX is not installed on this machine; rendered with "
-        f"{substitute} instead of {requested}."
+        f"Your {requested} template can't be used on this computer, so this PDF "
+        f"uses {substitute}."
     )
 
 

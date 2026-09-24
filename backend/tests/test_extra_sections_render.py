@@ -263,8 +263,9 @@ def test_incompatible_template_hard_fails_for_extras_resume(db_session):
     with pytest.raises(TemplateMissingExtraSectionsError) as exc:
         _tex(_resume([_bullets_section()]), template_id="noextra", session=db_session)
     msg = str(exc.value)
-    assert "custom section" in msg.lower()
-    assert "awards" in msg  # names the offending section key
+    assert "can't show your other sections" in msg
+    # Names the offending section by its title, the word the editor shows.
+    assert "(Awards & Honors)" in msg
 
 
 def test_incompatible_template_ok_for_core_only_resume(db_session):

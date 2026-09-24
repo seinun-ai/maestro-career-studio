@@ -227,6 +227,67 @@ def test_experience_check_omitted_when_posting_states_no_minimum():
     assert not [c for c in result["checks"] if c["kind"] == "experience"]
 
 
+# --- the words (D §9.3) --------------------------------------------------------
+#
+# Every message the job page's knock-out card prints (and MCP `get_job`
+# relays). The answers these point at live on Profile › Autofill, not Settings
+# (D §10.20), and none of them joins two clauses with a semicolon.
+
+_MESSAGES = [
+    (dict(work_authorization="citizen_or_gc_required"), WorkAuth(), {},
+     "work_authorization",
+     "This job requires US citizenship or a green card. Add your work "
+     "authorization in Profile › Autofill."),
+    (dict(work_authorization="citizen_or_gc_required"), WorkAuth(status="h1b"), {},
+     "work_authorization", "This job requires US citizenship or a green card."),
+    (dict(work_authorization="no_sponsorship"), WorkAuth(status="h1b"), {},
+     "work_authorization",
+     "This job doesn't sponsor visas, and you need sponsorship now."),
+    (dict(work_authorization="no_sponsorship"), WorkAuth(status="opt"), {},
+     "work_authorization",
+     "This job doesn't sponsor visas, and you need sponsorship in the future."),
+    (dict(work_authorization="no_sponsorship"), WorkAuth(), {},
+     "work_authorization",
+     "This job doesn't sponsor visas. Answer the sponsorship questions in "
+     "Profile › Autofill."),
+    (dict(work_authorization="sponsorship_available"), WorkAuth(status="h1b"), {},
+     "work_authorization", "This job sponsors visas."),
+    (dict(opt_accepted="yes"), WorkAuth(), {}, "opt",
+     "This job states an OPT policy. Add your work authorization in Profile › Autofill."),
+    (dict(opt_accepted="no"), WorkAuth(status="opt"), {}, "opt",
+     "This job doesn't accept OPT."),
+    (dict(opt_accepted="stem_opt_ok"), WorkAuth(status="opt"), {}, "opt",
+     "This job accepts STEM OPT only."),
+    (dict(salary_max=Decimal(120000), salary_period="year"), WorkAuth(),
+     {"preferences": {"desired_salary": "$150k"}}, "salary",
+     "The posted pay tops out below your desired salary."),
+    (dict(years_experience_min=5), WorkAuth(), {"years_experience": 2}, "experience",
+     "This job asks for 5+ years. Your profile says 2."),
+]
+
+
+def _scanned_messages() -> list[str]:
+    """What `scan_job` actually says for each row of `_MESSAGES`."""
+    out = []
+    for job_fields, work_auth, extra, kind, _expected in _MESSAGES:
+        result = scan_job(_job(**job_fields), work_auth, **{"preferences": None, **extra})
+        out.append(_check(result, kind)["message"])
+    return out
+
+
+def test_knockout_messages_read_as_plain_sentences():
+    assert _scanned_messages() == [expected for *_rest, expected in _MESSAGES]
+
+
+def test_knockout_points_to_profile_autofill():
+    """Every message that names a place names Profile › Autofill, where the
+    work-authorization answers live; none sends the user to Settings."""
+    messages = _scanned_messages()
+    places = [m for m in messages if " in Profile" in m or " in Settings" in m]
+    assert len(places) == 3
+    assert [m for m in places if not m.endswith("in Profile › Autofill.")] == []
+
+
 # --- surfaces -----------------------------------------------------------------
 
 def test_job_detail_carries_the_knockout_scan(db_session, tmp_path, monkeypatch):

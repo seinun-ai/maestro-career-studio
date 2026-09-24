@@ -49,7 +49,7 @@ def test_gate_dates_passing_detail_does_not_claim_absent_dates_exist():
     result = gate_dates({"experience": [{"company": "A", "role": "R"}]})
 
     assert result["status"] == "pass"
-    assert result["detail"] == "No unparseable experience dates found."
+    assert result["detail"] == "All your job dates are readable."
 
 
 def test_detect_gaps_declines_to_guess_around_an_undated_role():
@@ -283,7 +283,30 @@ def test_gate_placeholders_scans_extra_bullets_section():
          "bullets": ["First place, [YEAR]"]}]}
     g = gate_placeholders(resume)
     assert g["status"] == "fail" and g["id"] == "S5"
-    assert "awards" in g["detail"]
+    assert g["detail"] == "Awards, bullet 1"
+
+
+def test_placeholder_places_are_words_never_schema_paths():
+    """S5's detail is shown on the health report and the tailored review, so it
+    names each place the way the page does: never `experience[0].bullet[2]`.
+    One place is named once, however many of its fields hold a placeholder."""
+    resume = {
+        "summary": "Engineer with [N] years.",
+        "experience": [{"company": "Acme", "role": "[ROLE]", "bullets": [
+            "Shipped the thing.", "Cut costs by XX%."]}],
+        "education": [{"institution": "State U [CAMPUS]", "degree": "BS [MAJOR]"}],
+        "extra_sections": [{"key": "awards", "title": "Awards", "type": "entries",
+                            "enabled": True, "entries": [
+                                {"heading": "Dean's list", "date": "[YEAR]",
+                                 "bullets": ["TBD"]}]}],
+    }
+    g = gate_placeholders(resume)
+    assert g["label"] == "No placeholder text"
+    assert g["detail"] == (
+        "Summary, [ROLE] · Acme, [ROLE] · Acme, bullet 2, BS [MAJOR] · State U [CAMPUS], "
+        "Awards: Dean's list, Awards: Dean's list, bullet 1")
+    for path_shape in ("[0]", ".bullet", "extra[", "experience"):
+        assert path_shape not in g["detail"]
 
 
 def test_gate_placeholders_scans_extra_entry_metadata_and_bullets():

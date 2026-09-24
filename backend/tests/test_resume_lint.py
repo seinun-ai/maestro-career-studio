@@ -312,7 +312,15 @@ def test_reworded_findings_keep_their_ids():
     findings = _reworded_rules_report()
     for (ftype, loc), old_issue in _OLD_ISSUES.items():
         finding = _finding_at(findings, ftype, loc)
+        # The words moved (D §9.2), and the id did not.
+        assert finding["issue"] != old_issue, (ftype, loc)
         assert finding["id"] == rl._fid(ftype, loc, old_issue), (ftype, loc)
+
+
+def test_c2_says_the_claim_as_written_and_the_dates_in_whole_years():
+    findings = _reworded_rules_report()
+    assert _finding_at(findings, "ask", ("summary", None, None))["issue"] == (
+        "Your summary says 8+ years, but your dates add up to about 3.")
 
 
 def test_a_finding_id_survives_its_issue_being_reworded(monkeypatch):
@@ -539,7 +547,7 @@ def test_run_report_scans_extras_without_crashing(db_session, monkeypatch):
     assert {"score", "grade", "findings"} <= row.report_json.keys()
     s5 = next(g for g in row.report_json["gates"] if g["id"] == "S5")
     assert s5["status"] == "fail"
-    assert "awards" in s5["detail"]
+    assert "Awards" in s5["detail"]
     # Extras never entered the evidence ladder / features levels.
     assert all(not loc.startswith("extra") for loc in row.features_json["levels"])
 

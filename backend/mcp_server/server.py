@@ -258,7 +258,8 @@ def waive_health_gate(
     Waiving bypasses a safety gate and is an explicit human decision: call this
     tool only when the user has said to waive. `kind` is 'base' or 'application',
     `key` is the resume slug or application id, and `reason` records why the named
-    gate may be bypassed."""
+    gate may be bypassed. The 409 names each failing gate by its label; the
+    `gate_id` to pass is that gate's `gates[].id` in get_health_report."""
     return _client.waive_health_gate(kind, key, gate_id, reason)
 
 

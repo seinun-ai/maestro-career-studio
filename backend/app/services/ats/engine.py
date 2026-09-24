@@ -10,7 +10,8 @@ from app.services.ats.resume_indexer import index_resume
 from app.services.script_guard import extract_text_for_script_check, validate_script
 
 LOW_COVERAGE_THRESHOLD = 0.25
-LOW_COVERAGE_MESSAGE = "I could not read this posting — treat this score as unreliable"
+LOW_COVERAGE_MESSAGE = (
+    "Couldn't read enough of this job description. Treat this ATS score as a rough guide.")
 
 
 @dataclass(frozen=True)

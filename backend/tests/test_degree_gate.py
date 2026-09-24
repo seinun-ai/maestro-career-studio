@@ -68,6 +68,22 @@ def test_warns_when_the_jd_asks_for_a_higher_degree_than_the_resume_shows():
     assert _degree_warnings(result)
 
 
+def test_the_warning_is_a_plain_sentence_with_agreeing_articles():
+    """The words the Score tab prints: no semicolon, no dash, and "an associate's"
+    rather than "a associate's"."""
+    result = score_resume(
+        _resume([{"institution": "S", "degree": "Associate of Science", "field": "CS"}]),
+        _jd("Bachelor's degree in Computer Science required"),
+        as_of=AS_OF,
+    )
+
+    assert _degree_warnings(result) == [
+        "The job asks for a bachelor's degree and your resume shows an associate's. "
+        "Employers usually ask this on the application form. Answer honestly. It "
+        "doesn't change your ATS score."
+    ]
+
+
 def test_is_silent_when_the_resume_degree_meets_or_exceeds_the_ask():
     result = score_resume(
         _resume([{"institution": "S", "degree": "MS", "field": "CS"}]),

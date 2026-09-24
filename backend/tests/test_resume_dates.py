@@ -117,7 +117,7 @@ def test_gate_dates_reports_only_an_unparseable_nonempty_end_date():
 
     result = gate_dates(resume)
     assert result["status"] == "fail"
-    assert result["detail"] == "Acme — Analyst: end date unparseable"
+    assert result["detail"] == "Analyst · Acme: can't read the end date"
 
 
 @pytest.mark.parametrize(

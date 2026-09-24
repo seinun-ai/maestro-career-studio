@@ -60,11 +60,12 @@ def _gc_required_verdict(work_auth: WorkAuth) -> tuple[str, str | None]:
     if work_auth.status is None:
         return (
             "profile_missing",
-            "Posting requires citizen/green-card status; set your work authorization in Settings.",
+            "This job requires US citizenship or a green card. Add your work "
+            "authorization in Profile › Autofill.",
         )
     if work_auth.status in _CITIZEN_OR_GC:
         return "pass", None
-    return "conflict", "Posting requires US citizen or green-card status."
+    return "conflict", "This job requires US citizenship or a green card."
 
 
 def _no_sponsorship_verdict(work_auth: WorkAuth) -> tuple[str, str | None]:
@@ -73,12 +74,13 @@ def _no_sponsorship_verdict(work_auth: WorkAuth) -> tuple[str, str | None]:
         timing = "now" if now else "in the future"
         return (
             "conflict",
-            f"Posting offers no sponsorship; your profile needs sponsorship {timing}.",
+            f"This job doesn't sponsor visas, and you need sponsorship {timing}.",
         )
     if now is None or future is None:
         return (
             "profile_missing",
-            "Posting offers no sponsorship; answer the sponsorship questions in Settings.",
+            "This job doesn't sponsor visas. Answer the sponsorship questions in "
+            "Profile › Autofill.",
         )
     return "pass", None
 
@@ -93,7 +95,7 @@ def _work_auth_check(job: Job, work_auth: WorkAuth) -> dict[str, Any]:
     if not stated or stated == "unstated":
         return {**check, "result": "job_unstated", "message": None}
     if stated == "sponsorship_available":
-        return {**check, "result": "pass", "message": "Posting offers sponsorship."}
+        return {**check, "result": "pass", "message": "This job sponsors visas."}
     if stated == "citizen_or_gc_required":
         result, message = _gc_required_verdict(work_auth)
     else:  # no_sponsorship
@@ -122,13 +124,14 @@ def _opt_verdict(stated: str, status: str | None, holder: bool) -> tuple[str, st
     if status is None:
         return (
             "profile_missing",
-            "Posting states an OPT policy; set your work authorization in Settings.",
+            "This job states an OPT policy. Add your work authorization in "
+            "Profile › Autofill.",
         )
     if not holder:
         return "pass", None
     if stated == "no" or (stated == "stem_opt_ok" and status != "stem_opt"):
-        policy = "does not accept OPT" if stated == "no" else "accepts STEM OPT only"
-        return "conflict", f"Posting {policy}."
+        policy = "doesn't accept OPT" if stated == "no" else "accepts STEM OPT only"
+        return "conflict", f"This job {policy}."
     return "pass", None
 
 
@@ -180,7 +183,7 @@ def _salary_check(job: Job, preferences: dict[str, Any] | None) -> dict[str, Any
         return {
             **check,
             "result": "warning",
-            "message": "Posted range tops out below your desired salary.",
+            "message": "The posted pay tops out below your desired salary.",
         }
     return {**check, "result": "pass", "message": None}
 
@@ -207,8 +210,8 @@ def _experience_check(job: Job, years_experience: int | None) -> dict[str, Any] 
             **check,
             "result": "warning",
             "message": (
-                f"Posting asks {job.years_experience_min}+ years; "
-                f"your profile states {years_experience}."
+                f"This job asks for {job.years_experience_min}+ years. "
+                f"Your profile says {years_experience}."
             ),
         }
     return {**check, "result": "pass", "message": None}

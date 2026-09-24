@@ -51,11 +51,22 @@ def _entity_context(entity: KBEntity, existing_points: list[str]) -> str:
     return "\n".join(lines)
 
 
+# Document summaries the Career history page shows (and MCP kb_get_entity
+# returns). Stored per document: rows written before keep their old words.
+NO_TEXT = "No text could be read from this file."
+MINT_FAILED = "Couldn't draft bullets from this file. Try again."
+
+
+def minted_summary(minted: int, skipped: int) -> str:
+    return (f"{minted} draft {'bullet' if minted == 1 else 'bullets'} added, "
+            f"{skipped} skipped as duplicates")
+
+
 def mint_document(session: Session, document: KBDocument) -> KBDocument:
     entity = document.entity
     if not (document.text_content or "").strip():
         document.ingest_status = "failed"
-        document.ingest_summary = "no extractable text"
+        document.ingest_summary = NO_TEXT
         return document
     existing = [p.text for p in entity.points if p.state != "retired"]
     prompt = (
@@ -71,12 +82,14 @@ def mint_document(session: Session, document: KBDocument) -> KBDocument:
             trace_name="kb-mint",
         )
     except Exception as exc:  # noqa: BLE001 — LLM failure leaves the doc re-mintable
+        logger.warning("kb mint failed for document %s: %s", document.id, exc)
         document.ingest_status = "failed"
-        document.ingest_summary = f"mint failed: {exc}"
+        document.ingest_summary = MINT_FAILED
         return document
     if not isinstance(result, dict):
+        logger.warning("kb mint returned a non-object for document %s", document.id)
         document.ingest_status = "failed"
-        document.ingest_summary = "mint returned non-object"
+        document.ingest_summary = MINT_FAILED
         return document
     seen = {_normalize(t) for t in existing}
     minted = skipped = 0
@@ -100,7 +113,7 @@ def mint_document(session: Session, document: KBDocument) -> KBDocument:
         )
         minted += 1
     document.ingest_status = "minted"
-    document.ingest_summary = f"{minted} points minted, {skipped} skipped as duplicates"
+    document.ingest_summary = minted_summary(minted, skipped)
     return document
 
 
@@ -236,7 +249,7 @@ def ingest_document(
     except Exception as exc:  # noqa: BLE001 — unsupported, empty, OR corrupt/unparseable
         raise DocumentTextError(str(exc)) from exc
     if not (text or "").strip():
-        raise DocumentTextError("no extractable text")
+        raise DocumentTextError(NO_TEXT)
 
     candidates = list(
         session.scalars(
@@ -321,7 +334,7 @@ def ingest_document(
         session.add(point)
         points.append(point)
     document.ingest_status = "minted"
-    document.ingest_summary = f"{len(points)} points minted, {skipped} skipped as duplicates"
+    document.ingest_summary = minted_summary(len(points), skipped)
     session.flush()
     # Bytes last: every DB statement has now succeeded, so only a failed
     # router commit can still orphan the file (narrowest achievable window).

@@ -115,7 +115,7 @@ def test_summary_gap_always_present_for_direct_title():
     assert summary["gap_id"] == "summary:value_prop"
     assert summary["kind"] == "summary"
     assert summary["actions"] == ["user_input", "skip"]
-    assert summary["detail"] == "Refresh the summary as a JD-aligned value proposition"
+    assert summary["detail"] == "Rewrite your summary for this job."
     assert summary["diagnostic"] == {}
     assert summary["enrichment"] is None
 
@@ -133,14 +133,14 @@ def test_weak_coverage_gap_emitted_below_threshold_only():
     gaps = build_gaps(result)
     wc = next((c for c in gaps["categories"] if c["key"] == "weak_coverage"), None)
     assert wc is not None
-    assert wc["title"] == "Uncovered responsibilities"
+    assert wc["title"] == "Job duties not covered"
     assert len(wc["gaps"]) == 1
     assert wc["gaps"][0] == {
         "gap_id": "coverage:0",
         "kind": "requirement",
         "jd_skill": "Own the data platform roadmap",
         "requirement_level": "preferred",
-        "detail": "Resume prose does not clearly cover this responsibility",
+        "detail": "Your resume doesn't clearly show this duty.",
         "diagnostic": {"coverage_score": 0.2},
         "actions": ["user_input", "skip", "cannot_confirm"],
         "enrichment": None,
@@ -327,9 +327,10 @@ def test_format_flag_actionable_classification():
 
     # fix-at-source: no edit op can address these
     assert _format_flag_actionable(
-        "Some experience dates failed to parse (use 'Jul 2022' format)"
+        "Some job dates can't be read. Write them like Jul 2022."
     ) is False
-    assert _format_flag_actionable("Contact block missing name, email, or phone") is False
+    assert _format_flag_actionable(
+        "Your contact details are missing a name, email or phone.") is False
     assert _format_flag_actionable("Section missing or empty: experience") is False
     assert _format_flag_actionable("Section missing or empty: education") is False
     # actionable: an op can add/prune
@@ -341,12 +342,15 @@ def test_format_flag_actionable_classification():
 
 
 def test_fix_at_source_format_gap_is_skip_only_with_edit_hint():
-    result = _result(format_flags=["Contact block missing name, email, or phone"])
+    result = _result(format_flags=["Your contact details are missing a name, email or phone."])
     gaps = build_gaps(result)
     ts = next(c for c in gaps["categories"] if c["key"] == "title_structure")
     fmt = next(g for g in ts["gaps"] if g["kind"] == "format")
     assert fmt["actions"] == ["skip"]
-    assert "base resume" in fmt["detail"]
+    # One full stop between the flag (already a sentence) and the hint.
+    assert fmt["detail"] == (
+        "Your contact details are missing a name, email or phone. "
+        "Fix this in the base resume.")
 
 
 def test_actionable_format_gap_keeps_user_input():

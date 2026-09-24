@@ -113,7 +113,7 @@ def test_ingest_matches_existing_entity_and_dedups_points(db_session, monkeypatc
     assert body["created_entity"] is False
     assert body["entity_id"] == str(entity.id)
     assert body["point_count"] == 1  # duplicate skipped
-    assert "1 points minted, 1 skipped" in body["document"]["ingest_summary"]
+    assert "1 draft bullet added, 1 skipped" in body["document"]["ingest_summary"]
 
 
 def test_ingest_no_text_422(db_session, monkeypatch, tmp_path):

@@ -115,7 +115,7 @@ def test_unattached_answer_skip_is_reported(db_session, tmp_path, monkeypatch):
     skips = body["kb_writeback_skips"]
     assert len(skips) == 1
     assert skips[0]["reason"] == "wrong_section"
-    assert "experience or project entry" in skips[0]["detail"]
+    assert "job or project" in skips[0]["detail"]
 
 
 def test_no_entity_match_skip_is_reported(db_session, tmp_path, monkeypatch):

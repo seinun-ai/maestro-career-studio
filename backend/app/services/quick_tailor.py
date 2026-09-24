@@ -279,9 +279,8 @@ def run_for_job(
         for s in open_sessions
     ):
         raise InProgressSessionError(
-            "An in-progress tailoring session with saved resolutions exists for "
-            "this job and base resume. Finish or close it in the web app, or run "
-            "quick tailor after discarding it."
+            "A gap analysis for this job and resume is in progress. Finish or close "
+            "it in Maestro CS first, then use Quick tailor."
         )
 
     profile = get_profile(session)

@@ -405,7 +405,7 @@ def test_l4_gate_warns_when_clearly_short():
     index = index_resume(SAMPLE_RESUME, as_of=AS_OF)
     warnings = layers.l4_gate(profile, index)
     assert len(warnings) == 1
-    assert "8" in warnings[0] and "5.0" in warnings[0]
+    assert warnings[0] == "The job asks for 8+ years. Your dates show about 5."
 
 
 def test_l5_format_lint():

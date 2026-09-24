@@ -8,13 +8,13 @@ from app.services.ats.engine import AtsResult
 _LEVEL_RANK = {"required": 0, "preferred": 1, "mentioned": 2}
 
 _CATEGORIES = [
-    ("missing_skills", "Missing skills", "JD skills with no evidence on the resume"),
-    ("mirror_wording", "Wording mismatches", "Matched semantically but the literal JD token is missing"),
-    ("dual_place", "Placement upgrades", "In the skills list but not corroborated in any dated entry"),
-    ("resurface_recent", "Stale evidence", "Matched, but the latest evidence is old or undated"),
-    ("adjacent", "Adjacent skills", "Transferable skills that could be surfaced explicitly"),
-    ("weak_coverage", "Uncovered responsibilities", "JD responsibilities your resume prose does not clearly cover"),
-    ("title_structure", "Title & structure", "Title alignment, experience gate, format lint"),
+    ("missing_skills", "Missing skills", "Skills the job asks for that your resume doesn't show"),
+    ("mirror_wording", "Different wording", "Your resume says it differently from the job description"),
+    ("dual_place", "Skills with no example", "In your skills list, but no job or project shows it"),
+    ("resurface_recent", "Old or undated examples", "Your resume shows it, but only in older or undated work"),
+    ("adjacent", "Related skills", "Related skills you could name directly"),
+    ("weak_coverage", "Job duties not covered", "Duties in the job description your resume doesn't clearly cover"),
+    ("title_structure", "Title and format", "Your job title, the experience the job asks for, and format checks"),
 ]
 
 # Best-cosine below which an L6 requirement line counts as not clearly covered by
@@ -166,7 +166,7 @@ def build_gaps(result: AtsResult) -> dict[str, Any]:
             buckets["weak_coverage"].append({
                 "gap_id": f"coverage:{i}", "kind": "requirement",
                 "jd_skill": line["line"], "requirement_level": "preferred",
-                "detail": "Resume prose does not clearly cover this responsibility",
+                "detail": "Your resume doesn't clearly show this duty.",
                 "diagnostic": {"coverage_score": line["score"]},
                 "actions": ["user_input", "skip", "cannot_confirm"], "enrichment": None,
             })
@@ -175,12 +175,12 @@ def build_gaps(result: AtsResult) -> dict[str, Any]:
         buckets["title_structure"].append({
             "gap_id": "title:alignment", "kind": "title",
             "diagnostic": {"tier": result.title_tier},
-            "detail": "Resume title/headline does not directly match the JD title",
+            "detail": "Your resume title doesn't match the job title.",
             "actions": _ACTIONS["title_structure"], "enrichment": None,
         })
     buckets["title_structure"].append({
         "gap_id": "summary:value_prop", "kind": "summary",
-        "detail": "Refresh the summary as a JD-aligned value proposition",
+        "detail": "Rewrite your summary for this job.",
         "diagnostic": {}, "actions": ["user_input", "skip"], "enrichment": None,
     })
     for i, warning in enumerate(result.gate_warnings):
@@ -192,7 +192,8 @@ def build_gaps(result: AtsResult) -> dict[str, Any]:
         actionable = _format_flag_actionable(flag)
         buckets["title_structure"].append({
             "gap_id": f"format:{i}", "kind": "format",
-            "detail": flag if actionable else f"{flag}. Fix this in the base resume.",
+            # rstrip: a flag that is already a sentence must not end ".." here.
+            "detail": flag if actionable else f"{flag.rstrip('.')}. Fix this in the base resume.",
             "diagnostic": {},
             "actions": ["user_input", "skip"] if actionable else ["skip"],
             "enrichment": None,

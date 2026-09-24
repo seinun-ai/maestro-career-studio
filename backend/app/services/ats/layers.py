@@ -657,6 +657,11 @@ def l3_title(profile: JdProfile, index: ResumeIndex, cfg: AtsConfig) -> tuple[st
     return "none", credits["none"]
 
 
+def _a(word: str) -> str:
+    """"a bachelor's", "an associate's": the article agrees with the word."""
+    return f"{'an' if word[:1] in 'aeiou' else 'a'} {word}"
+
+
 def l4_gate(profile: JdProfile, index: ResumeIndex) -> list[str]:
     """Advisory warnings ONLY. engine.py builds the composite from `subscores`,
     so nothing here moves the score — by design. Education and years are enforced
@@ -666,7 +671,8 @@ def l4_gate(profile: JdProfile, index: ResumeIndex) -> list[str]:
     years = index.total_experience_years
     if profile.years_experience_min is not None and years < profile.years_experience_min - 0.25:
         warnings.append(
-            f"JD asks for {profile.years_experience_min}+ years; dated entries show {years:.1f}"
+            f"The job asks for {profile.years_experience_min}+ years. "
+            f"Your dates show about {round(years)}."
         )
     asked = degrees.required_degree_level(profile.requirement_lines)
     shown = index.degree_level
@@ -674,9 +680,9 @@ def l4_gate(profile: JdProfile, index: ResumeIndex) -> list[str]:
     # unparsed JD phrasing or an unparsed resume degree says nothing.
     if asked is not None and shown is not None and shown < asked:
         warnings.append(
-            f"JD asks for a {degrees.LEVEL_NAMES[asked]} degree; resume shows "
-            f"{degrees.LEVEL_NAMES[shown]}. This is normally an application-form "
-            f"question — answer it honestly; your score is unaffected."
+            f"The job asks for {_a(degrees.LEVEL_NAMES[asked])} degree and your resume "
+            f"shows {_a(degrees.LEVEL_NAMES[shown])}. Employers usually ask this on the "
+            "application form. Answer honestly. It doesn't change your ATS score."
         )
     return warnings
 
@@ -688,11 +694,11 @@ def l5_format(index: ResumeIndex, rows: list[SkillEvidence], cfg: AtsConfig) -> 
     dates_ok = all(e.date_parse_ok for e in index.entries if e.section == "experience")
     checks.append(dates_ok)
     if not dates_ok:
-        flags.append("Some experience dates failed to parse (use 'Jul 2022' format)")
+        flags.append("Some job dates can't be read. Write them like Jul 2022.")
 
     checks.append(index.contact_ok)
     if not index.contact_ok:
-        flags.append("Contact block missing name, email, or phone")
+        flags.append("Your contact details are missing a name, email or phone.")
 
     for section, present in index.sections_present.items():
         checks.append(present)

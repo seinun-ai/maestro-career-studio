@@ -437,7 +437,10 @@ def test_create_session_blocked_by_failing_fatal_gate(db_session, tmp_path, monk
         app.dependency_overrides.clear()
 
     assert response.status_code == 409
-    assert "S1" in response.json()["detail"]
+    # The failing gate by its label (the fixture stores the old one), never its id.
+    detail = response.json()["detail"]
+    assert "a must-fix problem: Parse fidelity." in detail
+    assert "S1" not in detail
     # nothing was created — the block fires before the session row is inserted
     assert db_session.scalars(select(TailoringSession)).first() is None
 
@@ -473,7 +476,7 @@ def test_create_session_ignores_stale_failing_fatal_report_with_warning(
     base = db_session.get(BaseResume, slug)
     base.data_json = changed
     (tmp_path / f"{slug}.json").write_text(json.dumps(changed))
-    second = resume_versions.record_version(
+    resume_versions.record_version(
         db_session, "base", slug, changed, source="form_edit"
     )
     db_session.commit()
@@ -486,8 +489,8 @@ def test_create_session_ignores_stale_failing_fatal_report_with_warning(
 
     assert response.status_code == 200
     assert response.json()["health_warning"] == (
-        f"Health report is stale (ran against v{first.version_number}; "
-        f"resume is now v{second.version_number}) — re-analyze."
+        "Your health report is out of date. Choose Check again on the health report "
+        "before you tailor."
     )
 
 
@@ -606,7 +609,7 @@ def test_create_session_stays_blocked_when_the_waiver_names_another_gate(
         app.dependency_overrides.clear()
 
     assert response.status_code == 409
-    assert "S2" in response.json()["detail"]
+    assert "Contact block" in response.json()["detail"]
 
 
 def test_create_session_waiver_does_not_travel_to_another_base_resume(
@@ -648,7 +651,7 @@ def test_create_session_waiver_does_not_travel_to_another_base_resume(
         app.dependency_overrides.clear()
 
     assert response.status_code == 409
-    assert "S1" in response.json()["detail"]
+    assert "Parse fidelity" in response.json()["detail"]
 
 
 def test_create_session_warns_when_health_under_55(db_session, tmp_path, monkeypatch):
@@ -1758,7 +1761,7 @@ def test_patch_non_open_session_returns_409(db_session, tmp_path, monkeypatch):
         app.dependency_overrides.clear()
 
     assert response.status_code == 409
-    assert "not open" in response.json()["detail"]
+    assert "This gap analysis is closed." in response.json()["detail"]
 
 
 def test_patch_unknown_session_returns_404(db_session):
@@ -2147,7 +2150,7 @@ def test_apply_profile_409s_on_a_closed_session_and_404s_on_a_missing_one(
         app.dependency_overrides.clear()
 
     assert on_closed.status_code == 409
-    assert "not open" in on_closed.json()["detail"]
+    assert "This gap analysis is closed." in on_closed.json()["detail"]
     assert on_missing.status_code == 404
 
 
@@ -2426,7 +2429,7 @@ def test_tailor_renders_even_when_compare_fails(db_session, tmp_path, monkeypatc
 
     body = response.json()
     assert body["compare"] is None
-    assert "tailoring succeeded" in body["compare_error"]
+    assert "Your resume is tailored" in body["compare_error"]
     # …and the PDF was still produced.
     assert body["pdf_ready"] is True
     assert renders == [UUID(body["session"]["application_id"])]
@@ -2458,8 +2461,10 @@ def test_tailor_compare_failure_still_reports_success(db_session, tmp_path, monk
     assert body["session"]["status"] == "tailored"
     assert body["session"]["application_id"] is not None
     assert body["compare"] is None
-    assert "tailoring succeeded" in body["compare_error"]
-    assert "different engine/config versions" in body["compare_error"]
+    assert "Your resume is tailored" in body["compare_error"]
+    assert "couldn't be compared" in body["compare_error"]
+    # No API path in a sentence a toast prints (D §10.15).
+    assert "/api/" not in body["compare_error"]
     # the pipeline really persisted
     assert db_session.get(Application, UUID(body["session"]["application_id"])) is not None
 
@@ -2686,7 +2691,7 @@ def test_tailor_second_call_returns_409(db_session, tmp_path, monkeypatch):
 
     assert first.status_code == 200
     assert second.status_code == 409
-    assert "not open" in second.json()["detail"]
+    assert "This gap analysis is closed." in second.json()["detail"]
     # no second application was created
     assert len(list(db_session.scalars(select(Application)))) == 1
 
@@ -3497,7 +3502,7 @@ def test_patch_absent_add_keyword_extra_target_rejected_by_honesty(
 
 
 def test_tailor_revalidates_stale_extra_placement_target_on_legacy_session(
-    db_session, tmp_path, monkeypatch
+    db_session, tmp_path, monkeypatch, caplog
 ):
     # F#5: a LEGACY session (no staleness hashes) whose saved placement_target's
     # custom section is deleted AFTER save must fail at tailor() time — the second
@@ -3543,8 +3548,11 @@ def test_tailor_revalidates_stale_extra_placement_target_on_legacy_session(
     stripped["extra_sections"] = []  # the whole section is gone now
     (tmp_path / f"{slug}.json").write_text(json.dumps(stripped))
 
-    with pytest.raises(ValueError, match="skill:tableau"):
+    with caplog.at_level("INFO", logger="app.services.tailoring_session"), pytest.raises(
+            ValueError, match="parts of your base resume that changed"):
         tailoring_session.tailor(created.id, session=db_session)
+    # The gap it found is named where a developer looks, never in the sentence.
+    assert "skill:tableau" in caplog.text
 
     db_session.rollback()
     assert db_session.get(TailoringSession, created.id).status == "open"

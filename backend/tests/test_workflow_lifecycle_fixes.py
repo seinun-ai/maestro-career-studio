@@ -490,7 +490,7 @@ def test_base_edit_makes_session_stale(db_session, tmp_path, monkeypatch):
             json={"resolutions": [], "replace": False},
         )
         assert resp.status_code == 409
-        assert "stale" in resp.json()["detail"]
+        assert "out of date because the base resume was edited" in resp.json()["detail"]
         tailor_resp = client.post(f"/api/tailoring-sessions/{row.id}/tailor", json={})
         assert tailor_resp.status_code == 409
         get_resp = client.get(f"/api/tailoring-sessions/{row.id}")

@@ -192,9 +192,11 @@ def tailor_session(
         compare = ats_score.compare(row.application_id, session=db)
     except ValueError as exc:
         logger.warning("post-tailor compare failed for session %s: %s", session_id, exc)
+        # A sentence for the toast it lands in (never an API path); the cause
+        # stays in the log line above. An agent relaying it reads the same step.
         compare_error = (
-            f"tailoring succeeded; scores not comparable: {exc} — re-run scoring "
-            f"and GET /api/applications/{row.application_id}/ats-compare"
+            "Your resume is tailored, but the before and after ATS scores couldn't be "
+            "compared. Score both again from the job page."
         )
 
     # Render, exactly as the one-shot path does (quick_tailor.run_for_job).

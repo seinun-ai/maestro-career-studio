@@ -66,10 +66,10 @@ LADDER_COPY: dict[str, dict[str, str]] = {
         "issue": "Specific, but carries no number.",
         "why": "You say what you built; you don't say what it did.",
         "how": "Add the metric that measures it.",
-        "question": "What number measures this — users, rows, %, time saved?",
+        "question": "What number measures this: users, rows, percent or time saved?",
     },
     "analogue": {
-        "issue": "Has a scale metric, but not a business outcome.",
+        "issue": "Has a number for size, but not for the result.",
         "id_key": "Has a scale metric, but not a business outcome.",  # frozen, see _fid
         "why": "The number measures the thing, not the result it produced.",
         "how": "Add the outcome if you have it; otherwise this bullet is already strong.",
@@ -116,22 +116,24 @@ def _id_key_c2(c2_hit: dict) -> str:
 
 # The display text of those same issues, one function or constant each so a
 # rewording lands in one place and the id cannot follow it by accident.
-_ISSUE_AMBIGUOUS = "Ambiguous — this may be missing a number."
-_ISSUE_BURIED = "Your highest-evidence bullet is below the high-attention zone."
+_ISSUE_AMBIGUOUS = "This may be missing a number."
+_ISSUE_BURIED = "Your strongest bullet sits below the part recruiters read first."
 
 
 def _gap_issue(gap: dict, covered: int, uncovered: int) -> str:
-    return (f"{gap['months']}-month gap between {gap['after']} and {gap['before']} — "
-            f"{covered} months covered by your education; {uncovered} months unaccounted.")
+    return (f"{gap['months']}-month gap between {gap['after']} and {gap['before']}. "
+            f"Your education covers {covered} months, leaving {uncovered} unexplained.")
 
 
 def _projects_issue(proj_bullets: int, job_bullets: int) -> str:
-    return f"{proj_bullets} project bullets vs {job_bullets} employment bullets."
+    return f"{proj_bullets} project bullets and {job_bullets} job bullets."
 
 
 def _c2_detail(c2_hit: dict) -> str:
-    return (f"Summary claims {c2_hit['claimed_years']}+ years; the dates support "
-            f"~{c2_hit['actual_years']}.")
+    # The claim as the user wrote it ("8", "7.5"; never "8.0"), the dates as a
+    # whole number: "about 3", not "~3.0".
+    return (f"Your summary says {c2_hit['claimed_years']:g}+ years, but your dates add "
+            f"up to about {round(c2_hit['actual_years'])}.")
 
 
 def _loc_dict(location: Location) -> dict[str, Any]:
@@ -240,11 +242,7 @@ def _prior_gate(prior_report: dict | None, gate_id: str) -> dict | None:
 
 
 def _entry_label(section: str, entry: dict) -> str:
-    if section == "experience":
-        return f"{entry.get('company', '?')} — {entry.get('role', '?')}"
-    if section == "projects":
-        return str(entry.get("name", "?"))
-    return f"{entry.get('institution', '?')} — {entry.get('degree', '?')}"
+    return health_gates.entry_label(section, entry)
 
 
 def _extra_section(resume: dict, section_loc: str) -> dict:
@@ -263,12 +261,12 @@ def _label_at(resume: dict, location: Location) -> str:
         # A location may outlive its section (rename/delete between runs, or a
         # caller of the assemble seam) — degrade like the frontend does, never raise.
         sec = _extra_section(resume, section)
-        label = str(sec.get("title") or sec.get("key") or "Custom section")
+        label = str(sec.get("title") or sec.get("key") or "Other section")
         if index is not None:
             entries = sec.get("entries") or []
             heading = str((entries[index] if index < len(entries) else {}).get("heading") or "")
             if heading:
-                label += f" — {heading}"
+                label += f" · {heading}"
         if bi is not None:
             label += f" · bullet {bi + 1}"
         return label
@@ -369,17 +367,19 @@ def structure_gates(db: Session, template_id: str | None, resume: dict) -> list[
     report = tmpl.parse_report_json or {}
 
     # S1 — parse fidelity
+    # The probe list (`report["missing"]`) stays in the template's own report:
+    # it names test strings, not anything on the user's resume.
     if tmpl.parse_certified is None:
-        s1 = _gate_dict("S1", "fatal", "not_assessed", "Parse fidelity",
-                        "Could not certify the template's PDF text extraction.")
+        s1 = _gate_dict("S1", "fatal", "not_assessed", "PDF text is readable",
+                        "Couldn't check whether applicant tracking systems can read "
+                        "this template's PDF.")
     elif tmpl.parse_certified:
-        s1 = _gate_dict("S1", "fatal", "pass", "Parse fidelity",
-                        "The template's PDF round-trips through a strict extractor intact.")
+        s1 = _gate_dict("S1", "fatal", "pass", "PDF text is readable",
+                        "Applicant tracking systems can read all of this template's PDF.")
     else:
-        missing = report.get("missing") or []
-        s1 = _gate_dict("S1", "fatal", "fail", "Parse fidelity",
-                        "The template's PDF drops text under a strict extractor: "
-                        + ", ".join(missing))
+        s1 = _gate_dict("S1", "fatal", "fail", "PDF text is readable",
+                        "Applicant tracking systems can't read some of this template's "
+                        "text. Pick another template.")
 
     # S2 — contact reachable: email required in JSON AND extractable from the template.
     # Phone is optional in 2026 norms → contact-hygiene advisory, not this fatal gate.
@@ -387,32 +387,35 @@ def structure_gates(db: Session, template_id: str | None, resume: dict) -> list[
     has_email = bool(str(contact.get("email") or "").strip())
     email_ok = report.get("email_ok")  # True/False/None(not assessed)
     if not has_email:
-        s2 = _gate_dict("S2", "fatal", "fail", "Contact reachable",
-                        "No email address in the resume — recruiters can't reach you.")
+        s2 = _gate_dict("S2", "fatal", "fail", "Email is readable",
+                        "Your resume has no email address, so recruiters can't reach you.")
     elif email_ok is False:
-        s2 = _gate_dict("S2", "fatal", "fail", "Contact reachable",
-                        "Your email is in the data but the template's PDF renders it "
-                        "where a strict extractor drops it.")
+        s2 = _gate_dict("S2", "fatal", "fail", "Email is readable",
+                        "Your email is on your resume, but applicant tracking systems "
+                        "can't read it in this template's PDF.")
     elif email_ok is None:
-        s2 = _gate_dict("S2", "fatal", "not_assessed", "Contact reachable",
-                        "Email present in data; template extraction not certified.")
+        s2 = _gate_dict("S2", "fatal", "not_assessed", "Email is readable",
+                        "Your email is on your resume. Couldn't check whether this "
+                        "template keeps it readable.")
     else:
-        s2 = _gate_dict("S2", "fatal", "pass", "Contact reachable",
-                        "Email present and survives PDF extraction.")
+        s2 = _gate_dict("S2", "fatal", "pass", "Email is readable",
+                        "Your email is on your resume and readable in the PDF.")
 
     # S4 — standard headers, from the template's extracted text
     if not report:
-        s4 = _gate_dict("S4", "serious", "not_assessed", "Standard headers",
-                        "Template header extraction not certified.")
+        s4 = _gate_dict("S4", "serious", "not_assessed", "Standard section headings",
+                        "Couldn't check this template's section headings.")
     else:
         headers_missing = report.get("headers_missing") or []
         if headers_missing:
-            s4 = _gate_dict("S4", "serious", "fail", "Standard headers",
-                            "These standard section headers didn't survive extraction: "
-                            + ", ".join(headers_missing))
+            # Stored as section keys ("experience"); shown as headings.
+            names = ", ".join(str(h).replace("_", " ").capitalize() for h in headers_missing)
+            s4 = _gate_dict("S4", "serious", "fail", "Standard section headings",
+                            f"Applicant tracking systems can't read these section "
+                            f"headings: {names}.")
         else:
-            s4 = _gate_dict("S4", "serious", "pass", "Standard headers",
-                            "Standard section headers are present and extractable.")
+            s4 = _gate_dict("S4", "serious", "pass", "Standard section headings",
+                            "Your section headings are standard and readable.")
 
     return [s1, s2, s4]
 
@@ -436,9 +439,9 @@ def _final_gates(
     e_hot = sum(hot_values) / len(hot_values) if hot_values else None
     if e_hot is not None and e_hot < HOT_ZONE_FLOOR:
         gates.append(_gate_dict(
-            "C1", "serious", "fail", "Hot-zone evidence floor",
-            f"Top-of-resume evidence averages {e_hot:.2f} (floor {HOT_ZONE_FLOOR}); "
-            "a dead opening sharply cuts the odds of a deep read."))
+            "C1", "serious", "fail", "Strong opening",
+            "Your summary and newest role are weak, so a recruiter may stop reading "
+            "before your best work."))
 
     # C2 — claim/date consistency: ask until a resume edit leaves it unresolved.
     if c2_hit:
@@ -449,7 +452,7 @@ def _final_gates(
             and prior_c2.get("status") in ("ask", "fail")
         )
         gates.append(_gate_dict(
-            "C2", "serious", "fail" if escalate else "ask", "Claim/date consistency",
+            "C2", "serious", "fail" if escalate else "ask", "Years match your dates",
             _c2_detail(c2_hit)))
 
     # Waivers: a user-waived FAILING gate stops capping.
@@ -506,7 +509,7 @@ def _ladder_findings(
             copy = LADDER_COPY["adjacent"]
             findings.append(_finding(
                 "ask", loc, label, _ISSUE_AMBIGUOUS,
-                "The classifier couldn't decide; usually that means a metric is almost there.",
+                "We couldn't tell how strong this is. Usually a number is almost there.",
                 copy["how"], severity=sev, level=value, cost=cost, zone=zone,
                 question="Is there a number attached to this that you left out?", source="llm",
                 id_key=_ID_KEY_AMBIGUOUS, **classification))
@@ -585,7 +588,8 @@ def _gap_findings(gap_hits: list[dict]) -> list[dict]:
             issue += f" ({gap['context']})"
         findings.append(_finding(
             "ask", loc, "Employment gap", issue,
-            "Unexplained gaps cost ~45% of callbacks; one line of explanation recovers most of it.",
+            "Unexplained gaps cost about 45% of callbacks. One line of explanation wins "
+            "most of that back.",
             "Add a short line (study, care, travel, contracting) covering the gap.",
             question=question,
             source="rule", id_key=id_key))
@@ -697,10 +701,10 @@ def _shape_notes(resume: dict, levels_by_loc: dict, tier: str, hot: set) -> list
 
     if tier != "early" and proj_bullets > job_bullets and job_bullets > 0:
         notes.append(_finding(
-            "note", ("projects", None, None), "Evidence concentrated in projects",
+            "note", ("projects", None, None), "Projects outweigh your jobs",
             _projects_issue(proj_bullets, job_bullets),
-            "For an experienced candidate, project-heavy evidence can read junior.",
-            "Lead with employment; move projects below.", source="rule",
+            "With your experience, a resume led by projects can read as junior.",
+            "Lead with your jobs and move projects below them.", source="rule",
             id_key=_id_key_projects(proj_bullets, job_bullets)))
 
     if len(exp) >= 2:
@@ -773,7 +777,7 @@ def _advisories(resume: dict) -> list[dict]:
         notes.append(_finding(
             "note", ("summary", None, None), "Summary", "No summary.",
             "The summary is the first thing read; without one the resume opens with no positioning.",
-            "Add 2–3 lines: role identity, years, strongest proof points.", source="rule",
+            "Add 2 to 3 lines: your role, your years and your strongest results.", source="rule",
             rule="summary.missing"))
 
     for section in ("experience", "projects"):
@@ -784,7 +788,7 @@ def _advisories(resume: dict) -> list[dict]:
                 notes.append(_finding(
                     "note", (section, index, None), label,
                     f"{len(bullets)} bullets in one entry.",
-                    "Past ~7 bullets, each extra one dilutes the others.",
+                    "After about 7 bullets, each extra one weakens the others.",
                     "Keep the strongest 4–6.", source="rule",
                     rule="entry.too_many_bullets"))
             for bi, bullet in enumerate(bullets):
@@ -834,8 +838,8 @@ def _advisories(resume: dict) -> list[dict]:
                 notes.append(_finding(
                     "note", ("skills", None, None), f"Skills · {item}",
                     f'"{item}" is listed but never demonstrated in a bullet.',
-                    "Keyword credit only; an LLM screener sees no evidence behind it.",
-                    "Show it in a bullet, or accept it as keyword-only.", source="rule",
+                    "It earns keyword credit only. AI screeners see no proof of it.",
+                    "Show it in a bullet, or leave it as a keyword.", source="rule",
                     rule="skills.undemonstrated", subject=str(item)))
 
     # list-item hygiene: trailing punctuation + sentence-like skills items

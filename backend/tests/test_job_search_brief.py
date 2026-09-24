@@ -24,6 +24,13 @@ def _get_brief(db_session):
         app.dependency_overrides.clear()
 
 
+def _assert_points_to_profile_autofill(warnings: list[str]) -> None:
+    """The work-authorization answers live on Profile › Autofill (D §9.3): a
+    warning names that page, never Settings, and never the raw profile keys."""
+    assert any("Profile › Autofill" in w for w in warnings)
+    assert not [w for w in warnings if "Settings" in w or "authorized_to_work" in w]
+
+
 def test_search_brief_not_captured_by_job_id_route(db_session, tmp_path, monkeypatch):
     # Route-ordering guard: /search-brief must be registered before /{job_id}
     # (job_id is UUID-typed; losing the ordering turns this into a 422).
@@ -159,6 +166,7 @@ def test_search_brief_contradictory_work_auth_warns(db_session, tmp_path, monkey
         "requires_sponsorship": "no",
     }
     assert any("contradictory" in w for w in body["warnings"])
+    _assert_points_to_profile_autofill(body["warnings"])
 
 
 def test_search_brief_projects_typed_work_auth_to_public_yes_no_shape(
@@ -334,5 +342,7 @@ def test_search_brief_tolerates_empty_everything(db_session, tmp_path, monkeypat
     assert body["base_resumes"] == []
     assert body["referrals"] == []
     assert body["captured_last_30_days"] == []
-    # Missing work-auth values are a warning, not a guess.
+    # Missing work-auth values are a warning, not a guess — and it names the
+    # page the answers live on (Profile › Autofill, never Settings).
     assert any("incomplete" in w for w in body["warnings"])
+    _assert_points_to_profile_autofill(body["warnings"])

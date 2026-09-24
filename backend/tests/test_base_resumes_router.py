@@ -1153,8 +1153,8 @@ def test_put_re_render_incompatible_template_returns_400(db_session, tmp_path, m
 
     assert response.status_code == 400, response.text
     detail = response.json()["detail"]
-    assert "custom section" in detail.lower()
-    assert "awards" in detail
+    assert "other sections" in detail
+    assert "(Awards)" in detail
 
 
 def test_edit_ops_incompatible_template_degrades_to_render_error(
@@ -1193,7 +1193,7 @@ def test_edit_ops_incompatible_template_degrades_to_render_error(
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["render_error"] is not None
-    assert "custom section" in body["render_error"].lower()
+    assert "other sections" in body["render_error"]
     # The edit persisted despite the render failure.
     assert [s["key"] for s in body["data"]["extra_sections"]] == ["awards"]
 

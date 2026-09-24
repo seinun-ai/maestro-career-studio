@@ -1647,8 +1647,8 @@ def test_render_incompatible_template_returns_400_not_500(db_session, tmp_path, 
 
     assert response.status_code == 400, response.text
     detail = response.json()["detail"]
-    assert "custom section" in detail.lower()
-    assert "awards" in detail  # names the offending section key
+    assert "other sections" in detail
+    assert "(Awards)" in detail  # names the offending section by its title
 
 
 def test_list_applications_filters_by_source(db_session):
