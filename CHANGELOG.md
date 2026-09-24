@@ -28,6 +28,31 @@ image tag is the same version with the leading `v` removed (`0.2.0`).
 
 ## [Unreleased]
 
+### Added
+
+- **Agent inbox.** Jobs an agent proposes live on their own page with their own
+  words, and every proposal says who filed it: "Proposed by <agent name>" or
+  "Queued by you". A new migration records the filer and marks the jobs you
+  queued from the web app before this release as yours.
+- Settings and Profile are split into tabs you can link to directly; unsaved
+  edits still warn before you leave, across tabs too.
+
+### Changed
+
+- Plain words everywhere: one name per thing across the web app, the
+  Companion extension and the server's error messages, which now say what
+  happened and what to do next instead of showing technical detail.
+- Long lists keep their toolbar (and, where the table fits, its header) in view
+  while you scroll, and say so when a list is cut off at 500 rows.
+
+### Fixed
+
+- **Privacy:** when autofill asks the AI how to fill a field, your diversity
+  answers (race, gender, veteran and disability status) are sent only if
+  diversity consent is on. Before, they reached the AI provider even with it
+  off.
+- Pressing Queue twice quickly no longer creates two proposals for the same job.
+
 ## [0.5.0] — 2026-09-23
 
 ### Breaking changes
