@@ -173,7 +173,9 @@ function PromptCard({
               <p className="text-muted-foreground text-xs">{description}</p>
             </>
           ) : (
-            <p className="font-mono text-sm">{prompt.key}</p>
+            // An advanced prompt's key is one unbreakable word (`resume_finding_verify`): at 375
+            // it pushed the row, and its Expand, past the card. `wrap-anywhere` lets it break.
+            <p className="font-mono text-sm wrap-anywhere">{prompt.key}</p>
           )}
         </div>
         <span className="text-muted-foreground shrink-0 text-xs">
@@ -183,7 +185,7 @@ function PromptCard({
       {open && (
         <div id={bodyId} className="grid gap-3 px-3 pb-3">
           {title && (
-            <p className="text-muted-foreground font-mono text-xs">{prompt.key}</p>
+            <p className="text-muted-foreground font-mono text-xs wrap-anywhere">{prompt.key}</p>
           )}
           <Textarea
             rows={10}

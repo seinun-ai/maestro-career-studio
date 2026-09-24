@@ -173,7 +173,9 @@ function ModelCatalogPanel({ info }: { info: OpenAIInfo }) {
         ))}
       </SettingCardAction>
 
-      <ul ref={listRef} tabIndex={-1} aria-label="Available models" className="divide-y outline-none">
+      {/* min-w-0: a grid child is min-width:auto, so a long id widened the list past the card and
+          `truncate` never applied; the Remove went off the card. */}
+      <ul ref={listRef} tabIndex={-1} aria-label="Available models" className="min-w-0 divide-y outline-none">
         {info.model_options.map((option) => (
           <CatalogRow
             key={option.id}
@@ -185,17 +187,19 @@ function ModelCatalogPanel({ info }: { info: OpenAIInfo }) {
       </ul>
 
       {discovery ? (
-        <CardSection className="grid gap-3">
+        <CardSection className="grid min-w-0 gap-3">
           <p className="text-muted-foreground text-xs">
             Select + to add a model, then choose it above.
           </p>
           <ul
             aria-label={`${providerLabel(discovery.provider)} models`}
-            className="max-h-72 divide-y overflow-y-auto"
+            className="max-h-72 min-w-0 divide-y overflow-y-auto"
           >
             {discovery.models.map((model) => (
               <li key={model.id} className="flex min-h-10 items-center gap-2 py-1 text-xs">
-                <span className="min-w-0 flex-1 truncate font-mono">{model.id}</span>
+                <span className="min-w-0 flex-1 truncate font-mono" title={model.id}>
+                  {model.id}
+                </span>
                 {/* The same element before and after: it flips to a check and
                     keeps focus, where the old "Added" span dropped it. */}
                 <Button
@@ -232,9 +236,13 @@ function CatalogRow({
   return (
     <li className="flex min-h-10 items-center gap-3 py-1.5">
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium">{option.label}</p>
+        {/* A cut-off name or id stays whole on hover (`title`) and to a screen reader (the text is
+            all in the DOM; only its paint is clipped). */}
+        <p className="truncate text-sm font-medium" title={option.label}>{option.label}</p>
         {showsModelId(option) ? (
-          <p className="text-muted-foreground truncate font-mono text-xs">{option.id}</p>
+          <p className="text-muted-foreground truncate font-mono text-xs" title={option.id}>
+            {option.id}
+          </p>
         ) : null}
       </div>
       <span className="text-muted-foreground shrink-0 text-xs">

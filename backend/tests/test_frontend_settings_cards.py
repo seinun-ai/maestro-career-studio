@@ -178,6 +178,22 @@ def test_an_added_model_keeps_its_button_and_focus():
     assert "aria-label={model.in_catalog ? `${model.id} added` : `Add ${model.id}`}" in add
 
 
+def test_a_long_model_id_truncates_inside_the_card():
+    # Wave-1 browser pass, 768 and 375: the list is a grid child (min-width:auto), so a long
+    # fine-tuned id widened it past the card, `truncate` never applied, and the provider label and
+    # Remove left the card. The whole id stays on hover and in the DOM a screen reader reads.
+    assert '<ul ref={listRef} tabIndex={-1} aria-label="Available models" className="min-w-0 divide-y' in _CATALOG
+    row = _slice(_CATALOG, "function CatalogRow(", "\n}\n")
+    assert '<div className="min-w-0 flex-1">' in row
+    assert '<p className="truncate text-sm font-medium" title={option.label}>' in row
+    assert 'className="text-muted-foreground truncate font-mono text-xs" title={option.id}>' in row
+    # The provider label and Remove never shrink; the name column does.
+    assert '<span className="text-muted-foreground shrink-0 text-xs">' in row
+    # The discovered list is a grid child too.
+    assert '<CardSection className="grid min-w-0 gap-3">' in _CATALOG
+    assert 'className="min-w-0 flex-1 truncate font-mono" title={model.id}>' in _CATALOG
+
+
 def test_the_endpoint_starts_collapsed_and_keeps_its_draft():
     assert 'useState(Boolean(info.base_url) || info.json_mode !== "auto")' in _ENDPOINT
     assert "aria-expanded={open}" in _ENDPOINT and "aria-controls={panelId}" in _ENDPOINT
@@ -264,6 +280,15 @@ def test_prompt_editors_stay_mounted_and_say_whether_they_are_open():
     assert src.count("aria-controls=") == 2
     # Each aria-controls names an element that exists.
     assert '<div id={bodyId} className="grid gap-3 px-3 pb-3">' in src
+
+
+def test_an_advanced_prompt_key_wraps_inside_its_row():
+    # Wave-1 browser pass, 375 with Advanced prompts open: a key is one unbreakable word
+    # (`resume_finding_verify`), so its row ran 262px in a 239px body and Expand left the card.
+    src = _read("components/settings/prompts-section.tsx")
+    assert '<p className="font-mono text-sm wrap-anywhere">{prompt.key}</p>' in src
+    assert '<p className="text-muted-foreground font-mono text-xs wrap-anywhere">{prompt.key}</p>' in src
+    assert '<span className="text-muted-foreground shrink-0 text-xs">' in src  # Expand keeps its width
 
 
 def test_switch_rows_and_about_rows_share_their_geometry():

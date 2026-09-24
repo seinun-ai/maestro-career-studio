@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { GuardedLink as Link } from "@/components/guarded-link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Bot,
   EllipsisVertical,
@@ -219,7 +219,11 @@ function ApplicationsContent() {
   // user's own, so a busy hunt cannot push the user's saved jobs out of the
   // 500 (one mixed page did).
   const savedSource = source === "agent" ? "agent" : "user";
-  const savedJobs = useQuery(savedJobsQuery(savedSource));
+  // The other source's first fetch keeps the rows on screen: a skeleton in their place shortened
+  // the page and dropped the reader at the top. Those rows are the LAST source's, so while they
+  // show (`stale`) the list is marked busy and nothing is counted from them.
+  const savedJobs = useQuery({ ...savedJobsQuery(savedSource), placeholderData: keepPreviousData });
+  const stale = savedJobs.isPlaceholderData;
 
   // A status outside the active filter takes its row, and the chip focus went
   // back to, out of the list once the refetch lands. Where focus goes then is
@@ -317,9 +321,11 @@ function ApplicationsContent() {
   const topOptions = visibleFilters(TOP_FILTERS);
   const appOptions = visibleFilters(APPLICATION_STATUSES);
   const laneOptions = visibleFilters(AGENT_LANE_FILTERS);
+  // Counted from rows the other source has not replaced yet, a number would be wrong.
+  const countOf = (f: Filter) => (stale ? "…" : String(counts.get(f) ?? 0));
   const filterOption = (f: Filter) => (
     <SelectItem key={f} value={f}>
-      {`${filterLabel(f)} · ${counts.get(f) ?? 0}`}
+      {`${filterLabel(f)} · ${countOf(f)}`}
     </SelectItem>
   );
 
@@ -358,7 +364,9 @@ function ApplicationsContent() {
     });
   }, [sourceScopedRows, filter, q, sortKey, sortDir]);
 
-  const loading = apps.isLoading || savedJobs.isLoading;
+  // Kept rows are only worth keeping when there are some: an empty kept list would say "Nothing
+  // matches" about rows that are still on their way.
+  const loading = apps.isLoading || savedJobs.isLoading || (stale && filtered.length === 0);
   // Checked BEFORE the empty state, which is the whole bug: with `data`
   // undefined after a failure, `filtered.length === 0` is true and the branch
   // below hands a user with a full pipeline the brand-new-user onboarding card.
@@ -398,14 +406,14 @@ function ApplicationsContent() {
   // Record the visible row order (job ids) so the job page's prev/next arrows
   // can walk exactly what the user was looking at, filters and sort included.
   useEffect(() => {
-    if (loading) return;
+    if (loading || stale) return;
     storeValue(
       SEQUENCE_STORE_KEY,
       JSON.stringify(
         filtered.map((r) => (r.kind === "saved" ? r.job.id : r.app.job_id)),
       ),
     );
-  }, [filtered, loading]);
+  }, [filtered, loading, stale]);
 
   // In the commit that drops the row, before paint (a passive effect left
   // focus on <body> for a frame): the next row's status chip, else the
@@ -483,7 +491,7 @@ function ApplicationsContent() {
               aria-label="Filter by status"
             >
               <SelectValue>
-                {`${filterLabel(filter)} · ${counts.get(filter) ?? 0}`}
+                {`${filterLabel(filter)} · ${countOf(filter)}`}
               </SelectValue>
             </SelectTrigger>
             <SelectContent
@@ -586,7 +594,7 @@ function ApplicationsContent() {
               over the Applied date instead. It is also the width the header
               sticks from: a table wider than its frame scrolls sideways, and
               then its header cannot stick to the window. */}
-          <Table minWidth="52rem" stickyHeader className="table-fixed">
+          <Table minWidth="52rem" stickyHeader className="table-fixed" aria-busy={stale || undefined}>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
                 {header("role", "Role", "w-[42%]")}
@@ -597,7 +605,7 @@ function ApplicationsContent() {
                 <TableHead className="w-10" />
               </TableRow>
             </TableHeader>
-            <TableBody>
+            <TableBody className={cn("transition-opacity", stale && "opacity-60")}>
               {filtered.map((r) => {
                 const key = rowKey(r);
                 const href =
@@ -761,7 +769,7 @@ function ApplicationsContent() {
         </TableFrame>
       )}
 
-      {!loading && !loadFailed && caps.length > 0 ? (
+      {!loading && !loadFailed && !stale && caps.length > 0 ? (
         <div className="flex flex-col gap-1">
           {caps.map((cap) => (
             <ListCapNotice key={cap.noun} {...cap} />

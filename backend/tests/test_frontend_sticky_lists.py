@@ -290,7 +290,7 @@ def test_the_tracker_toolbar_and_header_stick():
     # A direct child of the page's <main>: no wrapper that could scroll or end early.
     shell = _TRACKER[_TRACKER.index("<PageShell>") : _TRACKER.index("<ListToolbar>")]
     assert "<div" not in shell
-    assert '<Table minWidth="52rem" stickyHeader className="table-fixed">' in _TRACKER
+    assert '<Table minWidth="52rem" stickyHeader className="table-fixed" aria-busy={stale || undefined}>' in _TRACKER
 
 
 def test_a_filter_change_keeps_the_scroll_position():
@@ -386,8 +386,29 @@ def test_the_agents_list_is_fetched_before_the_first_switch():
     toggle = _read("components/source-toggle.tsx")
     assert "onPointerEnter={() => onPreview?.(s)}" in toggle
     assert "onFocus={() => onPreview?.(s)}" in toggle
-    assert "const savedJobs = useQuery(savedJobsQuery(savedSource));" in _TRACKER
+    assert "useQuery({ ...savedJobsQuery(savedSource), placeholderData: keepPreviousData })" in _TRACKER
     assert 'if (next === "agent") void qc.prefetchQuery(savedJobsQuery("agent"));' in _TRACKER
+
+
+def test_the_first_switch_keeps_the_rows_and_the_scroll():
+    """Wave-1 browser pass: with the Agents fetch still out, the first switch swapped the rows for a
+    skeleton, the page shortened, and the reader landed at the top. The last source's rows stay on
+    screen until the new ones land. They are not the new source's rows, so while they show
+    (`stale`) the list says it is busy and nothing is counted or recorded from them."""
+    assert "const stale = savedJobs.isPlaceholderData;" in _TRACKER
+    # Kept rows keep the skeleton away; an empty kept list would claim "Nothing matches".
+    assert "const loading = apps.isLoading || savedJobs.isLoading || (stale && filtered.length === 0);" in _TRACKER
+    # Counts: the trigger and every option read the one helper, which will not count stale rows.
+    assert 'const countOf = (f: Filter) => (stale ? "…" : String(counts.get(f) ?? 0));' in _TRACKER
+    assert "counts.get(" not in _TRACKER.replace("String(counts.get(f) ?? 0)", "").replace(
+        "(counts.get(f) ?? 0) > 0", ""
+    )
+    assert _TRACKER.count("${countOf(") == 2
+    # Busy and dimmed, never presented as the new list.
+    assert '<TableBody className={cn("transition-opacity", stale && "opacity-60")}>' in _TRACKER
+    # The prev/next sequence is not written from rows the user is not looking at yet.
+    seq = _TRACKER[_TRACKER.index("storeValue(\n      SEQUENCE_STORE_KEY") - 80 :]
+    assert "if (loading || stale) return;" in seq[:200]
 
 
 def _caps() -> str:
@@ -397,7 +418,8 @@ def _caps() -> str:
 
 def test_a_capped_tracker_says_so_at_the_end_of_the_list():
     assert "<ListCapNotice" in _TRACKER[_TRACKER.index("</TableFrame>") :]
-    gate = _TRACKER[_TRACKER.index("{!loading && !loadFailed && caps.length > 0 ? (") :]
+    # Not while the rows are the last source's: the notice would name the new source's rows.
+    gate = _TRACKER[_TRACKER.index("{!loading && !loadFailed && !stale && caps.length > 0 ? (") :]
     assert gate.index("<ListCapNotice") < gate.index("</PageShell>")
     caps = _caps()
     # What is LOADED, before any filter: never `filtered` or `sourceScopedRows`.

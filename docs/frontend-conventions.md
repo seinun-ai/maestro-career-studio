@@ -575,6 +575,18 @@
   - One kind of row must not crowd out another inside the cap: the tracker
     fetches the user's saved jobs and agent captures apart (`source=`), since
     one mixed page of 500 let a busy hunt push the user's own saved jobs out.
+  - A source switch keeps the rows it had until the new source's land
+    (`placeholderData: keepPreviousData`): a skeleton in their place shortened
+    the page and dropped the reader at the top. Kept rows are the OLD source's,
+    so while `isPlaceholderData` holds the table is `aria-busy` and dimmed,
+    counts read "…", the cap notice waits, and the prev/next sequence is not
+    written; an empty kept list shows the skeleton instead of "Nothing matches".
+- **`truncate` inside a grid child never applies** — a grid item is
+  `min-width: auto`, so a long unbroken string (a fine-tuned model id) widens
+  the item past its card and pushes the row's controls off it. Give the grid
+  child `min-w-0` (Available models' list); text that must show whole, like an
+  advanced prompt's key, takes `wrap-anywhere`, which also shrinks the
+  min-content the grid sizes by (`break-words` does not).
 - **`truncate` on a flex child that can reach `width: 0` hides the whole
   string** — `overflow: hidden` on a zero-width box shows nothing (`flex-1` is
   basis 0, so it never triggers a wrap next to a `shrink-0` cluster). A title
