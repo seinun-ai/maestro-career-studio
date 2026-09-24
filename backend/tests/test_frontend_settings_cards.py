@@ -59,7 +59,8 @@ def test_the_role_models_are_fast_smart_and_assistant():
 
 def test_each_chosen_model_shows_its_capabilities_and_a_named_test():
     assert "<ModelCapability" in _MODELS
-    test = _MODELS[_MODELS.index("function ModelCapability") :]
+    start = _MODELS.index("function ModelCapability")
+    test = _MODELS[start : _MODELS.index("\nfunction ", start + 1)]
     assert "aria-label={`Test ${name}`}" in test
     assert "focusableWhenDisabled" in test and "data-disabled:opacity-50" in test
     # The label stays: a bare spinner left the button with no name while it probed.
@@ -76,11 +77,17 @@ def test_a_role_hint_sits_between_its_label_and_its_picker():
 
 def test_the_catalog_reads_words_not_keys():
     assert "capitalize" not in _CATALOG
-    assert '" · seed"' not in _CATALOG and '" · in use"' not in _CATALOG
+    for key in ('" · seed"', '" · in use"'):
+        assert key not in _CATALOG, key
     assert "providerLabel(option.provider)} · {sourceLabel(option.source)}" in _CATALOG
-    assert "showsModelId(option) ?" in _CATALOG and "showsModelId(option) ?" in _MODELS
+    for src in (_CATALOG, _MODELS):
+        assert "showsModelId(option) ?" in src
     assert "rounded-lg border p-3" not in _CATALOG  # second containment level is tonal
     assert "discovery —" not in _CATALOG
+
+
+def test_the_model_words_live_in_one_import_free_helper():
+    # `node --test` loads lib/model-catalog.ts, so it imports nothing (node tests are not in CI).
     assert "import " not in _MODEL_LIB
     assert '{ openai: "OpenAI", gemini: "Gemini" }' in _MODEL_LIB
     assert 'return "Built-in";' in _MODEL_LIB
@@ -123,7 +130,6 @@ _SETTINGS = sorted((_FRONTEND / "components/settings").glob("*.tsx"))
 def test_settings_cards_share_one_rhythm():
     """R2 to R9. Spacing is gap on a grid, never margins; columns follow the card's width, not
     the viewport's; groups are headed, never ruled; a label takes no size override."""
-    assert len(_SETTINGS) >= 15
     for path in _SETTINGS:
         src = path.read_text()
         name = path.name
@@ -135,6 +141,10 @@ def test_settings_cards_share_one_rhythm():
         for match in re.finditer(r"space-y-\d", src):
             tag = src[src.rfind("<", 0, match.start()) : match.start()]
             assert tag.startswith("<fieldset"), f"{name}: space-y outside a fieldset"
+
+
+def test_every_card_body_is_the_container_its_columns_read():
+    assert len(_SETTINGS) >= 15
     card = _read("components/settings/setting-card.tsx")
     assert '<CardContent className="@container/setting">' in card
 
@@ -155,7 +165,11 @@ def test_autofill_removes_are_named_and_hand_focus_to_add():
     assert "armFocus(addEducationRef);" in src and "armFocus(addQuestionRef);" in src
     assert "const armFocus = useFocusOnNextCommit();" in src
     assert src.count("ref={addEducationRef}") == 1 and src.count("ref={addQuestionRef}") == 1
-    # The question gets a visible label, not only an aria-label.
+
+
+def test_a_custom_question_has_a_visible_label():
+    # Only an aria-label named it; a sighted user saw an unlabelled box.
+    src = _read("components/settings/autofill-section.tsx")
     assert "<Label htmlFor={`af-custom-${i}-question`}>Question</Label>" in src
     assert "id={`af-custom-${i}-question`}" in src
 
@@ -175,6 +189,10 @@ def test_switch_rows_and_about_rows_share_their_geometry():
         assert "<SwitchRow" in _read(f"components/settings/{rel}"), rel
     about = _read("components/settings/about-section.tsx")
     assert '<dl className="divide-y">' in about and "wrap-anywhere" in about
+
+
+def test_a_remove_is_quiet_until_hovered_or_focused():
+    layout = _read("components/settings/setting-layout.tsx")
     remove = layout[layout.index("export function RemoveButton") :]
     # Muted at rest, destructive on hover/focus; focusable while every Remove is disabled.
     for cls in ("text-muted-foreground", "hover:text-destructive", "focus-visible:text-destructive"):
