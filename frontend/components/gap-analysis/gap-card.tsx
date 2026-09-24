@@ -1,6 +1,8 @@
 "use client";
 
 import { use, useRef, useState } from "react";
+
+import { useFocusOnNextCommit } from "@/hooks/use-focus-return";
 import { Ban, Check, Library, Undo2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -21,6 +23,7 @@ import {
   type SavedTarget,
 } from "@/components/gap-analysis/resolution-controls";
 import { placementLabel, requirementLabel } from "@/lib/ats-words";
+import { skillName } from "@/lib/skill-name";
 import {
   isAutoResolved,
   resolutionProvenance,
@@ -246,13 +249,18 @@ function selectedCandidateKey(
   return null;
 }
 
+/** The resume's matching term as people write it: the job's own casing when it is the same word. */
+function matchedName(term: string, jdSkill: string | null | undefined): string {
+  return jdSkill && jdSkill.toLowerCase() === term.toLowerCase() ? jdSkill : skillName(term);
+}
+
 /** Diagnostic evidence: match form, placement, recency, evidence entries. */
 function EvidenceLine({ gap }: { gap: Gap }) {
   const diagnostic = gap.diagnostic;
   const bits: string[] = [];
   // `match_form` and the title `tier` are engine keys: the words say what matched.
   if (diagnostic.matched && diagnostic.matched_term) {
-    bits.push(`Matches “${diagnostic.matched_term}”`);
+    bits.push(`Matches “${matchedName(diagnostic.matched_term, gap.jd_skill)}”`);
   }
   const placement = placementLabel(diagnostic.placement);
   if (placement) bits.push(placement);
@@ -264,9 +272,14 @@ function EvidenceLine({ gap }: { gap: Gap }) {
       {bits.length > 0 && (
         <span className="text-muted-foreground text-xs">{bits.join(" · ")}</span>
       )}
+      {/* The entries the engine found the skill in (ats/layers.py, `evidence_entries`), never
+          suggestions. Their labels are "Company — Role"; the dash reads aloud, a comma does not. */}
+      {entries.length > 0 ? (
+        <span className="text-muted-foreground text-xs">Mentioned in:</span>
+      ) : null}
       {entries.map((entry) => (
-        <Badge key={entry} variant="outline" className="font-normal">
-          {entry}
+        <Badge key={entry} variant="outline" className="h-auto font-normal whitespace-normal">
+          {entry.replace(" — ", ", ")}
         </Badge>
       ))}
     </div>
@@ -319,6 +332,12 @@ export function GapCard({
     gap.kind === "skill" && gap.diagnostic.fix_hint === "absent";
   // Tailoring: "I can't confirm this" stays focusable but inert (Undo: `UndoButton`).
   const locked = use(GapLocked);
+  // Skip, I can't confirm this, Undo, Edit and Done each swap this card for another view, which
+  // unmounts the pressed button: focus went to <body>. Every view carries `rootRef`, and a handler
+  // calls `handOff()` so the replacement's first control (or the row itself) takes focus.
+  const rootRef = useRef<HTMLDivElement & HTMLButtonElement>(null);
+  const focusNext = useFocusOnNextCommit();
+  const handOff = () => focusNext(rootRef);
 
   const [editing, setEditing] = useState(resolution === undefined);
   const [action, setAction] = useState<GapAction | null>(resolution?.action ?? null);
@@ -389,6 +408,7 @@ export function GapCard({
     if (next === "skip") {
       setEditing(false);
       commit("skip", {});
+      handOff();
       return;
     }
     // Switching back to an action whose draft is still valid re-commits it;
@@ -427,6 +447,7 @@ export function GapCard({
     ) {
       setAction("enable_entry");
       setEditing(false);
+      handOff();
       commit("enable_entry", {
         section: candidate.section,
         index: candidate.index,
@@ -443,6 +464,7 @@ export function GapCard({
     ) {
       setAction("port_kb_point");
       setEditing(false);
+      handOff();
       commit("port_kb_point", {
         kb_point_id: candidate.point_id,
         ...(candidate.entity_id ? { kb_entity_id: candidate.entity_id } : {}),
@@ -485,6 +507,7 @@ export function GapCard({
     clear();
     setAction(null);
     setEditing(true);
+    handOff();
   };
 
   const title = gapTitle(gap);
@@ -504,13 +527,15 @@ export function GapCard({
   // Career KB page is where it's managed).
   if (!editing && resolution?.action === "cannot_confirm") {
     return (
-      <div className="text-muted-foreground flex items-center justify-between gap-2 rounded-xl border py-2 pr-1.5 pl-4 text-sm">
+      <div
+        ref={rootRef}
+        className="text-muted-foreground flex items-center justify-between gap-2 rounded-xl border py-2 pr-1.5 pl-4 text-sm"
+      >
         <span className="flex min-w-0 items-start gap-2">
           <Ban className="mt-0.5 size-4 shrink-0" />
           <span className="min-w-0">
-            <span className="block truncate">
-              <span className="text-foreground font-medium">{title}</span>: can&apos;t
-              confirm
+            <span className="block break-words">
+              Can&apos;t confirm <span className="text-foreground font-medium">{title}</span>
             </span>
             <span className="block text-xs">{CANNOT_CONFIRM_EXPLANATION}</span>
           </span>
@@ -522,8 +547,13 @@ export function GapCard({
 
   if (!editing && resolution?.action === "skip") {
     return (
-      <div className="text-muted-foreground flex items-center justify-between gap-2 rounded-xl border border-dashed py-1.5 pr-1.5 pl-4 text-sm">
-        <span className="truncate">{title}: skipped</span>
+      <div
+        ref={rootRef}
+        className="text-muted-foreground flex items-center justify-between gap-2 rounded-xl border border-dashed py-1.5 pr-1.5 pl-4 text-sm"
+      >
+        <span className="min-w-0 break-words">
+          Skipped <span className="text-foreground font-medium">{title}</span>
+        </span>
         <UndoButton onClick={reopenGap} />
       </div>
     );
@@ -536,7 +566,10 @@ export function GapCard({
   // summary used to fall through to.
   if (!editing && resolution && isAutoResolved(resolution)) {
     return (
-      <div className="border-primary/25 bg-primary/[0.04] flex flex-wrap items-center gap-2 rounded-xl border px-4 py-2.5 text-sm">
+      <div
+        ref={rootRef}
+        className="border-primary/25 bg-primary/[0.04] flex flex-wrap items-center gap-2 rounded-xl border px-4 py-2.5 text-sm"
+      >
         <Library className="text-primary size-4 shrink-0" />
         <span className="min-w-0 flex-1">
           <span className="font-medium">{title}</span>
@@ -548,13 +581,21 @@ export function GapCard({
             {provenanceLine(resolution)}
           </span>
         </span>
-        <Button variant="ghost" size="xs" onClick={() => setEditing(true)}>
+        <Button
+          variant="ghost"
+          size="xs"
+          onClick={() => {
+            setEditing(true);
+            handOff();
+          }}
+        >
           Edit
         </Button>
         <UndoButton
           onClick={() => {
             setAction("skip");
             commit("skip", {});
+            handOff();
           }}
         />
       </div>
@@ -564,8 +605,12 @@ export function GapCard({
   if (!editing && resolution) {
     return (
       <button
+        ref={rootRef}
         type="button"
-        onClick={() => setEditing(true)}
+        onClick={() => {
+          setEditing(true);
+          handOff();
+        }}
         className="bg-card ring-foreground/10 hover:ring-primary/40 flex w-full items-center gap-2 rounded-xl px-4 py-2.5 text-left text-sm ring-1 transition-shadow"
       >
         <Check className="text-primary size-4 shrink-0" />
@@ -582,7 +627,7 @@ export function GapCard({
   }
 
   return (
-    <Card size="sm">
+    <Card ref={rootRef} size="sm">
       <CardContent className="space-y-3">
         <div className="flex flex-wrap items-center gap-2">
           {resolution && resolution.action !== "skip" && (
@@ -608,7 +653,10 @@ export function GapCard({
               variant="ghost"
               size="xs"
               className="ml-auto"
-              onClick={() => setEditing(false)}
+              onClick={() => {
+                setEditing(false);
+                handOff();
+              }}
             >
               Done
             </Button>
@@ -638,6 +686,7 @@ export function GapCard({
                 setAction("cannot_confirm");
                 setEditing(false);
                 commit("cannot_confirm", {});
+                handOff();
               }}
             >
               <Ban /> I can&apos;t confirm this

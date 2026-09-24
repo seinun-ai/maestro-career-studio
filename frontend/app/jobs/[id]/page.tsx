@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { use, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { GuardedLink as Link } from "@/components/guarded-link";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -57,23 +57,32 @@ import { apiFetch, promoteJobToAgentQueue } from "@/lib/api";
 import { couldnt, errorDetail } from "@/lib/error-text";
 import { finalFocusOn, focusIfDropped, focusTarget } from "@/lib/focus";
 import { isLoadFailure } from "@/lib/query-state";
+import { jobMetaLine } from "@/lib/job-meta";
 import { cn } from "@/lib/utils";
 import type { Job, JobDetail, ProposalStatus } from "@/lib/types";
 
 // Tab values stay jd/fit/output/qa for deep-link compat (?tab=fit, ?tab=output).
 const JOB_TABS = ["jd", "fit", "output", "qa"] as const;
 
-function JobTabsList({ hasApp }: { hasApp: boolean }) {
-  // A greyed tab with no stated reason is a dead end for a first-time user
-  // (StudioToolbar's rule: a "not yet, because…" message lives on the disabled
-  // control's tooltip). The base trigger styles set pointer-events-none while
-  // disabled, which suppresses even native title tooltips — re-enable them on
-  // the locked pair only; the disabled attribute still swallows the click.
+/**
+ * Why Resume and Q&A are locked: they show a job's application, which tailoring, Use resume as is
+ * (the gap page) and Mark applied without tailoring (Score and tailor) each create.
+ */
+const LOCKED_REASON =
+  "Resume and Q&A open once this job has its own resume: tailor one, use yours as is, or mark the job applied.";
+
+function JobTabsList({ hasApp, reasonId }: { hasApp: boolean; reasonId: string }) {
+  // A greyed tab with no stated reason is a dead end for a first-time user: the
+  // reason is visible beside the tabs (below) and each locked tab points at it.
+  // The base trigger styles set pointer-events-none while disabled, which
+  // suppresses the native title tooltip too; re-enable it on the locked pair
+  // only. The disabled attribute still swallows the click.
   const lockedProps = hasApp
     ? {}
     : {
         disabled: true,
-        title: "Unlocks after you tailor a resume for this job",
+        title: LOCKED_REASON,
+        "aria-describedby": reasonId,
         className:
           "disabled:pointer-events-auto aria-disabled:pointer-events-auto",
       };
@@ -88,6 +97,17 @@ function JobTabsList({ hasApp }: { hasApp: boolean }) {
         Q&amp;A
       </TabsTrigger>
     </TabsList>
+  );
+}
+
+function NoDraftYet({ onOpenFit }: { onOpenFit: () => void }) {
+  return (
+    <div className="text-muted-foreground flex flex-col items-center gap-3 rounded-md border border-dashed p-8 text-center text-sm">
+      <p>{"Your resume and answers appear here once you start a draft."}</p>
+      <Button size="sm" variant="outline" onClick={onOpenFit}>
+        Go to Score and tailor
+      </Button>
+    </div>
   );
 }
 
@@ -128,6 +148,7 @@ export default function JobDetailPage({
   const qc = useQueryClient();
   const router = useRouter();
   const confirm = useConfirm();
+  const lockedReasonId = useId();
   const actionsRef = useRef<HTMLDivElement>(null);
   // Queue, Skip and Delete proposal leave the header with the status they change, taking focus with
   // them: the header's first control takes it, in the commit that changes the status. A Skip's dialog
@@ -295,12 +316,13 @@ export default function JobDetailPage({
     job.salary_period,
     job.salary_currency,
   );
-  const metaBits = [
+  const metaLine = jobMetaLine([
+    job.company ?? "Unknown company",
     job.location,
     humanizeEnum(job.work_mode),
     salary,
     humanizeEnum(job.level),
-  ].filter(Boolean) as string[];
+  ]);
 
   const proposalStatus = job.proposal_status ?? null;
   const proposalId = job.proposal_id ?? null;
@@ -376,12 +398,12 @@ export default function JobDetailPage({
             className="mt-0.5 size-10 text-base"
           />
           <div className="min-w-0 grow basis-[16rem]">
-            <h1 className="truncate text-[22px] font-medium tracking-tight">
+            {/* Wraps, never truncates: at 375 a long title lost its end, and this is the one place it shows. */}
+            <h1 className="text-[22px] font-medium tracking-tight break-words">
               {job.title ?? "Untitled role"}
             </h1>
-            <p className="text-muted-foreground truncate text-sm">
-              {job.company ?? "Unknown company"}
-              {metaBits.length ? ` · ${metaBits.join(" · ")}` : ""}
+            <p className="text-muted-foreground truncate text-sm" title={metaLine}>
+              {metaLine}
             </p>
           </div>
           <div ref={actionsRef} className="mt-1 ml-auto flex flex-wrap items-center justify-end gap-2">
@@ -503,7 +525,7 @@ export default function JobDetailPage({
                 const ok = await confirm({
                   title: "Delete this job?",
                   description:
-                    "This also deletes its application, ATS scores, gap analyses and answers.",
+                    "This also deletes its application, ATS scores, gap analyses, answers and any Agent inbox proposals for it.",
                   confirmLabel: "Delete",
                   destructive: true,
                 });
@@ -526,7 +548,12 @@ export default function JobDetailPage({
               it like the row's furniture buries it again — this is what you
               came to the job for once a draft exists. */}
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <JobTabsList hasApp={hasApp} />
+            <JobTabsList hasApp={hasApp} reasonId={lockedReasonId} />
+            {hasApp ? null : (
+              <p id={lockedReasonId} className="text-muted-foreground basis-full text-xs">
+                {LOCKED_REASON}
+              </p>
+            )}
             {application?.customized_json ? (
               <Button
                 size="sm"
@@ -543,7 +570,7 @@ export default function JobDetailPage({
 
           <TabsContent value="jd" className="mt-0 space-y-4">
             {proposalId ? <ProposalAgentPanel proposalId={proposalId} /> : null}
-            <JobKnockoutCard scan={data?.knockout} />
+            <JobKnockoutCard scan={data?.knockout} job={job} />
             <JobExtractedFields
               job={job}
               hideTitle
@@ -553,7 +580,7 @@ export default function JobDetailPage({
           </TabsContent>
 
           <TabsContent value="fit" className="mt-0 space-y-4">
-            <AtsScorePanel jobId={id} />
+            <AtsScorePanel jobId={id} applicationStatus={application?.status ?? null} />
             {/* The before/after compare lives on the Resume tab, next to the
                 artifact it describes — link instead of double-mounting it. */}
             {application?.customized_json ? (
@@ -568,13 +595,23 @@ export default function JobDetailPage({
             ) : null}
           </TabsContent>
 
-          {application && (
+          {application ? (
             <>
               <TabsContent value="output" className="mt-0 space-y-4">
                 <OutputTab app={application} jobId={id} />
               </TabsContent>
               <TabsContent value="qa" className="mt-0 space-y-4">
                 <QATab applicationId={application.id} />
+              </TabsContent>
+            </>
+          ) : (
+            // A link to ?tab=output or ?tab=qa on a job with no draft opened a blank panel.
+            <>
+              <TabsContent value="output" className="mt-0">
+                <NoDraftYet onOpenFit={() => setTab("fit")} />
+              </TabsContent>
+              <TabsContent value="qa" className="mt-0">
+                <NoDraftYet onOpenFit={() => setTab("fit")} />
               </TabsContent>
             </>
           )}

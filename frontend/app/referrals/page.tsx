@@ -244,6 +244,10 @@ function ReferralForm({
     <Button
       type="submit"
       form={inDialog ? formId : undefined}
+      // Focusable while it adds and after a failed add: a natively disabled
+      // submit dropped focus to <body>. `submit` checks `canSubmit` itself.
+      className="data-disabled:pointer-events-none data-disabled:opacity-50"
+      focusableWhenDisabled
       disabled={!canSubmit}
     >
       {adding ? "Adding…" : "Add referral"}

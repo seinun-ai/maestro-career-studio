@@ -15,8 +15,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { SUBSCORE_LABELS } from "@/lib/ats-words";
+import { useSingleFlight } from "@/hooks/use-single-flight";
+import { ATS_SCORE_LEAD, SUBSCORE_LABELS } from "@/lib/ats-words";
 import { couldnt, errorDetail } from "@/lib/error-text";
+import { gapCounts } from "@/lib/gap-counts";
 import { isLoadFailure } from "@/lib/query-state";
 import { cn } from "@/lib/utils";
 import {
@@ -37,7 +39,7 @@ import {
 function AtsScoreLead() {
   return (
     <p className="text-muted-foreground max-w-[60ch] text-sm">
-      An ATS score (0 to 100) is how an applicant tracking system would rate each resume for this job.
+      {ATS_SCORE_LEAD}
     </p>
   );
 }
@@ -71,6 +73,7 @@ function AtsScoreCard({
   openSession,
   onAppliedAsIs,
   applyingAsIs,
+  applied,
 }: {
   score: AtsScore;
   top: boolean;
@@ -82,10 +85,18 @@ function AtsScoreCard({
   openSession: TailoringSession | null;
   onAppliedAsIs: () => void;
   applyingAsIs: boolean;
+  /** The job is already applied (or further): "Mark applied" would say nothing new. */
+  applied: boolean;
 }) {
   const baseName = useBaseResumeLabel();
   const gateWarnings = score.subscores_json.gate_warnings ?? [];
-  const resolvedCount = openSession?.resolutions_json.length ?? 0;
+  // The gap page's own counts: stored resolutions include skips and gaps it no longer lists.
+  const { answered } = openSession
+    ? gapCounts(
+        openSession.gaps_json.categories.flatMap((c) => c.gaps.map((g) => g.gap_id)),
+        openSession.resolutions_json,
+      )
+    : { answered: 0 };
   return (
     <Card
       className={cn(
@@ -146,15 +157,17 @@ function AtsScoreCard({
               render={
                 <Link href={`/jobs/${jobId}/tailor/${openSession.id}`}>
                   Continue gap analysis
-                  {resolvedCount > 0 ? ` (${resolvedCount} done)` : ""}
+                  {answered > 0 ? ` (${answered} answered)` : ""}
                 </Link>
               }
             />
             <Button
-              className="w-full"
+              className="w-full data-disabled:pointer-events-none data-disabled:opacity-50"
               size="sm"
               variant="ghost"
               onClick={onAnalyze}
+              // Focusable while it starts: a natively disabled button dropped focus to <body>.
+              focusableWhenDisabled
               disabled={analyzeDisabled}
             >
               {creating ? <Loader2 className="animate-spin" /> : null}
@@ -163,25 +176,29 @@ function AtsScoreCard({
           </div>
         ) : (
           <Button
-            className="w-full"
+            className="w-full data-disabled:pointer-events-none data-disabled:opacity-50"
             size="sm"
             onClick={onAnalyze}
+            focusableWhenDisabled
             disabled={analyzeDisabled}
           >
             {creating ? <Loader2 className="animate-spin" /> : <Wand2 />}
             {creating ? "Analyzing gaps…" : "Find gaps and tailor"}
           </Button>
         )}
-        <Button
-          className="text-muted-foreground w-full"
-          size="sm"
-          variant="ghost"
-          onClick={onAppliedAsIs}
-          disabled={applyingAsIs}
-        >
-          {applyingAsIs ? <Loader2 className="animate-spin" /> : <Check />}
-          Mark applied without tailoring
-        </Button>
+        {applied ? null : (
+          <Button
+            className="text-muted-foreground w-full data-disabled:pointer-events-none data-disabled:opacity-50"
+            size="sm"
+            variant="ghost"
+            onClick={onAppliedAsIs}
+            focusableWhenDisabled
+            disabled={applyingAsIs}
+          >
+            {applyingAsIs ? <Loader2 className="animate-spin" /> : <Check />}
+            Mark applied without tailoring
+          </Button>
+        )}
       </CardContent>
     </Card>
   );
@@ -192,7 +209,15 @@ function AtsScoreCard({
  * Auto-runs scoring on first visit (fast — no LLM); "Find gaps and tailor"
  * creates a gap analysis (LLM enrichment pass) and navigates to it.
  */
-export function AtsScorePanel({ jobId }: { jobId: string }) {
+export function AtsScorePanel({
+  jobId,
+  applicationStatus = null,
+}: {
+  jobId: string;
+  /** The job's application status, or null with none. */
+  applicationStatus?: string | null;
+}) {
+  const applied = applicationStatus != null && applicationStatus !== "draft";
   const baseName = useBaseResumeLabel();
   const qc = useQueryClient();
   const router = useRouter();
@@ -245,6 +270,9 @@ export function AtsScorePanel({ jobId }: { jobId: string }) {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["ats-scores", jobId] }),
     onError: (err: Error) => toast.error(couldnt("score your resumes", err)),
   });
+  // One run per gesture, and one at a time: a double click on Update scores sent a second POST that
+  // collided with the first on the base-score key and toasted a failure after the success.
+  const runOnce = useSingleFlight(run.mutate);
 
   const createSession = useMutation({
     mutationFn: (baseResume: string) => createTailoringSession(jobId, baseResume),
@@ -257,6 +285,8 @@ export function AtsScorePanel({ jobId }: { jobId: string }) {
     },
     onError: (err: Error) => toast.error(couldnt("start the gap analysis", err)),
   });
+  // A double click on Find gaps and tailor started two gap analyses.
+  const createOnce = useSingleFlight(createSession.mutate);
 
   // "Mark applied without tailoring": the user override for skipping tailoring
   // entirely (applied off-platform with the untouched base). One action:
@@ -280,6 +310,7 @@ export function AtsScorePanel({ jobId }: { jobId: string }) {
     },
     onError: (err: Error) => toast.error(couldnt("mark the job applied", err)),
   });
+  const markAppliedOnce = useSingleFlight(appliedAsIs.mutate);
 
   const appliedAsIsClick = async (baseResume: string) => {
     const ok = await confirm({
@@ -290,18 +321,17 @@ export function AtsScorePanel({ jobId }: { jobId: string }) {
         "and closes any open proposal in your Agent inbox for this job.",
       confirmLabel: "Mark applied",
     });
-    if (ok) appliedAsIs.mutate(baseResume);
+    if (ok) markAppliedOnce(baseResume);
   };
 
   // First visit: no persisted scores yet — run the (fast, deterministic) engine once.
   const autoRan = useRef(false);
-  const { mutate: runMutate } = run;
   useEffect(() => {
     if (scores.isSuccess && scores.data.length === 0 && !autoRan.current) {
       autoRan.current = true;
-      runMutate();
+      runOnce();
     }
-  }, [scores.isSuccess, scores.data, runMutate]);
+  }, [scores.isSuccess, scores.data, runOnce]);
 
   // A resume imported from the prompt below lands in ["base-resumes"] (the
   // import dialog invalidates it). Score against it once the dialog closes,
@@ -321,9 +351,9 @@ export function AtsScorePanel({ jobId }: { jobId: string }) {
       sawNoBases.current = true;
     } else if (sawNoBases.current && baseCount > 0 && !importOpen && !run.isPending) {
       sawNoBases.current = false;
-      runMutate();
+      runOnce();
     }
-  }, [noBases, bases.isFetching, baseCount, importOpen, run.isPending, runMutate]);
+  }, [noBases, bases.isFetching, baseCount, importOpen, run.isPending, runOnce]);
 
   // Score the imported resumes in the SAME event as the close: mutate() marks
   // the run pending synchronously, and the render that drops the prompt reads
@@ -334,7 +364,7 @@ export function AtsScorePanel({ jobId }: { jobId: string }) {
     setImportOpen(open);
     if (!open && sawNoBases.current && baseCount > 0 && !run.isPending) {
       sawNoBases.current = false;
-      run.mutate();
+      runOnce();
     }
   };
 
@@ -402,7 +432,13 @@ export function AtsScorePanel({ jobId }: { jobId: string }) {
           {!unscorable && <AtsScoreLead />}
           <p className="text-muted-foreground text-sm">{unscorable ?? "No ATS scores yet."}</p>
           {!unscorable && (
-            <Button size="sm" onClick={() => run.mutate()} disabled={run.isPending}>
+            <Button
+              size="sm"
+              className="data-disabled:pointer-events-none data-disabled:opacity-50"
+              onClick={() => runOnce()}
+              focusableWhenDisabled
+              disabled={run.isPending}
+            >
               {run.isPending && <Loader2 className="animate-spin" />}
               {run.isPending ? "Scoring…" : "Score my resumes"}
             </Button>
@@ -420,8 +456,10 @@ export function AtsScorePanel({ jobId }: { jobId: string }) {
           <Button
             variant="outline"
             size="sm"
-            className="shrink-0"
-            onClick={() => run.mutate()}
+            className="shrink-0 data-disabled:pointer-events-none data-disabled:opacity-50"
+            onClick={() => runOnce()}
+            // Focusable while it runs: a natively disabled button dropped focus to <body>.
+            focusableWhenDisabled
             disabled={run.isPending}
           >
             <RefreshCw className={run.isPending ? "animate-spin" : undefined} />
@@ -437,13 +475,14 @@ export function AtsScorePanel({ jobId }: { jobId: string }) {
               index={i}
               creating={pendingBase === score.target_id}
               analyzeDisabled={createSession.isPending}
-              onAnalyze={() => createSession.mutate(score.target_id)}
+              onAnalyze={() => createOnce(score.target_id)}
               jobId={jobId}
               openSession={openSessionByBase.get(score.target_id) ?? null}
               onAppliedAsIs={() => appliedAsIsClick(score.target_id)}
               applyingAsIs={
                 appliedAsIs.isPending && appliedAsIs.variables === score.target_id
               }
+              applied={applied}
             />
           ))}
         </div>

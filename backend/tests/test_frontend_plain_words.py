@@ -259,7 +259,7 @@ def test_ats_keys_have_one_set_of_words():
 
 def test_the_score_tab_spells_out_the_ats_score():
     panel = _read("components/ats-score-panel.tsx")
-    assert "An ATS score (0 to 100) is how an applicant tracking system would rate each resume" in panel
+    assert "{ATS_SCORE_LEAD}" in panel
     # Above the cards, and in the empty state: wherever the tab first shows a score.
     assert panel.count("<AtsScoreLead />") == 2
 
@@ -334,7 +334,7 @@ def test_the_gap_page_says_done_and_gap_analysis():
     page = _read(_GAP_PAGE)
     assert '? "Not saved"' in page
     assert "Save failed" not in page
-    assert "{done} of {category.gaps.length}" in page
+    assert "</span> answered\n" in page
     assert "gaps addressed" not in page
     assert "This gap analysis is out of date because {staleReason}." in page
 

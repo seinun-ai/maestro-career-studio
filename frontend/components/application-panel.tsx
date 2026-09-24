@@ -37,6 +37,7 @@ import {
 
 import { JobTrackingUrlField } from "@/components/job-tracking-url-field";
 import { useBaseResumeName } from "@/hooks/use-base-resume-label";
+import { useSingleFlight } from "@/hooks/use-single-flight";
 import { apiFetch, apiUrlForBrowserPdf } from "@/lib/api";
 import { couldnt } from "@/lib/error-text";
 import { notifyRenderNote } from "@/lib/render-note";
@@ -286,6 +287,8 @@ export function OutputTab({ app, jobId }: { app: Application; jobId: string }) {
     },
     onError: (error: Error) => toast.error(couldnt("create the PDF", error)),
   });
+  // A double click rendered twice and toasted twice.
+  const renderOnce = useSingleFlight(renderPdf.mutate);
   const pdfReady = hasPdf || renderPdf.isSuccess;
   const pdfHref = apiUrlForBrowserPdf(`/api/applications/${app.id}/pdf`);
   const pdfFilename =
@@ -306,7 +309,8 @@ export function OutputTab({ app, jobId }: { app: Application; jobId: string }) {
       <Card>
         <CardHeader className="flex flex-row items-start justify-between gap-2 pb-2">
           <div className="space-y-1">
-            <CardTitle>Tailored resume</CardTitle>
+            {/* Not "Tailored": Use resume as is and Mark applied put the base resume here unchanged. */}
+            <CardTitle>Resume for this job</CardTitle>
             <p className="text-muted-foreground text-sm">{status}</p>
           </div>
           <Badge variant={pdfReady ? "default" : "outline"} className="shrink-0">
@@ -316,7 +320,10 @@ export function OutputTab({ app, jobId }: { app: Application; jobId: string }) {
         <CardContent className="space-y-4">
           <div className="flex flex-wrap items-center gap-2">
             <Button
-              onClick={() => renderPdf.mutate()}
+              onClick={() => renderOnce()}
+              // Focusable while it creates: a natively disabled button dropped focus to <body>.
+              className="data-disabled:pointer-events-none data-disabled:opacity-50"
+              focusableWhenDisabled
               disabled={!hasDraft || renderPdf.isPending}
             >
               {renderPdf.isPending ? (

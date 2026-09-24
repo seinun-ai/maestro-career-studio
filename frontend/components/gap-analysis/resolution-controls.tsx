@@ -163,7 +163,7 @@ export function buildPlacementTargets(resume: ResumeData): PlacementTarget[] {
       target: {
         section: "experience",
         index_or_category: index,
-        label: `${entry.company} — ${entry.role}`,
+        label: `${entry.company}, ${entry.role}`,
         date: endRaw || "Present",
       },
       rank,
@@ -198,7 +198,7 @@ export function buildPlacementTargets(resume: ResumeData): PlacementTarget[] {
           section: "extra",
           section_key: section.key,
           index_or_category: index,
-          label: `${section.title} — ${entry.heading}`,
+          label: `${section.title}, ${entry.heading}`,
           date: entry.date?.trim() || null,
         });
       });
@@ -311,7 +311,8 @@ export function Chip({
       aria-disabled={locked || undefined}
       onClick={locked ? undefined : onClick}
       className={cn(
-        "inline-flex h-6 max-w-full items-center gap-1 rounded-full border px-2.5 text-xs font-medium transition-colors aria-disabled:opacity-50",
+        // Wraps instead of truncating: at 375 "Harbor Loop Logistics, Senior ML Engin…" lost the role.
+        "inline-flex min-h-6 max-w-full items-center gap-1 rounded-full border px-2.5 py-0.5 text-left text-xs font-medium transition-colors aria-disabled:opacity-50",
         selected
           ? "border-primary bg-primary text-primary-foreground"
           : "border-border bg-background text-muted-foreground hover:bg-muted hover:text-foreground",
@@ -319,7 +320,7 @@ export function Chip({
       )}
     >
       {highlighted && !selected && <Sparkles className="text-primary size-3 shrink-0" />}
-      <span className="truncate">{children}</span>
+      <span className="min-w-0 break-words">{children}</span>
       {date && (
         <span
           className={cn(

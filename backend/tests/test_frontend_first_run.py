@@ -104,7 +104,7 @@ def test_score_tab_rescores_in_the_same_event_as_the_close():
     start = panel.index("const onImportOpenChange = (open: boolean) => {")
     handler = panel[start : panel.index("\n  };", start)]
     assert "setImportOpen(open);" in handler
-    assert "run.mutate();" in handler
+    assert "runOnce();" in handler
     for deferral in ("setTimeout", "queueMicrotask", "await", "requestAnimationFrame"):
         assert deferral not in handler, deferral
 

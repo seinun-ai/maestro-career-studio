@@ -6,6 +6,7 @@ import { focusIfDropped } from "@/hooks/use-focus-return";
 import { useLeaveGuard } from "@/hooks/use-leave-guard";
 import { useLoadFailureError } from "@/hooks/use-last-seen";
 import { useRefreshFailedNotice } from "@/hooks/use-refresh-failed-notice";
+import { useSingleFlight } from "@/hooks/use-single-flight";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -37,6 +38,7 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { couldnt, errorDetail } from "@/lib/error-text";
+import { gapCounts } from "@/lib/gap-counts";
 import { cn } from "@/lib/utils";
 import {
   ApiError,
@@ -51,6 +53,7 @@ import {
 import {
   baseResumeLabel,
   isAutoResolved,
+  resolutionProvenance,
   type BaseResumeDetail,
   type GapCategory,
   type JobDetail,
@@ -131,6 +134,7 @@ function SaveIndicator({
 
 function CategorySection({
   category,
+  resolutions,
   resolutionMap,
   targets,
   projects,
@@ -138,6 +142,7 @@ function CategorySection({
   onChange,
 }: {
   category: GapCategory;
+  resolutions: Resolution[];
   resolutionMap: Map<string, Resolution>;
   targets: PlacementTarget[] | null;
   projects: string[] | null;
@@ -145,7 +150,11 @@ function CategorySection({
   onChange: (gapId: string, resolution: Resolution | null) => void;
 }) {
   const [open, setOpen] = useState(true);
-  const done = category.gaps.filter((gap) => resolutionMap.has(gap.gap_id)).length;
+  // The footer's words: "open" means neither answered nor skipped.
+  const counts = gapCounts(
+    category.gaps.map((gap) => gap.gap_id),
+    resolutions,
+  );
   return (
     <section className="space-y-2">
       <button
@@ -161,8 +170,8 @@ function CategorySection({
           )}
         />
         <span className="text-sm font-medium">{category.title}</span>
-        <Badge variant={done === category.gaps.length ? "default" : "secondary"}>
-          {done} of {category.gaps.length}
+        <Badge variant={counts.open === 0 ? "default" : "secondary"}>
+          {counts.open > 0 ? `${counts.open} open` : "Nothing open"}
         </Badge>
         <span className="text-muted-foreground ml-auto hidden truncate text-xs sm:inline">
           {category.description}
@@ -344,7 +353,7 @@ export default function TailorSessionPage({
         const { base, tailored, delta } = result.compare;
         const sign = delta.composite >= 0 ? "+" : "";
         toast.success(
-          `ATS score: ${base.composite.toFixed(1)} → ${tailored.composite.toFixed(1)} (${sign}${delta.composite.toFixed(1)})`,
+          `ATS score: ${base.composite.toFixed(1)} to ${tailored.composite.toFixed(1)} (${sign}${delta.composite.toFixed(1)})`,
         );
       } else if (result.compare_error) {
         // compare_error with null compare still means tailoring SUCCEEDED.
@@ -477,6 +486,8 @@ export default function TailorSessionPage({
     },
     onError: (error: Error) => toast.error(couldnt("use your resume as is", error)),
   });
+  // A double click made two applications for one job: both POSTs found none to reuse.
+  const applyAsIsOnce = useSingleFlight(useAsIs.mutate);
 
   // --- Stale session: frozen gaps no longer match the current base/JD ---------
   // (`staleReason` is declared above so the autosave path can read it.)
@@ -497,22 +508,24 @@ export default function TailorSessionPage({
   const categories = session.data?.gaps_json.categories ?? [];
   const gaps = categories.flatMap((category) => category.gaps);
   const resolutionMap = new Map(resolutions.map((r) => [r.gap_id, r] as const));
-  let addressed = 0;
-  let skipped = 0;
-  for (const gap of gaps) {
-    const resolution = resolutionMap.get(gap.gap_id);
-    if (!resolution) continue;
-    // cannot_confirm is a skip for the DOCUMENT (its KB record is durable):
-    // it must not count as "addressed" or Tailor would run with nothing to do.
-    if (resolution.action === "skip" || resolution.action === "cannot_confirm") {
-      skipped += 1;
-    } else addressed += 1;
-  }
-  const total = gaps.length;
-  const open = total - addressed - skipped;
-  // Gaps the KB resolver solved from the user's own evidence and pre-applied.
-  // Counted off the LIVE list, so an Undo drops the banner's count immediately.
-  const autoResolved = resolutions.filter(isAutoResolved).length;
+  // cannot_confirm is a skip for the DOCUMENT (its KB record is durable): it
+  // must not count as answered, or Tailor would run with nothing to do.
+  const {
+    answered: addressed,
+    skipped,
+    open,
+  } = gapCounts(
+    gaps.map((gap) => gap.gap_id),
+    resolutions,
+  );
+  // Gaps the resolver pre-applied. Counted off the LIVE list, so an Undo drops
+  // the banner's count immediately. The job's own wording is not the user's
+  // evidence, so the banner names it apart.
+  const autoResolved = resolutions.filter(isAutoResolved);
+  const fromWording = autoResolved.filter(
+    (r) => resolutionProvenance(r)?.source === "wording_auto",
+  ).length;
+  const fromYours = autoResolved.length - fromWording;
   // F6d — a summary gap is ALWAYS present, so `total === 0` no longer means "clean".
   // "Strong match" is when the only gap left is that always-present summary (no skill,
   // coverage, title, gate, or format gaps) — surface an honest positive state instead
@@ -580,7 +593,7 @@ export default function TailorSessionPage({
         confirm({
           title: `Quick tailor ${open} open ${open === 1 ? "gap" : "gaps"}?`,
           description:
-            "Fills every open gap from your Quick tailor settings, then tailors. " +
+            "Fills the open gaps your Quick tailor settings allow, then tailors. " +
             "Your answers stay as they are. You can review and undo each change afterward.",
           confirmLabel: "Quick tailor",
         }),
@@ -687,8 +700,8 @@ export default function TailorSessionPage({
           <div className="flex min-w-0 items-center gap-2.5">
             <TriangleAlert className="size-4 shrink-0 text-amber-700 dark:text-amber-400" />
             <p className="text-sm">
-              This gap analysis is out of date because {staleReason}. Your changes here won&apos;t
-              be saved. Start a new one to keep going.
+              This gap analysis is out of date because {staleReason}.{" "}
+              Your changes here won&apos;t be saved. Start a new one to keep going.
             </p>
           </div>
           <Button
@@ -713,7 +726,7 @@ export default function TailorSessionPage({
         <div className="min-w-0 flex-1">
           <h1 className="text-[22px] font-medium tracking-tight">Gap analysis</h1>
           <p className="text-muted-foreground text-sm">
-            {baseResume.data?.display_name?.trim() || baseResumeLabel(session.data.base_resume)} · score before tailoring:{" "}
+            {baseResume.data?.display_name?.trim() || baseResumeLabel(session.data.base_resume)} · ATS score before tailoring:{" "}
             <span className="text-foreground font-medium tabular-nums">
               {gapsJson.base_composite.toFixed(1)}
             </span>
@@ -752,29 +765,37 @@ export default function TailorSessionPage({
             </p>
           </div>
         )}
-        {autoResolved > 0 && (
+        {autoResolved.length > 0 && (
           <div className="border-primary/25 bg-primary/[0.04] animate-fade-rise flex items-center gap-2.5 rounded-xl border px-4 py-3">
             <Library className="text-primary size-4 shrink-0" />
             <p className="text-sm">
               <span className="font-medium">
-                {autoResolved} {autoResolved === 1 ? "gap was" : "gaps were"}
+                {autoResolved.length} {autoResolved.length === 1 ? "gap was" : "gaps were"}
               </span>{" "}
-              filled in from your resumes and career history. Review them below.
+              {fromYours === 0
+                ? "filled in with the job's own words"
+                : fromWording === 0
+                  ? "filled in from your resumes and career history"
+                  : "filled in from your resumes, your career history and the job's own words"}
+              . Review them below.
             </p>
           </div>
         )}
-        {autoResolved === 0 && !strongMatch && open > 0 && (
+        {autoResolved.length === 0 && !strongMatch && open > 0 && (
           <p className="text-muted-foreground text-sm">
             These gaps need your input. <span className="font-medium">Add keyword</span>{" "}
             uses the job&apos;s exact words, <span className="font-medium">Answer</span>{" "}
-            adds your real experience, and <span className="font-medium">Skip</span>{" "}
-            leaves a gap as it is.
+            adds your real experience, <span className="font-medium">Attach project</span>{" "}
+            points to a project on your resume, and <span className="font-medium">Skip</span>{" "}
+            leaves a gap as it is. <span className="font-medium">I can&apos;t confirm this</span>{" "}
+            means you don&apos;t have it, and we won&apos;t ask again.
           </p>
         )}
         {categories.map((category) => (
           <CategorySection
             key={category.key}
             category={category}
+            resolutions={resolutions}
             resolutionMap={resolutionMap}
             targets={targets}
             projects={projects}
@@ -807,7 +828,7 @@ export default function TailorSessionPage({
             drop below them instead of squeezing the counts into a column. */}
         <div className="mx-auto flex w-full max-w-4xl flex-wrap items-center gap-x-3 gap-y-2">
           <p className="text-muted-foreground shrink-0 text-sm whitespace-nowrap tabular-nums">
-            <span className="text-foreground font-medium">{addressed}</span> done
+            <span className="text-foreground font-medium">{addressed}</span> answered
             · <span className="text-foreground font-medium">{skipped}</span> skipped ·{" "}
             <span className="text-foreground font-medium">{open}</span> open
           </p>
@@ -825,14 +846,18 @@ export default function TailorSessionPage({
                     const ok = await confirm({
                       title: "Replace the existing tailored draft?",
                       description:
-                        "Using your base resume as is replaces this job's tailored resume and its PDF. Version history keeps the old one.",
+                        "Using your base resume as is replaces this job's tailored resume and removes its PDF. " +
+                        "Version history keeps the old one.",
                       confirmLabel: "Replace draft",
                       destructive: true,
                     });
                     if (!ok) return;
                   }
-                  useAsIs.mutate();
+                  applyAsIsOnce();
                 }}
+                // Focusable while it runs: a natively disabled button dropped focus to <body>.
+                className="data-disabled:pointer-events-none data-disabled:opacity-50"
+                focusableWhenDisabled
                 disabled={useAsIs.isPending || tailorBusy || !!staleReason}
               >
                 {useAsIs.isPending && <Loader2 className="animate-spin" />}
