@@ -1,8 +1,14 @@
 "use client";
 
 import { useId, useState } from "react";
-import { Check, Loader2, X } from "lucide-react";
+import { ChevronRight } from "lucide-react";
+import { toast } from "sonner";
 
+import {
+  useOpenAIInfo,
+  useSaveModelSettings,
+} from "@/components/settings/models-section";
+import { SettingCard } from "@/components/settings/setting-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,14 +19,82 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { CapabilityReport, OpenAIInfo } from "@/lib/types";
+import type { OpenAIInfo } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
-/** What each capability actually gates, so a red mark says what stops working. */
-const CAPABILITY_LABELS: { key: keyof CapabilityReport; label: string; gates: string }[] = [
-  { key: "text", label: "Text", gates: "cover letters, screening answers" },
-  { key: "json", label: "JSON", gates: "extraction, tailoring, health, KB ingest" },
-  { key: "tools", label: "Tools", gates: "the chat agent" },
-];
+/**
+ * A model server of the user's own (Ollama, LM Studio), as its own card. Most installs never touch
+ * it, so it sits last among the model cards and starts collapsed.
+ */
+export function CustomEndpointSection() {
+  const info = useOpenAIInfo();
+  const save = useSaveModelSettings(() => toast.success("Server settings saved"));
+  return (
+    <SettingCard
+      id="custom-endpoint"
+      title="Custom AI server"
+      description="Run models on your own server, such as Ollama or LM Studio."
+      errorTitle="Couldn't load your server settings."
+      skeleton="h-10 w-full"
+      query={info}
+    >
+      {(data) => (
+        <EndpointDisclosure
+          info={data}
+          disabled={save.isPending}
+          onSave={(patch) => save.mutate(patch)}
+        />
+      )}
+    </SettingCard>
+  );
+}
+
+/** Starts collapsed unless something is set. `hidden`, not unmounted: a typed
+ *  address survives a collapse. */
+function EndpointDisclosure({
+  info,
+  disabled,
+  onSave,
+}: {
+  info: OpenAIInfo;
+  disabled: boolean;
+  onSave: (patch: { base_url?: string | null; json_mode?: string }) => void;
+}) {
+  const [open, setOpen] = useState(Boolean(info.base_url) || info.json_mode !== "auto");
+  const panelId = useId();
+  return (
+    <div className="grid gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-muted-foreground min-w-0 text-sm wrap-anywhere">
+          {info.base_url ? (
+            <>
+              Using <code className="font-mono text-xs">{info.base_url}</code>
+            </>
+          ) : (
+            "Not set. Models run on the OpenAI and Gemini APIs."
+          )}
+        </p>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          aria-expanded={open}
+          aria-controls={panelId}
+          onClick={() => setOpen((o) => !o)}
+        >
+          <ChevronRight
+            className={cn("transition-transform", open && "rotate-90")}
+            aria-hidden="true"
+          />
+          Advanced
+        </Button>
+      </div>
+      <div id={panelId} hidden={!open}>
+        <EndpointControls info={info} disabled={disabled} onSave={onSave} />
+      </div>
+    </div>
+  );
+}
 
 /** True when the endpoint is neither empty nor a local address.
  *
@@ -46,7 +120,7 @@ function isRemoteEndpoint(raw: string): boolean {
   }
 }
 
-export function EndpointControls({
+function EndpointControls({
   info,
   disabled,
   onSave,
@@ -63,156 +137,73 @@ export function EndpointControls({
   const jsonModeHintId = useId();
 
   return (
-    <div className="space-y-3 border-t pt-3">
-      <div className="grid gap-3 sm:grid-cols-[2fr_1fr]">
-        <div className="grid gap-1.5">
-          <Label
-            htmlFor={endpointId}
-            className="text-muted-foreground text-xs font-normal"
-            optional
-          >
-            OpenAI-compatible endpoint
-          </Label>
-          <span id={endpointHintId} className="text-muted-foreground block text-xs">
-            Point at Ollama, LM Studio, vLLM or OpenRouter and nothing leaves this
-            machine. Leave empty for the OpenAI API.
-          </span>
-          <div className="flex gap-2">
-            <Input
-              id={endpointId}
-              aria-describedby={endpointHintId}
-              placeholder="e.g. http://host.docker.internal:11434/v1"
-              value={value}
-              disabled={disabled}
-              onChange={(e) => setDraft(e.target.value)}
-            />
-            <Button
-              variant="outline"
-              disabled={disabled || draft === null}
-              onClick={() => {
-                onSave({ base_url: draft?.trim() || null });
-                setDraft(null);
-              }}
-            >
-              Save
-            </Button>
-          </div>
-          {isRemoteEndpoint(value) && (
-            <span className="text-xs text-amber-700 dark:text-amber-500">
-              Your API key and resume text will be sent to this server. Only point
-              it somewhere you trust.
-            </span>
-          )}
-        </div>
-        <div className="grid gap-1.5">
-          <Label
-            htmlFor={jsonModeId}
-            className="text-muted-foreground text-xs font-normal"
-          >
-            JSON mode
-          </Label>
-          <span id={jsonModeHintId} className="text-muted-foreground block text-xs">
-            Auto sends <code>response_format</code> only to the OpenAI API. Some
-            servers reject the field outright.
-          </span>
-          <Select
-            value={info.json_mode}
+    <div className="grid gap-4 @xl/setting:grid-cols-[2fr_1fr]">
+      <div className="grid content-start gap-1.5">
+        <Label htmlFor={endpointId} optional>
+          OpenAI-compatible endpoint
+        </Label>
+        <p id={endpointHintId} className="text-muted-foreground text-xs">
+          Point at Ollama, LM Studio, vLLM or OpenRouter and nothing leaves this
+          machine. Leave empty for the OpenAI API.
+        </p>
+        <div className="flex gap-2">
+          <Input
+            id={endpointId}
+            aria-describedby={endpointHintId}
+            placeholder="e.g. http://host.docker.internal:11434/v1"
+            value={value}
             disabled={disabled}
-            onValueChange={(v) => v && onSave({ json_mode: v })}
+            onChange={(e) => setDraft(e.target.value)}
+          />
+          <Button
+            variant="outline"
+            disabled={disabled || draft === null}
+            onClick={() => {
+              onSave({ base_url: draft?.trim() || null });
+              setDraft(null);
+            }}
           >
-            <SelectTrigger id={jsonModeId} aria-describedby={jsonModeHintId}>
-              {/* Children, not a bare SelectValue: Base UI renders the raw
-                  value otherwise, so this trigger read "auto"/"on"/"off". */}
-              <SelectValue>
-                {(value) =>
-                  value === "on"
-                    ? "Always on"
-                    : value === "off"
-                      ? "Off"
-                      : "Auto"
-                }
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="auto">Auto</SelectItem>
-              <SelectItem value="on">Always on</SelectItem>
-              <SelectItem value="off">Off</SelectItem>
-            </SelectContent>
-          </Select>
+            Save
+          </Button>
         </div>
+        {isRemoteEndpoint(value) && (
+          <p className="text-xs text-amber-700 dark:text-amber-500">
+            Your API key and resume text will be sent to this server. Only point
+            it somewhere you trust.
+          </p>
+        )}
       </div>
-    </div>
-  );
-}
-
-export function CapabilityMatrix({
-  info,
-  onProbe,
-  probing,
-}: {
-  info: OpenAIInfo;
-  onProbe: (model: string) => void;
-  probing: string | null;
-}) {
-  // A model can hold two roles at once; test it once, show it once.
-  const models = [...new Set([info.fast_model, info.smart_model, info.chat_model])];
-
-  return (
-    <div className="space-y-2 border-t pt-3">
-      <p className="text-muted-foreground text-xs">
-        Measured, not assumed. A model that cannot call tools still works
-        everywhere except chat.
-      </p>
-      <ul className="space-y-1.5">
-        {models.map((model) => {
-          const report = info.capabilities[model];
-          return (
-            <li
-              key={model}
-              className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs"
-            >
-              <span className="min-w-0 flex-1 truncate font-medium">{model}</span>
-              {report ? (
-                CAPABILITY_LABELS.map(({ key, label, gates }) => {
-                  const ok = report[key] === true;
-                  return (
-                    <span
-                      key={key}
-                      className="flex items-center gap-1"
-                      title={
-                        ok
-                          ? `${label}: supported. Enables ${gates}`
-                          : `${label}: ${report.errors[key] ?? "unsupported"}. Disables ${gates}`
-                      }
-                    >
-                      {ok ? (
-                        <Check className="size-3 text-emerald-600" />
-                      ) : (
-                        <X className="text-destructive size-3" />
-                      )}
-                      {label}
-                    </span>
-                  );
-                })
-              ) : (
-                <span className="text-muted-foreground">Not tested</span>
-              )}
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled={probing !== null}
-                onClick={() => onProbe(model)}
-              >
-                {probing === model ? (
-                  <Loader2 className="size-3 animate-spin" />
-                ) : (
-                  "Test"
-                )}
-              </Button>
-            </li>
-          );
-        })}
-      </ul>
+      <div className="grid content-start gap-1.5">
+        <Label htmlFor={jsonModeId}>JSON mode</Label>
+        <p id={jsonModeHintId} className="text-muted-foreground text-xs">
+          Auto sends <code>response_format</code> only to the OpenAI API. Some
+          servers reject the field outright.
+        </p>
+        <Select
+          value={info.json_mode}
+          disabled={disabled}
+          onValueChange={(v) => v && onSave({ json_mode: v })}
+        >
+          <SelectTrigger id={jsonModeId} aria-describedby={jsonModeHintId}>
+            {/* Children, not a bare SelectValue: Base UI renders the raw
+                value otherwise, so this trigger read "auto"/"on"/"off". */}
+            <SelectValue>
+              {(value) =>
+                value === "on"
+                  ? "Always on"
+                  : value === "off"
+                    ? "Off"
+                    : "Auto"
+              }
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="auto">Auto</SelectItem>
+            <SelectItem value="on">Always on</SelectItem>
+            <SelectItem value="off">Off</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
     </div>
   );
 }

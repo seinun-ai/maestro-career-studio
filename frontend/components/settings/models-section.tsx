@@ -2,13 +2,9 @@
 
 import { useId, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Check, Loader2, X } from "lucide-react";
 import { toast } from "sonner";
 
-import {
-  CapabilityMatrix,
-  EndpointControls,
-} from "@/components/settings/llm-endpoint";
-import { ModelCatalogPanel } from "@/components/settings/model-catalog-panel";
 import { SettingCard } from "@/components/settings/setting-card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -23,6 +19,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { apiFetch } from "@/lib/api";
+import { modelName, showsModelId } from "@/lib/model-catalog";
 import type { CapabilityReport, OpenAIInfo } from "@/lib/types";
 
 export type ModelSettingsPatch = {
@@ -70,6 +67,39 @@ export function useSaveModelSettings(onSaved?: (info: OpenAIInfo) => void) {
   });
 }
 
+/** The three model roles, each with what it does. */
+const ROLES = [
+  {
+    key: "fast_model",
+    label: "Fast model",
+    hint: "Reads job descriptions and documents, and picks form answers.",
+    patch: (v: string) => ({ fast_model: v }),
+  },
+  {
+    key: "smart_model",
+    label: "Smart model",
+    hint: "Tailors resumes and writes drafts.",
+    patch: (v: string) => ({ smart_model: v }),
+  },
+  {
+    key: "chat_model",
+    label: "Assistant model",
+    hint: "Runs the Assistant. Use Test to check it works.",
+    patch: (v: string) => ({ chat_model: v }),
+  },
+] as const;
+
+/** What each capability actually gates, so a red mark says what stops working. */
+const CAPABILITY_LABELS: { key: "text" | "json" | "tools"; label: string; gates: string }[] = [
+  { key: "text", label: "Writing", gates: "cover letters and answers" },
+  {
+    key: "json",
+    label: "Structured answers",
+    gates: "reading jobs, tailoring, health checks and career history",
+  },
+  { key: "tools", label: "Assistant", gates: "the Assistant" },
+];
+
 export function ModelsSection() {
   const info = useOpenAIInfo();
   const [probing, setProbing] = useState<string | null>(null);
@@ -85,7 +115,9 @@ export function ModelsSection() {
     onSettled: () => setProbing(null),
     onSuccess: (report) => {
       void info.refetch();
-      const missing = (["text", "json", "tools"] as const).filter((c) => !report[c]);
+      const missing = CAPABILITY_LABELS.filter(({ key }) => !report[key]).map(
+        ({ label }) => label,
+      );
       if (report.reachable === false) {
         // The call never reached the model, so this says nothing about it —
         // and nothing was recorded. Blaming the model here is what sent the
@@ -96,10 +128,10 @@ export function ModelsSection() {
             `Check the API key and endpoint, then test again.`,
         );
       } else if (missing.length === 0) {
-        toast.success(`${report.model} supports everything`);
+        toast.success(`${report.model} works with every feature`);
       } else {
         toast.warning(
-          `${report.model} cannot do: ${missing.join(", ")}. Other surfaces still work.`,
+          `${report.model} can't do ${missing.join(", ")}. Everything else works.`,
         );
       }
     },
@@ -110,54 +142,154 @@ export function ModelsSection() {
     <SettingCard
       id="models"
       title="Models"
-      description="Which model answers for each role, the endpoint they run against, and a catalog you can grow with Sync."
+      description="Which model does each job."
       errorTitle="Couldn't load your model settings."
       skeleton="h-48 w-full"
       query={info}
     >
       {(data) => (
-        <div className="space-y-4 text-sm">
+        <div className="grid gap-6">
           <ModelProfileNote />
-          <div className="grid gap-3 sm:grid-cols-3">
-            <ModelField
-              label="Fast model"
-              value={data.fast_model}
-              options={data.model_options}
-              custom={data.custom_endpoint}
-              disabled={save.isPending}
-              onChange={(value) => value && save.mutate({ fast_model: value })}
-            />
-            <ModelField
-              label="Smart model"
-              value={data.smart_model}
-              options={data.model_options}
-              custom={data.custom_endpoint}
-              disabled={save.isPending}
-              onChange={(value) => value && save.mutate({ smart_model: value })}
-            />
-            <ModelField
-              label="Chat model · needs streaming tool calls, so test it"
-              value={data.chat_model}
-              options={data.model_options}
-              custom={data.custom_endpoint}
-              disabled={save.isPending}
-              onChange={(value) => value && save.mutate({ chat_model: value })}
-            />
+          <div className="grid gap-4 @2xl/setting:grid-cols-3">
+            {ROLES.map((role) => (
+              <RoleModel
+                key={role.key}
+                role={role}
+                info={data}
+                disabled={save.isPending}
+                probing={probing}
+                onChange={(value) => value && save.mutate(role.patch(value))}
+                onProbe={(model) => probe.mutate(model)}
+              />
+            ))}
           </div>
-          <EndpointControls
-            info={data}
-            disabled={save.isPending}
-            onSave={(patch) => save.mutate(patch)}
-          />
-          <CapabilityMatrix
-            info={data}
-            probing={probing}
-            onProbe={(model) => probe.mutate(model)}
-          />
-          <ModelCatalogPanel info={data} />
+          <p className="text-muted-foreground text-xs">
+            Test a model to see what it can do. A model that fails the Assistant
+            test still works everywhere else.
+          </p>
         </div>
       )}
     </SettingCard>
+  );
+}
+
+/** One role: its picker, then the chosen model's measured capabilities. */
+function RoleModel({
+  role,
+  info,
+  disabled,
+  probing,
+  onChange,
+  onProbe,
+}: {
+  role: (typeof ROLES)[number];
+  info: OpenAIInfo;
+  disabled: boolean;
+  probing: string | null;
+  onChange: (value: string | null) => void;
+  onProbe: (model: string) => void;
+}) {
+  const hintId = useId();
+  const model = info[role.key];
+  return (
+    <div className="grid content-start gap-1.5">
+      <ModelField
+        label={role.label}
+        hint={role.hint}
+        hintId={hintId}
+        value={model}
+        options={info.model_options}
+        custom={info.custom_endpoint}
+        disabled={disabled}
+        onChange={onChange}
+      />
+      <ModelCapability
+        report={info.capabilities[model]}
+        name={modelName(info.model_options, model)}
+        probing={probing === model}
+        busy={probing !== null}
+        onProbe={() => onProbe(model)}
+      />
+    </div>
+  );
+}
+
+/** The chosen model's measured capabilities, under its picker. A model two
+ *  roles share shows in both. */
+function ModelCapability({
+  report,
+  name,
+  probing,
+  busy,
+  onProbe,
+}: {
+  report: CapabilityReport | undefined;
+  name: string;
+  probing: boolean;
+  busy: boolean;
+  onProbe: () => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+      {report ? (
+        CAPABILITY_LABELS.map(({ key, label, gates }) => (
+          <CapabilityMark
+            key={key}
+            ok={report[key] === true}
+            label={label}
+            gates={gates}
+            error={report.errors[key]}
+          />
+        ))
+      ) : (
+        <span className="text-muted-foreground">Not tested</span>
+      )}
+      {/* Named for its model, and it keeps its label while it runs: a bare
+          spinner left the button with no name. */}
+      <Button
+        type="button"
+        size="xs"
+        variant="ghost"
+        focusableWhenDisabled
+        disabled={busy}
+        aria-label={`Test ${name}`}
+        className="data-disabled:pointer-events-none data-disabled:opacity-50"
+        onClick={onProbe}
+      >
+        {probing ? <Loader2 className="animate-spin" aria-hidden="true" /> : null}
+        Test
+      </Button>
+    </div>
+  );
+}
+
+function CapabilityMark({
+  ok,
+  label,
+  gates,
+  error,
+}: {
+  ok: boolean;
+  label: string;
+  gates: string;
+  error: string | undefined;
+}) {
+  return (
+    <span
+      className="flex items-center gap-1"
+      title={
+        ok
+          ? `${label}: supported. Enables ${gates}`
+          : `${label}: ${error ?? "unsupported"}. Disables ${gates}`
+      }
+    >
+      {ok ? (
+        <Check className="size-3 text-emerald-600" />
+      ) : (
+        <X className="text-destructive size-3" />
+      )}
+      {label}
+    </span>
   );
 }
 
@@ -172,25 +304,21 @@ export function ModelsSection() {
 function ModelProfileNote() {
   const [open, setOpen] = useState(false);
   return (
-    <div className="text-xs">
+    <div className="grid gap-2 text-xs">
       <button
         type="button"
-        className="text-muted-foreground hover:text-foreground underline underline-offset-4"
+        className="text-muted-foreground hover:text-foreground justify-self-start underline underline-offset-4"
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
       >
-        Which models did you measure?
+        Which model should I pick?
       </button>
       {open && (
-        <p className="text-muted-foreground mt-2 max-w-prose">
-          Two measured profiles, one per key: GPT-5.6 Luna on every tier (the
-          default — most thorough JD extraction we tested, about a penny per
-          application, slower) or Gemini 3.7 Flash on every tier (fastest, under
-          3¢ per application, promo pricing doubles Jan 2027). In our tests the
-          Fast model decided extraction coverage and score honesty; the Smart
-          choice barely moved the result. Prices and tiers move constantly —
-          treat this as a starting point, not a recommendation with a shelf
-          life.
+        <p className="text-muted-foreground max-w-prose">
+          GPT-5.6 Luna gives the most thorough results (about 1¢ per
+          application, slower). Gemini 3.7 Flash is the fastest (under 3¢). In
+          our tests the Fast model mattered most. Prices change often, so treat
+          this as a starting point.
         </p>
       )}
     </div>
@@ -332,9 +460,12 @@ function KeyField({
  *
  *  `model_options` lists models we have verified. It cannot enumerate what an
  *  arbitrary Ollama or vLLM host serves, so forcing a dropdown there would make
- *  every local model unselectable. */
+ *  every local model unselectable. The hint sits between the label and the
+ *  control, wired with `aria-describedby`. */
 function ModelField({
   label,
+  hint,
+  hintId,
   value,
   options,
   custom,
@@ -342,6 +473,8 @@ function ModelField({
   onChange,
 }: {
   label: string;
+  hint: string;
+  hintId: string;
   value: string;
   options: OpenAIInfo["model_options"];
   custom: boolean;
@@ -352,6 +485,8 @@ function ModelField({
     return (
       <FreeTextModel
         label={label}
+        hint={hint}
+        hintId={hintId}
         value={value}
         disabled={disabled}
         onChange={onChange}
@@ -361,6 +496,8 @@ function ModelField({
   return (
     <ModelSelect
       label={label}
+      hint={hint}
+      hintId={hintId}
       value={value}
       options={options}
       disabled={disabled}
@@ -371,11 +508,15 @@ function ModelField({
 
 function FreeTextModel({
   label,
+  hint,
+  hintId,
   value,
   disabled,
   onChange,
 }: {
   label: string;
+  hint: string;
+  hintId: string;
   value: string;
   disabled: boolean;
   onChange: (value: string | null) => void;
@@ -384,11 +525,11 @@ function FreeTextModel({
   const id = useId();
   return (
     <div className="grid gap-1.5">
-      <Label htmlFor={id} className="text-muted-foreground text-xs font-normal">
-        {label}
-      </Label>
+      <Label htmlFor={id}>{label}</Label>
+      <p id={hintId} className="text-muted-foreground text-xs">{hint}</p>
       <Input
         id={id}
+        aria-describedby={hintId}
         value={draft ?? value}
         placeholder="e.g. llama3.2:3b"
         disabled={disabled}
@@ -405,12 +546,16 @@ function FreeTextModel({
 
 function ModelSelect({
   label,
+  hint,
+  hintId,
   value,
   options,
   disabled,
   onChange,
 }: {
   label: string;
+  hint: string;
+  hintId: string;
   value: string;
   options: OpenAIInfo["model_options"];
   disabled: boolean;
@@ -434,11 +579,10 @@ function ModelSelect({
 
   return (
     <div className="grid gap-1.5">
-      <Label htmlFor={id} className="text-muted-foreground text-xs font-normal">
-        {label}
-      </Label>
+      <Label htmlFor={id}>{label}</Label>
+      <p id={hintId} className="text-muted-foreground text-xs">{hint}</p>
       <Select value={value} onValueChange={onChange} disabled={disabled}>
-        <SelectTrigger id={id} className="w-full">
+        <SelectTrigger id={id} aria-describedby={hintId} className="w-full">
           <SelectValue>{stale ? value : selected?.label}</SelectValue>
         </SelectTrigger>
         <SelectContent>
@@ -451,10 +595,16 @@ function ModelSelect({
             <SelectGroup key={group.key}>
               <SelectLabel>{group.title}</SelectLabel>
               {group.options.map((option) => (
+                // The id is secondary, under the name, and only when it says
+                // something the name does not.
                 <SelectItem key={option.id} value={option.id}>
-                  <span>{option.label}</span>
-                  <span className="text-muted-foreground font-mono text-xs">
-                    {option.id}
+                  <span className="grid">
+                    <span>{option.label}</span>
+                    {showsModelId(option) ? (
+                      <span className="text-muted-foreground font-mono text-xs">
+                        {option.id}
+                      </span>
+                    ) : null}
                   </span>
                 </SelectItem>
               ))}

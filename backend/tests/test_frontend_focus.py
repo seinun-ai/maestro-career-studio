@@ -408,8 +408,10 @@ _NEW_JOB = _read("app/new/page.tsx")
         (_NEW_ENTITY, 'form="new-career-entity"'),  # Add career item
         (_NEW_JOB, "onClick={() => extract(undefined)}"),  # Extract job on /new
         (_read("components/settings/persona-section.tsx"), "onClick={() => draft.mutate(editRevision.current)}"),  # Draft from my career
+        (_read("components/settings/model-catalog-panel.tsx"), "sync.mutate(provider)"),  # Find models
+        (_read("components/settings/models-section.tsx"), "aria-label={`Test ${name}`}"),  # Test a model
     ],
-    ids=["suggest", "nbr-create", "draft", "demo-apply", "send-as-is", "adapt", "send-apply", "from-doc", "add-item", "extract", "persona-draft"],
+    ids=["suggest", "nbr-create", "draft", "demo-apply", "send-as-is", "adapt", "send-apply", "from-doc", "add-item", "extract", "persona-draft", "sync", "model-test"],
 )
 def test_a_button_that_disables_itself_while_it_works_keeps_focus(src, marker):
     # Mutant: `focusableWhenDisabled` dropped (a native `disabled` drops focus to <body>).
