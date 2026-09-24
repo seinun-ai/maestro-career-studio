@@ -28,6 +28,8 @@ image tag is the same version with the leading `v` removed (`0.2.0`).
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-09-23
+
 ### Breaking changes
 
 - **Postgres is gone.** The compose file no longer has a `postgres` service or
