@@ -81,12 +81,55 @@ Adapt *how* when the plan conflicts with the code and log it below. If a change 
 
 | Task | Planned | Did instead | Why (Goal Card line) |
 |---|---|---|---|
+| 17 | D2.9 autofill kinds: text, select and radio → Choice, checkbox, file, date | The real `ObservationKind` keys (`schemas/autofill_telemetry.py`): text → Text, textarea → Long text, select → Dropdown, radio → Multiple choice, checkbox → Checkbox, combobox → Searchable list, else Other | `file` and `date` are not kinds; the chart draws a bar per kind, so two kinds under one word read as a repeat |
+| 17 | D2.9 coverage confirm/empty text with bare "Companion"; the confirm drops "including which sites" | "the Companion" in sentences; no ⋯ menu sentence (plan Deviation log); keeps "including which sites they were on and when" and "You can't undo this." | Planner decision 20 (Q8); consent: the sites count is the stake the comment names |
+| 17 | D2.7 bulk toast `errorDetail(sample)`, fallback "already closed" | `sample` is a string, so `isPlainSentence(sample) ? sample : "Try again."`; the fallback row merges into it | errorDetail reads an Error; D9 (lane 10) makes the server details plain |
+| 17 | D2.9 overview errors "Couldn't load this." | Named titles through `LoadErrorState` with Try again ("Couldn't load your activity." …), the failure branch before the skeleton; the same for base-summary-cards and gap-tiers-panel (raw sites in the Task 17 block) and top-skills/explore-overview (D rows). Pinned in `_FAILURE_BRANCHES` and `_LOADING_GATES` | Errors say what failed; a retry must not unmount the focused Try again |
+| 17 | D2.3/D2.4 two `SUBSCORE_LABELS`, placement and fix-hint maps "in `lib/`" | One `lib/ats-words.ts` (+ node test, pytest pin): `SUBSCORE_LABELS`, `placementLabel`, `fixHintLabel` (plus the engine's `adjacent_available`, `credential_only`, which D missed), `requirementLabel` (tracker gap tiers and the gap card) | Logic in two places goes through one helper (dup 437→427 lines, 36→35 clones) |
+| 17 | D2.7 cap line "Cap today {a}/{b}" | The pipeline card renders `<CapToday className=… />` (new `className` prop) | One implementation of the line and its spoken text |
+| 17 | D2 rows only | Also, by the same rules: Q&A "Regenerated" → "New version ready"; the activity chart's legend and description say Applied, its tooltip date reads "Sep 14"; the Score tab's 422 "unscorable" text goes through `couldnt` (the ratchet cannot see `? err.message : null`); `ChartCard`'s error through `couldnt("load this chart", …)`; "Back to applications" on `/applications/[id]` | A toast names its object; one word per thing; never raw server text |
+| 17 | Edit only my own pin functions | Updated one assertion each in other lanes' pins that read my strings: `test_frontend_sticky_lists.py` (Search jobs), `test_frontend_focus.py` (Edit referral; the status PATCH `onError`; a "# Save job" comment), `test_frontend_agent_inbox.py` (the bulk toast pin, renamed `…_says_queue`), `test_frontend_agent_words.py` (the four coverage-card rows) | Every pin that read an old string moves to the new one; none weakened |
+| 17 | D1.1 f (sidebar bullet) | Only the tracker's two sentences (Add job); the FAB sentence and group names stay for Task 21 (`app-sidebar.tsx` is lane 9's) | Conventions change in the same commit as the code they describe |
+| 18 | D3 `<Label optional>` "Where did you do this?" | A `Label` with an id naming a `role="group"` of chips, no `htmlFor` | The chips are the control; a label points at nothing else |
+| 18 | "Start new analysis" button (no D row) | "Start new gap analysis" (conventions' autosave bullet too) | Glossary bans "analysis" alone; matches D9's server sentence |
+| 18 | D3 gap-card :193 arrow → "to" | The add-keyword summary's "→ label" too | The arrow is read aloud |
+| 18 | — | Browser-found at 375 (commit `7e6ec8e2`): the gap footer wraps (counts one line, actions below); the Resume tab's compare header wraps | "{a} done · {s} skipped · {o} open" squeezed into a column; the longer title ran one word per line (D3.2 check 6) |
+| 18 | — | `test_the_gap_page_says_done_and_gap_analysis` split in two (commit `6a16fbc3`) | It reached cc 10: hotspots 425 against the 424 ceiling |
 
 ## Gate results
 
 | Task | Gate | Result |
 |---|---|---|
+| 17, 18 | ratchet pending blocks | Task 17: words 95 in 23 files, raw errors 45 in 18, placeholders 10 in 8 rows → 0, blocks deleted. Task 18: 47 in 3, 6 in 1, 5 in 4 → 0, blocks deleted |
+| 17, 18 | pins seen failing first | new and changed pins run against the pre-change tree: 39 failures (Task 17 files), 8 (Task 18) |
+| 17, 18 | mutation checks | 58 mutations, 58 killed (Task 17: 36; Task 18: 17; wraps: 2; the split: 3); restored from backups |
+| all | `test_frontend_*.py` | 977 passed |
+| all | full backend `pytest tests/ mcp_server/tests/ -q` | 5343 passed, 3 skipped |
+| all | ruff / tsc / lint / node | clean / clean / 0 errors, 2 warnings / 239 passed |
+| all | duplication (clean `git archive HEAD`) | 427 lines, 35 clones (ceiling 437 / 36) |
+| all | backend hotspots / slop check frontend, backend | 424 (ceiling 424) / OK, OK (extension untouched, not scanned) |
+| all | `npm run build` (last) | OK |
+| all | browser (1280 and 375, light and dark) | 250 scripted checks pass (D2.11 1–6, D3.2 1–4, 6), plus the stale banner (D3.2 5) in light 1280 and dark 375; screenshots in `/tmp/maestro-ia-lane7/shots` |
 
 ## Queued for Task 24 (SYSTEM.md changes Claude applies)
 
+- §11 item 30: cut "Job market's work-mode, OPT, sponsorship and level bars (`toBars` …)" and "the Analytics Employment and Level filters (`full_time`, `mid`)": both print words now (`toEnumBars`, `enumLabel`).
+- §11 item 31: cut "the tailor page's "Tailor resume" run off-screen": the gap footer wraps at 375.
+- §5 step 1: `/new` is "Add a job" and its submit Save job ("paste JD" → "paste a job description"). Step 3: the tab is Score and tailor. Step 4: "Analyze gaps & tailor" → "Find gaps and tailor". Step 5: "Use base resume as-is" → "Use resume as is". Step 7: "Generate PDF … (Regenerate refreshes it)" → "Create PDF … (Update PDF refreshes it)" (D11 queues it too).
+
 ## Deferred to merge (edits left for Claude, with file:line)
+
+- `backend/tests/test_frontend_{vocabulary,error_words,placeholders}.py`: my blocks are deleted, so the `_BLOCKS = (…)` / `_EXAMPLE_BLOCKS` lines conflict with every lane's; keep only the blocks still present (the last lane deletes `_PENDING`).
+- `backend/tests/test_frontend_plain_words.py`: my pins are appended at the end (a "Jobs and tracking" and a "gap page" section); other lanes append there too, keep both.
+- `backend/tests/test_frontend_query_error_states.py`: my rows sit after `proposal-agent-panel.tsx` in `_FAILURE_BRANCHES` and after `ats-score-panel.tsx` in `_LOADING_GATES`.
+- `docs/frontend-conventions.md` sidebar bullet (~:887-:919): "It is the one Add job per screen" and "tracker's ghost Add job" are mine; the FAB sentence ("New application is M3's extended FAB") and the groups line ("Career KB, Base Resumes") are Task 21's and Task 20's. Naming bullet (~:942-:970): "Not interested" and the add-a-job/inbox sentence appended. Also edited: the Q&A bullet (~:381-:389, Write cover letter), the single-flight bullets (~:643, :816, :837, Save job), the autosave bullet (~:1193, Not saved, Start new gap analysis), Derived setup guidance (~:1212-:1215), Analytics (~:1260, Skill gaps).
+- `backend/tests/test_frontend_focus.py` (lane 8's): three one-line edits (:358 "Edit referral", :629 the status `onError`, :409 comment).
+- Lane 9 (Task 21): the sidebar FAB still reads "New application" and the item "Career KB" (seen in every screenshot).
+- Lane 10 (Task 23), server words still on my screens: the gap page's category descriptions and details ("JD skills with no evidence on the resume", "Resume title/headline does not directly match the JD title", "Refresh the summary as a JD-aligned value proposition", "JD asks for 3+ years; dated entries show 0.0", which the Score tab also shows as a gate badge), "Title & structure", the stale reasons, and the compare 422 and "unscorable" 422 sentences (those two go through `couldnt`, so they read "…Try again." until D9 makes them plain). The browser check filters exactly these lines.
+- Pre-existing, not changed: Base UI renders the tracker's "Add job" `<a>` with `role="button"` (lane 6 noted the same); a gap card's entry chip ("Harbor Loop Logistics — Senior ML Engin…") clips at 375.
+
+## Not verified
+
+- Save job against a real model: no LLM key in the stack, so `/new`'s save was checked with `POST /api/jobs` mocked (the toast, the summary) and the no-key state for real.
+- 768px (checks ran at 1280 and 375), WebKit, a real screen reader (descriptions read from `aria-describedby`), Create PDF (no render was run).
+- D3.2 check 3 used a routed network failure for the PATCH, not DevTools offline.
