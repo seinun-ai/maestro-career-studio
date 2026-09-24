@@ -52,6 +52,11 @@ image tag is the same version with the leading `v` removed (`0.2.0`).
   the `postgres:16` image when they are still on disk; `docs/UPDATING.md` has a
   new "Freeing disk space" section.
 
+### Fixed
+
+- `update.sh` no longer stops in git's pager (`:`) while listing the commits it
+  brought in, which hid the extension and MCP reminders printed after it.
+
 ## [0.4.0] — 2026-09-23
 
 ### Breaking changes

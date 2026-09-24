@@ -448,7 +448,9 @@ do_update() {
   fi
   if [ "$(git -C "$REPO" rev-parse --short HEAD)" != "$old_sha" ]; then
     note "commits brought in:"
-    git -C "$REPO" log --oneline "${old_sha}..HEAD" || true
+    # --no-pager: on a terminal git would open this list in `less` and wait for
+    # a keypress, hiding the extension/MCP reminders printed after it.
+    git --no-pager -C "$REPO" log --oneline "${old_sha}..HEAD" || true
   else
     note "Already up to date (no new commits)."
   fi
