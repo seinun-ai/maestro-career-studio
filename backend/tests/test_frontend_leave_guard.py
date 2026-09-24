@@ -47,8 +47,9 @@ def test_guarded_link_cancels_before_it_asks():
     # With nothing unsaved it must stay plain Link: the early return, not its inverse.
     assert 'if (!leaveBlocked("in-app")) return;' in src[on_nav:prevent]
     allow = src.index("allowLeave()")
-    assert allow < src.index("router.push(")
-    assert allow < src.index("router.replace(")
+    leave = src.index("confirmLeave().then(")
+    assert leave < allow < src.index("router.push(", leave)
+    assert allow < src.index("router.replace(", leave)
     # `await` as a keyword. The comment says "awaited", which is not a keyword;
     # an `await confirm()` before preventDefault is too late (link.js reads the
     # flag when onNavigate returns).
@@ -243,6 +244,23 @@ def test_a_leave_never_leaves_the_bypass_set():
     assert unload.index("settleLeave();") < unload.index("consumeLeaveBypass()")
 
 
+def test_a_same_page_link_with_unsaved_work_replaces_instead_of_asking():
+    """A link to the same page (another settings tab, the sidebar's Profile on /profile?tab=autofill)
+    unmounts nothing, so it never asks. With unsaved work a plain Link PUSH parked a normal entry
+    above the guard's duplicate, and the first Back was a dead press; a replace keeps the duplicate
+    on top (stampAfterWrite keeps its flag while the page is the same)."""
+    src = _read("components/guarded-link.tsx")
+    on_nav = src[src.index("onNavigate=") :]
+    same = on_nav.index("if (samePage(href, window.location.pathname)) {")
+    block = on_nav[same : on_nav.index("\n        }", same)]
+    assert block.index("event.preventDefault();") < block.index("router.replace(href, { scroll });")
+    assert block.endswith("return;")
+    assert "confirmLeave" not in block and "allowLeave" not in block and "router.push" not in block
+    assert on_nav.index('if (!leaveBlocked("in-app")) return;') < same < on_nav.index("confirmLeave()")
+    store = _read("lib/leave-guard.ts")
+    assert "sentinel: written.sentinel || (before.sentinel && samePage(before.url, written.url))," in store
+
+
 def test_guarded_link_replaces_the_sentinel():
     link = _read("components/guarded-link.tsx")
     assert "if (replace || isSentinelState(window.history.state)) router.replace(" in link
@@ -258,3 +276,59 @@ def test_registered_editors_have_no_router():
         "app/templates/[id]/page.tsx",
     ):
         assert "useRouter" not in _read(rel), rel
+
+
+def test_a_search_or_hash_change_is_the_same_page():
+    """A settings tab rewrites ?tab= on the sentinel. Compared by full URL, the duplicate was
+    lost (a dead Back after a save) and a dirty Back asked about leaving a page it stays on."""
+    src = _read("lib/leave-guard.ts")
+    assert "export function samePage(" in src
+    assert "before.sentinel && samePage(before.url, written.url)" in src
+    assert src.count("if (samePage(e.url, t.page)) {") == 2  # arrive and judge
+    assert "above?.sentinel && samePage(above.url, e.url)" in src
+    assert "before.url === written.url" not in src
+    # A hash is not part of the page either: /settings#auto-apply is /settings.
+    path = src[src.index("function pagePath(") : src.index("export function stampAfterWrite(")]
+    assert "const cut = url.search(/[?#]/);" in path
+
+
+def _same_page_branch(fn: str) -> str:
+    src = _read("lib/leave-guard.ts")
+    body = src[src.index(f"function {fn}(") :]
+    start = body.index("if (samePage(e.url, t.page)) {")
+    return body[start : body.index("\n  }\n", start)]
+
+
+def test_back_to_another_query_of_the_page_renders_it():
+    """Same page decides only that nothing ASKS; the URL decides whether Next RENDERS. With a
+    pathname compare and an unconditional stop, Back from /analytics to /analytics?tab=gaps (or
+    between two /chat sessions, or two Profile tabs) changed the address bar and not the screen,
+    on every page, with nothing unsaved (review finding C1)."""
+    for fn, hold in (("judge", "showSamePage(t, e, offDuplicate || overDuplicate, out);"), ("arrive", "showSamePage(t, e, false, out);")):
+        branch = _same_page_branch(fn)
+        assert "out.push(STOP)" not in branch, fn  # only showSamePage decides
+        assert f'if (e.kind === "next") {hold}' in branch, fn
+    src = _read("lib/leave-guard.ts")
+    show = src[src.index("function showSamePage(") : src.index("function ask(")]
+    code = re.sub(r"/\*.*?\*/|//[^\n]*", "", show, flags=re.S)
+    same = code.index("if (e.url === t.page) t.home = e.at;")
+    render = code.index("else if (!hold) {\n    t.page = e.url;\n    t.home = e.at;\n    return;\n  }")
+    assert same < render < code.index("out.push(STOP);")
+    assert code.count("out.push(STOP)") == 1
+    # Only a question, or a step over the leftover duplicate, holds the page on screen.
+    judge = _same_page_branch("judge")
+    assert "const offDuplicate = from.sentinel && dir < 0 && !e.sentinel && at !== null;" in judge
+    # The snapshot a Stay puts back is the exact entry on screen, not another tab of it.
+    listeners = _read("components/leave-guard-listeners.tsx")
+    assert 'next.here.kind === "next" && next.here.url === next.page' in listeners
+    assert "samePage(" not in listeners
+
+
+def test_a_panel_hidden_under_focus_hands_focus_to_the_open_panel():
+    focus = _read("lib/focus.ts")
+    stranded = focus[focus.index("export function focusIfStranded(") : focus.index("export function focusReturnPoint(")]
+    # Stranded is on <body> OR inside [inert]; a focused element anywhere else is left alone.
+    assert 'if (active && active !== document.body && !active.closest("[inert]")) return;' in stranded
+    tabs = _read("components/settings/settings-tabs.tsx")
+    assert "useLayoutEffect(" in tabs
+    assert "focusIfStranded(document.querySelector<HTMLElement>(`[data-settings-tab=\"${tab}\"]`));" in tabs

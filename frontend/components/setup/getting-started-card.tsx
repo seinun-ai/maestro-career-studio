@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { apiFetch } from "@/lib/api";
 import { isLoadFailure } from "@/lib/query-state";
+import { anchorHref } from "@/lib/settings-tabs";
 import type { SetupStatus } from "@/lib/types";
 
 type Suggestion = SetupStatus["suggested_bases"][number];
@@ -150,7 +151,7 @@ export function GettingStartedCard() {
                       size="sm"
                       variant="outline"
                       nativeButton={false}
-                      render={<Link href={`${row.home}#${row.anchor}`} />}
+                      render={<Link href={anchorHref(row.home, row.anchor)} />}
                     >
                       {ACTION_LABELS[row.id]}
                     </Button>

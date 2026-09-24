@@ -352,7 +352,18 @@
   and reloads for a state without `__NA`. A Next upgrade re-runs the
   Back/Forward browser checks. `GuardedLink` uses `router.replace` while
   the duplicate is the current entry, so no duplicate is left under the new
-  page. Persona, Autofill, Prompts, Auto-apply and API keys register while
+  page. Page identity is the PATHNAME (`samePage`): Next keeps a page mounted
+  across a search or hash change, so a settings tab rewriting `?tab=` is not
+  leaving, the sentinel survives it, and a `GuardedLink` to another tab of
+  the same page does not ask (with unsaved work it `router.replace`s, so the
+  duplicate stays on top and Back #1 still asks). Same page decides only
+  what ASKS; the full URL decides what RENDERS: a Back or Forward to another
+  query of the page on screen (`?tab=`, `/chat?session=`) lets Next render
+  it (`showSamePage`), or the address bar and the screen disagree; only the
+  same URL, or a press the question or a step over the duplicate settles, is
+  stopped. A page that remounts on a search change must not rely on this. When a tab opened by a hash or an in-page jump hides the
+  panel holding focus, `focusIfStranded` (`lib/focus.ts`) moves it to the
+  open panel. Persona, Autofill, Prompts, Auto-apply and API keys register while
   their explicit Save is dirty. `/new` registers while a pasted job description has not been
   extracted.
 - **The Q&A cover-letter editor closes only after its save lands**
@@ -702,7 +713,19 @@
   (`overflow-y-auto`, the chat scope picker) keeps a solid inset outline
   instead, because an absolute overlay scrolls with the content. A call site
   never passes `outline-*`, `after:hidden` or another `overflow-*` to a panel
-  (pinned).
+  (pinned). Settings and Profile pass `keepMounted` (through `SettingsTabs`),
+  so every panel mounts at load and none unmounts on a switch: unsaved text
+  and leave-guard registrations survive a hidden tab. `TabsList` scrolls
+  sideways inside itself instead of widening the page (`max-w-full
+  overflow-x-auto justify-center-safe`, scrollbar hidden, `relative` so Base
+  UI's arrow-key scroll-into-view measures from the row, `scroll-px-1`
+  so an end tab keeps room for its focus ring); the `Tabs` root is
+  `min-w-0`, or a Tabs that is a grid item (a dialog body) takes the row's
+  full label width as its minimum. A row that wraps (`h-auto flex-wrap`)
+  never scrolls: the overflow is scoped to `not-[.flex-wrap]` (`overflow-x:
+  auto` makes `overflow-y` auto too, which clipped the second line) and its
+  triggers are `h-auto` (a percentage height spilled over the next card), so
+  it grows to fit every line (pinned).
 - **Landmarks: the PAGE owns `<main>`, the shell owns layout.**
   `SidebarInset` is a `<div>` (shadcn ships it as `<main>`, which nests a
   second main landmark). Every route must render exactly one `<main>` in EVERY
@@ -987,8 +1010,26 @@
   autofill answers). Both write `/api/settings/*` and both draw from
   `components/settings/` — the folder is not the split, this rule is. When a
   cross-page link points at a setting, deep-link the card id
-  (`/profile#autofill`), never the bare page: sending a user to `/settings`
-  for the autofill profile is a dead end that shipped once already.
+  (`anchorHref("/profile", "autofill")`), never the bare page: sending a user
+  to `/settings` for the autofill profile is a dead end that shipped once
+  already. Each page
+  is tabbed (`lib/settings-tabs.ts`: Settings is AI & models, Tailoring,
+  Connected agents, Appearance, About; Profile is About you, Autofill).
+  `?tab=` names the tab and the default tab has none; a tab click writes it
+  with the native `history.replaceState` (no server round trip, no new
+  history entry). The tab hook reads `?tab=` with `useSearchParams`, never
+  the page's `searchParams` prop, which keeps its ARRIVAL value after a
+  native write (a link to another tab of the same page then opened
+  nothing); the page still calls `use(searchParams)`, which makes the route
+  dynamic so the server renders the named tab and the hook needs no
+  `<Suspense>` (without it `next build` fails). A new card adds its id to its
+  tab's `anchors` (pinned).
+  A deep link is `anchorHref(home, cardId)`, which adds the tab, so the
+  server renders the right panel (pinned: no source writes a hash-only
+  `/settings#` or `/profile#` link); an old hash-only link still opens its
+  tab after hydration. `useFocusSection` waits until its target is SHOWN (a
+  card in a hidden panel is mounted with no box), and an in-page jump to
+  another tab is a button calling its `focus`, never a link.
 - **Every settings card renders through `SettingCard`**
   (`components/settings/setting-card.tsx`): it owns the header, the loading
   skeleton, and the one `LoadErrorState` with retry. Do not hand-roll
@@ -1035,9 +1076,10 @@
   The disclosure hides its list and never unmounts it, so a collapse keeps
   typed drafts and their leave-guard registrations; both toggles carry
   `aria-expanded`.
-- **Derived setup guidance**: Profile starts with `SetupStatusStrip`, then
-  Persona (disabled-until-import "Draft from my career"), Market, Job
-  preferences, and Autofill. The empty tracker leads with its empty state, what
+- **Derived setup guidance**: Profile starts with `SetupStatusStrip` above its
+  tab row; About you holds Persona (disabled-until-import "Draft from my
+  career"), Market and Job preferences; Autofill holds the autofill profile.
+  The empty tracker leads with its empty state, what
   the page is for, and places `GettingStartedCard` BELOW it: the same derived
   steps, deep links, locally dismissible, gone when setup completes. The
   API-key and import steps carry a Required badge until done (`required` in

@@ -7,7 +7,6 @@ import { Check } from "lucide-react";
 
 import { buildSetupSteps, type SetupStepView } from "@/components/setup/setup-steps";
 import { UploadDialog } from "@/components/setup/upload-dialog";
-import { useFocusSection } from "@/lib/use-focus-section";
 import { cn } from "@/lib/utils";
 import type { SetupStatus } from "@/lib/types";
 
@@ -29,19 +28,21 @@ function label(step: SetupStepView) {
 
 /** Incomplete setup steps for the top of the Profile page — each one actionable.
  *
- * Steps whose answer lives on THIS page focus in place rather than navigating;
- * the step list itself comes from setup-steps.ts, shared with the expanded
- * getting-started card.
+ * Steps whose answer lives on THIS page focus in place rather than navigating,
+ * through the page's own focus hook (`focus`): one per page, so a hash
+ * landing polls and rings once. The step list itself comes from setup-steps.ts,
+ * shared with the expanded getting-started card.
  */
 export function SetupStatusStrip({
   status,
   loading,
+  focus,
 }: {
   status: SetupStatus | undefined;
   loading: boolean;
+  focus: (anchor: string) => void;
 }) {
   const pathname = usePathname();
-  const focus = useFocusSection();
   const [uploadOpen, setUploadOpen] = useState(false);
 
   if (loading || !status || status.complete) return null;

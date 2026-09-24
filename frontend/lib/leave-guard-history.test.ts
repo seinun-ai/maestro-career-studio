@@ -3,6 +3,7 @@ import { test } from "node:test";
 
 import {
   readEntry,
+  samePage,
   stampAfterWrite,
   stampState,
   startGuard,
@@ -87,6 +88,23 @@ class Tab {
     const stamp = stampAfterWrite(how, before, this.entry(), this.slots.length, this.s.here.at);
     Object.assign(this.slots[this.index], stamp);
     this.run(this.feed({ type: "wrote", how, entry: this.entry(), length: this.slots.length }));
+  }
+
+  /** A same-page tab switch: the tab hook's native replaceState. Next copies its own state in,
+   *  without our fields, so the stamp decides whether the entry is still the duplicate. */
+  switchTab(url: string) {
+    this.write("replace", url, false);
+    this.shown = url;
+  }
+
+  /** GuardedLink to another URL of the page on screen: it never asks (nothing unmounts). Clean,
+   *  it is a plain Link (a push). With unsaved work it replaces the entry instead, so the
+   *  duplicate stays on top and the first Back is still the press that asks. */
+  sameLink(url: string) {
+    assert.ok(samePage(url, this.shown));
+    this.renders.push(url);
+    this.write(this.blocked ? "replace" : "push", url, false);
+    this.shown = url;
   }
 
   /** A clean in-app link (GuardedLink passes straight through). */
@@ -201,9 +219,10 @@ class Tab {
     this.s = startGuard(this.entry(), this.slots.length, false);
   }
 
-  /** Next rendered a page: a different one unmounts the editor, which unregisters. */
+  /** Next rendered a page: a different one unmounts the editor, which unregisters. Another
+   *  query of the same page keeps it mounted (Next keys a page without its search params). */
   render(url: string) {
-    if (url !== this.shown && this.blocked) {
+    if (!samePage(url, this.shown) && this.blocked) {
       this.blocked = false;
       this.shown = url;
       this.run(this.feed({ type: "blocked", blocked: false }));
@@ -748,4 +767,197 @@ test("a push is the entry it left + 1; a replace keeps the number, and the senti
   const elsewhere = { ...refreshed, url: "/other" };
   assert.deepEqual(stampAfterWrite("replace", before, elsewhere, 9, 5), { at: 5, sentinel: false });
   assert.deepEqual(stampAfterWrite("push", before, refreshed, 9, 5), { at: 6, sentinel: false });
+});
+
+test("the page is the pathname: a query or a hash is the same page", () => {
+  assert.equal(samePage("/settings#auto-apply", "/settings"), true);
+  assert.equal(samePage("/settings?tab=agents#auto-apply", "/settings"), true);
+  assert.equal(samePage("/profile?tab=autofill", "/profile"), true);
+  assert.equal(samePage("/settings", "/profile"), false);
+  assert.equal(samePage("/settings#x", "/settingsx"), false);
+});
+
+test("a tab switch keeps the duplicate: Back asks, Stay returns to the tab, Leave leaves the page", () => {
+  const tab = dirtyStudio();
+  tab.switchTab("/studio?tab=b");
+  assert.equal(tab.slots[tab.index].sentinel, true, "still the duplicate");
+  tab.back();
+  assert.equal(tab.asking, true, "a Back off a switched tab still asks");
+  assert.equal(tab.shown, "/studio?tab=b", "Next did not render the older tab");
+  tab.answer(false);
+  tab.agrees();
+  assert.equal(tab.url, "/studio?tab=b");
+  tab.back();
+  tab.answer(true);
+  tab.agrees();
+  assert.equal(tab.shown, "/list");
+});
+
+test("a tab switch, then a save: Back leaves in one press", () => {
+  const tab = dirtyStudio();
+  tab.switchTab("/studio?tab=b");
+  tab.saved();
+  tab.back();
+  assert.equal(tab.asking, false);
+  tab.agrees();
+  assert.equal(tab.shown, "/list");
+});
+
+test("a clean tab switch writes no entry, and Back leaves the page", () => {
+  const tab = new Tab("/list");
+  tab.link("/studio");
+  const length = tab.slots.length;
+  tab.switchTab("/studio?tab=b");
+  assert.equal(tab.slots.length, length);
+  tab.back();
+  tab.agrees();
+  assert.equal(tab.shown, "/list");
+});
+
+test("a tab switch, then an edit: the duplicate carries the tab", () => {
+  const tab = new Tab("/list");
+  tab.link("/studio");
+  tab.switchTab("/studio?tab=b");
+  tab.edit();
+  assert.equal(tab.slots[tab.index].sentinel, true);
+  assert.equal(tab.url, "/studio?tab=b");
+  tab.back();
+  assert.equal(tab.asking, true);
+  tab.answer(false);
+  tab.agrees();
+});
+
+test("a pathname change still drops the duplicate flag", () => {
+  const tab = dirtyStudio();
+  tab.saved();
+  tab.link("/other");
+  assert.equal(tab.slots[tab.index].sentinel, false);
+});
+
+// Back and Forward between two entries of the same page that differ only in the query (a tab,
+// a chat session). The page stays mounted, so nothing asks; but Next must render the entry, or
+// the address bar says one tab and the screen shows another (review finding C1).
+
+test("clean: Back and Forward between two queries of one page render each entry", () => {
+  // /analytics?tab=gaps, then the sidebar's Analytics link pushes /analytics.
+  const tab = new Tab("/list");
+  tab.link("/analytics?tab=gaps");
+  tab.sameLink("/analytics");
+  tab.back();
+  assert.equal(tab.asking, false);
+  tab.agrees();
+  assert.equal(tab.shown, "/analytics?tab=gaps");
+  tab.forward();
+  tab.agrees();
+  assert.equal(tab.shown, "/analytics");
+  tab.back();
+  tab.agrees();
+  tab.back();
+  tab.agrees();
+  assert.equal(tab.shown, "/list");
+});
+
+test("clean: a tab switch, the sidebar link to the same page, Back shows the switched tab", () => {
+  // /applications → sidebar Profile → Autofill tab → sidebar Profile → Back.
+  const tab = new Tab("/applications");
+  tab.link("/profile");
+  tab.switchTab("/profile?tab=autofill");
+  tab.sameLink("/profile");
+  assert.deepEqual(tab.walkBack(), ["/profile?tab=autofill", "/applications"]);
+});
+
+test("clean: a chat session push, then Back and Forward", () => {
+  const tab = new Tab("/chat?session=abc");
+  tab.sameLink("/chat");
+  tab.back();
+  tab.agrees();
+  assert.equal(tab.shown, "/chat?session=abc");
+  tab.forward();
+  tab.agrees();
+  assert.equal(tab.shown, "/chat");
+});
+
+test("clean: a tab switch, a link away, Back returns to the switched tab", () => {
+  const tab = new Tab("/list");
+  tab.link("/studio");
+  tab.switchTab("/studio?tab=b");
+  tab.link("/other");
+  tab.back();
+  tab.agrees();
+  assert.equal(tab.shown, "/studio?tab=b");
+});
+
+test("dirty: a link to another tab of the same page keeps the duplicate on top, so Back #1 asks", () => {
+  const tab = dirtyStudio();
+  const length = tab.slots.length;
+  tab.sameLink("/studio?tab=b");
+  assert.equal(tab.slots.length, length, "no entry above the duplicate");
+  assert.equal(tab.slots[tab.index].sentinel, true);
+  tab.back();
+  assert.equal(tab.asking, true, "the first Back asks");
+  assert.equal(tab.shown, "/studio?tab=b", "the page holds under the question");
+  tab.answer(false);
+  tab.agrees();
+  assert.equal(tab.url, "/studio?tab=b");
+  assert.equal(tab.blocked, true, "Stay keeps the work");
+  tab.back();
+  tab.answer(true);
+  tab.agrees();
+  assert.equal(tab.shown, "/list");
+});
+
+test("dirty: another query of the page pushed by the page itself: Back follows the URL and keeps the work", () => {
+  // Not through GuardedLink (a chat session, an analytics tab): the page stays mounted.
+  const tab = dirtyStudio();
+  tab.renders.push("/studio?tab=b");
+  tab.write("push", "/studio?tab=b", false);
+  tab.shown = "/studio?tab=b";
+  tab.back();
+  assert.equal(tab.asking, false, "nothing leaves the page");
+  tab.agrees();
+  assert.equal(tab.blocked, true, "the editor is still mounted with its work");
+});
+
+test("a tab switch, a save, Back steps over the duplicate without flashing the older tab", () => {
+  const tab = dirtyStudio();
+  tab.switchTab("/studio?tab=b");
+  tab.saved();
+  const before = tab.renders.length;
+  tab.back();
+  tab.agrees();
+  assert.equal(tab.shown, "/list");
+  assert.deepEqual(tab.renders.slice(before), ["/list"], "one render: the page Back goes to");
+  tab.forward();
+  tab.agrees();
+});
+
+test("rapid tab switches, two Backs while asking, Stay, then Leave", () => {
+  const tab = dirtyStudio(["/a", "/list"]);
+  tab.switchTab("/studio?tab=b");
+  tab.switchTab("/studio?tab=c");
+  tab.switchTab("/studio?tab=b");
+  tab.back();
+  tab.back();
+  assert.equal(tab.asking, true);
+  tab.answer(false);
+  tab.agrees();
+  assert.equal(tab.url, "/studio?tab=b");
+  assert.equal(tab.slots[tab.index].sentinel, true);
+  tab.back();
+  tab.answer(true);
+  tab.agrees();
+  assert.equal(tab.shown, "/list");
+});
+
+test("a tab switch on unsaved work, Leave, then Forward twice: every entry agrees", () => {
+  const tab = dirtyStudio();
+  tab.switchTab("/studio?tab=b");
+  tab.back();
+  tab.answer(true);
+  tab.agrees();
+  assert.equal(tab.shown, "/list");
+  tab.forward();
+  tab.agrees();
+  tab.forward();
+  tab.agrees();
 });

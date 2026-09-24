@@ -15,7 +15,11 @@ function Tabs({
       data-slot="tabs"
       data-orientation={orientation}
       className={cn(
-        "group/tabs flex gap-2 data-horizontal:flex-col",
+        // min-w-0: a Tabs that is a grid or flex item (the New base resume
+        // dialog's body is a grid) otherwise takes its tab row's full label
+        // width as its minimum, and the row widens the dialog instead of
+        // scrolling inside itself (the list's max-w-full resolves against that).
+        "group/tabs flex min-w-0 gap-2 data-horizontal:flex-col",
         className
       )}
       {...props}
@@ -31,11 +35,35 @@ const tabsListVariants = cva(
   // while rows two and three spilled out below it and painted over the content
   // underneath. A minimum keeps single-row lists at exactly the same 32px and
   // lets a wrapped one grow to fit its own rows.
-  "group/tabs-list inline-flex w-fit items-center justify-center rounded-lg p-[3px] text-muted-foreground group-data-horizontal/tabs:min-h-8 group-data-vertical/tabs:h-fit group-data-vertical/tabs:flex-col data-[variant=line]:rounded-none",
+  //
+  // max-w-full + overflow-x-auto: a row wider than its container scrolls INSIDE
+  // itself instead of widening the page (the job page's Q&A tab ran off-screen at
+  // 375px, and the five Settings tabs need ~480px). A scroll container's
+  // min-width:auto is 0, so it also shrinks as a flex item. `justify-center-safe`,
+  // not plain centring: centred content that overflows clips its START, which no
+  // scroll can reach. Base UI scrolls the focused tab into view on arrow keys
+  // (composite `scrollIntoViewIfNeeded`). The scrollbar is hidden: the cut-off
+  // last label is the cue, and keys and swipes reach it.
+  // Wrapping rows (`h-auto flex-wrap`: Analytics, Career history, both studios,
+  // the KB import drawer) are NOT scrollers: `overflow-x: auto` computes
+  // `overflow-y` to auto as well, so a wrapped row became a box clipping its own
+  // second line. The scroll is scoped to `not-[.flex-wrap]`; scroll padding,
+  // overscroll and the hidden scrollbar do nothing on a box that does not scroll.
+  // `relative` makes the row its triggers' offsetParent: Base UI measures a
+  // tab's offsetLeft up the offsetParent chain and stops at the scroller only
+  // if it is on that chain, so without it a dialog's padding was counted in
+  // and Home left the first tab 16px under the row's left edge.
+  // `scroll-px-1` (4px, one more than the padding): a tab scrolled to an end
+  // keeps the row's 3px around it, so its 3px focus ring is not cut off. At 3px
+  // the scroll-into-view stopped a rounding pixel short of the end (1px of the
+  // last Settings tab's ring was clipped at 375px).
+  "group/tabs-list relative inline-flex w-fit max-w-full items-center justify-center-safe rounded-lg p-[3px] text-muted-foreground group-data-horizontal/tabs:min-h-8 group-data-horizontal/tabs:not-[.flex-wrap]:overflow-x-auto group-data-horizontal/tabs:scroll-px-1 group-data-horizontal/tabs:overscroll-x-contain group-data-horizontal/tabs:[scrollbar-width:none] group-data-horizontal/tabs:[&::-webkit-scrollbar]:hidden group-data-vertical/tabs:h-fit group-data-vertical/tabs:flex-col data-[variant=line]:rounded-none",
   {
     variants: {
       variant: {
         default: "bg-muted",
+        // No call site uses `line`: its indicator (`after:bottom-[-5px]` on the
+        // trigger) would be clipped by 2px by the scrolling row above.
         line: "gap-1 bg-transparent",
       },
     },
@@ -65,6 +93,11 @@ function TabsTrigger({ className, ...props }: TabsPrimitive.Tab.Props) {
     <TabsPrimitive.Tab
       data-slot="tabs-trigger"
       className={cn(
+        // `h-[calc(100%-1px)]` fills a one-line row. In a wrapping row (`flex-wrap`)
+        // the percentage has no definite height to resolve against, and triggers
+        // grew taller than their line and spilled over the content below; there
+        // each trigger is its own height and the row grows to fit its lines.
+        "group-[.flex-wrap]/tabs-list:h-auto",
         "relative inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center gap-1.5 rounded-md border border-transparent px-1.5 py-0.5 text-sm font-medium whitespace-nowrap text-foreground/60 transition-all group-data-vertical/tabs:w-full group-data-vertical/tabs:justify-start hover:text-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-50 has-data-[icon=inline-end]:pr-1 has-data-[icon=inline-start]:pl-1 aria-disabled:pointer-events-none aria-disabled:opacity-50 dark:text-muted-foreground dark:hover:text-foreground group-data-[variant=default]/tabs-list:data-active:shadow-sm group-data-[variant=line]/tabs-list:data-active:shadow-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         "group-data-[variant=line]/tabs-list:bg-transparent group-data-[variant=line]/tabs-list:data-active:bg-transparent dark:group-data-[variant=line]/tabs-list:data-active:border-transparent dark:group-data-[variant=line]/tabs-list:data-active:bg-transparent",
         "data-active:bg-background data-active:text-foreground dark:data-active:border-input dark:data-active:bg-input/30 dark:data-active:text-foreground",
