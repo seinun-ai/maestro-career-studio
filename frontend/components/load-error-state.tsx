@@ -69,7 +69,7 @@ export function LoadErrorState({
       <div className="min-w-0 px-6">
         <p className="text-sm font-medium">{title}</p>
         <p className="text-muted-foreground mt-1 text-sm">
-          {shownDetail ?? "The request failed. It may just be the backend restarting."}
+          {shownDetail ?? "Check that Maestro CS is running, then try again."}
         </p>
       </div>
       {onRetry ? (

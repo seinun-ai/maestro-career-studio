@@ -51,9 +51,11 @@ async function proxy(req: NextRequest, pathSegments: string[]) {
   try {
     upstream = await fetch(url, init);
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    // The browser shows `detail` as is (lib/api.ts), so it is words for a
+    // desktop user; the backend URL and the fetch error go to the server log.
+    console.error("api proxy: backend unreachable", { backend: BACKEND, err });
     return NextResponse.json(
-      { detail: `Upstream fetch failed (${BACKEND}): ${msg}` },
+      { detail: "Maestro CS isn't responding. Check that it's running, then try again." },
       { status: 502 },
     );
   }

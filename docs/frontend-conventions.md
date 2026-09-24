@@ -158,7 +158,7 @@
   min-w-56 max-w-(--available-width) wrap-anywhere`: the primitive sizes a menu
   to its trigger, a 28px icon, which wrapped every item at the 128px floor; the
   cap keeps "Copy slug: …" on screen, and a slug has no break opportunity.
-- **The studio is honest about its page.** A résumé Save stays explicit (it
+- **The studio is honest about its page.** A resume Save stays explicit (it
   writes a version, renders and re-scores), so both studios earn trust through
   status instead of autosave. Pinned by `test_frontend_studio.py`; the pure
   helpers in `lib/studio.ts` and `lib/shortcuts.ts` by `node --test`.
@@ -638,9 +638,9 @@
     `focusableWhenDisabled` (Save, Widen/Narrow at their limits, a referral's
     Save and Delete, the Templates Create): a disabled `<button>` drops
     focus. So is every dialog button that generates, applies, creates or
-    deletes (Suggest a selection and Create on New base résumé, Draft rewrite
-    and Apply, Adapt & preview, Send as-is and Apply on Send to résumé, Add
-    career item, a base résumé's Delete), `/new`'s Extract job and Quick
+    deletes (Suggest a selection and Create on New base resume, Draft rewrite
+    and Apply, Adapt & preview, Send as-is and Apply on Send to resume, Add
+    career item, a base resume's Delete), `/new`'s Extract job and Quick
     capture's From document, each dimmed on
     `data-disabled`. So are Queue for agent (a tracker row's and the job
     header's) and the tailored studio's Build draft; each leaves once its
@@ -657,7 +657,7 @@
   - `RolePicker` refuses Base UI's Escape on a CLOSED list
     (`preventBaseUIHandler`): Base UI clears the value there and swallows the
     key, so an Esc meant for the Role dialog PATCHed the role to Unknown, left
-    the dialog open and dropped focus while it saved; in New base résumé it
+    the dialog open and dropped focus while it saved; in New base resume it
     cleared the picked role, and on /profile every favored role. Escape only
     closes; a role is cleared from Clear role or Backspace.
   - A dialog whose opener goes dead returns elsewhere. Demonstrate skill's
@@ -667,17 +667,17 @@
     once the refetched list holds the new card, and lands on it (on another
     tab, the opener). Adapt & preview leaves with the select step; its
     success arms `useFocusOnNextCommit` with Apply. A create that navigates
-    into an editor (Templates Create, New base résumé) lands on the editor's
+    into an editor (Templates Create, New base resume) lands on the editor's
     `<main tabIndex={-1}>`: `FullscreenEditorPage` passes it the stable
     `ref={focusIfDropped}`, which runs on mount only.
-  - A dialog kept mounted while closed (`keepMounted`: New base résumé)
+  - A dialog kept mounted while closed (`keepMounted`: New base resume)
     takes `finalFocus={useOpenerReturn(open)}`, the opener read in a layout
     effect when it OPENS. Base UI's default return is the last element any
     popup recorded that is still connected, and a kept dialog keeps what a
     nested popup recorded inside it (the role picker's list records the
     dialog's first tab) connected but hidden: every close after the picker
     was used landed on `<body>`. `test_every_kept_mounted_dialog_names_its_return_target`.
-  - A ⋯ item that removes its own card (a base résumé's Archive while
+  - A ⋯ item that removes its own card (a base resume's Archive while
     archived ones are hidden, and a confirmed Delete) hands focus to
     `focusSuccessor(card)`: the next card's link, else the previous card's,
     else the list's `tabIndex={-1}` section, read when the item is chosen.
@@ -712,7 +712,7 @@
     Base UI upgrade, re-check in the browser: a click on ⋯ → Edit raw JSON
     (or a /templates card's ⋯ → Duplicate) lands on ⋯; ⋯ →
     History and ⋯ → Rebuild start inside the sheet and the confirm; Load
-    latest lands on the studio's `<main>`; a click on a middle base résumé's
+    latest lands on the studio's `<main>`; a click on a middle base resume's
     ⋯ → Archive lands on the next card.
   - `ConfirmDialogProvider` returns to its opener, or, when the confirmed
     action removed it, to the nearest `tabIndex={-1}` ancestor that survived
@@ -794,15 +794,15 @@
   `DialogContent` unmounts on close, so Esc, an overlay click or the dismiss
   button would drop typed text and a proposal a model call produced. The
   field state and the one request live in the component that owns the dialog
-  (Referrals' `draft`, `NewEntityDialog`, `InstructSheet`, Send to résumé,
+  (Referrals' `draft`, `NewEntityDialog`, `InstructSheet`, Send to resume,
   Demonstrate skill), or the popup stays mounted (`DialogContent
-  keepMounted`, New base résumé, whose twelve fields and two requests live in
+  keepMounted`, New base resume, whose twelve fields and two requests live in
   the popup). A caller mounts such a dialog for the page's lifetime, never
   `{open ? <Dialog/> : null}`, with one instance per subject where there are
   several (Getting started's suggestions, the health report's skills), and a
   kept-mounted form takes its ids from `useId`, since several copies share
   the page. Only a success clears the draft (a key bump or a reset in
-  `onSuccess`), plus **Start over** on New base résumé, shown once the draft
+  `onSuccess`), plus **Start over** on New base resume, shown once the draft
   differs from a fresh one, with no confirm because its label names the loss.
   The dismiss button reads **Close**, never Cancel: it cancels nothing. A
   mutation inside the form would die with it, so a reopened dialog showed the
@@ -830,7 +830,7 @@
   not `query.error`), and a filter hides the section that holds kept dialogs
   instead of unmounting it (the health report's notes). A kept LLM proposal that edits
   by index carries the basis it was made against (`serverKey` of the saved
-  copy): once the résumé moves on, the proposal is described without names,
+  copy): once the resume moves on, the proposal is described without names,
   says so, and Apply is disabled. On Referrals the inline empty-state form
   shares the same draft, so text left by a failed dialog create pre-fills it
   once the last row is deleted. Pinned by `test_frontend_dialog_drafts.py`,
@@ -965,10 +965,12 @@
   clause); section/card title = CardTitle default (don't override sizes);
   centered state headings `text-lg font-medium`; body `text-sm`; meta/labels
   `text-xs`. Never `text-2xl font-semibold` for page titles.
-- Form conventions: optionality lives on the LABEL as a muted "· optional"
-  suffix (`<Label optional>` — one definition in `components/ui/label.tsx`),
-  never a placeholder saying "Optional"; a placeholder may hold only an
-  example value (see Microcopy rules); page subtitles are one clause; every
+- Form conventions: optionality lives on the LABEL as a muted "(optional)"
+  (`<Label optional>`, one definition in `components/ui/label.tsx`; GOV.UK's
+  wording), never a placeholder, a hand-written span or a "· optional"
+  suffix. The label text and the marker are one inline run, so a label that
+  wraps keeps "(optional)" after its last word. A blank field holds no
+  placeholder (see Microcopy rules); page subtitles are one clause; every
   `SelectValue` gets children
   mapping value → human label (raw sentinels like `__none__` render literally
   otherwise).
@@ -1018,28 +1020,97 @@
   - *Hint*: one short sentence. **Delete it if it only restates the label.**
     A hint carries what the label cannot: a consequence, a default, a
     constraint.
-  - *Placeholder*: an example VALUE prefixed `e.g.` (`e.g. Acme Corp`), and
-    only when losing it costs nothing. A visible label (or, for a search box,
-    the chat composer or a chip add-row, a named control) already says what
-    the field is. Anything needed while typing, such as a format, a constraint,
-    a default or a consequence, is hint text. Instructions, questions,
-    statements about the field and label restatements are never placeholders.
-    Exceptions: a short `…` prompt in a search box, the composer or a chip
-    add-row (the ratchet's list), and the `https://…` format cue. The ratchet
+  - *Placeholder*: none in a blank field. No example value, no sample text,
+    no URL cue, no instruction, no statement about the field and no restated
+    label. A format, a constraint, a default or a consequence is hint text,
+    between the label and the control (`aria-describedby`). A field whose
+    placeholder was its only visible name gets a visible `Label` first. The
+    one exception is a short `…` prompt in a search box, the Assistant
+    composer or a chip add-row (the ratchet's `_PROMPTS` list), which NN/g's
+    exception for one- and two-field forms covers. This follows GOV.UK's
+    text-input guidance: a placeholder vanishes as you type, not every screen
+    reader reads it, and an example in an empty field reads as a value
+    already filled in. The ratchet
     (`backend/tests/test_frontend_placeholders.py`) fails closed: a value it
     cannot read, such as a concatenation, a call or a prop from another file,
-    fails unless it is on its pass-through list.
-    **This deviates from GOV.UK on purpose:** its text-input guidance forbids
-    placeholders for examples too, because they vanish on typing, not every
-    screen reader reads them, and default styles fail contrast. Here
-    placeholders use `--muted-foreground` (≥4.5:1, pinned), and an example
-    that carries nothing needed is safe to lose. NN/g's exception for one- and
-    two-field forms (search) covers the search boxes and the composer.
+    fails unless it is on its pass-through list. A prompt that remains uses
+    `--muted-foreground` (≥4.5:1, pinned).
   - *The em dash is not a clause joiner in UI copy* — repeated
     "statement — elaboration" reads machine-written. Use two sentences, a
     colon, or cut the clause. The `—` CHARACTER stays correct for the
     empty-cell convention (`{value ?? "—"}`) and inside composed labels
     (`${company} — ${role}`); those are typography, not prose.
+  - *Canonical terms* (one word per thing, on every surface: the web app, the
+    Companion panel and the server messages the app shows;
+    `backend/tests/test_frontend_vocabulary.py` refuses the banned variants in
+    every string a user can read, including the Companion panel). Each
+    canonical term, then what it replaces:
+    **Career history** (the page; "your career history" in prose), never
+    Career KB, KB, Knowledge Base, library, career record or career data; the
+    sidebar group stays **Career library** and the file-size unit KB stays.
+    **item** (one record in career history, or one row in a resume section),
+    never entity, record or entry. **bullet** (one line in an item), never
+    point, with states **Draft**, **Approved** and **Not used** (verbs
+    Approve, Stop using, Use again); "Bullet style" is the glyph setting and
+    score points stay "points". **Add to career history**, **Add from career
+    history**, **Add to a resume**, **Copy to another resume**, **Import
+    resumes**, never Sync to KB, Send to resume or Port. **ATS score**,
+    spelled out once per surface where it first appears ("how an applicant
+    tracking system rates a resume for this job"), never composite or fit
+    score; lift is **Score gain**. **job description** (never JD or
+    posting), **job**, **job link**, **careers page**. **Add job** (the
+    sidebar, the tracker, `/new`'s title "Add a job") and **Save job** (its
+    submit), never New application or Extract job: a job becomes an
+    application when you tailor or apply. **Refresh details**, never
+    re-extract. **gap analysis**, never session or tailoring session.
+    **Quick tailor**, always capitalized, never Fast tailor; its settings are
+    Quick tailor settings. **Create PDF** and **Update PDF**, never render or
+    compile (the template editor's button is **Update preview**). **Update
+    score**, never re-score. **Hide**, **Show**, **Hidden** for a resume
+    entry; **Archive** and **Restore** for a base resume or a template.
+    **Other sections**, never extra or custom sections. **Must fix**, **Mark
+    as OK** and **Undo** for health checks, never gate, blocker or waive;
+    **Check health**, **Check again**, **Health report**; **Check template**,
+    never certify. **Version 12** and **Version history**. **skill group**,
+    **School**, **On-site**, **Role**, **Employment type**, **Offer**,
+    **Diversity questions (voluntary)**. **Persona** keeps its name. The
+    model roles are **Fast model**, **Smart model** and **Assistant model**,
+    never Chat model. **Assistant** (the in-app chat and its sidebar item;
+    one conversation is a chat), **connected agents** (MCP clients;
+    **Connected agents** is the Settings tab), **Companion** (the browser
+    extension; a proper name in labels, "the Companion" in sentences),
+    **Suggested edits** and **Suggested project** (chat's and the studio's
+    cards). **Agent inbox** (`/proposals`), never Agent proposals; its lanes
+    are **Needs you**, **To review**, **Queued**, **Applying** and
+    **History**, its chips **Proposed**, **Queued**, **Approved**,
+    **Applied** and **Skipped** (plus **Needs you**, **Expired**, **Check if
+    sent**), never Triage, In flight, Submitted or Accepted; the funnel and
+    Analytics use the same words, and Analytics' **In progress** replaces In
+    flight. **base resume** and **tailored resume**; **resume** without
+    accents, and US English. A deliberate exception goes on the ratchet's
+    `_ALLOWED` list with its reason; files a copy task has not swept yet sit
+    in its pending block, whose counts only go down.
+  - *Errors*: "Couldn't <what failed>." then what to do next. Build it with
+    `couldnt(what, err)` from `lib/error-text.ts`; a load error passes
+    `errorDetail(err)`. A server's `detail` reaches the screen only when it
+    is a plain sentence written for the user (`isPlainSentence`); raw server
+    text, JSON, schema paths (`experience.2.bullets.0`), status codes and
+    developer steps never do. `lib/api.ts` (and the `/api` proxy route) write
+    the can't-reach-the-server words for a desktop user and log the
+    developer detail with `console.error`. Pinned by
+    `test_frontend_error_words.py`, whose ratchet counts every raw
+    `err.message` a toast, a load error or a JSX child still shows.
+  - *Separators and marks*: `·` separates facts only in a dense metadata row
+    (a card's meta line, a chip row); never inside a label, a hint, a status
+    line or a sentence, and never for "and", "then" or "optional". No "/"
+    for "or" or "and" (pick one word); a ratio in prose reads "3 of 5", while
+    "/ 100" beside a score and a date format like "06/2026" stay. No
+    semicolon: two sentences. No "e.g." in UI text: a hint says "such as".
+    Abbreviations are spelled out (years, points, Average, Minimum,
+    Applications).
+  - *Toasts*: a success toast names its object ("Template deleted", never
+    "Deleted"); an error toast says what failed (see *Errors*). A count and
+    its noun agree ("1 bullet", "3 bullets").
 - Chat page is Gemini-styled: centered greeting + floating pill composer
   when empty, docked composer with inline pinned-resume picker otherwise;
   user messages are muted tonal bubbles, assistant text plain. The sessions
@@ -1048,21 +1119,23 @@
   leaves the column 480px); below that, History opens the same list in a
   Sheet, which a `ResizeObserver` closes when the rail returns. Closing it
   then returns focus to the rail (or its edge button), since the History
-  button is hidden. The composer row does not wrap, so the pinned-résumé
+  button is hidden. The composer row does not wrap, so the pinned-resume
   trigger caps at `max-w-48` and truncates its name (full name in `title`).
-- **Settings vs Profile — which page does a new setting go on?**
-  `/settings` is how the SYSTEM behaves (API keys, models, quick-tailor
-  permissions, connected agents (the explainer, next-step hints, Auto-apply
-  limits), prompts, appearance).
-  `/profile` is who the CANDIDATE is (persona, market, job preferences,
-  autofill answers). Both write `/api/settings/*` and both draw from
+- **Settings vs Profile — which page and tab does a new setting go on?**
+  `/settings` is how the SYSTEM behaves, in tabs (`lib/settings-tabs.ts`):
+  **AI & models** (API keys, models, prompts), **Tailoring** (Quick tailor
+  settings), **Connected agents** (the explainer, next-step hints,
+  Auto-apply limits), **Appearance** and **About**. `/profile` is who the
+  CANDIDATE is: **About you** (Persona, Market, Job preferences) and
+  **Autofill**. A new card goes on the tab whose subject it shares and adds
+  its id to that tab's `anchors` (pinned). Both write `/api/settings/*`
+  and both draw from
   `components/settings/` — the folder is not the split, this rule is. When a
   cross-page link points at a setting, deep-link the card id
   (`anchorHref("/profile", "autofill")`), never the bare page: sending a user
   to `/settings` for the autofill profile is a dead end that shipped once
-  already. Each page
-  is tabbed (`lib/settings-tabs.ts`: Settings is AI & models, Tailoring,
-  Connected agents, Appearance, About; Profile is About you, Autofill).
+  already. In prose, a setting's place reads as a path: Settings › AI &
+  models, Profile › Autofill.
   `?tab=` names the tab and the default tab has none; a tab click writes it
   with the native `history.replaceState` (no server round trip, no new
   history entry). The tab hook reads `?tab=` with `useSearchParams`, never
@@ -1070,8 +1143,7 @@
   native write (a link to another tab of the same page then opened
   nothing); the page still calls `use(searchParams)`, which makes the route
   dynamic so the server renders the named tab and the hook needs no
-  `<Suspense>` (without it `next build` fails). A new card adds its id to its
-  tab's `anchors` (pinned).
+  `<Suspense>` (without it `next build` fails).
   A deep link is `anchorHref(home, cardId)`, which adds the tab, so the
   server renders the right panel (pinned: no source writes a hash-only
   `/settings#` or `/profile#` link); an old hash-only link still opens its
@@ -1204,18 +1276,18 @@
   level, employment and work-mode badges read `humanizeEnum`'s words, never
   `full_time`). `test_no_role_key_reaches_the_screen` refuses a humanized or
   bare `role_category` in JSX.
-  Getting started hands New base résumé each suggestion's label with its key
+  Getting started hands New base resume each suggestion's label with its key
   (`initialRole`), so the dialog's role picker and its create never use the key.
   While the catalog loads, or when its request fails, the label is
   `humanizeSlug` (`lib/humanize-slug.ts`):
   the key's own words with the catalog's acronyms cased as its labels case
-  them (AI/ML, MLOps, BI, QA, IT), never blank. A résumé is named by
+  them (AI/ML, MLOps, BI, QA, IT), never blank. A resume is named by
   a row's `display_name` / `base_resume_name` when the payload has one, else by
   `useBaseResumeLabel()` (lists of slugs) or `useBaseResumeName(slug)` (one
   slug that may be soft-deleted: chat cards, the Proposals pill, the job
   page's Details menu). The name hook reads the archived-inclusive list, and
-  for a slug it lacks, that résumé's own row — so every surface names a
-  soft-deleted résumé the same way. `humanizeSlug`, through `baseResumeLabel`,
+  for a slug it lacks, that resume's own row — so every surface names a
+  soft-deleted resume the same way. `humanizeSlug`, through `baseResumeLabel`,
   is only the loading, failed, or unknown-slug fallback.
   `tests/test_frontend_plain_words.py` fails on a bare
   `baseResumeLabel(slug)` or a `humanizeSlug(` at a naming call site. A new acronym in the catalog

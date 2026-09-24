@@ -77,20 +77,15 @@ export class ApiError extends Error {
   }
 }
 
+/** A failed fetch, in words for a desktop user (docs/frontend-conventions.md,
+ * Microcopy rules, *Errors*). The developer detail (the base URL and the
+ * browser's own message) goes to the console, not the screen. */
 function networkErrorMessage(original: string): string {
   if (original !== "Failed to fetch" && !original.includes("NetworkError")) {
     return original;
   }
-  const base = getApiBase();
-  const label =
-    base === "" ? "same-origin /api (Next.js → FastAPI proxy)" : base;
-  return (
-    `Cannot reach the API (${label}). ` +
-    `Usually the FastAPI server is not listening on port 8001. From the repo root run ` +
-    `docker compose up (or docker compose up postgres backend if you only run Next.js locally). ` +
-    `Check with: curl http://localhost:8001/health — expect {"status":"ok"}. ` +
-    `Original error: ${original}`
-  );
+  console.error("apiFetch: network error", { base: getApiBase() || "same-origin /api", original });
+  return "Maestro CS isn't responding. Check that it's running, then try again.";
 }
 
 export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -125,12 +120,18 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
       typeof body === "object" && body !== null && "detail" in body
         ? (body as { detail: unknown }).detail
         : undefined;
+    if (typeof detailRaw !== "string") {
+      console.error("apiFetch: request failed", { path, status: response.status, body });
+    }
+    // A string detail is the server's own sentence; a list is a rejected form
+    // (FastAPI's validation errors), whose field paths are not for the screen.
+    // The raw body stays on ApiError.body for callers that need it.
     const message =
-      detailRaw !== undefined
-        ? typeof detailRaw === "string"
-          ? detailRaw
-          : JSON.stringify(detailRaw)
-        : `Request failed: ${response.status}`;
+      typeof detailRaw === "string"
+        ? detailRaw
+        : Array.isArray(detailRaw)
+          ? "Some details weren't accepted. Check them and try again."
+          : "Something went wrong. Try again.";
     throw new ApiError(response.status, message, body);
   }
 
@@ -612,7 +613,7 @@ export async function uploadChatAttachment(sessionId: UUID, file: File) {
     body: form,
   });
   if (!res.ok) {
-    let detail = `Upload failed (${res.status})`;
+    let detail = res.status === 413 ? "This file is too large." : "Couldn't upload the file.";
     try {
       const body = (await res.json()) as { detail?: string };
       if (body.detail) detail = body.detail;
@@ -643,7 +644,7 @@ export async function streamChatMessage(
     signal,
   });
   if (!res.ok || !res.body) {
-    let detail = `Chat request failed (${res.status})`;
+    let detail = "The Assistant couldn't reply. Try again.";
     try {
       const body = (await res.json()) as { detail?: string };
       if (body.detail) detail = body.detail;

@@ -1,10 +1,13 @@
-"""Scoped placeholder ratchet.
+"""Placeholder ratchet: a blank field holds no text.
 
-A placeholder may be an example prefixed ``e.g.`` (a following space or a
-newline, so the persona block's ``e.g.\\n`` still counts), or exactly the URL
-format cue ``https://…``. An ellipsis prompt is allowed only when the file and
-the exact string are on the search / composer / chip-add-row list. Anything
-else fails. ``SelectValue`` and image ``placeholder`` props are not inputs.
+No example values, no sample text, no URL cue: a format or constraint is hint
+text (docs/frontend-conventions.md, Microcopy rules, *Placeholder*). The one
+exception is a short ellipsis prompt in a search box, the Assistant composer or
+a chip add-row, allowed only when the file and the exact string are on
+``_PROMPTS``. ``SelectValue`` and image ``placeholder`` props are not inputs.
+Placeholders a wave-3 copy task has not removed yet sit on that task's
+``_PENDING_EXAMPLES_T*`` block with how often each appears, which may only go
+down (docs/plans/2026-09-23-ux-ia-copy.md, Tasks 17-21).
 
 Values are the attribute or object-key expressions themselves: string
 literals, template literals, ternaries, ``??`` and ``||`` (both sides), the
@@ -22,14 +25,16 @@ Those are components that hand a caller's value on; each caller's own
 from __future__ import annotations
 
 import re
+from collections import Counter
 from collections.abc import Iterator
 from pathlib import Path
+
+import pytest
 
 _FRONTEND = Path(__file__).resolve().parents[2] / "frontend"
 _ROOTS = ("app", "components", "lib")
 _SKIP_TAGS = frozenset({"SelectValue", "PreviewThumbnail"})
 _ELLIPSIS = "…"
-_URL_CUE = "https://" + _ELLIPSIS
 _QUOTES = "\"'`"
 
 # Exact prompts, not whole files. profile-panel.tsx is a chip add-row caller
@@ -53,6 +58,99 @@ _PROMPTS = frozenset(
     }
 )
 
+# Example placeholders a wave-3 copy task has not removed yet: {(file, value):
+# times the scan reads it}. One block per task so lanes never edit the same
+# lines; a task lowers its counts as it goes and deletes its block when it
+# lands. The wave-2 lanes already removed the Agent inbox's score example and
+# the examples in the Settings cards they rewrote.
+_PENDING_EXAMPLES_T17: dict[tuple[str, str], int] = {  # D §2 jobs and tracking
+    ("app/new/page.tsx", "e.g. https://boards.example.com/job/123"): 1,
+    ("app/referrals/page.tsx", "e.g. Acme Corp"): 1,
+    ("app/referrals/page.tsx", "e.g. https://example.com/careers"): 1,
+    ("app/referrals/page.tsx", "e.g. Jane Doe"): 2,
+    ("app/referrals/page.tsx", "e.g. Met at the AWS meetup"): 2,
+    ("components/job-tracking-url-field.tsx", "https://" + _ELLIPSIS): 1,
+    ("components/proposals/triage-actions.tsx", "e.g. hiring freeze announced"): 1,
+    ("components/qa-tab.tsx", "e.g. Why this team?"): 1,
+}
+_PENDING_EXAMPLES_T18: dict[tuple[str, str], int] = {  # D §3 the gap page
+    (
+        "app/jobs/[id]/tailor/[sessionId]/page.tsx",
+        "e.g. emphasize leadership, keep it to one page, lead with the fintech project" + _ELLIPSIS,
+    ): 1,
+    ("components/gap-analysis/gap-card.tsx", "e.g. Data scientist who ships forecasting models to production"): 1,
+    ("components/gap-analysis/resolution-controls.tsx", "e.g. PySpark"): 1,
+    ("components/gap-analysis/resolution-controls.tsx", "e.g. Built the ingestion pipeline in Python and Airflow"): 2,
+}
+_PENDING_EXAMPLES_T19: dict[tuple[str, str], int] = {  # D §4 resumes, studios, health, templates
+    ("app/base-resumes/page.tsx", "e.g. Data Scientist (1 page)"): 1,
+    ("app/templates/page.tsx", "e.g. classic_serif"): 1,
+    ("components/base-resumes/new-base-resume-dialog.tsx", "e.g. Lead with production ML work, senior in tone"): 1,
+    ("components/base-resumes/new-base-resume-dialog.tsx", "e.g. Machine Learning Engineer"): 1,
+    ("components/resume-editor/contact-form.tsx", "e.g. you@example.com"): 1,
+    ("components/resume-editor/experience-editor.tsx", "e.g. Jan 2023"): 1,
+    ("components/resume-editor/experience-editor.tsx", "e.g. Mar 2025"): 1,
+    ("components/resume-editor/extra-sections-editor.tsx", "e.g. 2025"): 1,
+    ("components/resume-editor/extra-sections-editor.tsx", "e.g. Publications"): 1,
+    ("components/resume-editor/extra-sections-editor.tsx", "https://" + _ELLIPSIS): 1,
+    ("components/resume-editor/instruct-sheet.tsx", "e.g. Tighten the summary and lead with the platform work"): 1,
+    ("components/resume-health/finding-cards.tsx", "e.g. this metric lives in the next bullet"): 1,
+    ("components/resume-health/finding-cards.tsx", "e.g. this template is certified elsewhere"): 1,
+    ("components/resume-health/metric-ask-input.tsx", "e.g. 5,000"): 1,
+    ("components/resume-health/metric-ask-input.tsx", "e.g. 6 months"): 1,
+    ("components/resume-health/metric-ask-input.tsx", "e.g. tickets"): 1,
+    ("components/role-category-picker.tsx", "e.g. Data Scientist"): 1,
+}
+_PENDING_EXAMPLES_T20: dict[tuple[str, str], int] = {  # D §5 Career history
+    ("components/career/capture-box.tsx", "e.g. This week I shipped" + _ELLIPSIS): 1,
+    ("components/career/entity-detail.tsx", "e.g. Acme Labs"): 1,
+    ("components/career/entity-detail.tsx", "e.g. Jan 2025"): 1,
+    ("components/career/entity-detail.tsx", "e.g. Mar 2025"): 1,
+    ("components/career/new-entity-dialog.tsx", "e.g. AWS Solutions Architect"): 1,
+    ("components/career/new-entity-dialog.tsx", "e.g. Acme Corp"): 1,
+    ("components/career/new-entity-dialog.tsx", "e.g. Amazon Web Services"): 1,
+    ("components/career/new-entity-dialog.tsx", "e.g. Best Paper Award"): 1,
+    ("components/career/new-entity-dialog.tsx", "e.g. Fraud detection pipeline"): 1,
+    ("components/career/new-entity-dialog.tsx", "e.g. Jan 2025"): 1,
+    ("components/career/new-entity-dialog.tsx", "e.g. MSc Computer Science"): 1,
+    ("components/career/new-entity-dialog.tsx", "e.g. Mar 2025"): 1,
+    ("components/career/new-entity-dialog.tsx", "e.g. NeurIPS 2024"): 1,
+    ("components/career/new-entity-dialog.tsx", "e.g. Publications, Volunteer Work"): 1,
+    ("components/career/new-entity-dialog.tsx", "e.g. Senior Data Scientist"): 1,
+    ("components/career/new-entity-dialog.tsx", "e.g. University of Toronto"): 1,
+    ("components/career/profile-panel.tsx", "e.g. ML Ops"): 1,
+}
+_PENDING_EXAMPLES_T21: dict[tuple[str, str], int] = {  # D §6 Settings and Profile
+    ("components/settings/autofill-section.tsx", "e.g. $120,000"): 1,
+    ("components/settings/autofill-section.tsx", "e.g. 2 weeks"): 1,
+    ("components/settings/autofill-section.tsx", "e.g. 2021"): 1,
+    ("components/settings/autofill-section.tsx", "e.g. 2023"): 1,
+    ("components/settings/autofill-section.tsx", "e.g. 3.8"): 1,
+    ("components/settings/autofill-section.tsx", "e.g. Apt 4B"): 1,
+    ("components/settings/autofill-section.tsx", "e.g. Asian"): 1,
+    ("components/settings/autofill-section.tsx", "e.g. Data Science"): 1,
+    ("components/settings/autofill-section.tsx", "e.g. Job board"): 1,
+    ("components/settings/autofill-section.tsx", "e.g. Master of Science"): 1,
+    ("components/settings/llm-endpoint.tsx", "e.g. http://host.docker.internal:11434/v1"): 1,
+    ("components/settings/models-section.tsx", "e.g. AIza..."): 1,
+    ("components/settings/models-section.tsx", "e.g. llama3.2:3b"): 1,
+    ("components/settings/models-section.tsx", "e.g. sk-..."): 1,
+    (
+        "components/settings/persona-section.tsx",
+        "e.g.\nVision: build data products that actually ship.\nStrengths: pragmatic ML, clear writing, fast"
+        " prototyping.\nGoals: senior DS/MLE role on a product team.\nHow I work: bias to shipping, evidence"
+        " over opinion.",
+    ): 1,
+}
+_EXAMPLE_BLOCKS = (
+    _PENDING_EXAMPLES_T17,
+    _PENDING_EXAMPLES_T18,
+    _PENDING_EXAMPLES_T19,
+    _PENDING_EXAMPLES_T20,
+    _PENDING_EXAMPLES_T21,
+)
+_PENDING_EXAMPLES: dict[tuple[str, str], int] = {key: n for block in _EXAMPLE_BLOCKS for key, n in block.items()}
+
 # The only expressions allowed to stay unresolved: values handed on from a
 # caller (whose own site is scanned) and the image placeholder's type line.
 _PASS_THROUGH = frozenset(
@@ -74,18 +172,11 @@ _NOT_INPUTS = (
     "Not validated",
 )
 
-# Indirect values the scanner must actually read, not a substring search.
+# Real indirect values the scanner must keep reading (a default parameter,
+# a prop). The synthetic cases in test_scanner_reads_indirect_placeholder_values
+# cover object fields, ternaries and joined constants.
 _MUST_SEE = (
-    ("components/settings/persona-section.tsx", "e.g.\nVision:"),
     ("components/ui/chip-input.tsx", "Add" + _ELLIPSIS),
-    ("components/settings/autofill-section.tsx", "e.g. Apt 4B"),
-    ("components/resume-editor/contact-form.tsx", "e.g. you@example.com"),
-    ("components/settings/models-section.tsx", "e.g. sk-..."),
-    ("components/settings/models-section.tsx", "e.g. AIza..."),
-    (
-        "components/gap-analysis/gap-card.tsx",
-        "e.g. Data scientist who ships forecasting models to production",
-    ),
     ("components/role-picker.tsx", "Search roles, or type your own" + _ELLIPSIS),
 )
 
@@ -368,8 +459,9 @@ class _Scan:
                 yield match.end()
 
 
-def _allowed(value: str) -> bool:
-    return value in ("", _URL_CUE) or re.match(r"e\.g\.(\s|$)", value) is not None
+def _allowed(rel: str, value: str) -> bool:
+    """The rule itself: an empty value, or a named `…` prompt."""
+    return value == "" or ((rel, value) in _PROMPTS and value.endswith(_ELLIPSIS))
 
 
 def _sources() -> Iterator[tuple[str, str]]:
@@ -393,7 +485,7 @@ def collect() -> list[tuple[str, int, str | None, str]]:
 def _passes(rel: str, value: str | None, expr: str) -> bool:
     if value is None:
         return (rel, expr) in _PASS_THROUGH
-    return _allowed(value) or ((rel, value) in _PROMPTS and value.endswith(_ELLIPSIS))
+    return _allowed(rel, value) or (rel, value) in _PENDING_EXAMPLES
 
 
 def violations() -> list[str]:
@@ -408,13 +500,41 @@ def _seen() -> set[tuple[str, str | None]]:
     return {(rel, value) for rel, _line, value, _expr in collect()}
 
 
-def test_placeholders_are_examples_or_named_prompts():
+def test_blank_fields_hold_no_text_but_a_named_prompt():
     bad = violations()
-    assert not bad, "placeholder is not an example or a named prompt:\n" + "\n".join(bad)
+    assert not bad, "a placeholder other than a named search, composer or chip prompt:\n" + "\n".join(bad)
 
 
-def test_scanner_reads_indirect_placeholder_values():
-    """Object fields, defaults, ternaries and joined constants, not just placeholder=\"...\"."""
+def test_pending_examples_only_shrink():
+    now = Counter((rel, value) for rel, _line, value, _expr in collect() if value is not None and not _allowed(rel, value))
+    grew = {key: f"{now[key]} now, {cap} pending" for key, cap in _PENDING_EXAMPLES.items() if now[key] > cap}
+    done = {key: f"{now[key]} now, {cap} pending" for key, cap in _PENDING_EXAMPLES.items() if now[key] < cap}
+    assert not grew, f"a pending example was copied again (remove it; never raise a count): {grew}"
+    assert not done, f"lower these _PENDING_EXAMPLES counts (delete the row at 0): {done}"
+
+
+def test_each_pending_example_has_one_owner():
+    owners = Counter(key for block in _EXAMPLE_BLOCKS for key in block)
+    assert not [key for key, n in owners.items() if n > 1]
+
+
+@pytest.mark.parametrize(
+    "src,value",
+    [
+        ('const FIELDS = [{ key: "a", placeholder: "Search jobs…" }];', "Search jobs…"),
+        ('function F({ placeholder = "Add…" }) { return <input placeholder={placeholder} />; }', "Add…"),
+        ('<Input placeholder={open ? "Add…" : "Search…"} />', "Search…"),
+        ('const P = ["Add", "more…"].join(" ");\n<Input placeholder={P} />', "Add more…"),
+    ],
+    ids=["object-field", "default", "ternary", "join"],
+)
+def test_scanner_reads_indirect_placeholder_values(src: str, value: str):
+    scan = _Scan(src)
+    seen = {hit[1] for at, tag in scan.sites if tag not in _SKIP_TAGS for hit in scan.values_at(at)}
+    assert value in seen, seen
+
+
+def test_scanner_still_reads_the_real_indirect_prompts():
     seen = _seen()
     missing = [
         f"{rel} :: {prefix!r}"
@@ -443,16 +563,14 @@ def test_pass_through_list_is_current():
 
 
 
-def test_conventions_record_the_govuk_deviation():
-    doc = (
-        Path(__file__).resolve().parents[2] / "docs/frontend-conventions.md"
-    ).read_text()
-    assert re.search(r"a placeholder may hold only an\s+example value", doc)
-    assert re.search(r"Exceptions: a short `…` prompt", doc)
+def test_conventions_record_the_no_placeholder_rule():
+    doc = (Path(__file__).resolve().parents[2] / "docs/frontend-conventions.md").read_text()
+    assert "*Placeholder*: none in a blank field." in doc
+    assert re.search(r"The\s+one\s+exception\s+is\s+a\s+short\s+`…`\s+prompt", doc)
     assert "fails closed" in doc
-    assert "prefixed `e.g.`" in doc
-    assert "This deviates from GOV.UK on purpose" in doc
-    assert "`--muted-foreground`" in doc
+    for retired in ("prefixed `e.g.`", "This deviates from GOV.UK on purpose", "a placeholder may hold only an"):
+        assert retired not in doc, retired
+    assert re.search(r"optionality lives on the LABEL as a muted\s+\"\(optional\)\"", doc)
 
 
 def _src(rel: str) -> str:
@@ -668,39 +786,6 @@ def test_template_slug_rule_stays_on_screen():
     )
     # The rule is the hint; the error says what went wrong, not the rule again.
     assert src.count("Use only lowercase letters, numbers, hyphens, and underscores.") == 1
-
-
-def test_bare_examples_are_prefixed():
-    expectations = {
-        "app/base-resumes/page.tsx": ('placeholder="e.g. Data Scientist (1 page)"',),
-        "app/new/page.tsx": ('placeholder="e.g. https://boards.example.com/job/123"',),
-        "components/resume-editor/extra-sections-editor.tsx": (
-            'placeholder="e.g. 2025"',
-            'placeholder="https://\u2026"',
-            'placeholder="e.g. Publications"',
-        ),
-        "components/settings/llm-endpoint.tsx": (
-            'placeholder="e.g. http://host.docker.internal:11434/v1"',
-        ),
-        "components/settings/models-section.tsx": ('placeholder="e.g. llama3.2:3b"',),
-        "components/career/capture-box.tsx": (
-            'placeholder="e.g. This week I shipped\u2026"',
-        ),
-        "components/role-category-picker.tsx": ('"e.g. Data Scientist"',),
-    }
-    for rel, needles in expectations.items():
-        src = _src(rel)
-        for needle in needles:
-            assert needle in src, f"{rel} missing {needle}"
-    # The create form already had these. The table edit row is a second copy;
-    # a single `in` check stays green if only the row regresses.
-    referrals = _src("app/referrals/page.tsx")
-    assert referrals.count('placeholder="e.g. Jane Doe"') == 2
-    assert referrals.count('placeholder="e.g. Met at the AWS meetup"') == 2
-    assert re.search(
-        r'aria-label="Contact name"\s*placeholder="e\.g\. Jane Doe"[^>]*className="min-w-32"', referrals
-    )
-    assert re.search(r'aria-label="Notes"\s*placeholder="e\.g\. Met at the AWS meetup"', referrals)
 
 
 def test_retired_non_examples_are_not_placeholder_values():
