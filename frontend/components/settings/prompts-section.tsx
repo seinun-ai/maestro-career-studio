@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronDownIcon, ChevronRightIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { useLeaveGuard } from "@/hooks/use-leave-guard";
 import { SettingCard } from "@/components/settings/setting-card";
+import { ACTION_ROW } from "@/components/settings/setting-layout";
 import { Button } from "@/components/ui/button";
 import { CardSection } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
@@ -46,6 +47,7 @@ export function PromptsSection() {
     queryFn: () => apiFetch<SettingValue[]>("/api/settings/prompts"),
   });
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const advancedId = useId();
 
   return (
     <SettingCard
@@ -64,7 +66,7 @@ export function PromptsSection() {
         const advanced = data.filter((p) => !ESSENTIAL_KEYS.has(p.key));
 
         return (
-          <div className="space-y-3">
+          <div className="grid gap-3">
             {essential.map(({ meta, prompt }) => (
               <PromptCard
                 key={meta.key}
@@ -73,26 +75,28 @@ export function PromptsSection() {
                 description={meta.description}
               />
             ))}
-            <div className="pt-1">
+            <div className="grid gap-3">
               <button
                 type="button"
-                className="text-muted-foreground hover:text-foreground flex items-center gap-1 text-xs"
+                className="text-muted-foreground hover:text-foreground flex items-center gap-1 justify-self-start text-xs"
+                aria-expanded={advancedOpen}
+                aria-controls={advancedId}
                 onClick={() => setAdvancedOpen((o) => !o)}
               >
                 {advancedOpen ? (
-                  <ChevronDownIcon className="size-3.5" />
+                  <ChevronDownIcon className="size-3.5" aria-hidden="true" />
                 ) : (
-                  <ChevronRightIcon className="size-3.5" />
+                  <ChevronRightIcon className="size-3.5" aria-hidden="true" />
                 )}
                 Advanced prompts ({advanced.length})
               </button>
-              {advancedOpen && (
-                <div className="mt-3 space-y-3">
-                  {advanced.map((p) => (
-                    <PromptCard key={p.key} prompt={p} />
-                  ))}
-                </div>
-              )}
+              {/* Hidden, never unmounted: a collapse used to drop every typed
+                  draft in here, and its leave-guard registration with it. */}
+              <div id={advancedId} hidden={!advancedOpen} className="grid gap-3">
+                {advanced.map((p) => (
+                  <PromptCard key={p.key} prompt={p} />
+                ))}
+              </div>
             </div>
           </div>
         );
@@ -151,12 +155,15 @@ function PromptCard({
     onError: (err: Error) => toast.error(err.message),
   });
   useLeaveGuard(value !== prompt.value);
+  const bodyId = useId();
 
   return (
     <CardSection className="p-0">
       <button
         type="button"
         className="flex w-full items-center justify-between gap-3 p-3 text-left"
+        aria-expanded={open}
+        aria-controls={open ? bodyId : undefined}
         onClick={() => setOpen((o) => !o)}
       >
         <div className="min-w-0">
@@ -174,7 +181,7 @@ function PromptCard({
         </span>
       </button>
       {open && (
-        <div className="space-y-2 border-t p-3">
+        <div id={bodyId} className="grid gap-3 px-3 pb-3">
           {title && (
             <p className="text-muted-foreground font-mono text-xs">{prompt.key}</p>
           )}
@@ -185,21 +192,25 @@ function PromptCard({
             className="font-mono text-xs"
             aria-label={`${name} prompt text`}
           />
-          <div className="flex gap-2">
-            <Button
-              size="sm"
-              onClick={() => save.mutate()}
-              disabled={save.isPending || value === prompt.value}
-            >
-              {save.isPending ? "Saving…" : "Save"}
-            </Button>
+          <div className={ACTION_ROW}>
             <Button
               size="sm"
               variant="outline"
-              onClick={() => reset.mutate()}
+              focusableWhenDisabled
               disabled={reset.isPending}
+              className="data-disabled:pointer-events-none data-disabled:opacity-50"
+              onClick={() => reset.mutate()}
             >
               {reset.isPending ? "Resetting…" : "Reset to default"}
+            </Button>
+            <Button
+              size="sm"
+              focusableWhenDisabled
+              disabled={save.isPending || value === prompt.value}
+              className="data-disabled:pointer-events-none data-disabled:opacity-50"
+              onClick={() => save.mutate()}
+            >
+              {save.isPending ? "Saving…" : "Save"}
             </Button>
           </div>
         </div>

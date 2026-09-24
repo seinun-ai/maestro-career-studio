@@ -2,12 +2,18 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus } from "lucide-react";
 import { toast } from "sonner";
 
 import { useConfirm } from "@/components/confirm-dialog";
+import { useFocusOnNextCommit } from "@/hooks/use-focus-return";
 import { useLeaveGuard } from "@/hooks/use-leave-guard";
 import { SettingCard } from "@/components/settings/setting-card";
+import {
+  ACTION_ROW,
+  GROUP_HEADING,
+  RemoveButton,
+} from "@/components/settings/setting-layout";
 import { Button } from "@/components/ui/button";
 import { CardSection } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -27,6 +33,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { apiFetch } from "@/lib/api";
+import { cn } from "@/lib/utils";
 import type { EeoConsent, KBProfileOut, SettingEnvelope } from "@/lib/types";
 
 type FieldDef = {
@@ -51,12 +58,11 @@ const YES_NO_DECLINE = [
   { value: "decline", label: "Decline to answer" },
 ];
 
-/** Sub-section heading inside a card — same treatment the Career KB profile
- *  read view uses, so a form section and a content section look alike. The
- *  trailing `w-full` keeps the row-level actions ("Fill from resume",
- *  "Decline all") pinned to the far end of the legend. */
-const LEGEND =
-  "text-muted-foreground flex w-full items-center justify-between gap-2 text-xs font-semibold tracking-[0.12em] uppercase";
+/** Sub-section heading inside a card, in the career history read view's style
+ *  (`GROUP_HEADING`), so a form section and a content section look alike. The
+ *  `w-full` keeps the row-level actions ("Fill from resume", "Decline all")
+ *  pinned to the far end of the legend. */
+const LEGEND = cn(GROUP_HEADING, "flex w-full items-center justify-between gap-2");
 
 const GROUPS: GroupDef[] = [
   {
@@ -687,20 +693,17 @@ function AutofillEditor({
     onError: (err: Error) => toast.error(err.message),
   });
   useLeaveGuard(dirty);
+  // A removed education or question row takes its focused Remove with it;
+  // focus goes to the Add button below the list.
+  const armFocus = useFocusOnNextCommit();
+  const addEducationRef = useRef<HTMLButtonElement>(null);
+  const addQuestionRef = useRef<HTMLButtonElement>(null);
 
   return (
-    // Five groups ran together as one column of fields because a bare
-    // `space-y-6` gap was all that separated them. Any fieldset that FOLLOWS
-    // another gets a rule and a wider gap, so the boundaries hold for the
-    // mapped groups and the three literal ones below without either side
-    // having to know its own position.
-    //
-    // The rule goes on the LEGEND, not the fieldset. A <legend> is a "rendered
-    // legend": the browser lays it over the fieldset's block-start border and
-    // CLIPS the border behind it. These legends span the full width, so a
-    // border-top on the fieldset was clipped along its whole length and simply
-    // never appeared — it measured 1px and painted nothing.
-    <div className="space-y-6 [&>fieldset~fieldset>legend]:border-t [&>fieldset~fieldset>legend]:pt-6">
+    // Groups are divided by their headings and a wide gap, never by rules. Each
+    // fieldset stays in block flow: a rendered <legend> is not a grid item, so
+    // a grid gap would never separate it from the first field.
+    <div className="grid gap-8">
       {GROUPS.map((group) => {
         const contactReady = hasFillableContactDetails(kbProfile.data?.contact);
         const resumeDisabledReason = kbProfile.isLoading
@@ -713,7 +716,9 @@ function AutofillEditor({
             type="button"
             variant="ghost"
             size="xs"
+            focusableWhenDisabled
             disabled={!contactReady || isFillingFromResume}
+            className="data-disabled:pointer-events-none data-disabled:opacity-50"
             onClick={fillFromResume}
           >
             {isFillingFromResume ? "Filling…" : "Fill from resume"}
@@ -721,7 +726,7 @@ function AutofillEditor({
         );
 
         return (
-        <fieldset key={group.key} id={`autofill-${group.key}`} className="space-y-3">
+        <fieldset key={group.key} id={`autofill-${group.key}`} className="space-y-4">
           <legend className={LEGEND}>
             <span>{group.title}</span>
             {group.key === "eeo" && (
@@ -745,13 +750,13 @@ function AutofillEditor({
             // govern exactly those answers, but granting a standing consent is
             // a different KIND of act from typing one in, and a row that looks
             // like every other row does not say so.
-            <CardSection className="border-primary/40 space-y-2 border-l-2 px-3 py-2.5">
+            <CardSection className="border-primary/40 grid gap-3 border-l-2 px-3 py-2.5">
               <p className="text-xs font-medium tracking-wide uppercase">
                 Permissions
               </p>
               <div className="flex items-center justify-between gap-4">
-                <div className="space-y-0.5">
-                  <Label htmlFor="eeo-standing-consent" className="text-sm">
+                <div className="grid gap-1">
+                  <Label htmlFor="eeo-standing-consent">
                     Allow extension to fill these answers
                   </Label>
                   <p className="text-muted-foreground text-xs">
@@ -772,8 +777,8 @@ function AutofillEditor({
                   terms are not the same thing, and one switch for both would
                   mean nobody could have the first without the second. */}
               <div className="flex items-center justify-between gap-4">
-                <div className="space-y-0.5">
-                  <Label htmlFor="consent-forms" className="text-sm">
+                <div className="grid gap-1">
+                  <Label htmlFor="consent-forms">
                     Allow extension to tick agreement boxes
                   </Label>
                   <p className="text-muted-foreground text-xs">
@@ -797,14 +802,16 @@ function AutofillEditor({
               )}
             </CardSection>
           )}
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {/* items-end: a label that wraps (the longer questions at 14px) would
+              otherwise push its control below its neighbours'. */}
+          <div className="grid items-end gap-4 @lg/setting:grid-cols-2 @3xl/setting:grid-cols-3">
             {group.fields.map((field) => {
               const id = `af-${group.key}-${field.key}`;
               const rawValue = groupValues(profile, group.key)[field.key];
               const value = fieldValue(field, rawValue);
               return (
                 <div key={field.key} className="grid gap-1.5">
-                  <Label htmlFor={id} className="text-xs" optional={field.optional}>
+                  <Label htmlFor={id} optional={field.optional}>
                     {field.label}
                   </Label>
                   {field.type === "select" ? (
@@ -848,21 +855,19 @@ function AutofillEditor({
         );
       })}
 
-      <fieldset className="space-y-3">
+      <fieldset className="space-y-4">
         <legend className={LEGEND}>Education</legend>
         <p className="text-muted-foreground text-xs">
           Most recent first, matching the extension&apos;s repeated form blocks.
         </p>
         {education.map((entry, i) => (
           <CardSection key={i} className="flex items-start gap-2">
-            <div className="grid flex-1 gap-3 sm:grid-cols-3">
+            <div className="grid flex-1 gap-4 @xl/setting:grid-cols-3">
               {EDUCATION_FIELDS.map((field) => {
                 const id = `af-education-${i}-${field.key}`;
                 return (
                   <div key={field.key} className="grid gap-1.5">
-                    <Label htmlFor={id} className="text-xs">
-                      {field.label}
-                    </Label>
+                    <Label htmlFor={id}>{field.label}</Label>
                     <Input
                       id={id}
                       className="h-8 text-sm"
@@ -880,23 +885,27 @@ function AutofillEditor({
                 );
               })}
             </div>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label="Remove education entry"
-              onClick={() => setEducation(education.filter((_, j) => j !== i))}
-            >
-              <Trash2 className="size-4" />
-            </Button>
+            <RemoveButton
+              label={`Remove school ${i + 1}`}
+              onClick={() => {
+                setEducation(education.filter((_, j) => j !== i));
+                armFocus(addEducationRef);
+              }}
+            />
           </CardSection>
         ))}
-        <Button variant="outline" size="sm" onClick={() => setEducation([...education, {}])}>
+        <Button
+          ref={addEducationRef}
+          variant="outline"
+          size="sm"
+          onClick={() => setEducation([...education, {}])}
+        >
           <Plus className="size-4" />
           Add education
         </Button>
       </fieldset>
 
-      <fieldset className="space-y-3">
+      <fieldset className="space-y-4">
         <legend className={LEGEND}>Custom questions</legend>
         <p className="text-muted-foreground text-xs">
           Recurring form questions with your standard answers (matched by
@@ -904,49 +913,52 @@ function AutofillEditor({
         </p>
         {custom.map((qa, i) => (
           <div key={i} className="flex items-start gap-2">
-            <div className="grid flex-1 gap-1.5">
-              <Input
-                className="h-8 text-sm"
-                aria-label={`Custom question ${i + 1}`}
-                placeholder="e.g. Why do you want to work here?"
-                value={qa.question}
-                onChange={(e) =>
-                  setCustom(
-                    custom.map((c, j) =>
-                      j === i ? { ...c, question: e.target.value } : c,
-                    ),
-                  )
-                }
-              />
-              <Label htmlFor={`af-custom-${i}-answer`} className="mt-1.5 text-xs">
-                Answer
-              </Label>
-              <Textarea
-                id={`af-custom-${i}-answer`}
-                className="text-sm"
-                rows={2}
-                aria-label={`Answer to custom question ${i + 1}`}
-                value={qa.answer}
-                onChange={(e) =>
-                  setCustom(
-                    custom.map((c, j) =>
-                      j === i ? { ...c, answer: e.target.value } : c,
-                    ),
-                  )
-                }
-              />
+            <div className="grid flex-1 gap-3">
+              <div className="grid gap-1.5">
+                <Label htmlFor={`af-custom-${i}-question`}>Question</Label>
+                <Input
+                  id={`af-custom-${i}-question`}
+                  className="h-8 text-sm"
+                  aria-label={`Custom question ${i + 1}`}
+                  value={qa.question}
+                  onChange={(e) =>
+                    setCustom(
+                      custom.map((c, j) =>
+                        j === i ? { ...c, question: e.target.value } : c,
+                      ),
+                    )
+                  }
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor={`af-custom-${i}-answer`}>Answer</Label>
+                <Textarea
+                  id={`af-custom-${i}-answer`}
+                  className="text-sm"
+                  rows={2}
+                  aria-label={`Answer to custom question ${i + 1}`}
+                  value={qa.answer}
+                  onChange={(e) =>
+                    setCustom(
+                      custom.map((c, j) =>
+                        j === i ? { ...c, answer: e.target.value } : c,
+                      ),
+                    )
+                  }
+                />
+              </div>
             </div>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label="Remove custom question"
-              onClick={() => setCustom(custom.filter((_, j) => j !== i))}
-            >
-              <Trash2 className="size-4" />
-            </Button>
+            <RemoveButton
+              label={`Remove custom question ${i + 1}`}
+              onClick={() => {
+                setCustom(custom.filter((_, j) => j !== i));
+                armFocus(addQuestionRef);
+              }}
+            />
           </div>
         ))}
         <Button
+          ref={addQuestionRef}
           variant="outline"
           size="sm"
           onClick={() => setCustom([...custom, { question: "", answer: "" }])}
@@ -956,12 +968,14 @@ function AutofillEditor({
         </Button>
       </fieldset>
 
-      <div className="flex justify-end">
+      <div className={ACTION_ROW}>
         <Button
+          focusableWhenDisabled
+          disabled={save.isPending || !dirty}
+          className="data-disabled:pointer-events-none data-disabled:opacity-50"
           onClick={() =>
             save.mutate({ value: profileRef.current, revision: editRevision.current })
           }
-          disabled={save.isPending || !dirty}
         >
           {save.isPending ? "Saving…" : "Save autofill profile"}
         </Button>

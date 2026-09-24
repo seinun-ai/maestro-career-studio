@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 _FRONTEND = Path(__file__).resolve().parents[2] / "frontend"
 
 
@@ -107,3 +109,45 @@ def test_mcp_switch_stays_focusable_while_saving():
     src = _read("components/settings/mcp-workflow-section.tsx")
     assert "disabled={save.isPending}" not in src
     assert "if (!save.isPending)" in src
+
+
+# --- The status sits in the card header (UX IA, Task 10, appendix C6) --------
+
+_CARD = _read("components/settings/setting-card.tsx")
+
+
+def test_the_header_has_one_action_slot_the_body_renders_into():
+    # Mutants: the slot dropped from the header, the portal replaced by a prop,
+    # or the slot filled from an effect (the React Compiler's set-state-in-effect).
+    header = _CARD[_CARD.index("<CardHeader>") : _CARD.index("</CardHeader>")]
+    assert "<CardAction ref={setSlot}" in header
+    assert '<CardTitle role="heading" aria-level={2}' in header
+    assert "createPortal(children, slot)" in _CARD
+    assert "<HeaderSlot value={slot}>" in _CARD
+    assert "AutosaveRow" not in _CARD
+    assert "useEffect" not in _CARD  # the slot is a callback ref, never an effect
+
+
+@pytest.mark.parametrize("rel", _AUTOSAVE_CARDS + _SERVER_VALUE_CARDS)
+def test_every_autosave_status_renders_in_the_card_header(rel):
+    # Mutant: the status left in the body, where Market kept an empty 32px row.
+    src = _read(rel)
+    at = src.index("<AutosaveStatus")
+    assert src.rfind("<SettingCardAction>", 0, at) > src.rfind("</SettingCardAction>", 0, at), rel
+    assert "AutosaveRow" not in src
+
+
+def test_the_status_reserves_its_width():
+    # Beside a title the auto column's width follows the status, so the
+    # description re-wrapped on every save.
+    assert "inline-flex min-w-36 items-center justify-end gap-2 text-xs" in _STATUS
+
+
+def test_persona_draft_is_a_header_action_with_its_reason_read():
+    # A native `disabled` shows no `title` to a keyboard or screen-reader user.
+    src = _read("components/settings/persona-section.tsx")
+    action = src[src.index("<SettingCardAction>") : src.index("</SettingCardAction>")]
+    assert "Draft from my career" in action
+    assert "aria-describedby={draftDisabledReason ? reasonId : undefined}" in action
+    assert "title={draftDisabledReason}" not in src
+    assert "<p id={reasonId}" in src

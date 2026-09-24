@@ -5,7 +5,8 @@ import { toast } from "sonner";
 
 import { AutosaveStatus } from "@/components/settings/autosave-status";
 import { useLeaveGuard } from "@/hooks/use-leave-guard";
-import { AutosaveRow, SettingCard } from "@/components/settings/setting-card";
+import { SettingCard, SettingCardAction } from "@/components/settings/setting-card";
+import { SwitchRow } from "@/components/settings/setting-layout";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -85,22 +86,16 @@ function QuickTailorEditor({ initial }: { initial: QuickTailorProfile }) {
   useLeaveGuard(failed);
 
   return (
-    <div className="space-y-5">
-      <AutosaveRow>
+    <div className="grid gap-6">
+      <SettingCardAction>
         <AutosaveStatus pending={pending} failed={failed} onRetry={retry} />
-      </AutosaveRow>
+      </SettingCardAction>
 
-      <div className="space-y-3">
+      <div className="divide-y">
         {SWITCH_ROWS.map((row) => {
           const id = `quick-tailor-${row.key}`;
           return (
-            <div
-              key={row.key}
-              className="flex items-center justify-between gap-4 px-3 py-2.5"
-            >
-              <Label htmlFor={id} className="text-sm">
-                {row.label}
-              </Label>
+            <SwitchRow key={row.key} htmlFor={id} label={row.label}>
               <Switch
                 id={id}
                 checked={profile[row.key]}
@@ -108,19 +103,18 @@ function QuickTailorEditor({ initial }: { initial: QuickTailorProfile }) {
                   update((current) => ({ ...current, [row.key]: checked }))
                 }
               />
-            </div>
+            </SwitchRow>
           );
         })}
       </div>
 
       <div className="grid gap-1.5">
-        <Label htmlFor="quick-tailor-instruction" className="text-xs" optional>
+        <Label htmlFor="quick-tailor-instruction" optional>
           Standing instruction
         </Label>
         <Input
           id="quick-tailor-instruction"
           value={profile.instruction}
-          placeholder="e.g. keep bullets under two lines"
           onChange={(event) =>
             update((current) => ({ ...current, instruction: event.target.value }))
           }

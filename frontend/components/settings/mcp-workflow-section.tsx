@@ -5,8 +5,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { AutosaveStatus } from "@/components/settings/autosave-status";
-import { AutosaveRow, SettingCard } from "@/components/settings/setting-card";
-import { Label } from "@/components/ui/label";
+import { SettingCard, SettingCardAction } from "@/components/settings/setting-card";
+import { SwitchRow } from "@/components/settings/setting-layout";
 import { Switch } from "@/components/ui/switch";
 import { apiFetch } from "@/lib/api";
 import type { McpWorkflowSetting } from "@/lib/types";
@@ -59,14 +59,10 @@ export function McpWorkflowSection() {
     >
       {(data) => (
         <>
-          <AutosaveRow>
+          <SettingCardAction>
             <AutosaveStatus pending={save.isPending} failed={save.isError} />
-          </AutosaveRow>
-          {/* Same row geometry as the quick-tailor switches. */}
-          <div className="flex items-center justify-between gap-4 px-3 py-2.5">
-            <Label htmlFor={id} className="text-sm">
-              Suggest the next step in MCP tool results
-            </Label>
+          </SettingCardAction>
+          <SwitchRow htmlFor={id} label="Suggest the next step in MCP tool results">
             <Switch
               id={id}
               checked={data.value.hints}
@@ -74,7 +70,7 @@ export function McpWorkflowSection() {
                 if (!save.isPending) save.mutate(checked);
               }}
             />
-          </div>
+          </SwitchRow>
         </>
       )}
     </SettingCard>

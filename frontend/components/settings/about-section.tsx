@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { Copy } from "lucide-react";
 import { toast } from "sonner";
 
@@ -29,11 +30,13 @@ function CopyUpdateCommand() {
   );
 }
 
-function Row({ label, value }: { label: string; value: string }) {
+/** One term and its value. At 375 the pair wraps, and a 40-character Git SHA
+ *  breaks anywhere, instead of pushing the page sideways. */
+function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="flex items-baseline justify-between gap-4 px-3 py-2.5">
-      <span className="text-muted-foreground text-sm">{label}</span>
-      <span className="font-mono text-sm">{value}</span>
+    <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 py-2.5">
+      <dt className="text-muted-foreground text-sm">{label}</dt>
+      <dd className="min-w-0 text-sm wrap-anywhere">{children}</dd>
     </div>
   );
 }
@@ -56,29 +59,35 @@ export function AboutSection() {
       query={version}
     >
       {(data) => (
-        <div className="divide-y">
-          <Row label="Frontend" value={FRONTEND_VERSION} />
-          <Row label="Backend" value={data.version} />
-          <Row label="Schema revision" value={data.schema_revision} />
-          <Row label="Git SHA" value={data.git_sha ?? "not recorded"} />
-          <div className="flex items-center justify-between gap-4 px-3 py-2.5">
-            <span className="text-muted-foreground text-sm">Update</span>
+        <dl className="divide-y">
+          <Row label="Frontend">
+            <span className="font-mono">{FRONTEND_VERSION}</span>
+          </Row>
+          <Row label="Backend">
+            <span className="font-mono">{data.version}</span>
+          </Row>
+          <Row label="Schema revision">
+            <span className="font-mono">{data.schema_revision}</span>
+          </Row>
+          <Row label="Git SHA">
+            <span className="font-mono">{data.git_sha ?? "not recorded"}</span>
+          </Row>
+          <Row label="Update">
             <CopyUpdateCommand />
-          </div>
-          <div className="flex items-center justify-between gap-4 px-3 py-2.5">
-            <span className="text-muted-foreground text-sm">What&apos;s new</span>
+          </Row>
+          <Row label="What's new">
             {/* A static link, deliberately: the app itself never asks GitHub
                 anything — clicking this is the user opening their browser. */}
             <a
               href="https://github.com/seinun-ai/maestro-career-studio/releases"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-sm underline underline-offset-4 hover:no-underline"
+              className="underline underline-offset-4 hover:no-underline"
             >
               Release notes
             </a>
-          </div>
-        </div>
+          </Row>
+        </dl>
       )}
     </SettingCard>
   );

@@ -1,11 +1,13 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { createContext, useContext, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 
 import { LoadErrorState } from "@/components/load-error-state";
 import { isLoadFailure } from "@/lib/query-state";
 import {
   Card,
+  CardAction,
   CardContent,
   CardDescription,
   CardHeader,
@@ -37,6 +39,10 @@ import { Skeleton } from "@/components/ui/skeleton";
  *    background refetch fails while the editor is on screen, the editor stays;
  *    swapping it for an error panel would discard whatever the user was
  *    typing. Errors win on first load, data wins afterwards.
+ *
+ * 3. **The header has one action slot, filled from the body.** See
+ *    `SettingCardAction`. The title is a level-2 heading (`CardTitle` is a
+ *    `div`), so each tab panel reads as a list of named cards.
  */
 export type SettingQuery<T> = {
   data: T | undefined;
@@ -56,6 +62,17 @@ function firstMessage(queries: SettingQuery<unknown>[]): string | undefined {
   }
   return undefined;
 }
+
+/** The header's action node, filled once the card has committed. */
+const HeaderSlot = createContext<HTMLElement | null>(null);
+
+// Beside the title while the header has room; below the description when the
+// header is narrower than 28rem (every card at 375, and a header crowded by two
+// buttons at 768). The title and description sit in column 1 explicitly, so a
+// narrow header never flows the description into the action's column. Stacked,
+// a child that reserves width (the autosave status) starts at the left edge.
+const ACTION =
+  "flex flex-wrap items-center gap-2 empty:hidden @max-md/card-header:col-start-1 @max-md/card-header:row-span-1 @max-md/card-header:row-start-auto @max-md/card-header:justify-self-start @max-md/card-header:*:justify-start";
 
 export function SettingCard<T>({
   id,
@@ -83,45 +100,60 @@ export function SettingCard<T>({
   const queries: SettingQuery<unknown>[] = [query, ...(also ?? [])];
   const ready = queries.every((q) => q.data !== undefined);
   const loadFailed = queries.some((q) => isLoadFailure(q));
+  // A callback ref, not an effect: React sets it in the commit, and the body's
+  // portal renders into it on the next render.
+  const [slot, setSlot] = useState<HTMLElement | null>(null);
 
   return (
     <Card id={id}>
       <CardHeader>
-        <CardTitle>{title}</CardTitle>
-        {description ? <CardDescription>{description}</CardDescription> : null}
+        <CardTitle role="heading" aria-level={2} className="col-start-1">
+          {title}
+        </CardTitle>
+        {description ? (
+          <CardDescription className="col-start-1">{description}</CardDescription>
+        ) : null}
+        <CardAction ref={setSlot} className={ACTION} />
       </CardHeader>
-      <CardContent>
-        {loadFailed && !ready ? (
-          <LoadErrorState
-            className="py-8"
-            title={errorTitle}
-            detail={firstMessage(queries)}
-            retrying={queries.some((q) => q.isFetching)}
-            onRetry={() => {
-              for (const q of queries) void q.refetch();
-            }}
-          />
-        ) : !ready ? (
-          <Skeleton className={skeleton} />
-        ) : (
-          children(query.data as T)
-        )}
+      <CardContent className="@container/setting">
+        <HeaderSlot value={slot}>
+          {loadFailed && !ready ? (
+            <LoadErrorState
+              className="py-8"
+              title={errorTitle}
+              detail={firstMessage(queries)}
+              retrying={queries.some((q) => q.isFetching)}
+              onRetry={() => {
+                for (const q of queries) void q.refetch();
+              }}
+            />
+          ) : !ready ? (
+            <Skeleton className={skeleton} />
+          ) : (
+            children(query.data as T)
+          )}
+        </HeaderSlot>
       </CardContent>
     </Card>
   );
 }
 
 /**
- * Where the autosave indicator goes: top of the card body, right-aligned.
+ * Renders its children into the card header, right of the title: the autosave
+ * status, Persona's "Draft from my career", the model list's find buttons.
  *
- * The header is title-and-description only, on purpose. Every control a
- * settings card owns — this indicator, Persona's "Draft from my career",
- * the catalog's Sync buttons — is driven by state belonging to the editor
- * inside the body, so a header slot would mean lifting that state up through
- * an effect for a purely cosmetic placement. Market used to put the indicator
- * in the header and Job preferences in the body; this is the one answer, and
- * `SettingCard` gives the header no slot so the question cannot be reopened.
+ * A PORTAL, not a prop. Each of those is driven by state that belongs to the
+ * editor inside the body (the autosave queue, the draft request, the sync
+ * mutation); a header prop would mean lifting that state out through an effect
+ * for a placement. The portal leaves the state where it is and puts the DOM in
+ * the header, so a screen reader meets the status after the title and
+ * description and before the fields it describes. (It replaces the old status
+ * row at the top of the body, which left an empty row on a one-field card such
+ * as Market.) Nothing renders on the card's first frame; the slot fills on the
+ * next. One slot per card: a second `SettingCardAction` lands beside the first
+ * with nothing between them.
  */
-export function AutosaveRow({ children }: { children: ReactNode }) {
-  return <div className="mb-4 flex justify-end">{children}</div>;
+export function SettingCardAction({ children }: { children: ReactNode }) {
+  const slot = useContext(HeaderSlot);
+  return slot ? createPortal(children, slot) : null;
 }

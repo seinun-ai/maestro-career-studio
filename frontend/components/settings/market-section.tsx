@@ -12,7 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { AutosaveStatus } from "@/components/settings/autosave-status";
-import { AutosaveRow, SettingCard } from "@/components/settings/setting-card";
+import { SettingCard, SettingCardAction } from "@/components/settings/setting-card";
 import { apiFetch } from "@/lib/api";
 import type { MarketSettingResponse } from "@/lib/types";
 
@@ -67,9 +67,9 @@ export function MarketSection() {
         const current = data.supported.find((m) => m.key === selected);
         return (
           <div className="grid gap-4">
-            <AutosaveRow>
+            <SettingCardAction>
               <AutosaveStatus pending={save.isPending} failed={save.isError} />
-            </AutosaveRow>
+            </SettingCardAction>
             <div className="grid max-w-sm gap-1.5">
               <Label htmlFor="market-select" id="market-select-label">
                 Where you apply
@@ -101,7 +101,7 @@ export function MarketSection() {
             </div>
 
             {current && !current.offers_eeo && (
-              <p className="text-muted-foreground border-muted border-l-2 pl-3 text-xs">
+              <p className="text-muted-foreground max-w-prose text-xs">
                 Maestro CS has no verified voluntary-disclosure question set for{" "}
                 {current.label}, so it does not ask for one. Those categories are
                 not interchangeable between countries, and answering the wrong

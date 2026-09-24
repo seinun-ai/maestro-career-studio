@@ -125,8 +125,10 @@ _SETTINGS_CARDS = [
     "auto-apply-section.tsx",
     "autofill-section.tsx",
     "job-preferences-section.tsx",
+    "llm-endpoint.tsx",
     "market-section.tsx",
     "mcp-workflow-section.tsx",
+    "model-catalog-panel.tsx",
     "models-section.tsx",
     "persona-section.tsx",
     "prompts-section.tsx",
@@ -145,7 +147,8 @@ def test_settings_cards_route_through_the_shared_shell(filename: str):
     shell mandatory rather than merely available.
     """
     source = (_FRONTEND / "components/settings" / filename).read_text()
-    assert "<SettingCard" in source, (
+    # Not a substring test: `<SettingCardAction>` (the header slot) also starts with "<SettingCard".
+    assert re.search(r"<SettingCard[\s>]", source), (
         f"{filename} does not render through SettingCard. Every card that reads "
         "the API must, so its failure state is the shell's, not its own."
     )

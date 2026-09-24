@@ -508,7 +508,7 @@ def test_saved_key_is_a_hint_not_a_placeholder():
     src = _src("components/settings/models-section.tsx")
     assert "Saved · type to replace" not in src
     # Only a configured key has the hint line; the inputs align at the bottom.
-    assert re.search(r'className="grid items-end gap-3 sm:grid-cols-2">\s*<KeyField', src)
+    assert re.search(r'className="grid items-end gap-4 @lg/setting:grid-cols-2">\s*<KeyField', src)
     assert 'placeholderUnset="e.g. sk-..."' in src
     assert 'placeholderUnset="e.g. AIza..."' in src
     _order(
