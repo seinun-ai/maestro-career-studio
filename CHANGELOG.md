@@ -28,6 +28,13 @@ image tag is the same version with the leading `v` removed (`0.2.0`).
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-09-24
+
+### Breaking changes
+
+- None. The one migration adds a column and runs by itself at startup;
+  MCP tools and API routes are unchanged.
+
 ### Added
 
 - **Agent inbox.** Jobs an agent proposes live on their own page with their own
