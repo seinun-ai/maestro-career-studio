@@ -122,13 +122,9 @@ here are invariants, not style), and open an issue before a large change.
 
 ### Migrations in flight
 
-Three things are deliberately live in two forms at once. `SYSTEM.md` §13
+Two things are deliberately live in two forms at once. `SYSTEM.md` §13
 carries the full ledger with removal triggers.
 
-- **The database, for this one release.** SQLite is the store; the old
-  `postgres` service and its Docker volume stay in the compose file so that an
-  existing install can be imported on its first boot. The next release deletes
-  both.
 - **Two render engines.** LaTeX and Typst are both first-class and both
   supported. The default is LaTeX; a switch to Typst was considered and is on
   hold. Without TeX, LaTeX templates fall back to Typst with a `render_note`;
@@ -173,8 +169,6 @@ python -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev,mcp]"
 ```
-
-For one release only, importing an existing Postgres database from a host run — anything with `LEGACY_DATABASE_URL` set — also needs psycopg, which ships as its own extra: `pip install -e ".[dev,mcp,legacy-postgres]"`. The boot error names it if you hit it. The extra leaves with the `postgres` service in the next release.
 
 *Gotcha reminder (SYSTEM.md §9):* Beware of stale `.pth` files in virtual environments if you switch across Git worktrees or branches. Reinstall editable dependencies and restart clients (such as Claude Desktop) if imports unexpectedly point to older workspace directories.
 

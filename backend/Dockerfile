@@ -76,12 +76,10 @@ WORKDIR /app
 # platform after changing a dependency:
 #   docker run --rm -v "$PWD/backend:/w" -w /w python:3.12-slim \
 #     sh -c "pip install pip-tools && pip-compile --extra dev --extra mcp \
-#            --extra legacy-postgres --generate-hashes \
-#            --output-file requirements.lock pyproject.toml"
+#            --generate-hashes --output-file requirements.lock pyproject.toml"
 COPY pyproject.toml requirements.lock ./
-# legacy-postgres is a one-release extra (SYSTEM.md §13); drop it with that row.
 RUN pip install --no-cache-dir -r requirements.lock \
-    && pip install --no-cache-dir --no-deps -e ".[dev,legacy-postgres]"
+    && pip install --no-cache-dir --no-deps -e ".[dev]"
 
 COPY . .
 # Numeric, not `app:app`: when APP_GID matched an existing system group above,

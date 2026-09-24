@@ -28,6 +28,30 @@ image tag is the same version with the leading `v` removed (`0.2.0`).
 
 ## [Unreleased]
 
+### Breaking changes
+
+- **Postgres is gone.** The compose file no longer has a `postgres` service or
+  `pgdata` volume, and the backend no longer imports a Postgres database —
+  v0.4.0 was the release that did that. **On v0.3.0 or older? Update to v0.4.0
+  first**; `./scripts/update.sh` now spots an old Postgres volume that was never
+  imported, stops before changing anything, and prints the steps
+  ([`docs/UPDATING.md`](docs/UPDATING.md#coming-from-v030-or-older)). If an
+  older copy of the script already moved you past v0.4.0 and the app came up
+  empty, your data is still in the old volume and the same steps recover it.
+- `LEGACY_DATABASE_URL`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`
+  and `POSTGRES_HOST_PORT` are no longer read; leaving them in `.env` is
+  harmless. The `legacy-postgres` extra and `python -m
+  app.tools.migrate_from_postgres` are removed.
+
+### Changed
+
+- A fresh install downloads and runs two containers instead of three: no
+  Postgres image (about 170 MB to download, 660 MB on disk), no idle container,
+  no port 55432, no wait at first start.
+- After an update, `update.sh` suggests removing the old Postgres volume and
+  the `postgres:16` image when they are still on disk; `docs/UPDATING.md` has a
+  new "Freeing disk space" section.
+
 ## [0.4.0] — 2026-09-23
 
 ### Breaking changes

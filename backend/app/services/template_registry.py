@@ -356,11 +356,10 @@ def _needs_seed_validation(tmpl: Template) -> bool:
 # it is safe to replace with the current bundle; a user-edited row matches
 # nothing and is left alone. Pinned literals, checked against the frozen bytes
 # under tests/fixtures/templates_superseded/<seed_id>/<n>.tex.j2 — a wrong
-# digest is a silent no-op. Seed-time rather than alembic because
-# seeding.run_startup is migrations → legacy import → seed: on the cutover boot
-# a migration runs against an EMPTY file, then the importer lands the old
-# Postgres rows verbatim, and only seeding — which runs on every boot — ever
-# sees them. Whenever a bundled user template's bytes change, the bytes it had
+# digest is a silent no-op. Seed-time rather than alembic because rows that
+# v0.4.0 imported verbatim from the old Postgres database never passed through
+# a SQLite migration, and only seeding — which runs on every boot — ever sees
+# them. Whenever a bundled user template's bytes change, the bytes it had
 # become a version that shipped: freeze them as the next fixture and pin here
 # (CURRENT_SEED_DIGESTS below fails a test until that is done).
 SUPERSEDED_SEED_DIGESTS: dict[str, frozenset[str]] = {

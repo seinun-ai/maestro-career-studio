@@ -8,10 +8,10 @@ to roll back.
 **Contents:** [What the script does](#what-the-script-does) ·
 [Updating by hand](#updating-by-hand) ·
 [What happens to your data](#what-happens-to-your-data) ·
-[Moving from Postgres to the database file](#moving-from-postgres-to-the-database-file) ·
+[Coming from v0.3.0 or older](#coming-from-v030-or-older) ·
 [Rolling back](#rolling-back) ·
 [After updating](#after-updating) ·
-[Troubleshooting](#troubleshooting)
+[Freeing disk space](#freeing-disk-space)
 
 ## What the script does
 
@@ -40,33 +40,25 @@ script moves the folder to a release and downloads that same release.
 ## Updating by hand
 
 ```bash
-# 1. Back up the database.
+# 1. Back up the database (safe while the app runs)
 mkdir -p backups
-#    a) The normal case — the database file exists (safe while the app runs):
 ( umask 077; docker compose run --rm -T --no-deps backend python -m app.tools.backup_db --stdout | gzip > backups/db-manual.sqlite3.gz )
-#    b) Only if you are updating an install that still runs on Postgres
-#       (there is no data/maestro_cs.sqlite3 yet):
-docker compose up -d postgres
-docker compose exec -T postgres pg_dump --clean --if-exists -U app maestro_cs | gzip > backups/db-manual.sql.gz
 
 # 2. Move the folder to the newest release
 git fetch --tags origin
 git merge --ff-only "$(git tag -l 'v*' --sort=-v:refname | head -n1)"
 
 # 3. Download the app for that same release (the image tag has no leading v)
-TAG="$(git describe --tags --abbrev=0)"        # e.g. v0.1.2
-IMAGE_TAG="${TAG#v}" docker compose pull       # e.g. 0.1.2
+TAG="$(git describe --tags --abbrev=0)"        # e.g. v0.5.0
+IMAGE_TAG="${TAG#v}" docker compose pull       # e.g. 0.5.0
 IMAGE_TAG="${TAG#v}" docker compose up -d --force-recreate --remove-orphans
 ```
-
-`-U app` and `maestro_cs` in step 1b are the defaults (`POSTGRES_USER` /
-`POSTGRES_DB`); use your own values if you changed them in `.env`.
 
 - **`docker compose up -d` alone won't fetch a new release.** Docker reuses the
   copy it already downloaded until something pulls again — `docker compose pull`
   (or step 3) does that.
-- **Pinning a version: drop the `v`.** The git tag is `v0.1.2`; the image tag is
-  `0.1.2`. `IMAGE_TAG=v0.1.2` doesn't exist and the download fails. Set
+- **Pinning a version: drop the `v`.** The git tag is `v0.5.0`; the image tag is
+  `0.5.0`. `IMAGE_TAG=v0.5.0` doesn't exist and the download fails. Set
   `IMAGE_TAG` in `.env` to pin permanently, or inline as above for one command.
 - **Download or build.** `.env.example` sets `IMAGE_REGISTRY`, so installs
   download published images. Installs made before that have the line commented
@@ -88,68 +80,62 @@ your data, but **deleting the project folder deletes it.**
 starts, so the first start after an update can be slower; the script says it's
 waiting rather than sitting silent.
 
-**The backup.** Before changing anything, the script backs up whichever database
-is live, into `backups/`:
+**The backup.** Before changing anything, the script saves a snapshot of the
+database file to `backups/db-<timestamp>-<version>.sqlite3.gz` and prints the
+command to restore it — again if the app doesn't come back healthy. It keeps
+the last five.
 
-- `db-<timestamp>-<version>.sqlite3.gz` — a snapshot of the database file (the
-  normal case).
-- `db-<timestamp>-<version>.sql.gz` — a Postgres dump, on the one update that
-  moves an old install to the database file.
-- Both, if both databases hold data and the script can't tell which one the app
-  used. It takes both rather than guess.
+## Coming from v0.3.0 or older
 
-It prints the restore command for whatever it took, and again if the app doesn't
-come back healthy.
+Versions before v0.4.0 kept the database in Postgres. **v0.4.0 is the release
+that moves it into `data/maestro_cs.sqlite3`** (and checks the copy table by
+table); later versions can no longer read Postgres. So an install on v0.3.0 or
+older goes through v0.4.0 first:
 
-## Moving from Postgres to the database file
+```bash
+docker compose down
+[ -f data/maestro_cs.sqlite3 ] && mv data/maestro_cs.sqlite3 data/maestro_cs.sqlite3.not-imported
+rm -f data/maestro_cs.sqlite3-wal data/maestro_cs.sqlite3-shm
+git fetch --tags origin && git checkout v0.4.0
+IMAGE_TAG=0.4.0 docker compose pull && IMAGE_TAG=0.4.0 docker compose up -d --force-recreate
+```
 
-Older installs kept the database in Postgres. This release moves it into
-`data/maestro_cs.sqlite3`: the first start after updating imports the old
-database and checks the copy table by table (row counts plus a content hash)
-before using it. The old Postgres data stays where it was, so nothing depends on
-the import working first time — if it fails, the app refuses to start rather
-than come up empty, and nothing is deleted.
+Wait until `data/.migrated-from-postgres.json` exists (the first start writes
+it when the import succeeds), then run `./scripts/update.sh` to move to the
+newest version. Leave the `POSTGRES_*` values in `.env` as they were until
+then — the import reads them.
 
-- **Leave the `POSTGRES_*` values in `.env` as they are** until the import has
-  run; the import reads them.
-- **`./scripts/update.sh --check`** prints a `database:` line saying which one
-  is live.
-- **Once you're satisfied, you can delete the old data:**
-  `docker volume rm maestro-career-studio_pgdata`. Nothing reads it after a
-  successful import, and the next release removes the Postgres service.
-- A fresh install has nothing to import; it starts Postgres once, finds nothing,
-  and never reads it again.
+- **`./scripts/update.sh` spots this for you.** From v0.5.0 on, if it finds an
+  old Postgres volume that was never imported, `--check` warns and an update
+  stops before changing anything, printing these same steps.
+- **Did the app come up empty after updating from v0.3.0** (only the demo
+  resume)? An older copy of the script skipped v0.4.0. Your data is still in the
+  old Postgres volume — follow the steps above; the `mv` line sets the empty
+  database aside.
+- If the v0.4.0 import fails, it refuses to start rather than come up empty, and
+  nothing is deleted; `docker compose logs backend` names the cause. The v0.4.0
+  copy of this page has the full import troubleshooting.
 
 ## Rolling back
 
 Rolling back means three things together: the old version of the folder, the old
 app images, and the backup. Never load a backup into a newer database, and don't
-try Alembic downgrades — they've never been a supported path.
-
-**From a database-file snapshot (`.sqlite3.gz`)** — stop the app first, because
-the restore replaces a file it holds open:
+try Alembic downgrades — they've never been a supported path. Stop the app
+first, because the restore replaces a file it holds open:
 
 ```bash
 docker compose down
-git checkout v0.1.1                                     # the version you were on
+git checkout v0.4.0                                     # the version you were on
 gunzip -c backups/db-<timestamp>-<version>.sqlite3.gz > data/maestro_cs.sqlite3
 rm -f data/maestro_cs.sqlite3-wal data/maestro_cs.sqlite3-shm
-IMAGE_TAG=0.1.1 docker compose up -d --force-recreate
+IMAGE_TAG=0.4.0 docker compose up -d --force-recreate
 ```
 
 Delete the two helper files as shown — they belong to the database you just
 replaced. For the same reason, never copy the database file while the app is
 running; use the `backup_db` command from [Updating by hand](#updating-by-hand),
-which is safe on a running app.
-
-**From a Postgres dump (`.sql.gz`)** — for going back to a release that still
-used Postgres:
-
-```bash
-git checkout v0.1.1                                     # the version you were on
-IMAGE_TAG=0.1.1 docker compose up -d --force-recreate
-gunzip -c backups/db-<timestamp>-<version>.sql.gz | docker compose exec -T postgres psql -U app maestro_cs
-```
+which is safe on a running app. (Going back to v0.3.0 or older means Postgres;
+the v0.4.0 copy of this page covers that.)
 
 ## After updating
 
@@ -164,18 +150,29 @@ Docker can't update these two:
    tools. If you set the MCP server up with `./scripts/setup-mcp.sh`, re-run it
    too — it picks up new dependencies.
 
-## Troubleshooting
+## Freeing disk space
 
-**The app came up empty after updating.** Your data isn't gone. The first start
-after this update imports your old Postgres database, which needs the `postgres`
-service running at that moment. Check `docker compose logs backend | grep -i
-legacy`, leave the `POSTGRES_*` values in `.env` as they were, and run `docker
-compose up -d` again. The old Docker volume still holds every row.
+Docker keeps everything it has downloaded, so old versions pile up. Once the
+updated app works:
 
-**The backend won't start: "Importing the legacy Postgres database failed" or
-the source "cannot be reached".** That's deliberate — starting on an empty file
-would strand your data. Nothing was deleted and the import retries on the next
-start; the log lines above the message name the cause. To skip the import
-entirely, comment out the `LEGACY_DATABASE_URL` line in `docker-compose.yml`
-(after that, `./scripts/update.sh` needs `--force` to get past its local-edits
-check).
+```bash
+docker volume rm maestro-career-studio_pgdata
+```
+
+removes the old Postgres database, if your install ever had one — only after it
+was imported (see above). The script reminds you when it's there.
+
+```bash
+docker image rm postgres:16
+```
+
+removes the Postgres image (about 660 MB). Skip it if another project of yours
+uses that image.
+
+```bash
+docker image prune -a
+```
+
+removes every image no container is using — including previous Maestro CS
+versions, about 3 GB each. It also removes unused images from other projects,
+so check `docker image ls` first.

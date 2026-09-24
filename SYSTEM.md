@@ -88,10 +88,9 @@ backend/
                        jd_extraction, resume_lint, health_*, career_kb,
                        chat_agent, chat_tools, …)
     templates/         bundled .tex.j2 sources, typst_classic.typ and cover_letter.typ
-    tools/             operator tools, `python -m app.tools.<name>`: migrate_from_postgres (one release, §13), backup_db
+    tools/             operator tools, `python -m app.tools.<name>`: backup_db
   mcp_server/          FastMCP server (server.py tools → client.py httpx → REST)
   migrations/          alembic: ONE SQLite baseline (see §12 for the revision-id gotcha)
-  legacy_postgres/     the pre-SQLite chain + its alembic.ini; read ONLY by app/tools/migrate_from_postgres (§13)
   tests/               pytest on a throwaway SQLite file, no service; mcp_server/tests/ uses respx (no DB)
   scripts/             calibration + parity tooling (ats_*, template_parity), run from backend/
 frontend/              Next.js 16 (App Router) + React 19 + Tailwind v4 + Base UI-flavored
@@ -556,8 +555,8 @@ file to open.
   the transcript is the history — grounded via read-only `get_career_context`;
   conventions live in chat_system.txt. Prompt-file changes need the DB
   `prompt.chat_system` Setting row reset to take effect (settings page → reset,
-  or delete the row); the resync-on-deploy precedent (`86ac8658395f`) is boxed in
-  `legacy_postgres/`, so a new install needs a fresh migration on the SQLite chain to do it.
+  or delete the row); the resync-on-deploy precedent (`86ac8658395f`) was in the pre-SQLite chain
+  (gone since v0.5.0; read it at the v0.4.0 tag), so doing it now needs a fresh SQLite-chain migration.
 - **Persona draft** (`POST /api/settings/persona/draft`): one smart-model proposal grounded in the whole-KB
   compose/context + typed job preferences. Returns `{draft}` and persists **nothing** — Profile puts it into the
   persona editor as a dirty edit; only `PUT /api/settings/persona` saves; an empty Career KB 422s with an
@@ -647,8 +646,8 @@ with the failure mode that bought it. Code citing "§8" lands here.
   the one exception. Never open the container's file from the host while the backend runs: WAL needs shared
   memory the Docker Desktop mount does not promise — stop the stack or read a `backups/` snapshot.
   `SQLITE_JOURNAL_MODE=DELETE` (forwarded by compose, commented in `.env.example`) is the escape hatch for a
-  filesystem WAL cannot trust. Postgres survives one release, for the first-boot import only (§13
-  `postgres-to-sqlite`). If more than one stack or checkout runs on a machine, they differ by host ports
+  filesystem WAL cannot trust. There is no Postgres: v0.4.0 was the one release that imported a
+  pre-SQLite install (see the update bullet below). If more than one stack or checkout runs on a machine, they differ by host ports
   (`*_HOST_PORT` in each `.env`) and by `data/` directory — go by those, not by a database name.
 - **ATS calibration** — the engine is corpus-tunable, so measure, don't argue.
   `backend/scripts/ats_snapshot.py` prints a ranking table; `backend/scripts/ats_calibration.py` writes a
@@ -671,17 +670,14 @@ with the failure mode that bought it. Code citing "§8" lands here.
   the frontend image rebuilt — a stale image once made fixed UI look broken for a whole review.
 - **A USER updates instead** — `./scripts/update.sh`: online SQLite snapshot
   (`app.tools.backup_db --stdout` through the running backend container, else the checkout's own image tag —
-  `.env`'s `latest` can predate the tool; 0600, magic-byte checked; plus a `pg_dump` while a legacy Postgres
-  volume is live with no import marker) → ff-only to the newest `v*` tag → images pinned to that tag →
+  `.env`'s `latest` can predate the tool; 0600, magic-byte checked) → ff-only to the newest `v*` tag → images pinned to that tag →
   health poll → extension/MCP reminders (README "Updating"; `docs/RELEASING.md` cuts one). The tree is runtime here
   (unpacked extension, host MCP venv), so checkout and images move TOGETHER — a bare `docker compose pull`
-  skews an install. Contributors build. **This release's first boot imports a compose-era Postgres**
-  (`LEGACY_DATABASE_URL`, which compose BUILDS from `POSTGRES_*`) between `alembic upgrade head` and
-  seeding, verifies row counts + per-table content hashes inside the target transaction, writes
-  `data/.migrated-from-postgres.json` 0600, and FAILS CLOSED on any failure, an unreachable source included;
-  to skip it, comment the `LEGACY_DATABASE_URL` line out of `docker-compose.yml`. The CLI form is
-  `python -m app.tools.migrate_from_postgres` (`--replace` checkpoints the WAL before moving a target
-  aside). `update.sh --check` says which database is live.
+  skews an install. Contributors build. **Pre-v0.4.0 guard:** a `<project>_pgdata` volume with no
+  `data/.migrated-from-postgres.json` is a v0.3.0-or-older install whose data never moved; `--check` warns
+  and an update exits before touching anything, printing the import-through-v0.4.0 steps (docs/UPDATING.md).
+  A v0.3.0 user's OWN old script cannot run the guard — it jumps straight to the newest tag, and the app
+  comes up empty on a demo database; the same steps recover it (the data stays in the volume).
 - **Version identity**: the tag bakes into both images as `APP_VERSION`, served by `GET /api/version` with
   the live alembic revision; the frontend warns when its baked copy disagrees, unless either side STARTS
   WITH `dev` (local or dispatch build) = do not compare — which also keeps it off contributors.
@@ -696,8 +692,7 @@ with the failure mode that bought it. Code citing "§8" lands here.
   **container image** installs, so a published image is reproducible. After changing a dependency,
   regenerate the lock **on the target platform** (command in `backend/Dockerfile`; pip-compile on macOS/3.13
   produces wrong pins). CI's `dependency-audit` runs `pip-audit` against the lock — a new advisory failing
-  an unrelated PR is intended. `legacy-postgres` (psycopg) is a one-release extra (§13), installed by the
-  importer's CI job and the image, not by the suite.
+  an unrelated PR is intended.
 - **No Langfuse stack ships here** (the bundled compose file had fixed default secrets).
   `services/tracing.py` and the three `LANGFUSE_*` settings stay: tracing points at any instance the user
   runs; `langfuse_host` defaults to empty (the SDK falls back to Cloud).
@@ -853,9 +848,9 @@ citation. Priority lives in the item text, not in the ordinal.
 - **A GUI-launched process has no shell `PATH`** (2026-09-20): MacTeX at `/Library/TeX/texbin` is invisible
   to the desktop shell and to a Claude Desktop child, so a bare `pdflatex` does not resolve.
   `engines.find_pdflatex` searches the TeX homes after PATH, and every run spawns the resolved ABSOLUTE path.
-- **A seeded template copies its source only on INSERT** (2026-09-20): the legacy Postgres import lands rows
-  AFTER migrations run, so a migration rewriting a superseded seed would fire on an empty file and the
-  importer re-land the old bytes — hence `template_registry.SUPERSEDED_SEED_DIGESTS` resyncs at SEED time.
+- **A seeded template copies its source only on INSERT** (2026-09-20): v0.4.0's Postgres import landed rows
+  AFTER migrations ran, so a migration rewriting a superseded seed would have fired on an empty file and the
+  importer re-landed the old bytes — hence `template_registry.SUPERSEDED_SEED_DIGESTS` resyncs at SEED time.
 - **`foreign_keys` is per connection, and defaults OFF** (2026-09-19): `journal_mode` persists in the file,
   but `foreign_keys`/`synchronous`/`busy_timeout` reset on every connect, so 21 `ondelete=` cascades
   silently stopped. Every SQLite engine goes through `app.db.make_engine`, which sets them per connection.
@@ -969,14 +964,11 @@ evidence live in `git log SYSTEM.md`, not here.
 | `job-location-raw` | `jobs.location` (dual-written) → `location_raw` + city/state/country | both-live | Stage 1 (schema shim + `.location` property) already met. Stage 2: no reader of `jobs.location` remains, then `op.drop_column`. | small |
 | `explore-redirect` | `frontend/app/explore/page.tsx` → `/analytics` | ready-to-cut | Owner overrules the recorded keep-decision. Safe: it is a 307, not a 308 — no browser cached the mapping. | trivial |
 | `health-rewrite-cache` | unattended rewrite always-LLM → `bullet_rewrites` (NULL text = tried-ask) + ephemeral ask answers → `health_ask_answers` | new-is-default | Migration `85a1bb628e28` (now in `legacy_postgres/`; the tables are in the SQLite baseline). The LLM miss path is the intended fallback, not a second product — cut this row when a follow-up deletes either table or the GET `/api/resume-lint/{kind}/{key}/answers` rehydrate. | small |
-| `postgres-to-sqlite` | compose `postgres` service + `legacy_postgres/` chain → `data/maestro_cs.sqlite3` + one baseline | new-is-default | The next release ships. Then delete: `legacy_postgres/`, `app/tools/migrate_from_postgres.py`, `seeding._import_legacy_postgres`, `legacy_database_url`, `normalize_postgres_url`, the `legacy-postgres` extra (from BOTH the Dockerfile's editable install and the `pip-compile` recipe — the lock is what actually carries psycopg into the image; regenerate it) and CI job, the compose `postgres` service + `pgdata` volume + `LEGACY_DATABASE_URL`, every `POSTGRES_*` env key, `update.sh`'s pg_dump branch, and the three tests that exercise the boxed chain (`tests/test_kb_capture_resync.py`, `tests/test_template_date_resync.py`, `tests/test_template_section_order_resync.py`). `update.sh --check` must then say "install <this release> first" when a `pgdata` volume exists without `data/.migrated-from-postgres.json`. | medium |
 
 **Row notes** (only where the trigger hides a trap):
 
 - `typst-*`: strictly ordered flip → delete-latex → drop-texlive (the font is vendored, so the old
   drop-the-layer-changes-the-font trap is closed).
-- `latex-render-path`: alembic `9a0404101e5f`, from `legacy_postgres/`, reads `resume.tex.j2` off disk
-  during `upgrade()`. Deleting the file breaks the one-release legacy import.
 - `chat-selection-kind`: inverted today — the branch four comments call "legacy" is the only form the
   frontend emits (`scope-picker.tsx` sets `kind` on kb chips only), so `kind:"resume"` is unreachable and
   those comments mislead until stage 1 ships.

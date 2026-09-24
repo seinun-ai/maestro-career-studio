@@ -143,8 +143,8 @@ runtime dependency — the test suite adds no extra library for this.
 ## Dependency inventory
 
 Declared in `backend/pyproject.toml` and `frontend/package.json`. Everything
-here is permissive except psycopg, which is called out below rather than left
-buried in a table.
+here is permissive except libvips on the frontend, which is called out below
+rather than left buried in a table.
 
 **Backend (Python)**
 
@@ -152,7 +152,6 @@ buried in a table.
 |---|---|
 | FastAPI, SQLAlchemy, Alembic, Pydantic, pydantic-settings | MIT |
 | Uvicorn | BSD-3-Clause |
-| **psycopg 3 (`psycopg[binary]`, `legacy-postgres` extra)** | **LGPL-3.0** — see note |
 | openai (Python SDK) | Apache-2.0 |
 | fastembed | Apache-2.0 |
 | typst (Python binding) | Apache-2.0 |
@@ -165,23 +164,15 @@ buried in a table.
 | httpx (dev) | BSD-3-Clause |
 | mcp (MCP server extra) | MIT |
 
-> **psycopg is LGPL-3.0 while this project is Apache-2.0.** That combination is
-> fine and is the ordinary LGPL path: we use it unmodified, as a library,
-> through its public interface, and ship it as a separately installable package
-> inside the container, so a user can replace it. The LGPL terms attach to
-> psycopg, not to our code. Anyone who redistributes a *modified* psycopg, or
-> links it statically, takes on further obligations.
+> **`@img/sharp-libvips-*` is LGPL-3.0-or-later while this project is
+> Apache-2.0.** That combination is fine and is the ordinary LGPL path: libvips
+> arrives as a prebuilt platform binary pulled in by Next.js for image
+> optimization, used unmodified, as a separately replaceable library. The LGPL
+> terms attach to libvips, not to our code. Anyone who redistributes a
+> *modified* libvips, or links it statically, takes on further obligations.
 >
-> **It is here for one release.** SQLite is the only runtime database now.
-> psycopg reaches the image through the optional `legacy-postgres` extra —
-> installed by `backend/Dockerfile` and pinned in `backend/requirements.lock`,
-> so it does ship in the published image — and it is there for one purpose:
-> importing an existing Postgres database into the SQLite file at first boot.
-> The extra, and psycopg with it, goes when the `postgres` service does.
->
-> **The same applies to `@img/sharp-libvips-*` (LGPL-3.0-or-later)** on the
-> frontend — libvips arrives as a prebuilt platform binary pulled in by Next.js
-> for image optimization, unmodified and separately replaceable.
+> (v0.4.0 also shipped psycopg, LGPL-3.0, for its one-time Postgres import;
+> v0.5.0 removed it.)
 
 **Frontend (JavaScript)**
 

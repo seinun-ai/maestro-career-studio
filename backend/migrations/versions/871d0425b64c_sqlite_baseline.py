@@ -1,10 +1,9 @@
 """SQLite baseline.
 
-The 54-revision Postgres chain (head 85a1bb628e28) lives under
-backend/legacy_postgres/ for one release and is read only by
-app/tools/migrate_from_postgres.py (SYSTEM.md §13 postgres-to-sqlite). A
-fresh database starts here; runtime seeding (ensure_seed_templates,
-seeding.run_startup) covers what the old chain's data migrations did.
+It replaced a 54-revision Postgres chain (head 85a1bb628e28), which v0.4.0
+carried to import compose-era databases and v0.5.0 removed. A fresh database
+starts here; runtime seeding (ensure_seed_templates, seeding.run_startup)
+covers what the old chain's data migrations did.
 """
 from typing import Sequence, Union
 

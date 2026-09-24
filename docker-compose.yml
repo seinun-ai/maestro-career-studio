@@ -2,36 +2,10 @@
 # MCP declaration can name `maestro-career-studio-backend-1` as a literal —
 # Codex plugin manifests support no ${VAR} interpolation, so it cannot be a
 # variable. COMPOSE_PROJECT_NAME still overrides this; an existing install that
-# relied on the folder name moves to a different volume, so see docs/RELEASING.md.
+# relied on the folder name gets new container names, so see docs/RELEASING.md.
 name: maestro-career-studio
 
 services:
-  # ONE release only (SYSTEM.md §13 postgres-to-sqlite). The backend imports
-  # this database into ./data/maestro_cs.sqlite3 at its first boot and never
-  # reads it again; the next release deletes this service, the pgdata volume
-  # below, and the POSTGRES_* keys. Remove the volume yourself once satisfied:
-  #   docker volume rm maestro-career-studio_pgdata
-  postgres:
-    image: postgres:16
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-app}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-app}
-      POSTGRES_DB: ${POSTGRES_DB:-maestro_cs}
-    security_opt:
-      - no-new-privileges:true
-    ports:
-      # Bound strictly to localhost for security (zero authentication on services).
-      # 55432, not 5432: the standard port collides with any locally installed
-      # PostgreSQL. Override POSTGRES_HOST_PORT in .env if even this is taken.
-      - "127.0.0.1:${POSTGRES_HOST_PORT:-55432}:5432"
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-app} -d ${POSTGRES_DB:-maestro_cs}"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-
   backend:
     # Pull or build, same file. `.env.example` ships IMAGE_REGISTRY set to
     # ghcr.io/seinun-ai/maestro-career-studio, so a fresh clone PULLS the published
@@ -50,17 +24,9 @@ services:
         APP_GID: ${APP_GID:-1000}
     security_opt:
       - no-new-privileges:true
-    # The first-boot Postgres import runs at startup, so it must be healthy.
-    depends_on:
-      postgres:
-        condition: service_healthy
     environment:
       # The runtime database is the SQLite file under /app/data (bind-mounted
-      # below); DATABASE_URL is deliberately NOT set. This is the compose-era
-      # database the first boot imports, one release only (see the postgres
-      # service above). The backend refuses to boot if it cannot reach it, so
-      # keep the postgres service until data/.migrated-from-postgres.json exists.
-      LEGACY_DATABASE_URL: postgresql://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD:-app}@postgres:5432/${POSTGRES_DB:-maestro_cs}
+      # below); DATABASE_URL is deliberately NOT set.
       # Empty = WAL, the default. DELETE is the escape hatch for a bind-mount
       # filesystem whose shared-memory semantics SQLite cannot trust. The app
       # reads this from the container environment, and scrub_empty_env treats
@@ -149,6 +115,3 @@ services:
       # reaches the API through this same origin, so a changed host port needs
       # no other edit except the extension card's app URL.
       - "127.0.0.1:${FRONTEND_HOST_PORT:-3000}:3000"
-
-volumes:
-  pgdata:

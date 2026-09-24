@@ -8,8 +8,7 @@
     "scripts.backfill_work_auth",
     "scripts.template_parity",
     "migrations.env",
-    "app.tools.backup_db",
-    "app.tools.migrate_from_postgres"
+    "app.tools.backup_db"
   ],
   "duplication_ignore": [
     "**/tests/**",
@@ -21,11 +20,8 @@
     "**/*.test.ts",
     "**/migrations/**",
     "**/.slop-baseline.json",
-    "**/graphify-out/**",
-    "**/legacy_postgres/**"
+    "**/graphify-out/**"
   ],
   "allowed_clones": [],
-  "duplication_ignore_reasons": {
-    "**/legacy_postgres/**": "one-release copy of the pre-SQLite alembic chain + its alembic.ini (SYSTEM.md §13 postgres-to-sqlite); read only by app.tools.migrate_from_postgres and deleted with that row. Not an allowed_clones pair: that matcher pairs file NAMES by substring and would also hide backend/alembic.ini's own future clones."
-  }
+  "duplication_ignore_reasons": {}
 }

@@ -16,29 +16,8 @@ VENDORED_FONTS_DIR = Path(__file__).resolve().parent / "assets" / "fonts" / "xch
 
 # The one relational file (SYSTEM.md §3), created under data_dir; its -wal/-shm
 # sidecars sit beside it. app/db.py imports this so every path that names the
-# file (engine, backup, importer) spells it the same way.
+# file (engine, backup) spells it the same way.
 DB_FILENAME = "maestro_cs.sqlite3"
-
-
-def normalize_postgres_url(value: str) -> str:
-    """Force the psycopg v3 dialect onto a bare postgresql:// URL. Used ONLY by
-    the legacy importer (app/tools/migrate_from_postgres.py); delete with it
-    (SYSTEM.md §13 postgres-to-sqlite).
-
-    SQLAlchemy maps the bare scheme to psycopg2, which this project does not
-    install (`psycopg[binary]>=3.2`). Every URL reaching `create_engine` must go
-    through here.
-
-    Module-level, not just a validator, because `TEST_DATABASE_URL` is read
-    straight from the environment by `app/db.py` and `migrations/env.py` and so
-    never touches Settings at all. That gap shipped: both read a bare
-    `postgresql://` and got the psycopg2 dialect, which worked on any machine
-    with psycopg2 lying around — including the maintainer's — and died on the
-    first clean CI box with `ModuleNotFoundError: No module named 'psycopg2'`.
-    """
-    if value.startswith("postgresql://"):
-        return "postgresql+psycopg://" + value[len("postgresql://") :]
-    return value
 
 
 def _split_env_list(value, *, extra_separator: str | None = None) -> list[str]:
@@ -77,12 +56,8 @@ class Settings(BaseSettings):
     # Empty = derived from data_dir after validation (see _derive_database_url).
     # Set it only to point at another FILE: sqlite:////absolute/path.sqlite3.
     # Any non-sqlite URL, Postgres included, is refused on purpose: SQLite is the
-    # only runtime database and the legacy importer is the only Postgres reader
-    # (SYSTEM.md §13).
+    # only database (SYSTEM.md §3).
     database_url: str = ""
-    # ONE release only (SYSTEM.md §13 postgres-to-sqlite): the compose-era
-    # Postgres database to import at first boot. Unset = nothing to import.
-    legacy_database_url: str = ""
     # WAL is right on a local disk. The escape hatch exists for filesystems whose
     # shared-memory semantics SQLite cannot trust (some Docker Desktop bind-mount
     # backends): set DELETE there. Only these two values are accepted.
@@ -116,10 +91,8 @@ class Settings(BaseSettings):
         if backend != "sqlite":
             raise ValueError(
                 "DATABASE_URL is not a SQLite file URL; Postgres is no longer a runtime "
-                "database. "
-                "Leave DATABASE_URL unset; a compose-era database is imported into the "
-                "SQLite file automatically at boot when LEGACY_DATABASE_URL is set "
-                "(or run: python -m app.tools.migrate_from_postgres)."
+                "database. Leave DATABASE_URL unset. A database from v0.3.0 or older is "
+                "imported by v0.4.0 (docs/UPDATING.md)."
             )
         return value
 

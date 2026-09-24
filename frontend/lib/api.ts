@@ -86,7 +86,7 @@ function networkErrorMessage(original: string): string {
   return (
     `Cannot reach the API (${label}). ` +
     `Usually the FastAPI server is not listening on port 8001. From the repo root run ` +
-    `docker compose up (or docker compose up postgres backend if you only run Next.js locally). ` +
+    `docker compose up -d (or docker compose up -d backend if you only run Next.js locally). ` +
     `Check with: curl http://localhost:8001/health — expect {"status":"ok"}. ` +
     `Original error: ${original}`
   );

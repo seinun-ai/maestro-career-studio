@@ -235,11 +235,10 @@ app, and waits until it's healthy again. `./scripts/update.sh --check` tells you
 whether you're up to date without changing anything. (It needs bash — on
 Windows, run it under WSL.)
 
-> **Updating an install from before the database moved to a file?** This release
-> moves your data from Postgres into `data/maestro_cs.sqlite3`. The first start
-> imports it and checks the copy before using it; your old data stays in place
-> and nothing is deleted. Leave the `POSTGRES_*` values in `.env` until the
-> import has run. Read [`docs/UPDATING.md`](docs/UPDATING.md) before you update.
+> **On v0.3.0 or older?** Those versions kept your data in Postgres, and only
+> v0.4.0 can move it into the database file — so update to v0.4.0 first. The
+> script spots this and prints the steps;
+> [`docs/UPDATING.md`](docs/UPDATING.md#coming-from-v030-or-older) has them too.
 
 **Your data is safe during updates.** Your resumes, applications and settings are
 ordinary folders on your disk, and no update step touches them. **Deleting the
@@ -708,8 +707,7 @@ Another program is using a port the app needs. Change `FRONTEND_HOST_PORT`
 (3000) or `BACKEND_HOST_PORT` (8001) in `.env` and run `docker compose up -d`
 again (`lsof -i :<port>` shows what's using it). If you change the backend port,
 the browser extension needs the new address too — see
-[`extension/README.md`](extension/README.md). While this release still runs the
-old Postgres service for the import, `POSTGRES_HOST_PORT` (55432) is a third.
+[`extension/README.md`](extension/README.md).
 
 **AI features fail with "401 Unauthorized" or quota errors:**
 Check the key in **Settings → Models** and press **Test**. If you put the key in
@@ -728,5 +726,6 @@ LaTeX templates need TeX, which the app's Docker image includes. If you run the
 backend outside Docker without TeX, LaTeX templates build through a Typst
 template instead and the app says so.
 
-**The app came up empty after updating, or won't start after updating:**
-Your data isn't gone — see [Troubleshooting in `docs/UPDATING.md`](docs/UPDATING.md#troubleshooting).
+**The app came up empty after updating from v0.3.0 or older:**
+Your data isn't gone — it's still in the old Postgres volume. See
+[Coming from v0.3.0 or older](docs/UPDATING.md#coming-from-v030-or-older).

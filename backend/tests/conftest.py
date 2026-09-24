@@ -83,8 +83,7 @@ def _validate_test_db_url(url: str | None) -> str:
     if parsed.get_backend_name() != "sqlite":
         raise RuntimeError(
             "TEST_DATABASE_URL must be a sqlite:/// URL. SQLite is the only runtime "
-            "database (SYSTEM.md §3); Postgres reaches the app only through "
-            "app/tools/migrate_from_postgres.py."
+            "database (SYSTEM.md §3)."
         )
     if not parsed.database or parsed.database == ":memory:":
         raise RuntimeError(
