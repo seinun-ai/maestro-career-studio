@@ -110,7 +110,7 @@ const NEEDS_YOU = {
  *
  * The tracker's wording wins because it is the DOCUMENTED one: SYSTEM.md §5
  * step 2 defines the agent lane as proposed / queued / needs_you / skipped, and
- * `AGENT_LANE_LABELS` in the Applications filter already says exactly that.
+ * `AGENT_LANE_LABELS` in the Jobs page filter already says exactly that.
  * Of the states the tracker never renders, approved keeps its literal name;
  * submitted reads Applied and submission_uncertain Check if sent (the owner's
  * chip words, appendix D §0).

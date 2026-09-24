@@ -55,7 +55,7 @@ export default function RouteError({
         <Button
           variant="ghost"
           nativeButton={false}
-          render={<Link href="/applications">Back to applications</Link>}
+          render={<Link href="/applications">Back to Jobs</Link>}
         />
       </div>
     </main>

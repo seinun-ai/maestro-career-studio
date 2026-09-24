@@ -47,7 +47,7 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
   {
     label: "Job search",
     items: [
-      { href: "/applications", label: "Applications", icon: Inbox },
+      { href: "/applications", label: "Jobs", icon: Inbox },
       { href: "/proposals", label: "Agent inbox", icon: Bot },
       { href: "/referrals", label: "Referrals", icon: Handshake },
     ],

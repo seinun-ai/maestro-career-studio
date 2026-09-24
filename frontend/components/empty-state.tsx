@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 /**
  * The one empty state for list surfaces.
  *
- * There were three: Applications used a dashed box with an icon, a heading, a
+ * There were three: Jobs (then Applications) used a dashed box with an icon, a heading, a
  * sentence and a CTA; Proposals used centred text inside a plain Card;
  * Referrals used a single muted sentence with no box at all. Same moment in the
  * same product, told three ways — and the weakest of them (a bare sentence) gave
@@ -51,10 +51,10 @@ export function EmptyState({
 /**
  * The container a data table sits in on a list page.
  *
- * Applications wrapped its table in a bare `rounded-xl border` div while
+ * Jobs wrapped its table in a bare `rounded-xl border` div while
  * Referrals wrapped an identical table in a full Card with its own title —
  * so the same content had a heading on one page and not the other, and two
- * different containment treatments. This is the Applications shape, which is
+ * different containment treatments. This is the Jobs page's shape, which is
  * the right one: the page header already names the surface, so a card title
  * repeating it is a second heading for one thing.
  */

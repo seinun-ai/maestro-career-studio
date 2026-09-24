@@ -6,7 +6,7 @@ import type { Proposal } from "./types";
  */
 
 /** Score floors the toolbar offers ("Score 70+"): a preset Select keeps the
- *  toolbar one row of the same control, as on Applications. */
+ *  toolbar one row of the same control, as on Jobs. */
 export const SCORE_FLOORS = [50, 60, 70, 80] as const;
 export type ScoreFloor = (typeof SCORE_FLOORS)[number];
 

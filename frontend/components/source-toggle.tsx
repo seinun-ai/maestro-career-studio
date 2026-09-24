@@ -7,18 +7,27 @@ import { cn } from "@/lib/utils";
 export const SOURCES = ["all", "user", "agent"] as const;
 export type SourceFilter = (typeof SOURCES)[number];
 
-/** Segmented All / You / Agents provenance filter — shared by Applications
- * tracker and Analytics Overview. "Agents" are connected agents (MCP clients). */
+/** Segmented provenance filter, shared by the Jobs page and Analytics Overview.
+ * "Agents" are connected agents (MCP clients). The first segment's word is the
+ * caller's: Jobs says "Tracked" (its default set leaves agent finds out) and
+ * Analytics keeps "All" (every application). The values, and so `?source=`
+ * deep links, are the same everywhere. */
 export function SourceToggle({
   value,
   onChange,
   onPreview,
+  allLabel = "All",
+  label = "Filter by who found it",
   className,
 }: {
   value: SourceFilter;
   onChange: (next: SourceFilter) => void;
   /** A segment is hovered or focused: its list may be about to show. */
   onPreview?: (next: SourceFilter) => void;
+  /** The `all` segment's word. */
+  allLabel?: string;
+  /** The group's accessible name. */
+  label?: string;
   className?: string;
 }) {
   return (
@@ -28,7 +37,7 @@ export function SourceToggle({
         className,
       )}
       role="group"
-      aria-label="Filter by who found it"
+      aria-label={label}
     >
       {SOURCES.map((s) => (
         <button
@@ -46,7 +55,7 @@ export function SourceToggle({
           )}
         >
           {value === s && <Check className="size-3" aria-hidden="true" />}
-          {s === "all" ? "All" : s === "user" ? "You" : "Agents"}
+          {s === "all" ? allLabel : s === "user" ? "Yours" : "Agents"}
         </button>
       ))}
     </div>

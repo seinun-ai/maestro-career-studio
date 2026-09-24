@@ -1,6 +1,6 @@
 /**
  * The sidebar section a route belongs to when its URL does not say so. A job
- * page is a row of the Applications tracker (Saved jobs included) unless it
+ * page is a row of the Jobs page (`/applications`) unless it
  * was opened from the proposals queue, whose Back button it then shows.
  *
  * `from` is the `?from=` value: `null` when the URL has none, `undefined` when

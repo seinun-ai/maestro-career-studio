@@ -109,6 +109,11 @@ _RULES: tuple[tuple[str, re.Pattern[str], str], ...] = (
     ("extract", re.compile(r"\bextract(?:s|ed|ion|ing)?\b", re.I), "save, read, or find"),
     ("evidence", re.compile(r"\bevidence\b", re.I), "say what shows it"),
     ("versioned", re.compile(r"\bversioned\b", re.I), "you can undo it"),
+    (
+        "Applications page",
+        re.compile(r"^Applications$|\b(?:in|to|on|from) Applications\b|\b[Bb]ack to applications\b"),
+        "the page is Jobs; an application is still an application",
+    ),
 )
 
 # (file, phrase): deliberate exceptions. Each must still occur, so the list shrinks.
@@ -122,6 +127,10 @@ _ALLOWED: frozenset[tuple[str, str]] = frozenset(
         # A legal waiver box the Companion may tick (extension/shared/policy.js),
         # not the health check's "waive".
         ("frontend/components/settings/autofill-section.tsx", "waiver"),
+        # A COUNT of actual applications (linked to a referral; one base
+        # resume's), not the page, which is Jobs.
+        ("frontend/app/referrals/page.tsx", "Applications"),
+        ("frontend/components/analytics/base-summary-cards.tsx", "Applications"),
         # Load-order errors for a developer; the panel never shows them.
         ("extension/panel/actions.js", "panel/actions"),
         ("extension/panel/stages.js", "panel/stages"),

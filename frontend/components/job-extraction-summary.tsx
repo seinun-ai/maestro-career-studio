@@ -55,7 +55,7 @@ export function JobExtractionSummary({
           <p className="text-muted-foreground text-sm">
             Saved to{" "}
             <Link href="/applications?status=saved" className="underline">
-              Applications
+              Jobs
             </Link>
             .
           </p>

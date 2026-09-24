@@ -38,8 +38,8 @@ and the screen speaks plainly ("item", "bullet", "Career history"). Do not
 
 | Term | Definition | On screen | Aliases to avoid in code and prose |
 | --- | --- | --- | --- |
-| **Job** | A job posting the user has captured | job (its text is the job description; its page the job post) | posting, JD, listing, req |
-| **Application** | The user's pursuit of one job, from tailoring through outcome | application; the page listing them is Applications | submission, app |
+| **Job** | A job posting the user has captured | job (its text is the job description; its page the job post); the page listing saved jobs and applications is Jobs | posting, JD, listing, req |
+| **Application** | The user's pursuit of one job, from tailoring through outcome | application (listed on the Jobs page) | submission, app |
 | **Tailoring Session** | The working draft between a base resume and an application, where edits accumulate before commit | gap analysis | session, draft, workspace |
 | **Quick Tailor** | A one-shot tailor whose resolutions are planned from the saved profile instead of reviewed at the checkpoint; a Tailoring Session is still created underneath | Quick tailor | fast tailor, instant tailor |
 | **Artifact** | A rendered output file belonging to one application — resume PDF, cover letter, Q&A | PDF, cover letter, answers | output, document, deliverable |

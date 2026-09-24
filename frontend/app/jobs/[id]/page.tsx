@@ -235,7 +235,7 @@ export default function JobDetailPage({
     focusIfDropped(actionsRef.current && focusTarget(actionsRef.current));
   }, [triagedStatus]);
 
-  // Prev/next: proposals list writes cs-proposals-seq; Applications writes
+  // Prev/next: proposals list writes cs-proposals-seq; Jobs (/applications) writes
   // cs-tracker-seq. ?from=proposals selects which queue and back target.
   const sequence = useMemo<string[]>(
     () =>
@@ -300,7 +300,7 @@ export default function JobDetailPage({
             <Button
               variant="outline"
               nativeButton={false}
-              render={<Link href="/applications">Back to applications</Link>}
+              render={<Link href="/applications">Back to Jobs</Link>}
             />
           }
         />
@@ -367,7 +367,7 @@ export default function JobDetailPage({
               label={
                 fromProposals
                   ? "Previous job in Agent inbox"
-                  : "Previous job in list"
+                  : "Previous job in Jobs"
               }
               icon={<ChevronLeft className="size-4" />}
               size="icon-sm"
@@ -391,7 +391,7 @@ export default function JobDetailPage({
             so the page rendered with no title at all below ~600px. */}
         <header className="flex flex-wrap items-start gap-3">
           <IconButton
-            label={fromProposals ? "Back to Agent inbox" : "Back to applications"}
+            label={fromProposals ? "Back to Agent inbox" : "Back to Jobs"}
             icon={<ArrowLeft className="size-4" />}
             size="icon-sm"
             className="mt-1.5 shrink-0"
@@ -671,7 +671,7 @@ export default function JobDetailPage({
           {nextJobId ? (
             <IconButton
               label={
-                fromProposals ? "Next job in Agent inbox" : "Next job in list"
+                fromProposals ? "Next job in Agent inbox" : "Next job in Jobs"
               }
               icon={<ChevronRight className="size-4" />}
               size="icon-sm"

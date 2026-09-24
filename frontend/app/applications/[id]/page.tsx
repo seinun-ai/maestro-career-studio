@@ -49,7 +49,7 @@ export default function ApplicationDetailRedirect({
           <Button
             variant="outline"
             nativeButton={false}
-            render={<Link href="/applications">Back to applications</Link>}
+            render={<Link href="/applications">Back to Jobs</Link>}
           />
         </main>
       );
@@ -65,7 +65,7 @@ export default function ApplicationDetailRedirect({
             <Button
               variant="outline"
               nativeButton={false}
-              render={<Link href="/applications">Back to applications</Link>}
+              render={<Link href="/applications">Back to Jobs</Link>}
             />
           }
         />

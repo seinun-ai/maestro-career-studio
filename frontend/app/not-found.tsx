@@ -18,7 +18,7 @@ export default function NotFound() {
       </p>
       <Button
         nativeButton={false}
-        render={<Link href="/applications">Back to applications</Link>}
+        render={<Link href="/applications">Back to Jobs</Link>}
       />
     </main>
   );

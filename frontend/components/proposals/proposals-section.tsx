@@ -312,7 +312,7 @@ export function ProposalsSection() {
     [expandedDays, newestDay],
   );
 
-  // On-screen order for job-page prev/next (same pattern as Applications'
+  // On-screen order for job-page prev/next (same pattern as the Jobs page's
   // cs-tracker-seq). History only when that lane is expanded.
   useEffect(() => {
     const visible: Proposal[] = [

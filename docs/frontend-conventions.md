@@ -510,7 +510,7 @@
   768` (`hooks/use-mobile.ts`), so the sidebar becomes a sheet only BELOW
   768 — at exactly 768 the 256px rail is still pinned and a `max-w-6xl` page
   has 462px of usable width. Test tables and toolbars at 768, not just 1280
-  and 375. The Applications table carries `minWidth="52rem"` because
+  and 375. The Jobs table carries `minWidth="52rem"` because
   `table-fixed` cannot grow a starved column. The base studio's Contact
   block is the worked case: its read grid is `@xs:grid-cols-[8rem_minmax(0,1fr)]`
   with `wrap-anywhere`, and below 20rem each label/value pair stacks, so a
@@ -520,7 +520,7 @@
   (`components/list-toolbar.tsx`, `<Table minWidth stickyHeader>`). A list
   page whose list can outgrow the window does two things:
   - it puts its search, filter and sort row in `ListToolbar` (one per page:
-    a direct child of `PageShell` on Applications, inside `ProposalsSection`'s
+    a direct child of `PageShell` on Jobs, inside `ProposalsSection`'s
     wrapper in the Agent inbox), with `ListSearch` (`components/list-search.tsx`)
     as its search box;
   - it gives its table a `minWidth` from `MIN_WIDTH` plus `stickyHeader`.
@@ -540,7 +540,7 @@
   **A header sticks only while its table fits.** Sideways scrolling and
   window stickiness cannot share a box, so below its `minWidth` (the
   `@min-[…]/table` container query) the table scrolls sideways and the
-  header scrolls away; the toolbar still sticks. Applications: both stick at
+  header scrolls away; the toolbar still sticks. Jobs: both stick at
   1280 with the sidebar pinned and at 1024 with it collapsed; only the
   toolbar at 1024 pinned, 768 and 375.
   **Nothing sticks below 40rem of height, or in print.** `tall:` is
@@ -893,14 +893,14 @@
   current and renders with the `default` (primary) variant, keeping that
   geometry; it stays `fab` on every other route. It rests flat
   and hover raises it one level: a resting shadow read as permanently hovered.
-  It is the one Add job per screen, so the Applications header renders
+  It is the one Add job per screen, so the Jobs header renders
   its own button only while `useSidebarHidden()` holds (collapsed, or the sheet
   closed below 768px), exactly when the FAB cannot be seen. The empty
   tracker's ghost Add job is the deliberate exception: an empty state
   offers its pathway as a control, not only a sentence (NN/g). Every nav link,
   the FAB included, takes `aria-current` from `navCurrent()` (`lib/nav.ts`):
   `"page"` on the route, `"true"` inside it (a studio under Base resumes).
-  `/jobs/*` is not its own item: `navSection` maps it to Applications, or to
+  `/jobs/*` is not its own item: `navSection` maps it to Jobs, or to
   the Agent inbox when `?from=proposals`, read with `useSearchParams`.
   **`useSearchParams` under the root layout needs a `<Suspense>` boundary**:
   without one `next build` fails (`next dev` does not catch it). With it, the
@@ -923,7 +923,7 @@
   what a press does, never the mechanism: "Hide sidebar" in the sidebar,
   "Show sidebar" on the reveal pill, and `SidebarTrigger`'s own name follows
   the open state. Groups:
-  **Job search** (Applications, Agent inbox, Referrals), **Career library** (Career history,
+  **Job search** (Jobs, Agent inbox, Referrals), **Career library** (Career history,
   Base resumes, Templates), **Tools** (Assistant, Analytics); the pinned button
   above the groups is **Add job**; Profile + Settings
   pinned in `SidebarFooter`. The Agent inbox item carries a Needs-you count:
@@ -944,11 +944,11 @@
   === filter`, the trailing clause so the active filter can never vanish under
   the user who picked it (re-check if the control changes again). An unknown
   `?status=` falls back to `all` via the `FILTERS.includes` guard. The status
-  filter and All/You/Agents write the URL with `router.replace(…, { scroll:
-  false })`: the default scrolls to the top, off the rows being read
+  filter and the source toggle (Tracked, Yours, Agents) write the URL with
+  `router.replace(…, { scroll: false })`: the default scrolls to the top, off the rows being read
   (`test_a_filter_change_keeps_the_scroll_position`).
 - Naming: the no-application state is **Saved** everywhere; the tracker
-  page/nav is **Applications**. A proposal you passed on is **Skipped**, the
+  page/nav is **Jobs** (see *Canonical terms*). A proposal you passed on is **Skipped**, the
   verb **Skip** — never "Declined"/"Rejected": application `rejected` means
   the COMPANY rejected you, proposal `rejected` means YOU passed. DISPLAY
   only — the stored status stays `rejected`, as do the identifiers
@@ -1078,6 +1078,14 @@
     **Add job** (the sidebar, the tracker, `/new`'s title "Add a job") and
     **Save job** (its submit and the Companion's), never New application or
     Extract job: a job becomes an application when you tailor or apply.
+    **Jobs** (the page at `/applications` and its sidebar item, which list
+    saved jobs as well as applications), never Applications as a page name
+    (the ratchet's "Applications page" rule; a count of actual applications
+    keeps the word). Its source toggle reads **Tracked** (your saved jobs and
+    every application, agent ones included: agent finds nobody proposed or
+    applied to are only under Agents), **Yours** and **Agents**; Analytics'
+    reads **All**, since it counts every application, **Yours** and **Agents**.
+    The URL, `?status=`/`?source=` and the `cs-tracker-*` keys keep their names.
     **Refresh details**, never re-extract. **gap analysis**, never session
     or tailoring session. **Quick tailor**, always capitalized, never Fast
     tailor; its settings are Quick tailor settings. **Create PDF** and

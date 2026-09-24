@@ -134,7 +134,7 @@ def test_new_application_names_the_key_before_the_paste():
     # Placeholders are example values only (conventions: microcopy rules).
     assert "Paste the full job description here" not in page
     assert '<Label htmlFor="source_url" optional>' in page
-    assert "Saved jobs appear in Applications, ready to score." in page
+    assert "Saved jobs appear on the Jobs page, ready to score." in page
 
 
 def test_disabled_extract_explains_itself():

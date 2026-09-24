@@ -143,12 +143,13 @@ file to open.
    extract, dedup) → summary card ("This job is already saved." on dedup). Or Companion/MCP
    `store_extracted_jd` → `POST /api/jobs/ingest` (pre-extracted; the client
    agent is the extractor by design).
-2. **Track** — `/applications`: the tracker. Two queries (summary list with
-   server-joined job fields + saved jobs of the toggle's source), a grouped status `Select` with
-   counts, inline `StatusChip` per row (PATCHes directly), search, sort, and
-   an All/You/Agents provenance `SourceToggle` (counts follow the toggle;
-   `?source=` deep-linkable). "Saved" = job with no application — agent-captured
-   jobs stay out unless the toggle is `Agents` (agent inventory lives in the Agent inbox,
+2. **Track** — **Jobs** (`/applications`; the URL, `?status=`/`?source=` and `cs-tracker-*` keep their
+   names): the tracker. Two queries (summary list with server-joined job fields + saved jobs of the
+   toggle's source), a grouped status `Select` with counts, inline `StatusChip` per row (PATCHes
+   directly), search, sort, and a Tracked/Yours/Agents provenance `SourceToggle` (counts follow the
+   toggle; `?source=` deep-linkable; Analytics' copy reads All, as it counts every application).
+   "Saved" = job with no application — agent-captured jobs stay out unless the toggle is `Agents`,
+   which is why the default reads Tracked, not All (agent inventory lives in the Agent inbox,
    `/proposals`, whose lanes are one table: `lib/inbox-lanes.ts`). Filter groups: All/Saved,
    **Your applications** and **Agent inbox** (`proposed`/`queued`/`needs_you`/`skipped`, from
    the newest `proposal_status`); `skipped` absorbs proposal `rejected` AND `expired`, while
@@ -812,10 +813,6 @@ citation. Priority lives in the item text, not in the ordinal.
 35. Settings seed race: `text_settings.get_text` lazily INSERTs a missing `Setting` row and commits, so two first
     reads at once both insert and one fails on the key; the commit also ends an open transaction (hence
     `POST /api/proposals` reads `get_settings` before `begin_write`). Seed at startup or insert-or-ignore.
-36. Owner's calls (not bugs): the price figures in "Which model should I pick?" (`models-section.tsx`
-    `ModelProfileNote`); the autofill Gender options (Male, Female, Decline) and the "restrictive covenant"
-    wording; whether the Applications page and sidebar item, which also list saved jobs, should be "Jobs",
-    and with it that the tracker's "All" segment hides agent-found saved jobs (only "Agents" lists them).
 37. ATS reads "Mon YYYY" dates only (`resume_indexer.parse_month_year`): "2021-03", "03/2021", "2021" leave a
     job undated (the UI says so). More formats move scores: calibrate first (§9 `ats_calibration`).
 38. A double-clicked "Tailor resume" opens and closes its confirm; with the backend down, every card on

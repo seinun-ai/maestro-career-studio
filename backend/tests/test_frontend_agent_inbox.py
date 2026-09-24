@@ -1,7 +1,7 @@
 """Pins: the Agent inbox (docs/plans/2026-09-23-ux-ia-appendix-a-agent-inbox.md).
 
 The page is named for what it is, keeps one number from the funnel, filters
-in one row like Applications, says who can file a proposal when there are
+in one row like Jobs, says who can file a proposal when there are
 none, admits a cut list, and names who filed each proposal. Node tests cover
 lib/needs-you.ts, lib/inbox-filter.ts and lib/agent-name.ts; they are not in
 CI, so the branches that matter are pinned here.
@@ -38,7 +38,7 @@ def _name() -> str:
 def test_the_inbox_is_called_agent_inbox_wherever_it_is_named():
     assert 'title="Agent inbox"' in _PAGE
     assert "Jobs your connected agents found. Nothing is submitted without your yes." in _PAGE
-    assert 'fromProposals ? "Back to Agent inbox" : "Back to applications"' in _JOB
+    assert 'fromProposals ? "Back to Agent inbox" : "Back to Jobs"' in _JOB
     assert '"Previous job in Agent inbox"' in _JOB
     assert '"Next job in Agent inbox"' in _JOB
     assert "Open Agent inbox" in _PANEL

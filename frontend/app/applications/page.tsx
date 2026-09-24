@@ -491,9 +491,10 @@ function ApplicationsContent() {
   return (
     <PageShell>
       <PageHeader
-        title="Applications"
-        // Agent-found jobs sit under Agents by design (SYSTEM §5 step 2); All says so.
-        subtitle="Every job you've saved or applied to. Jobs a connected agent found are under Agents."
+        title="Jobs"
+        // What Tracked (the default) lists; agent-found jobs sit under Agents by
+        // design (SYSTEM §5 step 2), and the subtitle says so.
+        subtitle="Jobs you saved and every application. Jobs a connected agent found are under Agents."
         actions={
           // The sidebar's FAB is THE Add job while it is showing (M3:
           // a FAB's action is not repeated on its screen). The sidebar slides
@@ -557,6 +558,11 @@ function ApplicationsContent() {
           </Select>
           <SourceToggle
             className="ml-auto"
+            // Your saved jobs and every application, agent ones included:
+            // not "All", since agent finds nobody proposed or applied to are
+            // only under Agents.
+            allLabel="Tracked"
+            label="Filter jobs by source"
             value={source}
             onChange={setSourceAndUrl}
             // Hover or focus on Agents starts its fetch, so the first switch
@@ -570,7 +576,7 @@ function ApplicationsContent() {
 
       {loadFailed ? (
         <LoadErrorState
-          title="Couldn't load your applications."
+          title="Couldn't load your jobs."
           detail={loadErrorDetail(apps.error ?? savedJobs.error)}
           retrying={apps.isFetching || savedJobs.isFetching}
           onRetry={() => {
@@ -592,7 +598,7 @@ function ApplicationsContent() {
             icon={Inbox}
             title={
               allRows.length === 0
-                ? "No applications yet"
+                ? "No jobs yet"
                 : "Nothing matches this filter"
             }
             description={

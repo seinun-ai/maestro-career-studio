@@ -145,7 +145,7 @@ export default function NewApplicationPage() {
         {/* No key: the amber notice above already says why, and names the button. */}
         {needsKey ? null : (
           <p className="text-muted-foreground text-sm">
-            Saved jobs appear in Applications, ready to score.
+            Saved jobs appear on the Jobs page, ready to score.
           </p>
         )}
       </div>

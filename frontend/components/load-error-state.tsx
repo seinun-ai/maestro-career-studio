@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils";
  *
  * The failure it exists for is silent: react-query leaves `data` undefined after
  * an error, so `if (isLoading || !data)` never lets go and a list built from
- * `data ?? []` renders its EMPTY state. The Applications tracker showed the
+ * `data ?? []` renders its EMPTY state. The Jobs page (then Applications) showed the
  * new-user onboarding card to anyone whose pipeline failed to fetch — the app
  * confidently reporting the opposite of the truth.
  *

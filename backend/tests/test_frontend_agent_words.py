@@ -29,7 +29,7 @@ def _read(rel: str) -> str:
 
 # (file, gone, present)
 _WORDS = [
-    ("components/source-toggle.tsx", '"You" : "Agent"}', '"You" : "Agents"}'),
+    ("components/source-toggle.tsx", '"You" : "Agent"}', '"Yours" : "Agents"}'),
     ("components/career/points-list.tsx", 'mcp: "Agent",', 'mcp: "Connected agent",'),
     ("components/career/points-list.tsx", 'chat: "Capture",', 'chat: "Assistant",'),
     # A5 row 21: the origin chip's hover names the writer in words, never a slug ("claude-ai").
