@@ -41,6 +41,7 @@ from tests.extension_panel_harness import (
     DECISIONS_JS,
     EXTENSION,
     OTHER_URL,
+    PANEL_CSS,
     PANEL_SOURCE,
     SCORES,
     SETTINGS_REPLY,
@@ -438,6 +439,18 @@ def test_before_a_fill_the_stage_offers_a_choice_and_reports_nothing(tmp_path):
     # Nothing has been injected and nothing has been asked of the page: the
     # panel prepares a tab when the user asks for something that needs it.
     assert [msg for msg in out["sent"] if msg["type"] == "panel_prepare"] == []
+
+
+def test_the_mode_labels_wrap_evenly_in_the_narrowest_panel():
+    """At 320px (the side panel's narrowest) "Saved answers + AI" needs two
+    lines, and a greedy wrap strands "AI" under "Saved answers +". Balanced,
+    both segment labels break the same way ("Saved / answers + AI"), checked in
+    Chrome for Testing at 320px."""
+    rule = re.search(r"^\.seg button \{([^}]*)\}", PANEL_CSS, re.M)
+    assert rule and "text-wrap: balance" in rule.group(1)
+    # A line height, so a two-line label is not two lines drawn on top of
+    # each other (the rule used to set `/1`).
+    assert re.search(r"font:\s*600 12px/1\.25\b", rule.group(1))
 
 
 def test_the_stage_on_a_page_with_no_form_says_where_filling_happens(tmp_path):
