@@ -112,9 +112,9 @@ CORE_SECTION_TITLES = frozenset(
     }
 )
 
-TITLE_COLLISION_MESSAGE = (
-    "Title collides with a core section header. Choose a different title."
-)
+# The frontend's twin is lib/resume-schema.ts TITLE_COLLISION_MESSAGE; the two
+# say the same words (tests/test_frontend_copy_merge.py).
+TITLE_COLLISION_MESSAGE = "A section with this name already exists. Choose another name."
 
 # Lowercase slug: starts alphanumeric, then alphanumeric / underscore / hyphen.
 _SECTION_KEY_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")

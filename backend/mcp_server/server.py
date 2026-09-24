@@ -353,7 +353,8 @@ def kb_list_entities(kind: str | None = None, status: str | None = None) -> Any:
     """List Career KB entities with their IDs (get_career_context returns prose
     with no IDs, so start here before editing anything). Optionally filter by
     kind (experience|project|education|certification|extra) or status
-    (ongoing|completed|archived). Each item carries point_count and draft_count."""
+    (ongoing|completed|archived). Each item carries point_count, draft_count and
+    approved_count (the bullets a resume can use; retired ones are in point_count only)."""
     return _client.list_kb_entities(kind=kind, status=status)
 
 

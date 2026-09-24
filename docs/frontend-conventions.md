@@ -1070,7 +1070,9 @@
     Approve, Stop using, Use again); "Bullet style" is the glyph setting and
     score points stay "points". **Add to career history**, **Add from career
     history**, **Add to a resume**, **Copy to another resume**, **Import
-    resumes**, never Sync to KB, Send to resume or Port. **ATS score**,
+    resumes** (the resume-only import) and **Import resumes and documents**
+    (the upload dialog's title and every button that opens it), never Sync
+    to KB, Send to resume or Port. **ATS score**,
     spelled out once per surface where it first appears ("An ATS score (0 to
     100) is our estimate of how an applicant tracking system would rate each
     resume for this job.": it is the app's estimate, `lib/ats-words.ts`
@@ -1106,8 +1108,7 @@
     Analytics use the same words, and Analytics' **In progress** replaces In
     flight. **base resume** and **tailored resume**; **resume** without
     accents, and US English. A deliberate exception goes on the ratchet's
-    `_ALLOWED` list with its reason; files a copy task has not swept yet sit
-    in its pending block, whose counts only go down.
+    `_ALLOWED` list with its reason; every other file holds no banned word.
   - *Errors*: "Couldn't <what failed>." then what to do next. Build it with
     `couldnt(what, err)` from `lib/error-text.ts`; a load error passes
     `errorDetail(err)`. A server's `detail` reaches the screen only when it
@@ -1118,8 +1119,10 @@
     developer steps never do. `lib/api.ts` (and the `/api` proxy route) write
     the can't-reach-the-server words for a desktop user and log the
     developer detail with `console.error`. Pinned by
-    `test_frontend_error_words.py`, whose ratchet counts every raw
-    `err.message` a toast, a load error or a JSX child still shows.
+    `test_frontend_error_words.py`, which fails on any raw `err.message` a
+    toast, a load error or a JSX child would show outside its three
+    allowlisted readers. A message that is already a sentence keeps one full
+    stop when a frame joins it (`schemaIssuesWords` drops its own).
   - *Separators and marks*: `·` separates facts only in a dense metadata row
     (a card's meta line, a chip row); never inside a label, a hint, a status
     line or a sentence, and never for "and", "then" or "optional". No "/"
@@ -1247,7 +1250,7 @@
   invalidate it. `/new` names a missing key BEFORE the paste: an amber notice
   with Add API key, and a disabled Save job whose `aria-describedby` points at
   it, since a disabled button says nothing about why. A failed status fetch
-  blocks nothing. With no base resume the Score tab offers Import resumes
+  blocks nothing. With no base resume the Score tab offers Import resumes and documents
   (Score my resumes could only return an empty list) and scores once the import
   dialog CLOSES, on a settled none-to-some change. Scoring sooner unmounted the
   dialog before the user confirmed each resume's role, and a cached `[]` must
@@ -1257,7 +1260,7 @@
   returns the refetch, so it stays pending until the list lands: the skeleton
   hands straight to the cards with no "No ATS scores yet." frame. The dialog
   renders once, beside the body and never inside the prompt; on close, focus
-  returns to Import resumes while the prompt still shows it (Cancel, Escape,
+  returns to that button while the prompt still shows it (Cancel, Escape,
   nothing imported), else to the panel's `tabIndex={-1}` wrapper (`finalFocus`
   as a function). The skeleton that covers the first-visit auto-run requires
   `scores.isSuccess`: a failed refetch keeps its old `[]`, and without the

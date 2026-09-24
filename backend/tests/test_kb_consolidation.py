@@ -463,9 +463,7 @@ def test_consolidate_endpoint_surfaces_salvage_warnings(client, monkeypatch):
     )
     assert r.status_code == 200, r.text
     warnings = r.json()["warnings"]
-    assert any(
-        w.startswith("r.md: ") and "experience" in w for w in warnings
-    ), warnings
+    assert "r.md: Couldn't read 1 item in Experience, so it was left out." in warnings, warnings
 
 
 def test_consolidate_endpoint_unparseable_file_422(client, monkeypatch):

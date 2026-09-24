@@ -136,16 +136,10 @@ function AtsScoreCard({
         )}
         {(score.coverage_warning || score.subscores_json?.coverage_warning) && (
           <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-2 text-xs text-amber-800 dark:text-amber-300">
+            {/* The server's sentence already gives the counts ("Your resume shows only 1 of this job's 8 skills (13%)."). */}
             <p className="font-medium">
               {score.coverage_warning || score.subscores_json?.coverage_warning}
             </p>
-            {(score.jd_skills_extracted_count || score.subscores_json?.jd_skills_extracted_count) ? (
-              <p className="mt-0.5 text-[11px] opacity-80">
-                We recognized only {score.jd_skills_matched_count ?? score.subscores_json?.jd_skills_matched_count ?? 0} of
-                the job&apos;s {score.jd_skills_extracted_count ?? score.subscores_json?.jd_skills_extracted_count ?? 0} skills
-                ({Math.round(((score.coverage_ratio ?? score.subscores_json?.coverage_ratio ?? 0) * 100))}%).
-              </p>
-            ) : null}
           </div>
         )}
         {openSession ? (
@@ -422,7 +416,7 @@ export function AtsScorePanel({
               Import your resumes to score this job against each one.
             </p>
             <Button ref={importButtonRef} size="sm" onClick={() => setImportOpen(true)}>
-              Import resumes
+              Import resumes and documents
             </Button>
           </div>
         );

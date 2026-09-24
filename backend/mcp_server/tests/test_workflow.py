@@ -46,10 +46,10 @@ def test_ties_break_on_slug_so_the_pick_is_stable():
 
 def test_coverage_warning_is_a_table_level_caveat():
     out = workflow.rank_bases([
-        _score("a", 40.0, coverage="I could not read this posting"),
-        _score("b", 38.0, coverage="I could not read this posting"),
+        _score("a", 40.0, coverage="Your resume shows only 1 of this job's 8 skills (13%)."),
+        _score("b", 38.0, coverage="Your resume shows only 1 of this job's 8 skills (13%)."),
     ])
-    assert out["coverage_warning"] == "I could not read this posting"
+    assert out["coverage_warning"] == "Your resume shows only 1 of this job's 8 skills (13%)."
 
 
 def test_application_rows_are_ignored():
@@ -123,7 +123,7 @@ def test_coverage_warning_can_differ_across_bases_and_only_the_winner_counts():
     # disagree on coverage even though they were scored against one JD.
     out = workflow.rank_bases([
         _score("a", 80.0, coverage=None),
-        _score("b", 50.0, coverage="I could not read this posting"),
+        _score("b", 50.0, coverage="Your resume shows only 1 of this job's 8 skills (13%)."),
     ])
     assert out["recommended"] == "a"
     assert out["coverage_warning"] is None

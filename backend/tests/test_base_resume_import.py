@@ -161,10 +161,10 @@ def test_a_provider_outage_is_a_502_not_a_bad_file(client, monkeypatch):
 
 
 def test_salvage_warnings_reach_the_client(client, monkeypatch):
-    _fake_parse(monkeypatch, warnings=["dropped 1 unparseable projects item(s)"])
+    _fake_parse(monkeypatch, warnings=["Couldn't read 1 item in Projects, so it was left out."])
     r = client.post("/api/base-resumes/import", files=_upload("r.txt", b"t"))
     assert r.status_code == 200
-    assert r.json()["parse_warnings"] == ["dropped 1 unparseable projects item(s)"]
+    assert r.json()["parse_warnings"] == ["Couldn't read 1 item in Projects, so it was left out."]
 
 
 def test_the_size_cap_is_a_413(client):

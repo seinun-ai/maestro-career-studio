@@ -11,11 +11,11 @@ The ratchet counts RAW sites: an error's own message (`err.message`,
 `String(err)`, a stream's `event.detail`) put on screen by a toast
 (`toast.error(…)`, `toast.warning(…)`), a load error's `detail={…}`, a JSX
 child (`{query.error.message}`), or a helper that hands it on (`return
-err.message`, `x = err instanceof Error ? err.message : …`). Files a wave-3 copy
-task has not converted yet sit in that task's `_PENDING_T*` block with their
-count, which may only go down (docs/plans/2026-09-23-ux-ia-copy.md, Tasks
-17-21). `python tests/test_frontend_error_words.py` from backend/ prints the
-counts as they are.
+err.message`, `x = err instanceof Error ? err.message : …`). No file may hold one beyond its `_ALLOWED` count: the
+wave-3 copy tasks (docs/plans/2026-09-23-ux-ia-copy.md, Tasks 17-21) drove
+every other file to zero and the pending blocks went with the last merge.
+`python tests/test_frontend_error_words.py` from backend/ prints the counts as
+they are.
 """
 
 from __future__ import annotations
@@ -58,13 +58,6 @@ _ALLOWED: dict[str, int] = {
     # plain sentence (errorDetail).
     "lib/error-text.ts": 1,
 }
-
-# Raw-message sites a wave-3 copy task has not converted yet, one block per
-# task, so two lanes never edit the same lines. A task lowers its counts as it
-# goes and deletes its block when it lands. Tasks 22-23 have no block: the
-# Companion panel and the server are not scanned here.
-_BLOCKS: tuple[dict[str, int], ...] = ()
-_PENDING: dict[str, int] = {rel: n for block in _BLOCKS for rel, n in block.items()}
 
 
 def _read(rel: str) -> str:
@@ -112,21 +105,11 @@ def _counts() -> Counter[str]:
 
 def test_no_raw_error_text_reaches_the_screen():
     now = _counts()
-    bad = {rel: n for rel, n in now.items() if rel not in _PENDING and n > _ALLOWED.get(rel, 0)}
+    bad = {rel: n for rel, n in now.items() if n > _ALLOWED.get(rel, 0)}
     assert not bad, f"use couldnt(what, err) or errorDetail(err) from lib/error-text.ts: {bad}"
 
 
-def test_pending_error_sites_only_shrink():
-    now = _counts()
-    grew = {rel: f"{now[rel]} now, {cap} pending" for rel, cap in _PENDING.items() if now[rel] > cap}
-    done = {rel: f"{now[rel]} now, {cap} pending" for rel, cap in _PENDING.items() if now[rel] < cap}
-    assert not grew, f"new raw error text in a file not yet converted (never raise a count): {grew}"
-    assert not done, f"lower these _PENDING counts (delete the row at 0): {done}"
-
-
-def test_each_pending_file_has_one_owner_and_the_allowlist_is_current():
-    owners = Counter(rel for block in _BLOCKS for rel in block)
-    assert not [rel for rel, n in owners.items() if n > 1]
+def test_the_allowlist_is_current():
     now = _counts()
     assert {rel: now[rel] for rel in _ALLOWED} == _ALLOWED
 

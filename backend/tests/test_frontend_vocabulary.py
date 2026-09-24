@@ -20,9 +20,9 @@ code string never trips a word rule.
 
 `_ALLOWED` lists the deliberate exceptions as (file, phrase). A phrase that no
 longer matches anything fails `test_allowlist_is_current`, so the list only
-shrinks. The files a wave-3 copy task has not swept yet sit in that task's
-`_PENDING_T*` block with their violation count, which may only go down
-(docs/plans/2026-09-23-ux-ia-copy.md, Tasks 17-22). `python
+shrinks. Every other file holds no banned word: the wave-3 copy tasks
+(docs/plans/2026-09-23-ux-ia-copy.md, Tasks 17-22) swept them all and the
+pending blocks went with the last merge. `python
 tests/test_frontend_vocabulary.py` from backend/ prints the counts as they are.
 """
 
@@ -477,35 +477,11 @@ def _counts() -> Counter[str]:
     return Counter(rel for rel, *_rest in violations())
 
 
-# Files a wave-3 copy task has not swept yet: {file: violations left}, one
-# block per task of docs/plans/2026-09-23-ux-ia-copy.md (each maps to a group
-# of appendix D), so two lanes never edit the same lines. A task lowers its
-# counts as it goes and deletes its block when it lands; the last one deletes
-# `_PENDING` itself. Task 23 (D §9, server-written messages) has no block:
-# this scan reads the frontend and the Companion panel only.
-_BLOCKS: tuple[dict[str, int], ...] = ()
-_PENDING: dict[str, int] = {rel: n for block in _BLOCKS for rel, n in block.items()}
-
-
 def test_ui_words_follow_the_glossary():
-    bad = [v for v in violations() if v[0] not in _PENDING]
+    bad = violations()
     assert not bad, "banned UI words (docs/frontend-conventions.md, Canonical terms):\n" + "\n".join(
         f"{rel}:{line}: [{name}] {text!r} -> {why}" for rel, line, name, text, why in bad
     )
-
-
-def test_pending_files_only_shrink():
-    now = _counts()
-    grew = {rel: f"{now[rel]} now, {cap} pending" for rel, cap in _PENDING.items() if now[rel] > cap}
-    done = {rel: f"{now[rel]} now, {cap} pending" for rel, cap in _PENDING.items() if now[rel] < cap}
-    assert not grew, f"new banned words in a file not yet swept (fix them; never raise a count): {grew}"
-    assert not done, f"lower these _PENDING counts (delete the row at 0): {done}"
-
-
-def test_each_pending_file_has_one_owner():
-    owners = Counter(rel for block in _BLOCKS for rel in block)
-    assert not [rel for rel, n in owners.items() if n > 1]
-    assert all(n > 0 for n in _PENDING.values())
 
 
 def test_allowlist_is_current():

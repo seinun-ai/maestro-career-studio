@@ -170,7 +170,7 @@ file to open.
    consent/submit decision stays human.
 4. **Score** — Score & Tailor auto-scores all active bases on first visit; per-base
    cards → "Analyze gaps & tailor" creates a session. With no base resume the tab
-   offers Import resumes instead, and scores once the import dialog closes.
+   offers Import resumes and documents instead, and scores once that dialog closes.
 5. **Gap analysis** — `/jobs/[id]/tailor/[sessionId]`: per-gap resolutions
    (add_keyword / user_input / attach_project / skip + enable_entry /
    port_kb_point — see §4; plus cannot_confirm on claim-asking gaps: skip for the

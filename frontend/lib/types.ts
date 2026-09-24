@@ -666,6 +666,8 @@ export interface KBEntitySummary {
   end_date: string | null;
   point_count: number;
   draft_count: number;
+  /** Bullets that go on a resume (`point_count` also holds drafts and Not used). */
+  approved_count: number;
   document_count: number;
   last_activity: string;
   section_key?: string | null;
@@ -1318,12 +1320,13 @@ interface GapsJson {
   engine_version: string;
   config_version: string;
   /**
-   * JD-comprehension signal (`services/gap_analysis.py`). Optional because a
-   * Docker backend predating the field returns gaps_json without it — same
-   * reasoning as the `tier` fallback on build-areas rows. When
-   * `coverage_warning` is set, the engine recognised too little of the posting
-   * for the gap list to mean anything, and an empty list must NOT be shown as
-   * "no gaps found".
+   * Skill-coverage signal (`services/ats/engine.py` `_calc_coverage_signal`,
+   * copied by `services/gap_analysis.py`). Optional because a Docker backend
+   * predating the field returns gaps_json without it — same reasoning as the
+   * `tier` fallback on build-areas rows. `coverage_warning` is set when the
+   * resume shows under a quarter of the job's skills, or the job names none;
+   * it is the server's whole sentence, shown as is, and an empty gap list must
+   * then NOT be shown as "no gaps found".
    */
   jd_skills_extracted_count?: number;
   jd_skills_matched_count?: number;

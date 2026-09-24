@@ -21,7 +21,7 @@ const buttonVariants = cva(
         tonal:
           "bg-secondary-container text-on-secondary-container hover:bg-secondary-container-hover",
         // M3 extended FAB: the ONE create action on a screen (the sidebar's
-        // New application). Primary container is M3's default FAB colour. A
+        // Add job). Primary container is M3's default FAB colour. A
         // FAB in a rail rests flat and hover raises it one level; a resting
         // shadow read as permanently hovered.
         fab: "bg-primary-container text-on-primary-container hover:bg-primary-container-hover hover:shadow-sm",

@@ -75,7 +75,7 @@ export default function CareerPage() {
               className="rounded-full px-4"
               onClick={() => setImportOpen(true)}
             >
-              <Upload aria-hidden="true" /> Add files
+              <Upload aria-hidden="true" /> Import resumes and documents
             </Button>
             <Button
               className="rounded-full px-4"

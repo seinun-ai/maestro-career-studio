@@ -746,12 +746,8 @@ export default function TailorSessionPage({
           <div className="border-amber-500/30 bg-amber-500/10 animate-fade-rise flex items-start gap-3 rounded-xl border p-4 text-amber-900 dark:text-amber-200">
             <TriangleAlert className="size-5 shrink-0 text-amber-700 dark:text-amber-400 mt-0.5" />
             <div className="space-y-1 text-sm">
+              {/* The server's sentence already gives the counts. */}
               <p className="font-medium">{gapsJson.coverage_warning}</p>
-              {gapsJson.jd_skills_extracted_count ? (
-                <p className="text-xs text-muted-foreground">
-                  We recognized only {gapsJson.jd_skills_matched_count ?? 0} of the job&apos;s {gapsJson.jd_skills_extracted_count} skills ({Math.round((gapsJson.coverage_ratio ?? 0) * 100)}%).
-                </p>
-              ) : null}
             </div>
           </div>
         )}

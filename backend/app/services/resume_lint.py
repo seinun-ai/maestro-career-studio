@@ -63,7 +63,8 @@ LADDER_COPY: dict[str, dict[str, str]] = {
         "how": "Rewrite to name the specific action you personally took.",
     },
     "adjacent": {
-        "issue": "Specific, but carries no number.",
+        "issue": "Specific, but has no number.",
+        "id_key": "Specific, but carries no number.",  # frozen, see _fid
         "why": "You say what you built; you don't say what it did.",
         "how": "Add the metric that measures it.",
         "question": "What number measures this: users, rows, percent or time saved?",

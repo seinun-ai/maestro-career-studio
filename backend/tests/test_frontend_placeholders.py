@@ -5,9 +5,9 @@ text (docs/frontend-conventions.md, Microcopy rules, *Placeholder*). The one
 exception is a short ellipsis prompt in a search box, the Assistant composer or
 a chip add-row, allowed only when the file and the exact string are on
 ``_PROMPTS``. ``SelectValue`` and image ``placeholder`` props are not inputs.
-Placeholders a wave-3 copy task has not removed yet sit on that task's
-``_PENDING_EXAMPLES_T*`` block with how often each appears, which may only go
-down (docs/plans/2026-09-23-ux-ia-copy.md, Tasks 17-21).
+The wave-3 copy tasks (docs/plans/2026-09-23-ux-ia-copy.md, Tasks 17-21)
+removed every example placeholder; their pending blocks went with the last
+merge.
 
 Values are the attribute or object-key expressions themselves: string
 literals, template literals, ternaries, ``??`` and ``||`` (both sides), the
@@ -25,7 +25,6 @@ Those are components that hand a caller's value on; each caller's own
 from __future__ import annotations
 
 import re
-from collections import Counter
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -57,14 +56,6 @@ _PROMPTS = frozenset(
         ("components/resume-editor/education-editor.tsx", "Add course" + _ELLIPSIS),
     }
 )
-
-# Example placeholders a wave-3 copy task has not removed yet: {(file, value):
-# times the scan reads it}. One block per task so lanes never edit the same
-# lines; a task lowers its counts as it goes and deletes its block when it
-# lands. The wave-2 lanes already removed the Agent inbox's score example and
-# the examples in the Settings cards they rewrote.
-_EXAMPLE_BLOCKS: tuple[dict[tuple[str, str], int], ...] = ()
-_PENDING_EXAMPLES: dict[tuple[str, str], int] = {key: n for block in _EXAMPLE_BLOCKS for key, n in block.items()}
 
 # The only expressions allowed to stay unresolved: values handed on from a
 # caller (whose own site is scanned) and the image placeholder's type line.
@@ -396,7 +387,7 @@ def collect() -> list[tuple[str, int, str | None, str]]:
 def _passes(rel: str, value: str | None, expr: str) -> bool:
     if value is None:
         return (rel, expr) in _PASS_THROUGH
-    return _allowed(rel, value) or (rel, value) in _PENDING_EXAMPLES
+    return _allowed(rel, value)
 
 
 def violations() -> list[str]:
@@ -414,19 +405,6 @@ def _seen() -> set[tuple[str, str | None]]:
 def test_blank_fields_hold_no_text_but_a_named_prompt():
     bad = violations()
     assert not bad, "a placeholder other than a named search, composer or chip prompt:\n" + "\n".join(bad)
-
-
-def test_pending_examples_only_shrink():
-    now = Counter((rel, value) for rel, _line, value, _expr in collect() if value is not None and not _allowed(rel, value))
-    grew = {key: f"{now[key]} now, {cap} pending" for key, cap in _PENDING_EXAMPLES.items() if now[key] > cap}
-    done = {key: f"{now[key]} now, {cap} pending" for key, cap in _PENDING_EXAMPLES.items() if now[key] < cap}
-    assert not grew, f"a pending example was copied again (remove it; never raise a count): {grew}"
-    assert not done, f"lower these _PENDING_EXAMPLES counts (delete the row at 0): {done}"
-
-
-def test_each_pending_example_has_one_owner():
-    owners = Counter(key for block in _EXAMPLE_BLOCKS for key in block)
-    assert not [key for key, n in owners.items() if n > 1]
 
 
 @pytest.mark.parametrize(

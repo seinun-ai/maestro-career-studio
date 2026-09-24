@@ -515,6 +515,7 @@ def entity_summary(session: Session, entity: KBEntity) -> KBEntitySummary:
         end_date=entity.end_date,
         point_count=len(points),
         draft_count=sum(1 for p in points if p.state == "draft"),
+        approved_count=sum(1 for p in points if p.state == "approved"),
         document_count=len(documents),
         last_activity=last_activity,
         section_key=detail.get("section_key") if entity.kind == "extra" else None,

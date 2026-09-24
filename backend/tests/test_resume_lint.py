@@ -273,6 +273,7 @@ def test_gap_emits_ask():
 _OLD_ISSUES = {
     ("ask", ("experience", 0, 0)): "Has a scale metric, but not a business outcome.",
     ("ask", ("experience", 0, 1)): "Ambiguous — this may be missing a number.",
+    ("ask", ("experience", 0, 2)): "Specific, but carries no number.",
     ("ask", ("experience", None, None)): (
         "12-month gap between A and B — 4 months covered by your education; "
         "8 months unaccounted. (after a move)"),
@@ -319,6 +320,11 @@ def test_reworded_findings_keep_their_ids():
         assert finding["id"] == rl._fid(ftype, loc, old_issue), (ftype, loc)
 
 
+def test_a_specific_bullet_without_a_metric_says_it_has_no_number():
+    finding = _finding_at(_reworded_rules_report(), "ask", ("experience", 0, 2))
+    assert finding["issue"] == "Specific, but has no number."
+
+
 def test_c2_says_the_claim_as_written_and_the_dates_in_whole_years():
     findings = _reworded_rules_report()
     assert _finding_at(findings, "ask", ("summary", None, None))["issue"] == (
@@ -330,6 +336,7 @@ def test_a_finding_id_survives_its_issue_being_reworded(monkeypatch):
     finding still carries the id a saved answer was stored under."""
     before = {key: _finding_at(_reworded_rules_report(), *key)["id"] for key in _OLD_ISSUES}
     monkeypatch.setitem(rl.LADDER_COPY["analogue"], "issue", "Reworded analogue.")
+    monkeypatch.setitem(rl.LADDER_COPY["adjacent"], "issue", "Reworded adjacent.")
     monkeypatch.setattr(rl, "_ISSUE_AMBIGUOUS", "Reworded ambiguous.")
     monkeypatch.setattr(rl, "_ISSUE_BURIED", "Reworded buried.")
     monkeypatch.setattr(rl, "_gap_issue", lambda *_a: "Reworded gap.")

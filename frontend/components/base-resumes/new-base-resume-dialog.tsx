@@ -42,7 +42,7 @@ import { apiFetch } from "@/lib/api";
 import { couldnt } from "@/lib/error-text";
 import { notifyRenderNote } from "@/lib/render-note";
 import { uniqueSlug } from "@/lib/slug";
-import { RESUME_FILE_ACCEPT } from "@/lib/upload-accept";
+import { acceptedTypesLabel, RESUME_FILE_ACCEPT } from "@/lib/upload-accept";
 import {
   baseResumeLabel,
   type BaseResumeDetail,
@@ -255,10 +255,9 @@ function NewBaseResumeForm({
   // Experience and projects render FROM their bullets, so one with no approved
   // points would be an empty entry. Certifications render as a bare title and
   // education from institution/degree/dates, so those are fine at zero.
-  // Only approved bullets go on the new resume, so drafts are not counted.
-  // (`point_count` also holds bullets marked Not used: the list endpoint sends
-  // no approved count yet, see the lane doc's Deferred to merge.)
-  const approvedCount = (e: KBEntitySummary) => e.point_count - e.draft_count;
+  // Only approved bullets go on the new resume: drafts and Not used ones are
+  // not counted (`point_count` holds all three).
+  const approvedCount = (e: KBEntitySummary) => e.approved_count;
   const selectable = (entities.data ?? []).filter(
     (e) =>
       e.status !== "archived" &&
@@ -272,7 +271,7 @@ function NewBaseResumeForm({
     if (created.parse_warnings && created.parse_warnings.length > 0) {
       // The parser dropped rows it could not read rather than failing the
       // file; the user should know what to look for in the editor.
-      toast.warning(`Imported. Some parts need checking: ${created.parse_warnings.join("; ")}`);
+      toast.warning(`Imported. ${created.parse_warnings.join(" ")} Check the resume in the editor.`);
     }
     onOpenChange(false);
     router.push(`/base-resumes/${created.slug}`);
@@ -730,7 +729,7 @@ function NewBaseResumeForm({
                 maxFiles={1}
                 maxBytes={IMPORT_MAX_BYTES}
                 disabled={busy}
-                hint="PDF, Word or text file, up to 10 MB"
+                hint={`${acceptedTypesLabel(RESUME_FILE_ACCEPT)}. Up to 10 MB.`}
                 onFiles={(picked, rejected) => {
                   setFile(picked[0] ?? null);
                   setFileRejected(rejected);

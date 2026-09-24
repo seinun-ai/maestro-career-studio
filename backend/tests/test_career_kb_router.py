@@ -59,6 +59,21 @@ def test_create_and_list_entities(client):
     body = client.get("/api/kb/entities?kind=project").json()
     assert body[0]["title"] == "DocCompare"
     assert body[0]["point_count"] == 0 and body[0]["draft_count"] == 0
+    assert body[0]["approved_count"] == 0
+
+
+def test_the_list_counts_approved_bullets_apart_from_drafts_and_not_used(client, db_session):
+    # New base resume offers an item only when it has approved bullets; Not
+    # used (retired) ones never go on a resume, so point_count - draft_count
+    # over-counted them.
+    entity = KBEntity(kind="project", title="Counted")
+    db_session.add(entity)
+    db_session.flush()
+    for n, state in enumerate(["approved", "approved", "draft", "retired", "retired"]):
+        db_session.add(KBPoint(entity_id=entity.id, text=f"Point {n}", state=state, origin="ingested"))
+    db_session.commit()
+    row = client.get("/api/kb/entities?kind=project").json()[0]
+    assert (row["point_count"], row["draft_count"], row["approved_count"]) == (5, 1, 2)
 
 
 def test_create_entity_surfaces_same_identity_as_possible_duplicate(client, db_session):

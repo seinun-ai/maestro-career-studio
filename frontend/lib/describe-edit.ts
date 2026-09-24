@@ -420,7 +420,8 @@ const LIBRARY_MESSAGE = /^(Invalid|Too (small|big)|Expected)/;
 
 function issueWords(issue: SchemaIssue): string {
   const place = describeFieldPath(issue.path);
-  if (!LIBRARY_MESSAGE.test(issue.message)) return `${place}: ${issue.message}`;
+  // The lines are joined with ". ", so a message that is already a sentence drops its own stop.
+  if (!LIBRARY_MESSAGE.test(issue.message)) return `${place}: ${issue.message.replace(/\.$/, "")}`;
   if (issue.code === "invalid_type") {
     if (/received undefined$/.test(issue.message)) return `${place} is missing`;
     return `${place} ${EXPECTED_WORDS[String(issue.expected)] ?? "has the wrong kind of value"}`;

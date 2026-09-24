@@ -317,6 +317,8 @@ class KBEntitySummary(BaseModel):
     end_date: str | None = None
     point_count: int
     draft_count: int
+    # Bullets that go on a resume: point_count also holds drafts and Not used.
+    approved_count: int = 0
     document_count: int
     last_activity: datetime
     section_key: str | None = None

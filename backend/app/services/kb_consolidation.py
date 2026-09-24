@@ -1163,6 +1163,20 @@ def _seed_profile(session: Session, sources: list[tuple[str, dict]]) -> None:
 RESUME_PARSE_CAP = 40_000
 
 
+# A resume section as its heading reads, for the words a skipped row is reported in.
+_SECTION_HEADINGS = {
+    "experience": "Experience", "projects": "Projects", "education": "Education",
+    "certifications": "Certifications", "skills": "Skills", "extra_sections": "Other sections",
+}
+
+
+def _left_out(section: str, n: int) -> str:
+    """The words for rows the salvage dropped ("Couldn't read 2 items in Projects, so they were left out.")."""
+    items, pronoun = ("1 item", "it") if n == 1 else (f"{n} items", "they")
+    was = "was" if n == 1 else "were"
+    return f"Couldn't read {items} in {_SECTION_HEADINGS.get(section, section)}, so {pronoun} {was} left out."
+
+
 def _validate_with_salvage(payload: dict) -> tuple[dict, list[str]]:
     """Validate as ResumeData; on failure drop ONLY the rejected list entries and retry once.
 
@@ -1189,7 +1203,7 @@ def _validate_with_salvage(payload: dict) -> tuple[dict, list[str]]:
         for section, indices in drop.items():
             rows = list(pruned.get(section) or [])
             pruned[section] = [r for i, r in enumerate(rows) if i not in indices]
-            warnings.append(f"dropped {len(indices)} unparseable {section} item(s)")
+            warnings.append(_left_out(section, len(indices)))
         return ResumeData.model_validate(pruned).model_dump(mode="json"), sorted(warnings)
 
 

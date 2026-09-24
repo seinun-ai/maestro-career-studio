@@ -365,7 +365,7 @@ def test_template_and_new_resume_copy_first_read():
     assert "Used in this template&apos;s web address and by connected agents." in templates
     nbr = _read("components/base-resumes/new-base-resume-dialog.tsx")
     assert "createBlockedReason" in nbr and "aria-describedby={blocked ? ids.blocked : undefined}" in nbr
-    assert "e.point_count - e.draft_count" in nbr
+    assert "e.approved_count" in nbr  # drafts and Not used bullets never count
 
 
 # --- Item 11: one request per click, focus kept while working ---------------

@@ -131,7 +131,17 @@ def test_parse_salvages_invalid_entries_instead_of_failing_the_file(db_session, 
     monkeypatch.setattr(kb_consolidation.llm, "call_openai", lambda **kw: bad)
     data, warnings = kb_consolidation.parse_resume_text(db_session, "text")
     assert [e["company"] for e in data["experience"]] == ["Good Co"]
-    assert warnings and "experience" in warnings[0]
+    assert warnings == ["Couldn't read 1 item in Experience, so it was left out."]
+
+
+def test_left_out_items_are_counted_in_words(db_session, monkeypatch):
+    bad = {
+        "contact": {"name": "A", "email": "a@b.c"},
+        "projects": [{"bullets": []}, {"bullets": []}],  # no name -> both invalid
+    }
+    monkeypatch.setattr(kb_consolidation.llm, "call_openai", lambda **kw: bad)
+    _data, warnings = kb_consolidation.parse_resume_text(db_session, "text")
+    assert warnings == ["Couldn't read 2 items in Projects, so they were left out."]
 
 
 def test_parse_still_raises_when_contact_is_invalid(db_session, monkeypatch):
@@ -148,7 +158,7 @@ def test_import_response_reports_parse_warnings(db_session, tmp_path, monkeypatc
     monkeypatch.setattr(
         kb_import.kb_consolidation,
         "parse_resume_text",
-        lambda *args: (RESUME, ["dropped 1 unparseable experience item(s)"]),
+        lambda *args: (RESUME, ["Couldn't read 1 item in Experience, so it was left out."]),
     )
 
     body = _client(db_session).post(
@@ -157,7 +167,7 @@ def test_import_response_reports_parse_warnings(db_session, tmp_path, monkeypatc
     ).json()
 
     assert body["bases"][0]["parse_warnings"] == [
-        "dropped 1 unparseable experience item(s)"
+        "Couldn't read 1 item in Experience, so it was left out."
     ]
 
 

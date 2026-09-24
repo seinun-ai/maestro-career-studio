@@ -446,13 +446,14 @@ def test_item_counts_agree_with_their_nouns():
     assert "{value} {value === 1 ? one : many}" in card
 
 
-def test_add_files_names_what_it_opens():
-    # D10.6: "Add documents" opened the upload dialog on its Resumes tab.
-    # The dialog's own title is components/setup/upload-dialog.tsx (lane 9).
+def test_the_import_button_names_what_it_opens():
+    # D10.6: "Add documents" opened the upload dialog on its Resumes tab. At the
+    # merge the button took the dialog's own title (lane 9's upload-dialog.tsx).
     page = _read("app/career/page.tsx")
-    assert "Add documents" not in page
-    assert '<Upload aria-hidden="true" /> Add files' in page
+    assert "Add documents" not in page and "Add files" not in page
+    assert '<Upload aria-hidden="true" /> Import resumes and documents' in page
     assert "<UploadDialog open={importOpen} onOpenChange={setImportOpen} />" in page
+    assert "<DialogTitle>Import resumes and documents</DialogTitle>" in _read("components/setup/upload-dialog.tsx")
 
 
 # One table names every item kind and status, so a kind is never "Custom

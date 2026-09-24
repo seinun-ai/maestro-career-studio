@@ -516,7 +516,8 @@ def test_add_extra_section_duplicate_key_raises():
 
 
 def test_add_extra_section_reserved_key_collision_raises():
-    with pytest.raises(ValueError, match="collides"):
+    # The title "Skills" is refused first (TITLE_COLLISION_MESSAGE), before the key check.
+    with pytest.raises(ValueError, match="A section with this name already exists"):
         apply_edits(
             deepcopy(BASE),
             _ops({"kind": "add_extra_section",

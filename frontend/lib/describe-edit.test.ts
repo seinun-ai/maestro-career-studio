@@ -139,6 +139,13 @@ test("the code view names the field and the problem, never a path or the library
   ]);
   assert.equal(two, "Couldn't apply: Experience, item 1, Company is missing. Contact, Name: Enter your name. Fix them and choose Apply again.");
   assert.doesNotMatch(two, /Invalid input|\.\d|_/);
+  // A schema message that is already a sentence (TITLE_COLLISION_MESSAGE) keeps one full stop.
+  assert.equal(
+    schemaIssuesWords([
+      { path: ["extra_sections", 0, "title"], code: "custom", message: "A section with this name already exists. Choose another name." },
+    ]),
+    "Couldn't apply: Other sections, section 1, Section name: A section with this name already exists. Choose another name. Fix it and choose Apply again.",
+  );
   assert.match(
     schemaIssuesWords([{ path: ["extra_sections", 0, "type"], code: "invalid_union", message: "Invalid input" }]),
     /Other sections, section 1, Layout isn't one of the allowed choices/,

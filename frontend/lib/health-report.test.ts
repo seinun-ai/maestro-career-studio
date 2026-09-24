@@ -111,16 +111,16 @@ test("groupFindings orders groups by first appearance, findings within by input 
 
 test("hoistBlurb fires only when issue and how are identical", () => {
   const shared = [
-    { issue: "Specific, but carries no number.", how: "Add the metric that measures it." },
-    { issue: "Specific, but carries no number.", how: "Add the metric that measures it." },
+    { issue: "Specific, but has no number.", how: "Add the metric that measures it." },
+    { issue: "Specific, but has no number.", how: "Add the metric that measures it." },
   ];
   assert.equal(
     hoistBlurb(shared),
-    "2 bullets here: specific, but carries no number. Add the metric that measures it.",
+    "2 bullets here: specific, but has no number. Add the metric that measures it.",
   );
   assert.equal(
     hoistBlurb([shared[0]]),
-    "Specific, but carries no number. Add the metric that measures it.",
+    "Specific, but has no number. Add the metric that measures it.",
   );
   assert.equal(
     hoistBlurb([
@@ -285,13 +285,13 @@ test("explainScoreDelta falls back when the diff is empty", () => {
 test("groupNotesByRule titles a rule-less shape note by its label", () => {
   const groups = groupNotesByRule([
     {
-      label: "Evidence concentrated in projects",
-      issue: "14 project bullets vs 10 employment bullets.",
+      label: "Projects outweigh your jobs",
+      issue: "14 project bullets and 10 job bullets.",
       id: "n1",
     } as never,
   ]);
   assert.equal(groups.length, 1);
-  assert.equal(groups[0].title, "Evidence concentrated in projects");
+  assert.equal(groups[0].title, "Projects outweigh your jobs");
   assert.equal(groups[0].shapeNote, true);
 });
 
@@ -348,14 +348,14 @@ test("staleFindingIds flags only findings whose text drifted", async () => {
 test("hoistBlurb never conjugates a backend issue sentence", () => {
   // These three shapes are why count-led phrasing was wrong: the issue is a
   // full sentence whose subject varies, so "N items here are <issue>" produced
-  // "are a reader can't tell what you did here" / "are has a scale metric".
+  // "are a reader can't tell what you did here" / "are has a number for size".
   const analogue = {
-    issue: "Has a scale metric, but not a business outcome.",
+    issue: "Has a number for size, but not for the result.",
     how: "Add the outcome if you have it; otherwise this bullet is already strong.",
   };
   assert.equal(
     hoistBlurb([analogue, analogue, analogue]),
-    "3 bullets here: has a scale metric, but not a business outcome. " +
+    "3 bullets here: has a number for size, but not for the result. " +
       "Add the outcome if you have it; otherwise each bullet is already strong.",
   );
   const implied = {
