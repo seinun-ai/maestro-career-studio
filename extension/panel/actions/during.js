@@ -100,7 +100,8 @@
    *
    * THE NEXT STEP TURNS ON THE STATUS, `ask`'s one field that is not prose: no
    * status means no HTTP answer came back, so the step is to check the app is
-   * running; any status means the backend answered and refused, so the step is
+   * running; 502 means the model provider failed, so the step is the AI key;
+   * any other status means the backend answered and refused, so the step is
    * the call site's `answered` sentence when it has one (a string, or a
    * function of the error that may decline with null), else another try. */
   function failureNote(failed, err) {
@@ -109,6 +110,11 @@
     const { what = "Couldn't do that.", answered = null } =
       typeof failed === "string" ? { what: failed } : failed ?? {};
     if (err?.status === undefined) return `${what} Check that Maestro CS is running.`;
+    // 502 is the model provider failing (`app.main` maps LLMProviderError to
+    // it), whatever the call was: the step is the key, not another try.
+    if (err.status === 502) {
+      return `${what} Check your AI key in Maestro CS under Settings › AI & models.`;
+    }
     const own = typeof answered === "function" ? answered(err) : answered;
     return own || `${what} Try again.`;
   }

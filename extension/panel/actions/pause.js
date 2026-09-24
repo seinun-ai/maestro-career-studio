@@ -287,7 +287,7 @@
         return { stuck,
           learned: target.store === "profile"
             ? " Saved to Profile › Autofill."
-            : " Saved. It won’t ask again." };
+            : " Saved. It won't ask again." };
       } catch (err) {
         // CAUGHT HERE rather than left to `duringAction`, and that is what keeps
         // the two halves independent now that they share a span. A throw out of
@@ -296,9 +296,9 @@
         // beside the success — never a rollback, and never a red note about a
         // page that did what it was asked.
         console.warn("[maestro-cs] learning the answer failed:", err);
-        return { stuck, learned: " Couldn’t save the answer, so it will ask again." };
+        return { stuck, learned: " Couldn't save the answer, so it will ask again." };
       }
-    }, "Couldn’t fill that field.");
+    }, "Couldn't fill that field.");
     if (!done) return;
     const { out: { stuck, learned } } = done;
     if (!stuck) {
@@ -306,8 +306,8 @@
       // it is still open, and the sentence says what actually happened rather
       // than blaming the connection.
       store.write({ note: { text: row.options?.length
-        ? "Couldn’t fill that. Type one of the options exactly as shown."
-        : "Couldn’t fill that field. Type it on the page yourself.", error: true } });
+        ? "Couldn't fill that. Type one of the options exactly as shown."
+        : "Couldn't fill that field. Type it on the page yourself.", error: true } });
       store.render();
       return;
     }

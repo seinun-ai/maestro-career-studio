@@ -780,3 +780,22 @@ def test_a_track_this_that_lands_after_you_switch_tabs_paints_nothing(tmp_path):
     assert _by_class(settled["identity"], "chip") == []
     assert out["facts"]["applicationId"] is None
     assert _rows(_rail_rows({"regions": settled}))["job"]["state"] == "active"
+
+
+def test_the_panels_status_words_are_the_web_apps():
+    """`STATUS_LABELS` (panel.js) is a copy of the application chip's labels in
+    `frontend/components/status-chip.tsx`, across the extension boundary where
+    no import reaches. Same keys, same words, or the Companion and the tracker
+    name one status two ways."""
+    import re
+
+    from tests.extension_harness import ROOT
+
+    panel = (ROOT / "extension" / "panel" / "panel.js").read_text(encoding="utf-8")
+    block = re.search(r"const STATUS_LABELS = \{(.*?)\};", panel, re.S).group(1)
+    companion = dict(re.findall(r'(\w+): "([^"]+)"', block))
+    chip = (ROOT / "frontend" / "components" / "status-chip.tsx").read_text(encoding="utf-8")
+    styles = re.search(r"const STATUS_STYLES: Record<.*?> = \{(.*?)\n\};", chip, re.S).group(1)
+    web = dict(re.findall(r'(\w+): \{\s*label: "([^"]+)"', styles))
+    assert web, "status-chip.tsx changed shape: re-read STATUS_STYLES"
+    assert companion == web

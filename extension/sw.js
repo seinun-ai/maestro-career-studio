@@ -565,7 +565,13 @@ const HANDLERS = {
     const tabId = fanoutTab(msg, frame, sender);
     const { backendUrl } = await getSettings();
     const res = await fetch(`${backendUrl}${assertBackendPath(msg.path)}`);
-    if (!res.ok) throw new Error(`PDF fetch failed (${res.status})`);
+    if (!res.ok) {
+      // The status rides the error, as `api()`'s does: the panel reads its
+      // presence as "the backend answered" (`failureNote`, actions/during.js).
+      const err = new Error(`PDF fetch failed (${res.status})`);
+      err.status = res.status;
+      throw err;
+    }
     const bytes = new Uint8Array(await res.arrayBuffer());
     let binary = "";
     for (let i = 0; i < bytes.length; i += 0x8000) {

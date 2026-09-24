@@ -84,9 +84,11 @@
       }), {
       what: "Couldn't tailor your resume.",
       // A refusal (a must-fix health problem, a gap analysis in progress) is
-      // explained in full on the job's own page, so that is where it sends
-      // the user rather than printing the backend's reason here.
-      answered: "Couldn't tailor your resume. Open the job in Maestro CS to see why.",
+      // not explained by the job page on its own. "Tailor in Maestro CS" opens
+      // the job's Fit tab, which lists the gap analysis in progress, and
+      // starting one there shows the must-fix reason (the same guard).
+      answered: "Couldn't tailor your resume. Use Tailor in Maestro CS to see "
+        + "what's in the way.",
     });
     if (!done) return;
     const { token, out } = done;

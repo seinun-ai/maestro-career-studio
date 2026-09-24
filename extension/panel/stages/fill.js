@@ -376,7 +376,7 @@
       // and only the former reaches here: it never has a list to print, so the
       // two lines cannot collide over the id.
       const why = node("div", "learn", "Already in your saved answers. The page "
-        + "didn’t accept it, so check it and fill again.");
+        + "didn't accept it, so check it and fill again.");
       if (!row.options?.length) why.id = noteId;
       attach(box, why);
     }
@@ -664,8 +664,10 @@
     if (!facts.fill && !collected) {
       return attach(body, node("div", "sub", facts.fillMode === "rules"
         ? "Uses only your saved answers. Nothing goes to the AI."
+        // What /api/autofill/choose sends: the saved answers (diversity
+        // answers only under standing consent) and the career history.
         : "Uses your saved answers, then asks the AI for the rest. "
-          + "Your personal details never go to the AI."),
+          + "The AI sees your saved answers and career history."),
                     // ON BOTH PATHS, and gated on neither: the attach is an
                     // offer about the PAGE, not a line of the run's report, so
                     // it stands before a fill as well as after one. A user who

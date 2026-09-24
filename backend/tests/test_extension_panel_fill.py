@@ -430,8 +430,11 @@ def test_before_a_fill_the_stage_offers_a_choice_and_reports_nothing(tmp_path):
     assert out["modes"] == ["Saved answers only", "Saved answers + AI"]
     assert _by_class(out["loaded"]["rail"], "prog") == []
     assert _by_class(out["loaded"]["rail"], "resid") == []
-    assert _by_class(out["loaded"]["rail"], "sub")[0]["text"].endswith(
-        "then asks the AI for the rest. Your personal details never go to the AI.")
+    # The AI mode says what the model is shown: /api/autofill/choose sends the
+    # saved answers and the career history (app/services/autofill_choose.py).
+    assert _by_class(out["loaded"]["rail"], "sub")[0]["text"] == (
+        "Uses your saved answers, then asks the AI for the rest. The AI sees your "
+        "saved answers and career history.")
     # One primary, in the one place, and it says what it starts.
     [cta] = _by_class(out["loaded"]["foot"], "cta")
     assert cta["text"] == "Fill this form"
@@ -439,6 +442,17 @@ def test_before_a_fill_the_stage_offers_a_choice_and_reports_nothing(tmp_path):
     # Nothing has been injected and nothing has been asked of the page: the
     # panel prepares a tab when the user asks for something that needs it.
     assert [msg for msg in out["sent"] if msg["type"] == "panel_prepare"] == []
+
+
+def test_the_panel_writes_one_apostrophe():
+    """Appendix D §1: a string literal writes a straight apostrophe, as the web
+    app and every server sentence the panel shows do. D §8's "keep each file's
+    character" left five files curly and the rest straight, so one panel note
+    read "Couldn’t" beside another's "Couldn't"."""
+    panel = sorted((EXTENSION / "panel").rglob("*.js")) + [
+        EXTENSION / "shared" / "guided-run.js"]
+    curly = [path.name for path in panel if "’" in path.read_text(encoding="utf-8")]
+    assert curly == []
 
 
 def test_the_mode_labels_wrap_evenly_in_the_narrowest_panel():
@@ -957,6 +971,48 @@ def test_a_finished_fill_is_reopened_for_the_wizards_next_page(tmp_path):
     assert _by_class(out["againClicked"]["foot"], "cta")[0]["disabled"] is True
 
 
+def test_no_panel_sentence_promises_the_ai_never_sees_your_details():
+    """The promise was false: the AI pass's prompt carries the autofill profile
+    and the career history. Neither wording of it may come back."""
+    sources = "\n".join(path.read_text(encoding="utf-8")
+                        for path in sorted(EXTENSION.rglob("*.js")))
+    assert "never go to the AI" not in sources
+    assert "Identity fields are never sent" not in sources
+
+
+def test_a_fill_with_no_saved_answers_says_where_to_add_them(tmp_path):
+    """An empty profile makes the rule pass throw its sentence inside the
+    runner's swallow, so the run goes on to the AI pass. The sentence still
+    reaches the note: the user learns why nothing was filled from the profile."""
+    out = _fill(tmp_path, start=True,
+                api={"/api/autofill/context": _reply({**FILL_CONTEXT, "profile": {}})})
+    [note] = _by_class(out["settled"]["foot"], "note")
+    assert note["text"] == (
+        "No saved answers yet. Add them in Maestro CS under Profile › Autofill. "
+        "2 fields still need you.")
+    # Nothing was filled from a profile that has nothing in it.
+    assert "profile_fill" not in _broadcast_types(out)
+
+
+@pytest.mark.parametrize("frames, choose, tail", [
+    # The AI answered everything that was open: the run did finish the form.
+    (CLEAN_COLLECT_FRAMES, CLEAN_CHOOSE_REPLY, " Fill finished. Review before you submit."),
+    # Nothing to answer and nothing written: "Fill finished" would claim a fill
+    # that never happened (seen in Chrome over a form of name and email boxes).
+    ([{"frameId": 0, "result": {"host": "job-boards.greenhouse.io", "questions": [],
+                                "retryables": []}}], _reply({"choices": {}}), ""),
+])
+def test_with_no_saved_answers_only_a_run_that_wrote_says_it_finished(
+        tmp_path, frames, choose, tail):
+    out = _fill(tmp_path, start=True,
+                frames={"collect_open_questions": frames},
+                api={"/api/autofill/context": _reply({**FILL_CONTEXT, "profile": {}}),
+                     "/api/autofill/choose": choose})
+    [note] = _by_class(out["settled"]["foot"], "note")
+    assert note["text"] == (
+        "No saved answers yet. Add them in Maestro CS under Profile › Autofill." + tail)
+
+
 def test_a_second_run_whose_rules_never_ran_says_so(tmp_path):
     """THE DISCRIMINATOR, which the defect above falsified with its own
     predecessor.
@@ -1465,7 +1521,7 @@ def test_remember_unticked_fills_the_field_and_writes_nothing(tmp_path):
     assert [msg for msg in out["sent"] if msg["type"] == "api"
             and msg["path"] == "/api/settings/autofill"] == []
     [note] = _by_class(out["answered"]["foot"], "note")
-    assert "won’t ask again" not in note["text"]
+    assert "won't ask again" not in note["text"]
     assert "Profile" not in note["text"]
 
 
@@ -1559,7 +1615,7 @@ def test_a_row_the_rules_already_knew_the_answer_to_asks_you_to_confirm_it(tmp_p
     # failed to render reads as a bug rather than as a decision.
     assert [n for n in _walk(box) if n["id"] == "learn-r2"] == []
     assert _text(_by_class(box, "learn")[0]) == (
-        "Already in your saved answers. The page didn’t accept it, so check it and "
+        "Already in your saved answers. The page didn't accept it, so check it and "
         "fill again.")
 
     out = _answer(tmp_path, frames=frames, answer={"qid": "r2"})
@@ -1590,7 +1646,7 @@ def test_a_value_the_page_refuses_keeps_the_row_and_says_what_happened(tmp_path)
         "how did you hear about us?", "why do you want this role? · written answer"]
     [note] = _by_class(out["answered"]["foot"], "note")
     assert note["text"] == (
-        "Couldn’t fill that. Type one of the options exactly as shown.")
+        "Couldn't fill that. Type one of the options exactly as shown.")
     assert note["class"] == "note error"
     # And nothing was learned: an answer the form would not take is not an
     # answer worth teaching the rules.
@@ -1629,7 +1685,7 @@ def test_a_learn_that_fails_leaves_the_field_filled_and_says_both(tmp_path):
     [note] = _by_class(out["answered"]["foot"], "note")
     # BOTH facts in one sentence, in the order they happened.
     assert note["text"] == (
-        "Filled “how did you hear about us?”. Couldn’t save the answer, so it "
+        "Filled “how did you hear about us?”. Couldn't save the answer, so it "
         "will ask again. 1 field still needs you.")
 
 
@@ -2270,7 +2326,7 @@ def test_a_question_reaches_the_backend_exactly_as_the_card_sends_one(tmp_path):
     [asked] = _by_class(drawer, "q")
     assert asked["text"] == "“Why do you want to work here?”"
     [note] = _by_class(out["answered"]["foot"], "note")
-    assert note["text"] == "Saved to this application’s Q&A history."
+    assert note["text"] == "Saved to this application's Q&A history."
 
 
 def test_an_ask_with_no_application_is_grounded_in_the_job(tmp_path):
@@ -2411,7 +2467,7 @@ def test_the_answer_goes_to_the_clipboard_and_the_button_says_so(tmp_path):
     assert copy["text"] == "Copied"
     # The ask's own sentence is still the note: no copy spam in the one slot.
     [note] = _by_class(out["settled"]["foot"], "note")
-    assert note["text"] == "Saved to this application’s Q&A history."
+    assert note["text"] == "Saved to this application's Q&A history."
 
 
 def test_a_clipboard_that_refuses_says_so_rather_than_looking_ignored(tmp_path):

@@ -430,21 +430,35 @@ def test_a_tailor_that_fails_hands_the_button_back_and_says_why(tmp_path):
     must never leave the panel with its one control permanently pressed. The
     backend's own detail, verbatim — a heading per status code would be a claim
     about which of the 409s happened, and a health gate and an in-progress
-    session share one — so the sentence sends the user to the job in Maestro
-    CS, where the full reason is shown, and never prints the backend's
-    detail."""
+    session share one — so the sentence sends the user to Tailor in Maestro CS
+    (the job's Fit tab, which lists a gap analysis in progress and shows the
+    must-fix reason when one is started), and never prints the backend's
+    detail. Not "open the job to see why": the job page alone shows no reason."""
     out = _resume(tmp_path, open=True, press="Quick tailor",
                   api={"quick-tailor": {"ok": False, "error": "409: health gate",
                                         "status": 409}})
     [note] = _by_class(out["settled"]["foot"], "note")
     assert note["text"] == (
-        "Couldn't tailor your resume. Open the job in Maestro CS to see why.")
+        "Couldn't tailor your resume. Use Tailor in Maestro CS to see what's in "
+        "the way.")
     assert note["class"] == "note error"
     [cta] = _by_class(out["settled"]["foot"], "cta")
     assert cta["disabled"] is False
     # Nothing was claimed: no application, and the stage still asks.
     assert _rows(_rail_rows({"regions": out["settled"]}))["resume"]["state"] == "active"
     assert out["writes"] == []
+
+
+def test_a_tailor_the_model_failed_points_at_the_ai_key(tmp_path):
+    """A 502 is the model provider failing (app.main maps LLMProviderError to
+    it), so the step is the key, not the job page."""
+    out = _resume(tmp_path, open=True, press="Quick tailor",
+                  api={"quick-tailor": {"ok": False, "error": "no answer",
+                                        "status": 502}})
+    [note] = _by_class(out["settled"]["foot"], "note")
+    assert note["text"] == (
+        "Couldn't tailor your resume. Check your AI key in Maestro CS under "
+        "Settings › AI & models.")
 
 
 def test_a_tailor_that_renders_no_pdf_says_so_and_still_keeps_the_application(tmp_path):

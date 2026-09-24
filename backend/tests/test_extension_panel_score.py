@@ -645,6 +645,22 @@ def test_a_score_that_fails_hands_the_button_back_and_says_why(tmp_path):
     assert cta["class"] == "cta"
 
 
+@pytest.mark.parametrize("status, step", [
+    # The backend answered and refused: another try is the step.
+    (500, "Try again."),
+    (409, "Try again."),
+    # The model provider failed (LLMProviderError → 502): the key is the step.
+    (502, "Check your AI key in Maestro CS under Settings › AI & models."),
+])
+def test_a_refused_score_says_the_next_step_by_status(tmp_path, status, step):
+    out = _score(tmp_path, click=True, api={
+        "GET /api/ats-scores": _reply([]),
+        "POST /api/ats-scores": {"ok": False, "error": "boom", "status": status}})
+    [note] = _by_class(out["settled"]["foot"], "note")
+    assert note["text"] == f"Couldn't score your base resumes. {step}"
+    assert note["class"] == "note error"
+
+
 def test_a_score_that_lands_after_you_switch_tabs_paints_nothing(tmp_path):
     """The generation rule applied to the second action, which is where it is
     easiest to forget it a second time: a compute call feels like something the

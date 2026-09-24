@@ -132,7 +132,7 @@
       // answer says out loud which question it is for.
       qna: { ...after.qna, answered: question, answer, copied: false },
       note: { text: grounding.application_id
-        ? "Saved to this application’s Q&A history."
+        ? "Saved to this application's Q&A history."
         : "Answered from your base resume and this job." },
     });
     store.render();

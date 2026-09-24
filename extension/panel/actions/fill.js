@@ -35,6 +35,12 @@
   // panel.html beside it, which is what Task 12's split bought.
   const { runGuidedFill } = ns.guidedRun;
 
+  // The rule pass's one finding about the PROFILE rather than the page. It is
+  // thrown inside the runner's swallow (the AI pass still runs), so `startFill`
+  // watches for it and puts it at the head of the run's note.
+  const NO_SAVED_ANSWERS = "No saved answers yet. Add them in Maestro CS under "
+    + "Profile › Autofill.";
+
   /** Which resume the fill's employment blocks and skills come from.
    *
    * Three rungs in this order: the application when we have one, else the
@@ -88,8 +94,7 @@
   async function rulePass(store, facts, token) {
     const context = await store.api(`/api/autofill/context${resumeQuery(facts)}`);
     if (!context.profile || Object.keys(context.profile).length === 0) {
-      throw new Error("No saved answers yet. Add them in Maestro CS under "
-        + "Profile › Autofill.");
+      throw ns.guidedRun.shown(NO_SAVED_ANSWERS);
     }
     const frames = await store.broadcast({
       type: "profile_fill",
@@ -182,6 +187,17 @@
     return wrote > 0 && open === 0;
   }
 
+  /** The run's one sentence. With no saved answers the rule pass filled
+   * nothing, so that leads; "Fill finished" follows only a run that wrote
+   * something, since a run over an empty profile that found nothing else to
+   * answer has finished nothing. */
+  function fillNote({ open, finished, noSavedAnswers }, plural) {
+    const outcome = open
+      ? `${plural(open, "field")} still ${open === 1 ? "needs" : "need"} you.`
+      : (finished || !noSavedAnswers ? "Fill finished. Review before you submit." : null);
+    return [noSavedAnswers ? NO_SAVED_ANSWERS : null, outcome].filter(Boolean).join(" ");
+  }
+
   /** Start fill: the deterministic pass, then — unless the user said rules only
    * — the model on what is left.
    *
@@ -259,6 +275,7 @@
     store.write({ fill: null, eeoConsent: null, residue: null, essays: null,
                   writeResults: null });
     const aiAssist = facts.fillMode === "assist";
+    let noSavedAnswers = false;
     const done = await duringAction(store, "fill", async () => {
       await store.prepare();
       try {
@@ -274,7 +291,10 @@
           // change the answer — a fill sourced from an application the panel
           // adopted a moment ago, on a form the user started for their base.
           // Anything that must be current is re-read past the guard instead.
-          rulePass: () => rulePass(store, facts, token),
+          rulePass: () => rulePass(store, facts, token).catch((err) => {
+            if (err?.message === NO_SAVED_ANSWERS) noSavedAnswers = true;
+            throw err;
+          }),
           // THE ASYNC STORE-WRITING FUNCTION the generation rule was written
           // for, and the one that would be easiest to leave out: the run is
           // several round trips long, so a user who switches tabs mid-fill is
@@ -333,9 +353,7 @@
       // is still open, and an unanswered essay is exactly that — they are kept
       // apart in the store because they are ANSWERED differently, not because
       // they are different news.
-      note: { text: open
-        ? `${store.build.plural(open, "field")} still ${open === 1 ? "needs" : "need"} you.`
-        : "Fill finished. Review before you submit." },
+      note: { text: fillNote({ open, finished, noSavedAnswers }, store.build.plural) },
     });
     if (finished) store.write({ touched: true });
     store.render();
