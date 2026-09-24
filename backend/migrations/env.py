@@ -14,21 +14,18 @@ config = context.config
 # Same resolution order as app/db.py, and it must stay that way: the test
 # suite migrates its own throwaway file through alembic, and reading only
 # settings.database_url here would point those migrations at the real data.
-# The importer sets sqlalchemy.url explicitly to build a schema elsewhere.
+# A caller may set sqlalchemy.url explicitly to build a schema elsewhere.
 DATABASE_URL = (
     config.get_main_option("sqlalchemy.url")
     or os.environ.get("TEST_DATABASE_URL")
     or settings.database_url
 )
 
-# TEST_DATABASE_URL bypasses Settings._only_sqlite, and Postgres URLs are still
-# live in compose, CI and shells for one release: without this guard `alembic
-# upgrade head` would apply the SQLite baseline to a Postgres database.
+# TEST_DATABASE_URL and an explicit sqlalchemy.url bypass Settings._only_sqlite:
+# without this guard `alembic upgrade head` would apply the SQLite baseline to
+# whatever database a stray URL names.
 if make_url(DATABASE_URL).get_backend_name() != "sqlite":
-    raise RuntimeError(
-        "migrations/: this chain is SQLite only; the Postgres chain lives in "
-        "legacy_postgres/ and is read only by app.tools.migrate_from_postgres"
-    )
+    raise RuntimeError("migrations/: this chain is SQLite only")
 
 if config.config_file_name is not None:
     # disable_existing_loggers defaults to TRUE and would silence the app's own

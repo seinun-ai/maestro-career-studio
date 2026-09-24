@@ -57,14 +57,6 @@ def test_heroku_postgres_spelling_is_refused(monkeypatch):
         Settings(_env_file=None)
 
 
-def test_legacy_database_url_is_a_plain_setting(monkeypatch):
-    from app.config import Settings
-
-    monkeypatch.setenv("LEGACY_DATABASE_URL", "postgresql://app:app@postgres:5432/maestro_cs")
-
-    assert Settings(_env_file=None).legacy_database_url.startswith("postgresql")
-
-
 @pytest.mark.parametrize("raw, expected", [(" wal ", "WAL"), ("delete", "DELETE")])
 def test_sqlite_journal_mode_is_normalized(monkeypatch, raw, expected):
     from app.config import Settings

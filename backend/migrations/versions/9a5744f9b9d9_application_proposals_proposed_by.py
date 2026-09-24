@@ -3,9 +3,7 @@
 Who filed a proposal: "you" for the web app's queue, the MCP client's
 clientInfo.name for a connected agent, NULL when unknown. Backfills the web
 app's own past promotions, which carry a fixed plan summary
-(frontend/lib/api.ts promoteJobToAgentQueue). The legacy Postgres chain gets
-the same column in 3a17da2f7144, or the first-boot import refuses the source
-("source lacks ['proposed_by']").
+(frontend/lib/api.ts promoteJobToAgentQueue).
 
 Revision ID: 9a5744f9b9d9
 Revises: 871d0425b64c

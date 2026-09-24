@@ -1,7 +1,6 @@
 """Who filed a proposal (plan appendix A9): the MCP client's name from the origin
 headers, "you" for the web app's own queue, NULL when unknown. Additive on
-every read, backfilled for the web app's past promotions, and carried by the
-legacy Postgres import (which stays strict about missing columns)."""
+every read, and backfilled for the web app's past promotions."""
 
 import sqlite3
 import uuid
@@ -12,13 +11,11 @@ from pathlib import Path
 import pytest
 from alembic import command
 from alembic.config import Config
-from alembic.script import ScriptDirectory
 from fastapi.testclient import TestClient
 
 from app.main import app
 from app.models.application_proposal import ApplicationProposal
 from app.services import proposals as svc
-from app.tools import migrate_from_postgres as importer
 from mcp_server.client import _origin_headers
 from tests.test_proposals_models import _mk_job
 
@@ -214,22 +211,3 @@ def test_the_migration_round_trips_from_head_to_the_baseline_and_back(tmp_path):
     command.upgrade(cfg, "head")
     assert "proposed_by" in _proposal_table(path)[0]
 
-
-def test_the_legacy_import_refuses_a_source_without_the_column(tmp_path):
-    # The importer stays strict: a model column the source lacks fails closed,
-    # which is why the boxed Postgres chain carries its own revision.
-    src, dst = tmp_path / "src.sqlite3", tmp_path / "dst.sqlite3"
-    command.upgrade(_sqlite_cfg(src), SQLITE_BASELINE)
-    command.upgrade(_sqlite_cfg(dst), "head")
-    with pytest.raises(importer.ExportError, match=r"application_proposals: source lacks \['proposed_by'\]"):
-        importer.copy_database(f"sqlite:///{src}", f"sqlite:///{dst}", log=lambda *_: None)
-
-
-def test_the_legacy_chain_adds_the_column_at_its_head():
-    scripts = ScriptDirectory.from_config(Config(str(importer.LEGACY_INI)))
-    (head,) = scripts.get_heads()
-    revision = scripts.get_revision(head)
-    assert revision.down_revision == "85a1bb628e28"
-    source = Path(revision.path).read_text()
-    assert 'op.add_column("application_proposals", sa.Column("proposed_by"' in source
-    assert PROMOTED in source

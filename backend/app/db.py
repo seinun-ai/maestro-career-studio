@@ -1,9 +1,8 @@
 """Engine and session factory.
 
 SQLite is the only runtime database (SYSTEM.md §3). `make_engine` is the ONE
-engine constructor: the app, the test suite, the migrations' verify step and
-the legacy importer all go through it, so every connection carries the same
-pragmas. journal_mode is persisted in the file; the other three are
+engine constructor: the app and the test suite both go through it, so every
+connection carries the same pragmas. journal_mode is persisted in the file; the other three are
 per-connection state (foreign_keys defaults to OFF). All four are set on every
 connection anyway, so nothing depends on which connection created the file. A
 `DELETE` override takes effect on the first connection made while no other

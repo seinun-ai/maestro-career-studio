@@ -7,7 +7,6 @@ import sys
 from pathlib import Path
 
 import pytest
-from sqlalchemy.engine import Engine
 
 from app.db import make_engine, prepare_sqlite_file, sqlite_path
 
@@ -63,20 +62,6 @@ def test_make_engine_accepts_lowercase_journal_mode(tmp_path):
 def test_make_engine_refuses_other_journal_modes(tmp_path):
     with pytest.raises(ValueError, match="WAL or DELETE"):
         make_engine(f"sqlite:///{tmp_path / 't.sqlite3'}", journal_mode="TRUNCATE")
-
-
-def test_make_engine_non_sqlite_url_gets_no_listeners():
-    # psycopg is the legacy-postgres extra; this test is meaningful in the image
-    # and the legacy CI job, and skipped on the lean install.
-    pytest.importorskip("psycopg")
-    engine = make_engine("postgresql+psycopg://x/y")
-    try:
-        assert isinstance(engine, Engine)
-        # (pool.dispatch.connect is never empty: create_engine installs the
-        # dialect's own on_connect hook there.)
-        assert not engine.dialect.dispatch.do_connect
-    finally:
-        engine.dispose()
 
 
 def test_make_engine_creates_the_file_with_mode_0600(tmp_path):

@@ -17,16 +17,49 @@ with the qualification that version 0 actually carries:
 - **Migrations only run forward.** The backend applies `alembic upgrade head` at
   boot. Downgrade functions exist in the migration files but have never been a
   supported path — rolling back means the old git ref, the old images, and the
-  dump `scripts/update.sh` took before it started, together. The
-  [README's Updating section](README.md#updating) has that recipe.
+  backup `scripts/update.sh` took before it started, together.
+  [`docs/UPDATING.md`](docs/UPDATING.md#rolling-back) has that recipe.
 - **Patch releases (`0.1.1`) never change the schema or the `.env` contract.**
   They are safe to take without reading anything.
 
-Version numbers appear in four places that must agree: the git tag (`v0.2.0`),
-`backend/pyproject.toml`, `extension/manifest.json`, and `CITATION.cff`. The
-published image tag is the same version with the leading `v` removed (`0.2.0`).
+Version numbers appear in seven places that must agree — the git tag (`v0.2.0`)
+and six files listed in [`docs/RELEASING.md`](docs/RELEASING.md). The published
+image tag is the same version with the leading `v` removed (`0.2.0`).
 
 ## [Unreleased]
+
+## [0.5.0] — 2026-09-23
+
+### Breaking changes
+
+- **Postgres is gone.** The compose file no longer has a `postgres` service or
+  `pgdata` volume, and the backend no longer imports a Postgres database —
+  v0.4.0 was the release that did that. **On v0.3.0 or older? Update to v0.4.0
+  first**; `./scripts/update.sh` now spots an old Postgres volume that was never
+  imported, stops before changing anything, and prints the steps
+  ([`docs/UPDATING.md`](docs/UPDATING.md#coming-from-v030-or-older)). If an
+  older copy of the script already moved you past v0.4.0 and the app came up
+  empty, your data is still in the old volume and the same steps recover it.
+- `LEGACY_DATABASE_URL`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`
+  and `POSTGRES_HOST_PORT` are no longer read; leaving them in `.env` is
+  harmless. The `legacy-postgres` extra and `python -m
+  app.tools.migrate_from_postgres` are removed.
+
+### Changed
+
+- A fresh install downloads and runs two containers instead of three: no
+  Postgres image (about 170 MB to download, 660 MB on disk), no idle container,
+  no port 55432, no wait at first start.
+- After an update, `update.sh` suggests removing the old Postgres volume and
+  the `postgres:16` image when they are still on disk; `docs/UPDATING.md` has a
+  new "Freeing disk space" section.
+
+### Fixed
+
+- `update.sh` no longer stops in git's pager (`:`) while listing the commits it
+  brought in, which hid the extension and MCP reminders printed after it.
+
+## [0.4.0] — 2026-09-23
 
 ### Breaking changes
 
@@ -93,6 +126,9 @@ published image tag is the same version with the leading `v` removed (`0.2.0`).
 
 ### Fixed
 
+- **Security:** Next.js 16.3.6, which fixes a critical remote-code-execution
+  advisory in its image optimizer (GHSA-2xp9-vwfh-vxw4), plus updated
+  `fast-uri`, `hono`, `js-yaml`, `qs` and `sharp` for their advisories.
 - Cover-letter regeneration and document upload commit before their LLM call,
   so a slow model no longer holds the database's write lock while it thinks.
 - Contact URLs with `~`/`_` in the shared header partial no longer corrupt the

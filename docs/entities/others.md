@@ -115,10 +115,9 @@
   falls back tolerantly when stale. Formatting is a 4-layer merge: template
   default ← base-resume partial ← application partial ← render call. Bundled
   templates render a non-empty start plus blank end as `Present` without
-  mutating resume JSON. Migration `c84a19d2e7f0` (legacy Postgres chain) first
-  resynced untouched stored seed sources; the live mechanism is seed-time
-  (`template_registry.SUPERSEDED_SEED_DIGESTS`, every boot, after any legacy
-  import).
+  mutating resume JSON. Untouched stored seed sources are resynced at seed time
+  (`template_registry.SUPERSEDED_SEED_DIGESTS`, every boot); the pre-SQLite
+  chain's migration `c84a19d2e7f0` did it once, before v0.5.0 removed that chain.
   `ResumeFormatting` has 14 knobs. The newest is **`section_order`**
   (`list[str] | None`): every bundled template defines its own native list and
   dispatches through it, so **absent/None = that template's order, byte-for-byte
@@ -406,7 +405,7 @@
   `lib/health-zones.ts` mirrors the Python; update both together.
 - **ApplicationProposal + ConsentEvent** (auto-apply ledger; migrations
   `56ade310b259` + `11b61fe1ace9`, lifecycle fields `0c677ba4cbcb`, filer
-  `9a5744f9b9d9` with legacy mirror `3a17da2f7144`): the
+  `9a5744f9b9d9`, the one revision after the SQLite baseline): the
   agent-hunted apply lane. `Job.source` / `Application.source`
   (`'user'|'agent'`, default user) are the provenance dimension — never a
   parallel category taxonomy. State machine (`services/proposals.py`, ALL
@@ -484,8 +483,8 @@
   (a double click filed two accepted proposals). The route takes the write lock first
   (`app.db.begin_write`, `BEGIN IMMEDIATE`), so the second waits and returns the first's row;
   pinned by `test_two_concurrent_creates_for_one_job_leave_one_open_proposal`. A partial unique
-  index was rejected: the legacy import lands rows that may already break it, and would fail
-  closed. If the caller also passes `application_id`
+  index was rejected: a database v0.4.0 imported from Postgres may already hold rows that break
+  it, so creating it would fail the migration. If the caller also passes `application_id`
   and the proposal is unlinked, late-link it (never relink to a different
   application — 409). Company blocklist stays hard 409. Agent-sourced jobs gate
   execute helpers (`prepare` / `attach_evidence` / `record_consent` /

@@ -33,15 +33,13 @@ rather than leaving the combination broken.
 
 **3. The compose project name is fixed and must never move again.**
 `docker-compose.yml` sets `name: maestro-career-studio`, so containers are
-`maestro-career-studio-backend-1` and the legacy Postgres volume is
-`maestro-career-studio_pgdata`. That container name is a **literal** in the
+`maestro-career-studio-backend-1`. That container name is a **literal** in the
 shipped plugin manifest (`plugins/maestro-career-studio/.mcp.json`) because
 Codex plugin manifests support no `${VAR}` interpolation — there is nowhere to
 put a variable. Changing the project name therefore breaks marketplace installs
-on every machine at once. Until the SQLite import has landed everywhere, it
-also points an existing stack at a different Postgres volume, which presents as
-an empty app rather than an error; after that the database travels with the
-project folder and the project name no longer decides which data you see.
+on every machine at once. (The database is a file in the project folder, so
+the project name does not decide which data you see; `update.sh` still looks
+for the pre-v0.4.0 volume by it, `maestro-career-studio_pgdata`.)
 `COMPOSE_PROJECT_NAME` still overrides it for anyone who needs a second stack
 side by side; that is the supported escape hatch, and such a user configures
 their MCP server with `scripts/setup-mcp.sh` rather than the plugin.
@@ -156,21 +154,11 @@ Confirm the backup file in `backups/` is non-empty, the checkout lands on the
 new tag, and the stack comes back healthy. This is the step that catches a
 release which publishes perfectly and updates nobody.
 
-**While the Postgres import is still in the release** (`SYSTEM.md` §13
-`postgres-to-sqlite`), run that scratch clone with **data in Postgres** — a
-captured job, a base resume, one rendered application — and then confirm all
-four:
-
-- `data/.migrated-from-postgres.json` exists;
-- the tracker lists the applications that were there before;
-- a PDF renders;
-- `./scripts/update.sh --check` prints `✓ database: data/maestro_cs.sqlite3`
-  — with ` (the Postgres volume is also present and unused; remove it with
-  docker volume rm …)` appended, which is what it says for as long as the old
-  volume is still there.
-
-An import that fails closed is a backend that refuses to start, so a green
-health poll alone does not prove this path.
+**The pre-v0.4.0 guard.** A scratch clone at v0.3.0 that holds data in
+Postgres must be stopped by `./scripts/update.sh --check` and by a real update
+with the "import it with v0.4.0 first" steps, before anything moves. Those
+steps, followed as printed, must end with `data/.migrated-from-postgres.json`
+present and the old applications listed.
 
 ### 9. After the release
 

@@ -142,7 +142,7 @@ does not.
   model call it makes, so anything else trying to save — extension telemetry,
   an MCP capture, a chat turn — waits 30 seconds and then fails with "database
   is locked". It is user-started and rare; the workaround is not to use the app
-  while one (or a first-boot import) is running. The few seconds a tailoring
+  while one is running. The few seconds a tailoring
   session spends enriching gaps behave the same way.
 - **A stored ATS score cannot be exactly reproduced.** Scoring is deterministic
   given its inputs, but a stored score does not record its as-of date, which
