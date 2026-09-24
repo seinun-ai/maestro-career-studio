@@ -1190,8 +1190,8 @@
   tailors, every gap control is locked (`GapLocked`: `aria-disabled` buttons,
   `readOnly` fields, so focus stays), and an edit that slips through is saved
   if the tailor fails. A stale session shows no Try again (every save 409s;
-  the banner's Start new analysis is the way out), and an edit there reads
-  Save failed and keeps the leave guard. `AutosaveStatus` reports three states:
+  the banner's Start new gap analysis is the way out), and an edit there reads
+  Not saved and keeps the leave guard. `AutosaveStatus` reports three states:
   Saving…, Not saved (after a failed write, with Try again where the card
   holds a value the server lacks), and Saves automatically. A card still
   holding a value the server lacks registers the leave guard. After a retry

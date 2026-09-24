@@ -482,11 +482,6 @@ def _counts() -> Counter[str]:
 # counts as it goes and deletes its block when it lands; the last one deletes
 # `_PENDING` itself. Task 23 (D §9, server-written messages) has no block:
 # this scan reads the frontend and the Companion panel only.
-_PENDING_T18: dict[str, int] = {  # D §3 the gap page
-    "frontend/app/jobs/[id]/tailor/[sessionId]/page.tsx": 19,
-    "frontend/components/gap-analysis/gap-card.tsx": 12,
-    "frontend/components/gap-analysis/resolution-controls.tsx": 16,
-}
 _PENDING_T19: dict[str, int] = {  # D §4 resumes, studios, health, templates
     "frontend/app/base-resumes/page.tsx": 5,
     "frontend/app/templates/[id]/page.tsx": 7,
@@ -568,7 +563,7 @@ _PENDING_T22: dict[str, int] = {  # D §8 the Companion panel
     "extension/panel/stages/score.js": 2,
     "extension/panel/stages/track.js": 1,
 }
-_BLOCKS = (_PENDING_T18, _PENDING_T19, _PENDING_T20, _PENDING_T21, _PENDING_T22)
+_BLOCKS = (_PENDING_T19, _PENDING_T20, _PENDING_T21, _PENDING_T22)
 _PENDING: dict[str, int] = {rel: n for block in _BLOCKS for rel, n in block.items()}
 
 

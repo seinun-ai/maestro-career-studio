@@ -54,14 +54,22 @@ export const ACTION_LABELS: Record<GapAction, string> = {
   user_input: "Answer",
   attach_project: "Attach project",
   skip: "Skip",
-  enable_entry: "Enable entry",
-  port_kb_point: "Use KB evidence",
+  enable_entry: "Show hidden item",
+  port_kb_point: "Use from career history",
   cannot_confirm: "I can't confirm this",
 };
 
 /** One-line explanation shown wherever the cannot_confirm affordance appears. */
 export const CANNOT_CONFIRM_EXPLANATION =
-  "Saved so you won't be asked again; never used as evidence.";
+  "We won't ask again, and it won't go on your resume.";
+
+/** A placement target's section in words, where no entry label names it. */
+export const TARGET_SECTION_WORD: Record<SavedTarget["section"], string> = {
+  skills: "Skills",
+  experience: "Experience",
+  projects: "Projects",
+  extra: "Other section",
+};
 
 /**
  * The actions the segmented control may offer. `enable_entry` and
@@ -253,7 +261,7 @@ export function ActionSegment({
   return (
     <div
       role="group"
-      aria-label="Resolution action"
+      aria-label="How to handle this gap"
       className="bg-muted inline-flex w-fit items-center gap-0.5 rounded-lg p-[3px]"
     >
       {manual.map((action) => (
@@ -331,7 +339,7 @@ export function Chip({
               : "bg-muted text-muted-foreground",
           )}
         >
-          recent
+          Recent
         </span>
       )}
     </button>
@@ -344,8 +352,9 @@ const LOAD_ERROR_MESSAGE =
 /** Fallback skills bucket for unverified adds (backend creates it if absent). */
 const ADDITIONAL_SKILLS_CATEGORY = "Additional Skills";
 
+// The honesty warning (inv-honesty): shortened, every clause kept.
 const UNVERIFIED_WARNING =
-  "Unverified. You have no evidence of this skill on your resume. Only add skills you genuinely have, because recruiters may ask.";
+  "Your resume doesn't show this skill. Add it only if you have it. Recruiters may ask.";
 
 export function AddKeywordControls({
   targets,
@@ -376,7 +385,7 @@ export function AddKeywordControls({
       return <p className="text-destructive text-xs">{LOAD_ERROR_MESSAGE}</p>;
     }
     return (
-      <p className="text-muted-foreground text-xs">Loading placement options…</p>
+      <p className="text-muted-foreground text-xs">Loading…</p>
     );
   }
   let skillsItems = targets.filter((t) => t.section === "skills");
@@ -402,7 +411,7 @@ export function AddKeywordControls({
           { key: "skills", title: "Skills", items: skillsItems },
           { key: "experience", title: "Experience", items: targets.filter((t) => t.section === "experience") },
           { key: "projects", title: "Projects", items: targets.filter((t) => t.section === "projects") },
-          { key: "extra", title: "Custom", items: targets.filter((t) => t.section === "extra") },
+          { key: "extra", title: "Other sections", items: targets.filter((t) => t.section === "extra") },
         ]
   ).filter((group) => group.items.length > 0);
 
@@ -413,7 +422,7 @@ export function AddKeywordControls({
           {UNVERIFIED_WARNING}
         </div>
       )}
-      <p className="text-muted-foreground text-xs">Where should this keyword live?</p>
+      <p className="text-muted-foreground text-xs">Where should it go?</p>
       {groups.map((group) => (
         <div key={group.key} className="flex flex-wrap items-baseline gap-1.5">
           <span className="text-muted-foreground w-20 shrink-0 text-xs">
@@ -441,7 +450,6 @@ export function AddKeywordControls({
           value={wording}
           readOnly={locked}
           onChange={(event) => onWordingChange(event.target.value)}
-          placeholder="e.g. PySpark"
         />
       </div>
     </div>
@@ -453,7 +461,6 @@ export function UserInputControls({
   text,
   targets,
   selected,
-  placeholder = "e.g. Built the ingestion pipeline in Python and Airflow",
   onTextChange,
   onPickTarget,
 }: {
@@ -463,13 +470,12 @@ export function UserInputControls({
   targets: PlacementTarget[] | null;
   /** Currently attached role/project, or null (none is allowed). */
   selected: SavedTarget | null;
-  /** Override the textarea placeholder (e.g. the summary value-prop draft). */
-  placeholder?: string;
   onTextChange: (value: string) => void;
   /** Pass a target to attach it, or null to detach the current selection. */
   onPickTarget: (target: PlacementTarget | null) => void;
 }) {
   const questionId = useId();
+  const whereId = useId();
   const locked = use(GapLocked);
   return (
     <div className="space-y-2">
@@ -487,15 +493,14 @@ export function UserInputControls({
         value={text}
         readOnly={locked}
         onChange={(event) => onTextChange(event.target.value)}
-        placeholder={placeholder}
       />
       {targets && targets.length > 0 && (
         <div className="space-y-1">
-          <p className="text-muted-foreground text-xs">
-            Which role, project, or custom section was this?{" "}
-            <span className="opacity-70">(optional)</span>
-          </p>
-          <div className="flex flex-wrap gap-1.5">
+          {/* Names the chip group; the chips are the control, so no htmlFor. */}
+          <Label id={whereId} optional className="text-muted-foreground text-xs font-normal">
+            Where did you do this?
+          </Label>
+          <div role="group" aria-labelledby={whereId} className="flex flex-wrap gap-1.5">
             {targets.map((target) => {
               const isSelected =
                 selected !== null && targetsEqual(target, selected);
@@ -518,7 +523,7 @@ export function UserInputControls({
   );
 }
 
-// --- "Found in your library" -------------------------------------------------
+// --- "Found in your resumes and career history" ------------------------------
 
 const KB_SNIPPET_MAX = 60;
 
@@ -541,18 +546,18 @@ export function candidateKey(candidate: LibraryCandidate): string {
   return `${candidate.kind}:${candidate.entity_id ?? ""}:${candidate.point_id ?? ""}`;
 }
 
-/** Chip text per design §4.2: disabled entries name themselves, KB items lead with "KB:". */
+/** Chip text per design §4.2: hidden items name themselves; the "Found in…" heading names the source. */
 export function candidateLabel(candidate: LibraryCandidate): string {
   if (candidate.kind === "disabled") {
-    const name = (candidate.name ?? "").trim() || "Hidden entry";
-    return `${clip(name, 40)} (disabled)`;
+    const name = (candidate.name ?? "").trim() || "Hidden item";
+    return `${clip(name, 40)} (hidden)`;
   }
-  if (candidate.kind === "profile") return "KB profile";
+  if (candidate.kind === "profile") return "Career history skills";
   const text =
     (candidate.evidence_snippet ?? "").trim() ||
     (candidate.title ?? "").trim() ||
-    "Career KB item";
-  return `KB: ${clip(text, KB_SNIPPET_MAX)}`;
+    "Career history item";
+  return clip(text, KB_SNIPPET_MAX);
 }
 
 /**
@@ -577,7 +582,7 @@ export function LibraryCandidateChips({
     <div className="space-y-1.5">
       <p className="text-muted-foreground flex items-center gap-1.5 text-xs">
         <Library className="size-3.5 shrink-0" />
-        Found in your library
+        Found in your resumes and career history
       </p>
       <div className="flex flex-wrap gap-1.5">
         {candidates.map((candidate) => {
@@ -595,9 +600,8 @@ export function LibraryCandidateChips({
         })}
       </div>
       <p className="text-muted-foreground/80 text-xs">
-        Evidence from your own resume entries and Career KB. Picking one that
-        can&apos;t be ported directly drops its text into the answer box for you
-        to edit.
+        Pick one to use it. If it can&apos;t be added directly, its text goes
+        into your answer to edit.
       </p>
     </div>
   );
@@ -635,7 +639,7 @@ export function AttachProjectControls({
   return (
     <div className="space-y-2">
       <p className="text-muted-foreground text-xs">
-        Attach an existing project as evidence for this skill.
+        Pick a project that shows this skill.
       </p>
       <div className="flex flex-wrap gap-1.5">
         {projects.map((name) => (

@@ -293,3 +293,50 @@ def test_autofill_coverage_names_field_kinds_in_words():
     assert "kind: kindLabel(kind.kind)," in card
     assert "{kindLabel(row.kind)}" in card
     assert card.count("{row.kind}") == 1  # RateTooltip, on a row already mapped
+
+
+# The gap page (plan Task 18, appendix D §3).
+_GAP_PAGE = "app/jobs/[id]/tailor/[sessionId]/page.tsx"
+
+
+def test_the_gap_page_still_matches_the_server_quick_tailor_answer():
+    # The one string code compares: D §9 keeps the server's "No actionable
+    # resolutions to tailor" because this line reads it to pick its own words.
+    page = _read(_GAP_PAGE)
+    assert 'error.message === "No actionable resolutions to tailor"' in page
+    assert '"Quick tailor had nothing to add here. Answer a gap yourself, or use your resume as is."' in page
+
+
+def test_tailoring_notes_have_a_label_a_hint_and_no_placeholder():
+    page = _read(_GAP_PAGE)
+    notes = page[page.index('<Label htmlFor="tailor-instructions"') : page.index("rows={3}")]
+    assert "optional>" in notes and "Tailoring notes" in notes
+    assert "<p id={notesHintId}" in notes and "What to stress, or limits like page count." in notes
+    assert "aria-describedby={notesHintId}" in notes
+    assert "placeholder=" not in page
+    assert "const notesHintId = useId();" in page
+
+
+def test_the_honesty_warning_keeps_every_clause():
+    """inv-honesty's screen half: shorter, but it still says the resume does
+    not show the skill, to add it only if true, and that recruiters may ask."""
+    controls = _read("components/gap-analysis/resolution-controls.tsx")
+    assert (
+        '"Your resume doesn\'t show this skill. Add it only if you have it. Recruiters may ask."'
+        in controls
+    )
+    assert "{UNVERIFIED_WARNING}" in controls
+    # cannot_confirm keeps its "never used" promise in plain words.
+    assert '"We won\'t ask again, and it won\'t go on your resume."' in controls
+
+
+def test_the_gap_page_says_done_and_gap_analysis():
+    page = _read(_GAP_PAGE)
+    assert '? "Not saved"' in page and "Save failed" not in page
+    assert "{done} of {category.gaps.length}" in page
+    assert "gaps addressed" not in page
+    assert "This gap analysis is out of date because {staleReason}." in page
+    card = _read("components/gap-analysis/gap-card.tsx")
+    assert "placementLabel(diagnostic.placement)" in card
+    assert "title tier:" not in card and "match_form}" not in card
+    assert "{requirementLabel(gap.requirement_level)}" in card

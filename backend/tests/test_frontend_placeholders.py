@@ -63,15 +63,6 @@ _PROMPTS = frozenset(
 # lines; a task lowers its counts as it goes and deletes its block when it
 # lands. The wave-2 lanes already removed the Agent inbox's score example and
 # the examples in the Settings cards they rewrote.
-_PENDING_EXAMPLES_T18: dict[tuple[str, str], int] = {  # D §3 the gap page
-    (
-        "app/jobs/[id]/tailor/[sessionId]/page.tsx",
-        "e.g. emphasize leadership, keep it to one page, lead with the fintech project" + _ELLIPSIS,
-    ): 1,
-    ("components/gap-analysis/gap-card.tsx", "e.g. Data scientist who ships forecasting models to production"): 1,
-    ("components/gap-analysis/resolution-controls.tsx", "e.g. PySpark"): 1,
-    ("components/gap-analysis/resolution-controls.tsx", "e.g. Built the ingestion pipeline in Python and Airflow"): 2,
-}
 _PENDING_EXAMPLES_T19: dict[tuple[str, str], int] = {  # D §4 resumes, studios, health, templates
     ("app/base-resumes/page.tsx", "e.g. Data Scientist (1 page)"): 1,
     ("app/templates/page.tsx", "e.g. classic_serif"): 1,
@@ -133,7 +124,6 @@ _PENDING_EXAMPLES_T21: dict[tuple[str, str], int] = {  # D §6 Settings and Prof
     ): 1,
 }
 _EXAMPLE_BLOCKS = (
-    _PENDING_EXAMPLES_T18,
     _PENDING_EXAMPLES_T19,
     _PENDING_EXAMPLES_T20,
     _PENDING_EXAMPLES_T21,
@@ -637,19 +627,18 @@ def test_file_import_name_defaults_in_a_hint():
     )
 
 
-def test_summary_placeholder_is_an_example_and_the_consequence_stays_visible():
+def test_summary_field_has_no_placeholder_and_the_consequence_stays_visible():
     gap = _src("components/gap-analysis/gap-card.tsx")
     controls = _src("components/gap-analysis/resolution-controls.tsx")
     assert "Draft your JD-aligned value proposition" not in gap
-    assert re.search(
-        r'isSummary\s*\?\s*"e\.g\. Data scientist who ships forecasting models to production"', gap
-    )
-    # The question above already says it refreshes the summary; a hint saying
+    assert "placeholder=" not in gap
+    # The question above already says it replaces the summary; a hint saying
     # so again only repeats the label.
-    assert "This refreshes the summary section." in gap
+    assert "This replaces your current summary." in gap
     assert "This becomes your summary." not in gap
     assert "Only what you write here is used.\n" in controls
-    _order(controls, "Exact wording", 'placeholder="e.g. PySpark"')
+    assert "placeholder=" not in controls
+    assert "Exact wording" in controls
     assert "Exact wording to add" not in controls
 
 

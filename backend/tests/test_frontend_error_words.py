@@ -63,9 +63,6 @@ _ALLOWED: dict[str, int] = {
 # task, so two lanes never edit the same lines. A task lowers its counts as it
 # goes and deletes its block when it lands. Tasks 22-23 have no block: the
 # Companion panel and the server are not scanned here.
-_PENDING_T18: dict[str, int] = {  # D §3 the gap page
-    "app/jobs/[id]/tailor/[sessionId]/page.tsx": 6,
-}
 _PENDING_T19: dict[str, int] = {  # D §4 resumes, studios, health, templates
     "app/applications/[id]/resume/page.tsx": 1,
     "app/base-resumes/[slug]/page.tsx": 1,
@@ -123,7 +120,7 @@ _PENDING_T21: dict[str, int] = {  # D §6 Settings and Profile; D §7 Assistant,
     "components/setup/getting-started-card.tsx": 1,
     "components/setup/use-document-queue.ts": 1,
 }
-_BLOCKS = (_PENDING_T18, _PENDING_T19, _PENDING_T20, _PENDING_T21)
+_BLOCKS = (_PENDING_T19, _PENDING_T20, _PENDING_T21)
 _PENDING: dict[str, int] = {rel: n for block in _BLOCKS for rel, n in block.items()}
 
 

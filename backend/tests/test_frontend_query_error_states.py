@@ -404,7 +404,7 @@ _EDITOR_ROUTES = [
     ("app/base-resumes/[slug]/page.tsx", 'useRefreshFailedNotice(query, "this resume");'),
     ("app/applications/[id]/resume/page.tsx", 'useRefreshFailedNotice(query, "this tailored resume");'),
     ("app/templates/[id]/page.tsx", 'useRefreshFailedNotice(tq, "this template");'),
-    ("app/jobs/[id]/tailor/[sessionId]/page.tsx", 'useRefreshFailedNotice(session, "this tailoring session");'),
+    ("app/jobs/[id]/tailor/[sessionId]/page.tsx", 'useRefreshFailedNotice(session, "this gap analysis");'),
 ]
 
 

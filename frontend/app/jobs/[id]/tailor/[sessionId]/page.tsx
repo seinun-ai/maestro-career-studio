@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { use, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { GuardedLink as Link } from "@/components/guarded-link";
 import { focusIfDropped } from "@/hooks/use-focus-return";
 import { useLeaveGuard } from "@/hooks/use-leave-guard";
@@ -36,6 +36,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
+import { couldnt, errorDetail } from "@/lib/error-text";
 import { cn } from "@/lib/utils";
 import {
   ApiError,
@@ -99,7 +100,7 @@ function SaveIndicator({
           : state === "saved"
             ? "Saved"
             : state === "error"
-              ? "Save failed"
+              ? "Not saved"
               : null}
       </span>
       {onRetry && (state === "error" || retrying) ? (
@@ -161,7 +162,7 @@ function CategorySection({
         />
         <span className="text-sm font-medium">{category.title}</span>
         <Badge variant={done === category.gaps.length ? "default" : "secondary"}>
-          {done}/{category.gaps.length}
+          {done} of {category.gaps.length}
         </Badge>
         <span className="text-muted-foreground ml-auto hidden truncate text-xs sm:inline">
           {category.description}
@@ -195,6 +196,7 @@ export default function TailorSessionPage({
   const qc = useQueryClient();
   const router = useRouter();
   const confirm = useConfirm();
+  const notesHintId = useId();
 
   const session = useQuery({
     queryKey: ["tailoring-session", sessionId],
@@ -247,7 +249,7 @@ export default function TailorSessionPage({
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const chainRef = useRef<Promise<void>>(Promise.resolve());
-  // Bumped by every edit. A save reports "Saved"/"Save failed" only if no edit
+  // Bumped by every edit. A save reports "Saved" or "Not saved" only if no edit
   // came after it began; otherwise a newer save is queued and will report.
   const editGen = useRef(0);
 
@@ -286,16 +288,14 @@ export default function TailorSessionPage({
     } catch (error) {
       if (editGen.current === gen) setSaveState("error");
       if (error instanceof ApiError && error.status === 409) {
-        // Surface the SERVER detail (e.g. "This gap analysis is stale — …")
-        // rather than a hardcoded "no longer open" — the session may well be
-        // open, just stale. Invalidating refreshes stale_reason so the stale
+        // Surface the SERVER detail when it is a sentence for the user (the
+        // analysis may well be open, just stale) rather than a hardcoded "no
+        // longer open". Invalidating refreshes stale_reason so the stale
         // banner appears and future autosaves bail out (see saveNow's guard).
-        toast.error(error.message);
+        toast.error(errorDetail(error) ?? "This gap analysis is out of date. Start a new one.");
         void qc.invalidateQueries({ queryKey: ["tailoring-session", sessionId] });
       } else {
-        toast.error(
-          error instanceof Error ? error.message : "Failed to save resolutions",
-        );
+        toast.error(couldnt("save your answers", error));
       }
       return false;
     }
@@ -358,7 +358,7 @@ export default function TailorSessionPage({
       const skips = result.kb_writeback_skips ?? [];
       if (skips.length > 0) {
         toast.message(
-          `${skips.length} ${skips.length === 1 ? "answer was" : "answers were"} not saved to your Career KB`,
+          `${skips.length} ${skips.length === 1 ? "answer wasn't" : "answers weren't"} added to your career history`,
           { description: skips.map((skip) => skip.detail).join(" · ") },
         );
       }
@@ -390,7 +390,7 @@ export default function TailorSessionPage({
         void qc.invalidateQueries({ queryKey: ["tailoring-session", sessionId] });
       }
       if (error instanceof ApiError && error.status === 409) {
-        toast.error("This session is no longer open. Refreshing.");
+        toast.error("This gap analysis was closed. Reloading.");
         void qc.invalidateQueries({ queryKey: ["tailoring-session", sessionId] });
         return;
       }
@@ -404,12 +404,11 @@ export default function TailorSessionPage({
         error.message === "No actionable resolutions to tailor"
       ) {
         toast.error(
-          "Your quick-tailor defaults had nothing they were allowed to add here. " +
-            "Answer a gap yourself, or use the base resume as-is.",
+          "Quick tailor had nothing to add here. Answer a gap yourself, or use your resume as is.",
         );
         return;
       }
-      toast.error(error.message);
+      toast.error(couldnt("tailor your resume", error));
     },
   });
 
@@ -453,11 +452,11 @@ export default function TailorSessionPage({
     scheduleSave();
   };
 
-  // --- Use base resume as-is (perfect-fit / nothing-to-tailor escape hatch) ----
+  // --- Use resume as is (perfect-fit / nothing-to-tailor escape hatch) ----------
   const useAsIs = useMutation({
     mutationFn: async () => {
       const data = session.data;
-      if (!data) throw new Error("Session not loaded");
+      if (!data) throw new Error("Still loading. Try again in a moment.");
       const application = await createApplicationFromBase(jobId, data.base_resume, []);
       // Best-effort cleanup: the application is already created at this point,
       // so a failure to close the now-redundant session must not block the user.
@@ -476,7 +475,7 @@ export default function TailorSessionPage({
       toast.success("Application created from your base resume");
       router.push(`/jobs/${jobId}?tab=output`);
     },
-    onError: (error: Error) => toast.error(error.message),
+    onError: (error: Error) => toast.error(couldnt("use your resume as is", error)),
   });
 
   // --- Stale session: frozen gaps no longer match the current base/JD ---------
@@ -484,14 +483,14 @@ export default function TailorSessionPage({
   const startOver = useMutation({
     mutationFn: () => {
       const data = session.data;
-      if (!data) throw new Error("Session not loaded");
+      if (!data) throw new Error("Still loading. Try again in a moment.");
       return createTailoringSession(jobId, data.base_resume);
     },
     onSuccess: (created) => {
       qc.invalidateQueries({ queryKey: ["tailoring-sessions", jobId] });
       router.replace(`/jobs/${jobId}/tailor/${created.id}`);
     },
-    onError: (error: Error) => toast.error(error.message),
+    onError: (error: Error) => toast.error(couldnt("start over", error)),
   });
 
   // --- Derived counts ---------------------------------------------------------
@@ -549,7 +548,7 @@ export default function TailorSessionPage({
     if (!session.data) return;
     if (addressed === 0) {
       toast.error(
-        "Resolve at least one gap first. Skips alone give the tailor nothing to do.",
+        "Answer at least one gap first. Skipped gaps change nothing.",
       );
       return;
     }
@@ -558,7 +557,7 @@ export default function TailorSessionPage({
         ? confirm({
             title: `${open} ${open === 1 ? "gap is" : "gaps are"} still open`,
             description:
-              "Open gaps are left as-is. The tailored resume reflects only the resolutions you made.",
+              "Open gaps stay as they are. Only your answers go into the tailored resume.",
             confirmLabel: "Tailor anyway",
           })
         : true,
@@ -581,17 +580,15 @@ export default function TailorSessionPage({
         confirm({
           title: `Quick tailor ${open} open ${open === 1 ? "gap" : "gaps"}?`,
           description:
-            "Applies your saved quick-tailor defaults to every gap you haven't " +
-            "answered, then tailors. Gaps you've already resolved are left exactly " +
-            "as they are. Every change is listed with its source in the review step " +
-            "afterward, and can be reverted one at a time.",
+            "Fills every open gap from your Quick tailor settings, then tailors. " +
+            "Your answers stay as they are. You can review and undo each change afterward.",
           confirmLabel: "Quick tailor",
         }),
       true,
     );
   };
 
-  useRefreshFailedNotice(session, "this tailoring session");
+  useRefreshFailedNotice(session, "this gap analysis");
 
   // --- Render branches --------------------------------------------------------
   // A 404 is "this session is gone", not a generic failure. Remember the error:
@@ -604,7 +601,7 @@ export default function TailorSessionPage({
     if (sessionMissing) {
       return (
         <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
-          <h1 className="text-lg font-medium">Tailoring session not found</h1>
+          <h1 className="text-lg font-medium">This gap analysis no longer exists</h1>
           <p className="text-muted-foreground text-sm">
             It may have been deleted along with its job.
           </p>
@@ -618,8 +615,8 @@ export default function TailorSessionPage({
     return (
       <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
         <LoadErrorState
-          title="Couldn't load this tailoring session."
-          detail={sessionError instanceof Error ? sessionError.message : undefined}
+          title="Couldn't load this gap analysis."
+          detail={errorDetail(sessionError)}
           retrying={session.isFetching}
           onRetry={() => void session.refetch()}
           action={
@@ -647,17 +644,15 @@ export default function TailorSessionPage({
     // Sessions can end up here as "tailored" (the normal terminal state),
     // "superseded" (a newer session for the same base resume replaced it —
     // e.g. "Start over"), or "abandoned" (closed without tailoring — e.g.
-    // "Use base resume as-is").
-    let heading = "This session is already tailored";
-    let description = "The tailored resume lives on the job's application.";
+    // "Use resume as is").
+    let heading = "This gap analysis is done";
+    let description = "Your tailored resume is on the job's Resume tab.";
     if (session.data.status === "superseded") {
-      heading = "This gap analysis was superseded";
-      description =
-        "A newer session replaced it. Continue from the job's Score & Tailor tab.";
+      heading = "A newer gap analysis replaced this one";
+      description = "Continue from the job's Score and tailor tab.";
     } else if (session.data.status === "abandoned") {
       heading = "This gap analysis was closed";
-      description =
-        "Start a fresh analysis anytime from the job's Score & Tailor tab.";
+      description = "Start a new one from the job's Score and tailor tab.";
     }
     return (
       <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
@@ -692,7 +687,8 @@ export default function TailorSessionPage({
           <div className="flex min-w-0 items-center gap-2.5">
             <TriangleAlert className="size-4 shrink-0 text-amber-700 dark:text-amber-400" />
             <p className="text-sm">
-              This analysis is out of date: {staleReason} since it was created. Saving and tailoring are disabled.
+              This gap analysis is out of date because {staleReason}. Your changes here won&apos;t
+              be saved. Start a new one to keep going.
             </p>
           </div>
           <Button
@@ -701,7 +697,7 @@ export default function TailorSessionPage({
             onClick={() => startOver.mutate()}
             disabled={startOver.isPending}
           >
-            {startOver.isPending ? "Starting…" : "Start new analysis"}
+            {startOver.isPending ? "Starting…" : "Start new gap analysis"}
           </Button>
         </div>
       ) : null}
@@ -724,10 +720,6 @@ export default function TailorSessionPage({
             <span className="text-muted-foreground"> / 100</span>
           </p>
         </div>
-        <p className="text-muted-foreground mt-1 shrink-0 text-sm tabular-nums">
-          <span className="text-foreground font-medium">{addressed}</span> of {total}{" "}
-          gaps addressed
-        </p>
       </header>
 
       <div
@@ -744,7 +736,7 @@ export default function TailorSessionPage({
               <p className="font-medium">{gapsJson.coverage_warning}</p>
               {gapsJson.jd_skills_extracted_count ? (
                 <p className="text-xs text-muted-foreground">
-                  Only {gapsJson.jd_skills_matched_count ?? 0} of {gapsJson.jd_skills_extracted_count} skills in this posting were recognized ({Math.round((gapsJson.coverage_ratio ?? 0) * 100)}% coverage).
+                  We recognized only {gapsJson.jd_skills_matched_count ?? 0} of the job&apos;s {gapsJson.jd_skills_extracted_count} skills ({Math.round((gapsJson.coverage_ratio ?? 0) * 100)}%).
                 </p>
               ) : null}
             </div>
@@ -755,8 +747,8 @@ export default function TailorSessionPage({
             <p className="text-foreground text-sm font-medium">Strong match</p>
             <p className="text-muted-foreground text-sm">
               {hasSummaryGap
-                ? "This resume already covers the JD well. Sharpen your value proposition in the summary below, then tailor."
-                : "This resume already covers the JD well. Tailor as-is."}
+                ? "This resume already fits the job well. Strengthen your summary below, then tailor."
+                : "This resume already fits the job well."}
             </p>
           </div>
         )}
@@ -765,19 +757,18 @@ export default function TailorSessionPage({
             <Library className="text-primary size-4 shrink-0" />
             <p className="text-sm">
               <span className="font-medium">
-                {autoResolved} {autoResolved === 1 ? "gap" : "gaps"}
+                {autoResolved} {autoResolved === 1 ? "gap was" : "gaps were"}
               </span>{" "}
-              auto-resolved from your own evidence — review below.
+              filled in from your resumes and career history. Review them below.
             </p>
           </div>
         )}
         {autoResolved === 0 && !strongMatch && open > 0 && (
           <p className="text-muted-foreground text-sm">
-            Nothing here could be resolved automatically — these gaps need your
-            judgment. <span className="font-medium">Add keyword</span> places the
-            JD&apos;s exact term, <span className="font-medium">Answer</span> feeds
-            the tailor your real experience, and{" "}
-            <span className="font-medium">Skip</span> leaves a gap as-is.
+            These gaps need your input. <span className="font-medium">Add keyword</span>{" "}
+            uses the job&apos;s exact words, <span className="font-medium">Answer</span>{" "}
+            adds your real experience, and <span className="font-medium">Skip</span>{" "}
+            leaves a gap as it is.
           </p>
         )}
         {categories.map((category) => (
@@ -794,16 +785,18 @@ export default function TailorSessionPage({
         </GapLocked>
 
         <section className="space-y-2">
-          <Label htmlFor="tailor-instructions" className="font-medium">
-            Anything specific about how this should be tailored?{" "}
-            <span className="text-muted-foreground font-normal">(optional)</span>
+          <Label htmlFor="tailor-instructions" className="font-medium" optional>
+            Tailoring notes
           </Label>
+          <p id={notesHintId} className="text-muted-foreground text-xs">
+            What to stress, or limits like page count.
+          </p>
           <Textarea
             id="tailor-instructions"
             value={userPrompt}
             readOnly={tailorBusy}
             onChange={(event) => handlePromptChange(event.target.value)}
-            placeholder="e.g. emphasize leadership, keep it to one page, lead with the fintech project…"
+            aria-describedby={notesHintId}
             rows={3}
           />
         </section>
@@ -812,7 +805,7 @@ export default function TailorSessionPage({
       <div className="bg-background/95 sticky bottom-0 z-10 -mx-6 mt-auto border-t px-6 py-3 backdrop-blur">
         <div className="mx-auto flex w-full max-w-4xl items-center gap-3">
           <p className="text-muted-foreground text-sm tabular-nums">
-            <span className="text-foreground font-medium">{addressed}</span> addressed
+            <span className="text-foreground font-medium">{addressed}</span> done
             · <span className="text-foreground font-medium">{skipped}</span> skipped ·{" "}
             <span className="text-foreground font-medium">{open}</span> open
           </p>
@@ -830,7 +823,7 @@ export default function TailorSessionPage({
                     const ok = await confirm({
                       title: "Replace the existing tailored draft?",
                       description:
-                        "This job already has a tailored resume draft. Using the base as-is replaces it and removes its rendered PDF. Version history keeps the old draft.",
+                        "Using your base resume as is replaces this job's tailored resume and its PDF. Version history keeps the old one.",
                       confirmLabel: "Replace draft",
                       destructive: true,
                     });
@@ -841,7 +834,7 @@ export default function TailorSessionPage({
                 disabled={useAsIs.isPending || tailorBusy || !!staleReason}
               >
                 {useAsIs.isPending && <Loader2 className="animate-spin" />}
-                Use base resume as-is
+                Use resume as is
               </Button>
             )}
             {open > 0 && (
@@ -851,7 +844,7 @@ export default function TailorSessionPage({
                 onClick={onQuickTailorClick}
                 focusableWhenDisabled
                 disabled={tailorBusy || useAsIs.isPending || !!staleReason}
-                title="Fill the open gaps from your saved defaults, then tailor"
+                title="Fill open gaps from your Quick tailor settings, then tailor"
               >
                 <Zap />
                 Quick tailor
@@ -865,7 +858,7 @@ export default function TailorSessionPage({
               disabled={tailorBusy || useAsIs.isPending || !!staleReason}
             >
               {tailor.isPending ? <Loader2 className="animate-spin" /> : <Wand2 />}
-              {tailor.isPending ? "Tailoring, about 30s" : "Tailor resume"}
+              {tailor.isPending ? "Tailoring… about 30 seconds" : "Tailor resume"}
             </Button>
           </div>
         </div>
