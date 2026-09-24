@@ -72,15 +72,21 @@ def test_no_path_at_all_does_not_search_the_working_directory(monkeypatch, tmp_p
     assert status.path is None
 
 
-@pytest.mark.parametrize("path_value", ["", ":", "/usr/bin:", ":/usr/bin", "/a::/b"])
+@pytest.mark.parametrize("path_value", ["", ":", "{bin}:", ":{bin}", "/a::/b"])
 def test_an_empty_path_component_never_makes_cwd_a_candidate(
     monkeypatch, tmp_path, path_value
 ):
     """The same trap hidden mid-string, where filtering a wholly empty PATH
-    misses it: PATH must be SPLIT before its empty components are dropped."""
+    misses it: PATH must be SPLIT before its empty components are dropped.
+
+    The named directory is an empty one this test owns, never a real system
+    directory: CI installs TeX Live, so `/usr/bin` holds a genuine pdflatex that
+    the probe is right to find."""
     _fake_pdflatex(tmp_path)
+    empty_bin = tmp_path / "empty-bin"
+    empty_bin.mkdir()
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("PATH", path_value)
+    monkeypatch.setenv("PATH", path_value.format(bin=empty_bin))
     monkeypatch.setattr(engines, "_candidate_dirs", lambda: [])
     found, reason = engines.find_pdflatex()
     assert found is None
