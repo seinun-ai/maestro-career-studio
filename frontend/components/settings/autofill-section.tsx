@@ -164,10 +164,12 @@ const GROUPS: GroupDef[] = [
         type: "select",
         options: YES_NO_DECLINE,
       },
-      // No "(optional)": the whole group is voluntary, and says so.
+      // Optional for readiness (setup_status counts the other four); its
+      // label carries no "(optional)", because the whole group is voluntary.
       {
         key: "race_ethnicity",
         label: "Race or ethnicity",
+        optional: true,
       },
     ],
   },
@@ -816,7 +818,7 @@ function AutofillEditor({
               const hintId = field.hint ? `${id}-hint` : undefined;
               return (
                 <div key={field.key} className="grid gap-1.5">
-                  <Label htmlFor={id} optional={field.optional}>
+                  <Label htmlFor={id} optional={field.optional && group.key !== "eeo"}>
                     {field.label}
                   </Label>
                   {field.hint ? (

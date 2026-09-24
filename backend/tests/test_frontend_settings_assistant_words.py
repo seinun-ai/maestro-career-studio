@@ -264,9 +264,9 @@ def test_fill_from_career_history_says_why_it_waits():
     assert "<TooltipContent>{resumeDisabledReason}</TooltipContent>" not in _AUTOFILL
     assert "aria-describedby={contactReady ? undefined : fillHintId}" in _AUTOFILL
     assert "<p id={fillHintId}" in _AUTOFILL
-    # Race sits in a voluntary group, so it carries no "(optional)" of its own.
-    race = _between(_AUTOFILL, 'key: "race_ethnicity",', "},")
-    assert "optional" not in race
+    # Race sits in a voluntary group, so its label carries no "(optional)" of its own;
+    # it stays optional for readiness (test_autofill_groups_parity.py).
+    assert "<Label htmlFor={id} optional={field.optional && group.key !== \"eeo\"}>" in _AUTOFILL
 
 
 def test_sentences_say_the_companion():
