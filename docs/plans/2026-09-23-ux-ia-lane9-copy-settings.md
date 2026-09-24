@@ -42,6 +42,13 @@ planner. Never expand scope.
 4. D §6 (Settings and Profile cards; D's lane L5) and D §7 (Assistant, shell, errors, setup; D's lane L6) in `docs/plans/2026-09-23-ux-ia-appendix-d-copy.md`, plus D §0 (glossary), D §1 (rules and shared primitives, landed in Task 16 as `lib/error-text.ts`: use `couldnt()` / `errorDetail()` for every error you rewrite), D §10 (the real bugs in your groups — fix each with its pin) and the lane docs of waves 1–2 (`docs/plans/2026-09-23-ux-ia-lane{1..6}-*.md`, *Deferred to merge* notes that name your files). D's line numbers are at `8cac7cf9`; waves 1–2 and Task 16 moved code, so re-locate by the quoted text and SKIP rows whose string no longer exists (log them).
 5. Lane 4 already did D §6.1's model-card rows (its lane doc *Deferred to merge* lists what is done and what is left); lane 6 did the Connected agents card and A §5's settings rows — do only the deltas. Persona keeps its name (owner decision 13). The sidebar's "Agent inbox" and "Assistant" items are done (lane 5); D §7.1's remaining sidebar words (Career history, Add job) are yours.
 
+## Also yours (found by the waves 1+2 integrated browser pass)
+
+- `components/settings/connected-agents-card.tsx:~81,~90`: "for you to accept or skip" and "applications you accepted" → the inbox verb is **Queue** ("for you to queue or skip", "applications you queued"); keep the honesty nuance and update the card's exact-item pins.
+- Profile › Autofill "Save autofill profile": a double-click sends two PUTs and two toasts → route through `useSingleFlight` (like Auto-apply and Persona) and add it to `test_frontend_single_flight.py` `_SITES`.
+- Assistant "New chat" (`components/chat/chat-page.tsx`): a double-click creates two chat sessions → `useSingleFlight`, `_SITES` row.
+Browser-verify each (one request per double-click; focus never on <body>).
+
 ## Your definition of done
 
 - Every D row in your groups applied (or logged as dropped with a reason).
