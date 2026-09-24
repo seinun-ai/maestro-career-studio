@@ -75,12 +75,83 @@ Adapt *how* when the plan conflicts with the code and log it below. If a change 
 
 | Task | Planned | Did instead | Why (Goal Card line) |
 |---|---|---|---|
+| 6 | C1 reserves anchor `"mcp"` for the Connected agents explainer | Reserved `"connected-agents"` | A8 names the card `id="connected-agents"`; with `"mcp"` the wave-2 card's id fails the card-id pin ("Every old link still lands on its card") |
+| 6 | C2 renders `ModelCatalogSection` and `CustomEndpointSection` in the AI & models panel | Renders `ApiKeysSection`, `ModelsSection`, `PromptsSection` only | Those exports are lane 4's (C7) and do not exist on this branch; their ids are already in the tab table. Deferred to merge (below) |
+| 6 | C2 pin `"router." not in src` | Pin: no `useRouter`, no `router.replace(`/`router.push(` call | The literal matched C's own comment (`app-router.js`, "`router.replace` would fetch") |
+| 6 | (not in C) | Added `test_connected_agents_keeps_its_order_and_a_place_for_the_explainer` and `test_profile_lands_a_hash_once` | Planner decision 18 Q2 (explainer, hints, Auto-apply) and Q9 (one `useFocusSection()` on /profile: the strip takes `focus` as a prop) needed pins |
+| 7 | C3 pin greps every source for a hash-only `/settings#`/`/profile#` string | The pin strips comments first | Comments quote hash-only examples (`setting-card.tsx:70`, lane 4's file; the tab hook's docstring) |
+| 8 | C2: the tab hook parses the page's `searchParams` prop (`param`) | The hook reads `useSearchParams().getAll("tab")`; `SettingsTabs` takes no `param`; the pages keep `use(searchParams)` (a comment says why) | Found in the Task 8 browser check: the prop keeps its ARRIVAL value after a native `replaceState` (C2's own risk note), so a link to another tab of the same page (sidebar Profile from `/profile?tab=autofill`) opened nothing. `use(searchParams)` is load-bearing: without it `next build` fails ("useSearchParams() should be wrapped in a suspense boundary", tried and restored). The pin was renamed to match |
+| 8 | C4: four one-token edits in `leave-guard.ts` | Exactly those four; `answered()`'s two `h.url === t.page` stay URL compares | They decide whether the URL must be put back (Stay) or which render to run, not whether the page changed; outside the verified 43/43 set |
+| 9 | C5: the `TabsList` base string only | Also `relative` and `scroll-px-[3px]` on the row, `min-w-0` on the `Tabs` root | Browser check 2 failed with C5 alone: the dialog body is a grid, so the `Tabs` item took the row's full label width as its minimum and the whole dialog overflowed. Then Home left the first tab 16px under the edge: Base UI's scroll-into-view walks `offsetParent`s and the unpositioned row was not on that chain (the dialog's padding was counted). `scroll-px-[3px]` keeps an end tab's 3px focus ring inside. `min-w-0` measured: no size change on 7 other tabbed pages at 375 and 1280 |
+| 9 | C5 pin slices the variants block | The pin reads only the class string | The comment beside it names the classes (and "justify-center") |
+| all | One commit per task | Plus `4c9dbacb` splitting two pins | Two new pins reached cc 10, and backend `complexity_hotspots` went 423 → 425 (limit 424); split, now 423 |
 
 ## Gate results
 
 | Task | Gate | Result |
 |---|---|---|
+| 6 `dd14e643` | pins (seen failing: collection error, then 2 of 7) | `test_frontend_settings_pages.py` 7 passed; all `test_frontend_*.py` 654 passed |
+| 6 | node `settings-tabs.test.ts` (seen failing: module missing) | 4/4; all node 170/170 |
+| 6 | tsc / lint / build | clean / 0 errors, 5 baseline warnings / OK (`/settings`, `/profile` are ƒ) |
+| 6 | mutations | 10/10 caught by exactly the named pin (prefix rule ×2 incl. node, label, card id in the wrong tab, card moved to another panel, keepMounted, router write, page ignores `?tab=` (superseded by the Task 8 pin), Auto-apply before hints, strip keeps its own hook); re-run after the split: all still caught |
+| 6 | browser (`t6_browser.py`) | 26/26 |
+| 7 `4843cd25` | pins (seen failing 2/2) | 9 passed; all frontend pins 656 |
+| 7 | tsc / lint / node / build | clean / 0 errors / 170/170 / OK |
+| 7 | mutations | 6/6 (setup step, knock-out, `/new` hash-only; mounted counts as shown; no hashchange; landing never cancels) |
+| 7 | browser (`t7_browser.py`) | 24/24 |
+| 8 `71128818` | node history tests (seen failing 2/5 new, as C4 says) | 43/43; `focus.test.ts` (seen failing: no export) 20/20; all node 176/176 |
+| 8 | pins (seen failing 3) | `test_frontend_leave_guard.py` 22 passed; all frontend pins 658 |
+| 8 | tsc / lint / build | clean / 0 errors / OK |
+| 8 | mutations | 11/11 (stamp by URL ×2 incl. node, judge, forward skip, snapshot, same-page link asks, inert focus kept ×2 incl. node, tab switch strands focus, tab read from the arrival prop, page stops reading `searchParams`) |
+| 8 | browser (`t8_browser.py`) | 23/23 |
+| 9 `7a19e105` | pin (seen failing) | passed; all frontend pins 659 |
+| 9 | tsc / lint / node / build | clean / 0 errors / 176/176 / OK |
+| 9 | mutations | 7/7 (no `max-w-full`, plain centring, no overflow, row not `relative`, no scroll padding, root not `min-w-0`, visible scrollbar) |
+| 9 | browser (`t9_browser.py`) | 69/69 (light and dark × 375/768/1280) |
+| end `4c9dbacb` | full backend `pytest tests/ mcp_server/tests/ -q` | 4982 passed, 2 skipped (baseline at `6366ec27`: 4969 passed, 2 skipped; +13 pins) |
+| end | `ruff check .` | All checks passed |
+| end | frontend duplication, clean `git archive HEAD` | 437 lines / 36 clones (ceiling 437/36) |
+| end | `slop_scan.py check frontend`, `check backend` (export root) | both "slop ratchet OK" |
+| end | backend `complexity_hotspots` | 423 (≤ 424) |
+| end | `check_system_md.py` | OK, 1000/1000, 0 warnings (SYSTEM.md untouched) |
+
+**Not verified:** Chromium only (no WebKit); Back and Forward driven by `history.back()`/`forward()` (the
+same `popstate` path as the toolbar buttons, not the buttons themselves); a touch swipe on the tab row
+(a horizontal wheel scrolled it); `/settings#model-catalog` and `#custom-endpoint` (lane 4's cards are not
+on this branch); C4's "cross-tab jump from inside a panel" (no such link until wave 2; a hash change
+that hides the focused panel was checked instead); the template editor's tab row (`/templates/[id]`).
+Browser scripts and screenshots: `/tmp/maestro-ia-lane3/scripts/t{6,7,8,9}_browser.py`,
+`/tmp/maestro-ia-lane3/shots/`.
 
 ## Queued for Task 24 (SYSTEM.md changes Claude applies)
 
+- §11 item 31: delete "the New base résumé dialog's tab row does not shrink;" and "the job page's tab row
+  pushes Q&A off-screen;" (Task 9 browser checks 1 and 2 pass at 375, light and dark).
+- §12 candidate (2026-09-23): **A page's `searchParams` prop keeps its arrival value after a native
+  `replaceState`**: the settings tab hook parsed it, so a link to another tab of the same page opened
+  nothing → read `?tab=` with `useSearchParams`, and keep `use(searchParams)` in the page (it makes the route
+  dynamic; without it `next build` fails on `useSearchParams` outside Suspense).
+- §12 candidate (2026-09-23): **Base UI's arrow-key scroll-into-view walks `offsetParent`s up to the
+  scroller**: an unpositioned tab row is not on that chain, so a dialog's padding was counted and Home left
+  the first tab 16px cut off → the row is `relative` (`components/ui/tabs.tsx`).
+- §5 step 3 and §7 need nothing; §8 is an index (the conventions carry the rules).
+
 ## Deferred to merge (edits left for Claude, with file:line)
+
+- `frontend/app/settings/page.tsx:67-68`: after `<ModelsSection />` add `<ModelCatalogSection />` and
+  `<CustomEndpointSection />` (imports from `@/components/settings/model-catalog-panel` and
+  `@/components/settings/llm-endpoint`, lane 4's exports), per C2. Their ids `model-catalog` and
+  `custom-endpoint` are already in `lib/settings-tabs.ts`, so the card-id pin passes once they render. Then
+  re-run the legacy-link browser check for `/settings#model-catalog` (not checkable here).
+- `frontend/app/settings/page.tsx:74` (wave 2, Task 15): replace the comment with `<ConnectedAgentsCard />`
+  (id `connected-agents`, already reserved), and extend
+  `test_connected_agents_keeps_its_order_and_a_place_for_the_explainer` to assert the card before
+  `<McpWorkflowSection />` (drop the comment check). Then run C4's "a cross-tab jump from inside a panel"
+  check if the card links in-page.
+- `backend/tests/test_frontend_settings_pages.py`: lane 4 appends "Models" and "Rhythm" sections at the
+  end of the same new file; keep both sides.
+- `docs/frontend-conventions.md`: this lane edited the leave-guard bullet (~:298), the `TabsContent` bullet
+  (~:621), "Settings vs Profile" (~:887) and "Derived setup guidance" (~:955); lane 4 edits the neighbouring
+  `SettingCard`, "Two save models" and legend bullets, so hunks may touch.
+- `frontend/components/settings/setting-card.tsx:70` (lane 4's file) still quotes `/profile#autofill` in a
+  comment; harmless (the deep-link pin strips comments), but C9's copy lane may want `anchorHref` there.
