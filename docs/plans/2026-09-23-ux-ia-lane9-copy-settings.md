@@ -115,7 +115,7 @@ Adapt *how* when the plan conflicts with the code and log it below. If a change 
 | 21 | full backend | `pytest tests/ mcp_server/tests/ -q`: 5337 passed, 3 skipped; `ruff check .` clean |
 | 21 | frontend | tsc clean; lint 0 errors, 2 warnings (baseline); node 230 pass; `npm run build` OK |
 | 21 | slop (clean `git archive HEAD` of `0dc754c8`) | frontend duplication 437 lines / 36 clones; backend `complexity_hotspots` 424; `check frontend` and `check backend` OK |
-| 21 | browser (1280 and 375, light and dark) | 195 checks passed: D6.6 1–6, D7.6 1–6, connected agents "queue or skip", Save answers double-click (one PUT, one toast, focus kept), New chat double-click (one POST), chat delete confirm (Cancel keeps it with focus on Delete, Delete removes it, focus to the next chat) |
+| 21 | browser (1280 and 375, light and dark) | 202 scripted checks passed (plus a saved key reading "Saved" and, with the backend stopped, the load error reading "Maestro CS isn't responding…" with no docker, curl or port): D6.6 1–6, D7.6 1–6, connected agents "queue or skip", Save answers double-click (one PUT, one toast, focus kept), New chat double-click (one POST), chat delete confirm (Cancel keeps it with focus on Delete, Delete removes it, focus to the next chat) |
 
 ## Queued for Task 24 (SYSTEM.md changes Claude applies)
 
