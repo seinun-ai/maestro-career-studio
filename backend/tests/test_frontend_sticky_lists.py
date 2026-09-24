@@ -214,7 +214,7 @@ def test_the_toolbar_takes_back_only_its_own_height():
 
 _PAD = "scroll-padding-top: calc(var(--list-sticky-top, 0px) + var(--list-head-h, 0px));"
 _IN_LIST = (
-    'html:has([data-slot="list-toolbar"] ~ :is(:focus, * :focus),\n'
+    'html:has([data-slot="list-toolbar"] ~ :focus-within,\n'
     '    [data-slot="table-header"][data-sticky] ~ [data-slot="table-body"] :focus) {'
 )
 
@@ -244,9 +244,11 @@ def test_only_focus_in_the_list_is_cleared():
 
 def test_a_focused_lane_after_the_toolbar_is_cleared_too():
     """A later sibling of the toolbar that takes focus ITSELF (a lane root
-    with tabIndex=-1, as the Agent inbox hands focus to) is in the list too.
-    `~ * :focus` matched only its descendants."""
-    assert '[data-slot="list-toolbar"] ~ :is(:focus, * :focus)' in _CSS
+    with tabIndex=-1, as the Agent inbox hands focus to) is in the list too,
+    and so is anything inside one. Browser-checked in Chromium: `~ * :focus`
+    missed the sibling itself, and `~ :is(:focus, * :focus)` matched only
+    the sibling (both arms test the sibling), dropping every row in it."""
+    assert '[data-slot="list-toolbar"] ~ :focus-within' in _CSS
 
 
 _SLOT_OWNERS = {
