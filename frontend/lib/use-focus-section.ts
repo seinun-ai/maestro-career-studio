@@ -1,6 +1,8 @@
 "use client";
 
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
+
+import { settingsPageAt, tabForAnchor, tabHref } from "@/lib/settings-tabs";
 
 const RING = ["ring-2", "ring-primary/60", "rounded-lg"];
 /** How long a cross-page landing waits for its target to mount. */
@@ -22,11 +24,16 @@ function shown(anchor: string): HTMLElement | null {
 /**
  * Put `anchor` in the address bar with no history entry and no scroll, and tell the page. A tabbed
  * page (Settings, Profile) opens the tab that renders it (`useSettingsTab` listens for hashchange);
- * Next listens for no hashchange, so the synthetic event reaches only that hook.
+ * Next listens for no hashchange, so the synthetic event reaches only that hook. There the URL
+ * also names that tab (`?tab=`), so the address bar matches the tab shown and a reload opens it;
+ * an anchor no tab renders keeps the query as it is.
  */
 function announce(anchor: string) {
   const { pathname, search } = window.location;
-  window.history.replaceState(null, "", `${pathname}${search}#${anchor}`);
+  const page = settingsPageAt(pathname);
+  const tab = page && tabForAnchor(page, anchor);
+  const href = page && tab ? tabHref(page, tab, anchor) : `${pathname}${search}#${anchor}`;
+  window.history.replaceState(null, "", href);
   window.dispatchEvent(new HashChangeEvent("hashchange"));
 }
 
@@ -47,10 +54,15 @@ function whenShown(anchor: string, then: (el: HTMLElement) => void): () => void 
 
 /** Scroll a section into view and ring it briefly, without navigating; opens its tab first if hidden. */
 export function useFocusSection() {
+  // The in-page jump's poll: a newer jump replaces it, and leaving the page cancels it.
+  const pending = useRef<() => void>(() => {});
+  useEffect(() => () => pending.current(), []);
+
   const focus = useCallback((anchor: string) => {
     if (!document.getElementById(anchor)) return;
     if (!shown(anchor)) announce(anchor);
-    whenShown(anchor, (el) => {
+    pending.current();
+    pending.current = whenShown(anchor, (el) => {
       // Smooth scrolling is compositor-driven, so it never progresses while the
       // document is hidden — a link opened in a background tab would land at the
       // top with nothing focused. Jump instantly in that case; animate when the

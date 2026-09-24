@@ -81,10 +81,14 @@ export function tabHref(page: SettingsPage, tab: string, anchor?: string): strin
   return `/${page}${query}${anchor ? `#${anchor}` : ""}`;
 }
 
+/** The tabbed page a pathname is, or null for every other route. */
+export function settingsPageAt(pathname: string): SettingsPage | null {
+  return pathname === "/settings" ? "settings" : pathname === "/profile" ? "profile" : null;
+}
+
 /** A deep link to `anchor` on `home`: settings and profile name the tab, other routes are `home#anchor`. */
 export function anchorHref(home: string, anchor: string): string {
-  const page: SettingsPage | null =
-    home === "/settings" ? "settings" : home === "/profile" ? "profile" : null;
+  const page = settingsPageAt(home);
   if (page === null) return `${home}#${anchor}`;
   return tabHref(page, tabForAnchor(page, anchor) ?? defaultTab(page), anchor);
 }

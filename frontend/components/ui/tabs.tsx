@@ -43,15 +43,21 @@ const tabsListVariants = cva(
   // not plain centring: centred content that overflows clips its START, which no
   // scroll can reach. Base UI scrolls the focused tab into view on arrow keys
   // (composite `scrollIntoViewIfNeeded`). The scrollbar is hidden: the cut-off
-  // last label is the cue, and keys and swipes reach it. Wrapping rows (`h-auto
-  // flex-wrap`) never overflow sideways, so none of this engages there.
+  // last label is the cue, and keys and swipes reach it.
+  // Wrapping rows (`h-auto flex-wrap`: Analytics, Career history, both studios,
+  // the KB import drawer) are NOT scrollers: `overflow-x: auto` computes
+  // `overflow-y` to auto as well, so a wrapped row became a box clipping its own
+  // second line. The scroll is scoped to `not-[.flex-wrap]`; scroll padding,
+  // overscroll and the hidden scrollbar do nothing on a box that does not scroll.
   // `relative` makes the row its triggers' offsetParent: Base UI measures a
   // tab's offsetLeft up the offsetParent chain and stops at the scroller only
   // if it is on that chain, so without it a dialog's padding was counted in
   // and Home left the first tab 16px under the row's left edge.
-  // `scroll-px-[3px]` matches the padding, so a tab scrolled to an end keeps
-  // the row's 3px around it, and its 3px focus ring is not cut off.
-  "group/tabs-list relative inline-flex w-fit max-w-full items-center justify-center-safe rounded-lg p-[3px] text-muted-foreground group-data-horizontal/tabs:min-h-8 group-data-horizontal/tabs:overflow-x-auto group-data-horizontal/tabs:scroll-px-[3px] group-data-horizontal/tabs:overscroll-x-contain group-data-horizontal/tabs:[scrollbar-width:none] group-data-horizontal/tabs:[&::-webkit-scrollbar]:hidden group-data-vertical/tabs:h-fit group-data-vertical/tabs:flex-col data-[variant=line]:rounded-none",
+  // `scroll-px-1` (4px, one more than the padding): a tab scrolled to an end
+  // keeps the row's 3px around it, so its 3px focus ring is not cut off. At 3px
+  // the scroll-into-view stopped a rounding pixel short of the end (1px of the
+  // last Settings tab's ring was clipped at 375px).
+  "group/tabs-list relative inline-flex w-fit max-w-full items-center justify-center-safe rounded-lg p-[3px] text-muted-foreground group-data-horizontal/tabs:min-h-8 group-data-horizontal/tabs:not-[.flex-wrap]:overflow-x-auto group-data-horizontal/tabs:scroll-px-1 group-data-horizontal/tabs:overscroll-x-contain group-data-horizontal/tabs:[scrollbar-width:none] group-data-horizontal/tabs:[&::-webkit-scrollbar]:hidden group-data-vertical/tabs:h-fit group-data-vertical/tabs:flex-col data-[variant=line]:rounded-none",
   {
     variants: {
       variant: {
@@ -87,6 +93,11 @@ function TabsTrigger({ className, ...props }: TabsPrimitive.Tab.Props) {
     <TabsPrimitive.Tab
       data-slot="tabs-trigger"
       className={cn(
+        // `h-[calc(100%-1px)]` fills a one-line row. In a wrapping row (`flex-wrap`)
+        // the percentage has no definite height to resolve against, and triggers
+        // grew taller than their line and spilled over the content below; there
+        // each trigger is its own height and the row grows to fit its lines.
+        "group-[.flex-wrap]/tabs-list:h-auto",
         "relative inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center gap-1.5 rounded-md border border-transparent px-1.5 py-0.5 text-sm font-medium whitespace-nowrap text-foreground/60 transition-all group-data-vertical/tabs:w-full group-data-vertical/tabs:justify-start hover:text-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-50 has-data-[icon=inline-end]:pr-1 has-data-[icon=inline-start]:pl-1 aria-disabled:pointer-events-none aria-disabled:opacity-50 dark:text-muted-foreground dark:hover:text-foreground group-data-[variant=default]/tabs-list:data-active:shadow-sm group-data-[variant=line]/tabs-list:data-active:shadow-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         "group-data-[variant=line]/tabs-list:bg-transparent group-data-[variant=line]/tabs-list:data-active:bg-transparent dark:group-data-[variant=line]/tabs-list:data-active:border-transparent dark:group-data-[variant=line]/tabs-list:data-active:bg-transparent",
         "data-active:bg-background data-active:text-foreground dark:data-active:border-input dark:data-active:bg-input/30 dark:data-active:text-foreground",

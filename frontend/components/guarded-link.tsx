@@ -37,7 +37,10 @@ type GuardedLinkProps = Omit<ComponentProps<typeof Link>, "href" | "onNavigate">
  * (`useLinkStatus`), which nothing uses today. Modifier-clicks, downloads and external
  * URLs never reach `onNavigate`, and none of them unmounts this page. Neither does a link to
  * this same page (another settings tab, `/settings?tab=agents#auto-apply`): Next keeps a page
- * mounted across a search or hash change, so it passes straight through without asking.
+ * mounted across a search or hash change, so it never asks. With unsaved work it REPLACES the
+ * entry instead of pushing one: the Back/Forward guard's duplicate entry is on top
+ * (lib/leave-guard.ts), and a push above it made the first Back a dead press. The replace keeps
+ * the duplicate's flag (`stampAfterWrite`: same page).
  */
 export function GuardedLink({ href, replace, scroll, ...props }: GuardedLinkProps) {
   const router = useRouter();
@@ -49,7 +52,12 @@ export function GuardedLink({ href, replace, scroll, ...props }: GuardedLinkProp
       replace={replace}
       scroll={scroll}
       onNavigate={(event) => {
-        if (!leaveBlocked("in-app") || samePage(href, window.location.pathname)) return;
+        if (!leaveBlocked("in-app")) return;
+        if (samePage(href, window.location.pathname)) {
+          event.preventDefault();
+          router.replace(href, { scroll });
+          return;
+        }
         event.preventDefault();
         void confirmLeave().then((leave) => {
           if (!leave) return;

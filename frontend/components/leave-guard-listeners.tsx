@@ -12,7 +12,6 @@ import {
   markSentinel,
   onInAppBlockedChange,
   readEntry,
-  samePage,
   stampAfterWrite,
   stampState,
   startGuard,
@@ -65,9 +64,10 @@ function machine(): GuardState {
 function feed(event: GuardEvent): GuardCommand[] {
   const [next, commands] = stepGuard(machine(), event);
   stampHooks().guard = next;
-  // The page's own entry, for a Stay the machine cannot place (restorePage).
+  // The page's own entry, for a Stay the machine cannot place (restorePage). Its exact URL: an
+  // entry of the same page with another query (a tab) would put the wrong tab back.
   const state = window.history.state as object | null;
-  if (state && next.here.kind === "next" && samePage(next.here.url, next.page)) {
+  if (state && next.here.kind === "next" && next.here.url === next.page) {
     pageSnapshot = { state, href: window.location.href };
   }
   return commands;

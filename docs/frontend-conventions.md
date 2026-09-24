@@ -355,8 +355,13 @@
   page. Page identity is the PATHNAME (`samePage`): Next keeps a page mounted
   across a search or hash change, so a settings tab rewriting `?tab=` is not
   leaving, the sentinel survives it, and a `GuardedLink` to another tab of
-  the same page does not ask. A page that remounts on a search change must
-  not rely on this. When a tab opened by a hash or an in-page jump hides the
+  the same page does not ask (with unsaved work it `router.replace`s, so the
+  duplicate stays on top and Back #1 still asks). Same page decides only
+  what ASKS; the full URL decides what RENDERS: a Back or Forward to another
+  query of the page on screen (`?tab=`, `/chat?session=`) lets Next render
+  it (`showSamePage`), or the address bar and the screen disagree; only the
+  same URL, or a press the question or a step over the duplicate settles, is
+  stopped. A page that remounts on a search change must not rely on this. When a tab opened by a hash or an in-page jump hides the
   panel holding focus, `focusIfStranded` (`lib/focus.ts`) moves it to the
   open panel. Persona, Autofill and Prompts register while their explicit Save is
   dirty. `/new` registers while a pasted job description has not been
@@ -643,10 +648,14 @@
   and leave-guard registrations survive a hidden tab. `TabsList` scrolls
   sideways inside itself instead of widening the page (`max-w-full
   overflow-x-auto justify-center-safe`, scrollbar hidden, `relative` so Base
-  UI's arrow-key scroll-into-view measures from the row, `scroll-px-[3px]`
+  UI's arrow-key scroll-into-view measures from the row, `scroll-px-1`
   so an end tab keeps room for its focus ring); the `Tabs` root is
   `min-w-0`, or a Tabs that is a grid item (a dialog body) takes the row's
-  full label width as its minimum.
+  full label width as its minimum. A row that wraps (`h-auto flex-wrap`)
+  never scrolls: the overflow is scoped to `not-[.flex-wrap]` (`overflow-x:
+  auto` makes `overflow-y` auto too, which clipped the second line) and its
+  triggers are `h-auto` (a percentage height spilled over the next card), so
+  it grows to fit every line (pinned).
 - **Landmarks: the PAGE owns `<main>`, the shell owns layout.**
   `SidebarInset` is a `<div>` (shadcn ships it as `<main>`, which nests a
   second main landmark). Every route must render exactly one `<main>` in EVERY

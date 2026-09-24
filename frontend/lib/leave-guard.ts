@@ -324,10 +324,7 @@ function popped(s: GuardState, entry: HistoryEntry, length: number): Step {
 function arrive(t: GuardState, then: "stay" | "leave" | "skip", out: GuardCommand[]): Step {
   const e = t.here;
   if (samePage(e.url, t.page)) {
-    if (e.kind === "next") {
-      out.push(STOP);
-      t.home = e.at;
-    }
+    if (e.kind === "next") showSamePage(t, e, false, out);
     // Re-park only while something is still unsaved.
     if (then === "stay" && t.blocked && e.kind === "next" && !e.sentinel) out.push(PUSH_SENTINEL);
     return [t, out];
@@ -343,21 +340,18 @@ function judge(t: GuardState, from: HistoryEntry, out: GuardCommand[]): Step {
   const e = t.here;
   const dir = from.at !== null && e.at !== null ? Math.sign(e.at - from.at) : 0;
   if (samePage(e.url, t.page)) {
-    // Same page (the sentinel's real entry, or a #fragment): Next has nothing to render.
-    if (e.kind === "next") {
-      out.push(STOP);
-      t.home = e.at;
-    }
-    if (from.sentinel && dir < 0 && !e.sentinel && e.at !== null) {
-      // Back off the duplicate: the press the sentinel exists for. With nothing
-      // unsaved the duplicate is left over, so take the step the user asked for.
-      if (t.blocked) return ask(t, from.at, e.at - 1, out);
-      return skip(t, e.at, e.at - 1, out);
-    }
-    if (!t.blocked && e.sentinel && !from.sentinel && dir > 0 && e.at !== null) {
-      // Forward onto a leftover duplicate: step over it when there is more ahead.
-      if (t.seen[e.at + 1] !== undefined) return skip(t, e.at, e.at + 1, out);
-    }
+    // Same page (the sentinel's real entry, a #fragment, another tab or chat session): nothing
+    // unmounts. The one press that asks is Back off the duplicate, the press the sentinel
+    // exists for. With nothing unsaved the duplicate is left over, so take the step the user
+    // asked for.
+    const at = e.at;
+    const offDuplicate = from.sentinel && dir < 0 && !e.sentinel && at !== null;
+    // Forward onto a leftover duplicate: step over it when there is more ahead.
+    const overDuplicate =
+      !t.blocked && e.sentinel && !from.sentinel && dir > 0 && at !== null && t.seen[at + 1] !== undefined;
+    if (e.kind === "next") showSamePage(t, e, offDuplicate || overDuplicate, out);
+    if (offDuplicate) return t.blocked ? ask(t, from.at, at - 1, out) : skip(t, at, at - 1, out);
+    if (overDuplicate) return skip(t, at, at + 1, out);
     return [t, out];
   }
   if (t.blocked) {
@@ -375,6 +369,24 @@ function judge(t: GuardState, from: HistoryEntry, out: GuardCommand[]): Step {
     return skip(t, e.at, e.at + 1, out);
   }
   return [t, out];
+}
+
+/**
+ * An app-router entry of the page on screen. "Same page" (the pathname) decides only that
+ * nothing asks; whether Next renders is decided by the URL. The same URL (the sentinel's real
+ * entry) has nothing new to show, so Next is stopped. Another query (a tab, a chat session:
+ * Next keeps the page mounted across it) must render, or the address bar and the screen
+ * disagree. `hold`: a question or a step over the duplicate follows, so the page on screen
+ * stays until that is settled.
+ */
+function showSamePage(t: GuardState, e: HistoryEntry, hold: boolean, out: GuardCommand[]): void {
+  if (e.url === t.page) t.home = e.at;
+  else if (!hold) {
+    t.page = e.url;
+    t.home = e.at;
+    return;
+  }
+  out.push(STOP);
 }
 
 function ask(t: GuardState, home: number | null, leaveTo: number | null, out: GuardCommand[]): Step {
