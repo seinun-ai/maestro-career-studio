@@ -94,7 +94,7 @@ Adapt *how* when the plan conflicts with the code and log it below. If a change 
 | Task | Gate | Result |
 |---|---|---|
 | 13 | new pins seen failing first | 23 failed, 1 passed (the frozen-URL pin, already true) before implementing |
-| 13 | mutation checks | 36 mutations, each fails its own pin (harness: backup copy, mutate, pytest, restore). One first run was weak (lanes inside the toolbar still passed); the pin was tightened and both realistic variants (lanes inside the toolbar, lanes wrapped in a div) now fail it. Node tests: 3 lib mutations each fail 1 node test |
+| 13 | mutation checks | 37 mutations, each fails its own pin (harness: backup copy, mutate, pytest, restore). Two pins were weak on first try and were tightened: the lanes-after-toolbar pin (lanes inside the toolbar, or wrapped in a div, now fail it) and the row-wrap pin (it matched an inner `flex-wrap`; it now reads the link's own classes). Node tests: 3 lib mutations each fail 1 node test |
 | 14 | new pins seen failing first | 6 failed (4 agent-inbox, 2 colour-role modes) |
 | 14 | mutation checks | 12 mutations fail their pin; the contrast half proven separately: dark text orange-400 (source and pin) → "dark: needs-you badge on secondary-container-hover is 3.88:1"; 2 node mutations fail |
 | 13+14 | `pytest tests/test_frontend_*.py` | 815 passed |
