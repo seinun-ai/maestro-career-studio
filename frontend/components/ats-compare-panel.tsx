@@ -171,7 +171,8 @@ export function AtsComparePanel({
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-start justify-between gap-2 pb-2">
+      {/* Wraps: at 375 the title kept one word per line beside the button. */}
+      <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-2 pb-2">
         <CardTitle>ATS score before and after</CardTitle>
         <Button
           variant="outline"

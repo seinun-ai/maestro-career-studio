@@ -803,13 +803,15 @@ export default function TailorSessionPage({
       </div>
 
       <div className="bg-background/95 sticky bottom-0 z-10 -mx-6 mt-auto border-t px-6 py-3 backdrop-blur">
-        <div className="mx-auto flex w-full max-w-4xl items-center gap-3">
-          <p className="text-muted-foreground text-sm tabular-nums">
+        {/* Wraps at narrow widths: the counts keep one line, and the actions
+            drop below them instead of squeezing the counts into a column. */}
+        <div className="mx-auto flex w-full max-w-4xl flex-wrap items-center gap-x-3 gap-y-2">
+          <p className="text-muted-foreground shrink-0 text-sm whitespace-nowrap tabular-nums">
             <span className="text-foreground font-medium">{addressed}</span> done
             · <span className="text-foreground font-medium">{skipped}</span> skipped ·{" "}
             <span className="text-foreground font-medium">{open}</span> open
           </p>
-          <div className="ml-auto flex items-center gap-3">
+          <div className="ml-auto flex flex-wrap items-center justify-end gap-3">
             <SaveIndicator state={saveState} onRetry={staleReason ? undefined : saveNow} />
             {addressed === 0 && (
               <Button

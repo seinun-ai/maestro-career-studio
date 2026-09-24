@@ -340,3 +340,14 @@ def test_the_gap_page_says_done_and_gap_analysis():
     assert "placementLabel(diagnostic.placement)" in card
     assert "title tier:" not in card and "match_form}" not in card
     assert "{requirementLabel(gap.requirement_level)}" in card
+
+
+def test_longer_words_wrap_instead_of_squeezing():
+    """Browser-found at 375: the plainer words are longer. The gap page footer
+    squeezed its counts into a column, and the compare card's title ran one
+    word per line beside Update score."""
+    page = _read(_GAP_PAGE)
+    assert 'className="mx-auto flex w-full max-w-4xl flex-wrap items-center gap-x-3 gap-y-2"' in page
+    assert "shrink-0 text-sm whitespace-nowrap tabular-nums" in page
+    compare = _read("components/ats-compare-panel.tsx")
+    assert 'CardHeader className="flex flex-row flex-wrap items-start justify-between gap-2 pb-2"' in compare
