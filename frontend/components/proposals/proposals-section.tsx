@@ -6,14 +6,21 @@ import { useQuery } from "@tanstack/react-query";
 import { GuardedLink as Link } from "@/components/guarded-link";
 import {
   AlertTriangle,
+  BookOpen,
+  Bot,
   Check,
   ChevronDown,
+  Settings as SettingsIcon,
   Trash2,
   X,
 } from "lucide-react";
 
 import { CompanyMonogram } from "@/components/company-monogram";
-import { FunnelStrip } from "@/components/proposals/funnel-strip";
+import { EmptyState } from "@/components/empty-state";
+import { ListCapNotice } from "@/components/list-cap-notice";
+import { ListSearch } from "@/components/list-search";
+import { ListToolbar } from "@/components/list-toolbar";
+import { useRoleLabel } from "@/components/role-category-picker";
 import {
   BulkBar,
   DeclineDialog,
@@ -24,7 +31,6 @@ import { PROPOSAL_STATUS_CHIP } from "@/components/status-chip";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -35,7 +41,22 @@ import {
 import { LoadErrorState } from "@/components/load-error-state";
 import { useBaseResumeName } from "@/hooks/use-base-resume-label";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  AGENT_APPLICATIONS_URL,
+  CONNECTED_AGENTS_SETTINGS,
+  JOB_HUNT_SKILL_URL,
+} from "@/lib/agent-links";
+import { proposalByLine } from "@/lib/agent-name";
 import { apiFetch } from "@/lib/api";
+import { formatTimeAgo } from "@/lib/format-date";
+import {
+  SCORE_FLOORS,
+  type ScoreFloor,
+  boardHost,
+  chosenScore,
+  filterProposals,
+} from "@/lib/inbox-filter";
+import { NEEDS_YOU_STATUSES } from "@/lib/needs-you";
 import { isLoadFailure } from "@/lib/query-state";
 import { cn } from "@/lib/utils";
 import {
@@ -45,6 +66,8 @@ import {
 } from "@/lib/types";
 
 const PROPOSALS_KEY = ["proposals"] as const;
+// The API's max page (routers/proposals.py: le=500); `total` counts them all.
+const PROPOSALS_LIMIT = 500;
 const SEQUENCE_STORE_KEY = "cs-proposals-seq";
 
 function storeProposalSequence(jobIds: string[]) {
@@ -79,7 +102,7 @@ export const STATUS_BADGE_CLASS = Object.fromEntries(
   STATUS_ORDER.map((k) => [k, PROPOSAL_STATUS_CHIP[k].className]),
 ) as Record<ProposalStatus, string>;
 
-const NEEDS_YOU: ProposalStatus[] = ["needs_decision", "needs_human"];
+const NEEDS_YOU = NEEDS_YOU_STATUSES; // one list with the sidebar count
 const TRIAGE: ProposalStatus[] = ["pending_review"];
 const QUEUED: ProposalStatus[] = ["accepted"];
 const IN_FLIGHT: ProposalStatus[] = ["approved"];
@@ -92,12 +115,16 @@ const HISTORY: ProposalStatus[] = [
 
 type SortKey = "score" | "newest" | "role" | "company";
 
+// Values that describe themselves: the toolbar has no captions.
 const SORT_LABELS: Record<SortKey, string> = {
-  score: "Best score",
-  newest: "Newest",
-  role: "Role",
-  company: "Company",
+  score: "Best score first",
+  newest: "Newest first",
+  role: "Role A–Z",
+  company: "Company A–Z",
 };
+
+const scoreLabel = (floor: ScoreFloor | null) =>
+  floor == null ? "Any score" : `Score ${floor}+`;
 
 function normalizeTitle(title: string): string {
   return title.toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -107,29 +134,9 @@ function duplicateKey(p: Proposal): string {
   return `${(p.job.company ?? "").toLowerCase()}|${normalizeTitle(p.job.title ?? "")}`;
 }
 
-function chosenScore(p: Proposal): number | null {
-  const fit = (p.fit_json ?? {}) as Record<string, unknown>;
-  const chosen = fit.chosen_base;
-  const scores = fit.scores;
-  if (typeof chosen !== "string" || !scores || typeof scores !== "object") {
-    return null;
-  }
-  const value = (scores as Record<string, unknown>)[chosen];
-  return typeof value === "number" ? value : null;
-}
-
 function chosenBase(p: Proposal): string | null {
   const fit = (p.fit_json ?? {}) as Record<string, unknown>;
   return typeof fit.chosen_base === "string" ? fit.chosen_base : null;
-}
-
-function boardHost(url: string | null): string | null {
-  if (!url) return null;
-  try {
-    return new URL(url).hostname;
-  } catch {
-    return null;
-  }
 }
 
 function formatDayLabel(isoDay: string): string {
@@ -165,39 +172,21 @@ function sortProposals(items: Proposal[], sort: SortKey): Proposal[] {
   return list;
 }
 
-function filterProposals(
-  items: Proposal[],
-  {
-    role,
-    board,
-    minScore,
-  }: { role: string; board: string; minScore: string },
-): Proposal[] {
-  const min = minScore.trim() === "" ? null : Number(minScore);
-  return items.filter((p) => {
-    if (role !== "all" && p.job.role_category !== role) return false;
-    if (board !== "all" && boardHost(p.job.source_url) !== board) return false;
-    if (min != null && !Number.isNaN(min)) {
-      const score = chosenScore(p);
-      if (score == null || score < min) return false;
-    }
-    return true;
-  });
-}
-
 export function ProposalsSection() {
   const { data, isLoading, isError, error, isFetching, fetchStatus, refetch, errorUpdateCount } = useQuery({
     queryKey: PROPOSALS_KEY,
     queryFn: () =>
-      apiFetch<ProposalListResponse>("/api/proposals?limit=500"),
+      apiFetch<ProposalListResponse>(`/api/proposals?limit=${PROPOSALS_LIMIT}`),
   });
   const actions = useProposalActions();
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [q, setQ] = useState("");
   const [sort, setSort] = useState<SortKey>("score");
   const [role, setRole] = useState("all");
   const [board, setBoard] = useState("all");
-  const [minScore, setMinScore] = useState("");
+  const [minScore, setMinScore] = useState<ScoreFloor | null>(null);
+  const roleLabel = useRoleLabel();
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyStatus, setHistoryStatus] = useState<"all" | ProposalStatus>(
     "all",
@@ -214,8 +203,8 @@ export function ProposalsSection() {
     for (const p of items) {
       if (p.job.role_category) set.add(p.job.role_category);
     }
-    return [...set].sort();
-  }, [items]);
+    return [...set].sort((a, b) => roleLabel(a).localeCompare(roleLabel(b)));
+  }, [items, roleLabel]);
 
   const boards = useMemo(() => {
     const set = new Set<string>();
@@ -227,9 +216,11 @@ export function ProposalsSection() {
   }, [items]);
 
   const filtered = useMemo(
-    () => filterProposals(items, { role, board, minScore }),
-    [items, role, board, minScore],
+    () => filterProposals(items, { q, role, board, minScore }),
+    [items, q, role, board, minScore],
   );
+  // Read only after the no-proposals return below: filters hid everything.
+  const nothingMatches = filtered.length === 0;
 
   const duplicateKeys = useMemo(() => {
     const counts = new Map<string, number>();
@@ -361,15 +352,12 @@ export function ProposalsSection() {
 
   if (isLoadFailure({ data, isError, fetchStatus, errorUpdateCount })) {
     return (
-      <div className="flex flex-col gap-5">
-        <FunnelStrip />
-        <LoadErrorState
-          title="Couldn't load agent proposals."
-          detail={(error as Error)?.message}
-          retrying={isFetching}
-          onRetry={() => void refetch()}
-        />
-      </div>
+      <LoadErrorState
+        title="Couldn't load your Agent inbox."
+        detail={(error as Error)?.message}
+        retrying={isFetching}
+        onRetry={() => void refetch()}
+      />
     );
   }
 
@@ -385,15 +373,47 @@ export function ProposalsSection() {
 
   if (items.length === 0) {
     return (
-      <div className="flex flex-col gap-5">
-        <FunnelStrip />
-        <Card>
-          <CardContent className="text-muted-foreground py-10 text-center text-sm">
-            No agent proposals yet. Proposals appear here when an agent hunt
-            files applications for your review.
-          </CardContent>
-        </Card>
-      </div>
+      <EmptyState
+        icon={Bot}
+        title="No proposals yet"
+        description="Proposals come from an AI agent you connect over MCP (Claude, Codex, the ChatGPT desktop app), never from the app itself. Nothing is submitted without your yes."
+        action={
+          <div className="flex max-w-full flex-col items-center gap-2 px-4">
+            {/* The label is long; let it wrap at 375 instead of overflowing. */}
+            <Button
+              nativeButton={false}
+              className="h-auto min-h-8 max-w-full py-1.5 whitespace-normal"
+              render={
+                <a href={JOB_HUNT_SKILL_URL} target="_blank" rel="noopener noreferrer">
+                  <BookOpen className="size-4" aria-hidden="true" />
+                  Start a hunt: install the ready-made job-hunt skill
+                </a>
+              }
+            />
+            <div className="flex flex-wrap justify-center gap-2">
+              <Button
+                variant="ghost"
+                nativeButton={false}
+                render={
+                  <a href={AGENT_APPLICATIONS_URL} target="_blank" rel="noopener noreferrer">
+                    How agent applications work
+                  </a>
+                }
+              />
+              <Button
+                variant="ghost"
+                nativeButton={false}
+                render={
+                  <Link href={CONNECTED_AGENTS_SETTINGS}>
+                    <SettingsIcon className="size-4" aria-hidden="true" />
+                    Connect an agent
+                  </Link>
+                }
+              />
+            </div>
+          </div>
+        }
+      />
     );
   }
 
@@ -410,19 +430,20 @@ export function ProposalsSection() {
 
   return (
     <div className="flex flex-col gap-6 pb-20">
-      <FunnelStrip />
-
-      <div className="flex flex-wrap items-end gap-2">
-        <div className="grid gap-1">
-          <span className="text-muted-foreground text-xs">Sort</span>
+      {/* The lanes stay later siblings of the toolbar: globals.css clears a
+          focused row from under the stuck toolbar (and the bulk bar) only for
+          `[data-slot="list-toolbar"] ~ :focus-within`. */}
+      <ListToolbar>
+        <ListSearch label="Search the Agent inbox" value={q} onChange={setQ} />
+        <div className="flex flex-wrap items-center gap-1.5">
           <Select
             value={sort}
             onValueChange={(v) => setSort((v as SortKey) ?? "score")}
           >
-            <SelectTrigger className="h-8 min-w-[9rem]" aria-label="Sort">
+            <SelectTrigger className="h-8 min-w-[10rem] rounded-full" aria-label="Sort">
               <SelectValue>{SORT_LABELS[sort]}</SelectValue>
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent align="start" alignItemWithTrigger={false} className="w-auto min-w-[12rem]">
               {(Object.keys(SORT_LABELS) as SortKey[]).map((key) => (
                 <SelectItem key={key} value={key}>
                   {SORT_LABELS[key]}
@@ -430,34 +451,24 @@ export function ProposalsSection() {
               ))}
             </SelectContent>
           </Select>
-        </div>
-        <div className="grid gap-1">
-          <span className="text-muted-foreground text-xs">Role</span>
           <Select value={role} onValueChange={(v) => setRole(v ?? "all")}>
-            <SelectTrigger className="h-8 min-w-[9rem]" aria-label="Role">
-              <SelectValue>
-                {role === "all" ? "All roles" : role}
-              </SelectValue>
+            <SelectTrigger className="h-8 min-w-[10rem] rounded-full" aria-label="Role">
+              <SelectValue>{role === "all" ? "All roles" : roleLabel(role)}</SelectValue>
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent align="start" alignItemWithTrigger={false} className="w-auto min-w-[12rem]">
               <SelectItem value="all">All roles</SelectItem>
               {roles.map((r) => (
                 <SelectItem key={r} value={r}>
-                  {r}
+                  {roleLabel(r)}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
-        </div>
-        <div className="grid gap-1">
-          <span className="text-muted-foreground text-xs">Board</span>
           <Select value={board} onValueChange={(v) => setBoard(v ?? "all")}>
-            <SelectTrigger className="h-8 min-w-[10rem]" aria-label="Board">
-              <SelectValue>
-                {board === "all" ? "All boards" : board}
-              </SelectValue>
+            <SelectTrigger className="h-8 min-w-[10rem] rounded-full" aria-label="Job board">
+              <SelectValue>{board === "all" ? "All boards" : board}</SelectValue>
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent align="start" alignItemWithTrigger={false} className="w-auto min-w-[12rem]">
               <SelectItem value="all">All boards</SelectItem>
               {boards.map((b) => (
                 <SelectItem key={b} value={b}>
@@ -466,172 +477,189 @@ export function ProposalsSection() {
               ))}
             </SelectContent>
           </Select>
+          <Select
+            value={minScore == null ? "any" : String(minScore)}
+            onValueChange={(v) =>
+              setMinScore(v && v !== "any" ? (Number(v) as ScoreFloor) : null)
+            }
+          >
+            <SelectTrigger className="h-8 min-w-[8rem] rounded-full" aria-label="Minimum score">
+              <SelectValue>{scoreLabel(minScore)}</SelectValue>
+            </SelectTrigger>
+            <SelectContent align="start" alignItemWithTrigger={false} className="w-auto min-w-[10rem]">
+              <SelectItem value="any">{scoreLabel(null)}</SelectItem>
+              {SCORE_FLOORS.map((floor) => (
+                <SelectItem key={floor} value={String(floor)}>
+                  {scoreLabel(floor)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
-        <div className="grid gap-1">
-          <span className="text-muted-foreground text-xs">Min score</span>
-          <Input
-            type="number"
-            inputMode="decimal"
-            aria-label="Minimum score"
-            placeholder="e.g. 50"
-            value={minScore}
-            onChange={(e) => setMinScore(e.target.value)}
-            className="h-8 w-24"
-          />
-        </div>
-      </div>
+      </ListToolbar>
 
-      {needsYou.length > 0 ? (
-        <Lane title={`Needs you · ${needsYou.length}`}>
-          {needsYou.map((p) => (
-            <ProposalRow
-              key={p.id}
-              proposal={p}
-              lane="needs_you"
-              {...rowProps}
-            />
-          ))}
-        </Lane>
-      ) : null}
-
-      <Lane title={`Triage · ${triage.length}`}>
-        {dayBatches.length === 0 ? (
-          <p className="text-muted-foreground text-sm">Nothing pending triage.</p>
-        ) : (
-          dayBatches.map(({ day, items: dayItems }) => {
-            const open = effectiveExpandedDays.has(day);
-            const ids = dayItems.map((p) => p.id);
-            const allSelected = ids.every((id) => selected.has(id));
-            return (
-              <div key={day} className="flex flex-col gap-2">
-                <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    className="text-muted-foreground inline-flex items-center gap-1 text-xs font-medium"
-                    onClick={() => {
-                      setExpandedDays((prev) => {
-                        const base =
-                          prev ?? (newestDay ? new Set([newestDay]) : new Set());
-                        const next = new Set(base);
-                        if (next.has(day)) next.delete(day);
-                        else next.add(day);
-                        return next;
-                      });
-                    }}
-                  >
-                    <ChevronDown
-                      className={cn(
-                        "size-3.5 transition-transform",
-                        !open && "-rotate-90",
-                      )}
-                      aria-hidden="true"
-                    />
-                    {formatDayLabel(day)} · {dayItems.length}{" "}
-                    {dayItems.length === 1 ? "proposal" : "proposals"}
-                  </button>
-                  {open ? (
-                    <label className="text-muted-foreground ml-auto inline-flex items-center gap-1.5 text-xs">
-                      <Checkbox checked={allSelected && ids.length > 0} onCheckedChange={(next) =>
-                          selectAllShown(ids, next)} />
-                      Select all shown
-                    </label>
-                  ) : null}
-                </div>
-                {open
-                  ? dayItems.map((p) => (
-                      <ProposalRow
-                        key={p.id}
-                        proposal={p}
-                        lane="triage"
-                        {...rowProps}
-                      />
-                    ))
-                  : null}
-              </div>
-            );
-          })
-        )}
-      </Lane>
-
-      {queued.length > 0 ? (
-        <Lane title={`Queued · ${queued.length}`}>
-          {queued.map((p) => (
-            <ProposalRow key={p.id} proposal={p} lane="queued" {...rowProps} />
-          ))}
-        </Lane>
-      ) : null}
-
-      {inFlight.length > 0 ? (
-        <Lane title={`In flight · ${inFlight.length}`}>
-          {inFlight.map((p) => (
-            <ProposalRow
-              key={p.id}
-              proposal={p}
-              lane="in_flight"
-              {...rowProps}
-            />
-          ))}
-        </Lane>
-      ) : null}
-
-      <section className="flex flex-col gap-2">
-        <button
-          type="button"
-          className="text-muted-foreground inline-flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide"
-          onClick={() => setHistoryOpen((v) => !v)}
-        >
-          <ChevronDown
-            className={cn(
-              "size-3.5 transition-transform",
-              !historyOpen && "-rotate-90",
-            )}
-            aria-hidden="true"
-          />
-          History ·{" "}
-          {filtered.filter((p) => HISTORY.includes(p.status)).length}
-        </button>
-        {historyOpen ? (
-          <>
-            <div className="flex flex-wrap gap-1.5" role="group" aria-label="History status">
-              {(
-                [
-                  "all",
-                  ...HISTORY,
-                ] as const
-              ).map((status) => {
-                const active = historyStatus === status;
-                const label =
-                  status === "all" ? "All" : STATUS_LABELS[status];
-                return (
-                  <Button
-                    key={status}
-                    size="xs"
-                    variant={active ? "tonal" : "outline"}
-                    aria-pressed={active}
-                    className="rounded-full"
-                    onClick={() => setHistoryStatus(status)}
-                  >
-                    {active && <Check />}
-                    {label}
-                  </Button>
-                );
-              })}
-            </div>
-            {history.length === 0 ? (
-              <p className="text-muted-foreground text-sm">No history yet.</p>
-            ) : (
-              history.map((p) => (
+      {nothingMatches ? (
+        <EmptyState
+          title="Nothing matches these filters"
+          description="Try another role, board or score, or clear the search."
+        />
+      ) : (
+        <>
+          {needsYou.length > 0 ? (
+            <Lane title={`Needs you · ${needsYou.length}`}>
+              {needsYou.map((p) => (
                 <ProposalRow
                   key={p.id}
                   proposal={p}
-                  lane="history"
+                  lane="needs_you"
                   {...rowProps}
                 />
-              ))
+              ))}
+            </Lane>
+          ) : null}
+
+          <Lane title={`To review · ${triage.length}`}>
+            {dayBatches.length === 0 ? (
+              <p className="text-muted-foreground text-sm">Nothing to review.</p>
+            ) : (
+              dayBatches.map(({ day, items: dayItems }) => {
+                const open = effectiveExpandedDays.has(day);
+                const ids = dayItems.map((p) => p.id);
+                const allSelected = ids.every((id) => selected.has(id));
+                return (
+                  <div key={day} className="flex flex-col gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        className="text-muted-foreground inline-flex items-center gap-1 text-xs font-medium"
+                        onClick={() => {
+                          setExpandedDays((prev) => {
+                            const base =
+                              prev ?? (newestDay ? new Set([newestDay]) : new Set());
+                            const next = new Set(base);
+                            if (next.has(day)) next.delete(day);
+                            else next.add(day);
+                            return next;
+                          });
+                        }}
+                      >
+                        <ChevronDown
+                          className={cn(
+                            "size-3.5 transition-transform",
+                            !open && "-rotate-90",
+                          )}
+                          aria-hidden="true"
+                        />
+                        {formatDayLabel(day)} · {dayItems.length}{" "}
+                        {dayItems.length === 1 ? "proposal" : "proposals"}
+                      </button>
+                      {open ? (
+                        <label className="text-muted-foreground ml-auto inline-flex items-center gap-1.5 text-xs">
+                          <Checkbox checked={allSelected && ids.length > 0} onCheckedChange={(next) =>
+                              selectAllShown(ids, next)} />
+                          Select all shown
+                        </label>
+                      ) : null}
+                    </div>
+                    {open
+                      ? dayItems.map((p) => (
+                          <ProposalRow
+                            key={p.id}
+                            proposal={p}
+                            lane="triage"
+                            {...rowProps}
+                          />
+                        ))
+                      : null}
+                  </div>
+                );
+              })
             )}
-          </>
-        ) : null}
-      </section>
+          </Lane>
+
+          {queued.length > 0 ? (
+            <Lane title={`Queued · ${queued.length}`}>
+              {queued.map((p) => (
+                <ProposalRow key={p.id} proposal={p} lane="queued" {...rowProps} />
+              ))}
+            </Lane>
+          ) : null}
+
+          {inFlight.length > 0 ? (
+            <Lane title={`Applying · ${inFlight.length}`}>
+              {inFlight.map((p) => (
+                <ProposalRow
+                  key={p.id}
+                  proposal={p}
+                  lane="in_flight"
+                  {...rowProps}
+                />
+              ))}
+            </Lane>
+          ) : null}
+
+          <section className="flex flex-col gap-2">
+            <button
+              type="button"
+              className="text-muted-foreground inline-flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide"
+              onClick={() => setHistoryOpen((v) => !v)}
+            >
+              <ChevronDown
+                className={cn(
+                  "size-3.5 transition-transform",
+                  !historyOpen && "-rotate-90",
+                )}
+                aria-hidden="true"
+              />
+              History ·{" "}
+              {filtered.filter((p) => HISTORY.includes(p.status)).length}
+            </button>
+            {historyOpen ? (
+              <>
+                <div className="flex flex-wrap gap-1.5" role="group" aria-label="History status">
+                  {(
+                    [
+                      "all",
+                      ...HISTORY,
+                    ] as const
+                  ).map((status) => {
+                    const active = historyStatus === status;
+                    const label =
+                      status === "all" ? "All" : STATUS_LABELS[status];
+                    return (
+                      <Button
+                        key={status}
+                        size="xs"
+                        variant={active ? "tonal" : "outline"}
+                        aria-pressed={active}
+                        className="rounded-full"
+                        onClick={() => setHistoryStatus(status)}
+                      >
+                        {active && <Check />}
+                        {label}
+                      </Button>
+                    );
+                  })}
+                </div>
+                {history.length === 0 ? (
+                  <p className="text-muted-foreground text-sm">No history yet.</p>
+                ) : (
+                  history.map((p) => (
+                    <ProposalRow
+                      key={p.id}
+                      proposal={p}
+                      lane="history"
+                      {...rowProps}
+                    />
+                  ))
+                )}
+              </>
+            ) : null}
+          </section>
+        </>
+      )}
+
+      <ListCapNotice loaded={items.length} limit={PROPOSALS_LIMIT} total={data?.total} noun="proposals" />
 
       <BulkBar
         selectedCount={selected.size}
@@ -750,10 +778,15 @@ function ProposalRow({
           ) : null}
           <Link
             href={`/jobs/${proposal.job_id}?from=proposals`}
-            className="hover:bg-muted/40 flex min-w-0 flex-1 items-center gap-3 rounded-xl p-4 text-left transition-colors"
+            // flex-wrap + a real basis on the text, not flex-1 (the job
+            // header's fix): with basis-0 the shrink-0 chips kept their width
+            // and squeezed the title to a few letters at 768 and to nothing at
+            // 375. Narrow, the chips wrap under the text and the decorative
+            // monogram steps aside.
+            className="hover:bg-muted/40 flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1.5 rounded-xl p-3 text-left transition-colors sm:p-4"
           >
-            <CompanyMonogram name={job.company ?? "?"} />
-            <div className="min-w-0 flex-1">
+            <CompanyMonogram name={job.company ?? "?"} className="hidden sm:flex" />
+            <div className="min-w-0 grow basis-[10rem]">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="truncate text-sm font-medium">
                   {job.title ?? "Untitled role"}
@@ -777,6 +810,9 @@ function ProposalRow({
                 {[job.company, job.location, job.work_mode]
                   .filter(Boolean)
                   .join(" · ")}
+              </div>
+              <div className="text-muted-foreground truncate text-xs">
+                {proposalByLine(proposal.proposed_by)} · {formatTimeAgo(proposal.created_at)}
               </div>
             </div>
             {base ? (

@@ -161,4 +161,7 @@ def test_a_queue_race_never_accepts_twice():
     api = (_FRONTEND / "lib/api.ts").read_text()
     fn = api[api.index("export async function promoteJobToAgentQueue(") :]
     fn = fn[: fn.index("\n}\n")]
-    assert fn.index('if (prop.status === "accepted") return;') < fn.index('method: "PATCH"')
+    assert fn.index('if (prop.status !== "accepted") {') < fn.index('method: "PATCH"')
+    # The PATCH is the guarded block's only statement.
+    guarded = fn[fn.index('if (prop.status !== "accepted") {') :]
+    assert guarded.index('method: "PATCH"') < guarded.index("\n  }\n")

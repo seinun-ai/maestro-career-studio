@@ -16,6 +16,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { LoadErrorState } from "@/components/load-error-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch } from "@/lib/api";
+import { proposalByLine } from "@/lib/agent-name";
 import { isLoadFailure } from "@/lib/query-state";
 import { formatAbsoluteDateTime } from "@/lib/format-date";
 import type { ProposalDetail } from "@/lib/types";
@@ -36,12 +37,12 @@ export function ProposalAgentPanel({ proposalId }: { proposalId: string }) {
     return (
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle>Agent proposal</CardTitle>
+          <CardTitle>Agent inbox</CardTitle>
         </CardHeader>
         <CardContent>
           <LoadErrorState
             className="py-8"
-            title="Couldn't load the agent proposal."
+            title="Couldn't load this proposal."
             detail={(error as Error)?.message}
             retrying={isFetching}
             onRetry={() => void refetch()}
@@ -55,7 +56,7 @@ export function ProposalAgentPanel({ proposalId }: { proposalId: string }) {
     return (
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle>Agent proposal</CardTitle>
+          <CardTitle>Agent inbox</CardTitle>
         </CardHeader>
         <CardContent>
           <Skeleton className="h-16 w-full" />
@@ -73,12 +74,13 @@ export function ProposalAgentPanel({ proposalId }: { proposalId: string }) {
   return (
     <Card>
       <CardHeader className="pb-2">
-        <CardTitle>Agent proposal</CardTitle>
+        {/* Who filed it and the verb: "Proposed by Claude", "Queued by you". */}
+        <CardTitle>{proposalByLine(data.proposed_by)}</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-5 text-sm">
         {/* Meta labels match JobExtractedFields StatLine (uppercase 11px). */}
         <dl className="flex flex-wrap gap-x-6 gap-y-3">
-          <Fact label="Proposed">
+          <Fact label="Date">
             {formatAbsoluteDateTime(data.created_at)}
           </Fact>
           <Fact label="Expires">
@@ -169,11 +171,11 @@ export function ProposalAgentPanel({ proposalId }: { proposalId: string }) {
             </a>
           ) : null}
           <Link
-            href={`/proposals`}
+            href="/proposals"
             className="text-muted-foreground inline-flex items-center gap-1.5 text-xs underline"
           >
             <Briefcase className="size-3.5" aria-hidden="true" />
-            All proposals
+            Open Agent inbox
           </Link>
         </div>
       </CardContent>

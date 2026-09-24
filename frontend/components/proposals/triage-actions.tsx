@@ -98,11 +98,12 @@ export function useProposalActions() {
       invalidate();
       const failed = data.results.filter((r) => !r.ok);
       if (failed.length === 0) return;
+      // "queued": Accept's result is a Queued chip (the ONE status vocabulary).
       const verb =
-        vars.status === "accepted" ? "accepted" : "skipped";
+        vars.status === "accepted" ? "queued" : "skipped";
       const sample = failed[0]?.detail ?? "already terminal";
       toast.error(
-        `${failed.length} of ${vars.ids.length} could not be ${verb} — ${sample}`,
+        `${failed.length} of ${vars.ids.length} could not be ${verb}: ${sample}`,
       );
     },
     onError: (err: Error) => toast.error(err.message),
@@ -230,7 +231,11 @@ export function BulkBar({
   if (selectedCount <= 0) return null;
 
   return (
-    <div className="bg-background/95 supports-backdrop-filter:backdrop-blur-sm fixed inset-x-0 bottom-0 z-40 border-t px-4 py-3">
+    // data-slot: globals.css keeps a focused row above this fixed bar.
+    <div
+      data-slot="bulk-bar"
+      className="bg-background/95 supports-backdrop-filter:backdrop-blur-sm fixed inset-x-0 bottom-0 z-40 border-t px-4 py-3"
+    >
       <div className="mx-auto flex w-full max-w-5xl flex-wrap items-center gap-2">
         <span className="text-sm font-medium tabular-nums">
           {selectedCount} selected

@@ -450,6 +450,10 @@
   Every job read (list, `GET /api/jobs/{id}`, its PATCH and re-extract replies, `/detail`)
   exposes the newest proposal's filer as `proposal_proposed_by`, beside
   `proposal_status`/`proposal_id` (`routers/jobs._with_newest_proposal`).
+  The web app words it through `frontend/lib/agent-name.ts` ("Proposed by
+  Claude", "Queued by you", "Proposed by a connected agent"), never raw. A web
+  Queue on a job whose open proposal an agent filed keeps that agent as the
+  filer (the dedup below), and the Queue's toast says so.
   Dedup at `POST /api/proposals`: an **open** proposal for the job returns that
   proposal (HTTP 200, idempotent, keeping the first filer). **Check and insert are one step**:
   nothing in the schema says one open proposal per job, and pysqlite opens a transaction only
@@ -473,10 +477,10 @@
   `settings/auto_apply.json` (`GET/PUT /api/settings/auto-apply`) — caps,
   expiry, auto-pick margin/floor, blocklist; editable via the Settings
   "Auto-apply" card (deprecated `cooldown_days` hidden but preserved on save —
-  the model is extra=forbid). Web surface: `/proposals` triage inbox — summary
+  the model is extra=forbid). Web surface: `/proposals` (the Agent inbox) — summary
   rows link to `/jobs/[id]?from=proposals`; hover Accept/Skip (single + mass,
   channel `frontend`) stay on the list; the job page mirrors Accept/Skip and
-  shows the proposal pill + Agent proposal Overview block; prev/next walks
+  shows the proposal pill + the proposal's Overview card, titled with its filer; prev/next walks
   `cs-proposals-seq`. Delete on non-submitted rows; still NO browser execution
   from the web — execution only happens in a live agent session holding a
   browser, and final submit consent stays in that session. Funnel: `GET

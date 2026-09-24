@@ -59,6 +59,9 @@ export interface Job {
   proposal_status?: string | null;
   /** Newest proposal id (paired with proposal_status) for job-page triage. */
   proposal_id?: UUID | null;
+  /** Who filed the newest proposal: "you", an MCP client's name, or null.
+   *  Optional: an older backend does not send it (reads as unknown). */
+  proposal_proposed_by?: string | null;
 }
 
 export interface JobCreate {
@@ -1838,6 +1841,9 @@ export interface Proposal {
   plan_json: Record<string, unknown> | null;
   evidence_json: ProposalEvidenceItem[] | null;
   reason: string | null;
+  /** "you" (the web app's queue), an MCP client's clientInfo.name, or null
+   *  (unknown). Optional: an older backend does not send it. */
+  proposed_by?: string | null;
   expires_at: string | null;
   created_at: string;
   updated_at: string;

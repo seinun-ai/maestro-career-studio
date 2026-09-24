@@ -187,10 +187,14 @@ export function listAtsScores(jobId: UUID) {
  * proposal from the job's stored base scores, then straight to `accepted` —
  * the caller's click IS the user's triage decision. Used by the tracker's
  * saved-row action and the job page. */
-export async function promoteJobToAgentQueue(jobId: UUID) {
+/** Files the job into the Agent inbox, queued. Returns who the proposal
+ *  names as its filer: "you", or the connected agent whose open proposal the
+ *  POST returned (it keeps the first filer); undefined from a backend that
+ *  does not report it. */
+export async function promoteJobToAgentQueue(jobId: UUID): Promise<string | null | undefined> {
   const scores = (await listAtsScores(jobId)).filter((s) => s.phase === "base");
   const chosen = [...scores].sort((a, b) => b.composite - a.composite)[0];
-  const prop = await apiFetch<{ id: UUID; status: string }>("/api/proposals", {
+  const prop = await apiFetch<{ id: UUID; status: string; proposed_by?: string | null }>("/api/proposals", {
     method: "POST",
     body: JSON.stringify({
       job_id: jobId,
@@ -209,14 +213,16 @@ export async function promoteJobToAgentQueue(jobId: UUID) {
   });
   // The POST returns the job's open proposal when it already has one (another tab, an agent). One
   // already accepted is done: accepting it again is an illegal transition and a false error.
-  if (prop.status === "accepted") return;
-  await apiFetch(`/api/proposals/${prop.id}`, {
-    method: "PATCH",
-    body: JSON.stringify({
-      status: "accepted",
-      consent: { channel: "frontend" },
-    }),
-  });
+  if (prop.status !== "accepted") {
+    await apiFetch(`/api/proposals/${prop.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        status: "accepted",
+        consent: { channel: "frontend" },
+      }),
+    });
+  }
+  return prop.proposed_by;
 }
 
 export function getAtsCompare(applicationId: UUID) {

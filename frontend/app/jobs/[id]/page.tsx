@@ -51,6 +51,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useSingleFlight } from "@/hooks/use-single-flight";
+import { proposalByLine, queuedToast } from "@/lib/agent-name";
 import { apiFetch, promoteJobToAgentQueue } from "@/lib/api";
 import { focusIfDropped, focusTarget } from "@/lib/focus";
 import { isLoadFailure } from "@/lib/query-state";
@@ -157,8 +158,8 @@ export default function JobDetailPage({
   // only offered when the job has no proposal yet).
   const promote = useMutation({
     mutationFn: () => promoteJobToAgentQueue(id),
-    onSuccess: () => {
-      toast.success("Queued for the next apply run");
+    onSuccess: (proposedBy) => {
+      toast.success(queuedToast(proposedBy));
       qc.invalidateQueries({ queryKey: ["job-detail", id] });
       qc.invalidateQueries({ queryKey: ["proposals"] });
       qc.invalidateQueries({ queryKey: ["jobs", "without-application"] });
@@ -305,7 +306,7 @@ export default function JobDetailPage({
             <IconButton
               label={
                 fromProposals
-                  ? "Previous proposal in list"
+                  ? "Previous job in Agent inbox"
                   : "Previous job in list"
               }
               icon={<ChevronLeft className="size-4" />}
@@ -330,7 +331,7 @@ export default function JobDetailPage({
             so the page rendered with no title at all below ~600px. */}
         <header className="flex flex-wrap items-start gap-3">
           <IconButton
-            label={fromProposals ? "Back to proposals" : "Back to applications"}
+            label={fromProposals ? "Back to Agent inbox" : "Back to applications"}
             icon={<ArrowLeft className="size-4" />}
             size="icon-sm"
             className="mt-1.5 shrink-0"
@@ -360,7 +361,14 @@ export default function JobDetailPage({
               <Badge
                 className={cn("shrink-0", STATUS_BADGE_CLASS[proposalStatus])}
                 variant="secondary"
+                title={proposalByLine(job.proposal_proposed_by)}
               >
+                {/* The status is the pill's text (the ONE status vocabulary);
+                    who filed it is heard first and shown on hover. The
+                    Overview card shows it visibly. */}
+                <span className="sr-only">
+                  {proposalByLine(job.proposal_proposed_by)}, status{" "}
+                </span>
                 {STATUS_LABELS[proposalStatus]}
               </Badge>
             ) : proposalStatus ? (
@@ -376,7 +384,7 @@ export default function JobDetailPage({
                     { id: proposalId, status: "accepted" },
                     {
                       onSuccess: () =>
-                        toast.success("Accepted — queued for apply"),
+                        toast.success("Queued. A connected agent can apply to it now."),
                     },
                   );
                 }}
@@ -421,7 +429,7 @@ export default function JobDetailPage({
                 }}
               >
                 <SendHorizontal />
-                {promote.isPending ? "Queueing…" : "Queue for agent"}
+                {promote.isPending ? "Queueing…" : "Queue in Agent inbox"}
               </Button>
             ) : null}
             {hasApp && application ? (
@@ -566,7 +574,7 @@ export default function JobDetailPage({
           {nextJobId ? (
             <IconButton
               label={
-                fromProposals ? "Next proposal in list" : "Next job in list"
+                fromProposals ? "Next job in Agent inbox" : "Next job in list"
               }
               icon={<ChevronRight className="size-4" />}
               size="icon-sm"

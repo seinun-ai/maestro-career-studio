@@ -215,6 +215,12 @@
     [data-slot="table-header"][data-sticky] ~ [data-slot="table-body"] :focus) {
     scroll-padding-top: calc(var(--list-sticky-top, 0px) + var(--list-head-h, 0px));
   }
+  /* The same clearance from below for the Agent inbox's fixed bulk bar
+     (about 3.5rem, more when it wraps): scoped to focus in the list the same
+     way, so a focused bar button, toolbar control or dialog never jumps. */
+  html:has([data-slot="bulk-bar"]):has([data-slot="list-toolbar"] ~ :focus-within) {
+    scroll-padding-bottom: 5rem;
+  }
 }
 
 @layer utilities {
