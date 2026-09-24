@@ -45,7 +45,7 @@ planner. Never expand scope.
 ## Your definition of done
 
 - Every D row in your groups applied (or logged as dropped with a reason).
-- Your ratchet pending blocks (`_PENDING_T22` (Task 23's server strings have no frontend ratchet: pin each changed message in the backend tests D §9.8 names)) in `backend/tests/test_frontend_vocabulary.py`, `test_frontend_error_words.py` and `test_frontend_placeholders.py` driven to **zero and deleted** (the ratchets fail if a count is higher or lower than actual — lower each block as you go).
+- Your ratchet pending blocks (`_PENDING_T22` (Task 23's server strings have no frontend ratchet: pin each changed message in the backend tests D §9.8 names)) in `backend/tests/test_frontend_vocabulary.py`, `test_frontend_error_words.py` and `test_frontend_placeholders.py` (there the blocks are named `_PENDING_EXAMPLES_T<n>`) driven to **zero and deleted** (the ratchets fail if a count is higher or lower than actual — lower each block as you go).
 - Every pin that read an old string updated to the new one (D lists them per group); no pin weakened.
 
 ## Scope
