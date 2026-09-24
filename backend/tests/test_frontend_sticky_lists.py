@@ -136,7 +136,7 @@ def test_the_toolbar_is_a_search_landmark_not_a_toolbar_role():
     assert "role=" not in ret
 
 
-def test_the_toolbar_publishes_its_height_and_takes_it_back():
+def test_the_toolbar_publishes_its_height():
     body = _body(_TOOLBAR, "export function ListToolbar(")
     assert 'const STICKY_TOP_VAR = "--list-sticky-top";' in _TOOLBAR
     assert "new ResizeObserver(write)" in body
@@ -144,10 +144,14 @@ def test_the_toolbar_publishes_its_height_and_takes_it_back():
     assert 'tall.addEventListener("change", write)' in body
     assert "Math.floor(el.getBoundingClientRect().height)" in body
     assert "root.style.setProperty(STICKY_TOP_VAR, written)" in body
+    assert "--list-sticky-top" in _body(_TABLE, "function TableHeader(")
+
+
+def test_the_toolbar_takes_back_only_its_own_height():
+    body = _body(_TOOLBAR, "export function ListToolbar(")
     cleanup = body[body.index("return () => {") :]
     assert "observer.disconnect()" in cleanup
     assert "=== written) root.style.removeProperty(STICKY_TOP_VAR)" in cleanup
-    assert "--list-sticky-top" in _body(_TABLE, "function TableHeader(")
 
 
 _PAD = "scroll-padding-top: calc(var(--list-sticky-top, 0px) + var(--list-head-h, 0px));"
