@@ -118,7 +118,7 @@ Adapt *how* when the plan conflicts with the code and log it below. If a change 
 ## Deferred to merge (edits left for Claude, with file:line)
 
 - `docs/frontend-conventions.md`: the two new bullets sit between "The 768–1023px band" and "`truncate` on a flex
-  child" (~:504–:569); the only other edits are :498 (`minWidth="52rem"`) and the react-query keys bullet (~:785).
+  child" (:504–:565); the only other edits are :498 (`minWidth="52rem"`) and the react-query keys bullet (:783).
   Other lanes' conventions edits should merge around them.
 - Task 13 (inbox): the focus clearance is `html:has([data-slot="list-toolbar"] ~ * :focus, …)` in
   `frontend/app/globals.css`, so the inbox's lanes must be later siblings of its `ListToolbar` (B8 already says a
