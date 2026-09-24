@@ -304,6 +304,20 @@ def create_job(payload: JobCreate, db: Annotated[Session, Depends(get_db)]):
     return _persist_job(db, payload.raw_text, payload.source_url, raw_text_hash, extraction)
 
 
+def _newest_proposal_columns():
+    """The newest-proposal fields the job projections carry, in the order
+    _stamp_newest_proposal unpacks them."""
+    from app.models.application_proposal import ApplicationProposal
+
+    return (ApplicationProposal.id, ApplicationProposal.status, ApplicationProposal.proposed_by)
+
+
+def _stamp_newest_proposal(job: Job, newest) -> None:
+    """Transient attrs read by JobRead/JobSummary (same pattern as
+    already_existed): the newest proposal's id, status and filer, or None."""
+    job.proposal_id, job.proposal_status, job.proposal_proposed_by = newest or (None, None, None)
+
+
 @router.get("", response_model=list[JobSummary])
 def list_jobs(
     db: Annotated[Session, Depends(get_db)],
@@ -332,7 +346,7 @@ def list_jobs(
         stmt = stmt.where(Job.source_url == normalized_url)
     stmt = stmt.order_by(Job.created_at.desc()).offset(offset).limit(limit)
     rows = list(db.scalars(stmt))
-    # Annotate newest proposal status + id per job (transient attrs consumed by
+    # Annotate newest proposal id, status + filer per job (transient attrs consumed by
     # JobSummary — same pattern as already_existed). One query for the whole
     # page; newest-first iteration keeps the first row seen per job.
     if rows:
@@ -340,23 +354,14 @@ def list_jobs(
 
         newest: dict = {}
         proposal_rows = db.execute(
-            select(
-                ApplicationProposal.job_id,
-                ApplicationProposal.id,
-                ApplicationProposal.status,
-            )
+            select(ApplicationProposal.job_id, *_newest_proposal_columns())
             .where(ApplicationProposal.job_id.in_([job.id for job in rows]))
             .order_by(ApplicationProposal.created_at.desc())
         ).all()
-        for job_id, prop_id, status in proposal_rows:
-            newest.setdefault(job_id, (prop_id, status))
+        for job_id, *fields in proposal_rows:
+            newest.setdefault(job_id, fields)
         for job in rows:
-            hit = newest.get(job.id)
-            if hit is None:
-                job.proposal_status = None
-                job.proposal_id = None
-            else:
-                job.proposal_id, job.proposal_status = hit
+            _stamp_newest_proposal(job, newest.get(job.id))
     return rows
 
 
@@ -517,21 +522,17 @@ def get_job_detail(job_id: UUID, db: Annotated[Session, Depends(get_db)]):
         .order_by(Application.created_at.desc())
         .limit(1)
     )
-    # Same derived proposal_status / proposal_id as the list endpoint
+    # Same derived proposal_status / proposal_id / proposal_proposed_by as the list endpoint
     # (transient attrs) so the job page can triage and load proposal detail.
     from app.models.application_proposal import ApplicationProposal
 
     newest_prop = db.execute(
-        select(ApplicationProposal.id, ApplicationProposal.status)
+        select(*_newest_proposal_columns())
         .where(ApplicationProposal.job_id == job_id)
         .order_by(ApplicationProposal.created_at.desc())
         .limit(1)
     ).first()
-    if newest_prop is None:
-        job.proposal_id = None
-        job.proposal_status = None
-    else:
-        job.proposal_id, job.proposal_status = newest_prop
+    _stamp_newest_proposal(job, newest_prop)
     from app.services import autofill_profile, job_preferences, knockout
 
     scan = knockout.scan_job(

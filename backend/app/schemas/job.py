@@ -38,6 +38,9 @@ class JobRead(BaseModel):
     # Newest proposal id (same query as proposal_status) so the job page can
     # load / triage without a proposals-list round-trip.
     proposal_id: UUID | None = None
+    # Who filed the newest proposal (same query): "you", an MCP client's name,
+    # or None. The tracker's agent mark and the job page's pill name them.
+    proposal_proposed_by: str | None = None
     extracted_json: dict[str, Any] | None = None
     title: str | None = None
     company: str | None = None
@@ -88,6 +91,7 @@ class JobSummary(BaseModel):
     # Declined/Queued/Proposed instead of a flat "Saved" for hunted jobs.
     proposal_status: str | None = None
     proposal_id: UUID | None = None
+    proposal_proposed_by: str | None = None
     role_category: str | None = None
     level: str | None = None
     employment_type: str | None = None

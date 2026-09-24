@@ -37,6 +37,10 @@ class ApplicationProposal(Base):
     evidence_json: Mapped[list | None] = mapped_column(JSONDoc)
     intervention_json: Mapped[dict | None] = mapped_column(JSONDoc)
     reason: Mapped[str | None] = mapped_column(Text)
+    # Who filed it: "you" (the web app's queue), the MCP client's self-declared
+    # clientInfo.name ("claude-ai"), or NULL when unknown. A label, not an
+    # identity (mcp_server.server._client_label); nothing security-bearing reads it.
+    proposed_by: Mapped[str | None] = mapped_column(Text)
     expires_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     cap_reserved_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     created_at: Mapped[datetime] = mapped_column(

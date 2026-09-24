@@ -1,4 +1,7 @@
 
+from mcp.shared.memory import create_connected_server_and_client_session
+from mcp.types import Implementation
+
 import mcp_server.server as srv
 
 
@@ -24,16 +27,55 @@ def test_proposal_tools_registered():
 
 def test_propose_application_tool_calls_client(monkeypatch):
     seen = {}
+    monkeypatch.delenv("MAESTRO_CS_MCP_CLIENT", raising=False)
+    monkeypatch.delenv("CAREER_STUDIO_MCP_CLIENT", raising=False)
     monkeypatch.setattr(
         srv._client,
         "propose_application",
-        lambda job_id, base_resume=None, fit=None, plan=None, application_id=None, referral_id=None: seen.update(
-            j=job_id, f=fit, p=plan, a=application_id, r=referral_id
+        lambda job_id, base_resume=None, fit=None, plan=None, application_id=None, referral_id=None,
+        origin_detail=None: seen.update(
+            j=job_id, f=fit, p=plan, a=application_id, r=referral_id, o=origin_detail
         ) or {"id": "p1"},
     )
     res = srv.propose_application("j1", fit={"chosen_base": "hybrid"}, plan={"summary": "p"})
     assert res == {"id": "p1"}
-    assert seen == {"j": "j1", "f": {"chosen_base": "hybrid"}, "p": {"summary": "p"}, "a": None, "r": None}
+    assert seen == {
+        "j": "j1", "f": {"chosen_base": "hybrid"}, "p": {"summary": "p"}, "a": None, "r": None,
+        "o": None,
+    }
+
+
+def test_propose_application_passes_the_client_label(monkeypatch):
+    seen = {}
+    monkeypatch.setenv("MAESTRO_CS_MCP_CLIENT", "codex-mcp-client")
+    monkeypatch.setattr(
+        srv._client, "propose_application", lambda job_id, **kw: seen.update(kw) or {"id": "p1"}
+    )
+    srv.propose_application("j1")
+    assert seen["origin_detail"] == "codex-mcp-client"
+
+
+async def test_propose_application_keeps_ctx_out_of_its_schema():
+    tools = {tool.name: tool for tool in await srv.mcp.list_tools()}
+    assert "ctx" not in tools["propose_application"].inputSchema["properties"]
+
+
+async def test_propose_application_names_the_client_its_session_declared(monkeypatch):
+    """End to end through the installed mcp package: the name a client sends
+    in `initialize` (clientInfo.name) reaches the backend call as the filer,
+    with no env fallback set. This is the plumbing _client_label assumes."""
+    seen = {}
+    monkeypatch.delenv("MAESTRO_CS_MCP_CLIENT", raising=False)
+    monkeypatch.delenv("CAREER_STUDIO_MCP_CLIENT", raising=False)
+    monkeypatch.setattr(
+        srv._client, "propose_application", lambda job_id, **kw: seen.update(kw) or {"id": "p1"}
+    )
+    async with create_connected_server_and_client_session(
+        srv.mcp, client_info=Implementation(name="claude-ai", version="0.1.0")
+    ) as session:
+        result = await session.call_tool("propose_application", {"job_id": "j1"})
+    assert not result.isError, result.content
+    assert seen["origin_detail"] == "claude-ai"
 
 
 def test_record_decision_tool_calls_client(monkeypatch):

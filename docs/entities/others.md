@@ -380,7 +380,8 @@
   health report, labelled `weighted higher` — which is what it actually is.
   `lib/health-zones.ts` mirrors the Python; update both together.
 - **ApplicationProposal + ConsentEvent** (auto-apply ledger; migrations
-  `56ade310b259` + `11b61fe1ace9`, lifecycle fields `0c677ba4cbcb`): the
+  `56ade310b259` + `11b61fe1ace9`, lifecycle fields `0c677ba4cbcb`, filer
+  `9a5744f9b9d9` with legacy mirror `3a17da2f7144`): the
   agent-hunted apply lane. `Job.source` / `Application.source`
   (`'user'|'agent'`, default user) are the provenance dimension — never a
   parallel category taxonomy. State machine (`services/proposals.py`, ALL
@@ -434,8 +435,17 @@
   additionally requires `submission_receipt` evidence and flips the linked
   Application to `applied` with the PATCH route's `applied_at` stamping rule.
   Expiry is lazy (`expire_stale` on reads) — no scheduler exists, on purpose.
+  **Who filed it** (`proposed_by`): `'you'` from the web app's queue (a body
+  field that accepts only `'you'`), the MCP client's self-declared
+  `clientInfo.name` from the `X-Maestro-CS-Origin-Detail` header (which wins
+  over the body; a client declaring itself "you" reads as unknown, so an agent
+  can never file as you), else NULL. A label, not an identity. The migration
+  backfills `'you'` onto past web promotions by their fixed plan summary
+  ("Promoted from the tracker by the user", `promoteJobToAgentQueue`), so that
+  text is load-bearing. Job list/detail expose the newest proposal's filer as
+  `proposal_proposed_by`, beside `proposal_status`/`proposal_id`.
   Dedup at `POST /api/proposals`: an **open** proposal for the job returns that
-  proposal (HTTP 200, idempotent); if the caller also passes `application_id`
+  proposal (HTTP 200, idempotent, keeping the first filer); if the caller also passes `application_id`
   and the proposal is unlinked, late-link it (never relink to a different
   application — 409). Company blocklist stays hard 409. Agent-sourced jobs gate
   execute helpers (`prepare` / `attach_evidence` / `record_consent` /

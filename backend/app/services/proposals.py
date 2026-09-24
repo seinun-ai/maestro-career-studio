@@ -54,13 +54,26 @@ OPEN_STATUSES = frozenset({
 })
 
 
+# What the web app's own queue records as the filer (ProposalCreate.proposed_by).
+FILED_BY_YOU = "you"
+
+
+def proposal_filer(origin: str | None, detail: str | None, claimed: str | None) -> str | None:
+    """Who is filing a new proposal. A connected agent (origin "mcp") is named
+    by its client's self-declared name and never by the body, so it cannot file
+    as "you" — a client that DECLARES itself "you" reads as unknown instead."""
+    if origin == "mcp":
+        return None if detail is None or detail.casefold() == FILED_BY_YOU else detail
+    return claimed
+
+
 def create_proposal(session, *, job_id: UUID, application_id: UUID | None = None,
                     referral_id: UUID | None = None,
-                    fit=None, plan=None) -> ApplicationProposal:
+                    fit=None, plan=None, proposed_by: str | None = None) -> ApplicationProposal:
     cfg = auto_apply_settings.get_settings(session)
     prop = ApplicationProposal(
         job_id=job_id, application_id=application_id, referral_id=referral_id,
-        status="pending_review", fit_json=fit, plan_json=plan,
+        status="pending_review", fit_json=fit, plan_json=plan, proposed_by=proposed_by,
         expires_at=datetime.now(UTC) + timedelta(days=cfg.proposal_expiry_days),
     )
     session.add(prop)

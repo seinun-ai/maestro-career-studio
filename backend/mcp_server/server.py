@@ -100,7 +100,7 @@ def _guard(fn):
 
 
 def _client_label(ctx: Context | None) -> str | None:
-    """Name the MCP client for the KB timeline: 'Claude Desktop', 'ChatGPT'.
+    """Name the MCP client for the KB timeline and a proposal's filer.
 
     clientInfo is what the peer declared at initialize, so it is a label, not an
     authenticated identity — good enough for "which session added this", not for
@@ -1560,6 +1560,7 @@ def propose_application(
     plan: dict | None = None,
     application_id: str | None = None,
     referral_id: str | None = None,
+    ctx: Context | None = None,
 ) -> Any:
     """File an agent-hunted application proposal for user review.
 
@@ -1579,6 +1580,7 @@ def propose_application(
         plan=plan,
         application_id=application_id,
         referral_id=referral_id,
+        origin_detail=_client_label(ctx),
     )
 
 
@@ -1590,7 +1592,8 @@ def list_proposals(status: str | None = None) -> Any:
     Contract for apply runs: execute status='accepted' proposals ONLY —
     pending_review is staging/discussion inventory, never auto-executed;
     a proposal reaches accepted through the user's triage decision
-    (/proposals page or record_triage)."""
+    (/proposals page or record_triage). Each item's proposed_by names who
+    filed it: an MCP client's name, "you" for the web app's queue, or null."""
     return _client.list_proposals(status=status)
 
 
