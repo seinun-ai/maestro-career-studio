@@ -913,9 +913,15 @@
   zero-specificity `:where()`, so without them `hover:` wins and the active row
   goes grey under the pointer. Both sidebar toggles carry a `title` hint
   (`useModKey`) and `aria-keyshortcuts="Meta+B Control+B"`. Groups:
-  **Job search** (Applications, Agent Proposals, Referrals), **Career library** (Career KB,
-  Base Resumes, Templates), **Tools** (Chat, Analytics); Profile + Settings
-  pinned in `SidebarFooter`. Add new routes to the right group in
+  **Job search** (Applications, Agent inbox, Referrals), **Career library** (Career KB,
+  Base Resumes, Templates), **Tools** (Assistant, Analytics); Profile + Settings
+  pinned in `SidebarFooter`. The Agent inbox item carries a Needs-you count:
+  `needsYouBadge` (`lib/needs-you.ts`) hides it at 0 or while unknown, the pill
+  is `aria-hidden` and the link's `aria-label` reads "Agent inbox, N need you"
+  (an sr-only span, out of flow, made Chrome's name "Agent inbox , N…"); it
+  polls every 60 s (a connected agent changes proposals outside the tab), and
+  its orange is measured on all four row states
+  (`test_the_needs_you_badge_meets_aa_on_every_sidebar_row_state`). Add new routes to the right group in
   `components/app-sidebar.tsx` (`NAV_GROUPS`), not a flat list. Pinned by
   `test_frontend_sidebar_nav.py` and `test_frontend_first_run.py`.
 - **Tracker filter** (`app/applications/page.tsx`): three groups, All/Saved,

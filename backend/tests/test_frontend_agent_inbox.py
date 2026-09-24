@@ -321,3 +321,53 @@ def test_a_narrow_row_wraps_instead_of_hiding_its_title():
     assert "flex-wrap" in own and "flex-1" in own
     assert '<div className="min-w-0 grow basis-[10rem]">' in link
     assert '<div className="min-w-0 flex-1">' not in link
+
+
+# ── A4: a Needs-you count on the sidebar item ───────────────────────────────
+
+
+def _sidebar() -> str:
+    return _read("components/app-sidebar.tsx")
+
+
+def test_the_sidebar_names_the_inbox_and_the_assistant():
+    """A1 and decision 5: the inbox item and the in-app chat's item."""
+    sidebar = _sidebar()
+    assert '{ href: "/proposals", label: "Agent inbox", icon: Bot },' in sidebar
+    assert '{ href: "/chat", label: "Assistant", icon: MessageSquare },' in sidebar
+    for old in ('label: "Agent Proposals"', 'label: "Chat"'):
+        assert old not in sidebar, old
+
+
+def test_needs_you_is_one_list_of_statuses():
+    lib = _read("lib/needs-you.ts")
+    assert (
+        'export const NEEDS_YOU_STATUSES: readonly ProposalStatus[] = ["needs_decision", "needs_human"];'
+        in lib
+    )
+    assert "const NEEDS_YOU = NEEDS_YOU_STATUSES;" in _SECTION
+    hook = _read("hooks/use-needs-you-count.ts")
+    assert '`/api/proposals?status=${NEEDS_YOU_STATUSES.join(",")}&limit=1`' in hook
+    assert "select: (page) => page.total" in hook
+    # Under ["proposals"]: every triage invalidation refreshes the count.
+    assert 'queryKey: ["proposals", "needs-you-count"]' in hook
+    assert "refetchInterval: 60_000" in hook
+
+
+def test_the_badge_hides_at_zero_and_caps_at_99():
+    lib = _read("lib/needs-you.ts")
+    assert "if (count == null || !Number.isFinite(count) || count < 1) return null;" in lib
+    assert 'text: n > 99 ? "99+" : String(n),' in lib
+    assert '`${n} ${n === 1 ? "needs" : "need"} you`' in lib
+
+
+def test_the_count_is_in_the_link_name_and_not_read_twice():
+    sidebar = _sidebar()
+    assert "const needsYou = needsYouBadge(useNeedsYouCount());" in sidebar
+    assert 'badges={{ "/proposals": needsYou }}' in sidebar
+    # The words are the link's name. Browser-found: an sr-only span, out of
+    # flow, made Chrome's name "Agent inbox , 3 need you".
+    assert "aria-label={badge ? `${item.label}, ${badge.spoken}` : undefined}" in sidebar
+    assert '<span className="min-w-0 truncate">{item.label}</span>' in sidebar
+    pill = sidebar[sidebar.index("{badge ? (") :]
+    assert pill.index('aria-hidden="true"') < pill.index("{badge.text}")
