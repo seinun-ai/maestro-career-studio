@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import {
   AskCard,
   COUNT_META,
+  countWords,
   FixCard,
   FindingGroupHeader,
   GateBanner,
@@ -32,6 +33,7 @@ import {
   overrideLevel,
   runLintReport,
 } from "@/lib/api";
+import { couldnt, errorDetail } from "@/lib/error-text";
 import { isLoadFailure } from "@/lib/query-state";
 import {
   explainScoreDelta,
@@ -58,10 +60,17 @@ import type {
 
 const FILTERS: { id: StreamFilter; label: string }[] = [
   { id: "all", label: "All" },
-  { id: "fix", label: "Fix" },
-  { id: "ask", label: "Ask" },
+  { id: "fix", label: "Fixes" },
+  { id: "ask", label: "Questions" },
   { id: "note", label: "Notes" },
 ];
+
+// The career stage the score is judged against (`health_zones.compute_tier`).
+// "unknown" (no dates to read) shows no badge: it is not a stage.
+const TIER_LABELS: Record<string, string | undefined> = {
+  early: "Early career",
+  experienced: "Experienced",
+};
 
 /**
  * Full-page resume health report. Header stays on the shared PageShell origin;
@@ -175,9 +184,9 @@ export function HealthReportPage({
     onSuccess: (result) => {
       adoptReport(result, Boolean(report.data));
       setAppliedCount(0);
-      toast.success(`Analyzed. Grade ${result.grade}.`);
+      toast.success(`Check done. Grade ${result.grade}.`);
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(couldnt("check the resume", err)),
   });
 
   // The report's failure, remembered through a retry: a 404 is "No health report yet", anything
@@ -228,7 +237,7 @@ export function HealthReportPage({
       <PageShell>
         <LoadErrorState
           title="Couldn't load this resume."
-          detail={(baseQuery.error as Error)?.message}
+          detail={errorDetail(baseQuery.error)}
           retrying={baseQuery.isFetching}
           onRetry={() => void baseQuery.refetch()}
           action={
@@ -278,7 +287,7 @@ export function HealthReportPage({
 
   const jumpItems = [
     ...(gates.length > 0
-      ? [{ id: "gates", label: "Gates", count: gates.filter((g) => g.status !== "pass").length }]
+      ? [{ id: "gates", label: "Must fix", count: gates.filter((g) => g.status !== "pass").length }]
       : []),
     ...groups.map((g) => ({
       id: `group-${g.key}`,
@@ -301,7 +310,7 @@ export function HealthReportPage({
       ) : (
         <RefreshCw className="mr-1 size-3.5" />
       )}
-      {analyze.isPending ? "Analyzing…" : body ? "Re-analyze" : "Analyze"}
+      {analyze.isPending ? "Checking…" : body ? "Check again" : "Check health"}
     </Button>
   );
 
@@ -320,7 +329,7 @@ export function HealthReportPage({
         }
         title={
           <span className="flex items-center gap-2">
-            <HeartPulse className="size-5" /> Resume health report
+            <HeartPulse className="size-5" /> Health report
           </span>
         }
         subtitle={label}
@@ -329,7 +338,7 @@ export function HealthReportPage({
       {reportFailed ? (
         <LoadErrorState
           title="Couldn't load this health report."
-          detail={reportError instanceof Error ? reportError.message : undefined}
+          detail={errorDetail(reportError)}
           retrying={report.isFetching}
           onRetry={() => void report.refetch()}
         />
@@ -340,7 +349,7 @@ export function HealthReportPage({
               <div className="flex items-center gap-3">
                 {insufficient ? (
                   <span className="text-muted-foreground flex size-14 items-center justify-center rounded-lg text-center text-[10px] leading-tight font-medium">
-                    Not enough evidence to grade
+                    Too little to grade
                   </span>
                 ) : (
                   <span
@@ -381,9 +390,9 @@ export function HealthReportPage({
                       )}
                     </div>
                   )}
-                  {body.tier && (
+                  {body.tier && TIER_LABELS[body.tier] && (
                     <Badge variant="secondary" className="w-fit text-xs">
-                      {body.tier}
+                      {TIER_LABELS[body.tier]}
                     </Badge>
                   )}
                 </div>
@@ -392,7 +401,7 @@ export function HealthReportPage({
                 <p className="text-muted-foreground text-xs">{composition}</p>
               )}
               <div className="flex flex-wrap gap-1.5">
-                {COUNT_META.map(({ key, label: countLabel, chip }) => {
+                {COUNT_META.map(({ key, chip }) => {
                   const count = body.counts?.[key] ?? 0;
                   if (count === 0) return null;
                   return (
@@ -401,15 +410,15 @@ export function HealthReportPage({
                       variant="secondary"
                       className={cn("text-xs", chip)}
                     >
-                      {count} {countLabel}
+                      {countWords(key, count)}
                     </Badge>
                   );
                 })}
               </div>
               <p className="text-muted-foreground text-xs">
-                {remaining} to address
+                {remaining} left to fix
                 {body.resume_version_number != null &&
-                  ` · resume v${body.resume_version_number}`}
+                  ` · version ${body.resume_version_number}`}
               </p>
             </section>
 
@@ -461,10 +470,7 @@ export function HealthReportPage({
           <div className="flex min-w-0 flex-col gap-6">
             {stale && (
               <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-sm">
-                <p>
-                  Ran against v{body.resume_version_number ?? "?"} · the resume has
-                  changed since — re-analyze for current results
-                </p>
+                <p>Your resume changed since this check. Check again to update it.</p>
                 {analyzeButton}
               </div>
             )}
@@ -478,20 +484,19 @@ export function HealthReportPage({
             />
 
             {!hasAnything && (
-              <p className="text-sm">No issues found. This resume looks solid.</p>
+              <p className="text-sm">No issues found.</p>
             )}
 
             {showFixes && visibleNonNote.length > 0 && resumeData == null && (
               <p className="text-muted-foreground max-w-[65ch] text-sm">
-                The resume content couldn&apos;t be loaded, so findings can&apos;t
-                be shown with their source text here. Open the editor to work
-                through them.
+                Couldn&apos;t load your resume text. Open the resume to fix
+                these.
               </p>
             )}
 
             {showFixes && visibleNonNote.length > 0 && resumeData != null && (
               <section className="space-y-4">
-                <h2 className="text-sm font-medium">Weakest evidence first</h2>
+                <h2 className="text-sm font-medium">Biggest problems first</h2>
                 {groups.map((group) => (
                   <div key={group.key} className="space-y-2">
                     <FindingGroupHeader
@@ -568,8 +573,8 @@ export function HealthReportPage({
         !analyze.isPending && (
           <div className="flex flex-col items-start gap-3">
             <p className="text-muted-foreground max-w-[65ch] text-sm">
-              No health report yet. Run an analysis to check this resume against
-              general best practices. No job description needed.
+              No health report yet. This checks your resume on its own, without a
+              job description.
             </p>
             {analyzeButton}
           </div>
@@ -579,8 +584,8 @@ export function HealthReportPage({
       {appliedCount > 0 && (
         <div className="bg-background/95 sticky bottom-4 z-20 flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm shadow-sm">
           <p>
-            {appliedCount} {appliedCount === 1 ? "change" : "changes"} applied ·
-            Re-analyze to update your grade
+            {appliedCount} {appliedCount === 1 ? "change" : "changes"} applied.
+            Check again to update your grade.
           </p>
           {analyzeButton}
         </div>

@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { apiFetch } from "@/lib/api";
+import { couldnt } from "@/lib/error-text";
 import { humanizeSlug } from "@/lib/humanize-slug";
 import { cn } from "@/lib/utils";
 import type { BaseResumeDetail, FavoredRole, RoleCategory } from "@/lib/types";
@@ -126,7 +127,7 @@ export function RoleCategoryPicker({
           : `Role set to ${displayRoleTag(updated.role_category, updated.role_label, options)}`,
       );
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(couldnt("set the role", err)),
   });
 
   const value = favoredRoleFromTag(roleCategory, label, options);
@@ -134,7 +135,7 @@ export function RoleCategoryPicker({
   return (
     <div
       className="inline-flex max-w-full align-middle"
-      title={guessing ? "Suggested — click to confirm or pick another" : undefined}
+      title={guessing ? "Suggested. Confirm it or pick another." : undefined}
       onClick={() => {
         if (guessing) setConfirmed(true);
       }}
@@ -163,7 +164,6 @@ export function RoleCategoryPicker({
           className,
           guessing && "border-dashed",
         )}
-        placeholder={roleCategory === "unknown" && !label ? "e.g. Data Scientist" : ""}
       />
     </div>
   );
@@ -221,8 +221,7 @@ export function RoleCategoryDialog({
         <DialogHeader>
           <DialogTitle>Target role</DialogTitle>
           <DialogDescription>
-            What this resume is for. It labels generated files and tells the
-            tracker which roles you already have a base resume for.
+            The kind of job this resume is for.
           </DialogDescription>
         </DialogHeader>
         <RoleCategoryPicker

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, type ReactNode } from "react";
+import { useId, useRef, useState, type ReactNode } from "react";
 import { GuardedLink as Link } from "@/components/guarded-link";
 import {
   ATTENTION_BADGE,
@@ -32,6 +32,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { IconButton } from "@/components/icon-button";
@@ -44,6 +45,7 @@ import {
   validateTemplate,
   waiveGate,
 } from "@/lib/api";
+import { couldnt } from "@/lib/error-text";
 import { toastContentChanged, toastRewriteError } from "./report-errors";
 import {
   answerMatchesFinding,
@@ -79,12 +81,14 @@ type ClassificationOverrideHandler = (
   reason: string,
 ) => Promise<void>;
 
-const EVIDENCE_LEVELS: { value: EvidenceLevel; label: string; detail: string }[] = [
-  { value: "direct", label: "Direct", detail: "Outcome evidence" },
-  { value: "analogue", label: "Analogue", detail: "Scale evidence" },
-  { value: "adjacent", label: "Adjacent", detail: "Specific, no metric" },
-  { value: "implied", label: "Implied", detail: "Contribution is vague" },
-  { value: "unaddressed", label: "Unaddressed", detail: "Duty, not achievement" },
+// What each rating means, in the user's words; the scorer's names (direct,
+// analogue, …) stay the stored values.
+const EVIDENCE_LEVELS: { value: EvidenceLevel; label: string }[] = [
+  { value: "direct", label: "Shows a result" },
+  { value: "analogue", label: "Shows scale" },
+  { value: "adjacent", label: "Specific, no number" },
+  { value: "implied", label: "Vague" },
+  { value: "unaddressed", label: "Lists a duty" },
 ];
 
 const EVIDENCE_LABELS = Object.fromEntries(
@@ -175,6 +179,7 @@ function ClassificationOverrideDialog({
       ? (finding.classification_reason ?? "")
       : "",
   );
+  const reasonId = useId();
 
   const save = useMutation({
     mutationFn: () =>
@@ -187,12 +192,11 @@ function ClassificationOverrideDialog({
       onOpenChange(false);
       toast.success(
         level === "automatic"
-          ? "Automatic classification restored"
-          : "Classification updated and report re-analyzed",
+          ? "Back to automatic rating"
+          : "Rating changed. Report updated.",
       );
     },
-    onError: (err: Error) =>
-      toast.error(err instanceof ApiError ? err.message : String(err)),
+    onError: (err: Error) => toast.error(couldnt("change the rating", err)),
   });
 
   if (!finding.content_hash || !finding.classification_level || !onChanged) {
@@ -207,7 +211,7 @@ function ClassificationOverrideDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Override classification</DialogTitle>
+          <DialogTitle>Change rating</DialogTitle>
         </DialogHeader>
         <div className="grid gap-1.5">
           <Select
@@ -217,35 +221,36 @@ function ClassificationOverrideDialog({
             }
             disabled={save.isPending}
           >
-            <SelectTrigger size="sm" className="w-full" aria-label="Evidence level">
+            <SelectTrigger size="sm" className="w-full" aria-label="Rating">
               <SelectValue>{selectedLabel}</SelectValue>
             </SelectTrigger>
             <SelectContent align="start">
               <SelectItem value="automatic">Automatic</SelectItem>
               {EVIDENCE_LEVELS.map((option) => (
                 <SelectItem key={option.value} value={option.value}>
-                  <span>{option.label}</span>
-                  <span className="text-muted-foreground text-xs">
-                    {option.detail}
-                  </span>
+                  {option.label}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
           <p className="text-muted-foreground text-xs">
-            Current: {currentLabel}. Saving re-runs the report.
+            Now: {currentLabel}. Saving updates the report.
           </p>
           {level !== "automatic" && (
-            <Textarea
-              rows={2}
-              aria-label="Reason for overriding the evidence level · optional"
-              value={reason}
-              maxLength={500}
-              onChange={(event) => setReason(event.target.value)}
-              placeholder="e.g. this metric lives in the next bullet"
-              className="text-sm"
-              disabled={save.isPending}
-            />
+            <div className="grid gap-1.5 pt-2">
+              <Label htmlFor={reasonId} optional>
+                Reason
+              </Label>
+              <Textarea
+                id={reasonId}
+                rows={2}
+                value={reason}
+                maxLength={500}
+                onChange={(event) => setReason(event.target.value)}
+                className="text-sm"
+                disabled={save.isPending}
+              />
+            </div>
           )}
         </div>
         <DialogFooter>
@@ -263,7 +268,7 @@ function ClassificationOverrideDialog({
             onClick={() => save.mutate()}
             disabled={save.isPending}
           >
-            {save.isPending ? "Re-analyzing…" : "Save override"}
+            {save.isPending ? "Saving…" : "Save"}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -289,7 +294,7 @@ function FindingOverflow({
         <DropdownMenuTrigger
           render={
             <IconButton
-              label="More actions"
+              label="More actions for this issue"
               icon={<MoreHorizontal className="size-4" />}
               size="icon-xs"
             />
@@ -297,7 +302,7 @@ function FindingOverflow({
         />
         <DropdownMenuContent align="end" className="min-w-48">
           <DropdownMenuItem onClick={() => setDialogOpen(true)}>
-            Override classification
+            Change rating
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -311,25 +316,36 @@ function FindingOverflow({
   );
 }
 
-/** Header count chips — v2 counts keys. Shared by the sheet and report page. */
-export const COUNT_META: { key: string; label: string; chip: string }[] = [
-  { key: "gate", label: "Gate", chip: "bg-destructive/10 text-destructive" },
+/** Header count chips — v2 counts keys, worst first. Shared by the report
+ *  page and the studio's health chip; `one`/`many` keep "1 note", "3 notes". */
+export const COUNT_META: { key: string; one: string; many: string; chip: string }[] = [
+  { key: "gate", one: "must fix", many: "must fix", chip: "bg-destructive/10 text-destructive" },
   {
     key: "critical",
-    label: "Critical",
+    one: "critical",
+    many: "critical",
     chip: "bg-amber-500/10 text-amber-800 dark:text-amber-400",
   },
   {
     key: "ask",
-    label: "Ask",
+    one: "question",
+    many: "questions",
     chip: "bg-violet-500/10 text-violet-700 dark:text-violet-400",
   },
   {
     key: "note",
-    label: "Note",
+    one: "note",
+    many: "notes",
     chip: "bg-slate-500/10 text-slate-600 dark:text-slate-400",
   },
 ];
+
+/** "1 question", "3 notes": a count and its noun agree. */
+export function countWords(key: string, count: number): string {
+  const meta = COUNT_META.find((m) => m.key === key);
+  const noun = meta ? (count === 1 ? meta.one : meta.many) : key;
+  return `${count} ${noun}`;
+}
 
 const TYPE_CHIP: Record<"fix" | "ask", { label: string; chip: string; card: string }> = {
   fix: {
@@ -338,7 +354,7 @@ const TYPE_CHIP: Record<"fix" | "ask", { label: string; chip: string; card: stri
     card: "border-amber-500/40",
   },
   ask: {
-    label: "Ask",
+    label: "Question",
     chip: "bg-violet-500/10 text-violet-700 dark:text-violet-400",
     card: "border-violet-500/30",
   },
@@ -425,8 +441,7 @@ function SuggestionCopyOnly({
         <DiffText oldText={currentText} newText={suggestion} />
       </div>
       <p className="text-muted-foreground max-w-[65ch] text-xs">
-        Custom-section bullets can&apos;t be applied from health yet — copy the
-        rewrite into the editor.
+        Can&apos;t apply this here yet. Copy the new wording into the resume.
       </p>
     </div>
   );
@@ -517,7 +532,7 @@ export function SuggestionEditor({
       </div>
       <Textarea
         rows={3}
-        aria-label="Rewritten bullet"
+        aria-label="New wording"
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
         className="max-w-[65ch] text-sm"
@@ -543,7 +558,7 @@ function LevelChip({ finding }: { finding: LintFinding }) {
   if (!name) return null;
   const label = EVIDENCE_LABELS[name as EvidenceLevel] ?? name;
   return (
-    <Badge variant="secondary" className="shrink-0 text-xs capitalize">
+    <Badge variant="secondary" className="shrink-0 text-xs">
       {label}
     </Badge>
   );
@@ -597,7 +612,7 @@ function CollapsedRow({
         )}
         {pts != null && pts > 0 ? (
           <span className="text-muted-foreground shrink-0 text-xs">
-            +{pts} pts
+            +{pts} points
           </span>
         ) : null}
       </button>
@@ -767,7 +782,7 @@ export function AskCard({
       if (err instanceof ApiError && err.status === 422) {
         setNotRewritable(true);
       } else {
-        toast.error(err instanceof ApiError ? err.message : String(err));
+        toast.error(couldnt("write new wording", err));
       }
     },
   });
@@ -807,7 +822,7 @@ export function AskCard({
       )}
       {staleDraft && (
         <p className="text-amber-700 dark:text-amber-400 mt-1 text-xs">
-          Saved draft is stale — the bullet changed
+          This bullet changed after you answered. Write the new wording again.
         </p>
       )}
 
@@ -856,7 +871,7 @@ export function AskCard({
               className={locked ? LOCKED_BTN : undefined}
               onClick={() => draft.mutate()}
             >
-              {draft.isPending ? "Drafting…" : "Draft rewrite with this"}
+              {draft.isPending ? "Writing…" : "Write new wording"}
             </Button>
           </div>
         </div>
@@ -942,13 +957,13 @@ export function NotesTable({
         expected_content_hash: finding.content_hash ?? undefined,
       }).then((result) => ({ finding, ...result })),
     onSuccess: (result) => setCondenseDraft(result),
-    onError: (err: Error) => toastRewriteError(err, onReanalyze),
+    onError: (err: Error) => toastRewriteError(err, onReanalyze, "write new wording"),
   });
 
   return (
     <section ref={sectionRef} id="notes" tabIndex={-1} hidden={hidden} className="scroll-mt-6 space-y-2 outline-none">
       <h2 className="text-muted-foreground text-sm font-medium">
-        No score impact ({notes.length})
+        Notes ({notes.length}). These don&apos;t change your score.
       </h2>
       <div className="overflow-x-auto rounded-md border">
         <table className="w-full table-fixed text-sm">
@@ -1045,7 +1060,7 @@ export function NotesTable({
                                   className={locked ? LOCKED_BTN : undefined}
                                   onClick={() => condense.mutate(note)}
                                 >
-                                  Condense
+                                  Shorten
                                 </Button>
                               )}
                             </li>
@@ -1142,10 +1157,9 @@ function FailedGate({
       await onChanged();
     },
     onSuccess: () => {
-      toast.success("Gate waived");
+      toast.success("Marked as OK");
     },
-    onError: (err: Error) =>
-      toast.error(err instanceof ApiError ? err.message : String(err)),
+    onError: (err: Error) => toast.error(couldnt("mark it as OK", err)),
   });
 
   const accent =
@@ -1165,7 +1179,7 @@ function FailedGate({
               : "bg-amber-500/10 text-amber-800 dark:text-amber-400",
           )}
         >
-          {gate.tier === "fatal" ? "Blocker" : "Serious"}
+          {gate.tier === "fatal" ? "Must fix" : "Serious"}
         </Badge>
         <span className="text-sm font-medium">{gate.label}</span>
       </div>
@@ -1179,15 +1193,14 @@ function FailedGate({
       {showReason ? (
         <div className="mt-2 space-y-2">
           <p className="text-muted-foreground max-w-[65ch] text-xs">
-            Waiving lifts this gate&apos;s score cap for this resume. It doesn&apos;t change the
-            resume. The gate stays waived across future edits until you unwaive it here.
+            Your score won&apos;t be limited by this any more. Your resume isn&apos;t
+            changed. You can undo this here.
           </p>
           <Textarea
             rows={2}
-            aria-label="Reason for waiving this gate"
+            aria-label="Why is this OK?"
             value={reason}
             onChange={(e) => setReason(e.target.value)}
-            placeholder="e.g. this template is certified elsewhere"
             className="max-w-[65ch] text-sm"
           />
           <div className="flex justify-end gap-2">
@@ -1204,14 +1217,14 @@ function FailedGate({
               disabled={reason.trim().length === 0 || waive.isPending}
               onClick={() => waive.mutate()}
             >
-              {waive.isPending ? "Waiving…" : "Confirm waive"}
+              {waive.isPending ? "Saving…" : "Mark as OK"}
             </Button>
           </div>
         </div>
       ) : (
         <div className="mt-2 flex justify-end">
           <Button size="sm" variant="outline" onClick={() => setShowReason(true)}>
-            Waive…
+            Mark as OK…
           </Button>
         </div>
       )}
@@ -1236,29 +1249,28 @@ function WaivedGate({
       await onChanged();
     },
     onSuccess: () => {
-      toast.success("Waiver removed");
+      toast.success("Check turned back on");
     },
-    onError: (err: Error) =>
-      toast.error(err instanceof ApiError ? err.message : String(err)),
+    onError: (err: Error) => toast.error(couldnt("undo", err)),
   });
 
   return (
     <div className="text-muted-foreground bg-muted/40 rounded-md border px-3 py-2">
       <div className="flex items-center justify-between gap-2">
-        <span className="min-w-0 truncate text-sm">{gate.label} (waived)</span>
+        <span className="min-w-0 truncate text-sm">{gate.label} (marked OK)</span>
         <Button
           size="sm"
           variant="ghost"
           disabled={unwaive.isPending}
           onClick={() => unwaive.mutate()}
         >
-          {unwaive.isPending ? "…" : "Unwaive"}
+          {unwaive.isPending ? "Undoing…" : "Undo"}
         </Button>
       </div>
       {gate.detail && <p className="mt-1 max-w-[65ch] text-sm">{gate.detail}</p>}
       {gate.waiver_reason && (
         <p className="mt-1 text-xs">
-          <span className="text-foreground font-medium">Waiver reason: </span>
+          <span className="text-foreground font-medium">Reason: </span>
           {gate.waiver_reason}
         </p>
       )}
@@ -1277,25 +1289,24 @@ function NotAssessedGate({
 }) {
   const certify = useMutation({
     mutationFn: async () => {
-      if (!templateId) throw new Error("No template on this resume");
+      if (!templateId) throw new Error("This resume has no template selected.");
       await validateTemplate(templateId);
       await onChanged();
     },
-    onSuccess: () => toast.success("Template certified. Re-running the report."),
-    onError: (err: Error) =>
-      toast.error(err instanceof ApiError ? err.message : String(err)),
+    onSuccess: () => toast.success("Template checked. Updating the report."),
+    onError: (err: Error) => toast.error(couldnt("check the template", err)),
   });
 
   return (
     <div className="rounded-md border border-border bg-muted/40 px-3 py-2">
       <div className="flex items-center gap-2">
         <Badge variant="secondary" className="bg-muted text-muted-foreground shrink-0 text-xs">
-          Not assessed
+          Not checked
         </Badge>
         <span className="text-sm font-medium">{gate.label}</span>
       </div>
       <p className="text-muted-foreground mt-1 max-w-[65ch] text-sm">
-        {gate.label} — not checked. This template hasn&apos;t been certified.
+        {gate.label} wasn&apos;t checked because this template hasn&apos;t been checked yet.
         {gate.detail ? ` ${gate.detail}` : ""}
       </p>
       <div className="mt-2 flex justify-end">
@@ -1306,7 +1317,7 @@ function NotAssessedGate({
             disabled={certify.isPending}
             onClick={() => certify.mutate()}
           >
-            {certify.isPending ? "Certifying…" : "Certify"}
+            {certify.isPending ? "Checking…" : "Check template"}
           </Button>
         ) : (
           <Button
@@ -1375,7 +1386,7 @@ export function GateBanner({
 export function ResolvedFinding({ finding }: { finding: LintFinding }) {
   return (
     <div className="text-muted-foreground rounded-md border border-dashed px-3 py-2 text-sm line-through">
-      Resolved · {finding.label}
+      Fixed: {finding.label}
     </div>
   );
 }

@@ -20,14 +20,14 @@ export function Field({
   label,
   value,
   onChange,
-  placeholder,
   hint,
   optional = false,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
-  placeholder?: string;
+  /** A format, a default or a consequence: between the label and the field.
+   *  No placeholder: a blank field holds no text (Microcopy rules). */
   hint?: string;
   optional?: boolean;
 }) {
@@ -46,7 +46,6 @@ export function Field({
       <Input
         id={id}
         value={value}
-        placeholder={placeholder}
         aria-describedby={hint ? hintId : undefined}
         onChange={(e) => onChange(e.target.value)}
       />

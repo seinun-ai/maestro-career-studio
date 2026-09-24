@@ -2,10 +2,11 @@
 
 import { useMemo, useState, type RefObject } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { History, RotateCcw } from "lucide-react";
+import { ChevronDown, ChevronRight, History, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 
 import { useConfirm } from "@/components/confirm-dialog";
+import { LoadErrorState } from "@/components/load-error-state";
 import { VersionDiffView } from "@/components/resume-versions/version-diff-view";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -16,18 +17,21 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { listResumeVersions, restoreResumeVersion } from "@/lib/api";
+import { couldnt } from "@/lib/error-text";
+import { formatAbsoluteDateTime } from "@/lib/format-date";
+import { isLoadFailure } from "@/lib/query-state";
 import { notifyRenderOutcome } from "@/lib/render-note";
 import { cn } from "@/lib/utils";
 import type { ResumeVersion, ResumeVersionSource } from "@/lib/types";
 
 const SOURCE_LABELS: Record<ResumeVersionSource, string> = {
   create: "Created",
-  form_edit: "Manual edit",
-  edit_ops: "Edit",
-  chat: "Chat",
+  form_edit: "Your edit",
+  edit_ops: "Suggested edit",
+  chat: "Assistant",
   tailor: "Tailored",
-  import: "Import",
-  restore: "Restore",
+  import: "Imported",
+  restore: "Restored",
 };
 
 const SOURCE_BADGE: Partial<Record<ResumeVersionSource, string>> = {
@@ -108,7 +112,7 @@ export function VersionHistorySheet({
       toast.success(`Restored as version ${created.version_number}`);
       onRestored?.();
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(couldnt("restore the version", err)),
   });
 
   const requestRestore = async (v: ResumeVersion) => {
@@ -135,7 +139,7 @@ export function VersionHistorySheet({
       >
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            <span className="font-mono text-xs">v{v.version_number}</span>
+            <span className="text-xs font-medium">Version {v.version_number}</span>
             <Badge
               variant="secondary"
               className={cn("text-xs", SOURCE_BADGE[v.source])}
@@ -148,11 +152,11 @@ export function VersionHistorySheet({
               </Badge>
             )}
             {v.version_number === latestNumber && (
-              <span className="text-muted-foreground text-xs">current</span>
+              <span className="text-muted-foreground text-xs">Current</span>
             )}
           </div>
           <span className="text-muted-foreground shrink-0 text-xs">
-            {new Date(v.created_at).toLocaleString()}
+            {formatAbsoluteDateTime(v.created_at)}
           </span>
         </div>
         {v.summary && (
@@ -191,11 +195,17 @@ export function VersionHistorySheet({
           </SheetTitle>
         </SheetHeader>
         <div className="flex-1 overflow-y-auto px-4 py-2">
-          {versions.isLoading && (
+          {/* A retry refetches from "pending": the failure branch holds (and
+              keeps Try again focused) until it answers. */}
+          {versions.isLoading && !isLoadFailure(versions) && (
             <p className="text-muted-foreground text-sm">Loading…</p>
           )}
-          {versions.isError && (
-            <p className="text-destructive text-sm">Could not load history.</p>
+          {isLoadFailure(versions) && (
+            <LoadErrorState
+              title="Couldn't load Version history."
+              retrying={versions.isFetching}
+              onRetry={() => void versions.refetch()}
+            />
           )}
           {versions.data?.length === 0 && (
             <p className="text-muted-foreground text-sm">
@@ -210,7 +220,8 @@ export function VersionHistorySheet({
                 <li key={`group-${i}`}>
                   <button
                     type="button"
-                    className="text-muted-foreground hover:text-foreground w-full rounded-md border border-dashed px-3 py-2 text-left text-xs"
+                    aria-expanded={expanded}
+                    className="text-muted-foreground hover:text-foreground flex w-full items-center gap-1 rounded-md border border-dashed px-3 py-2 text-left text-xs"
                     onClick={() =>
                       setExpandedGroups((s) => {
                         const next = new Set(s);
@@ -220,8 +231,13 @@ export function VersionHistorySheet({
                       })
                     }
                   >
-                    {expanded ? "▾" : "▸"} {row.versions.length} manual edits (v
-                    {row.versions[row.versions.length - 1].version_number}–v
+                    {expanded ? (
+                      <ChevronDown className="size-3.5" aria-hidden="true" />
+                    ) : (
+                      <ChevronRight className="size-3.5" aria-hidden="true" />
+                    )}
+                    {row.versions.length} edits (versions{" "}
+                    {row.versions[row.versions.length - 1].version_number} to{" "}
                     {row.versions[0].version_number})
                   </button>
                   {expanded && (

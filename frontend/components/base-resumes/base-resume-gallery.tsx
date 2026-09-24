@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { CardHeader, CardTitle } from "@/components/ui/card";
 import { formatAbsoluteDateTime, formatLabeledAgo } from "@/lib/format-date";
 import { roleLabel } from "@/components/role-category-picker";
-import type { BaseResumeSummary } from "@/lib/types";
+import { baseResumeLabel, type BaseResumeSummary } from "@/lib/types";
 
 import { BaseResumeThumbnail } from "./base-resume-thumbnail";
 
@@ -33,26 +33,21 @@ function BaseResumeCardBody({
 }) {
   const isArchived = !!resume.archived_at;
   const roleUnset = resume.role_category === "unknown";
+  const name = baseResumeLabel(resume.slug, [resume]);
 
   return (
     <>
       <BaseResumeThumbnail resume={resume} />
       <CardHeader>
         <div className="flex min-w-0 flex-col gap-2">
-          {/* The slug is NOT a visible line: for a resume created without a
-              display name it printed the same string twice, once as the title
-              and once below it. It stays one hover away, and the card links to
+          {/* The slug is never shown, not even on hover: the resume is named
+              by its display name (or the slug's words), and the card links to
               /base-resumes/<slug> whenever you actually need it. */}
           <CardTitle
             className="min-w-0 truncate text-base"
-            title={[
-              resume.display_name && resume.display_name !== resume.slug
-                ? `${resume.display_name} · ${resume.slug}`
-                : resume.slug,
-              roleLabel(resume.role_category),
-            ].join("\n")}
+            title={[name, roleLabel(resume.role_category)].join("\n")}
           >
-            {resume.display_name ?? resume.slug}
+            {name}
           </CardTitle>
           {/* Timestamp and menu share this row, so the menu costs no extra
               height and lands at the card's bottom-right. */}
@@ -66,7 +61,7 @@ function BaseResumeCardBody({
               {roleUnset && (
                 <Badge
                   variant="outline"
-                  title="This resume has no target role, so it is missing from role-based grouping. Set one in the editor."
+                  title="No target role. Set one in the resume to group it by role."
                 >
                   Role not set
                 </Badge>

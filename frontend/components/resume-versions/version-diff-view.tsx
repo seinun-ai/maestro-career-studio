@@ -22,7 +22,7 @@ const KIND_LABELS: Record<ResumeDiffChange["kind"], string> = {
 export function DiffChangeList({ changes }: { changes: ResumeDiffChange[] }) {
   if (changes.length === 0) {
     return (
-      <p className="text-muted-foreground text-sm italic">No content changes.</p>
+      <p className="text-muted-foreground text-sm italic">No changes to the text.</p>
     );
   }
   return (
@@ -69,10 +69,10 @@ export function VersionDiffView({
   });
 
   if (detail.isLoading) {
-    return <p className="text-muted-foreground text-sm">Loading diff…</p>;
+    return <p className="text-muted-foreground text-sm">Loading changes…</p>;
   }
   if (detail.isError || !detail.data) {
-    return <p className="text-destructive text-sm">Could not load this version.</p>;
+    return <p className="text-destructive text-sm">Couldn&apos;t load this version.</p>;
   }
   return <DiffChangeList changes={detail.data.diff} />;
 }

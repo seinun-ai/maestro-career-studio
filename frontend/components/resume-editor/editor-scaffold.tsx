@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Eye, EyeOff, Plus } from "lucide-react";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { move } from "@/lib/utils";
 
@@ -95,7 +96,7 @@ export function useEntryEditing<T>(
   return { editingIndex, setEditingIndex, entryEditingProps, update };
 }
 
-/** Renders standard active and archived count badge text. */
+/** How many rows show on the resume, and how many are hidden. */
 export function ActiveArchivedCount({
   items,
 }: {
@@ -106,16 +107,42 @@ export function ActiveArchivedCount({
 
   return (
     <span className="text-muted-foreground">
-      {activeCount} active
-      {archivedCount > 0 ? ` · ${archivedCount} archived` : ""}
+      {activeCount} shown
+      {archivedCount > 0 ? ` · ${archivedCount} hidden` : ""}
     </span>
   );
 }
 
-/** Creates standard enable/disable toggle action object for EditableCard extraActions. */
+/** The badge on a row switched off with Hide: it stays in the data, not on the PDF. */
+export function HiddenBadge({ enabled }: { enabled: boolean }) {
+  if (enabled) return null;
+  return (
+    <Badge variant="secondary" className="text-xs">
+      Hidden
+    </Badge>
+  );
+}
+
+/** A row's bullets in read mode, or the empty state that invites adding one. */
+export function BulletsRead({ bullets }: { bullets: string[] }) {
+  if (bullets.length === 0) {
+    return <p className="text-muted-foreground text-xs italic">No bullets yet</p>;
+  }
+  return (
+    <ul className="text-foreground/90 ml-4 list-disc space-y-1 text-sm">
+      {bullets.map((b, bi) => (
+        <li key={bi} className="rounded-sm">
+          {b}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** The Hide or Show action for an EditableCard's ⋯ menu. */
 export function createEnableAction(enabled: boolean, onToggle: () => void) {
   return {
-    label: enabled ? "Disable" : "Enable",
+    label: enabled ? "Hide from resume" : "Show on resume",
     icon: enabled ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />,
     onClick: onToggle,
   };

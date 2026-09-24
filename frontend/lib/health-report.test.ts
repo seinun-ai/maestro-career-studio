@@ -37,7 +37,7 @@ test("scoreCompositionLine names the cap tier", () => {
       n_scoreable: 12,
       capped_by: "serious",
     }),
-    "mean evidence 88 · capped to 69 by one serious gate",
+    "Score limited to 69 by one must-fix problem",
   );
   assert.equal(
     scoreCompositionLine(88, {
@@ -46,7 +46,7 @@ test("scoreCompositionLine names the cap tier", () => {
       n_scoreable: 12,
       capped_by: null,
     }),
-    "mean evidence 88",
+    null,
   );
 });
 
@@ -120,7 +120,7 @@ test("groupNotesByRule counts subjects inline", () => {
     },
   ]);
   assert.equal(groups.length, 2);
-  assert.equal(groups[0].title, "Listed but never demonstrated");
+  assert.equal(groups[0].title, "Skill not shown in any bullet");
   assert.equal(groups[0].count, 2);
   assert.deepEqual(groups[0].subjects, ["Docker", "Git"]);
   assert.equal(groups[1].count, 1);
@@ -235,7 +235,7 @@ test("explainScoreDelta names implied Awards bullets entering the score", () => 
     explainScoreDelta(prior, next, (key) =>
       key === "extra:awards" ? "Awards & Honors" : key,
     ),
-    "+2 bullets in Awards & Honors entered at implied.",
+    "2 new bullets in Awards & Honors.",
   );
 });
 
@@ -272,7 +272,7 @@ test("groupNotesByRule keeps rule-keyed titles for advisory notes", () => {
       id: "n2",
     } as never,
   ]);
-  assert.equal(groups[0].title, "Listed but never demonstrated");
+  assert.equal(groups[0].title, "Skill not shown in any bullet");
   assert.equal(groups[0].shapeNote, false);
 });
 

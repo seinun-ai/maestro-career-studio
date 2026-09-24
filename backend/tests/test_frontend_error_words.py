@@ -86,26 +86,6 @@ _PENDING_T17: dict[str, int] = {  # D §2 jobs and tracking
 _PENDING_T18: dict[str, int] = {  # D §3 the gap page
     "app/jobs/[id]/tailor/[sessionId]/page.tsx": 6,
 }
-_PENDING_T19: dict[str, int] = {  # D §4 resumes, studios, health, templates
-    "app/applications/[id]/resume/page.tsx": 1,
-    "app/base-resumes/[slug]/page.tsx": 1,
-    "app/base-resumes/page.tsx": 4,
-    "app/templates/[id]/page.tsx": 5,
-    "app/templates/page.tsx": 7,
-    "components/base-resumes/new-base-resume-dialog.tsx": 2,
-    "components/resume-editor/editable-title.tsx": 1,
-    "components/resume-editor/editor-body.tsx": 2,
-    "components/resume-editor/instruct-sheet.tsx": 2,
-    "components/resume-editor/kb-import-drawer.tsx": 4,
-    "components/resume-editor/project-port-dialog.tsx": 1,
-    "components/resume-editor/tailored-resume-studio.tsx": 4,
-    "components/resume-health/batch-ask-dialog.tsx": 1,
-    "components/resume-health/finding-cards.tsx": 5,
-    "components/resume-health/health-report-page.tsx": 3,
-    "components/resume-health/report-errors.ts": 1,
-    "components/resume-versions/version-history-sheet.tsx": 1,
-    "components/role-category-picker.tsx": 1,
-}
 _PENDING_T20: dict[str, int] = {  # D §5 Career history
     "app/career/page.tsx": 2,
     "components/career/capture-box.tsx": 2,
@@ -143,7 +123,7 @@ _PENDING_T21: dict[str, int] = {  # D §6 Settings and Profile; D §7 Assistant,
     "components/setup/getting-started-card.tsx": 1,
     "components/setup/use-document-queue.ts": 1,
 }
-_BLOCKS = (_PENDING_T17, _PENDING_T18, _PENDING_T19, _PENDING_T20, _PENDING_T21)
+_BLOCKS = (_PENDING_T17, _PENDING_T18, _PENDING_T20, _PENDING_T21)
 _PENDING: dict[str, int] = {rel: n for block in _BLOCKS for rel, n in block.items()}
 
 

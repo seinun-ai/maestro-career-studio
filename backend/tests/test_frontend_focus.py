@@ -288,7 +288,7 @@ def test_leaving_the_raw_pane_returns_to_the_menu():
         in toggle
     )
     # Mutant: the ref on Apply (a kept draft returned focus to Apply).
-    assert '<Button onClick={apply}>Apply JSON</Button> <Button ref={cancelRef} variant="outline" onClick={cancel}>' in toggle
+    assert '<Button onClick={apply}>Apply</Button> <Button ref={cancelRef} variant="outline" onClick={cancel}>' in toggle
     assert toggle.count("ref={cancelRef}") == 1
 
 
@@ -311,7 +311,7 @@ def test_a_landmark_return_target_is_focused_directly():
         "if (!target) return true; if (target.tabIndex >= 0) return target; "
         "queueMicrotask(() => focusIfDropped(target)); return false;"
     )
-    rebuild = _TAILORED[_TAILORED.index('title: "Rebuild from base resume?"') :]
+    rebuild = _TAILORED[_TAILORED.index('title: "Start over from your base resume?"') :]
     assert "returnFocus: () => overflowRef.current," in rebuild[: rebuild.index("});")]
 
 
@@ -320,7 +320,8 @@ def test_entry_cards_focus_their_editor_and_return_to_the_pencil():
     setter = _squash(card[card.index("const setEditing = (next: boolean) =>") :])
     setter = setter[: setter.index("};")]
     assert "focusNext(next ? editRef : pencilRef);" in setter
-    assert "ref={pencilRef}" in _element(card, "Edit", "Button")
+    at = card.index('aria-label={name ? `Edit ${name}` : "Edit"}')
+    assert "ref={pencilRef}" in card[card.rfind("<Button", 0, at) : card.index("</Button>", at)]
     assert "<EditPane ref={editRef} edit={edit} onClose={() => setEditing(false)} />" in card
     # Mutants: Done doing nothing, or the editor handed a no-op `close`.
     # Both must close through `onClose`, which returns focus to the pencil.
@@ -600,7 +601,7 @@ def test_deleting_a_card_hands_focus_to_the_next_card():
     page = _squash(_BASE_LIST)
     assert "onDelete={(next) => { deleteNext.current = next; setDeleteTarget(r); }}" in page
     success = page[page.index("const del = useMutation(") :]
-    assert 'toast.success("Deleted"); afterDelete.current = deleteNext.current; setDeleteTarget(null);' in success
+    assert 'toast.success("Resume deleted"); afterDelete.current = deleteNext.current; setDeleteTarget(null);' in success
     assert (
         "<DialogContent finalFocus={() => { const back = afterDelete.current; afterDelete.current = null; "
         "return back ? finalFocusOn(back()) : true; }} >"

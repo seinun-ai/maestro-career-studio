@@ -44,15 +44,15 @@ test("edits made while a render or re-score runs read as unsaved", () => {
 });
 
 test("render then re-score report in chain order", () => {
-  assert.equal(saveStatus({ ...idle, rendering: true, rescoring: true }).label, "Rendering PDF…");
-  assert.equal(saveStatus({ ...idle, rescoring: true }).label, "Re-scoring…");
+  assert.equal(saveStatus({ ...idle, rendering: true, rescoring: true }).label, "Updating PDF…");
+  assert.equal(saveStatus({ ...idle, rescoring: true }).label, "Updating score…");
 });
 
 test("an empty preview names Save only when there is something to save", () => {
-  assert.equal(emptyPreviewMessage(true), "No PDF yet. Save to render one.");
+  assert.equal(emptyPreviewMessage(true), "No PDF yet. Save to create one.");
   assert.equal(
     emptyPreviewMessage(false),
-    "No PDF yet. Generate one from More resume actions (⋯).",
+    "No PDF yet. Choose Create PDF in the ⋯ menu.",
   );
 });
 

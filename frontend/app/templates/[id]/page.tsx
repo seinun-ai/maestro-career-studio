@@ -12,7 +12,7 @@ import { useLeaveGuard } from "@/hooks/use-leave-guard";
 import { FormattingPanel } from "@/components/resume-editor/formatting-panel";
 import { PdfPagesPreview } from "@/components/resume-editor/pdf-pages-preview";
 import { LatexEditor } from "@/components/templates/latex-editor";
-import { ENGINE_LABEL, STATUS_LABEL } from "@/components/templates/template-gallery";
+import { ENGINE_LABEL, STATUS_LABEL, templateName } from "@/components/templates/template-gallery";
 import { RequiresTexBadge } from "@/components/templates/requires-tex-badge";
 import { EditorShell } from "@/components/resume-editor/editor-shell";
 import { FullscreenEditorPage } from "@/components/resume-editor/fullscreen-editor-page";
@@ -24,6 +24,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useRefreshFailedNotice } from "@/hooks/use-refresh-failed-notice";
 import { apiFetch, apiUrlForBrowserPdf } from "@/lib/api";
+import { couldnt, errorDetail } from "@/lib/error-text";
 import { isLoadFailure } from "@/lib/query-state";
 import { FORMATTING_DEFAULTS, type ResumeFormatting } from "@/lib/formatting";
 import type { TemplateDetail, TemplateValidationResult } from "@/lib/types";
@@ -79,9 +80,9 @@ export default function TemplateEditorPage() {
     onSuccess: () => {
       setDirty(false);
       invalidate();
-      toast.success("Saved");
+      toast.success("Template saved");
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(couldnt("save the template", err)),
   });
 
   const recompileM = useMutation({
@@ -113,12 +114,13 @@ export default function TemplateEditorPage() {
       invalidate();
       if (res.ok) {
         setPreviewNonce((n) => n + 1);
-        toast.success("Compiled");
+        toast.success("Preview updated");
       } else {
-        toast.error("LaTeX error. See the preview panel.");
+        // Typst templates fail here too: the engine is not named.
+        toast.error("The template has an error. See the preview for details.");
       }
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(couldnt("update the preview", err)),
   });
 
   // Persist a knob change to the theme's default overlay. The endpoint is
@@ -136,7 +138,7 @@ export default function TemplateEditorPage() {
       invalidate();
       setPreviewNonce((n) => n + 1);
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(couldnt("save the default formatting", err)),
   });
 
   // Debounce knob-change persistence: a slider drag emits many onChange events,
@@ -179,9 +181,9 @@ export default function TemplateEditorPage() {
       }),
     onSuccess: () => {
       invalidate();
-      toast.success("Default updated");
+      toast.success("Default template changed");
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(couldnt("set the default template", err)),
   });
 
   useRefreshFailedNotice(tq, "this template");
@@ -191,7 +193,7 @@ export default function TemplateEditorPage() {
       <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-4 p-6">
         <LoadErrorState
           title="Couldn't load this template."
-          detail={(tq.error as Error | null)?.message}
+          detail={errorDetail(tq.error)}
           retrying={tq.isFetching}
           onRetry={() => void tq.refetch()}
           action={
@@ -255,7 +257,7 @@ export default function TemplateEditorPage() {
                 }
               />
               <h1 className="truncate text-sm font-medium">
-                {tq.data.display_name ?? id}
+                {templateName(tq.data)}
               </h1>
               <Badge variant={status === "ready" ? "secondary" : "outline"}>
                 {STATUS_LABEL[status]}
@@ -264,11 +266,11 @@ export default function TemplateEditorPage() {
               <Badge variant="outline">{ENGINE_LABEL[tq.data.engine]}</Badge>
               {!tq.data.engine_available && <RequiresTexBadge />}
               {dirty && (
-                <span className="text-xs text-amber-700 dark:text-amber-400">unsaved</span>
+                <span className="text-xs text-amber-700 dark:text-amber-400">Unsaved changes</span>
               )}
             </div>
             <TabsList>
-              <TabsTrigger value="knobs">Knobs</TabsTrigger>
+              <TabsTrigger value="knobs">Formatting</TabsTrigger>
               <TabsTrigger value="code">Code</TabsTrigger>
             </TabsList>
             <div className="flex items-center gap-2">
@@ -285,7 +287,7 @@ export default function TemplateEditorPage() {
                 onClick={() => recompileM.mutate()}
                 disabled={recompileM.isPending}
               >
-                {recompileM.isPending ? "Recompiling…" : "Recompile"}
+                {recompileM.isPending ? "Updating…" : "Update preview"}
               </Button>
               <Button
                 size="sm"
@@ -295,7 +297,7 @@ export default function TemplateEditorPage() {
                   status !== "ready" || tq.data.is_default || setDefaultM.isPending
                 }
               >
-                Set default
+                Make default
               </Button>
             </div>
           </div>
@@ -322,8 +324,8 @@ export default function TemplateEditorPage() {
               collapsible={false}
             />
             <p className="text-muted-foreground px-3 py-2 text-xs">
-              Defaults for this theme. A resume that selects it inherits these,
-              then layers its own overrides on top.
+              Starting settings for resumes that use this template. Each resume
+              can change them.
             </p>
           </TabsContent>
 
@@ -358,7 +360,7 @@ export default function TemplateEditorPage() {
         compileError ? (
           <div className="m-2 space-y-1">
             <p className="text-muted-foreground text-xs">
-              Last compile failed. Fix the source and Recompile.
+              The template has an error. Fix the code, then update the preview.
             </p>
             <pre className="bg-destructive/10 text-destructive max-h-full overflow-auto rounded p-2 text-xs">
               {compileError}
@@ -368,11 +370,11 @@ export default function TemplateEditorPage() {
           <PdfPagesPreview
             basePath={`/api/templates/${id}`}
             version={previewVersion}
-            emptyMessage="Recompile to generate a preview."
+            emptyMessage="Update the preview to see it."
           />
         ) : (
           <div className="text-muted-foreground p-3 text-sm">
-            Recompile to generate a preview.
+            Update the preview to see it.
           </div>
         )
       }

@@ -72,7 +72,7 @@ _QUERY_SURFACES: list[tuple[str, str]] = [
     # Verified violations this round — each used to reach the marker on error.
     ("components/qa-tab.tsx", "No Q&amp;A entries yet."),
     ("components/proposals/proposals-section.tsx", "No proposals yet"),
-    ("app/base-resumes/page.tsx", "No career-track resumes yet."),
+    ("app/base-resumes/page.tsx", "No base resumes yet. Create one to start."),
     ("app/templates/page.tsx", "No templates yet."),
     ("components/chat/chat-page.tsx", "What are we working on?"),
     ("components/career/first-run-import-card.tsx", "Start with the resumes you already have"),
@@ -250,6 +250,7 @@ _FAILURE_BRANCHES = {
     "app/applications/[id]/resume/page.tsx": "if (isLoadFailure(query)) {",
     "app/templates/[id]/page.tsx": "if (isLoadFailure(tq)) {",
     "app/jobs/[id]/tailor/[sessionId]/page.tsx": "if (sessionError != null) {",
+    "components/resume-versions/version-history-sheet.tsx": "{isLoadFailure(versions) && (",
 }
 
 

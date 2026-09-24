@@ -76,6 +76,8 @@ import {
   runCoherenceCheck,
 } from "@/lib/api";
 import { overlayBaseline, type ResumeFormatting } from "@/lib/formatting";
+import { fieldsNeedFixing } from "@/lib/describe-edit";
+import { couldnt } from "@/lib/error-text";
 import { notifyRenderNote } from "@/lib/render-note";
 import { resumeDataSchema } from "@/lib/resume-schema";
 import {
@@ -190,11 +192,11 @@ export function TailoredResumeStudio({
     onSuccess: (_data, opts: { announce?: boolean } | undefined) => {
       qc.invalidateQueries({ queryKey: ["ats-compare", applicationId] });
       qc.invalidateQueries({ queryKey: ["ats-scores", jobId] });
-      // Only the manual Re-score confirms. The Save chain reports through the
+      // Only the manual Update score confirms. The Save chain reports through the
       // header's status line, not a third toast.
-      if (opts?.announce) toast.success("Tailored resume re-scored");
+      if (opts?.announce) toast.success("ATS score updated");
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(couldnt("update the ATS score", err)),
   });
 
   const render = useMutation({
@@ -221,7 +223,7 @@ export function TailoredResumeStudio({
       // for content that hasn't changed.
       if (opts?.thenRescore) rescore.mutate({ announce: false });
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(couldnt("update the PDF", err)),
   });
 
   // Dirty-guard (SYSTEM.md §12). Server copies compare by `serverKey`
@@ -301,9 +303,9 @@ export function TailoredResumeStudio({
       qc.setQueryData(["application", applicationId], result);
       qc.invalidateQueries({ queryKey: ["job-detail", jobId] });
       qc.invalidateQueries({ queryKey: ["application", applicationId] });
-      toast.success("Draft built from the base resume");
+      toast.success("Draft created from your base resume");
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(couldnt("create the draft", err)),
   });
   // Build draft and Rebuild share one guard: a double click sent two POSTs.
   const materializeOnce = useSingleFlight(materialize.mutate);
@@ -391,13 +393,12 @@ function BuildDraft({
       <div className="space-y-3 rounded-lg border p-6">
         {parseFailed ? (
           <p className="text-destructive text-sm">
-            Stored resume data is invalid. Rebuild from the base resume to
-            replace it.
+            This resume couldn&apos;t be opened. Start over from your base
+            resume.
           </p>
         ) : (
           <p className="text-muted-foreground text-sm">
-            No tailored resume yet. Build a draft from your base resume, then
-            refine it here and generate a PDF.
+            No tailored resume yet. Start with a copy of your base resume.
           </p>
         )}
         <Button
@@ -406,7 +407,7 @@ function BuildDraft({
           className="data-disabled:pointer-events-none data-disabled:opacity-50"
           onClick={onBuild}
         >
-          {pending ? "Building…" : "Build draft from base resume"}
+          {pending ? "Creating…" : "Create draft"}
         </Button>
       </div>
     </div>
@@ -532,7 +533,7 @@ function StudioEditor({
     const next = revertHunk(data, hunk);
     if (!next) {
       toast.error(
-        "Couldn't revert this change automatically — it no longer matches the draft. Edit the section directly.",
+        "Couldn't undo this change because the text has changed since. Edit it yourself.",
       );
       return;
     }
@@ -560,7 +561,7 @@ function StudioEditor({
         appliedKeys: new Set(),
       });
     } catch {
-      toast.error("Review checks failed — try again.");
+      toast.error("Couldn't run the checks. Try again.");
       setCoherence((prev) => ({ ...prev, loading: false }));
     }
   };
@@ -571,7 +572,7 @@ function StudioEditor({
     const next = applyCoherenceProposal(data, flag);
     if (!next) {
       toast.error(
-        "Couldn't locate the flagged text — it may have been edited. Apply it manually.",
+        "Couldn't find that text. It may have changed. Make the fix yourself.",
       );
       return;
     }
@@ -657,11 +658,7 @@ function StudioEditor({
     mutationFn: async (sent: SaveSent) => {
       const validated = resumeDataSchema.safeParse(sent.data);
       if (!validated.success) {
-        throw new Error(
-          validated.error.issues
-            .map((i) => `${i.path.join(".")}: ${i.message}`)
-            .join("; "),
-        );
+        throw new Error(fieldsNeedFixing(validated.error.issues.map((i) => i.path)));
       }
       return apiFetch<Application>(`/api/applications/${applicationId}`, {
         method: "PATCH",
@@ -706,7 +703,7 @@ function StudioEditor({
       // silently after an edit (`rescore` is lifted for the same reason).
       render.mutate({ thenRescore: true });
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(couldnt("save the resume", err)),
   });
 
   const busy = save.isPending || rescore.isPending || materializePending;
@@ -786,7 +783,7 @@ function StudioEditor({
                     const ok = await confirm({
                       title: "Load the latest version?",
                       description:
-                        "This replaces the editor with the newer saved copy and discards your unsaved edits. This can't be undone.",
+                        "Your unsaved edits will be lost. You can't undo this.",
                       confirmLabel: "Load latest",
                       destructive: true,
                     });
@@ -867,7 +864,7 @@ function StudioEditor({
                         // does not block a re-score of work already saved.
                         title={
                           unsaved
-                            ? "Save your edits first. Re-scoring runs on the saved resume."
+                            ? "Save first to update the ATS score."
                             : undefined
                         }
                       >
@@ -876,7 +873,7 @@ function StudioEditor({
                         ) : (
                           <RefreshCw />
                         )}
-                        {rescore.isPending ? "Re-scoring…" : "Re-score"}
+                        {rescore.isPending ? "Updating…" : "Update score"}
                       </Button>
                     </>
                   }
@@ -898,7 +895,7 @@ function StudioEditor({
                       }
                       onHistory={() => setHistoryOpen(true)}
                     >
-                      {/* The recovery path, and the only job "Generate PDF"
+                      {/* The recovery path, and the only job "Create PDF"
                             ever really had: Save auto-renders, so the one case
                             a manual trigger covers is a render that FAILED —
                             without this, a failed render with nothing left to
@@ -911,27 +908,30 @@ function StudioEditor({
                           <RefreshCw />
                           {/* Same verb as the job page's Resume tab, which is
                               the OTHER place this operation is offered:
-                              generate when there is no PDF, regenerate when
-                              there is. Two names for one action is how a
+                              create when there is no PDF, update when there
+                              is. Two names for one action is how a
                               vocabulary forks. */}
                           {render.isPending
-                            ? "Generating…"
+                            ? "Creating…"
                             : application.pdf_path
-                              ? "Regenerate PDF"
-                              : "Generate PDF"}
+                              ? "Update PDF"
+                              : "Create PDF"}
                         </DropdownMenuItem>
                         <DropdownMenuItem
                           variant="destructive"
                           disabled={busy}
                           onClick={async () => {
                             const ok = await confirm({
-                              title: "Rebuild from base resume?",
+                              title: "Start over from your base resume?",
+                              // materialize-resume records a version first
+                              // (stage_resume_update), so the saved content
+                              // can be restored, and the confirm says where.
                               description:
-                                "This erases the tailored resume content, the rendered PDF, and any unsaved edits in the studio. This can't be undone.",
-                              confirmLabel: "Rebuild from base",
+                                "This replaces the tailored resume and its PDF with a fresh copy of your base resume, and drops unsaved edits. Version history keeps the saved version.",
+                              confirmLabel: "Start over",
                               destructive: true,
                               // The item is gone once the menu closes: Cancel
-                              // and "Rebuilding…" keep focus on ⋯, and the
+                              // and "Starting over…" keep focus on ⋯, and the
                               // remount hands it to the page's <main>.
                               returnFocus: () => overflowRef.current,
                             });
@@ -940,8 +940,8 @@ function StudioEditor({
                         >
                           <RefreshCw />
                           {materializePending
-                            ? "Rebuilding…"
-                            : "Rebuild from base"}
+                            ? "Starting over…"
+                            : "Start over"}
                         </DropdownMenuItem>
                     </StudioOverflowMenu>
                   }
@@ -1020,7 +1020,7 @@ function StudioEditor({
                       {changeBadge("certifications")}
                     </TabsTrigger>
                     <TabsTrigger value="extra">
-                      Extra sections
+                      Other sections
                       {changeBadge("extra")}
                     </TabsTrigger>
                   </TabsList>

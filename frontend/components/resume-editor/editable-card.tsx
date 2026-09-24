@@ -28,6 +28,7 @@ export interface EditableCardAction {
 }
 
 export function EditableCard({
+  name,
   read,
   edit,
   initialEditing = false,
@@ -40,6 +41,9 @@ export function EditableCard({
   className,
   muted = false,
 }: {
+  /** What the card holds ("Data Scientist at Acme"): names its pencil and ⋯,
+   *  which repeat on every card of a list (WCAG 2.4.6). */
+  name?: string;
   read: ReactNode;
   edit: (close: () => void) => ReactNode;
   initialEditing?: boolean;
@@ -85,7 +89,7 @@ export function EditableCard({
             ref={pencilRef}
             size="icon-sm"
             variant="ghost"
-            aria-label="Edit"
+            aria-label={name ? `Edit ${name}` : "Edit"}
             onClick={() => setEditing(true)}
           >
             <Pencil className="size-3.5" />
@@ -94,7 +98,11 @@ export function EditableCard({
             <DropdownMenu>
               <DropdownMenuTrigger
                 render={
-                  <Button size="icon-sm" variant="ghost" aria-label="More actions">
+                  <Button
+                    size="icon-sm"
+                    variant="ghost"
+                    aria-label={name ? `More actions for ${name}` : "More actions"}
+                  >
                     <MoreHorizontal className="size-3.5" />
                   </Button>
                 }

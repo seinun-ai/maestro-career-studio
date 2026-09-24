@@ -63,7 +63,7 @@ _WORDS = [
      '"Suggest again" : "Suggest edits"'),
     ("components/resume-editor/instruct-sheet.tsx", "No edits proposed.", "No edits suggested."),
     ("components/resume-editor/instruct-sheet.tsx", "you apply\n            a proposal,",
-     "you apply\n            a suggestion,"),
+     "Nothing changes until you apply\n            it."),
     ("components/settings/quick-tailor-section.tsx", "Fast tailor",
      "What Quick tailor may change on your resume, on the gap analysis page and in the Companion."),
     ("components/settings/quick-tailor-section.tsx", "one-shot tailoring", 'title="Quick tailor"'),

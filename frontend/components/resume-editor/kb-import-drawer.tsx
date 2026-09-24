@@ -28,6 +28,8 @@ import {
   kbPort,
   listKbEntities,
 } from "@/lib/api";
+import { kbStatusLabel } from "@/components/career/career-labels";
+import { couldnt } from "@/lib/error-text";
 import { notifyRenderOutcome } from "@/lib/render-note";
 import type {
   BaseResumeDetail,
@@ -118,13 +120,15 @@ export function KbImportDrawer({
       // Committed before the re-render, so a render failure is reported
       // beside the success rather than as a failed import.
       notifyRenderOutcome(response.resume, { staleLabel: "The resume" });
+      const added = response.report.items.length;
+      const groups = response.report.skills_merged.length;
       toast.success(
-        `Imported ${response.report.items.length} ${response.report.items.length === 1 ? "entity" : "entities"} and ${response.report.skills_merged.length} skill ${response.report.skills_merged.length === 1 ? "group" : "groups"}${duplicates ? ` · ${duplicates} duplicate${duplicates === 1 ? "" : "s"} skipped` : ""}`,
+        `Added ${added} ${added === 1 ? "item" : "items"} and ${groups} skill ${groups === 1 ? "group" : "groups"}.${duplicates ? ` Skipped ${duplicates} already on the resume.` : ""}`,
       );
       reset();
       onOpenChange(false);
     },
-    onError: (error: Error) => toast.error(error.message),
+    onError: (error: Error) => toast.error(couldnt("add from career history", error)),
   });
 
   const toggleEntity = (entityId: string, approvedPointIds: string[]) =>
@@ -168,20 +172,20 @@ export function KbImportDrawer({
     <Sheet open={open} onOpenChange={handleOpenChange}>
       <SheetContent side="right" className="w-full sm:max-w-2xl" finalFocus={finalFocus}>
         <SheetHeader>
-          <SheetTitle>Import from Career KB</SheetTitle>
+          <SheetTitle>Add from career history</SheetTitle>
           <p className="text-muted-foreground text-sm">
-            Choose exact approved points. The import is one versioned operation.
+            Choose the bullets to add. You can undo this from Version history.
           </p>
         </SheetHeader>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-2">
           {entities.isLoading ? (
             <p className="text-muted-foreground flex items-center gap-2 text-sm">
-              <Loader2 className="size-4 animate-spin" aria-hidden="true" /> Loading Career KB…
+              <Loader2 className="size-4 animate-spin" aria-hidden="true" /> Loading your career history…
             </p>
           ) : entities.error ? (
             <p role="alert" className="text-destructive text-sm">
-              {entities.error.message}
+              {couldnt("load your career history", entities.error)}
             </p>
           ) : (
             <Tabs defaultValue="experience">
@@ -200,7 +204,7 @@ export function KbImportDrawer({
                   <TabsContent key={kind.value} value={kind.value}>
                     {items.length === 0 ? (
                       <p className="text-muted-foreground py-6 text-center text-sm">
-                        No {kind.label.toLowerCase()} in the Career KB.
+                        No {kind.label.toLowerCase()} in your career history yet.
                       </p>
                     ) : (
                       <ul className="divide-y">
@@ -226,7 +230,7 @@ export function KbImportDrawer({
                   <p className="text-muted-foreground text-sm">Loading basics…</p>
                 ) : profile.error ? (
                   <p role="alert" className="text-destructive text-sm">
-                    {profile.error.message}
+                    {couldnt("load your summary and skills", profile.error)}
                   </p>
                 ) : (
                   <>
@@ -235,7 +239,7 @@ export function KbImportDrawer({
                       <label className="flex cursor-pointer items-start gap-3 rounded-lg border p-3">
                         <Checkbox checked={includeSummary} onCheckedChange={() => setIncludeSummary((current) => !current)} disabled={!profile.data?.summary || importMutation.isPending} className="mt-1" />
                         <span className="text-sm leading-relaxed">
-                          {profile.data?.summary || "No Career KB summary is available."}
+                          {profile.data?.summary || "Your career history has no summary."}
                         </span>
                       </label>
                     </fieldset>
@@ -262,7 +266,7 @@ export function KbImportDrawer({
                                   </span>
                                   {duplicate && (
                                     <Badge variant="secondary" className="mt-2 text-xs">
-                                      Already in this resume
+                                      Already added
                                     </Badge>
                                   )}
                                 </span>
@@ -281,14 +285,16 @@ export function KbImportDrawer({
 
         <SheetFooter className="border-t px-4 py-3">
           <div className="text-muted-foreground mr-auto text-xs">
-            {selectedEntityCount} entities · {selectedPointCount} points · {skillCategories.size} skill groups
+            {selectedEntityCount} {selectedEntityCount === 1 ? "item" : "items"} ·{" "}
+            {selectedPointCount} {selectedPointCount === 1 ? "bullet" : "bullets"} ·{" "}
+            {skillCategories.size} skill {skillCategories.size === 1 ? "group" : "groups"}
           </div>
           <SheetClose render={<Button variant="ghost">Cancel</Button>} />
           <Button
             disabled={totalSelections === 0 || importMutation.isPending}
             onClick={() => importMutation.mutate()}
           >
-            {importMutation.isPending ? "Importing…" : "Import selected"}
+            {importMutation.isPending ? "Adding…" : "Add selected"}
           </Button>
         </SheetFooter>
       </SheetContent>
@@ -329,11 +335,12 @@ function EntityPickerRow({
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <p className="text-sm font-semibold">{entity.title}</p>
-            <Badge variant="outline" className="capitalize">
-              {entity.status}
-            </Badge>
+            <Badge variant="outline">{kbStatusLabel(entity.status)}</Badge>
             {entity.draft_count > 0 && (
-              <Badge variant="secondary">{entity.draft_count} drafts excluded</Badge>
+              <Badge variant="secondary">
+                {entity.draft_count} unapproved{" "}
+                {entity.draft_count === 1 ? "bullet" : "bullets"} not shown
+              </Badge>
             )}
           </div>
           <p className="text-muted-foreground text-xs">
@@ -344,23 +351,21 @@ function EntityPickerRow({
               <TooltipTrigger
                 render={
                   <Badge variant="secondary" className="mt-2 text-xs">
-                    Already in this resume
+                    Already added
                   </Badge>
                 }
               />
-              <TooltipContent>
-                A matching structured entry already exists in the target resume.
-              </TooltipContent>
+              <TooltipContent>This is already on your resume.</TooltipContent>
             </Tooltip>
           ) : detail.isLoading ? (
-            <p className="text-muted-foreground mt-2 text-xs">Loading approved points…</p>
+            <p className="text-muted-foreground mt-2 text-xs">Loading bullets…</p>
           ) : detail.error ? (
             <p role="alert" className="text-destructive mt-2 text-xs">
-              {detail.error.message}
+              {couldnt("load its bullets", detail.error)}
             </p>
           ) : approved.length === 0 ? (
             <p className="text-muted-foreground mt-2 text-xs">
-              Structured entry only, no approved points.
+              No approved bullets. Only the title and dates will be added.
             </p>
           ) : (
             <div className="mt-3 space-y-2 border-l pl-3">

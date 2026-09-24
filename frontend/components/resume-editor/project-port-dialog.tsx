@@ -21,6 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { apiFetch } from "@/lib/api";
+import { couldnt } from "@/lib/error-text";
 import { useBaseResumes } from "@/hooks/use-base-resume-label";
 import { notifyRenderOutcome } from "@/lib/render-note";
 import { baseResumeLabel, type BaseResumePortProjectResult } from "@/lib/types";
@@ -67,13 +68,13 @@ export function ProjectPortDialog({
         staleLabel: baseResumeLabel(result.target_slug, resumes.data),
       });
       toast.success(
-        `Copied to ${baseResumeLabel(result.target_slug, resumes.data)} as archived`,
+        `Copied to ${baseResumeLabel(result.target_slug, resumes.data)}. It's hidden there until you show it.`,
       );
       qc.invalidateQueries({ queryKey: ["base-resumes", result.target_slug] });
       onOpenChange(false);
       setTargetSlug("");
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(couldnt("copy the project", err)),
   });
 
   return (
@@ -86,15 +87,14 @@ export function ProjectPortDialog({
     >
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Port project</DialogTitle>
+          <DialogTitle>Copy project to another resume</DialogTitle>
         </DialogHeader>
         <p className="text-muted-foreground text-sm">
-          Copy <strong>{projectName || "this project"}</strong> to another base
-          resume. It will be added as <strong>archived</strong> (disabled) so you
-          can enable and edit it there later.
+          <strong>{projectName || "This project"}</strong> is added hidden, so
+          you can check it before showing it.
         </p>
         <div className="grid gap-1.5">
-          <Label htmlFor="port_target">Target base resume</Label>
+          <Label htmlFor="port_target">Copy to</Label>
           <Select
             value={targetSlug}
             onValueChange={(v) => setTargetSlug(v ?? "")}
@@ -104,7 +104,7 @@ export function ProjectPortDialog({
               {/* A placeholder only covers the EMPTY state — once a slug is
                   picked, a childless SelectValue renders the raw value, so
                   this trigger showed `data_engineer`. */}
-              <SelectValue placeholder="Choose base resume">
+              <SelectValue placeholder="Choose a resume">
                 {(value) => {
                   const hit = targets.find((r) => r.slug === value);
                   return hit
@@ -135,7 +135,7 @@ export function ProjectPortDialog({
             onClick={() => port.mutate()}
             disabled={!targetSlug || port.isPending}
           >
-            {port.isPending ? "Porting…" : "Port"}
+            {port.isPending ? "Copying…" : "Copy"}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -126,13 +126,13 @@ export function RawJsonToggle({
     },
   }));
 
-  // The pane's only discard gesture, so it asks. "Form view" applies instead.
+  // The pane's only discard gesture, so it asks. "Back to form" applies instead.
   const cancel = async () => {
     if (
       pending &&
       !(await confirm({
-        title: "Discard your JSON edits?",
-        description: "The JSON you typed has not been applied. This can't be undone.",
+        title: "Discard your code edits?",
+        description: "Your changes haven't been applied yet. You can't get them back.",
         confirmLabel: "Discard",
         destructive: true,
         // Kept: back to Cancel. Discarded: the pane is gone.
@@ -156,7 +156,7 @@ export function RawJsonToggle({
         </pre>
       )}
       <div className="flex gap-2">
-        <Button onClick={apply}>Apply JSON</Button>
+        <Button onClick={apply}>Apply</Button>
         <Button ref={cancelRef} variant="outline" onClick={cancel}>
           Cancel
         </Button>

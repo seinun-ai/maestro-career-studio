@@ -21,6 +21,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useSingleFlight } from "@/hooks/use-single-flight";
 import { apiFetch } from "@/lib/api";
 import { describeEdits } from "@/lib/describe-edit";
+import { couldnt } from "@/lib/error-text";
 import { notifyRenderNote } from "@/lib/render-note";
 import { serverKey } from "@/lib/studio";
 import type { BaseResumeDetail, BaseResumeProposal, ResumeData } from "@/lib/types";
@@ -29,11 +30,11 @@ import type { BaseResumeDetail, BaseResumeProposal, ResumeData } from "@/lib/typ
  *  first three are edits, the last two are questions — the sheet answers both
  *  shapes and the examples say so. */
 const STARTERS = [
-  "Tighten the summary to two sentences",
-  "Lead each role with its highest-impact bullet",
-  "Reposition this toward data engineering",
-  "Which areas are weakest for a senior data scientist target?",
-  "What roles could this resume pivot to?",
+  "Shorten the summary",
+  "Put the strongest bullet first",
+  "Aim this at data engineering",
+  "What's weakest for a senior data scientist?",
+  "What other roles fit this resume?",
 ];
 
 /**
@@ -80,7 +81,7 @@ export function InstructSheet({
         body: JSON.stringify({ instruction: sent.instruction }),
       }).then((result) => ({ result, basis: sent.basis })),
     onSuccess: setKept,
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(couldnt("suggest edits", err)),
   });
 
   const apply = useMutation({
@@ -98,13 +99,13 @@ export function InstructSheet({
       onApplied(result);
       notifyRenderNote(result);
       toast.success(
-        `Applied ${proposal?.ops_count ?? 0} ${proposal?.ops_count === 1 ? "edit" : "edits"}. PDF re-rendered.`,
+        `Applied ${proposal?.ops_count ?? 0} ${proposal?.ops_count === 1 ? "edit" : "edits"}. PDF updated.`,
       );
       setInstruction("");
       setKept(null);
       onOpenChange(false);
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(couldnt("apply the edits", err)),
   });
 
   // One request per click: a second Apply repeated the ops (add_bullet,
@@ -120,19 +121,17 @@ export function InstructSheet({
         <SheetHeader>
           <SheetTitle>Ask for changes</SheetTitle>
           <p className="text-muted-foreground text-sm">
-            Describe an edit, or ask for ideas. Nothing changes until you apply
-            a suggestion, and the model may not invent facts that are not on the
-            resume.
+            Describe a change or ask a question. Nothing changes until you apply
+            it. AI won&apos;t add facts that aren&apos;t on your resume.
           </p>
         </SheetHeader>
 
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-2">
           <div className="grid gap-1.5">
-            <Label htmlFor="instruct_text">Instruction</Label>
+            <Label htmlFor="instruct_text">What should change?</Label>
             <Textarea
               id="instruct_text"
               rows={4}
-              placeholder="e.g. Tighten the summary and lead with the platform work"
               value={instruction}
               readOnly={busy}
               onChange={(e) => setInstruction(e.target.value)}
@@ -171,7 +170,7 @@ export function InstructSheet({
               ) : (
                 <Sparkles aria-hidden />
               )}
-              {propose.isPending ? "Thinking…" : proposal ? "Suggest again" : "Suggest edits"}
+              {propose.isPending ? "Working…" : proposal ? "Suggest again" : "Suggest edits"}
             </Button>
           </div>
 

@@ -512,38 +512,6 @@ _PENDING_T18: dict[str, int] = {  # D §3 the gap page
     "frontend/components/gap-analysis/gap-card.tsx": 12,
     "frontend/components/gap-analysis/resolution-controls.tsx": 16,
 }
-_PENDING_T19: dict[str, int] = {  # D §4 resumes, studios, health, templates
-    "frontend/app/base-resumes/page.tsx": 5,
-    "frontend/app/templates/[id]/page.tsx": 7,
-    "frontend/app/templates/page.tsx": 1,
-    "frontend/components/base-resumes/base-resume-thumbnail.tsx": 3,
-    "frontend/components/base-resumes/new-base-resume-dialog.tsx": 13,
-    "frontend/components/resume-editor/diff-review.tsx": 10,
-    "frontend/components/resume-editor/editor-body.tsx": 4,
-    "frontend/components/resume-editor/extra-sections-editor.tsx": 5,
-    "frontend/components/resume-editor/formatting-panel.tsx": 1,
-    "frontend/components/resume-editor/instruct-sheet.tsx": 2,
-    "frontend/components/resume-editor/kb-import-drawer.tsx": 10,
-    "frontend/components/resume-editor/pdf-pages-preview.tsx": 1,
-    "frontend/components/resume-editor/project-editor.tsx": 1,
-    "frontend/components/resume-editor/project-port-dialog.tsx": 2,
-    "frontend/components/resume-editor/tailored-resume-studio.tsx": 6,
-    "frontend/components/resume-health/finding-cards.tsx": 27,
-    "frontend/components/resume-health/health-badges.tsx": 2,
-    "frontend/components/resume-health/health-report-page.tsx": 4,
-    "frontend/components/resume-versions/version-diff-view.tsx": 1,
-    "frontend/components/resume-versions/version-history-sheet.tsx": 1,
-    "frontend/components/role-category-picker.tsx": 2,
-    "frontend/components/templates/requires-tex-badge.tsx": 2,
-    "frontend/components/templates/template-gallery.tsx": 2,
-    "frontend/components/templates/template-thumbnail.tsx": 1,
-    "frontend/lib/describe-edit.ts": 5,
-    "frontend/lib/extra-sections.ts": 1,
-    "frontend/lib/health-report.ts": 4,
-    "frontend/lib/render-note.ts": 1,
-    "frontend/lib/resume-schema.ts": 2,
-    "frontend/lib/studio.ts": 2,
-}
 _PENDING_T20: dict[str, int] = {  # D §5 Career history
     "frontend/app/career/page.tsx": 5,
     "frontend/components/career/capture-box.tsx": 1,
@@ -593,7 +561,7 @@ _PENDING_T22: dict[str, int] = {  # D §8 the Companion panel
     "extension/panel/stages/score.js": 2,
     "extension/panel/stages/track.js": 1,
 }
-_BLOCKS = (_PENDING_T17, _PENDING_T18, _PENDING_T19, _PENDING_T20, _PENDING_T21, _PENDING_T22)
+_BLOCKS = (_PENDING_T17, _PENDING_T18, _PENDING_T20, _PENDING_T21, _PENDING_T22)
 _PENDING: dict[str, int] = {rel: n for block in _BLOCKS for rel, n in block.items()}
 
 

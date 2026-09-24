@@ -141,7 +141,7 @@ function describeOne(op: EditOp, s: Shadow): EditWords {
   const extraAt = extraIndex(s, op.section_key);
   const extraTitle =
     text(field(s.extras[extraAt], "title")) ?? text(field(op.value, "title"));
-  const extra = extraTitle ? `the ${extraTitle} section` : "a custom section";
+  const extra = extraTitle ? `the ${extraTitle} section` : "another section";
 
   switch (op.kind) {
     case "replace_summary": {
@@ -152,8 +152,8 @@ function describeOne(op: EditOp, s: Shadow): EditWords {
     }
     case "toggle_entry":
       return op.enabled === false
-        ? { action: `Hide ${name ?? `an entry in ${sectionWord}`} from the PDF`, detail: null }
-        : { action: `Show ${name ?? `an entry in ${sectionWord}`} on the PDF`, detail: null };
+        ? { action: `Hide ${name ?? `an item in ${sectionWord}`} from the PDF`, detail: null }
+        : { action: `Show ${name ?? `an item in ${sectionWord}`} on the PDF`, detail: null };
     case "replace_bullet":
       return {
         action: bullet ? `Rewrite ${bullet}` : `Rewrite a bullet in ${sectionWord}`,
@@ -172,18 +172,18 @@ function describeOne(op: EditOp, s: Shadow): EditWords {
     case "add_entry": {
       const added = section ? entryName(section, op.value) : null;
       return {
-        action: added ? `Add ${added} to ${sectionWord}` : `Add an entry to ${sectionWord}`,
+        action: added ? `Add ${added} to ${sectionWord}` : `Add an item to ${sectionWord}`,
         detail: null,
       };
     }
     case "replace_entry":
-      return { action: target ? `Edit ${target}` : `Edit an entry in ${sectionWord}`, detail: null };
+      return { action: target ? `Edit ${target}` : `Edit an item in ${sectionWord}`, detail: null };
     case "remove_entry":
-      return { action: target ? `Remove ${target}` : `Remove an entry from ${sectionWord}`, detail: null };
+      return { action: target ? `Remove ${target}` : `Remove an item from ${sectionWord}`, detail: null };
     case "replace_skills_group": {
       const category = text(field(skillGroup(s, op.category), "category")) ?? text(op.category);
       return {
-        action: category ? `Replace the ${category} skills` : "Replace a skills group",
+        action: category ? `Replace the ${category} skills` : "Replace a skill group",
         detail: short(op.items),
       };
     }
@@ -194,7 +194,7 @@ function describeOne(op: EditOp, s: Shadow): EditWords {
       if (!category) return { action: `Add ${item} to the skills`, detail: null };
       // "New" only when the document is known to lack the group.
       return s.known && group === undefined
-        ? { action: `Add ${item} to a new ${category} skills group`, detail: null }
+        ? { action: `Add ${item} to a new ${category} skill group`, detail: null }
         : { action: `Add ${item} to the ${category} skills`, detail: null };
     }
     case "replace_contact":
@@ -203,11 +203,11 @@ function describeOne(op: EditOp, s: Shadow): EditWords {
       const detail = short(op.items);
       return detail
         ? { action: "Replace the certifications", detail }
-        : { action: "Remove every certification", detail: null };
+        : { action: "Remove all certifications", detail: null };
     }
     case "add_extra_section": {
       const title = text(field(op.value, "title"));
-      return { action: title ? `Add the ${title} section` : "Add a custom section", detail: null };
+      return { action: title ? `Add the ${title} section` : "Add another section", detail: null };
     }
     case "replace_extra_section":
       return { action: `Rewrite ${extra}`, detail: null };
@@ -309,4 +309,58 @@ export function describeEdits(
     advance(op, shadow);
     return words;
   });
+}
+
+// Where a check failed, in the user's words. The studios' Save checks the form
+// against the resume schema; a raw path (`experience.2.bullets.0`) stays in the
+// code view only (raw-json-toggle), everywhere else it reads as a place.
+const PATH_SECTION: Record<string, string> = {
+  contact: "Contact",
+  summary: "Summary",
+  skills: "Skills",
+  experience: "Experience",
+  projects: "Projects",
+  education: "Education",
+  certifications: "Certifications",
+  extra_sections: "Other sections",
+};
+
+// What a numbered row is called inside its list.
+const ROW_NOUN: Record<string, string> = {
+  bullets: "bullet",
+  skills: "group",
+  items: "skill",
+  certifications: "certification",
+  coursework: "course",
+  extra_sections: "section",
+};
+
+// Lists whose name the row's noun already says ("bullet 2", not "bullets, bullet 2").
+const SILENT_LISTS = new Set(["bullets", "items", "entries", "coursework"]);
+
+/** One failed field as words: `["experience", 2, "bullets", 0]` reads
+ *  "Experience, item 3, bullet 1". Never prints a key, a dot or an index from 0. */
+export function describeFieldPath(path: readonly PropertyKey[]): string {
+  const words: string[] = [];
+  let parent = "";
+  for (const seg of path) {
+    if (typeof seg === "number") {
+      words.push(`${ROW_NOUN[parent] ?? "item"} ${seg + 1}`);
+    } else if (typeof seg === "string") {
+      if (words.length === 0) words.push(PATH_SECTION[seg] ?? seg.replace(/_/g, " "));
+      else if (!SILENT_LISTS.has(seg)) words.push(seg.replace(/_/g, " "));
+      parent = seg;
+    }
+  }
+  const joined = words.join(", ");
+  return joined ? joined.charAt(0).toUpperCase() + joined.slice(1) : "The resume";
+}
+
+/** "Some fields need fixing: Experience, item 3, bullet 1." for a failed
+ *  save: the places, deduplicated, at most three. */
+export function fieldsNeedFixing(paths: readonly (readonly PropertyKey[])[]): string {
+  const places = [...new Set(paths.map(describeFieldPath))];
+  const shown = places.slice(0, 3).join(". ");
+  const more = places.length > 3 ? `. And ${places.length - 3} more` : "";
+  return `Some fields need fixing: ${shown}${more}.`;
 }

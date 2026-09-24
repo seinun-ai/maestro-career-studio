@@ -10,6 +10,7 @@ import { LoadErrorState } from "@/components/load-error-state";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useRefreshFailedNotice } from "@/hooks/use-refresh-failed-notice";
+import { errorDetail } from "@/lib/error-text";
 import { apiFetch } from "@/lib/api";
 import { isLoadFailure } from "@/lib/query-state";
 import type { ApplicationDetail } from "@/lib/types";
@@ -39,7 +40,7 @@ export default function ApplicationTailoredResumePage({
       <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-4 p-6">
         <LoadErrorState
           title="Couldn't load this application."
-          detail={(query.error as Error | null)?.message}
+          detail={errorDetail(query.error)}
           retrying={query.isFetching}
           onRetry={() => void query.refetch()}
           action={

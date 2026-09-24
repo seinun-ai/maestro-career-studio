@@ -192,7 +192,7 @@ export function TemplateSelect({
               Use the default template
             </span>
             <span className="text-muted-foreground text-xs">
-              {defaultTemplate?.display_name ?? "server default"}
+              {defaultTemplate?.display_name ?? "Default"}
             </span>
           </button>
           <div className="min-h-0 flex-1 overflow-y-auto p-1">
@@ -200,7 +200,7 @@ export function TemplateSelect({
               <p className="text-muted-foreground text-sm">
                 {ready.length === 0
                   ? "No templates ready yet."
-                  : "Every ready template is archived. Restore one from Templates to pick it here."}
+                  : "All templates are archived. Restore one on the Templates page."}
               </p>
             ) : (
               <TemplateGallery

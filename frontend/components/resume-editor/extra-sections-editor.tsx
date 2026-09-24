@@ -20,6 +20,8 @@ import {
   cardReorderProps,
   useEntryEditing,
   createEnableAction,
+  BulletsRead,
+  HiddenBadge,
 } from "@/components/resume-editor/editor-scaffold";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -76,13 +78,12 @@ export function ExtraSectionsEditor({
   return (
     <div className="flex flex-col gap-3">
       <p className="text-muted-foreground text-xs">
-        Enabled custom sections contribute undated ATS evidence; their dates do
-        not count as employment recency.
+        Dates here don&apos;t count as work history.
       </p>
 
       {value.length === 0 ? (
         <p className="text-muted-foreground rounded-md border border-dashed px-3 py-6 text-center text-sm italic">
-          No custom sections yet.
+          No other sections yet.
         </p>
       ) : (
         <div className="flex flex-col gap-3">
@@ -139,6 +140,8 @@ function SectionCard({
   // would collide with a core section header (which the schema also rejects).
   const renameOriginalRef = useRef(section.title);
   const titleCollides = renaming && isCoreSectionTitle(section.title);
+  // Names the move and delete buttons, which repeat on every section card.
+  const sectionName = section.title.trim() || "this section";
   // Enter, Escape and Done (and a blur the save shortcut forced) unmount the
   // name input: focus moves to the rename button. Not after a blur INTO
   // something (a click, Tab): that is where the user put focus.
@@ -225,7 +228,7 @@ function SectionCard({
               <EyeOff className="size-3.5" />
             )}
             <Switch
-              aria-label={enabled ? "Disable section" : "Enable section"}
+              aria-label={enabled ? "Hide section" : "Show section"}
               checked={enabled}
               onCheckedChange={(checked) =>
                 onChange({ ...section, enabled: checked })
@@ -252,7 +255,7 @@ function SectionCard({
           <Button
             size="icon-sm"
             variant="ghost"
-            aria-label="Move section up"
+            aria-label={`Move ${sectionName} up`}
             disabled={!onMoveUp}
             onClick={onMoveUp}
           >
@@ -261,7 +264,7 @@ function SectionCard({
           <Button
             size="icon-sm"
             variant="ghost"
-            aria-label="Move section down"
+            aria-label={`Move ${sectionName} down`}
             disabled={!onMoveDown}
             onClick={onMoveDown}
           >
@@ -270,13 +273,15 @@ function SectionCard({
           <Button
             size="icon-sm"
             variant="ghost"
-            aria-label="Delete section"
+            aria-label={`Delete ${sectionName}`}
             className="text-muted-foreground hover:text-destructive"
             onClick={async () => {
               const ok = await confirm({
-                title: `Delete "${section.title || "this section"}"?`,
+                title: `Delete ${sectionName}?`,
+                // Saved versions keep it: the confirm says Version history
+                // restores it.
                 description:
-                  "This removes the section and all its content from this resume. This can't be undone.",
+                  "This deletes the section and everything in it. Version history keeps your saved versions, so you can restore it.",
                 confirmLabel: "Delete section",
                 destructive: true,
               });
@@ -325,6 +330,7 @@ function EntriesEditor({
         return (
           <EditableCard
             key={i}
+            name={entry.heading || "untitled item"}
             muted={!enabled}
             {...entryEditingProps(i)}
             extraActions={[
@@ -336,14 +342,10 @@ function EntriesEditor({
                   <div className="flex items-center gap-2">
                     <span className="text-foreground text-sm font-semibold">
                       {entry.heading || (
-                        <em className="opacity-60">Untitled entry</em>
+                        <em className="opacity-60">Untitled item</em>
                       )}
                     </span>
-                    {!enabled && (
-                      <Badge variant="secondary" className="text-xs">
-                        Hidden
-                      </Badge>
-                    )}
+                    <HiddenBadge enabled={enabled} />
                   </div>
                   <div className="text-muted-foreground text-xs whitespace-nowrap">
                     {entry.date || "—"}
@@ -361,17 +363,7 @@ function EntriesEditor({
                     {entry.link}
                   </div>
                 )}
-                {entry.bullets.length > 0 ? (
-                  <ul className="text-foreground/90 ml-4 list-disc space-y-1 text-sm">
-                    {entry.bullets.map((b, bi) => (
-                      <li key={bi}>{b}</li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="text-muted-foreground text-xs italic">
-                    No bullets
-                  </p>
-                )}
+                <BulletsRead bullets={entry.bullets} />
               </div>
             }
             edit={() => (
@@ -399,14 +391,13 @@ function EntriesEditor({
                     optional
                     value={entry.date ?? ""}
                     onChange={(v) => update(i, { date: v })}
-                    placeholder="e.g. 2025"
                   />
                   <Field
                     label="Link"
                     optional
                     value={entry.link ?? ""}
                     onChange={(v) => update(i, { link: v })}
-                    placeholder="https://…"
+                    hint="Starts with https://"
                   />
                 </div>
                 <BulletList
@@ -419,7 +410,7 @@ function EntriesEditor({
         );
       })}
       <AddEntryButton
-        label="Add entry"
+        label="Add item"
         onClick={() => {
           onChange([...entries, emptyEntry()]);
           setEditingIndex(entries.length);
@@ -494,7 +485,6 @@ function AddSectionDialog({
               autoFocus
               aria-invalid={nameCollides}
               value={name}
-              placeholder="e.g. Publications"
               onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter") submit();
@@ -508,18 +498,18 @@ function AddSectionDialog({
           </div>
 
           <div className="grid gap-1.5">
-            <Label>Type</Label>
+            <Label>Layout</Label>
             <div className="flex gap-1.5">
               <TypeChoice
                 active={type === "entries"}
-                title="Entries"
-                hint="Titled items with details and bullets"
+                title="Items"
+                hint="Each with a title, details and bullets"
                 onClick={() => setType("entries")}
               />
               <TypeChoice
                 active={type === "bullets"}
-                title="Bullets"
-                hint="A simple bulleted list"
+                title="List"
+                hint="A simple list"
                 onClick={() => setType("bullets")}
               />
             </div>

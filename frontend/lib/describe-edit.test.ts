@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { describeEdits } from "./describe-edit.ts";
+import { describeEdits, describeFieldPath, fieldsNeedFixing } from "./describe-edit.ts";
 
 const doc = {
   summary: "Old summary",
@@ -58,7 +58,7 @@ test("covers every op kind without printing a key or a path", () => {
   }
   const words = describeEdits(ops, doc as never).map((w) => w.action);
   assert.equal(words[4], "Replace the Languages skills");
-  assert.equal(words[5], "Add AWS to a new Cloud skills group");
+  assert.equal(words[5], "Add AWS to a new Cloud skill group");
   assert.equal(words[13], "Add the Awards section");
   assert.equal(words[16], "Move the Awards section to the top");
   assert.equal(words[17], "Change Experience");
@@ -86,12 +86,25 @@ test("without a document, names the section and nothing it cannot know", () => {
   assert.equal(w[1].action, "Add AWS to the Cloud skills");
 });
 
-test("an index past the end names no entry", () => {
-  assert.equal(one({ kind: "remove_entry", section: "projects", index: 9 }).action, "Remove an entry from Projects");
+test("an index past the end names no item", () => {
+  assert.equal(one({ kind: "remove_entry", section: "projects", index: 9 }).action, "Remove an item from Projects");
 });
 
 test("does not mutate the document it describes", () => {
   const before = JSON.stringify(doc);
   describeEdits([{ kind: "remove_entry", section: "experience", index: 0 }, { kind: "add_bullet", section: "projects", index: 0, text: "x" }], doc as never);
   assert.equal(JSON.stringify(doc), before);
+});
+
+test("a failed field reads as a place, never a path", () => {
+  assert.equal(describeFieldPath(["experience", 2, "bullets", 0]), "Experience, item 3, bullet 1");
+  assert.equal(describeFieldPath(["contact", "email"]), "Contact, email");
+  assert.equal(describeFieldPath(["skills", 0, "items", 4]), "Skills, group 1, skill 5");
+  assert.equal(describeFieldPath(["extra_sections", 1, "entries", 0, "start_date"]), "Other sections, section 2, item 1, start date");
+  assert.equal(describeFieldPath([]), "The resume");
+  const all = fieldsNeedFixing([["experience", 2, "bullets", 0], ["experience", 2, "bullets", 0], ["contact", "name"]]);
+  assert.equal(all, "Some fields need fixing: Experience, item 3, bullet 1. Contact, name.");
+  assert.doesNotMatch(all, /_|\.\d|\[/);
+  const many = fieldsNeedFixing([["contact", "name"], ["summary"], ["projects", 0, "name"], ["education", 1, "institution"]]);
+  assert.equal(many, "Some fields need fixing: Contact, name. Summary. Projects, item 1, name. And 1 more.");
 });

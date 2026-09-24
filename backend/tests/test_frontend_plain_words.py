@@ -202,3 +202,70 @@ def test_no_role_key_reaches_the_screen():
         for m in _RAW_ROLE.finditer(p.read_text(encoding="utf-8"))
     ]
     assert offenders == [], offenders
+
+
+# --- Task 19 (appendix D §4): resumes, studios, health, templates -----------
+
+
+def test_a_bullet_label_is_singular_in_its_slot():
+    # D10.8: the group label ("Bullets") named each row: "Bullets 2 of 5",
+    # "Move bullets 2 up". Each row reads its own singular label.
+    src = _read("components/resume-editor/bullet-list.tsx")
+    assert 'label = "Bullets",' in src and 'itemLabel = "Bullet",' in src
+    assert "aria-label={`${itemLabel} ${i + 1} of ${value.length}`}" in src
+    for verb in ("Move ${itemLabel.toLowerCase()} ${i + 1} up", "Move ${itemLabel.toLowerCase()} ${i + 1} down",
+                 "Delete ${itemLabel.toLowerCase()} ${i + 1}"):
+        assert f"aria-label={{`{verb}`}}" in src, verb
+    assert "${label} ${i + 1}" not in src
+    assert "label.toLowerCase()" not in src.replace("itemLabel.toLowerCase()", "")
+
+
+def test_new_base_summary_hint_matches_a_prefilled_field():
+    # D10.5: the plan drafts the summary (base_from_kb_plan), so the field is
+    # filled when it shows. "Left blank on purpose" was false.
+    src = _read("components/base-resumes/new-base-resume-dialog.tsx")
+    assert "Left blank on purpose" not in src
+    assert "Check this summary, or clear it." in src
+
+
+def test_undo_claims_match_version_history():
+    # D10.10: both write a version first (stage_resume_update, and the saved
+    # resume for a section delete), so "can't be undone" was false.
+    studio = _read("components/resume-editor/tailored-resume-studio.tsx")
+    start_over = _block(studio, 'title: "Start over from your base resume?"', "confirmLabel")
+    extra = _read("components/resume-editor/extra-sections-editor.tsx")
+    section_delete = _block(extra, "title: `Delete ${sectionName}?`", "confirmLabel")
+    for name, confirm in (("start over", start_over), ("section delete", section_delete)):
+        assert "can't be undone" not in confirm and "You can't undo this." not in confirm, name
+        assert "Version history keeps" in confirm, name
+
+
+def test_a_failed_save_names_places_not_schema_paths():
+    # A studio Save names where the form failed ("Experience, item 3, bullet 1"),
+    # never `experience.2.bullets.0`; the raw path stays in the code view only.
+    for rel in ("components/resume-editor/editor-body.tsx", "components/resume-editor/tailored-resume-studio.tsx"):
+        src = _read(rel)
+        assert "throw new Error(fieldsNeedFixing(validated.error.issues.map((i) => i.path)));" in src, rel
+        assert 'path.join(".")' not in src, rel
+    assert 'i.path.join(".")' in _read("components/resume-editor/raw-json-toggle.tsx")
+    words = _block(_DESCRIBER, "export function describeFieldPath(", "\n}")
+    assert 'words.push(`${ROW_NOUN[parent] ?? "item"} ${seg + 1}`);' in words
+    assert 'seg.replace(/_/g, " ")' in words
+    assert 'extra_sections: "Other sections",' in _DESCRIBER
+    assert "return `Some fields need fixing: ${shown}${more}.`;" in _DESCRIBER
+
+
+def test_health_counts_agree_with_their_nouns():
+    # D10.8: "3 Note", "1 Gate", "2 gate · 1 note". Every count chip and the
+    # studio's health summary go through countWords.
+    cards = _read("components/resume-health/finding-cards.tsx")
+    assert '{ key: "ask", one: "question", many: "questions",' in _flat(cards)
+    assert "const noun = meta ? (count === 1 ? meta.one : meta.many) : key;" in cards
+    assert "{countWords(key, count)}" in _read("components/resume-health/health-report-page.tsx")
+    badges = _read("components/resume-health/health-badges.tsx")
+    assert "[countWords(key, count)]" in badges
+    assert "${count} ${key}" not in badges
+
+
+def _flat(src: str) -> str:
+    return " ".join(src.split())

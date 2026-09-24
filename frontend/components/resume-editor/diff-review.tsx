@@ -25,7 +25,7 @@ import { cn } from "@/lib/utils";
  */
 
 const PROVENANCE_LABELS: Record<ResumeDiffHunk["provenance"], string> = {
-  kb_auto: "KB auto",
+  kb_auto: "From your career history",
   user: "You",
   llm: "AI",
 };
@@ -60,7 +60,7 @@ const SECTION_LABELS: Record<string, string> = {
   projects: "Projects",
   education: "Education",
   certifications: "Certifications",
-  extra_sections: "Extra sections",
+  extra_sections: "Other sections",
 };
 
 const SECTION_ORDER = [
@@ -80,15 +80,15 @@ const KIND_LABELS: Record<ResumeDiffHunk["kind"], string> = {
   bullet_added: "Bullet added",
   bullet_removed: "Bullet removed",
   bullet_edited: "Bullet reworded",
-  entry_added: "Entry added",
-  entry_removed: "Entry removed",
-  entry_enabled: "Entry unhidden",
-  entry_disabled: "Entry hidden",
-  skills_group_changed: "Skills group changed",
+  entry_added: "Item added",
+  entry_removed: "Item removed",
+  entry_enabled: "Item shown",
+  entry_disabled: "Item hidden",
+  skills_group_changed: "Skill group changed",
   extra_section_added: "Section added",
   extra_section_removed: "Section removed",
   extra_section_changed: "Section changed",
-  extra_section_enabled: "Section unhidden",
+  extra_section_enabled: "Section shown",
   extra_section_disabled: "Section hidden",
 };
 
@@ -395,10 +395,10 @@ function ProvenanceChip({ value }: { value: ResumeDiffHunk["provenance"] }) {
       className={cn("shrink-0 font-normal", PROVENANCE_STYLES[value])}
       title={
         value === "kb_auto"
-          ? "Applied from your own library/Career KB evidence"
+          ? "Taken from your career history"
           : value === "user"
-            ? "Came from a gap resolution you made"
-            : "Wording the tailoring model chose"
+            ? "From an answer you gave"
+            : "Wording written by AI"
       }
     >
       {PROVENANCE_LABELS[value]}
@@ -425,7 +425,7 @@ function HunkRow({
           <ProvenanceChip value={hunk.provenance} />
           {reverted && (
             <span className="text-muted-foreground text-[10px]">
-              reverted — unsaved
+              Undone. Not saved yet.
             </span>
           )}
         </div>
@@ -441,17 +441,17 @@ function HunkRow({
         disabled={reverted}
         onClick={onRevert}
       >
-        <Undo2 /> Revert
+        <Undo2 /> Undo
       </Button>
     </li>
   );
 }
 
 const ISSUE_LABELS: Record<CoherenceFlag["issue"], string> = {
-  fragment: "Reads as a fragment",
-  tense: "Tense mismatch",
-  summary_mismatch: "Summary out of sync",
-  dangling: "Dangling reference",
+  fragment: "Incomplete sentence",
+  tense: "Mixed tenses",
+  summary_mismatch: "Summary doesn't match",
+  dangling: "Refers to something missing",
 };
 
 export function coherenceFlagKey(flag: CoherenceFlag, position: number): string {
@@ -535,9 +535,9 @@ function GateRow({ gate }: { gate: HealthGate }) {
       ? "bg-destructive/10 text-destructive"
       : "bg-amber-500/10 text-amber-800 dark:text-amber-400";
   const badgeLabel = notAssessed
-    ? "Not assessed"
+    ? "Not checked"
     : gate.tier === "fatal"
-      ? "Blocker"
+      ? "Must fix"
       : "Serious";
   return (
     <div className={cn("rounded-md border px-3 py-2 text-sm", accent)}>
@@ -560,7 +560,7 @@ function GatesGroup({ gates }: { gates: HealthGate[] }) {
   return (
     <div className="space-y-1.5">
       <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
-        Structural gates
+        Must fix
       </p>
       <div className="space-y-1.5">
         {nonPassing.map((gate) => (
@@ -584,7 +584,7 @@ function HygieneGroup({
   return (
     <div className="space-y-1.5">
       <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
-        Hygiene
+        Clean-up
       </p>
       <ul className="divide-y">
         {hygiene.map((flag, position) => {
@@ -650,7 +650,7 @@ function CoherenceResults({
       {coherence.flags.length > 0 && onApply && (
         <div className="space-y-1.5">
           <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
-            Coherence
+            Flow and consistency
           </p>
           <CoherenceFlags coherence={coherence} onApply={onApply} />
         </div>
@@ -683,7 +683,7 @@ export function DiffReviewPanel({
   if (hunks.length === 0) {
     return (
       <div className="text-muted-foreground rounded-md border border-dashed p-3 text-sm">
-        No differences from your base resume.
+        No changes from your base resume.
       </div>
     );
   }
@@ -717,8 +717,8 @@ export function DiffReviewPanel({
               {coherence.loading
                 ? "Checking…"
                 : coherence.checked
-                  ? "Re-run review checks"
-                  : "Run review checks"}
+                  ? "Check again"
+                  : "Check wording"}
             </Button>
           )}
         </div>

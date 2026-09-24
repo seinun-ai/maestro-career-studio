@@ -11,16 +11,10 @@ import type { ContactInfo } from "@/lib/types";
 const FIELDS: {
   key: keyof ContactInfo;
   label: string;
-  placeholder?: string;
   required?: boolean;
 }[] = [
   { key: "name", label: "Name", required: true },
-  {
-    key: "email",
-    label: "Email",
-    placeholder: "e.g. you@example.com",
-    required: true,
-  },
+  { key: "email", label: "Email", required: true },
   { key: "phone", label: "Phone" },
   { key: "location", label: "Location" },
   { key: "linkedin", label: "LinkedIn" },
@@ -47,7 +41,7 @@ export function ContactForm({
     return (
       <div ref={editRef} className="@container grid gap-3">
         <div className="grid gap-3 @md:grid-cols-2">
-          {FIELDS.map(({ key, label, placeholder, required }) => (
+          {FIELDS.map(({ key, label, required }) => (
             <div key={key} className="grid gap-1.5">
               <Label htmlFor={`contact_${key}`}>
                 {label}
@@ -55,7 +49,6 @@ export function ContactForm({
               </Label>
               <Input
                 id={`contact_${key}`}
-                placeholder={placeholder}
                 value={value[key] ?? ""}
                 onChange={(e) => update(key, e.target.value)}
               />

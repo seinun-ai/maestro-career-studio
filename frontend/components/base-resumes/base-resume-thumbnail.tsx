@@ -2,7 +2,7 @@
 
 import { PreviewThumbnail } from "@/components/gallery/preview-thumbnail";
 import { apiUrlForBrowserPdf } from "@/lib/api";
-import type { BaseResumeSummary } from "@/lib/types";
+import { baseResumeLabel, type BaseResumeSummary } from "@/lib/types";
 
 /**
  * Page 1 of the base resume's rendered PDF.
@@ -35,13 +35,14 @@ export function BaseResumeThumbnail({
   return (
     <PreviewThumbnail
       src={src}
-      alt={`${resume.display_name ?? resume.slug} preview`}
-      placeholder="Not rendered yet"
+      alt={`${baseResumeLabel(resume.slug, [resume])} preview`}
+      placeholder="No PDF yet"
       chip={
         resume.render_error
           ? {
-              label: "Render failed",
-              title: `The last render failed, so this preview is the previous version.\n\n${resume.render_error}`,
+              // The engine log stays in the studio, never on a card.
+              label: "PDF out of date",
+              title: "The last PDF update failed. This is the previous version. Open the resume to see why.",
               className: "text-amber-700 dark:text-amber-400",
             }
           : undefined
