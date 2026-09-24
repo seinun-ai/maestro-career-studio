@@ -88,6 +88,12 @@ Adapt *how* when the plan conflicts with the code and log it below. If a change 
 | 12 | Placeholders untouched by C | Removed the unpinned `e.g.` placeholders in the cards rewritten here (Standing instruction, blocklist company, years, locations, salary, custom question). The pinned ones stay (Deferred) | Owner decision 13; the handoff's "no example text in the cards you rewrite" |
 | 12 | One commit per task | Extra commit `87af0ee1` splitting four new pins | Each assert counts as a branch; the pins pushed backend hotspots to 427 (ceiling 424). Now 423 |
 | 11–12 | Browser checks on the lane's own page | A temporary, uncommitted mount of `ModelCatalogSection` and `CustomEndpointSection` in `app/settings/page.tsx`, restored before every commit | That page is lane 3's; see Deferred |
+| review | Pins for the review's surviving mutants in the autosave file (Task 10's) | Header pins (M01–M04) in `test_frontend_settings_cards.py`, section "The card header" | This lane's own file; the autosave file's Task 10 pins are untouched |
+| review | Pin M08 where the remote check lived (`llm-endpoint.tsx`) | Moved `isRemoteEndpoint` into `lib/model-catalog.ts` (import-free, node-tested) with a `LOCAL_HOSTS` Set; pytest pins the Set | Node tests aren't in CI, so the pytest pin reads the Set. Also fixed a dead check: `URL` reports the IPv6 loopback as `[::1]`, so the old `host === "::1"` never matched |
+| review | SwitchRow label `self-stretch items-center` | Row `flex min-h-11 items-center justify-between` (padding and gap moved off the row); label `flex-1 self-stretch py-1.5 pr-4 leading-snug` | The row's `py-1.5` and `gap-4` were dead strips; now the label covers height, width and the gap. `Label` is already `flex items-center` |
+| review | Blocklist chip keeps the 44px target inside (e.g. `min-h-7`) | `h-7` → `min-h-7`: 28px on a fine pointer, 44px pill on a coarse one | The chip grows with the `pointer-coarse:min-h-11` ×, so wrapped rows sit 6px apart with no overlap |
+| review | Capability reason reachable "if small" | sr-only reason text; icons and the visible chip label `aria-hidden`; `title` kept for the mouse | Screen readers read it; a sighted keyboard user still reaches it only by hover (the Test toast names failing chips). A focusable tooltip per chip was not small |
+| review | Catalog focus race "fix if small" | Fixed: `leaving` holds `{ id, next }`; the effect waits while the removed id is still listed | Reproduced in the browser (Add held and released mid-Remove: focus to BODY before, the neighbour's Remove after) |
 
 ## Gate results
 
@@ -109,6 +115,18 @@ Adapt *how* when the plan conflicts with the code and log it below. If a change 
 | all | `slop_scan.py check frontend`, `check backend` (export root) | both OK; backend `complexity_hotspots` 423 (ceiling 424) |
 | all | `scripts/check_system_md.py` | OK, 1000/1000 |
 | all | final tsc, build (run last) | clean; OK |
+| review | new pins seen failing | 10 failed before the fixes (+1 slice error in the FreeTextModel pin, fixed); node test failed (no export) |
+| review | mutation (scratch `mutate_lane4.py`, from the reviewer's) | 35/35 killed, each by exactly one pin: the reviewer's M01–M24 (M08 re-targeted at the Set; M18 at `htmlFor`) + N01–N11 (draft cleared on click, onSuccess dropped, endpoint Save not focusable, race check dropped, raw provider key, `"::1"`, sr-only reason dropped, SwitchRow label not filling, chip `h-7`, Fill from resume not focusable, object lookup); node test also kills M08, M21, N05, N06, N11 |
+| review | browser (1280, temporary uncommitted mount, reverted before commit) | `ftp://nope` + Save: text stays, 400 toast, focus on Save; `http://127.0.0.1:1/v1`: saved (API confirms), field shows the saved value, focus on Save (dimmed) |
+| review | browser, catalog race | Add POST held, Remove DELETE held, Add released: row still listed, focus on its Remove; DELETE released: focus to the neighbour's Remove. With the old check: BODY |
+| review | browser, SwitchRow at 1280/768/375 | taps at the row's top edge, in the old gap before the switch and at the bottom edge each toggle |
+| review | browser, blocklist 375 coarse (touch, `pointer: coarse` true) | 8 chips, every × 44×44 inside its 44px chip, 0 overlaps, no horizontal scroll; fine pointer: chips 28px |
+| review | browser, Fill from resume (no contact details) | `aria-disabled`, tabbable, opacity 0.5; keyboard focus opens its reason tooltip |
+| review | browser, capability marks (report injected via route) | sr text "Structured answers: response_format rejected. Disables …" in the accessibility tree |
+| review | `test_frontend_*.py` + autofill parity, tsc, lint, node | 699 passed; clean; 0 errors / 5 warnings; 171/171 |
+| review | `pytest tests/ mcp_server/tests/ -q`; `ruff check .` | 5016 passed, 2 skipped; All checks passed |
+| review | frontend duplication (clean export of the tracked tree); `check frontend`, `check backend`; backend hotspots | 437 lines / 36 clones; both OK; 423 |
+| review | `npm run build` (last) | OK |
 
 ## Queued for Task 24 (SYSTEM.md changes Claude applies)
 
@@ -123,3 +141,4 @@ Adapt *how* when the plan conflicts with the code and log it below. If a change 
 - Lane 6 (A5 row 23): `CAPABILITY_LABELS` moved to `components/settings/models-section.tsx`; its gate already reads "the Assistant".
 - Wave 3, Task 16: placeholders the pins still require, kept: `models-section.tsx` `placeholderUnset="e.g. sk-..."`, `"e.g. AIza..."`, `placeholder="e.g. llama3.2:3b"` (FreeTextModel); `llm-endpoint.tsx` `placeholder="e.g. http://host.docker.internal:11434/v1"`; `persona-section.tsx` `PLACEHOLDER` ("e.g.\nVision: …"); `autofill-section.tsx` field-table placeholders ("e.g. Apt 4B" is in `_MUST_SEE`). The pending counts must not list the ones this lane removed (job preferences ×3, quick tailor, auto-apply, the custom question).
 - Wave 3, Task 21 (D6.1 rows already done here, skip them): card titles and descriptions of the three model cards, ROLES, the footnote, chip labels and gates, probe toasts :99 and :102, the model note, Find buttons, discovery line, find toasts, "Server settings saved", "Remove school N". Still to do: the Custom AI server's field copy (incl. the D10.2 OpenRouter promise), API keys description, statuses and "Save API keys", the stale option "«…» · unavailable", the unreachable-probe toast, add/remove toasts by label, `err.message` toasts. Also: at 14px the `Label` "· optional" suffix sits at the far right of a wrapped label in Autofill's three columns ("Previously employed by the company…", "Subject to a non-compete…"); D1.2's "(optional)" rewrite of `label.tsx` should wrap inline.
+- Review follow-ups not done (noted): a sighted keyboard user still reads a capability chip's reason only by hovering (screen readers get sr-only text); `isRemoteEndpoint` warns "will be sent to this server" for an address the server then rejects (`ftp://nope`), seen in the review's browser check. Pre-existing; a scheme check is a one-liner if wanted.
