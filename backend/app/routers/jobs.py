@@ -318,6 +318,21 @@ def _stamp_newest_proposal(job: Job, newest) -> None:
     job.proposal_id, job.proposal_status, job.proposal_proposed_by = newest or (None, None, None)
 
 
+def _with_newest_proposal(db: Session, job: Job) -> Job:
+    """One job, stamped as the list stamps each row. Every single-job JobRead goes through here:
+    without it the fields read null while the list and `/detail` named the proposal."""
+    from app.models.application_proposal import ApplicationProposal
+
+    newest = db.execute(
+        select(*_newest_proposal_columns())
+        .where(ApplicationProposal.job_id == job.id)
+        .order_by(ApplicationProposal.created_at.desc())
+        .limit(1)
+    ).first()
+    _stamp_newest_proposal(job, newest)
+    return job
+
+
 @router.get("", response_model=list[JobSummary])
 def list_jobs(
     db: Annotated[Session, Depends(get_db)],
@@ -495,7 +510,7 @@ def get_job(job_id: UUID, db: Annotated[Session, Depends(get_db)]):
     job = db.get(Job, job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
-    return job
+    return _with_newest_proposal(db, job)
 
 
 @router.patch("/{job_id}", response_model=JobRead)
@@ -507,7 +522,7 @@ def patch_job(job_id: UUID, payload: JobPatch, db: Annotated[Session, Depends(ge
         job.source_url = payload.source_url.strip() or None
     db.commit()
     db.refresh(job)
-    return job
+    return _with_newest_proposal(db, job)
 
 
 @router.get("/{job_id}/detail", response_model=JobDetail)
@@ -524,15 +539,7 @@ def get_job_detail(job_id: UUID, db: Annotated[Session, Depends(get_db)]):
     )
     # Same derived proposal_status / proposal_id / proposal_proposed_by as the list endpoint
     # (transient attrs) so the job page can triage and load proposal detail.
-    from app.models.application_proposal import ApplicationProposal
-
-    newest_prop = db.execute(
-        select(*_newest_proposal_columns())
-        .where(ApplicationProposal.job_id == job_id)
-        .order_by(ApplicationProposal.created_at.desc())
-        .limit(1)
-    ).first()
-    _stamp_newest_proposal(job, newest_prop)
+    _with_newest_proposal(db, job)
     from app.services import autofill_profile, job_preferences, knockout
 
     scan = knockout.scan_job(
@@ -589,7 +596,7 @@ def re_extract_job(job_id: UUID, db: Annotated[Session, Depends(get_db)]):
     _insert_skills(db, job_id, extraction)
     db.commit()
     db.refresh(job)
-    return job
+    return _with_newest_proposal(db, job)
 
 
 @router.post("/{job_id}/quick-tailor", response_model=QuickTailorResponse)

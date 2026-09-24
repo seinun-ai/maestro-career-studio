@@ -654,3 +654,50 @@ def test_evidence_kind_required_on_upload(db_session, tmp_path, monkeypatch):
         data={"step": "2", "label": "x", "kind": "nope"},
     )
     assert r_bad.status_code == 422
+
+
+def test_two_concurrent_creates_for_one_job_leave_one_open_proposal(db_session, monkeypatch):
+    """Wave-1 browser pass: a double click on Queue for agent filed two accepted proposals for one
+    job. The route checks for an open proposal and then inserts, so two requests that both check
+    before either inserts both insert. The create path takes SQLite's write lock before it checks
+    (`app.db.begin_write`), so the second waits for the first to commit and returns its proposal.
+    The sleep holds the first request inside that window, which makes the race certain rather than
+    likely."""
+    import threading
+    import time
+
+    from app.services import proposals as svc
+
+    job = _mk_job(db_session, company="Racecar", source="user")
+    # Seeded once, as any install past its first read is: two first-ever reads racing to seed the
+    # row is a different race (text_settings.get_text), not this one.
+    auto_apply_settings.get_settings(db_session)
+    real_create = svc.create_proposal
+
+    def slow_create(*args, **kwargs):
+        time.sleep(0.4)
+        return real_create(*args, **kwargs)
+
+    monkeypatch.setattr(svc, "create_proposal", slow_create)
+    start = threading.Barrier(2)
+    replies: list = []
+
+    def file(filer):
+        start.wait()
+        replies.append(client.post("/api/proposals", json={"job_id": str(job.id), "proposed_by": filer}))
+
+    # The web app files as "you"; a body naming nobody files as unknown.
+    threads = [threading.Thread(target=file, args=(filer,)) for filer in ("you", None)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=30)
+
+    assert sorted(r.status_code for r in replies) == [200, 201]
+    assert len({r.json()["id"] for r in replies}) == 1
+    db_session.expire_all()
+    rows = db_session.query(ApplicationProposal).filter_by(job_id=job.id).all()
+    assert len(rows) == 1
+    # First filer wins: the reply that created the row names who filed it, and the other reads it back.
+    created = next(r for r in replies if r.status_code == 201)
+    assert rows[0].proposed_by == created.json()["proposed_by"]

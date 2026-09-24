@@ -6,7 +6,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.db import get_db
+from app.db import begin_write, get_db
 from app.models.application import Application
 from app.models.application_proposal import ApplicationProposal
 from app.models.job import Job
@@ -110,6 +110,11 @@ def create_proposal(
     if company and company in {c.strip().lower() for c in cfg.company_blocklist}:
         raise HTTPException(409, detail="company is blocklisted")
 
+    # One open proposal per job, with no unique index to say so: two creates that both check
+    # before either inserts both insert (a double click on Queue for agent filed two accepted
+    # proposals). The write lock serializes check and insert; nothing below commits before the
+    # insert, and `get_settings` above has already seeded its row.
+    begin_write(db)
     open_prop = db.scalar(
         select(ApplicationProposal)
         .where(

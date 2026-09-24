@@ -447,10 +447,18 @@
   filer, by the plan summary they carry ("Promoted from the tracker by the
   user", `promoteJobToAgentQueue`). That text has never changed, and changing
   it now can't reach those rows: the queue sends `proposed_by: "you"` itself.
-  Job list/detail expose the newest proposal's filer as
-  `proposal_proposed_by`, beside `proposal_status`/`proposal_id`.
+  Every job read (list, `GET /api/jobs/{id}`, its PATCH and re-extract replies, `/detail`)
+  exposes the newest proposal's filer as `proposal_proposed_by`, beside
+  `proposal_status`/`proposal_id` (`routers/jobs._with_newest_proposal`).
   Dedup at `POST /api/proposals`: an **open** proposal for the job returns that
-  proposal (HTTP 200, idempotent, keeping the first filer); if the caller also passes `application_id`
+  proposal (HTTP 200, idempotent, keeping the first filer). **Check and insert are one step**:
+  nothing in the schema says one open proposal per job, and pysqlite opens a transaction only
+  at the first write, so two creates that both checked before either inserted both inserted
+  (a double click filed two accepted proposals). The route takes the write lock first
+  (`app.db.begin_write`, `BEGIN IMMEDIATE`), so the second waits and returns the first's row;
+  pinned by `test_two_concurrent_creates_for_one_job_leave_one_open_proposal`. A partial unique
+  index was rejected: the legacy import lands rows that may already break it, and would fail
+  closed. If the caller also passes `application_id`
   and the proposal is unlinked, late-link it (never relink to a different
   application — 409). Company blocklist stays hard 409. Agent-sourced jobs gate
   execute helpers (`prepare` / `attach_evidence` / `record_consent` /

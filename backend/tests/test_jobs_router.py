@@ -986,3 +986,30 @@ def test_ingest_url_fallback_matches_the_posting_not_the_string(db_session):
     assert first.status_code == second.status_code == third.status_code == 200
     assert second.json()["id"] == first.json()["id"]
     assert third.json()["id"] != first.json()["id"]
+
+
+def test_the_plain_job_read_carries_the_newest_proposal(db_session):
+    """Wave-1 browser pass: `GET /api/jobs/{id}` answered proposal_status and proposal_proposed_by
+    as null while the list and `/detail` named them. Every single-job read stamps the newest
+    proposal the same way (`_stamp_newest_proposal`)."""
+    from app.models.application_proposal import ApplicationProposal
+
+    job = Job(raw_text="plain read", raw_text_hash=uuid.uuid4().hex * 2, company="Acme")
+    db_session.add(job)
+    db_session.commit()
+    now = datetime.now(UTC)
+    db_session.add_all([
+        ApplicationProposal(job_id=job.id, status="rejected", proposed_by="claude-ai",
+                            created_at=now - timedelta(days=2)),
+        ApplicationProposal(job_id=job.id, status="accepted", proposed_by="you", created_at=now),
+    ])
+    db_session.commit()
+    newest = db_session.query(ApplicationProposal).filter_by(status="accepted").one()
+
+    client = TestClient(app)
+    for reply in (client.get(f"/api/jobs/{job.id}"), client.patch(f"/api/jobs/{job.id}", json={})):
+        body = reply.json()
+        assert reply.status_code == 200
+        assert body["proposal_status"] == "accepted"
+        assert body["proposal_id"] == str(newest.id)
+        assert body["proposal_proposed_by"] == "you"

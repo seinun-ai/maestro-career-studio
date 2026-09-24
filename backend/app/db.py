@@ -18,7 +18,7 @@ from pathlib import Path
 
 from sqlalchemy import create_engine, event
 from sqlalchemy.engine import URL, Engine, make_url
-from sqlalchemy.orm import DeclarativeBase, sessionmaker
+from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from app.config import DB_FILENAME, settings
 
@@ -26,6 +26,7 @@ __all__ = [
     "Base",
     "DB_FILENAME",
     "SessionLocal",
+    "begin_write",
     "engine",
     "get_db",
     "make_engine",
@@ -178,6 +179,21 @@ SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
 class Base(DeclarativeBase):
     pass
+
+
+def begin_write(session: Session) -> None:
+    """Take SQLite's write lock now and hold it until this session commits or rolls back.
+
+    For a check-then-insert that must not run twice at once (one open proposal per job): the
+    driver opens a transaction only at the first INSERT/UPDATE/DELETE, so two requests can both
+    read "none yet" and both insert. `BEGIN IMMEDIATE` makes the second wait (busy_timeout) at
+    this call until the first commits, and its check then sees the first's row. A connection
+    already inside a transaction has written, so it holds the lock already and nothing is issued.
+    Anything that commits between this call and the insert releases the lock early.
+    """
+    raw = session.connection().connection.dbapi_connection
+    if isinstance(raw, sqlite3.Connection) and not raw.in_transaction:
+        raw.execute("BEGIN IMMEDIATE")
 
 
 def get_db():

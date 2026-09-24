@@ -159,7 +159,7 @@ file to open.
    jd/fit/output/qa for deep-link compatibility).
    `?from=proposals` flips Back + prev/next onto `cs-proposals-seq`;
    otherwise they use `cs-tracker-seq`. Overview mounts an Agent proposal
-   block when `proposal_id` is present; job list/detail derive
+   block when `proposal_id` is present; every job read derives
    `proposal_status`/`proposal_id` from the newest proposal. Overview also
    renders the **knock-out pre-scan** (`services/knockout.scan_job`, embedded
    in `GET /jobs/{id}/detail` and in `get_final_review` as `knockout`):
