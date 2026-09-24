@@ -16,9 +16,17 @@ export function isPlainSentence(text: string): boolean {
   return t.length > 0 && t.length <= 240 && /^[A-Z][^{}[\]<>_`|\\]*[.!?]$/.test(t);
 }
 
+// The server's API key failures (backend/app/services/llm.py), which name an
+// environment variable or quote a provider's 401, so no plain-sentence check
+// lets them through; every caller then said only "Try again", which never helps.
+const MISSING_KEY = /\bno (?:openai |gemini )?api key\b|\b[A-Z]+_API_KEY is required\b/i;
+const REFUSED_KEY = /invalid_api_key|incorrect api key|api key not valid|api_key_invalid|error code: 401\b/i;
+
 /** The part of an error a user may read, or undefined. For a load error's `detail`. */
 export function errorDetail(err: unknown): string | undefined {
   const message = err instanceof Error ? err.message.trim() : "";
+  if (MISSING_KEY.test(message)) return "Add an API key in Settings › AI & models.";
+  if (REFUSED_KEY.test(message)) return "Check your API key in Settings › AI & models.";
   return isPlainSentence(message) ? message : undefined;
 }
 

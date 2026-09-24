@@ -604,8 +604,9 @@ def test_saved_key_is_a_hint_not_a_placeholder():
     # Only a configured key has the hint line; the inputs align at the bottom.
     assert re.search(r'className="grid items-end gap-4 @lg/setting:grid-cols-2">\s*<KeyField', src)
     # The format is a hint while no key is saved; the field itself stays blank.
-    assert 'hintUnset="Starts with sk-."' in src
-    assert 'hintUnset="Starts with AIza."' in src
+    # …and where to get one (lane 9 first-read): the hint is words and a link, never a value.
+    assert ">platform.openai.com</NewTabLink>. It starts with sk-." in src
+    assert ">aistudio.google.com</NewTabLink>. It starts with AIza." in src
     assert "placeholder=" not in src
     _order(
         src,

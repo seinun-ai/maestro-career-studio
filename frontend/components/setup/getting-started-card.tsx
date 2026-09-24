@@ -78,7 +78,11 @@ export function GettingStartedCard() {
   }
   if (setupStatus.isLoading || !status || status.complete) return null;
 
-  const rows = buildSetupSteps(status, pathname);
+  // A PDF step with nothing left to do is not a step (the strip drops it too);
+  // it stays while a few templates still need TeX.
+  const rows = buildSetupSteps(status, pathname).filter(
+    (row) => !(row.id === "engines" && row.done && status.engines.pdflatex.available),
+  );
   return (
     <>
       <Card className="border-primary/20 bg-primary/[0.03]">

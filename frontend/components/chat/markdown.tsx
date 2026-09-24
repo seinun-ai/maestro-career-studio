@@ -5,6 +5,8 @@ import ReactMarkdown from "react-markdown";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 
+import { NewTabCue } from "@/components/new-tab-link";
+
 /**
  * Assistant-message markdown, pinned to the app's type scale. Raw HTML stays
  * disabled (react-markdown default) — the content is model-generated.
@@ -33,9 +35,10 @@ const COMPONENTS: ComponentProps<typeof ReactMarkdown>["components"] = {
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      className="text-primary underline underline-offset-2"
+      className="text-primary inline-flex items-center gap-0.5 underline underline-offset-2"
     >
       {children}
+      <NewTabCue />
     </a>
   ),
   code: ({ className, children }) =>

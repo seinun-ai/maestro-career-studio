@@ -4,6 +4,7 @@ import { useId } from "react";
 import { BookOpen } from "lucide-react";
 
 import { GuardedLink as Link } from "@/components/guarded-link";
+import { NewTabCue } from "@/components/new-tab-link";
 import { buttonVariants } from "@/components/ui/button";
 import {
   Card,
@@ -35,7 +36,8 @@ const LINKS = [
  * - Read: get_career_context, kb_list_entities, kb_get_entity, kb_list_points,
  *   get_job_search_brief (location, work authorization, persona).
  * - Add to and change: kb_capture, kb_ingest_resume and kb_edit_point leave
- *   bullets in draft (kb_approve_points approves them after your yes);
+ *   bullets in draft; kb_approve_points approves or retires them, and its "only after
+ *   the user said yes" is a docstring rule the agent is given, not a server check;
  *   kb_create_entity, kb_edit_entity and kb_edit_profile write at once.
  * - Resumes: create_base_resume, duplicate_base_resume, update_base_resume,
  *   edit_base_resume, tailor_application, tailor_session, quick_tailor.
@@ -47,7 +49,7 @@ const LINKS = [
  *   keep them).
  * - Daily limit: services/proposals._enforce_daily_cap refuses a recorded yes
  *   past the cap (reserved in the last 24 hours). The yes is recorded by the
- *   agent, so it is an audit trail, not a lock, as the paragraph says.
+ *   agent, so the app can't stop one that skips it, as the paragraph says.
  * - Browser apps: stdio MCP on this computer only (docs/GETTING_STARTED.md §5).
  */
 export function ConnectedAgentsCard() {
@@ -86,6 +88,10 @@ export function ConnectedAgentsCard() {
                   for you to approve. Other changes, such as an item&apos;s dates or your summary,
                   skills and contact details, apply at once.
                 </li>
+                <li>
+                  Approve bullets, or mark them Not used, in your career history. They&apos;re told to do
+                  this only after you say yes. That&apos;s a rule they&apos;re given, not a lock.
+                </li>
                 <li>Create, edit and tailor your resumes.</li>
                 <li>Fill in and submit applications you queued, after your yes.</li>
               </ul>
@@ -104,12 +110,12 @@ export function ConnectedAgentsCard() {
           <p className="text-muted-foreground max-w-[65ch]">
             Maestro CS itself never looks for jobs or submits an application. Before each
             submit, the agent asks for your yes and records it. The daily limit below counts
-            those yeses over the last 24 hours. That record is an audit trail, not a lock, so
-            stay with the agent while it applies.
+            those yeses over the last 24 hours. The app records each yes but can&apos;t stop an
+            agent, so stay with it while it applies.
           </p>
           <p className="text-muted-foreground max-w-[65ch]">
             Two helpers are part of the app, not connected agents: the Assistant, which you talk
-            to inside this app, and Companion, the Maestro CS browser extension, which saves jobs
+            to inside this app, and the Companion, the Maestro CS browser extension, which saves jobs
             and fills application forms in your browser.
           </p>
           <div className="flex flex-wrap gap-2">
@@ -125,6 +131,7 @@ export function ConnectedAgentsCard() {
               >
                 <BookOpen className="size-4" aria-hidden="true" />
                 {label}
+                <NewTabCue />
               </a>
             ))}
           </div>

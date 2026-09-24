@@ -34,7 +34,7 @@ export default function RouteError({
       <TriangleAlert className="text-muted-foreground/50 size-8" aria-hidden />
       <h1 className="text-lg font-medium">Something went wrong</h1>
       <p className="text-muted-foreground text-sm">
-        This page didn&apos;t load. Your data is safe.
+        This page didn&apos;t load. Anything you saved is safe.
       </p>
       {process.env.NODE_ENV === "development" && error.message && (
         <pre className="bg-muted/40 text-muted-foreground max-w-full overflow-x-auto rounded-md px-3 py-2 text-left text-xs">

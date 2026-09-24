@@ -43,3 +43,37 @@ export const RESUME_FILE_ACCEPT = [
   "application/json",
   ...DOCUMENT_MIMES,
 ].join(",");
+
+// Each extension's name on screen, in the order a list reads them.
+const TYPE_NAMES: readonly (readonly [string, string])[] = [
+  [".pdf", "PDF"],
+  [".docx", "Word"],
+  [".md", "Markdown"],
+  [".markdown", "Markdown"],
+  [".txt", "text"],
+  [".tex", "LaTeX"],
+  [".json", "JSON"],
+];
+const IMAGE_NAMES: readonly (readonly [string, string])[] = [
+  [".png", "PNG"],
+  [".jpg", "JPG"],
+  [".jpeg", "JPG"],
+  [".webp", "WebP"],
+];
+
+/** "A, B or C". */
+function orList(items: string[]): string {
+  return items.length < 2 ? (items[0] ?? "") : `${items.slice(0, -1).join(", ")} or ${items.at(-1)}`;
+}
+
+/** The file types an `accept` list takes, in words: "PDF, Word, Markdown, text, LaTeX or JSON".
+ *  Read from the picker's own list, so a rejection names what THAT picker takes. */
+export function acceptedTypesLabel(accept: string): string {
+  const entries = new Set(accept.split(",").map((entry) => entry.trim().toLowerCase()));
+  const named = (table: typeof TYPE_NAMES) => [
+    ...new Set(table.filter(([ext]) => entries.has(ext)).map(([, name]) => name)),
+  ];
+  const images = named(IMAGE_NAMES);
+  const types = [...named(TYPE_NAMES), ...(images.length ? [`an image (${orList(images)})`] : [])];
+  return types.length ? orList(types) : "a different file";
+}

@@ -29,7 +29,7 @@ import type { SettingValue } from "@/lib/types";
 export function PersonaSection({
   draftDisabledReason,
 }: {
-  /** Why "Draft from my career" cannot run yet, or undefined when it can. */
+  /** Why "Draft from my career history" cannot run yet, or undefined when it can. */
   draftDisabledReason?: string;
 }) {
   const query = useQuery({
@@ -41,7 +41,7 @@ export function PersonaSection({
     <SettingCard
       id="persona"
       title="Persona"
-      description="How you'd describe yourself as a candidate: your goals, strengths and how you work. It sets the tone of tailoring and answers, and never adds facts to your resume."
+      description="How you'd describe yourself as a candidate: your goals, strengths and how you work. It sets the tone of tailoring, cover letters and answers, and never adds facts to your resume."
       errorTitle="Couldn't load your persona."
       query={query}
     >
@@ -141,7 +141,7 @@ function PersonaEditor({
           onClick={() => draftOnce(editRevision.current)}
         >
           {draft.isPending ? <Loader2 className="animate-spin" aria-hidden="true" /> : null}
-          Draft from my career
+          Draft from my career history
         </Button>
       </SettingCardAction>
       {draftDisabledReason ? (

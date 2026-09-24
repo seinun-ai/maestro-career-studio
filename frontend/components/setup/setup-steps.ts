@@ -119,7 +119,7 @@ export function buildSetupSteps(
       id: "import",
       label: "Import resumes",
       title: "Import your resumes",
-      detail: `${count(bases, "base resume", "base resumes")}, ${count(items, "career history item", "career history items")}`,
+      detail: `${count(bases, "base resume", "base resumes")}, ${count(items, "item", "items")} in your career history`,
       done: status.import_resumes.done,
       required: true,
       home: "/career",
@@ -128,7 +128,7 @@ export function buildSetupSteps(
     {
       id: "autofill",
       label: `Autofill: ${readiness}% done`,
-      title: "Add your form answers",
+      title: "Add your answers for job forms",
       detail: missing ? `${readiness}% done. ${missing}` : `${readiness}% done.`,
       done: status.autofill.done,
       home: "/profile",
@@ -147,7 +147,7 @@ export function buildSetupSteps(
     {
       id: "persona",
       label: "Persona",
-      title: "Write your persona",
+      title: "Describe yourself as a candidate (persona)",
       done: status.persona.done,
       home: "/profile",
       anchor: "persona",
@@ -170,8 +170,8 @@ export function buildSetupSteps(
       label: "PDF output",
       title: "PDF output",
       detail: status.engines.pdflatex.available
-        ? "Ready"
-        : "Ready. A few templates need extra software to look their best.",
+        ? "PDF creation is ready."
+        : "PDF creation is ready. A few templates need extra software to look their best.",
       done: status.engines.typst.available,
       home: "/templates",
       anchor: "template-gallery",

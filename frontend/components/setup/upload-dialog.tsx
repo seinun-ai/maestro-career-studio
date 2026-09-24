@@ -157,7 +157,7 @@ export function UploadDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent size="lg" finalFocus={finalFocus}>
         <DialogHeader>
-          <DialogTitle>Add files</DialogTitle>
+          <DialogTitle>Import resumes and documents</DialogTitle>
           <DialogDescription>
             Resumes become base resumes. Other documents add detail to your
             career history.

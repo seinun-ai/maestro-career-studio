@@ -90,7 +90,7 @@ function EndpointDisclosure(props: EndpointProps) {
               Using <code className="font-mono text-xs">{info.base_url}</code>
             </>
           ) : (
-            "Not set. Models run on the OpenAI and Gemini APIs."
+            "Not set. Models run on OpenAI and Gemini."
           )}
         </p>
         <Button
@@ -163,9 +163,12 @@ function EndpointControls({ info, draft, onDraft, saving, onSave }: EndpointProp
         )}
       </div>
       <div className="grid content-start gap-1.5">
-        <Label htmlFor={jsonModeId}>Structured replies</Label>
+        {/* json_mode: Auto sends response_format only to OpenAI's own API; Off never
+            sends it, which is what a server that rejects the field needs. */}
+        <Label htmlFor={jsonModeId}>Strict reply format</Label>
         <p id={jsonModeHintId} className="text-muted-foreground text-xs">
-          Leave on Auto unless your server shows errors.
+          Asks the model to reply in the exact format the app reads. Leave on Auto. If your
+          server shows errors, choose Off.
         </p>
         <Select
           value={info.json_mode}

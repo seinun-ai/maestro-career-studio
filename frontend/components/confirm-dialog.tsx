@@ -28,6 +28,11 @@ export interface ConfirmOptions {
   cancelLabel?: string;
   destructive?: boolean;
   /**
+   * Grants a standing permission (the Companion's consent switches). Opens on
+   * Cancel, like a destructive confirm: a reflex Enter must never consent.
+   */
+  consent?: boolean;
+  /**
    * Where focus goes on close, when not the element that opened the confirm
    * (a menu item is gone by then). Null falls through to the default below.
    */
@@ -95,7 +100,7 @@ export function ConfirmDialogProvider({ children }: { children: ReactNode }) {
         <DialogContent
           showCloseButton={false}
           className="sm:max-w-md"
-          initialFocus={opts?.destructive ? cancelRef : confirmRef}
+          initialFocus={opts?.destructive || opts?.consent ? cancelRef : confirmRef}
           finalFocus={() => finalFocusOn(opts?.returnFocus?.() ?? returnPoint.current())}
         >
           <DialogHeader>

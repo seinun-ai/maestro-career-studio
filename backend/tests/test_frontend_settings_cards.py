@@ -131,7 +131,8 @@ def test_the_model_words_live_in_one_import_free_helper():
     assert 'new Map([\n  ["openai", "OpenAI"],\n  ["gemini", "Gemini"],\n]);' in _MODEL_LIB
     assert 'if (source === "configured") return "In use";' in _MODEL_LIB
     assert 'return "Built-in";' in _MODEL_LIB
-    assert "return option.label.trim() !== option.id;" in _MODEL_LIB
+    # The id shows only when it says more than the name (lib/model-catalog.test.ts has the cases).
+    assert "if (name === id) return false;" in _MODEL_LIB
 
 
 def test_an_unknown_provider_reads_as_a_word():
@@ -388,7 +389,7 @@ def test_a_save_that_disables_itself_keeps_focus():
         ("prompts-section.tsx", "onClick={() => resetOnce()}"),
         ("persona-section.tsx", "onClick={() => saveOnce(value)}"),
         ("llm-endpoint.tsx", "onSave({ base_url: draft?.trim() || null })"),
-        ("autofill-section.tsx", '{isFillingFromResume ? "Filling…" : "Fill from resume"}'),
+        ("autofill-section.tsx", '{isFillingFromResume ? "Filling…" : "Fill from career history"}'),
     ]
     for rel, marker in cases:
         button = _button_at(_read(f"components/settings/{rel}"), marker)

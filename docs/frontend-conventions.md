@@ -612,7 +612,9 @@
   so every close returned to the unmounted field: `<body>` (New career
   item's title, `initialFocus={titleRef}` now). `ConfirmDialogProvider` names the
   element: Cancel for a `destructive` confirm (a reflex Enter must not
-  confirm an irreversible delete), the affirmative button otherwise. **Known
+  confirm an irreversible delete) and for a `consent` one (the Companion's
+  permission switches: Enter must never grant one), the affirmative button
+  otherwise. **Known
   open defect:** a confirm opened from a `DropdownMenu` ends up with focus on
   the menu item — the menu's focus restore races the dialog's initial focus.
   The studio's ⋯ menu does not (its Rebuild confirm starts inside the dialog;
@@ -1097,7 +1099,9 @@
   - *Errors*: "Couldn't <what failed>." then what to do next. Build it with
     `couldnt(what, err)` from `lib/error-text.ts`; a load error passes
     `errorDetail(err)`. A server's `detail` reaches the screen only when it
-    is a plain sentence written for the user (`isPlainSentence`); raw server
+    is a plain sentence written for the user (`isPlainSentence`), and a
+    missing or refused API key reads as its fix ("Add an API key in Settings ›
+    AI & models.") whatever the server's words; raw server
     text, JSON, schema paths (`experience.2.bullets.0`), status codes and
     developer steps never do. `lib/api.ts` (and the `/api` proxy route) write
     the can't-reach-the-server words for a desktop user and log the
@@ -1129,8 +1133,16 @@
   (`TOOL_PHRASES`, one chip per phrase, "Working…" for a tool the map lacks),
   never a tool name; every tool in `chat_tools.py` has a phrase (pinned).
   Deleting a chat asks first, like every other delete, and focus moves to
-  the next chat once the row has gone. New chat starts through
-  `useSingleFlight`.
+  the next chat (else the previous, else New chat) as the confirm closes.
+  New chat starts through `useSingleFlight`. One composer serves both
+  layouts, so the first message never remounts it (focus stays in it). Your
+  message shows while the reply streams, the working chips are a polite
+  `role="status"`, and a send the server saved nothing of puts the text back.
+  A refusal before the stream (422: no API key, a model without tools) sits
+  beside the composer with a link to Settings. A history that didn't load
+  says so, with Try again, never an empty list. A link that leaves the app
+  (`target="_blank"`) carries `NewTabCue` (components/new-tab-link.tsx): an
+  icon, and "(opens in a new tab)" for a screen reader.
 - **Settings vs Profile — which page and tab does a new setting go on?**
   `/settings` is how the SYSTEM behaves, in tabs (`lib/settings-tabs.ts`):
   **AI & models** (API keys, models, AI instructions), **Tailoring** (Quick tailor

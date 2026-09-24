@@ -76,7 +76,7 @@ export function MarketSection() {
                 Country
               </Label>
               <p id="market-select-hint" className="text-muted-foreground text-xs">
-                Sets the currency for jobs and which diversity questions apply.
+                Sets the default currency for jobs you save and which diversity questions apply.
               </p>
               <Select
                 value={selected}

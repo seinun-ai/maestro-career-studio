@@ -38,36 +38,41 @@ const AUTO_APPLY_FIELDS: {
   {
     key: "max_submissions_per_day",
     label: "Applications per day",
-    hint: "Your yes before a submit reserves a slot for 24 hours.",
+    // services/proposals.py: a yes to submit (approved) reserves a slot; a decline frees it.
+    hint: "Each application you say yes to submit counts for 24 hours.",
     min: 1,
     max: 100,
   },
   {
     key: "max_proposals_per_run",
-    label: "Proposals per hunt",
-    // No hint: the label already says it.
-    hint: "",
+    label: "Jobs per search",
+    // Enforced agent-side only (job_search_brief hands it over; the server counts nothing).
+    hint: "Agents are told to file no more than this from one search.",
     min: 1,
     max: 100,
   },
   {
     key: "proposal_expiry_days",
-    label: "Clear unreviewed proposals after (days)",
-    hint: "Queued proposals stay.",
+    // expire_stale: To review and Needs you decisions become "expired", which the
+    // inbox lists under History; nothing is deleted. The clock starts at filing.
+    label: "Move unreviewed jobs to History after (days)",
+    hint: "Counts from when the job was filed. Queued jobs stay.",
     min: 1,
     max: 90,
   },
   {
     key: "auto_pick_floor",
+    // ATS is spelled out once on this tab, here, where it first appears. Both
+    // pick limits are playbook rules the agent is given (docs/playbooks/agent-apply.md).
     label: "Lowest ATS score to pick a resume",
-    hint: "Below this, you choose the base resume.",
+    hint: "An ATS score is how an applicant tracking system rates a resume for a job. Below this, agents ask you which base resume to use.",
     min: 0,
     max: 100,
   },
   {
     key: "auto_pick_margin",
     label: "Lead needed to pick a resume",
-    hint: "How many points the best base resume must lead the next one by.",
+    hint: "Agents pick a base resume on their own only when its ATS score leads the next one by this many points.",
     min: 0,
     max: 100,
   },

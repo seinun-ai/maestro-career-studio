@@ -1,10 +1,11 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useId, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Loader2, X } from "lucide-react";
 import { toast } from "sonner";
 
+import { NewTabLink } from "@/components/new-tab-link";
 import { SettingCard } from "@/components/settings/setting-card";
 import { ACTION_ROW } from "@/components/settings/setting-layout";
 import { useLeaveGuard } from "@/hooks/use-leave-guard";
@@ -22,7 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { apiFetch } from "@/lib/api";
-import { couldnt } from "@/lib/error-text";
+import { couldnt, errorDetail } from "@/lib/error-text";
 import { modelName, providerLabel, showsModelId } from "@/lib/model-catalog";
 import type { CapabilityReport, OpenAIInfo } from "@/lib/types";
 
@@ -124,6 +125,8 @@ export function ModelsSection() {
       const missing = CAPABILITY_LABELS.filter(({ key }) => !report[key]).map(
         ({ label }) => label,
       );
+      // The name the picker shows, not the id the server sent back.
+      const name = modelName(info.data?.model_options ?? [], report.model);
       if (report.reachable === false) {
         // The call never reached the model, so this says nothing about it —
         // and nothing was recorded. Blaming the model here is what sent the
@@ -131,15 +134,20 @@ export function ModelsSection() {
         // The server's reason goes to the console: it is the provider's own
         // text (a status code, a URL), not words for the screen.
         console.error("model test: unreachable", report.errors);
-        toast.error(
-          `Couldn't reach ${serverName(info.data, report.model)}, so ${report.model} wasn't tested. ` +
-            `Check your API key and server address, then try again.`,
-        );
+        toast.error(unreachableText(info.data, report.model, name));
+        return;
+      }
+      // With no key (or a refused one) every capability fails on the key, and
+      // the report still reads as three Nos: the key is the cause, not the model.
+      const keyProblem = keyProblemIn(report);
+      if (keyProblem) {
+        toast.error(`Couldn't test ${name}. ${keyProblem}`);
       } else if (missing.length === 0) {
-        toast.success(`${report.model} works with every feature`);
+        toast.success(`${name} works with every feature`);
       } else {
         toast.warning(
-          `${report.model} can't do ${missing.join(", ")}. Everything else works.`,
+          `${name} can't do ${missing.join(", ")}.` +
+            (missing.length < CAPABILITY_LABELS.length ? " Everything else works." : ""),
         );
       }
     },
@@ -181,11 +189,25 @@ export function ModelsSection() {
   );
 }
 
-/** Who a model test calls: the custom AI server when one is set, else the model's provider. */
-function serverName(info: OpenAIInfo | undefined, model: string): string {
-  if (!info || info.custom_endpoint) return "your AI server";
+/** The key problem a test's errors name, in words ("Add an API key in Settings › AI & models."), if any. */
+function keyProblemIn(report: CapabilityReport): string | undefined {
+  return Object.values(report.errors)
+    .map((error) => errorDetail(new Error(error)))
+    .find((detail) => detail?.includes("API key"));
+}
+
+/** A model test that never reached the model, and what to check: the custom AI server's address
+ *  when one is set, else the provider's API key (there is no address to check then). */
+function unreachableText(info: OpenAIInfo | undefined, model: string, name: string): string {
+  if (!info || info.custom_endpoint) {
+    return `Couldn't reach your AI server, so ${name} wasn't tested. Check the server address, then try again.`;
+  }
   const option = info.model_options.find((o) => o.id === model);
-  return option ? providerLabel(option.provider) : "the AI provider";
+  if (!option) {
+    return `Couldn't reach the AI provider, so ${name} wasn't tested. Check your API key, then try again.`;
+  }
+  const provider = providerLabel(option.provider);
+  return `Couldn't reach ${provider}, so ${name} wasn't tested. Check your ${provider} API key, then try again.`;
 }
 
 /** One role: its picker, then the chosen model's measured capabilities. */
@@ -289,9 +311,11 @@ function CapabilityMark({
   gates: string;
   error: string | undefined;
 }) {
+  // The provider's own error is not words for the screen: only a plain one (a key problem, named) is added.
+  const detail = error ? errorDetail(new Error(error)) : undefined;
   const reason = ok
     ? `${label}: supported. Enables ${gates}`
-    : `${label}: ${error ?? "unsupported"}. Disables ${gates}`;
+    : `${label}: not supported. Disables ${gates}.${detail ? ` ${detail}` : ""}`;
   // The reason is read as text, not only from `title`, which a keyboard or a
   // screen reader never reaches. The mark and the chip say it visually.
   return (
@@ -360,7 +384,8 @@ export function ApiKeysSection() {
     <SettingCard
       id="api-keys"
       title="API keys"
-      description="Lets the app use OpenAI or Gemini. You need at least one."
+      // A custom AI server on this computer needs no key (llm._get_client).
+      description="Lets the app use OpenAI or Gemini. You need one unless you use a custom AI server."
       errorTitle="Couldn't load your API keys."
       skeleton="h-32 w-full"
       query={info}
@@ -374,7 +399,12 @@ export function ApiKeysSection() {
           <div className="grid items-end gap-4 @lg/setting:grid-cols-2">
             <KeyField
               label="OpenAI API key"
-              hintUnset="Starts with sk-."
+              hintUnset={
+                <>
+                  Get one at{" "}
+                  <NewTabLink href="https://platform.openai.com/api-keys">platform.openai.com</NewTabLink>. It starts with sk-.
+                </>
+              }
               configured={data.api_key_configured}
               source={data.openai_key_source}
               value={openaiKey}
@@ -383,7 +413,12 @@ export function ApiKeysSection() {
             />
             <KeyField
               label="Gemini API key"
-              hintUnset="Starts with AIza."
+              hintUnset={
+                <>
+                  Get one at{" "}
+                  <NewTabLink href="https://aistudio.google.com/apikey">aistudio.google.com</NewTabLink>. It starts with AIza.
+                </>
+              }
               configured={data.gemini_api_key_configured}
               source={data.gemini_key_source}
               value={geminiKey}
@@ -428,7 +463,8 @@ function KeyField({
   onChange,
 }: {
   label: string;
-  hintUnset: string;
+  /** Where to get a key and what it looks like, while none is saved. */
+  hintUnset: ReactNode;
   configured: boolean;
   source: OpenAIInfo["openai_key_source"];
   value: string | null;

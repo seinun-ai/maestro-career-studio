@@ -3,6 +3,8 @@
 import React, { useRef, useState } from "react";
 import { Upload } from "lucide-react";
 
+import { acceptedTypesLabel } from "@/lib/upload-accept";
+
 export type DropzoneRejection = { file: File; reason: string };
 
 function formatBytes(bytes: number): string {
@@ -77,7 +79,8 @@ export function Dropzone({
         if (!matchesExt) {
           rejected.push({
             file,
-            reason: "This file type isn't supported. Use PDF, Word, Markdown or text.",
+            // The caller's own list: a resume picker takes JSON, a document picker images.
+            reason: `This file type isn't supported. Use ${acceptedTypesLabel(accept)}.`,
           });
           return;
         }

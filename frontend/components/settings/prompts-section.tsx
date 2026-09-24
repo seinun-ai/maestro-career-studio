@@ -35,7 +35,7 @@ const ESSENTIAL_PROMPTS: PromptMeta[] = [
   {
     key: "gap_tailor",
     title: "Tailoring from your answers",
-    description: "How your gap answers go into a tailored resume.",
+    description: "How your answers from gap analysis go into a tailored resume.",
   },
   {
     key: "chat_system",
@@ -48,24 +48,26 @@ const ESSENTIAL_KEYS = new Set(ESSENTIAL_PROMPTS.map((p) => p.key));
 // Words for the other prompts (one per file in backend/app/prompts/). A key
 // this map lacks still shows, titled by the key itself.
 const PROMPT_TITLES = new Map<string, Omit<PromptMeta, "key">>([
-  ["autofill_choose", { title: "Autofill choices", description: "How Companion picks answers for form choices." }],
+  ["autofill_choose", { title: "Autofill choices", description: "How the Companion picks answers for form choices." }],
   ["base_from_kb_plan", { title: "New base resume plan", description: "How items are picked for a new base resume." }],
-  ["base_resume_instruct", { title: "Ask for changes", description: "How the studio suggests edits." }],
+  ["base_resume_instruct", { title: "Ask for changes", description: "How the resume editor suggests edits." }],
   ["coherence_check", { title: "Wording checks", description: "How a tailored resume is checked for flow." }],
   ["extract_jd", { title: "Reading job descriptions", description: "How a job description becomes job details." }],
-  ["gap_enrichment", { title: "Gap suggestions", description: "How gaps get suggested answers." }],
+  // The prompt asks a question where a skill is missing; it never asserts one.
+  ["gap_enrichment", { title: "Gap suggestions", description: "Suggested wording and a question for you on each gap. It never claims a skill your resume doesn't show." }],
   ["kb_adapt", { title: "Rewording bullets", description: "How bullets are reworded for a resume." }],
   ["kb_capture", { title: "Quick capture", description: "How an update becomes draft bullets." }],
   ["kb_cluster_points", { title: "Merging bullets", description: "How similar bullets are combined." }],
   ["kb_document_ingest", { title: "Reading documents", description: "How a document becomes draft bullets." }],
-  ["kb_entity_resolve", { title: "Matching items", description: "How a new bullet finds its item." }],
+  ["kb_entity_resolve", { title: "Matching items", description: "How roles and projects on your resumes are matched to career history items." }],
   ["kb_mint", { title: "Drafting bullets", description: "How bullets are drafted from a document." }],
   ["kb_resume_parse", { title: "Reading resume files", description: "How an imported resume is read." }],
   ["persona_draft", { title: "Persona draft", description: "How your persona is drafted." }],
   ["resume_bullet_classify", { title: "Rating bullets", description: "How the health check rates each bullet." }],
   ["resume_bullet_rewrite", { title: "Rewriting bullets", description: "How the health check writes new wording." }],
   ["resume_finding_verify", { title: "Checking issues", description: "How the health check confirms an issue." }],
-  ["tailoring_skill", { title: "Tailoring skills", description: "How skills are added while tailoring." }],
+  // Prepended to every tailoring prompt (prompt_assembly._skill_preamble).
+  ["tailoring_skill", { title: "Tailoring rules", description: "The honesty and wording rules for every tailoring edit." }],
 ]);
 
 export function PromptsSection() {
@@ -184,6 +186,7 @@ function PromptCard({
   const saveOnce = useSingleFlight(save.mutate);
   const resetOnce = useSingleFlight(reset.mutate);
   const bodyId = useId();
+  const hintId = useId();
 
   return (
     <CardSection className="p-0">
@@ -212,12 +215,17 @@ function PromptCard({
       </button>
       {open && (
         <div id={bodyId} className="grid gap-3 px-3 pb-3">
+          {/* Prompts fill `$name` and `${name}` from the app's data (string.Template). */}
+          <p id={hintId} className="text-muted-foreground text-xs">
+            Keep every word that starts with $. The app fills them in.
+          </p>
           <Textarea
             rows={10}
             value={value}
             onChange={(e) => setValue(e.target.value)}
             className="font-mono text-xs"
             aria-label={`${name} instructions`}
+            aria-describedby={hintId}
           />
           <div className={ACTION_ROW}>
             <Button

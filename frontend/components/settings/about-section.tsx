@@ -3,6 +3,7 @@
 import { useId, useState, type ReactNode } from "react";
 import { ChevronRight } from "lucide-react";
 
+import { NewTabLink } from "@/components/new-tab-link";
 import { SettingCard } from "@/components/settings/setting-card";
 import { useVersion } from "@/hooks/use-version";
 import { FRONTEND_VERSION } from "@/lib/version";
@@ -26,16 +27,7 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
 /** A link that opens the user's browser. The app itself never asks GitHub
  *  anything; clicking one is the user opening a page. */
 function OutLink({ href, children }: { href: string; children: ReactNode }) {
-  return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="underline underline-offset-4 hover:no-underline"
-    >
-      {children}
-    </a>
-  );
+  return <NewTabLink href={href}>{children}</NewTabLink>;
 }
 
 export function AboutSection() {

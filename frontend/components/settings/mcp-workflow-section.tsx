@@ -53,7 +53,7 @@ export function McpWorkflowSection() {
     <SettingCard
       id="agent-hints"
       title="Next-step hints for connected agents"
-      description="Adds a suggested next step to what the app tells a connected agent, so Claude or Codex can walk the tailoring workflow without being told each step. Turn it off to keep responses minimal."
+      description="Adds a suggested next step to what the app tells a connected agent, so Claude or Codex can go from scoring to tailoring to applying without being told each step. Turn it off for shorter replies."
       errorTitle="Couldn't load this setting."
       skeleton="h-11 w-full"
       query={setting}
