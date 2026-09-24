@@ -352,7 +352,13 @@
   and reloads for a state without `__NA`. A Next upgrade re-runs the
   Back/Forward browser checks. `GuardedLink` uses `router.replace` while
   the duplicate is the current entry, so no duplicate is left under the new
-  page. Persona, Autofill and Prompts register while their explicit Save is
+  page. Page identity is the PATHNAME (`samePage`): Next keeps a page mounted
+  across a search or hash change, so a settings tab rewriting `?tab=` is not
+  leaving, the sentinel survives it, and a `GuardedLink` to another tab of
+  the same page does not ask. A page that remounts on a search change must
+  not rely on this. When a tab opened by a hash or an in-page jump hides the
+  panel holding focus, `focusIfStranded` (`lib/focus.ts`) moves it to the
+  open panel. Persona, Autofill and Prompts register while their explicit Save is
   dirty. `/new` registers while a pasted job description has not been
   extracted.
 - **The Q&A cover-letter editor closes only after its save lands**
@@ -900,7 +906,13 @@
   Connected agents, Appearance, About; Profile is About you, Autofill).
   `?tab=` names the tab and the default tab has none; a tab click writes it
   with the native `history.replaceState` (no server round trip, no new
-  history entry). A new card adds its id to its tab's `anchors` (pinned).
+  history entry). The tab hook reads `?tab=` with `useSearchParams`, never
+  the page's `searchParams` prop, which keeps its ARRIVAL value after a
+  native write (a link to another tab of the same page then opened
+  nothing); the page still calls `use(searchParams)`, which makes the route
+  dynamic so the server renders the named tab and the hook needs no
+  `<Suspense>` (without it `next build` fails). A new card adds its id to its
+  tab's `anchors` (pinned).
   A deep link is `anchorHref(home, cardId)`, which adds the tab, so the
   server renders the right panel (pinned: no source writes a hash-only
   `/settings#` or `/profile#` link); an old hash-only link still opens its

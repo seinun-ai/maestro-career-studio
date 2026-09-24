@@ -89,6 +89,13 @@ class Tab {
     this.run(this.feed({ type: "wrote", how, entry: this.entry(), length: this.slots.length }));
   }
 
+  /** A same-page tab switch: the tab hook's native replaceState. Next copies its own state in,
+   *  without our fields, so the stamp decides whether the entry is still the duplicate. */
+  switchTab(url: string) {
+    this.write("replace", url, false);
+    this.shown = url;
+  }
+
   /** A clean in-app link (GuardedLink passes straight through). */
   link(url: string) {
     assert.equal(this.blocked, false);
@@ -748,4 +755,61 @@ test("a push is the entry it left + 1; a replace keeps the number, and the senti
   const elsewhere = { ...refreshed, url: "/other" };
   assert.deepEqual(stampAfterWrite("replace", before, elsewhere, 9, 5), { at: 5, sentinel: false });
   assert.deepEqual(stampAfterWrite("push", before, refreshed, 9, 5), { at: 6, sentinel: false });
+});
+
+test("a tab switch keeps the duplicate: Back asks, Stay returns to the tab, Leave leaves the page", () => {
+  const tab = dirtyStudio();
+  tab.switchTab("/studio?tab=b");
+  assert.equal(tab.slots[tab.index].sentinel, true, "still the duplicate");
+  tab.back();
+  assert.equal(tab.asking, true, "a Back off a switched tab still asks");
+  assert.equal(tab.shown, "/studio?tab=b", "Next did not render the older tab");
+  tab.answer(false);
+  tab.agrees();
+  assert.equal(tab.url, "/studio?tab=b");
+  tab.back();
+  tab.answer(true);
+  tab.agrees();
+  assert.equal(tab.shown, "/list");
+});
+
+test("a tab switch, then a save: Back leaves in one press", () => {
+  const tab = dirtyStudio();
+  tab.switchTab("/studio?tab=b");
+  tab.saved();
+  tab.back();
+  assert.equal(tab.asking, false);
+  tab.agrees();
+  assert.equal(tab.shown, "/list");
+});
+
+test("a clean tab switch writes no entry, and Back leaves the page", () => {
+  const tab = new Tab("/list");
+  tab.link("/studio");
+  const length = tab.slots.length;
+  tab.switchTab("/studio?tab=b");
+  assert.equal(tab.slots.length, length);
+  tab.back();
+  tab.agrees();
+  assert.equal(tab.shown, "/list");
+});
+
+test("a tab switch, then an edit: the duplicate carries the tab", () => {
+  const tab = new Tab("/list");
+  tab.link("/studio");
+  tab.switchTab("/studio?tab=b");
+  tab.edit();
+  assert.equal(tab.slots[tab.index].sentinel, true);
+  assert.equal(tab.url, "/studio?tab=b");
+  tab.back();
+  assert.equal(tab.asking, true);
+  tab.answer(false);
+  tab.agrees();
+});
+
+test("a pathname change still drops the duplicate flag", () => {
+  const tab = dirtyStudio();
+  tab.saved();
+  tab.link("/other");
+  assert.equal(tab.slots[tab.index].sentinel, false);
 });

@@ -6,6 +6,7 @@ import {
   TABBABLE,
   finalFocusOn,
   focusIfDropped,
+  focusIfStranded,
   focusReturnPoint,
   focusSuccessor,
   focusTarget,
@@ -79,6 +80,7 @@ class El {
       return this.attrs.tabindex !== undefined && this.attrs.tabindex !== "-1";
     }
     if (selector === '[tabindex="-1"]') return this.attrs.tabindex === "-1";
+    if (selector === "[inert]") return "inert" in this.attrs;
     throw new Error(`stand-in DOM: unknown selector ${selector}`);
   }
 
@@ -290,4 +292,20 @@ test("inputs, textareas and contenteditables hold drafts; buttons do not", () =>
   assert.equal(holdsDraft(asEl(editable)), true);
   assert.equal(holdsDraft(asEl(h("button"))), false);
   assert.equal(holdsDraft(null), false);
+});
+
+test("focusIfStranded takes focus from <body> or an inert panel, never from a live control", () => {
+  const hidden = h("div", { role: "tabpanel", inert: "" }, h("button", { id: "old" }));
+  const shownPanel = h("div", { role: "tabpanel", tabindex: "0", id: "new" });
+  const live = h("button", { id: "live" });
+  doc.body.append(hidden, shownPanel, live);
+  (doc.getElementById("old") as El).focus();
+  focusIfStranded(asEl(shownPanel));
+  assert.equal(doc.activeElement, shownPanel);
+  live.focus();
+  focusIfStranded(asEl(shownPanel));
+  assert.equal(doc.activeElement, live);
+  doc.activeElement = doc.body;
+  focusIfStranded(asEl(shownPanel));
+  assert.equal(doc.activeElement, shownPanel);
 });

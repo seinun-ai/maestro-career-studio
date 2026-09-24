@@ -12,6 +12,7 @@ import {
   markSentinel,
   onInAppBlockedChange,
   readEntry,
+  samePage,
   stampAfterWrite,
   stampState,
   startGuard,
@@ -66,7 +67,7 @@ function feed(event: GuardEvent): GuardCommand[] {
   stampHooks().guard = next;
   // The page's own entry, for a Stay the machine cannot place (restorePage).
   const state = window.history.state as object | null;
-  if (state && next.here.kind === "next" && next.here.url === next.page) {
+  if (state && next.here.kind === "next" && samePage(next.here.url, next.page)) {
     pageSnapshot = { state, href: window.location.href };
   }
   return commands;

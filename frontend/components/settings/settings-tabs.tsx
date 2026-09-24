@@ -1,8 +1,16 @@
 "use client";
 
-import { useState, useSyncExternalStore, type ReactNode } from "react";
+import {
+  useLayoutEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from "react";
+import { useSearchParams } from "next/navigation";
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { focusIfStranded } from "@/lib/focus";
 import {
   parseTab,
   tabForAnchor,
@@ -25,8 +33,12 @@ const noAnchor = () => "";
 
 /**
  * Which tab is open. Three inputs, newest wins:
- * - `?tab=` from the page's `searchParams` (server-rendered, so an internal link that carries it never
- *   flashes the default tab);
+ * - `?tab=`, read with `useSearchParams`. The page reads its `searchParams` prop, which makes the
+ *   route dynamic: the server renders the tab the URL names (an internal link that carries it never
+ *   flashes the default tab), and this hook needs no `<Suspense>` boundary. The prop itself is NOT
+ *   read here: it keeps the ARRIVAL value after a native `replaceState` (Next restores the entry's
+ *   tree, not the page's props), so a later link to another tab of this page (`/profile` from
+ *   `/profile?tab=autofill`) would parse the same value and open nothing;
  * - the hash, once hydrated: `/profile#autofill` opens the tab that renders `#autofill` (old links,
  *   docs, and `useFocusSection`'s in-page jumps, which announce the anchor with a `hashchange`);
  * - a click on the tab row.
@@ -37,11 +49,8 @@ const noAnchor = () => "";
  * RSC payload on every click and flip the tab only when that lands. The written URL drops the hash, so a
  * reload opens what is on screen.
  */
-export function useSettingsTab(
-  page: SettingsPage,
-  param: string | readonly string[] | undefined,
-) {
-  const urlTab = parseTab(page, param);
+export function useSettingsTab(page: SettingsPage) {
+  const urlTab = parseTab(page, useSearchParams().getAll("tab"));
   const anchor = useSyncExternalStore(subscribeToLocation, readAnchor, noAnchor);
   const [tab, setTab] = useState(urlTab);
   const [seen, setSeen] = useState({ urlTab, anchor: "" });
@@ -51,6 +60,16 @@ export function useSettingsTab(
     if (anchored) setTab(anchored);
     else if (urlTab !== seen.urlTab) setTab(urlTab);
   }
+
+  // A tab opened by anything but the tab row (a hash link, an in-page jump from inside another
+  // panel) can hide the panel that holds focus. Inert blurs only at the browser's next focus fixup,
+  // so this runs as a layout effect and also accepts focus still sitting inside `[inert]`.
+  const shown = useRef(tab);
+  useLayoutEffect(() => {
+    if (shown.current === tab) return;
+    shown.current = tab;
+    focusIfStranded(document.querySelector<HTMLElement>(`[data-settings-tab="${tab}"]`));
+  }, [tab]);
 
   const select = (next: string) => {
     const value = parseTab(page, next);
@@ -74,14 +93,12 @@ const LIST_LABEL: Record<SettingsPage, string> = {
  */
 export function SettingsTabs({
   page,
-  param,
   panels,
 }: {
   page: SettingsPage;
-  param: string | readonly string[] | undefined;
   panels: Record<string, ReactNode>;
 }) {
-  const [tab, select] = useSettingsTab(page, param);
+  const [tab, select] = useSettingsTab(page);
   return (
     <Tabs value={tab} onValueChange={(value) => select(String(value))} className="gap-4">
       <TabsList aria-label={LIST_LABEL[page]}>

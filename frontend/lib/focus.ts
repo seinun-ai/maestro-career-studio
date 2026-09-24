@@ -17,6 +17,16 @@ export function focusIfDropped(target: HTMLElement | null | undefined): void {
 }
 
 /**
+ * Focus `target` when focus has nowhere useful to be: on <body>, or inside an `inert` subtree (a tab
+ * panel another control just hid, which the browser blurs only at its next focus fixup).
+ */
+export function focusIfStranded(target: HTMLElement | null | undefined): void {
+  const active = document.activeElement;
+  if (active && active !== document.body && !active.closest("[inert]")) return;
+  target?.focus({ preventScroll: true });
+}
+
+/**
  * Where focus goes back to if `el` disappears. The ancestors are read NOW, while `el` is attached: a removed
  * subtree has no path back to the document. The answer is `el` while it is still connected, else the nearest
  * `tabIndex={-1}` ancestor still connected (a panel that opted in), else the main area.

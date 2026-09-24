@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { type ComponentProps, useCallback } from "react";
 
 import { useConfirm } from "@/components/confirm-dialog";
-import { allowLeave, isSentinelState, leaveBlocked } from "@/lib/leave-guard";
+import { allowLeave, isSentinelState, leaveBlocked, samePage } from "@/lib/leave-guard";
 
 /** True at once when nothing is unsaved, else asks. The one copy of the question. */
 export function useConfirmLeave() {
@@ -35,7 +35,9 @@ type GuardedLinkProps = Omit<ComponentProps<typeof Link>, "href" | "onNavigate">
  * so an awaited confirm would be too late. On "Leave" it replays the navigation through
  * the router; the replay drops Link's `transitionTypes` and its link status
  * (`useLinkStatus`), which nothing uses today. Modifier-clicks, downloads and external
- * URLs never reach `onNavigate`, and none of them unmounts this page.
+ * URLs never reach `onNavigate`, and none of them unmounts this page. Neither does a link to
+ * this same page (another settings tab, `/settings?tab=agents#auto-apply`): Next keeps a page
+ * mounted across a search or hash change, so it passes straight through without asking.
  */
 export function GuardedLink({ href, replace, scroll, ...props }: GuardedLinkProps) {
   const router = useRouter();
@@ -47,7 +49,7 @@ export function GuardedLink({ href, replace, scroll, ...props }: GuardedLinkProp
       replace={replace}
       scroll={scroll}
       onNavigate={(event) => {
-        if (!leaveBlocked("in-app")) return;
+        if (!leaveBlocked("in-app") || samePage(href, window.location.pathname)) return;
         event.preventDefault();
         void confirmLeave().then((leave) => {
           if (!leave) return;

@@ -88,17 +88,22 @@ def test_tab_panels_stay_mounted_and_the_url_is_written_natively():
     assert "useRouter" not in src
     assert re.search(r"\brouter\.(?:replace|push)\(", src) is None
     assert "useSyncExternalStore(subscribeToLocation, readAnchor, noAnchor)" in src
+    # The live URL, not the page's searchParams prop: the prop keeps the arrival value after a
+    # native replaceState, so a link to another tab of the same page opened nothing.
+    assert 'parseTab(page, useSearchParams().getAll("tab"))' in src
+    assert "param" not in src
 
 
-def test_both_pages_read_the_tab_from_their_search_params():
-    """`searchParams` + `use()` (the job page's pattern): the server renders the named tab, so
-    an internal link that carries `?tab=` never flashes the default one, and no Suspense
-    boundary is needed (useSearchParams under the root layout would need one)."""
+def test_both_pages_read_their_search_params_so_the_server_renders_the_tab():
+    """`use(searchParams)` makes the route dynamic: the server renders the tab `?tab=` names (an
+    internal link that carries it never flashes the default one), and SettingsTabs'
+    useSearchParams needs no Suspense boundary. Without it `next build` prerenders the page
+    and fails ("useSearchParams() should be wrapped in a suspense boundary")."""
     for page, name in (("app/settings/page.tsx", "settings"), ("app/profile/page.tsx", "profile")):
         src = _read(page)
-        assert "const { tab } = use(searchParams);" in src, page
-        assert f'<SettingsTabs\n        page="{name}"\n        param={{tab}}' in src, page
-        assert "useSearchParams" not in src, page
+        assert "\n  use(searchParams);\n" in src, page
+        assert f'<SettingsTabs\n        page="{name}"\n        panels={{{{' in src, page
+        assert "useSearchParams(" not in src, page  # the page itself needs no Suspense
 
 
 def test_connected_agents_keeps_its_order_and_a_place_for_the_explainer():

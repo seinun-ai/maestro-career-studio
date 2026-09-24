@@ -46,7 +46,9 @@ export default function SettingsPage({
 }: {
   searchParams: Promise<{ tab?: string | string[] }>;
 }) {
-  const { tab } = use(searchParams);
+  // Read, not used: it makes the route dynamic, so the server renders the tab `?tab=` names and
+  // SettingsTabs' useSearchParams needs no Suspense boundary (see useSettingsTab).
+  use(searchParams);
   useFocusSection();
 
   return (
@@ -58,7 +60,6 @@ export default function SettingsPage({
       />
       <SettingsTabs
         page="settings"
-        param={tab}
         panels={{
           models: (
             <>

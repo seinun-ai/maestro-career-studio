@@ -44,8 +44,11 @@ def test_guarded_link_cancels_before_it_asks():
     prevent = src.index("event.preventDefault()", blocked)
     ask = src.index("confirmLeave()", prevent)
     assert blocked < prevent < ask
-    # With nothing unsaved it must stay plain Link: the early return, not its inverse.
-    assert 'if (!leaveBlocked("in-app")) return;' in src[on_nav:prevent]
+    # With nothing unsaved it must stay plain Link: the early return, not its inverse. A link to
+    # the same page (another settings tab) unmounts nothing, so it does not ask either.
+    assert 'if (!leaveBlocked("in-app") || samePage(href, window.location.pathname)) return;' in src[
+        on_nav:prevent
+    ]
     allow = src.index("allowLeave()")
     assert allow < src.index("router.push(")
     assert allow < src.index("router.replace(")
@@ -258,3 +261,24 @@ def test_registered_editors_have_no_router():
         "app/templates/[id]/page.tsx",
     ):
         assert "useRouter" not in _read(rel), rel
+
+
+def test_a_search_or_hash_change_is_the_same_page():
+    """A settings tab rewrites ?tab= on the sentinel. Compared by full URL, the duplicate was
+    lost (a dead Back after a save) and a dirty Back asked about leaving a page it stays on."""
+    src = _read("lib/leave-guard.ts")
+    assert "export function samePage(" in src
+    assert "before.sentinel && samePage(before.url, written.url)" in src
+    assert src.count("if (samePage(e.url, t.page)) {") == 2  # arrive and judge
+    assert "above?.sentinel && samePage(above.url, e.url)" in src
+    assert "before.url === written.url" not in src
+    assert "e.url === t.page" not in src
+    assert "samePage(next.here.url, next.page)" in _read("components/leave-guard-listeners.tsx")
+
+
+def test_a_panel_hidden_under_focus_hands_focus_to_the_open_panel():
+    focus = _read("lib/focus.ts")
+    assert '!active.closest("[inert]")' in focus
+    tabs = _read("components/settings/settings-tabs.tsx")
+    assert "useLayoutEffect(" in tabs
+    assert "focusIfStranded(document.querySelector<HTMLElement>(`[data-settings-tab=\"${tab}\"]`));" in tabs
