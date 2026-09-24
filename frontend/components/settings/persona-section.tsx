@@ -7,6 +7,8 @@ import { toast } from "sonner";
 
 import { useLeaveGuard } from "@/hooks/use-leave-guard";
 import { SettingCard, SettingCardAction } from "@/components/settings/setting-card";
+import { ACTION_ROW } from "@/components/settings/setting-layout";
+import { useFocusOnNextCommit } from "@/hooks/use-focus-return";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { apiFetch } from "@/lib/api";
@@ -82,6 +84,10 @@ function PersonaEditor({
   // Bumped on every edit so a draft that lands late can tell whether the user
   // has typed since it was requested.
   const editRevision = useRef(0);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  // The Save row leaves once the text is clean (after a Save or a Discard),
+  // taking the pressed button, and focus, with it.
+  const focusNext = useFocusOnNextCommit();
 
   const save = useMutation({
     mutationFn: (next: string) =>
@@ -91,6 +97,7 @@ function PersonaEditor({
       }),
     onSuccess: (result) => {
       setSaved(result.value);
+      focusNext(textareaRef);
       qc.setQueryData(["settings", "persona"], result);
       void qc.invalidateQueries({ queryKey: ["setup-status"] });
       toast.success("Persona saved");
@@ -120,7 +127,7 @@ function PersonaEditor({
   const reasonId = useId();
 
   return (
-    <>
+    <div className="grid gap-4">
       {/* A card-level action, so it sits beside the title. It stays focusable
           while disabled: a native `disabled` dropped focus to <body> when a
           draft started, and hid the reason (a `title`) from the keyboard. */}
@@ -145,6 +152,7 @@ function PersonaEditor({
         </p>
       ) : null}
       <Textarea
+        ref={textareaRef}
         rows={10}
         value={value}
         placeholder={PLACEHOLDER}
@@ -155,30 +163,35 @@ function PersonaEditor({
         }}
       />
       {dirty ? (
-        <div className="mt-3 flex items-center justify-end gap-2">
+        <div className={ACTION_ROW}>
           <Button
             type="button"
             variant="ghost"
             size="sm"
+            focusableWhenDisabled
+            disabled={save.isPending}
+            className="data-disabled:pointer-events-none data-disabled:opacity-50"
             onClick={() => {
               setValue(saved);
               editRevision.current += 1;
+              focusNext(textareaRef);
             }}
-            disabled={save.isPending}
           >
             Discard
           </Button>
           <Button
             type="button"
             size="sm"
-            onClick={() => save.mutate(value)}
+            focusableWhenDisabled
             disabled={save.isPending}
+            className="data-disabled:pointer-events-none data-disabled:opacity-50"
+            onClick={() => save.mutate(value)}
           >
-            {save.isPending ? <Loader2 className="animate-spin" /> : null}
+            {save.isPending ? <Loader2 className="animate-spin" aria-hidden="true" /> : null}
             Save
           </Button>
         </div>
       ) : null}
-    </>
+    </div>
   );
 }

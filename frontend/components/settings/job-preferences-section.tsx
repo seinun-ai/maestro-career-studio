@@ -139,12 +139,12 @@ function JobPreferencesEditor({
   };
 
   return (
-    <div className="space-y-5">
+    <div className="grid gap-6">
       <SettingCardAction>
         <AutosaveStatus pending={pending} failed={failed} onRetry={retry} />
       </SettingCardAction>
       <div className="grid gap-1.5">
-        <Label htmlFor="job-preferences-roles" className="text-xs" optional>
+        <Label htmlFor="job-preferences-roles" optional>
           Favored roles
         </Label>
         <RolePicker
@@ -156,9 +156,9 @@ function JobPreferencesEditor({
         />
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid items-start gap-4 @lg/setting:grid-cols-2">
         <div className="grid gap-1.5">
-          <Label htmlFor="job-preferences-years" className="text-xs" optional>
+          <Label htmlFor="job-preferences-years" optional>
             Years of experience
           </Label>
           <Input
@@ -167,7 +167,6 @@ function JobPreferencesEditor({
             min={0}
             max={60}
             value={preferences.years_experience ?? ""}
-            placeholder="e.g. 6"
             onChange={(event) => {
               const raw = event.target.value;
               update((current) => {
@@ -186,7 +185,7 @@ function JobPreferencesEditor({
         </div>
 
         <div className="grid gap-1.5">
-          <Label htmlFor="job-preferences-remote" className="text-xs" optional>
+          <Label htmlFor="job-preferences-remote" optional>
             Remote
           </Label>
           <Select
@@ -219,7 +218,7 @@ function JobPreferencesEditor({
         </div>
 
         <div className="grid gap-1.5">
-          <Label htmlFor="job-preferences-locations" className="text-xs" optional>
+          <Label htmlFor="job-preferences-locations" optional>
             Locations
           </Label>
           <p id="job-preferences-locations-hint" className="text-muted-foreground text-xs">
@@ -230,7 +229,6 @@ function JobPreferencesEditor({
             id="job-preferences-locations"
             value={locationsText}
             rows={2}
-            placeholder={"e.g. Chicago, IL\nNew York, NY"}
             onChange={(event) => {
               const value = event.target.value;
               setLocationsText(value);
@@ -246,13 +244,12 @@ function JobPreferencesEditor({
         </div>
 
         <div className="grid gap-1.5">
-          <Label htmlFor="job-preferences-min-salary" className="text-xs" optional>
+          <Label htmlFor="job-preferences-min-salary" optional>
             Min salary
           </Label>
           <Input
             id="job-preferences-min-salary"
             value={preferences.min_salary ?? ""}
-            placeholder="e.g. $140,000"
             onChange={(event) =>
               update((current) => ({
                 ...current,
@@ -264,7 +261,7 @@ function JobPreferencesEditor({
       </div>
 
       <div className="grid gap-1.5">
-        <Label id={employmentLabelId} className="text-xs" optional>
+        <Label id={employmentLabelId} optional>
           Employment types
         </Label>
         <div role="group" aria-labelledby={employmentLabelId} className="flex flex-wrap gap-2">

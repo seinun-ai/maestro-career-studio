@@ -6,7 +6,7 @@ import { toast } from "sonner";
 
 import { AutosaveStatus } from "@/components/settings/autosave-status";
 import { SettingCard, SettingCardAction } from "@/components/settings/setting-card";
-import { Label } from "@/components/ui/label";
+import { SwitchRow } from "@/components/settings/setting-layout";
 import { Switch } from "@/components/ui/switch";
 import { apiFetch } from "@/lib/api";
 import type { McpWorkflowSetting } from "@/lib/types";
@@ -62,11 +62,7 @@ export function McpWorkflowSection() {
           <SettingCardAction>
             <AutosaveStatus pending={save.isPending} failed={save.isError} />
           </SettingCardAction>
-          {/* Same row geometry as the quick-tailor switches. */}
-          <div className="flex items-center justify-between gap-4 px-3 py-2.5">
-            <Label htmlFor={id} className="text-sm">
-              Suggest the next step in MCP tool results
-            </Label>
+          <SwitchRow htmlFor={id} label="Suggest the next step in MCP tool results">
             <Switch
               id={id}
               checked={data.value.hints}
@@ -74,7 +70,7 @@ export function McpWorkflowSection() {
                 if (!save.isPending) save.mutate(checked);
               }}
             />
-          </div>
+          </SwitchRow>
         </>
       )}
     </SettingCard>

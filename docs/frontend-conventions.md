@@ -352,8 +352,8 @@
   and reloads for a state without `__NA`. A Next upgrade re-runs the
   Back/Forward browser checks. `GuardedLink` uses `router.replace` while
   the duplicate is the current entry, so no duplicate is left under the new
-  page. Persona, Autofill and Prompts register while their explicit Save is
-  dirty. `/new` registers while a pasted job description has not been
+  page. Persona, Autofill, Prompts, Auto-apply and API keys register while
+  their explicit Save is dirty. `/new` registers while a pasted job description has not been
   extracted.
 - **The Q&A cover-letter editor closes only after its save lands**
   (`components/qa-tab.tsx`). Save awaits `mutateAsync`: a failed save toasts
@@ -836,11 +836,34 @@
 - **Hint text sits between the label and the control, wired with
   `aria-describedby`.** Below the control it is read only after you have
   already typed; unwired it does not exist for a screen reader at all.
-- **A long form is divided by rules on the `<legend>`, not the `<fieldset>`.**
-  The browser lays a legend over the fieldset's block-start border and CLIPS
-  the border behind it (full-width legends make `border-t` paint nothing;
-  `display:flex` does not opt out). Group headings use the same uppercase
-  tracked style as the Career KB read view.
+- **Settings rhythm: every settings and profile card spaces itself one way**
+  (`components/settings/setting-layout.tsx`; pinned by
+  `test_frontend_settings_cards.py`). The card shell keeps `Card`'s `gap-4 py-4`
+  (header to body 16px). A card body is a `grid gap-6` stack of blocks, never
+  `space-y-*`, `mb-*` or `mt-*`. Fields in a block sit `grid gap-4`, in two
+  columns only at `@lg/setting:grid-cols-2` and three at
+  `@2xl/setting:grid-cols-3` (`@3xl` for Autofill): the columns read the card
+  body's width (`CardContent` is `@container/setting`), never the viewport's.
+  Measured with the sidebar pinned, the body is about 944px at 1280, 432px at
+  768 and 295px at 375, so every card is one column at 768: a viewport
+  `sm:grid-cols-2` gave each API key 208px, too narrow for its label and
+  status. One field is `grid gap-1.5`: a `Label` at its default size (no
+  `text-xs` or colour override), then a hint, then the control. A list of
+  switches is a `divide-y` of `SwitchRow` (44px tall, the label toggles it).
+  Save and its siblings are the body's last row, `ACTION_ROW`: right-aligned,
+  secondary first (Discard, Reset to default, then Save). A second containment
+  level is a tonal `CardSection`, never a bordered box. A Remove in a list is
+  `RemoveButton`: muted at rest, destructive only on hover or focus, named for
+  its row (`Remove school 2`), and focus goes on to a neighbour or the Add
+  button when its row leaves.
+- **A long form is divided by group headings, not rules.** A group is a
+  `<fieldset>` whose `<legend>` uses `GROUP_HEADING`
+  (`components/settings/setting-layout.tsx`, the career history read view's
+  uppercase tracked style). Groups sit `gap-8` apart. The fieldset stays in
+  block flow (`space-y-4`): a rendered legend is not a grid or flex item, so
+  `gap` never separates it from the first field. If a rule is ever needed, it
+  goes on the legend, because the browser clips a fieldset's block-start
+  border behind a full-width legend.
 - **A labelled tag list is a `<dl>` on a two-column grid**, not a flex row
   with a fixed-width label — under `flex flex-wrap` an overflowing group drops
   BELOW its label while narrower groups stay inline. A grid gives every
@@ -935,6 +958,9 @@
   gap_tailor, chat_system); the other internal prompts sit behind an
   "Advanced prompts" disclosure (`ESSENTIAL_PROMPTS` map in
   components/settings/prompts-section.tsx — update it when adding prompt keys).
+  The disclosure hides its list and never unmounts it, so a collapse keeps
+  typed drafts and their leave-guard registrations; both toggles carry
+  `aria-expanded`.
 - **Derived setup guidance**: Profile starts with `SetupStatusStrip`, then
   Persona (disabled-until-import "Draft from my career"), Market, Job
   preferences, and Autofill. The empty tracker leads with its empty state, what

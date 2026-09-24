@@ -1,10 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { X } from "lucide-react";
 import { toast } from "sonner";
 
+import { IconButton } from "@/components/icon-button";
 import { SettingCard } from "@/components/settings/setting-card";
+import { ACTION_ROW } from "@/components/settings/setting-layout";
+import { useFocusOnNextCommit } from "@/hooks/use-focus-return";
+import { useLeaveGuard } from "@/hooks/use-leave-guard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -93,6 +98,13 @@ function AutoApplyEditor({ initial }: { initial: AutoApplySettings }) {
   const [draft, setDraft] = useState<AutoApplySettings | null>(null);
   const [blockInput, setBlockInput] = useState("");
   const value = draft ?? initial;
+  // Unsaved limits survive a tab switch, but a navigation dropped them silently.
+  useLeaveGuard(draft !== null);
+  // Discard unmounts itself; focus goes to Save, which stays (dimmed, focusable).
+  const saveRef = useRef<HTMLButtonElement>(null);
+  // A removed company takes its focused × with it; focus goes to the add field.
+  const blockInputRef = useRef<HTMLInputElement>(null);
+  const focusNext = useFocusOnNextCommit();
 
   const save = useMutation({
     mutationFn: (next: AutoApplySettings) =>
@@ -125,8 +137,8 @@ function AutoApplyEditor({ initial }: { initial: AutoApplySettings }) {
   };
 
   return (
-    <div className="space-y-4">
-      <div className="grid gap-4 sm:grid-cols-2">
+    <div className="grid gap-6">
+      <div className="grid gap-4 @lg/setting:grid-cols-2">
         {AUTO_APPLY_FIELDS.map((f) => (
           // `grid`, not `space-y`: a bare <label> is display:inline, so
           // on a block stack it shared a line with the input and the two
@@ -169,32 +181,32 @@ function AutoApplyEditor({ initial }: { initial: AutoApplySettings }) {
             {value.company_blocklist.map((name) => (
               <span
                 key={name}
-                className="bg-muted inline-flex h-7 items-center gap-1 rounded-full pr-1.5 pl-3 text-xs"
+                className="bg-muted inline-flex h-7 items-center gap-1 rounded-full pr-0.5 pl-3 text-xs"
               >
                 {name}
-                <button
-                  type="button"
-                  aria-label={`Remove ${name} from blocklist`}
-                  className="hover:bg-background text-muted-foreground rounded-full px-1"
-                  onClick={() =>
+                <IconButton
+                  size="icon-xs"
+                  label={`Remove ${name} from blocklist`}
+                  icon={<X />}
+                  className="text-muted-foreground hover:bg-background rounded-full"
+                  onClick={() => {
                     patch({
                       company_blocklist: value.company_blocklist.filter(
                         (c) => c !== name,
                       ),
-                    })
-                  }
-                >
-                  ×
-                </button>
+                    });
+                    focusNext(blockInputRef);
+                  }}
+                />
               </span>
             ))}
           </div>
         ) : null}
         <div className="flex max-w-sm gap-2">
           <Input
+            ref={blockInputRef}
             id="aa-blocklist"
             aria-describedby="aa-blocklist-hint"
-            placeholder="e.g. Acme Corp"
             value={blockInput}
             onChange={(e) => setBlockInput(e.target.value)}
             onKeyDown={(e) => {
@@ -209,19 +221,29 @@ function AutoApplyEditor({ initial }: { initial: AutoApplySettings }) {
           </Button>
         </div>
       </div>
-      <div className="flex items-center gap-3">
+      <div className={ACTION_ROW}>
+        {draft ? (
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={() => {
+              setDraft(null);
+              focusNext(saveRef);
+            }}
+          >
+            Discard
+          </Button>
+        ) : null}
         <Button
+          ref={saveRef}
           type="button"
+          focusableWhenDisabled
           disabled={!draft || save.isPending}
+          className="data-disabled:pointer-events-none data-disabled:opacity-50"
           onClick={() => draft && save.mutate(draft)}
         >
           {save.isPending ? "Saving…" : "Save"}
         </Button>
-        {draft ? (
-          <Button type="button" variant="ghost" onClick={() => setDraft(null)}>
-            Cancel
-          </Button>
-        ) : null}
       </div>
     </div>
   );

@@ -101,7 +101,7 @@ export function MarketSection() {
             </div>
 
             {current && !current.offers_eeo && (
-              <p className="text-muted-foreground border-muted border-l-2 pl-3 text-xs">
+              <p className="text-muted-foreground max-w-prose text-xs">
                 Maestro CS has no verified voluntary-disclosure question set for{" "}
                 {current.label}, so it does not ask for one. Those categories are
                 not interchangeable between countries, and answering the wrong

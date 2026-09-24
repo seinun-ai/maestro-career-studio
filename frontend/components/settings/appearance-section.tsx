@@ -4,7 +4,7 @@ import { useId, useSyncExternalStore } from "react";
 import { useTheme } from "next-themes";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Label } from "@/components/ui/label";
+import { SwitchRow } from "@/components/settings/setting-layout";
 import { Switch } from "@/components/ui/switch";
 
 /**
@@ -55,18 +55,14 @@ export function AppearanceSection() {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        {/* Same row geometry as the quick-tailor and agent-hint switches. */}
-        <div className="flex items-center justify-between gap-4 px-3 py-2.5">
-          <Label htmlFor={id} className="text-sm">
-            Dark mode
-          </Label>
+        <SwitchRow htmlFor={id} label="Dark mode">
           <Switch
             id={id}
             checked={isDark}
             disabled={!mounted}
             onCheckedChange={(next) => setTheme(next ? "dark" : "light")}
           />
-        </div>
+        </SwitchRow>
       </CardContent>
     </Card>
   );

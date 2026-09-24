@@ -6,6 +6,8 @@ import { Check, Loader2, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { SettingCard } from "@/components/settings/setting-card";
+import { ACTION_ROW } from "@/components/settings/setting-layout";
+import { useLeaveGuard } from "@/hooks/use-leave-guard";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -332,6 +334,8 @@ export function ApiKeysSection() {
   // field entirely and the stored key survives.
   const [openaiKey, setOpenaiKey] = useState<string | null>(null);
   const [geminiKey, setGeminiKey] = useState<string | null>(null);
+  // A typed key survives a tab switch, but a navigation dropped it silently.
+  useLeaveGuard(openaiKey !== null || geminiKey !== null);
 
   const save = useSaveModelSettings(() => {
     setOpenaiKey(null);
@@ -349,10 +353,12 @@ export function ApiKeysSection() {
       query={info}
     >
       {(data) => (
-        <div className="space-y-3">
+        <div className="grid gap-6">
           {/* items-end: only a configured key has the hint line, so the two
-              inputs line up at the bottom rather than the captions at the top. */}
-          <div className="grid items-end gap-3 sm:grid-cols-2">
+              inputs line up at the bottom rather than the captions at the top.
+              Two columns only when the card body has room (32rem): at 768 the
+              viewport's `sm:` gave each key 208px, too narrow for its status. */}
+          <div className="grid items-end gap-4 @lg/setting:grid-cols-2">
             <KeyField
               label="OpenAI API key"
               placeholderUnset="e.g. sk-..."
@@ -372,15 +378,14 @@ export function ApiKeysSection() {
               onChange={setGeminiKey}
             />
           </div>
-          <div className="flex items-center justify-between">
-            <p className="text-muted-foreground text-xs">
-              Leave blank to use defaults from <code>.env</code>.
-            </p>
+          <div className={ACTION_ROW}>
             <Button
               size="sm"
+              focusableWhenDisabled
               disabled={
                 save.isPending || (openaiKey === null && geminiKey === null)
               }
+              className="data-disabled:pointer-events-none data-disabled:opacity-50"
               onClick={() =>
                 // Send only the key the user actually edited. An untouched
                 // field stays absent (preserved); a field cleared to empty
@@ -421,10 +426,8 @@ function KeyField({
   const hintId = useId();
   return (
     <div className="grid gap-1.5">
-      <div className="flex items-center justify-between text-xs">
-        <Label id={labelId} className="text-muted-foreground text-xs font-normal">
-          {label}
-        </Label>
+      <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5 text-xs">
+        <Label id={labelId}>{label}</Label>
         {configured ? (
           // Saying WHERE the key lives matters: one saved here beats .env, so
           // a stale in-app key with a blank .env still reads "configured"
