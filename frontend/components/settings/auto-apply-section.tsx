@@ -100,7 +100,8 @@ function AutoApplyEditor({ initial }: { initial: AutoApplySettings }) {
   const [blockInput, setBlockInput] = useState("");
   const value = draft ?? initial;
   // Unsaved limits survive a tab switch, but a navigation dropped them silently.
-  useLeaveGuard(draft !== null);
+  // A company typed but not yet added is unsaved too.
+  useLeaveGuard(draft !== null || blockInput.trim() !== "");
   // Discard unmounts itself; focus goes to Save, which stays (dimmed, focusable).
   const saveRef = useRef<HTMLButtonElement>(null);
   // A removed company takes its focused × with it; focus goes to the add field.
@@ -175,7 +176,9 @@ function AutoApplyEditor({ initial }: { initial: AutoApplySettings }) {
       <div className="grid gap-1.5">
         <Label htmlFor="aa-blocklist">Company blocklist</Label>
         <p id="aa-blocklist-hint" className="text-muted-foreground text-xs">
-          A connected agent never saves or proposes jobs at these companies.
+          {/* The server refuses only a proposal here (routers/proposals.py):
+              an agent can still save a job at one of these companies. */}
+          Connected agents can&apos;t propose jobs at these companies.
           Skipping one job does not block its company.
         </p>
         {value.company_blocklist.length > 0 ? (

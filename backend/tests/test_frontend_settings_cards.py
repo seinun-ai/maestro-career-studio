@@ -353,7 +353,8 @@ def test_explicit_save_cards_ask_before_leaving():
     # Planner decision 18 (C-Q8): both drafts survive a tab switch, and a navigation dropped them.
     auto = _read("components/settings/auto-apply-section.tsx")
     keys = _read("components/settings/models-section.tsx")
-    assert "useLeaveGuard(draft !== null);" in auto
+    # A company typed but not yet added is typed text too (never lose typed text).
+    assert 'useLeaveGuard(draft !== null || blockInput.trim() !== "");' in auto
     assert "useLeaveGuard(openaiKey !== null || geminiKey !== null);" in keys
     # A save clears the draft, so the guard stops asking about saved work.
     saved = _slice(auto, "onSuccess: (result) => {", "},")

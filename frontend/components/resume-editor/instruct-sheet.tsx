@@ -180,7 +180,7 @@ export function InstructSheet({
               <div className="flex flex-wrap items-center gap-2 text-sm">
                 <Badge variant="outline" className="gap-1 text-xs">
                   <Sparkles className="size-3" aria-hidden="true" />
-                  {hasOps ? "Suggested edit" : "Answer"}
+                  {hasOps ? `Suggested ${proposal.ops_count === 1 ? "edit" : "edits"}` : "Answer"}
                 </Badge>
                 {proposal.summary ? (
                   <span className="font-medium">{proposal.summary}</span>

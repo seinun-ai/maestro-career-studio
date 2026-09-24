@@ -31,10 +31,30 @@ const LINKS = [
  * next-step hints and the Auto-apply limits it explains.
  *
  * Not a SettingCard: it fetches nothing, so it has no loading or error state
- * (the Appearance precedent). Every "can't" is one the server or the tool set
- * enforces; the one guarantee that is only recorded (the yes before a submit)
- * is said to be a record, not a lock, as the README says. It also names the two
- * helpers that are part of the app, so "connected agent" means only MCP clients.
+ * (the Appearance precedent). It names the two helpers that are part of the
+ * app, so "connected agent" means only MCP clients.
+ *
+ * Every line is what the MCP tools allow (backend/mcp_server/server.py), no
+ * more and no less:
+ * - Find jobs, Agent inbox: store_extracted_jd(source="agent"), propose_application.
+ *   Accept or skip is yours; record_triage records the decision you state.
+ * - Read: get_career_context, kb_list_entities, kb_get_entity, kb_list_points,
+ *   get_job_search_brief (location, work authorization, persona).
+ * - Add to and change: kb_capture, kb_ingest_resume and kb_edit_point leave
+ *   bullets in draft (kb_approve_points approves them after your yes);
+ *   kb_create_entity, kb_edit_entity and kb_edit_profile write at once.
+ * - Resumes: create_base_resume, duplicate_base_resume, update_base_resume,
+ *   edit_base_resume, tailor_application, tailor_session, quick_tailor.
+ * - Fill in and submit: list_proposals runs accepted proposals only;
+ *   get_autofill_profile, generate_qa_answers, prepare_application_pdf_upload
+ *   feed the agent's own browser; record_consent records your yes and reserves
+ *   a daily-limit slot; mark_submitted needs a receipt or your own word.
+ * - Can't delete: no MCP tool deletes an item or a bullet (retire and archive
+ *   keep them).
+ * - Daily limit: services/proposals._enforce_daily_cap refuses a recorded yes
+ *   past the cap (reserved in the last 24 hours). The yes is recorded by the
+ *   agent, so it is an audit trail, not a lock, as the paragraph says.
+ * - Browser apps: stdio MCP on this computer only (docs/GETTING_STARTED.md §5).
  */
 export function ConnectedAgentsCard() {
   const canId = useId();
@@ -59,15 +79,21 @@ export function ConnectedAgentsCard() {
                 They can
               </h3>
               <ul aria-labelledby={canId} className="text-muted-foreground grid list-disc gap-1 pl-5">
-                <li>Save and score jobs, and tailor your resumes.</li>
-                <li>Read your career history and job preferences.</li>
                 <li>
-                  Put the jobs they find in your{" "}
+                  Find jobs and file them in your{" "}
                   <Link href="/proposals" className="text-primary underline underline-offset-4">
                     Agent inbox
                   </Link>{" "}
                   for you to accept or skip.
                 </li>
+                <li>Read your career history and job preferences.</li>
+                <li>
+                  Add to and change your career history. New or reworded bullets arrive as drafts
+                  for you to approve. Other changes, such as an item&apos;s dates or your summary,
+                  skills and contact details, apply at once.
+                </li>
+                <li>Create, edit and tailor your resumes.</li>
+                <li>Fill in and submit applications you accepted, after your yes.</li>
               </ul>
             </div>
             <div className="grid content-start gap-1.5">
@@ -75,16 +101,17 @@ export function ConnectedAgentsCard() {
                 They can&apos;t
               </h3>
               <ul aria-labelledby={cantId} className="text-muted-foreground grid list-disc gap-1 pl-5">
-                <li>Apply to more jobs a day than you allow below.</li>
-                <li>Delete anything in your career history.</li>
+                <li>Go past the daily limit below.</li>
+                <li>Delete an item or a bullet from your career history.</li>
                 <li>Connect from claude.ai or chatgpt.com in a browser.</li>
               </ul>
             </div>
           </div>
           <p className="text-muted-foreground max-w-[65ch]">
             Maestro CS itself never looks for jobs or submits an application. Before each
-            submit, the agent asks for your yes and records it. That record is an audit
-            trail, not a lock, so run apply sessions while you watch.
+            submit, the agent asks for your yes and records it. The daily limit below counts
+            those yeses over the last 24 hours. That record is an audit trail, not a lock, so
+            stay with the agent while it applies.
           </p>
           <p className="text-muted-foreground max-w-[65ch]">
             Two helpers are part of the app, not connected agents: the Assistant, which you talk

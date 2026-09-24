@@ -97,8 +97,10 @@ export function AutofillCoverageCard() {
       description:
         `This deletes ${signatures} recorded field ${signatures === 1 ? "shape" : "shapes"}` +
         ` across ${hosts} ${hosts === 1 ? "site" : "sites"}, including which sites they were` +
-        " seen on and when. It cannot be undone. Capture stays on." +
-        " Turn it off in the Companion's ⋯ menu.",
+        " seen on and when. It cannot be undone." +
+        // The Companion has no switch for capture (extension/README.md), so
+        // the confirm names none.
+        " Clearing removes what's recorded so far. Capture continues while the Companion runs.",
       confirmLabel: "Clear data",
       destructive: true,
     });

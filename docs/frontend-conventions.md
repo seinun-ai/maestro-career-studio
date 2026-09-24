@@ -83,7 +83,10 @@
   element (the primitives: Button, Input, Select, Textarea, Checkbox, Tabs,
   Badge), where the border carries the 3:1 and the halo decorates it. A
   translucent focus BORDER is never allowed (the destructive Button's was /40,
-  about 2.1:1 in light mode). A `ring-offset-N` names its surface (`ring-offset-background`):
+  about 2.1:1 in light mode). A variant that sets its own dark border (the
+  outline Button's `dark:border-input`) also sets `dark:focus-visible:border-ring`:
+  the dark border outranks the base focus border, and dark mode showed only the
+  halo (about 2.2:1). A `ring-offset-N` names its surface (`ring-offset-background`):
   the default offset colour is white, a white band around the ring in dark
   mode. `test_frontend_color_roles.py` pins all three by scanning every `.tsx`
   under `app/` and `components/`. `--ring` is pinned at

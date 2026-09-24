@@ -44,19 +44,26 @@ _WORDS = [
      "Your yes before a submit reserves a slot for 24 hours."),
     ("components/settings/auto-apply-section.tsx", '"Proposals per hunt run"', '"Proposals per hunt"'),
     ("components/settings/auto-apply-section.tsx", "The hunt never captures or proposes",
-     "A connected agent never saves or proposes jobs at these companies."),
+     "Connected agents can&apos;t propose jobs at these companies."),
+    # The server refuses only a proposal at a blocked company (routers/proposals.py);
+    # an agent can still save the job.
+    ("components/settings/auto-apply-section.tsx", "never saves", 'aria-describedby="aa-blocklist-hint"'),
     ("components/settings/auto-apply-section.tsx", "Skipping a single", "Skipping one job does not block"),
     ("components/ats-score-panel.tsx", "any open agent proposal", "any open proposal in your Agent inbox"),
     ("components/chat/proposal-card.tsx", "Proposed project", "Suggested project"),
     ("components/chat/edit-proposal-card.tsx", "/> Suggested edit\n",
      '{`Suggested ${proposal.ops_count === 1 ? "edit" : "edits"}`}'),
+    # The badge agrees in number with the chat card's.
+    ("components/resume-editor/instruct-sheet.tsx", '{hasOps ? "Suggested edit" : "Answer"}',
+     '{hasOps ? `Suggested ${proposal.ops_count === 1 ? "edit" : "edits"}` : "Answer"}'),
     ("components/resume-editor/instruct-sheet.tsx", '"Propose again" : "Propose"',
      '"Suggest again" : "Suggest edits"'),
     ("components/resume-editor/instruct-sheet.tsx", "No edits proposed.", "No edits suggested."),
     ("components/resume-editor/instruct-sheet.tsx", "you apply\n            a proposal,",
      "you apply\n            a suggestion,"),
     ("components/settings/quick-tailor-section.tsx", "Fast tailor",
-     "Used by Quick tailor, on the gap analysis page and in the Companion."),
+     "What Quick tailor may change on your resume, on the gap analysis page and in the Companion."),
+    ("components/settings/quick-tailor-section.tsx", "one-shot tailoring", 'title="Quick tailor"'),
     ("components/settings/autofill-section.tsx", "Preset answers the browser extension uses",
      "Preset answers the Companion uses to fill job-application forms."),
     ("components/settings/autofill-section.tsx", "Allow extension to fill these answers",
@@ -65,7 +72,10 @@ _WORDS = [
      "Allow Companion to tick agreement boxes"),
     ("components/settings/autofill-section.tsx", "matching the extension&apos;s",
      "matching the Companion&apos;s repeated form blocks."),
-    ("components/analytics/autofill-coverage-card.tsx", "extension card's", "Turn it off in the Companion's ⋯ menu."),
+    # The Companion has no ⋯ menu and no switch for capture (extension/README.md, "Turn it off").
+    ("components/analytics/autofill-coverage-card.tsx", "extension card's",
+     "Clearing removes what's recorded so far. Capture continues while the Companion runs."),
+    ("components/analytics/autofill-coverage-card.tsx", "⋯ menu", "It cannot be undone."),
     ("components/analytics/autofill-coverage-card.tsx", "where the extension's fill pipeline",
      "where the Companion's fill pipeline fails."),
     ("components/analytics/autofill-coverage-card.tsx", "with the extension to start capturing",
@@ -124,15 +134,53 @@ def test_the_connected_agents_card_explains_before_the_limits():
     assert "setup-mcp.sh" not in card  # only Cursor and others need it; the guide covers it
 
 
+# Exactly what a connected agent can and can't do, checked against the MCP tools
+# (backend/mcp_server/server.py). An overclaim such as "Submit applications for
+# you." without "after your yes", or "Delete anything" when it can't, fails here.
+_CAN = (
+    "Find jobs and file them in your {AGENT_INBOX} for you to accept or skip.",
+    "Read your career history and job preferences.",
+    "Add to and change your career history. New or reworded bullets arrive as drafts for you"
+    " to approve. Other changes, such as an item&apos;s dates or your summary, skills and contact"
+    " details, apply at once.",
+    "Create, edit and tailor your resumes.",
+    "Fill in and submit applications you accepted, after your yes.",
+)
+_CANT = (
+    "Go past the daily limit below.",
+    "Delete an item or a bullet from your career history.",
+    "Connect from claude.ai or chatgpt.com in a browser.",
+)
+_AGENT_INBOX = '<Link href="/proposals" className="text-primary underline underline-offset-4"> Agent inbox </Link>'
+
+
+def _list_items(heading_id: str) -> list[str]:
+    flat = " ".join(_card().split())
+    ul = flat[flat.index(f"<ul aria-labelledby={{{heading_id}}}") :]
+    ul = ul[ul.index(">") + 1 : ul.index("</ul>")]
+    items = re.findall(r"<li>\s*(.*?)\s*</li>", ul)
+    return [re.sub(r"\{/\*.*?\*/\}\s*", "", i).replace('{" "}', " ").replace("  ", " ") for i in items]
+
+
+def test_the_card_says_exactly_what_agents_can_do():
+    assert _list_items("canId") == [c.replace("{AGENT_INBOX}", _AGENT_INBOX) for c in _CAN]
+
+
+def test_the_card_says_exactly_what_agents_cant_do():
+    assert _list_items("cantId") == list(_CANT)
+
+
 def test_the_card_keeps_the_honesty_nuance():
     """Nothing is submitted without a yes, and that yes is a record, not a lock
-    (README, "Going all the way"). The app itself never hunts or applies."""
+    (README, "Going all the way"): the daily limit counts the recorded yeses, so
+    an agent that skips recording isn't stopped. The app itself never hunts or
+    applies."""
     flat = " ".join(_card().split())
     assert "Maestro CS itself never looks for jobs or submits an application." in flat
-    assert "an audit trail, not a lock, so run apply sessions while you watch." in flat
-    for cant in ("Apply to more jobs a day than you allow below.", "Delete anything in your career history.",
-                 "Connect from claude.ai or chatgpt.com in a browser."):
-        assert cant in flat, cant
+    assert "Before each submit, the agent asks for your yes and records it." in flat
+    assert "The daily limit below counts those yeses over the last 24 hours." in flat
+    assert "That record is an audit trail, not a lock, so stay with the agent while it applies." in flat
+    assert "apply sessions" not in flat
 
 
 def test_the_card_names_the_two_helpers_that_are_not_connected_agents():
@@ -144,8 +192,11 @@ def test_the_card_names_the_two_helpers_that_are_not_connected_agents():
 
 def test_each_list_is_named_by_its_heading():
     card = _card()
-    for var in ("canId", "cantId"):
-        assert f"<h3 id={{{var}}}" in card, var
+    # Two ids: one shared id would name both lists "They can".
+    assert re.findall(r"const (\w+) = useId\(\);", card) == ["canId", "cantId"]
+    flat = " ".join(card.split())
+    for var, heading in (("canId", "They can"), ("cantId", "They can&apos;t")):
+        assert f'<h3 id={{{var}}} className="font-medium"> {heading} </h3>' in flat, var
         assert f"<ul aria-labelledby={{{var}}}" in card, var
 
 
@@ -153,8 +204,11 @@ def test_the_card_links_open_where_they_say():
     card = _card()
     assert '<Link href="/proposals" className="text-primary underline underline-offset-4">' in card
     # One external-link shape for the three guides: a new tab, no opener, no referrer.
-    for name in ("CONNECT_AGENT_GUIDE_URL", "JOB_HUNT_SKILL_URL", "AGENT_APPLICATIONS_URL"):
-        assert f"{{ href: {name}, label: " in card, name
+    # Each label names the guide it opens.
+    for name, label in (("CONNECT_AGENT_GUIDE_URL", "How to connect an agent"),
+                        ("JOB_HUNT_SKILL_URL", "Ready-made skills"),
+                        ("AGENT_APPLICATIONS_URL", "How agent applications work")):
+        assert f'{{ href: {name}, label: "{label}" }},' in card, name
     assert len(re.findall(r"<a\s", card)) == 1
     flat = " ".join(card.split())
     assert '<a key={href} href={href} target="_blank" rel="noopener noreferrer"' in flat
@@ -181,6 +235,11 @@ def test_the_card_links_point_at_real_headings():
     for name in ("CONNECT_AGENT_GUIDE_URL", "JOB_HUNT_SKILL_URL", "AGENT_APPLICATIONS_URL"):
         # One definition: a copy left in the card after the lib lands would drift.
         assert len(re.findall(rf"\bconst {name} = ", defs)) == 1, name
+    # The repository the git remote and CITATION.cff name, on its main branch.
+    citation = (_ROOT / "CITATION.cff").read_text(encoding="utf-8")
+    repo = re.search(r'^repository-code: "([^"]+)"$', citation, re.M).group(1)
+    assert repo == "https://github.com/seinun-ai/maestro-career-studio"
+    assert f'const REPO = "{repo}/blob/main";' in defs
     readme = (_ROOT / "README.md").read_text(encoding="utf-8")
     section = re.search(r"^### (Going all the way: .+)$", readme, re.M).group(1)
     assert f"/README.md#{_github_slug(section)}`" in defs
