@@ -460,8 +460,13 @@ def test_needs_you_is_one_list_of_statuses():
     assert "select: (page) => page.total" in hook
     # Under ["proposals"]: every triage invalidation refreshes the count.
     assert 'queryKey: ["proposals", "needs-you-count"]' in hook
+
+
+def test_the_count_polls_every_minute_only_while_seen():
+    """A connected agent changes proposals from outside the tab. React Query
+    pauses the poll while the tab is hidden (M4), and the count always runs (M5)."""
+    hook = _read("hooks/use-needs-you-count.ts")
     assert "refetchInterval: 60_000" in hook
-    # It pauses while the tab is hidden (M4) and always runs (M5).
     assert "refetchIntervalInBackground" not in hook and "enabled:" not in hook
 
 

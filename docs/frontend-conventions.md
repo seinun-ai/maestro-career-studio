@@ -916,6 +916,7 @@
   **Job search** (Applications, Agent inbox, Referrals), **Career library** (Career KB,
   Base Resumes, Templates), **Tools** (Assistant, Analytics); Profile + Settings
   pinned in `SidebarFooter`. The Agent inbox item carries a Needs-you count:
+  it counts the Needs you lane's statuses (`NEEDS_YOU_STATUSES`, `lib/inbox-lanes.ts`),
   `needsYouBadge` (`lib/needs-you.ts`) hides it at 0 or while unknown, the pill
   is `aria-hidden` and the link's `aria-label` reads "Agent inbox, N need you"
   (an sr-only span, out of flow, made Chrome's name "Agent inbox , N…"); it
