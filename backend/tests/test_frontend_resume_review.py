@@ -206,10 +206,20 @@ def test_the_code_view_names_fields_and_lines_not_paths():
 # --- I7: one "must fix" count everywhere --------------------------------------
 
 
-def test_must_fix_counts_only_failed_fatal_checks_everywhere():
+def test_must_fix_counts_only_failed_fatal_checks():
     report = _read("lib/health-report.ts")
     fn = _block(report, "export function healthCounts(", "\n}\n")
     assert 'g.tier === "fatal"' in fn and 'g.status === "fail"' in fn
+    line = _block(report, "export function scoreCompositionLine(", "\n}")
+    assert "one must-fix problem" not in line
+    cards = _read("components/resume-health/finding-cards.tsx")
+    assert '<h2 className="text-sm font-medium">Checks</h2>' in cards
+    assert '{ key: "serious", one: "serious problem", many: "serious problems",' in _flat(cards)
+    group = _block(_read("components/resume-editor/diff-review.tsx"), "function GatesGroup(", "\n}")
+    assert ">\n        Checks\n      </p>" in group and ">\n        Must fix\n" not in group
+
+
+def test_every_health_surface_says_the_same_count():
     page = _read("components/resume-health/health-report-page.tsx")
     assert "const counts = body ? healthCounts(body) : {};" in page
     assert "body.counts?.[key]" not in page
@@ -217,16 +227,7 @@ def test_must_fix_counts_only_failed_fatal_checks_everywhere():
     assert "leftToFix(counts, nonNote.length)" in page
     assert "checkDoneWords(result)" in page and "Check done. Grade ${result.grade}." not in page
     assert "scoreCompositionLine(body.score, body.score_breakdown, gates)" in page
-    badges = _read("components/resume-health/health-badges.tsx")
-    assert "summarizeCounts(healthCounts(data))" in badges
-    cards = _read("components/resume-health/finding-cards.tsx")
-    assert '<h2 className="text-sm font-medium">Checks</h2>' in cards
-    assert '{ key: "serious", one: "serious problem", many: "serious problems",' in _flat(cards)
-    diff = _read("components/resume-editor/diff-review.tsx")
-    group = _block(diff, "function GatesGroup(", "\n}")
-    assert ">\n        Checks\n      </p>" in group and ">\n        Must fix\n" not in group
-    line = _block(report, "export function scoreCompositionLine(", "\n}")
-    assert "one must-fix problem" not in line
+    assert "summarizeCounts(healthCounts(data))" in _read("components/resume-health/health-badges.tsx")
 
 
 # --- I8: a document says what reading it did --------------------------------
@@ -310,7 +311,7 @@ def test_the_project_fields_line_up():
     assert '<div className="grid grid-cols-2 gap-3 sm:items-end">' in project
 
 
-def test_copy_first_read():
+def test_health_copy_first_read():
     # The zone orders the fix list and sets severity; it never weights the score (health_score).
     assert 'ATTENTION_BADGE_LABEL = "Higher priority";' in _read("components/attention-zone.tsx")
     page = _read("components/resume-health/health-report-page.tsx")
@@ -319,6 +320,9 @@ def test_copy_first_read():
     assert "number questions" not in _read("components/resume-health/batch-ask-dialog.tsx")
     cards = _read("components/resume-health/finding-cards.tsx")
     assert "This rating is wrong…" in cards and ">\n            Change rating\n" not in cards
+
+
+def test_career_copy_first_read():
     kb = _read("components/career/inbox-panel.tsx")
     assert "New bullets wait here as drafts until you approve them." in kb
     assert "Check AI-written bullets" not in kb
@@ -326,29 +330,37 @@ def test_copy_first_read():
     # "Items", not the first read's "Entries": the glossary says item, never entry.
     assert 'entries: "Items with dates",' in labels and 'bullets: "Simple list",' in labels
     drawer = _read("components/resume-editor/kb-import-drawer.tsx")
-    assert "unapproved" not in drawer
+    assert "unapproved" not in drawer and "bulletsAdded" in drawer
     assert '{entity.draft_count === 1 ? "draft bullet" : "draft bullets"} not shown' in drawer
-    assert "bulletsAdded" in drawer
+    assert "Update file" in _read("components/career/exports-card.tsx")
+
+
+def test_studio_copy_first_read():
     studio = _read("components/resume-editor/tailored-resume-studio.tsx")
     assert "This tailored resume was changed somewhere else." in studio
     assert "This draft changed outside the editor." not in studio
     assert "how an applicant tracking system rates this resume for the job" in studio
     body = _read("components/resume-editor/editor-body.tsx")
     assert "Copy resume ID" not in body and "Copy ID for connected agents" in body
-    exports = _read("components/career/exports-card.tsx")
-    assert "Update file" in exports
-    formatting = _read("components/resume-editor/formatting-panel.tsx")
-    assert "`${n}pt`" not in formatting and "in`" not in formatting
-    assert "pointsLabel" in formatting and "inchLabel" in formatting
+
+
+def test_versions_and_review_copy_first_read():
     versions = _read("components/resume-versions/version-history-sheet.tsx")
     assert "versionSummaryWords(v.summary)" in versions
     assert "Restored as Version ${created.version_number}" in versions
-    diff = _read("components/resume-versions/version-diff-view.tsx")
-    assert "diffChangeWords(c)" in diff
+    assert "diffChangeWords(c)" in _read("components/resume-versions/version-diff-view.tsx")
     review = _read("components/resume-editor/diff-review.tsx")
     assert "value === \"llm\"" in _block(review, "function ProvenanceChip(", "\n}")
-    gallery = _read("components/templates/template-gallery.tsx")
-    assert "may read some words as joined together" in gallery
+
+
+def test_formatting_units_are_spelled_out():
+    formatting = _read("components/resume-editor/formatting-panel.tsx")
+    assert "`${n}pt`" not in formatting and "in`" not in formatting
+    assert "pointsLabel" in formatting and "inchLabel" in formatting
+
+
+def test_template_and_new_resume_copy_first_read():
+    assert "may read some words as joined together" in _read("components/templates/template-gallery.tsx")
     templates = _read("app/templates/page.tsx")
     assert "Used in this template&apos;s web address and by connected agents." in templates
     nbr = _read("components/base-resumes/new-base-resume-dialog.tsx")

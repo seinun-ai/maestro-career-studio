@@ -63,8 +63,7 @@ def test_apply_creates_missing_entities_via_identity_keys(db_session, tmp_path, 
     ents = db_session.scalars(select(KBEntity)).all()
     # Three items, one bullet: the education and certification adds write no
     # bullet, and the toast reads them from `items_added`, not `created`.
-    assert result["items_added"] == 3
-    assert result["created"] == 1
+    assert (result["items_added"], result["created"]) == (3, 1)
     by_kind = {e.kind: e for e in ents}
     assert by_kind["experience"].org == "OtherCo"
     assert by_kind["experience"].title == "Lead"
