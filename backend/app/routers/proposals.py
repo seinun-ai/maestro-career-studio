@@ -36,6 +36,29 @@ def _job_summary(job: Job) -> JobSummary:
     return JobSummary.model_validate(job)
 
 
+def _read_fields(prop: ApplicationProposal, job: Job) -> dict:
+    """Every ProposalRead field, shared by the list and the detail so a new
+    column cannot reach one read and miss the other."""
+    return {
+        "id": prop.id,
+        "job_id": prop.job_id,
+        "application_id": prop.application_id,
+        "referral_id": prop.referral_id,
+        "status": prop.status,
+        "fit_json": prop.fit_json,
+        "plan_json": prop.plan_json,
+        "evidence_json": prop.evidence_json,
+        "intervention_json": prop.intervention_json,
+        "reason": prop.reason,
+        "proposed_by": prop.proposed_by,
+        "expires_at": prop.expires_at,
+        "cap_reserved_at": prop.cap_reserved_at,
+        "created_at": prop.created_at,
+        "updated_at": prop.updated_at,
+        "job": _job_summary(job),
+    }
+
+
 def _detail(db: Session, prop: ApplicationProposal) -> ProposalDetail:
     job = db.get(Job, prop.job_id)
     if job is None:
@@ -66,24 +89,7 @@ def _detail(db: Session, prop: ApplicationProposal) -> ProposalDetail:
             ]
 
     return ProposalDetail(
-        id=prop.id,
-        job_id=prop.job_id,
-        application_id=prop.application_id,
-        referral_id=prop.referral_id,
-        status=prop.status,
-        fit_json=prop.fit_json,
-        plan_json=prop.plan_json,
-        evidence_json=prop.evidence_json,
-        intervention_json=prop.intervention_json,
-        reason=prop.reason,
-        proposed_by=prop.proposed_by,
-        expires_at=prop.expires_at,
-        cap_reserved_at=prop.cap_reserved_at,
-        created_at=prop.created_at,
-        updated_at=prop.updated_at,
-        job=_job_summary(job),
-        application=app_summary,
-        qa_entries=qa_entries_data,
+        **_read_fields(prop, job), application=app_summary, qa_entries=qa_entries_data,
     )
 
 
@@ -198,27 +204,7 @@ def list_proposals(
     stmt = stmt.order_by(ApplicationProposal.created_at.desc()).offset(offset).limit(limit)
 
     results = db.execute(stmt).all()
-    items = [
-        ProposalRead(
-            id=prop.id,
-            job_id=prop.job_id,
-            application_id=prop.application_id,
-            referral_id=prop.referral_id,
-            status=prop.status,
-            fit_json=prop.fit_json,
-            plan_json=prop.plan_json,
-            evidence_json=prop.evidence_json,
-            intervention_json=prop.intervention_json,
-            reason=prop.reason,
-            proposed_by=prop.proposed_by,
-            expires_at=prop.expires_at,
-            cap_reserved_at=prop.cap_reserved_at,
-            created_at=prop.created_at,
-            updated_at=prop.updated_at,
-            job=_job_summary(job),
-        )
-        for prop, job in results
-    ]
+    items = [ProposalRead(**_read_fields(prop, job)) for prop, job in results]
     return ProposalListResponse(items=items, total=total)
 
 
