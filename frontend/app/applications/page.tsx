@@ -17,6 +17,7 @@ import { toast } from "sonner";
 import { CompanyMonogram } from "@/components/company-monogram";
 import { EmptyState, TableFrame } from "@/components/empty-state";
 import { IconButton } from "@/components/icon-button";
+import { ListCapNotice } from "@/components/list-cap-notice";
 import { ListSearch } from "@/components/list-search";
 import { ListToolbar } from "@/components/list-toolbar";
 import { LoadErrorState } from "@/components/load-error-state";
@@ -54,6 +55,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { apiFetch, promoteJobToAgentQueue } from "@/lib/api";
+import { isListCapped } from "@/lib/list-cap";
 import { isLoadFailure } from "@/lib/query-state";
 import { cn } from "@/lib/utils";
 import {
@@ -112,6 +114,10 @@ function filterLabel(value: Filter): string {
 const FILTER_STORE_KEY = "cs-tracker-filter";
 const SOURCE_STORE_KEY = "cs-tracker-source";
 const SEQUENCE_STORE_KEY = "cs-tracker-seq";
+
+// The API's max page (routers/applications.py, routers/jobs.py: le=500).
+// Older rows are not loaded; the list says so at its end (ListCapNotice).
+const LIST_LIMIT = 500;
 
 function storedValue(key: string): string | null {
   if (typeof window === "undefined") return null;
@@ -184,15 +190,23 @@ function ApplicationsContent() {
   const [sortKey, setSortKey] = useState<SortKey>("created_at");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
 
-  // Two queries total: the summary list carries job fields server-side now.
-  // One unfiltered fetch also gives the filter chips their counts for free.
+  // Two queries: the summary list carries job fields server-side now, and
+  // one unfiltered fetch gives the filter chips their counts for free.
   const apps = useQuery({
     queryKey: ["applications"],
-    queryFn: () => apiFetch<ApplicationSummary[]>("/api/applications?limit=500"),
+    queryFn: () => apiFetch<ApplicationSummary[]>(`/api/applications?limit=${LIST_LIMIT}`),
   });
+  // Saved jobs: agent captures show only under the Agents toggle (the inbox
+  // owns that inventory otherwise), and they are fetched apart from the
+  // user's own, so a busy hunt cannot push the user's saved jobs out of the
+  // 500 (one mixed page did).
+  const savedSource = source === "agent" ? "agent" : "user";
   const savedJobs = useQuery({
-    queryKey: ["jobs", "without-application"],
-    queryFn: () => apiFetch<Job[]>("/api/jobs?without_application=true&limit=500"),
+    queryKey: ["jobs", "without-application", savedSource],
+    queryFn: () =>
+      apiFetch<Job[]>(
+        `/api/jobs?without_application=true&source=${savedSource}&limit=${LIST_LIMIT}`,
+      ),
   });
 
   const patchStatus = useMutation({
@@ -250,15 +264,13 @@ function ApplicationsContent() {
       kind: "application",
       app,
     }));
-    // Saved lane: hide agent-captured hunt inventory unless toggle is Agent
-    // (proposals page owns that inventory when source is All/You).
-    const savedRows: Row[] = (savedJobs.data ?? [])
-      .filter((job) =>
-        source === "agent" ? job.source === "agent" : job.source !== "agent",
-      )
-      .map((job) => ({ kind: "saved" as const, job }));
+    // Already the toggle's source (the query above filters server-side).
+    const savedRows: Row[] = (savedJobs.data ?? []).map((job) => ({
+      kind: "saved" as const,
+      job,
+    }));
     return [...savedRows, ...appRows];
-  }, [apps.data, savedJobs.data, source]);
+  }, [apps.data, savedJobs.data]);
 
   // Source filter before counts so chip totals match what is visible.
   const sourceScopedRows = useMemo(() => {
@@ -331,6 +343,16 @@ function ApplicationsContent() {
   // undefined after a failure, `filtered.length === 0` is true and the branch
   // below hands a user with a full pipeline the brand-new-user onboarding card.
   const loadFailed = isLoadFailure(apps) || isLoadFailure(savedJobs);
+  // What was LOADED hit the cap, whatever the filter or search shows: the
+  // notice is about the fetch, so it stays true under all of them.
+  const caps = [
+    { loaded: apps.data?.length ?? 0, limit: LIST_LIMIT, noun: "applications" },
+    {
+      loaded: savedJobs.data?.length ?? 0,
+      limit: LIST_LIMIT,
+      noun: savedSource === "agent" ? "jobs from connected agents" : "saved jobs",
+    },
+  ].filter(isListCapped);
 
   const writeUrl = (nextFilter: Filter, nextSource: SourceFilter) => {
     const params = new URLSearchParams();
@@ -694,6 +716,14 @@ function ApplicationsContent() {
           </Table>
         </TableFrame>
       )}
+
+      {!loading && !loadFailed && caps.length > 0 ? (
+        <div className="flex flex-col gap-1">
+          {caps.map((cap) => (
+            <ListCapNotice key={cap.noun} {...cap} />
+          ))}
+        </div>
+      ) : null}
     </PageShell>
   );
 }

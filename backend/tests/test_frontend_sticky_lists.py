@@ -220,3 +220,88 @@ def test_the_tracker_search_is_the_shared_list_search():
     # No second copy of the box left behind in the page.
     assert "placeholder=" not in _TRACKER
     assert "<Input" not in _TRACKER
+
+
+# ── A capped list says so ───────────────────────────────────────────────────
+
+
+def _backend_fn(rel: str, fn: str) -> str:
+    src = (_ROOT / "backend" / rel).read_text(encoding="utf-8")
+    i = src.index(f"def {fn}(")
+    return src[i : src.index("\n\n\n", i)]
+
+
+def _backend_limit(rel: str, fn: str) -> tuple[int, int]:
+    """(le=, default) of the endpoint's `limit` query parameter."""
+    m = re.search(
+        r"limit: Annotated\[int, Query\(ge=1, le=(\d+)\)\] = (\d+)", _backend_fn(rel, fn)
+    )
+    assert m, f"{fn}: limit parameter"
+    return int(m.group(1)), int(m.group(2))
+
+
+def test_the_cap_rule_is_pure_and_exact_when_the_server_counts():
+    src = _read("lib/list-cap.ts")
+    assert "import " not in src  # node --test runs it as-is (appendix F finding 7)
+    assert "return total != null ? total > loaded : loaded >= limit;" in src
+    assert (_FRONTEND / "lib/list-cap.test.ts").is_file()
+
+
+def test_the_notice_is_plain_text_not_a_live_region():
+    src = _read("components/list-cap-notice.tsx")
+    assert "listCapSentence(cap)" in src and "<p" in src
+    assert "role=" not in src and "aria-live" not in src
+
+
+def test_the_tracker_asks_for_one_limit_the_api_accepts():
+    m = re.search(r"^const LIST_LIMIT = (\d+);", _TRACKER, re.M)
+    assert m, "LIST_LIMIT"
+    limit = int(m.group(1))
+    # Above the API's max, the request is a 422 and the tracker shows its error.
+    assert limit <= _backend_limit("app/routers/applications.py", "list_applications")[0]
+    assert limit <= _backend_limit("app/routers/jobs.py", "list_jobs")[0]
+    assert "/api/applications?limit=${LIST_LIMIT}" in _TRACKER
+    assert "/api/jobs?without_application=true&source=${savedSource}&limit=${LIST_LIMIT}" in _TRACKER
+    assert "limit=500" not in _TRACKER
+
+
+def test_a_busy_hunt_cannot_push_the_users_saved_jobs_out():
+    """Planner decision 17 (O4): one mixed page of 500 saved jobs counted agent
+    captures, so an active hunt pushed the user's own saved jobs out of it.
+    The user's saved jobs and the agents' captures are fetched apart, keyed
+    by the source the toggle shows."""
+    assert 'const savedSource = source === "agent" ? "agent" : "user";' in _TRACKER
+    assert 'queryKey: ["jobs", "without-application", savedSource],' in _TRACKER
+    # The server filters now; the client no longer splits one mixed page.
+    assert 'job.source !== "agent"' not in _TRACKER
+    assert 'job.source === "agent"' not in _TRACKER
+    assert 'source: Literal["user", "agent"] | None' in _backend_fn("app/routers/jobs.py", "list_jobs")
+
+
+def test_a_capped_tracker_says_so_at_the_end_of_the_list():
+    assert "<ListCapNotice" in _TRACKER[_TRACKER.index("</TableFrame>") :]
+    gate = _TRACKER[_TRACKER.index("{!loading && !loadFailed && caps.length > 0 ? (") :]
+    assert gate.index("<ListCapNotice") < gate.index("</PageShell>")
+    caps = _TRACKER[_TRACKER.index("const caps = [") :]
+    caps = caps[: caps.index("].filter(isListCapped);")]
+    # What is LOADED, before any filter: never `filtered` or `sourceScopedRows`.
+    assert "apps.data?.length ?? 0" in caps and "savedJobs.data?.length ?? 0" in caps
+    assert "filtered" not in caps and "sourceScoped" not in caps
+
+
+def test_the_draft_inbox_says_when_it_is_cut_off():
+    """Planner decision 17 (O8). listKbDrafts sends no limit, so the server's
+    DEFAULT is the cap, and it returns the OLDEST drafts first: the rows left
+    out are the newer ones, and the notice says so."""
+    src = _read("components/career/inbox-panel.tsx")
+    m = re.search(r"^const KB_DRAFTS_LIMIT = (\d+);", src, re.M)
+    assert m, "KB_DRAFTS_LIMIT"
+    assert int(m.group(1)) == _backend_limit("app/routers/career_kb.py", "list_points")[1]
+    assert 'apiFetch<KBInboxPoint[]>("/api/kb/points?state=draft")' in _read("lib/api.ts")
+    assert ".order_by(KBPoint.created_at, KBPoint.id)" in _backend_fn(
+        "app/routers/career_kb.py", "list_points"
+    )
+    assert (
+        '<ListCapNotice loaded={drafts.length} limit={KB_DRAFTS_LIMIT} noun="draft bullets" order="oldest" />'
+        in src
+    )
