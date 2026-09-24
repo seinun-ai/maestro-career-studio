@@ -231,3 +231,20 @@ def test_a_role_slug_is_named_by_its_role():
         assert resume_label(None, "ai_ml_engineer") == "AI/ML Engineer"
         assert resume_label(None, "llmops_engineer") == "LLMOps Engineer"
         assert resume_label(None, "my-custom_resume") == "My Custom Resume"
+
+
+def test_the_startup_log_names_the_settings_tab_as_the_app_does(monkeypatch, caplog):
+    """The no-key warning pointed at "Settings → Models", a card that moved into
+    the AI & models tab (the web app's words, docs/frontend-conventions.md)."""
+    import logging
+
+    from app import main
+    from app.services import llm, model_settings
+
+    monkeypatch.setattr(model_settings, "get_openai_api_key", lambda: None)
+    monkeypatch.setattr(main.app_settings, "openai_api_key", None, raising=False)
+    monkeypatch.setattr(llm, "get_base_url", lambda: None)
+    with caplog.at_level(logging.WARNING, logger="app.main"):
+        main._log_llm_config()
+    assert "Settings › AI & models" in caplog.text
+    assert "Settings → Models" not in caplog.text

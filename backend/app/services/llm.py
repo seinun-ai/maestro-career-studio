@@ -48,9 +48,18 @@ NO_KEY_MESSAGE = (
 NO_GEMINI_KEY_MESSAGE = "No Gemini API key is set. Add one in Settings › AI & models."
 
 
-def _no_answer(reason: str, provider_detail: str) -> LLMProviderError:
-    """The one sentence for a provider that failed a request."""
+_KEY_REFUSED = "your key was refused"
+
+
+def _no_answer(reason: str, provider_detail: str, provider: str = "OpenAI") -> LLMProviderError:
+    """The one sentence for a provider that failed a request. A refused key is not
+    worth retrying, so its sentence names who refused it and the fix, nothing else."""
     logger.warning("model provider failed: %s", provider_detail)
+    if reason == _KEY_REFUSED:
+        return LLMProviderError(
+            f"{provider} refused your API key. Check it in Settings › AI & models.",
+            provider_detail=provider_detail,
+        )
     return LLMProviderError(
         f"The AI model didn't answer ({reason}). Try again, or check your key in "
         "Settings › AI & models.",
@@ -58,18 +67,30 @@ def _no_answer(reason: str, provider_detail: str) -> LLMProviderError:
     )
 
 
+def _openai_provider() -> str:
+    """Who the OpenAI SDK is talking to, as the refused-key sentence names it."""
+    return "Your AI server" if get_base_url() else "OpenAI"
+
+
+def _gemini_reason(status: int, body: str) -> str:
+    """Gemini refuses a bad key with a 400 whose body says API_KEY_INVALID."""
+    if "API_KEY_INVALID" in body:
+        return _KEY_REFUSED
+    return _status_reason(status)
+
+
 # A provider's error code or HTTP status in words, for the sentence a user
 # reads. The raw code stays in `provider_detail` (the log and the capability
 # probe read it); a code in the sentence ("insufficient_quota") is developer text
 # and the web app hides the whole message for it (`isPlainSentence`).
 _CODE_WORDS = {
-    "invalid_api_key": "your key was refused",
+    "invalid_api_key": _KEY_REFUSED,
     "insufficient_quota": "your account is out of credit",
     "model_not_found": "that model wasn't found",
     "rate_limit_exceeded": "too many requests",
 }
 _STATUS_WORDS = {
-    401: "your key was refused",
+    401: _KEY_REFUSED,
     404: "that model wasn't found",
     429: "too many requests",
 }
@@ -292,8 +313,8 @@ def _call_gemini(
             data = json.loads(response.read().decode("utf-8"))
     except HTTPError as exc:
         body = exc.read().decode("utf-8", errors="replace")
-        raise _no_answer(_status_reason(exc.code),
-                         f"Gemini API request failed: {exc.code} {body}") from exc
+        raise _no_answer(_gemini_reason(exc.code, body),
+                         f"Gemini API request failed: {exc.code} {body}", provider="Gemini") from exc
 
     return _gemini_text(data), _gemini_usage(data)
 
@@ -365,7 +386,8 @@ def _call_model(
         # the same type; without this, OpenAI SDK errors escaped as unhandled
         # 500s — an exhausted credit balance reached the UI as the detail-free
         # "Request failed: 500", with the real 429 visible only in a traceback.
-        raise _no_answer(_openai_reason(exc), f"OpenAI API request failed: {exc}") from exc
+        raise _no_answer(_openai_reason(exc), f"OpenAI API request failed: {exc}",
+                         provider=_openai_provider()) from exc
     return _message_content(response), _openai_usage(response)
 
 

@@ -54,12 +54,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useSingleFlight } from "@/hooks/use-single-flight";
 import { proposalByLine, queuedToast } from "@/lib/agent-name";
 import { apiFetch, promoteJobToAgentQueue } from "@/lib/api";
-import { couldnt, errorDetail } from "@/lib/error-text";
+import { couldnt, loadErrorDetail } from "@/lib/error-text";
 import { finalFocusOn, focusIfDropped, focusTarget } from "@/lib/focus";
 import { isLoadFailure } from "@/lib/query-state";
 import { jobMetaLine } from "@/lib/job-meta";
 import { cn } from "@/lib/utils";
-import type { Job, JobDetail, ProposalStatus } from "@/lib/types";
+import type { Job, JobDetail, ProposalDetail, ProposalStatus } from "@/lib/types";
 
 // Tab values stay jd/fit/output/qa for deep-link compat (?tab=fit, ?tab=output).
 const JOB_TABS = ["jd", "fit", "output", "qa"] as const;
@@ -158,6 +158,7 @@ export default function JobDetailPage({
   const proposalActions = useProposalActions({
     onDone: (_ids, became) => {
       if (became === "accepted") toast.success("Queued. A connected agent can apply to it now.");
+      if (became === "pending_review") toast.success("Kept. It's back in To review.");
       if (became === "rejected") {
         toast.success("Skipped");
         skipped.current = true;
@@ -176,6 +177,14 @@ export default function JobDetailPage({
   });
 
   const application = data?.application ?? null;
+  // Keep it on a question links the job's application when the proposal has none: the proposal
+  // says whether it has one (the same query as the Overview card's).
+  const asking = data?.job.proposal_status === "needs_decision" ? data.job.proposal_id ?? null : null;
+  const asked = useQuery({
+    queryKey: ["proposal", asking],
+    queryFn: () => apiFetch<ProposalDetail>(`/api/proposals/${asking}`),
+    enabled: asking !== null,
+  });
   const { patch } = useApplicationMutations({
     applicationId: application?.id ?? "",
     jobId: id,
@@ -284,7 +293,7 @@ export default function JobDetailPage({
       <main className="mx-auto w-full max-w-6xl flex-1 space-y-4 p-6">
         <LoadErrorState
           title="Couldn't load this job."
-          detail={errorDetail(error)}
+          detail={loadErrorDetail(error, "job")}
           retrying={isFetching}
           onRetry={() => void refetch()}
           action={
@@ -332,6 +341,7 @@ export default function JobDetailPage({
     !!s && s in STATUS_LABELS;
 
   const showAccept = proposalStatus === "pending_review";
+  const showKeep = proposalStatus === "needs_decision";
   const showDecline =
     proposalStatus === "pending_review" ||
     proposalStatus === "accepted" ||
@@ -437,6 +447,27 @@ export default function JobDetailPage({
               >
                 <Check className="size-3.5" />
                 Queue
+              </Button>
+            ) : null}
+            {showKeep && proposalId ? (
+              <Button
+                size="sm"
+                variant="outline"
+                // Waits for the proposal's link: a second, different application would be refused.
+                disabled={triagePending || !asked.data}
+                focusableWhenDisabled
+                className="data-disabled:pointer-events-none data-disabled:opacity-50"
+                onClick={() => {
+                  triaged.current = true;
+                  proposalActions.transition({
+                    id: proposalId,
+                    status: "pending_review",
+                    applicationId: asked.data?.application ? undefined : application?.id,
+                  });
+                }}
+              >
+                <Check className="size-3.5" />
+                Keep it
               </Button>
             ) : null}
             {showDecline && proposalId ? (

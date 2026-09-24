@@ -25,7 +25,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useRefreshFailedNotice } from "@/hooks/use-refresh-failed-notice";
 import { apiFetch, apiUrlForBrowserPdf } from "@/lib/api";
-import { couldnt, errorDetail } from "@/lib/error-text";
+import { couldnt, loadErrorDetail } from "@/lib/error-text";
 import { isLoadFailure } from "@/lib/query-state";
 import { NEEDS_TEX_WORDS, REQUIRES_TEX_REASON } from "@/lib/template-status";
 import { FORMATTING_DEFAULTS, type ResumeFormatting } from "@/lib/formatting";
@@ -200,7 +200,7 @@ export default function TemplateEditorPage() {
       <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-4 p-6">
         <LoadErrorState
           title="Couldn't load this template."
-          detail={errorDetail(tq.error)}
+          detail={loadErrorDetail(tq.error, "template")}
           retrying={tq.isFetching}
           onRetry={() => void tq.refetch()}
           action={

@@ -30,6 +30,32 @@ export const SUBSCORE_LABELS: {
   { key: "format", label: "Format" },
 ];
 
+/**
+ * Job dates the engine couldn't read (`ats/layers.py` l5_format's flag starts with these words; it reads
+ * "Mon YYYY" only, and accepting more formats needs ATS calibration, SYSTEM.md §11). An undated job
+ * earns no recency and no years, so the Score tab says why and names a format that works.
+ */
+const DATES_FLAG = "Some job dates can't be read";
+export const UNREADABLE_DATES_NOTE =
+  "We couldn't read some job dates, so those jobs don't count toward Recent experience or your years. Write dates like Jul 2022 in your base resume.";
+
+/** Whether a score's format flags say some job dates couldn't be read. */
+export function datesUnreadable(flags: readonly string[] | null | undefined): boolean {
+  return (flags ?? []).some((flag) => flag.startsWith(DATES_FLAG));
+}
+
+/**
+ * A skill in the skills list that the engine also found in these entries, yet counted from the list
+ * alone: the entries have no date it can read, and a skills-list hit outranks undated evidence
+ * (`ats/layers.py` `_select_placement`). "Skills with no example" beside "Mentioned in:" needs this.
+ */
+export function undatedEvidence(placement: string | null | undefined, entries: readonly string[]): boolean {
+  return placement === "skills_list_only" && entries.length > 0;
+}
+
+export const UNDATED_EVIDENCE_NOTE =
+  "These don't count as examples yet because we can't read a date on them. Write dates like Jul 2022 in your base resume.";
+
 const PLACEMENT_LABELS: Record<string, string> = {
   dual: "Skills and experience",
   experience_only: "Experience",

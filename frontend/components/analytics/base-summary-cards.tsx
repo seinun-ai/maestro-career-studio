@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useBaseResumeLabel } from "@/hooks/use-base-resume-label";
 import { apiFetch } from "@/lib/api";
-import { errorDetail } from "@/lib/error-text";
+import { loadErrorDetail } from "@/lib/error-text";
 import { isLoadFailure } from "@/lib/query-state";
 import { formatTimeAgo } from "@/lib/format-date";
 import type { BaseSummaryRow } from "@/lib/types";
@@ -38,7 +38,7 @@ export function BaseSummaryCards() {
       <LoadErrorState
         className="py-8"
         title="Couldn't load your resumes' scores."
-        detail={errorDetail(summaries.error)}
+        detail={loadErrorDetail(summaries.error)}
         retrying={summaries.isFetching}
         onRetry={() => void summaries.refetch()}
       />

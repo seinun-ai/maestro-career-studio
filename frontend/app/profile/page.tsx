@@ -11,7 +11,7 @@ import { PersonaSection } from "@/components/settings/persona-section";
 import { SettingsTabs } from "@/components/settings/settings-tabs";
 import { SetupStatusStrip } from "@/components/setup/setup-status-strip";
 import { apiFetch } from "@/lib/api";
-import { errorDetail } from "@/lib/error-text";
+import { loadErrorDetail } from "@/lib/error-text";
 import { isLoadFailure } from "@/lib/query-state";
 import type { SetupStatus } from "@/lib/types";
 import { useFocusSection } from "@/lib/use-focus-section";
@@ -47,7 +47,7 @@ export default function ProfilePage({
         <LoadErrorState
           className="py-8"
           title="Couldn't load setup progress."
-          detail={errorDetail(setupStatus.error)}
+          detail={loadErrorDetail(setupStatus.error)}
           retrying={setupStatus.isFetching}
           onRetry={() => void setupStatus.refetch()}
         />

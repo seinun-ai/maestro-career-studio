@@ -65,7 +65,7 @@ _QUERY_SURFACES: list[tuple[str, str]] = [
     # Already-correct surfaces that spell the check `.error`.
     ("components/analytics/analytics-overview.tsx", "Applied · last 7 days"),
     ("components/career/profile-panel.tsx", "No skill groups yet."),
-    ("components/career/entity-detail.tsx", "The item may no longer exist."),
+    ("components/career/entity-detail.tsx", "if (!entity.data) {"),
     ("app/career/page.tsx", "No other sections yet"),
     ("components/career/inbox-panel.tsx", "Nothing to review"),
     ("components/analytics/agent-pipeline-card.tsx", "return null"),

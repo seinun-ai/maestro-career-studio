@@ -226,7 +226,8 @@ def test_decline_the_rest_fills_only_blank_answers():
     assert 'if (field.type !== "select" || !isBlank(eeo[field.key])) return [];' in decline
     assert "eeo: { ...groupValues(current, \"eeo\"), ...declines }," in decline
     flat = _joined(_AUTOFILL)
-    assert "Decline the rest fills only the questions you left blank. Select Save answers to keep them." in flat
+    # What it does in the words of the answer it writes (first-read pass).
+    assert "Fills your blank diversity questions with “Decline to answer”. Select Save answers to keep it." in flat
     assert "aria-describedby={declineHintId}" in _AUTOFILL
 
 
@@ -327,8 +328,9 @@ def test_a_stream_error_never_shows_raw_server_text():
     """M30: the ratchet can't see through `reason`, so the guard is pinned here."""
     error = _between(_CHAT, '} else if (event.type === "error") {', "\n        }")
     assert "const reason = event.detail;" in error
-    assert 'isPlainSentence(reason) ? reason : "The Assistant couldn\'t finish. Try again."' in error
-    assert error.count("reason") == 3
+    # Through errorDetail: plain sentences only, and a refused or missing key says the fix.
+    assert 'toast.error(errorDetail(new Error(reason)) ?? "The Assistant couldn\'t finish. Try again.");' in error
+    assert error.count("reason") == 2
 
 
 def test_the_endpoint_hints_say_which_choice_fixes_what():
@@ -376,14 +378,14 @@ def test_profile_and_agent_limits_speak_plainly():
         ("components/settings/persona-section.tsx", "It sets the tone of tailoring, cover letters and answers, and never adds facts to your resume."),
         ("components/settings/persona-section.tsx", "Draft from my career history"),
         ("components/settings/auto-apply-section.tsx", 'label: "Jobs per search",'),
-        ("components/settings/auto-apply-section.tsx", 'hint: "Agents are told to file no more than this from one search.",'),
+        ("components/settings/auto-apply-section.tsx", 'hint: "Connected agents are told to file no more than this from one search.",'),
         ("components/settings/auto-apply-section.tsx", 'label: "Move unreviewed jobs to History after (days)",'),
         ("components/settings/auto-apply-section.tsx", 'hint: "Counts from when the job was filed. Queued jobs stay.",'),
         ("components/settings/auto-apply-section.tsx", 'hint: "Each application you say yes to submit counts for 24 hours.",'),
         ("components/settings/auto-apply-section.tsx",
-         "An ATS score is how an applicant tracking system rates a resume for a job. Below this, agents ask you which base resume to use."),
+         "hint: `${ATS_SCORE_LEAD_ALL_JOBS} Below this, connected agents ask you which base resume to use.`,"),
         ("components/settings/auto-apply-section.tsx",
-         "Agents pick a base resume on their own only when its ATS score leads the next one by this many points."),
+         "Connected agents pick a base resume on their own only when its ATS score leads the next one by this many points."),
     ):
         assert words in _flat(_read(rel)), (rel, words)
     assert "Proposals per hunt" not in _read("components/settings/auto-apply-section.tsx")
@@ -433,7 +435,10 @@ def test_errors_and_setup_speak_plainly():
     # A PDF step with nothing to do is not a step.
     assert '!(row.id === "engines" && row.done && status.engines.pdflatex.available)' in card
     strip = _flat(_read("components/setup/setup-status-strip.tsx"))
-    assert '<span className="text-muted-foreground text-xs font-medium">Setup:</span>' in strip
+    assert '<span className="text-muted-foreground text-xs font-medium">Setup steps:</span>' in strip
+    # Done or not done as a mark on every chip, and in its name.
+    assert '<Circle aria-hidden="true" className="size-3" />' in strip
+    assert 'return `${step.label}, ${step.done ? "done" : "not done"}`;' in strip
     assert '<Check aria-hidden="true" className="size-3" />' in strip
     assert "<DialogTitle>Import resumes and documents</DialogTitle>" in _read("components/setup/upload-dialog.tsx")
 
@@ -444,7 +449,7 @@ def test_a_missing_or_refused_key_says_what_to_do():
     through, so they are named (lib/error-text.test.ts has the cases)."""
     text = _read("lib/error-text.ts")
     assert '"Add an API key in Settings › AI & models."' in text
-    assert '"Check your API key in Settings › AI & models."' in text
+    assert "refused your API key. Check it in Settings › AI & models." in text
     # The server's own no-key sentences (lane 10 rewrote them) still meet the
     # frontend's MISSING_KEY pattern, so both sides move together.
     missing = re.search(r"const MISSING_KEY = /(.+)/i;", text)
@@ -531,6 +536,8 @@ def test_a_model_test_without_a_key_blames_the_key():
     assert "const keyProblem = keyProblemIn(report);" in probe
     assert "toast.error(`Couldn't test ${name}. ${keyProblem}`);" in probe
     assert probe.index("keyProblem)") < probe.index("missing.length === 0")
+    # A refused key never reads "Couldn't reach OpenAI": the key is checked before reachability.
+    assert probe.index("if (keyProblem) {") < probe.index("if (report.reachable === false) {")
     # "Everything else works" only when something did.
     assert 'missing.length < CAPABILITY_LABELS.length ? " Everything else works." : ""' in probe
     # A capability's reason is words, never the provider's raw error.
@@ -543,3 +550,76 @@ def test_the_key_is_checked_before_the_model_capability():
     router = (_ROOT / "backend/app/routers/chat.py").read_text(encoding="utf-8")
     send = _between(router, "def send_message(", "def event_stream():")
     assert send.index("client = get_chat_client(model)") < send.index('llm_capabilities.require(db, model, "tools")')
+
+
+def test_a_key_in_the_wrong_shape_is_refused_at_save():
+    """First-read pass: "hello" saved as an OpenAI key with "API keys saved" and no word of
+    doubt. The shape is checked before anything is sent; a saved key is "checked on first
+    use", never called working (lib/api-key-format.test.ts has the cases)."""
+    fmt = _read("lib/api-key-format.ts")
+    assert 'openai: { prefix: "sk-", named: "An OpenAI" },' in fmt
+    assert 'gemini: { prefix: "AIza", named: "A Gemini" },' in fmt
+    assert 'if (!typed || (provider === "openai" && customServer)) return undefined;' in fmt
+    assert "API key starts with ${prefix}. Check that you copied the whole key." in fmt
+    models = _read("components/settings/models-section.tsx")
+    save = _between(models, "  const onSave = (customServer: boolean) => {", "\n  };")
+    assert save.index("if (openaiWrong || geminiWrong) {") < save.index("saveKeysOnce(")
+    assert "return;" in save[save.index("if (openaiWrong || geminiWrong) {"):save.index("saveKeysOnce(")]
+    assert "toast.success(keysSavedText(patch));" in models
+    assert '"API keys saved"' not in models
+    # The refusal is the field's description, so focus on the field reads it.
+    assert "aria-describedby={problem ? `${problemId} ${hintId}` : hintId}" in models
+
+
+def test_a_saved_key_is_checked_on_first_use():
+    from tests.node_ts import ts_map
+
+    assert ts_map("./lib/api-key-format.ts", "keysSavedText", [
+        {"openai_api_key": "sk-a"}, {"gemini_api_key": None},
+        {"openai_api_key": "sk-a", "gemini_api_key": "AIza"},
+    ]) == [
+        "API key saved. We'll check it on first use.", "API key removed.",
+        "API keys saved. We'll check them on first use.",
+    ]
+
+
+def test_no_screen_says_an_ats_rates_the_resume():
+    """Task 24 found two: an ATS score is our estimate of how a system WOULD rate it
+    (ATS_SCORE_LEAD in lib/ats-words.ts), never a reading from an employer's system."""
+    root = Path(__file__).resolve().parents[2] / "frontend"
+    hits = [
+        p.relative_to(root).as_posix()
+        for d in ("app", "components", "lib")
+        for p in (root / d).rglob("*.ts*")
+        if "tracking system rates" in p.read_text(encoding="utf-8")
+    ]
+    assert not hits
+
+
+def _exported_regex(name: str):
+    """`export const NAME = /source/flags;` from lib/error-text.ts, compiled as Python reads it."""
+    src = _read("lib/error-text.ts")
+    m = re.search(rf"export const {name} =\s*/(.+?)/([a-z]*);", src)
+    assert m, f"{name} is no longer an exported regex literal (the Companion's copy is pinned to it)"
+    return re.compile(m.group(1), re.I if "i" in m.group(2) else 0)
+
+
+def test_the_web_app_recognises_every_key_sentence_the_server_writes():
+    """The coordinator's Companion pass: a refused key read as a generic failure because
+    REFUSED_KEY did not know the server's own sentence. Every sentence llm.py writes for a
+    missing or refused key, and the providers' raw 401s, match the exported patterns."""
+    from app.services import llm
+
+    missing, refused = _exported_regex("MISSING_KEY"), _exported_regex("REFUSED_KEY")
+    for text in (llm.NO_KEY_MESSAGE, llm.NO_GEMINI_KEY_MESSAGE, "GEMINI_API_KEY is required for Gemini models"):
+        assert missing.search(text), text
+    sentences = [str(llm._no_answer(llm._KEY_REFUSED, "detail", provider=who))
+                 for who in ("OpenAI", "Gemini", "Your AI server")]
+    sentences.append("The AI model didn't answer (your key was refused). Try again, or check your key in "
+                     "Settings › AI & models.")
+    sentences += ["Error code: 401 - {'error': {'code': 'invalid_api_key'}}",
+                  'Gemini models.list failed: 400 {"error": {"details": [{"reason": "API_KEY_INVALID"}]}}']
+    for text in sentences:
+        assert refused.search(text), text
+    # Not every sentence that names a key is a refusal.
+    assert not refused.search("The Assistant needs an API key. Add one in Settings › AI & models.")

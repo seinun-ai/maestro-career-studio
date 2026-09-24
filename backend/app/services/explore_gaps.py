@@ -123,17 +123,19 @@ def _is_hygiene_wording(cat_key: str | None, gap: dict) -> bool:
 
 
 # Plain words for each skill-gap category, for every surface that shows a row to
-# a person: the Analytics "Skill gaps" panel, chat, and MCP agents. The keys are
-# internal (gap_analysis._HINT_TO_CATEGORY values) and must never reach prose.
-# Worded for a SURFACE row, so mirror_wording avoids the word "wording": that word
-# belongs to the wording tier alone, and mirror_wording on an effective row is the
-# adds_credit sibling, which has real headroom.
+# a person: the Analytics "Skill gaps" panel (a tag beside the skill), chat, and
+# MCP agents. The keys are internal (gap_analysis._HINT_TO_CATEGORY values) and
+# must never reach prose. Each says the fix, in the gap page's words
+# (gap_analysis._CATEGORIES). Worded for a SURFACE row, so mirror_wording avoids
+# the word "wording": that word belongs to the Wording-only tier, whose exact
+# words change no score, and mirror_wording on a surface row is the adds_credit
+# sibling, which has real headroom.
 GAP_CATEGORY_LABELS: dict[str, str] = {
-    "missing_skills": "no evidence on this resume",
-    "mirror_wording": "exact token missing",
-    "dual_place": "needs corroborating",
-    "resurface_recent": "stale evidence",
-    "adjacent": "adjacent skill",
+    "missing_skills": "Not on this resume",
+    "mirror_wording": "Use the job's exact words",
+    "dual_place": "Add an example in a job or project",
+    "resurface_recent": "Show a recent use",
+    "adjacent": "Related skill",
 }
 
 

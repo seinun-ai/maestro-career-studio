@@ -12,7 +12,7 @@ import { buildQuery } from "@/components/charts/chart-kit";
 import { LoadErrorState } from "@/components/load-error-state";
 import { cn } from "@/lib/utils";
 import { apiFetch } from "@/lib/api";
-import { errorDetail } from "@/lib/error-text";
+import { loadErrorDetail } from "@/lib/error-text";
 import { isLoadFailure } from "@/lib/query-state";
 import { skillName } from "@/lib/skill-name";
 import type { TopSkillRow, TopSkillsResponse } from "@/lib/types";
@@ -128,7 +128,7 @@ export function TopSkillsChart({
       <LoadErrorState
         className="py-8"
         title="Couldn't load the top skills."
-        detail={errorDetail(query.error)}
+        detail={loadErrorDetail(query.error)}
         retrying={query.isFetching}
         onRetry={() => void query.refetch()}
       />

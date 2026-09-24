@@ -21,7 +21,7 @@ import { kbImportConsolidate, kbImportResume } from "@/lib/api";
 import { couldnt, errorDetail } from "@/lib/error-text";
 import { notifyRenderNote } from "@/lib/render-note";
 import type { ImportReport } from "@/lib/types";
-import { acceptedTypesLabel, RESUME_FILE_ACCEPT } from "@/lib/upload-accept";
+import { acceptedFilesHint, RESUME_FILE_ACCEPT } from "@/lib/upload-accept";
 
 const ACCEPT = RESUME_FILE_ACCEPT;
 const MAX_FILES = 10;
@@ -125,7 +125,7 @@ export function ResumeImportPanel({ onClose }: { onClose: () => void }) {
               maxFiles={MAX_FILES}
               maxBytes={MAX_BYTES}
               disabled={busy}
-              hint={`${acceptedTypesLabel(ACCEPT)}. Up to ${MAX_FILES} files, 10 MB each.`}
+              hint={`${acceptedFilesHint(ACCEPT)} Up to ${MAX_FILES} files, 10 MB each.`}
               onFiles={(picked, skippedFiles) => {
                 setFiles(picked);
                 setRejected(skippedFiles);

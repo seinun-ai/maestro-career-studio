@@ -221,12 +221,19 @@ def report_failure(session: Session, prop: ApplicationProposal, *, reason: str,
     )
 
 
+# The 409 when a decision has nothing to link: the web app's Keep it shows it, and an
+# agent reads it as "tailor first" (docs/playbooks/agent-apply.md), so it is one sentence.
+NO_APPLICATION_TO_LINK = (
+    "This job has no tailored resume to link yet. Tailor one first, then try again."
+)
+
+
 def record_decision(session: Session, prop: ApplicationProposal, *, fit: dict,
                     application_id: UUID | None = None) -> ApplicationProposal:
     if application_id is None and prop.application_id is None:
         chosen = (fit or {}).get("chosen_base")
         if not chosen:
-            raise TransitionError("no matching application for decision")
+            raise TransitionError(NO_APPLICATION_TO_LINK)
         app_row = session.scalar(
             select(Application)
             .where(
@@ -237,7 +244,7 @@ def record_decision(session: Session, prop: ApplicationProposal, *, fit: dict,
             .limit(1)
         )
         if app_row is None:
-            raise TransitionError("no matching application for decision")
+            raise TransitionError(NO_APPLICATION_TO_LINK)
         application_id = app_row.id
 
     if application_id is not None:
@@ -245,7 +252,7 @@ def record_decision(session: Session, prop: ApplicationProposal, *, fit: dict,
             raise TransitionError("proposal already linked to an application")
         app_row = session.get(Application, application_id)
         if app_row is None:
-            raise TransitionError("no matching application for decision")
+            raise TransitionError("That application no longer exists.")
         app_row.source = "agent"
         prop.application_id = application_id
 

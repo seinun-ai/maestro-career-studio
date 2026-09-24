@@ -68,12 +68,19 @@ def test_a_left_out_part_reads_as_sentences():
 
 
 def test_import_hints_name_what_their_picker_takes():
+    # Read from each picker's own list, in plain words first ("PDF, Word or text files.
+    # Also Markdown, LaTeX or a Maestro CS JSON file."; lib/upload-accept.test.ts).
     one = _read("components/base-resumes/new-base-resume-dialog.tsx")
-    assert "hint={`${acceptedTypesLabel(RESUME_FILE_ACCEPT)}. Up to 10 MB.`}" in one
+    assert "hint={`${acceptedFilesHint(RESUME_FILE_ACCEPT)} Up to 10 MB.`}" in one
     many = _read("components/career/resume-import-dialog.tsx")
-    assert "hint={`${acceptedTypesLabel(ACCEPT)}. Up to ${MAX_FILES} files, 10 MB each.`}" in many
+    assert "hint={`${acceptedFilesHint(ACCEPT)} Up to ${MAX_FILES} files, 10 MB each.`}" in many
+    docs = _read("components/setup/upload-dialog.tsx")
+    assert "hint={`${acceptedFilesHint(DOC_ACCEPT)} Up to ${DOC_MAX_FILES} files, 10 MB each.`}" in docs
     for src in (one, many):
         assert "own JSON" not in src and "Word or text file" not in src
+    accept = _read("lib/upload-accept.ts")
+    assert 'const lead = `${orList(common)} files${image ? ", or an image" : ""}.`;' in accept
+    assert '...(entries.has(".json") ? ["a Maestro CS JSON file"] : []),' in accept
 
 
 def test_a_button_that_opens_the_import_dialog_says_its_title():

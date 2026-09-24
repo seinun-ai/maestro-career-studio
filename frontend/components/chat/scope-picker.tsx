@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { listKbEntities } from "@/lib/api";
-import { errorDetail } from "@/lib/error-text";
+import { loadErrorDetail } from "@/lib/error-text";
 import { isLoadFailure } from "@/lib/query-state";
 import type { ChatSelection, ResumeData } from "@/lib/types";
 
@@ -188,7 +188,7 @@ export function ScopePickerDialog({
               <LoadErrorState
                 className="py-6"
                 title="Couldn't load your career history."
-                detail={errorDetail(kbEntities.error)}
+                detail={loadErrorDetail(kbEntities.error)}
                 retrying={kbEntities.isFetching}
                 onRetry={() => void kbEntities.refetch()}
               />

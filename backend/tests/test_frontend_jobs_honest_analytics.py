@@ -25,7 +25,8 @@ def test_interview_rate_says_it_is_a_current_count():
     # explore_activity: "currently at interview+ per submitted".
     overview = _read("components/analytics/analytics-overview.tsx")
     assert 'label="At interview or later"' in overview
-    assert "`now, of ${totals.submitted} applications`" in overview
+    assert ('`of your ${totals.submitted} ${totals.submitted === 1 ? "application is" : "applications are"}'
+            ' there now`') in overview
     assert "Reached interviews" not in overview
 
 

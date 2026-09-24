@@ -34,11 +34,18 @@ export function formatLabeledAgo(value: string | Date, label: string): string {
   return `${label} ${formatTimeAgo(value)}`;
 }
 
-/** Full locale string for tooltips / screen readers. */
+/** An exact time in words, for tooltips, screen readers and Version history: "Sep 24, 2026, 10:35 AM"
+ *  (the machine's locale gave "9/24/2026, 10:35:12 AM"). */
 export function formatAbsoluteDateTime(value: string | Date): string {
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleString();
+  return date.toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 
 const DAY_ONLY = /^(\d{4})-(\d{2})-(\d{2})$/;
@@ -68,4 +75,20 @@ export function formatShortDate(value: string | Date, now: Date = new Date()): s
 export function formatWeekOf(value: string | Date): string {
   if (!formatShortDate(value)) return "";
   return `Week of ${formatShortDate(value)}`;
+}
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const YEAR_MONTH = /^(\d{4})-(\d{1,2})$|^(\d{1,2})\/(\d{4})$/;
+
+/**
+ * A month as a resume's dates spell it, for display: "2021-02" and "02/2021" read "Feb 2021"; anything
+ * else ("Jul 2022", "Present", a year) is shown as written. Display only: what the resume holds, and
+ * what the ATS engine reads, are unchanged.
+ */
+export function formatResumeMonth(raw: string): string {
+  const m = YEAR_MONTH.exec(raw.trim());
+  if (!m) return raw;
+  const year = m[1] ?? m[4];
+  const month = Number(m[2] ?? m[3]);
+  return month >= 1 && month <= 12 ? `${MONTHS[month - 1]} ${year}` : raw;
 }

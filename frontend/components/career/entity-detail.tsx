@@ -43,7 +43,7 @@ import {
 import { PageShell } from "@/components/page-shell";
 import { Skeleton } from "@/components/ui/skeleton";
 import { deleteKbEntity, getKbEntity, patchKbEntity } from "@/lib/api";
-import { couldnt, errorDetail } from "@/lib/error-text";
+import { couldnt, loadErrorDetail } from "@/lib/error-text";
 import type {
   KBEntityDetail as KBEntityDetailType,
   KBEntityPatch,
@@ -119,7 +119,7 @@ export function EntityDetail({ entityId }: { entityId: string }) {
         <div role="alert" className="rounded-2xl bg-destructive/10 p-5">
           <p className="font-medium">Couldn&apos;t load this career item.</p>
           <p className="text-muted-foreground mt-1 text-sm">
-            {errorDetail(loadError) ?? "The item may no longer exist."}
+            {loadErrorDetail(loadError, "career item")}
           </p>
           <div className="mt-4 flex gap-2">
             <Button className="rounded-full" variant="secondary" onClick={() => void entity.refetch()}>

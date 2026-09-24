@@ -31,7 +31,7 @@ import { useEditorFocusReturn } from "@/hooks/use-confirm-discard";
 import { useLeaveGuard } from "@/hooks/use-leave-guard";
 import { useSingleFlight } from "@/hooks/use-single-flight";
 import { apiFetch, apiUrlForBrowserPdf } from "@/lib/api";
-import { couldnt, errorDetail } from "@/lib/error-text";
+import { couldnt, loadErrorDetail } from "@/lib/error-text";
 import { isLoadFailure } from "@/lib/query-state";
 import { notifyRenderNote } from "@/lib/render-note";
 import type { QAEntry, QAResponse } from "@/lib/types";
@@ -255,7 +255,7 @@ export function QATab({ applicationId }: { applicationId: string }) {
           <LoadErrorState
             className="py-8"
             title="Couldn't load your answers."
-            detail={errorDetail(error)}
+            detail={loadErrorDetail(error)}
             retrying={isFetching}
             onRetry={() => void refetch()}
           />

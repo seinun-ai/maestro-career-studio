@@ -701,3 +701,42 @@ def test_two_concurrent_creates_for_one_job_leave_one_open_proposal(db_session, 
     # First filer wins: the reply that created the row names who filed it, and the other reads it back.
     created = next(r for r in replies if r.status_code == 201)
     assert rows[0].proposed_by == created.json()["proposed_by"]
+
+
+def test_keep_it_answers_the_agents_question_from_the_web(db_session):
+    """The web app's Keep it on a Needs-you proposal: PATCH pending_review, with the
+    job's application when the proposal has none. With no application to link, the
+    409 is a sentence the inbox can show (it names the fix), never a code phrase."""
+    import re
+
+    # Linked: keeping needs nothing else.
+    job = _mk_job(db_session, company="Linked Co")
+    app_row = Application(job_id=job.id, base_resume="backend_eng", source="agent", status="draft")
+    db_session.add(app_row)
+    db_session.commit()
+    pid = client.post("/api/proposals", json={"job_id": str(job.id),
+                                              "application_id": str(app_row.id)}).json()["id"]
+    client.post(f"/api/proposals/{pid}/request-decision", json={"reason": "Pay is below your floor. Keep it?"})
+    r = client.patch(f"/api/proposals/{pid}", json={"status": "pending_review"})
+    assert r.status_code == 200 and r.json()["status"] == "pending_review"
+
+    # Unlinked, and the job page sends the job's application.
+    job2 = _mk_job(db_session, company="Unlinked Co")
+    app2 = Application(job_id=job2.id, base_resume="backend_eng", source="user", status="draft")
+    db_session.add(app2)
+    db_session.commit()
+    pid2 = client.post("/api/proposals", json={"job_id": str(job2.id)}).json()["id"]
+    client.post(f"/api/proposals/{pid2}/request-decision", json={"reason": "Which resume?"})
+    r2 = client.patch(f"/api/proposals/{pid2}", json={"status": "pending_review",
+                                                      "application_id": str(app2.id)})
+    assert r2.status_code == 200 and r2.json()["application_id"] == str(app2.id)
+
+    # Unlinked with nothing to link: a plain sentence naming the fix.
+    job3 = _mk_job(db_session, company="Bare Co")
+    pid3 = client.post("/api/proposals", json={"job_id": str(job3.id)}).json()["id"]
+    client.post(f"/api/proposals/{pid3}/request-decision", json={"reason": "Which resume?"})
+    r3 = client.patch(f"/api/proposals/{pid3}", json={"status": "pending_review"})
+    assert r3.status_code == 409
+    detail = r3.json()["detail"]
+    assert detail == "This job has no tailored resume to link yet. Tailor one first, then try again."
+    assert re.match(r"^[A-Z][^{}[\]<>_`|\\]*[.!?]$", detail)

@@ -482,5 +482,8 @@ def test_career_kinds_and_statuses_have_one_table():
 
 def test_the_studio_pill_adds_to_career_history():
     pill = _read("components/kb-sync-pill.tsx")
-    assert "Add to career history ({count})" in pill
+    # "Add 14 things to career history": the number in words (lib/kb-sync-words.test.ts).
+    assert "{syncPillLabel(count)}" in pill and "Add to career history ({count})" not in pill
+    words = _read("lib/kb-sync-words.ts")
+    assert 'return `Add ${plural(count, "thing", "things")} to career history`;' in words
     assert "Sync to KB" not in pill.replace("// ", "")

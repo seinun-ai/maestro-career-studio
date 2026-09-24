@@ -14,7 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { apiFetch } from "@/lib/api";
-import { errorDetail } from "@/lib/error-text";
+import { loadErrorDetail } from "@/lib/error-text";
 import { isLoadFailure } from "@/lib/query-state";
 import { anchorHref } from "@/lib/settings-tabs";
 import type { SetupStatus } from "@/lib/types";
@@ -70,7 +70,7 @@ export function GettingStartedCard() {
       <LoadErrorState
         className="py-8"
         title="Couldn't load setup progress."
-        detail={errorDetail(setupStatus.error)}
+        detail={loadErrorDetail(setupStatus.error)}
         retrying={setupStatus.isFetching}
         onRetry={() => void setupStatus.refetch()}
       />

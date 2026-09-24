@@ -84,7 +84,7 @@ def _log_llm_config() -> None:
     if key_source == "NONE" and not llm.get_base_url():
         logger.warning(
             "No OpenAI API key configured — every LLM feature will fail. Add one "
-            "under Settings → Models in the web app, or set OPENAI_API_KEY in "
+            "in Settings › AI & models in the web app, or set OPENAI_API_KEY in "
             ".env and restart."
         )
     else:

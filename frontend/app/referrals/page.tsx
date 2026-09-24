@@ -48,7 +48,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useEditToggle, useFocusHandoff } from "@/hooks/use-focus-return";
 import { useSingleFlight } from "@/hooks/use-single-flight";
 import { apiFetch } from "@/lib/api";
-import { couldnt, errorDetail } from "@/lib/error-text";
+import { couldnt, loadErrorDetail } from "@/lib/error-text";
 import { isLoadFailure } from "@/lib/query-state";
 import type { Referral, ReferralCreate, ReferralPatch } from "@/lib/types";
 import { PageHeader, PageShell } from "@/components/page-shell";
@@ -142,7 +142,7 @@ export default function ReferralsPage() {
       {isLoadFailure(referrals) ? (
         <LoadErrorState
           title="Couldn't load referrals."
-          detail={errorDetail(referrals.error)}
+          detail={loadErrorDetail(referrals.error)}
           retrying={referrals.isFetching}
           onRetry={() => void referrals.refetch()}
         />

@@ -77,3 +77,23 @@ export function acceptedTypesLabel(accept: string): string {
   const types = [...named(TYPE_NAMES), ...(images.length ? [`an image (${orList(images)})`] : [])];
   return types.length ? orList(types) : "a different file";
 }
+
+/**
+ * A picker's hint in plain words: the files most people have first ("PDF, Word or text files"), then
+ * the rest, named once ("Also Markdown, LaTeX or a Maestro CS JSON file."). `acceptedTypesLabel`
+ * stays the rejection's list; this is the hint above the drop zone.
+ */
+export function acceptedFilesHint(accept: string): string {
+  const entries = new Set(accept.split(",").map((entry) => entry.trim().toLowerCase()));
+  const common = ([[".pdf", "PDF"], [".docx", "Word"], [".txt", "text"]] as const)
+    .filter(([ext]) => entries.has(ext))
+    .map(([, name]) => name);
+  const image = IMAGE_NAMES.some(([ext]) => entries.has(ext));
+  const rest = [
+    ...(entries.has(".md") ? ["Markdown"] : []),
+    ...(entries.has(".tex") ? ["LaTeX"] : []),
+    ...(entries.has(".json") ? ["a Maestro CS JSON file"] : []),
+  ];
+  const lead = `${orList(common)} files${image ? ", or an image" : ""}.`;
+  return rest.length ? `${lead} Also ${orList(rest)}.` : lead;
+}

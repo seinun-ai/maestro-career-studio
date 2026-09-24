@@ -70,9 +70,9 @@ _WORDS = [
     ("components/settings/autofill-section.tsx", "Preset answers the browser extension uses",
      "The Companion uses these to fill job applications."),
     ("components/settings/autofill-section.tsx", "Allow extension to fill these answers",
-     "Let Companion fill these answers"),
+     "Let the Companion fill these answers"),
     ("components/settings/autofill-section.tsx", "Allow extension to tick agreement boxes",
-     "Let Companion tick agreement boxes"),
+     "Let the Companion tick agreement boxes"),
     ("components/settings/autofill-section.tsx", "matching the extension&apos;s",
      "Most recent first."),
     # The Companion has no ⋯ menu and no switch for capture (extension/README.md, "Turn it off").

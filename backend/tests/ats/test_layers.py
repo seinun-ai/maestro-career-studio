@@ -122,6 +122,31 @@ def test_skills_hit_plus_undated_prose_stays_skills_list_only():
     tf = rows[0]
     assert tf.placement == "skills_list_only" and tf.fix_hint == "dual_place"
     assert tf.recency_weight is None
+    # The undated entry is still listed: the gap page's "Mentioned in" beside "Skills with
+    # no example" says why it doesn't count (lib/ats-words.ts `undatedEvidence`).
+    assert tf.evidence_entries == ["Infra Modules"]
+
+
+def test_a_job_dated_2021_03_is_evidence_without_a_date():
+    """"2021-03" is not "Mon YYYY": the job is found but undated, so a skills-list hit
+    wins and the entry is listed (the web app explains; the parser is unchanged, §11)."""
+    cfg = load_config()
+    resume = {
+        "contact": {"name": "J", "email": "j@x.com", "phone": "1"},
+        "summary": "Engineer.",
+        "skills": [{"category": "Core", "items": ["Python"]}],
+        "experience": [{
+            "company": "Northwind", "role": "Data Scientist", "enabled": True,
+            "start_date": "2021-03", "end_date": "Present", "bullets": ["Built Python models."],
+        }],
+        "projects": [],
+    }
+    jd = {"title": "Engineer", "skills": [{"skill_name": "Python", "requirement_level": "required"}]}
+    index = index_resume(resume, as_of=AS_OF)
+    assert not index.entries[0].date_parse_ok
+    row = layers.resolve_evidence(normalize_jd(jd), index, SkillMatcher(cfg), cfg, as_of=AS_OF)[0]
+    assert row.placement == "skills_list_only" and row.fix_hint == "dual_place"
+    assert row.evidence_entries == ["Northwind — Data Scientist"]
 
 
 def test_tf_idf_prose_does_not_upgrade_tensorflow_placement():

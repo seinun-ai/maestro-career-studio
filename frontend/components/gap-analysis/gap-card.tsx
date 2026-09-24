@@ -22,7 +22,7 @@ import {
   type PlacementTarget,
   type SavedTarget,
 } from "@/components/gap-analysis/resolution-controls";
-import { placementLabel, requirementLabel } from "@/lib/ats-words";
+import { UNDATED_EVIDENCE_NOTE, placementLabel, requirementLabel, undatedEvidence } from "@/lib/ats-words";
 import { skillName } from "@/lib/skill-name";
 import {
   isAutoResolved,
@@ -267,6 +267,8 @@ function EvidenceLine({ gap }: { gap: Gap }) {
   if (diagnostic.last_used) bits.push(`last used ${diagnostic.last_used}`);
   const entries = diagnostic.evidence_entries ?? [];
   if (bits.length === 0 && entries.length === 0) return null;
+  // Found in these entries yet counted from the skills list alone: their dates can't be read.
+  const undated = undatedEvidence(diagnostic.placement, entries);
   return (
     <div className="flex flex-wrap items-center gap-1.5">
       {bits.length > 0 && (
@@ -282,6 +284,7 @@ function EvidenceLine({ gap }: { gap: Gap }) {
           {entry.replace(" — ", ", ")}
         </Badge>
       ))}
+      {undated ? <p className="text-muted-foreground basis-full text-xs">{UNDATED_EVIDENCE_NOTE}</p> : null}
     </div>
   );
 }

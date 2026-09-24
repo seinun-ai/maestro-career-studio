@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { couldnt } from "@/lib/error-text";
+import { formatAbsoluteDateTime } from "@/lib/format-date";
 import {
   careerExportDownloadUrl,
   listCareerExports,
@@ -24,9 +25,9 @@ export function CareerExportsCard() {
     mutationFn: refreshCareerExport,
     onSuccess: (updated) => {
       queryClient.setQueryData(["exports", "career"], [updated]);
-      toast.success("Career history file updated");
+      toast.success("Text copy refreshed");
     },
-    onError: (error: Error) => toast.error(couldnt("update the file", error)),
+    onError: (error: Error) => toast.error(couldnt("refresh the text copy", error)),
   });
   const metadata = query.data?.[0];
 
@@ -44,7 +45,7 @@ export function CareerExportsCard() {
         ) : query.error ? (
           <div role="alert" className="space-y-2">
             <p className="text-destructive text-sm">
-              {couldnt("check the career history file", query.error)}
+              {couldnt("check the text copy", query.error)}
             </p>
             <Button size="sm" variant="outline" onClick={() => void query.refetch()}>
               Try again
@@ -53,11 +54,13 @@ export function CareerExportsCard() {
         ) : (
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border p-3">
             <div>
-              {/* The download keeps its file name, career.md. */}
-              <p className="text-sm font-medium">Career history file</p>
+              {/* The download keeps its file name, career.md. Connected agents read the same
+                  text (MCP get_career_export), so the row says who it is for. */}
+              <p className="text-sm font-medium">A text copy for you and connected agents</p>
               <p className="text-muted-foreground text-xs">
                 {metadata
-                  ? `Updated ${new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(metadata.generated_at))}`
+                  ? // Every read rebuilds it when the career history changed (exports.get_career_export).
+                    `Updated ${formatAbsoluteDateTime(metadata.generated_at)}. It updates itself when your career history changes.`
                   : "Not created yet"}
               </p>
             </div>
@@ -79,7 +82,7 @@ export function CareerExportsCard() {
                 onClick={() => refresh.mutate()}
               >
                 {refresh.isPending ? <Loader2 className="animate-spin" /> : <RefreshCw />}
-                Update file
+                Refresh
               </Button>
             </div>
           </div>

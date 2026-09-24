@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState, type ReactNode } from "react";
+import { useId, useRef, useState, type ReactNode, type Ref } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Loader2, X } from "lucide-react";
 import { toast } from "sonner";
@@ -22,6 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { keyFormatProblem, keysSavedText } from "@/lib/api-key-format";
 import { apiFetch } from "@/lib/api";
 import { couldnt, errorDetail } from "@/lib/error-text";
 import { modelName, providerLabel, showsModelId } from "@/lib/model-catalog";
@@ -127,6 +128,13 @@ export function ModelsSection() {
       );
       // The name the picker shows, not the id the server sent back.
       const name = modelName(info.data?.model_options ?? [], report.model);
+      // With no key, or a refused one, every leg fails on the key: the key is the cause, not the
+      // model or the connection ("Couldn't reach OpenAI" for a refused key sent people to the network).
+      const keyProblem = keyProblemIn(report);
+      if (keyProblem) {
+        toast.error(`Couldn't test ${name}. ${keyProblem}`);
+        return;
+      }
       if (report.reachable === false) {
         // The call never reached the model, so this says nothing about it —
         // and nothing was recorded. Blaming the model here is what sent the
@@ -137,12 +145,7 @@ export function ModelsSection() {
         toast.error(unreachableText(info.data, report.model, name));
         return;
       }
-      // With no key (or a refused one) every capability fails on the key, and
-      // the report still reads as three Nos: the key is the cause, not the model.
-      const keyProblem = keyProblemIn(report);
-      if (keyProblem) {
-        toast.error(`Couldn't test ${name}. ${keyProblem}`);
-      } else if (missing.length === 0) {
+      if (missing.length === 0) {
         toast.success(`${name} works with every feature`);
       } else {
         toast.warning(
@@ -373,12 +376,36 @@ export function ApiKeysSection() {
   // A typed key survives a tab switch, but a navigation dropped it silently.
   useLeaveGuard(openaiKey !== null || geminiKey !== null);
 
-  const saveKeys = useSaveModelSettings(() => {
+  // A key in the wrong shape, refused at Save before anything is sent (lib/api-key-format.ts).
+  const [openaiProblem, setOpenaiProblem] = useState<string | undefined>();
+  const [geminiProblem, setGeminiProblem] = useState<string | undefined>();
+  const openaiRef = useRef<HTMLInputElement>(null);
+  const geminiRef = useRef<HTMLInputElement>(null);
+
+  const saveKeys = useSaveModelSettings((_info, patch) => {
     setOpenaiKey(null);
     setGeminiKey(null);
-    toast.success("API keys saved");
+    // Saving calls no provider: the key is checked the first time it is used.
+    toast.success(keysSavedText(patch));
   });
   const saveKeysOnce = useSingleFlight(saveKeys.mutate);
+
+  const onSave = (customServer: boolean) => {
+    const openaiWrong = openaiKey !== null ? keyFormatProblem("openai", openaiKey, customServer) : undefined;
+    const geminiWrong = geminiKey !== null ? keyFormatProblem("gemini", geminiKey, customServer) : undefined;
+    setOpenaiProblem(openaiWrong);
+    setGeminiProblem(geminiWrong);
+    if (openaiWrong || geminiWrong) {
+      (openaiWrong ? openaiRef : geminiRef).current?.focus();
+      return;
+    }
+    // Send only the key the user actually edited. An untouched field stays absent (preserved); a
+    // field cleared to empty sends null (removes it). Spaces from a copy are not part of a key.
+    saveKeysOnce({
+      ...(openaiKey !== null ? { openai_api_key: openaiKey.trim() || null } : {}),
+      ...(geminiKey !== null ? { gemini_api_key: geminiKey.trim() || null } : {}),
+    });
+  };
 
   return (
     <SettingCard
@@ -409,7 +436,12 @@ export function ApiKeysSection() {
               source={data.openai_key_source}
               value={openaiKey}
               saving={saveKeys.isPending}
-              onChange={setOpenaiKey}
+              problem={openaiProblem}
+              inputRef={openaiRef}
+              onChange={(next) => {
+                setOpenaiKey(next);
+                setOpenaiProblem(undefined);
+              }}
             />
             <KeyField
               label="Gemini API key"
@@ -423,7 +455,12 @@ export function ApiKeysSection() {
               source={data.gemini_key_source}
               value={geminiKey}
               saving={saveKeys.isPending}
-              onChange={setGeminiKey}
+              problem={geminiProblem}
+              inputRef={geminiRef}
+              onChange={(next) => {
+                setGeminiKey(next);
+                setGeminiProblem(undefined);
+              }}
             />
           </div>
           <div className={ACTION_ROW}>
@@ -434,15 +471,7 @@ export function ApiKeysSection() {
                 saveKeys.isPending || (openaiKey === null && geminiKey === null)
               }
               className="data-disabled:pointer-events-none data-disabled:opacity-50"
-              onClick={() =>
-                // Send only the key the user actually edited. An untouched
-                // field stays absent (preserved); a field cleared to empty
-                // sends null (removes it).
-                saveKeysOnce({
-                  ...(openaiKey !== null ? { openai_api_key: openaiKey || null } : {}),
-                  ...(geminiKey !== null ? { gemini_api_key: geminiKey || null } : {}),
-                })
-              }
+              onClick={() => onSave(data.custom_endpoint)}
             >
               {saveKeys.isPending ? "Saving…" : "Save"}
             </Button>
@@ -460,6 +489,8 @@ function KeyField({
   source,
   value,
   saving,
+  problem,
+  inputRef,
   onChange,
 }: {
   label: string;
@@ -469,10 +500,14 @@ function KeyField({
   source: OpenAIInfo["openai_key_source"];
   value: string | null;
   saving: boolean;
+  /** Why the typed key was refused at Save, shown under the field until it changes. */
+  problem?: string;
+  inputRef?: Ref<HTMLInputElement>;
   onChange: (next: string) => void;
 }) {
   const labelId = useId();
   const hintId = useId();
+  const problemId = useId();
   return (
     <div className="grid gap-1.5">
       <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5 text-xs">
@@ -497,13 +532,20 @@ function KeyField({
         type="password"
         // Named by the caption alone. The status beside it is live text that
         // would otherwise be read as part of the field's name.
+        ref={inputRef}
         aria-labelledby={labelId}
-        aria-describedby={hintId}
+        aria-describedby={problem ? `${problemId} ${hintId}` : hintId}
+        aria-invalid={problem ? true : undefined}
         value={value ?? ""}
         onChange={(e) => onChange(e.target.value)}
         // readOnly, not disabled, while the keys save: a disabled field drops focus to <body>.
         readOnly={saving}
       />
+      {problem ? (
+        <p id={problemId} className="text-destructive text-xs">
+          {problem}
+        </p>
+      ) : null}
     </div>
   );
 }

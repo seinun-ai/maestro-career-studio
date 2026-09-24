@@ -4,7 +4,7 @@ import { createContext, useContext, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 import { LoadErrorState } from "@/components/load-error-state";
-import { errorDetail } from "@/lib/error-text";
+import { loadErrorDetail } from "@/lib/error-text";
 import { isLoadFailure } from "@/lib/query-state";
 import {
   Card,
@@ -119,7 +119,7 @@ export function SettingCard<T>({
             <LoadErrorState
               className="py-8"
               title={errorTitle}
-              detail={errorDetail(firstError(queries))}
+              detail={loadErrorDetail(firstError(queries))}
               retrying={queries.some((q) => q.isFetching)}
               onRetry={() => {
                 for (const q of queries) void q.refetch();

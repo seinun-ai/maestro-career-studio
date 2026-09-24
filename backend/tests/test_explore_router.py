@@ -397,7 +397,8 @@ def test_overview_signals(db_session):
     finally:
         app.dependency_overrides.clear()
     titles = " ".join(s["title"] for s in body["signals"])
-    assert "OPT" in titles
+    # The OPT share is the tab's own tile ("OPT (US student work permit)"): a signal said it twice.
+    assert "OPT" not in titles
     assert "Texas" in titles
     assert "Python" in titles
     assert len(body["signals"]) <= 5
@@ -425,10 +426,12 @@ def test_overview_signal_copy_has_no_em_dash(db_session):
     _add_skill(db_session, paid, "Python", requirement="required")
     db_session.flush()
     signals = explore_overview.candidate_signals(explore_overview.build_overview(db_session))
-    assert len(signals) == 6, [s["title"] for s in signals]
+    assert len(signals) == 5, [s["title"] for s in signals]
     copy = " ".join(f"{s['title']} {s['detail']}" for s in signals)
     assert "Remote roles are scarce" in copy
     assert "—" not in copy
+    # One money format, the web app's ("$140K–$180K"): never "180k USD".
+    assert "about $180K, from 1 job that lists pay." in copy
 
 
 # AI/ML Engineer out-earns Data Scientist. A reserved bucket is appended to out-earn both.
@@ -609,7 +612,13 @@ def test_a_count_of_one_job_is_one_job():
     assert "Most common location: Tacoma, WA (1 job)" in copy
     assert copy["Most required skill: sql (100% of jobs)"] == (
         "Required in 1 of 1 job, more than any other skill.")
-    assert copy["Best-paying role: Data Scientist"].endswith("from 1 job that lists pay.")
+    assert copy["Best-paying role: Data Scientist"] == (
+        "Average top of the pay range: about $150K, from 1 job that lists pay.")
+    for code, pay in (("EUR", "€150K"), ("CHF", "150K CHF")):
+        other = {**one, "salary_by_role": [{**one["salary_by_role"][0], "currency": code}]}
+        assert {s["title"]: s["detail"] for s in explore_overview.candidate_signals(other)}[
+            "Best-paying role: Data Scientist"] == (
+            f"Average top of the pay range: about {pay}, from 1 job that lists pay.")
     six = {**one, "meta": {**one["meta"], "total_jobs": 6},
            "work_mode": [{"key": "remote", "count": 1}, {"key": "onsite", "count": 5}]}
     remote = {s["title"]: s["detail"] for s in explore_overview.candidate_signals(six)}

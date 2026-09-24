@@ -44,3 +44,31 @@ export function inLane<T extends { status: string }>(items: readonly T[], lane: 
 export function selectedAmong(shown: readonly { id: string }[], selected: ReadonlySet<string>): string[] {
   return shown.filter((item) => selected.has(item.id)).map((item) => item.id);
 }
+
+/**
+ * A Needs-you row's line: what the agent needs, in its own words when it gave some. `needs_decision`
+ * is a question the web app answers (Keep it, Skip); `needs_human` is an agent stopped mid-apply,
+ * waiting for you in its own chat (a login, an upload), which this app cannot do for it.
+ */
+export function needsYouLine(status: string, reason: string | null | undefined): string | null {
+  const said = reason?.trim();
+  if (status === "needs_decision") {
+    return said ? `Your agent asks: ${said}` : "Your agent has a question about this job.";
+  }
+  if (status === "needs_human") {
+    return said ? `Your agent stopped: ${said}` : "Your agent stopped and needs you to finish a step.";
+  }
+  return null;
+}
+
+/** The Needs-you lane's help: how each kind present is answered, once each. */
+export function needsYouHelp(statuses: readonly string[]): string[] {
+  const help: string[] = [];
+  if (statuses.includes("needs_decision")) {
+    help.push("Keep it answers yes: the job goes back to To review. Skip answers no.");
+  }
+  if (statuses.includes("needs_human")) {
+    help.push("Where your agent stopped, finish that step in your agent's own chat. It carries on from there.");
+  }
+  return help;
+}

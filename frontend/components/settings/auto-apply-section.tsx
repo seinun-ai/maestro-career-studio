@@ -14,6 +14,7 @@ import { useSingleFlight } from "@/hooks/use-single-flight";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ATS_SCORE_LEAD_ALL_JOBS } from "@/lib/ats-words";
 import { apiFetch } from "@/lib/api";
 import { couldnt } from "@/lib/error-text";
 import type { AutoApplySettings, SettingEnvelope } from "@/lib/types";
@@ -47,7 +48,7 @@ const AUTO_APPLY_FIELDS: {
     key: "max_proposals_per_run",
     label: "Jobs per search",
     // Enforced agent-side only (job_search_brief hands it over; the server counts nothing).
-    hint: "Agents are told to file no more than this from one search.",
+    hint: "Connected agents are told to file no more than this from one search.",
     min: 1,
     max: 100,
   },
@@ -65,14 +66,14 @@ const AUTO_APPLY_FIELDS: {
     // ATS is spelled out once on this tab, here, where it first appears. Both
     // pick limits are playbook rules the agent is given (docs/playbooks/agent-apply.md).
     label: "Lowest ATS score to pick a resume",
-    hint: "An ATS score is how an applicant tracking system rates a resume for a job. Below this, agents ask you which base resume to use.",
+    hint: `${ATS_SCORE_LEAD_ALL_JOBS} Below this, connected agents ask you which base resume to use.`,
     min: 0,
     max: 100,
   },
   {
     key: "auto_pick_margin",
     label: "Lead needed to pick a resume",
-    hint: "Agents pick a base resume on their own only when its ATS score leads the next one by this many points.",
+    hint: "Connected agents pick a base resume on their own only when its ATS score leads the next one by this many points.",
     min: 0,
     max: 100,
   },

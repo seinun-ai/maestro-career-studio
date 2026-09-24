@@ -17,8 +17,9 @@ import { LoadErrorState } from "@/components/load-error-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { reasonLabel } from "@/components/proposals/triage-actions";
 import { apiFetch } from "@/lib/api";
-import { errorDetail } from "@/lib/error-text";
+import { loadErrorDetail } from "@/lib/error-text";
 import { proposalByLine } from "@/lib/agent-name";
+import { needsYouHelp, needsYouLine } from "@/lib/inbox-lanes";
 import { isLoadFailure } from "@/lib/query-state";
 import { formatAbsoluteDateTime, formatShortDate } from "@/lib/format-date";
 import type { ProposalDetail } from "@/lib/types";
@@ -45,7 +46,7 @@ export function ProposalAgentPanel({ proposalId }: { proposalId: string }) {
           <LoadErrorState
             className="py-8"
             title="Couldn't load this proposal."
-            detail={errorDetail(error)}
+            detail={loadErrorDetail(error, "proposal")}
             retrying={isFetching}
             onRetry={() => void refetch()}
           />
@@ -72,6 +73,8 @@ export function ProposalAgentPanel({ proposalId }: { proposalId: string }) {
   const companyNote =
     typeof plan.company_note === "string" ? plan.company_note : null;
   const evidence = data.evidence_json ?? [];
+  // A question or a stop, in the agent's words, and how it is answered (Keep it and Skip sit in the header).
+  const needs = needsYouLine(data.status, data.reason);
 
   return (
     <Card>
@@ -89,7 +92,16 @@ export function ProposalAgentPanel({ proposalId }: { proposalId: string }) {
           Proposed {formatShortDate(data.created_at)}
           {data.expires_at ? ` · expires ${formatShortDate(data.expires_at)}` : ""}
         </p>
-        {data.reason ? (
+        {needs ? (
+          <div className="flex flex-col gap-1">
+            <p className="text-sm break-words">{needs}</p>
+            {needsYouHelp([data.status]).map((line) => (
+              <p key={line} className="text-muted-foreground text-xs">
+                {line}
+              </p>
+            ))}
+          </div>
+        ) : data.reason ? (
           <dl className="flex flex-wrap gap-x-6 gap-y-3">
             <Fact label="Reason">{reasonLabel(data.reason)}</Fact>
           </dl>

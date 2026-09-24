@@ -30,7 +30,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch } from "@/lib/api";
-import { couldnt, errorDetail } from "@/lib/error-text";
+import { couldnt, loadErrorDetail } from "@/lib/error-text";
 import type { TemplateDetail, TemplateSummary } from "@/lib/types";
 import { PageHeader, PageShell } from "@/components/page-shell";
 
@@ -200,7 +200,7 @@ export default function TemplatesListPage() {
       {isLoadFailure(templates) ? (
         <LoadErrorState
           title="Couldn't load templates."
-          detail={errorDetail(templates.error)}
+          detail={loadErrorDetail(templates.error)}
           retrying={templates.isFetching}
           onRetry={() => void templates.refetch()}
         />

@@ -314,7 +314,7 @@ export function OutputTab({ app, jobId }: { app: Application; jobId: string }) {
             <p className="text-muted-foreground text-sm">{status}</p>
           </div>
           <Badge variant={pdfReady ? "default" : "outline"} className="shrink-0">
-            {pdfReady ? "PDF ready" : hasDraft ? "Draft" : "Not started"}
+            {pdfReady ? "PDF ready" : hasDraft ? "Not yet a PDF" : "Not started"}
           </Badge>
         </CardHeader>
         <CardContent className="space-y-4">

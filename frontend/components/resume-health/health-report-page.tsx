@@ -35,7 +35,7 @@ import {
   overrideLevel,
   runLintReport,
 } from "@/lib/api";
-import { couldnt, errorDetail } from "@/lib/error-text";
+import { couldnt, loadErrorDetail } from "@/lib/error-text";
 import { isLoadFailure } from "@/lib/query-state";
 import {
   addNumbersLabel,
@@ -285,7 +285,7 @@ export function HealthReportPage({
       <PageShell>
         <LoadErrorState
           title="Couldn't load this resume."
-          detail={errorDetail(baseQuery.error)}
+          detail={loadErrorDetail(baseQuery.error, "resume")}
           retrying={baseQuery.isFetching}
           onRetry={() => void baseQuery.refetch()}
           action={
@@ -393,7 +393,7 @@ export function HealthReportPage({
       {reportFailed ? (
         <LoadErrorState
           title="Couldn't load this health report."
-          detail={errorDetail(reportError)}
+          detail={loadErrorDetail(reportError)}
           retrying={report.isFetching}
           onRetry={() => void report.refetch()}
         />

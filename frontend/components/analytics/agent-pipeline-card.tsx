@@ -34,7 +34,8 @@ export function AgentPipelineCard() {
   return (
     <ChartCard
       title="Agent pipeline"
-      description="Jobs your connected agents saved, and how far each one got."
+      // Counts of where each job is now (the funnel reads current statuses), not how far it once got.
+      description="Where your connected agents' jobs stand now."
       isLoading={isLoading}
       error={error as Error | null}
     >

@@ -8,6 +8,7 @@ import {
   Bot,
   EllipsisVertical,
   FilePlus2,
+  KeyRound,
   Inbox,
   SendHorizontal,
   Trash2,
@@ -54,19 +55,21 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { agentMarkLabel, queuedToast } from "@/lib/agent-name";
+import { LINKED_APPLICATION_MARK, agentMarkLabel, queuedToast } from "@/lib/agent-name";
 import { apiFetch, promoteJobToAgentQueue } from "@/lib/api";
-import { couldnt, errorDetail } from "@/lib/error-text";
+import { couldnt, loadErrorDetail } from "@/lib/error-text";
 import { focusIfDropped, focusReturnPoint, focusSuccessor } from "@/lib/focus";
 import { formatShortDate } from "@/lib/format-date";
 import { isListCapped } from "@/lib/list-cap";
 import { isLoadFailure } from "@/lib/query-state";
+import { anchorHref } from "@/lib/settings-tabs";
 import { cn } from "@/lib/utils";
 import {
   APPLICATION_STATUSES,
   type ApplicationStatus,
   type ApplicationSummary,
   type Job,
+  type SetupStatus,
 } from "@/lib/types";
 import { PageHeader, PageShell } from "@/components/page-shell";
 import { useBaseResumeLabel } from "@/hooks/use-base-resume-label";
@@ -232,6 +235,13 @@ function ApplicationsContent() {
   // show (`stale`) the list is marked busy and nothing is counted from them.
   const savedJobs = useQuery({ ...savedJobsQuery(savedSource), placeholderData: keepPreviousData });
   const stale = savedJobs.isPlaceholderData;
+  // First run: with no API key, saving a job can't read it, so the empty state says the key comes first.
+  // The same query as the Getting started card below (one request).
+  const setup = useQuery({
+    queryKey: ["setup-status"],
+    queryFn: () => apiFetch<SetupStatus>("/api/setup/status"),
+  });
+  const needsKey = setup.data?.model_key.done === false;
 
   // A status outside the active filter takes its row, and the chip focus went
   // back to, out of the list once the refetch lands. Where focus goes then is
@@ -518,8 +528,9 @@ function ApplicationsContent() {
               className="h-8 min-w-[11rem] rounded-full"
               aria-label="Filter by status"
             >
+              {/* "Status:" on screen: the toolbar has no captions, and "All · 21" alone named nothing. */}
               <SelectValue>
-                {`${filterLabel(filter)} · ${countOf(filter)}`}
+                {`Status: ${filterLabel(filter)} · ${countOf(filter)}`}
               </SelectValue>
             </SelectTrigger>
             <SelectContent
@@ -560,7 +571,7 @@ function ApplicationsContent() {
       {loadFailed ? (
         <LoadErrorState
           title="Couldn't load your applications."
-          detail={errorDetail(apps.error ?? savedJobs.error)}
+          detail={loadErrorDetail(apps.error ?? savedJobs.error)}
           retrying={apps.isFetching || savedJobs.isFetching}
           onRetry={() => {
             void apps.refetch();
@@ -586,7 +597,9 @@ function ApplicationsContent() {
             }
             description={
               allRows.length === 0
-                ? "Add a job to get started."
+                ? needsKey
+                  ? "Add an API key first, then add a job."
+                  : "Add a job to get started."
                 : "Try a different status or clear the search."
             }
             action={
@@ -594,14 +607,22 @@ function ApplicationsContent() {
                 // Lowest emphasis (M3 text button): the FAB or the header
                 // button is the primary create action, but an empty state
                 // still offers its pathway as a control, not just a sentence.
+                // With no key, that pathway starts at the key.
                 <Button
                   variant="ghost"
                   nativeButton={false}
                   render={
-                    <Link href="/new">
-                      <FilePlus2 className="size-4" />
-                      Add job
-                    </Link>
+                    needsKey ? (
+                      <Link href={anchorHref("/settings", "api-keys")}>
+                        <KeyRound className="size-4" />
+                        Add API key
+                      </Link>
+                    ) : (
+                      <Link href="/new">
+                        <FilePlus2 className="size-4" />
+                        Add job
+                      </Link>
+                    )
                   }
                 />
               ) : null
@@ -638,10 +659,12 @@ function ApplicationsContent() {
                     : `/jobs/${r.app.job_id}`;
                 const company = rowCompany(r) || "—";
                 const title = rowTitle(r) || "Untitled role";
-                // Only a saved job carries its newest proposal's filer.
-                const mark = agentMarkLabel(
-                  r.kind === "saved" ? r.job.proposal_proposed_by : null,
-                );
+                // A saved job an agent captured names its filer; an application is "agent" only
+                // because a proposal was linked to it, whoever made it.
+                const mark =
+                  r.kind === "saved"
+                    ? agentMarkLabel(r.job.proposal_proposed_by)
+                    : LINKED_APPLICATION_MARK;
 
                 return (
                   <TableRow

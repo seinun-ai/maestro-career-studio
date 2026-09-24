@@ -8,7 +8,7 @@ import { LoadErrorState } from "@/components/load-error-state";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch } from "@/lib/api";
-import { errorDetail } from "@/lib/error-text";
+import { loadErrorDetail } from "@/lib/error-text";
 import { formatShortDate } from "@/lib/format-date";
 import { countryName, placeName } from "@/lib/place-name";
 import { isLoadFailure } from "@/lib/query-state";
@@ -40,6 +40,23 @@ function buildPath(filters: Filters): string {
 
 const pct = (n: number, total: number) =>
   total > 0 ? Math.round((n / total) * 100) : 0;
+
+/**
+ * A signal in the words the charts below use. The server names the top location by its key ("CA") and
+ * the top skill as stored ("python"), `explore_overview.candidate_signals`; this page has the tables
+ * that say them (placeName, skillName), so "Most common location: California" beside "California".
+ */
+function signalTitle(title: string, o: ExploreOverview): string {
+  const place = o.locations[0]?.key;
+  const skill = o.top_required_skills[0]?.skill_name;
+  if (place && title.startsWith("Most common location: ")) {
+    return title.replace(`: ${place} (`, `: ${placeName(place)} (`);
+  }
+  if (skill && title.startsWith("Most required skill: ")) {
+    return title.replace(`: ${skill} (`, `: ${skillName(skill)} (`);
+  }
+  return title;
+}
 /** Pay the way the job header shows it ("$171K–$214K", "£70K–£90K"): one money format. */
 const payRange = (min: number | null, max: number | null, currency?: string | null) =>
   formatSalary(min, max, null, currency ?? null) ?? "—";
@@ -104,7 +121,7 @@ export function ExploreOverview({ filters }: { filters: Filters }) {
       <LoadErrorState
         className="py-8"
         title="Couldn't load job market data."
-        detail={errorDetail(q.error)}
+        detail={loadErrorDetail(q.error)}
         retrying={q.isFetching}
         onRetry={() => void q.refetch()}
       />
@@ -171,7 +188,8 @@ export function ExploreOverview({ filters }: { filters: Filters }) {
           // OPT spelled out where the tab first shows it.
           label="OPT (US student work permit)"
           value={`${pct(optAccept, total)}%`}
-          sub={`${optAccept} of ${total} accept it`}
+          // The one place the tab says it (the server's OPT signal is gone), with STEM OPT explained.
+          sub={`${optAccept} of ${total} accept OPT or STEM OPT (24 more months for science and tech degrees)`}
         />
       </div>
 
@@ -179,7 +197,7 @@ export function ExploreOverview({ filters }: { filters: Filters }) {
         <div className="flex flex-col gap-2">
           {o.signals.map((s, i) => (
             <div key={i} className="bg-muted/40 rounded-md px-3 py-2">
-              <p className="text-foreground text-sm font-medium">{s.title}</p>
+              <p className="text-foreground text-sm font-medium">{signalTitle(s.title, o)}</p>
               <p className="text-muted-foreground mt-0.5 text-xs">{s.detail}</p>
             </div>
           ))}

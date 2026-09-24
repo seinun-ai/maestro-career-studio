@@ -332,14 +332,21 @@ def test_career_copy_first_read():
     drawer = _read("components/resume-editor/kb-import-drawer.tsx")
     assert "unapproved" not in drawer and "bulletsAdded" in drawer
     assert '{entity.draft_count === 1 ? "draft bullet" : "draft bullets"} not shown' in drawer
-    assert "Update file" in _read("components/career/exports-card.tsx")
+    exports = _read("components/career/exports-card.tsx")
+    # Who the text copy is for, and that it keeps itself current (every read rebuilds it).
+    assert "A text copy for you and connected agents" in exports
+    assert "It updates itself when your career history changes." in exports
+    assert "Career history file" not in exports and "Update file" not in exports
 
 
 def test_studio_copy_first_read():
     studio = _read("components/resume-editor/tailored-resume-studio.tsx")
     assert "This tailored resume was changed somewhere else." in studio
     assert "This draft changed outside the editor." not in studio
-    assert "how an applicant tracking system rates this resume for the job" in studio
+    # The glossary's one ATS explanation ("our estimate…"), never an ATS that "rates" it.
+    assert "`Update the ATS score. ${ATS_SCORE_LEAD_ALL_JOBS}`" in studio
+    assert "aria-description={ATS_SCORE_LEAD_ALL_JOBS}" in studio
+    assert "rates this resume" not in studio
     body = _read("components/resume-editor/editor-body.tsx")
     assert "Copy resume ID" not in body and "Copy ID for connected agents" in body
 
@@ -414,7 +421,16 @@ def test_marking_a_check_ok_moves_focus_to_what_replaced_the_button():
     assert "useLandFocus(land, openerRef);" in failed
     land = _block(cards, "function useLandFocus(", "\n}")
     assert "if (land) focusIfDropped(actionRef.current);" in land
-    assert "const actionRef = useLandFocus(land);" in _block(cards, "function WaivedGate(", "\nfunction NotAssessedGate(")
+    waived = _block(cards, "function WaivedGate(", "\nfunction NotAssessedGate(")
+    assert "const actionRef = useLandFocus(land);" in waived
+    # Regression sweep: focus sat on <body> for a frame or two before Undo. The new row
+    # mounts already knowing to land (set BEFORE the refetch that swaps the rows), and
+    # a layout effect focuses it in the swap's own commit, before paint.
+    assert "useLayoutEffect(() => {" in land and "useEffect(" not in land
+    for row, request in ((failed, "await waiveGate("), (waived, "await unwaiveGate(")):
+        fn = _block(row, "mutationFn: async () => {", "\n    },")
+        assert fn.index(request) < fn.index("onLanded(gate.id);") < fn.index("await onChanged();")
+        assert "onLanded(" not in _block(row, "onSuccess: () => {", "\n    },")
 
 
 def test_answer_and_review_hand_focus_into_the_opened_card():

@@ -24,8 +24,9 @@ import { cn } from "@/lib/utils";
  * a retry the only affordance is a full page reload.
  *
  * `title` defaults to the generic sentence; pass one when the surface can name
- * what it was reading ("Couldn't load your applications."). `detail` carries the
- * server's own message where there is one worth showing.
+ * what it was reading ("Couldn't load your applications."). `detail` is
+ * `loadErrorDetail(error, thing)` (lib/error-text.ts): only a failure to reach
+ * the app says to check that it's running; a 404 names the deleted thing.
  *
  * Try again stays focusable while `retrying` disables it, as the studio Save
  * does: a disabled native <button> drops a keyboard user's focus to <body>.
@@ -69,7 +70,7 @@ export function LoadErrorState({
       <div className="min-w-0 px-6">
         <p className="text-sm font-medium">{title}</p>
         <p className="text-muted-foreground mt-1 text-sm">
-          {shownDetail ?? "Check that Maestro CS is running, then try again."}
+          {shownDetail ?? "Something went wrong. Try again."}
         </p>
       </div>
       {onRetry ? (

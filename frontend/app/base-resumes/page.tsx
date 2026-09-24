@@ -31,7 +31,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { NewBaseResumeDialog } from "@/components/base-resumes/new-base-resume-dialog";
 import { apiFetch, apiUrlForBrowserPdf } from "@/lib/api";
-import { couldnt, errorDetail } from "@/lib/error-text";
+import { couldnt, loadErrorDetail } from "@/lib/error-text";
 import { finalFocusOn, focusIfDropped, focusSuccessor } from "@/lib/focus";
 import { isLoadFailure } from "@/lib/query-state";
 import { notifyRenderNote } from "@/lib/render-note";
@@ -144,7 +144,7 @@ export default function BaseResumesListPage() {
       {isLoadFailure(resumes) ? (
         <LoadErrorState
           title="Couldn't load your base resumes."
-          detail={errorDetail(resumes.error)}
+          detail={loadErrorDetail(resumes.error)}
           retrying={resumes.isFetching}
           onRetry={() => void resumes.refetch()}
         />

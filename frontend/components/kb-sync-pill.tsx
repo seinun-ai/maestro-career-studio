@@ -19,7 +19,7 @@ import { applyKbSync, getKbSyncStatus } from "@/lib/api";
 import { couldnt } from "@/lib/error-text";
 import { formatTimeAgo } from "@/lib/format-date";
 import { isLoadFailure } from "@/lib/query-state";
-import { syncActionableCount, syncBreakdownLines, syncResultSentence } from "@/lib/kb-sync-words";
+import { syncActionableCount, syncBreakdownLines, syncPillLabel, syncResultSentence } from "@/lib/kb-sync-words";
 import { useSingleFlight } from "@/hooks/use-single-flight";
 
 /** Every state renders at this height, so the toolbar row keeps its baseline
@@ -166,9 +166,9 @@ export function KbSyncPill({ slug }: { slug: string }) {
         render={
           <Button variant="outline" size="sm">
             <RefreshCw />
-            {/* "Add to career history", with the preposition: the label must
+            {/* "Add … to career history", with the preposition: the label must
                 say which way the data flows — nothing here touches the resume. */}
-            Add to career history ({count})
+            {syncPillLabel(count)}
           </Button>
         }
       />

@@ -363,7 +363,7 @@ def test_build_areas_build_tier_requires_kb_missing_and_missing_skills(db_sessio
     assert rows["Spark"]["tier"] == "surface"
     assert (rows["Spark"]["category"], rows["Spark"]["category_label"]) == (
         "dual_place",
-        "needs corroborating",
+        "Add an example in a job or project",
     )
 
 

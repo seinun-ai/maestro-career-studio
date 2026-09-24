@@ -15,7 +15,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { DOCUMENT_ACCEPT } from "@/lib/upload-accept";
+import { acceptedFilesHint, DOCUMENT_ACCEPT } from "@/lib/upload-accept";
 
 const DOC_ACCEPT = DOCUMENT_ACCEPT;
 const DOC_MAX_FILES = 10;
@@ -45,7 +45,7 @@ function DocumentLane({ onClose }: { onClose: () => void }) {
         maxFiles={DOC_MAX_FILES}
         maxBytes={DOC_MAX_BYTES}
         disabled={busy}
-        hint={`PDF, Word, Markdown, text or images. Up to ${DOC_MAX_FILES} files, 10 MB each.`}
+        hint={`${acceptedFilesHint(DOC_ACCEPT)} Up to ${DOC_MAX_FILES} files, 10 MB each.`}
         onFiles={(files, rejected) => add(files, rejected)}
       />
 

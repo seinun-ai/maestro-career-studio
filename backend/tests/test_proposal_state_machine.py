@@ -354,5 +354,5 @@ def test_final_review_flags_duplicate_submitted_company_title(db_session):
 def test_record_decision_409_when_no_matching_application(db_session):
     prop = _mk_proposal(db_session, with_app=False)
     svc.request_decision(db_session, prop, reason="pick base")
-    with pytest.raises(svc.TransitionError, match="no matching application"):
+    with pytest.raises(svc.TransitionError, match="no tailored resume to link"):
         svc.record_decision(db_session, prop, fit={"chosen_base": "hybrid"})

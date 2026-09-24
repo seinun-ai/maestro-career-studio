@@ -1206,7 +1206,7 @@ def explore_gap_frequency(
     gaps are excluded here: the resume already matches those at full keyword
     credit, so the literal JD token moves no score and is not demand.
     Each row also carries category_label, the plain-words form of category
-    (e.g. "needs corroborating"); in anything you tell the user, say
+    (e.g. "Add an example in a job or project"); in anything you tell the user, say
     category_label (and, on build_areas rows, the tier word), never a raw key
     such as dual_place or missing_skills.
     Optionally filtered by role/level/type; limit caps the number of skills

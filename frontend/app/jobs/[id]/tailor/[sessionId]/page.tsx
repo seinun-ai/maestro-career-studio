@@ -37,7 +37,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
-import { couldnt, errorDetail } from "@/lib/error-text";
+import { couldnt, errorDetail, loadErrorDetail } from "@/lib/error-text";
 import { gapCounts } from "@/lib/gap-counts";
 import { cn } from "@/lib/utils";
 import {
@@ -629,7 +629,7 @@ export default function TailorSessionPage({
       <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
         <LoadErrorState
           title="Couldn't load this gap analysis."
-          detail={errorDetail(sessionError)}
+          detail={loadErrorDetail(sessionError, "gap analysis")}
           retrying={session.isFetching}
           onRetry={() => void session.refetch()}
           action={

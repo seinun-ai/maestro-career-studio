@@ -64,7 +64,12 @@ export function proposalByLine(proposedBy: string | null | undefined, status: st
   return `Proposed by ${agentDisplayName(proposedBy) ?? "a connected agent"}`;
 }
 
-/** The tracker's mark on an agent-captured row: the newest proposal's filer
+/** The tracker's mark on an application with `source: "agent"`. Only LINKING a proposal sets it
+ *  (routers/proposals.py `_validate_and_stamp_application`, `services/proposals.record_decision`):
+ *  you may have made the application yourself, and queued it yourself, so no agent "found" it. */
+export const LINKED_APPLICATION_MARK = "Linked to a proposal in Agent inbox";
+
+/** The tracker's mark on an agent-captured saved job: the newest proposal's filer
  *  when an agent filed one, else the capture itself. */
 export function agentMarkLabel(proposedBy: string | null | undefined): string {
   const name = agentDisplayName(proposedBy);

@@ -30,6 +30,7 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { apiFetch } from "@/lib/api";
 import { couldnt } from "@/lib/error-text";
+import { formatAbsoluteDateTime } from "@/lib/format-date";
 import { cn } from "@/lib/utils";
 import type { EeoConsent, KBProfileOut, SettingEnvelope } from "@/lib/types";
 
@@ -581,7 +582,7 @@ function AutofillEditor({
       const acknowledged = await confirm({
         title: "Let the Companion answer the voluntary diversity questions?",
         description:
-          "Maestro CS Companion will fill race, ethnicity, gender, veteran and "
+          "The Companion will fill race, ethnicity, gender, veteran and "
           + "disability questions using only your exact answers below. It never "
           + "guesses and never uses AI for these. Tax-credit questions, "
           + "signatures and legal statements stay with you. You can turn this "
@@ -775,7 +776,7 @@ function AutofillEditor({
           ) : null}
           {group.key === "eeo" ? (
             <p id={declineHintId} className="text-muted-foreground text-xs">
-              Decline the rest fills only the questions you left blank. Select Save answers to keep them.
+              Fills your blank diversity questions with “Decline to answer”. Select Save answers to keep it.
             </p>
           ) : null}
           {group.key === "eeo" && (
@@ -791,7 +792,7 @@ function AutofillEditor({
               <div className="flex items-center justify-between gap-4">
                 <div className="grid gap-1">
                   <Label htmlFor="eeo-standing-consent">
-                    Let Companion fill these answers
+                    Let the Companion fill these answers
                   </Label>
                   <p className="text-muted-foreground text-xs">
                     Uses only your exact answers below. Off by default. Tax-credit
@@ -999,7 +1000,7 @@ function AgreedOn({ consent }: { consent: EeoConsent }) {
   if (!consent.acknowledged_at) return null;
   return (
     <p className="text-muted-foreground text-[11px]">
-      You agreed on {new Date(consent.acknowledged_at).toLocaleString()}
+      You agreed on {formatAbsoluteDateTime(consent.acknowledged_at)}
       {consent.policy_version ? ` (policy ${consent.policy_version})` : ""}
     </p>
   );
@@ -1028,7 +1029,7 @@ function CompanionPermissions({
       <div className="flex items-center justify-between gap-4">
         <div className="grid gap-1">
           <Label htmlFor="consent-forms">
-            Let Companion tick agreement boxes
+            Let the Companion tick agreement boxes
           </Label>
           <p className="text-muted-foreground text-xs">
             Terms, certifications, arbitration and waiver boxes. It never signs

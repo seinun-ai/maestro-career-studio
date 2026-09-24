@@ -12,6 +12,13 @@ export function syncActionableCount(status: SyncStatus): number {
   return status.counts.new + status.counts.drift + status.counts.skills_new;
 }
 
+/** The pill: "Add 14 things to career history" ("Add to career history (14)" read as a count of
+ *  nothing in particular). "Things", not "items": an item is one career history record, and these
+ *  are bullets, skills and records together; the popover splits them. */
+export function syncPillLabel(count: number): string {
+  return `Add ${plural(count, "thing", "things")} to career history`;
+}
+
 /** Section → its noun, one and many. The lines add up to the pill's number. */
 const SECTION_NOUNS: [section: string, one: string, many: string][] = [
   ["experience", "experience bullet", "experience bullets"],

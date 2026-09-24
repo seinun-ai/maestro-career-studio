@@ -9,7 +9,7 @@ import { LoadErrorState } from "@/components/load-error-state";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { apiFetch } from "@/lib/api";
-import { errorDetail } from "@/lib/error-text";
+import { loadErrorDetail } from "@/lib/error-text";
 import { isLoadFailure } from "@/lib/query-state";
 import type { KBEntitySummary } from "@/lib/types";
 
@@ -46,7 +46,7 @@ export function FirstRunImportCard() {
       <LoadErrorState
         className="py-8"
         title="Couldn't check your career history."
-        detail={errorDetail(entities.error)}
+        detail={loadErrorDetail(entities.error)}
         retrying={entities.isFetching}
         onRetry={() => void entities.refetch()}
       />

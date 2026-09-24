@@ -86,7 +86,8 @@ function uncheckedItems(job: Job, scan: KnockoutScan): Unchecked[] {
   if (yearly && !has("salary")) {
     items.push({
       what: "pay",
-      field: "desired salary",
+      // Autofill's Desired salary (knockout._salary_check), not Job preferences' Minimum salary.
+      field: "desired salary (Profile › Autofill)",
       href: anchorHref("/profile", "autofill-preferences"),
       link: "Add your desired salary",
     });
@@ -94,7 +95,7 @@ function uncheckedItems(job: Job, scan: KnockoutScan): Unchecked[] {
   if (job.years_experience_min != null && !has("experience")) {
     items.push({
       what: "experience",
-      field: "years of experience",
+      field: "years of experience (Profile › About you)",
       href: anchorHref("/profile", "job-preferences-years"),
       link: "Add your years of experience",
     });
@@ -105,7 +106,13 @@ function uncheckedItems(job: Job, scan: KnockoutScan): Unchecked[] {
 function uncheckedSentence(items: Unchecked[]): string {
   const what = items.map((i) => i.what).join(" or ");
   const fields = items.map((i) => i.field).join(" and ");
-  return `Can't check ${what} yet: add your ${fields} to your profile.`;
+  return `Can't check ${what} yet: add your ${fields}.`;
+}
+
+/** "Pay and experience check: not run yet": which check, not a bare "Not checked yet". */
+function uncheckedLabel(items: Unchecked[]): string {
+  const what = items.map((i) => i.what).join(" and ");
+  return `${what.charAt(0).toUpperCase()}${what.slice(1)} check: not run yet`;
 }
 
 export function JobKnockoutCard({
@@ -121,7 +128,7 @@ export function JobKnockoutCard({
   // A job that lists pay or years the profile can't answer is not "no requirements listed".
   const notChecked = scan.status === "unstated" && missing !== null;
   const copy = notChecked
-    ? { ...STATUS_COPY.unstated, label: "Not checked yet", detail: missing }
+    ? { ...STATUS_COPY.unstated, label: uncheckedLabel(unchecked), detail: missing }
     : STATUS_COPY[scan.status];
   const rows = scan.checks.filter((c) => ROW_RESULTS.has(c.result) && c.message);
 

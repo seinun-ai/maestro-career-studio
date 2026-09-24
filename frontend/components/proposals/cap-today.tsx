@@ -26,9 +26,10 @@ export function CapToday({ className }: { className?: string }) {
     return (
       <RetryChip
         className="text-muted-foreground mt-0.5 inline-flex items-center gap-1 text-xs underline-offset-4 hover:underline"
-        title="Retry loading the daily submission cap"
+        title="Load Applications per day again"
         icon={<RotateCw className="size-3" aria-hidden="true" />}
-        label="Couldn't load the daily cap. Retry"
+        // The line's own name (the setting's), not "daily cap"; the window is 24 hours, not "today".
+        label="Couldn't load Applications per day. Try again"
         retrying={query.isFetching}
         onRetry={() => void query.refetch()}
       />

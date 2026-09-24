@@ -61,7 +61,7 @@ def test_the_url_and_its_session_keys_stay():
 
 def test_the_lanes_use_the_owners_words():
     """Needs you · To review · Queued · Applying · History (planner decision 20)."""
-    titles = re.findall(r"<Lane (?:ref=\{\w+\} )?title=\{`([^$`]+) · \$\{", _SECTION)
+    titles = re.findall(r"<Lane\s+(?:ref=\{\w+\}\s+)?title=\{`([^$`]+) · \$\{", _SECTION)
     assert titles == ["Needs you", "To review", "Queued", "Applying"]
     assert "Nothing to review." in _SECTION
     history = _SECTION.index("History ·")
@@ -101,7 +101,8 @@ def test_the_pipeline_card_says_queued_and_connected_agents():
     """A5 rows 31 and 32: the stage the inbox calls Queued, and no swarm."""
     pipeline = _read("components/analytics/agent-pipeline-card.tsx")
     assert '{ key: "accepted", label: "Queued"' in pipeline
-    assert "Jobs your connected agents saved, and how far each one got." in pipeline
+    # The funnel counts where each job IS (current statuses), not how far it once got.
+    assert "Where your connected agents' jobs stand now." in pipeline
     assert "hunt swarm" not in pipeline
     assert 'label: "Accepted"' not in pipeline
 
@@ -208,7 +209,10 @@ def _github_slug(heading: str) -> str:
 def test_an_empty_inbox_says_where_proposals_come_from():
     empty = _SECTION[_SECTION.index("if (items.length === 0) {") : _SECTION.index("const rowProps")]
     assert 'title="No proposals yet"' in empty
-    assert "The app never proposes jobs itself. Nothing is submitted without your yes." in empty
+    assert "The app never proposes jobs itself." in empty
+    # The consent line is said once on the page: the header carries it, the empty state doesn't repeat it.
+    assert "Nothing is submitted without your yes." not in empty
+    assert "<p>Jobs your connected agents found. Nothing is submitted without your yes.</p>" in _PAGE
     assert "href={JOB_HUNT_SKILL_URL}" in empty
     assert "href={AGENT_APPLICATIONS_URL}" in empty
     assert empty.count('target="_blank" rel="noopener noreferrer"') == 2
@@ -289,8 +293,14 @@ def test_every_proposal_surface_names_who_filed_it():
 
 
 def test_the_tracker_mark_names_the_filer_in_words_a_reader_hears():
-    # Only a saved job carries its newest proposal's filer (M7).
-    assert "agentMarkLabel(\n                  r.kind === \"saved\" ? r.job.proposal_proposed_by : null,\n" in _TRACKER
+    # Only a saved job carries its newest proposal's filer (M7). An application is "agent"
+    # only because a proposal was linked to it (routers/proposals.py
+    # `_validate_and_stamp_application`): "Found by a connected agent" was false for one you made.
+    assert (
+        'r.kind === "saved"\n                    ? agentMarkLabel(r.job.proposal_proposed_by)\n'
+        "                    : LINKED_APPLICATION_MARK;"
+    ) in _TRACKER
+    assert 'export const LINKED_APPLICATION_MARK = "Linked to a proposal in Agent inbox";' in _name()
     assert "Found by agent" not in _TRACKER
     mark = _TRACKER[_TRACKER.index("title={mark}") :]
     assert mark.index('aria-hidden="true"') < mark.index('<span className="sr-only">{mark}</span>')
@@ -614,11 +624,11 @@ def test_row_actions_keep_focus_while_they_run():
     """A natively disabled row button dropped focus to <body> while it ran."""
     row = _row()
     buttons = re.findall(r"<IconButton\b.*?\n\s*/>", row, re.S)
-    assert len(buttons) == 4
+    assert len(buttons) == 5
     for button in buttons:
         assert "focusableWhenDisabled" in button, button
         assert "data-disabled:pointer-events-none data-disabled:opacity-50" in button, button
-        assert re.search(r'data-row-action="(queue|skip|delete)"', button), button
+        assert re.search(r'data-row-action="(queue|keep|skip|delete)"', button), button
 
 
 def test_a_row_that_leaves_its_lane_hands_focus_on():
@@ -716,3 +726,45 @@ def test_an_unreported_filer_is_never_claimed():
 def test_the_role_filter_compares_the_role():
     """M11."""
     assert 'if (role !== "all" && p.job.role_category !== role) return false;' in _read("lib/inbox-filter.ts")
+
+
+def _block(src: str, start: str, end: str) -> str:
+    i = src.index(start)
+    return src[i : src.index(end, i + len(start))]
+
+
+def test_a_question_from_the_agent_can_be_answered_here():
+    """First-read pass: a Needs-you proposal offered only Skip and Delete. A question
+    (`needs_decision`) is answered with Keep it (back to To review: the backend's
+    needs_decision → pending_review, services/proposals.py ALLOWED) on the row and the
+    job page; a stop (`needs_human`) has no answer here, and the row says so."""
+    row = _block(_SECTION, "function ProposalRow(", "\n}\n")
+    assert 'const showKeep = lane === "needs_you" && proposal.status === "needs_decision";' in row
+    keep = _block(row, "{showKeep ? (", ") : null}")
+    assert 'label="Keep it"' in keep and 'data-row-action="keep"' in keep and 'onClick={act("keep")}' in keep
+    # Single-flight (the hook's transitionOnce), and focusable while it runs.
+    assert "disabled={pending}" in keep and "focusableWhenDisabled" in keep
+    assert 'else if (action === "keep") actions.transition({ id: p.id, status: "pending_review" });' in _SECTION
+    # The agent's words on the row, and how each kind is answered under the lane's heading.
+    assert "const needs = lane === \"needs_you\" ? needsYouLine(proposal.status, proposal.reason) : null;" in row
+    assert "help={needsYouHelp(needsYou.map((p) => p.status))}" in _SECTION
+    # The job page: Keep it links the job's application only for a proposal linked to none.
+    assert 'const showKeep = proposalStatus === "needs_decision";' in _JOB
+    job_keep = _block(_JOB, "{showKeep && proposalId ? (", ") : null}")
+    assert 'status: "pending_review",' in job_keep
+    assert "applicationId: asked.data?.application ? undefined : application?.id," in job_keep
+    assert "disabled={triagePending || !asked.data}" in job_keep and "triaged.current = true;" in job_keep
+    assert 'if (became === "pending_review") toast.success("Kept. It\'s back in To review.");' in _JOB
+    # The PATCH: no consent for a return to To review, the application when given.
+    assert '...(status === "pending_review" ? {} : { consent: { channel: "frontend" } }),' in _TRIAGE
+    assert "...(applicationId ? { application_id: applicationId } : {})," in _TRIAGE
+    assert "const needs = needsYouLine(data.status, data.reason);" in _PANEL
+
+
+def test_the_needs_you_help_says_where_a_stop_is_answered():
+    from tests.node_ts import ts_map
+
+    decision, human = ts_map("./lib/inbox-lanes.ts", "needsYouHelp", [["needs_decision"], ["needs_human"]])
+    assert decision == ["Keep it answers yes: the job goes back to To review. Skip answers no."]
+    assert human == ["Where your agent stopped, finish that step in your agent's own chat. "
+                     "It carries on from there."]

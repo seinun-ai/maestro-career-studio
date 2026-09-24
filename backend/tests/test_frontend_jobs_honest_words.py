@@ -48,7 +48,14 @@ def test_an_unstated_knockout_says_what_it_could_not_check():
     assert "if job.years_experience_min is None or years_experience is None:\n        return None" in src
     card = _read("components/job-knockout-card.tsx")
     assert "\"Nothing here to check. That doesn't mean you qualify.\"" in card
-    assert '`Can\'t check ${what} yet: add your ${fields} to your profile.`' in card
+    assert '`Can\'t check ${what} yet: add your ${fields}.`' in card
+    # Which check, and which of the two salary fields it reads (knockout reads
+    # preferences.desired_salary, the Autofill tab's, not Job preferences' Minimum salary).
+    assert "return `${what.charAt(0).toUpperCase()}${what.slice(1)} check: not run yet`;" in card
+    assert 'label: "Not checked yet"' not in card
+    assert '(preferences or {}).get("desired_salary")' in src
+    assert 'field: "desired salary (Profile › Autofill)",' in card
+    assert 'field: "years of experience (Profile › About you)",' in card
     assert 'job.salary_period === "year" || (job.salary_period == null && ceiling >= 10000)' in card
     assert 'anchorHref("/profile", "autofill-preferences")' in card
     assert 'anchorHref("/profile", "job-preferences-years")' in card
@@ -286,7 +293,9 @@ def test_the_tracker_says_where_agent_jobs_are():
 
 def test_the_inbox_explains_mcp_and_the_skill_once():
     inbox = _read("components/proposals/proposals-section.tsx")
-    assert "MCP, the standard way AI apps connect to tools" in inbox
+    # The agents first, then how they connect (first-read pass: the MCP clause led).
+    assert ("such as Claude, Codex or the ChatGPT desktop app, using MCP "
+            "(the standard way AI apps connect to tools).") in inbox
     assert "ready-made instructions for your agent" in inbox
     assert "May not accept OPT" in inbox
 
@@ -353,3 +362,39 @@ def test_names_are_sentence_case(rel: str):
 
 def test_the_score_tab_name_is_sentence_case():
     assert '<TabsTrigger value="fit">Score and tailor</TabsTrigger>' in _read(_JOB_PAGE)
+
+
+# ── Unreadable job dates (Task 25): said plainly, with a format that works ──────
+
+
+def test_the_score_tab_says_why_undated_jobs_score_low():
+    """First-read pass: "Recent experience 11" with dates like 2021-03 and no word of why.
+    The engine reads "Mon YYYY" only (accepting more is §11: it moves ATS scores)."""
+    from app.services.ats import layers
+    from tests.node_ts import ts_map
+
+    words = _read("lib/ats-words.ts")
+    assert 'const DATES_FLAG = "Some job dates can\'t be read";' in words
+    assert "Write dates like Jul 2022 in your base resume." in words
+    # The engine's flag is what the web app detects: one reword would silence the note.
+    import inspect
+    assert 'flags.append("Some job dates can\'t be read.' in inspect.getsource(layers.l5_format)
+    assert ts_map("./lib/ats-words.ts", "datesUnreadable", [
+        ["Some job dates can't be read. Write them like Jul 2022."], ["Section missing or empty: summary"],
+    ]) == [True, False]
+    panel = _read("components/ats-score-panel.tsx")
+    assert "{datesUnreadable(score.subscores_json.format_flags) && (" in panel
+    assert "<p className=\"text-muted-foreground text-xs\">{UNREADABLE_DATES_NOTE}</p>" in panel
+    # "11 of 100", not a bare 11.
+    assert '<span className="text-muted-foreground font-normal"> of 100</span>' in panel
+
+
+def test_a_skill_with_no_example_never_contradicts_mentioned_in():
+    """"Skills with no example" beside "Mentioned in: Northwind" read as a contradiction:
+    the entries were found, but their dates can't be read, so only the skills list counts."""
+    words = _read("lib/ats-words.ts")
+    assert 'return placement === "skills_list_only" && entries.length > 0;' in words
+    assert "These don't count as examples yet because we can't read a date on them." in words
+    card = _read("components/gap-analysis/gap-card.tsx")
+    assert "const undated = undatedEvidence(diagnostic.placement, entries);" in card
+    assert "{undated ? <p className=\"text-muted-foreground basis-full text-xs\">{UNDATED_EVIDENCE_NOTE}</p> : null}" in card

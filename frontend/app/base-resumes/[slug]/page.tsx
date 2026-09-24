@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useRefreshFailedNotice } from "@/hooks/use-refresh-failed-notice";
 import { apiFetch } from "@/lib/api";
-import { errorDetail } from "@/lib/error-text";
+import { loadErrorDetail } from "@/lib/error-text";
 import { isLoadFailure } from "@/lib/query-state";
 import type { BaseResumeDetail } from "@/lib/types";
 
@@ -33,7 +33,7 @@ export default function BaseResumeEditorPage({
       <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-4 p-6">
         <LoadErrorState
           title="Couldn't load this resume."
-          detail={errorDetail(query.error)}
+          detail={loadErrorDetail(query.error, "resume")}
           retrying={query.isFetching}
           onRetry={() => void query.refetch()}
           action={

@@ -174,8 +174,53 @@ def test_the_proxy_says_the_same_words_when_the_server_is_down():
 
 def test_the_load_error_default_names_the_next_step():
     src = _read("components/load-error-state.tsx")
-    assert '{shownDetail ?? "Check that Maestro CS is running, then try again."}' in src
+    # Not "check that it's running": most load errors come from a running app.
+    assert '{shownDetail ?? "Something went wrong. Try again."}' in src
+    assert "is running" not in src
     assert "backend restarting" not in src
+
+
+# Only a failure to REACH the app says it may not be running (lib/api.ts and the
+# proxy write that sentence); a running app answered, so a 404 is a deleted thing,
+# a malformed id a wrong link and a 5xx our side (lib/error-text.test.ts has the cases).
+def test_a_load_error_says_why_it_failed():
+    src = _read("lib/error-text.ts")
+    assert "if (thing && status === 404) return `This ${thing} may have been deleted.`;" in src
+    assert "return `This link doesn't point to ${" in src
+    assert 'const OUR_SIDE = "Something went wrong on our side. Try again.";' in src
+    assert "detail !== GENERIC" in src
+    assert "running" not in _without_comments(src)
+
+
+# Every item page names what it failed to load, so a 404 says what was deleted.
+_ITEM_LOADS = (
+    ("app/jobs/[id]/page.tsx", 'loadErrorDetail(error, "job")'),
+    ("app/applications/[id]/page.tsx", 'loadErrorDetail(lastError, "application")'),
+    ("app/applications/[id]/resume/page.tsx", 'loadErrorDetail(query.error, "application")'),
+    ("app/base-resumes/[slug]/page.tsx", 'loadErrorDetail(query.error, "resume")'),
+    ("app/templates/[id]/page.tsx", 'loadErrorDetail(tq.error, "template")'),
+    ("app/jobs/[id]/tailor/[sessionId]/page.tsx", 'loadErrorDetail(sessionError, "gap analysis")'),
+    ("components/chat/chat-page.tsx", 'loadErrorDetail(detail.error, "chat")'),
+    ("components/proposals/proposal-agent-panel.tsx", 'loadErrorDetail(error, "proposal")'),
+    ("components/resume-health/health-report-page.tsx", 'loadErrorDetail(baseQuery.error, "resume")'),
+    ("components/career/entity-detail.tsx", 'loadErrorDetail(loadError, "career item")'),
+)
+
+
+@pytest.mark.parametrize("rel,call", _ITEM_LOADS)
+def test_an_item_page_names_what_it_loads(rel: str, call: str):
+    assert call in _read(rel)
+
+
+def test_every_load_error_goes_through_load_error_detail():
+    """A load error's detail is never errorDetail's (undefined for a 404 or a 500)."""
+    offenders = []
+    for root in _ROOTS:
+        for path in sorted((_FRONTEND / root).rglob("*.tsx")):
+            src = path.read_text(encoding="utf-8")
+            if "<LoadErrorState" in src and re.search(r"detail=\{errorDetail\(", src):
+                offenders.append(path.relative_to(_FRONTEND).as_posix())
+    assert not offenders
 
 
 def test_error_text_shows_only_plain_sentences():

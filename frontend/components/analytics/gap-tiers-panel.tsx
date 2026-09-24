@@ -9,7 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { LoadErrorState } from "@/components/load-error-state";
 import { apiFetch } from "@/lib/api";
 import { requirementLabel } from "@/lib/ats-words";
-import { errorDetail } from "@/lib/error-text";
+import { loadErrorDetail } from "@/lib/error-text";
 import { skillName } from "@/lib/skill-name";
 import { isLoadFailure } from "@/lib/query-state";
 import type {
@@ -75,7 +75,7 @@ export function GapTiersPanel({ filters }: { filters: TopSkillsFilters }) {
       <LoadErrorState
         className="py-8"
         title="Couldn't load your skill gaps."
-        detail={errorDetail(areas.error)}
+        detail={loadErrorDetail(areas.error)}
         retrying={areas.isFetching}
         onRetry={() => void areas.refetch()}
       />

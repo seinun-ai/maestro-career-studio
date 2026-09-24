@@ -46,6 +46,18 @@ def compute_signals(o: dict[str, Any]) -> list[dict[str, str]]:
     return candidate_signals(o)[:5]
 
 
+# The symbols en-US `Intl.NumberFormat` writes, so a signal's pay reads like the tile beside it.
+_SYMBOLS = {"USD": "$", "EUR": "€", "GBP": "£", "INR": "₹", "CAD": "CA$", "AUD": "A$"}
+
+
+def _thousands(amount: float, currency: str | None) -> str:
+    """Pay as the web app writes it (`formatMoney`, which reads a missing currency as USD):
+    "$214K", "€150K", else "150K CHF"."""
+    code = (currency or "USD").upper()
+    k = f"{round(amount / 1000)}K"
+    return f"{_SYMBOLS[code]}{k}" if code in _SYMBOLS else f"{k} {code}"
+
+
 def _jobs(n: int) -> str:
     """"1 job", "3 jobs": a count and its noun agree (appendix D §1)."""
     return f"{n} {'job' if n == 1 else 'jobs'}"
@@ -57,12 +69,8 @@ def candidate_signals(o: dict[str, Any]) -> list[dict[str, str]]:
         return []
     signals: list[dict[str, str]] = []
 
-    opt = {r["key"]: r["count"] for r in o["work_auth"]["opt"]}
-    accept = opt.get("yes", 0) + opt.get("stem_opt_ok", 0)
-    signals.append({
-        "title": f"{round(accept / total * 100)}% of jobs say they accept OPT",
-        "detail": f"{accept} of {total} accept OPT or STEM OPT. The rest say no or don't say.",
-    })
+    # No OPT signal: the Job market tab's own tile shows that share, and `work_auth.opt` carries
+    # the counts for every other reader. A signal said it a second time on the same screen.
 
     if o["locations"]:
         top = o["locations"][0]
@@ -87,11 +95,10 @@ def candidate_signals(o: dict[str, Any]) -> list[dict[str, str]]:
     if paid:
         best = max(paid, key=lambda r: r["avg_max"])
         cur = best.get("currency") or o["meta"].get("salary_year_currency")
-        cur_bit = f" {cur}" if cur else ""
         signals.append({
             "title": f"Best-paying role: {role_categories.label_for(best['role_category'])}",
             "detail": (
-                f"Average top of the pay range: about {round(best['avg_max'] / 1000)}k{cur_bit}, "
+                f"Average top of the pay range: about {_thousands(best['avg_max'], cur)}, "
                 f"from {_jobs(best['n'])} that {'lists' if best['n'] == 1 else 'list'} pay."
             ),
         })

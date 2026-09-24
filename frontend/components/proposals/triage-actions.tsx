@@ -58,7 +58,7 @@ type BulkStatus = "accepted" | "rejected";
  * confirmed), so focus a caller moved on at the click has nowhere to go.
  */
 export type ProposalActionEvents = {
-  onDone?: (ids: string[], became: BulkStatus | "deleted") => void;
+  onDone?: (ids: string[], became: BulkStatus | "pending_review" | "deleted") => void;
   onUndone?: () => void;
 };
 
@@ -78,25 +78,30 @@ export function useProposalActions(events: ProposalActionEvents = {}) {
       id,
       status,
       reason,
+      applicationId,
     }: {
       id: string;
-      status: Extract<ProposalStatus, "accepted" | "rejected">;
+      /** `pending_review` is Keep it on a Needs-you proposal: the agent's question answered yes. */
+      status: Extract<ProposalStatus, "accepted" | "rejected" | "pending_review">;
       reason?: string;
+      /** Keep it from the job page: the job's application, for a proposal linked to none. */
+      applicationId?: string;
     }) =>
       apiFetch<Proposal>(`/api/proposals/${id}`, {
         method: "PATCH",
         body: JSON.stringify({
           status,
-          consent: { channel: "frontend" },
+          ...(status === "pending_review" ? {} : { consent: { channel: "frontend" } }),
           ...(reason ? { reason } : {}),
+          ...(applicationId ? { application_id: applicationId } : {}),
         }),
       }),
     onSuccess: (_data, vars) => {
       invalidate();
       events.onDone?.([vars.id], vars.status);
     },
-    onError: (err: Error) => {
-      toast.error(couldnt("update the proposal", err));
+    onError: (err: Error, vars) => {
+      toast.error(couldnt(vars.status === "pending_review" ? "keep it" : "update the proposal", err));
       events.onUndone?.();
     },
   });
@@ -145,7 +150,7 @@ export function useProposalActions(events: ProposalActionEvents = {}) {
       let confirmed = false;
       confirmed = await confirm({
         title: "Delete this proposal?",
-        description: "This also deletes its screenshots.",
+        description: "This also deletes the screenshots your agent took.",
         confirmLabel: "Delete",
         destructive: true,
         returnFocus: () => (confirmed && next ? next() : null),

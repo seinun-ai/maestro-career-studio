@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { GuardedLink as Link } from "@/components/guarded-link";
 import { usePathname } from "next/navigation";
-import { Check } from "lucide-react";
+import { Check, Circle } from "lucide-react";
 
 import { buildSetupSteps, type SetupStepView } from "@/components/setup/setup-steps";
 import { UploadDialog } from "@/components/setup/upload-dialog";
@@ -24,7 +24,7 @@ function pillClass(done: boolean) {
 
 function label(step: SetupStepView) {
   // A comma, not a colon: a pill's own text can hold one ("Autofill: 40% done").
-  return `${step.label}, ${step.done ? "done" : "not finished"}`;
+  return `${step.label}, ${step.done ? "done" : "not done"}`;
 }
 
 /** Incomplete setup steps for the top of the Profile page — each one actionable.
@@ -58,12 +58,15 @@ export function SetupStatusStrip({
   return (
     <>
       <div className="flex flex-wrap items-center gap-1.5" aria-label="Getting started progress">
-        {/* Says what the chips are; a done chip also carries a check, not only a colour. */}
-        <span className="text-muted-foreground text-xs font-medium">Setup:</span>
+        {/* Says what the chips are. Each carries its state as a mark, not only a colour: a check
+            when done, an empty circle when not (first-read pass: which were done was a guess). */}
+        <span className="text-muted-foreground text-xs font-medium">Setup steps:</span>
         {steps.map((step) => {
           const icon = step.done ? (
             <Check aria-hidden="true" className="size-3" />
-          ) : null;
+          ) : (
+            <Circle aria-hidden="true" className="size-3" />
+          );
 
           if (step.action.kind === "navigate") {
             return (

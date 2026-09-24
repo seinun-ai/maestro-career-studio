@@ -2,7 +2,16 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
-import { INBOX_LANES, NEEDS_YOU_STATUSES, STATUS_ORDER, inLane, laneOf, selectedAmong } from "./inbox-lanes.ts";
+import {
+  INBOX_LANES,
+  NEEDS_YOU_STATUSES,
+  STATUS_ORDER,
+  inLane,
+  laneOf,
+  needsYouHelp,
+  needsYouLine,
+  selectedAmong,
+} from "./inbox-lanes.ts";
 
 /** `PROPOSAL_STATUSES` as lib/types.ts spells it (types.ts is not loadable here: it imports without an extension). */
 function proposalStatuses(): string[] {
@@ -72,4 +81,28 @@ test("only selected rows that are shown are acted on", () => {
   assert.deepEqual(selectedAmong(shown, new Set(["x", "c", "a", "d"])), ["a", "c"]);
   assert.deepEqual(selectedAmong(shown, new Set()), []);
   assert.deepEqual(selectedAmong([], new Set(["a"])), []);
+});
+
+test("a Needs-you row says what the agent needs, in its own words when it gave some", () => {
+  assert.equal(
+    needsYouLine("needs_decision", "Salary is below your minimum; do you still want this?"),
+    "Your agent asks: Salary is below your minimum; do you still want this?",
+  );
+  assert.equal(needsYouLine("needs_decision", null), "Your agent has a question about this job.");
+  assert.equal(
+    needsYouLine("needs_human", "The form asks for a portfolio upload."),
+    "Your agent stopped: The form asks for a portfolio upload.",
+  );
+  assert.equal(needsYouLine("needs_human", "  "), "Your agent stopped and needs you to finish a step.");
+  assert.equal(needsYouLine("pending_review", "x"), null);
+});
+
+test("the Needs-you lane says how each kind is answered, once", () => {
+  assert.deepEqual(needsYouHelp([]), []);
+  const both = needsYouHelp(["needs_decision", "needs_human", "needs_decision"]);
+  assert.equal(both.length, 2);
+  assert.match(both[0], /^Keep it answers yes: the job goes back to To review\. Skip answers no\.$/);
+  // needs_human has no answer in this app: the agent is waiting in its own chat.
+  assert.match(both[1], /in your agent's own chat/);
+  assert.deepEqual(needsYouHelp(["needs_human"]), [both[1]]);
 });

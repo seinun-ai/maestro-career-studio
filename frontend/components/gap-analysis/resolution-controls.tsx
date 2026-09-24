@@ -6,6 +6,7 @@ import { Library, Sparkles } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { formatResumeMonth } from "@/lib/format-date";
 import { cn } from "@/lib/utils";
 import type { GapAction, LibraryCandidate, ResumeData } from "@/lib/types";
 
@@ -328,7 +329,7 @@ export function Chip({
             selected ? "text-primary-foreground" : "text-muted-foreground",
           )}
         >
-          {date}
+          {formatResumeMonth(date)}
         </span>
       )}
       {recent && (

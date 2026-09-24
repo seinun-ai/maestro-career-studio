@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, type ReactNode, type Ref, type RefObject } from "react";
+import { useId, useLayoutEffect, useRef, useState, type ReactNode, type Ref, type RefObject } from "react";
 import { GuardedLink as Link } from "@/components/guarded-link";
 import {
   ATTENTION_BADGE,
@@ -1207,11 +1207,14 @@ export function NotesTable({
  * A check that flips (Mark as OK, Undo) swaps its row for the other kind, and
  * the button the user pressed leaves with the old row. The row that replaces it
  * takes the focus back onto its own action: `land` marks the check just changed.
+ * `land` is set BEFORE the refetch that swaps the rows, so the new row mounts
+ * with it, and a layout effect moves focus in the swap's own commit: a passive
+ * effect after a later `land` commit left focus on <body> for a frame or two.
  */
 function useLandFocus(land: boolean, target?: RefObject<HTMLButtonElement | null>) {
   const own = useRef<HTMLButtonElement>(null);
   const actionRef = target ?? own;
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (land) focusIfDropped(actionRef.current);
   }, [land, actionRef]);
   return actionRef;
@@ -1240,10 +1243,11 @@ function FailedGate({
   const markOk = useMutation({
     mutationFn: async () => {
       await waiveGate(kind, resumeKey, gate.id, reason);
+      // Before the refetch that swaps this row out: its replacement mounts knowing to take focus.
+      onLanded(gate.id);
       await onChanged();
     },
     onSuccess: () => {
-      onLanded(gate.id);
       toast.success("Marked as OK");
     },
     onError: (err: Error) => toast.error(couldnt("mark it as OK", err)),
@@ -1348,10 +1352,10 @@ function WaivedGate({
   const unwaive = useMutation({
     mutationFn: async () => {
       await unwaiveGate(kind, resumeKey, gate.id);
+      onLanded(gate.id);
       await onChanged();
     },
     onSuccess: () => {
-      onLanded(gate.id);
       toast.success("Check turned back on");
     },
     onError: (err: Error) => toast.error(couldnt("undo", err)),

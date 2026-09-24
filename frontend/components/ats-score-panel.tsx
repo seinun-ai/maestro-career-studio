@@ -16,8 +16,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useSingleFlight } from "@/hooks/use-single-flight";
-import { ATS_SCORE_LEAD, SUBSCORE_LABELS } from "@/lib/ats-words";
-import { couldnt, errorDetail } from "@/lib/error-text";
+import { ATS_SCORE_LEAD, SUBSCORE_LABELS, UNREADABLE_DATES_NOTE, datesUnreadable } from "@/lib/ats-words";
+import { couldnt, loadErrorDetail } from "@/lib/error-text";
 import { gapCounts } from "@/lib/gap-counts";
 import { isLoadFailure } from "@/lib/query-state";
 import { cn } from "@/lib/utils";
@@ -50,7 +50,11 @@ function SubscoreBar({ label, value }: { label: string; value: number }) {
     <div className="space-y-0.5">
       <div className="flex items-baseline justify-between gap-2">
         <span className="text-muted-foreground text-xs">{label}</span>
-        <span className="text-xs font-medium tabular-nums">{pct}</span>
+        {/* "11 of 100": a bare 11 read as a count, not a score out of 100. */}
+        <span className="text-xs font-medium tabular-nums">
+          {pct}
+          <span className="text-muted-foreground font-normal"> of 100</span>
+        </span>
       </div>
       <div className="bg-muted h-1.5 w-full overflow-hidden rounded-full">
         <div
@@ -125,6 +129,9 @@ function AtsScoreCard({
             />
           ))}
         </div>
+        {datesUnreadable(score.subscores_json.format_flags) && (
+          <p className="text-muted-foreground text-xs">{UNREADABLE_DATES_NOTE}</p>
+        )}
         {gateWarnings.length > 0 && (
           <div className="flex flex-wrap gap-1">
             {gateWarnings.map((warning) => (
@@ -371,7 +378,7 @@ export function AtsScorePanel({
       return (
         <LoadErrorState
           title="Couldn't load ATS scores."
-          detail={errorDetail(scores.error)}
+          detail={loadErrorDetail(scores.error)}
           retrying={scores.isFetching}
           onRetry={() => void scores.refetch()}
         />

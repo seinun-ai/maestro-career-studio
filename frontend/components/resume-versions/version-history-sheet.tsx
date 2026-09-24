@@ -19,7 +19,7 @@ import {
 import { useSingleFlight } from "@/hooks/use-single-flight";
 import { listResumeVersions, restoreResumeVersion } from "@/lib/api";
 import { versionSummaryWords } from "@/lib/describe-edit";
-import { couldnt } from "@/lib/error-text";
+import { couldnt, loadErrorDetail } from "@/lib/error-text";
 import { formatAbsoluteDateTime } from "@/lib/format-date";
 import { isLoadFailure } from "@/lib/query-state";
 import { notifyRenderOutcome } from "@/lib/render-note";
@@ -234,6 +234,7 @@ export function VersionHistorySheet({
           {isLoadFailure(versions) && (
             <LoadErrorState
               title="Couldn't load Version history."
+              detail={loadErrorDetail(versions.error)}
               retrying={versions.isFetching}
               onRetry={() => void versions.refetch()}
             />

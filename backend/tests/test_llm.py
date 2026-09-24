@@ -244,8 +244,26 @@ def _provider_error(cls, status, code):
                                     body=body)
 
 
+def test_a_refused_key_names_who_refused_it_and_the_fix(monkeypatch):
+    """"The AI model didn't answer (your key was refused). Try again" sent people
+    to retry what can only fail again: a refused key says who refused it and
+    where to fix it, and nothing about trying again."""
+    for cls, status, code in (("AuthenticationError", 401, "invalid_api_key"),
+                              ("AuthenticationError", 401, None)):
+        err = llm._no_answer(llm._openai_reason(_provider_error(cls, status, code)), "detail")
+        assert str(err) == "OpenAI refused your API key. Check it in Settings › AI & models."
+    gemini = llm._no_answer(llm._gemini_reason(400, '{"error": {"details": [{"reason": "API_KEY_INVALID"}]}}'),
+                            "detail", provider="Gemini")
+    assert str(gemini) == "Gemini refused your API key. Check it in Settings › AI & models."
+    assert llm._gemini_reason(400, '{"error": {"message": "bad request"}}') == "error 400"
+    # A custom AI server is not OpenAI, whatever SDK talks to it.
+    monkeypatch.setattr(llm, "get_base_url", lambda: "http://127.0.0.1:11434/v1")
+    assert llm._openai_provider() == "Your AI server"
+    monkeypatch.setattr(llm, "get_base_url", lambda: None)
+    assert llm._openai_provider() == "OpenAI"
+
+
 @pytest.mark.parametrize("cls, status, code, words", [
-    ("AuthenticationError", 401, "invalid_api_key", "your key was refused"),
     ("RateLimitError", 429, "insufficient_quota", "your account is out of credit"),
     ("NotFoundError", 404, "model_not_found", "that model wasn't found"),
     ("RateLimitError", 429, "rate_limit_exceeded", "too many requests"),

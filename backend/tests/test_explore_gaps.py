@@ -207,7 +207,7 @@ def test_gap_frequency_ranks_by_distinct_jobs(db_session):
     # avg_potential_points is the mean across occurrences: (4.0 + 6.0) / 2 == 5.0
     assert by_skill["kubernetes"]["avg_potential_points"] == 5.0
     assert by_skill["kubernetes"]["category"] == "missing_skills"
-    assert by_skill["kubernetes"]["category_label"] == "no evidence on this resume"
+    assert by_skill["kubernetes"]["category_label"] == "Not on this resume"
     assert by_skill["kubernetes"]["requirement_level"] == "required"
 
 
@@ -215,6 +215,23 @@ def test_every_skill_gap_category_has_a_label():
     assert set(explore_gaps.GAP_CATEGORY_LABELS) == set(
         gap_analysis._HINT_TO_CATEGORY.values()
     )
+
+
+def test_a_gap_category_says_the_fix_in_plain_words():
+    """First-read pass: "needs corroborating", "exact token missing" and "stale
+    evidence" were jargon on Analytics, in chat and to agents. Each label says the
+    fix; none holds "wording" (the Wording-only tier's word, whose rows score nothing)."""
+    assert explore_gaps.GAP_CATEGORY_LABELS == {
+        "missing_skills": "Not on this resume",
+        "mirror_wording": "Use the job's exact words",
+        "dual_place": "Add an example in a job or project",
+        "resurface_recent": "Show a recent use",
+        "adjacent": "Related skill",
+    }
+    for label in explore_gaps.GAP_CATEGORY_LABELS.values():
+        assert "wording" not in label.lower() and "_" not in label
+        for jargon in ("corroborat", "token", "stale", "evidence", "adjacent"):
+            assert jargon not in label.lower(), label
 
 
 def test_gap_frequency_flags_low_sample_below_five_jobs(db_session):

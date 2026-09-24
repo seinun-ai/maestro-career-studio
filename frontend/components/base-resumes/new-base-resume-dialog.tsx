@@ -42,7 +42,7 @@ import { apiFetch } from "@/lib/api";
 import { couldnt } from "@/lib/error-text";
 import { notifyRenderNote } from "@/lib/render-note";
 import { uniqueSlug } from "@/lib/slug";
-import { acceptedTypesLabel, RESUME_FILE_ACCEPT } from "@/lib/upload-accept";
+import { acceptedFilesHint, RESUME_FILE_ACCEPT } from "@/lib/upload-accept";
 import {
   baseResumeLabel,
   type BaseResumeDetail,
@@ -729,7 +729,7 @@ function NewBaseResumeForm({
                 maxFiles={1}
                 maxBytes={IMPORT_MAX_BYTES}
                 disabled={busy}
-                hint={`${acceptedTypesLabel(RESUME_FILE_ACCEPT)}. Up to 10 MB.`}
+                hint={`${acceptedFilesHint(RESUME_FILE_ACCEPT)} Up to 10 MB.`}
                 onFiles={(picked, rejected) => {
                   setFile(picked[0] ?? null);
                   setFileRejected(rejected);

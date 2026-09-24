@@ -65,7 +65,7 @@ import {
   streamChatMessage,
   uploadChatAttachment,
 } from "@/lib/api";
-import { couldnt, errorDetail, isPlainSentence } from "@/lib/error-text";
+import { couldnt, errorDetail, loadErrorDetail } from "@/lib/error-text";
 import { focusSuccessor } from "@/lib/focus";
 import { isLoadFailure } from "@/lib/query-state";
 import { anchorHref } from "@/lib/settings-tabs";
@@ -504,11 +504,10 @@ export function ChatPage() {
             s ? { ...s, captures: [...s.captures, capture] } : s,
           );
         } else if (event.type === "error") {
-          // The server's words only when they are a plain sentence for the user.
+          // The server's words only when they are a plain sentence for the user; a refused or
+          // missing key says the fix (errorDetail), never "Try again", which can only fail again.
           const reason = event.detail;
-          toast.error(
-            isPlainSentence(reason) ? reason : "The Assistant couldn't finish. Try again.",
-          );
+          toast.error(errorDetail(new Error(reason)) ?? "The Assistant couldn't finish. Try again.");
         }
       });
     } catch (err) {
@@ -761,7 +760,7 @@ export function ChatPage() {
           <div className="flex flex-1 flex-col items-center justify-center px-4">
             <LoadErrorState
               title="Couldn't load this chat."
-              detail={errorDetail(detail.error)}
+              detail={loadErrorDetail(detail.error, "chat")}
               retrying={detail.isFetching}
               onRetry={() => void detail.refetch()}
             />
@@ -939,7 +938,7 @@ function SessionList({
       <LoadErrorState
         className="py-6"
         title="Couldn't load your chats."
-        detail={errorDetail(query.error)}
+        detail={loadErrorDetail(query.error)}
         retrying={query.isFetching}
         onRetry={() => void query.refetch()}
       />

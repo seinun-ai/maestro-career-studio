@@ -49,7 +49,7 @@ import {
 } from "@/lib/agent-links";
 import { proposalByLine } from "@/lib/agent-name";
 import { apiFetch } from "@/lib/api";
-import { errorDetail } from "@/lib/error-text";
+import { loadErrorDetail } from "@/lib/error-text";
 import { formatTimeAgo } from "@/lib/format-date";
 import {
   SCORE_FLOORS,
@@ -65,6 +65,8 @@ import {
   STATUS_ORDER,
   inLane,
   laneOf,
+  needsYouHelp,
+  needsYouLine,
   selectedAmong,
 } from "@/lib/inbox-lanes";
 import { jobMetaLine } from "@/lib/job-meta";
@@ -101,7 +103,7 @@ export const STATUS_BADGE_CLASS = Object.fromEntries(
 ) as Record<ProposalStatus, string>;
 
 /** A row's actions: the same one on the next row takes focus when a row leaves its lane. */
-type RowAction = "queue" | "skip" | "delete";
+type RowAction = "queue" | "keep" | "skip" | "delete";
 
 /**
  * Where focus goes when the control holding it leaves: one row leaving its lane, or the bulk bar leaving.
@@ -366,7 +368,7 @@ export function ProposalsSection() {
     return (
       <LoadErrorState
         title="Couldn't load your Agent inbox."
-        detail={errorDetail(error)}
+        detail={loadErrorDetail(error)}
         retrying={isFetching}
         onRetry={() => void refetch()}
       />
@@ -388,7 +390,8 @@ export function ProposalsSection() {
       <EmptyState
         icon={Bot}
         title="No proposals yet"
-        description="Proposals come from an AI agent you connect over MCP, the standard way AI apps connect to tools: Claude, Codex or the ChatGPT desktop app. The app never proposes jobs itself. Nothing is submitted without your yes."
+        // The page header carries the consent line (no submit without your yes); once is enough.
+        description="Proposals come from an AI agent you connect, such as Claude, Codex or the ChatGPT desktop app, using MCP (the standard way AI apps connect to tools). The app never proposes jobs itself."
         action={
           <div className="flex max-w-full flex-col items-center gap-2 px-4">
             {/* Links styled as buttons, not Buttons rendered as links: Base UI's Button
@@ -426,6 +429,8 @@ export function ProposalsSection() {
       };
       leaving.current = l;
       if (action === "queue") actions.transition({ id: p.id, status: "accepted" });
+      // Keep it: the agent's question answered yes, back to To review (the server links the application).
+      else if (action === "keep") actions.transition({ id: p.id, status: "pending_review" });
       else if (action === "skip") setDeclineTarget({ mode: "single", id: p.id });
       else actions.remove({ id: p.id, next: l.next });
     },
@@ -517,7 +522,10 @@ export function ProposalsSection() {
       ) : (
         <>
           {needsYou.length > 0 ? (
-            <Lane title={`Needs you · ${needsYou.length}`}>
+            <Lane
+              title={`Needs you · ${needsYou.length}`}
+              help={needsYouHelp(needsYou.map((p) => p.status))}
+            >
               {needsYou.map((p) => (
                 <ProposalRow
                   key={p.id}
@@ -722,10 +730,13 @@ export function ProposalsSection() {
 
 function Lane({
   title,
+  help = [],
   children,
   ref,
 }: {
   title: string;
+  /** How this lane's rows are answered, under its heading (the Needs-you lane). */
+  help?: string[];
   children: React.ReactNode;
   ref?: React.Ref<HTMLElement>;
 }) {
@@ -737,6 +748,11 @@ function Lane({
       <h2 id={headingId} className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
         {title}
       </h2>
+      {help.map((line) => (
+        <p key={line} className="text-muted-foreground max-w-[65ch] text-sm">
+          {line}
+        </p>
+      ))}
       <div className="flex flex-col gap-2">{children}</div>
     </section>
   );
@@ -768,6 +784,9 @@ function ProposalRow({
   const byLine = proposalByLine(proposal.proposed_by, proposal.status);
   const meta = [byLine, formatTimeAgo(proposal.created_at)].filter(Boolean).join(" · ");
   const isDup = duplicateKeys.has(duplicateKey(proposal));
+  // What the agent needs, in its words: a question (Keep it or Skip here), or a stop it waits out in its chat.
+  const needs = lane === "needs_you" ? needsYouLine(proposal.status, proposal.reason) : null;
+  const showKeep = lane === "needs_you" && proposal.status === "needs_decision";
   const showCheckbox = lane === "triage";
   // Decline is available in every non-terminal lane; Delete additionally on
   // needs_you (bogus/dead postings parked there never earn a decline record —
@@ -835,6 +854,7 @@ function ProposalRow({
               <div className="text-muted-foreground truncate text-xs" title={meta}>
                 {meta}
               </div>
+              {needs ? <p className="mt-1 text-xs break-words">{needs}</p> : null}
             </div>
             {base ? (
               <span className="text-muted-foreground hidden shrink-0 rounded-full bg-muted/70 px-2 py-0.5 text-xs sm:inline-flex">
@@ -871,6 +891,17 @@ function ProposalRow({
                   onClick={act("skip")}
                 />
               </>
+            ) : null}
+            {showKeep ? (
+              <IconButton
+                label="Keep it"
+                icon={<Check />}
+                data-row-action="keep"
+                disabled={pending}
+                focusableWhenDisabled
+                className="data-disabled:pointer-events-none data-disabled:opacity-50"
+                onClick={act("keep")}
+              />
             ) : null}
             {showDecline ? (
               <IconButton

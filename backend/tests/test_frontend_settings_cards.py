@@ -94,7 +94,7 @@ def test_each_role_saves_its_own_field():
 
 def test_a_saved_key_leaves_nothing_to_guard():
     # Mutant: the typed keys kept after a save, so the leave guard asked about saved work.
-    saved = _slice(_MODELS, "const saveKeys = useSaveModelSettings(() => {", "});")
+    saved = _slice(_MODELS, "const saveKeys = useSaveModelSettings((_info, patch) => {", "});")
     assert "setOpenaiKey(null);" in saved and "setGeminiKey(null);" in saved
 
 

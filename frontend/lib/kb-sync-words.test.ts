@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { syncActionableCount, syncBreakdownLines, syncResultSentence } from "./kb-sync-words.ts";
+import { syncActionableCount, syncBreakdownLines, syncPillLabel, syncResultSentence } from "./kb-sync-words.ts";
 import type { SyncResult, SyncStatus } from "./types.ts";
 
 const result = (over: Partial<SyncResult>): SyncResult => ({
@@ -56,4 +56,9 @@ test("the breakdown names each section and adds up to the pill's number", () => 
     "1 reworded bullet (we'll note the change)",
   ]);
   assert.equal(syncActionableCount(s), 15);
+});
+
+test("the pill says the number as words: what gets added, and where", () => {
+  assert.equal(syncPillLabel(14), "Add 14 things to career history");
+  assert.equal(syncPillLabel(1), "Add 1 thing to career history");
 });

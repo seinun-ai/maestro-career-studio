@@ -75,6 +75,7 @@ import {
   runAtsScoreTarget,
   runCoherenceCheck,
 } from "@/lib/api";
+import { ATS_SCORE_LEAD_ALL_JOBS } from "@/lib/ats-words";
 import { overlayBaseline, type ResumeFormatting } from "@/lib/formatting";
 import { fieldsNeedFixing } from "@/lib/describe-edit";
 import { couldnt } from "@/lib/error-text";
@@ -876,9 +877,9 @@ function StudioEditor({
                         title={
                           unsaved
                             ? "Save first to update the ATS score."
-                            : "Update the ATS score: how an applicant tracking system rates this resume for the job."
+                            : `Update the ATS score. ${ATS_SCORE_LEAD_ALL_JOBS}`
                         }
-                        aria-description="The ATS score is how an applicant tracking system rates this resume for the job."
+                        aria-description={ATS_SCORE_LEAD_ALL_JOBS}
                       >
                         {rescore.isPending ? (
                           <Loader2 className="animate-spin" />

@@ -18,7 +18,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { statusLabel } from "@/components/status-chip";
 import { LoadErrorState } from "@/components/load-error-state";
 import { apiFetch } from "@/lib/api";
-import { errorDetail } from "@/lib/error-text";
+import { loadErrorDetail } from "@/lib/error-text";
+import { skillName } from "@/lib/skill-name";
 import { isLoadFailure } from "@/lib/query-state";
 import { LowSampleBadge } from "@/components/explore/low-sample-hint";
 import type {
@@ -83,7 +84,7 @@ export function AnalyticsOverview({
         <LoadErrorState
           className="py-8"
           title="Couldn't load your activity."
-          detail={errorDetail(activity.error)}
+          detail={loadErrorDetail(activity.error)}
           retrying={activity.isFetching}
           onRetry={() => void activity.refetch()}
         />
@@ -115,7 +116,8 @@ export function AnalyticsOverview({
             }
             sub={
               totals?.submitted
-                ? `now, of ${totals.submitted} applications`
+                ? // "36% of your 11 applications are there now": a current count, not a history.
+                  `of your ${totals.submitted} ${totals.submitted === 1 ? "application is" : "applications are"} there now`
                 : "No applications yet"
             }
           />
@@ -159,7 +161,7 @@ export function AnalyticsOverview({
               <LoadErrorState
                 className="py-6"
                 title="Couldn't load your most common gaps."
-                detail={errorDetail(gaps.error)}
+                detail={loadErrorDetail(gaps.error)}
                 retrying={gaps.isFetching}
                 onRetry={() => void gaps.refetch()}
               />
@@ -172,7 +174,7 @@ export function AnalyticsOverview({
             ) : (
               (gaps.data ?? []).map((row) => (
                 <div key={row.skill} className="flex items-center justify-between gap-3">
-                  <span className="min-w-0 truncate text-sm">{row.skill}</span>
+                  <span className="min-w-0 truncate text-sm">{skillName(row.skill)}</span>
                   <span className="text-muted-foreground flex shrink-0 items-center gap-1.5 text-xs">
                     {row.n_jobs} {row.n_jobs === 1 ? "job" : "jobs"}
                     <LowSampleBadge
@@ -190,7 +192,7 @@ export function AnalyticsOverview({
               variant="secondary"
               onClick={() => onOpenTab("gaps")}
             >
-              Skill gaps <ArrowRight aria-hidden="true" />
+              See all skill gaps <ArrowRight aria-hidden="true" />
             </Button>
           </CardContent>
         </Card>
@@ -204,7 +206,7 @@ export function AnalyticsOverview({
               <LoadErrorState
                 className="py-6"
                 title="Couldn't load your quick wins."
-                detail={errorDetail(buildAreas.error)}
+                detail={loadErrorDetail(buildAreas.error)}
                 retrying={buildAreas.isFetching}
                 onRetry={() => void buildAreas.refetch()}
               />
@@ -216,11 +218,9 @@ export function AnalyticsOverview({
               </p>
             ) : (
               quickWins.map((row) => (
+                // The card's title says where each comes from; a tag on every row said it again.
                 <div key={row.skill} className="flex items-center justify-between gap-3">
-                  <span className="min-w-0 truncate text-sm">{row.skill}</span>
-                  <span className="text-primary shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-xs">
-                    In your career history
-                  </span>
+                  <span className="min-w-0 truncate text-sm">{skillName(row.skill)}</span>
                 </div>
               ))
             )}
