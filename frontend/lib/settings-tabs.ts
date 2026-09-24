@@ -23,7 +23,7 @@ export const SETTINGS_TABS = [
     anchors: ["api-keys", "models", "model-catalog", "custom-endpoint", "prompts"],
   },
   { value: "tailoring", label: "Tailoring", anchors: ["quick-tailor"] },
-  // "connected-agents" is the explainer card wave 2 mounts first in this tab.
+  // "connected-agents" is the explainer card mounted first in this tab.
   {
     value: "agents",
     label: "Connected agents",

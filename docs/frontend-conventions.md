@@ -954,7 +954,8 @@
   **Suggested project** (chat's and the studio's approval cards). "Proposal"
   means only a job an agent filed; bare "Agent" only inside Agent inbox, the
   source toggle's "Agents" and Agent pipeline. Pinned by
-  `test_frontend_agent_words.py`.
+  `test_frontend_agent_words.py`. A filer is named through
+  `lib/agent-name.ts`, never printed raw.
 - Design language: tonal fills over borders, pill chips, 8px rhythm,
   `ease-out` micro-interactions ≤200ms, `active:scale-[0.97]` on pressables,
   `prefers-reduced-motion` respected globally, `pointer-coarse:` variants for

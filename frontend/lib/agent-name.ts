@@ -3,7 +3,7 @@
  * web app's Queue in Agent inbox, an MCP client's self-declared
  * clientInfo.name ("claude-ai", "codex-mcp-client") for a
  * connected agent, null when unknown. Pure (lib/agent-name.test.ts); pinned by
- * test_frontend_agent_inbox.py.
+ * test_frontend_agent_inbox.py. Also names a KB point's writer.
  */
 
 /** Known clients by product, matched on a whole word of the name ("precursor-bot" is not Cursor). */

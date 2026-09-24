@@ -27,6 +27,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useDiscardableEditor } from "@/hooks/use-confirm-discard";
+import { agentDisplayName } from "@/lib/agent-name";
 import { deleteKbPoint, patchKbPoint } from "@/lib/api";
 import type { KBPointOut, KBPointPatch, KBPointProvenance, KBPointState } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -312,7 +313,7 @@ function PointRow({ entityId, point }: { entityId: string; point: KBPointOut }) 
         <PointStateChip state={point.state} pending={pending} onSelect={changeState} />
         <span
           className="text-muted-foreground inline-flex h-6 items-center rounded-full bg-muted/70 px-2 text-xs"
-          title={point.origin_detail ? `Written by ${point.origin_detail}` : undefined}
+          title={point.origin_detail ? `Written by ${agentDisplayName(point.origin_detail) ?? point.origin_detail}` : undefined}
         >
           {ORIGIN_LABELS[point.origin]}
         </span>

@@ -12,13 +12,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-
-// The Agent inbox lane's lib/agent-links.ts takes these three at merge; the pin
-// test_the_card_links_point_at_real_headings allows exactly one definition of each.
-const REPO = "https://github.com/seinun-ai/maestro-career-studio/blob/main";
-const CONNECT_AGENT_GUIDE_URL = `${REPO}/docs/GETTING_STARTED.md#5-connect-your-ai-assistant-optional`;
-const JOB_HUNT_SKILL_URL = `${REPO}/docs/skills/README.md`;
-const AGENT_APPLICATIONS_URL = `${REPO}/README.md#going-all-the-way-agent-applications`;
+import { AGENT_APPLICATIONS_URL, CONNECT_AGENT_GUIDE_URL, JOB_HUNT_SKILL_URL } from "@/lib/agent-links";
 
 const LINKS = [
   { href: CONNECT_AGENT_GUIDE_URL, label: "How to connect an agent" },

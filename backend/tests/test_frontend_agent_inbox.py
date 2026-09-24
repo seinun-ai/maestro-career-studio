@@ -233,11 +233,17 @@ def test_the_empty_states_links_are_announced_as_links():
 
 
 def test_the_empty_state_links_point_at_real_headings():
+    """Every guide link in lib/agent-links.ts (the empty state's two and the
+    Connected agents card's three). A renamed section fails here instead of
+    breaking a link."""
     links = _read("lib/agent-links.ts")
     assert not re.search(r"^import ", links, re.M)
     readme = (_ROOT / "README.md").read_text(encoding="utf-8")
     heading = re.search(r"^### (Going all the way: .+)$", readme, re.M).group(1)
     assert f"/README.md#{_github_slug(heading)}`" in links
+    guide = (_ROOT / "docs/GETTING_STARTED.md").read_text(encoding="utf-8")
+    step = re.search(r"^## (5\. Connect .+)$", guide, re.M).group(1)
+    assert f"/docs/GETTING_STARTED.md#{_github_slug(step)}`" in links
     assert (_ROOT / "docs/skills/README.md").exists()
     assert "/docs/skills/README.md`" in links
     assert 'export const CONNECTED_AGENTS_SETTINGS = "/settings?tab=agents";' in links

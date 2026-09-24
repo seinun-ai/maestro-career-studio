@@ -32,6 +32,9 @@ _WORDS = [
     ("components/source-toggle.tsx", '"You" : "Agent"}', '"You" : "Agents"}'),
     ("components/career/points-list.tsx", 'mcp: "Agent",', 'mcp: "Connected agent",'),
     ("components/career/points-list.tsx", 'chat: "Capture",', 'chat: "Assistant",'),
+    # A5 row 21: the origin chip's hover names the writer in words, never a slug ("claude-ai").
+    ("components/career/points-list.tsx", "`Written by ${point.origin_detail}`",
+     "`Written by ${agentDisplayName(point.origin_detail) ?? point.origin_detail}`"),
     ("components/settings/mcp-workflow-section.tsx", 'title="Agent workflow hints"',
      'title="Next-step hints for connected agents"'),
     ("components/settings/mcp-workflow-section.tsx", "Career Studio's MCP tool results",
@@ -94,17 +97,10 @@ def test_one_word_per_kind_of_agent(rel: str, gone: str, present: str):
     assert present in src, f"{rel} lost {present!r}"
 
 
-# Lane 5 (the Agent inbox) rewrites these files' words in the same wave; the
-# sweep covers them once both lanes are merged (drop this set then).
-_INBOX_LANE_FILES = {"app/applications/page.tsx", "components/analytics/agent-pipeline-card.tsx"}
-
-
 def test_no_screen_says_swarm_or_the_chat_agent():
     for root in ("app", "components"):
         for path in (_FRONTEND / root).rglob("*.tsx"):
             rel = path.relative_to(_FRONTEND).as_posix()
-            if rel in _INBOX_LANE_FILES:
-                continue
             src = path.read_text(encoding="utf-8")
             for word in ("hunt swarm", "the chat agent", "Found by agent", "Agent lane"):
                 assert word not in src, f"{rel}: {word!r}"
@@ -218,36 +214,32 @@ def test_the_card_links_open_where_they_say():
     assert "nativeButton" not in card
 
 
-def _github_slug(heading: str) -> str:
-    return re.sub(r"[^\w\- ]", "", heading.strip().lower()).replace(" ", "-")
+_LINK_NAMES = ("REPO", "CONNECT_AGENT_GUIDE_URL", "JOB_HUNT_SKILL_URL", "AGENT_APPLICATIONS_URL")
 
 
-def _link_definitions() -> str:
-    """Where the card's URL constants are defined: the card itself until the
-    Agent inbox lane's `lib/agent-links.ts` lands, that file after."""
-    lib = _FRONTEND / "lib/agent-links.ts"
-    return _card() + (lib.read_text(encoding="utf-8") if lib.exists() else "")
-
-
-def test_the_card_links_point_at_real_headings():
-    """A renamed README section fails here instead of breaking a link."""
-    defs = _link_definitions()
-    for name in ("CONNECT_AGENT_GUIDE_URL", "JOB_HUNT_SKILL_URL", "AGENT_APPLICATIONS_URL"):
-        # One definition: a copy left in the card after the lib lands would drift.
-        assert len(re.findall(rf"\bconst {name} = ", defs)) == 1, name
+def test_the_agent_links_have_one_home():
+    """The card takes its guides from `lib/agent-links.ts`, the Agent inbox's
+    file; that the anchors match real headings is pinned beside the inbox's
+    empty state (test_frontend_agent_inbox.py)."""
+    card = _card()
+    assert (
+        'import { AGENT_APPLICATIONS_URL, CONNECT_AGENT_GUIDE_URL, JOB_HUNT_SKILL_URL } '
+        'from "@/lib/agent-links";'
+    ) in card
+    sources = [
+        p for root in ("app", "components", "hooks", "lib")
+        for p in (_FRONTEND / root).rglob("*.ts*") if p.suffix in (".ts", ".tsx")
+    ]
+    for name in _LINK_NAMES:
+        # One definition: a copy left anywhere else would drift.
+        homes = [p.relative_to(_FRONTEND).as_posix() for p in sources
+                 if re.search(rf"\bconst {name} = ", p.read_text(encoding="utf-8"))]
+        assert homes == ["lib/agent-links.ts"], (name, homes)
     # The repository the git remote and CITATION.cff name, on its main branch.
     citation = (_ROOT / "CITATION.cff").read_text(encoding="utf-8")
     repo = re.search(r'^repository-code: "([^"]+)"$', citation, re.M).group(1)
     assert repo == "https://github.com/seinun-ai/maestro-career-studio"
-    assert f'const REPO = "{repo}/blob/main";' in defs
-    readme = (_ROOT / "README.md").read_text(encoding="utf-8")
-    section = re.search(r"^### (Going all the way: .+)$", readme, re.M).group(1)
-    assert f"/README.md#{_github_slug(section)}`" in defs
-    guide = (_ROOT / "docs/GETTING_STARTED.md").read_text(encoding="utf-8")
-    step = re.search(r"^## (5\. Connect .+)$", guide, re.M).group(1)
-    assert f"/docs/GETTING_STARTED.md#{_github_slug(step)}`" in defs
-    assert (_ROOT / "docs/skills/README.md").exists()
-    assert "/docs/skills/README.md`" in defs
+    assert f'const REPO = "{repo}/blob/main";' in _read("lib/agent-links.ts")
 
 
 def test_the_guides_call_the_page_the_agent_inbox():
