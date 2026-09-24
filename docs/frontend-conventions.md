@@ -1099,8 +1099,9 @@
     **Assistant** (the in-app chat and its sidebar item; one conversation is
     a chat), **connected agents** (MCP clients; **Connected agents** is the
     Settings tab, whose first card says what one is and what it cannot do),
-    **Companion** (the browser extension; a proper name in labels, "the
-    Companion" in running sentences). **Suggested edits** ("Suggested edit"
+    **Companion** (the browser extension; a proper name in a label that is a
+    name, "Open Companion", and "the Companion" in running sentences and in a
+    label that reads as one, "Let the Companion tick agreement boxes"). **Suggested edits** ("Suggested edit"
     for one: the Assistant's edit card and the studio's Ask for changes
     sheet) and **Suggested project** (the Assistant's project card).
     "Proposal" means only a job a connected agent filed, and a filer is named
@@ -1122,10 +1123,16 @@
     other file holds no banned word.
   - *Errors*: "Couldn't <what failed>." then what to do next. Build it with
     `couldnt(what, err)` from `lib/error-text.ts`; a load error passes
-    `errorDetail(err)`. A server's `detail` reaches the screen only when it
+    `loadErrorDetail(err, thing)`, which says "check that it's running" ONLY
+    when the app could not be reached (a network failure, the proxy's 502): a
+    404 reads "This {thing} may have been deleted.", a malformed id "This link
+    doesn't point to a {thing}.", a 5xx "Something went wrong on our side. Try
+    again.". A server's `detail` reaches the screen only when it
     is a plain sentence written for the user (`isPlainSentence`), and a
     missing or refused API key reads as its fix ("Add an API key in Settings ›
-    AI & models.") whatever the server's words; raw server
+    AI & models.", "OpenAI refused your API key. Check it in …") whatever the
+    server's words (`MISSING_KEY`/`REFUSED_KEY`, exported: the Companion
+    mirrors them); raw server
     text, JSON, schema paths (`experience.2.bullets.0`), status codes and
     developer steps never do. `lib/api.ts` (and the `/api` proxy route) write
     the can't-reach-the-server words for a desktop user and log the

@@ -155,7 +155,8 @@ file to open.
    the newest `proposal_status`); `skipped` absorbs proposal `rejected` AND `expired`, while
    the ROW chip still says Expired. Option rules: frontend-conventions, "Tracker filter".
 3. **Workspace** — `/jobs/[id]`: identity header (monogram, meta line, inline
-   StatusChip + Details menu; when a proposal exists, its pill, naming its filer, + Queue/Skip),
+   StatusChip + Details menu; when a proposal exists, its pill, naming its filer, + Queue/Skip; a Needs-you
+   question adds **Keep it**, PATCH `pending_review`, linking the job's application when the proposal has none),
    tabs Overview / Score and tailor / Resume / Q&A (tab URL values stay
    jd/fit/output/qa for deep-link compatibility).
    `?from=proposals` flips Back + prev/next onto `cs-proposals-seq`;
@@ -209,10 +210,10 @@ file to open.
    are asked as free-form questions (no dedicated cold-message generator); the QA
    prompt injects the application's linked referral contact.
 9. **Track to terminal** — StatusChip anywhere (tracker row or job header): draft →
-   applied → interviewing → offered → accepted / rejected / withdrawn. A base resume
-   grown past your career history shows an `Add to career history (N)` toolbar pill (N
-   excludes already-recorded drift); its **Add now** drafts new and drifted items with no
-   LLM, near-matching entities instead of forking duplicates.
+   applied → interviewing → offered → accepted / rejected / withdrawn. A base
+   resume grown past your career history shows an "Add N things to career history" toolbar pill (N excludes
+   already-recorded drift); its **Add now** drafts new and drifted items with no LLM, near-matching entities
+   instead of forking duplicates.
 
 ## 6. Cross-cutting invariants (do not break these)
 
@@ -561,7 +562,9 @@ file to open.
   (routing, the /choose batch, `rest_fill` shaping, `QUESTIONY`) and `guided-run.js` (the
   runner, transport injected). **A failed round trip never prints raw text**:
   `actions/during.js`' `failureNote` says "Couldn't <what>." plus a next step by `err.status`
-  (502 → the AI-key step), and the runner's own sentences are marked `guidedRun.shown`.
+  ("Add an API key" for a missing key, "Check your API key" for a refused one or a 502; its
+  `MISSING_KEY`/`REFUSED_KEY` mirror `lib/error-text.ts`'s exported ones), and the runner's own sentences are
+  marked `guidedRun.shown`.
   The rail's revisit rules, the sender model, the COMMIT GESTURE and the ONE
   `attachableFileInputs` definition are reference tier: `extension/INTERNALS.md`. The bridge
   storage key `widget.session` must NOT be renamed — that drops every live entry.
@@ -767,10 +770,8 @@ citation. Priority lives in the item text, not in the ordinal.
     holds until then); auto-advance toggle; per-ATS selector blueprints; the essay path onto qid-keyed
     `/choose`; `guidedIsListboxButton` stays looser than the two pinned strict discriminators (it rechecks
     vetted elements only).
-23. **Some §6 invariants have no enforcement pin** — the current list is `unpinned` in
-    `.system_md_enforcement.json`. Each is a rule the gate cannot defend: it survives only as long as
-    everyone remembers it. When next working in one of those areas, add the pin or demote the rule to a
-    convention note.
+23. **Some §6 invariants have no enforcement pin** (`unpinned` in `.system_md_enforcement.json`): when next
+    working in one of those areas, add the pin or demote the rule to a convention note.
 24. Surface `schemas/job_extraction._coerce_enum` warnings through the jobs-ingest response, so
     `store_extracted_jd` callers see that input X was stored as `unstated` (audit 2026-08-22, finding A1).
 25. SQLite has one write lock, and two transactions hold it across LLM calls: `kb_consolidation.consolidate`
@@ -792,8 +793,7 @@ citation. Priority lives in the item text, not in the ordinal.
     (~40 sites, 21 files): use `buttonVariants` on a plain `<a>` or `GuardedLink`, the sidebar's pattern.
 30. Raw keys or jargon still reach the user or an agent: MCP `explore_*` results carry role slugs with no
     `role_label`; the Assistant's Edited and project cards call an application target only "tailored resume";
-    Skill gaps' category labels (`explore_gaps.GAP_CATEGORY_LABELS`: "exact token missing", "needs
-    corroborating", "stale evidence"); `resume_diff.attribute` labels any unmatched change `"llm"` (the Review
+    `resume_diff.attribute` labels any unmatched change `"llm"` (the Review
     changes chip is hidden for it; an `"unknown"` value would change the endpoint's response); the analogue
     finding's `how` has a semicolon, and its "this bullet" is what the frontend's `hoistBlurb` regex
     (`lib/health-report.ts`) rewrites, so reword the two together.
@@ -818,7 +818,12 @@ citation. Priority lives in the item text, not in the ordinal.
     `POST /api/proposals` reads `get_settings` before `begin_write`). Seed at startup or insert-or-ignore.
 36. Owner's calls (not bugs): the price figures in "Which model should I pick?" (`models-section.tsx`
     `ModelProfileNote`); the autofill Gender options (Male, Female, Decline) and the "restrictive covenant"
-    wording; whether the Applications page and sidebar item, which also list saved jobs, should be "Jobs".
+    wording; whether the Applications page and sidebar item, which also list saved jobs, should be "Jobs",
+    and with it that the tracker's "All" segment hides agent-found saved jobs (only "Agents" lists them).
+37. ATS reads "Mon YYYY" dates only (`resume_indexer.parse_month_year`): "2021-03", "03/2021", "2021" leave a
+    job undated (the UI says so). More formats move scores: calibrate first (§9 `ats_calibration`).
+38. A double-clicked "Tailor resume" opens and closes its confirm; with the backend down, every card on
+    Settings, Analytics and Career repeats one error (a page-level message needs a shared mechanism).
 
 ## 12. Gotchas that have bitten before
 
