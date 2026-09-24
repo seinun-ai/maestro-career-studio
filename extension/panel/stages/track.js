@@ -92,7 +92,7 @@
     const { node, attach } = build;
     const parts = [
       evidence.pdfName ? `${evidence.pdfName} ready` : null,
-      evidence.appliedOn ? `applied ${evidence.appliedOn}` : null,
+      evidence.appliedOn ? `applied ${build.dayLabel(evidence.appliedOn)}` : null,
     ].filter(Boolean);
     const line = node("div", "evi");
     if (evidence.pdfName) {

@@ -332,10 +332,13 @@
     const open = residue.length + (after.essays?.length ?? 0);
     const finished = ns.panelFillFinished({ fill: after.fill, writeResults, residue,
                                             essays: after.essays });
+    // The run's own sentence for what is left, one open field down, with the
+    // field named as the page wrote it (`text`; `label` is lowercased).
+    const left = ns.panelLeftSentence({ open, blank: after.blank ?? 0 },
+                                      store.build.plural)
+      ?? "Fill finished. Review before you submit.";
     store.write({
-      note: { text: `Filled “${row.label}”.${learned}${open
-        ? ` ${store.build.plural(open, "field")} still ${open === 1 ? "needs" : "need"} you.`
-        : " Fill finished. Review before you submit."}` },
+      note: { text: `Filled “${row.text || row.label}”.${learned} ${left}` },
     });
     // CONVERGES with `startFill` rather than forking from it: the same
     // predicate over the same store fields, so the last pause row closing marks

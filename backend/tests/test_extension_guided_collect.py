@@ -307,3 +307,56 @@ def test_both_strict_listbox_button_discriminators_stay_identical():
         copies.append(re.sub(r"\s+", " ", found[0]).strip())
     assert copies[0] == copies[1], \
         "the two strict listbox-button discriminators have diverged — fix both or neither"
+
+
+# ---------- what the panel is told about the page, in the page's words ----------
+
+def test_a_question_keeps_the_pages_own_casing_for_the_panel_to_show(tmp_path):
+    """`label` is normalised (lowercased) for matching and for the model; the
+    Companion's list of open fields shows `text`, the question as the page
+    wrote it (Task 25: "why do you want to work at contoso health?")."""
+    result = run_open_questions(tmp_path, fields=_workday_page())
+    by = _by_label(result)
+    assert by[_HEAR.lower()]["text"] == _HEAR
+    assert by[_INTEREST.lower()]["text"] == _INTEREST
+    # Whitespace is collapsed the way `label`'s is, and nothing else changes.
+    spaced = run_open_questions(tmp_path, fields=[
+        {"label": "  Why do you want\n this   role?  ", "kind": "textarea"}])
+    [question] = spaced["collected"]["questions"]
+    assert question["text"] == "Why do you want this role?"
+
+
+def test_the_collection_counts_the_blank_fields_it_leaves_for_the_user(tmp_path):
+    """"1 field still needs you" over a form with nine empty boxes (Task 25):
+    the open list is only what the run COLLECTED, and rule territory, a
+    policy-blocked box and a non-question text box are never collected. The
+    collector counts every blank field it did not collect, so the panel can
+    say how many are blank as well as how many need an answer."""
+    fields = _workday_page() + [
+        {"label": "First name", "kind": "text"},                    # rules', blank
+        {"label": "Email", "kind": "text", "type": "email"},        # rules', blank
+        {"label": "Last name", "kind": "text", "value": "Lovelace"},  # filled
+        {"label": _CONSENT, "kind": "checkbox"},                    # policy, unticked
+        {"label": "I agree to the privacy policy", "kind": "checkbox",
+         "checked": True},                                          # ticked
+        {"label": "Middle initial", "kind": "text"},                # not a question
+        {"label": "Gender", "kind": "radio", "options": ["Male", "Female"],
+         "legend": "Gender"},                                       # one group
+        {"label": "Submit application", "kind": "text", "type": "submit"},
+        {"label": "Hidden field", "kind": "text", "hidden": True},
+    ]
+    result = run_open_questions(tmp_path, fields=fields)
+    # The three questions are collected, so they are the open list's, not blank.
+    assert {_HEAR.lower(), _SHIFT.lower(), _INTEREST.lower()} <= set(
+        collected_labels(result))
+    assert result["collected"]["blank"] == 5
+
+
+def test_a_page_with_nothing_blank_counts_zero(tmp_path):
+    result = run_open_questions(tmp_path, fields=[
+        {"label": "First name", "kind": "text", "value": "Ada"},
+        {"label": _SHIFT, "kind": "select", "options": [
+            {"value": "day", "textContent": "Day"},
+            {"value": "night", "textContent": "Night"}]},
+    ])
+    assert result["collected"]["blank"] == 0

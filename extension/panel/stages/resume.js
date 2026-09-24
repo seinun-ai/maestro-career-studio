@@ -69,6 +69,65 @@
     return anchor;
   }
 
+  /** What each choice does, one short line each, under the level it is on.
+   * The first level's two are there before anything is pressed, because
+   * "tailor, or not?" is a question a user can only answer knowing what each
+   * answer does; the second level's two appear with the limbs they explain. */
+  const CHOICE_LINES = {
+    base: "Use base resume as is: fill the application from your base resume, "
+      + "unchanged.",
+    tailor: "Tailor: fit your resume to this job first.",
+    quick: "Quick tailor: tailors your resume to this job here and creates its PDF.",
+    custom: "Tailor in Maestro CS: opens this job in Maestro CS to start a gap "
+      + "analysis. The Companion picks up the tailored resume when its PDF is "
+      + "ready.",
+  };
+
+  /** The id the disabled base limb's `aria-describedby` names. */
+  const BASE_OFF_ID = "base-off-note";
+
+  /** Why "Use base resume as is" is off, or null when it is on.
+   *
+   * ANY APPLICATION TURNS IT OFF, because `stageFor`'s `fillFromBase` needs
+   * `!hasApplication`: armed beside one, the claim is inert and the click
+   * changed nothing on screen (Task 25's first read found exactly that dead
+   * button on a picked draft whose resume had no PDF). So the limb is
+   * disabled and says why, in one of three sentences:
+   *
+   * - the application HAS its tailored PDF: that is the document the Fill
+   *   stage attaches, so the sentence says which resume the Companion uses;
+   * - it has none yet, and the binding is the user's own claim (a picked
+   *   draft): the way to the base is the Job row's Stop using this draft, and
+   *   the way forward is Create PDF;
+   * - it has none yet, and the backend named it: only Create PDF is offered,
+   *   because nothing in the panel may un-bind the backend's own match.
+   */
+  function baseOffReason({ facts }) {
+    if (!facts.application) return null;
+    if (facts.pdfReady) {
+      return "This application already has a tailored resume, so the Companion "
+        + "uses that one.";
+    }
+    if (facts.claimed) {
+      return "This page is tied to a draft application, so your base resume "
+        + "can't be used here. Select Stop using this draft under Job to use "
+        + "it, or open the application in Maestro CS and select Create PDF.";
+    }
+    return "This job has a draft application, so your base resume can't be "
+      + "used here. Open the application in Maestro CS and select Create PDF.";
+  }
+
+  /** The first level's "Use base resume as is" limb, disabled with its reason
+   * wired to it when an application has overtaken the claim. */
+  function baseLimb(ctx, reason) {
+    const limb = actingLimb(ctx, "Use base resume as is", ctx.act.useBaseAsIs);
+    if (reason) {
+      limb.disabled = true;
+      limb.setAttribute("aria-describedby", BASE_OFF_ID);
+    }
+    return limb;
+  }
+
   /** The chosen base resume's name, as the web app shows it, or null: the
    * slug is an API key, never a word for the user. */
   function baseName({ facts }) {
@@ -100,7 +159,7 @@
    *   [ Quick tailor   ]  [ Tailor in Maestro CS ↗ ]     ← only once Tailor is open
    *
    * AND ONE MORE SHAPE, once the base is ARMED — which is this body reopened
-   * from a rail row that reads "Skipped. Using your base resume as is.", on a page with a
+   * from a rail row that reads "Using your base resume as is.", on a page with a
    * form and on a posting page alike:
    *
    *   Using AI/ML Engineer as is
@@ -184,6 +243,9 @@
     // honest. Data wins over a claim here exactly as it wins over a reopened
     // view in `openRow`.
     const armed = facts.baseArmed === true && !facts.application;
+    const reason = armed ? null : baseOffReason(ctx);
+    const why = reason ? node("div", "sub", reason) : null;
+    if (why) why.id = BASE_OFF_ID;
     const body = attach(node("div", "stg-body"),
                         // The claim in the user's own words, and the resume it
                         // names — `useBaseAsIs` refuses without one, so the
@@ -193,9 +255,13 @@
                                      `Using ${baseName(ctx) || "your base resume"} as is`)
                           : null,
                         attach(node("div", "fork"),
-                               armed ? null
-                                 : actingLimb(ctx, "Use base resume as is", act.useBaseAsIs),
-                               tailor));
+                               armed ? null : baseLimb(ctx, reason),
+                               tailor),
+                        // One line per first-level choice. A disabled limb's
+                        // line is its reason instead, and an armed claim has
+                        // no base limb to explain.
+                        armed ? null : why ?? node("div", "sub", CHOICE_LINES.base),
+                        node("div", "sub", CHOICE_LINES.tailor));
     // The withdraw goes LAST on every path, under the second level when it is
     // open: it is the way out of the stage, not one of the ways through it.
     if (!facts.tailorOpen) return armed ? attach(body, withdrawLimb(ctx)) : body;
@@ -209,12 +275,11 @@
            attach(node("div", "fork"),
                   actingLimb(ctx, "Quick tailor", act.quickTailor),
                   custom),
+           node("div", "sub", CHOICE_LINES.quick),
            // The sentence belongs to the link: it promises what happens after
            // the user leaves, so with no link to leave through there is
            // nothing to promise.
-           custom ? node("div", "sub", "Tailor in Maestro CS opens the full "
-             + "tailor page. The Companion picks up the tailored resume when "
-             + "its PDF is ready.") : null);
+           custom ? node("div", "sub", CHOICE_LINES.custom) : null);
     attach(body, options);
     return armed ? attach(body, withdrawLimb(ctx)) : body;
   }

@@ -292,6 +292,9 @@ button.stg-row:focus-visible { outline-offset: -2px; }
  * beside it: a UA link brings its own colour and underline and does not lay
  * itself out as a box. */
 .fork { display: flex; gap: 8px; margin: 8px 0 2px; }
+/* The one-line explanation of each choice under a fork level (and a disabled
+ * limb's reason): one line apart, so two sentences do not read as one. */
+.fork ~ .sub { margin-top: 6px; }
 .fork button, .fork a {
   flex: 1; font: 700 13px/1 var(--cs-font); padding: 11px 10px; border-radius: 10px;
   border: 1px solid var(--cs-line); background: var(--cs-surface);
@@ -363,8 +366,10 @@ button.stg-row:focus-visible { outline-offset: -2px; }
    link: the two buttons in that row go to different places — one asks the page
    to scroll, one fills the composer — and two identical links would read as two
    ways to the same one. */
+/* No margin of its own: the kind mark's trailing space and the button's own
+ * "· " separator are the gap, so the words read apart in text as well. */
 .resid .ask {
-  color: var(--cs-muted); text-decoration: none; margin-left: 6px;
+  color: var(--cs-muted); text-decoration: none;
 }
 .resid .ask:hover { color: var(--cs-primary); }
 
@@ -464,6 +469,8 @@ button.stg-row:focus-visible { outline-offset: -2px; }
  * is the page's, set on `*` at the top of this file — the 574px overflow this
  * project has already paid for once). */
 .qna textarea { min-height: 62px; resize: vertical; line-height: 1.35; }
+/* The box's visible label (it replaced a placeholder): its own line, above it. */
+.qna label.sub { display: block; margin-top: 8px; }
 /* The answer, and `pre-wrap` is the load-bearing declaration: `sanitizeAnswer`
  * strips markdown and KEEPS the paragraph breaks, so a block that collapsed
  * whitespace would show a three-paragraph answer as one — and the user copies

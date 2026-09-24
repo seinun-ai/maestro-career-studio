@@ -99,13 +99,19 @@
 
   /** One batched /choose call per stage, chunked at 40. A network/5xx on a
    * chunk residues those fields and keeps going — never throws, never asks the
-   * caller to roll back the rule pass. Abstains are residue, not retries. */
+   * caller to roll back the rule pass. Abstains are residue, not retries.
+   *
+   * `failure` is the FIRST chunk's error, or null: degrading is right, and
+   * doing it silently was not (Task 25: no API key, and the fill said
+   * nothing about why the AI answered nothing). The caller decides the words;
+   * this only keeps what went wrong. */
   async function requestChoose(fields, { postChoose, applicationId } = {}) {
     const choices = {};
     const residue = [];
-    if (!fields?.length) return { choices, residue };
+    let failure = null;
+    if (!fields?.length) return { choices, residue, failure };
     if (typeof postChoose !== "function") {
-      return { choices, residue: [...fields] };
+      return { choices, residue: [...fields], failure };
     }
     for (const chunk of chunkChooseFields(fields)) {
       try {
@@ -113,7 +119,8 @@
         if (applicationId) body.application_id = applicationId;
         const res = await postChoose(body);
         Object.assign(choices, res?.choices ?? {});
-      } catch (_) {
+      } catch (err) {
+        failure ??= err;
         residue.push(...chunk);
       }
     }
@@ -125,7 +132,7 @@
         residue.push(field);
       }
     }
-    return { choices, residue };
+    return { choices, residue, failure };
   }
   // ---- end requestChoose ----
 

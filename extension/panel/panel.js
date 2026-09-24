@@ -229,7 +229,7 @@
    * path's own arithmetic (Score under the shortcut, Job on an unmatched apply
    * url) stays a wall, exactly as a backend-matched Job row does. Reported
    * live on an Itron wizard: the user armed the base, the Resume row read
-   * "Skipped. Using your base resume as is.", and the only way back to the tailoring fork
+   * "Using your base resume as is.", and the only way back to the tailoring fork
    * was to unbind the whole page.
    */
   const REOPENABLE = ["score", "resume", "fill"];
@@ -310,14 +310,19 @@
   const STATE_LABELS = {
     active: "current step",
     done: "done",
-    skipped: "skipped",
+    // "not needed" rather than "skipped": Skipped is the Agent inbox's word for
+    // a job the user turned down, and a row the path does not need was not
+    // turned down by anyone.
+    skipped: "not needed",
     locked: "not yet",
   };
 
   // `skipped` NAMES the stages the current path does not require, and this is
   // the copy that says so. It is never a checkmark: "we did not need to" and
-  // "we did it" are different claims (decisions.js's rule, rendered).
-  const SKIPPED_SUMMARY = "Skipped. Using your base resume as is.";
+  // "we did it" are different claims (decisions.js's rule, rendered). The PATH,
+  // with no "Skipped." in front of it (Task 25): that word read as declined,
+  // and it is the Agent inbox's word for a rejected job.
+  const SKIPPED_SUMMARY = "Using your base resume as is.";
 
   // The QnA drawer's closed, empty state. FROZEN for `EMPTY_PREVIEW`'s reason:
   // it is the store's initial value and the value every page change resets to,
@@ -577,6 +582,17 @@
      */
     residue: null,
     essays: null,
+    /** How many fields the last run's collect found BLANK and did not collect
+     * (rule territory, a policy-blocked box, a non-question text box): the
+     * fields no list names and nobody fills. The note says it beside the open
+     * count, so "1 field needs your answer" is never said over nine empty
+     * boxes. A number, or null before a run. */
+    blank: null,
+    /** What the last run's AI pass could not do, as the sentence the Fill body
+     * shows under its rows ("AI help is off until you add an API key…"), or
+     * null. The runner degrades a `/choose` failure to the open list, which is
+     * right, and used to do it silently, which was not. */
+    aiNote: null,
     /** The per-qid outcomes of the run's ONE `guided_write`. The Application
      * questions row counts what was written from this and the residue, which
      * is the run's own reconciliation rather than a second reading of the
@@ -717,6 +733,8 @@
     store.eeoConsent = null;
     store.residue = null;
     store.essays = null;
+    store.blank = null;
+    store.aiNote = null;
     store.writeResults = null;
     // The half-typed answers with them: a qid is a token the collect stamped
     // into THAT page's DOM, so a draft that outlived its page names a control
@@ -1214,6 +1232,23 @@
   // sentence that tells a user nobody read the copy.
   const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
+  const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep",
+                  "Oct", "Nov", "Dec"];
+
+  /** An ISO day ("2026-09-24") the way a person says it: "Sep 24", with the
+   * year only when it is not this one ("Mar 5, 2019"). Read off the digits,
+   * never through a `Date` of the day itself: the backend already resolved the
+   * timezone, and a locale format would put the user's conventions into one
+   * date inside an English sentence (`evidenceFrom`'s rule). Only "this year"
+   * comes from the clock. Anything else comes back as it arrived. */
+  function dayLabel(isoDay) {
+    const found = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(isoDay ?? ""));
+    const month = found ? MONTHS[Number(found[2]) - 1] : undefined;
+    if (!month) return isoDay;
+    const day = `${month} ${Number(found[3])}`;
+    return Number(found[1]) === new Date().getFullYear() ? day : `${day}, ${found[1]}`;
+  }
+
   /** An application status in the web app's words (`status-chip.tsx`'s
    * labels): the key is what the backend stores and the PATCH sends, never
    * what the user reads. An unknown key falls back to itself, as the web's
@@ -1528,7 +1563,8 @@
     }
     // "Saved", the web tracker's word for a job with no application yet.
     if (card.match === "exact") return node("span", "chip lib", "Saved");
-    if (card.match === "none") return node("span", "chip new", "New");
+    // What "New" meant, said plainly: this page's job is not in Maestro CS.
+    if (card.match === "none") return node("span", "chip new", "Not saved yet");
     return null;
   }
 
@@ -1558,15 +1594,20 @@
       ? compositeFor(card.scores, "application", card.application.id, "tailored") : null;
 
     const ats = node("div", "ats");
-    attach(ats, ringColumn(before, "var(--cs-primary)",
-                           before === null ? "ATS score" : "Base"));
     if (after === null) {
-      // "not scored yet" and not "after adding the job": a job can be saved
-      // and still have no score, and the hint must stay true then too.
-      attach(ats, node("span", "hint",
-                  before === null ? "not scored yet" : "tailor to raise it"));
+      // "Not scored yet" and not "after adding the job": a job can be saved
+      // and still have no score, and the hint must stay true then too. With a
+      // number, the ring says whose score it is and the hint is a sentence —
+      // "60 Base — tailor to raise it" joined two clauses with a dash (Task 25).
+      // What an ATS score IS is said once, in the Score step (`stages/score.js`).
+      attach(ats, ringColumn(before, "var(--cs-primary)",
+                             before === null ? "ATS score" : "Base resume score"),
+             node("span", "hint",
+                  before === null ? "Not scored yet." : "Tailoring can raise it."));
       return ats;
     }
+    attach(ats, ringColumn(before, "var(--cs-primary)",
+                           before === null ? "ATS score" : "Base"));
     attach(ats, node("span", "arrow", "→"),
            ringColumn(after, "var(--cs-good)", "Tailored"));
     if (before !== null) {
@@ -1728,6 +1769,7 @@
         writeResults: card.writeResults,
         residue: card.residue,
         essays: card.essays,
+        aiNote: card.aiNote,
         eeoConsent: card.eeoConsent,
         // The pause rows' drafts. Handed over whole rather than per row: a body
         // renders the whole list in one pass, and a per-row lookup callback
@@ -1743,7 +1785,7 @@
              setFillMode, startFill, attachResume, scrollToField, editAnswer,
              rememberAnswer, submitAnswer, toggleQna, askAbout, editQuestion,
              askQuestion, copyAnswer, trackThis },
-      build: { node, attach, plural, statusLabel },
+      build: { node, attach, plural, statusLabel, dayLabel },
     };
   }
 
@@ -3022,8 +3064,12 @@
    * posting, which is how "the companion cannot see this page" stops being a
    * sentence the panel cannot take back (a page that has started talking to us
    * has, at minimum, told us that much). An answered source we do not recognise
-   * ranks with `body`: it is an answer, and nothing more is claimed for it. */
-  const SOURCE_RANK = { "json-ld": 3, content: 2, body: 1 };
+   * ranks with `body`: it is an answer, and nothing more is claimed for it.
+   * `page` (a long `<main>` or `<article>` with no job-description container
+   * in it) ranks with `content`, which is what that same text was called
+   * until the extractor learned to tell the two apart: the split is about what
+   * the Job step may CLAIM (`previewNote`), not about which answer wins. */
+  const SOURCE_RANK = { "json-ld": 3, content: 2, page: 2, body: 1 };
   const sourceRank = (preview) =>
     preview?.source === UNREACHABLE ? 0 : (SOURCE_RANK[preview?.source] ?? 1);
 

@@ -111,7 +111,11 @@
         frameId: frame.frameId,
         host: frame.result.host,
       })));
-    return { questions, retryables };
+    // The fields each frame found blank and did not collect (`countBlank` in
+    // content/open-questions.js), summed: a count, never a label.
+    const blank = frames.reduce(
+      (total, frame) => total + (Number(frame.result?.blank) || 0), 0);
+    return { questions, retryables, blank };
   }
 
   /** Rule pass → collect → /choose → guidedWrite → residue.
@@ -160,7 +164,7 @@
    *                rules-only run rather than a shorter list.
    *   applicationId — grounds /choose in an application when there is one.
    *
-   * returns `{ essays, residue, writeResults }`:
+   * returns `{ essays, residue, writeResults, blank, aiFailure }`:
    *   residue      — the list the user is shown. Both surfaces read it.
    *   essays       — the /api/qa queue. It arrives TWICE on purpose: through
    *                  `onProgress` at the moment it is routed, so the caller's
@@ -172,6 +176,10 @@
    *                  read: its "N filled · N need you" is these minus the
    *                  residue, and NOT the rule pass's reconciliation, which
    *                  knows nothing about the model's half of the run.
+   *   blank        — how many fields the collect found empty and did not
+   *                  collect (the note's "9 fields are blank").
+   *   aiFailure    — the `/choose` error, or null. Still residued (rule 3);
+   *                  reported so the caller can say why.
    *
    * There is deliberately NO `host` option. Telemetry attributes each
    * observation to `q.host`, which `collectFromPage` stamps from the FRAME
@@ -203,11 +211,11 @@
       }
     }
 
-    const { questions, retryables } = await collectFromPage(broadcast);
+    const { questions, retryables, blank } = await collectFromPage(broadcast);
     const routed = ns.routeOpenQuestions(questions);
     onProgress({ phase: "essays", essays: routed.essays });
 
-    const { choices, residue: chooseResidue } = aiAssist
+    const { choices, residue: chooseResidue, failure = null } = aiAssist
       ? await ns.requestChoose(routed.chooseFields, {
         postChoose: (body) => api("/api/autofill/choose", {
           method: "POST",
@@ -281,7 +289,9 @@
 
     // The counts, never a sentence: what the user is told about a residue of
     // three is the caller's copy, and the two surfaces say it differently.
-    return { essays: routed.essays, residue, writeResults };
+    // `aiFailure` likewise: the `/choose` error itself (null when the AI
+    // answered, or was not asked), for the caller to put into words.
+    return { essays: routed.essays, residue, writeResults, blank, aiFailure: failure };
   }
 
   ns.guidedRun = { runGuidedFill, collectFromPage, NO_FRAME_REACHED, shown };

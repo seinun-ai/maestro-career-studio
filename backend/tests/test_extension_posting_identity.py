@@ -161,3 +161,49 @@ def test_json_ld_without_a_url_is_trusted_as_before(tmp_path):
 def test_the_backend_rule_the_guard_mirrors():
     assert is_same_posting(LI_A, LI_B) is False
     assert is_same_posting(LI_A, "https://www.linkedin.com/jobs/search/?currentJobId=4001") is True
+
+
+# ---------- where the text came from: a job signal, or just the page ----------
+
+_SOURCE_DRIVER_JS = r"""
+global.chrome = { runtime: { id: "ext", onMessage: { addListener() {} } } };
+const node = (text) => (text == null ? null : { innerText: text });
+global.document = {
+  title: "Some page",
+  // The job-description selector list is one querySelectorAll; the JSON-LD
+  // ask is the other, and this page has none.
+  querySelectorAll: (selector) =>
+    selector.includes("job-description") ? (spec.page.jd ?? []).map(node) : [],
+  querySelector: (selector) =>
+    selector === "main" ? node(spec.page.main) : selector === "article" ? null : null,
+  createElement: () => ({ innerHTML: "", innerText: "" }),
+  body: { innerText: spec.page.body ?? "" },
+};
+global.location = { href: "https://example.test/page", hostname: "example.test" };
+main(async () => {
+  emit(loadModules().pageHandlers.extract_job_posting());
+});
+"""
+
+
+def _source(tmp_path, **page):
+    return run_node(_SOURCE_DRIVER_JS, {"page": page}, tmp_path,
+                    source=_content_source(_EXTRACT_SOURCES))
+
+
+def test_a_job_description_container_is_content_and_a_long_main_is_only_page(tmp_path):
+    """The panel says "Job description found" only for a job signal (Task
+    25). A job-description container is one; a long `<main>` is only the
+    page's text, so it answers `page` and the panel does not call it a job
+    description. Either way the text is the same text, so Save job keeps it."""
+    long = "Plenty of words about something. " * 20
+    found = _source(tmp_path, jd=[long], main=long + "and the nav")
+    assert found["source"] == "content"
+    # The TEXT is chosen exactly as before (the longest candidate); only its
+    # provenance is new, so nothing a save sends has changed.
+    assert found["text"] == (long + "and the nav").strip()
+    page = _source(tmp_path, main=long)
+    assert page["source"] == "page"
+    assert page["text"] == long.strip()
+    body = _source(tmp_path, body="Weekend recipes")
+    assert body["source"] == "body"

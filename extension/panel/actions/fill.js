@@ -187,15 +187,76 @@
     return wrote > 0 && open === 0;
   }
 
+  /** What is still left on the page, in one sentence, or null when nothing is.
+   *
+   * TWO NUMBERS, because they are two different jobs for the user: `open` is
+   * the list below (a question to answer here or on the page), `blank` is
+   * every empty field nobody collected (rule territory the rules left empty,
+   * a consent box, a text box with no question in its label). "1 field still
+   * needs you" over nine empty boxes counted only the first (Task 25).
+   *
+   * ON THE NAMESPACE for `fillFinished`'s reason: the pause row closes an open
+   * field and says the same sentence one number down. */
+  function leftSentence({ open, blank }, plural) {
+    const are = (n) => (n === 1 ? "is" : "are");
+    const need = (n) => (n === 1 ? "needs" : "need");
+    if (open && blank) {
+      return `${plural(blank, "field")} ${are(blank)} blank and ${open} ${need(open)} `
+        + "your answer.";
+    }
+    if (open) return `${plural(open, "field")} ${need(open)} your answer.`;
+    if (blank) {
+      return `${plural(blank, "field")} ${are(blank)} still blank. Review before you submit.`;
+    }
+    return null;
+  }
+
   /** The run's one sentence. With no saved answers the rule pass filled
    * nothing, so that leads; "Fill finished" follows only a run that wrote
-   * something, since a run over an empty profile that found nothing else to
-   * answer has finished nothing. */
-  function fillNote({ open, finished, noSavedAnswers }, plural) {
-    const outcome = open
-      ? `${plural(open, "field")} still ${open === 1 ? "needs" : "need"} you.`
-      : (finished || !noSavedAnswers ? "Fill finished. Review before you submit." : null);
+   * something and left nothing open or blank, since a run over an empty
+   * profile that found nothing else to answer has finished nothing. */
+  function fillNote({ open, blank, finished, noSavedAnswers }, plural) {
+    const outcome = leftSentence({ open, blank }, plural)
+      ?? (finished || !noSavedAnswers ? "Fill finished. Review before you submit." : null);
     return [noSavedAnswers ? NO_SAVED_ANSWERS : null, outcome].filter(Boolean).join(" ");
+  }
+
+  const AI_OFF = "AI help is off until you add an API key in Maestro CS under "
+    + "Settings › AI & models.";
+
+  /** Is there no API key at all, and no custom AI server to use instead?
+   *
+   * Asked after an AI run whose `/choose` did not fail, because a form whose
+   * open fields are all essays or rule territory never calls it: the AI was
+   * "on" and nothing said it could not have answered (Task 25). Read off
+   * `GET /api/settings/openai`'s booleans (never key material), and only a
+   * plain "none at all" counts: which key a given model needs is the server's
+   * business, so this never claims more than the settings say. A failed read
+   * claims nothing. */
+  async function noKeyAtAll(store) {
+    try {
+      const info = await store.api("/api/settings/openai");
+      return info?.api_key_configured === false
+        && info?.gemini_api_key_configured === false
+        && info?.custom_endpoint !== true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /** What the AI pass could not do, in the Fill body's words, or null.
+   *
+   * The runner residues every field a failed `/choose` would have answered
+   * (its rule 3), and the open list already shows them; what was missing is
+   * WHY. The key words come from the same matching every failure note uses
+   * (`ns.panelKeyProblem`, panel/actions/during.js). */
+  function aiNoteFor(failure, keyless) {
+    if (!failure) return keyless ? AI_OFF : null;
+    const key = ns.panelKeyProblem(failure);
+    if (key === "missing") return AI_OFF;
+    if (key === "refused") return `AI help didn't answer. ${ns.panelKeySteps.refused}`;
+    return "AI help didn't answer this time. The fields it would have filled are "
+      + "listed below.";
   }
 
   /** Start fill: the deterministic pass, then — unless the user said rules only
@@ -273,13 +334,14 @@
     // press starts from nothing known, which is also what the body should show
     // while the run is open.
     store.write({ fill: null, eeoConsent: null, residue: null, essays: null,
-                  writeResults: null });
+                  writeResults: null, blank: null, aiNote: null });
     const aiAssist = facts.fillMode === "assist";
     let noSavedAnswers = false;
     const done = await duringAction(store, "fill", async () => {
       await store.prepare();
+      let run;
       try {
-        return await runGuidedFill({
+        run = await runGuidedFill({
           broadcast: store.broadcast,
           api: store.api,
           telemetry: store.telemetry,
@@ -328,6 +390,9 @@
         throw ns.guidedRun.shown(
           "Couldn't finish filling this page. Reload the tab to fill the rest.");
       }
+      // Inside the span, like every await an action makes (during.js).
+      const keyless = aiAssist && !run.aiFailure && await noKeyAtAll(store);
+      return { ...run, keyless };
     }, "Couldn't fill this form.");
     if (!done) return;
     const { out } = done;
@@ -344,16 +409,19 @@
     const finished = fillFinished({ fill: after.fill, writeResults: out.writeResults,
                                     residue: out.residue, essays: out.essays,
                                     attached: after.attached });
+    const blank = out.blank ?? 0;
     store.write({
       residue: out.residue,
       essays: out.essays,
       writeResults: out.writeResults,
+      blank,
+      aiNote: aiNoteFor(out.aiFailure, out.keyless),
       // The counts are the rows'; this slot gets the one sentence. "Needs you"
       // counts the essays with the residue because the user's question is what
       // is still open, and an unanswered essay is exactly that — they are kept
       // apart in the store because they are ANSWERED differently, not because
       // they are different news.
-      note: { text: fillNote({ open, finished, noSavedAnswers }, store.build.plural) },
+      note: { text: fillNote({ open, blank, finished, noSavedAnswers }, store.build.plural) },
     });
     if (finished) store.write({ touched: true });
     store.render();
@@ -514,4 +582,5 @@
 
   ns.panelActionsFill = { startFill, attachResume };
   ns.panelFillFinished = fillFinished;
+  ns.panelLeftSentence = leftSentence;
 })();

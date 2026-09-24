@@ -148,6 +148,8 @@ def test_real_split_modules_dispatch_through_the_agent_message_boundary(tmp_path
             "excluded": [],
             "retryables": [],
             "host": "jobs.example.test",
+            # A count of the empty fields nobody collected, never a value.
+            "blank": 0,
         },
     }
     assert out["answers"] == {"ok": True, "data": []}

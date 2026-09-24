@@ -988,7 +988,7 @@ def test_a_settings_ask_that_answers_nothing_boots_the_panel_on_defaults(tmp_pat
     # The panel is USABLE, which is what "boots on defaults" has to mean: the
     # page loaded, the rail is live, and the fill mode narrowed to the assist
     # pass rather than to nothing.
-    assert _by_class(out["regions"]["identity"], "chip")[0]["text"] == "New"
+    assert _by_class(out["regions"]["identity"], "chip")[0]["text"] == "Not saved yet"
     assert _rows(_rail_rows(out))["job"]["state"] == "active"
     # No appUrl, so no link — the one thing the failed ask actually costs, and
     # it is already an absence rather than a sentence.
@@ -1145,7 +1145,10 @@ def test_skipped_is_rendered_as_skipped_and_never_as_done(rail):
     assert rows["fill"]["state"] == "active"
     assert rows["score"]["state"] == "skipped"
     assert rows["resume"]["state"] == "skipped"
-    assert rows["score"]["summary"] == "Skipped. Using your base resume as is."
+    # The path in the user's own words, with no "Skipped." in front of it: that
+    # word reads as declined, and it is the Agent inbox's word for a rejected
+    # job.
+    assert rows["score"]["summary"] == "Using your base resume as is."
     # A done row carries no invented summary; the stage bodies (Tasks 7-9) are
     # what will fill those in from real data.
     assert rows["job"]["state"] == "done"
@@ -1240,7 +1243,7 @@ def test_every_rail_state_says_itself_in_words(rail):
     assert _states(rail) == {"active", "done", "skipped", "locked"}
     assert _plain_labels(rail) == {
         "active": "current step", "done": "done",
-        "skipped": "skipped", "locked": "not yet",
+        "skipped": "not needed", "locked": "not yet",
     }
     # BOTH WORDS on the one row that is both, because a reader told only
     # "current step" hears an unfinished last step and a reader told only
@@ -1355,6 +1358,9 @@ def test_a_page_change_clears_every_fact_that_was_about_the_page(tmp_path):
         "answers": {"q2": {"text": "6 weeks", "learn": True}},
         "residue": [{"qid": "q2", "label": "Preferred shift"}],
         "essays": [{"qid": "q3", "label": "Why this role?"}],
+        # The run's two plain-words facts (Task 25): how many fields were
+        # blank, and why the AI answered nothing. Both about THIS form.
+        "blank": 9, "aiNote": "AI help is off until you add an API key.",
         "eeoConsent": {"enabled": True, "consent_forms": False},
         # The QnA drawer, both halves. The question was asked about this posting
         # and the answer is grounded in this application, so a drawer that
@@ -1389,6 +1395,7 @@ def test_a_page_change_clears_every_fact_that_was_about_the_page(tmp_path):
         "prepared": False, "tailorOpen": False,
         "revisit": None,
         "fill": None, "writeResults": None, "residue": None, "essays": None,
+        "blank": None, "aiNote": None,
         "eeoConsent": None, "answers": {},
         "qna": {"open": False, "question": "", "answered": None, "answer": None,
                 "copied": False},
@@ -1836,7 +1843,7 @@ def test_a_pick_made_on_another_company_is_refused_on_this_one(tmp_path):
         stored={"widget.session": entry(tenant=COHERE_TENANT)})
     assert _restored(out) is None
     # And the panel says what the backend said instead: a new posting.
-    assert _by_class(out["regions"]["identity"], "chip")[0]["text"] == "New"
+    assert _by_class(out["regions"]["identity"], "chip")[0]["text"] == "Not saved yet"
 
 
 LINKEDIN_ORIGIN = "https://www.linkedin.com"
@@ -1861,7 +1868,7 @@ def test_a_pick_made_on_one_linkedin_job_is_refused_on_the_next(tmp_path):
                                          "application": None}), **_SESSION_API},
                 stored={"widget.session": _linkedin_entry()})
     assert _restored(out) is None
-    assert _by_class(out["regions"]["identity"], "chip")[0]["text"] == "New"
+    assert _by_class(out["regions"]["identity"], "chip")[0]["text"] == "Not saved yet"
 
 
 def test_a_linkedin_pick_survives_opening_the_jobs_permalink(tmp_path):
