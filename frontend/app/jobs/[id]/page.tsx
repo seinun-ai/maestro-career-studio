@@ -176,8 +176,9 @@ export default function JobDetailPage({
   // only offered when the job has no proposal yet).
   const promote = useMutation({
     mutationFn: () => promoteJobToAgentQueue(id),
-    onSuccess: (proposedBy) => {
-      toast.success(queuedToast(proposedBy));
+    onSuccess: (queue) => toast.success(queuedToast(queue)),
+    // Whatever happened, a proposal may now exist (filed, then the accept failed): show it.
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: ["job-detail", id] });
       qc.invalidateQueries({ queryKey: ["proposals"] });
       qc.invalidateQueries({ queryKey: ["jobs", "without-application"] });
@@ -301,6 +302,8 @@ export default function JobDetailPage({
 
   const proposalStatus = job.proposal_status ?? null;
   const proposalId = job.proposal_id ?? null;
+  const proposalBy = proposalStatus
+    ? proposalByLine(job.proposal_proposed_by, proposalStatus) : null;
   const isProposalStatus = (s: string | null): s is ProposalStatus =>
     !!s && s in STATUS_LABELS;
 
@@ -384,14 +387,12 @@ export default function JobDetailPage({
               <Badge
                 className={cn("shrink-0", STATUS_BADGE_CLASS[proposalStatus])}
                 variant="secondary"
-                title={proposalByLine(job.proposal_proposed_by)}
+                title={proposalBy ?? undefined}
               >
                 {/* The status is the pill's text (the ONE status vocabulary);
                     who filed it is heard first and shown on hover. The
                     Overview card shows it visibly. */}
-                <span className="sr-only">
-                  {proposalByLine(job.proposal_proposed_by)}, status{" "}
-                </span>
+                {proposalBy ? <span className="sr-only">{proposalBy}, status </span> : null}
                 {STATUS_LABELS[proposalStatus]}
               </Badge>
             ) : proposalStatus ? (

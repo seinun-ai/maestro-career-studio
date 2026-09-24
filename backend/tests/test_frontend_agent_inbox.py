@@ -239,13 +239,18 @@ def test_the_inbox_says_at_its_end_when_the_list_was_cut():
 
 
 def test_every_proposal_surface_names_who_filed_it():
-    assert "{proposalByLine(proposal.proposed_by)} · {formatTimeAgo(proposal.created_at)}" in _SECTION
-    assert "<CardTitle>{proposalByLine(data.proposed_by)}</CardTitle>" in _PANEL
+    row = _SECTION[_SECTION.index("function ProposalRow(") :]
+    assert "const byLine = proposalByLine(proposal.proposed_by, proposal.status);" in row
+    assert 'const meta = [byLine, formatTimeAgo(proposal.created_at)].filter(Boolean).join(" · ");' in row
+    # It truncates in a narrow row: the whole of it on hover.
+    assert '<div className="text-muted-foreground truncate text-xs" title={meta}>' in row
+    assert '<CardTitle>{proposalByLine(data.proposed_by, data.status) ?? "Agent inbox"}</CardTitle>' in _PANEL
     assert '<Fact label="Date">' in _PANEL and '<Fact label="Proposed">' not in _PANEL
-    assert "title={proposalByLine(job.proposal_proposed_by)}" in _JOB
-    pill = _JOB[_JOB.index("title={proposalByLine(job.proposal_proposed_by)}") :]
-    assert pill.index('<span className="sr-only">') < pill.index("{STATUS_LABELS[proposalStatus]}")
-    assert "{proposalByLine(job.proposal_proposed_by)}, status" in pill
+    assert "? proposalByLine(job.proposal_proposed_by, proposalStatus) : null;" in _JOB
+    pill = _JOB[_JOB.index("title={proposalBy ?? undefined}") :]
+    assert pill.index('<span className="sr-only">{proposalBy}, status </span>') < pill.index(
+        "{STATUS_LABELS[proposalStatus]}"
+    )
 
 
 def test_the_tracker_mark_names_the_filer_in_words_a_reader_hears():
@@ -258,7 +263,8 @@ def test_the_tracker_mark_names_the_filer_in_words_a_reader_hears():
 def test_the_filer_words_live_in_one_mapper():
     _NAME = _name()
     assert not re.search(r"^import ", _NAME, re.M)
-    assert 'if (proposedBy === "you") return "Queued by you";' in _NAME
+    assert 'if (proposedBy === "you") return NEVER_QUEUED.has(status) ? "Proposed by you" : "Queued by you";' in _NAME
+    assert 'const NEVER_QUEUED = new Set(["pending_review", "needs_decision", "expired"]);' in _NAME
     assert '`Proposed by ${agentDisplayName(proposedBy) ?? "a connected agent"}`' in _NAME
     assert 'return name ? `Proposed by ${name}` : "Found by a connected agent";' in _NAME
     # Known clients by product, an unknown one title-cased, never a slug.
@@ -279,17 +285,60 @@ def test_a_queue_that_joins_an_agents_proposal_says_whose_it_stays():
     """The POST keeps the first filer, so a web Queue on a job an agent had
     just proposed still reads "Proposed by <agent>". The toast says so."""
     _NAME = _name()
-    assert 'export function queuedToast(proposedBy: string | null | undefined): string {' in _NAME
+    assert "export function queuedToast({ proposedBy, status }: QueueResult): string {" in _NAME
     toast = _NAME[_NAME.index("export function queuedToast(") :]
     assert '"Queued in your Agent inbox."' in toast
     assert "proposed it first" in toast
+    for src in (_JOB, _TRACKER):
+        assert "toast.success(queuedToast(queue))" in src
+        assert "Queued for the next apply run" not in src
+
+
+def _promote() -> str:
     api = _read("lib/api.ts")
     promote = api[api.index("export async function promoteJobToAgentQueue") :]
-    promote = promote[: promote.index("\n}\n")]
-    assert "return prop.proposed_by;" in promote
+    return promote[: promote.index("\n}\n")]
+
+
+def test_a_queue_accepts_only_from_where_the_backend_does():
+    """I2: an agent's proposal that needs you, or is already queued or being
+    applied to, came back from the POST; accepting it was an illegal
+    transition ("cannot go needs_decision -> accepted") and the job stayed
+    unqueued with no refresh."""
+    from app.services.proposals import ALLOWED
+
+    assert {src for src, nxt in ALLOWED.items() if "accepted" in nxt} == {"pending_review"}
+    promote = _promote()
+    assert 'if (prop.status === "pending_review") {' in promote
+    guarded = promote[promote.index('if (prop.status === "pending_review") {') :]
+    guarded = guarded[: guarded.index("\n  }\n")]
+    assert 'method: "PATCH"' in guarded
+    assert "return" not in guarded  # M23: the PATCH is never skipped for an agent's proposal
+    assert "return { proposedBy: prop.proposed_by, status: prop.status };" in promote
+
+
+def test_the_queue_toast_words_every_open_status():
+    """Whatever the POST can hand back (an open proposal) has words."""
+    from app.services.proposals import OPEN_STATUSES
+
+    toast = _name()
+    already = toast[toast.index("const ALREADY:") :]
+    already = already[: already.index("\n};\n")]
+    worded = dict(re.findall(r'^  (\w+): "([^"]+)",$', already, re.M))
+    assert set(worded) == set(OPEN_STATUSES) - {"pending_review"}
+    assert worded == {"needs_decision": "it needs you", "needs_human": "it needs you",
+                      "accepted": "it's already queued", "approved": "it's being applied to"}
+
+
+def test_a_queue_refreshes_whatever_happened():
+    """A failed or declined accept still filed or found a proposal: the page
+    must show it."""
     for src in (_JOB, _TRACKER):
-        assert "toast.success(queuedToast(proposedBy))" in src
-        assert "Queued for the next apply run" not in src
+        promote = src[src.index("=> promoteJobToAgentQueue(") :]
+        promote = promote[: promote.index("\n  });")]
+        settled = promote[promote.index("onSettled: () => {") :]
+        assert 'qc.invalidateQueries({ queryKey: ["proposals"] });' in settled
+        assert "onSuccess: (queue) => toast.success(queuedToast(queue))," in promote
 
 
 def test_queue_and_accept_say_queued():
@@ -546,3 +595,47 @@ def test_the_job_header_triage_keeps_focus_in_the_header():
     effect = job[job.index("if (!triaged.current) return;") :]
     effect = effect[: effect.index("}, [triagedStatus]);")]
     assert "focusIfDropped(actionsRef.current && focusTarget(actionsRef.current));" in effect
+
+
+# ── The node-tested rules, pinned for CI (node tests are not in CI) ─────────
+
+
+def test_the_mapper_never_names_you_or_a_generic_client():
+    """M13, and the Python MCP SDK's default name "mcp" (it says nothing about who it is)."""
+    name = _name()
+    assert 'if (!name || name.toLowerCase() === "you") return null;' in name
+    assert 'const GENERIC_WORDS = new Set(["mcp", "client"]);' in name
+    assert "if (words.every((word) => GENERIC_WORDS.has(word))) return null;" in name
+
+
+def test_known_clients_match_whole_words_only():
+    """"precursor-bot" is not Cursor; "openai-agents" is not ChatGPT."""
+    name = _name()
+    assert "const words = name.toLowerCase().split(/[^\\p{L}\\p{N}]+/u).filter(Boolean);" in name
+    assert "if (words.includes(word)) return label;" in name
+    assert 'const KNOWN_NAMES: Readonly<Record<string, string>> = { "openai-mcp": "ChatGPT" };' in name
+    words = name[name.index("const KNOWN_WORDS") :]
+    assert "openai" not in words[: words.index("\n];\n")]
+
+
+def test_an_unknown_name_keeps_the_clients_casing():
+    """M14 ("iPhone" stays), M15 (acronyms in capitals)."""
+    name = _name()
+    word = name[name.index("function titleWord(") :]
+    word = word[: word.index("\n}\n")]
+    assert "if (ACRONYMS.has(word.toLowerCase())) return word.toUpperCase();" in word
+    assert "if (word !== word.toLowerCase()) return word;" in word
+    assert "return word.charAt(0).toUpperCase() + word.slice(1);" in word
+
+
+def test_an_unreported_filer_is_never_claimed():
+    """M12: an older backend (undefined) gets no by-line, and its Queue toast names no agent."""
+    name = _name()
+    assert "if (proposedBy === undefined) return null;" in name
+    toast = name[name.index("export function queuedToast(") :]
+    assert 'proposedBy === undefined || proposedBy === "you"' in toast
+
+
+def test_the_role_filter_compares_the_role():
+    """M11."""
+    assert 'if (role !== "all" && p.job.role_category !== role) return false;' in _read("lib/inbox-filter.ts")

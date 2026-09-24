@@ -1,3 +1,4 @@
+import type { QueueResult } from "./agent-name";
 import type {
   Application,
   AtsCompare,
@@ -183,15 +184,15 @@ export function listAtsScores(jobId: UUID) {
   );
 }
 
-/** Promote a scored-but-unproposed capture into the agent queue: file a
- * proposal from the job's stored base scores, then straight to `accepted` —
- * the caller's click IS the user's triage decision. Used by the tracker's
- * saved-row action and the job page. */
-/** Files the job into the Agent inbox, queued. Returns who the proposal
- *  names as its filer: "you", or the connected agent whose open proposal the
- *  POST returned (it keeps the first filer); undefined from a backend that
- *  does not report it. */
-export async function promoteJobToAgentQueue(jobId: UUID): Promise<string | null | undefined> {
+/**
+ * Files a job into the Agent inbox and queues it: the caller's click IS the user's triage decision, so
+ * the proposal is filed from the job's stored base scores and accepted at once. Used by the tracker's
+ * saved-row action and the job page. The POST returns the job's open proposal instead when it already has
+ * one (another tab, a connected agent), with its first filer. Only a Proposed one (`pending_review`) is
+ * accepted, the one status the backend accepts from: one that needs you, is queued or is being applied
+ * to stays as it is, and the toast says which (`queuedToast`). Returns its filer and that status.
+ */
+export async function promoteJobToAgentQueue(jobId: UUID): Promise<QueueResult> {
   const scores = (await listAtsScores(jobId)).filter((s) => s.phase === "base");
   const chosen = [...scores].sort((a, b) => b.composite - a.composite)[0];
   const prop = await apiFetch<{ id: UUID; status: string; proposed_by?: string | null }>("/api/proposals", {
@@ -211,9 +212,8 @@ export async function promoteJobToAgentQueue(jobId: UUID): Promise<string | null
       proposed_by: "you",
     }),
   });
-  // The POST returns the job's open proposal when it already has one (another tab, an agent). One
-  // already accepted is done: accepting it again is an illegal transition and a false error.
-  if (prop.status !== "accepted") {
+  // Accepting from any other status is an illegal transition: "cannot go needs_decision -> accepted".
+  if (prop.status === "pending_review") {
     await apiFetch(`/api/proposals/${prop.id}`, {
       method: "PATCH",
       body: JSON.stringify({
@@ -222,7 +222,7 @@ export async function promoteJobToAgentQueue(jobId: UUID): Promise<string | null
       }),
     });
   }
-  return prop.proposed_by;
+  return { proposedBy: prop.proposed_by, status: prop.status };
 }
 
 export function getAtsCompare(applicationId: UUID) {

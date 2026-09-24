@@ -274,8 +274,9 @@ function ApplicationsContent() {
   // captures that missed the hunt's per-run proposal cap.
   const promoteJob = useMutation({
     mutationFn: (jobId: string) => promoteJobToAgentQueue(jobId),
-    onSuccess: (proposedBy) => {
-      toast.success(queuedToast(proposedBy));
+    onSuccess: (queue) => toast.success(queuedToast(queue)),
+    // Whatever happened, a proposal may now exist (filed, then the accept failed): show it.
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: ["jobs", "without-application"] });
       qc.invalidateQueries({ queryKey: ["proposals"] });
     },

@@ -775,6 +775,8 @@ function ProposalRow({
   const base = chosenBase(proposal);
   const baseName = useBaseResumeName(base ?? "", base !== null);
   const score = chosenScore(proposal);
+  const byLine = proposalByLine(proposal.proposed_by, proposal.status);
+  const meta = [byLine, formatTimeAgo(proposal.created_at)].filter(Boolean).join(" · ");
   const isDup = duplicateKeys.has(duplicateKey(proposal));
   const showCheckbox = lane === "triage";
   // Decline is available in every non-terminal lane; Delete additionally on
@@ -839,8 +841,8 @@ function ProposalRow({
                   .filter(Boolean)
                   .join(" · ")}
               </div>
-              <div className="text-muted-foreground truncate text-xs">
-                {proposalByLine(proposal.proposed_by)} · {formatTimeAgo(proposal.created_at)}
+              <div className="text-muted-foreground truncate text-xs" title={meta}>
+                {meta}
               </div>
             </div>
             {base ? (

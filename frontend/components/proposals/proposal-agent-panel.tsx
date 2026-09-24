@@ -75,7 +75,7 @@ export function ProposalAgentPanel({ proposalId }: { proposalId: string }) {
     <Card>
       <CardHeader className="pb-2">
         {/* Who filed it and the verb: "Proposed by Claude", "Queued by you". */}
-        <CardTitle>{proposalByLine(data.proposed_by)}</CardTitle>
+        <CardTitle>{proposalByLine(data.proposed_by, data.status) ?? "Agent inbox"}</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-5 text-sm">
         {/* Meta labels match JobExtractedFields StatLine (uppercase 11px). */}
