@@ -70,6 +70,7 @@ LADDER_COPY: dict[str, dict[str, str]] = {
     },
     "analogue": {
         "issue": "Has a scale metric, but not a business outcome.",
+        "id_key": "Has a scale metric, but not a business outcome.",  # frozen, see _fid
         "why": "The number measures the thing, not the result it produced.",
         "how": "Add the outcome if you have it; otherwise this bullet is already strong.",
         "question": "Do you know what this saved, earned, or improved?",
@@ -83,8 +84,54 @@ Location = tuple  # (section, index|None, bullet_index|None)
 # small helpers
 
 def _fid(ftype: str, location: Location, issue: str) -> str:
-    """Deterministic finding id (content-derived, so re-runs are byte-identical)."""
+    """Deterministic finding id (content-derived, so re-runs are byte-identical).
+
+    A saved ask answer (`HealthAskAnswer`) is keyed on this id, so REWORDING an
+    issue would silently orphan every answer saved against it. A reworded issue
+    therefore passes its OLD text to `_finding` as `id_key`, formatted exactly
+    as it read before — the `_ID_KEY_*` constants and `_id_key_*` builders
+    below, and `LADDER_COPY`'s `id_key`. They are frozen: never edit one.
+    """
     return hashlib.sha256(f"{ftype}|{location}|{issue}".encode()).hexdigest()[:10]
+
+
+_ID_KEY_AMBIGUOUS = "Ambiguous — this may be missing a number."
+_ID_KEY_BURIED = "Your highest-evidence bullet is below the high-attention zone."
+
+
+def _id_key_gap(gap: dict, covered: int, uncovered: int) -> str:
+    key = (f"{gap['months']}-month gap between {gap['after']} and {gap['before']} — "
+           f"{covered} months covered by your education; {uncovered} months unaccounted.")
+    return key + (f" ({gap['context']})" if gap.get("context") else "")
+
+
+def _id_key_projects(proj_bullets: int, job_bullets: int) -> str:
+    return f"{proj_bullets} project bullets vs {job_bullets} employment bullets."
+
+
+def _id_key_c2(c2_hit: dict) -> str:
+    return (f"Summary claims {c2_hit['claimed_years']}+ years; the dates support "
+            f"~{c2_hit['actual_years']}.")
+
+
+# The display text of those same issues, one function or constant each so a
+# rewording lands in one place and the id cannot follow it by accident.
+_ISSUE_AMBIGUOUS = "Ambiguous — this may be missing a number."
+_ISSUE_BURIED = "Your highest-evidence bullet is below the high-attention zone."
+
+
+def _gap_issue(gap: dict, covered: int, uncovered: int) -> str:
+    return (f"{gap['months']}-month gap between {gap['after']} and {gap['before']} — "
+            f"{covered} months covered by your education; {uncovered} months unaccounted.")
+
+
+def _projects_issue(proj_bullets: int, job_bullets: int) -> str:
+    return f"{proj_bullets} project bullets vs {job_bullets} employment bullets."
+
+
+def _c2_detail(c2_hit: dict) -> str:
+    return (f"Summary claims {c2_hit['claimed_years']}+ years; the dates support "
+            f"~{c2_hit['actual_years']}.")
 
 
 def _loc_dict(location: Location) -> dict[str, Any]:
@@ -106,7 +153,8 @@ def _finding(ftype: str, location: Location, label: str, issue: str, why: str, h
              classification_source: str | None = None,
              classification_reason: str | None = None,
              rule: str | None = None,
-             subject: str | None = None) -> dict[str, Any]:
+             subject: str | None = None,
+             id_key: str | None = None) -> dict[str, Any]:
     """`subject`, when set, is the RAW source string this finding is about —
     unstripped, unnormalized — suitable as an exact-match needle against the
     resume's own arrays (e.g. `items.index(subject)`). Display copy (label,
@@ -114,9 +162,12 @@ def _finding(ftype: str, location: Location, label: str, issue: str, why: str, h
     be that cleaned-up version, or a downstream exact-match lookup silently
     fails against a padded source item. Absent when the rule has no single
     source string to point at (e.g. summary.missing, entry.too_many_bullets).
+
+    `id_key`, when set, is what the id hashes instead of `issue`: the issue's
+    wording before a rewrite, so the id — and every answer saved on it — holds.
     """
     finding = {
-        "id": _fid(ftype, location, issue),
+        "id": _fid(ftype, location, id_key or issue),
         "type": ftype,               # gate | fix | ask | note
         "severity": severity,        # critical | minor
         "location": _loc_dict(location),
@@ -399,8 +450,7 @@ def _final_gates(
         )
         gates.append(_gate_dict(
             "C2", "serious", "fail" if escalate else "ask", "Claim/date consistency",
-            f"Summary claims {c2_hit['claimed_years']}+ years; the dates support "
-            f"~{c2_hit['actual_years']}."))
+            _c2_detail(c2_hit)))
 
     # Waivers: a user-waived FAILING gate stops capping.
     for g in gates:
@@ -411,8 +461,12 @@ def _final_gates(
     return gates, e_hot
 
 
-def _gate_findings(gates: list[dict], resume: dict) -> list[dict]:
-    """One finding per failing/asking gate (not pass/waived/not_assessed)."""
+def _gate_findings(gates: list[dict], resume: dict, c2_hit: dict | None) -> list[dict]:
+    """One finding per failing/asking gate (not pass/waived/not_assessed).
+
+    Only the C2 ASK carries an `id_key`: it is the one gate finding a user
+    answers. A `gate` finding holds no answer (waivers key on the gate id), so
+    its id may follow its wording."""
     findings: list[dict] = []
     for g in gates:
         if g["status"] == "fail":
@@ -427,7 +481,7 @@ def _gate_findings(gates: list[dict], resume: dict) -> list[dict]:
                 "Confirm the number or add the missing role.",
                 severity="critical",
                 question="Is a role missing from your dates, or should the summary say fewer years?",
-                source="rule",
+                source="rule", id_key=_id_key_c2(c2_hit) if c2_hit else None,
                 content_hash=bullet_classify.content_hash(str(resume.get("summary") or ""))))
     return findings
 
@@ -451,11 +505,11 @@ def _ladder_findings(
         if r.get("uncertain"):
             copy = LADDER_COPY["adjacent"]
             findings.append(_finding(
-                "ask", loc, label, "Ambiguous — this may be missing a number.",
+                "ask", loc, label, _ISSUE_AMBIGUOUS,
                 "The classifier couldn't decide; usually that means a metric is almost there.",
                 copy["how"], severity=sev, level=value, cost=cost, zone=zone,
                 question="Is there a number attached to this that you left out?", source="llm",
-                **classification))
+                id_key=_ID_KEY_AMBIGUOUS, **classification))
             continue
         if value >= 1.0:
             continue  # direct accomplishment — nothing to say
@@ -466,14 +520,16 @@ def _ladder_findings(
             findings.append(_finding(
                 "ask", loc, label, copy["issue"], copy["why"], copy["how"],
                 severity=sev, level=value, cost=cost, zone=zone,
-                question=copy["question"], source="llm", **classification))
+                question=copy["question"], source="llm", id_key=copy.get("id_key"),
+                **classification))
             continue
         if value >= 0.50:
             copy = LADDER_COPY["adjacent"]
             findings.append(_finding(
                 "ask", loc, label, copy["issue"], copy["why"], copy["how"],
                 severity=sev, level=value, cost=cost, zone=zone,
-                question=copy["question"], source="llm", **classification))
+                question=copy["question"], source="llm", id_key=copy.get("id_key"),
+                **classification))
             continue
         # value <= 0.30 → fix candidate (rewrite), deferred so we can rank by cost
         fix_candidates.append((loc, r))
@@ -516,10 +572,10 @@ def _gap_findings(gap_hits: list[dict]) -> list[dict]:
         loc = ("experience", None, None)
         covered = gap.get("covered_months", 0)
         uncovered = gap.get("uncovered_months", gap["months"])
+        id_key = None
         if covered > 0:
-            issue = (f"{gap['months']}-month gap between {gap['after']} and {gap['before']} — "
-                     f"{covered} months covered by your education; "
-                     f"{uncovered} months unaccounted.")
+            issue = _gap_issue(gap, covered, uncovered)
+            id_key = _id_key_gap(gap, covered, uncovered)
             question = f"What were you doing in the remaining {uncovered} months?"
         else:
             issue = (f"Unexplained {gap['months']}-month gap between "
@@ -532,7 +588,7 @@ def _gap_findings(gap_hits: list[dict]) -> list[dict]:
             "Unexplained gaps cost ~45% of callbacks; one line of explanation recovers most of it.",
             "Add a short line (study, care, travel, contracting) covering the gap.",
             question=question,
-            source="rule"))
+            source="rule", id_key=id_key))
     return findings
 
 
@@ -573,7 +629,7 @@ def assemble(resume: dict, levels_by_loc: dict[Location, dict], base_gates: list
 
     # 1) gates, 2) per-bullet ladder, 3) employment gaps
     findings = [
-        *_gate_findings(gates, resume),
+        *_gate_findings(gates, resume, c2_hit),
         *_ladder_findings(resume, levels_by_loc, hot, rewrite_fn),
         *_gap_findings(gap_hits or []),
     ]
@@ -642,9 +698,10 @@ def _shape_notes(resume: dict, levels_by_loc: dict, tier: str, hot: set) -> list
     if tier != "early" and proj_bullets > job_bullets and job_bullets > 0:
         notes.append(_finding(
             "note", ("projects", None, None), "Evidence concentrated in projects",
-            f"{proj_bullets} project bullets vs {job_bullets} employment bullets.",
+            _projects_issue(proj_bullets, job_bullets),
             "For an experienced candidate, project-heavy evidence can read junior.",
-            "Lead with employment; move projects below.", source="rule"))
+            "Lead with employment; move projects below.", source="rule",
+            id_key=_id_key_projects(proj_bullets, job_bullets)))
 
     if len(exp) >= 2:
         b0 = len((exp[0][1].get("bullets") or []))
@@ -662,9 +719,10 @@ def _shape_notes(resume: dict, levels_by_loc: dict, tier: str, hot: set) -> list
         if levels_by_loc[best_loc]["value"] >= 0.8 and best_loc not in hot:
             notes.append(_finding(
                 "note", best_loc, "Strongest work is buried",
-                "Your highest-evidence bullet is below the high-attention zone.",
+                _ISSUE_BURIED,
                 "A screener may never reach it in the first pass.",
-                "Move it into the summary or the top of the first role.", source="rule"))
+                "Move it into the summary or the top of the first role.", source="rule",
+                id_key=_ID_KEY_BURIED))
 
     return notes
 

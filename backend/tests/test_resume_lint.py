@@ -262,6 +262,76 @@ def test_gap_emits_ask():
                for f in out["report"]["findings"])
 
 
+# ---------- finding ids survive a rewording (D9.1) ----------
+#
+# A saved ask answer is keyed on the finding id, and the id hashes the issue
+# text. The literals below are each reworded issue AS IT READ BEFORE the
+# rewording; they are copied here, not imported, so a change to the module's
+# frozen keys fails this file instead of moving both sides at once.
+_OLD_ISSUES = {
+    ("ask", ("experience", 0, 0)): "Has a scale metric, but not a business outcome.",
+    ("ask", ("experience", 0, 1)): "Ambiguous — this may be missing a number.",
+    ("ask", ("experience", None, None)): (
+        "12-month gap between A and B — 4 months covered by your education; "
+        "8 months unaccounted. (after a move)"),
+    ("note", ("projects", None, None)): "4 project bullets vs 3 employment bullets.",
+    ("note", ("projects", 0, 0)): "Your highest-evidence bullet is below the high-attention zone.",
+    ("ask", ("summary", None, None)): "Summary claims 8+ years; the dates support ~3.0.",
+}
+
+
+def _reworded_rules_report():
+    """One report that fires every rule whose issue was reworded."""
+    resume = _resume()
+    # Ten words a bullet, so no "Very short bullet" note shares a location.
+    resume["projects"] = [{"name": "P", "bullets": [f"p{i} " + "word " * 9 for i in range(4)]}]
+    levels = {
+        ("experience", 0, 0): _lv(0.8),                  # analogue ask (hot)
+        ("experience", 0, 1): _lv(0.5, uncertain=True),  # ambiguous ask
+        ("experience", 0, 2): _lv(0.5),
+        ("projects", 0, 0): _lv(1.0),                    # strongest, not hot: buried
+    }
+    hot = {("experience", 0, 0), ("experience", 0, 1), ("experience", 0, 2)}
+    gaps = [{"after": "A", "before": "B", "months": 12, "covered_months": 4,
+             "uncovered_months": 8, "context": "after a move"}]
+    c2 = {"claimed_years": 8, "actual_years": 3.0}
+    out = rl.assemble(resume, levels, PASS_GATES, "experienced", hot,
+                      gap_hits=gaps, c2_hit=c2)
+    return out["report"]["findings"]
+
+
+def _finding_at(findings, ftype, loc):
+    section, index, bullet = loc
+    return next(f for f in findings if f["type"] == ftype
+                and f["location"].get("section") == section
+                and f["location"].get("index") == index
+                and f["location"].get("bullet_index") == bullet)
+
+
+def test_reworded_findings_keep_their_ids():
+    findings = _reworded_rules_report()
+    for (ftype, loc), old_issue in _OLD_ISSUES.items():
+        finding = _finding_at(findings, ftype, loc)
+        assert finding["id"] == rl._fid(ftype, loc, old_issue), (ftype, loc)
+
+
+def test_a_finding_id_survives_its_issue_being_reworded(monkeypatch):
+    """The proof the key does its job: reword every display text, and each
+    finding still carries the id a saved answer was stored under."""
+    before = {key: _finding_at(_reworded_rules_report(), *key)["id"] for key in _OLD_ISSUES}
+    monkeypatch.setitem(rl.LADDER_COPY["analogue"], "issue", "Reworded analogue.")
+    monkeypatch.setattr(rl, "_ISSUE_AMBIGUOUS", "Reworded ambiguous.")
+    monkeypatch.setattr(rl, "_ISSUE_BURIED", "Reworded buried.")
+    monkeypatch.setattr(rl, "_gap_issue", lambda *_a: "Reworded gap.")
+    monkeypatch.setattr(rl, "_projects_issue", lambda *_a: "Reworded projects.")
+    monkeypatch.setattr(rl, "_c2_detail", lambda _hit: "Reworded C2.")
+    after = _reworded_rules_report()
+    for key, fid in before.items():
+        finding = _finding_at(after, *key)
+        assert finding["issue"].startswith("Reworded"), key
+        assert finding["id"] == fid, key
+
+
 def test_findings_ordered_gates_first_then_cost_then_notes():
     resume = _resume()
     resume["experience"][0]["bullets"] = ["dead", "weak", "word " * 40]
