@@ -332,13 +332,18 @@ def test_the_honesty_warning_keeps_every_clause():
 
 def test_the_gap_page_says_done_and_gap_analysis():
     page = _read(_GAP_PAGE)
-    assert '? "Not saved"' in page and "Save failed" not in page
+    assert '? "Not saved"' in page
+    assert "Save failed" not in page
     assert "{done} of {category.gaps.length}" in page
     assert "gaps addressed" not in page
     assert "This gap analysis is out of date because {staleReason}." in page
+
+
+def test_gap_cards_print_no_engine_key():
     card = _read("components/gap-analysis/gap-card.tsx")
     assert "placementLabel(diagnostic.placement)" in card
-    assert "title tier:" not in card and "match_form}" not in card
+    assert "title tier:" not in card
+    assert "match_form}" not in card
     assert "{requirementLabel(gap.requirement_level)}" in card
 
 
