@@ -44,6 +44,11 @@ image tag is the same version with the leading `v` removed (`0.2.0`).
   happened and what to do next instead of showing technical detail.
 - Long lists keep their toolbar (and, where the table fits, its header) in view
   while you scroll, and say so when a list is cut off at 500 rows.
+- "Which model should I pick?" (Settings › AI & models) compares the two
+  models in words and links OpenAI's and Google's own pricing pages, instead
+  of quoting prices that go out of date.
+- The "restrictive covenant" question in Profile › Autofill now says what one
+  is: "Such as a non-compete or non-solicit agreement."
 
 ### Fixed
 

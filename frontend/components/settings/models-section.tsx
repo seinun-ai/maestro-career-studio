@@ -355,11 +355,17 @@ function ModelProfileNote() {
         Which model should I pick?
       </button>
       {open && (
+        // Words, not figures: prices move faster than a release, so the
+        // providers' own pages carry them. The comparison is README's
+        // measured table (Choose your models deliberately).
         <p className="text-muted-foreground max-w-prose">
-          GPT-5.6 Luna gives the most thorough results (about 1¢ per
-          application, slower). Gemini 3.7 Flash is the fastest (under 3¢). In
-          our tests the Fast model mattered most. Prices change often, so treat
-          this as a starting point.
+          GPT-5.6 Luna gives the most thorough results and cost less per
+          application in our tests, but it is slower. Gemini 3.7 Flash is the
+          fastest. In our tests the Fast model mattered most. Prices change
+          often, so check the current ones:{" "}
+          <NewTabLink href="https://openai.com/api/pricing/">OpenAI pricing</NewTabLink>{" "}
+          and{" "}
+          <NewTabLink href="https://ai.google.dev/gemini-api/docs/pricing">Gemini API pricing</NewTabLink>.
         </p>
       )}
     </div>

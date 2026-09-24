@@ -629,3 +629,36 @@ def test_every_setup_chip_marks_done_or_not_done():
     strip = _read("components/setup/setup-status-strip.tsx")
     assert '<Circle aria-hidden="true" className="size-3" />' in strip
     assert 'return `${step.label}, ${step.done ? "done" : "not done"}`;' in strip
+
+
+# --- The owner's calls (SYSTEM.md §11 item 36, resolved 2026-09-24) -------------------
+
+
+def test_which_model_to_pick_names_no_price():
+    """Prices change faster than a release, so the note compares the two models
+    in words and hands the figures to the providers' own pricing pages."""
+    note = _flat(_between(_read("components/settings/models-section.tsx"),
+                          "function ModelProfileNote()", "\n}\n"))
+    assert "¢" not in note
+    assert not re.search(r"\$\s?\d", note)
+    assert not re.search(r"\d\s?(?:cents?|per cent)\b", note)
+    # The relative claims README's measured table makes, and nothing new.
+    assert "GPT-5.6 Luna gives the most thorough results" in note
+    assert "Gemini 3.7 Flash is the fastest" in note
+    # Real links (a plain <a> in NewTabLink), in a new tab, announced as such.
+    assert '<NewTabLink href="https://openai.com/api/pricing/">' in note
+    assert '<NewTabLink href="https://ai.google.dev/gemini-api/docs/pricing">' in note
+    assert "nativeButton={false}" not in note
+
+
+def test_the_covenant_question_explains_its_legal_term():
+    """The label keeps "restrictive covenant" (forms ask it that way and the
+    Companion matches it); the hint, wired with aria-describedby by the field
+    renderer, says what one is."""
+    field = _between(_AUTOFILL, 'key: "non_compete",', "},")
+    assert 'label: "Subject to a non-compete or restrictive covenant?",' in field
+    assert 'hint: "Such as a non-compete or non-solicit agreement.",' in field
+    renderer = _between(_AUTOFILL, "{group.fields.map((field) => {", "</fieldset>")
+    assert 'const hintId = field.hint ? `${id}-hint` : undefined;' in renderer
+    assert "<p id={hintId}" in renderer
+    assert renderer.count("aria-describedby={hintId}") == 2  # the select and the input
