@@ -1194,6 +1194,8 @@ def test_a_gender_radio_is_matched_on_its_own_words(tmp_path):
              "options": ["Man", "Woman", "Non-binary", "I prefer to self-describe"]}
     result = _fill_gender(tmp_path, [group], "non_binary")
     assert result["values"][legend] == "Non-binary"
+    # Reported in the option's own words, not the joined label.
+    assert [e["value"] for e in result["eeoFilled"]] == ["non-binary"]
     result = _fill_gender(tmp_path, [dict(group)], "self_describe", "Genderfluid")
     assert result["values"][legend] == "I prefer to self-describe"
     result = _fill_gender(tmp_path, [dict(group)], "female")

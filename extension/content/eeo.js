@@ -315,7 +315,10 @@
         // disclosure the page threw away must not be recorded as one the user
         // made, which matters more here than anywhere else in the engine.
         const stuck = stillChecked(radio);
-        record({ label, value: radioLabel.slice(0, 40) }, stuck);
+        // A gender button reports its own words; the joined label carried the
+        // legend ("nonbinary | wd_gender | gender (such as…").
+        const shown = res.kind === "gender" ? context.ownWords(radioLabel) : radioLabel;
+        record({ label, value: shown.slice(0, 40) }, stuck);
         observe(input, kind, labelText, rule, stuck ? "filled" : "not_stuck");
         doneRadioGroups.add(groupKey);
         break;
