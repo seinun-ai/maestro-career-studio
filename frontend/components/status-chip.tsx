@@ -179,8 +179,11 @@ export function StatusChip({
     <DropdownMenu>
       <DropdownMenuTrigger
         render={
+          // data-status-chip: what a list hands focus to when a status change
+          // removes this chip's row (the next row's chip).
           <button
             type="button"
+            data-status-chip
             aria-label={`Status: ${style.label}. Change status`}
             className={cn(chipClasses(true), style.chip, className)}
             onClick={(e) => e.stopPropagation()}

@@ -36,18 +36,20 @@ export function focusReturnPoint(el: Element | null): () => HTMLElement | null {
 
 /**
  * Where focus goes when a list item disappears: the next item's first field or tabbable while it is still there,
- * else the previous one's, else the list's nearest `tabIndex={-1}` ancestor (else the main area). The siblings
- * and the landmark are read NOW, while the item is attached; the item itself is never the answer, because a
- * caller can ask while the item is still on its way out.
+ * else the previous one's, else the list's nearest `tabIndex={-1}` ancestor (else the main area). With `control`
+ * (a selector), the neighbour's element matching it comes first: the same control the user was on in the item
+ * that left. The siblings and the landmark are read NOW, while the item is attached; the item itself is never
+ * the answer, because a caller can ask while the item is still on its way out.
  */
-export function focusSuccessor(item: Element | null | undefined): () => HTMLElement | null {
+export function focusSuccessor(item: Element | null | undefined, control?: string): () => HTMLElement | null {
   const siblings = [item?.nextElementSibling, item?.previousElementSibling];
   const landmark = focusReturnPoint(
     item?.parentElement?.closest<HTMLElement>('[tabindex="-1"]') ?? document.getElementById(MAIN_CONTENT_ID),
   );
   return () => {
     const sibling = siblings.find((s): s is HTMLElement => s instanceof HTMLElement && s.isConnected);
-    return sibling ? focusTarget(sibling) : landmark();
+    if (!sibling) return landmark();
+    return (control ? sibling.querySelector<HTMLElement>(control) : null) ?? focusTarget(sibling);
   };
 }
 

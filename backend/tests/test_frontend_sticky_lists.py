@@ -293,6 +293,15 @@ def test_the_tracker_toolbar_and_header_stick():
     assert '<Table minWidth="52rem" stickyHeader className="table-fixed">' in _TRACKER
 
 
+def test_a_filter_change_keeps_the_scroll_position():
+    """All/You/Agents and the status filter write the URL. `router.replace`
+    scrolls to the top by default, so a switch made while scrolled threw the
+    user off the rows they were reading. Mutant: `{ scroll: false }` dropped."""
+    write = _TRACKER[_TRACKER.index("const writeUrl = ") : _TRACKER.index("const setFilterAndUrl")]
+    assert 'router.replace(qs ? `/applications?${qs}` : "/applications", { scroll: false });' in write
+    assert write.count("router.") == 1, write
+
+
 def test_referrals_header_sticks():
     assert '<Table minWidth="48rem" stickyHeader className="table-fixed">' in _REFERRALS
 

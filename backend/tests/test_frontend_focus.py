@@ -544,14 +544,19 @@ def test_every_kept_mounted_dialog_names_its_return_target():
 
 def test_a_list_item_hands_focus_to_its_neighbour_then_its_landmark():
     # Mutants: previous before next; the item itself (still connected at menu
-    # close) as the fallback; siblings read late, after the item has gone.
+    # close) as the fallback; siblings read late, after the item has gone; the
+    # neighbour's matching control ignored.
+    assert (
+        "export function focusSuccessor(item: Element | null | undefined, control?: string): () => HTMLElement | null {"
+    ) in _FOCUS
     body = _fn_body(_FOCUS, "export function focusSuccessor(")
     assert body == (
         "const siblings = [item?.nextElementSibling, item?.previousElementSibling]; "
         "const landmark = focusReturnPoint( "
         "item?.parentElement?.closest<HTMLElement>('[tabindex=\"-1\"]') ?? document.getElementById(MAIN_CONTENT_ID), ); "
         "return () => { const sibling = siblings.find((s): s is HTMLElement => s instanceof HTMLElement && s.isConnected); "
-        "return sibling ? focusTarget(sibling) : landmark(); };"
+        "if (!sibling) return landmark(); "
+        "return (control ? sibling.querySelector<HTMLElement>(control) : null) ?? focusTarget(sibling); };"
     )
 
 
@@ -599,6 +604,38 @@ def test_deleting_a_card_hands_focus_to_the_next_card():
     ) in page
     button = _button_with(_BASE_LIST, "onClick={() => deleteTarget && del.mutate(deleteTarget.slug)}")
     assert "focusableWhenDisabled" in button and "data-disabled:opacity-50" in button
+
+
+_TRACKER = _read("app/applications/page.tsx")
+_STATUS_CHIP = _read("components/status-chip.tsx")
+
+
+def test_a_status_change_that_filters_out_its_row_hands_focus_to_the_next_chip():
+    # Under a status filter, picking another status takes the row (and the
+    # chip focus went back to) out of the list once the refetch lands: focus
+    # fell to <body>. The successor is read when the status is picked, while
+    # the row is there, and handed over after the commit that drops it.
+    # Mutants: the successor read in the effect (the row is gone by then); a
+    # passive effect (focus sits on <body> for a frame, until after paint); the
+    # `filter` guard dropped (a change that keeps the row arms a stale move);
+    # `leaving` not cleared on a failed PATCH; no control, so focus lands on
+    # the next row instead of its chip; the marker gone from the chip.
+    page = _squash(_TRACKER)
+    assert "const leaving = useRef<{ key: string; next: () => HTMLElement | null } | null>(null);" in page
+    patch = page[page.index("const patchStatus = useMutation(") : page.index("const deleteApp = useMutation(")]
+    assert "onError: (err: Error) => { leaving.current = null; toast.error(err.message); }," in patch
+    assert (
+        "useLayoutEffect(() => { const l = leaving.current; if (!l || filtered.some((r) => rowKey(r) === l.key)) return; "
+        "leaving.current = null; focusIfDropped(l.next()); }, [filtered]);"
+    ) in page
+    assert (
+        'onSelect={(status) => { if (filter !== "all" && filter !== status) leaving.current = { key, '
+        'next: focusSuccessor( document.querySelector(`[data-row="${key}"]`), "[data-status-chip]", ), }; '
+        "patchStatus.mutate({ id: r.app.id, status }); }}"
+    ) in page
+    assert "<TableRow key={key} data-row={key}" in page
+    chip = _squash(_function(_STATUS_CHIP, "export function StatusChip("))
+    assert '<button type="button" data-status-chip' in chip
 
 
 # --- The studio's ⋯ → Role dialog ---------------------------------------------

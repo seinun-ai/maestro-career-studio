@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { GuardedLink as Link } from "@/components/guarded-link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -55,6 +55,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { apiFetch, promoteJobToAgentQueue } from "@/lib/api";
+import { focusIfDropped, focusSuccessor } from "@/lib/focus";
 import { isListCapped } from "@/lib/list-cap";
 import { isLoadFailure } from "@/lib/query-state";
 import { cn } from "@/lib/utils";
@@ -181,6 +182,11 @@ function rowTitle(r: Row): string {
   return (r.kind === "saved" ? r.job.title : r.app.job_title) ?? "";
 }
 
+/** A row's React key, and the `data-row` a status change finds its row by. */
+function rowKey(r: Row): string {
+  return r.kind === "saved" ? `job-${r.job.id}` : `app-${r.app.id}`;
+}
+
 function ApplicationsContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -215,6 +221,11 @@ function ApplicationsContent() {
   const savedSource = source === "agent" ? "agent" : "user";
   const savedJobs = useQuery(savedJobsQuery(savedSource));
 
+  // A status outside the active filter takes its row, and the chip focus went
+  // back to, out of the list once the refetch lands. Where focus goes then is
+  // read when the status is picked, while the row is still there.
+  const leaving = useRef<{ key: string; next: () => HTMLElement | null } | null>(null);
+
   const patchStatus = useMutation({
     mutationFn: ({ id, status }: { id: string; status: ApplicationStatus }) =>
       apiFetch<unknown>(`/api/applications/${id}`, {
@@ -226,7 +237,10 @@ function ApplicationsContent() {
       const jobId = apps.data?.find((a) => a.id === id)?.job_id;
       if (jobId) qc.invalidateQueries({ queryKey: ["job-detail", jobId] });
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => {
+      leaving.current = null;
+      toast.error(err.message);
+    },
   });
 
   const deleteApp = useMutation({
@@ -365,7 +379,8 @@ function ApplicationsContent() {
     if (nextFilter !== "all") params.set("status", nextFilter);
     if (nextSource !== "all") params.set("source", nextSource);
     const qs = params.toString();
-    router.replace(qs ? `/applications?${qs}` : "/applications");
+    // A filter switch keeps the reader where they are, not at the top.
+    router.replace(qs ? `/applications?${qs}` : "/applications", { scroll: false });
   };
 
   const setFilterAndUrl = (next: Filter) => {
@@ -391,6 +406,16 @@ function ApplicationsContent() {
       ),
     );
   }, [filtered, loading]);
+
+  // In the commit that drops the row, before paint (a passive effect left
+  // focus on <body> for a frame): the next row's status chip, else the
+  // previous row's, else the main area (the table goes with its last row).
+  useLayoutEffect(() => {
+    const l = leaving.current;
+    if (!l || filtered.some((r) => rowKey(r) === l.key)) return;
+    leaving.current = null;
+    focusIfDropped(l.next());
+  }, [filtered]);
 
   const header = (key: SortKey, label: string, className?: string) => {
     const active = sortKey === key;
@@ -574,8 +599,7 @@ function ApplicationsContent() {
             </TableHeader>
             <TableBody>
               {filtered.map((r) => {
-                const rowKey =
-                  r.kind === "saved" ? `job-${r.job.id}` : `app-${r.app.id}`;
+                const key = rowKey(r);
                 const href =
                   r.kind === "saved"
                     ? `/jobs/${r.job.id}`
@@ -585,7 +609,8 @@ function ApplicationsContent() {
 
                 return (
                   <TableRow
-                    key={rowKey}
+                    key={key}
+                    data-row={key}
                     className="group cursor-pointer"
                     // The row was click-only: no tabIndex, no key handler, no
                     // role. A keyboard user could reach the status chip and the
@@ -641,9 +666,17 @@ function ApplicationsContent() {
                             patchStatus.isPending &&
                             patchStatus.variables?.id === r.app.id
                           }
-                          onSelect={(status) =>
-                            patchStatus.mutate({ id: r.app.id, status })
-                          }
+                          onSelect={(status) => {
+                            if (filter !== "all" && filter !== status)
+                              leaving.current = {
+                                key,
+                                next: focusSuccessor(
+                                  document.querySelector(`[data-row="${key}"]`),
+                                  "[data-status-chip]",
+                                ),
+                              };
+                            patchStatus.mutate({ id: r.app.id, status });
+                          }}
                         />
                       )}
                     </TableCell>

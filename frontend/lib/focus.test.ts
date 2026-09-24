@@ -79,6 +79,8 @@ class El {
       return this.attrs.tabindex !== undefined && this.attrs.tabindex !== "-1";
     }
     if (selector === '[tabindex="-1"]') return this.attrs.tabindex === "-1";
+    const present = /^\[([\w-]+)\]$/.exec(selector); // a caller's control marker, e.g. `[data-chip]`
+    if (present) return present[1] in this.attrs;
     throw new Error(`stand-in DOM: unknown selector ${selector}`);
   }
 
@@ -237,6 +239,48 @@ test("the only item hands focus to the list, then the main area", () => {
   grid.remove();
   assert.equal(back(), list, "the list outlives the grid");
   list.remove();
+  assert.equal(back(), main);
+});
+
+/** A table: three rows, each a focusable row holding a status chip and a ⋯. */
+function table() {
+  const rows = ["a", "b", "c"].map((id) =>
+    h("tr", { id, tabindex: "0" }, h("td", {}, h("button", { "data-chip": "" })), h("td", {}, h("button"))),
+  );
+  const main = h("main", { id: "main-content", tabindex: "-1" }, h("table", {}, h("tbody", {}, ...rows)));
+  doc.body.append(main);
+  return { rows, main };
+}
+const chipOf = (row: El) => row.children[0].children[0];
+
+test("a removed row hands focus to the same control in the next row", () => {
+  const { rows } = table();
+  const back = focusSuccessor(asEl(rows[1]), "[data-chip]");
+  rows[1].remove();
+  assert.equal(back(), chipOf(rows[2]), "the chip, not the row that takes focus itself");
+});
+
+test("the last row hands focus to the previous row's control", () => {
+  const { rows } = table();
+  const back = focusSuccessor(asEl(rows[2]), "[data-chip]");
+  rows[2].remove();
+  assert.equal(back(), chipOf(rows[1]));
+});
+
+test("a neighbour without the control is focused as a plain item", () => {
+  const { rows } = table();
+  rows[2].children[0].children[0].remove();
+  const back = focusSuccessor(asEl(rows[1]), "[data-chip]");
+  rows[1].remove();
+  assert.equal(back(), rows[2]);
+});
+
+test("the only row hands focus to the main area", () => {
+  const { rows, main } = table();
+  rows[0].remove();
+  rows[2].remove();
+  const back = focusSuccessor(asEl(rows[1]), "[data-chip]");
+  rows[1].remove();
   assert.equal(back(), main);
 });
 

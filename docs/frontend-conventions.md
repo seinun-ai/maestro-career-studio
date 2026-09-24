@@ -650,6 +650,13 @@
     `finalFocus` after a pointer close but does not apply it), because the
     refetch can remove the card, and the menu with it, before the menu's
     close; Delete's dialog returns there only after a success, else to ⋯.
+  - A tracker status change that takes its row out of the active filter
+    hands focus to `focusSuccessor(row, "[data-status-chip]")`: the next
+    row's status chip, else the previous row's, else the main area (the
+    table goes with its last row). The successor is read when the status is
+    picked; a layout effect hands it over in the commit that drops the row
+    (a passive one left `<body>` focused for a frame), and a failed PATCH
+    disarms it.
   - Every overlay opened from a ⋯ menu takes the trigger as `finalFocus`,
     because the item is gone by the time it closes. The menu itself does not:
     an explicit `finalFocus` on a menu also overrides the initial focus of an
@@ -867,7 +874,10 @@
   buckets are hidden**: an option renders iff `count > 0 || f === "all" || f
   === filter`, the trailing clause so the active filter can never vanish under
   the user who picked it (re-check if the control changes again). An unknown
-  `?status=` falls back to `all` via the `FILTERS.includes` guard.
+  `?status=` falls back to `all` via the `FILTERS.includes` guard. The status
+  filter and All/You/Agents write the URL with `router.replace(…, { scroll:
+  false })`: the default scrolls to the top, off the rows being read
+  (`test_a_filter_change_keeps_the_scroll_position`).
 - Naming: the no-application state is **Saved** everywhere; the tracker
   page/nav is **Applications**. A proposal you passed on is **Skipped**, the
   verb **Skip** — never "Declined"/"Rejected": application `rejected` means
