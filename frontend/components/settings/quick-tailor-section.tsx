@@ -48,7 +48,7 @@ export function QuickTailorSection() {
     <SettingCard
       id="quick-tailor"
       title="Quick tailor"
-      description="What one-shot tailoring is allowed to change. Used by Quick tailor on the gap analysis page and by the browser extension's Fast tailor."
+      description="What Quick tailor may change on your resume, on the gap analysis page and in the Companion."
       errorTitle="Couldn't load your quick-tailor profile."
       skeleton="h-48 w-full"
       query={profile}

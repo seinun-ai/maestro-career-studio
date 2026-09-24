@@ -564,8 +564,8 @@ as-is, or run **`customize-job-skills`** to make them yours or build new ones
 Maestro CS can take an application right up to the submit button. Read this
 part rather than skim it.
 
-A job your agent finds becomes a **proposal**. You review proposals on the
-**Agent Proposals** page and accept or decline them (in bulk if you like). An
+A job your agent finds becomes a **proposal**. You review proposals in the
+**Agent inbox** and accept or skip them (in bulk if you like). An
 apply run then works **only the ones you accepted**: it tailors, renders and
 fills each application in a live agent session with a browser, asks you only
 for information the app doesn't have (and hands you logins, CAPTCHAs and

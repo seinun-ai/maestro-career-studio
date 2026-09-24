@@ -446,7 +446,7 @@ export function AutofillSection() {
     <SettingCard
       id="autofill"
       title="Autofill profile"
-      description="Preset answers the browser extension uses to fill job-application forms."
+      description="Preset answers the Companion uses to fill job-application forms."
       errorTitle="Couldn't load your autofill profile."
       skeleton="h-40 w-full"
       query={query}
@@ -757,7 +757,7 @@ function AutofillEditor({
               <div className="flex items-center justify-between gap-4">
                 <div className="grid gap-1">
                   <Label htmlFor="eeo-standing-consent">
-                    Allow extension to fill these answers
+                    Allow Companion to fill these answers
                   </Label>
                   <p className="text-muted-foreground text-xs">
                     Standing consent for exact-match autofill only. Off by default;
@@ -779,7 +779,7 @@ function AutofillEditor({
               <div className="flex items-center justify-between gap-4">
                 <div className="grid gap-1">
                   <Label htmlFor="consent-forms">
-                    Allow extension to tick agreement boxes
+                    Allow Companion to tick agreement boxes
                   </Label>
                   <p className="text-muted-foreground text-xs">
                     Terms and conditions, acknowledgements and attestations. It
@@ -858,7 +858,7 @@ function AutofillEditor({
       <fieldset className="space-y-4">
         <legend className={LEGEND}>Education</legend>
         <p className="text-muted-foreground text-xs">
-          Most recent first, matching the extension&apos;s repeated form blocks.
+          Most recent first, matching the Companion&apos;s repeated form blocks.
         </p>
         {education.map((entry, i) => (
           <CardSection key={i} className="flex items-start gap-2">

@@ -287,8 +287,8 @@ export function AtsScorePanel({ jobId }: { jobId: string }) {
       description:
         `Records an application using ${baseName(baseResume)} as-is and marks it Applied. ` +
         "Any tailored draft for this job and base is replaced by the base content " +
-        "(version history keeps every prior draft), and any open agent proposal " +
-        "for this job is closed.",
+        "(version history keeps every prior draft), " +
+        "and any open proposal in your Agent inbox for this job is closed.",
       confirmLabel: "Mark applied",
     });
     if (ok) appliedAsIs.mutate(baseResume);

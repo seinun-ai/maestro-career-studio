@@ -97,8 +97,10 @@ export function AutofillCoverageCard() {
       description:
         `This deletes ${signatures} recorded field ${signatures === 1 ? "shape" : "shapes"}` +
         ` across ${hosts} ${hosts === 1 ? "site" : "sites"}, including which sites they were` +
-        " seen on and when. It cannot be undone. Capture stays on — turn it off in the" +
-        " extension card's ⋯ menu.",
+        " seen on and when. It cannot be undone." +
+        // The Companion has no switch for capture (extension/README.md), so
+        // the confirm names none.
+        " Clearing removes what's recorded so far. Capture continues while the Companion runs.",
       confirmLabel: "Clear data",
       destructive: true,
     });
@@ -117,11 +119,11 @@ export function AutofillCoverageCard() {
   return (
     <ChartCard
       title="Autofill coverage"
-      description="What real application forms ask, and where the extension's fill pipeline fails."
+      description="What real application forms ask, and where the Companion's fill pipeline fails."
       isLoading={isLoading}
       error={error as Error | null}
       empty={signatures === 0}
-      emptyText="No telemetry yet. Fill an application with the extension to start capturing."
+      emptyText="No telemetry yet. Fill an application with the Companion to start capturing."
       action={
         signatures > 0 ? (
           <Button

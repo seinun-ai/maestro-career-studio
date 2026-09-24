@@ -363,6 +363,51 @@ def test_focus_ring_meets_non_text_contrast(mode):
         assert ratio >= 3.0, f"{mode}: --ring on --{surface} is {ratio:.2f}:1"
 
 
+# An outline Button's dark border (`dark:border-input`) outranks the base
+# `focus-visible:border-ring` in Tailwind's variant order, so in dark mode only
+# the ring/50 halo showed (~2.2:1). A variant that sets its own dark border sets
+# the ring back on focus, and that border clears 3:1 against the button's own
+# dark fill and every surface it sits on.
+_BUTTON_VARIANTS = dict(re.findall(r'^\s+(\w+):\s*"([^"]+)",?$', _BUTTON, re.M))
+
+
+def test_a_dark_border_gives_way_to_the_ring_on_focus():
+    dark_borders = {
+        name: classes for name, classes in _BUTTON_VARIANTS.items()
+        if re.search(r"(?<![\w:-])dark:border-", classes)
+    }
+    assert "outline" in dark_borders, sorted(_BUTTON_VARIANTS)
+    for name, classes in dark_borders.items():
+        assert re.search(r"(?<![\w:-])dark:focus-visible:border-ring(?![/\w-])", classes), name
+
+
+def _dark_alpha_token(name: str):
+    m = re.search(rf"--{name}:\s*oklch\(([\d.]+) ([\d.]+) ([\d.]+) / ([\d.]+)%\)", _block(".dark"))
+    assert m, f".dark --{name} is no longer an alpha oklch()"
+    lch = tuple(float(v) for v in m.groups()[:3])
+    return _srgb(_oklab(lch)), float(m.group(4)) / 100
+
+
+# Where outline buttons sit: pages, cards, menus, the sidebar and muted panels
+# (no outline button sits on a tonal secondary-container chip or toggle).
+_OUTLINE_SURFACES = ("background", "card", "popover", "sidebar", "canvas", "muted")
+
+
+def test_the_outline_focus_border_meets_non_text_contrast_in_dark():
+    """At rest and hovered: a focused button can be under the pointer too."""
+    outline = _BUTTON_VARIANTS["outline"]
+    fills = [int(a) for a in re.findall(r"(?<![\w-])dark:(?:hover:)?bg-input/(\d+)(?![\w-])", outline)]
+    assert len(fills) == 2, "the outline variant's dark fills moved; measure the new ones"
+    input_rgb, input_alpha = _dark_alpha_token("input")
+    ring = _rgb(DARK, "ring")
+    for surface in _OUTLINE_SURFACES:
+        under = _rgb(DARK, surface)
+        for fill in fills:
+            inside = _over(input_rgb, under, input_alpha * fill / 100)
+            ratio = min(_contrast(ring, inside), _contrast(ring, under))
+            assert ratio >= 3.0, f"outline focus border, input/{fill} on --{surface}: {ratio:.2f}:1"
+
+
 def test_browser_focus_outline_is_the_solid_ring():
     # outline-style:auto paints in outline-color: ring/50 was ~1.6:1.
     assert "outline-ring/50" not in _CSS

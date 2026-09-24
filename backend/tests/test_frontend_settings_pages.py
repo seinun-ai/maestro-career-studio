@@ -70,9 +70,6 @@ def _card_ids_by_panel(page: str, values: list[str]) -> dict[str, set[str]]:
     return found
 
 
-_RESERVED_CARD_IDS = {"connected-agents"}
-
-
 @pytest.mark.parametrize(
     ("page", "table"),
     [("app/settings/page.tsx", "SETTINGS_TABS"), ("app/profile/page.tsx", "PROFILE_TABS")],
@@ -85,9 +82,8 @@ def test_every_card_id_resolves_to_the_tab_that_renders_it(page, table):
         assert ids, f"{page}: panel {value} renders no settings card"
         assert ids <= tabs[value], (page, value, sorted(ids - tabs[value]))
         # And the other way: a card the table names must render, or its deep links ring
-        # nothing (the merged Models split once lost two cards this way). Wave 2 mounts the
-        # Connected agents explainer; until then its id is the only one reserved.
-        missing = tabs[value] - ids - _RESERVED_CARD_IDS
+        # nothing (the merged Models split once lost two cards this way).
+        missing = tabs[value] - ids
         assert not missing, (page, value, sorted(missing))
 
 
@@ -126,11 +122,11 @@ def test_both_pages_read_their_search_params_so_the_server_renders_the_tab():
 
 
 def test_connected_agents_keeps_its_order_and_a_place_for_the_explainer():
-    """Planner decision 18 (Q2): the explainer card (wave 2) first, then the hints, then
-    Auto-apply. The hints and Auto-apply are pinned here; the explainer's lane extends it."""
+    """Planner decision 18 (Q2): the explainer card first, then the hints, then Auto-apply:
+    the explainer says what a connected agent is before the settings that bound one."""
     agents = _panels(_read("app/settings/page.tsx"), list(_tab_table("SETTINGS_TABS")))["agents"]
-    assert "Connected agents explainer" in agents  # the mount point
-    assert agents.index("Connected agents explainer") < agents.index("<McpWorkflowSection />")
+    assert agents.count("<ConnectedAgentsCard />") == 1
+    assert agents.index("<ConnectedAgentsCard />") < agents.index("<McpWorkflowSection />")
     assert agents.index("<McpWorkflowSection />") < agents.index("<AutoApplySection />")
 
 

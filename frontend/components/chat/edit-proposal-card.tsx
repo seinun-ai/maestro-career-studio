@@ -110,7 +110,8 @@ export function EditProposalCard({
     <div className="rounded-xl border border-dashed px-3 py-2.5">
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <Badge variant="outline" className="gap-1 text-xs">
-          <Sparkles className="size-3" aria-hidden="true" /> Suggested edit
+          <Sparkles className="size-3" aria-hidden="true" />
+          {`Suggested ${proposal.ops_count === 1 ? "edit" : "edits"}`}
         </Badge>
         {proposal.summary ? (
           <span className="font-medium">{proposal.summary}</span>

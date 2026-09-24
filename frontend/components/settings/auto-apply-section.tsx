@@ -37,13 +37,13 @@ const AUTO_APPLY_FIELDS: {
   {
     key: "max_submissions_per_day",
     label: "Daily submission cap",
-    hint: "Approving a proposal reserves a slot for 24 hours.",
+    hint: "Your yes before a submit reserves a slot for 24 hours.",
     min: 1,
     max: 100,
   },
   {
     key: "max_proposals_per_run",
-    label: "Proposals per hunt run",
+    label: "Proposals per hunt",
     // No hint: the label already says it.
     hint: "",
     min: 1,
@@ -82,7 +82,7 @@ export function AutoApplySection() {
     <SettingCard
       id="auto-apply"
       title="Auto-apply"
-      description="Guardrails for the agent hunt-and-apply lane."
+      description="Limits on what connected agents may do when they find and apply to jobs."
       errorTitle="Couldn't load your auto-apply settings."
       skeleton="h-24 w-full"
       query={query}
@@ -100,7 +100,8 @@ function AutoApplyEditor({ initial }: { initial: AutoApplySettings }) {
   const [blockInput, setBlockInput] = useState("");
   const value = draft ?? initial;
   // Unsaved limits survive a tab switch, but a navigation dropped them silently.
-  useLeaveGuard(draft !== null);
+  // A company typed but not yet added is unsaved too.
+  useLeaveGuard(draft !== null || blockInput.trim() !== "");
   // Discard unmounts itself; focus goes to Save, which stays (dimmed, focusable).
   const saveRef = useRef<HTMLButtonElement>(null);
   // A removed company takes its focused × with it; focus goes to the add field.
@@ -117,7 +118,7 @@ function AutoApplyEditor({ initial }: { initial: AutoApplySettings }) {
       toast.success("Auto-apply settings saved");
       setDraft(null);
       qc.setQueryData(["settings", "auto-apply"], result);
-      // The proposals funnel strip renders the cap readout — refresh it.
+      // The Agent inbox and Analytics' Agent pipeline read the cap.
       qc.invalidateQueries({ queryKey: ["proposals", "funnel"] });
     },
     onError: (err: Error) => toast.error(err.message),
@@ -175,8 +176,10 @@ function AutoApplyEditor({ initial }: { initial: AutoApplySettings }) {
       <div className="grid gap-1.5">
         <Label htmlFor="aa-blocklist">Company blocklist</Label>
         <p id="aa-blocklist-hint" className="text-muted-foreground text-xs">
-          The hunt never captures or proposes these companies. Skipping a single
-          posting does not block its company.
+          {/* The server refuses only a proposal here (routers/proposals.py):
+              an agent can still save a job at one of these companies. */}
+          Connected agents can&apos;t propose jobs at these companies.
+          Skipping one job does not block its company.
         </p>
         {value.company_blocklist.length > 0 ? (
           <div className="flex flex-wrap gap-1.5">

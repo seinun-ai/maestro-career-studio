@@ -25,8 +25,11 @@ const buttonVariants = cva(
         // FAB in a rail rests flat and hover raises it one level; a resting
         // shadow read as permanently hovered.
         fab: "bg-primary-container text-on-primary-container hover:bg-primary-container-hover hover:shadow-sm",
+        // `dark:border-input` outranks the base `focus-visible:border-ring`, so
+        // dark mode showed only the ring/50 halo (~2.2:1, under WCAG 1.4.11's
+        // 3:1). The dark focus border is set back to the solid ring here.
         outline:
-          "border-border bg-background hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50",
+          "border-border bg-background hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50 dark:focus-visible:border-ring",
         secondary:
           "bg-secondary text-secondary-foreground hover:bg-secondary/80 aria-expanded:bg-secondary aria-expanded:text-secondary-foreground",
         ghost:
