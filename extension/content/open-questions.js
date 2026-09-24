@@ -44,9 +44,11 @@ function collectOpenQuestions() {
 
   // HR-3 is shared with the profile writer. This is the riskier path, so the
   // policy still runs at COLLECTION: an uncollected control receives no qid
-  // and fillAnswersByQid cannot address it later.
+  // and fillAnswersByQid cannot address it later. `self-describe` is a
+  // protected-class box even when its label names no question ("Please
+  // self-describe"): eeo.js fills it or nobody does.
   const EXCLUDE =
-    /first\s*name|last\s*name|full\s*name|e-?mail|phone|mobile|address|\bcity\b|\bstate\b|zip|postal|country|linked\s*in|git\s*hub|website|portfolio|school|university|college|\bdegree\b|discipline|major|field of study|\bgpa\b|graduat|sponsor|authoriz|right to work|legally|veteran|disab|gender|race|ethnic|hispanic|resume|cover\s*letter|\bcv\b|location|password|search|date|employer|company\s*name|job\s*title|work\s*(history|experience)|employment|duties|responsibilit|\bdescription\b/i;
+    /first\s*name|last\s*name|full\s*name|e-?mail|phone|mobile|address|\bcity\b|\bstate\b|zip|postal|country|linked\s*in|git\s*hub|website|portfolio|school|university|college|\bdegree\b|discipline|major|field of study|\bgpa\b|graduat|sponsor|authoriz|right to work|legally|veteran|disab|gender|race|ethnic|hispanic|self[-_\s]?describ|resume|cover\s*letter|\bcv\b|location|password|search|date|employer|company\s*name|job\s*title|work\s*(history|experience)|employment|duties|responsibilit|\bdescription\b/i;
   // Free-text inputs need a question-ish label to avoid junk fields;
   // textareas, selects, and radios are almost always real questions.
   // QUESTIONY lives on the NAMESPACE (shared/choose.js) so routing can split

@@ -36,6 +36,12 @@ image tag is the same version with the leading `v` removed (`0.2.0`).
   queued from the web app before this release as yours.
 - Settings and Profile are split into tabs you can link to directly; unsaved
   edits still warn before you leave, across tabs too.
+- **Gender options.** Profile › Autofill adds Non-binary and Prefer to
+  self-describe (with a box for your own words) beside Male, Female and
+  Decline to answer. With diversity consent on, the Companion picks the form's
+  matching option ("Non-binary", "Nonbinary", "I prefer to self-describe"…)
+  and types your words only into a box that asks for them; a form without
+  the option is left for you. Answers you already saved keep working.
 
 ### Changed
 

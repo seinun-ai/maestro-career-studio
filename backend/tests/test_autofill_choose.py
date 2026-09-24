@@ -148,6 +148,24 @@ def test_with_consent_the_diversity_answers_are_offered(db_session, monkeypatch,
     assert _eeo_values_in(prompt) == list(_EEO.values())
 
 
+def test_a_self_description_reaches_the_model_only_with_consent(db_session, monkeypatch, settings_here):
+    """The /choose prompt reads the same gate as GET /context, and the user's
+    own words for a self-described gender are inside `eeo` like every answer."""
+    from app.services import autofill_profile
+
+    for enabled in (False, True):
+        _set_consent(db_session, enabled)
+        autofill_profile.set_profile(
+            {"personal": {"first_name": "Ada"},
+             "eeo": {"gender": "self_describe", "gender_self_describe": "Genderfluid"}},
+            db_session)
+        sent: list[str] = []
+        monkeypatch.setattr(autofill_choose.llm, "call_openai",
+                            lambda **kw: sent.append(kw["prompt"]) or {"choices": {}})
+        autofill_choose.choose(_fields(), application_id=None, session=db_session)
+        assert ("Genderfluid" in sent[0]) is enabled
+
+
 def test_a_consent_that_cannot_be_read_withholds_them(db_session, monkeypatch, settings_here):
     """Fails CLOSED, as GET /context does: a consent record that could not be
     computed is not consent."""

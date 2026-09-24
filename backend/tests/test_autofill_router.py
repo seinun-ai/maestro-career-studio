@@ -1,6 +1,7 @@
 import json
 from uuid import uuid4
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.config import settings
@@ -293,6 +294,30 @@ def test_context_withholds_eeo_values_without_consent(db_session, tmp_path, monk
     assert "eeo" not in body["profile"], "EEO answers served without consent"
     assert body["profile"]["personal"]["first_name"] == "Sample"
     assert body["eeo_consent"]["enabled"] is False
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_a_self_description_travels_only_with_consent(db_session, tmp_path, monkeypatch, enabled):
+    """The Profile's "Prefer to self-describe" stores the user's own words
+    beside `gender` (`eeo.gender_self_describe`, additive: older profiles have
+    none). They are protected-class text, and the ONE gate covers them because
+    it withholds the whole `eeo` object, not a list of known keys."""
+    from app.services import eeo_consent
+    from app.schemas.eeo_consent import EeoConsent
+
+    monkeypatch.setattr(settings, "settings_dir", tmp_path)
+    eeo = {"gender": "self_describe", "gender_self_describe": "Genderfluid"}
+    autofill_profile.set_profile({"personal": {"first_name": "Sample"}, "eeo": eeo}, db_session)
+    eeo_consent.set_consent(EeoConsent(enabled=enabled, policy_version="1"), db_session)
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        body = TestClient(app).get("/api/autofill/context").json()
+    finally:
+        app.dependency_overrides.clear()
+
+    assert ("Genderfluid" in json.dumps(body)) is enabled
+    if enabled:
+        assert body["profile"]["eeo"] == eeo
 
 
 def test_context_withholds_eeo_when_the_consent_section_fails(db_session, tmp_path, monkeypatch):

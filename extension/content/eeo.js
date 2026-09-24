@@ -6,6 +6,12 @@
 (() => {
   const ns = (window.careerStudioCompanion ??= {});
 
+  // "Self-describe", "I prefer to self-describe", `gender_self_describe`.
+  const SELF_DESCRIBE = /self[-_\s]?describ/i;
+  // A text box that follows a question for the user's own words rather than
+  // asking one: a self-description goes there, and only that.
+  const SPECIFY_BOX = /self[-_\s]?describ|\bspecify\b|\bif other\b/i;
+
   /** Build the protected-class rules and exact option matcher for one profile.
    * This module owns what counts as an EEO field, which answers exist, and how
    * each protected-class control is handled without replacing a user answer. */
@@ -40,11 +46,30 @@
       disability_yes: [/yes,? i have a disability/i, /^yes\b/i],
       male: [/^male$/i, /^man$/i],
       female: [/^female$/i, /^woman$/i],
+      // ORDERED, best first: a form offering both options gets the one that
+      // says non-binary, and "Gender non-conforming" stands in only where
+      // there is none (the owner's call, 2026-09-24). Unanchored, because the
+      // wordings vary ("Nonbinary", "I identify as non-binary",
+      // "Non-Binary/Gender Non-Conforming"), so a gender radio or box is
+      // matched on its OWN words (`ownWords`), never on the question's.
+      non_binary: [/\bnon[-\s]?binary\b/i, /\bgender[-\s]?non[-\s]?conforming\b/i],
+      // The OPTION that says "I will describe it myself". Nothing here may
+      // match a decline ("Decline to self-identify"), and nothing does.
+      self_describe: [SELF_DESCRIBE],
     };
+    // The values Profile › Autofill stores. Anything else (a hand-edited
+    // "Woman") has no words: it is matched exactly or not at all, where it
+    // used to fall back to the DECLINE words and answer for the user.
+    const GENDER_VALUES = new Set(["male", "female", "non_binary", "self_describe", "decline"]);
+    // What a free-text gender box is given. The rest keep the stored value,
+    // which is already a word.
+    const GENDER_TEXT = { non_binary: "Non-binary" };
+    const selfDescription = String(e.gender_self_describe ?? "").trim();
     const yesNo = (value) =>
       (value === true ? "yes" : value === false ? "no" : value);
     const isEeoLabel = (label) =>
-      /veteran|disab|hispanic|latino|gender|\bsex\b|race|ethnic/i.test(label);
+      /veteran|disab|hispanic|latino|gender|\bsex\b|race|ethnic/i.test(label)
+      || SELF_DESCRIBE.test(label);
 
     // Race/ethnicity may contain several independently supplied categories.
     // Empty categories are discarded once, before rule construction.
@@ -56,7 +81,10 @@
       { id: "disability", re: /disab/i, value: e.disability_status, kind: "disability" },
       { id: "hispanic-latino", re: /hispanic|latino/i, value: hispanic, kind: "yesno",
         optionList: hispanic === "yes" ? ["Hispanic or Latino"] : [] },
-      { id: "gender", re: /gender|^sex\b/i, value: e.gender, kind: "gender" },
+      // `not`: "gender" is inside "transgender", and neither that question nor
+      // sexual orientation is this one.
+      { id: "gender", re: /gender|^sex\b/i, not: /\btransgender\b|\bsexual orientation\b/i,
+        value: e.gender, kind: "gender" },
       { id: "race-ethnicity", re: /race|ethnic/i, optionList: raceList,
         value: raceList.join(", ") },
     ];
@@ -70,8 +98,53 @@
         return value === "veteran" ? optionWords.veteran
           : value === "not_veteran" ? optionWords.not_veteran : optionWords.decline;
       }
-      if (kind === "gender") return optionWords[value] ?? optionWords.decline;
+      if (kind === "gender") return GENDER_VALUES.has(value) ? optionWords[value] : [];
       return null;
+    };
+
+    /** A radio's or a box's own text: labelFor puts the control's own label
+     * first and the question (legend, container) after it, so a legend that
+     * lists the options ("man, woman or non-binary") cannot put the
+     * non-binary words on every button. */
+    const ownWords = (labelText) => String(labelText ?? "").split("|")[0].trim();
+
+    /** Which of `items` answers a gender question: the one whose own words meet
+     * the EARLIEST pattern of the value's ordered list, first in the DOM on a
+     * tie. Null when none does. */
+    const bestGenderItem = (items, textOf, value) => {
+      const words = optionWordsFor("gender", value);
+      let best = null;
+      let bestRank = Infinity;
+      for (const item of items) {
+        const rank = words.findIndex((pattern) => pattern.test(ownWords(textOf(item))));
+        if (rank >= 0 && rank < bestRank) { best = item; bestRank = rank; }
+      }
+      return best;
+    };
+
+    /** What a TEXT control is given for `rule`: `{text}`, or `{outcome}` when
+     * it is given nothing. A box that follows the gender question for the
+     * user's own words ("If you prefer to self-describe, please specify")
+     * takes a self-description and nothing else: its label says gender, and
+     * the gender rule typed "female" into it. */
+    const textAnswer = (rule, value, labelText) => {
+      if (rule.kind !== "gender") return { text: String(value) };
+      if (SPECIFY_BOX.test(labelText) && value !== "self_describe") {
+        return { outcome: "skip_rule" };
+      }
+      if (value === "self_describe") {
+        return selfDescription ? { text: selfDescription } : { outcome: "missing_source" };
+      }
+      return { text: GENDER_TEXT[value] ?? String(value) };
+    };
+
+    /** The known value the retry lane may type into a search box after a miss:
+     * what a form would show, never a stored key. A self-description is not
+     * retried, since its option's wording varies from form to form. */
+    const retryValue = (rule, value) => {
+      if (rule.kind !== "gender") return value;
+      if (value === "self_describe") return "";
+      return GENDER_TEXT[value] ?? value;
     };
 
     /** An option text with the vendor's DECORATION removed, and nothing else.
@@ -102,7 +175,10 @@
       return (optionList ?? []).find((option) => segments.has(norm(option))) ?? null;
     };
 
-    return { rules, isEeoLabel, optionWordsFor, optionFor, canonicalOptionText };
+    return {
+      rules, isEeoLabel, optionWordsFor, optionFor, canonicalOptionText,
+      ownWords, bestGenderItem, textAnswer, retryValue,
+    };
   }
 
   /** The other boxes of ONE single-choice checkbox question.
@@ -228,9 +304,12 @@
         ? (radioLabel) => context.optionFor(
           radioLabel, [String(res.value)]) !== null
         : (radioLabel) => words.some((pattern) => pattern.test(radioLabel));
+      // Gender picks ONE button by its own words and the value's ordered list.
+      const genderPick = res.kind === "gender"
+        ? context.bestGenderItem(group, labelFor, String(res.value)) : null;
       for (const radio of group) {
         const radioLabel = labelFor(radio);
-        if (!matches(radioLabel)) continue;
+        if (res.kind === "gender" ? radio !== genderPick : !matches(radioLabel)) continue;
         clickControl(radio);
         // The verdict, not the attempt — see `stillChecked` (autofill.js). A
         // disclosure the page threw away must not be recorded as one the user
@@ -258,8 +337,14 @@
       //
       // The kind-based match is the same one the RADIO branch already makes,
       // which is what these boxes are impersonating.
+      //
+      // Except the two gender answers whose words are UNANCHORED (a non-binary
+      // option is worded a dozen ways): a box's label carries the question as
+      // well as its option, so those boxes are left for the user.
+      const unanchored = rule.kind === "gender"
+        && ["non_binary", "self_describe"].includes(String(res.value));
       const option = context.optionFor(labelText, rule.optionList)
-        ?? (rule.kind && optionWordsFor(rule.kind, String(res.value))
+        ?? (rule.kind && !unanchored && optionWordsFor(rule.kind, String(res.value))
           ?.some((pattern) => pattern.test(labelText))
           ? String(res.value) : null);
       if (!option) {
@@ -328,12 +413,17 @@
     }
 
     if (!input.value) {
-      const outcome = await commitValue(input, String(res.value));
+      const answer = context.textAnswer(rule, res.value, labelText);
+      if (answer.outcome) {
+        observe(input, kind, labelText, rule, answer.outcome);
+        return;
+      }
+      const outcome = await commitValue(input, answer.text);
       const stuck = commitOk.has(outcome);
       observe(input, kind, labelText, rule, outcome);
       record({
         label,
-        value: String(res.value),
+        value: answer.text,
         note: stuck ? undefined : "may not have registered, check the field",
       }, stuck);
     }

@@ -43,6 +43,9 @@ type FieldDef = {
   options?: { value: string; label: string }[];
   /** A format or a consequence, between the label and the control. Never an example value. */
   hint?: string;
+  /** Shown only while another field of the group holds this value: [key, value].
+   *  Changing that field away deletes this one (see `setField`). */
+  when?: [string, string];
 };
 
 type GroupDef = { key: string; title: string; fields: FieldDef[] };
@@ -153,11 +156,23 @@ const GROUPS: GroupDef[] = [
         key: "gender",
         label: "Gender",
         type: "select",
+        // The stored values are the Companion's (content/eeo.js maps each to
+        // a form's own wording, and leaves a form without it to you).
         options: [
           { value: "male", label: "Male" },
           { value: "female", label: "Female" },
+          { value: "non_binary", label: "Non-binary" },
+          { value: "self_describe", label: "Prefer to self-describe" },
           { value: "decline", label: "Decline to answer" },
         ],
+      },
+      // Voluntary like the group, and not counted by setup readiness.
+      {
+        key: "gender_self_describe",
+        label: "How you describe your gender",
+        hint: "The Companion types this where a form asks you to self-describe.",
+        optional: true,
+        when: ["gender", "self_describe"],
       },
       {
         key: "hispanic_latino",
@@ -531,6 +546,11 @@ function AutofillEditor({
       } else {
         values[key] = value;
       }
+      // A field shown only for one answer goes with that answer: a
+      // self-description must not stay stored under "Female", unseen.
+      for (const field of GROUPS.find((g) => g.key === group)?.fields ?? []) {
+        if (field.when?.[0] === key && field.when[1] !== value) delete values[field.key];
+      }
       return { ...current, [group]: values };
     });
   };
@@ -817,6 +837,9 @@ function AutofillEditor({
               otherwise push its control below its neighbours'. */}
           <div className="grid items-end gap-4 @lg/setting:grid-cols-2 @3xl/setting:grid-cols-3">
             {group.fields.map((field) => {
+              if (field.when && groupValues(profile, group.key)[field.when[0]] !== field.when[1]) {
+                return null;
+              }
               const id = `af-${group.key}-${field.key}`;
               const rawValue = groupValues(profile, group.key)[field.key];
               const value = fieldValue(field, rawValue);

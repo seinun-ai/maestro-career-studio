@@ -333,6 +333,17 @@ know, and each one was learned from a live failure.
   option is chosen only by an exact normalized match or by a curated word list.
   The generic fuzzy scorer used for ordinary fields is deliberately not used
   here — it rated "Asian Indian" 72.5% against "Asian".
+  **Gender** has five stored answers (`content/eeo.js`): male, female,
+  non_binary, self_describe and decline. A word list is ORDERED, best first
+  ("Non-binary" and its spellings, then "Gender non-conforming" only where a
+  form has no non-binary option); a radio is judged on its own words, never
+  its legend's; a single-choice checkbox is never ticked for the two
+  unanchored answers. A value without a list (a hand-edited "Woman") is
+  matched exactly or not at all: it used to borrow the decline words. The
+  self-description (`gender_self_describe`) goes only into a text box that
+  asks for one ("please specify", "self-describe"), which no other answer
+  may take; a "Please self-describe" box naming no question is EEO territory
+  that nothing fills and `/choose` never sees.
 - **Repeated blocks (education, work history) are resolved by block, not by
   DOM order.** Each repeated block's position among the **visible** blocks of
   its family picks the resume entry, so a hidden prototype block does not shift

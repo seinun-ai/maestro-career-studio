@@ -21,13 +21,17 @@ an exact category the user supplied, or nothing is written.
 
 import re
 
+import pytest
+
 from tests.extension_harness import (
     CONTENT,
     FORM_MODULE_SOURCES,
     js_code,
     outcome_for,
     outcome_pairs,
+    rejection_reasons,
     run_node,
+    run_open_questions,
     run_profile_fill,
 )
 
@@ -1023,3 +1027,198 @@ def test_the_protected_class_vocabulary_never_leaks_into_the_engine():
     # pass by the vocabulary having been deleted everywhere.
     for term in ("veteran", "disability"):
         assert term in js_code(EEO_JS), term
+
+
+# ---------- gender beyond Male and Female ----------
+#
+# Profile › Autofill offers Male, Female, Non-binary, Prefer to self-describe
+# (with the user's own words in `gender_self_describe`) and Decline to answer.
+# The bar is the protected-class one above: an option is chosen only when it
+# says what the user said, and a form without that option is left for the user.
+# A value the rules have no words for used to fall back to the DECLINE words,
+# so a non-binary user on a Male/Female/Decline form was recorded as declining.
+
+_GENDER = "Gender"
+
+
+def _gender_select(*texts: str, label: str = _GENDER) -> dict:
+    return {
+        "label": label,
+        "kind": "select",
+        "options": [{"value": f"o{i}", "textContent": t} for i, t in enumerate(texts)],
+    }
+
+
+def _picked(result: dict, field: dict) -> str:
+    """The option TEXT a select ended up on, or "" when nothing was chosen."""
+    value = result["values"][field["label"]]
+    return next((o["textContent"] for o in field["options"] if o["value"] == value), "")
+
+
+def _fill_gender(tmp_path, fields, gender, describe=None, eeo_enabled=True):
+    eeo = {"gender": gender}
+    if describe is not None:
+        eeo["gender_self_describe"] = describe
+    return run_profile_fill(
+        tmp_path, fields=fields, eeo_enabled=eeo_enabled, profile={"eeo": eeo})
+
+
+@pytest.mark.parametrize("wording", [
+    "Non-binary", "Nonbinary", "Non binary", "Non-Binary/Gender Non-Conforming",
+    "I identify as non-binary",
+])
+def test_non_binary_picks_the_forms_non_binary_option(tmp_path, wording):
+    field = _gender_select("Male", "Female", wording, "Decline to self-identify")
+    result = _fill_gender(tmp_path, [field], "non_binary")
+    assert _picked(result, field) == wording
+    assert [e["field"] for e in result["eeoFilled"]] == ["gender"]
+
+
+def test_gender_non_conforming_stands_in_only_when_no_non_binary_option_exists(tmp_path):
+    only = _gender_select("Male", "Female", "Gender non-conforming", "Decline")
+    assert _picked(_fill_gender(tmp_path, [only], "non_binary"), only) == "Gender non-conforming"
+    # Listed FIRST, and still passed over for the option that says non-binary.
+    both = _gender_select("Man", "Woman", "Gender non-conforming", "Non-binary", "Decline")
+    assert _picked(_fill_gender(tmp_path, [both], "non_binary"), both) == "Non-binary"
+
+
+@pytest.mark.parametrize("wording", [
+    "I prefer to self-describe", "Prefer to self-describe", "Self-describe",
+    "Self describe (please specify)",
+])
+def test_self_describe_picks_the_forms_self_describe_option(tmp_path, wording):
+    field = _gender_select("Man", "Woman", "Non-binary", wording, "I don't wish to answer")
+    result = _fill_gender(tmp_path, [field], "self_describe", "Genderfluid")
+    assert _picked(result, field) == wording
+
+
+@pytest.mark.parametrize("gender", ["non_binary", "self_describe"])
+def test_a_form_without_the_option_is_left_for_the_user(tmp_path, gender):
+    """Never the nearest thing: not Decline (the old fallback), not "Decline to
+    self-identify" for a self-description, not Other."""
+    field = _gender_select("Male", "Female", "Other", "Decline to self-identify")
+    result = _fill_gender(tmp_path, [field], gender, "Genderfluid")
+    assert _picked(result, field) == ""
+    assert result["eeoFilled"] == [] and result["filled"] == []
+
+
+def test_an_unknown_stored_gender_is_matched_exactly_or_not_at_all(tmp_path):
+    """A hand-edited "Woman" used to fall back to the decline words and pick
+    "Decline to self-identify". It now meets only the option that says it."""
+    field = _gender_select("Man", "Woman", "Decline to self-identify")
+    assert _picked(_fill_gender(tmp_path, [field], "Woman"), field) == "Woman"
+    lacking = _gender_select("Male", "Female", "Decline to self-identify")
+    assert _picked(_fill_gender(tmp_path, [lacking], "Woman"), lacking) == ""
+
+
+_DESCRIBE_BOX = "If you prefer to self-describe your gender, please specify"
+
+
+def test_the_self_description_goes_in_the_forms_self_describe_box(tmp_path):
+    select = _gender_select("Man", "Woman", "I prefer to self-describe", "Decline")
+    box = {"label": _DESCRIBE_BOX, "kind": "text"}
+    result = _fill_gender(tmp_path, [select, box], "self_describe", "Genderfluid")
+    assert _picked(result, select) == "I prefer to self-describe"
+    assert result["values"][_DESCRIBE_BOX] == "Genderfluid"
+
+
+def test_the_self_describe_box_never_takes_another_answer(tmp_path):
+    """The gender rule matched this box before (its label says gender) and
+    typed "female" into it. Only a self-description goes there."""
+    for gender in ("female", "non_binary", "decline"):
+        box = {"label": _DESCRIBE_BOX, "kind": "text"}
+        result = _fill_gender(tmp_path, [box], gender)
+        assert result["values"][_DESCRIBE_BOX] == "", gender
+        assert outcome_for(result, _DESCRIBE_BOX) == "skip_rule", gender
+    # Self-describe chosen, no words stored: reported, never invented.
+    box = {"label": _DESCRIBE_BOX, "kind": "text"}
+    result = _fill_gender(tmp_path, [box], "self_describe")
+    assert result["values"][_DESCRIBE_BOX] == ""
+    assert outcome_for(result, _DESCRIBE_BOX) == "missing_source"
+
+
+def test_a_free_text_gender_box_gets_words_never_a_stored_key(tmp_path):
+    box = {"label": "Gender", "kind": "text"}
+    assert _fill_gender(tmp_path, [box], "non_binary")["values"]["Gender"] == "Non-binary"
+    box = {"label": "Gender", "kind": "text"}
+    assert _fill_gender(tmp_path, [box], "self_describe", "Genderfluid")["values"]["Gender"] == "Genderfluid"
+
+
+def test_without_consent_neither_the_option_nor_the_words_are_written(tmp_path):
+    select = _gender_select("Man", "Woman", "Non-binary", "I prefer to self-describe")
+    box = {"label": _DESCRIBE_BOX, "kind": "text"}
+    bare = {"label": "Please self-describe", "kind": "text"}
+    result = _fill_gender(tmp_path, [select, box, bare], "self_describe", "Genderfluid",
+                          eeo_enabled=False)
+    assert _picked(result, select) == ""
+    assert result["values"][_DESCRIBE_BOX] == "" and result["values"]["Please self-describe"] == ""
+    assert {outcome for _l, outcome in outcome_pairs(result)} == {"eeo_disabled"}
+
+
+def test_a_self_describe_box_with_no_question_is_never_the_models(tmp_path):
+    """"Please self-describe" alone could follow any question, so no rule
+    fills it, and it is protected-class territory, so /choose never sees it."""
+    bare = {"label": "Please self-describe", "kind": "text"}
+    result = run_open_questions(
+        tmp_path, fields=[bare],
+        profile={"eeo": {"gender": "self_describe", "gender_self_describe": "Genderfluid"}},
+        harness={"eeo_enabled": True})
+    assert result["collected"]["questions"] == []
+    assert result["collected"]["retryables"] == []
+    assert rejection_reasons(result) == {"please self-describe": "excluded"}
+
+
+def test_a_gender_miss_retries_with_words_never_a_stored_key(tmp_path):
+    """The retry lane types its known value into a search box, so it carries
+    what a form would show, and a self-description (whose option wording
+    varies) is not retried at all."""
+    lacking = _gender_select("Male", "Female")
+    result = run_open_questions(
+        tmp_path, fields=[lacking], profile={"eeo": {"gender": "non_binary"}},
+        harness={"eeo_enabled": True})
+    [retry] = result["collected"]["retryables"]
+    assert retry["known_value"] == "Non-binary"
+    result = run_open_questions(
+        tmp_path, fields=[_gender_select("Male", "Female")],
+        profile={"eeo": {"gender": "self_describe", "gender_self_describe": "x"}},
+        harness={"eeo_enabled": True})
+    assert result["collected"]["retryables"] == []
+
+
+def test_a_gender_radio_is_matched_on_its_own_words(tmp_path):
+    """Each button's label joins its own text with the question's, so a legend
+    that lists the options ("man, woman or non-binary") put the non-binary
+    words on EVERY button and the first one, Man, would have been clicked."""
+    legend = "Gender identity (such as man, woman or non-binary)"
+    group = {"label": legend, "kind": "radio", "legend": legend,
+             "options": ["Man", "Woman", "Non-binary", "I prefer to self-describe"]}
+    result = _fill_gender(tmp_path, [group], "non_binary")
+    assert result["values"][legend] == "Non-binary"
+    result = _fill_gender(tmp_path, [dict(group)], "self_describe", "Genderfluid")
+    assert result["values"][legend] == "I prefer to self-describe"
+    result = _fill_gender(tmp_path, [dict(group)], "female")
+    assert result["values"][legend] == "Woman"
+
+
+def test_a_gender_checkbox_is_left_for_the_user(tmp_path):
+    """Workday-style single-choice boxes share an id suffix, and a box's label
+    carries the question as well as its option, and the non-binary and
+    self-describe words are unanchored, so those answers tick no box."""
+    boxes = [
+        {"label": f"{text} | Gender identity", "kind": "checkbox", "id": f"{i}-genderIdentity"}
+        for i, text in enumerate(["Man", "Gender non-conforming", "Non-binary", "Woman"])
+    ]
+    for gender in ("non_binary", "self_describe"):
+        result = _fill_gender(tmp_path, [dict(b) for b in boxes], gender, "Genderfluid")
+        assert _ticked(result) == set(), gender
+        assert result["eeoFilled"] == [], gender
+
+
+def test_a_transgender_question_is_not_the_gender_question(tmp_path):
+    """"Gender" is inside "transgender". A self-describing user must not have
+    "I prefer to self-describe" picked on a different question."""
+    field = _gender_select("Yes", "No", "I prefer to self-describe",
+                           label="Do you identify as transgender?")
+    result = _fill_gender(tmp_path, [field], "self_describe", "Genderfluid")
+    assert _picked(result, field) == ""
+    assert result["eeoFilled"] == []

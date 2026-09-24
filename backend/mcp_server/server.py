@@ -676,8 +676,11 @@ def get_autofill_profile(application_id: str | None = None, base: str | None = N
     EEO/demographic answer values (`profile.eeo`) are returned ONLY when Profile
     standing consent is active (`eeo_consent.enabled`); Playwright/agent fill
     must use those exact stored answers with no inference or model-authored EEO.
-    Without standing consent, `profile.eeo` is stripped. Never ask the user to
-    paste or re-dictate consented stored EEO answers into chat — if values are
+    Without standing consent, `profile.eeo` is stripped. `eeo.gender` is male,
+    female, non_binary, self_describe or decline; with self_describe,
+    `eeo.gender_self_describe` is the user's own words for a form's
+    self-describe box. A form lacking the option is left to the user. Never
+    ask the user to paste or re-dictate consented stored EEO answers into chat — if values are
     missing from the profile, hand off in-browser or have them update Profile.
     Values absent here (e.g. an unstored county) must come from the user —
     never invent them. WOTC/signatures/terms stay human-only."""

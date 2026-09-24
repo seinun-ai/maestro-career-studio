@@ -662,3 +662,31 @@ def test_the_covenant_question_explains_its_legal_term():
     assert 'const hintId = field.hint ? `${id}-hint` : undefined;' in renderer
     assert "<p id={hintId}" in renderer
     assert renderer.count("aria-describedby={hintId}") == 2  # the select and the input
+
+
+def test_gender_offers_non_binary_and_self_describe():
+    """The owner's options, in this order; the stored values are what
+    extension/content/eeo.js maps to a form's own wording."""
+    gender = _between(_AUTOFILL, 'key: "gender",', "],")
+    assert re.findall(r'\{ value: "(\w+)", label: "([^"]+)" \}', gender) == [
+        ("male", "Male"),
+        ("female", "Female"),
+        ("non_binary", "Non-binary"),
+        ("self_describe", "Prefer to self-describe"),
+        ("decline", "Decline to answer"),
+    ]
+
+
+def test_the_self_description_shows_only_for_self_describe_and_goes_with_it():
+    """A text field for the user's own words, voluntary like the group (not
+    counted by setup readiness: `optional`), on screen only while "Prefer to
+    self-describe" is chosen, and deleted when another answer replaces it, so
+    no protected-class text is kept where the user can no longer see it."""
+    field = _between(_AUTOFILL, 'key: "gender_self_describe",', "},")
+    assert 'when: ["gender", "self_describe"],' in field
+    assert "optional: true," in field
+    assert 'hint: "The Companion types this where a form asks you to self-describe.",' in field
+    renderer = _between(_AUTOFILL, "{group.fields.map((field) => {", "</fieldset>")
+    assert "if (field.when && groupValues(profile, group.key)[field.when[0]] !== field.when[1]) {" in renderer
+    set_field = _between(_AUTOFILL, "const setField = (", "\n  };")
+    assert "if (field.when?.[0] === key && field.when[1] !== value) delete values[field.key];" in set_field

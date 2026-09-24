@@ -960,7 +960,12 @@ async function fillFormFromProfile(
   const bestOption = (options, rule) => {
     if (rule.kind) {
       const words = optionWordsFor(rule.kind, String(rule.value));
-      const hit = options.find((o) => words.some((wre) => wre.test(o.text)));
+      // A protected-class list is ordered best first (eeo.js), so the first
+      // WORD any option carries wins there, not the first option carrying any
+      // word: "Gender non-conforming" listed above "Non-binary" is passed over.
+      const hit = rule.eeo
+        ? words.map((wre) => options.find((o) => wre.test(o.text))).find(Boolean)
+        : options.find((o) => words.some((wre) => wre.test(o.text)));
       if (hit) return hit;
       // No fuzzy fallback for a date part. A month has exactly twelve
       // well-known renderings and the patterns above cover all four forms of
@@ -1567,7 +1572,8 @@ async function fillFormFromProfile(
             .some((radio) => radio.checked)
           : false;
       if (eeoUnanswered && !rule.optionList?.length) {
-        noteAttempt(labelText, res.value);
+        // Words a form would show, never a stored key (eeo.js retryValue).
+        noteAttempt(labelText, eeoContext.retryValue(rule, res.value));
       }
       continue;
     }
