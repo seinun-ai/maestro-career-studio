@@ -61,7 +61,7 @@ def test_the_url_and_its_session_keys_stay():
 
 def test_the_lanes_use_the_owners_words():
     """Needs you · To review · Queued · Applying · History (planner decision 20)."""
-    titles = re.findall(r"<Lane title=\{`([^$`]+) · \$\{", _SECTION)
+    titles = re.findall(r"<Lane (?:ref=\{\w+\} )?title=\{`([^$`]+) · \$\{", _SECTION)
     assert titles == ["Needs you", "To review", "Queued", "Applying"]
     assert "Nothing to review." in _SECTION
     history = _SECTION.index("History ·")
@@ -340,13 +340,11 @@ def test_the_sidebar_names_the_inbox_and_the_assistant():
 
 
 def test_needs_you_is_one_list_of_statuses():
-    lib = _read("lib/needs-you.ts")
-    assert (
-        'export const NEEDS_YOU_STATUSES: readonly ProposalStatus[] = ["needs_decision", "needs_human"];'
-        in lib
-    )
-    assert "const NEEDS_YOU = NEEDS_YOU_STATUSES;" in _SECTION
+    lanes = _read("lib/inbox-lanes.ts")
+    assert "export const NEEDS_YOU_STATUSES = INBOX_LANES.needs_you;" in lanes
+    assert 'inLane(filtered, "needs_you")' in _SECTION
     hook = _read("hooks/use-needs-you-count.ts")
+    assert 'import { NEEDS_YOU_STATUSES } from "@/lib/inbox-lanes";' in hook
     assert '`/api/proposals?status=${NEEDS_YOU_STATUSES.join(",")}&limit=1`' in hook
     assert "select: (page) => page.total" in hook
     # Under ["proposals"]: every triage invalidation refreshes the count.
@@ -371,3 +369,180 @@ def test_the_count_is_in_the_link_name_and_not_read_twice():
     assert '<span className="min-w-0 truncate">{item.label}</span>' in sidebar
     pill = sidebar[sidebar.index("{badge ? (") :]
     assert pill.index('aria-hidden="true"') < pill.index("{badge.text}")
+
+
+# ── Lanes: one table, every status in exactly one lane ──────────────────────
+
+
+def _ts_strings(body: str) -> list[str]:
+    return re.findall(r'"([a-z_]+)"', body)
+
+
+def _frontend_statuses() -> list[str]:
+    types = _read("lib/types.ts")
+    return _ts_strings(re.search(r"const PROPOSAL_STATUSES = \[([^\]]*)\] as const;", types).group(1))
+
+
+def _lane_table() -> dict[str, list[str]]:
+    lanes = _read("lib/inbox-lanes.ts")
+    table = lanes[lanes.index("export const INBOX_LANES") :]
+    table = table[: table.index("\n};\n")]
+    return {lane: _ts_strings(body) for lane, body in re.findall(r"^  (\w+): \[([^\]]*)\],$", table, re.M)}
+
+
+def test_every_status_is_in_exactly_one_lane():
+    """A status in no lane never shows (M2); in two it shows twice (M1, M3)."""
+    from app.models.application_proposal import PROPOSAL_STATUSES
+
+    statuses = _frontend_statuses()
+    assert sorted(statuses) == sorted(PROPOSAL_STATUSES)  # types.ts mirrors the backend
+    table = _lane_table()
+    assert list(table) == ["needs_you", "triage", "queued", "in_flight", "history"]
+    members = [s for lane in table.values() for s in lane]
+    assert sorted(members) == sorted(statuses), "a status is in no lane, or in two"
+
+
+def test_the_lanes_hold_the_owners_statuses():
+    table = _lane_table()
+    assert table["needs_you"] == ["needs_decision", "needs_human"]
+    assert table["triage"] == ["pending_review"]
+    assert table["queued"] == ["accepted"]
+    assert table["in_flight"] == ["approved"]
+
+
+def test_a_status_this_build_does_not_know_is_in_no_lane():
+    """Rather than a wrong one (a newer backend)."""
+    laneof = _read("lib/inbox-lanes.ts")
+    laneof = laneof[laneof.index("export function laneOf(") :]
+    assert laneof[: laneof.index("\n}\n")].endswith("  }\n  return null;")
+
+
+def test_every_status_has_a_chip_label_in_lane_order():
+    """STATUS_ORDER is the lane table flattened, and every status has a chip (M19)."""
+    lanes = _read("lib/inbox-lanes.ts")
+    assert (
+        "export const STATUS_ORDER: readonly ProposalStatus[] = (Object.keys(INBOX_LANES) as InboxLane[]).flatMap("
+        in lanes
+    )
+    assert "STATUS_ORDER.map((k) => [k, PROPOSAL_STATUS_CHIP[k].label])" in _SECTION
+    chip = _read("components/status-chip.tsx")
+    chip = chip[chip.index("export const PROPOSAL_STATUS_CHIP") :]
+    chip = chip[: chip.index("\n};\n")]
+    assert sorted(re.findall(r"^  (\w+): ", chip, re.M)) == sorted(_frontend_statuses())
+
+
+def test_the_lanes_are_read_from_the_one_table():
+    """Each lane filters through `inLane`, never its own list (M6)."""
+    for lane in ("needs_you", "triage", "queued", "in_flight", "history"):
+        assert _SECTION.count(f'inLane(filtered, "{lane}")') == 1, lane
+    assert '"all", ...INBOX_LANES.history' in _SECTION  # the History filter's chips
+    for old in ("const NEEDS_YOU", "const TRIAGE", "const QUEUED", "const IN_FLIGHT", "const HISTORY",
+                "export const STATUS_ORDER", ".includes(p.status)"):
+        assert old not in _SECTION, old
+
+
+# ── A selection acts only on rows the user can see ──────────────────────────
+
+
+def test_bulk_actions_use_only_the_rows_shown():
+    """A5 found by reading: a filter or the search hid selected rows, and the
+    bulk bar still queued or skipped them."""
+    assert "const selectedShown = useMemo(() => selectedAmong(triage, selected), [triage, selected]);" in _SECTION
+    bar = _SECTION[_SECTION.index("<BulkBar") :]
+    bar = bar[: bar.index("/>")]
+    assert "selectedCount={selectedShown.length}" in bar
+    assert 'actions.bulk({ ids: selectedShown, status: "accepted" });' in _SECTION
+    assert 'actions.bulk({ ids: selectedShown, status: "rejected", reason });' in _SECTION
+    assert "[...selected]" not in _SECTION and "selected.size" not in _SECTION
+    # Node tests are not in CI: the lib's one line, pinned here.
+    lib = _read("lib/inbox-lanes.ts")
+    assert "return shown.filter((item) => selected.has(item.id)).map((item) => item.id);" in lib
+
+
+def test_a_row_acted_on_alone_leaves_the_selection():
+    done = _SECTION[_SECTION.index("onDone: (ids) => {") :]
+    done = done[: done.index("\n    },\n")]
+    assert "for (const id of ids) copy.delete(id);" in done
+
+
+# ── One request per click, and focus never falls to <body> ─────────────────
+
+
+def _row() -> str:
+    return _SECTION[_SECTION.index("function ProposalRow(") :]
+
+
+def test_the_inbox_starts_triage_only_through_the_guard():
+    """A double click on a row's or the bar's Queue sent two PATCHes, the second
+    "cannot go accepted -> accepted". The raw mutations stay in the hook
+    (test_frontend_single_flight.py pins the guard there)."""
+    ret = _TRIAGE[_TRIAGE.index("  return {\n    transition: transitionOnce,") :]
+    ret = ret[: ret.index("\n  };\n")]
+    assert "bulk: bulkOnce," in ret and "remove: removeOnce," in ret
+    assert "pending: transition.isPending || bulk.isPending || remove.isPending," in ret
+    for src in (_SECTION, _JOB):
+        assert ".transition.mutate" not in src and ".bulk.mutate" not in src and ".remove.mutate" not in src
+
+
+def test_row_actions_keep_focus_while_they_run():
+    """A natively disabled row button dropped focus to <body> while it ran."""
+    row = _row()
+    buttons = re.findall(r"<IconButton\b.*?\n\s*/>", row, re.S)
+    assert len(buttons) == 4
+    for button in buttons:
+        assert "focusableWhenDisabled" in button, button
+        assert "data-disabled:pointer-events-none data-disabled:opacity-50" in button, button
+        assert re.search(r'data-row-action="(queue|skip|delete)"', button), button
+
+
+def test_a_row_that_leaves_its_lane_hands_focus_on():
+    """The next row's same control, else the previous row's, else the lane."""
+    assert (
+        'next: focusSuccessor(from.closest(\'[data-slot="card"]\'), `[data-row-action="${action}"]`),'
+        in _SECTION
+    )
+    effect = _SECTION[_SECTION.index("const l = leaving.current;") :]
+    effect = effect[: effect.index("}, [items, barShown]);")]
+    assert 'l.kind === "bar" ? barShown : items.some((p) => p.id === l.id && laneOf(p.status) === l.lane)' in effect
+    assert "focusIfDropped(l.next());" in effect
+    lane = _SECTION[_SECTION.index("function Lane(") :]
+    assert "<section ref={ref} tabIndex={-1} aria-labelledby={headingId}" in lane
+    assert "<h2 id={headingId}" in lane
+
+
+def test_the_bulk_bar_hands_focus_to_the_lane_when_it_leaves():
+    assert _SECTION.count('leaving.current = { kind: "bar", next: () => toReview.current };') == 1
+    assert _SECTION.count("leaveBar();") == 3  # Queue, Skip and Clear
+    assert '<Lane ref={toReview} title={`To review · ' in _SECTION
+    bar = _TRIAGE[_TRIAGE.index("export function BulkBar(") :]
+    assert bar.count("focusableWhenDisabled") == 3
+    assert bar.count("data-disabled:pointer-events-none data-disabled:opacity-50") == 3
+
+
+def test_the_skip_dialog_keeps_focus_and_hands_it_on():
+    dialog = _TRIAGE[_TRIAGE.index("export function DeclineDialog(") : _TRIAGE.index("export function BulkBar(")]
+    assert dialog.count("focusableWhenDisabled") == 2  # Cancel and Skip
+    assert "<DialogContent size=\"sm\" finalFocus={finalFocus}>" in dialog
+    final = _SECTION[_SECTION.index("finalFocus={() => {") :]
+    final = final[: final.index("}}")]
+    assert "const next = skipReturn.current;" in final
+    assert "return next ? finalFocusOn(next()) : true;" in final
+
+
+def test_a_confirmed_delete_returns_focus_where_the_caller_says():
+    remove = _TRIAGE[_TRIAGE.index("const remove = useMutation({") :]
+    remove = remove[: remove.index("\n  });")]
+    assert "returnFocus: () => (confirmed && next ? next() : null)," in remove
+    assert "confirmed = await confirm(" in remove
+
+
+def test_the_job_header_triage_keeps_focus_in_the_header():
+    job = _JOB
+    for label in ("Accept", "Skip", "Delete proposal"):
+        at = job.index(f"\n                {label}\n              </Button>")
+        button = job[job.rfind("<Button", 0, at) : at]
+        assert "focusableWhenDisabled" in button, label
+        assert "data-disabled:pointer-events-none data-disabled:opacity-50" in button, label
+    effect = job[job.index("if (!triaged.current) return;") :]
+    effect = effect[: effect.index("}, [triagedStatus]);")]
+    assert "focusIfDropped(actionsRef.current && focusTarget(actionsRef.current));" in effect

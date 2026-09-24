@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { apiFetch } from "@/lib/api";
-import { NEEDS_YOU_STATUSES } from "@/lib/needs-you";
+import { NEEDS_YOU_STATUSES } from "@/lib/inbox-lanes";
 import type { ProposalListResponse } from "@/lib/types";
 
 /**

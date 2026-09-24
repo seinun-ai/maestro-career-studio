@@ -1,11 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { NEEDS_YOU_STATUSES, needsYouBadge } from "./needs-you.ts";
-
-test("the lane's statuses", () => {
-  assert.deepEqual([...NEEDS_YOU_STATUSES], ["needs_decision", "needs_human"]);
-});
+import { needsYouBadge } from "./needs-you.ts";
 
 test("hidden at zero and while unknown", () => {
   for (const n of [0, -1, 0.5, null, undefined, Number.NaN, Number.POSITIVE_INFINITY]) {

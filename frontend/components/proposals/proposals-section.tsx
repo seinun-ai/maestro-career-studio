@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useQuery } from "@tanstack/react-query";
 import { GuardedLink as Link } from "@/components/guarded-link";
@@ -56,7 +56,15 @@ import {
   chosenScore,
   filterProposals,
 } from "@/lib/inbox-filter";
-import { NEEDS_YOU_STATUSES } from "@/lib/needs-you";
+import { finalFocusOn, focusIfDropped, focusSuccessor } from "@/lib/focus";
+import {
+  INBOX_LANES,
+  type InboxLane,
+  STATUS_ORDER,
+  inLane,
+  laneOf,
+  selectedAmong,
+} from "@/lib/inbox-lanes";
 import { isLoadFailure } from "@/lib/query-state";
 import { cn } from "@/lib/utils";
 import {
@@ -78,19 +86,6 @@ function storeProposalSequence(jobIds: string[]) {
   }
 }
 
-/** Display vocabulary — includes accepted triage queue. */
-export const STATUS_ORDER: ProposalStatus[] = [
-  "needs_decision",
-  "needs_human",
-  "pending_review",
-  "accepted",
-  "approved",
-  "submitted",
-  "submission_uncertain",
-  "rejected",
-  "expired",
-];
-
 // Both derived from the ONE vocabulary in status-chip.tsx. They stay exported
 // under these names because they are the established import surface (the job
 // page uses them), but they are no longer a second source of truth.
@@ -102,16 +97,16 @@ export const STATUS_BADGE_CLASS = Object.fromEntries(
   STATUS_ORDER.map((k) => [k, PROPOSAL_STATUS_CHIP[k].className]),
 ) as Record<ProposalStatus, string>;
 
-const NEEDS_YOU = NEEDS_YOU_STATUSES; // one list with the sidebar count
-const TRIAGE: ProposalStatus[] = ["pending_review"];
-const QUEUED: ProposalStatus[] = ["accepted"];
-const IN_FLIGHT: ProposalStatus[] = ["approved"];
-const HISTORY: ProposalStatus[] = [
-  "submitted",
-  "submission_uncertain",
-  "rejected",
-  "expired",
-];
+/** A row's actions: the same one on the next row takes focus when a row leaves its lane. */
+type RowAction = "queue" | "skip" | "delete";
+
+/**
+ * Where focus goes when the control holding it leaves: one row leaving its lane, or the bulk bar leaving.
+ * Read at the click, while the row is there (lib/focus.ts `focusSuccessor`).
+ */
+type Leaving =
+  | { kind: "row"; id: string; lane: InboxLane | null; next: () => HTMLElement | null }
+  | { kind: "bar"; next: () => HTMLElement | null };
 
 type SortKey = "score" | "newest" | "role" | "company";
 
@@ -178,8 +173,6 @@ export function ProposalsSection() {
     queryFn: () =>
       apiFetch<ProposalListResponse>(`/api/proposals?limit=${PROPOSALS_LIMIT}`),
   });
-  const actions = useProposalActions();
-
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<SortKey>("score");
@@ -196,7 +189,29 @@ export function ProposalsSection() {
     { mode: "single"; id: string } | { mode: "bulk" } | null
   >(null);
 
-  const items = data?.items ?? [];
+  // Focus never falls to <body> when a Queue, Skip, Delete or Clear takes its control away.
+  const leaving = useRef<Leaving | null>(null);
+  // Set when a Skip from the dialog succeeds: the dialog's close hands focus on (its opener goes).
+  const skipReturn = useRef<(() => HTMLElement | null) | null>(null);
+  const toReview = useRef<HTMLElement>(null);
+  const historyId = useId();
+  const actions = useProposalActions({
+    onDone: (ids) => {
+      // A row queued, skipped or deleted on its own leaves the selection; so do the bar's rows.
+      setSelected((prev) => {
+        const copy = new Set(prev);
+        for (const id of ids) copy.delete(id);
+        return copy;
+      });
+      if (declineTarget) skipReturn.current = leaving.current?.next ?? null;
+      setDeclineTarget(null);
+    },
+    onUndone: () => {
+      leaving.current = null;
+    },
+  });
+
+  const items = useMemo(() => data?.items ?? [], [data]);
 
   const roles = useMemo(() => {
     const set = new Set<string>();
@@ -234,45 +249,43 @@ export function ProposalsSection() {
   }, [filtered]);
 
   const needsYou = useMemo(
-    () =>
-      sortProposals(
-        filtered.filter((p) => NEEDS_YOU.includes(p.status)),
-        sort,
-      ),
+    () => sortProposals(inLane(filtered, "needs_you"), sort),
     [filtered, sort],
   );
   const triage = useMemo(
-    () =>
-      sortProposals(
-        filtered.filter((p) => TRIAGE.includes(p.status)),
-        sort,
-      ),
+    () => sortProposals(inLane(filtered, "triage"), sort),
     [filtered, sort],
   );
   const queued = useMemo(
-    () =>
-      sortProposals(
-        filtered.filter((p) => QUEUED.includes(p.status)),
-        sort,
-      ),
+    () => sortProposals(inLane(filtered, "queued"), sort),
     [filtered, sort],
   );
   const inFlight = useMemo(
-    () =>
-      sortProposals(
-        filtered.filter((p) => IN_FLIGHT.includes(p.status)),
-        sort,
-      ),
+    () => sortProposals(inLane(filtered, "in_flight"), sort),
     [filtered, sort],
   );
+  const historyAll = useMemo(() => inLane(filtered, "history"), [filtered]);
   const history = useMemo(() => {
-    const list = filtered.filter((p) => HISTORY.includes(p.status));
     const scoped =
       historyStatus === "all"
-        ? list
-        : list.filter((p) => p.status === historyStatus);
+        ? historyAll
+        : historyAll.filter((p) => p.status === historyStatus);
     return sortProposals(scoped, sort);
-  }, [filtered, historyStatus, sort]);
+  }, [historyAll, historyStatus, sort]);
+
+  // Bulk actions and the bar's count see only the rows shown: never a row a filter or the search hides.
+  const selectedShown = useMemo(() => selectedAmong(triage, selected), [triage, selected]);
+  const barShown = selectedShown.length > 0;
+
+  // In the commit that takes the row out of its lane, or the bar away, before paint. A dialog still
+  // closing keeps focus until its own finalFocus runs; focusIfDropped leaves that alone.
+  useLayoutEffect(() => {
+    const l = leaving.current;
+    if (!l) return;
+    if (l.kind === "bar" ? barShown : items.some((p) => p.id === l.id && laneOf(p.status) === l.lane)) return;
+    leaving.current = null;
+    focusIfDropped(l.next());
+  }, [items, barShown]);
 
   const dayBatches = useMemo(() => {
     const map = new Map<string, Proposal[]>();
@@ -345,11 +358,6 @@ export function ProposalsSection() {
     });
   };
 
-  const pending =
-    actions.transition.isPending ||
-    actions.bulk.isPending ||
-    actions.remove.isPending;
-
   if (isLoadFailure({ data, isError, fetchStatus, errorUpdateCount })) {
     return (
       <LoadErrorState
@@ -419,13 +427,26 @@ export function ProposalsSection() {
 
   const rowProps = {
     duplicateKeys,
-    pending,
-    onAccept: (id: string) =>
-      actions.transition.mutate({ id, status: "accepted" }),
-    onDecline: (id: string) => setDeclineTarget({ mode: "single", id }),
-    onDelete: (id: string) => actions.remove.mutate(id),
+    pending: actions.pending,
+    onAct: (p: Proposal, action: RowAction, from: HTMLElement) => {
+      const l: Leaving = {
+        kind: "row",
+        id: p.id,
+        lane: laneOf(p.status),
+        // The next row's same control, else the previous row's, else the lane.
+        next: focusSuccessor(from.closest('[data-slot="card"]'), `[data-row-action="${action}"]`),
+      };
+      leaving.current = l;
+      if (action === "queue") actions.transition({ id: p.id, status: "accepted" });
+      else if (action === "skip") setDeclineTarget({ mode: "single", id: p.id });
+      else actions.remove({ id: p.id, next: l.next });
+    },
     selected,
     onToggleSelected: toggleSelected,
+  };
+  // The bar leaves with its last shown selection: focus goes to the To review lane.
+  const leaveBar = () => {
+    leaving.current = { kind: "bar", next: () => toReview.current };
   };
 
   return (
@@ -518,7 +539,7 @@ export function ProposalsSection() {
             </Lane>
           ) : null}
 
-          <Lane title={`To review · ${triage.length}`}>
+          <Lane ref={toReview} title={`To review · ${triage.length}`}>
             {dayBatches.length === 0 ? (
               <p className="text-muted-foreground text-sm">Nothing to review.</p>
             ) : (
@@ -561,16 +582,19 @@ export function ProposalsSection() {
                         </label>
                       ) : null}
                     </div>
-                    {open
-                      ? dayItems.map((p) => (
+                    {open ? (
+                      // Rows only, so a row's neighbours are rows (focusSuccessor).
+                      <div className="flex flex-col gap-2">
+                        {dayItems.map((p) => (
                           <ProposalRow
                             key={p.id}
                             proposal={p}
                             lane="triage"
                             {...rowProps}
                           />
-                        ))
-                      : null}
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
                 );
               })
@@ -598,8 +622,9 @@ export function ProposalsSection() {
             </Lane>
           ) : null}
 
-          <section className="flex flex-col gap-2">
+          <section tabIndex={-1} aria-labelledby={historyId} className="flex flex-col gap-2 outline-none">
             <button
+              id={historyId}
               type="button"
               className="text-muted-foreground inline-flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide"
               onClick={() => setHistoryOpen((v) => !v)}
@@ -611,16 +636,14 @@ export function ProposalsSection() {
                 )}
                 aria-hidden="true"
               />
-              History ·{" "}
-              {filtered.filter((p) => HISTORY.includes(p.status)).length}
+              History · {historyAll.length}
             </button>
             {historyOpen ? (
               <>
                 <div className="flex flex-wrap gap-1.5" role="group" aria-label="History status">
                   {(
                     [
-                      "all",
-                      ...HISTORY,
+                      "all", ...INBOX_LANES.history,
                     ] as const
                   ).map((status) => {
                     const active = historyStatus === status;
@@ -644,14 +667,16 @@ export function ProposalsSection() {
                 {history.length === 0 ? (
                   <p className="text-muted-foreground text-sm">No history yet.</p>
                 ) : (
-                  history.map((p) => (
-                    <ProposalRow
-                      key={p.id}
-                      proposal={p}
-                      lane="history"
-                      {...rowProps}
-                    />
-                  ))
+                  <div className="flex flex-col gap-2">
+                    {history.map((p) => (
+                      <ProposalRow
+                        key={p.id}
+                        proposal={p}
+                        lane="history"
+                        {...rowProps}
+                      />
+                    ))}
+                  </div>
                 )}
               </>
             ) : null}
@@ -662,48 +687,43 @@ export function ProposalsSection() {
       <ListCapNotice loaded={items.length} limit={PROPOSALS_LIMIT} total={data?.total} noun="proposals" />
 
       <BulkBar
-        selectedCount={selected.size}
-        pending={pending}
+        selectedCount={selectedShown.length}
+        pending={actions.pending}
         onAccept={() => {
-          const ids = [...selected];
-          actions.bulk.mutate(
-            { ids, status: "accepted" },
-            { onSuccess: () => setSelected(new Set()) },
-          );
+          leaveBar();
+          actions.bulk({ ids: selectedShown, status: "accepted" });
         }}
-        onDecline={() => setDeclineTarget({ mode: "bulk" })}
-        onClear={() => setSelected(new Set())}
+        onDecline={() => {
+          leaveBar();
+          setDeclineTarget({ mode: "bulk" });
+        }}
+        onClear={() => {
+          leaveBar();
+          setSelected(new Set());
+        }}
       />
 
       <DeclineDialog
         open={declineTarget != null}
         onOpenChange={(open) => {
-          if (!open) setDeclineTarget(null);
+          if (open) return;
+          // Cancelled: nothing leaves, and Base UI returns focus to the Skip that opened it.
+          leaving.current = null;
+          setDeclineTarget(null);
         }}
-        pending={pending}
+        pending={actions.pending}
+        finalFocus={() => {
+          const next = skipReturn.current;
+          skipReturn.current = null;
+          return next ? finalFocusOn(next()) : true;
+        }}
         onConfirm={(reason) => {
           if (!declineTarget) return;
           if (declineTarget.mode === "single") {
-            actions.transition.mutate(
-              {
-                id: declineTarget.id,
-                status: "rejected",
-                reason,
-              },
-              { onSuccess: () => setDeclineTarget(null) },
-            );
+            actions.transition({ id: declineTarget.id, status: "rejected", reason });
             return;
           }
-          const ids = [...selected];
-          actions.bulk.mutate(
-            { ids, status: "rejected", reason },
-            {
-              onSuccess: () => {
-                setSelected(new Set());
-                setDeclineTarget(null);
-              },
-            },
-          );
+          actions.bulk({ ids: selectedShown, status: "rejected", reason });
         }}
       />
     </div>
@@ -713,16 +733,21 @@ export function ProposalsSection() {
 function Lane({
   title,
   children,
+  ref,
 }: {
   title: string;
   children: React.ReactNode;
+  ref?: React.Ref<HTMLElement>;
 }) {
+  const headingId = useId();
   return (
-    <section className="flex flex-col gap-2 overflow-x-auto">
-      <h2 className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
+    // tabIndex={-1}: named by its heading, it takes focus when the last row acted on, or the bulk
+    // bar, leaves it. Its rows sit in their own list, so a row's neighbours are rows.
+    <section ref={ref} tabIndex={-1} aria-labelledby={headingId} className="flex flex-col gap-2 overflow-x-auto outline-none">
+      <h2 id={headingId} className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
         {title}
       </h2>
-      {children}
+      <div className="flex flex-col gap-2">{children}</div>
     </section>
   );
 }
@@ -735,9 +760,7 @@ function ProposalRow({
   duplicateKeys,
   selected,
   onToggleSelected,
-  onAccept,
-  onDecline,
-  onDelete,
+  onAct,
   pending,
 }: {
   proposal: Proposal;
@@ -745,9 +768,7 @@ function ProposalRow({
   duplicateKeys: Set<string>;
   selected: Set<string>;
   onToggleSelected: (id: string, next: boolean) => void;
-  onAccept: (id: string) => void;
-  onDecline: (id: string) => void;
-  onDelete: (id: string) => void;
+  onAct: (proposal: Proposal, action: RowAction, from: HTMLElement) => void;
   pending?: boolean;
 }) {
   const job = proposal.job;
@@ -765,6 +786,13 @@ function ProposalRow({
     lane === "needs_you" ||
     (lane === "history" &&
       (proposal.status === "rejected" || proposal.status === "expired"));
+  // Focusable while any triage runs (a natively disabled button dropped focus to <body>), and one
+  // handler for all: the link around the row must not see the click.
+  const act = (action: RowAction) => (e: React.MouseEvent<HTMLElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onAct(proposal, action, e.currentTarget);
+  };
 
   return (
     <Card className="group">
@@ -834,22 +862,20 @@ function ProposalRow({
                 <IconButton
                   label="Accept"
                   icon={<Check />}
+                  data-row-action="queue"
                   disabled={pending}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    onAccept(proposal.id);
-                  }}
+                  focusableWhenDisabled
+                  className="data-disabled:pointer-events-none data-disabled:opacity-50"
+                  onClick={act("queue")}
                 />
                 <IconButton
                   label="Skip"
                   icon={<X />}
+                  data-row-action="skip"
                   disabled={pending}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    onDecline(proposal.id);
-                  }}
+                  focusableWhenDisabled
+                  className="data-disabled:pointer-events-none data-disabled:opacity-50"
+                  onClick={act("skip")}
                 />
               </>
             ) : null}
@@ -857,24 +883,22 @@ function ProposalRow({
               <IconButton
                 label="Skip"
                 icon={<X />}
+                data-row-action="skip"
                 disabled={pending}
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  onDecline(proposal.id);
-                }}
+                focusableWhenDisabled
+                className="data-disabled:pointer-events-none data-disabled:opacity-50"
+                onClick={act("skip")}
               />
             ) : null}
             {canDelete ? (
               <IconButton
                 label="Delete proposal"
                 icon={<Trash2 />}
+                data-row-action="delete"
                 disabled={pending}
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  onDelete(proposal.id);
-                }}
+                focusableWhenDisabled
+                className="data-disabled:pointer-events-none data-disabled:opacity-50"
+                onClick={act("delete")}
               />
             ) : null}
           </div>
