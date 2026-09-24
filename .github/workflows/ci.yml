@@ -61,7 +61,10 @@ jobs:
           # third-party download and fail on a partial cache. Its coverage (the
           # real-embedding ATS golden output) is therefore NOT enforced here --
           # run it locally before touching services/ats/.
-          pytest tests/ mcp_server/tests/ -q -rs --ignore=tests/ats/test_golden.py
+          # The legacy_postgres test is DESELECTED here: it fails on purpose
+          # under CI without LEGACY_POSTGRES_TEST_URL, which only the
+          # legacy-postgres-export job below provides (and runs it).
+          pytest tests/ mcp_server/tests/ -q -rs --ignore=tests/ats/test_golden.py -m "not legacy_postgres"
 
   # Deleted together with the `postgres-to-sqlite` row in SYSTEM.md §13: it
   # exists only to prove the one-release import path against a real Postgres,
