@@ -75,8 +75,11 @@ def test_gap_counts_come_from_one_helper():
     lib = _read("lib/gap-counts.ts")
     assert 'if (!resolution) open += 1;\n    else if (resolution.action === "skip" || resolution.action === "cannot_confirm") skipped += 1;' in lib
     assert not re.search(r"^import (?!type )", lib, re.M)
+
+
+def test_the_gap_page_and_score_tab_count_with_it():
     page = _read(_GAP_PAGE)
-    assert "gapCounts(" in page and page.count("gapCounts(") == 2  # the footer and each category
+    assert page.count("gapCounts(") == 2  # the footer and each category
     assert "</span> answered\n" in page and "{done} of" not in page
     assert "{counts.open > 0 ? `${counts.open} open` : \"Nothing open\"}" in page
     panel = _read("components/ats-score-panel.tsx")
