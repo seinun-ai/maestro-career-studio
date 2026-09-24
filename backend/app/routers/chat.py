@@ -22,10 +22,13 @@ from app.schemas.chat import (
 )
 from app.services import chat_agent, llm_capabilities, model_settings
 from app.services.attachment_extract import extract_text
+from app.services.llm import LLMProviderError, get_chat_client
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
 MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024
+# What the Assistant says when no provider key is set (Settings shows the fix).
+NO_MODEL_KEY = "The Assistant needs an API key. Add one in Settings › AI & models."
 
 
 def _get_session_or_404(db: Session, session_id: UUID) -> ChatSession:
@@ -94,13 +97,24 @@ def send_message(
     # Check the model BEFORE the StreamingResponse: `run_turn` is a generator,
     # so anything it raises fires after the headers are already out and reaches
     # the browser as a truncated stream, not an error the UI can render.
+    model = model_settings.get_chat_model(db)
+    # The client first: a missing key raised inside `run_turn`, before the
+    # user's message was saved, and the browser got an empty stream. It comes
+    # before the capability check because a model tested with no key is
+    # recorded as unable to do anything, which is not the cause to report.
     try:
-        llm_capabilities.require(db, model_settings.get_chat_model(db), "tools")
+        client = get_chat_client(model)
+    except LLMProviderError as exc:
+        raise HTTPException(status_code=422, detail=NO_MODEL_KEY) from exc
+    try:
+        llm_capabilities.require(db, model, "tools")
     except llm_capabilities.CapabilityMissing as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     def event_stream():
-        for event in chat_agent.run_turn(db, row, payload.content, payload.context):
+        for event in chat_agent.run_turn(
+            db, row, payload.content, payload.context, client=client, model=model
+        ):
             yield f"data: {json.dumps(event, default=str)}\n\n"
 
     return StreamingResponse(
