@@ -533,7 +533,8 @@
   `tall:sticky` loses to it: the custom variant's rule comes later.
   **Focus is never hidden under it.** `scroll-padding-top` reads the same
   variables (WCAG 2.4.11, C43), and applies only while focus is in the list:
-  after a `ListToolbar`, or in a sticky table's body. On `<html>` for every
+  on or in anything after a `ListToolbar` (`~ :focus-within`), or in a sticky
+  table's body. On `<html>` for every
   focus it counted the toolbar's own height, so focusing a toolbar control
   or opening its popup scrolled the page to "clear" it. A new sticky element
   adds its height to those variables.

@@ -86,6 +86,11 @@ Adapt *how* when the plan conflicts with the code and log it below. If a change 
 | 5 | Conventions: the list bullets only | Also the react-query keys bullet: `["jobs","without-application", source]` | Task 4 made that key stale; conventions change with the code. |
 | — | — | Extra commit `f6c462e3` splits `test_the_toolbar_publishes_its_height_and_takes_it_back` (cc 10) in two | Backend hotspots went 423 → 424; the lane doc says split a test at cc 10. Back to 423. |
 | 3 | — | `ListSearch`'s label stays "Search applications" | D2.1's "Search jobs" is lane 7's (wave 3); this lane moved copy, it did not write it. |
+| review | Selector `~ * :focus` → `~ :is(:focus, * :focus)` | `~ :focus-within` (`7299bc6c`, after `85830299` shipped the `:is()` form) | Browser-checked in Chromium on a static page: both `:is()` arms test the toolbar's later SIBLING, so it matched a focused lane root but nothing inside one; every row after the toolbar lost its clearance. `:focus-within` clears the sibling and its contents, and still nothing in the toolbar or outside the list. WCAG 2.2 AA. |
+| review | One review-fix commit | Two (`85830299` pins and fixes, `7299bc6c` the selector) plus the docs commit | "Don't amend earlier commits"; the selector finding came after the first commit. |
+| review | `listKbDrafts` sends the limit | `KB_DRAFTS_LIMIT` moved to `lib/api.ts` (exported), `inbox-panel.tsx` imports it; the pin checks it is ≤ the API's `le` instead of equal to its default | One constant for the request and the notice. `lib/api.ts` is not this lane's file; the reviewer directed it (two lines). |
+| review | Prefetch the Agents list on pointerenter/focus | `SourceToggle` (shared with Analytics, not this lane's file) gains an optional `onPreview`; the tracker's saved-jobs query moves into a module-level `savedJobsQuery(savedSource)` used by both `useQuery` and `qc.prefetchQuery` | One query definition, so the prefetch fills the list's own cache entry (30s default staleTime, so repeat hovers don't refetch). Analytics passes nothing and is unchanged. |
+| review | Conventions change with the code | The list bullet's "after a `ListToolbar`" → "on or in anything after a `ListToolbar` (`~ :focus-within`)" lands in the docs commit | The code commits were already made (no amend). |
 
 ## Gate results
 
@@ -104,6 +109,11 @@ Adapt *how* when the plan conflicts with the code and log it below. If a change 
 | all | Final frontend (at `f6c462e3`): tsc, lint, node, `test_frontend_*.py`, build (last) | clean; 0 errors, 5 warnings; 170/170; 673 passed; OK |
 | all | Slop, clean `git archive HEAD` export (`f6c462e3`) | frontend duplication 437 lines / 36 clones (= ceiling); `check frontend` OK; `check backend` OK; backend `complexity_hotspots` 423 |
 | all | Mutation checks | 30 mutations, each failing exactly the pin it guards (two that restate a whole pinned line also fail that line's pin); node: `loaded > limit` fails 3 cases, dropping `order` fails 1 |
+| review | Mutation (isolated `git archive` copy `/tmp/maestro-ia-fix2/src`, reviewer's harness `mut/run.py` + 7 new mutants) | All 16 targeted mutants and 7 new ones each fail the pin that guards them (table in the report); still surviving, not targeted: M13, M19, M22, M30 |
+| review | `test_frontend_*.py`, tsc, lint, node, ruff (at `7299bc6c`) | 688 passed (673 + 15 new pins); clean; 0 errors (5 warnings); 170/170; All checks passed |
+| review | Full backend suite `pytest tests/ mcp_server/tests/ -q` (at `7299bc6c`) | 5010 passed, 2 skipped (4995 + 15 new pins) |
+| review | Slop, clean export at `7299bc6c` | frontend duplication 437 / 36 (= ceiling); `check frontend` / `check backend` OK; backend hotspots 423 |
+| review | `npm run build` | NOT run (a browser verifier's dev server was live on 3222); the compiled selector was checked with `@tailwindcss/postcss` (optimize on) in the isolated copy: `~ :focus-within` survives as written |
 | all | Browser (Chromium via Playwright `channel="chrome"`, real keys; light and dark) | B12 rows 1–10, 12–14 pass (details in the report); row 11 not verifiable on `next dev`; WebKit not installed, so Chromium only |
 
 ## Queued for Task 24 (SYSTEM.md changes Claude applies)
@@ -118,11 +128,14 @@ Adapt *how* when the plan conflicts with the code and log it below. If a change 
 ## Deferred to merge (edits left for Claude, with file:line)
 
 - `docs/frontend-conventions.md`: the two new bullets sit between "The 768–1023px band" and "`truncate` on a flex
-  child" (:504–:565); the only other edits are :498 (`minWidth="52rem"`) and the react-query keys bullet (:783).
+  child" (:504–:566); the only other edits are :498 (`minWidth="52rem"`) and the react-query keys bullet (:784).
   Other lanes' conventions edits should merge around them.
-- Task 13 (inbox): the focus clearance is `html:has([data-slot="list-toolbar"] ~ * :focus, …)` in
+- Task 13 (inbox): the focus clearance is `html:has([data-slot="list-toolbar"] ~ :focus-within, …)` in
   `frontend/app/globals.css`, so the inbox's lanes must be later siblings of its `ListToolbar` (B8 already says a
   direct child of the section root). O7's `scroll-padding-bottom` for the bulk bar belongs in a rule scoped the same
   way, not on bare `html` (same jump). `ListCapNotice` takes `total` unchanged; `order` defaults to newest.
+- Task 13: a lane root that takes focus itself (`tabIndex={-1}` for focus handoff) is cleared too, because the
+  selector is `~ :focus-within` (not `~ * :focus`, which missed it, nor `~ :is(:focus, * :focus)`, which drops its
+  rows); keep each lane a later sibling of the `ListToolbar`. Pinned by `test_a_focused_lane_after_the_toolbar_is_cleared_too`.
 - Task 13: `test_frontend_placeholders.py` `_PROMPTS` now lists `components/list-search.tsx`, not
   `app/applications/page.tsx`; don't add the inbox file (it renders `ListSearch`).
