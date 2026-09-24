@@ -190,7 +190,7 @@ export function listAtsScores(jobId: UUID) {
 export async function promoteJobToAgentQueue(jobId: UUID) {
   const scores = (await listAtsScores(jobId)).filter((s) => s.phase === "base");
   const chosen = [...scores].sort((a, b) => b.composite - a.composite)[0];
-  const prop = await apiFetch<{ id: UUID }>("/api/proposals", {
+  const prop = await apiFetch<{ id: UUID; status: string }>("/api/proposals", {
     method: "POST",
     body: JSON.stringify({
       job_id: jobId,
@@ -207,6 +207,9 @@ export async function promoteJobToAgentQueue(jobId: UUID) {
       proposed_by: "you",
     }),
   });
+  // The POST returns the job's open proposal when it already has one (another tab, an agent). One
+  // already accepted is done: accepting it again is an illegal transition and a false error.
+  if (prop.status === "accepted") return;
   await apiFetch(`/api/proposals/${prop.id}`, {
     method: "PATCH",
     body: JSON.stringify({

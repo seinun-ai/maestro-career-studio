@@ -407,7 +407,7 @@ _NEW_JOB = _read("app/new/page.tsx")
         (_CAPTURE, '"From document"'),  # Read document
         (_NEW_ENTITY, 'form="new-career-entity"'),  # Add career item
         (_NEW_JOB, "onClick={() => extract(undefined)}"),  # Extract job on /new
-        (_read("components/settings/persona-section.tsx"), "onClick={() => draft.mutate(editRevision.current)}"),  # Draft from my career
+        (_read("components/settings/persona-section.tsx"), "onClick={() => draftOnce(editRevision.current)}"),  # Draft from my career
         (_read("components/settings/model-catalog-panel.tsx"), "sync.mutate(provider)"),  # Find models
         (_read("components/settings/models-section.tsx"), "aria-label={`Test ${name}`}"),  # Test a model
     ],

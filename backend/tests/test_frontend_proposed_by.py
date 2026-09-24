@@ -16,7 +16,7 @@ _API = Path(__file__).resolve().parents[2] / "frontend" / "lib" / "api.ts"
 def _promote_post_body() -> str:
     source = _API.read_text()
     fn = source[source.index("export async function promoteJobToAgentQueue"):]
-    post = fn[fn.index('apiFetch<{ id: UUID }>("/api/proposals"'):]
+    post = fn[fn.index('apiFetch<{ id: UUID; status: string }>("/api/proposals"'):]
     return " ".join(post[: post.index("});")].split())
 
 

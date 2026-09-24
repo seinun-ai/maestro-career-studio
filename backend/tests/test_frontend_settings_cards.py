@@ -94,7 +94,7 @@ def test_each_role_saves_its_own_field():
 
 def test_a_saved_key_leaves_nothing_to_guard():
     # Mutant: the typed keys kept after a save, so the leave guard asked about saved work.
-    saved = _slice(_MODELS, "const save = useSaveModelSettings(() => {", "});")
+    saved = _slice(_MODELS, "const saveKeys = useSaveModelSettings(() => {", "});")
     assert "setOpenaiKey(null);" in saved and "setGeminiKey(null);" in saved
 
 
@@ -172,7 +172,7 @@ def test_the_focus_handoff_waits_for_the_removed_row():
 
 def test_an_added_model_keeps_its_button_and_focus():
     # The + used to unmount for an "Added" span, taking focus to <body>.
-    at = _CATALOG.index("onClick={() => add.mutate(model)}")
+    at = _CATALOG.index("onClick={() => addOnce(model)}")
     add = _CATALOG[_CATALOG.rfind("<Button", 0, at) : _CATALOG.index("</Button>", at)]
     assert "focusableWhenDisabled" in add
     assert "aria-label={model.in_catalog ? `${model.id} added` : `Add ${model.id}`}" in add
@@ -194,6 +194,20 @@ def test_a_long_model_id_truncates_inside_the_card():
     assert 'className="min-w-0 flex-1 truncate font-mono" title={model.id}>' in _CATALOG
 
 
+def test_a_role_picker_keeps_focus_while_its_pick_saves():
+    # Wave-1 browser pass: every pick disabled all three pickers while it saved, and the trigger the
+    # list closed onto dropped focus to <body> (RolePicker's rule: readOnly, not disabled).
+    picker = _slice(_MODELS, "function ModelSelect(", "\n}\n")
+    assert "<Select value={value} onValueChange={onChange} readOnly={saving}>" in picker
+    assert "disabled={" not in picker.replace("<SelectItem value={value} disabled>", "")
+    free = _slice(_MODELS, "function FreeTextModel(", "\n}\n")
+    assert "readOnly={saving}" in free and "disabled=" not in free
+    keys = _slice(_MODELS, "function KeyField(", "\n}\n")
+    assert "readOnly={saving}" in keys and "disabled=" not in keys
+    endpoint = _slice(_ENDPOINT, "function EndpointControls(", "\n}\n")
+    assert endpoint.count("readOnly={saving}") == 2  # the address and JSON mode
+
+
 def test_the_endpoint_starts_collapsed_and_keeps_its_draft():
     assert 'useState(Boolean(info.base_url) || info.json_mode !== "auto")' in _ENDPOINT
     assert "aria-expanded={open}" in _ENDPOINT and "aria-controls={panelId}" in _ENDPOINT
@@ -202,11 +216,22 @@ def test_the_endpoint_starts_collapsed_and_keeps_its_draft():
 
 
 def test_a_rejected_address_keeps_what_was_typed():
-    # The draft cleared on click, so a 400 (ftp://nope) threw the typed address away.
-    assert "onSave={(patch, onSuccess) => save.mutate(patch, { onSuccess })}" in _ENDPOINT
-    save = _button_at(_ENDPOINT, "onSave({ base_url: draft?.trim() || null }")
-    assert "onSave({ base_url: draft?.trim() || null }, () => setDraft(null))" in save
-    assert "setDraft(null);" not in save
+    # The draft cleared on click, so a 400 (ftp://nope) threw the typed address away. It clears in
+    # the save's success, and only for a save of the address: a JSON mode pick keeps it.
+    save = _button_at(_ENDPOINT, "onSave({ base_url: draft?.trim() || null })")
+    assert "setDraft" not in save and "onDraft" not in save
+    saved = _slice(_ENDPOINT, "const save = useSaveModelSettings((_info, patch) => {", "});")
+    assert 'if ("base_url" in patch) setDraft(null);' in saved
+    assert "onSave={saveOnce}" in _ENDPOINT
+
+
+def test_a_typed_address_asks_before_leaving():
+    # Wave-1 browser pass: the address survived a tab switch, and a sidebar link dropped it silently.
+    assert "useLeaveGuard(draft !== null);" in _ENDPOINT
+    # One draft, held beside its guard: the controls read and write it, never a copy of their own.
+    assert _ENDPOINT.count("useState<string | null>(null)") == 1
+    controls = _slice(_ENDPOINT, "function EndpointControls(", "\n}\n")
+    assert "useState" not in controls and "onChange={(e) => onDraft(e.target.value)}" in controls
 
 
 def test_a_local_server_raises_no_warning():
@@ -354,13 +379,13 @@ def _button_at(src: str, marker: str) -> str:
 def test_a_save_that_disables_itself_keeps_focus():
     # A native `disabled` Save dropped focus to <body> the moment it was pressed.
     cases = [
-        ("models-section.tsx", "save.mutate({\n"),
-        ("auto-apply-section.tsx", "onClick={() => draft && save.mutate(draft)}"),
+        ("models-section.tsx", "saveKeysOnce({\n"),
+        ("auto-apply-section.tsx", "onClick={() => draft && saveOnce(draft)}"),
         ("autofill-section.tsx", "save.mutate({ value: profileRef.current, revision: editRevision.current })"),
-        ("prompts-section.tsx", "onClick={() => save.mutate()}"),
-        ("prompts-section.tsx", "onClick={() => reset.mutate()}"),
-        ("persona-section.tsx", "onClick={() => save.mutate(value)}"),
-        ("llm-endpoint.tsx", "onSave({ base_url: draft?.trim() || null }"),
+        ("prompts-section.tsx", "onClick={() => saveOnce()}"),
+        ("prompts-section.tsx", "onClick={() => resetOnce()}"),
+        ("persona-section.tsx", "onClick={() => saveOnce(value)}"),
+        ("llm-endpoint.tsx", "onSave({ base_url: draft?.trim() || null })"),
         ("autofill-section.tsx", '{isFillingFromResume ? "Filling…" : "Fill from resume"}'),
     ]
     for rel, marker in cases:

@@ -10,6 +10,7 @@ import { SettingCard } from "@/components/settings/setting-card";
 import { ACTION_ROW } from "@/components/settings/setting-layout";
 import { useFocusOnNextCommit } from "@/hooks/use-focus-return";
 import { useLeaveGuard } from "@/hooks/use-leave-guard";
+import { useSingleFlight } from "@/hooks/use-single-flight";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -121,6 +122,7 @@ function AutoApplyEditor({ initial }: { initial: AutoApplySettings }) {
     },
     onError: (err: Error) => toast.error(err.message),
   });
+  const saveOnce = useSingleFlight(save.mutate);
 
   const patch = (partial: Partial<AutoApplySettings>) =>
     setDraft({ ...value, ...partial });
@@ -242,7 +244,7 @@ function AutoApplyEditor({ initial }: { initial: AutoApplySettings }) {
           focusableWhenDisabled
           disabled={!draft || save.isPending}
           className="data-disabled:pointer-events-none data-disabled:opacity-50"
-          onClick={() => draft && save.mutate(draft)}
+          onClick={() => draft && saveOnce(draft)}
         >
           {save.isPending ? "Saving…" : "Save"}
         </Button>

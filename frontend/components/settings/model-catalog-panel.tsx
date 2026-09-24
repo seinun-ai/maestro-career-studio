@@ -11,6 +11,7 @@ import { RemoveButton } from "@/components/settings/setting-layout";
 import { Button } from "@/components/ui/button";
 import { CardSection } from "@/components/ui/card";
 import { focusIfDropped } from "@/hooks/use-focus-return";
+import { useSingleFlight } from "@/hooks/use-single-flight";
 import { apiFetch } from "@/lib/api";
 import { providerLabel, showsModelId, sourceLabel } from "@/lib/model-catalog";
 import type {
@@ -125,6 +126,9 @@ function ModelCatalogPanel({ info }: { info: OpenAIInfo }) {
       toast.error(err.message);
     },
   });
+  // A double click sent two POSTs, or two DELETEs whose second failed with an error toast.
+  const addOnce = useSingleFlight(add.mutate);
+  const removeOnce = useSingleFlight(remove.mutate);
 
   // After the list re-renders without the removed row: its focused Remove
   // went with it, so focus fell to <body>. An Add that lands mid-removal
@@ -147,7 +151,7 @@ function ModelCatalogPanel({ info }: { info: OpenAIInfo }) {
       id,
       next: () => (neighbour?.isConnected ? neighbour : listRef.current),
     };
-    remove.mutate(id);
+    removeOnce(id);
   };
 
   return (
@@ -209,7 +213,7 @@ function ModelCatalogPanel({ info }: { info: OpenAIInfo }) {
                   disabled={model.in_catalog || add.isPending}
                   aria-label={model.in_catalog ? `${model.id} added` : `Add ${model.id}`}
                   className="data-disabled:pointer-events-none data-disabled:opacity-50"
-                  onClick={() => add.mutate(model)}
+                  onClick={() => addOnce(model)}
                 >
                   {model.in_catalog ? <Check aria-hidden="true" /> : <Plus aria-hidden="true" />}
                 </Button>

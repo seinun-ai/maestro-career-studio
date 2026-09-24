@@ -363,8 +363,8 @@
   same URL, or a press the question or a step over the duplicate settles, is
   stopped. A page that remounts on a search change must not rely on this. When a tab opened by a hash or an in-page jump hides the
   panel holding focus, `focusIfStranded` (`lib/focus.ts`) moves it to the
-  open panel. Persona, Autofill, Prompts, Auto-apply and API keys register while
-  their explicit Save is dirty. `/new` registers while a pasted job description has not been
+  open panel. Persona, Autofill, Prompts, Auto-apply, API keys and Custom AI server
+  register while their explicit Save is dirty. `/new` registers while a pasted job description has not been
   extracted.
 - **The Q&A cover-letter editor closes only after its save lands**
   (`components/qa-tab.tsx`). Save awaits `mutateAsync`: a failed save toasts
@@ -636,10 +636,17 @@
     and Apply, Adapt & preview, Send as-is and Apply on Send to résumé, Add
     career item, a base résumé's Delete), `/new`'s Extract job and Quick
     capture's From document, each dimmed on
-    `data-disabled`. A text field a submit would disable goes `readOnly`
-    instead (New career item's, and the Role dialog's picker while its pick
-    saves: `RolePicker`'s `readOnly` keeps the list shut and its own
-    Backspace and Enter from committing). From document opens one file picker per
+    `data-disabled`. So are Queue for agent (a tracker row's and the job
+    header's) and the tailored studio's Build draft; each leaves once its
+    request lands, so focus is handed on: the row's ⋯, the header's first
+    control, the studio's `<main>` (`BuildDraft`'s `useFocusHandoff`). A text
+    field a submit would disable goes `readOnly` instead (New career item's,
+    the API key and Custom AI server fields while they save, and the Role
+    dialog's picker while its pick saves: `RolePicker`'s `readOnly` keeps the
+    list shut and its own Backspace and Enter from committing). A `Select`
+    that saves on pick does the same (the Models role pickers, JSON mode):
+    Base UI's `readOnly`, never `disabled`, or the trigger the list closes
+    onto drops focus to `<body>`. From document opens one file picker per
     gesture: a double click's second click (`event.detail > 1`) is ignored.
   - `RolePicker` refuses Base UI's Escape on a CLOSED list
     (`preventBaseUIHandler`): Base UI clears the value there and swallows the
@@ -800,8 +807,14 @@
   rows). Each generate and apply button inside such a dialog (Suggest a
   selection, Propose, Apply, Draft rewrite, Adapt, Send as-is) submits
   through `useSingleFlight` too, and so do the Templates Create and Duplicate,
-  `/new`'s Extract and both studios' Save (the chat composer's `sendingRef` is
-  the same guard, inline). Nothing else calls, hands on or resets a guarded
+  `/new`'s Extract, both studios' Save, the tailored studio's Build draft and
+  Rebuild (one guard), Queue for agent (tracker row and job header), every
+  explicit settings Save (API keys, Prompts' Save and Reset, Auto-apply,
+  Persona and its Draft, Custom AI server) and Available models' + and Remove
+  (the chat composer's `sendingRef` is the same guard, inline). A write whose
+  success only sometimes clears a draft decides in the mutation's own
+  `onSuccess` from its variables (Custom AI server's `"base_url" in patch`):
+  the guard passes no per-call callbacks. Nothing else calls, hands on or resets a guarded
   mutation (the pin rejects any `.mutate` or `.reset` reference outside the
   guard, called or not), or the guard never clears; the lock itself is
   `lib/single-flight.ts`. A kept query that the closed dialog does not

@@ -9,6 +9,8 @@ import {
   useSaveModelSettings,
 } from "@/components/settings/models-section";
 import { SettingCard } from "@/components/settings/setting-card";
+import { useLeaveGuard } from "@/hooks/use-leave-guard";
+import { useSingleFlight } from "@/hooks/use-single-flight";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -29,7 +31,17 @@ import { cn } from "@/lib/utils";
  */
 export function CustomEndpointSection() {
   const info = useOpenAIInfo();
-  const save = useSaveModelSettings(() => toast.success("Server settings saved"));
+  // The typed address; null = untouched. It lives here, beside the save that takes it, and clears
+  // only once the server has taken it: a rejected address stays in the field to fix. A JSON mode
+  // pick is a save too, and leaves a typed address alone.
+  const [draft, setDraft] = useState<string | null>(null);
+  // A typed address survives a tab switch and a collapse, but a navigation dropped it silently.
+  useLeaveGuard(draft !== null);
+  const save = useSaveModelSettings((_info, patch) => {
+    if ("base_url" in patch) setDraft(null);
+    toast.success("Server settings saved");
+  });
+  const saveOnce = useSingleFlight(save.mutate);
   return (
     <SettingCard
       id="custom-endpoint"
@@ -42,31 +54,31 @@ export function CustomEndpointSection() {
       {(data) => (
         <EndpointDisclosure
           info={data}
-          disabled={save.isPending}
-          onSave={(patch, onSuccess) => save.mutate(patch, { onSuccess })}
+          draft={draft}
+          onDraft={setDraft}
+          saving={save.isPending}
+          onSave={saveOnce}
         />
       )}
     </SettingCard>
   );
 }
 
-/** A server-settings write. `onSuccess` runs only once the server has taken it. */
-type SaveEndpoint = (
-  patch: { base_url?: string | null; json_mode?: string },
-  onSuccess?: () => void,
-) => void;
+/** A server-settings write, one per gesture. */
+type SaveEndpoint = (patch: { base_url?: string | null; json_mode?: string }) => void;
+
+type EndpointProps = {
+  info: OpenAIInfo;
+  draft: string | null;
+  onDraft: (draft: string) => void;
+  saving: boolean;
+  onSave: SaveEndpoint;
+};
 
 /** Starts collapsed unless something is set. `hidden`, not unmounted: a typed
  *  address survives a collapse. */
-function EndpointDisclosure({
-  info,
-  disabled,
-  onSave,
-}: {
-  info: OpenAIInfo;
-  disabled: boolean;
-  onSave: SaveEndpoint;
-}) {
+function EndpointDisclosure(props: EndpointProps) {
+  const { info } = props;
   const [open, setOpen] = useState(Boolean(info.base_url) || info.json_mode !== "auto");
   const panelId = useId();
   return (
@@ -97,22 +109,13 @@ function EndpointDisclosure({
         </Button>
       </div>
       <div id={panelId} hidden={!open}>
-        <EndpointControls info={info} disabled={disabled} onSave={onSave} />
+        <EndpointControls {...props} />
       </div>
     </div>
   );
 }
 
-function EndpointControls({
-  info,
-  disabled,
-  onSave,
-}: {
-  info: OpenAIInfo;
-  disabled: boolean;
-  onSave: SaveEndpoint;
-}) {
-  const [draft, setDraft] = useState<string | null>(null);
+function EndpointControls({ info, draft, onDraft, saving, onSave }: EndpointProps) {
   const value = draft ?? info.base_url ?? "";
   const endpointId = useId();
   const endpointHintId = useId();
@@ -135,19 +138,17 @@ function EndpointControls({
             aria-describedby={endpointHintId}
             placeholder="e.g. http://host.docker.internal:11434/v1"
             value={value}
-            disabled={disabled}
-            onChange={(e) => setDraft(e.target.value)}
+            // readOnly, not disabled, while it saves: a disabled field drops focus to <body>.
+            readOnly={saving}
+            onChange={(e) => onDraft(e.target.value)}
           />
-          {/* The draft clears only once the server takes it: a rejected
-              address stays in the field to fix. Focusable while it saves. */}
+          {/* Focusable while it saves. */}
           <Button
             variant="outline"
             focusableWhenDisabled
-            disabled={disabled || draft === null}
+            disabled={saving || draft === null}
             className="data-disabled:pointer-events-none data-disabled:opacity-50"
-            onClick={() =>
-              onSave({ base_url: draft?.trim() || null }, () => setDraft(null))
-            }
+            onClick={() => onSave({ base_url: draft?.trim() || null })}
           >
             Save
           </Button>
@@ -167,7 +168,7 @@ function EndpointControls({
         </p>
         <Select
           value={info.json_mode}
-          disabled={disabled}
+          readOnly={saving}
           onValueChange={(v) => v && onSave({ json_mode: v })}
         >
           <SelectTrigger id={jsonModeId} aria-describedby={jsonModeHintId}>

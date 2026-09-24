@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { SettingCard } from "@/components/settings/setting-card";
 import { ACTION_ROW } from "@/components/settings/setting-layout";
 import { useLeaveGuard } from "@/hooks/use-leave-guard";
+import { useSingleFlight } from "@/hooks/use-single-flight";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -49,7 +50,9 @@ export function useOpenAIInfo() {
  * change avoid touching a stored API key — and, now that Models and API keys
  * are two cards, what lets either one write without echoing the other's state.
  */
-export function useSaveModelSettings(onSaved?: (info: OpenAIInfo) => void) {
+export function useSaveModelSettings(
+  onSaved?: (info: OpenAIInfo, patch: ModelSettingsPatch) => void,
+) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (patch: ModelSettingsPatch) =>
@@ -57,13 +60,13 @@ export function useSaveModelSettings(onSaved?: (info: OpenAIInfo) => void) {
         method: "PUT",
         body: JSON.stringify(patch),
       }),
-    onSuccess: (result) => {
+    onSuccess: (result, patch) => {
       qc.setQueryData(["settings", "openai"], result);
       // A saved key completes the "API key" setup step; every setup-status
       // reader (the checklist, the Profile strip, /new's key notice) must see
       // it now, not after the 30-second stale window.
       qc.invalidateQueries({ queryKey: ["setup-status"] });
-      onSaved?.(result);
+      onSaved?.(result, patch);
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -158,7 +161,7 @@ export function ModelsSection() {
                 key={role.key}
                 role={role}
                 info={data}
-                disabled={save.isPending}
+                saving={save.isPending}
                 probing={probing}
                 onChange={(value) => value && save.mutate(role.patch(value))}
                 onProbe={(model) => probe.mutate(model)}
@@ -179,14 +182,14 @@ export function ModelsSection() {
 function RoleModel({
   role,
   info,
-  disabled,
+  saving,
   probing,
   onChange,
   onProbe,
 }: {
   role: (typeof ROLES)[number];
   info: OpenAIInfo;
-  disabled: boolean;
+  saving: boolean;
   probing: string | null;
   onChange: (value: string | null) => void;
   onProbe: (model: string) => void;
@@ -202,7 +205,7 @@ function RoleModel({
         value={model}
         options={info.model_options}
         custom={info.custom_endpoint}
-        disabled={disabled}
+        saving={saving}
         onChange={onChange}
       />
       <ModelCapability
@@ -336,11 +339,12 @@ export function ApiKeysSection() {
   // A typed key survives a tab switch, but a navigation dropped it silently.
   useLeaveGuard(openaiKey !== null || geminiKey !== null);
 
-  const save = useSaveModelSettings(() => {
+  const saveKeys = useSaveModelSettings(() => {
     setOpenaiKey(null);
     setGeminiKey(null);
     toast.success("API keys saved");
   });
+  const saveKeysOnce = useSingleFlight(saveKeys.mutate);
 
   return (
     <SettingCard
@@ -364,7 +368,7 @@ export function ApiKeysSection() {
               configured={data.api_key_configured}
               source={data.openai_key_source}
               value={openaiKey}
-              disabled={save.isPending}
+              saving={saveKeys.isPending}
               onChange={setOpenaiKey}
             />
             <KeyField
@@ -373,7 +377,7 @@ export function ApiKeysSection() {
               configured={data.gemini_api_key_configured}
               source={data.gemini_key_source}
               value={geminiKey}
-              disabled={save.isPending}
+              saving={saveKeys.isPending}
               onChange={setGeminiKey}
             />
           </div>
@@ -382,20 +386,20 @@ export function ApiKeysSection() {
               size="sm"
               focusableWhenDisabled
               disabled={
-                save.isPending || (openaiKey === null && geminiKey === null)
+                saveKeys.isPending || (openaiKey === null && geminiKey === null)
               }
               className="data-disabled:pointer-events-none data-disabled:opacity-50"
               onClick={() =>
                 // Send only the key the user actually edited. An untouched
                 // field stays absent (preserved); a field cleared to empty
                 // sends null (removes it).
-                save.mutate({
+                saveKeysOnce({
                   ...(openaiKey !== null ? { openai_api_key: openaiKey || null } : {}),
                   ...(geminiKey !== null ? { gemini_api_key: geminiKey || null } : {}),
                 })
               }
             >
-              {save.isPending ? "Saving…" : "Save API keys"}
+              {saveKeys.isPending ? "Saving…" : "Save API keys"}
             </Button>
           </div>
         </div>
@@ -410,7 +414,7 @@ function KeyField({
   configured,
   source,
   value,
-  disabled,
+  saving,
   onChange,
 }: {
   label: string;
@@ -418,7 +422,7 @@ function KeyField({
   configured: boolean;
   source: OpenAIInfo["openai_key_source"];
   value: string | null;
-  disabled: boolean;
+  saving: boolean;
   onChange: (next: string) => void;
 }) {
   const labelId = useId();
@@ -452,7 +456,8 @@ function KeyField({
         placeholder={configured ? undefined : placeholderUnset}
         value={value ?? ""}
         onChange={(e) => onChange(e.target.value)}
-        disabled={disabled}
+        // readOnly, not disabled, while the keys save: a disabled field drops focus to <body>.
+        readOnly={saving}
       />
     </div>
   );
@@ -471,7 +476,7 @@ function ModelField({
   value,
   options,
   custom,
-  disabled,
+  saving,
   onChange,
 }: {
   label: string;
@@ -480,7 +485,7 @@ function ModelField({
   value: string;
   options: OpenAIInfo["model_options"];
   custom: boolean;
-  disabled: boolean;
+  saving: boolean;
   onChange: (value: string | null) => void;
 }) {
   if (custom) {
@@ -490,7 +495,7 @@ function ModelField({
         hint={hint}
         hintId={hintId}
         value={value}
-        disabled={disabled}
+        saving={saving}
         onChange={onChange}
       />
     );
@@ -502,7 +507,7 @@ function ModelField({
       hintId={hintId}
       value={value}
       options={options}
-      disabled={disabled}
+      saving={saving}
       onChange={onChange}
     />
   );
@@ -513,14 +518,14 @@ function FreeTextModel({
   hint,
   hintId,
   value,
-  disabled,
+  saving,
   onChange,
 }: {
   label: string;
   hint: string;
   hintId: string;
   value: string;
-  disabled: boolean;
+  saving: boolean;
   onChange: (value: string | null) => void;
 }) {
   const [draft, setDraft] = useState<string | null>(null);
@@ -534,7 +539,7 @@ function FreeTextModel({
         aria-describedby={hintId}
         value={draft ?? value}
         placeholder="e.g. llama3.2:3b"
-        disabled={disabled}
+        readOnly={saving}
         onChange={(e) => setDraft(e.target.value)}
         onBlur={() => {
           const next = (draft ?? "").trim();
@@ -552,7 +557,7 @@ function ModelSelect({
   hintId,
   value,
   options,
-  disabled,
+  saving,
   onChange,
 }: {
   label: string;
@@ -560,7 +565,7 @@ function ModelSelect({
   hintId: string;
   value: string;
   options: OpenAIInfo["model_options"];
-  disabled: boolean;
+  saving: boolean;
   onChange: (value: string | null) => void;
 }) {
   const selected = options.find((option) => option.id === value);
@@ -583,7 +588,9 @@ function ModelSelect({
     <div className="grid gap-1.5">
       <Label htmlFor={id}>{label}</Label>
       <p id={hintId} className="text-muted-foreground text-xs">{hint}</p>
-      <Select value={value} onValueChange={onChange} disabled={disabled}>
+      {/* readOnly, not disabled, while a pick saves: the list closes onto its trigger, and a
+          disabled trigger dropped focus to <body> after every pick (RolePicker's rule). */}
+      <Select value={value} onValueChange={onChange} readOnly={saving}>
         <SelectTrigger id={id} aria-describedby={hintId} className="w-full">
           <SelectValue>{stale ? value : selected?.label}</SelectValue>
         </SelectTrigger>

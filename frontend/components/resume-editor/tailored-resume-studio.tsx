@@ -25,7 +25,7 @@ import { toast } from "sonner";
 
 import { useConfirm } from "@/components/confirm-dialog";
 import { IconButton } from "@/components/icon-button";
-import { useFocusOnNextCommit } from "@/hooks/use-focus-return";
+import { useFocusHandoff, useFocusOnNextCommit } from "@/hooks/use-focus-return";
 import { useLeaveGuard } from "@/hooks/use-leave-guard";
 import { useSingleFlight } from "@/hooks/use-single-flight";
 import { PageHeader } from "@/components/page-shell";
@@ -305,51 +305,18 @@ export function TailoredResumeStudio({
     },
     onError: (err: Error) => toast.error(err.message),
   });
+  // Build draft and Rebuild share one guard: a double click sent two POSTs.
+  const materializeOnce = useSingleFlight(materialize.mutate);
 
   if (!adoptedData) {
-    const parseFailed = application.customized_json != null;
     return (
-      <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 p-6">
-        <header className="flex min-w-0 flex-wrap items-center gap-3">
-          <IconButton
-            label="Back to application"
-            icon={<ArrowLeft className="size-4" />}
-            size="icon-sm"
-            className="shrink-0"
-            nativeButton={false}
-            render={
-              <Link href={backHref} className="text-muted-foreground" />
-            }
-          />
-          <div>
-            <h1 className="text-[22px] font-medium tracking-tight">
-              Tailored resume
-            </h1>
-            <p className="text-muted-foreground text-sm">{jobLabel}</p>
-          </div>
-        </header>
-        <div className="space-y-3 rounded-lg border p-6">
-          {parseFailed ? (
-            <p className="text-destructive text-sm">
-              Stored resume data is invalid. Rebuild from the base resume to
-              replace it.
-            </p>
-          ) : (
-            <p className="text-muted-foreground text-sm">
-              No tailored resume yet. Build a draft from your base resume, then
-              refine it here and generate a PDF.
-            </p>
-          )}
-          <Button
-            onClick={() => materialize.mutate()}
-            disabled={materialize.isPending}
-          >
-            {materialize.isPending
-              ? "Building…"
-              : "Build draft from base resume"}
-          </Button>
-        </div>
-      </div>
+      <BuildDraft
+        backHref={backHref}
+        jobLabel={jobLabel}
+        parseFailed={application.customized_json != null}
+        pending={materialize.isPending}
+        onBuild={() => materializeOnce()}
+      />
     );
   }
 
@@ -363,7 +330,7 @@ export function TailoredResumeStudio({
       initialData={adoptedData}
       reviewDefault={reviewDefault}
       materializePending={materialize.isPending}
-      onRebuild={() => materialize.mutate()}
+      onRebuild={() => materializeOnce()}
       templateId={templateId}
       onTemplateChange={setTemplateId}
       render={render}
@@ -378,6 +345,71 @@ export function TailoredResumeStudio({
         if (key !== adoptedKey) ownKeys.current = [...ownKeys.current, key];
       }}
     />
+  );
+}
+
+/**
+ * No usable tailored resume yet: build one from the base. Build stays focusable while it runs (a
+ * disabled button dropped focus to <body>), and the whole view leaves once the draft lands, so its
+ * handoff moves focus to the studio's <main>.
+ */
+function BuildDraft({
+  backHref,
+  jobLabel,
+  parseFailed,
+  pending,
+  onBuild,
+}: {
+  backHref: string;
+  jobLabel: string;
+  parseFailed: boolean;
+  pending: boolean;
+  onBuild: () => void;
+}) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  useFocusHandoff(rootRef);
+  return (
+    <div ref={rootRef} className="mx-auto flex w-full max-w-5xl flex-col gap-4 p-6">
+      <header className="flex min-w-0 flex-wrap items-center gap-3">
+        <IconButton
+          label="Back to application"
+          icon={<ArrowLeft className="size-4" />}
+          size="icon-sm"
+          className="shrink-0"
+          nativeButton={false}
+          render={
+            <Link href={backHref} className="text-muted-foreground" />
+          }
+        />
+        <div>
+          <h1 className="text-[22px] font-medium tracking-tight">
+            Tailored resume
+          </h1>
+          <p className="text-muted-foreground text-sm">{jobLabel}</p>
+        </div>
+      </header>
+      <div className="space-y-3 rounded-lg border p-6">
+        {parseFailed ? (
+          <p className="text-destructive text-sm">
+            Stored resume data is invalid. Rebuild from the base resume to
+            replace it.
+          </p>
+        ) : (
+          <p className="text-muted-foreground text-sm">
+            No tailored resume yet. Build a draft from your base resume, then
+            refine it here and generate a PDF.
+          </p>
+        )}
+        <Button
+          focusableWhenDisabled
+          disabled={pending}
+          className="data-disabled:pointer-events-none data-disabled:opacity-50"
+          onClick={onBuild}
+        >
+          {pending ? "Building…" : "Build draft from base resume"}
+        </Button>
+      </div>
+    </div>
   );
 }
 

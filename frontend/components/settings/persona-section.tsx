@@ -6,6 +6,7 @@ import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { useLeaveGuard } from "@/hooks/use-leave-guard";
+import { useSingleFlight } from "@/hooks/use-single-flight";
 import { SettingCard, SettingCardAction } from "@/components/settings/setting-card";
 import { ACTION_ROW } from "@/components/settings/setting-layout";
 import { useFocusOnNextCommit } from "@/hooks/use-focus-return";
@@ -122,6 +123,10 @@ function PersonaEditor({
     onError: (err: Error) => toast.error(err.message),
   });
 
+  // One request per gesture: a double click sent two PUTs (or two model calls).
+  const saveOnce = useSingleFlight(save.mutate);
+  const draftOnce = useSingleFlight(draft.mutate);
+
   const dirty = value !== saved;
   useLeaveGuard(dirty);
   const reasonId = useId();
@@ -140,7 +145,7 @@ function PersonaEditor({
           disabled={draft.isPending || Boolean(draftDisabledReason)}
           aria-describedby={draftDisabledReason ? reasonId : undefined}
           className="data-disabled:pointer-events-none data-disabled:opacity-50"
-          onClick={() => draft.mutate(editRevision.current)}
+          onClick={() => draftOnce(editRevision.current)}
         >
           {draft.isPending ? <Loader2 className="animate-spin" aria-hidden="true" /> : null}
           Draft from my career
@@ -185,7 +190,7 @@ function PersonaEditor({
             focusableWhenDisabled
             disabled={save.isPending}
             className="data-disabled:pointer-events-none data-disabled:opacity-50"
-            onClick={() => save.mutate(value)}
+            onClick={() => saveOnce(value)}
           >
             {save.isPending ? <Loader2 className="animate-spin" aria-hidden="true" /> : null}
             Save

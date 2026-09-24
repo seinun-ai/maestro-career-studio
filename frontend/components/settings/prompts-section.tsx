@@ -6,6 +6,7 @@ import { ChevronDownIcon, ChevronRightIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { useLeaveGuard } from "@/hooks/use-leave-guard";
+import { useSingleFlight } from "@/hooks/use-single-flight";
 import { SettingCard } from "@/components/settings/setting-card";
 import { ACTION_ROW } from "@/components/settings/setting-layout";
 import { Button } from "@/components/ui/button";
@@ -155,6 +156,8 @@ function PromptCard({
     onError: (err: Error) => toast.error(err.message),
   });
   useLeaveGuard(value !== prompt.value);
+  const saveOnce = useSingleFlight(save.mutate);
+  const resetOnce = useSingleFlight(reset.mutate);
   const bodyId = useId();
 
   return (
@@ -201,7 +204,7 @@ function PromptCard({
               focusableWhenDisabled
               disabled={reset.isPending}
               className="data-disabled:pointer-events-none data-disabled:opacity-50"
-              onClick={() => reset.mutate()}
+              onClick={() => resetOnce()}
             >
               {reset.isPending ? "Resetting…" : "Reset to default"}
             </Button>
@@ -210,7 +213,7 @@ function PromptCard({
               focusableWhenDisabled
               disabled={save.isPending || value === prompt.value}
               className="data-disabled:pointer-events-none data-disabled:opacity-50"
-              onClick={() => save.mutate()}
+              onClick={() => saveOnce()}
             >
               {save.isPending ? "Saving…" : "Save"}
             </Button>

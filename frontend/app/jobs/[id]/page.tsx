@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useMemo, useState } from "react";
+import { use, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { GuardedLink as Link } from "@/components/guarded-link";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -50,7 +50,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useSingleFlight } from "@/hooks/use-single-flight";
 import { apiFetch, promoteJobToAgentQueue } from "@/lib/api";
+import { focusIfDropped, focusTarget } from "@/lib/focus";
 import { isLoadFailure } from "@/lib/query-state";
 import { cn } from "@/lib/utils";
 import type { Job, JobDetail, ProposalStatus } from "@/lib/types";
@@ -147,6 +149,10 @@ export default function JobDetailPage({
     onError: (err: Error) => toast.error(err.message),
   });
 
+  // Queue for agent leaves the header once the job has a proposal, taking focus with it: the
+  // header's first control (the new proposal's Skip) takes it, in the commit that drops the button.
+  const queued = useRef(false);
+  const actionsRef = useRef<HTMLDivElement>(null);
   // One-click promote into the agent queue (same rule as the tracker action:
   // only offered when the job has no proposal yet).
   const promote = useMutation({
@@ -157,8 +163,19 @@ export default function JobDetailPage({
       qc.invalidateQueries({ queryKey: ["proposals"] });
       qc.invalidateQueries({ queryKey: ["jobs", "without-application"] });
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => {
+      queued.current = false;
+      toast.error(err.message);
+    },
   });
+  // A double click filed two accepted proposals for one job.
+  const promoteOnce = useSingleFlight(promote.mutate);
+  const hasProposal = Boolean(data?.job.proposal_status);
+  useLayoutEffect(() => {
+    if (!queued.current || !hasProposal) return;
+    queued.current = false;
+    if (actionsRef.current) focusIfDropped(focusTarget(actionsRef.current));
+  }, [hasProposal]);
 
   // Prev/next: proposals list writes cs-proposals-seq; Applications writes
   // cs-tracker-seq. ?from=proposals selects which queue and back target.
@@ -338,7 +355,7 @@ export default function JobDetailPage({
               {metaBits.length ? ` · ${metaBits.join(" · ")}` : ""}
             </p>
           </div>
-          <div className="mt-1 ml-auto flex flex-wrap items-center justify-end gap-2">
+          <div ref={actionsRef} className="mt-1 ml-auto flex flex-wrap items-center justify-end gap-2">
             {isProposalStatus(proposalStatus) ? (
               <Badge
                 className={cn("shrink-0", STATUS_BADGE_CLASS[proposalStatus])}
@@ -394,8 +411,14 @@ export default function JobDetailPage({
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => promote.mutate()}
+                // Focusable while it queues: a disabled button dropped focus to <body>.
+                focusableWhenDisabled
                 disabled={promote.isPending}
+                className="data-disabled:pointer-events-none data-disabled:opacity-50"
+                onClick={() => {
+                  queued.current = true;
+                  promoteOnce();
+                }}
               >
                 <SendHorizontal />
                 {promote.isPending ? "Queueing…" : "Queue for agent"}

@@ -55,7 +55,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { apiFetch, promoteJobToAgentQueue } from "@/lib/api";
-import { focusIfDropped, focusSuccessor } from "@/lib/focus";
+import { focusIfDropped, focusReturnPoint, focusSuccessor } from "@/lib/focus";
 import { isListCapped } from "@/lib/list-cap";
 import { isLoadFailure } from "@/lib/query-state";
 import { cn } from "@/lib/utils";
@@ -67,6 +67,7 @@ import {
 } from "@/lib/types";
 import { PageHeader, PageShell } from "@/components/page-shell";
 import { useBaseResumeLabel } from "@/hooks/use-base-resume-label";
+import { useSingleFlight } from "@/hooks/use-single-flight";
 
 // "saved" is the synthetic no-application state (a captured job you haven't
 // started on) — one name everywhere, not aspiring/not-applied/jobs.
@@ -130,6 +131,11 @@ function savedJobsQuery(savedSource: "user" | "agent") {
         `/api/jobs?without_application=true&source=${savedSource}&limit=${LIST_LIMIT}`,
       ),
   };
+}
+
+/** The row's ⋯ trigger: where focus goes once the row's Queue for agent leaves it. */
+function moreActions(el: HTMLElement): HTMLElement | null {
+  return el.closest("tr")?.querySelector<HTMLElement>('[aria-label="More actions"]') ?? null;
 }
 
 function storedValue(key: string): string | null {
@@ -229,6 +235,9 @@ function ApplicationsContent() {
   // back to, out of the list once the refetch lands. Where focus goes then is
   // read when the status is picked, while the row is still there.
   const leaving = useRef<{ key: string; next: () => HTMLElement | null } | null>(null);
+  // Queue for agent leaves its row once the job has a proposal, taking focus with it: the row's ⋯
+  // takes it, read at the click while the row is there.
+  const queued = useRef<{ jobId: string; next: () => HTMLElement | null } | null>(null);
 
   const patchStatus = useMutation({
     mutationFn: ({ id, status }: { id: string; status: ApplicationStatus }) =>
@@ -269,8 +278,13 @@ function ApplicationsContent() {
       qc.invalidateQueries({ queryKey: ["jobs", "without-application"] });
       qc.invalidateQueries({ queryKey: ["proposals"] });
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => {
+      queued.current = null;
+      toast.error(err.message);
+    },
   });
+  // A double click filed two accepted proposals for one job.
+  const promoteJobOnce = useSingleFlight(promoteJob.mutate);
 
   const deleteJob = useMutation({
     mutationFn: (id: string) =>
@@ -423,6 +437,16 @@ function ApplicationsContent() {
     if (!l || filtered.some((r) => rowKey(r) === l.key)) return;
     leaving.current = null;
     focusIfDropped(l.next());
+  }, [filtered]);
+
+  // The same commit for Queue for agent: once the queued job's row stops offering it.
+  useLayoutEffect(() => {
+    const q = queued.current;
+    if (!q) return;
+    if (filtered.some((r) => r.kind === "saved" && r.job.id === q.jobId && !r.job.proposal_status))
+      return;
+    queued.current = null;
+    focusIfDropped(q.next());
   }, [filtered]);
 
   const header = (key: SortKey, label: string, className?: string) => {
@@ -702,12 +726,15 @@ function ApplicationsContent() {
                           <IconButton
                             label="Queue for agent apply"
                             icon={<SendHorizontal />}
-                            className="opacity-0 transition-opacity duration-150 group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100"
+                            // Focusable while it queues: a disabled button dropped focus to <body>.
+                            focusableWhenDisabled
+                            disabled={promoteJob.isPending}
+                            className="opacity-0 transition-opacity duration-150 group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100 data-disabled:pointer-events-none data-disabled:opacity-50"
                             onClick={(e) => {
                               e.stopPropagation();
-                              promoteJob.mutate(r.job.id);
+                              queued.current = { jobId: r.job.id, next: focusReturnPoint(moreActions(e.currentTarget)) };
+                              promoteJobOnce(r.job.id);
                             }}
-                            disabled={promoteJob.isPending}
                           />
                         ) : null}
                         <DropdownMenu>
