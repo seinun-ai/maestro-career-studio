@@ -23,7 +23,8 @@ import { finalFocusOn, focusReturnPoint } from "@/lib/focus";
 export interface ConfirmOptions {
   title: string;
   description?: string;
-  confirmLabel?: string;
+  /** The action's verb ("Delete", "Leave"). Required: a bare "Confirm" names no action. */
+  confirmLabel: string;
   cancelLabel?: string;
   destructive?: boolean;
   /**
@@ -116,7 +117,7 @@ export function ConfirmDialogProvider({ children }: { children: ReactNode }) {
               variant={opts?.destructive ? "destructive" : "default"}
               onClick={() => finish(true)}
             >
-              {opts?.confirmLabel ?? "Confirm"}
+              {opts?.confirmLabel}
             </Button>
           </DialogFooter>
         </DialogContent>

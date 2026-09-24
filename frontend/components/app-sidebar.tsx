@@ -55,8 +55,8 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
   {
     label: "Career library",
     items: [
-      { href: "/career", label: "Career KB", icon: BriefcaseBusiness },
-      { href: "/base-resumes", label: "Base Resumes", icon: FileText },
+      { href: "/career", label: "Career history", icon: BriefcaseBusiness },
+      { href: "/base-resumes", label: "Base resumes", icon: FileText },
       { href: "/templates", label: "Templates", icon: LayoutTemplate },
     ],
   },
@@ -93,7 +93,8 @@ export function AppSidebar() {
         </div>
         <SidebarTrigger
           className="shrink-0"
-          title={`Toggle sidebar (${shortcutLabel(mod, "B")})`}
+          // Only on screen while the sidebar shows, so a press always hides it.
+          title={`Hide sidebar (${shortcutLabel(mod, "B")})`}
           aria-keyshortcuts="Meta+B Control+B"
         />
       </SidebarHeader>
@@ -145,7 +146,7 @@ function MainNav({ pathname, from }: { pathname: string; from: string | null | u
           )}
         >
           <FilePlus2 className="size-4" aria-hidden="true" />
-          New application
+          Add job
         </Link>
       </div>
       {NAV_GROUPS.map((group) => (

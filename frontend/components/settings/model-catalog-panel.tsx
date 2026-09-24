@@ -13,6 +13,7 @@ import { CardSection } from "@/components/ui/card";
 import { focusIfDropped } from "@/hooks/use-focus-return";
 import { useSingleFlight } from "@/hooks/use-single-flight";
 import { apiFetch } from "@/lib/api";
+import { couldnt } from "@/lib/error-text";
 import { providerLabel, showsModelId, sourceLabel } from "@/lib/model-catalog";
 import type {
   DiscoveredModel,
@@ -71,7 +72,7 @@ function ModelCatalogPanel({ info }: { info: OpenAIInfo }) {
           : `No ${providerLabel(provider)} models found`,
       );
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(couldnt("find models", err)),
   });
 
   const add = useMutation({
@@ -96,18 +97,19 @@ function ModelCatalogPanel({ info }: { info: OpenAIInfo }) {
             }
           : prev,
       );
-      toast.success(`Added ${model.id}`);
+      toast.success(`Added ${model.label}`);
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(couldnt("add the model", err)),
   });
 
+  // Takes the whole row, so the toast names the model the user saw.
   const remove = useMutation({
-    mutationFn: (modelId: string) =>
+    mutationFn: (option: ModelOption) =>
       apiFetch<OpenAIInfo>(
-        `/api/settings/openai/models/${encodeURIComponent(modelId)}`,
+        `/api/settings/openai/models/${encodeURIComponent(option.id)}`,
         { method: "DELETE" },
       ),
-    onSuccess: (result, modelId) => {
+    onSuccess: (result, { id: modelId, label }) => {
       qc.setQueryData(["settings", "openai"], result);
       setDiscovery((prev) =>
         prev
@@ -119,11 +121,11 @@ function ModelCatalogPanel({ info }: { info: OpenAIInfo }) {
             }
           : prev,
       );
-      toast.success(`Removed ${modelId}`);
+      toast.success(`Removed ${label}`);
     },
     onError: (err: Error) => {
       leaving.current = null;
-      toast.error(err.message);
+      toast.error(couldnt("remove the model", err));
     },
   });
   // A double click sent two POSTs, or two DELETEs whose second failed with an error toast.
@@ -140,7 +142,7 @@ function ModelCatalogPanel({ info }: { info: OpenAIInfo }) {
     focusIfDropped(pending.next());
   }, [info.model_options]);
 
-  const removeRow = (li: HTMLElement | null, id: string) => {
+  const removeRow = (li: HTMLElement | null, option: ModelOption) => {
     // The next row's Remove, else the previous row's, else the list itself
     // (built-in rows have no button). `focusSuccessor` would land on a
     // built-in row's <li>, which cannot take focus, so this list names its own.
@@ -148,10 +150,10 @@ function ModelCatalogPanel({ info }: { info: OpenAIInfo }) {
       el?.querySelector<HTMLElement>("button") ?? null;
     const neighbour = pick(li?.nextElementSibling) ?? pick(li?.previousElementSibling);
     leaving.current = {
-      id,
+      id: option.id,
       next: () => (neighbour?.isConnected ? neighbour : listRef.current),
     };
-    removeOnce(id);
+    removeOnce(option);
   };
 
   return (
@@ -185,7 +187,7 @@ function ModelCatalogPanel({ info }: { info: OpenAIInfo }) {
             key={option.id}
             option={option}
             busy={remove.isPending}
-            onRemove={(li) => removeRow(li, option.id)}
+            onRemove={(li) => removeRow(li, option)}
           />
         ))}
       </ul>

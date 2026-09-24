@@ -68,13 +68,13 @@ _WORDS = [
      "What Quick tailor may change on your resume, on the gap analysis page and in the Companion."),
     ("components/settings/quick-tailor-section.tsx", "one-shot tailoring", 'title="Quick tailor"'),
     ("components/settings/autofill-section.tsx", "Preset answers the browser extension uses",
-     "Preset answers the Companion uses to fill job-application forms."),
+     "Companion uses these to fill job applications."),
     ("components/settings/autofill-section.tsx", "Allow extension to fill these answers",
-     "Allow Companion to fill these answers"),
+     "Let Companion fill these answers"),
     ("components/settings/autofill-section.tsx", "Allow extension to tick agreement boxes",
-     "Allow Companion to tick agreement boxes"),
+     "Let Companion tick agreement boxes"),
     ("components/settings/autofill-section.tsx", "matching the extension&apos;s",
-     "matching the Companion&apos;s repeated form blocks."),
+     "Most recent first."),
     # The Companion has no ⋯ menu and no switch for capture (extension/README.md, "Turn it off").
     ("components/analytics/autofill-coverage-card.tsx", "extension card's",
      "Clearing removes what's recorded so far. Capture continues while the Companion runs."),
@@ -134,13 +134,13 @@ def test_the_connected_agents_card_explains_before_the_limits():
 # (backend/mcp_server/server.py). An overclaim such as "Submit applications for
 # you." without "after your yes", or "Delete anything" when it can't, fails here.
 _CAN = (
-    "Find jobs and file them in your {AGENT_INBOX} for you to accept or skip.",
+    "Find jobs and file them in your {AGENT_INBOX} for you to queue or skip.",
     "Read your career history and job preferences.",
     "Add to and change your career history. New or reworded bullets arrive as drafts for you"
     " to approve. Other changes, such as an item&apos;s dates or your summary, skills and contact"
     " details, apply at once.",
     "Create, edit and tailor your resumes.",
-    "Fill in and submit applications you accepted, after your yes.",
+    "Fill in and submit applications you queued, after your yes.",
 )
 _CANT = (
     "Go past the daily limit below.",

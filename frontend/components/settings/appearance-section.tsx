@@ -51,7 +51,7 @@ export function AppearanceSection() {
           Appearance
         </CardTitle>
         <CardDescription>
-          Defaults to your system setting until you choose here.
+          Follows your device until you change it.
         </CardDescription>
       </CardHeader>
       <CardContent>

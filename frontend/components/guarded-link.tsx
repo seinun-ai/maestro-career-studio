@@ -15,7 +15,7 @@ export function useConfirmLeave() {
       !leaveBlocked("in-app") ||
       confirm({
         title: "Leave without saving?",
-        description: "Changes you haven't saved on this page will be lost.",
+        description: "Your unsaved changes will be lost.",
         confirmLabel: "Leave",
         cancelLabel: "Stay",
         destructive: true,

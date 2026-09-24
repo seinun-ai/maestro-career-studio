@@ -884,18 +884,18 @@
   for this shell whenever a card's whole face is a link AND it carries an
   actions menu — that pairing is the invariant, a preview image is not.
 - **Sidebar: one create action, and a current page you can see and hear.** Above
-  the nav groups, New application is M3's extended FAB (`variant: "fab"`,
+  the nav groups, Add job is M3's extended FAB (`variant: "fab"`,
   `rounded-[16px]`, since this theme's `rounded-2xl` is 18px). On `/new` it is
   current and renders with the `default` (primary) variant, keeping that
   geometry; it stays `fab` on every other route. It rests flat
   and hover raises it one level: a resting shadow read as permanently hovered.
-  It is the one New application per screen, so the Applications header renders
+  It is the one Add job per screen, so the Applications header renders
   its own button only while `useSidebarHidden()` holds (collapsed, or the sheet
   closed below 768px), exactly when the FAB cannot be seen. The empty
   tracker's ghost New application is the deliberate exception: an empty state
   offers its pathway as a control, not only a sentence (NN/g). Every nav link,
   the FAB included, takes `aria-current` from `navCurrent()` (`lib/nav.ts`):
-  `"page"` on the route, `"true"` inside it (a studio under Base Resumes).
+  `"page"` on the route, `"true"` inside it (a studio under Base resumes).
   `/jobs/*` is not its own item: `navSection` maps it to Applications, or to
   the Agent inbox when `?from=proposals`, read with `useSearchParams`.
   **`useSearchParams` under the root layout needs a `<Suspense>` boundary**:
@@ -915,9 +915,13 @@
   `sidebarMenuButtonVariants`: shadcn's `data-active` compiles to a
   zero-specificity `:where()`, so without them `hover:` wins and the active row
   goes grey under the pointer. Both sidebar toggles carry a `title` hint
-  (`useModKey`) and `aria-keyshortcuts="Meta+B Control+B"`. Groups:
-  **Job search** (Applications, Agent inbox, Referrals), **Career library** (Career KB,
-  Base Resumes, Templates), **Tools** (Assistant, Analytics); Profile + Settings
+  (`useModKey`) and `aria-keyshortcuts="Meta+B Control+B"`, and each names
+  what a press does, never the mechanism: "Hide sidebar" in the sidebar,
+  "Show sidebar" on the reveal pill, and `SidebarTrigger`'s own name follows
+  the open state. Groups:
+  **Job search** (Applications, Agent inbox, Referrals), **Career library** (Career history,
+  Base resumes, Templates), **Tools** (Assistant, Analytics); the pinned button
+  above the groups is **Add job**; Profile + Settings
   pinned in `SidebarFooter`. The Agent inbox item carries a Needs-you count:
   it counts the Needs you lane's statuses (`NEEDS_YOU_STATUSES`, `lib/inbox-lanes.ts`),
   `needsYouBadge` (`lib/needs-you.ts`) hides it at 0 or while unknown, the pill
@@ -1111,22 +1115,28 @@
   - *Toasts*: a success toast names its object ("Template deleted", never
     "Deleted"); an error toast says what failed (see *Errors*). A count and
     its noun agree ("1 bullet", "3 bullets").
-- Chat page is Gemini-styled: centered greeting + floating pill composer
-  when empty, docked composer with inline pinned-resume picker otherwise;
+- The Assistant page (`/chat`) is Gemini-styled: centered greeting + floating pill composer
+  when empty, docked composer with an inline resume picker ("Resume to edit") otherwise;
   user messages are muted tonal bubbles, assistant text plain. The sessions
   rail shows only when the chat column's content box is at least 42rem
   (`@container/chat`, not a viewport breakpoint: at 768 the pinned sidebar
   leaves the column 480px); below that, History opens the same list in a
   Sheet, which a `ResizeObserver` closes when the rail returns. Closing it
   then returns focus to the rail (or its edge button), since the History
-  button is hidden. The composer row does not wrap, so the pinned-resume
+  button is hidden. The composer row does not wrap, so the resume picker's
   trigger caps at `max-w-48` and truncates its name (full name in `title`).
+  While it works, the Assistant says what it is doing in words
+  (`TOOL_PHRASES`, one chip per phrase, "Working…" for a tool the map lacks),
+  never a tool name; every tool in `chat_tools.py` has a phrase (pinned).
+  Deleting a chat asks first, like every other delete, and focus moves to
+  the next chat once the row has gone. New chat starts through
+  `useSingleFlight`.
 - **Settings vs Profile — which page and tab does a new setting go on?**
   `/settings` is how the SYSTEM behaves, in tabs (`lib/settings-tabs.ts`):
-  **AI & models** (API keys, models, prompts), **Tailoring** (Quick tailor
+  **AI & models** (API keys, models, AI instructions), **Tailoring** (Quick tailor
   settings), **Connected agents** (the explainer, next-step hints,
   Auto-apply limits), **Appearance** and **About**. `/profile` is who the
-  CANDIDATE is: **About you** (Persona, Market, Job preferences) and
+  CANDIDATE is: **About you** (Persona, Where you apply, Job preferences) and
   **Autofill**. A new card goes on the tab whose subject it shares and adds
   its id to that tab's `anchors` (pinned). Both write `/api/settings/*`
   and both draw from
@@ -1191,15 +1201,17 @@
   focus out of a field mid-typing. An explicit Save that lands while the user
   kept typing (Persona, Autofill) keeps the form dirty and the later text.
 - Settings shows four curated user-voice prompts (cover_letter, qa,
-  gap_tailor, chat_system); the other internal prompts sit behind an
-  "Advanced prompts" disclosure (`ESSENTIAL_PROMPTS` map in
-  components/settings/prompts-section.tsx — update it when adding prompt keys).
+  gap_tailor, chat_system) in its AI instructions card; the other internal
+  prompts sit behind a "More instructions" disclosure, each titled in words
+  from `PROMPT_TITLES` (components/settings/prompts-section.tsx). Add a new
+  prompt key to `ESSENTIAL_PROMPTS` or `PROMPT_TITLES`: a key in neither shows
+  as its raw name, and a pin checks every file in `backend/app/prompts/`.
   The disclosure hides its list and never unmounts it, so a collapse keeps
   typed drafts and their leave-guard registrations; both toggles carry
   `aria-expanded`.
 - **Derived setup guidance**: Profile starts with `SetupStatusStrip` above its
   tab row; About you holds Persona (disabled-until-import "Draft from my
-  career"), Market and Job preferences; Autofill holds the autofill profile.
+  career"), Where you apply (the market) and Job preferences; Autofill holds the answers for job forms.
   The empty tracker leads with its empty state, what
   the page is for, and places `GettingStartedCard` BELOW it: the same derived
   steps, deep links, locally dismissible, gone when setup completes. The

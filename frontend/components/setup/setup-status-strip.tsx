@@ -23,7 +23,8 @@ function pillClass(done: boolean) {
 }
 
 function label(step: SetupStepView) {
-  return `${step.label}: ${step.done ? "done" : "not finished"}`;
+  // A comma, not a colon: a pill's own text can hold one ("Autofill: 40% done").
+  return `${step.label}, ${step.done ? "done" : "not finished"}`;
 }
 
 /** Incomplete setup steps for the top of the Profile page — each one actionable.

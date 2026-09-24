@@ -123,27 +123,7 @@ _PENDING_T20: dict[str, int] = {  # D §5 Career history
     "components/career/send-to-resume-dialog.tsx": 4,
     "components/kb-sync-pill.tsx": 1,
 }
-_PENDING_T21: dict[str, int] = {  # D §6 Settings and Profile; D §7 Assistant, shell, errors, setup
-    "app/profile/page.tsx": 1,
-    "components/chat/change-card.tsx": 1,
-    "components/chat/chat-page.tsx": 6,
-    "components/chat/edit-proposal-card.tsx": 1,
-    "components/chat/proposal-card.tsx": 1,
-    "components/chat/scope-picker.tsx": 1,
-    "components/settings/auto-apply-section.tsx": 1,
-    "components/settings/autofill-section.tsx": 3,
-    "components/settings/job-preferences-section.tsx": 1,
-    "components/settings/mcp-workflow-section.tsx": 1,
-    "components/settings/model-catalog-panel.tsx": 3,
-    "components/settings/models-section.tsx": 2,
-    "components/settings/persona-section.tsx": 2,
-    "components/settings/prompts-section.tsx": 2,
-    "components/settings/quick-tailor-section.tsx": 1,
-    "components/settings/setting-card.tsx": 1,
-    "components/setup/getting-started-card.tsx": 1,
-    "components/setup/use-document-queue.ts": 1,
-}
-_BLOCKS = (_PENDING_T17, _PENDING_T18, _PENDING_T19, _PENDING_T20, _PENDING_T21)
+_BLOCKS = (_PENDING_T17, _PENDING_T18, _PENDING_T19, _PENDING_T20)
 _PENDING: dict[str, int] = {rel: n for block in _BLOCKS for rel, n in block.items()}
 
 

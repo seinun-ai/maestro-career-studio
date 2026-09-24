@@ -9,6 +9,7 @@ import { SettingCard, SettingCardAction } from "@/components/settings/setting-ca
 import { SwitchRow } from "@/components/settings/setting-layout";
 import { Switch } from "@/components/ui/switch";
 import { apiFetch } from "@/lib/api";
+import { couldnt } from "@/lib/error-text";
 import type { McpWorkflowSetting } from "@/lib/types";
 
 /**
@@ -45,7 +46,7 @@ export function McpWorkflowSection() {
     onSuccess: (result) => {
       qc.setQueryData(["settings", "mcp-workflow"], result);
     },
-    onError: (error: Error) => toast.error(error.message),
+    onError: (error: Error) => toast.error(couldnt("save this setting", error)),
   });
 
   return (

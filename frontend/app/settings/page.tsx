@@ -33,7 +33,7 @@ const guideButton = (
         rel="noopener noreferrer"
       >
         <BookOpen className="size-4" />
-        Getting started guide
+        Setup guide
       </a>
     }
   />

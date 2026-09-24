@@ -23,6 +23,7 @@ import { KbCaptureCard } from "@/components/chat/kb-capture-card";
 import { ChatMarkdown } from "@/components/chat/markdown";
 import { ProposalCard } from "@/components/chat/proposal-card";
 import { ScopePickerDialog, SelectionChip } from "@/components/chat/scope-picker";
+import { useConfirm } from "@/components/confirm-dialog";
 import { LoadErrorState } from "@/components/load-error-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -36,7 +37,6 @@ import {
 import {
   Sheet,
   SheetContent,
-  SheetDescription,
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
@@ -47,7 +47,8 @@ import {
   useLocalStorageState,
 } from "@/hooks/use-local-storage-state";
 import { useBaseResumes } from "@/hooks/use-base-resume-label";
-import { useFocusOnNextCommit } from "@/hooks/use-focus-return";
+import { focusIfDropped, useFocusOnNextCommit } from "@/hooks/use-focus-return";
+import { useSingleFlight } from "@/hooks/use-single-flight";
 import {
   apiFetch,
   createChatSession,
@@ -57,6 +58,8 @@ import {
   streamChatMessage,
   uploadChatAttachment,
 } from "@/lib/api";
+import { couldnt, errorDetail, isPlainSentence } from "@/lib/error-text";
+import { focusSuccessor } from "@/lib/focus";
 import { isLoadFailure } from "@/lib/query-state";
 import { notifyRenderNote } from "@/lib/render-note";
 import { cn } from "@/lib/utils";
@@ -77,6 +80,40 @@ import type {
 
 const NO_TARGET = "__none__";
 const HISTORY_COLLAPSED_KEY = "chatPage.historyCollapsed";
+
+/**
+ * What the Assistant is doing, in words, for each tool it calls (the names are
+ * the model's identifiers in backend/app/services/chat_tools.py, pinned there).
+ * A Map, not an object: `{...}[name]` answered "constructor" with a function.
+ */
+const TOOL_PHRASES = new Map<string, string>([
+  ["list_base_resumes", "Looking at your resumes…"],
+  ["get_resume", "Reading your resume…"],
+  ["edit_resume", "Editing your resume…"],
+  ["propose_edits", "Drafting a change for you to review…"],
+  ["propose_project", "Drafting a change for you to review…"],
+  ["read_attachment", "Reading your attachment…"],
+  ["kb_list_entities", "Reading your career history…"],
+  ["kb_get_entity", "Reading your career history…"],
+  ["get_career_context", "Reading your career history…"],
+  ["kb_capture", "Saving to your career history…"],
+  ["analytics_activity", "Looking at your job search numbers…"],
+  ["analytics_gap_frequency", "Looking at your job search numbers…"],
+  ["analytics_base_summaries", "Looking at your job search numbers…"],
+  ["list_templates", "Looking at templates…"],
+  ["get_template", "Looking at templates…"],
+  ["create_template_draft", "Working on a template…"],
+  ["update_template_draft", "Working on a template…"],
+  ["duplicate_template", "Working on a template…"],
+  ["validate_template", "Checking the template…"],
+  ["set_default_template", "Setting your default template…"],
+  ["delete_template", "Deleting a template…"],
+]);
+
+/** One chip per phrase, in the order first seen: a tool that runs twice says so once. */
+function toolPhrases(tools: string[]): string[] {
+  return [...new Set(tools.map((name) => TOOL_PHRASES.get(name) ?? "Working…"))];
+}
 
 interface StreamingState {
   text: string;
@@ -284,17 +321,45 @@ export function ChatPage() {
       qc.invalidateQueries({ queryKey: ["chat-sessions"] });
       openSession(created.id);
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(couldnt("start a new chat", err)),
   });
+  // One chat per gesture: a double click on New chat made two.
+  const newSessionOnce = useSingleFlight(newSession.mutate);
 
+  // Armed by a confirmed Delete: the chat going, and where focus goes once its
+  // row (and the focused Delete in it) has left the list.
+  const leaving = useRef<{ id: UUID; next: () => HTMLElement | null } | null>(null);
   const removeSession = useMutation({
     mutationFn: (id: UUID) => deleteChatSession(id),
     onSuccess: (_, id) => {
       qc.invalidateQueries({ queryKey: ["chat-sessions"] });
       if (sessionId === id) openSession(null);
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => {
+      leaving.current = null;
+      toast.error(couldnt("delete the chat", err));
+    },
   });
+  const confirm = useConfirm();
+  // Every other delete in the app asks first; this one deleted on one click,
+  // with no undo.
+  const deleteChat = async (id: UUID, row: HTMLElement | null) => {
+    const ok = await confirm({
+      title: "Delete this chat?",
+      description: "This deletes the chat and its messages. You can't undo this.",
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
+    leaving.current = { id, next: focusSuccessor(row, "button") };
+    removeSession.mutate(id);
+  };
+  useEffect(() => {
+    const pending = leaving.current;
+    if (!pending || sessions.data?.some((s) => s.id === pending.id)) return;
+    leaving.current = null;
+    focusIfDropped(pending.next());
+  }, [sessions.data]);
 
   // Shared by the desktop rail and the mobile sheet's session list, so
   // picking a session behaves identically from either surface.
@@ -409,11 +474,15 @@ export function ChatPage() {
             s ? { ...s, captures: [...s.captures, capture] } : s,
           );
         } else if (event.type === "error") {
-          toast.error(event.detail);
+          // The server's words only when they are a plain sentence for the user.
+          const reason = event.detail;
+          toast.error(
+            isPlainSentence(reason) ? reason : "The Assistant couldn't finish. Try again.",
+          );
         }
       });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Chat failed");
+      toast.error(couldnt("get a reply from the Assistant", err));
     } finally {
       sendingRef.current = false;
       setStreaming(null);
@@ -438,9 +507,9 @@ export function ChatPage() {
       }
       const info = await uploadChatAttachment(activeSession, file);
       setAttachments((a) => [...a, info]);
-      toast.success(`Attached ${info.filename} (${info.chars.toLocaleString()} chars)`);
+      toast.success(`Attached ${info.filename}`);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Upload failed");
+      toast.error(couldnt("attach the file", err));
     }
   };
 
@@ -450,7 +519,7 @@ export function ChatPage() {
 
   const pinnedName =
     target === NO_TARGET
-      ? "No pinned resume"
+      ? "No resume chosen"
       : (resumes.data?.find((r) => r.slug === target)?.display_name ?? target);
 
   const composer = (
@@ -477,7 +546,7 @@ export function ChatPage() {
       <Textarea
         rows={hasThread ? 1 : 2}
         aria-label="Message"
-        placeholder="Ask about your resume…"
+        placeholder="Ask the Assistant…"
         value={input}
         onChange={(e) => setInput(e.target.value)}
         onKeyDown={(e) => {
@@ -513,12 +582,12 @@ export function ChatPage() {
           value={target}
           onValueChange={(v) => applyTarget(v ?? NO_TARGET)}
         >
-          {/* max-w-48 + truncate: a long résumé name grew this trigger past the
+          {/* max-w-48 + truncate: a long resume name grew this trigger past the
               column at 768 (the row does not wrap). The full name stays in the
               DOM for screen readers and in the title for a pointer. */}
           <SelectTrigger
             size="sm"
-            aria-label="Pinned resume"
+            aria-label="Resume to edit"
             title={pinnedName}
             className="text-muted-foreground h-8 w-auto max-w-48 min-w-0 gap-1.5 rounded-full border-0 bg-transparent px-2.5 text-xs shadow-none hover:bg-muted"
           >
@@ -528,7 +597,7 @@ export function ChatPage() {
             </SelectValue>
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value={NO_TARGET}>No pinned resume</SelectItem>
+            <SelectItem value={NO_TARGET}>No resume chosen</SelectItem>
             {resumes.data?.map((r) => (
               <SelectItem key={r.slug} value={r.slug}>
                 {r.display_name || r.slug}
@@ -543,7 +612,7 @@ export function ChatPage() {
           onClick={() => setScopeOpen(true)}
         >
           <Plus className="size-3.5" />
-          Context
+          Add context
         </Button>
         <div className="flex-1" />
         <Button
@@ -582,7 +651,7 @@ export function ChatPage() {
           <div className="flex items-center gap-1">
             <Button
               variant="tonal"
-              onClick={() => newSession.mutate()}
+              onClick={() => newSessionOnce()}
               disabled={newSession.isPending}
               className="h-10 flex-1 justify-start gap-2 rounded-full px-4"
             >
@@ -605,7 +674,7 @@ export function ChatPage() {
             sessions={sessions.data}
             activeId={sessionId}
             onSelect={selectSession}
-            onDelete={(id) => removeSession.mutate(id)}
+            onDelete={deleteChat}
           />
         </aside>
       )}
@@ -644,8 +713,8 @@ export function ChatPage() {
         {sessionId !== null && isLoadFailure(detail) ? (
           <div className="flex flex-1 flex-col items-center justify-center px-4">
             <LoadErrorState
-              title="Couldn't load this conversation."
-              detail={(detail.error as Error)?.message}
+              title="Couldn't load this chat."
+              detail={errorDetail(detail.error)}
               retrying={detail.isFetching}
               onRetry={() => void detail.refetch()}
             />
@@ -663,12 +732,12 @@ export function ChatPage() {
                 ))}
                 {streaming && (
                   <div className="space-y-2">
-                    {streaming.tools.map((name, i) => (
+                    {toolPhrases(streaming.tools).map((phrase) => (
                       <div
-                        key={i}
+                        key={phrase}
                         className="text-muted-foreground flex items-center gap-1.5 text-xs"
                       >
-                        <Wrench className="size-3" /> {name}
+                        <Wrench className="size-3" aria-hidden="true" /> {phrase}
                       </div>
                     ))}
                     {streaming.cards.map((card, i) => (
@@ -712,7 +781,7 @@ export function ChatPage() {
                 What are we working on?
               </h1>
               <p className="text-muted-foreground mt-2 text-sm">
-                Edit a resume, draft project points, or work on a template. Every edit is versioned.
+                Edit a resume, draft project bullets or work on a template. You can undo any edit.
               </p>
             </div>
             <div className="w-full max-w-3xl">{composer}</div>
@@ -754,15 +823,12 @@ export function ChatPage() {
         >
           <SheetHeader className="sr-only">
             <SheetTitle>Chat history</SheetTitle>
-            <SheetDescription>
-              Browse and switch between past chats.
-            </SheetDescription>
           </SheetHeader>
           <div className="flex h-full flex-col gap-3 p-3">
             <Button
               variant="tonal"
               onClick={() => {
-                newSession.mutate();
+                newSessionOnce();
                 setHistorySheetOpen(false);
               }}
               disabled={newSession.isPending}
@@ -774,7 +840,7 @@ export function ChatPage() {
               sessions={sessions.data}
               activeId={sessionId}
               onSelect={selectSession}
-              onDelete={(id) => removeSession.mutate(id)}
+              onDelete={deleteChat}
             />
           </div>
         </SheetContent>
@@ -792,7 +858,7 @@ function SessionList({
   sessions: ChatSessionSummary[] | undefined;
   activeId: UUID | null;
   onSelect: (session: ChatSessionSummary) => void;
-  onDelete: (id: UUID) => void;
+  onDelete: (id: UUID, row: HTMLElement | null) => void;
 }) {
   return (
     <div className="flex-1 space-y-0.5 overflow-y-auto">
@@ -801,33 +867,37 @@ function SessionList({
           Recent
         </p>
       )}
-      {sessions?.map((s) => (
-        <div
-          key={s.id}
-          className={cn(
-            "group flex items-center gap-1 rounded-full px-3 py-1.5 transition-colors duration-150",
-            activeId === s.id ? "bg-secondary-container text-on-secondary-container hover:bg-secondary-container-hover font-semibold" : "hover:bg-muted",
-          )}
-        >
-          <button
-            type="button"
-            className="min-w-0 flex-1 truncate text-left text-sm"
-            aria-current={activeId === s.id ? "true" : undefined}
-            onClick={() => onSelect(s)}
+      {/* The rows in a wrapper of their own, so a deleted row's neighbours are
+          rows (focusSuccessor), never the heading. */}
+      <div className="space-y-0.5">
+        {sessions?.map((s) => (
+          <div
+            key={s.id}
+            className={cn(
+              "group flex items-center gap-1 rounded-full px-3 py-1.5 transition-colors duration-150",
+              activeId === s.id ? "bg-secondary-container text-on-secondary-container hover:bg-secondary-container-hover font-semibold" : "hover:bg-muted",
+            )}
           >
-            {s.title || "Untitled chat"}
-          </button>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Delete chat"
-            className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100"
-            onClick={() => onDelete(s.id)}
-          >
-            <Trash2 className="size-3.5" />
-          </Button>
-        </div>
-      ))}
+            <button
+              type="button"
+              className="min-w-0 flex-1 truncate text-left text-sm"
+              aria-current={activeId === s.id ? "true" : undefined}
+              onClick={() => onSelect(s)}
+            >
+              {s.title || "Untitled chat"}
+            </button>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Delete chat"
+              className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100"
+              onClick={(event) => onDelete(s.id, event.currentTarget.parentElement)}
+            >
+              <Trash2 className="size-3.5" />
+            </Button>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import { useBaseResumeName } from "@/hooks/use-base-resume-label";
 import { restoreResumeVersion } from "@/lib/api";
+import { couldnt } from "@/lib/error-text";
 import { notifyRenderNote } from "@/lib/render-note";
 import type { ChatChangeCard } from "@/lib/types";
 
@@ -37,9 +38,9 @@ export function ChangeCard({ card }: { card: ChatChangeCard }) {
       qc.invalidateQueries({ queryKey: ["base-resumes"] });
       qc.invalidateQueries({ queryKey: ["application"] });
       notifyRenderNote(restored);
-      toast.success("Reverted. The previous content is current again.");
+      toast.success("Undone. The previous version is back.");
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(couldnt("undo the edit", err)),
   });
 
   // The card carries only the application's id, no job words, so a tailored
@@ -55,13 +56,13 @@ export function ChangeCard({ card }: { card: ChatChangeCard }) {
           </Badge>
           <span className="font-medium">{targetLabel}</span>
           <span className="text-muted-foreground text-xs">
-            v{card.version_number} · {card.ops_count}{" "}
+            Version {card.version_number}, {card.ops_count}{" "}
             {card.ops_count === 1 ? "change" : "changes"}
           </span>
         </div>
         <div className="flex items-center gap-1">
           <Button variant="ghost" size="sm" onClick={() => setDiffOpen(true)}>
-            <FileDiff className="mr-1 size-3.5" /> Diff
+            <FileDiff className="mr-1 size-3.5" /> See changes
           </Button>
           <Button
             variant="ghost"
@@ -70,7 +71,7 @@ export function ChangeCard({ card }: { card: ChatChangeCard }) {
             onClick={() => revert.mutate()}
           >
             <RotateCcw className="mr-1 size-3.5" />
-            {revert.isPending ? "Reverting…" : "Revert"}
+            {revert.isPending ? "Undoing…" : "Undo"}
           </Button>
         </div>
       </div>
@@ -81,7 +82,8 @@ export function ChangeCard({ card }: { card: ChatChangeCard }) {
         <DialogContent className="flex max-h-[80vh] w-[min(92vw,34rem)] max-w-[min(92vw,34rem)] flex-col overflow-hidden">
           <DialogHeader>
             <DialogTitle>
-              Changes in v{card.version_number} · {targetLabel}
+              Changes in version {card.version_number} of{" "}
+              {card.resume_kind === "base" ? baseName : "the tailored resume"}
             </DialogTitle>
           </DialogHeader>
           <div className="min-h-0 flex-1 overflow-y-auto pr-1">

@@ -45,7 +45,7 @@ _PROMPTS = frozenset(
         ("components/list-search.tsx", "Search company or role" + _ELLIPSIS),
         ("components/role-picker.tsx", "Search roles, or type your own" + _ELLIPSIS),
         ("components/career/merge-entity-dialog.tsx", "Search by title" + _ELLIPSIS),
-        ("components/chat/chat-page.tsx", "Ask about your resume" + _ELLIPSIS),
+        ("components/chat/chat-page.tsx", "Ask the Assistant" + _ELLIPSIS),
         ("components/ui/chip-input.tsx", "Add" + _ELLIPSIS),
         ("components/career/profile-panel.tsx", "Add skills" + _ELLIPSIS),
         ("components/resume-editor/skills-editor.tsx", "Add skill" + _ELLIPSIS),
@@ -120,34 +120,11 @@ _PENDING_EXAMPLES_T20: dict[tuple[str, str], int] = {  # D §5 Career history
     ("components/career/new-entity-dialog.tsx", "e.g. University of Toronto"): 1,
     ("components/career/profile-panel.tsx", "e.g. ML Ops"): 1,
 }
-_PENDING_EXAMPLES_T21: dict[tuple[str, str], int] = {  # D §6 Settings and Profile
-    ("components/settings/autofill-section.tsx", "e.g. $120,000"): 1,
-    ("components/settings/autofill-section.tsx", "e.g. 2 weeks"): 1,
-    ("components/settings/autofill-section.tsx", "e.g. 2021"): 1,
-    ("components/settings/autofill-section.tsx", "e.g. 2023"): 1,
-    ("components/settings/autofill-section.tsx", "e.g. 3.8"): 1,
-    ("components/settings/autofill-section.tsx", "e.g. Apt 4B"): 1,
-    ("components/settings/autofill-section.tsx", "e.g. Asian"): 1,
-    ("components/settings/autofill-section.tsx", "e.g. Data Science"): 1,
-    ("components/settings/autofill-section.tsx", "e.g. Job board"): 1,
-    ("components/settings/autofill-section.tsx", "e.g. Master of Science"): 1,
-    ("components/settings/llm-endpoint.tsx", "e.g. http://host.docker.internal:11434/v1"): 1,
-    ("components/settings/models-section.tsx", "e.g. AIza..."): 1,
-    ("components/settings/models-section.tsx", "e.g. llama3.2:3b"): 1,
-    ("components/settings/models-section.tsx", "e.g. sk-..."): 1,
-    (
-        "components/settings/persona-section.tsx",
-        "e.g.\nVision: build data products that actually ship.\nStrengths: pragmatic ML, clear writing, fast"
-        " prototyping.\nGoals: senior DS/MLE role on a product team.\nHow I work: bias to shipping, evidence"
-        " over opinion.",
-    ): 1,
-}
 _EXAMPLE_BLOCKS = (
     _PENDING_EXAMPLES_T17,
     _PENDING_EXAMPLES_T18,
     _PENDING_EXAMPLES_T19,
     _PENDING_EXAMPLES_T20,
-    _PENDING_EXAMPLES_T21,
 )
 _PENDING_EXAMPLES: dict[tuple[str, str], int] = {key: n for block in _EXAMPLE_BLOCKS for key, n in block.items()}
 
@@ -157,7 +134,6 @@ _PASS_THROUGH = frozenset(
     {
         ("components/resume-editor/field.tsx", "placeholder"),
         ("components/resume-editor/contact-form.tsx", "placeholder"),
-        ("components/settings/autofill-section.tsx", "field.placeholder"),
         ("components/role-picker.tsx", "props.placeholder"),
         ("components/gallery/preview-thumbnail.tsx", "string"),
     }
@@ -627,13 +603,14 @@ def test_saved_key_is_a_hint_not_a_placeholder():
     assert "Saved · type to replace" not in src
     # Only a configured key has the hint line; the inputs align at the bottom.
     assert re.search(r'className="grid items-end gap-4 @lg/setting:grid-cols-2">\s*<KeyField', src)
-    assert 'placeholderUnset="e.g. sk-..."' in src
-    assert 'placeholderUnset="e.g. AIza..."' in src
+    # The format is a hint while no key is saved; the field itself stays blank.
+    assert 'hintUnset="Starts with sk-."' in src
+    assert 'hintUnset="Starts with AIza."' in src
+    assert "placeholder=" not in src
     _order(
         src,
-        "Type a new key to replace the saved one.",
-        "aria-describedby={configured ? hintId : undefined}",
-        "placeholder={configured ? undefined : placeholderUnset}",
+        '{configured ? "Type a new key to replace the saved one." : hintUnset}',
+        "aria-describedby={hintId}",
     )
 
 
@@ -688,6 +665,7 @@ def test_metric_units_are_examples():
 def test_custom_answer_has_a_visible_label_not_a_placeholder():
     src = _src("components/settings/autofill-section.tsx")
     assert 'placeholder="Answer"' not in src
+    assert "e.g. Why do you want to work here?" not in src
     _order(
         src,
         "htmlFor={`af-custom-${i}-answer`}",

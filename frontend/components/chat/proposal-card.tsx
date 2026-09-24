@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useBaseResumeName } from "@/hooks/use-base-resume-label";
 import { applyResumeEdits, setChatCardState } from "@/lib/api";
+import { couldnt } from "@/lib/error-text";
 import { notifyRenderNote } from "@/lib/render-note";
 import type {
   ChatCardState,
@@ -16,8 +17,8 @@ import type {
 } from "@/lib/types";
 
 /**
- * Staged extraction result (upload → project points). Never merged silently —
- * the user reviews the drafted entry and merges or discards it explicitly.
+ * Staged extraction result (upload → project bullets). Never added silently —
+ * the user reviews the drafted project and adds or discards it explicitly.
  * Resolution persists via the card-state endpoint so reloads don't re-offer it.
  */
 export function ProposalCard({
@@ -53,12 +54,12 @@ export function ProposalCard({
       qc.invalidateQueries({ queryKey: ["application"] });
       qc.invalidateQueries({ queryKey: ["resume-versions"] });
       notifyRenderNote(result);
-      toast.success("Project merged into the resume");
+      toast.success("Project added to the resume");
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(couldnt("add the project", err)),
   });
 
-  const targetLabel = proposal.target_kind === "base" ? baseName : "tailored resume";
+  const targetLabel = proposal.target_kind === "base" ? baseName : "the tailored resume";
 
   return (
     <div className="rounded-md border border-dashed px-3 py-2">
@@ -67,7 +68,7 @@ export function ProposalCard({
           Suggested project
         </Badge>
         <span className="font-medium">{proposal.project.name}</span>
-        <span className="text-muted-foreground text-xs">→ {targetLabel}</span>
+        <span className="text-muted-foreground text-xs">For {targetLabel}</span>
       </div>
       {proposal.project.tech && (
         <p className="text-muted-foreground mt-1 text-xs">
@@ -82,7 +83,7 @@ export function ProposalCard({
       <div className="mt-2 flex justify-end gap-2">
         {resolution ? (
           <span className="text-muted-foreground text-xs">
-            {resolution === "merged" ? "Merged" : "Discarded"}
+            {resolution === "merged" ? "Added" : "Discarded"}
           </span>
         ) : (
           <>
@@ -101,7 +102,7 @@ export function ProposalCard({
               disabled={merge.isPending}
               onClick={() => merge.mutate()}
             >
-              {merge.isPending ? "Merging…" : "Merge into resume"}
+              {merge.isPending ? "Adding…" : "Add to resume"}
             </Button>
           </>
         )}

@@ -232,6 +232,19 @@ def test_template_step_is_done_once_a_user_made_template_is_default(client, db_s
     assert template["detail"]["default_template_id"] == "mine"
 
 
+def test_template_step_names_the_default_template(client, db_session):
+    """The setup row says "Default: <name>", never the template's id (appendix D7.2)."""
+    from app.models.template import Template
+
+    db_session.add(BaseResume(slug="a", data_json={}))
+    db_session.add(
+        Template(id="mine", source="x", engine="typst", origin="frontend", is_default=True, display_name="My layout")
+    )
+    db_session.commit()
+
+    assert _status(client)["template"]["detail"]["default_template_name"] == "My layout"
+
+
 def test_template_step_ignores_bases_without_an_explicit_template(client, db_session):
     """bases_without_template stays as information, never as the gate."""
     db_session.add(BaseResume(slug="a", data_json={}, template_id="mine"))
@@ -251,6 +264,7 @@ def test_template_step_is_not_done_with_no_templates_at_all(client, db_session):
     template = _status(client)["template"]
     assert template["done"] is False
     assert template["detail"]["default_template_id"] is None
+    assert template["detail"]["default_template_name"] is None
 
 
 def test_eeo_decline_counts_as_answered_and_optionals_do_not_block(client, db_session):

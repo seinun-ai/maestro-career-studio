@@ -14,12 +14,11 @@ export default function NotFound() {
       <FileQuestion className="text-muted-foreground/50 size-8" aria-hidden />
       <h1 className="text-lg font-medium">Page not found</h1>
       <p className="text-muted-foreground text-sm">
-        That URL doesn&apos;t exist here. It may have been renamed, or the
-        record behind it was deleted.
+        It may have moved or been deleted.
       </p>
       <Button
         nativeButton={false}
-        render={<Link href="/applications">Back to Applications</Link>}
+        render={<Link href="/applications">Back to applications</Link>}
       />
     </main>
   );

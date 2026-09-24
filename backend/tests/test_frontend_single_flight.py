@@ -51,6 +51,10 @@ _SITES = [
     ("components/settings/llm-endpoint.tsx", "save"),
     ("components/settings/model-catalog-panel.tsx", "add"),
     ("components/settings/model-catalog-panel.tsx", "remove"),
+    # Profile › Autofill's Save and the Assistant's New chat (waves 1+2 integrated browser pass: a
+    # double click sent two PUTs and two toasts, or made two chats).
+    ("components/settings/autofill-section.tsx", "save"),
+    ("components/chat/chat-page.tsx", "newSession"),
     # Build draft and Rebuild share one guard; Queue for agent on a tracker row and the job header
     # (a double click filed two accepted proposals for one job).
     ("components/resume-editor/tailored-resume-studio.tsx", "materialize"),

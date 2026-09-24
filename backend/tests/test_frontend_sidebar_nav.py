@@ -97,3 +97,20 @@ def test_sidebar_toggles_name_their_shortcut():
     for src in (_SIDEBAR, _REVEAL):
         assert 'shortcutLabel(mod, "B")' in src  # visible hint (title)
         assert 'aria-keyshortcuts="Meta+B Control+B"' in src  # programmatic
+
+
+def test_the_sidebar_uses_the_glossary_names():
+    # docs/frontend-conventions.md, Canonical terms (appendix D7.1).
+    for present in ('label: "Career history"', 'label: "Base resumes"', 'label: "Assistant"', "Add job\n"):
+        assert present in _SIDEBAR, present
+    for gone in ("Career KB", "Base Resumes", 'label: "Chat"', "New application"):
+        assert gone not in _SIDEBAR, gone
+
+
+def test_the_sidebar_toggles_name_what_a_press_does():
+    # "Toggle" named the mechanism; each control says the result (appendix D7.1).
+    assert "title={`Hide sidebar (${shortcutLabel(mod, \"B\")})`}" in _SIDEBAR
+    assert "title={`Show sidebar (${shortcutLabel(mod, \"B\")})`}" in _REVEAL
+    assert '{open ? "Hide sidebar" : "Show sidebar"}' in _UI
+    assert "const open = isMobile ? openMobile : state === \"expanded\"" in _UI
+    assert "Toggle" not in _SIDEBAR + _REVEAL + _UI.replace("toggleSidebar", "")

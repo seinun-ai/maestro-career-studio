@@ -78,7 +78,7 @@ export function ConnectedAgentsCard() {
                   <Link href="/proposals" className="text-primary underline underline-offset-4">
                     Agent inbox
                   </Link>{" "}
-                  for you to accept or skip.
+                  for you to queue or skip.
                 </li>
                 <li>Read your career history and job preferences.</li>
                 <li>
@@ -87,7 +87,7 @@ export function ConnectedAgentsCard() {
                   skills and contact details, apply at once.
                 </li>
                 <li>Create, edit and tailor your resumes.</li>
-                <li>Fill in and submit applications you accepted, after your yes.</li>
+                <li>Fill in and submit applications you queued, after your yes.</li>
               </ul>
             </div>
             <div className="grid content-start gap-1.5">

@@ -13,34 +13,60 @@ import { Button } from "@/components/ui/button";
 import { CardSection } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { apiFetch } from "@/lib/api";
+import { couldnt } from "@/lib/error-text";
 import type { SettingValue } from "@/lib/types";
 
+type PromptMeta = { key: string; title: string; description: string };
+
 // Only these are user-voice prompts worth surfacing by default; every other
-// key is internal plumbing (extraction, KB pipeline, verification) and lives
-// behind the "Advanced" disclosure below, keyed by its raw prompt name.
-const ESSENTIAL_PROMPTS: { key: string; title: string; description: string }[] = [
+// key is internal plumbing (reading jobs, career history, checks) and lives
+// behind the "More instructions" disclosure below.
+const ESSENTIAL_PROMPTS: PromptMeta[] = [
   {
     key: "cover_letter",
     title: "Cover letter",
-    description: "Voice and structure of generated cover letters.",
+    description: "Tone and structure of cover letters.",
   },
   {
     key: "qa",
-    title: "Application Q&A",
-    description: "How free-response application questions are answered in your voice.",
+    title: "Application questions",
+    description: "How your written answers to application questions sound.",
   },
   {
     key: "gap_tailor",
-    title: "Gap tailoring",
-    description: "How resolved gap answers get folded into a tailored resume.",
+    title: "Tailoring from your answers",
+    description: "How your gap answers go into a tailored resume.",
   },
   {
     key: "chat_system",
-    title: "Chat assistant",
-    description: "System behavior for the main chat assistant.",
+    title: "Assistant",
+    description: "How the Assistant behaves.",
   },
 ];
 const ESSENTIAL_KEYS = new Set(ESSENTIAL_PROMPTS.map((p) => p.key));
+
+// Words for the other prompts (one per file in backend/app/prompts/). A key
+// this map lacks still shows, titled by the key itself.
+const PROMPT_TITLES = new Map<string, Omit<PromptMeta, "key">>([
+  ["autofill_choose", { title: "Autofill choices", description: "How Companion picks answers for form choices." }],
+  ["base_from_kb_plan", { title: "New base resume plan", description: "How items are picked for a new base resume." }],
+  ["base_resume_instruct", { title: "Ask for changes", description: "How the studio suggests edits." }],
+  ["coherence_check", { title: "Wording checks", description: "How a tailored resume is checked for flow." }],
+  ["extract_jd", { title: "Reading job descriptions", description: "How a job description becomes job details." }],
+  ["gap_enrichment", { title: "Gap suggestions", description: "How gaps get suggested answers." }],
+  ["kb_adapt", { title: "Rewording bullets", description: "How bullets are reworded for a resume." }],
+  ["kb_capture", { title: "Quick capture", description: "How an update becomes draft bullets." }],
+  ["kb_cluster_points", { title: "Merging bullets", description: "How similar bullets are combined." }],
+  ["kb_document_ingest", { title: "Reading documents", description: "How a document becomes draft bullets." }],
+  ["kb_entity_resolve", { title: "Matching items", description: "How a new bullet finds its item." }],
+  ["kb_mint", { title: "Drafting bullets", description: "How bullets are drafted from a document." }],
+  ["kb_resume_parse", { title: "Reading resume files", description: "How an imported resume is read." }],
+  ["persona_draft", { title: "Persona draft", description: "How your persona is drafted." }],
+  ["resume_bullet_classify", { title: "Rating bullets", description: "How the health check rates each bullet." }],
+  ["resume_bullet_rewrite", { title: "Rewriting bullets", description: "How the health check writes new wording." }],
+  ["resume_finding_verify", { title: "Checking issues", description: "How the health check confirms an issue." }],
+  ["tailoring_skill", { title: "Tailoring skills", description: "How skills are added while tailoring." }],
+]);
 
 export function PromptsSection() {
   const prompts = useQuery({
@@ -53,9 +79,9 @@ export function PromptsSection() {
   return (
     <SettingCard
       id="prompts"
-      title="Prompts"
-      description="Override the voice used for cover letters, outreach, Q&A, and chat."
-      errorTitle="Couldn't load your prompts."
+      title="AI instructions"
+      description="Change how the AI writes cover letters, answers, tailoring and Assistant replies."
+      errorTitle="Couldn't load your AI instructions."
       query={prompts}
     >
       {(data) => {
@@ -89,13 +115,13 @@ export function PromptsSection() {
                 ) : (
                   <ChevronRightIcon className="size-3.5" aria-hidden="true" />
                 )}
-                Advanced prompts ({advanced.length})
+                More instructions ({advanced.length})
               </button>
               {/* Hidden, never unmounted: a collapse used to drop every typed
                   draft in here, and its leave-guard registration with it. */}
               <div id={advancedId} hidden={!advancedOpen} className="grid gap-3">
                 {advanced.map((p) => (
-                  <PromptCard key={p.key} prompt={p} />
+                  <PromptCard key={p.key} prompt={p} {...PROMPT_TITLES.get(p.key)} />
                 ))}
               </div>
             </div>
@@ -119,9 +145,8 @@ function PromptCard({
   const [open, setOpen] = useState(false);
   const [value, setValue] = useState(prompt.value);
 
-  // The curated prompts have human titles on screen; an advanced one is only
-  // ever known by its key. Report whichever the user is actually looking at
-  // rather than always printing the raw key.
+  // Every known prompt has a title on screen; one the map lacks is known only
+  // by its key. Report whichever the user is actually looking at.
   const name = title ?? prompt.key;
 
   const apply = (result: SettingValue) => {
@@ -138,9 +163,9 @@ function PromptCard({
       }),
     onSuccess: (result) => {
       apply(result);
-      toast.success(`${name} saved`);
+      toast.success(`${name} instructions saved`);
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(couldnt("save the instructions", err)),
   });
 
   const reset = useMutation({
@@ -151,9 +176,9 @@ function PromptCard({
     onSuccess: (result) => {
       apply(result);
       setValue(result.value);
-      toast.success(`${name} reset to default`);
+      toast.success(`${name} instructions reset to default`);
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(couldnt("reset the instructions", err)),
   });
   useLeaveGuard(value !== prompt.value);
   const saveOnce = useSingleFlight(save.mutate);
@@ -182,20 +207,17 @@ function PromptCard({
           )}
         </div>
         <span className="text-muted-foreground shrink-0 text-xs">
-          {open ? "Collapse" : "Expand"}
+          {open ? "Hide" : "Edit"}
         </span>
       </button>
       {open && (
         <div id={bodyId} className="grid gap-3 px-3 pb-3">
-          {title && (
-            <p className="text-muted-foreground font-mono text-xs wrap-anywhere">{prompt.key}</p>
-          )}
           <Textarea
             rows={10}
             value={value}
             onChange={(e) => setValue(e.target.value)}
             className="font-mono text-xs"
-            aria-label={`${name} prompt text`}
+            aria-label={`${name} instructions`}
           />
           <div className={ACTION_ROW}>
             <Button

@@ -62,7 +62,7 @@ def test_the_conversation_column_is_a_focus_target():
 
 
 def test_a_long_pinned_resume_name_truncates_instead_of_widening_the_row():
-    trigger = _tag('aria-label="Pinned resume"')
+    trigger = _tag('aria-label="Resume to edit"')
     assert re.search(r'className="[^"]*\bw-auto max-w-48 min-w-0\b', trigger)
     assert "title={pinnedName}" in trigger
     assert '<span className="truncate">{pinnedName}</span>' in _CHAT

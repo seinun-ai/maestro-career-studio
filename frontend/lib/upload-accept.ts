@@ -43,12 +43,3 @@ export const RESUME_FILE_ACCEPT = [
   "application/json",
   ...DOCUMENT_MIMES,
 ].join(",");
-
-/** The human-readable half of an accept list: its extensions, without the
- *  MIME types, for hints and rejection messages. */
-export function acceptExtensions(accept: string): string[] {
-  return accept
-    .split(",")
-    .map((entry) => entry.trim())
-    .filter((entry) => entry.startsWith("."));
-}
