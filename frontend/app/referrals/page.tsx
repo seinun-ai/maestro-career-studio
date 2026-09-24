@@ -323,7 +323,7 @@ function ReferralsTable({ rows }: { rows: Referral[] }) {
   return (
     <div ref={rootRef} tabIndex={-1} className="outline-none">
       <TableFrame>
-        <Table className="min-w-[48rem] table-fixed">
+        <Table minWidth="48rem" stickyHeader className="table-fixed">
           <TableHeader>
             <TableRow className="hover:bg-transparent">
               <TableHead>Company</TableHead>

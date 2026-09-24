@@ -9,7 +9,6 @@ import {
   EllipsisVertical,
   FilePlus2,
   Inbox,
-  Search,
   SendHorizontal,
   Trash2,
 } from "lucide-react";
@@ -18,6 +17,8 @@ import { toast } from "sonner";
 import { CompanyMonogram } from "@/components/company-monogram";
 import { EmptyState, TableFrame } from "@/components/empty-state";
 import { IconButton } from "@/components/icon-button";
+import { ListSearch } from "@/components/list-search";
+import { ListToolbar } from "@/components/list-toolbar";
 import { LoadErrorState } from "@/components/load-error-state";
 import { GettingStartedCard } from "@/components/setup/getting-started-card";
 import { useSidebarHidden } from "@/components/sidebar-reveal-trigger";
@@ -34,7 +35,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -414,17 +414,8 @@ function ApplicationsContent() {
         }
       />
 
-      <div className="flex flex-col gap-3">
-        <div className="relative w-full max-w-sm">
-          <Search className="text-muted-foreground pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2" />
-          <Input
-            aria-label="Search applications"
-            placeholder="Search company or role…"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            className="h-10 rounded-full pl-10"
-          />
-        </div>
+      <ListToolbar>
+        <ListSearch label="Search applications" value={q} onChange={setQ} />
         <div className="flex flex-wrap items-center gap-1.5">
           <Select
             value={filter}
@@ -470,7 +461,7 @@ function ApplicationsContent() {
             onChange={setSourceAndUrl}
           />
         </div>
-      </div>
+      </ListToolbar>
 
       {loadFailed ? (
         <LoadErrorState
@@ -530,12 +521,14 @@ function ApplicationsContent() {
         </div>
       ) : (
         <TableFrame>
-          {/* min-w engages Table's own overflow-x-auto container. Without it the
-              table shrinks to whatever width is left — 462px at 768px, where the
-              sidebar has not yet collapsed — and because the layout is fixed the
-              status chip cannot widen its column, so it paints over the Applied
-              date instead. */}
-          <Table className="min-w-[52rem] table-fixed">
+          {/* minWidth engages Table's own overflow-x-auto container. Without
+              it the table shrinks to whatever width is left (462px at 768px,
+              where the sidebar has not yet collapsed), and because the layout
+              is fixed the status chip cannot widen its column, so it paints
+              over the Applied date instead. It is also the width the header
+              sticks from: a table wider than its frame scrolls sideways, and
+              then its header cannot stick to the window. */}
+          <Table minWidth="52rem" stickyHeader className="table-fixed">
             <TableHeader>
               <TableRow className="hover:bg-transparent">
                 {header("role", "Role", "w-[42%]")}

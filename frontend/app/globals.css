@@ -6,9 +6,11 @@
 /* Sticky list chrome only where it can afford the room. Below 40rem of
    height (a landscape phone, 200% zoom on a laptop, 400% zoom anywhere), a
    stuck toolbar and header would take a third of the screen or more, and
-   WCAG 1.4.10 wants that content to scroll. Mirrored by TALL_QUERY in
-   components/list-toolbar.tsx and by the --list-head-h query below (pinned). */
-@custom-variant tall (@media (min-height: 40rem));
+   WCAG 1.4.10 wants that content to scroll. Screen only: a print:static
+   beside it loses (this rule comes later), so print is left out here.
+   Mirrored by TALL_QUERY in components/list-toolbar.tsx and by the
+   --list-head-h query below (pinned). */
+@custom-variant tall (@media screen and (min-height: 40rem));
 
 @theme inline {
   --color-background: var(--background);
@@ -194,16 +196,23 @@
   }
   html {
     @apply font-sans;
-    /* WCAG 2.4.11 (C43): a focus scrolled into view lands below the sticky
-       list chrome, not under it. --list-sticky-top is ListToolbar's height,
-       written by it while mounted; --list-head-h is a sticky table header's
-       h-10 plus 0.5rem for the focus ring. Both unset: 0, the default. */
-    scroll-padding-top: calc(var(--list-sticky-top, 0px) + var(--list-head-h, 0px));
   }
-  @media (min-height: 40rem) {
+  @media screen and (min-height: 40rem) {
     html:has([data-slot="table-header"][data-sticky]) {
       --list-head-h: 3rem;
     }
+  }
+  /* WCAG 2.4.11 (C43): a focus scrolled into view lands below the sticky
+     list chrome, not under it. --list-sticky-top is ListToolbar's height,
+     written by it while mounted; --list-head-h is a sticky table header's
+     h-10 plus 0.5rem for the focus ring. Both unset: 0, the default.
+     Only while focus is IN the list (after a ListToolbar, or in a sticky
+     table's body): a control in the stuck toolbar, a portalled popup or a
+     dialog is never under the chrome, and padding for them scrolled the
+     page to "clear" them, so the list jumped. */
+  html:has([data-slot="list-toolbar"] ~ * :focus,
+    [data-slot="table-header"][data-sticky] ~ [data-slot="table-body"] :focus) {
+    scroll-padding-top: calc(var(--list-sticky-top, 0px) + var(--list-head-h, 0px));
   }
 }
 

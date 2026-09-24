@@ -86,7 +86,7 @@ function TableHeader({ className, ...props }: React.ComponentProps<"thead">) {
           ? [
               sticky,
               // Under a ListToolbar, below it; with none, at the window's top.
-              "top-(--list-sticky-top,0px) z-10 print:static",
+              "top-(--list-sticky-top,0px) z-10",
               // Opaque cells, or rows show through. A table on a card passes
               // [&_th]:bg-card.
               "[&_th]:bg-background",

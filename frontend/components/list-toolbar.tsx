@@ -4,8 +4,9 @@ import { useEffect, useRef, type ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
 
-/** The `tall:` variant's query (app/globals.css). Below it nothing sticks. */
-export const TALL_QUERY = "(min-height: 40rem)";
+/** The `tall:` variant's query (app/globals.css). Below it, and in print,
+ *  nothing sticks. */
+export const TALL_QUERY = "screen and (min-height: 40rem)";
 /** Read by a sticky TableHeader's `top` and by html's scroll-padding-top. */
 const STICKY_TOP_VAR = "--list-sticky-top";
 
@@ -72,7 +73,7 @@ export function ListToolbar({
         // above and below the controls once stuck. z-30: over a gallery
         // card's z-20 actions, under the fixed bulk bar (z-40) and every
         // portalled popup (z-50).
-        "bg-background -my-3 flex flex-col gap-3 py-3 tall:sticky tall:top-0 tall:z-30 print:static",
+        "bg-background -my-3 flex flex-col gap-3 py-3 tall:sticky tall:top-0 tall:z-30",
         className,
       )}
     >

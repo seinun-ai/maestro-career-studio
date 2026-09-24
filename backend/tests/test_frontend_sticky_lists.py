@@ -86,7 +86,7 @@ def test_a_sticky_header_is_opaque_ruled_stacked_and_placed_under_the_toolbar():
     for part in (
         "React.useContext(StickyHeadContext)",
         'data-sticky={sticky ? "" : undefined}',
-        '"top-(--list-sticky-top,0px) z-10 print:static"',
+        '"top-(--list-sticky-top,0px) z-10"',
         '"[&_th]:bg-background"',
         '"[&_tr]:border-b-0 [&_th]:shadow-[inset_0_-1px_0_var(--color-border)]"',
         ': "[&_tr]:border-b"',
@@ -103,20 +103,25 @@ def test_the_table_frame_clips_without_becoming_a_scroller():
 # ── ListToolbar, the tall: variant, and focus clearance ──────────────────────
 
 
-def test_the_tall_threshold_is_one_number():
-    css = re.search(r"@custom-variant tall \(@media (\(min-height: [\d.]+rem\))\);", _CSS)
+def test_the_tall_threshold_is_one_number_and_screen_only():
+    """One query for the three places that ask it. `screen and`: nothing
+    sticks in print. A `print:static` beside `tall:sticky` lost to it in
+    Chromium (the custom variant's rule comes later in the stylesheet), so a
+    printed page carried a stuck bar mid-page."""
+    query = r"(screen and \(min-height: [\d.]+rem\))"
+    css = re.search(r"@custom-variant tall \(@media " + query + r"\);", _CSS)
     assert css, "the tall variant"
-    ts = re.search(r'export const TALL_QUERY = "(\(min-height: [\d.]+rem\))";', _TOOLBAR)
+    ts = re.search(r'export const TALL_QUERY = "' + query + r'";', _TOOLBAR)
     assert ts and ts.group(1) == css.group(1)
     head = re.search(
-        r'@media (\(min-height: [\d.]+rem\)) \{\s*html:has\(\[data-slot="table-header"\]\[data-sticky\]\)',
+        r"@media " + query + r' \{\s*html:has\(\[data-slot="table-header"\]\[data-sticky\]\)',
         _CSS,
     )
     assert head and head.group(1) == css.group(1)
 
 
 def test_the_toolbar_sticks_on_the_page_colour_above_the_list():
-    for part in ("tall:sticky", "tall:top-0", "tall:z-30", "bg-background", "-my-3", "py-3", "print:static"):
+    for part in ("tall:sticky", "tall:top-0", "tall:z-30", "bg-background", "-my-3", "py-3"):
         assert part in _TOOLBAR, part
 
 
@@ -145,12 +150,73 @@ def test_the_toolbar_publishes_its_height_and_takes_it_back():
     assert "--list-sticky-top" in _body(_TABLE, "function TableHeader(")
 
 
+_PAD = "scroll-padding-top: calc(var(--list-sticky-top, 0px) + var(--list-head-h, 0px));"
+_IN_LIST = (
+    'html:has([data-slot="list-toolbar"] ~ * :focus,\n'
+    '    [data-slot="table-header"][data-sticky] ~ [data-slot="table-body"] :focus) {'
+)
+
+
 def test_focus_scrolled_into_view_clears_the_sticky_chrome():
     """WCAG 2.4.11 (C43). Browser-verified in Chromium: without it, Shift+Tab
     onto a row under a stuck header leaves that row under it."""
-    html = _CSS[_CSS.index("  html {") :]
-    html = html[: html.index("}")]
-    assert "scroll-padding-top: calc(var(--list-sticky-top, 0px) + var(--list-head-h, 0px));" in html
+    rule = _CSS[_CSS.index(_IN_LIST) :]
+    assert rule[: rule.index("}")].count(_PAD) == 1
     assert re.search(
         r'html:has\(\[data-slot="table-header"\]\[data-sticky\]\) \{\s*--list-head-h: 3rem;', _CSS
     )
+
+
+def test_only_focus_in_the_list_is_cleared():
+    """The padding counts the toolbar's own height, so on html it treated a
+    control IN the stuck toolbar, a portalled popup or a dialog as under the
+    chrome. Browser-verified in Chromium: focusing the status filter while
+    scrolled moved the page up about 400px, and opening it about 370px more.
+    Nothing before the toolbar or outside the page can sit under it, so the
+    padding applies only while focus is after a ListToolbar or in a sticky
+    table's body."""
+    html = _CSS[_CSS.index("  html {") :]
+    assert "scroll-padding" not in html[: html.index("}")]
+    assert _CSS.count("scroll-padding-top") == 1
+
+
+# ── Applications and Referrals adopt them ────────────────────────────────────
+
+_TRACKER = _read("app/applications/page.tsx")
+_REFERRALS = _read("app/referrals/page.tsx")
+_SEARCH = _read("components/list-search.tsx")
+
+
+def test_every_call_site_width_is_in_the_map_and_nowhere_else():
+    keys = {w[0] for w in _WIDTH_ENTRY.findall(_TABLE)}
+    for root in ("app", "components"):
+        for p in sorted((_FRONTEND / root).rglob("*.tsx")):
+            src = p.read_text(encoding="utf-8")
+            for w in re.findall(r'<Table\b[^>]*\bminWidth="([^"]+)"', src):
+                assert w in keys, f"{p}: minWidth={w} has no MIN_WIDTH entry"
+            # One source for the number: a call site never restates it.
+            assert not re.search(r'<Table\b[^>]*className="[^"]*min-w-\[', src), p
+
+
+def test_the_tracker_toolbar_and_header_stick():
+    assert "<ListToolbar>" in _TRACKER
+    # A direct child of the page's <main>: no wrapper that could scroll or end early.
+    shell = _TRACKER[_TRACKER.index("<PageShell>") : _TRACKER.index("<ListToolbar>")]
+    assert "<div" not in shell
+    assert '<Table minWidth="52rem" stickyHeader className="table-fixed">' in _TRACKER
+
+
+def test_referrals_header_sticks():
+    assert '<Table minWidth="48rem" stickyHeader className="table-fixed">' in _REFERRALS
+
+
+def test_the_tracker_search_is_the_shared_list_search():
+    """One list search box (planner decision 16, Q12): Applications and the
+    Agent inbox render the same component, so the two never drift."""
+    assert 'placeholder="Search company or role…"' in _SEARCH
+    assert "aria-label={label}" in _SEARCH
+    toolbar = _TRACKER[_TRACKER.index("<ListToolbar>") : _TRACKER.index("</ListToolbar>")]
+    assert '<ListSearch label="Search applications" value={q} onChange={setQ} />' in toolbar
+    # No second copy of the box left behind in the page.
+    assert "placeholder=" not in _TRACKER
+    assert "<Input" not in _TRACKER
