@@ -13,7 +13,7 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.schemas.autofill_choose import Choice, ChooseField
-from app.services import autofill_profile, career_kb, llm, model_settings, persona, prompt_assembly
+from app.services import career_kb, eeo_consent, llm, model_settings, persona, prompt_assembly
 
 
 def _wire_fields(fields: list[ChooseField]) -> list[dict]:
@@ -48,7 +48,9 @@ def choose(
     session: Session,
 ) -> dict[str, Choice]:
     prompt = prompt_assembly.build_autofill_choose_prompt(
-        profile=autofill_profile.get_profile(session),
+        # Consent-gated like GET /context: the prompt goes to a model provider,
+        # so diversity answers go only when standing consent is on.
+        profile=eeo_consent.disclosable_profile(session),
         memory=career_kb.compose_context(session),
         fields=_wire_fields(fields),
         persona=persona.get_persona(session),

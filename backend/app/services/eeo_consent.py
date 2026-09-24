@@ -3,12 +3,16 @@
 Values here are consent metadata only — never EEO answers.
 """
 
+import logging
 from datetime import UTC, datetime
+from typing import Any
 
 from sqlalchemy.orm import Session
 
 from app.schemas.eeo_consent import CURRENT_POLICY_VERSION, EeoConsent
 from app.services.json_settings import JsonSetting
+
+logger = logging.getLogger(__name__)
 
 EEO_CONSENT = JsonSetting("eeo_consent", "eeo_consent.json", EeoConsent)
 # Key/filename stay importable: callers and tests address the setting by
@@ -42,3 +46,32 @@ def set_consent(consent: EeoConsent, session: Session | None = None) -> EeoConse
             }
         )
     return EEO_CONSENT.set(consent, session)
+
+
+def withhold_unconsented(profile: Any, consent: Any) -> Any:
+    """THE gate for protected-class answers (SYSTEM.md inv-eeo-standing-consent).
+
+    `profile.eeo` leaves the server only when `consent` (the record as
+    `model_dump(mode="json")` gives it) says `enabled`. Fails CLOSED: a consent
+    that could not be computed (None, anything not a dict) is not consent. Every
+    reader that hands the profile outward goes through here — GET
+    /api/autofill/context (to the browser) and the /choose prompt (to a model
+    provider) — so which path asks never decides what is disclosed. Returns a
+    copy; the caller's dict is not changed."""
+    consented = isinstance(consent, dict) and bool(consent.get("enabled"))
+    if consented or not isinstance(profile, dict):
+        return profile
+    return {key: value for key, value in profile.items() if key != "eeo"}
+
+
+def disclosable_profile(session: Session) -> dict[str, Any]:
+    """The autofill profile with the gate applied, for a reader that needs the
+    whole profile and no separate consent section (the /choose prompt)."""
+    from app.services import autofill_profile
+
+    try:
+        consent = get_consent(session).model_dump(mode="json")
+    except Exception:  # noqa: BLE001 — unreadable consent withholds, it never crashes a fill
+        logger.exception("eeo consent could not be read; withholding EEO answers")
+        consent = None
+    return withhold_unconsented(autofill_profile.get_profile(session), consent)
