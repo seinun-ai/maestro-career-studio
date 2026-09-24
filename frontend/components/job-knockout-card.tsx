@@ -4,6 +4,7 @@ import { AlertTriangle, CircleCheck, CircleHelp, ShieldAlert } from "lucide-reac
 import { GuardedLink as Link } from "@/components/guarded-link";
 import type { ReactNode } from "react";
 
+import { anchorHref } from "@/lib/settings-tabs";
 import type { KnockoutCheck, KnockoutScan, KnockoutStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -59,11 +60,12 @@ const CHECK_GROUP: Partial<Record<KnockoutCheck["kind"], string>> = {
  *  for the unanswered question is barely better than landing on the wrong
  *  page, which is what this link used to do — it pointed at `/settings`, where
  *  the autofill card has never lived. The `autofill-<group>` ids are the
- *  fieldsets in `settings/autofill-section.tsx`. */
+ *  fieldsets in `settings/autofill-section.tsx`; `anchorHref` adds the Autofill
+ *  tab, so the server renders the panel that holds them. */
 function autofillHref(scan: KnockoutScan): string {
   const missing = scan.checks.find((c) => c.result === "profile_missing");
   const group = missing ? CHECK_GROUP[missing.kind] : undefined;
-  return group ? `/profile#autofill-${group}` : "/profile#autofill";
+  return anchorHref("/profile", group ? `autofill-${group}` : "autofill");
 }
 
 export function JobKnockoutCard({ scan }: { scan: KnockoutScan | null | undefined }) {

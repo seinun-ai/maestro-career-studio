@@ -1,3 +1,4 @@
+import { anchorHref } from "@/lib/settings-tabs";
 import type { SetupStatus } from "@/lib/types";
 
 export type SetupAction =
@@ -178,6 +179,6 @@ export function buildSetupSteps(
         ? { kind: "dialog", dialog: "upload" }
         : pathname === step.home
           ? { kind: "focus", anchor: step.anchor }
-          : { kind: "navigate", href: `${step.home}#${step.anchor}` },
+          : { kind: "navigate", href: anchorHref(step.home, step.anchor) },
   }));
 }

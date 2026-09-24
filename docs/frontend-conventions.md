@@ -893,13 +893,20 @@
   autofill answers). Both write `/api/settings/*` and both draw from
   `components/settings/` — the folder is not the split, this rule is. When a
   cross-page link points at a setting, deep-link the card id
-  (`/profile#autofill`), never the bare page: sending a user to `/settings`
-  for the autofill profile is a dead end that shipped once already. Each page
+  (`anchorHref("/profile", "autofill")`), never the bare page: sending a user
+  to `/settings` for the autofill profile is a dead end that shipped once
+  already. Each page
   is tabbed (`lib/settings-tabs.ts`: Settings is AI & models, Tailoring,
   Connected agents, Appearance, About; Profile is About you, Autofill).
   `?tab=` names the tab and the default tab has none; a tab click writes it
   with the native `history.replaceState` (no server round trip, no new
   history entry). A new card adds its id to its tab's `anchors` (pinned).
+  A deep link is `anchorHref(home, cardId)`, which adds the tab, so the
+  server renders the right panel (pinned: no source writes a hash-only
+  `/settings#` or `/profile#` link); an old hash-only link still opens its
+  tab after hydration. `useFocusSection` waits until its target is SHOWN (a
+  card in a hidden panel is mounted with no box), and an in-page jump to
+  another tab is a button calling its `focus`, never a link.
 - **Every settings card renders through `SettingCard`**
   (`components/settings/setting-card.tsx`): it owns the header, the loading
   skeleton, and the one `LoadErrorState` with retry. Do not hand-roll

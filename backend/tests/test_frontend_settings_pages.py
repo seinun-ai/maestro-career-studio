@@ -120,3 +120,42 @@ def test_profile_lands_a_hash_once():
     assert '"@/lib/use-focus-section"' not in strip
     assert "useFocusSection()" not in strip
     assert "focus: (anchor: string) => void;" in strip
+
+
+# --------------------------------------------------------------------- Deep links
+
+_SOURCES = [
+    p
+    for d in ("app", "components", "lib", "hooks")
+    for p in (_FRONTEND / d).rglob("*.ts*")
+    if ".test." not in p.name
+]
+_COMMENT = re.compile(r"/\*.*?\*/|^\s*//[^\n]*", re.S | re.M)
+
+
+def test_links_into_settings_and_profile_name_their_tab():
+    """A hash-only link renders the default tab on the server and flips after hydration; every
+    in-app link goes through anchorHref so the server renders the right tab. Comments may
+    quote a hash-only example."""
+    offenders = [
+        str(p.relative_to(_FRONTEND))
+        for p in _SOURCES
+        if re.search(r"""["'`]/(?:settings|profile)#""", _COMMENT.sub("", p.read_text()))
+    ]
+    assert offenders == [], offenders
+    assert "anchorHref(step.home, step.anchor)" in _read("components/setup/setup-steps.ts")
+    assert "anchorHref(row.home, row.anchor)" in _read("components/setup/getting-started-card.tsx")
+    assert 'anchorHref("/profile", group ?' in _read("components/job-knockout-card.tsx")
+    assert 'anchorHref("/settings", "api-keys")' in _read("app/new/page.tsx")
+
+
+def test_a_section_lands_only_once_it_is_shown():
+    src = _read("lib/use-focus-section.ts")
+    assert "el.getClientRects().length > 0" in src
+    assert 'window.dispatchEvent(new HashChangeEvent("hashchange"))' in src
+    assert "window.history.replaceState(null, \"\", `${pathname}${search}#${anchor}`);" in src
+    # A bare getElementById poll rang a card hidden in another tab and stopped.
+    assert "const el = document.getElementById(hash);\n      if (el) {" not in src
+    # The landing and an in-page jump share one poll, and the landing's cleanup cancels it.
+    assert src.count("whenShown(") == 3  # the definition and its two callers
+    assert "cancel();" in src

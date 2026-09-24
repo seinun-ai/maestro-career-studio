@@ -13,19 +13,53 @@ function ring(el: HTMLElement) {
   window.setTimeout(() => el.classList.remove(...RING), 1600);
 }
 
-/** Scroll a section into view and ring it briefly, without navigating. */
+/** Shown, not merely mounted: a card in a hidden tab panel is in the DOM with no box. */
+function shown(anchor: string): HTMLElement | null {
+  const el = document.getElementById(anchor);
+  return el && el.getClientRects().length > 0 ? el : null;
+}
+
+/**
+ * Put `anchor` in the address bar with no history entry and no scroll, and tell the page. A tabbed
+ * page (Settings, Profile) opens the tab that renders it (`useSettingsTab` listens for hashchange);
+ * Next listens for no hashchange, so the synthetic event reaches only that hook.
+ */
+function announce(anchor: string) {
+  const { pathname, search } = window.location;
+  window.history.replaceState(null, "", `${pathname}${search}#${anchor}`);
+  window.dispatchEvent(new HashChangeEvent("hashchange"));
+}
+
+/** Poll (every 50ms, up to WAIT_MS) until `anchor` is shown, then hand it over. Returns a cancel. */
+function whenShown(anchor: string, then: (el: HTMLElement) => void): () => void {
+  const started = performance.now();
+  const poll = window.setInterval(() => {
+    const el = shown(anchor);
+    if (el) {
+      window.clearInterval(poll);
+      then(el);
+      return;
+    }
+    if (performance.now() - started > WAIT_MS) window.clearInterval(poll);
+  }, 50);
+  return () => window.clearInterval(poll);
+}
+
+/** Scroll a section into view and ring it briefly, without navigating; opens its tab first if hidden. */
 export function useFocusSection() {
   const focus = useCallback((anchor: string) => {
-    const el = document.getElementById(anchor);
-    if (!el) return;
-    // Smooth scrolling is compositor-driven, so it never progresses while the
-    // document is hidden — a link opened in a background tab would land at the
-    // top with nothing focused. Jump instantly in that case; animate when the
-    // user is actually watching.
-    const behavior: ScrollBehavior =
-      document.visibilityState === "visible" ? "smooth" : "auto";
-    el.scrollIntoView({ behavior, block: "center" });
-    ring(el);
+    if (!document.getElementById(anchor)) return;
+    if (!shown(anchor)) announce(anchor);
+    whenShown(anchor, (el) => {
+      // Smooth scrolling is compositor-driven, so it never progresses while the
+      // document is hidden — a link opened in a background tab would land at the
+      // top with nothing focused. Jump instantly in that case; animate when the
+      // user is actually watching.
+      const behavior: ScrollBehavior =
+        document.visibilityState === "visible" ? "smooth" : "auto";
+      el.scrollIntoView({ behavior, block: "center" });
+      ring(el);
+    });
   }, []);
 
   // A cross-page navigation lands here with a hash; make it behave identically
@@ -39,6 +73,9 @@ export function useFocusSection() {
   //    knock-out card aim at — only mount once the card's queries resolve.
   //    At 100ms the body is still a skeleton, `getElementById` returns null,
   //    and the old code silently gave up. Poll until it appears instead.
+  //    "Appears" means SHOWN: on a tabbed page the target can be mounted in a
+  //    hidden panel (display:none) until the tab hook reads the hash, and a
+  //    scroll to it would be a no-op that rang an invisible card.
   //
   // 2. **Landing is not staying.** Cards ABOVE the target swap their own
   //    skeletons for real content moments later, each swap growing the page
@@ -52,7 +89,6 @@ export function useFocusSection() {
     let cancelled = false;
     let observer: ResizeObserver | null = null;
     const timers: number[] = [];
-    const started = performance.now();
 
     const hold = (el: HTMLElement) => {
       observer = new ResizeObserver(() => {
@@ -67,29 +103,20 @@ export function useFocusSection() {
       );
     };
 
-    const poll = window.setInterval(() => {
+    const cancel = whenShown(hash, (el) => {
       if (cancelled) return;
-      const el = document.getElementById(hash);
-      if (el) {
-        window.clearInterval(poll);
-        // Instant, not smooth: a smooth scroll animates over the same window
-        // in which `hold` is correcting position, and the two fight visibly.
-        el.scrollIntoView({ behavior: "auto", block: "center" });
-        ring(el);
-        hold(el);
-        return;
-      }
-      if (performance.now() - started > WAIT_MS) window.clearInterval(poll);
-    }, 50);
-    timers.push(poll);
+      // Instant, not smooth: a smooth scroll animates over the same window
+      // in which `hold` is correcting position, and the two fight visibly.
+      el.scrollIntoView({ behavior: "auto", block: "center" });
+      ring(el);
+      hold(el);
+    });
 
     return () => {
       cancelled = true;
+      cancel();
       observer?.disconnect();
-      for (const id of timers) {
-        window.clearTimeout(id);
-        window.clearInterval(id);
-      }
+      for (const id of timers) window.clearTimeout(id);
     };
   }, []);
 
