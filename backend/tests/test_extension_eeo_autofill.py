@@ -1074,10 +1074,12 @@ def test_non_binary_picks_the_forms_non_binary_option(tmp_path, wording):
     assert [e["field"] for e in result["eeoFilled"]] == ["gender"]
 
 
-def test_gender_non_conforming_stands_in_only_when_no_non_binary_option_exists(tmp_path):
+def test_gender_non_conforming_is_never_picked_for_non_binary(tmp_path):
+    # A different identity for some people: a form offering only it is left for
+    # the user, never answered with a stand-in.
     only = _gender_select("Male", "Female", "Gender non-conforming", "Decline")
-    assert _picked(_fill_gender(tmp_path, [only], "non_binary"), only) == "Gender non-conforming"
-    # Listed FIRST, and still passed over for the option that says non-binary.
+    assert _picked(_fill_gender(tmp_path, [only], "non_binary"), only) == ""
+    # Listed FIRST, and passed over for the option that says non-binary.
     both = _gender_select("Man", "Woman", "Gender non-conforming", "Non-binary", "Decline")
     assert _picked(_fill_gender(tmp_path, [both], "non_binary"), both) == "Non-binary"
 

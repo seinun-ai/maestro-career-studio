@@ -334,9 +334,10 @@ know, and each one was learned from a live failure.
   The generic fuzzy scorer used for ordinary fields is deliberately not used
   here — it rated "Asian Indian" 72.5% against "Asian".
   **Gender** has five stored answers (`content/eeo.js`): male, female,
-  non_binary, self_describe and decline. A word list is ORDERED, best first
-  ("Non-binary" and its spellings, then "Gender non-conforming" only where a
-  form has no non-binary option); a radio is judged on its own words, never
+  non_binary, self_describe and decline. Non-binary matches only an option that
+  says non-binary (its spellings included); a form offering only "Gender
+  non-conforming" is left for the user, never answered with a stand-in; a
+  radio is judged on its own words, never
   its legend's; a single-choice checkbox is never ticked for the two
   unanchored answers. A value without a list (a hand-edited "Woman") is
   matched exactly or not at all: it used to borrow the decline words. The

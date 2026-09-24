@@ -46,13 +46,13 @@
       disability_yes: [/yes,? i have a disability/i, /^yes\b/i],
       male: [/^male$/i, /^man$/i],
       female: [/^female$/i, /^woman$/i],
-      // ORDERED, best first: a form offering both options gets the one that
-      // says non-binary, and "Gender non-conforming" stands in only where
-      // there is none (the owner's call, 2026-09-24). Unanchored, because the
-      // wordings vary ("Nonbinary", "I identify as non-binary",
-      // "Non-Binary/Gender Non-Conforming"), so a gender radio or box is
-      // matched on its OWN words (`ownWords`), never on the question's.
-      non_binary: [/\bnon[-\s]?binary\b/i, /\bgender[-\s]?non[-\s]?conforming\b/i],
+      // Only an option that says non-binary. "Gender non-conforming" alone is
+      // a different identity for some people, so a form offering only that is
+      // left for the user (the owner's call, 2026-09-24): never a wrong answer.
+      // Unanchored, because the wordings vary ("Nonbinary", "I identify as
+      // non-binary", "Non-Binary/Gender Non-Conforming"), so a gender radio or
+      // box is matched on its OWN words (`ownWords`), never on the question's.
+      non_binary: [/\bnon[-\s]?binary\b/i],
       // The OPTION that says "I will describe it myself". Nothing here may
       // match a decline ("Decline to self-identify"), and nothing does.
       self_describe: [SELF_DESCRIBE],

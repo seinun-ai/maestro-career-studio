@@ -656,7 +656,7 @@ def test_the_covenant_question_explains_its_legal_term():
     Companion matches it); the hint, wired with aria-describedby by the field
     renderer, says what one is."""
     field = _between(_AUTOFILL, 'key: "non_compete",', "},")
-    assert 'label: "Subject to a non-compete or restrictive covenant?",' in field
+    assert 'label: "Subject to a restrictive covenant?",' in field
     assert 'hint: "Such as a non-compete or non-solicit agreement.",' in field
     renderer = _between(_AUTOFILL, "{group.fields.map((field) => {", "</fieldset>")
     assert 'const hintId = field.hint ? `${id}-hint` : undefined;' in renderer

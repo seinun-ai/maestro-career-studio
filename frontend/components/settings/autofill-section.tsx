@@ -225,7 +225,7 @@ const GROUPS: GroupDef[] = [
         // The legal term stays in the label: forms ask it in those words and
         // the Companion matches them (shared/profile-fields.js). The hint says
         // what one is.
-        label: "Subject to a non-compete or restrictive covenant?",
+        label: "Subject to a restrictive covenant?",
         hint: "Such as a non-compete or non-solicit agreement.",
         type: "select",
         boolean: true,
