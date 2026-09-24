@@ -3,6 +3,12 @@
 @import "shadcn/tailwind.css";
 
 @custom-variant dark (&:is(.dark *));
+/* Sticky list chrome only where it can afford the room. Below 40rem of
+   height (a landscape phone, 200% zoom on a laptop, 400% zoom anywhere), a
+   stuck toolbar and header would take a third of the screen or more, and
+   WCAG 1.4.10 wants that content to scroll. Mirrored by TALL_QUERY in
+   components/list-toolbar.tsx and by the --list-head-h query below (pinned). */
+@custom-variant tall (@media (min-height: 40rem));
 
 @theme inline {
   --color-background: var(--background);
@@ -188,6 +194,16 @@
   }
   html {
     @apply font-sans;
+    /* WCAG 2.4.11 (C43): a focus scrolled into view lands below the sticky
+       list chrome, not under it. --list-sticky-top is ListToolbar's height,
+       written by it while mounted; --list-head-h is a sticky table header's
+       h-10 plus 0.5rem for the focus ring. Both unset: 0, the default. */
+    scroll-padding-top: calc(var(--list-sticky-top, 0px) + var(--list-head-h, 0px));
+  }
+  @media (min-height: 40rem) {
+    html:has([data-slot="table-header"][data-sticky]) {
+      --list-head-h: 3rem;
+    }
   }
 }
 

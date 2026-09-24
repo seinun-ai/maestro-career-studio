@@ -1,0 +1,156 @@
+"""Pins for sticky list chrome (a list's toolbar and its table header) and the
+notice at the end of a capped list.
+Design: docs/plans/2026-09-23-ux-ia-appendix-b-sticky-and-cap.md."""
+
+from __future__ import annotations
+
+import re
+from pathlib import Path
+
+import pytest
+
+_ROOT = Path(__file__).resolve().parents[2]
+_FRONTEND = _ROOT / "frontend"
+
+
+def _read(rel: str) -> str:
+    return (_FRONTEND / rel).read_text(encoding="utf-8")
+
+
+def _body(src: str, start: str) -> str:
+    """From `start` to the end of that top-level function (a `}` alone at column 0)."""
+    i = src.index(start)
+    return src[i : src.index("\n}\n", i)]
+
+
+_TABLE = _read("components/ui/table.tsx")
+_TOOLBAR = _read("components/list-toolbar.tsx")
+_CSS = _read("app/globals.css")
+
+_SCROLL_CHAIN = [
+    ("components/ui/sidebar.tsx", "function SidebarProvider("),
+    ("components/ui/sidebar.tsx", "function SidebarInset("),
+    ("components/sidebar-reveal-trigger.tsx", "export function SidebarGutter("),
+    ("components/page-shell.tsx", "export function PageShell("),
+]
+
+
+# ── The window is the only scroller ─────────────────────────────────────────
+
+
+@pytest.mark.parametrize("rel,start", _SCROLL_CHAIN)
+def test_the_window_stays_the_only_scroller(rel: str, start: str):
+    """position: sticky sticks to the nearest scrolling ancestor. The list
+    toolbar and header rely on that being the window: an overflow class on any
+    shell element between them and <html> pins them to a box that never
+    scrolls, and they silently stop sticking."""
+    found = re.findall(r"\boverflow-[\w-]+", _body(_read(rel), start))
+    assert found == [], f"{rel} {start}: {found}"
+
+
+def test_layout_and_document_do_not_scroll_themselves():
+    assert not re.search(r"\boverflow-[\w-]+", _read("app/layout.tsx"))
+    for sel in ("  html {", "  body {"):
+        i = _CSS.index(sel)
+        assert "overflow" not in _CSS[i : _CSS.index("}", i)], sel
+
+
+# ── Table: a min width, and a header that sticks while the table fits ───────
+
+_WIDTH_ENTRY = re.compile(
+    r'"(\d+rem)": \{\s*'
+    r'table: "min-w-\[(\d+rem)\]",\s*'
+    r'fits: "@min-\[(\d+rem)\]/table:overflow-x-clip",\s*'
+    r'head: "@min-\[(\d+rem)\]/table:tall:sticky",\s*\}'
+)
+
+
+def test_a_table_sticks_from_exactly_its_own_min_width():
+    entries = _WIDTH_ENTRY.findall(_TABLE)
+    assert len(entries) >= 2, "MIN_WIDTH entries not found"
+    for widths in entries:
+        assert len(set(widths)) == 1, widths
+    block = _TABLE[_TABLE.index("const MIN_WIDTH = {") : _TABLE.index("} as const")]
+    assert block.count('table: "min-w-[') == len(entries)  # no entry the regex skipped
+
+
+def test_the_container_scrolls_sideways_until_the_table_fits():
+    table = _body(_TABLE, "function Table(")
+    assert '"relative w-full overflow-x-auto", sticky?.fits' in table
+    assert '"@container/table w-full"' in table
+    assert "StickyHeadContext.Provider value={sticky.head}" in table
+
+
+def test_a_sticky_header_is_opaque_ruled_stacked_and_placed_under_the_toolbar():
+    head = _body(_TABLE, "function TableHeader(")
+    for part in (
+        "React.useContext(StickyHeadContext)",
+        'data-sticky={sticky ? "" : undefined}',
+        '"top-(--list-sticky-top,0px) z-10 print:static"',
+        '"[&_th]:bg-background"',
+        '"[&_tr]:border-b-0 [&_th]:shadow-[inset_0_-1px_0_var(--color-border)]"',
+        ': "[&_tr]:border-b"',
+    ):
+        assert part in head, part
+
+
+def test_the_table_frame_clips_without_becoming_a_scroller():
+    frame = _body(_read("components/empty-state.tsx"), "export function TableFrame(")
+    assert '"animate-fade-rise overflow-clip rounded-xl border"' in frame
+    assert "overflow-hidden" not in frame
+
+
+# ── ListToolbar, the tall: variant, and focus clearance ──────────────────────
+
+
+def test_the_tall_threshold_is_one_number():
+    css = re.search(r"@custom-variant tall \(@media (\(min-height: [\d.]+rem\))\);", _CSS)
+    assert css, "the tall variant"
+    ts = re.search(r'export const TALL_QUERY = "(\(min-height: [\d.]+rem\))";', _TOOLBAR)
+    assert ts and ts.group(1) == css.group(1)
+    head = re.search(
+        r'@media (\(min-height: [\d.]+rem\)) \{\s*html:has\(\[data-slot="table-header"\]\[data-sticky\]\)',
+        _CSS,
+    )
+    assert head and head.group(1) == css.group(1)
+
+
+def test_the_toolbar_sticks_on_the_page_colour_above_the_list():
+    for part in ("tall:sticky", "tall:top-0", "tall:z-30", "bg-background", "-my-3", "py-3", "print:static"):
+        assert part in _TOOLBAR, part
+
+
+def test_the_toolbar_is_a_search_landmark_not_a_toolbar_role():
+    """HTML's element for search and filtering controls (planner decision 17,
+    O6). Not role="toolbar": that role promises arrow-key roving, and these
+    controls are separate Tab stops."""
+    body = _body(_TOOLBAR, "export function ListToolbar(")
+    ret = body[body.index("\n  return (\n") :]
+    assert ret.startswith("\n  return (\n    <search\n")
+    assert "</search>" in ret
+    assert "role=" not in ret
+
+
+def test_the_toolbar_publishes_its_height_and_takes_it_back():
+    body = _body(_TOOLBAR, "export function ListToolbar(")
+    assert 'const STICKY_TOP_VAR = "--list-sticky-top";' in _TOOLBAR
+    assert "new ResizeObserver(write)" in body
+    assert "window.matchMedia(TALL_QUERY)" in body
+    assert 'tall.addEventListener("change", write)' in body
+    assert "Math.floor(el.getBoundingClientRect().height)" in body
+    assert "root.style.setProperty(STICKY_TOP_VAR, written)" in body
+    cleanup = body[body.index("return () => {") :]
+    assert "observer.disconnect()" in cleanup
+    assert "=== written) root.style.removeProperty(STICKY_TOP_VAR)" in cleanup
+    assert "--list-sticky-top" in _body(_TABLE, "function TableHeader(")
+
+
+def test_focus_scrolled_into_view_clears_the_sticky_chrome():
+    """WCAG 2.4.11 (C43). Browser-verified in Chromium: without it, Shift+Tab
+    onto a row under a stuck header leaves that row under it."""
+    html = _CSS[_CSS.index("  html {") :]
+    html = html[: html.index("}")]
+    assert "scroll-padding-top: calc(var(--list-sticky-top, 0px) + var(--list-head-h, 0px));" in html
+    assert re.search(
+        r'html:has\(\[data-slot="table-header"\]\[data-sticky\]\) \{\s*--list-head-h: 3rem;', _CSS
+    )

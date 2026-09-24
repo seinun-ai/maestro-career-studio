@@ -68,7 +68,10 @@ export function TableFrame({
   return (
     <div
       className={cn(
-        "animate-fade-rise overflow-hidden rounded-xl border",
+        // clip, not hidden: both round the corners, but `hidden` makes a
+        // scroll container, and a sticky header inside one sticks to it and
+        // never moves. `clip` makes none, so the header sticks to the window.
+        "animate-fade-rise overflow-clip rounded-xl border",
         className,
       )}
     >
