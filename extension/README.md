@@ -9,12 +9,12 @@ at to your local Maestro CS app.
   you are reading. You can correct them before saving.
 - **Score it.** See how each of your base resumes scores against this job, best
   first, or score them all with one click.
-- **Pick or tailor a resume.** Use a base resume as-is, run Quick tailor, or
+- **Pick or tailor a resume.** Use a base resume as is, run Quick tailor, or
   open the job in the app for a custom tailoring session.
-- **Fill the application.** Fill the form from your Autofill Profile, with
-  optional AI help for the questions the rules cannot answer. Fields it could
-  not fill are listed so you can finish them, and it can attach your tailored
-  resume PDF when you ask.
+- **Fill the application.** Fill the form from your saved answers (Profile ›
+  Autofill in the app), with optional AI help for the questions they cannot
+  answer. Fields it could not fill are listed so you can finish them, and it can
+  attach your tailored resume PDF when you ask.
 - **Track it.** Mark the application Draft or Applied from the panel.
 
 Open the panel with the toolbar icon or `Alt+Shift+J` (change it at
@@ -97,7 +97,7 @@ in `DEFAULTS` at the top of `sw.js`.)
 ## Troubleshooting
 
 - **"No job description found on this page" over a visible posting, or "The
-  companion cannot see this page".** Reload the tab. This happens to tabs that
+  Companion can't read this page".** Reload the tab. This happens to tabs that
   were open when the extension was installed or reloaded.
 - **The panel cannot reach the backend.** Check the app is running. If your
   install predates the fixed id, Remove and Load unpacked again (see Install).
@@ -110,6 +110,6 @@ in `DEFAULTS` at the top of `sw.js`.)
   close button.
 - **Multi-step applications** may still need some fields entered by hand. The
   application you picked is remembered for 30 minutes as you move through the
-  steps, so press **Start fill** again on each page.
+  steps, so press **Fill this form** again on each page.
 
 How it works inside: [INTERNALS.md](INTERNALS.md).

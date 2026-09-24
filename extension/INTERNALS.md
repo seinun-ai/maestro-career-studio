@@ -29,8 +29,8 @@ worker:
 | `content/detect.js` | every frame, every page | the detection read — reads, scores, returns |
 | `content/agent.js` | every frame | page RPC front door, extraction wrapper, resume attach |
 | `panel/panel.{html,css,js}` | the side panel | the store, the loaders, the generation guard, the render loop, the tab binding; sends everything through the service worker |
-| `panel/stages/*.js` + `panel/stages.js` | the side panel | one file per rail stage — a body is handed a per-render snapshot, never the store — gathered by a roster that throws when a script tag is missing |
-| `panel/actions/*.js` + `panel/actions.js` | the side panel | one file per concern (add job, pick a draft, score, quick tailor + base as-is, start fill, submit one pause-row answer, ask one question, mark draft/applied), each handed one `write(patch)` door; `actions/during.js` is the `busy` span they all read, and `busy` covers everything an action writes including its learn tail |
+| `panel/stages/*.js` + `panel/stages.js` | the side panel | one file per rail stage — a body is handed a per-render snapshot (`stageContext`), never the store, and `card` is never published — gathered by a roster that throws when a script tag is missing |
+| `panel/actions/*.js` + `panel/actions.js` | the side panel | one file per concern (save job, pick a draft, score, quick tailor + base as is, fill this form, submit one pause-row answer, ask one question, mark draft/applied), each handed one `write(patch)` door (`actionStore` refuses a key the store lacks); `actions/during.js` is the `busy` span they all read, and `busy` covers everything an action writes including its learn tail |
 | `sw.js` | the extension | every backend call, the frame fan-out, the one sanctioned injection, the hotkey, and giving the toolbar icon to the side panel |
 
 ## The gate
@@ -61,20 +61,26 @@ not a sentence any of them can say. Three rules hold the shape up:
   Resume and Fill are always reopenable; **Job only when the binding is your own
   pick** (`claimed`), which is where un-pick and switch-draft live. Reopening is
   view state — never persisted, dropped when the stage moves or the page facts
-  reset — and it rewinds no tick.
-- **The footer holds exactly one primary**, and it follows the OPEN row: Add
-  job, Score all bases, Quick tailor, Start fill. Track has none: its way onward
-  is the header's link, and its control is the permanent Draft/Applied segment.
+  reset — and it rewinds no tick. In code the reopened row is `card.revisit`; a
+  row skipped by a CLAIM (`choiceSkipped`: base as is' Resume row names the
+  choice and carries its withdraw) reopens too, a skip the path computed does
+  not, and the active row keeps its styling while another is open.
+- **The footer holds exactly one primary**, and it follows the OPEN row: Save
+  job, Score base resumes, Quick tailor, Fill this form (withheld by
+  `primaryRefused` on a page with no form; a late detect yes gives it back,
+  moving no stage). Track has none: its way
+  onward is the header's link, and its control is the permanent Draft/Applied
+  segment.
 - **Nothing is claimed that is not known.** `match !== "exact"` means "we do not
   know", not "none", so an unreachable backend opens the journey at Job rather
   than claiming the job exists. Skipping is not doing: arming a base resume skips
-  Score and Resume *visibly* — dashed, "Skipped — using base as-is", never a
-  tick. And `done.fill` is this extension's own claim that it filled or attached
-  HERE, so an application marked applied inside the web app does not put a
-  checkmark on a page the extension never wrote to.
+  Score and Resume *visibly* — dashed, "Skipped. Using your base resume as is.",
+  never a tick. And `done.fill` is this extension's own claim that it filled or
+  attached HERE, so an application marked applied inside the web app does not
+  put a checkmark on a page the extension never wrote to.
 
 Above the rail sits the panel's whole header, and it is one block: the job's
-identity and the match chip, the Before → After ATS rings under them (read from
+identity and the match chip, the Base → Tailored ATS rings under them (read from
 stored scores, never computed here), and one deep link on the last line,
 right-aligned. The link is labelled by the most specific thing we know — "Open
 application ↗", else "Open in Maestro CS ↗", and nothing at all until the
@@ -93,21 +99,22 @@ scarcest 50 pixels a 400px-wide surface has.
 The manifest `name` **stays "Maestro CS Companion"** rather than shortening to
 match the app. "Companion" is the word that separates the extension from the app
 in the one place both are named together: the web app's own consent copy reads
-"Allow Maestro CS Companion to fill voluntary EEO…", and "Allow Maestro CS to…"
-inside Maestro CS reads as the app asking permission of itself.
+"Maestro CS Companion will fill race, ethnicity, gender, veteran and disability
+questions…", and "Maestro CS will fill…" inside Maestro CS reads as the app
+asking permission of itself.
 
 ## What the panel does
 
-- **Add job** — the Job stage shows title, company and the grabbed job
+- **Save job** — the Job stage shows title, company and the grabbed job
   description in three fields you can correct before anything is saved (schema.org
   `JobPosting` JSON-LD when the site provides it, visible text otherwise). The
   line under them says where the JD came from and how many words it has, because
   three filled boxes over an empty description otherwise looks exactly like a
-  successful read; when the page answers nothing at all it says the companion
-  cannot see this page and to reload the tab, which is a claim about our reach
+  successful read; when the page answers nothing at all it says the Companion
+  can't read this page and to reload the tab, which is a claim about our reach
   rather than about the page. The backend extracts the JD immediately, so the job
   lands parsed and ready for ATS scoring, and a duplicate save says "Already
-  tracked" rather than pretending it saved something new.
+  saved in Maestro CS" rather than pretending it saved something new.
 - **Pick a draft** — on a page nothing has matched, the Job stage offers your
   recent draft applications and you name the one you are here about. It is an
   OFFER, never a guess — the pick is your claim about the page — so it does not
@@ -116,27 +123,28 @@ inside Maestro CS reads as the app asking permission of itself.
   false anyway on a late SPA render, so requiring a form would refuse exactly
   the flow the picker exists for.
 - **The base resumes are RANKED by this job's own ATS scores**, best first, each
-  row showing its number — the same per-base scores the Score & Tailor tab is
+  row showing its number — the same per-base scores the Score and tailor tab is
   built on, so the pick (and the number fast tailoring reports afterwards) is not
-  blind. Scores are READ on open (cheap, computes nothing); **Score all bases** is
-  a button rather than something that happens on open, because scoring every base
-  silently on every panel open is answering a question nobody asked. A resume
+  blind. Scores are READ on open (cheap, computes nothing); **Score base
+  resumes** is a button rather than something that happens on open, because
+  scoring every base silently on every panel open is answering a question nobody
+  asked. A resume
   with no score says "not scored" rather than zero and sorts last, a pick made by
   hand wins over the ranking permanently, and the line underneath names the
   engine version behind the numbers, or says nothing when the rows disagree about
   it — stored scores outlive the scorer that made them.
-- **Use base as-is / Tailor** — the Resume stage is a fork on two levels, because
-  the first question is whether to tailor at all and "quick or custom" is only a
-  question for the user who said yes. Nothing is pre-selected: choosing a
-  tailoring path on your behalf is not the panel's call. *Tailor* discloses
-  **Quick tailor** — the same function the footer's primary runs, one behaviour
-  and one label — and **Custom in Studio ↗**, a real link to `/jobs/{id}?tab=fit`
-  and never an API call, because the panel has no business creating a tailoring
+- **Use base resume as is / Tailor** — the Resume stage is a fork on two
+  levels, because the first question is whether to tailor at all and "quick or
+  custom" is only a question for the user who said yes. Nothing is pre-selected:
+  choosing a tailoring path on your behalf is not the panel's call. *Tailor*
+  discloses **Quick tailor** — the same function the footer's primary runs, one
+  behaviour and one label — and **Tailor in Maestro CS ↗**, a real link to
+  `/jobs/{id}?tab=fit` and never an API call, because the panel has no business creating a tailoring
   session behind your back; it picks the result up on the next load instead.
-- ***Use base as-is* asks the backend for nothing and arms a fill from your base
-  resume, with no application at all.** It is the FIRST rung of `stageFor`, above
+- ***Use base resume as is* asks the backend for nothing and arms a fill from
+  your base resume, with no application at all.** It is the FIRST rung of `stageFor`, above
   the library ladder, because **filling a form is a question about the PAGE**
-  while the Add job → tailor → fill flow is a question about the library.
+  while the Save job → tailor → fill flow is a question about the library.
   Conflating them leaves a user who armed a base resume with no way to fill the
   form in front of them.
 - **Quick tailor** — `POST /api/jobs/{id}/quick-tailor` with the base resume you
@@ -149,28 +157,33 @@ inside Maestro CS reads as the app asking permission of itself.
   tailor committed is not an error path — the application exists either way, and
   is remembered, or the next page of the wizard would offer to tailor a job that
   already has one.
-- **Start fill** — the Fill stage runs the hybrid pipeline on this page: the
+- **Fill this form** — the Fill stage runs the hybrid pipeline on this page: the
   profile rule pass, then one batched `/api/autofill/choose` call for everything
   the rules did not cover (chunked at 40 fields), then the sequenced writer. The
-  mode segment picks the pass — **Rules only** skips `/choose` entirely,
-  **Rules + AI assist** is the default because it answers more of the form — and
-  the choice lives in `chrome.storage.sync` under `fillMode`, so it follows the
-  profile. Identity fields a rule tried and could not land are **retryables**:
-  they re-enter the writer with the profile's own value, in memory only, and are
-  never offered to the model. Nothing is submitted and no wizard step is advanced
-  for you.
+  AI pass's prompt carries your saved answers and your career history; the EEO
+  answers go only under the standing consent, through the one gate
+  (`eeo_consent.withhold_unconsented` in `backend/app/services/eeo_consent.py`)
+  that `GET /api/autofill/context` goes through as well, so which path asks
+  never decides what is disclosed. The mode segment picks the pass — **Saved
+  answers only** skips `/choose` entirely, **Saved answers + AI** is the default
+  because it answers more of the form — and the choice lives in
+  `chrome.storage.sync` under `fillMode`, so it follows the profile. Identity
+  fields a rule tried and could not land are **retryables**: they re-enter the
+  writer with the profile's own value, in memory only, and are never offered to
+  the model, so their values are the one thing that stays out of `/choose`.
+  Nothing is submitted and no wizard step is advanced for you.
 - **The progress rows are the report, and every number is the fill's own** —
-  `14 filled · 2 corrected · 3 already filled · 1 didn't stick` for the profile
+  `14 filled · 2 corrected · 3 already filled · 1 not accepted` for the profile
   pass, written-versus-still-open for the application questions, and one row for
   voluntary disclosures. **Already filled** is the fields that turned out to need
   nothing, usually because you filled this page before; they are counted so a
   re-run on a wizard step reads `0 filled · 12 already filled` — the truth —
   instead of a bare "0 filled", which reads as a pass that failed. The three
   sources are gated independently because they arrive independently: gating the
-  whole report on the residue erases filled fields and prints "Can't reach this
-  page" about a page the panel just wrote into.
-- **"These N fields need you"** — whatever the chooser abstained on, what did not
-  stick, and the essays. Click a row to scroll that control into view (the message
+  whole report on the residue erases filled fields and prints "Couldn't reach
+  this page" about a page the panel just wrote into.
+- **"Fields that still need you"** — whatever the chooser abstained on, what
+  did not stick, and the essays. Click a row to scroll that control into view (the message
   carries a qid and nothing else, which is what makes it safe to broadcast to
   every frame). Where the panel can actually write the answer — text, textarea,
   `select`, `radio`, and never a policy-blocked label — the row carries an inline
@@ -218,13 +231,13 @@ inside Maestro CS reads as the app asking permission of itself.
   The choice is remembered for 30 minutes, in `chrome.storage.local`, scoped to
   the origin **and the tenant** — origin alone cannot scope it, because
   multi-tenant boards put thousands of companies on one origin, and a pick
-  restored onto another tenant's posting says "application ready" about an
-  application that does not belong to the page. A cross-tenant entry is trusted
-  only when the backend matched this page to the very job the entry names, and a
-  backend that recognises a *different* job discards the memory rather than
-  offering it. `done.fill` rides the same entry, which is why reopening the
-  ticked Fill row is how you reach Start fill again on page three of a form the
-  extension has already finished once.
+  restored onto another tenant's posting offers an application that does not
+  belong to the page. A cross-tenant entry is trusted only when the backend
+  matched this page to the very job the entry names, and a backend that
+  recognises a *different* job discards the memory rather than offering it.
+  `done.fill` rides the same entry, which is why reopening the ticked Fill row is
+  how you reach Fill this form again on page three of a form the extension has
+  already finished once.
 
 ## Rules the code depends on
 
@@ -251,6 +264,15 @@ know, and each one was learned from a live failure.
   `currentJobId`, `jk`, `vjk`, `gh_jid`; LinkedIn's `/jobs/view/<id>` path). The
   tenant scope, the backend match and `agent.js`'s stale-JSON-LD guard all read
   it; `backend/tests/test_extension_posting_identity.py` pins the two copies.
+- **A failed round trip never prints the server's own text.**
+  `actions/during.js`' `failureNote` writes the call site's "Couldn't <what>." and then a next step
+  chosen by `err.status`: no status means no answer came back, so check that
+  Maestro CS is running; 502 is the model provider failing, so the step is the
+  AI key; any other status gets the call site's own sentence, else "Try again."
+  The raw message goes to the console. A run with no saved answers leads its
+  note with "No saved answers yet …", and `sw.js`' `attach_pdf` puts the status
+  on its error the way `api()` does, so a failed PDF fetch reads as the backend
+  answering rather than as an app that is not running.
 
 ## How the fill behaves
 
@@ -267,14 +289,15 @@ know, and each one was learned from a live failure.
 
   Both cases look before they click, because `click()` toggles: a box that
   arrives ticked is your own answer and is never cleared. A click a framework
-  cancels is reported as "didn't stick", never as filled. (Agreement boxes under
+  cancels is reported as "not accepted", never as filled. (Agreement boxes under
   the standing agreement consent follow the same look-first rule; see below.)
 - **EEO/voluntary disclosure fields are off by default**, and the answer is the
   BACKEND's standing consent (`/api/settings/eeo-consent`, read off
   `/api/autofill/context`) — you grant it in Profile in the web app, and this
   extension offers no toggle that could turn it on. While it is off, those fields
-  are seen and skipped and the Fill stage says "skipped — EEO off", so the
-  silence does not read as a fill that missed a whole section. While it is on,
+  are seen and skipped and the Fill stage's Diversity questions row says
+  "turned off in Profile › Autofill", so the silence does not read as a fill
+  that missed a whole section. While it is on,
   writes are **exact or nothing**: a control that already carries an answer is
   never written over (a "decline to self-identify" is a real answer), and an
   option is chosen only by an exact normalized match or by a curated word list.
@@ -304,7 +327,7 @@ know, and each one was learned from a live failure.
   terms. Consent is recorded with a timestamp and a policy version and can be
   withdrawn. Even then it only ever TICKS A BOX: it looks before it clicks, never
   re-ticks a box that already carries your answer, reports a cancelled click as
-  "didn't stick" rather than as agreed, and never submits. The AI path is
+  "not accepted" rather than as agreed, and never submits. The AI path is
   unaffected — a consent field is still never offered to a model, because
   authorizing this engine to tick a box you decided to tick is not a licence for
   a model to decide what to agree to.
@@ -377,7 +400,7 @@ know, and each one was learned from a live failure.
 - Identity fields (name, email, phone) overwrite a wrong ATS prefill and are
   reported under "corrected"; identity **comboboxes** are fill-only-if-empty.
 - Hidden clone fields are skipped, a write a controlled input rejected is
-  reported as "didn't stick" rather than as done, and a write whose readback
+  reported as "not accepted" rather than as done, and a write whose readback
   could not be confirmed in budget is `filled_unverified` — never `not_stuck`,
   because "we could not see it land" is a different claim from "it did not".
 - **Nothing is ever submitted automatically.** Always review before submitting.
@@ -466,7 +489,7 @@ Two things bound that:
   and every MV3 reload orphans the scripts in every open tab, which shows up as
   "No job description found on this page" over a visible JD, forever. The panel
   injects them (`panel_prepare`, `chrome.scripting`) on three routes and no
-  others: Start fill and Attach resume, both user gestures, and once per page
+  others: Fill this form and Attach resume, both user gestures, and once per page
   after a posting read has come back silent. Never speculatively on a load —
   injecting into a page nobody asked about is exactly the always-on cost the
   detection gate exists to avoid — so anywhere else the panel says it cannot see
@@ -527,7 +550,8 @@ comma-separated.
   renaming it silently discards every custom binding anyone has made; what a user
   sees is its description, "Open the Maestro CS panel on this page". The
   `widget.session` storage key is the same trade — renaming it drops every live
-  entry, stranding a user mid-wizard. Three orphan keys the floating card left
+  entry, stranding a user mid-wizard; `restoreSession`'s `if (entry.applicationId)`
+  guard is the condition of writing an application-less entry at all. Three orphan keys the floating card left
   behind (`widget.dock`, `widget.hiddenOrigins`, `widget.hiddenGlobally`) plus
   `panel.pick` are swept once on panel boot.
 - The hotkey cannot close the panel: `chrome.sidePanel` has an `open` and no

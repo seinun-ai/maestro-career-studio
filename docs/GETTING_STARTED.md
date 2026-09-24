@@ -1,6 +1,6 @@
 # Getting started — from zero to your first tailored PDF
 
-Maestro Career Studio helps you adapt your existing resumes to each job you want to apply for. Save a job posting, compare its requirements with your experience, review suggested changes, and download a resume PDF. Your career record and application tracker are stored on your computer. When you use AI features, resume and job information is sent to the AI service you choose.
+Maestro Career Studio helps you adapt your existing resumes to each job you want to apply for. Save a job, compare its requirements with your experience, review suggested changes, and download a resume PDF. Your career history and application tracker are stored on your computer. When you use AI features, resume and job information is sent to the AI service you choose.
 
 Three steps: [install it](#1-what-you-need) → [add your resumes](#3-your-first-tailored-resume) → [save a job and get your tailored resume](#3-your-first-tailored-resume).
 
@@ -9,7 +9,7 @@ Three steps: [install it](#1-what-you-need) → [add your resumes](#3-your-first
 [1. What you need](#1-what-you-need) ·
 [2. Install and start the app](#2-install-and-start-the-app) ·
 [3. Your first tailored resume](#3-your-first-tailored-resume) ·
-[4. The browser extension (optional)](#4-the-browser-extension-optional) ·
+[4. The Companion browser extension (optional)](#4-the-companion-browser-extension-optional) ·
 [5. Connect your AI assistant (optional)](#5-connect-your-ai-assistant-optional) ·
 [6. Where it can go next](#6-where-it-can-go-next) ·
 [7. Keeping it up to date](#7-keeping-it-up-to-date)
@@ -18,15 +18,17 @@ Three steps: [install it](#1-what-you-need) → [add your resumes](#3-your-first
 
 ## Words used in this guide
 
-- **Career record (Career KB)** — one organized record of your work, built from your resumes.
-- **Base resume** — your main resume for one kind of role (e.g. Data Scientist).
+- **Career history** — one organized record of your work, built from your resumes. Each job, project or school in it is an **item**; each line is a **bullet**.
+- **Base resume** — your main resume for one kind of role, such as Data Scientist.
 - **Tailoring** — adjusting a base resume to one job, using only things you actually did.
 - **Match score** — Maestro's comparison of your resume with a saved job description. It is not an employer's score or a prediction of an interview. The app labels it **ATS score**.
-- **AI service** — OpenAI or Gemini, whichever you choose; you add its key in Settings → Models.
+- **AI service** — OpenAI or Gemini, whichever you choose; you add its key in Settings › AI & models.
+- **Companion** — the Maestro CS browser extension, a side panel in Chrome.
+- **Assistant** — the chat inside the app. **Connected agents** are AI assistants outside it (Claude, Codex, ChatGPT desktop) that use the app over MCP.
 
 The app is the only required part. Two add-ons are optional, and you can add
-them at any time: a **browser extension** for saving and filling job pages
-([§4](#4-the-browser-extension-optional)), and a connection to your **AI
+them at any time: the **Companion**, a browser extension for saving and filling job pages
+([§4](#4-the-companion-browser-extension-optional)), and a connection to your **AI
 assistant** ([§5](#5-connect-your-ai-assistant-optional)).
 
 ## 1. What you need
@@ -76,7 +78,7 @@ downloads about 1 GB, so give it a few minutes.
 Then open **<http://localhost:3000>**. The first start sets up your database
 and adds a demo resume so you have something to look at.
 
-Don't put your AI key in `.env`. Add it in the app (Settings → Models), which
+Don't put your AI key in `.env`. Add it in the app (Settings › AI & models), which
 is step 3 below. A key saved in the app always wins over one in `.env`. Use
 `.env` only for a setup with no browser: paste the key after `OPENAI_API_KEY=`
 (or `GEMINI_API_KEY=`) and don't also save one in the app.
@@ -84,7 +86,7 @@ is step 3 below. A key saved in the app always wins over one in `.env`. Use
 **Already use a coding agent** (Claude Code, the Codex CLI)? Install Docker
 and Git yourself, run the `git clone` command, open the agent in that folder,
 and ask: *"Read docs/GETTING_STARTED.md and set Maestro CS up for me — start
-it and wait until it is ready."* Adding your AI key in Settings → Models and
+it and wait until it is ready."* Adding your AI key in Settings › AI & models and
 loading the browser extension stay your jobs.
 
 Want to build the app from source instead? See [CONTRIBUTING.md](../CONTRIBUTING.md).
@@ -97,7 +99,7 @@ Want to build the app from source instead? See [CONTRIBUTING.md](../CONTRIBUTING
 | `port is already allocated` | Another program uses a port the app needs | Change the `*_HOST_PORT` values in `.env` ([details](../README.md#troubleshooting--common-questions)) |
 | The page loads but everything shows errors | The app is still starting | Wait a minute. It is ready when <http://localhost:8001/health> shows `{"status":"ok"}` |
 | You added a key to `.env` after starting | Keys are read at start | Run `docker compose restart backend` |
-| AI features fail although Settings says "Configured" | An old key is being used | Enter the key again in Settings → Models and press **Test** |
+| AI features fail although Settings says "Configured" | An old key is being used | Enter the key again in Settings › AI & models and press **Test** |
 
 ### Your data, backups and starting over
 
@@ -125,43 +127,46 @@ anywhere else.
 
 Five steps from nothing to a PDF:
 
-1. **Import your resumes.** Follow the setup screen, or go to **Career KB**
-   and import. You can add up to 10 files at a time (PDF, DOCX, Markdown or
+1. **Import your resumes.** Follow the setup screen, or go to **Career history**
+   and click **Import resumes and documents**. You can add up to 10 files at a time (PDF, DOCX, Markdown or
    text). Add old versions too — they all hold useful experience.
-2. **Review and approve points in the Career KB.** Imported points arrive as
-   drafts. Only *approved* points ever appear on a resume. Merge duplicates
+2. **Review and approve bullets in your career history.** Imported bullets arrive as
+   drafts under **Drafts to review**. Only *approved* bullets ever appear on a resume. Merge duplicates
    while you're there.
-3. **Add your AI key** — **Settings → Models**. Paste the key under **API
+3. **Add your AI key** — **Settings › AI & models**. Paste the key under **API
    keys**, then press **Test** next to each model to check it works.
-4. **Save a job.** Click **New application** and paste the posting text or
-   its URL — or save it from the job page with the
-   [browser extension](#4-the-browser-extension-optional). Maestro reads the
-   posting and gives it a match score against your resumes.
-5. **Tailor and download the PDF.** On the job's **Score & Tailor** tab, each
-   gap is a requirement your resume doesn't show yet. Answer its questions
-   honestly — new true facts are saved to your Career KB for next time. Every
-   AI change is shown for you to accept or undo. Then click **Download PDF**.
+4. **Save a job.** Click **Add job**, paste the job description or
+   its link, and click **Save job** — or save it from the job page with the
+   [Companion](#4-the-companion-browser-extension-optional). Maestro reads the
+   job description and gives it a match score against your resumes.
+5. **Tailor and download the PDF.** On the job's **Score and tailor** tab, click
+   **Find gaps and tailor**. Each gap is a requirement your resume doesn't show
+   yet. Answer its questions honestly — new true facts are saved to your career
+   history for next time — then click **Tailor resume**. Every AI change is shown
+   for you to accept or undo. On the **Resume** tab, click **Create PDF**, then
+   **Download PDF**.
    A copy of every PDF is also saved in the `applications/` folder, so you can
    always check what you sent.
 
 **Next:**
 
 - **Fill in your Profile** — contact details, job preferences (roles, level,
-  location, work authorization) and the autofill details the extension uses.
-- **Build a base resume per kind of role** — Base Resumes → New → **From
-  Career KB**, then open its **Health report** and fix what it finds.
+  location, work authorization) under **About you**, and the answers the
+  Companion fills in under **Autofill**.
+- **Build a base resume per kind of role** — Base resumes › New base resume ›
+  **From career history**, then open its **Health report** and fix what it finds.
 - **Pick a default template** on the Templates page. You can switch any time.
-- **Use Quick Tailor** once you've done a few jobs by hand — set it up in
-  Settings → Quick tailor.
+- **Use Quick tailor** once you've done a few jobs by hand — set it up in
+  Settings › Tailoring.
 - **Track your applications** — mark them applied and record outcomes. After
   about 10 saved jobs, **Analytics** shows what employers keep asking for.
 - **Choose your models** — see
   [choosing models](../README.md#5-choose-your-models-deliberately).
 
-## 4. The browser extension (optional)
+## 4. The Companion browser extension (optional)
 
-A Chrome side panel: save the job posting you're looking at, score your
-resumes against it, fill the application form from your autofill details, and
+The **Companion** is a Chrome side panel: save the job posting you're looking at, score your
+resumes against it, fill the application form from your saved answers (Profile › Autofill), and
 mark it applied — without leaving the tab. The app must be running.
 
 1. Open `chrome://extensions` and switch on **Developer mode** (top right).
@@ -173,12 +178,12 @@ There is nothing to set up if you kept the default ports. If you changed the
 ports in `.env`, the extension's addresses are set in `extension/sw.js`
 (`DEFAULTS`), or can be overridden in the extension's stored settings.
 
-The extension records which form fields it could fill, and keeps that on your
+The Companion records which form fields it could fill, and keeps that on your
 computer. There is no on/off switch in the panel: to turn it off, set
 `telemetryEnabled` to `false` in the extension's stored settings
 (`chrome.storage.sync`). **Analytics → Autofill coverage → Clear data** deletes
 what was collected. Full detail: [`extension/README.md`](../extension/README.md)
-and the [README's extension section](../README.md#the-browser-extension).
+and the [README's Companion section](../README.md#the-companion-browser-extension).
 
 ## 5. Connect your AI assistant (optional)
 

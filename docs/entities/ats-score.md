@@ -30,7 +30,8 @@ recency/tenure/recent-role signal, and `is_keyword_channel=True` so they
 cannot corroborate the L5 stuffing lint. Education content is deliberately
 NOT evidence: a presence bit in `l5_format` plus an ADVISORY `l4_gate` degree
 warning (`services/ats/degrees.py`) outside the composite, because every ATS
-platform surveyed enforces education via an application-form question.
+platform surveyed enforces education via an application-form question. School and
+graduation year stay out of the score and the prompt either way.
 
 **"Still in this role" is single-source** (`services/resume_dates`). The ATS
 indexer and health gate S3 both call `resume_dates.is_open_ended`: a blank or

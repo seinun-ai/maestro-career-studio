@@ -71,7 +71,7 @@ time you…" answered for the fourth time. Here you record what you actually did
 once, and every document after that is assembled from that record.
 
 **It never writes things you didn't do.** Your work goes into one **career
-record** (the Career KB). Resumes are built from the points you approved, word
+history**. Resumes are built from the bullets you approved, word
 for word; rewording a bullet is a separate step that asks you first. When a job
 asks for something your resume doesn't show, Maestro asks you about it — if it's
 true, it's saved for every future application; if not, it stays a gap. Every
@@ -132,8 +132,8 @@ gone stale):
 - **Disk space** — about a 1 GB download, roughly 3–4 GB once unpacked. Most of
   it is the PDF tools and the small scoring model.
 - **An AI key — OpenAI or Gemini; either one is enough.** It powers tailoring,
-  cover letters and screening answers, building your career record, the
-  extension's form filling, and chat. Without a key, scoring, PDFs and tracking
+  cover letters and screening answers, building your career history, the
+  Companion's form filling, and the Assistant. Without a key, scoring, PDFs and tracking
   still work — see [Do you need an API key?](#do-you-need-an-api-key)
 
 ---
@@ -149,9 +149,9 @@ time:
 | Piece | What it takes |
 |---|---|
 | **1. The app** | one `docker compose up -d` (below) — runs on your own computer only |
-| **2. An AI key** | **Settings → Models** in the app; OpenAI *or* Gemini, [either alone is enough](#5-choose-your-models-deliberately) |
+| **2. An AI key** | **Settings › AI & models** in the app; OpenAI *or* Gemini, [either alone is enough](#5-choose-your-models-deliberately) |
 | **3. Your AI assistant** | **optional.** Claude: install the `.mcpb` extension from Settings → Extensions. Codex / ChatGPT desktop: add the plugin from Settings → Plugins. [Details](#driving-it-from-claude-codex-or-chatgpt-mcp) |
-| **4. The browser extension** | **optional.** `chrome://extensions` → Developer mode → **Load unpacked** → the repo's `extension/` folder. Nothing to configure — [full steps](extension/README.md) |
+| **4. The Companion (browser extension)** | **optional.** `chrome://extensions` → Developer mode → **Load unpacked** → the repo's `extension/` folder. Nothing to configure — [full steps](extension/README.md) |
 
 ```bash
 # 1. Download the project and create your settings file
@@ -163,8 +163,8 @@ cp .env.example .env
 docker compose up -d
 ```
 
-Then open **http://localhost:3000** and add your AI key in **Settings →
-Models**. The first start sets up your database and adds a demo resume so you
+Then open **http://localhost:3000** and add your AI key in **Settings ›
+AI & models**. The first start sets up your database and adds a demo resume so you
 have something to look at.
 
 > **Young, but rehearsed.** The app runs daily on my machine, and a fresh
@@ -176,8 +176,8 @@ have something to look at.
 
 ### Do you need an API key?
 
-**Recommended: yes.** Tailoring, the extension's form filling, cover letters and
-screening answers, building your career record, and chat all use an AI service.
+**Recommended: yes.** Tailoring, the Companion's form filling, cover letters and
+screening answers, building your career history, and the Assistant all use an AI service.
 
 **It costs far less than you'd think — measured, not estimated.** We traced real
 applications end to end (Aug 2026) on the default model
@@ -218,7 +218,7 @@ You can point the app at a local AI server (Ollama, LM Studio, vLLM) by setting
 computer from inside Docker). **We haven't validated any local model end to end
 yet**, and long prompts and strict JSON output are where small models struggle
 ([`KNOWN_ISSUES.md`](KNOWN_ISSUES.md) tracks this). If you try it, press **Test**
-on each model in **Settings → Models** and tell us what worked in an issue.
+on each model in **Settings › AI & models** and tell us what worked in an issue.
 
 ---
 
@@ -262,9 +262,10 @@ that read as machine-written — so the leverage is in depth per application.
 
 **Words you'll see:**
 
-- **Career record (Career KB)** — one organized record of your work, built from
-  your resumes.
-- **Base resume** — your main resume for one kind of role (e.g. Data Scientist).
+- **Career history** — one organized record of your work, built from your
+  resumes. Each job, project or school in it is an **item**; each line is a
+  **bullet**.
+- **Base resume** — your main resume for one kind of role, such as Data Scientist.
 - **Tailoring** — adjusting a base resume to one job, using only things you
   actually did.
 - **Match score** — Maestro's comparison of your resume with a saved job
@@ -272,22 +273,22 @@ that read as machine-written — so the leverage is in depth per application.
   or a prediction of an interview.
 - **AI service** — OpenAI or Gemini, whichever you choose.
 
-### 1. Feed the Career KB first (once)
+### 1. Build your career history first (once)
 
-![Drop in your resumes, get a knowledge base](docs/assets/kb-onboarding.png)
+![Drop in your resumes, get your career history](docs/assets/kb-onboarding.png)
 
 Upload **every** resume version you have — old ones, role-specific ones, the
 too-long one. Maestro merges duplicates across them and builds one **career
-record**: your verified history in one place.
+history**: your verified record in one place.
 
-This step pays off every time. Everything later is built from approved points,
-so the record's quality is the ceiling on everything else. Add certifications,
+This step pays off every time. Everything later is built from approved bullets,
+so its quality is the ceiling on everything else. Add certifications,
 project write-ups and performance-review notes too — anything true about your
 work can become evidence later.
 
-> **Review the inbox before tailoring.** Bullets taken unchanged from your files
+> **Review your drafts before tailoring.** Bullets taken unchanged from your files
 > are approved on import; anything merged across resumes, or written by AI,
-> waits in the review inbox. Only approved points go into a resume, and fixing a
+> waits in **Drafts to review**. Only approved bullets go into a resume, and fixing a
 > duplicate once fixes every future application.
 
 ### 2. Build a base resume per career track
@@ -299,26 +300,26 @@ work can become evidence later.
 
 ![One base resume per track, with its health grade and live preview](docs/assets/base-resume.png)
 
-One base per kind of role you actually target (e.g. *Data Scientist*, *ML
-Engineer*) — not one per job. **New base resume → From Career KB** suggests
+One base per kind of role you actually target (such as *Data Scientist* or *ML
+Engineer*) — not one per job. **New base resume › From career history** suggests
 which entries belong, with a reason for each one it leaves out, plus a drafted
 summary.
 
-<!-- kb-import.png captured 2026-08-23: the editor's Import from Career KB
+<!-- kb-import.png captured 2026-08-23: the editor's Add from career history
      drawer; background contact panel deliberately blurred at capture time. -->
 
-![Adding points from your career record is explicit and versioned](docs/assets/kb-import.png)
+![Adding bullets from your career history is explicit and versioned](docs/assets/kb-import.png)
 
 The optional instruction box steers the *shape*, not the facts: "lead with
 pipeline and cloud work, keep it mid-level, leave off teaching." **Bullets are
-never rewritten at this step** — approved points go in word for word, which is
+never rewritten at this step** — approved bullets go in word for word, which is
 what keeps a generated resume defensible.
 
 ### 3. Save the job, then close the gaps
 
 ![Every job you have saved, from saved to signed](docs/assets/applications.png)
 
-Paste the job posting or save it with the browser extension, then score it
+Paste the job description (**Add job**) or save it with the Companion, then score it
 against your base resumes. Scoring uses no AI service, so the same resume and
 job always get the same number.
 
@@ -336,7 +337,7 @@ call.
 
 Then work through the **gaps** rather than accepting a rewrite. Maestro asks
 targeted questions to find things that are true but not yet written down. Your
-answers are saved to your career record, so closing a gap once helps every
+answers are saved to your career history, so closing a gap once helps every
 future application.
 
 > **About the score.** It's *our* score: fixed and repeatable, but **not** a
@@ -360,8 +361,8 @@ anywhere — it's your name on it.
 
 ### 5. Choose your models deliberately
 
-**Settings → Models** has three slots: **Fast** (reading postings, bulk work),
-**Smart** (tailoring, finding gaps) and **Chat** (the in-app assistant). We
+**Settings › AI & models** has three model roles: **Fast** (reading postings, bulk work),
+**Smart** (tailoring, finding gaps) and **Assistant** (the in-app Assistant). We
 tested the combinations on real job postings, and the **Fast** model turned out
 to decide almost everything — how completely a posting's requirements are read,
 how honest your score is, and most of the waiting time. So it comes down to two
@@ -369,7 +370,7 @@ tested setups, one per AI service:
 
 | | **OpenAI** · most thorough | **Gemini** · fastest |
 |---|---|---|
-| Every slot set to | `gpt-5.6-luna` | `gemini-3.7-flash` |
+| Every role set to | `gpt-5.6-luna` | `gemini-3.7-flash` |
 | The one key you need | OpenAI | Gemini |
 | Job requirements captured | the most complete we measured | about ¾ of that, strongest on named tools |
 | Save + tailor takes | ~40 seconds | ~10 seconds |
@@ -379,9 +380,10 @@ tested setups, one per AI service:
 Neither is better overall, and any OpenAI-compatible model can be used instead.
 A fresh install starts with the OpenAI setup, because a model that misses
 requirements quietly *inflates* your score — by about nine points in our tests.
-With only a Gemini key, switch all three slots in **Settings → Models** (or set
-`FAST_MODEL`/`SMART_MODEL`/`CHAT_MODEL` in `.env`). Press **Test** on any model
-to check it works.
+With only a Gemini key, switch all three roles in **Settings › AI & models** (or set
+`FAST_MODEL`/`SMART_MODEL`/`CHAT_MODEL` in `.env`). Press **Test** next to each model
+to check it works; **Find Gemini models** (or **Find OpenAI models**) lists
+what your key can use.
 
 ### Driving it from Claude, Codex, or ChatGPT (MCP)
 
@@ -451,16 +453,16 @@ The steps above are the core. These make each application quicker than the last.
 
 ### Talk to one resume — or one section, or one bullet
 
-The in-app chat works on what you pin. Pin a base resume and it works on that
+The **Assistant** (the in-app chat) works on what you pin. Pin a base resume and it works on that
 one; pin a section, a job entry or a single bullet and it **refuses** edits
-outside it. Pin a career-record item — a project, a role, a certification — to
-bring its detail into the conversation without letting the chat change it.
+outside it. Pin a career history item — a project, a role, a certification — to
+bring its detail into the conversation without letting the Assistant change it.
 Suggested edits arrive as a card you accept or discard; nothing changes
 silently.
 
 ### No more `resume_v2_FINAL(3).docx`
 
-Every change — a manual edit, a chat edit, a tailoring run, even a restore —
+Every change — a manual edit, an Assistant edit, a tailoring run, even a restore —
 saves a **resume version**. Open a resume's history to compare two versions or
 restore one; nothing is ever lost. Old resumes you no longer use are archived,
 not deleted.
@@ -468,8 +470,8 @@ not deleted.
 ### Tell it how you sound — once
 
 A **persona** describes you as a candidate: vision, strengths, goals, working
-style, how your writing should sound. Set it once in Profile (or have it drafted
-from your career record, then review and save it), and every generated document
+style, how your writing should sound. Set it once in Profile › About you (or have it drafted
+from your career history, then review and save it), and every generated document
 uses that voice. It shapes tone and emphasis only — never facts.
 
 ### Health Report — is this resume sound at all?
@@ -479,7 +481,7 @@ uses that voice. It shapes tone and emphasis only — never facts.
 A gap needs a job. A **Health Report** doesn't: it checks one resume on its own —
 can it be read by application systems, are the dates right, is the evidence
 strong, is the format sound. A serious problem **blocks** tailoring, because
-tailoring can't fix a broken resume. You can overrule a finding, with a reason
+tailoring can't fix a broken resume. You can **Mark as OK** a check you disagree with, with a reason
 on record.
 
 ### Templates you actually own
@@ -494,14 +496,14 @@ checked so that one that application systems couldn't read never goes live.
 *(The web "New template" button starts from a LaTeX template; Typst templates
 are created through the API or MCP.)*
 
-### Quick Tailor, when you already know the answer
+### Quick tailor, when you already know the answer
 
-The guided gap process is the careful path. **Quick Tailor** is the fast one:
+The guided gap process is the careful path. **Quick tailor** is the fast one:
 one click against a job, answers taken from your saved preferences, tailored and
 rendered in one go. The honesty rule still holds — a skill Maestro found no
 evidence for can only go in your skills list, never into an invented bullet.
 
-### The browser extension
+### The Companion browser extension
 
 <!-- P4 extension.gif — CLEARED for publish 2026-08-20. Contact header scrubbed;
      the Job/Score/Resume/Fill/Track ladder and the multi-base scoring panel
@@ -511,10 +513,10 @@ evidence for can only go in your skills list, never into an invented bullet.
      "Liberty Hill, TX" experience location reviewed and accepted by the owner.
      1000px / 10fps / 64 colors, 2.6 MB; re-encode any replacement to match. -->
 
-![The extension on a job page](docs/assets/extension.gif)
+![The Companion on a job page](docs/assets/extension.gif)
 
-A side panel in Chrome: save a posting from the job board you're reading, score
-it, and fill application forms from your **Autofill Profile**. It never fills
+The **Companion** is a side panel in Chrome: save a job from the job board you're reading, score
+it, and fill application forms from your saved answers (**Profile › Autofill**). It never fills
 signatures, passwords or government IDs, only ticks agreement boxes if you turn
 that on in Profile, and never submits.
 
@@ -530,9 +532,9 @@ show which companies you applied to and when. Clear it any time in **Analytics
 
 Every saved job adds to a picture of the market you're applying into — top
 skills, a skill heatmap, role mix over time — filterable by role, level and job
-type. The most useful view is **Gaps & growth**: skills jobs keep asking for,
-marked as *missing*, *in your career record* or *already on a resume*. Frequent
-and missing is worth learning next; frequent and already in your record is
+type. The most useful view is **Skill gaps**: skills jobs keep asking for,
+marked as *not in your career history*, *in your career history* or *used before*. Frequent
+and missing is worth learning next; frequent and already in your history is
 something you have but keep forgetting to say. **Resume fit** shows the score
 before and after tailoring for each base resume, so you can see whether
 tailoring is helping.
@@ -565,8 +567,8 @@ Maestro CS can take an application right up to the submit button. Read this
 part rather than skim it.
 
 A job your agent finds becomes a **proposal**. You review proposals in the
-**Agent inbox** and accept or skip them (in bulk if you like). An
-apply run then works **only the ones you accepted**: it tailors, renders and
+**Agent inbox** and **Queue** or **Skip** them (in bulk if you like). An
+apply run then works **only the ones you queued**: it tailors, renders and
 fills each application in a live agent session with a browser, asks you only
 for information the app doesn't have (and hands you logins, CAPTCHAs and
 signatures), and **waits for your yes before each submit**. Nothing is ever submitted from the web app itself, and a daily limit
@@ -596,8 +598,8 @@ proposals, your yes, and the screenshots behind them.
 
 ### Leave with everything
 
-`career.md` is your whole career record as one Markdown file — downloadable from
-the Career KB page or over MCP. Every application's PDF is saved in
+`career.md` is your whole career history as one Markdown file — downloadable from
+the Career history page or over MCP. Every application's PDF is saved in
 `applications/`, in a folder named after the company and role, so checking what
 you actually sent is opening a folder. Your data is yours, in files on your
 disk, and nothing about leaving is made difficult.
@@ -707,12 +709,12 @@ repository"** button, which reads [`CITATION.cff`](CITATION.cff).
 Another program is using a port the app needs. Change `FRONTEND_HOST_PORT`
 (3000) or `BACKEND_HOST_PORT` (8001) in `.env` and run `docker compose up -d`
 again (`lsof -i :<port>` shows what's using it). If you change the backend port,
-the browser extension needs the new address too — see
+the Companion needs the new address too — see
 [`extension/README.md`](extension/README.md). While this release still runs the
 old Postgres service for the import, `POSTGRES_HOST_PORT` (55432) is a third.
 
 **AI features fail with "401 Unauthorized" or quota errors:**
-Check the key in **Settings → Models** and press **Test**. If you put the key in
+Check the key in **Settings › AI & models** and press **Test**. If you put the key in
 `.env` after starting, run `docker compose restart backend`.
 
 **"database is locked":**

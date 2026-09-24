@@ -122,7 +122,7 @@
   card on the popover surface; the chosen card has a primary edge inside it
   and a Check before its name, and says so with `aria-pressed`. The card's
   accessible name is only the template's name, so the default mark and the
-  warning badges (Needs setup, ATS may misread) are its `aria-describedby`.
+  Needs setup badge and the ATS warning line are its `aria-describedby`.
 - **One page shell: `PageShell` + `PageHeader`** (`components/page-shell.tsx`).
   Every top-level route renders `PageShell` — `max-w-6xl`, `p-6`, `gap-6` —
   and `PageHeader` for its title block. Never assign per-page widths or
@@ -143,12 +143,12 @@
   React reported as a hydration error on every load of that page. Still on the old
   pattern:
   detail/editor routes (`jobs/[id]`, both studios and the template editor, all
-  three in `FullscreenEditorPage`; `entity-detail`) and Chat
+  three in `FullscreenEditorPage`; `entity-detail`) and the Assistant
   (no page header by design).
 - **The base-resume studio header is the NAME; its subtitle is the save
   status, never an identity line.** Display name is
   the title (`EditableTitle`, instant PATCH `/identity`); the slug is the URL
-  plus a "Copy resume ID" item; the target role is the ⋯ menu's FIRST item, which
+  plus a "Copy ID for connected agents" item; the target role is the ⋯ menu's FIRST item, which
   names its own value ("Role: Data Scientist" / "Role not set") and opens
   `RoleCategoryDialog`. Three identity lines used to stack in the header
   saying the same words, because the slug derives from the name and the name
@@ -255,8 +255,8 @@
     so when the server lands on exactly what the form holds the baseline moves,
     or the saved name reads as an unsaved edit.
   - *Tailored studio*: the user-facing signals (status line, Save, stale strip,
-    Update score, ⋯ Create PDF) read `unsaved`, the diff against what its own last
-    Save stored. Update score and Create PDF also stay disabled while a render is
+    Update score, ⋯ Update PDF, Create PDF before the first) read `unsaved`, the diff
+    against what its own last Save stored. Update score and Update PDF also stay disabled while a render is
     in flight. `render.isPending` is not part of `busy`, so Save still accepts
     an edit typed mid-render. `dirty` stays the input to the external-edit
     adoption guard (SYSTEM.md §12); the leave guard reads `unsaved`. Its own Save moves the
@@ -379,15 +379,15 @@
   saves, and focus returns to Edit after Save or Cancel when it fell to
   `<body>` (`useEditorFocusReturn`). An open edit that differs from the saved
   letter registers the leave guard. Replacing a saved letter asks "Replace
-  your cover letter?": Regenerate on it, and Write cover letter, which
+  your cover letter?": Write a new version on it, and Write cover letter, which
   replaces every saved letter (`POST /api/qa` deletes them only after the new
   one is committed, so a failed generation keeps them). No "was edited"
   signal is stored, so any saved text counts. Which letters are open for
   editing lives in `QATab`: while one is open, Write and every letter's
-  Regenerate wait, and while Write runs no letter opens for editing. One
+  Write a new version wait, and while Write runs no letter opens for editing. One
   entry regenerates at a time. Answer questions sends the text it read and
   clears the box only if it still holds that text. Answer questions,
-  Write and Regenerate submit through `useSingleFlight` and stay
+  Write and Write a new version submit through `useSingleFlight` and stay
   focusable while they work. Pinned by `test_frontend_qa_tab.py` and
   `test_qa_router.py`.
 - **`PdfPagesPreview` owns the canvas and the zoom.** Pages sit on
@@ -442,7 +442,7 @@
   then one warning naming what kept its previous PDF. Never hand-roll either:
   six callers had copied the path ternary and four the note-plus-warning pair,
   which is how the same block became a duplication regression twice.
-- **An edit is described, never printed.** Chat's suggestion card and the
+- **An edit is described, never printed.** The Assistant's edit card and the
   studio's Ask for changes sheet list resume edits through `describeEdits`
   (`lib/describe-edit.ts`) and one `EditWordsList`. Ops apply in order, so the
   describer keeps a copy-on-write shadow of the arrays an op can shift and
@@ -519,9 +519,10 @@
 - **Long lists keep their controls and column names in view**
   (`components/list-toolbar.tsx`, `<Table minWidth stickyHeader>`). A list
   page whose list can outgrow the window does two things:
-  - it puts its search, filter and sort row in `ListToolbar` (one per page,
-    a direct child of `PageShell`), with `ListSearch` as its search box
-    (Applications and the Agent inbox share it);
+  - it puts its search, filter and sort row in `ListToolbar` (one per page:
+    a direct child of `PageShell` on Applications, inside `ProposalsSection`'s
+    wrapper in the Agent inbox), with `ListSearch` (`components/list-search.tsx`)
+    as its search box;
   - it gives its table a `minWidth` from `MIN_WIDTH` plus `stickyHeader`.
 
   The toolbar is a `<search>` landmark, not `role="toolbar"` (that role
@@ -574,8 +575,8 @@
   - The sentence speaks of what is LOADED, so it stays true under any filter
     or search, and it still shows under a filtered empty state.
   - It names the rows left out: `order: "oldest"` for an endpoint that
-    returns oldest first (the Career history draft inbox, which sends no
-    limit, so the API's default page of 500 is its cap).
+    returns oldest first (the Career history draft inbox, whose cap is
+    `KB_DRAFTS_LIMIT`, 500, in `lib/api.ts`).
   - It is plain text, not a live region.
   - The limit is one named constant per page, at most the API's `le=`
     (pinned).
@@ -610,8 +611,8 @@
   region still wins; its classes merge over the primitive's.
 - **Initial focus in a dialog is Base UI's `initialFocus`, not React's
   `autoFocus`**, which focuses the field before Base UI records the opener,
-  so every close returned to the unmounted field: `<body>` (New career
-  item's title, `initialFocus={titleRef}` now). `ConfirmDialogProvider` names the
+  so every close returned to the unmounted field: `<body>` (Add item's
+  title, `initialFocus={titleRef}` now). `ConfirmDialogProvider` names the
   element: Cancel for a `destructive` confirm (a reflex Enter must not
   confirm an irreversible delete) and for a `consent` one (the Companion's
   permission switches: Enter must never grant one), the affirmative button
@@ -645,7 +646,7 @@
     and Apply, Adapt and preview, Add as is and Add N to resume on Add to a resume, Add
     item, a base resume's Delete), `/new`'s Save job and Quick
     capture's Add document, each dimmed on
-    `data-disabled`. So are Queue for agent (a tracker row's and the job
+    `data-disabled`. So are Queue in Agent inbox (a tracker row's and the job
     header's) and the tailored studio's Create draft; each leaves once its
     request lands, so focus is handed on: the row's ⋯, the header's first
     control, the studio's `<main>` (`BuildDraft`'s `useFocusHandoff`). A text
@@ -712,7 +713,7 @@
     `finalFocus` being read when the popup unmounts (not when it opens) and
     ahead of Base UI's own return microtask, and a card's Archive on Base UI
     reading but not applying that function after a pointer close. After a
-    Base UI upgrade, re-check in the browser: a click on ⋯ → Edit as code
+    Base UI upgrade, re-check in the browser: a click on ⋯ → Edit as code (advanced)
     (or a /templates card's ⋯ → Duplicate) lands on ⋯; ⋯ →
     Version history and ⋯ → Start over start inside the sheet and the confirm; Load
     latest lands on the studio's `<main>`; a click on a middle base resume's
@@ -817,7 +818,7 @@
   items, Suggest edits, Apply, Write new wording, Adapt, Add as is) submits
   through `useSingleFlight` too, and so do the Templates Create and Duplicate,
   `/new`'s Save job, both studios' Save, the tailored studio's Create draft and
-  Start over (one guard), Queue for agent (tracker row and job header), every
+  Start over (one guard), Queue in Agent inbox (tracker row and job header), every
   explicit settings Save (API keys, Prompts' Save and Reset, Auto-apply,
   Persona and its Draft, Custom AI server) and Available models' + and Remove
   (the chat composer's `sendingRef` is the same guard, inline). A write whose
@@ -860,7 +861,7 @@
   `test_frontend_color_roles.py` finds every chip literal in `status-chip.tsx`,
   `career/entity-card.tsx` and `company-monogram.tsx` and computes it over the
   page, a card, `--muted` and a hovered row in both modes; the three amber
-  template labels (Needs setup, ATS may misread, Unsaved changes) are computed over the
+  template labels (Needs setup, the ATS warning line, Unsaved changes) are computed over the
   page, a card and the popover. A new shade must be copied into its
   `_TAILWIND` table.
 - **Card galleries**: Templates and Base resumes are the same image-first
@@ -881,8 +882,8 @@
   `PreviewThumbnail` rounds only its top corners. `Card`'s own
   `has-[>img:first-child]:pt-0` wants a BARE `<img>` first child, which ours
   is not — assert full-bleed on the component that IS the image-first card,
-  not via a child selector. `pt-0` is that default, not a universal: the Career
-  KB's `career/entity-card.tsx` is TEXT-first and reuses `GalleryCard` purely
+  not via a child selector. `pt-0` is that default, not a universal: Career
+  history's `career/entity-card.tsx` is TEXT-first and reuses `GalleryCard` purely
   for the z-10-link/z-20-actions layering, overriding `pt-0` with `pt-4`. Reach
   for this shell whenever a card's whole face is a link AND it carries an
   actions menu — that pairing is the invariant, a preview image is not.
@@ -955,23 +956,10 @@
   value `"declined by user"` (agent-visible vocabulary echoed verbatim by
   `list_proposals`/`get_proposal`); only its label reads "Not interested"
   (`reasonLabel` in `components/proposals/triage-actions.tsx`, which the
-  job's Overview card reads too).
-  **One word per kind of agent**: **Assistant** (the in-app chat),
-  **connected agents** (MCP clients; **Connected agents** in Settings, whose
-  first card says what one is and what it cannot do), **Companion** (the
-  browser extension; "the Companion" in a sentence), **Suggested edits** and
-  **Suggested project** (chat's and the studio's approval cards). "Proposal"
-  means only a job an agent filed; bare "Agent" only inside Agent inbox, the
-  source toggle's "Agents" and Agent pipeline. Pinned by
-  `test_frontend_agent_words.py`. A filer is named through
-  `lib/agent-name.ts`, never printed raw. The add-a-job flow is **Add job**
-  (sidebar, tracker, `/new`'s title "Add a job") and **Save job** (its
-  submit); a job becomes an application when you tailor or apply. The Agent
-  inbox's lanes are Needs you, To review, Queued, Applying and History, and
-  its chips come from `PROPOSAL_STATUS_CHIP` (Proposed, Queued, Approved,
-  Applied, Skipped, Needs you, Expired, Check if sent); the funnel and
-  Analytics use the same words, and the tracker's Agent inbox filter reads
-  To review for `proposed`.
+  job's Overview card reads too). The agent words, Add job and the Agent
+  inbox's lanes and chips are in *Canonical terms* (Microcopy rules), the one
+  glossary; `test_frontend_agent_words.py` pins the agent words. The
+  tracker's Agent inbox filter reads To review for `proposed`.
 - Design language: tonal fills over borders, pill chips, 8px rhythm,
   `ease-out` micro-interactions ≤200ms, `active:scale-[0.97]` on pressables,
   `prefers-reduced-motion` respected globally, `pointer-coarse:` variants for
@@ -1058,57 +1046,80 @@
     (`${company} — ${role}`); those are typography, not prose.
   - *Canonical terms* (one word per thing, on every surface: the web app, the
     Companion panel and the server messages the app shows;
-    `backend/tests/test_frontend_vocabulary.py` refuses the banned variants in
-    every string a user can read, including the Companion panel). Each
-    canonical term, then what it replaces:
+    `backend/tests/test_frontend_vocabulary.py` refuses most banned variants
+    in every string a user can read, including the Companion panel; Send to
+    resume, blocker, extra or custom sections, session, Submitted and
+    Accepted have no rule yet, so review catches those). This is the one
+    glossary: other bullets point here. Each canonical term, then what it
+    replaces:
     **Career history** (the page; "your career history" in prose), never
     Career KB, KB, Knowledge Base, library, career record or career data; the
     sidebar group stays **Career library** and the file-size unit KB stays.
-    **item** (one record in career history, or one row in a resume section),
-    never entity, record or entry. **bullet** (one line in an item), never
+    **item** (one thing in your career history, such as a job, a project or a
+    school, or one row in a resume section), never entity, record or entry;
+    adding one is **Add item**. **bullet** (one line in an item), never
     point, with states **Draft**, **Approved** and **Not used** (verbs
     Approve, Stop using, Use again); "Bullet style" is the glyph setting and
     score points stay "points". **Add to career history**, **Add from career
-    history**, **Add to a resume**, **Copy to another resume**, **Import
-    resumes** (the resume-only import) and **Import resumes and documents**
-    (the upload dialog's title and every button that opens it), never Sync
-    to KB, Send to resume or Port. **ATS score**,
-    spelled out once per surface where it first appears ("An ATS score (0 to
-    100) is our estimate of how an applicant tracking system would rate each
-    resume for this job.": it is the app's estimate, `lib/ats-words.ts`
-    `ATS_SCORE_LEAD`), never composite or fit score; lift is **Score gain**. **job description** (never JD or
-    posting), **job**, **job link**, **careers page**. **Add job** (the
-    sidebar, the tracker, `/new`'s title "Add a job") and **Save job** (its
-    submit), never New application or Extract job: a job becomes an
-    application when you tailor or apply. **Refresh details**, never
-    re-extract. **gap analysis**, never session or tailoring session.
-    **Quick tailor**, always capitalized, never Fast tailor; its settings are
-    Quick tailor settings. **Create PDF** and **Update PDF**, never render or
-    compile (the template editor's button is **Update preview**). **Update
-    score**, never re-score; the noun follows the count (**Update scores** on
-    Score and tailor, which scores every base resume). **Hide**, **Show**, **Hidden** for a resume
-    entry; **Archive** and **Restore** for a base resume or a template.
-    **Other sections**, never extra or custom sections. **Must fix**, **Mark
-    as OK** and **Undo** for health checks, never gate, blocker or waive;
-    **Check health**, **Check again**, **Health report**; **Check template**,
-    never certify. **Version 12** and **Version history**. **skill group**,
-    **School**, **On-site**, **Role**, **Employment type**, **Offer**,
-    **Diversity questions (voluntary)**. **Persona** keeps its name. The
-    model roles are **Fast model**, **Smart model** and **Assistant model**,
-    never Chat model. **Assistant** (the in-app chat and its sidebar item;
-    one conversation is a chat), **connected agents** (MCP clients;
-    **Connected agents** is the Settings tab), **Companion** (the browser
-    extension; a proper name in labels, "the Companion" in sentences),
-    **Suggested edits** and **Suggested project** (chat's and the studio's
-    cards). **Agent inbox** (`/proposals`), never Agent proposals; its lanes
-    are **Needs you**, **To review**, **Queued**, **Applying** and
-    **History**, its chips **Proposed**, **Queued**, **Approved**,
+    history**, **Add to a resume**, **Copy to another resume**, never Sync to
+    KB, Send to resume or Port. **Import resumes and documents** is the upload
+    dialog's title and the button that opens it on Career history and on the
+    Score and tailor tab; the setup step that opens the same dialog (Getting
+    started, Profile's setup strip) is labelled **Import resumes**, and so is
+    the first-run card, which opens the resume-only dialog "Import your
+    resumes". **ATS score**, spelled out once per surface where it first
+    appears as the app's own estimate: `lib/ats-words.ts` `ATS_SCORE_LEAD`
+    ("An ATS score (0 to 100) is our estimate of how an applicant tracking
+    system would rate each resume for this job.") on Score and tailor, and
+    `ATS_SCORE_LEAD_ALL_JOBS` on Analytics; never composite or fit score, and
+    never "rates" as if it were an employer's reading; lift is **Score
+    gain**. **job description** (never JD or posting), **job**, **job
+    link**, **job post** (the page a job is listed on), **careers page**.
+    **Add job** (the sidebar, the tracker, `/new`'s title "Add a job") and
+    **Save job** (its submit and the Companion's), never New application or
+    Extract job: a job becomes an application when you tailor or apply.
+    **Refresh details**, never re-extract. **gap analysis**, never session
+    or tailoring session. **Quick tailor**, always capitalized, never Fast
+    tailor; its settings are Quick tailor settings. **Create PDF** and
+    **Update PDF** (Update once a PDF exists), never render or compile (the
+    template editor's button is **Update preview**). **Update score**, never
+    re-score; the noun follows the count (**Update scores** on Score and
+    tailor, which scores every base resume). **Hide**, **Show**, **Hidden**
+    for a resume entry; **Archive** and **Restore** for a base resume or a
+    template (Version history's **Restore** brings back a version).
+    **Other sections**, never extra or custom sections. On a health report
+    the group is **Checks**; a fatal check's badge is **Must fix** and the
+    other tier **Serious**; **Mark as OK** and **Undo**, never gate, blocker
+    or waive; **Check health**, **Check again**, **Health report**; **Check
+    template**, never certify. **Version 12** and **Version history**.
+    **skill group**, **School**, **On-site**, **Role**, **Employment type**,
+    **Offer**, **Diversity questions (voluntary)**. **Persona** keeps its
+    name. The model roles are **Fast model**, **Smart model** and
+    **Assistant model**, never Chat model. **One word per kind of agent**:
+    **Assistant** (the in-app chat and its sidebar item; one conversation is
+    a chat), **connected agents** (MCP clients; **Connected agents** is the
+    Settings tab, whose first card says what one is and what it cannot do),
+    **Companion** (the browser extension; a proper name in labels, "the
+    Companion" in running sentences). **Suggested edits** ("Suggested edit"
+    for one: the Assistant's edit card and the studio's Ask for changes
+    sheet) and **Suggested project** (the Assistant's project card).
+    "Proposal" means only a job a connected agent filed, and a filer is named
+    through `lib/agent-name.ts`, never printed raw. Bare "Agent" appears only
+    in Agent inbox, the source toggle's "Agents" and Agent pipeline. **Agent
+    inbox** (`/proposals`), never Agent proposals; its lanes are **Needs
+    you**, **To review**, **Queued**, **Applying** and **History** (one table,
+    `lib/inbox-lanes.ts`); its verbs **Queue** and **Skip** in the inbox and
+    **Queue in Agent inbox** on a tracker row and the job header; its chips
+    (`PROPOSAL_STATUS_CHIP`) **Proposed**, **Queued**, **Approved**,
     **Applied** and **Skipped** (plus **Needs you**, **Expired**, **Check if
-    sent**), never Triage, In flight, Submitted or Accepted; the funnel and
-    Analytics use the same words, and Analytics' **In progress** replaces In
-    flight. **base resume** and **tailored resume**; **resume** without
-    accents, and US English. A deliberate exception goes on the ratchet's
-    `_ALLOWED` list with its reason; every other file holds no banned word.
+    sent**), never Triage, In flight or Submitted, and a proposal is never
+    "Accepted" (that word is the application status for an accepted offer).
+    The funnel and Analytics use the same words, and Analytics' **In
+    progress** replaces In flight. **base resume** and **tailored resume**;
+    **resume** without accents, and US English. A deliberate exception goes
+    on the ratchet's `_ALLOWED` list with its reason, or, when it is a whole
+    pattern, into the rule itself (the slash rule's AI/ML and UI/UX); every
+    other file holds no banned word.
   - *Errors*: "Couldn't <what failed>." then what to do next. Build it with
     `couldnt(what, err)` from `lib/error-text.ts`; a load error passes
     `errorDetail(err)`. A server's `detail` reaches the screen only when it
@@ -1127,7 +1138,9 @@
     (a card's meta line, a chip row); never inside a label, a hint, a status
     line or a sentence, and never for "and", "then" or "optional". No "/"
     for "or" or "and" (pick one word); a ratio in prose reads "3 of 5", while
-    "/ 100" beside a score and a date format like "06/2026" stay. No
+    "/ 100" beside a score, a date format like "06/2026" and an established
+    role title (AI/ML Engineer, UI/UX Designer: planner decision, role titles
+    keep their slash; exempt in the ratchet's slash pattern) stay. No
     semicolon: two sentences. No "e.g." in UI text: a hint says "such as".
     Abbreviations are spelled out (years, points, Average, Minimum,
     Applications).
@@ -1214,7 +1227,7 @@
   flushes on unmount, warns on reload while pending, and asks before an
   in-app exit only after a failed save. Leaving within the debounce saves the
   pending selection, a `cannot_confirm` included, which then writes its
-  durable KB record: it was the user's choice when they left. While it
+  durable career history record: it was the user's choice when they left. While it
   tailors, every gap control is locked (`GapLocked`: `aria-disabled` buttons,
   `readOnly` fields, so focus stays), and an edit that slips through is saved
   if the tailor fails. A stale session shows no Try again (every save 409s;
@@ -1238,7 +1251,7 @@
   `aria-expanded`.
 - **Derived setup guidance**: Profile starts with `SetupStatusStrip` above its
   tab row; About you holds Persona (disabled-until-import "Draft from my
-  career"), Where you apply (the market) and Job preferences; Autofill holds the answers for job forms.
+  career history"), Where you apply (the market) and Job preferences; Autofill holds the answers for job forms.
   The empty tracker leads with its empty state, what
   the page is for, and places `GettingStartedCard` BELOW it: the same derived
   steps, deep links, locally dismissible, gone when setup completes. The
@@ -1298,8 +1311,8 @@
   gap. Endpoints: `/api/explore/activity` (drafted=created_at vs
   submitted=applied_at, day|week buckets), `/base-summaries`, `/build-areas`
   (gap frequency re-keyed on the engine's canonical skill form, classified
-  against Career KB evidence as missing | in_kb | ported — the ONE analytics
-  surface that reads KB, read-only; tailoring still never does). Overview also
+  against career history evidence as missing | in_kb | ported — the ONE analytics
+  surface that reads career history, read-only; tailoring still never does). Overview also
   carries the **Autofill coverage** card (`autofill-coverage-card.tsx`, key
   `["autofill-telemetry-summary"]`) fed by `/api/autofill/telemetry/summary`.
   Chart conventions: `--chart-1..6` are a validated categorical palette
@@ -1323,7 +1336,7 @@
   them (AI/ML, MLOps, BI, QA, IT), never blank. A resume is named by
   a row's `display_name` / `base_resume_name` when the payload has one, else by
   `useBaseResumeLabel()` (lists of slugs) or `useBaseResumeName(slug)` (one
-  slug that may be soft-deleted: chat cards, the Proposals pill, the job
+  slug that may be soft-deleted: the Assistant's cards, the proposal pill, the job
   page's Details menu). The name hook reads the archived-inclusive list, and
   for a slug it lacks, that resume's own row — so every surface names a
   soft-deleted resume the same way. `humanizeSlug`, through `baseResumeLabel`,

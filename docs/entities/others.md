@@ -60,8 +60,13 @@
   (the pre-KB `master` profile is gone): every base resume is listable,
   editable, portable and tailorable. `last_kb_synced_at` stamps the last
   successful one-click base→KB sync (`GET/POST
-  /api/base-resumes/{slug}/kb-sync-status` / `kb-sync`; MCP `kb_sync_base`).
-- **ResumeData `extra_sections`** (custom sections): the resume is fixed core
+  /api/base-resumes/{slug}/kb-sync-status` / `kb-sync`; MCP `kb_sync_base`; on
+  screen the studio's **Add to career history (N)** pill and its **Add now**).
+- **Resume edit ops** are one source (`schemas/resume_edit.py`: a 16-kind discriminated union with
+  `op_kinds()` / `op_scope()` / `render_ops_brief()` / `render_ops_shapes()`); chat imports those, MCP builds
+  `edit_base_resume` from `render_ops_shapes()` at import, and `test_resume_edit_reference.py` holds the
+  parity. Only the extras payload stays loosely typed (SYSTEM.md §11 item 1).
+- **ResumeData `extra_sections`** (on screen **Other sections**): the resume is fixed core
   (contact/summary/skills/experience/projects/education/certifications) PLUS an
   ordered `extra_sections` list — a discriminated union on `type`: `entries`
   (structured) or `bullets` (flat); never both. Two core fields are optional by
@@ -141,13 +146,23 @@
   edit, and did. Engine migration state: **§13** `typst-default-flip` /
   `latex-render-path` / `texlive-layer`.
 - **QAEntry**: per-application Q&A / cover letter rows (+ PDFs).
+- **Model settings** (`services/model_settings.py`, `services/llm_capabilities.py`; on screen Settings ›
+  AI & models, roles Fast, Smart and Assistant): the catalog is seeds ∪ extras (`MODEL_OPTIONS` ∪
+  `llm.extra_models`); `GET /api/settings/openai` returns the merge, and deleting an id a role still uses is
+  400. Capabilities are probed on Test and stored per model; `require()` blocks only on a stored No, so an
+  unprobed model passes (the Assistant is gated on tools this way). JSON mode is capability-gated:
+  `response_format=json_object` goes out only when `llm._json_mode_supported()` (other servers may hard-400
+  on the field), and `llm._extract_json_object` salvages fenced JSON.
 - **Setup status** (`GET /api/setup/status`): a derived, **read-only**
   six-step onboarding view — no wizard-progress state; guidance is
   dismissible and recomputed from existing data (the `FirstRunImportCard`
   doctrine). Its service uses non-mutating `peek_*` reads, so a status request
   never lazy-seeds a Setting row or file mirror. The steps span three surfaces
-  — `model_key` → `/settings#api-keys`, `import_resumes` → `/career`,
-  autofill/job-preferences/persona → `/profile`, `template` → `/templates`;
+  — `model_key` → Settings' AI & models tab (`#api-keys`), `import_resumes` →
+  `/career`, autofill/job-preferences/persona → Profile's Autofill and About you
+  tabs, `template` → `/templates` (the template step's detail names the default
+  as `default_template_name`); a link into Settings or Profile goes through
+  `lib/settings-tabs.ts` `anchorHref`, which picks the tab that holds the anchor;
   readiness is app-wide, not Profile-scoped. `model_key` is `bool(stored key or
   env key)` for either provider: whether a key WORKS is what the capability
   probe answers, and storing that verdict would break the derived-only rule. Autofill readiness spans the
@@ -171,7 +186,8 @@
   text (or skip it when no usable label exists), preserving every other valid
   preference field. Setup status uses it for missing-role suggestions (an
   unmapped custom role drives none); persona drafting uses it as a goals signal.
-- **Career KB** (`models/career_kb.py`, `/career` pages): the durable record
+- **Career KB** (`models/career_kb.py`, `/career` pages; on screen **Career history**, its entities
+  **items** and its points **bullets**): the durable record
   of experience/projects/education/certs + facts; deliberately a sidecar —
   tailoring does NOT read KB context. Its web UI is view-first: profile/entity
   metadata, points, and notes render as readable content until an on-demand
@@ -347,7 +363,14 @@
   rewrites are cached on `bullet_rewrites` by `content_hash` — a row with
   NULL text is "tried, ask", absence is "never tried"; answered rewrites
   persist on `health_ask_answers` (written before the LLM call;
-  `GET /api/resume-lint/{kind}/{key}/answers` rehydrates). `POST .../draft-rewrite`
+  `GET /api/resume-lint/{kind}/{key}/answers` rehydrates). **Finding ids are frozen
+  keys**: `_fid` hashes the finding's type, location and issue text, and saved ask
+  answers key on that id, so a finding whose `issue` is reworded passes its OLD text
+  as `id_key` (`LADDER_COPY`'s `id_key`, the `_ID_KEY_*` constants and `_id_key_*`
+  builders in `resume_lint.py`); never edit one, or every saved answer is orphaned.
+  Gate words are one table, `health_gates.GATE_LABELS`, re-stamped on every READ
+  (`with_current_labels`), so a relabel needs no re-run and no frontend map.
+  `POST .../draft-rewrite`
   is the generic guarded-draft path (`objective=strengthen|condense`, optional
   `expected_content_hash`, always returns the hash of the text drafted FROM).
   `skills.undemonstrated` is a token-boundary match (alphanumeric lookarounds,
@@ -475,11 +498,14 @@
   `ProposalTransition.application_id` / `record_decision` (only while
   unlinked); linking stamps the application `source='agent'`. Knobs:
   `settings/auto_apply.json` (`GET/PUT /api/settings/auto-apply`) — caps,
-  expiry, auto-pick margin/floor, blocklist; editable via the Settings
-  "Auto-apply" card (deprecated `cooldown_days` hidden but preserved on save —
+  expiry, auto-pick margin/floor, blocklist; editable via Settings ›
+  Connected agents, "Auto-apply" card (deprecated `cooldown_days` hidden but preserved on save —
   the model is extra=forbid). Web surface: `/proposals` (the Agent inbox) — summary
-  rows link to `/jobs/[id]?from=proposals`; hover Accept/Skip (single + mass,
-  channel `frontend`) stay on the list; the job page mirrors Accept/Skip and
+  rows link to `/jobs/[id]?from=proposals`; Queue/Skip on a row and in bulk
+  (channel `frontend`) stay on the list, and the lanes are one table
+  (`frontend/lib/inbox-lanes.ts`: `INBOX_LANES`, `laneOf`, `NEEDS_YOU_STATUSES`); a
+  Queue accepts only a Proposed proposal and otherwise says which lane it is in;
+  the job page mirrors Queue/Skip and
   shows the proposal pill + the proposal's Overview card, titled with its filer; prev/next walks
   `cs-proposals-seq`. Delete on non-submitted rows; still NO browser execution
   from the web — execution only happens in a live agent session holding a
