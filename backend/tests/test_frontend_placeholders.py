@@ -37,7 +37,7 @@ _QUOTES = "\"'`"
 # statement back in.
 _PROMPTS = frozenset(
     {
-        ("app/applications/page.tsx", "Search company or role" + _ELLIPSIS),
+        ("components/list-search.tsx", "Search company or role" + _ELLIPSIS),
         ("components/role-picker.tsx", "Search roles, or type your own" + _ELLIPSIS),
         ("components/career/merge-entity-dialog.tsx", "Search by title" + _ELLIPSIS),
         ("components/chat/chat-page.tsx", "Ask about your resume" + _ELLIPSIS),

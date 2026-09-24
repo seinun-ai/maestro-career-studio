@@ -464,8 +464,11 @@ export function deleteKbPoint(pointId: UUID) {
   return apiFetch<void>(`/api/kb/points/${pointId}`, { method: "DELETE" });
 }
 
+/** The draft inbox asks for this many; the API returns the OLDEST first. */
+export const KB_DRAFTS_LIMIT = 500;
+
 export function listKbDrafts() {
-  return apiFetch<KBInboxPoint[]>("/api/kb/points?state=draft");
+  return apiFetch<KBInboxPoint[]>(`/api/kb/points?state=draft&limit=${KB_DRAFTS_LIMIT}`);
 }
 
 export function uploadKbDocument(entityId: UUID, file: File) {

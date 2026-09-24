@@ -12,6 +12,7 @@ import { Check, Inbox, Pencil, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { useConfirm } from "@/components/confirm-dialog";
+import { ListCapNotice } from "@/components/list-cap-notice";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -26,7 +27,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { useDiscardableEditor } from "@/hooks/use-confirm-discard";
-import { deleteKbPoint, patchKbPoint, bulkKbPointState } from "@/lib/api";
+import { deleteKbPoint, patchKbPoint, bulkKbPointState, KB_DRAFTS_LIMIT } from "@/lib/api";
 import type { KBEntitySummary, KBInboxPoint, KBPointPatch, UUID } from "@/lib/types";
 
 type DraftGroup = {
@@ -245,6 +246,9 @@ export function InboxPanel({
             </section>
           ))
         )}
+        {!isLoading && !error ? (
+          <ListCapNotice loaded={drafts.length} limit={KB_DRAFTS_LIMIT} noun="draft bullets" order="oldest" />
+        ) : null}
       </CardContent>
     </Card>
   );
