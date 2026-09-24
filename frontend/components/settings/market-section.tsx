@@ -12,7 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { AutosaveStatus } from "@/components/settings/autosave-status";
-import { AutosaveRow, SettingCard } from "@/components/settings/setting-card";
+import { SettingCard, SettingCardAction } from "@/components/settings/setting-card";
 import { apiFetch } from "@/lib/api";
 import type { MarketSettingResponse } from "@/lib/types";
 
@@ -67,9 +67,9 @@ export function MarketSection() {
         const current = data.supported.find((m) => m.key === selected);
         return (
           <div className="grid gap-4">
-            <AutosaveRow>
+            <SettingCardAction>
               <AutosaveStatus pending={save.isPending} failed={save.isError} />
-            </AutosaveRow>
+            </SettingCardAction>
             <div className="grid max-w-sm gap-1.5">
               <Label htmlFor="market-select" id="market-select-label">
                 Where you apply

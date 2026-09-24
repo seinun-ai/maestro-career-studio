@@ -47,7 +47,9 @@ export function AppearanceSection() {
     // error state to share. It writes to next-themes, never to the API.
     <Card id="appearance">
       <CardHeader>
-        <CardTitle>Appearance</CardTitle>
+        <CardTitle role="heading" aria-level={2}>
+          Appearance
+        </CardTitle>
         <CardDescription>
           Defaults to your system setting until you choose here.
         </CardDescription>

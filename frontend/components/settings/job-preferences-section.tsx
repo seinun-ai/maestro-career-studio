@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { RolePicker } from "@/components/role-picker";
 import { AutosaveStatus } from "@/components/settings/autosave-status";
 import { useLeaveGuard } from "@/hooks/use-leave-guard";
-import { AutosaveRow, SettingCard } from "@/components/settings/setting-card";
+import { SettingCard, SettingCardAction } from "@/components/settings/setting-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -140,9 +140,9 @@ function JobPreferencesEditor({
 
   return (
     <div className="space-y-5">
-      <AutosaveRow>
+      <SettingCardAction>
         <AutosaveStatus pending={pending} failed={failed} onRetry={retry} />
-      </AutosaveRow>
+      </SettingCardAction>
       <div className="grid gap-1.5">
         <Label htmlFor="job-preferences-roles" className="text-xs" optional>
           Favored roles

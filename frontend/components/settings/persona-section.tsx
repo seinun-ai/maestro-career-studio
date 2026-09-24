@@ -1,12 +1,12 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { useLeaveGuard } from "@/hooks/use-leave-guard";
-import { SettingCard } from "@/components/settings/setting-card";
+import { SettingCard, SettingCardAction } from "@/components/settings/setting-card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { apiFetch } from "@/lib/api";
@@ -117,22 +117,33 @@ function PersonaEditor({
 
   const dirty = value !== saved;
   useLeaveGuard(dirty);
+  const reasonId = useId();
 
   return (
     <>
-      <div className="mb-3 flex justify-end">
+      {/* A card-level action, so it sits beside the title. It stays focusable
+          while disabled: a native `disabled` dropped focus to <body> when a
+          draft started, and hid the reason (a `title`) from the keyboard. */}
+      <SettingCardAction>
         <Button
           type="button"
           variant="outline"
           size="sm"
-          onClick={() => draft.mutate(editRevision.current)}
+          focusableWhenDisabled
           disabled={draft.isPending || Boolean(draftDisabledReason)}
-          title={draftDisabledReason}
+          aria-describedby={draftDisabledReason ? reasonId : undefined}
+          className="data-disabled:pointer-events-none data-disabled:opacity-50"
+          onClick={() => draft.mutate(editRevision.current)}
         >
-          {draft.isPending ? <Loader2 className="animate-spin" /> : null}
+          {draft.isPending ? <Loader2 className="animate-spin" aria-hidden="true" /> : null}
           Draft from my career
         </Button>
-      </div>
+      </SettingCardAction>
+      {draftDisabledReason ? (
+        <p id={reasonId} className="text-muted-foreground text-xs">
+          {draftDisabledReason}
+        </p>
+      ) : null}
       <Textarea
         rows={10}
         value={value}

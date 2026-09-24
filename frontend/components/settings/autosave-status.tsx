@@ -18,8 +18,11 @@ import { focusIfDropped } from "@/hooks/use-focus-return";
  * notice; an autosave is the opposite, and Job preferences proved it — its
  * writes coalesce one-in-flight-at-a-time, so typing a location fired several
  * PUTs and stacked several "Job preferences saved" toasts for a single edit.
- * This is an inline, non-interrupting status instead, and it reserves its own
- * width so the row does not reflow as the state changes.
+ * This is an inline, non-interrupting status instead. It sits in the card
+ * header beside the title (`SettingCardAction`), whose auto column takes its
+ * width from this span, so `min-w-36` holds the widest state's width ("Not
+ * saved Try again", about 126px) and the description does not re-wrap as the
+ * state changes.
  *
  * Three states: Saving…, Not saved (a failed write, with Try again where the
  * card still holds a value the server lacks), and Saves automatically.
@@ -48,7 +51,7 @@ export function AutosaveStatus({
     if (!failed) focusIfDropped(statusRef.current);
   }, [failed, pending]);
   return (
-    <span className={`inline-flex items-center gap-2 text-xs ${className ?? ""}`}>
+    <span className={`inline-flex min-w-36 items-center justify-end gap-2 text-xs ${className ?? ""}`}>
       <span
         ref={statusRef}
         tabIndex={-1}

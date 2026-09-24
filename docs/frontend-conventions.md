@@ -900,9 +900,15 @@
   different failure behaviours, three of which showed the user nothing.
   Readiness is `data !== undefined`, never `!isLoading`; failure is
   `isLoadFailure`. Appearance is the one exemption: it fetches nothing.
+  Its header has one action slot. The body renders into it with
+  `SettingCardAction`, a portal, so the controlling state stays in the editor,
+  and a screen reader reads the action after the title. The title is a level-2
+  heading, and `CardContent` is `@container/setting`, which every card's column
+  breakpoints read.
 - **Two save models, and only two.** A pure preference autosaves through
-  `useAutosave` and reports with `AutosaveStatus` inside `AutosaveRow` at the
-  top of the card body (never the header — the mutation lives in the editor).
+  `useAutosave` and reports with `AutosaveStatus` in the card header, right of
+  the title, through `SettingCardAction`. The mutation stays in the editor, and
+  the status reserves its width (`min-w-36`) so the description never re-wraps.
   Anything with a cost or a blast radius keeps a dirty-gated Save, and
   Save/Discard where a discard is meaningful. Errors always toast; successful
   autosaves never do, and neither does an explicit studio Save, which reports

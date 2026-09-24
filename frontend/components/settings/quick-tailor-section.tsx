@@ -5,7 +5,7 @@ import { toast } from "sonner";
 
 import { AutosaveStatus } from "@/components/settings/autosave-status";
 import { useLeaveGuard } from "@/hooks/use-leave-guard";
-import { AutosaveRow, SettingCard } from "@/components/settings/setting-card";
+import { SettingCard, SettingCardAction } from "@/components/settings/setting-card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -86,9 +86,9 @@ function QuickTailorEditor({ initial }: { initial: QuickTailorProfile }) {
 
   return (
     <div className="space-y-5">
-      <AutosaveRow>
+      <SettingCardAction>
         <AutosaveStatus pending={pending} failed={failed} onRetry={retry} />
-      </AutosaveRow>
+      </SettingCardAction>
 
       <div className="space-y-3">
         {SWITCH_ROWS.map((row) => {
