@@ -632,7 +632,9 @@
   (`overflow-y-auto`, the chat scope picker) keeps a solid inset outline
   instead, because an absolute overlay scrolls with the content. A call site
   never passes `outline-*`, `after:hidden` or another `overflow-*` to a panel
-  (pinned).
+  (pinned). Settings and Profile pass `keepMounted` (through `SettingsTabs`),
+  so every panel mounts at load and none unmounts on a switch: unsaved text
+  and leave-guard registrations survive a hidden tab.
 - **Landmarks: the PAGE owns `<main>`, the shell owns layout.**
   `SidebarInset` is a `<div>` (shadcn ships it as `<main>`, which nests a
   second main landmark). Every route must render exactly one `<main>` in EVERY
@@ -892,7 +894,12 @@
   `components/settings/` — the folder is not the split, this rule is. When a
   cross-page link points at a setting, deep-link the card id
   (`/profile#autofill`), never the bare page: sending a user to `/settings`
-  for the autofill profile is a dead end that shipped once already.
+  for the autofill profile is a dead end that shipped once already. Each page
+  is tabbed (`lib/settings-tabs.ts`: Settings is AI & models, Tailoring,
+  Connected agents, Appearance, About; Profile is About you, Autofill).
+  `?tab=` names the tab and the default tab has none; a tab click writes it
+  with the native `history.replaceState` (no server round trip, no new
+  history entry). A new card adds its id to its tab's `anchors` (pinned).
 - **Every settings card renders through `SettingCard`**
   (`components/settings/setting-card.tsx`): it owns the header, the loading
   skeleton, and the one `LoadErrorState` with retry. Do not hand-roll
@@ -929,9 +936,10 @@
   gap_tailor, chat_system); the other internal prompts sit behind an
   "Advanced prompts" disclosure (`ESSENTIAL_PROMPTS` map in
   components/settings/prompts-section.tsx — update it when adding prompt keys).
-- **Derived setup guidance**: Profile starts with `SetupStatusStrip`, then
-  Persona (disabled-until-import "Draft from my career"), Market, Job
-  preferences, and Autofill. The empty tracker leads with its empty state, what
+- **Derived setup guidance**: Profile starts with `SetupStatusStrip` above its
+  tab row; About you holds Persona (disabled-until-import "Draft from my
+  career"), Market and Job preferences; Autofill holds the autofill profile.
+  The empty tracker leads with its empty state, what
   the page is for, and places `GettingStartedCard` BELOW it: the same derived
   steps, deep links, locally dismissible, gone when setup completes. The
   API-key and import steps carry a Required badge until done (`required` in
