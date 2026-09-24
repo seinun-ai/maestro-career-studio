@@ -35,6 +35,8 @@ import {
   SKILLS_LAYOUT_OPTIONS,
   SLIDER_RANGES,
   diffFrom,
+  inchLabel,
+  pointsLabel,
   shownSectionOrder,
   type FormattingBaseline,
   type ResumeFormatting,
@@ -469,15 +471,15 @@ export function FormattingPanel({
                 (v) => setKey("font_size", v),
               ),
             )}
-            {sliderRow("section_spacing", "Section spacing", (n) => `${n}pt`)}
-            {sliderRow("entry_spacing", "Item spacing", (n) => `${n}pt`)}
+            {sliderRow("section_spacing", "Section spacing", pointsLabel)}
+            {sliderRow("entry_spacing", "Item spacing", pointsLabel)}
             {sliderRow("line_spacing", "Line spacing", (n) => n.toFixed(1))}
             {sliderRow(
               "top_bottom_margin",
               "Top and bottom margins",
-              (n) => `${n.toFixed(2)}in`,
+              inchLabel,
             )}
-            {sliderRow("side_margins", "Side margins", (n) => `${n.toFixed(2)}in`)}
+            {sliderRow("side_margins", "Side margins", inchLabel)}
             {choiceRow(
               "justify",
               "Justify text",

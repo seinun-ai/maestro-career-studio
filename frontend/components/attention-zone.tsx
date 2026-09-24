@@ -22,5 +22,8 @@
 export const ATTENTION_BADGE =
   "bg-amber-500/10 text-amber-800 dark:text-amber-400";
 
-/** One label, so the chip and any future copy cannot drift apart. */
-export const ATTENTION_BADGE_LABEL = "Counts more";
+/** One label, so the chip and any future copy cannot drift apart. What the zone
+ *  really changes: the finding's severity and its place in the fix list. Not
+ *  the score (`health_score`: zones are never weights), so neither "Counts
+ *  more" nor "Bigger effect". */
+export const ATTENTION_BADGE_LABEL = "Higher priority";

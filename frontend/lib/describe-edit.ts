@@ -311,9 +311,9 @@ export function describeEdits(
   });
 }
 
-// Where a check failed, in the user's words. The studios' Save checks the form
-// against the resume schema; a raw path (`experience.2.bullets.0`) stays in the
-// code view only (raw-json-toggle), everywhere else it reads as a place.
+// Where a check failed, in the user's words. The studios' Save and the code
+// view check the resume against its schema; a raw path (`experience.2.bullets.0`)
+// never reaches the screen, it reads as a place.
 const PATH_SECTION: Record<string, string> = {
   contact: "Contact",
   summary: "Summary",
@@ -338,6 +338,37 @@ const ROW_NOUN: Record<string, string> = {
 // Lists whose name the row's noun already says ("bullet 2", not "bullets, bullet 2").
 const SILENT_LISTS = new Set(["bullets", "items", "entries", "coursework"]);
 
+// A field by the label its editor shows (contact-form, the experience,
+// project, education, skills and other-sections editors): "School", never
+// "institution". `test_frontend_resume_review.py` holds each word to a label on
+// screen.
+const FIELD_WORDS: Record<string, string> = {
+  name: "Name",
+  email: "Email",
+  phone: "Phone",
+  location: "Location",
+  linkedin: "LinkedIn",
+  github: "GitHub",
+  website: "Website",
+  company: "Company",
+  role: "Role",
+  start_date: "Start date",
+  end_date: "End date",
+  institution: "School",
+  degree: "Degree",
+  field: "Field of study",
+  graduation_date: "Graduation date",
+  gpa: "GPA",
+  tech: "Tools used",
+  link: "Link",
+  date: "Date",
+  category: "Group name",
+  heading: "Heading",
+  subheading: "Subheading",
+  title: "Section name",
+  type: "Layout",
+};
+
 /** One failed field as words: `["experience", 2, "bullets", 0]` reads
  *  "Experience, item 3, bullet 1". Never prints a key, a dot or an index from 0. */
 export function describeFieldPath(path: readonly PropertyKey[]): string {
@@ -348,7 +379,7 @@ export function describeFieldPath(path: readonly PropertyKey[]): string {
       words.push(`${ROW_NOUN[parent] ?? "item"} ${seg + 1}`);
     } else if (typeof seg === "string") {
       if (words.length === 0) words.push(PATH_SECTION[seg] ?? seg.replace(/_/g, " "));
-      else if (!SILENT_LISTS.has(seg)) words.push(seg.replace(/_/g, " "));
+      else if (!SILENT_LISTS.has(seg)) words.push(FIELD_WORDS[seg] ?? seg.replace(/_/g, " "));
       parent = seg;
     }
   }
@@ -363,4 +394,90 @@ export function fieldsNeedFixing(paths: readonly (readonly PropertyKey[])[]): st
   const shown = places.slice(0, 3).join(". ");
   const more = places.length > 3 ? `. And ${places.length - 3} more` : "";
   return `Some fields need fixing: ${shown}${more}.`;
+}
+
+/** A schema check's failure, as the code view reports it: the place, then what is wrong with it. */
+type SchemaIssue = {
+  readonly path: readonly PropertyKey[];
+  readonly code: string;
+  readonly message: string;
+  readonly expected?: unknown;
+  readonly origin?: unknown;
+};
+
+const EXPECTED_WORDS: Record<string, string> = {
+  string: "must be text",
+  number: "must be a number",
+  boolean: "must be true or false",
+  array: "must be a list",
+  object: "must be a group of fields",
+};
+
+// The schema's own messages are sentences for the user ("Enter your name");
+// the library's defaults ("Invalid input: expected string, received number")
+// are not, and are replaced by words.
+const LIBRARY_MESSAGE = /^(Invalid|Too (small|big)|Expected)/;
+
+function issueWords(issue: SchemaIssue): string {
+  const place = describeFieldPath(issue.path);
+  if (!LIBRARY_MESSAGE.test(issue.message)) return `${place}: ${issue.message}`;
+  if (issue.code === "invalid_type") {
+    if (/received undefined$/.test(issue.message)) return `${place} is missing`;
+    return `${place} ${EXPECTED_WORDS[String(issue.expected)] ?? "has the wrong kind of value"}`;
+  }
+  if (issue.code === "too_small" && issue.origin === "string") return `${place} can't be empty`;
+  if (issue.code === "invalid_union" || issue.code === "invalid_value") {
+    return `${place} isn't one of the allowed choices`;
+  }
+  return `${place} isn't valid`;
+}
+
+/** "Couldn't apply: Contact, Email must be text. Fix it and choose Apply again." At most three places. */
+export function schemaIssuesWords(issues: readonly SchemaIssue[]): string {
+  const lines = [...new Set(issues.map(issueWords))];
+  const shown = lines.slice(0, 3).join(". ");
+  const more = lines.length > 3 ? `. And ${lines.length - 3} more` : "";
+  return `Couldn't apply: ${shown}${more}. Fix ${lines.length === 1 ? "it" : "them"} and choose Apply again.`;
+}
+
+/**
+ * Code the parser can't read, by its line: "Couldn't read the code at line 3. Check for a missing comma or
+ * quote." Chrome says "(line 3 column 2)", older engines only "at position 11", Safari neither.
+ */
+export function jsonErrorWords(text: string, thrown: unknown): string {
+  // Only the line number is read from the parser's words; they never reach the screen.
+  const parser = thrown instanceof Error ? thrown.message : "";
+  const said = /line (\d+)/.exec(parser);
+  const at = /position (\d+)/.exec(parser);
+  const line = said ? Number(said[1]) : at ? text.slice(0, Number(at[1])).split("\n").length : null;
+  return `Couldn't read the code${line ? ` at line ${line}` : ""}. Check for a missing comma or quote.`;
+}
+
+// A version change's section, as the server stores it (`resume_versions.diff_versions`).
+const CHANGE_SECTION: Record<string, string> = { ...PATH_SECTION, extra: "Other sections", resume: "Resume" };
+
+/** One change in Version history: its section in words, and its label only when it adds something. */
+export function diffChangeWords(change: { section: string; label: string }): { section: string; label: string | null } {
+  const section = CHANGE_SECTION[change.section] ?? change.section.replace(/_/g, " ");
+  const same = change.label.trim().toLowerCase() === section.toLowerCase();
+  return { section, label: same ? null : change.label };
+}
+
+/**
+ * A version's stored one-line summary ("Updated summary · Summary; Added experience · Acme") in words:
+ * sections named as on screen, a label that repeats its section dropped ("Updated Summary"). Anything else
+ * the server wrote passes through: old summaries keep their words.
+ */
+export function versionSummaryWords(summary: string): string {
+  return summary
+    .split("; ")
+    .map((part) => {
+      const hit = /^(Added|Removed|Updated) (\S+) · (.+)$/.exec(part);
+      if (!hit) return part;
+      // "Added resume · Initial version" is the first version: its label says it.
+      if (hit[2] === "resume") return hit[3];
+      const { section, label } = diffChangeWords({ section: hit[2], label: hit[3] });
+      return label ? `${hit[1]} ${section} · ${label}` : `${hit[1]} ${section}`;
+    })
+    .join("; ");
 }

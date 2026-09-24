@@ -127,7 +127,8 @@ def test_base_studio_save_is_dirty_gated_and_keyed():
 
 def test_base_studio_can_rerender_with_nothing_to_save():
     assert "/render`" in _BASE
-    assert '"Update PDF"' in _BASE and '"Regenerate PDF"' not in _BASE
+    assert "pdfActionWords(Boolean(live.pdf_path)).label" in _BASE and '"Regenerate PDF"' not in _BASE
+    assert 'label: "Update PDF"' in _read("lib/studio.ts")
 
 
 def test_base_studio_reports_save_in_the_header_not_a_toast():
@@ -155,11 +156,12 @@ def test_tailored_save_chain_fires_no_success_toasts():
     assert "toast.success(" not in _mutation(_TAILORED, "save")
     render = _mutation(_TAILORED, "render")
     assert "toast.success(" not in render
-    assert "rescore.mutate({ announce: false })" in render
+    # Through the one guard the Update score button uses.
+    assert "rescoreOnce({ announce: false })" in render
     rescore = _mutation(_TAILORED, "rescore")
     assert rescore.count("toast.success(") == 1
     assert 'if (opts?.announce) toast.success("ATS score updated");' in rescore
-    assert "rescore.mutate({ announce: true })" in _TAILORED
+    assert "rescoreOnce({ announce: true })" in _TAILORED
 
 
 def test_tailored_studio_status_shortcut_and_stale_preview():
@@ -223,7 +225,7 @@ def test_tailored_rescore_hint_reads_unsaved():
     busy = _TAILORED[_TAILORED.index("const busy =") :]
     busy = busy[: busy.index(";")]
     assert "render.isPending" not in busy
-    block = _TAILORED[_TAILORED.index("rescore.mutate({ announce: true })") :]
+    block = _TAILORED[_TAILORED.index("rescoreOnce({ announce: true })") :]
     block = block[: block.index("</Button>")]
     assert "disabled={busy || render.isPending || unsaved}" in block
     assert re.search(r"title=\{\s*unsaved\s*\?", block)

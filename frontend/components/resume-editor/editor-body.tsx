@@ -66,7 +66,7 @@ import { couldnt } from "@/lib/error-text";
 import { type ResumeFormatting } from "@/lib/formatting";
 import { notifyRenderNote } from "@/lib/render-note";
 import { resumeDataSchema } from "@/lib/resume-schema";
-import { emptyPreviewMessage, keepIfEdited, saveStatus } from "@/lib/studio";
+import { emptyPreviewMessage, keepIfEdited, pdfActionWords, saveStatus } from "@/lib/studio";
 import type { BaseResumeDetail, ResumeData } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -266,7 +266,8 @@ export function EditorBody({
       qc.invalidateQueries({ queryKey: ["pdf-preview"] });
       notifyRenderNote(result);
     },
-    onError: (err: Error) => toast.error(couldnt("create the PDF", err)),
+    // The verb the menu showed: an update that fails is not a failed create.
+    onError: (err: Error) => toast.error(couldnt(pdfActionWords(Boolean(live?.pdf_path)).failure, err)),
   });
 
   const currentSnapshot = JSON.stringify({
@@ -440,10 +441,8 @@ export function EditorBody({
                       >
                         <RefreshCw />
                         {regenerate.isPending
-                          ? "Creating…"
-                          : live.pdf_path
-                            ? "Update PDF"
-                            : "Create PDF"}
+                          ? pdfActionWords(Boolean(live.pdf_path)).pending
+                          : pdfActionWords(Boolean(live.pdf_path)).label}
                       </DropdownMenuItem>
                       {/* A free instruction against this document — an edit
                           or a question. Applying goes through PATCH /edits on
@@ -469,19 +468,18 @@ export function EditorBody({
                       </DropdownMenuItem>
                       {/* The slug left the header; connected agents and the
                           on-disk filename still speak it, so it stays one click
-                          away rather than something to retype off the URL. It
-                          is called the resume ID: "slug" is developer
-                          vocabulary. */}
+                          away rather than something to retype off the URL. The
+                          label says who it is for: it is not the resume's name. */}
                       <DropdownMenuItem
                         onClick={() => {
                           navigator.clipboard
                             .writeText(slug)
-                            .then(() => toast.success("Resume ID copied"))
-                            .catch((err) => toast.error(couldnt("copy the resume ID", err)));
+                            .then(() => toast.success("ID copied. Connected agents find this resume by it."))
+                            .catch((err) => toast.error(couldnt("copy the ID", err)));
                         }}
                       >
                         <Copy />
-                        Copy resume ID
+                        Copy ID for connected agents
                       </DropdownMenuItem>
                     </StudioOverflowMenu>
                   }

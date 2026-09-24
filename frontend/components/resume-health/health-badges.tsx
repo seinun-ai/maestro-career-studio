@@ -8,13 +8,15 @@ import { RetryChip } from "@/components/retry-chip";
 import { COUNT_META, countWords, GRADE_STYLES } from "@/components/resume-health/finding-cards";
 import { useLoadFailureError } from "@/hooks/use-last-seen";
 import { ApiError, apiFetch, getLintReport } from "@/lib/api";
-import { fatalGateFailed } from "@/lib/health-report";
+import { fatalGateFailed, healthCounts } from "@/lib/health-report";
+import type { LintGate } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 type LintReport = {
   score: number;
   grade: string;
   counts: Record<string, number>;
+  gates?: LintGate[];
   created_at: string;
 };
 
@@ -96,7 +98,7 @@ export function HealthBadges({
   // aria-label carries the same sentence to screen readers and touch.
   const summary =
     `Grade ${data.grade}, score ${data.score}. ` +
-    `${summarizeCounts(data.counts)}. Open report.`;
+    `${summarizeCounts(healthCounts(data))}. Open report.`;
 
   return (
     <Link

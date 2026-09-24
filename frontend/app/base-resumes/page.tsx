@@ -242,9 +242,12 @@ export default function BaseResumesListPage() {
               Delete {deleteTarget ? baseResumeLabel(deleteTarget.slug, [deleteTarget]) : "resume"}?
             </DialogTitle>
           </DialogHeader>
+          {/* A soft delete (routers/base_resumes.delete_base_resume): the row
+              leaves every list and nothing in the app brings it back; its files
+              stay on disk. An archived resume is already out of the way. */}
           <p className="text-muted-foreground text-sm">
-            This deletes the resume and its PDF. You can&apos;t undo this. To
-            keep it out of the way instead, archive it.
+            This removes the resume from your base resumes. You can&apos;t undo this.
+            {deleteTarget?.archived_at ? null : " To keep it out of the way instead, archive it."}
           </p>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeleteTarget(null)}>

@@ -389,6 +389,10 @@ export function applyCoherenceProposal(
 // --- UI ----------------------------------------------------------------------
 
 function ProvenanceChip({ value }: { value: ResumeDiffHunk["provenance"] }) {
+  // "llm" is the server's default for a change it could not attribute
+  // (resume_diff.attribute): an edit made here, or a change in the base resume
+  // after this copy was made, read as "AI". Unknown says nothing.
+  if (value === "llm") return null;
   return (
     <Badge
       variant="outline"
@@ -559,8 +563,10 @@ function GatesGroup({ gates }: { gates: HealthGate[] }) {
   if (nonPassing.length === 0) return null;
   return (
     <div className="space-y-1.5">
+      {/* "Checks", not "Must fix": the rows are serious and unchecked ones
+          too. "Must fix" is the fatal tier's badge only. */}
       <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
-        Must fix
+        Checks
       </p>
       <div className="space-y-1.5">
         {nonPassing.map((gate) => (

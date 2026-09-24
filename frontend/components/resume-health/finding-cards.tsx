@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode, type Ref, type RefObject } from "react";
 import { GuardedLink as Link } from "@/components/guarded-link";
 import {
   ATTENTION_BADGE,
@@ -64,7 +64,8 @@ import {
   textAtLocation,
   shortFindingLabel,
 } from "@/lib/health-report";
-import { focusIfDropped } from "@/hooks/use-focus-return";
+import { focusIfDropped, useEditToggle, useFocusOnNextCommit } from "@/hooks/use-focus-return";
+import { useSingleFlight } from "@/hooks/use-single-flight";
 import { notifyRenderNote } from "@/lib/render-note";
 import { wordDiff } from "@/lib/word-diff";
 import { cn } from "@/lib/utils";
@@ -112,6 +113,7 @@ export type FindingCardShared = {
 };
 
 export type ExpandedFindingChromeProps = {
+  ref?: Ref<HTMLDivElement>;
   finding: LintFinding;
   cardClassName: string;
   overflow: ReactNode;
@@ -123,6 +125,7 @@ export type ExpandedFindingChromeProps = {
 };
 
 export function ExpandedFindingChrome({
+  ref,
   finding,
   cardClassName,
   overflow,
@@ -133,17 +136,19 @@ export function ExpandedFindingChrome({
   children,
 }: ExpandedFindingChromeProps) {
   return (
-    <div className={cn("rounded-md border px-3 py-2", cardClassName)}>
+    <div ref={ref} className={cn("min-w-0 rounded-md border px-3 py-2", cardClassName)}>
       <div className="flex items-start justify-between gap-2">
         <button
           type="button"
-          className="flex min-w-0 flex-1 items-center gap-2 text-left"
+          className="flex min-w-0 flex-1 flex-wrap items-center gap-2 text-left"
           onClick={onCollapse}
           aria-expanded
         >
+          {/* A long label ("Harbor Loop Logistics · bullet 3") wraps inside
+              the card: at 375 it pushed the page sideways. */}
           <Badge
             variant="secondary"
-            className="text-muted-foreground shrink-0 text-xs"
+            className="text-muted-foreground h-auto max-w-full text-left text-xs break-words whitespace-normal"
           >
             {finding.label}
           </Badge>
@@ -211,7 +216,7 @@ function ClassificationOverrideDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Change rating</DialogTitle>
+          <DialogTitle>Correct this rating</DialogTitle>
         </DialogHeader>
         <div className="grid gap-1.5">
           <Select
@@ -301,8 +306,10 @@ function FindingOverflow({
           }
         />
         <DropdownMenuContent align="end" className="min-w-48">
+          {/* What it is for: the rating the check gave this bullet is wrong,
+              and the dialog sets the right one (or back to automatic). */}
           <DropdownMenuItem onClick={() => setDialogOpen(true)}>
-            Change rating
+            This rating is wrong…
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -316,10 +323,18 @@ function FindingOverflow({
   );
 }
 
-/** Header count chips — v2 counts keys, worst first. Shared by the report
- *  page and the studio's health chip; `one`/`many` keep "1 note", "3 notes". */
+/** Header count chips, worst first, read from `healthCounts` (`gate` is the
+ *  failed must-fix checks only, `serious` the failed serious ones). Shared by
+ *  the report page and the studio's health link; `one`/`many` keep "1 note",
+ *  "3 notes". */
 export const COUNT_META: { key: string; one: string; many: string; chip: string }[] = [
   { key: "gate", one: "must fix", many: "must fix", chip: "bg-destructive/10 text-destructive" },
+  {
+    key: "serious",
+    one: "serious problem",
+    many: "serious problems",
+    chip: "bg-amber-500/10 text-amber-800 dark:text-amber-400",
+  },
   {
     key: "critical",
     one: "critical",
@@ -488,6 +503,9 @@ export function SuggestionEditor({
 }) {
   const [draft, setDraft] = useState(suggestion);
   const [applied, setApplied] = useState(false);
+  // Apply leaves with its button: "Applied" takes the focus.
+  const appliedRef = useRef<HTMLParagraphElement>(null);
+  const focusNext = useFocusOnNextCommit();
 
   const apply = useMutation({
     mutationFn: () => {
@@ -510,16 +528,25 @@ export function SuggestionEditor({
     },
     onSuccess: (result) => {
       setApplied(true);
+      focusNext(appliedRef);
       notifyRenderNote(result);
       toast.success("Applied and saved as a new version");
       onApplied();
     },
     onError: (err: Error) => toastRewriteError(err, onReanalyze),
   });
+  // One edit per gesture: a double click applied the wording twice.
+  const applyOnce = useSingleFlight(apply.mutate);
 
   if (applied) {
     return (
-      <p className="text-muted-foreground mt-2 border-t pt-2 text-xs">Applied</p>
+      <p
+        ref={appliedRef}
+        tabIndex={-1}
+        className="text-muted-foreground mt-2 border-t pt-2 text-xs outline-none"
+      >
+        Applied
+      </p>
     );
   }
 
@@ -543,8 +570,13 @@ export function SuggestionEditor({
           size="sm"
           disabled={!canApply || apply.isPending || locked}
           title={locked ? STALE_APPLY_HINT : undefined}
-          className={locked ? LOCKED_BTN : undefined}
-          onClick={() => apply.mutate()}
+          focusableWhenDisabled
+          className={
+            locked
+              ? `${LOCKED_BTN} data-disabled:opacity-50`
+              : "data-disabled:pointer-events-none data-disabled:opacity-50"
+          }
+          onClick={() => applyOnce()}
         >
           {apply.isPending ? "Applying…" : "Apply suggestion"}
         </Button>
@@ -579,44 +611,50 @@ function CollapsedRow({
   onExpand: () => void;
   overflow: ReactNode;
 }) {
+  // Two lines that wrap inside the card: the chips, then the quote. On one
+  // line the chips and the action ran past the card at 375 (scrollWidth 476).
   return (
-    <div className="flex min-w-0 items-center gap-2">
+    <div className="flex min-w-0 flex-wrap items-start gap-2">
       <button
         type="button"
-        className="flex min-w-0 flex-1 items-center gap-2 text-left"
+        className="flex min-w-0 flex-1 basis-48 flex-col items-start gap-1 text-left"
         onClick={onExpand}
         aria-expanded={false}
         title={finding.label}
       >
-        <Badge
-          variant="secondary"
-          className="text-muted-foreground max-w-[10rem] shrink-0 truncate text-xs"
-        >
-          {shortFindingLabel(finding.label)}
-        </Badge>
+        <span className="flex min-w-0 flex-wrap items-center gap-1.5">
+          <Badge
+            variant="secondary"
+            className="text-muted-foreground max-w-[10rem] shrink-0 truncate text-xs"
+          >
+            {shortFindingLabel(finding.label)}
+          </Badge>
+          <LevelChip finding={finding} />
+          {finding.zone === "hot" && (
+            <Badge
+              variant="secondary"
+              className={`${ATTENTION_BADGE} text-xs`}
+            >
+              {ATTENTION_BADGE_LABEL}
+            </Badge>
+          )}
+          {pts != null && pts > 0 ? (
+            <span className="text-muted-foreground text-xs">
+              +{pts} points
+            </span>
+          ) : null}
+        </span>
         {quote ? (
-          <SourceQuote text={quote} truncated />
+          <span className="block w-full min-w-0">
+            <SourceQuote text={quote} truncated />
+          </span>
         ) : (
-          <span className="text-muted-foreground truncate text-sm">
+          <span className="text-muted-foreground block w-full min-w-0 truncate text-sm">
             {finding.issue}
           </span>
         )}
-        <LevelChip finding={finding} />
-        {finding.zone === "hot" && (
-          <Badge
-            variant="secondary"
-            className={`${ATTENTION_BADGE} shrink-0 text-xs`}
-          >
-            {ATTENTION_BADGE_LABEL}
-          </Badge>
-        )}
-        {pts != null && pts > 0 ? (
-          <span className="text-muted-foreground shrink-0 text-xs">
-            +{pts} points
-          </span>
-        ) : null}
       </button>
-      <div className="flex shrink-0 items-center gap-2">
+      <div className="ml-auto flex shrink-0 items-center gap-2">
         <Button size="xs" variant="outline" onClick={onExpand}>
           {actionLabel}
         </Button>
@@ -664,6 +702,10 @@ export function FixCard({
   hideHow,
 }: FindingCardShared & { finding: LintFinding }) {
   const [expanded, setExpanded] = useState(false);
+  // Review leaves with the collapsed row: focus goes into the opened card
+  // (its first field, else its first control), never to <body>.
+  const cardRef = useRef<HTMLDivElement>(null);
+  const focusNext = useFocusOnNextCommit();
   const currentText = textAtLocation(data, finding);
   const meta = TYPE_CHIP.fix;
   const pts = potentialPoints(levelNameOf(finding), nScoreable);
@@ -682,7 +724,10 @@ export function FixCard({
           quote={currentText}
           actionLabel="Review"
           pts={pts}
-          onExpand={() => setExpanded(true)}
+          onExpand={() => {
+            setExpanded(true);
+            focusNext(cardRef);
+          }}
           overflow={overflow}
         />
       </div>
@@ -696,6 +741,7 @@ export function FixCard({
 
   return (
     <ExpandedFindingChrome
+      ref={cardRef}
       finding={finding}
       cardClassName={meta.card}
       overflow={overflow}
@@ -740,6 +786,10 @@ export function AskCard({
     string | null | undefined
   >(undefined);
   const [notRewritable, setNotRewritable] = useState(false);
+  // Answer, and later Write new wording, leave with their buttons: focus goes
+  // into the card (the answer field, then the new wording), never to <body>.
+  const cardRef = useRef<HTMLDivElement>(null);
+  const focusNext = useFocusOnNextCommit();
   const currentText = textAtLocation(data, finding);
   const meta = TYPE_CHIP.ask;
   const pts = potentialPoints(levelNameOf(finding), nScoreable);
@@ -773,7 +823,10 @@ export function AskCard({
 
   const draft = useMutation({
     mutationFn: () => answerAsk(kind, resumeKey, finding.id, context),
-    onSuccess: (result) => setLocalSuggestion(result.suggestion),
+    onSuccess: (result) => {
+      setLocalSuggestion(result.suggestion);
+      focusNext(cardRef);
+    },
     onError: (err: Error) => {
       if (err instanceof ApiError && isContentChangedError(err)) {
         toastContentChanged(onReanalyze);
@@ -786,6 +839,8 @@ export function AskCard({
       }
     },
   });
+  // One draft per gesture: a double click asked for new wording twice.
+  const draftOnce = useSingleFlight(draft.mutate);
 
   if (!expanded) {
     return (
@@ -795,7 +850,10 @@ export function AskCard({
           quote={currentText}
           actionLabel="Answer"
           pts={pts}
-          onExpand={() => setExpanded(true)}
+          onExpand={() => {
+            setExpanded(true);
+            focusNext(cardRef);
+          }}
           overflow={overflow}
         />
       </div>
@@ -807,6 +865,7 @@ export function AskCard({
 
   return (
     <ExpandedFindingChrome
+      ref={cardRef}
       finding={finding}
       cardClassName={meta.card}
       overflow={overflow}
@@ -868,8 +927,15 @@ export function AskCard({
                 context.length === 0 || draft.isPending || locked
               }
               title={locked ? STALE_APPLY_HINT : undefined}
-              className={locked ? LOCKED_BTN : undefined}
-              onClick={() => draft.mutate()}
+              // Disables itself while writing: a native `disabled` drops focus.
+              focusableWhenDisabled
+              // Locked keeps pointer events, so its hint shows on hover.
+              className={
+                locked
+                  ? `${LOCKED_BTN} data-disabled:opacity-50`
+                  : "data-disabled:pointer-events-none data-disabled:opacity-50"
+              }
+              onClick={() => draftOnce()}
             >
               {draft.isPending ? "Writing…" : "Write new wording"}
             </Button>
@@ -1137,30 +1203,53 @@ export function NotesTable({
   );
 }
 
+/**
+ * A check that flips (Mark as OK, Undo) swaps its row for the other kind, and
+ * the button the user pressed leaves with the old row. The row that replaces it
+ * takes the focus back onto its own action: `land` marks the check just changed.
+ */
+function useLandFocus(land: boolean, target?: RefObject<HTMLButtonElement | null>) {
+  const own = useRef<HTMLButtonElement>(null);
+  const actionRef = target ?? own;
+  useEffect(() => {
+    if (land) focusIfDropped(actionRef.current);
+  }, [land, actionRef]);
+  return actionRef;
+}
+
 function FailedGate({
   gate,
   kind,
   resumeKey,
   onChanged,
+  land,
+  onLanded,
 }: {
   gate: LintGate;
   kind: "base" | "application";
   resumeKey: string;
   onChanged: () => Promise<void>;
+  land: boolean;
+  onLanded: (gateId: string) => void;
 }) {
-  const [showReason, setShowReason] = useState(false);
+  // "Mark as OK…" opens the reason box with focus in it; Cancel returns here.
+  const { editing: showReason, editRef, openerRef, open, close } = useEditToggle<HTMLDivElement>();
   const [reason, setReason] = useState("");
+  useLandFocus(land, openerRef);
 
-  const waive = useMutation({
+  const markOk = useMutation({
     mutationFn: async () => {
       await waiveGate(kind, resumeKey, gate.id, reason);
       await onChanged();
     },
     onSuccess: () => {
+      onLanded(gate.id);
       toast.success("Marked as OK");
     },
     onError: (err: Error) => toast.error(couldnt("mark it as OK", err)),
   });
+  // One waiver per gesture: a double click sent the request twice.
+  const waiveOnce = useSingleFlight(markOk.mutate);
 
   const accent =
     gate.tier === "fatal"
@@ -1168,8 +1257,8 @@ function FailedGate({
       : "border-amber-500/50 bg-amber-500/5";
 
   return (
-    <div className={cn("rounded-md border px-3 py-2", accent)}>
-      <div className="flex items-center gap-2">
+    <div className={cn("min-w-0 rounded-md border px-3 py-2", accent)}>
+      <div className="flex flex-wrap items-center gap-2">
         <Badge
           variant="secondary"
           className={cn(
@@ -1181,17 +1270,17 @@ function FailedGate({
         >
           {gate.tier === "fatal" ? "Must fix" : "Serious"}
         </Badge>
-        <span className="text-sm font-medium">{gate.label}</span>
+        <span className="min-w-0 text-sm font-medium break-words">{gate.label}</span>
       </div>
-      {gate.detail && <p className="mt-1 max-w-[65ch] text-sm">{gate.detail}</p>}
+      {gate.detail && <p className="mt-1 max-w-[65ch] text-sm break-words">{gate.detail}</p>}
       {gate.fix_hint && (
-        <p className="text-muted-foreground mt-1 max-w-[65ch] text-xs">
+        <p className="text-muted-foreground mt-1 max-w-[65ch] text-xs break-words">
           {gate.fix_hint}
         </p>
       )}
 
       {showReason ? (
-        <div className="mt-2 space-y-2">
+        <div ref={editRef} className="mt-2 space-y-2">
           <p className="text-muted-foreground max-w-[65ch] text-xs">
             Your score won&apos;t be limited by this any more. Your resume isn&apos;t
             changed. You can undo this here.
@@ -1207,23 +1296,31 @@ function FailedGate({
             <Button
               size="sm"
               variant="ghost"
-              onClick={() => setShowReason(false)}
-              disabled={waive.isPending}
+              onClick={close}
+              disabled={markOk.isPending}
             >
               Cancel
             </Button>
             <Button
               size="sm"
-              disabled={reason.trim().length === 0 || waive.isPending}
-              onClick={() => waive.mutate()}
+              disabled={reason.trim().length === 0 || markOk.isPending}
+              onClick={() => waiveOnce()}
+              // Disables itself while saving: a native `disabled` drops focus.
+              focusableWhenDisabled
+              className="data-disabled:pointer-events-none data-disabled:opacity-50"
             >
-              {waive.isPending ? "Saving…" : "Mark as OK"}
+              {markOk.isPending ? "Saving…" : "Mark as OK"}
             </Button>
           </div>
         </div>
       ) : (
         <div className="mt-2 flex justify-end">
-          <Button size="sm" variant="outline" onClick={() => setShowReason(true)}>
+          <Button
+            ref={openerRef}
+            size="sm"
+            variant="outline"
+            onClick={open}
+          >
             Mark as OK…
           </Button>
         </div>
@@ -1237,39 +1334,51 @@ function WaivedGate({
   kind,
   resumeKey,
   onChanged,
+  land,
+  onLanded,
 }: {
   gate: LintGate;
   kind: "base" | "application";
   resumeKey: string;
   onChanged: () => Promise<void>;
+  land: boolean;
+  onLanded: (gateId: string) => void;
 }) {
+  const actionRef = useLandFocus(land);
   const unwaive = useMutation({
     mutationFn: async () => {
       await unwaiveGate(kind, resumeKey, gate.id);
       await onChanged();
     },
     onSuccess: () => {
+      onLanded(gate.id);
       toast.success("Check turned back on");
     },
     onError: (err: Error) => toast.error(couldnt("undo", err)),
   });
+  // One undo per gesture: a double click sent the request twice.
+  const unwaiveOnce = useSingleFlight(unwaive.mutate);
 
   return (
-    <div className="text-muted-foreground bg-muted/40 rounded-md border px-3 py-2">
+    <div className="text-muted-foreground bg-muted/40 min-w-0 rounded-md border px-3 py-2">
       <div className="flex items-center justify-between gap-2">
         <span className="min-w-0 truncate text-sm">{gate.label} (marked OK)</span>
         <Button
+          ref={actionRef}
           size="sm"
           variant="ghost"
           disabled={unwaive.isPending}
-          onClick={() => unwaive.mutate()}
+          onClick={() => unwaiveOnce()}
+          // Disables itself while undoing: a native `disabled` drops focus.
+          focusableWhenDisabled
+          className="data-disabled:pointer-events-none data-disabled:opacity-50"
         >
           {unwaive.isPending ? "Undoing…" : "Undo"}
         </Button>
       </div>
-      {gate.detail && <p className="mt-1 max-w-[65ch] text-sm">{gate.detail}</p>}
+      {gate.detail && <p className="mt-1 max-w-[65ch] text-sm break-words">{gate.detail}</p>}
       {gate.waiver_reason && (
-        <p className="mt-1 text-xs">
+        <p className="mt-1 text-xs break-words">
           <span className="text-foreground font-medium">Reason: </span>
           {gate.waiver_reason}
         </p>
@@ -1282,11 +1391,14 @@ function NotAssessedGate({
   gate,
   templateId,
   onChanged,
+  land,
 }: {
   gate: LintGate;
   templateId?: string | null;
   onChanged: () => Promise<void>;
+  land: boolean;
 }) {
+  const actionRef = useLandFocus(land);
   const certify = useMutation({
     mutationFn: async () => {
       if (!templateId) throw new Error("This resume has no template selected.");
@@ -1312,10 +1424,13 @@ function NotAssessedGate({
       <div className="mt-2 flex justify-end">
         {templateId ? (
           <Button
+            ref={actionRef}
             size="sm"
             variant="outline"
             disabled={certify.isPending}
             onClick={() => certify.mutate()}
+            focusableWhenDisabled
+            className="data-disabled:pointer-events-none data-disabled:opacity-50"
           >
             {certify.isPending ? "Checking…" : "Check template"}
           </Button>
@@ -1345,14 +1460,19 @@ export function GateBanner({
   onChanged: () => Promise<void>;
   templateId?: string | null;
 }) {
+  // The check just marked OK or turned back on: its new row takes the focus.
+  const [landOn, setLandOn] = useState<string | null>(null);
   const failed = gates.filter((g) => g.status === "fail");
   const waived = gates.filter((g) => g.status === "waived");
   const notAssessed = gates.filter((g) => g.status === "not_assessed");
   if (failed.length === 0 && waived.length === 0 && notAssessed.length === 0) {
     return null;
   }
+  // "Checks", not "Must fix": the group holds serious, waived and unchecked
+  // checks too. "Must fix" is the fatal tier's badge only.
   return (
-    <div id="gates" className="scroll-mt-6 space-y-2">
+    <section id="gates" className="scroll-mt-6 space-y-2">
+      <h2 className="text-sm font-medium">Checks</h2>
       {failed.map((gate) => (
         <FailedGate
           key={gate.id}
@@ -1360,6 +1480,8 @@ export function GateBanner({
           kind={kind}
           resumeKey={resumeKey}
           onChanged={onChanged}
+          land={landOn === gate.id}
+          onLanded={setLandOn}
         />
       ))}
       {notAssessed.map((gate) => (
@@ -1368,6 +1490,7 @@ export function GateBanner({
           gate={gate}
           templateId={templateId}
           onChanged={onChanged}
+          land={landOn === gate.id}
         />
       ))}
       {waived.map((gate) => (
@@ -1377,9 +1500,11 @@ export function GateBanner({
           kind={kind}
           resumeKey={resumeKey}
           onChanged={onChanged}
+          land={landOn === gate.id}
+          onLanded={setLandOn}
         />
       ))}
-    </div>
+    </section>
   );
 }
 

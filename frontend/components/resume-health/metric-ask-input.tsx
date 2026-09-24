@@ -21,7 +21,8 @@ import {
 
 export type MetricAskValue = {
   amount: string;
-  unit: MetricUnit;
+  /** Empty until the user picks one: a preset unit claimed "users" nobody said. */
+  unit: MetricUnit | "";
   unitOther: string;
   timeframe: string;
   freeText: string;
@@ -31,7 +32,7 @@ export type MetricAskValue = {
 export function emptyMetricAsk(): MetricAskValue {
   return {
     amount: "",
-    unit: "users",
+    unit: "",
     unitOther: "",
     timeframe: "",
     freeText: "",
@@ -41,6 +42,8 @@ export function emptyMetricAsk(): MetricAskValue {
 
 export function metricContextFromValue(value: MetricAskValue): string {
   if (value.somethingElse) return value.freeText.trim();
+  // No unit chosen yet: nothing to write from (Write stays off until there is).
+  if (!value.unit) return "";
   return composeMetricContext({
     amount: value.amount,
     unit: value.unit,
@@ -119,7 +122,7 @@ export function MetricAskInput({
           >
             <SelectTrigger id={ids.unit} size="sm" className="w-40">
               <SelectValue>
-                {METRIC_UNITS.find((u) => u.id === value.unit)?.label ?? value.unit}
+                {METRIC_UNITS.find((u) => u.id === value.unit)?.label ?? "Choose"}
               </SelectValue>
             </SelectTrigger>
             <SelectContent>

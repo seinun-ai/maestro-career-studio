@@ -502,13 +502,13 @@ function AddSectionDialog({
             <div className="flex gap-1.5">
               <TypeChoice
                 active={type === "entries"}
-                title="Items"
+                title={SECTION_TYPE_LABELS.entries}
                 hint="Each with a title, details and bullets"
                 onClick={() => setType("entries")}
               />
               <TypeChoice
                 active={type === "bullets"}
-                title="List"
+                title={SECTION_TYPE_LABELS.bullets}
                 hint="A simple list"
                 onClick={() => setType("bullets")}
               />

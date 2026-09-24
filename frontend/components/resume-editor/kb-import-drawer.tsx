@@ -29,6 +29,7 @@ import {
   listKbEntities,
 } from "@/lib/api";
 import { kbStatusLabel } from "@/components/career/career-labels";
+import { useSingleFlight } from "@/hooks/use-single-flight";
 import { couldnt } from "@/lib/error-text";
 import { notifyRenderOutcome } from "@/lib/render-note";
 import type {
@@ -120,16 +121,14 @@ export function KbImportDrawer({
       // Committed before the re-render, so a render failure is reported
       // beside the success rather than as a failed import.
       notifyRenderOutcome(response.resume, { staleLabel: "The resume" });
-      const added = response.report.items.length;
-      const groups = response.report.skills_merged.length;
-      toast.success(
-        `Added ${added} ${added === 1 ? "item" : "items"} and ${groups} skill ${groups === 1 ? "group" : "groups"}.${duplicates ? ` Skipped ${duplicates} already on the resume.` : ""}`,
-      );
+      toast.success(bulletsAdded(response.report, duplicates));
       reset();
       onOpenChange(false);
     },
     onError: (error: Error) => toast.error(couldnt("add from career history", error)),
   });
+  // One add per gesture: a double click added the items twice.
+  const importOnce = useSingleFlight(importMutation.mutate);
 
   const toggleEntity = (entityId: string, approvedPointIds: string[]) =>
     setSelection((current) => {
@@ -292,7 +291,10 @@ export function KbImportDrawer({
           <SheetClose render={<Button variant="ghost">Cancel</Button>} />
           <Button
             disabled={totalSelections === 0 || importMutation.isPending}
-            onClick={() => importMutation.mutate()}
+            onClick={() => importOnce()}
+            // Disables itself while adding: a native `disabled` drops focus.
+            focusableWhenDisabled
+            className="data-disabled:pointer-events-none data-disabled:opacity-50"
           >
             {importMutation.isPending ? "Adding…" : "Add selected"}
           </Button>
@@ -338,8 +340,8 @@ function EntityPickerRow({
             <Badge variant="outline">{kbStatusLabel(entity.status)}</Badge>
             {entity.draft_count > 0 && (
               <Badge variant="secondary">
-                {entity.draft_count} unapproved{" "}
-                {entity.draft_count === 1 ? "bullet" : "bullets"} not shown
+                {entity.draft_count}{" "}
+                {entity.draft_count === 1 ? "draft bullet" : "draft bullets"} not shown
               </Badge>
             )}
           </div>
@@ -381,6 +383,25 @@ function EntityPickerRow({
       </div>
     </li>
   );
+}
+
+/** "Added 5 bullets from 2 items and 1 skill group." The bullets lead: they are
+ *  what was chosen. */
+function bulletsAdded(
+  report: { items: { ported_point_ids: string[] }[]; skills_merged: string[] },
+  duplicates: number,
+): string {
+  const n = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
+  const bullets = report.items.reduce((sum, item) => sum + item.ported_point_ids.length, 0);
+  const groups = report.skills_merged.length;
+  const parts = [
+    report.items.length > 0
+      ? `${n(bullets, "bullet", "bullets")} from ${n(report.items.length, "item", "items")}`
+      : null,
+    groups > 0 ? n(groups, "skill group", "skill groups") : null,
+  ].filter(Boolean);
+  const added = parts.length > 0 ? `Added ${parts.join(" and ")}.` : "Nothing new to add.";
+  return `${added}${duplicates ? ` Skipped ${duplicates} already on the resume.` : ""}`;
 }
 
 function approvedPoints(detail: KBEntityDetail | undefined) {

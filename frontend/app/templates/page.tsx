@@ -280,6 +280,7 @@ export default function TemplatesListPage() {
             <div className="grid gap-1.5">
               <Label htmlFor="new_id">Short name</Label>
               <p id="new_id_hint" className="text-muted-foreground text-xs">
+                Used in this template&apos;s web address and by connected agents.
                 Use only lowercase letters, numbers, hyphens, and underscores.
               </p>
               <Input

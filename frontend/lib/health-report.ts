@@ -52,20 +52,64 @@ export function isContentChangedError(err: {
   );
 }
 
+type GateLike = { tier: string; status: string };
+
+const problems = (n: number, tier: string) => `${n} ${tier} ${n === 1 ? "problem" : "problems"}`;
+
 /**
- * "Score limited to 69 by one must-fix problem" when a check caps the score.
- * Null otherwise (an uncapped score needs no line) and when the backend has
- * not yet sent `score_breakdown`: the page then renders nothing.
+ * "Score limited to 54 by 1 must-fix problem" when failed checks cap the score, naming the real count and
+ * tier (`health_score.gate_cap_tier`: one failed must-fix check, or two serious ones, cap at 54; one serious
+ * check at 69). Null when nothing capped the score, and when the server sent no `score_breakdown`.
  */
 export function scoreCompositionLine(
   score: number,
   breakdown: ScoreBreakdown | null | undefined,
+  gates: readonly GateLike[] = [],
 ): string | null {
-  if (!breakdown) return null;
-  if (breakdown.capped_by) {
-    return `Score limited to ${score} by one must-fix problem`;
+  if (!breakdown?.capped_by) return null;
+  const failed = gates.filter((g) => g.status === "fail");
+  const fatal = failed.filter((g) => g.tier === "fatal").length;
+  const serious = failed.filter((g) => g.tier === "serious").length;
+  if (breakdown.capped_by === "fatal" && fatal > 0) {
+    return `Score limited to ${score} by ${problems(fatal, "must-fix")}`;
   }
-  return null;
+  if (serious > 0) return `Score limited to ${score} by ${problems(serious, "serious")}`;
+  return `Score limited to ${score} by a failed check`;
+}
+
+/**
+ * The report's counts with the checks counted by tier. "Must fix" is the fatal tier only, and only a check
+ * that failed (`status === "fail"`: a waived or unchecked one fixes nothing), so the chips, the summary, the
+ * studio's health link and "left to fix" all say one number. The server's `counts.gate` counts every failed
+ * check, serious ones too; it is replaced here, never shown.
+ */
+export function healthCounts(report: {
+  counts?: Record<string, number>;
+  gates?: readonly GateLike[];
+}): Record<string, number> {
+  const failed = (report.gates ?? []).filter((g) => g.status === "fail");
+  return {
+    ...report.counts,
+    gate: failed.filter((g) => g.tier === "fatal").length,
+    serious: failed.filter((g) => g.tier === "serious").length,
+  };
+}
+
+/** Everything still asking for work: failed checks, fixes and questions (never notes). */
+export function leftToFix(counts: Record<string, number>, findingsLeft: number): number {
+  return (counts.gate ?? 0) + (counts.serious ?? 0) + findingsLeft;
+}
+
+/** The toast after a check: never a grade the rail says it can't give. */
+export function checkDoneWords(report: { grade: string; insufficient_evidence?: boolean }): string {
+  return reportInsufficientEvidence(report)
+    ? "Check done. Too little to grade yet."
+    : `Check done. Grade ${report.grade}.`;
+}
+
+/** "Add numbers to 2 bullets": the button that opens the number questions. */
+export function addNumbersLabel(n: number): string {
+  return `Add numbers to ${n} ${n === 1 ? "bullet" : "bullets"}`;
 }
 
 export function potentialPoints(

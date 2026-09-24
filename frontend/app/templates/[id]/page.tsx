@@ -9,6 +9,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { useLeaveGuard } from "@/hooks/use-leave-guard";
+import { useSingleFlight } from "@/hooks/use-single-flight";
 import { FormattingPanel } from "@/components/resume-editor/formatting-panel";
 import { PdfPagesPreview } from "@/components/resume-editor/pdf-pages-preview";
 import { LatexEditor } from "@/components/templates/latex-editor";
@@ -26,6 +27,7 @@ import { useRefreshFailedNotice } from "@/hooks/use-refresh-failed-notice";
 import { apiFetch, apiUrlForBrowserPdf } from "@/lib/api";
 import { couldnt, errorDetail } from "@/lib/error-text";
 import { isLoadFailure } from "@/lib/query-state";
+import { NEEDS_TEX_WORDS, REQUIRES_TEX_REASON } from "@/lib/template-status";
 import { FORMATTING_DEFAULTS, type ResumeFormatting } from "@/lib/formatting";
 import type { TemplateDetail, TemplateValidationResult } from "@/lib/types";
 
@@ -115,6 +117,9 @@ export default function TemplateEditorPage() {
       if (res.ok) {
         setPreviewNonce((n) => n + 1);
         toast.success("Preview updated");
+      } else if (res.error === REQUIRES_TEX_REASON) {
+        // Not an error in the template: nothing here can be fixed by editing it.
+        toast.error(NEEDS_TEX_WORDS);
       } else {
         // Typst templates fail here too: the engine is not named.
         toast.error("The template has an error. See the preview for details.");
@@ -122,6 +127,8 @@ export default function TemplateEditorPage() {
     },
     onError: (err: Error) => toast.error(couldnt("update the preview", err)),
   });
+  // One save-and-check per gesture: a double click sent two PUTs.
+  const recompileOnce = useSingleFlight(recompileM.mutate);
 
   // Persist a knob change to the theme's default overlay. The endpoint is
   // self-contained (it persists AND re-renders the stored preview), so there is
@@ -284,8 +291,11 @@ export default function TemplateEditorPage() {
               </Button>
               <Button
                 size="sm"
-                onClick={() => recompileM.mutate()}
+                onClick={() => recompileOnce()}
                 disabled={recompileM.isPending}
+                // Disables itself while it works: a native `disabled` drops focus.
+                focusableWhenDisabled
+                className="data-disabled:pointer-events-none data-disabled:opacity-50"
               >
                 {recompileM.isPending ? "Updating…" : "Update preview"}
               </Button>
@@ -357,7 +367,9 @@ export default function TemplateEditorPage() {
         </a>
       }
       preview={
-        compileError ? (
+        compileError === REQUIRES_TEX_REASON ? (
+          <p className="text-muted-foreground m-2 text-sm">{NEEDS_TEX_WORDS}</p>
+        ) : compileError ? (
           <div className="m-2 space-y-1">
             <p className="text-muted-foreground text-xs">
               The template has an error. Fix the code, then update the preview.

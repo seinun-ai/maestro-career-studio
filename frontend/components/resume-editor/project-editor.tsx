@@ -96,7 +96,8 @@ export function ProjectEditor({
             }
             edit={() => (
               <div className="grid gap-3">
-                <div className="grid grid-cols-2 gap-3">
+                {/* Bottom-aligned: Link's hint line would push its box below Date's. */}
+                <div className="grid grid-cols-2 gap-3 sm:items-end">
                   <Field
                     label="Name"
                     value={entry.name}

@@ -775,7 +775,8 @@ def test_chip_text_meets_aa_on_its_tint(rel, chip, mode):
 # sit on (the gallery's cards, the picker's popover, the editor's page).
 _AMBER_LABELS = {
     "Needs setup": ("components/templates/requires-tex-badge.tsx", "Needs setup"),
-    "ATS may misread": ("components/templates/template-gallery.tsx", "ATS may misread"),
+    # The warning is a sentence on the card now, not a hover (lane 8 review).
+    "ATS may read words as joined": ("components/templates/template-gallery.tsx", "may read some words as joined together"),
     "Unsaved changes": ("app/templates/[id]/page.tsx", ">Unsaved changes<"),
 }
 

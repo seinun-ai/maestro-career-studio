@@ -28,7 +28,7 @@ import { couldnt } from "@/lib/error-text";
 import { notifyRenderNote } from "@/lib/render-note";
 import { toastRewriteError } from "./report-errors";
 import { wordDiff } from "@/lib/word-diff";
-import { textAtLocation } from "@/lib/health-report";
+import { addNumbersLabel, textAtLocation } from "@/lib/health-report";
 import type { LintFinding, ResumeData } from "@/lib/types";
 
 type RowState = {
@@ -208,9 +208,7 @@ export function BatchAskDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[85vh] w-[min(96vw,48rem)] max-w-[min(96vw,48rem)] flex-col overflow-hidden">
         <DialogHeader>
-          <DialogTitle>
-            Answer the number questions ({findings.length})
-          </DialogTitle>
+          <DialogTitle>{addNumbersLabel(findings.length)}</DialogTitle>
         </DialogHeader>
         <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
           {rows.map((row, index) => {

@@ -84,6 +84,7 @@ import {
   adoptServerKey,
   emptyPreviewMessage,
   keepIfEdited,
+  pdfActionWords,
   saveStatus,
   serverKey,
 } from "@/lib/studio";
@@ -198,6 +199,9 @@ export function TailoredResumeStudio({
     },
     onError: (err: Error) => toast.error(couldnt("update the ATS score", err)),
   });
+  // One re-score per gesture, shared with the Save chain's: a double click on
+  // Update score sent two scoring requests (two "tailored" score rows).
+  const rescoreOnce = useSingleFlight(rescore.mutate);
 
   const render = useMutation({
     mutationFn: (opts?: { thenRescore?: boolean }) =>
@@ -221,9 +225,10 @@ export function TailoredResumeStudio({
       // A standalone re-render (the ⋯ recovery item) doesn't pass this, so a
       // retry of a FAILED render doesn't add a new "tailored" trajectory row
       // for content that hasn't changed.
-      if (opts?.thenRescore) rescore.mutate({ announce: false });
+      if (opts?.thenRescore) rescoreOnce({ announce: false });
     },
-    onError: (err: Error) => toast.error(couldnt("update the PDF", err)),
+    onError: (err: Error) =>
+      toast.error(couldnt(pdfActionWords(Boolean(application.pdf_path)).failure, err)),
   });
 
   // Dirty-guard (SYSTEM.md §12). Server copies compare by `serverKey`
@@ -337,6 +342,7 @@ export function TailoredResumeStudio({
       onTemplateChange={setTemplateId}
       render={render}
       rescore={rescore}
+      rescoreOnce={rescoreOnce}
       pdfNonce={pdfNonce}
       serverChanged={serverChanged}
       onLoadLatest={() => replaceEditor(customizedKey)}
@@ -393,8 +399,8 @@ function BuildDraft({
       <div className="space-y-3 rounded-lg border p-6">
         {parseFailed ? (
           <p className="text-destructive text-sm">
-            This resume couldn&apos;t be opened. Start over from your base
-            resume.
+            This tailored resume couldn&apos;t be opened. Choose Create draft to
+            start again from your base resume.
           </p>
         ) : (
           <p className="text-muted-foreground text-sm">
@@ -427,6 +433,7 @@ function StudioEditor({
   onTemplateChange,
   render,
   rescore,
+  rescoreOnce,
   pdfNonce,
   serverChanged,
   onLoadLatest,
@@ -448,10 +455,9 @@ function StudioEditor({
     mutate: (opts?: { thenRescore?: boolean }) => void;
     isPending: boolean;
   };
-  rescore: {
-    mutate: (opts?: { announce?: boolean }) => void;
-    isPending: boolean;
-  };
+  rescore: { isPending: boolean };
+  /** The parent's one guard over the re-score, shared with the Save chain. */
+  rescoreOnce: (opts: { announce?: boolean } | undefined) => void;
   pdfNonce: number;
   // Dirty-guard wiring (see TailoredResumeStudio): the parent adopts newer
   // server snapshots; this editor reports its dirty state up, hands up the key
@@ -773,7 +779,7 @@ function StudioEditor({
             {serverChanged && dirty && (
               <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-500/40 bg-amber-500/[0.08] px-3 py-2 text-sm dark:border-amber-400/40 dark:bg-amber-400/[0.08]">
                 <span className="text-amber-700 dark:text-amber-300">
-                  This draft changed outside the editor.
+                  This tailored resume was changed somewhere else.
                 </span>
                 <Button
                   variant="outline"
@@ -856,17 +862,23 @@ function StudioEditor({
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => rescore.mutate({ announce: true })}
+                        onClick={() => rescoreOnce({ announce: true })}
                         disabled={busy || render.isPending || unsaved}
+                        // Disables itself while scoring: a native `disabled`
+                        // dropped focus to <body>.
+                        focusableWhenDisabled
+                        className="data-disabled:pointer-events-none data-disabled:opacity-50"
                         // No re-score while a render is out: the save chain
                         // re-scores itself when it lands. The gate reads
                         // `unsaved`, same as the hint, so the post-save gap
                         // does not block a re-score of work already saved.
+                        // ATS is spelled out once, here, where it first appears.
                         title={
                           unsaved
                             ? "Save first to update the ATS score."
-                            : undefined
+                            : "Update the ATS score: how an applicant tracking system rates this resume for the job."
                         }
+                        aria-description="The ATS score is how an applicant tracking system rates this resume for the job."
                       >
                         {rescore.isPending ? (
                           <Loader2 className="animate-spin" />
@@ -912,10 +924,8 @@ function StudioEditor({
                               is. Two names for one action is how a
                               vocabulary forks. */}
                           {render.isPending
-                            ? "Creating…"
-                            : application.pdf_path
-                              ? "Update PDF"
-                              : "Create PDF"}
+                            ? pdfActionWords(Boolean(application.pdf_path)).pending
+                            : pdfActionWords(Boolean(application.pdf_path)).label}
                         </DropdownMenuItem>
                         <DropdownMenuItem
                           variant="destructive"
@@ -927,7 +937,7 @@ function StudioEditor({
                               // (stage_resume_update), so the saved content
                               // can be restored, and the confirm says where.
                               description:
-                                "This replaces the tailored resume and its PDF with a fresh copy of your base resume, and drops unsaved edits. Version history keeps the saved version.",
+                                "This replaces the tailored resume with a fresh copy of your base resume, removes its PDF and drops unsaved edits. Version history keeps the saved version.",
                               confirmLabel: "Start over",
                               destructive: true,
                               // The item is gone once the menu closes: Cancel

@@ -172,3 +172,13 @@ export const PREVIEW_DPI = 150;
 export function actualSizeWidthPx(naturalWidthPx: number): number {
   return Math.round((naturalWidthPx * 96) / PREVIEW_DPI);
 }
+
+/**
+ * The ⋯ menu's PDF item: Create when there is no PDF yet, Update when there is. Its pending label and its
+ * failure say the same verb ("Updating…", "Couldn't update the PDF"), never "Creating…" over an update.
+ */
+export function pdfActionWords(hasPdf: boolean): { label: string; pending: string; failure: string } {
+  return hasPdf
+    ? { label: "Update PDF", pending: "Updating…", failure: "update the PDF" }
+    : { label: "Create PDF", pending: "Creating…", failure: "create the PDF" };
+}

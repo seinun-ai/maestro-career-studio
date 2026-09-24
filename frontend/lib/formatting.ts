@@ -131,10 +131,20 @@ export const SKILLS_LAYOUT_OPTIONS: { value: ResumeFormatting["skills_layout"]; 
   { value: "bulleted", label: "List" },
 ];
 
+/** "6 points", "1 point": a size in typographer's points, spelled out. */
+export function pointsLabel(n: number): string {
+  return `${n} ${n === 1 ? "point" : "points"}`;
+}
+
+/** "0.3 inch", "1 inch": a margin, spelled out, with no trailing zeros. */
+export function inchLabel(n: number): string {
+  return `${Number(n.toFixed(2))} inch`;
+}
+
 export const FONT_SIZE_OPTIONS: { value: ResumeFormatting["font_size"]; label: string }[] = [
-  { value: 10, label: "10pt" },
-  { value: 11, label: "11pt" },
-  { value: 12, label: "12pt" },
+  { value: 10, label: pointsLabel(10) },
+  { value: 11, label: pointsLabel(11) },
+  { value: 12, label: pointsLabel(12) },
 ];
 
 /** Slider ranges mirror the Pydantic `Field(ge=…, le=…)` bounds. */

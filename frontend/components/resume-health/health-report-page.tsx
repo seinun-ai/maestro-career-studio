@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { GuardedLink as Link } from "@/components/guarded-link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Check, HeartPulse, Loader2, RefreshCw } from "lucide-react";
@@ -20,6 +20,8 @@ import {
 import { BatchAskDialog } from "@/components/resume-health/batch-ask-dialog";
 import { LoadErrorState } from "@/components/load-error-state";
 import { useLoadFailureError } from "@/hooks/use-last-seen";
+import { focusIfDropped } from "@/hooks/use-focus-return";
+import { useSingleFlight } from "@/hooks/use-single-flight";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { IconButton } from "@/components/icon-button";
@@ -36,11 +38,15 @@ import {
 import { couldnt, errorDetail } from "@/lib/error-text";
 import { isLoadFailure } from "@/lib/query-state";
 import {
+  addNumbersLabel,
+  checkDoneWords,
   explainScoreDelta,
   filterFindings,
   groupFindings,
   groupTitle,
+  healthCounts,
   isMetricAsk,
+  leftToFix,
   reportInsufficientEvidence,
   reportIsStale,
   scoreCompositionLine,
@@ -71,6 +77,42 @@ const TIER_LABELS: Record<string, string | undefined> = {
   early: "Early career",
   experienced: "Experienced",
 };
+
+const currentOf = (ref: RefObject<HTMLElement | null>) => ref.current;
+
+/**
+ * A block that can leave while it holds focus (the stale banner, the applied
+ * bar, the first-check empty state: each holds a Check button and goes once the
+ * check lands). Focus that was inside moves to `to`, the rail's Check again,
+ * after the commit that removed the block, never to <body>.
+ */
+function FocusHandoff({
+  to,
+  className,
+  children,
+}: {
+  to: RefObject<HTMLElement | null>;
+  className?: string;
+  children: ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  // A LAYOUT cleanup: it runs before React detaches the block, while the
+  // focused button is still inside it.
+  useLayoutEffect(() => {
+    const root = ref.current;
+    return () => {
+      if (!root?.contains(document.activeElement)) return;
+      // Read after the commit on purpose: the target may be new in it (the
+      // first check's report brings the rail's button with it).
+      queueMicrotask(() => focusIfDropped(currentOf(to)));
+    };
+  }, [to]);
+  return (
+    <div ref={ref} className={className}>
+      {children}
+    </div>
+  );
+}
 
 /**
  * Full-page resume health report. Header stays on the shared PageShell origin;
@@ -184,10 +226,16 @@ export function HealthReportPage({
     onSuccess: (result) => {
       adoptReport(result, Boolean(report.data));
       setAppliedCount(0);
-      toast.success(`Check done. Grade ${result.grade}.`);
+      // "Too little to grade" in the rail: the toast never names a grade.
+      toast.success(checkDoneWords(result));
     },
     onError: (err: Error) => toast.error(couldnt("check the resume", err)),
   });
+  // One check per gesture: a double click ran the check twice.
+  const analyzeOnce = useSingleFlight(analyze.mutate);
+  // The rail's Check again: where focus goes when a block holding another
+  // Check button leaves.
+  const checkRef = useRef<HTMLButtonElement>(null);
 
   // The report's failure, remembered through a retry: a 404 is "No health report yet", anything
   // else is the error with its Try again. Both render ahead of the loading gate below, because a
@@ -276,8 +324,10 @@ export function HealthReportPage({
   const groups = groupFindings(visibleNonNote);
   const nScoreable = body?.score_breakdown?.n_scoreable ?? null;
   const composition = body
-    ? scoreCompositionLine(body.score, body.score_breakdown)
+    ? scoreCompositionLine(body.score, body.score_breakdown, gates)
     : null;
+  // One count per tier on every surface: "must fix" is failed fatal checks only.
+  const counts = body ? healthCounts(body) : {};
   const showNotes = filter === "all" || filter === "note";
   const showFixes = filter !== "note";
   const hasBannerGate = gates.some(
@@ -286,8 +336,9 @@ export function HealthReportPage({
   const hasAnything = hasBannerGate || findings.length > 0;
 
   const jumpItems = [
-    ...(gates.length > 0
-      ? [{ id: "gates", label: "Must fix", count: gates.filter((g) => g.status !== "pass").length }]
+    // The rows under "Checks": failed, unchecked and marked-OK checks.
+    ...(hasBannerGate
+      ? [{ id: "gates", label: "Checks", count: gates.filter((g) => g.status !== "pass").length }]
       : []),
     ...groups.map((g) => ({
       id: `group-${g.key}`,
@@ -297,13 +348,17 @@ export function HealthReportPage({
     ...(notes.length > 0 ? [{ id: "notes", label: "Notes", count: notes.length }] : []),
   ];
 
-  const remaining = nonNote.length;
-  const analyzeButton = (
+  const remaining = leftToFix(counts, nonNote.length);
+  const analyzeButton = (ref?: RefObject<HTMLButtonElement | null>) => (
     <Button
+      ref={ref}
       size="sm"
       variant={body ? "outline" : "default"}
       disabled={analyze.isPending}
-      onClick={() => analyze.mutate()}
+      onClick={() => analyzeOnce()}
+      // Disables itself while checking: a native `disabled` drops focus.
+      focusableWhenDisabled
+      className="data-disabled:pointer-events-none data-disabled:opacity-50"
     >
       {analyze.isPending ? (
         <Loader2 className="mr-1 size-3.5 animate-spin" />
@@ -402,7 +457,7 @@ export function HealthReportPage({
               )}
               <div className="flex flex-wrap gap-1.5">
                 {COUNT_META.map(({ key, chip }) => {
-                  const count = body.counts?.[key] ?? 0;
+                  const count = counts[key] ?? 0;
                   if (count === 0) return null;
                   return (
                     <Badge
@@ -418,7 +473,7 @@ export function HealthReportPage({
               <p className="text-muted-foreground text-xs">
                 {remaining} left to fix
                 {body.resume_version_number != null &&
-                  ` · version ${body.resume_version_number}`}
+                  ` · Version ${body.resume_version_number}`}
               </p>
             </section>
 
@@ -461,18 +516,18 @@ export function HealthReportPage({
                 variant="outline"
                 onClick={() => setBatchOpen(true)}
               >
-                Answer the number questions ({metricAsks.length})
+                {addNumbersLabel(metricAsks.length)}
               </Button>
             )}
-            {analyzeButton}
+            {analyzeButton(checkRef)}
           </aside>
 
           <div className="flex min-w-0 flex-col gap-6">
             {stale && (
-              <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-sm">
+              <FocusHandoff to={checkRef} className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-sm">
                 <p>Your resume changed since this check. Check again to update it.</p>
-                {analyzeButton}
-              </div>
+                {analyzeButton()}
+              </FocusHandoff>
             )}
 
             <GateBanner
@@ -569,26 +624,27 @@ export function HealthReportPage({
           </div>
         </div>
       ) : (
-        noReportYet &&
-        !analyze.isPending && (
-          <div className="flex flex-col items-start gap-3">
+        // Kept while the first check runs: its button holds the focus
+        // (showing "Checking…") until the report replaces it.
+        noReportYet && (
+          <FocusHandoff to={checkRef} className="flex flex-col items-start gap-3">
             <p className="text-muted-foreground max-w-[65ch] text-sm">
               No health report yet. This checks your resume on its own, without a
               job description.
             </p>
-            {analyzeButton}
-          </div>
+            {analyzeButton()}
+          </FocusHandoff>
         )
       )}
 
       {appliedCount > 0 && (
-        <div className="bg-background/95 sticky bottom-4 z-20 flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm shadow-sm">
+        <FocusHandoff to={checkRef} className="bg-background/95 sticky bottom-4 z-20 flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm shadow-sm">
           <p>
             {appliedCount} {appliedCount === 1 ? "change" : "changes"} applied.
             Check again to update your grade.
           </p>
-          {analyzeButton}
-        </div>
+          {analyzeButton()}
+        </FocusHandoff>
       )}
       {batchOpen && resumeData && (
         <BatchAskDialog

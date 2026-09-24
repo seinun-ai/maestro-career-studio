@@ -10,6 +10,7 @@ import {
   emptyPreviewMessage,
   jsonDraftDiffers,
   keepIfEdited,
+  pdfActionWords,
   nextPreviewPct,
   parsePreviewPct,
   parseZoom,
@@ -250,4 +251,9 @@ test("parsePreviewPct falls back to the default when absent, garbled or out of r
   assert.equal(parsePreviewPct("47.5"), 47.5);
   assert.equal(parsePreviewPct(String(PREVIEW_PCT.min)), PREVIEW_PCT.min);
   assert.equal(parsePreviewPct(String(PREVIEW_PCT.max)), PREVIEW_PCT.max);
+});
+
+test("the PDF item's pending label and failure use its own verb", () => {
+  assert.deepEqual(pdfActionWords(true), { label: "Update PDF", pending: "Updating…", failure: "update the PDF" });
+  assert.deepEqual(pdfActionWords(false), { label: "Create PDF", pending: "Creating…", failure: "create the PDF" });
 });

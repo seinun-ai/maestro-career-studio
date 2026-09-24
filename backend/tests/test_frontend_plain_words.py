@@ -247,10 +247,11 @@ def test_a_failed_save_names_places_not_schema_paths():
         src = _read(rel)
         assert "throw new Error(fieldsNeedFixing(validated.error.issues.map((i) => i.path)));" in src, rel
         assert 'path.join(".")' not in src, rel
-    assert 'i.path.join(".")' in _read("components/resume-editor/raw-json-toggle.tsx")
+    # The code view names fields too (lane 8 review I6): no path anywhere.
+    assert 'path.join(".")' not in _read("components/resume-editor/raw-json-toggle.tsx")
     words = _block(_DESCRIBER, "export function describeFieldPath(", "\n}")
     assert 'words.push(`${ROW_NOUN[parent] ?? "item"} ${seg + 1}`);' in words
-    assert 'seg.replace(/_/g, " ")' in words
+    assert 'FIELD_WORDS[seg] ?? seg.replace(/_/g, " ")' in words
     assert 'extra_sections: "Other sections",' in _DESCRIBER
     assert "return `Some fields need fixing: ${shown}${more}.`;" in _DESCRIBER
 

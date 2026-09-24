@@ -12,6 +12,7 @@ import {
 import { useConfirm } from "@/components/confirm-dialog";
 import { JsonEditor } from "@/components/json-editor";
 import { Button } from "@/components/ui/button";
+import { jsonErrorWords, schemaIssuesWords } from "@/lib/describe-edit";
 import { resumeDataSchema } from "@/lib/resume-schema";
 import { jsonDraftDiffers } from "@/lib/studio";
 import type { ResumeData } from "@/lib/types";
@@ -88,13 +89,16 @@ export function RawJsonToggle({
     try {
       const result = resumeDataSchema.safeParse(JSON.parse(text));
       if (!result.success) {
-        setError(result.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("\n"));
+        // Fields by the labels the editors show, never `contact.email`.
+        setError(schemaIssuesWords(result.error.issues));
         return null;
       }
       setError(null);
       return result.data as ResumeData;
     } catch (e) {
-      setError((e as Error).message);
+      // The parser's own words ("Expected ',' or '}' after property value in
+      // JSON at position 11") become the line to look at.
+      setError(jsonErrorWords(text, e));
       return null;
     }
   };

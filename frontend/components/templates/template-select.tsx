@@ -136,8 +136,13 @@ export function TemplateSelect({
   const defaultTemplate = selectable.find((t) => t.is_default);
 
   const current = ready.find((t) => t.id === value);
+  // "Classic (default)": the default names the template it resolves to.
   const label =
-    value === DEFAULT_TEMPLATE ? "Default" : (current?.display_name ?? value);
+    value === DEFAULT_TEMPLATE
+      ? defaultTemplate?.display_name
+        ? `${defaultTemplate.display_name} (default)`
+        : "Default template"
+      : (current?.display_name ?? value);
 
   return (
     <>
@@ -200,7 +205,7 @@ export function TemplateSelect({
               <p className="text-muted-foreground text-sm">
                 {ready.length === 0
                   ? "No templates ready yet."
-                  : "All templates are archived. Restore one on the Templates page."}
+                  : "All ready templates are archived. Restore one on the Templates page."}
               </p>
             ) : (
               <TemplateGallery

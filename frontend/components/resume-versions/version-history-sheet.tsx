@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type RefObject } from "react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, ChevronRight, History, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
@@ -16,7 +16,9 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { useSingleFlight } from "@/hooks/use-single-flight";
 import { listResumeVersions, restoreResumeVersion } from "@/lib/api";
+import { versionSummaryWords } from "@/lib/describe-edit";
 import { couldnt } from "@/lib/error-text";
 import { formatAbsoluteDateTime } from "@/lib/format-date";
 import { isLoadFailure } from "@/lib/query-state";
@@ -98,9 +100,29 @@ export function VersionHistorySheet({
     [versions.data],
   );
 
+  // Restore closes the open row, and its button with it. The sheet stays
+  // open, so focus goes to the version the restore just added, once the list
+  // shows it (never to <body>).
+  const listRef = useRef<HTMLUListElement>(null);
+  const landOn = useRef<number | null>(null);
+  useEffect(() => {
+    const target = landOn.current;
+    if (target == null) return;
+    const row = listRef.current?.querySelector<HTMLElement>(`[data-version="${target}"]`);
+    if (!row) return;
+    landOn.current = null;
+    // The Restore button is gone: focus that fell to <body> or to the sheet
+    // itself (its focus trap catches it), or that the confirm handed back to
+    // the restored row, goes to the new version.
+    const active = document.activeElement;
+    const ours = !active || active === document.body || active.contains(row) || listRef.current?.contains(active);
+    if (ours) row.focus({ preventScroll: true });
+  }, [versions.data]);
+
   const restore = useMutation({
     mutationFn: (version: number) => restoreResumeVersion(kind, resumeKey, version),
     onSuccess: (created) => {
+      landOn.current = created.version_number;
       qc.invalidateQueries({ queryKey: ["resume-versions", kind, resumeKey] });
       qc.invalidateQueries({ queryKey: ["base-resumes"] });
       qc.invalidateQueries({ queryKey: ["application"] });
@@ -109,20 +131,25 @@ export function VersionHistorySheet({
       // comes back beside the success, not instead of it. Only a base restore
       // renders at all; an application restore has no PDF to keep.
       notifyRenderOutcome(created, { staleLabel: "The resume" });
-      toast.success(`Restored as version ${created.version_number}`);
+      toast.success(`Restored as Version ${created.version_number}`);
       onRestored?.();
     },
     onError: (err: Error) => toast.error(couldnt("restore the version", err)),
   });
+  // One restore per gesture: a second confirmed restore added a second version.
+  const restoreOnce = useSingleFlight(restore.mutate);
 
   const requestRestore = async (v: ResumeVersion) => {
     const ok = await confirm({
-      title: `Restore version ${v.version_number}?`,
+      title: `Restore Version ${v.version_number}?`,
       description:
         "Restoring adds a new version on top. Nothing is lost.",
       confirmLabel: "Restore",
+      // Back to the version's own row: the Restore button leaves with it.
+      returnFocus: () =>
+        listRef.current?.querySelector<HTMLElement>(`[data-version="${v.version_number}"]`) ?? null,
     });
-    if (ok) restore.mutate(v.version_number);
+    if (ok) restoreOnce(v.version_number);
   };
 
   const latestNumber = versions.data?.[0]?.version_number;
@@ -131,6 +158,7 @@ export function VersionHistorySheet({
     <li key={v.id} className={cn(indent && "ml-4")}>
       <button
         type="button"
+        data-version={v.version_number}
         onClick={() => setSelected(selected === v.version_number ? null : v.version_number)}
         className={cn(
           "hover:bg-accent w-full rounded-md border px-3 py-2 text-left text-sm transition-colors",
@@ -161,7 +189,7 @@ export function VersionHistorySheet({
         </div>
         {v.summary && (
           <p className="text-muted-foreground mt-1 line-clamp-2 text-xs">
-            {v.summary}
+            {versionSummaryWords(v.summary)}
           </p>
         )}
       </button>
@@ -175,6 +203,9 @@ export function VersionHistorySheet({
                 variant="outline"
                 disabled={restore.isPending}
                 onClick={() => requestRestore(v)}
+                // Disables itself while restoring: a native `disabled` drops focus.
+                focusableWhenDisabled
+                className="data-disabled:pointer-events-none data-disabled:opacity-50"
               >
                 <RotateCcw className="mr-1 size-3.5" />
                 {restore.isPending ? "Restoring…" : "Restore this version"}
@@ -212,7 +243,7 @@ export function VersionHistorySheet({
               No versions yet. Save an edit to start the history.
             </p>
           )}
-          <ul className="space-y-2 pb-4">
+          <ul ref={listRef} className="space-y-2 pb-4">
             {rows.map((row, i) => {
               if (row.type === "version") return renderVersion(row.version);
               const expanded = expandedGroups.has(i);
@@ -236,7 +267,7 @@ export function VersionHistorySheet({
                     ) : (
                       <ChevronRight className="size-3.5" aria-hidden="true" />
                     )}
-                    {row.versions.length} edits (versions{" "}
+                    {row.versions.length} edits (Versions{" "}
                     {row.versions[row.versions.length - 1].version_number} to{" "}
                     {row.versions[0].version_number})
                   </button>

@@ -77,6 +77,17 @@ type Plan = {
 
 type Mode = "kb" | "existing" | "file" | "blank";
 
+/** What Create still needs, per tab, in the order the form asks for it. */
+function createBlockedReason(
+  mode: Mode,
+  form: { tag: unknown; selected: ReadonlySet<string>; source: string; file: File | null; name: string },
+): string {
+  if (mode === "kb") return form.tag ? "Choose at least one item to include." : "Choose a target role to create it.";
+  if (mode === "existing") return "Choose a resume to copy.";
+  if (mode === "file") return "Choose a file to create it.";
+  return form.name.trim() ? "" : "Enter a name to create it.";
+}
+
 const NO_ROLES: RoleCategory[] = [];
 
 const IMPORT_MAX_BYTES = 10 * 1024 * 1024;
@@ -207,6 +218,7 @@ function NewBaseResumeForm({
     summaryHint: `${fieldId}-summary-hint`,
     source: `${fieldId}-source`,
     copyRole: `${fieldId}-copy-role`,
+    blocked: `${fieldId}-blocked`,
   };
 
   // The coarse key a FavoredRole implies, for the two KB calls that need one.
@@ -243,10 +255,14 @@ function NewBaseResumeForm({
   // Experience and projects render FROM their bullets, so one with no approved
   // points would be an empty entry. Certifications render as a bare title and
   // education from institution/degree/dates, so those are fine at zero.
+  // Only approved bullets go on the new resume, so drafts are not counted.
+  // (`point_count` also holds bullets marked Not used: the list endpoint sends
+  // no approved count yet, see the lane doc's Deferred to merge.)
+  const approvedCount = (e: KBEntitySummary) => e.point_count - e.draft_count;
   const selectable = (entities.data ?? []).filter(
     (e) =>
       e.status !== "archived" &&
-      (e.point_count > 0 || rendersWithoutPoints(e.kind)),
+      (approvedCount(e) > 0 || rendersWithoutPoints(e.kind)),
   );
 
   const done = (created: BaseResumeDetail) => {
@@ -431,6 +447,8 @@ function NewBaseResumeForm({
           : Boolean(name.trim());
 
   const submit = useSingleFlight(create.mutate);
+  // Why Create is off, said beside it: a dimmed button alone never said.
+  const blocked = busy || canCreate ? null : createBlockedReason(mode, { tag, selected, source, file, name });
 
   // What Start over would throw away. Switching tabs is not a draft.
   const touched =
@@ -596,7 +614,7 @@ function NewBaseResumeForm({
                                 certification reads as a defect; it is not. */}
                             {rendersWithoutPoints(entity.kind)
                               ? ""
-                              : ` · ${entity.point_count} ${entity.point_count === 1 ? "bullet" : "bullets"}`}
+                              : ` · ${approvedCount(entity)} ${approvedCount(entity) === 1 ? "bullet" : "bullets"}`}
                           </span>
                         </span>
                       </label>
@@ -764,10 +782,16 @@ function NewBaseResumeForm({
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>
             Close
           </Button>
+          {blocked ? (
+            <p id={ids.blocked} className="text-muted-foreground self-center text-xs">
+              {blocked}
+            </p>
+          ) : null}
           <Button
             onClick={() => submit()}
             disabled={!canCreate || busy}
             focusableWhenDisabled
+            aria-describedby={blocked ? ids.blocked : undefined}
             className="data-disabled:pointer-events-none data-disabled:opacity-50"
           >
             {busy ? <Loader2 className="animate-spin" /> : null}

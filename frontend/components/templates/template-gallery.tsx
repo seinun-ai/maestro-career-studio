@@ -11,6 +11,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { FORMATTING_DEFAULTS } from "@/lib/formatting";
+import { templateHasErrors } from "@/lib/template-status";
 import type { TemplateSummary } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -74,13 +75,13 @@ function TemplateBadgeStrip({
       {!picking && <Badge variant={isReady ? "default" : "secondary"}>{STATUS_LABEL[template.status]}</Badge>}
       {!template.engine_available && <RequiresTexBadge />}
       {isReady && template.parse_certified === false && (
-        <Badge
-          variant="outline"
-          className="border-amber-500/40 text-amber-700 dark:text-amber-400"
-          title="Applicant tracking systems may read some words in this template as joined together. Pick another template to be safe."
-        >
-          <span aria-hidden="true">⚠</span> ATS may misread
-        </Badge>
+        // The words say it on the card, not only in a hover: ATS is spelled
+        // out once here, where it first appears.
+        <p className="basis-full text-xs text-amber-700 dark:text-amber-400">
+          <span aria-hidden="true">⚠</span> Applicant tracking systems (ATS)
+          may read some words as joined together. Pick another template to be
+          safe.
+        </p>
       )}
     </div>
   );
@@ -150,8 +151,10 @@ function TemplateCardBody({
       {/* Rendered ONLY when there is an error. An always-present CardContent
           left an empty padded block under every healthy card — the band of
           dead space at the bottom of the grid. */}
-      {/* The compiler's words stay in the editor (its preview pane). */}
-      {!isReady && template.last_error && (
+      {/* The compiler's words stay in the editor (its preview pane). A LaTeX
+          template on a computer without TeX has nothing to fix: the Needs
+          setup badge says so, alone. */}
+      {!isReady && templateHasErrors(template) && (
         <CardContent className="pt-0 text-xs">
           <p className="text-muted-foreground truncate">Has errors. Open to fix.</p>
         </CardContent>

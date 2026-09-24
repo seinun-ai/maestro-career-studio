@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { Badge } from "@/components/ui/badge";
 import { getResumeVersion } from "@/lib/api";
+import { diffChangeWords } from "@/lib/describe-edit";
 import { cn } from "@/lib/utils";
 import type { ResumeDiffChange } from "@/lib/types";
 
@@ -27,18 +28,25 @@ export function DiffChangeList({ changes }: { changes: ResumeDiffChange[] }) {
   }
   return (
     <ul className="space-y-2">
-      {changes.map((c, i) => (
+      {changes.map((c, i) => {
+        // The section in words, and its label only when it says more.
+        const words = diffChangeWords(c);
+        return (
         <li
           key={i}
           className={cn("rounded-md px-3 py-2 text-sm", KIND_STYLES[c.kind])}
         >
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Badge variant="outline" className="bg-background/60 text-xs">
               {KIND_LABELS[c.kind]}
             </Badge>
-            <span className="font-medium">{c.section}</span>
-            <span className="opacity-80">·</span>
-            <span>{c.label}</span>
+            <span className="font-medium">{words.section}</span>
+            {words.label ? (
+              <>
+                <span className="opacity-80">·</span>
+                <span>{words.label}</span>
+              </>
+            ) : null}
           </div>
           {c.details && c.details.length > 0 && (
             <ul className="mt-1 ml-5 list-disc space-y-0.5 text-xs opacity-90">
@@ -48,7 +56,8 @@ export function DiffChangeList({ changes }: { changes: ResumeDiffChange[] }) {
             </ul>
           )}
         </li>
-      ))}
+        );
+      })}
     </ul>
   );
 }

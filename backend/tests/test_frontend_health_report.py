@@ -36,7 +36,7 @@ def test_groups_by_location_and_renames_heading():
 def test_finding_at_rest_is_one_line():
     assert "CollapsedRow" in _CARDS
     assert "DetailsDisclosure" not in _CARDS
-    assert "Change rating" in _CARDS
+    assert "This rating is wrong…" in _CARDS
     assert "FindingOverflow" in _CARDS
 
 
@@ -81,7 +81,7 @@ def test_list_grade_chip():
 
 
 def test_close_the_loop_round2_surfaces():
-    assert "Answer the number questions" in _PAGE
+    assert "addNumbersLabel(metricAsks.length)" in _PAGE
     assert "BatchAskDialog" in _PAGE
     assert "MetricAskInput" in _CARDS
     assert "DemonstrateSkillDialog" in _CARDS
@@ -118,8 +118,9 @@ def test_collapsed_row_cannot_overflow_on_a_long_entry_label():
     """
     assert "shortFindingLabel(finding.label)" in _CARDS
     assert "max-w-[10rem] shrink-0 truncate" in _CARDS
-    # The action + overflow menu hold their width instead of being squeezed.
-    assert 'className="flex shrink-0 items-center gap-2"' in _CARDS
+    # The action + overflow menu hold their width instead of being squeezed,
+    # and wrap under the chips at 375 rather than push the page sideways.
+    assert 'className="ml-auto flex shrink-0 items-center gap-2"' in _CARDS
 
 
 def test_hoist_blurb_does_not_conjugate_backend_copy():
