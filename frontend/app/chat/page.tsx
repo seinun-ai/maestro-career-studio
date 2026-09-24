@@ -2,7 +2,7 @@ import { Suspense } from "react";
 
 import { ChatPage } from "@/components/chat/chat-page";
 
-export const metadata = { title: "Chat — Maestro CS" };
+export const metadata = { title: "Assistant — Maestro CS" };
 
 // useSearchParams() requires a Suspense boundary for the static prerender in
 // `next build` (Next.js 16 CSR bailout).

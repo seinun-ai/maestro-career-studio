@@ -43,7 +43,14 @@ test("only a server off this machine is remote", () => {
 });
 
 test("the id shows only when it differs from the name", () => {
-  assert.equal(showsModelId({ id: "gpt-5.6-luna", label: "OpenAI GPT-5.6 Luna" }), true);
+  // The id only restates the name (its provider in front, dots and dashes aside): hidden.
+  assert.equal(showsModelId({ id: "gpt-5.6-luna", label: "OpenAI GPT-5.6 Luna" }), false);
+  assert.equal(showsModelId({ id: "gemini-3.7-flash", label: "Gemini 3.7 Flash" }), false);
+  assert.equal(showsModelId({ id: "gemini-3.5-flash-lite", label: "Gemini 3.5 Flash-Lite" }), false);
+  // It says something the name does not: shown.
+  assert.equal(showsModelId({ id: "gpt-4o-mini-2024-07-18", label: "GPT-4o mini" }), true);
+  assert.equal(showsModelId({ id: "llama3.2:3b", label: "My laptop model" }), true);
+  assert.equal(showsModelId({ id: "luna", label: "Acme Luna" }), true);
   assert.equal(showsModelId({ id: "gpt-6-luna", label: "gpt-6-luna" }), false);
   assert.equal(showsModelId({ id: "gpt-6-luna", label: " gpt-6-luna " }), false);
 });

@@ -4,6 +4,7 @@ import { useCallback, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { ApiError, kbIngestDocument } from "@/lib/api";
+import { couldnt } from "@/lib/error-text";
 
 export type QueueRow =
   | { file: File; state: "queued" }
@@ -43,10 +44,6 @@ function isOutage(error: unknown): boolean {
   return error instanceof ApiError && (error.status === 502 || error.status === 0);
 }
 
-function message(error: unknown): string {
-  if (error instanceof ApiError) return error.message;
-  return error instanceof Error ? error.message : String(error);
-}
 
 /**
  * Sequential ingest queue for the document lane.
@@ -130,7 +127,7 @@ export function useDocumentQueue() {
           halted = true;
           break;
         }
-        patch(index, { file, state: "failed", reason: message(error) });
+        patch(index, { file, state: "failed", reason: couldnt("read this file", error) });
       }
     }
 

@@ -198,6 +198,8 @@ def build_status(db: Session) -> SetupStatus:
             done=default_tpl is not None and default_tpl.origin != "seed",
             detail={
                 "default_template_id": default_tpl.id if default_tpl else None,
+                # The setup row names the template, never its id.
+                "default_template_name": getattr(default_tpl, "display_name", None),
                 "default_origin": default_tpl.origin if default_tpl else None,
                 # Information only — an unstamped base renders via the fallback.
                 "bases_without_template": sum(1 for b in active_bases if not b.template_id),

@@ -30,9 +30,21 @@ export function sourceLabel(source: "seed" | "extra" | "configured" | undefined)
   return "Built-in";
 }
 
-/** The id is worth showing only when the name is not already it (a found OpenAI model is named by its id). */
+/** Letters and digits only, lower-cased: "GPT-5.6 Luna" and "gpt-5.6-luna" read the same. */
+function comparable(text: string): string {
+  return text.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+const PROVIDER_WORDS = new Set(["openai", "gemini", "google"]);
+
+/** The id is worth showing only when it says something the name does not: not when it is the name
+ *  (a found OpenAI model is named by its id), nor the name without its provider ("OpenAI GPT-5.6 Luna",
+ *  `gpt-5.6-luna`). */
 export function showsModelId(option: { id: string; label: string }): boolean {
-  return option.label.trim() !== option.id;
+  const name = comparable(option.label);
+  const id = comparable(option.id);
+  if (name === id) return false;
+  return !(name.endsWith(id) && PROVIDER_WORDS.has(name.slice(0, name.length - id.length)));
 }
 
 /** A model's name for a sentence or an accessible name; the id when the list lacks it. */

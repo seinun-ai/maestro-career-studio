@@ -13,16 +13,9 @@ import { useFocusOnNextCommit } from "@/hooks/use-focus-return";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { apiFetch } from "@/lib/api";
+import { couldnt } from "@/lib/error-text";
 import { canApplyAsyncDraft } from "@/lib/onboarding";
 import type { SettingValue } from "@/lib/types";
-
-const PLACEHOLDER = [
-  "e.g.",
-  "Vision: build data products that actually ship.",
-  "Strengths: pragmatic ML, clear writing, fast prototyping.",
-  "Goals: senior DS/MLE role on a product team.",
-  "How I work: bias to shipping, evidence over opinion.",
-].join("\n");
 
 /**
  * The candidate's persona: vision, strengths, goals, working style.
@@ -36,7 +29,7 @@ const PLACEHOLDER = [
 export function PersonaSection({
   draftDisabledReason,
 }: {
-  /** Why "Draft from my career" cannot run yet, or undefined when it can. */
+  /** Why "Draft from my career history" cannot run yet, or undefined when it can. */
   draftDisabledReason?: string;
 }) {
   const query = useQuery({
@@ -48,7 +41,7 @@ export function PersonaSection({
     <SettingCard
       id="persona"
       title="Persona"
-      description="Vision, strengths, goals, and how you work. Shapes the voice of tailoring, Q&A, and outreach. Never adds facts to your resume."
+      description="How you'd describe yourself as a candidate: your goals, strengths and how you work. It sets the tone of tailoring, cover letters and answers, and never adds facts to your resume."
       errorTitle="Couldn't load your persona."
       query={query}
     >
@@ -103,7 +96,7 @@ function PersonaEditor({
       void qc.invalidateQueries({ queryKey: ["setup-status"] });
       toast.success("Persona saved");
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(couldnt("save your persona", err)),
   });
 
   const draft = useMutation({
@@ -120,7 +113,7 @@ function PersonaEditor({
       editRevision.current += 1;
       toast.success("Draft ready to review");
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(couldnt("draft your persona", err)),
   });
 
   // One request per gesture: a double click sent two PUTs (or two model calls).
@@ -148,7 +141,7 @@ function PersonaEditor({
           onClick={() => draftOnce(editRevision.current)}
         >
           {draft.isPending ? <Loader2 className="animate-spin" aria-hidden="true" /> : null}
-          Draft from my career
+          Draft from my career history
         </Button>
       </SettingCardAction>
       {draftDisabledReason ? (
@@ -160,7 +153,6 @@ function PersonaEditor({
         ref={textareaRef}
         rows={10}
         value={value}
-        placeholder={PLACEHOLDER}
         aria-label="Persona"
         onChange={(e) => {
           setValue(e.target.value);

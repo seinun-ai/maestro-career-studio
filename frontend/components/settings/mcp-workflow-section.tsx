@@ -9,6 +9,7 @@ import { SettingCard, SettingCardAction } from "@/components/settings/setting-ca
 import { SwitchRow } from "@/components/settings/setting-layout";
 import { Switch } from "@/components/ui/switch";
 import { apiFetch } from "@/lib/api";
+import { couldnt } from "@/lib/error-text";
 import type { McpWorkflowSetting } from "@/lib/types";
 
 /**
@@ -45,14 +46,14 @@ export function McpWorkflowSection() {
     onSuccess: (result) => {
       qc.setQueryData(["settings", "mcp-workflow"], result);
     },
-    onError: (error: Error) => toast.error(error.message),
+    onError: (error: Error) => toast.error(couldnt("save this setting", error)),
   });
 
   return (
     <SettingCard
       id="agent-hints"
       title="Next-step hints for connected agents"
-      description="Adds a suggested next step to what the app tells a connected agent, so Claude or Codex can walk the tailoring workflow without being told each step. Turn it off to keep responses minimal."
+      description="Adds a suggested next step to what the app tells a connected agent, so Claude or Codex can go from scoring to tailoring to applying without being told each step. Turn it off for shorter replies."
       errorTitle="Couldn't load this setting."
       skeleton="h-11 w-full"
       query={setting}

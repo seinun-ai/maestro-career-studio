@@ -43,13 +43,19 @@ function detailString(
   return typeof value === "string" ? value : null;
 }
 
-/** Human label for an autofill group. */
-const GROUP_LABELS: Record<string, string> = {
-  personal: "personal details",
-  work_auth: "work authorization",
-  eeo: "voluntary disclosures",
-  preferences: "preferences",
+/** What is missing, in words, for each autofill group (Profile › Autofill's headings). */
+const GROUP_MISSING: Record<string, string> = {
+  personal: "Personal details are missing.",
+  work_auth: "Work authorization is missing.",
+  eeo: "Diversity questions are missing.",
+  eligibility: "Eligibility is missing.",
+  preferences: "Preferences are missing.",
 };
+
+/** "1 base resume", "3 items": a count agrees with its noun. */
+function count(n: number, one: string, many: string): string {
+  return `${n} ${n === 1 ? one : many}`;
+}
 
 /**
  * The autofill group to send the user to.
@@ -87,12 +93,14 @@ export function buildSetupSteps(
 ): SetupStepView[] {
   const readiness = Math.round(status.autofill.readiness * 100);
   const target = autofillTarget(status.autofill);
-  const targetLabel = target ? (GROUP_LABELS[target] ?? target) : "";
+  const missing = target ? GROUP_MISSING[target] : undefined;
   const defaultOrigin = detailString(status.template.detail, "default_origin");
   const defaultTemplate = detailString(
     status.template.detail,
-    "default_template_id",
+    "default_template_name",
   );
+  const bases = detailNumber(status.import_resumes.detail, "base_resumes");
+  const items = detailNumber(status.import_resumes.detail, "kb_entities");
   // "seed" is the shipped starter; absent means no template at all yet.
   const starterDefault = defaultOrigin === null || defaultOrigin === "seed";
 
@@ -100,8 +108,8 @@ export function buildSetupSteps(
     {
       id: "model_key",
       label: "API key",
-      title: "Add a provider API key",
-      detail: "Nothing extracts, tailors or chats without one.",
+      title: "Add an API key",
+      detail: "Needed to read jobs, tailor resumes and use the Assistant.",
       done: status.model_key.done,
       required: true,
       home: "/settings",
@@ -111,7 +119,7 @@ export function buildSetupSteps(
       id: "import",
       label: "Import resumes",
       title: "Import your resumes",
-      detail: `${detailNumber(status.import_resumes.detail, "base_resumes")} base resumes · ${detailNumber(status.import_resumes.detail, "kb_entities")} KB entries`,
+      detail: `${count(bases, "base resume", "base resumes")}, ${count(items, "item", "items")} in your career history`,
       done: status.import_resumes.done,
       required: true,
       home: "/career",
@@ -119,13 +127,9 @@ export function buildSetupSteps(
     },
     {
       id: "autofill",
-      label: targetLabel
-        ? `Autofill ${readiness}% · ${targetLabel}`
-        : `Autofill ${readiness}%`,
-      title: "Complete autofill",
-      detail: targetLabel
-        ? `Readiness ${readiness}% — ${targetLabel} incomplete`
-        : `Readiness ${readiness}%`,
+      label: `Autofill: ${readiness}% done`,
+      title: "Add your answers for job forms",
+      detail: missing ? `${readiness}% done. ${missing}` : `${readiness}% done.`,
       done: status.autofill.done,
       home: "/profile",
       // Aim at the group with the gap, not the section, so the user lands on
@@ -143,7 +147,7 @@ export function buildSetupSteps(
     {
       id: "persona",
       label: "Persona",
-      title: "Write your persona",
+      title: "Describe yourself as a candidate (persona)",
       done: status.persona.done,
       home: "/profile",
       anchor: "persona",
@@ -154,18 +158,20 @@ export function buildSetupSteps(
       title: "Choose your default template",
       detail: starterDefault
         ? "Using the starter template"
-        : `Default: ${defaultTemplate ?? "set"}`,
+        : defaultTemplate
+          ? `Default: ${defaultTemplate}`
+          : "Default template chosen",
       done: status.template.done,
       home: "/templates",
       anchor: "template-gallery",
     },
     {
       id: "engines",
-      label: "PDF engines",
-      title: "PDF engines",
+      label: "PDF output",
+      title: "PDF output",
       detail: status.engines.pdflatex.available
-        ? `Typst ready · TeX ${status.engines.pdflatex.version ?? "found"}`
-        : "Typst ready · TeX not found (LaTeX templates render with Typst until it is installed)",
+        ? "PDF creation is ready."
+        : "PDF creation is ready. A few templates need extra software to look their best.",
       done: status.engines.typst.available,
       home: "/templates",
       anchor: "template-gallery",

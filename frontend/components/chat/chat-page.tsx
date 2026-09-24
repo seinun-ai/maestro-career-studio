@@ -2,7 +2,12 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type UseQueryResult,
+} from "@tanstack/react-query";
 import {
   ArrowUp,
   ChevronLeft,
@@ -23,6 +28,8 @@ import { KbCaptureCard } from "@/components/chat/kb-capture-card";
 import { ChatMarkdown } from "@/components/chat/markdown";
 import { ProposalCard } from "@/components/chat/proposal-card";
 import { ScopePickerDialog, SelectionChip } from "@/components/chat/scope-picker";
+import { useConfirm } from "@/components/confirm-dialog";
+import { GuardedLink as Link } from "@/components/guarded-link";
 import { LoadErrorState } from "@/components/load-error-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -36,7 +43,6 @@ import {
 import {
   Sheet,
   SheetContent,
-  SheetDescription,
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
@@ -48,7 +54,9 @@ import {
 } from "@/hooks/use-local-storage-state";
 import { useBaseResumes } from "@/hooks/use-base-resume-label";
 import { useFocusOnNextCommit } from "@/hooks/use-focus-return";
+import { useSingleFlight } from "@/hooks/use-single-flight";
 import {
+  ApiError,
   apiFetch,
   createChatSession,
   deleteChatSession,
@@ -57,7 +65,10 @@ import {
   streamChatMessage,
   uploadChatAttachment,
 } from "@/lib/api";
+import { couldnt, errorDetail, isPlainSentence } from "@/lib/error-text";
+import { focusSuccessor } from "@/lib/focus";
 import { isLoadFailure } from "@/lib/query-state";
+import { anchorHref } from "@/lib/settings-tabs";
 import { notifyRenderNote } from "@/lib/render-note";
 import { cn } from "@/lib/utils";
 import { DOCUMENT_ACCEPT } from "@/lib/upload-accept";
@@ -78,7 +89,46 @@ import type {
 const NO_TARGET = "__none__";
 const HISTORY_COLLAPSED_KEY = "chatPage.historyCollapsed";
 
+/**
+ * What the Assistant is doing, in words, for each tool it calls (the names are
+ * the model's identifiers in backend/app/services/chat_tools.py, pinned there).
+ * A Map, not an object: `{...}[name]` answered "constructor" with a function.
+ */
+const TOOL_PHRASES = new Map<string, string>([
+  ["list_base_resumes", "Looking at your resumes…"],
+  ["get_resume", "Reading your resume…"],
+  ["edit_resume", "Editing your resume…"],
+  ["propose_edits", "Drafting a change for you to review…"],
+  ["propose_project", "Drafting a change for you to review…"],
+  ["read_attachment", "Reading your attachment…"],
+  ["kb_list_entities", "Reading your career history…"],
+  ["kb_get_entity", "Reading your career history…"],
+  ["get_career_context", "Reading your career history…"],
+  ["kb_capture", "Saving to your career history…"],
+  ["analytics_activity", "Looking at your job search numbers…"],
+  ["analytics_gap_frequency", "Looking at your job search numbers…"],
+  ["analytics_base_summaries", "Looking at your job search numbers…"],
+  ["list_templates", "Looking at templates…"],
+  ["get_template", "Looking at templates…"],
+  ["create_template_draft", "Working on a template…"],
+  ["update_template_draft", "Working on a template…"],
+  ["duplicate_template", "Working on a template…"],
+  ["validate_template", "Checking the template…"],
+  ["set_default_template", "Setting your default template…"],
+  ["delete_template", "Deleting a template…"],
+]);
+
+/** One chip per phrase, in the order first seen: a tool that runs twice says so once. */
+function toolPhrases(tools: string[]): string[] {
+  return [...new Set(tools.map((name) => TOOL_PHRASES.get(name) ?? "Working…"))];
+}
+
 interface StreamingState {
+  /** The message being sent, shown at once; hidden once the saved thread holds it. */
+  userText: string;
+  userSelections: ChatSelection[];
+  /** The server's id for it (its "message" event), which is how the saved copy is recognised. */
+  userMessageId?: UUID;
   text: string;
   tools: string[];
   cards: ChatChangeCard[];
@@ -106,6 +156,9 @@ export function ChatPage() {
   const [attachments, setAttachments] = useState<ChatAttachmentInfo[]>([]);
   const [scopeOpen, setScopeOpen] = useState(false);
   const [streaming, setStreaming] = useState<StreamingState | null>(null);
+  // A send the server refused before the stream (no API key, or a model that
+  // can't use tools), in words, beside the composer, with the way to fix it.
+  const [setupProblem, setSetupProblem] = useState<string | null>(null);
   // Desktop rail tuck-in, read during render so a change in another tab
   // updates this one. /chat is server-rendered and hydration uses the hook's
   // null snapshot, so the rail paints OPEN first and a stored "collapsed"
@@ -266,6 +319,7 @@ export function ChatPage() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [
     detail.data?.messages.length,
+    streaming?.userText,
     streaming?.text,
     streaming?.cards.length,
     streaming?.proposals.length,
@@ -284,8 +338,10 @@ export function ChatPage() {
       qc.invalidateQueries({ queryKey: ["chat-sessions"] });
       openSession(created.id);
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(couldnt("start a new chat", err)),
   });
+  // One chat per gesture: a double click on New chat made two.
+  const newSessionOnce = useSingleFlight(newSession.mutate);
 
   const removeSession = useMutation({
     mutationFn: (id: UUID) => deleteChatSession(id),
@@ -293,8 +349,34 @@ export function ChatPage() {
       qc.invalidateQueries({ queryKey: ["chat-sessions"] });
       if (sessionId === id) openSession(null);
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(couldnt("delete the chat", err)),
   });
+  const confirm = useConfirm();
+  // Every other delete in the app asks first; this one deleted on one click,
+  // with no undo.
+  const deleteChat = async (id: UUID, row: HTMLElement | null) => {
+    // Where focus goes after a confirmed delete, read now while the row is
+    // attached: the next chat, else the previous, else this list's New chat.
+    // The confirm puts it there as it closes. A handoff once the row had left
+    // ran while focus was still in the closing dialog, and focus then fell to
+    // the list instead of a chat.
+    const neighbour = row?.nextElementSibling ?? row?.previousElementSibling;
+    const successor = neighbour ? focusSuccessor(row, "button") : () => null;
+    const newChat =
+      row?.closest("[data-chat-history]")?.querySelector<HTMLElement>("[data-new-chat]") ?? null;
+    let confirmed = false;
+    const ok = await confirm({
+      title: "Delete this chat?",
+      description: "This deletes the chat and its messages. You can't undo this.",
+      confirmLabel: "Delete",
+      destructive: true,
+      // Cancel keeps focus on Delete (null: the confirm's own return point).
+      returnFocus: () => (confirmed ? (successor() ?? newChat) : null),
+    });
+    if (!ok) return;
+    confirmed = true;
+    removeSession.mutate(id);
+  };
 
   // Shared by the desktop rail and the mobile sheet's session list, so
   // picking a session behaves identically from either surface.
@@ -314,6 +396,12 @@ export function ChatPage() {
     // same stale state, so it did not stop this either.
     if (!content || sendingRef.current) return;
     sendingRef.current = true;
+    setSetupProblem(null);
+    // What this send takes out of the composer, given back if the server saved
+    // nothing (never lose typed text): with no API key the turn failed before
+    // the message was stored, and the box had already been cleared.
+    const sentAttachments = attachments;
+    let saved = false;
 
     let activeSession = sessionId;
     try {
@@ -344,6 +432,8 @@ export function ChatPage() {
       setInput("");
       setAttachments([]);
       setStreaming({
+        userText: content,
+        userSelections: selections,
         text: "",
         tools: [],
         cards: [],
@@ -353,7 +443,12 @@ export function ChatPage() {
       });
 
       await streamChatMessage(activeSession, content, context, (event) => {
-        if (event.type === "delta") {
+        if (event.type === "message" && event.role === "user") {
+          // Stored: from here the thread holds it, whatever happens next.
+          saved = true;
+          const id = event.id;
+          setStreaming((s) => (s ? { ...s, userMessageId: id } : s));
+        } else if (event.type === "delta") {
           setStreaming((s) =>
             s ? { ...s, text: s.text + event.text } : s,
           );
@@ -409,18 +504,34 @@ export function ChatPage() {
             s ? { ...s, captures: [...s.captures, capture] } : s,
           );
         } else if (event.type === "error") {
-          toast.error(event.detail);
+          // The server's words only when they are a plain sentence for the user.
+          const reason = event.detail;
+          toast.error(
+            isPlainSentence(reason) ? reason : "The Assistant couldn't finish. Try again.",
+          );
         }
       });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Chat failed");
-    } finally {
-      sendingRef.current = false;
-      setStreaming(null);
-      // Null when the create itself failed — there is no thread to refetch.
-      if (activeSession !== null) {
-        qc.invalidateQueries({ queryKey: ["chat-session", activeSession] });
+      // Checked before the stream (routers/chat.py): no API key, or a model
+      // that can't use tools. A setup problem, so it stays beside the composer.
+      if (err instanceof ApiError && err.status === 422) {
+        setSetupProblem(errorDetail(err) ?? "The Assistant can't use the chosen model. Choose another in Settings › AI & models.");
+      } else {
+        toast.error(couldnt("get a reply from the Assistant", err));
       }
+    } finally {
+      if (!saved) {
+        setInput((current) => current || content);
+        setAttachments((current) => (current.length ? current : sentAttachments));
+      }
+      // The saved thread first, then the live block goes: clearing it first
+      // showed the empty layout for a moment. Null when the create itself
+      // failed — there is no thread to refetch.
+      if (activeSession !== null) {
+        await qc.invalidateQueries({ queryKey: ["chat-session", activeSession] });
+      }
+      setStreaming(null);
+      sendingRef.current = false;
       qc.invalidateQueries({ queryKey: ["chat-sessions"] });
       qc.invalidateQueries({ queryKey: ["resume-versions"] });
       qc.invalidateQueries({ queryKey: ["base-resumes"] });
@@ -438,19 +549,23 @@ export function ChatPage() {
       }
       const info = await uploadChatAttachment(activeSession, file);
       setAttachments((a) => [...a, info]);
-      toast.success(`Attached ${info.filename} (${info.chars.toLocaleString()} chars)`);
+      toast.success(`Attached ${info.filename}`);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Upload failed");
+      toast.error(couldnt("attach the file", err));
     }
   };
 
   // Gemini-style: while the thread is empty the composer floats centered
   // under a greeting; once messages exist it docks to the bottom.
   const hasThread = (detail.data?.messages.length ?? 0) > 0 || !!streaming;
+  const threadFailed = sessionId !== null && isLoadFailure(detail);
+  // The message being sent, until the saved thread holds it: shown once, never twice.
+  const showPending =
+    streaming !== null && !detail.data?.messages.some((m) => m.id === streaming.userMessageId);
 
   const pinnedName =
     target === NO_TARGET
-      ? "No pinned resume"
+      ? "No resume chosen"
       : (resumes.data?.find((r) => r.slug === target)?.display_name ?? target);
 
   const composer = (
@@ -477,7 +592,7 @@ export function ChatPage() {
       <Textarea
         rows={hasThread ? 1 : 2}
         aria-label="Message"
-        placeholder="Ask about your resume…"
+        placeholder="Ask the Assistant…"
         value={input}
         onChange={(e) => setInput(e.target.value)}
         onKeyDown={(e) => {
@@ -513,12 +628,12 @@ export function ChatPage() {
           value={target}
           onValueChange={(v) => applyTarget(v ?? NO_TARGET)}
         >
-          {/* max-w-48 + truncate: a long résumé name grew this trigger past the
+          {/* max-w-48 + truncate: a long resume name grew this trigger past the
               column at 768 (the row does not wrap). The full name stays in the
               DOM for screen readers and in the title for a pointer. */}
           <SelectTrigger
             size="sm"
-            aria-label="Pinned resume"
+            aria-label="Resume to edit"
             title={pinnedName}
             className="text-muted-foreground h-8 w-auto max-w-48 min-w-0 gap-1.5 rounded-full border-0 bg-transparent px-2.5 text-xs shadow-none hover:bg-muted"
           >
@@ -528,7 +643,7 @@ export function ChatPage() {
             </SelectValue>
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value={NO_TARGET}>No pinned resume</SelectItem>
+            <SelectItem value={NO_TARGET}>No resume chosen</SelectItem>
             {resumes.data?.map((r) => (
               <SelectItem key={r.slug} value={r.slug}>
                 {r.display_name || r.slug}
@@ -543,7 +658,7 @@ export function ChatPage() {
           onClick={() => setScopeOpen(true)}
         >
           <Plus className="size-3.5" />
-          Context
+          Add context
         </Button>
         <div className="flex-1" />
         <Button
@@ -578,11 +693,12 @@ export function ChatPage() {
           mismatch). The Sheet is a portal, so its open state is independent
           React state — a ResizeObserver closes it when the rail can show. */}
       {!historyCollapsed && (
-        <aside ref={railRef} className="hidden w-64 shrink-0 flex-col gap-3 @2xl/chat:flex">
+        <aside ref={railRef} className="hidden w-64 shrink-0 flex-col gap-3 @2xl/chat:flex" data-chat-history>
           <div className="flex items-center gap-1">
             <Button
+              data-new-chat
               variant="tonal"
-              onClick={() => newSession.mutate()}
+              onClick={() => newSessionOnce()}
               disabled={newSession.isPending}
               className="h-10 flex-1 justify-start gap-2 rounded-full px-4"
             >
@@ -602,10 +718,10 @@ export function ChatPage() {
             </Button>
           </div>
           <SessionList
-            sessions={sessions.data}
+            query={sessions}
             activeId={sessionId}
             onSelect={selectSession}
-            onDelete={(id) => removeSession.mutate(id)}
+            onDelete={deleteChat}
           />
         </aside>
       )}
@@ -641,83 +757,108 @@ export function ChatPage() {
             <History className="size-4" />
           </Button>
         </div>
-        {sessionId !== null && isLoadFailure(detail) ? (
+        {threadFailed ? (
           <div className="flex flex-1 flex-col items-center justify-center px-4">
             <LoadErrorState
-              title="Couldn't load this conversation."
-              detail={(detail.error as Error)?.message}
+              title="Couldn't load this chat."
+              detail={errorDetail(detail.error)}
               retrying={detail.isFetching}
               onRetry={() => void detail.refetch()}
             />
           </div>
         ) : hasThread ? (
-          <>
-            <div className="flex-1 overflow-y-auto pr-1">
-              <div className="mx-auto w-full max-w-3xl space-y-4 py-2">
-                {detail.data?.messages.map((m) => (
-                  <MessageRow
-                    key={m.id}
-                    message={m}
-                    onProposalApplied={followEditedResume}
-                  />
-                ))}
-                {streaming && (
-                  <div className="space-y-2">
-                    {streaming.tools.map((name, i) => (
+          <div className="flex-1 overflow-y-auto pr-1">
+            <div className="mx-auto w-full max-w-3xl space-y-4 py-2">
+              {detail.data?.messages.map((m) => (
+                <MessageRow
+                  key={m.id}
+                  message={m}
+                  onProposalApplied={followEditedResume}
+                />
+              ))}
+              {streaming && (
+                <div className="space-y-2">
+                  {showPending ? (
+                    <UserBubble content={streaming.userText} selections={streaming.userSelections} />
+                  ) : null}
+                  {/* Polite: what the Assistant is doing is read out as it changes. */}
+                  <div role="status" className="space-y-2">
+                    {streaming.tools.length === 0 ? (
+                      <span className="sr-only">The Assistant is replying…</span>
+                    ) : null}
+                    {toolPhrases(streaming.tools).map((phrase) => (
                       <div
-                        key={i}
+                        key={phrase}
                         className="text-muted-foreground flex items-center gap-1.5 text-xs"
                       >
-                        <Wrench className="size-3" /> {name}
+                        <Wrench className="size-3" aria-hidden="true" /> {phrase}
                       </div>
                     ))}
-                    {streaming.cards.map((card, i) => (
-                      <ChangeCard key={i} card={card} />
-                    ))}
-                    {streaming.proposals.map((proposal, i) => (
-                      <ProposalCard
-                        key={i}
-                        proposal={proposal}
-                        messageId={proposal.message_id}
-                      />
-                    ))}
-                    {streaming.proposalOps.map((proposal, i) => (
-                      <EditProposalCard
-                        key={i}
-                        proposal={proposal}
-                        messageId={proposal.message_id}
-                        onApplied={followEditedResume}
-                      />
-                    ))}
-                    {streaming.captures.map((capture, i) => (
-                      <KbCaptureCard key={i} capture={capture} />
-                    ))}
-                    <div className="flex items-start gap-2">
-                      <Loader2 className="text-muted-foreground mt-1 size-3.5 shrink-0 animate-spin" />
-                      <div className="min-w-0 flex-1">
-                        <ChatMarkdown>{streaming.text}</ChatMarkdown>
-                      </div>
+                  </div>
+                  {streaming.cards.map((card, i) => (
+                    <ChangeCard key={i} card={card} />
+                  ))}
+                  {streaming.proposals.map((proposal, i) => (
+                    <ProposalCard
+                      key={i}
+                      proposal={proposal}
+                      messageId={proposal.message_id}
+                    />
+                  ))}
+                  {streaming.proposalOps.map((proposal, i) => (
+                    <EditProposalCard
+                      key={i}
+                      proposal={proposal}
+                      messageId={proposal.message_id}
+                      onApplied={followEditedResume}
+                    />
+                  ))}
+                  {streaming.captures.map((capture, i) => (
+                    <KbCaptureCard key={i} capture={capture} />
+                  ))}
+                  <div className="flex items-start gap-2">
+                    <Loader2 className="text-muted-foreground mt-1 size-3.5 shrink-0 animate-spin" aria-hidden="true" />
+                    <div className="min-w-0 flex-1">
+                      <ChatMarkdown>{streaming.text}</ChatMarkdown>
                     </div>
                   </div>
-                )}
-                <div ref={bottomRef} />
-              </div>
+                </div>
+              )}
+              <div ref={bottomRef} />
             </div>
-            <div className="mx-auto mt-3 w-full max-w-3xl">{composer}</div>
-          </>
+          </div>
         ) : (
-          <div className="flex flex-1 flex-col items-center justify-center gap-8 px-4">
+          // The greeting fills the space above the composer and sits at its
+          // foot; the spacer below the composer matches it, so the pair stays
+          // centred.
+          <div className="flex flex-1 flex-col items-center justify-end px-4 pb-8">
             <div className="animate-fade-rise text-center">
               <h1 className="from-primary bg-gradient-to-r via-violet-500 to-rose-400 bg-clip-text text-3xl font-medium tracking-tight text-transparent">
                 What are we working on?
               </h1>
               <p className="text-muted-foreground mt-2 text-sm">
-                Edit a resume, draft project points, or work on a template. Every edit is versioned.
+                Edit a resume, draft project bullets or work on a template. You can undo any resume edit.
               </p>
             </div>
-            <div className="w-full max-w-3xl">{composer}</div>
           </div>
         )}
+        {/* ONE composer for both layouts, in one place in the tree. It sat in
+            each branch, so the first message (empty layout to thread)
+            remounted it and focus fell to <body>. */}
+        {!threadFailed && (
+          <div className={cn("mx-auto w-full max-w-3xl", hasThread && "mt-3")}>
+            {setupProblem ? (
+              <p role="alert" className="text-destructive mb-2 px-3 text-sm">
+                {setupProblem}{" "}
+                <Link href={anchorHref("/settings", "api-keys")} className="underline underline-offset-4">
+                  Open Settings
+                </Link>
+              </p>
+            ) : null}
+            {composer}
+          </div>
+        )}
+        {!threadFailed && !hasThread ? <div aria-hidden="true" className="flex-1" /> : null}
       </main>
 
       <ScopePickerDialog
@@ -754,15 +895,13 @@ export function ChatPage() {
         >
           <SheetHeader className="sr-only">
             <SheetTitle>Chat history</SheetTitle>
-            <SheetDescription>
-              Browse and switch between past chats.
-            </SheetDescription>
           </SheetHeader>
-          <div className="flex h-full flex-col gap-3 p-3">
+          <div data-chat-history className="flex h-full flex-col gap-3 p-3">
             <Button
+              data-new-chat
               variant="tonal"
               onClick={() => {
-                newSession.mutate();
+                newSessionOnce();
                 setHistorySheetOpen(false);
               }}
               disabled={newSession.isPending}
@@ -771,10 +910,10 @@ export function ChatPage() {
               <Plus className="size-4" /> New chat
             </Button>
             <SessionList
-              sessions={sessions.data}
+              query={sessions}
               activeId={sessionId}
               onSelect={selectSession}
-              onDelete={(id) => removeSession.mutate(id)}
+              onDelete={deleteChat}
             />
           </div>
         </SheetContent>
@@ -784,16 +923,29 @@ export function ChatPage() {
 }
 
 function SessionList({
-  sessions,
+  query,
   activeId,
   onSelect,
   onDelete,
 }: {
-  sessions: ChatSessionSummary[] | undefined;
+  query: UseQueryResult<ChatSessionSummary[]>;
   activeId: UUID | null;
   onSelect: (session: ChatSessionSummary) => void;
-  onDelete: (id: UUID) => void;
+  onDelete: (id: UUID, row: HTMLElement | null) => void;
 }) {
+  // A list that did not load is not an empty one (the backend down read as "no chats").
+  if (isLoadFailure(query)) {
+    return (
+      <LoadErrorState
+        className="py-6"
+        title="Couldn't load your chats."
+        detail={errorDetail(query.error)}
+        retrying={query.isFetching}
+        onRetry={() => void query.refetch()}
+      />
+    );
+  }
+  const sessions = query.data;
   return (
     <div className="flex-1 space-y-0.5 overflow-y-auto">
       {(sessions?.length ?? 0) > 0 && (
@@ -801,33 +953,37 @@ function SessionList({
           Recent
         </p>
       )}
-      {sessions?.map((s) => (
-        <div
-          key={s.id}
-          className={cn(
-            "group flex items-center gap-1 rounded-full px-3 py-1.5 transition-colors duration-150",
-            activeId === s.id ? "bg-secondary-container text-on-secondary-container hover:bg-secondary-container-hover font-semibold" : "hover:bg-muted",
-          )}
-        >
-          <button
-            type="button"
-            className="min-w-0 flex-1 truncate text-left text-sm"
-            aria-current={activeId === s.id ? "true" : undefined}
-            onClick={() => onSelect(s)}
+      {/* The rows in a wrapper of their own, so a deleted row's neighbours are
+          rows (focusSuccessor), never the heading. */}
+      <div className="space-y-0.5">
+        {sessions?.map((s) => (
+          <div
+            key={s.id}
+            className={cn(
+              "group flex items-center gap-1 rounded-full px-3 py-1.5 transition-colors duration-150",
+              activeId === s.id ? "bg-secondary-container text-on-secondary-container hover:bg-secondary-container-hover font-semibold" : "hover:bg-muted",
+            )}
           >
-            {s.title || "Untitled chat"}
-          </button>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Delete chat"
-            className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100"
-            onClick={() => onDelete(s.id)}
-          >
-            <Trash2 className="size-3.5" />
-          </Button>
-        </div>
-      ))}
+            <button
+              type="button"
+              className="min-w-0 flex-1 truncate text-left text-sm"
+              aria-current={activeId === s.id ? "true" : undefined}
+              onClick={() => onSelect(s)}
+            >
+              {s.title || "Untitled chat"}
+            </button>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Delete chat"
+              className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100"
+              onClick={(event) => onDelete(s.id, event.currentTarget.parentElement)}
+            >
+              <Trash2 className="size-3.5" />
+            </Button>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -879,11 +1035,23 @@ function MessageRow({
     );
   }
 
-  const selections = message.meta_json?.selections ?? [];
+  return (
+    <UserBubble content={message.content ?? ""} selections={message.meta_json?.selections ?? []} />
+  );
+}
+
+/** A message you sent: from the saved thread, or the one on its way while the reply streams. */
+function UserBubble({
+  content,
+  selections,
+}: {
+  content: string;
+  selections: ChatSelection[];
+}) {
   return (
     <div className="ml-auto max-w-[85%]">
       <div className="bg-muted rounded-2xl rounded-br-md px-4 py-2.5 text-sm whitespace-pre-wrap">
-        {message.content}
+        {content}
       </div>
       {selections.length > 0 && (
         <div className="mt-1 flex flex-wrap justify-end gap-1">

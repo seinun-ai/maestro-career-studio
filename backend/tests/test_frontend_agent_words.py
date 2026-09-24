@@ -44,8 +44,8 @@ _WORDS = [
     ("components/settings/auto-apply-section.tsx", "Guardrails for the agent hunt-and-apply lane.",
      "Limits on what connected agents may do when they find and apply to jobs."),
     ("components/settings/auto-apply-section.tsx", "Approving a proposal reserves a slot",
-     "Your yes before a submit reserves a slot for 24 hours."),
-    ("components/settings/auto-apply-section.tsx", '"Proposals per hunt run"', '"Proposals per hunt"'),
+     "Each application you say yes to submit counts for 24 hours."),
+    ("components/settings/auto-apply-section.tsx", '"Proposals per hunt run"', '"Jobs per search"'),
     ("components/settings/auto-apply-section.tsx", "The hunt never captures or proposes",
      "Connected agents can&apos;t propose jobs at these companies."),
     # The server refuses only a proposal at a blocked company (routers/proposals.py);
@@ -68,13 +68,13 @@ _WORDS = [
      "What Quick tailor may change on your resume, on the gap analysis page and in the Companion."),
     ("components/settings/quick-tailor-section.tsx", "one-shot tailoring", 'title="Quick tailor"'),
     ("components/settings/autofill-section.tsx", "Preset answers the browser extension uses",
-     "Preset answers the Companion uses to fill job-application forms."),
+     "The Companion uses these to fill job applications."),
     ("components/settings/autofill-section.tsx", "Allow extension to fill these answers",
-     "Allow Companion to fill these answers"),
+     "Let Companion fill these answers"),
     ("components/settings/autofill-section.tsx", "Allow extension to tick agreement boxes",
-     "Allow Companion to tick agreement boxes"),
+     "Let Companion tick agreement boxes"),
     ("components/settings/autofill-section.tsx", "matching the extension&apos;s",
-     "matching the Companion&apos;s repeated form blocks."),
+     "Most recent first."),
     # The Companion has no ⋯ menu and no switch for capture (extension/README.md, "Turn it off").
     ("components/analytics/autofill-coverage-card.tsx", "extension card's",
      "Clearing removes what's recorded so far. Capture continues while the Companion runs."),
@@ -134,13 +134,16 @@ def test_the_connected_agents_card_explains_before_the_limits():
 # (backend/mcp_server/server.py). An overclaim such as "Submit applications for
 # you." without "after your yes", or "Delete anything" when it can't, fails here.
 _CAN = (
-    "Find jobs and file them in your {AGENT_INBOX} for you to accept or skip.",
+    "Find jobs and file them in your {AGENT_INBOX} for you to queue or skip.",
     "Read your career history and job preferences.",
     "Add to and change your career history. New or reworded bullets arrive as drafts for you"
     " to approve. Other changes, such as an item&apos;s dates or your summary, skills and contact"
     " details, apply at once.",
+    # kb_approve_points: its "only after the user said yes" is a docstring rule, not a server check.
+    "Approve bullets, or mark them Not used, in your career history. They&apos;re told to do this only"
+    " after you say yes. That&apos;s a rule they&apos;re given, not a lock.",
     "Create, edit and tailor your resumes.",
-    "Fill in and submit applications you accepted, after your yes.",
+    "Fill in and submit applications you queued, after your yes.",
 )
 _CANT = (
     "Go past the daily limit below.",
@@ -175,7 +178,7 @@ def test_the_card_keeps_the_honesty_nuance():
     assert "Maestro CS itself never looks for jobs or submits an application." in flat
     assert "Before each submit, the agent asks for your yes and records it." in flat
     assert "The daily limit below counts those yeses over the last 24 hours." in flat
-    assert "That record is an audit trail, not a lock, so stay with the agent while it applies." in flat
+    assert "The app records each yes but can&apos;t stop an agent, so stay with it while it applies." in flat
     assert "apply sessions" not in flat
 
 

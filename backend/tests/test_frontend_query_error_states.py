@@ -242,8 +242,9 @@ _FAILURE_BRANCHES = {
     "components/settings/setting-card.tsx": "const loadFailed = queries.some((q) => isLoadFailure(q));",
     "components/career/first-run-import-card.tsx": "if (isLoadFailure(entities)) {",
     "components/resume-health/health-report-page.tsx": "if (isLoadFailure(baseQuery)) {",
-    "components/chat/chat-page.tsx": "{sessionId !== null && isLoadFailure(detail) ? (",
+    "components/chat/chat-page.tsx": "const threadFailed = sessionId !== null && isLoadFailure(detail);",
     "components/setup/getting-started-card.tsx": "if (isLoadFailure(setupStatus)) {",
+    "components/chat/scope-picker.tsx": "{isLoadFailure(kbEntities) ? (",
     "components/proposals/proposals-section.tsx": "if (isLoadFailure({ data, isError, fetchStatus, errorUpdateCount })) {",
     "components/proposals/proposal-agent-panel.tsx": "if (isLoadFailure({ data, isError, fetchStatus, errorUpdateCount })) {",
     "app/base-resumes/[slug]/page.tsx": "if (isLoadFailure(query)) {",
@@ -282,6 +283,7 @@ _LOADING_GATES = [
     ("app/applications/page.tsx", "animate-shimmer h-12", "loadFailed ? ("),
     ("components/proposals/proposals-section.tsx", "if (isLoading) {", "if (isLoadFailure("),
     ("components/ats-score-panel.tsx", "scores.isLoading ||", "if (isLoadFailure(scores))"),
+    ("components/chat/scope-picker.tsx", "Loading your career history…", "{isLoadFailure(kbEntities) ? ("),
 ]
 
 

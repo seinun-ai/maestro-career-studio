@@ -40,14 +40,14 @@ export default function GlobalError({
           style={{ height: "2.75rem", width: "auto" }}
         />
         <h1 style={{ fontSize: "1.125rem", fontWeight: 500, margin: 0 }}>
-          Maestro CS failed to start
+          Maestro CS couldn&apos;t open
         </h1>
         <p style={{ margin: 0, opacity: 0.7, fontSize: "0.875rem" }}>
-          The application shell could not render. Reloading is safe.
+          Try again, or reload the page.
         </p>
         {error.digest && (
           <p style={{ margin: 0, opacity: 0.6, fontSize: "0.75rem" }}>
-            Reference: <code>{error.digest}</code>
+            Error code: <code>{error.digest}</code>
           </p>
         )}
         <button

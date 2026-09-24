@@ -34,7 +34,7 @@ export default function RouteError({
       <TriangleAlert className="text-muted-foreground/50 size-8" aria-hidden />
       <h1 className="text-lg font-medium">Something went wrong</h1>
       <p className="text-muted-foreground text-sm">
-        This page failed to render. Your data is untouched, so retrying is safe.
+        This page didn&apos;t load. Anything you saved is safe.
       </p>
       {process.env.NODE_ENV === "development" && error.message && (
         <pre className="bg-muted/40 text-muted-foreground max-w-full overflow-x-auto rounded-md px-3 py-2 text-left text-xs">
@@ -43,19 +43,19 @@ export default function RouteError({
       )}
       {error.digest && (
         <p className="text-muted-foreground text-xs">
-          Reference: <span className="font-mono">{error.digest}</span>
+          Error code: <span className="font-mono">{error.digest}</span>
         </p>
       )}
       {/* Retry is the filled one. It was the other way round: the escape hatch
           carried the emphasis while the action this page exists for sat in an
-          outline button — directly contradicting the copy above it, which
-          says retrying is safe. */}
+          outline button, contradicting the copy above it, which says your
+          data is safe. */}
       <div className="flex gap-2">
         <Button onClick={reset}>Try again</Button>
         <Button
           variant="ghost"
           nativeButton={false}
-          render={<Link href="/applications">Back to Applications</Link>}
+          render={<Link href="/applications">Back to applications</Link>}
         />
       </div>
     </main>

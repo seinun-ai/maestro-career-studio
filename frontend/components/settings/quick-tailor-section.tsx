@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { apiFetch } from "@/lib/api";
+import { couldnt } from "@/lib/error-text";
 import { useAutosave } from "@/lib/use-autosave";
 import type { QuickTailorProfile, QuickTailorSetting } from "@/lib/types";
 
@@ -22,19 +23,19 @@ const SWITCH_ROWS: {
 }[] = [
   {
     key: "keywords_into_skills",
-    label: "Add missing JD keywords to skills",
+    label: "Add missing job description keywords to Skills",
   },
   {
     key: "mirror_wording",
-    label: "Mirror JD wording where evidence exists",
+    label: "Use the job description's wording when your experience backs it up",
   },
   {
     key: "summary_rename",
-    label: "Refresh summary / title alignment",
+    label: "Match your summary and title to the job",
   },
   {
     key: "project_keyword_injection",
-    label: "Allow placements into projects",
+    label: "Add keywords to projects",
   },
 ];
 
@@ -49,7 +50,7 @@ export function QuickTailorSection() {
       id="quick-tailor"
       title="Quick tailor"
       description="What Quick tailor may change on your resume, on the gap analysis page and in the Companion."
-      errorTitle="Couldn't load your quick-tailor profile."
+      errorTitle="Couldn't load Quick tailor settings."
       skeleton="h-48 w-full"
       query={profile}
     >
@@ -77,7 +78,7 @@ function QuickTailorEditor({ initial }: { initial: QuickTailorProfile }) {
       qc.setQueryData(["settings", "quick-tailor"], result);
     },
     // Errors still toast: a FAILED save is exactly the thing you must notice.
-    onError: (error: Error) => toast.error(error.message),
+    onError: (error: Error) => toast.error(couldnt("save Quick tailor settings", error)),
   });
 
   const { value: profile, update, pending, failed, retry } = useAutosave(initial, (next) =>
@@ -110,10 +111,14 @@ function QuickTailorEditor({ initial }: { initial: QuickTailorProfile }) {
 
       <div className="grid gap-1.5">
         <Label htmlFor="quick-tailor-instruction" optional>
-          Standing instruction
+          Extra instruction
         </Label>
+        <p id="quick-tailor-instruction-hint" className="text-muted-foreground text-xs">
+          Used every time Quick tailor runs.
+        </p>
         <Input
           id="quick-tailor-instruction"
+          aria-describedby="quick-tailor-instruction-hint"
           value={profile.instruction}
           onChange={(event) =>
             update((current) => ({ ...current, instruction: event.target.value }))

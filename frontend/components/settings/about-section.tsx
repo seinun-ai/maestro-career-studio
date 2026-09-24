@@ -1,34 +1,17 @@
 "use client";
 
-import type { ReactNode } from "react";
-import { Copy } from "lucide-react";
-import { toast } from "sonner";
+import { useId, useState, type ReactNode } from "react";
+import { ChevronRight } from "lucide-react";
 
-import { IconButton } from "@/components/icon-button";
+import { NewTabLink } from "@/components/new-tab-link";
 import { SettingCard } from "@/components/settings/setting-card";
 import { useVersion } from "@/hooks/use-version";
 import { FRONTEND_VERSION } from "@/lib/version";
+import { cn } from "@/lib/utils";
 
-const UPDATE_COMMAND = "./scripts/update.sh";
-
-function CopyUpdateCommand() {
-  return (
-    <div className="flex items-center gap-2">
-      <code className="bg-muted rounded-md px-2 py-1 font-mono text-sm">
-        {UPDATE_COMMAND}
-      </code>
-      <IconButton
-        label="Copy update command"
-        icon={<Copy />}
-        onClick={() => {
-          void navigator.clipboard
-            .writeText(UPDATE_COMMAND)
-            .then(() => toast.success("Copied"));
-        }}
-      />
-    </div>
-  );
-}
+const GUIDE = "https://github.com/seinun-ai/maestro-career-studio/blob/main/docs/GETTING_STARTED.md";
+/** The guide's update step, which says how for each kind of install (pinned against its heading). */
+const UPDATE_GUIDE_URL = `${GUIDE}#7-keeping-it-up-to-date`;
 
 /** One term and its value. At 375 the pair wraps, and a 40-character Git SHA
  *  breaks anywhere, instead of pushing the page sideways. */
@@ -41,6 +24,12 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
+/** A link that opens the user's browser. The app itself never asks GitHub
+ *  anything; clicking one is the user opening a page. */
+function OutLink({ href, children }: { href: string; children: ReactNode }) {
+  return <NewTabLink href={href}>{children}</NewTabLink>;
+}
+
 export function AboutSection() {
   const version = useVersion();
 
@@ -48,47 +37,67 @@ export function AboutSection() {
     <SettingCard
       id="about"
       title="About"
-      description={
-        <>
-          What this install is running. A local build reads{" "}
-          <code className="font-mono text-[0.85em]">dev</code> here.
-        </>
-      }
+      description="Your app version."
       errorTitle="Couldn't load version info."
       skeleton="h-24 w-full"
       query={version}
     >
       {(data) => (
-        <dl className="divide-y">
-          <Row label="Frontend">
-            <span className="font-mono">{FRONTEND_VERSION}</span>
-          </Row>
-          <Row label="Backend">
-            <span className="font-mono">{data.version}</span>
-          </Row>
-          <Row label="Schema revision">
-            <span className="font-mono">{data.schema_revision}</span>
-          </Row>
-          <Row label="Git SHA">
-            <span className="font-mono">{data.git_sha ?? "not recorded"}</span>
-          </Row>
-          <Row label="Update">
-            <CopyUpdateCommand />
-          </Row>
-          <Row label="What's new">
-            {/* A static link, deliberately: the app itself never asks GitHub
-                anything — clicking this is the user opening their browser. */}
-            <a
-              href="https://github.com/seinun-ai/maestro-career-studio/releases"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="underline underline-offset-4 hover:no-underline"
-            >
-              Release notes
-            </a>
-          </Row>
-        </dl>
+        <div className="grid gap-2">
+          <dl className="divide-y">
+            <Row label="Version">
+              <span className="font-mono">{data.version}</span>
+            </Row>
+            <Row label="Updates">
+              <OutLink href={UPDATE_GUIDE_URL}>How to update</OutLink>
+            </Row>
+            <Row label="What's new">
+              <OutLink href="https://github.com/seinun-ai/maestro-career-studio/releases">
+                Release notes
+              </OutLink>
+            </Row>
+          </dl>
+          <TechnicalDetails
+            rows={[
+              ["Frontend", FRONTEND_VERSION],
+              ["Backend", data.version],
+              ["Schema revision", data.schema_revision],
+              ["Git SHA", data.git_sha ?? "Not recorded"],
+            ]}
+          />
+        </div>
       )}
     </SettingCard>
+  );
+}
+
+/** The build's parts, for a support question: closed by default, `hidden`
+ *  rather than unmounted like the other disclosures here. */
+function TechnicalDetails({ rows }: { rows: [string, string][] }) {
+  const [open, setOpen] = useState(false);
+  const panelId = useId();
+  return (
+    <div className="grid gap-1">
+      <button
+        type="button"
+        className="text-muted-foreground hover:text-foreground flex items-center gap-1 justify-self-start text-xs"
+        aria-expanded={open}
+        aria-controls={panelId}
+        onClick={() => setOpen((o) => !o)}
+      >
+        <ChevronRight
+          className={cn("size-3.5 transition-transform", open && "rotate-90")}
+          aria-hidden="true"
+        />
+        Technical details
+      </button>
+      <dl id={panelId} hidden={!open} className="divide-y">
+        {rows.map(([label, value]) => (
+          <Row key={label} label={label}>
+            <span className="font-mono">{value}</span>
+          </Row>
+        ))}
+      </dl>
+    </div>
   );
 }

@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { apiFetch } from "@/lib/api";
+import { couldnt } from "@/lib/error-text";
 import type { AutoApplySettings, SettingEnvelope } from "@/lib/types";
 
 type AutoApplySetting = SettingEnvelope<AutoApplySettings>;
@@ -36,37 +37,42 @@ const AUTO_APPLY_FIELDS: {
 }[] = [
   {
     key: "max_submissions_per_day",
-    label: "Daily submission cap",
-    hint: "Your yes before a submit reserves a slot for 24 hours.",
+    label: "Applications per day",
+    // services/proposals.py: a yes to submit (approved) reserves a slot; a decline frees it.
+    hint: "Each application you say yes to submit counts for 24 hours.",
     min: 1,
     max: 100,
   },
   {
     key: "max_proposals_per_run",
-    label: "Proposals per hunt",
-    // No hint: the label already says it.
-    hint: "",
+    label: "Jobs per search",
+    // Enforced agent-side only (job_search_brief hands it over; the server counts nothing).
+    hint: "Agents are told to file no more than this from one search.",
     min: 1,
     max: 100,
   },
   {
     key: "proposal_expiry_days",
-    label: "Unreviewed proposal expiry (days)",
-    hint: "Accepted proposals never expire.",
+    // expire_stale: To review and Needs you decisions become "expired", which the
+    // inbox lists under History; nothing is deleted. The clock starts at filing.
+    label: "Move unreviewed jobs to History after (days)",
+    hint: "Counts from when the job was filed. Queued jobs stay.",
     min: 1,
     max: 90,
   },
   {
     key: "auto_pick_floor",
-    label: "Auto-pick score floor",
-    hint: "Minimum ATS score to auto-pick a base resume.",
+    // ATS is spelled out once on this tab, here, where it first appears. Both
+    // pick limits are playbook rules the agent is given (docs/playbooks/agent-apply.md).
+    label: "Lowest ATS score to pick a resume",
+    hint: "An ATS score is how an applicant tracking system rates a resume for a job. Below this, agents ask you which base resume to use.",
     min: 0,
     max: 100,
   },
   {
     key: "auto_pick_margin",
-    label: "Auto-pick margin",
-    hint: "Points the top base must beat the runner-up by.",
+    label: "Lead needed to pick a resume",
+    hint: "Agents pick a base resume on their own only when its ATS score leads the next one by this many points.",
     min: 0,
     max: 100,
   },
@@ -121,7 +127,7 @@ function AutoApplyEditor({ initial }: { initial: AutoApplySettings }) {
       // The Agent inbox and Analytics' Agent pipeline read the cap.
       qc.invalidateQueries({ queryKey: ["proposals", "funnel"] });
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(couldnt("save auto-apply settings", err)),
   });
   const saveOnce = useSingleFlight(save.mutate);
 
@@ -174,7 +180,7 @@ function AutoApplyEditor({ initial }: { initial: AutoApplySettings }) {
         ))}
       </div>
       <div className="grid gap-1.5">
-        <Label htmlFor="aa-blocklist">Company blocklist</Label>
+        <Label htmlFor="aa-blocklist">Companies to skip</Label>
         <p id="aa-blocklist-hint" className="text-muted-foreground text-xs">
           {/* The server refuses only a proposal here (routers/proposals.py):
               an agent can still save a job at one of these companies. */}
@@ -193,7 +199,7 @@ function AutoApplyEditor({ initial }: { initial: AutoApplySettings }) {
                 {name}
                 <IconButton
                   size="icon-xs"
-                  label={`Remove ${name} from blocklist`}
+                  label={`Remove ${name}`}
                   icon={<X />}
                   className="text-muted-foreground hover:bg-background rounded-full"
                   onClick={() => {

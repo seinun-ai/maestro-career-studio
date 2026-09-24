@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { useConfirm } from "@/components/confirm-dialog";
 import { useFocusOnNextCommit } from "@/hooks/use-focus-return";
 import { useLeaveGuard } from "@/hooks/use-leave-guard";
+import { useSingleFlight } from "@/hooks/use-single-flight";
 import { SettingCard } from "@/components/settings/setting-card";
 import {
   ACTION_ROW,
@@ -27,12 +28,8 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { apiFetch } from "@/lib/api";
+import { couldnt } from "@/lib/error-text";
 import { cn } from "@/lib/utils";
 import type { EeoConsent, KBProfileOut, SettingEnvelope } from "@/lib/types";
 
@@ -43,7 +40,8 @@ type FieldDef = {
   type?: "text" | "select";
   boolean?: boolean;
   options?: { value: string; label: string }[];
-  placeholder?: string;
+  /** A format or a consequence, between the label and the control. Never an example value. */
+  hint?: string;
 };
 
 type GroupDef = { key: string; title: string; fields: FieldDef[] };
@@ -60,7 +58,7 @@ const YES_NO_DECLINE = [
 
 /** Sub-section heading inside a card, in the career history read view's style
  *  (`GROUP_HEADING`), so a form section and a content section look alike. The
- *  `w-full` keeps the row-level actions ("Fill from resume", "Decline all")
+ *  `w-full` keeps the row-level actions ("Fill from career history", "Decline the rest")
  *  pinned to the far end of the legend. */
 const LEGEND = cn(GROUP_HEADING, "flex w-full items-center justify-between gap-2");
 
@@ -74,14 +72,14 @@ const GROUPS: GroupDef[] = [
       { key: "email", label: "Email" },
       { key: "phone", label: "Phone" },
       { key: "address", label: "Street address" },
-      { key: "address_2", label: "Address line 2", optional: true, placeholder: "e.g. Apt 4B" },
+      { key: "address_2", label: "Address line 2", optional: true },
       { key: "city", label: "City" },
       { key: "state", label: "State" },
       { key: "postal_code", label: "Postal code" },
       { key: "country", label: "Country" },
-      { key: "linkedin", label: "LinkedIn URL" },
-      { key: "github", label: "GitHub URL" },
-      { key: "website", label: "Portfolio / website" },
+      { key: "linkedin", label: "LinkedIn profile link" },
+      { key: "github", label: "GitHub link" },
+      { key: "website", label: "Website" },
     ],
   },
   {
@@ -90,7 +88,7 @@ const GROUPS: GroupDef[] = [
     fields: [
       {
         key: "status",
-        label: "Current work authorization status",
+        label: "Work authorization status",
         type: "select",
         options: [
           { value: "citizen", label: "U.S. citizen" },
@@ -112,14 +110,14 @@ const GROUPS: GroupDef[] = [
       },
       {
         key: "sponsorship_now",
-        label: "Do you require sponsorship now?",
+        label: "Do you need visa sponsorship now?",
         type: "select",
         boolean: true,
         options: YES_NO,
       },
       {
         key: "sponsorship_future",
-        label: "Will you require sponsorship in the future?",
+        label: "Will you need visa sponsorship later?",
         type: "select",
         boolean: true,
         options: YES_NO,
@@ -128,7 +126,7 @@ const GROUPS: GroupDef[] = [
   },
   {
     key: "eeo",
-    title: "Voluntary disclosures (EEO)",
+    title: "Diversity questions (voluntary)",
     fields: [
       {
         key: "veteran_status",
@@ -166,11 +164,12 @@ const GROUPS: GroupDef[] = [
         type: "select",
         options: YES_NO_DECLINE,
       },
+      // Optional for readiness (setup_status counts the other four); its
+      // label carries no "(optional)", because the whole group is voluntary.
       {
         key: "race_ethnicity",
-        label: "Race / ethnicity",
+        label: "Race or ethnicity",
         optional: true,
-        placeholder: "e.g. Asian",
       },
     ],
   },
@@ -191,7 +190,7 @@ const GROUPS: GroupDef[] = [
       // wording of the label.
       {
         key: "over_18",
-        label: "Are you 18 years of age or older?",
+        label: "Are you 18 or older?",
         type: "select",
         boolean: true,
         options: YES_NO,
@@ -199,7 +198,7 @@ const GROUPS: GroupDef[] = [
       },
       {
         key: "previously_employed_here",
-        label: "Previously employed by the company you are applying to?",
+        label: "Have you worked for the company you're applying to?",
         type: "select",
         boolean: true,
         options: YES_NO,
@@ -219,8 +218,8 @@ const GROUPS: GroupDef[] = [
     key: "preferences",
     title: "Preferences",
     fields: [
-      { key: "desired_salary", label: "Desired salary", placeholder: "e.g. $120,000" },
-      { key: "notice_period", label: "Notice period", placeholder: "e.g. 2 weeks" },
+      { key: "desired_salary", label: "Desired salary" },
+      { key: "notice_period", label: "Notice period", hint: "How long before you can start." },
       { key: "earliest_start_date", label: "Earliest start date" },
       {
         key: "willing_to_relocate",
@@ -229,7 +228,7 @@ const GROUPS: GroupDef[] = [
         boolean: true,
         options: YES_NO,
       },
-      { key: "how_heard", label: "How did you hear about us?", placeholder: "e.g. Job board" },
+      { key: "how_heard", label: "How did you hear about the job?" },
     ],
   },
 ];
@@ -249,13 +248,13 @@ type Profile = {
   [group: string]: unknown;
 };
 
-const EDUCATION_FIELDS: { key: keyof EducationEntry; label: string; placeholder?: string }[] = [
-  { key: "school", label: "School / university" },
-  { key: "degree", label: "Degree", placeholder: "e.g. Master of Science" },
-  { key: "discipline", label: "Discipline / major", placeholder: "e.g. Data Science" },
-  { key: "gpa", label: "GPA", placeholder: "e.g. 3.8" },
-  { key: "start_year", label: "Start year", placeholder: "e.g. 2021" },
-  { key: "end_year", label: "Graduation year", placeholder: "e.g. 2023" },
+const EDUCATION_FIELDS: { key: keyof EducationEntry; label: string }[] = [
+  { key: "school", label: "School" },
+  { key: "degree", label: "Degree" },
+  { key: "discipline", label: "Major" },
+  { key: "gpa", label: "GPA" },
+  { key: "start_year", label: "Start year" },
+  { key: "end_year", label: "Graduation year" },
 ];
 
 function educationList(profile: Profile): EducationEntry[] {
@@ -445,9 +444,9 @@ export function AutofillSection() {
   return (
     <SettingCard
       id="autofill"
-      title="Autofill profile"
-      description="Preset answers the Companion uses to fill job-application forms."
-      errorTitle="Couldn't load your autofill profile."
+      title="Answers for job forms"
+      description="The Companion uses these to fill job applications."
+      errorTitle="Couldn't load your form answers."
       skeleton="h-40 w-full"
       query={query}
       // The consent record gates the EEO switches inside the editor, so the
@@ -570,42 +569,45 @@ function AutofillEditor({
       qc.setQueryData(["settings", "eeo-consent"], result);
       setConsent(result.value);
       setLastConsent(result.value);
-      toast.success(
-        result.value.enabled
-          ? "EEO standing consent enabled"
-          : "EEO standing consent turned off",
-      );
+      // No toast here: two switches share this mutation, so each call names
+      // its own switch (a shared toast announced the diversity state when the
+      // agreement-box switch moved).
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(couldnt("save your consent", err)),
   });
 
   const setEeoConsentEnabled = async (enabled: boolean) => {
     if (enabled) {
       const acknowledged = await confirm({
-        title: "Let autofill answer voluntary EEO questions?",
+        title: "Let the Companion answer the voluntary diversity questions?",
         description:
-          "Maestro CS Companion will fill self-identification fields "
-          + "(race/ethnicity, gender, veteran status, disability) using only the "
-          + "exact answers stored below. Answers are never inferred or authored "
-          + "by an AI. WOTC, signatures, and legal attestations stay manual. You "
-          + "can turn this off anytime.",
-        confirmLabel: "Allow EEO fill",
+          "Maestro CS Companion will fill race, ethnicity, gender, veteran and "
+          + "disability questions using only your exact answers below. It never "
+          + "guesses and never uses AI for these. Tax-credit questions, "
+          + "signatures and legal statements stay with you. You can turn this "
+          + "off anytime.",
+        confirmLabel: "Allow",
+        consent: true,
       });
       if (!acknowledged) return;
-      saveConsent.mutate({
-        enabled: true,
-        consent_forms: consent.consent_forms,
-        acknowledged_at: null, // server stamps acknowledgement time
-        policy_version: consent.policy_version,
-      });
-      return;
     }
-    saveConsent.mutate({
-      enabled: false,
-      consent_forms: consent.consent_forms,
-      acknowledged_at: consent.acknowledged_at,
-      policy_version: consent.policy_version,
-    });
+    saveConsent.mutate(
+      {
+        enabled,
+        consent_forms: consent.consent_forms,
+        // The server stamps the acknowledgement time on a yes.
+        acknowledged_at: enabled ? null : consent.acknowledged_at,
+        policy_version: consent.policy_version,
+      },
+      {
+        onSuccess: () =>
+          toast.success(
+            enabled
+              ? "The Companion can now answer diversity questions"
+              : "The Companion won't answer diversity questions",
+          ),
+      },
+    );
   };
 
   /** The second permission in the same record: may the extension tick the
@@ -624,24 +626,36 @@ function AutofillEditor({
   const setConsentFormsEnabled = async (consentForms: boolean) => {
     if (consentForms) {
       const acknowledged = await confirm({
-        title: "Let autofill tick agreement boxes?",
+        title: "Let the Companion tick agreement boxes?",
+        // Every family extension/shared/policy.js's CONSENT_FORMS unlocks.
         description:
-          "This covers an application's own terms and conditions, "
-          + "acknowledgements and attestations. It ticks a box; it never signs "
-          + "and never submits. Signature and initials fields stay manual, and "
-          + "passwords and government ID numbers are never filled whatever you "
-          + "choose here. Review every form before you submit it. You can turn "
-          + "this off anytime.",
-        confirmLabel: "Allow ticking boxes",
+          "This covers an application's own agreement boxes: terms, "
+          + "acknowledgements, certifications, arbitration and waivers. It "
+          + "ticks a box. It never signs and never submits. "
+          + "Signatures, initials, passwords and government ID numbers are "
+          + "never filled, whatever you choose here. Check every form before "
+          + "you submit it. You can turn this off anytime.",
+        confirmLabel: "Allow",
+        consent: true,
       });
       if (!acknowledged) return;
     }
-    saveConsent.mutate({
-      enabled: consent.enabled,
-      consent_forms: consentForms,
-      acknowledged_at: consentForms ? null : consent.acknowledged_at,
-      policy_version: consent.policy_version,
-    });
+    saveConsent.mutate(
+      {
+        enabled: consent.enabled,
+        consent_forms: consentForms,
+        acknowledged_at: consentForms ? null : consent.acknowledged_at,
+        policy_version: consent.policy_version,
+      },
+      {
+        onSuccess: () =>
+          toast.success(
+            consentForms
+              ? "The Companion can now tick agreement boxes"
+              : "The Companion won't tick agreement boxes",
+          ),
+      },
+    );
   };
 
   const fillFromResume = async () => {
@@ -658,7 +672,7 @@ function AutofillEditor({
       const count = Object.keys(additions).length;
 
       if (!count) {
-        toast.info("Nothing new to fill");
+        toast.info("Nothing new to add");
         return;
       }
 
@@ -667,9 +681,9 @@ function AutofillEditor({
         ...current,
         personal: { ...groupValues(current, "personal"), ...additions },
       }));
-      toast.success(`Filled ${count} fields from your career profile`);
+      toast.success(`Filled ${count} ${count === 1 ? "field" : "fields"} from your career history`);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Could not load your career profile");
+      toast.error(couldnt("load your career history", err));
     } finally {
       setIsFillingFromResume(false);
     }
@@ -688,29 +702,39 @@ function AutofillEditor({
       // above then adopts the server copy. An edit made meanwhile keeps the
       // form dirty, so it is neither overwritten nor left without a Save.
       if (editRevision.current === revision) setDirty(false);
-      toast.success("Autofill profile saved");
+      toast.success("Answers saved");
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(couldnt("save your answers", err)),
   });
+  // One PUT per gesture: a double click sent two, and two "saved" toasts.
+  const saveOnce = useSingleFlight(save.mutate);
   useLeaveGuard(dirty);
   // A removed education or question row takes its focused Remove with it;
   // focus goes to the Add button below the list.
   const armFocus = useFocusOnNextCommit();
   const addEducationRef = useRef<HTMLButtonElement>(null);
   const addQuestionRef = useRef<HTMLButtonElement>(null);
+  const fillHintId = useId();
+  const declineHintId = useId();
 
   return (
     // Groups are divided by their headings and a wide gap, never by rules. Each
     // fieldset stays in block flow: a rendered <legend> is not a grid item, so
     // a grid gap would never separate it from the first field.
     <div className="grid gap-8">
+      <CompanionPermissions
+        consent={consent}
+        pending={saveConsent.isPending}
+        onChange={(next) => void setConsentFormsEnabled(next)}
+      />
       {GROUPS.map((group) => {
         const contactReady = hasFillableContactDetails(kbProfile.data?.contact);
         const resumeDisabledReason = kbProfile.isLoading
-          ? "Loading your career profile…"
+          ? "Loading your career history…"
           : kbProfile.isError
-            ? "Could not load your career profile."
-            : "Add usable contact details to your career profile first.";
+            ? "Couldn't load your career history."
+            : "Add your contact details to your career history first.";
+        // It reads career history (GET /api/kb/profile), and says so.
         const resumeButton = (
           <Button
             type="button"
@@ -718,10 +742,11 @@ function AutofillEditor({
             size="xs"
             focusableWhenDisabled
             disabled={!contactReady || isFillingFromResume}
+            aria-describedby={contactReady ? undefined : fillHintId}
             className="data-disabled:pointer-events-none data-disabled:opacity-50"
             onClick={fillFromResume}
           >
-            {isFillingFromResume ? "Filling…" : "Fill from resume"}
+            {isFillingFromResume ? "Filling…" : "Fill from career history"}
           </Button>
         );
 
@@ -730,38 +755,47 @@ function AutofillEditor({
           <legend className={LEGEND}>
             <span>{group.title}</span>
             {group.key === "eeo" && (
-              <Button type="button" variant="ghost" size="xs" onClick={declineAllEeo}>
-                Decline all
+              <Button
+                type="button"
+                variant="ghost"
+                size="xs"
+                aria-describedby={declineHintId}
+                onClick={declineAllEeo}
+              >
+                Decline the rest
               </Button>
             )}
-            {group.key === "personal" &&
-              (contactReady ? (
-                resumeButton
-              ) : (
-                <Tooltip>
-                  <TooltipTrigger render={<span className="inline-flex">{resumeButton}</span>} />
-                  <TooltipContent>{resumeDisabledReason}</TooltipContent>
-                </Tooltip>
-              ))}
+            {group.key === "personal" && resumeButton}
           </legend>
+          {/* A disabled button's reason is text, not a hover. */}
+          {group.key === "personal" && !contactReady ? (
+            <p id={fillHintId} className="text-muted-foreground text-xs">
+              {resumeDisabledReason}
+            </p>
+          ) : null}
+          {group.key === "eeo" ? (
+            <p id={declineHintId} className="text-muted-foreground text-xs">
+              Decline the rest fills only the questions you left blank. Select Save answers to keep them.
+            </p>
+          ) : null}
           {group.key === "eeo" && (
-            // Two permissions, not two fields. The accent and the heading are
-            // the whole point: these sit among the answer inputs because they
-            // govern exactly those answers, but granting a standing consent is
-            // a different KIND of act from typing one in, and a row that looks
+            // A permission, not a field. The accent and the heading are the
+            // whole point: it sits among the answer inputs because it governs
+            // exactly those answers, but granting a standing consent is a
+            // different KIND of act from typing one in, and a row that looks
             // like every other row does not say so.
             <CardSection className="border-primary/40 grid gap-3 border-l-2 px-3 py-2.5">
               <p className="text-xs font-medium tracking-wide uppercase">
-                Permissions
+                Permission
               </p>
               <div className="flex items-center justify-between gap-4">
                 <div className="grid gap-1">
                   <Label htmlFor="eeo-standing-consent">
-                    Allow Companion to fill these answers
+                    Let Companion fill these answers
                   </Label>
                   <p className="text-muted-foreground text-xs">
-                    Standing consent for exact-match autofill only. Off by default;
-                    WOTC and signatures stay manual.
+                    Uses only your exact answers below. Off by default. Tax-credit
+                    questions and signatures are always yours to fill.
                   </p>
                 </div>
                 <Switch
@@ -771,35 +805,7 @@ function AutofillEditor({
                   onCheckedChange={(next) => void setEeoConsentEnabled(next)}
                 />
               </div>
-              {/* The second permission, in the same card and on its own switch.
-                  One pack to grant, two decisions to make: disclosing
-                  protected characteristics and agreeing to an application's
-                  terms are not the same thing, and one switch for both would
-                  mean nobody could have the first without the second. */}
-              <div className="flex items-center justify-between gap-4">
-                <div className="grid gap-1">
-                  <Label htmlFor="consent-forms">
-                    Allow Companion to tick agreement boxes
-                  </Label>
-                  <p className="text-muted-foreground text-xs">
-                    Terms and conditions, acknowledgements and attestations. It
-                    ticks a box; it never signs and never submits. Signatures,
-                    passwords and government ID numbers are never filled.
-                  </p>
-                </div>
-                <Switch
-                  id="consent-forms"
-                  checked={consent.consent_forms}
-                  disabled={saveConsent.isPending}
-                  onCheckedChange={(next) => void setConsentFormsEnabled(next)}
-                />
-              </div>
-              {(consent.enabled || consent.consent_forms) && consent.acknowledged_at && (
-                <p className="text-muted-foreground text-[11px]">
-                  Acknowledged {new Date(consent.acknowledged_at).toLocaleString()}
-                  {consent.policy_version ? ` · policy ${consent.policy_version}` : ""}
-                </p>
-              )}
+              {consent.enabled ? <AgreedOn consent={consent} /> : null}
             </CardSection>
           )}
           {/* items-end: a label that wraps (the longer questions at 14px) would
@@ -809,11 +815,17 @@ function AutofillEditor({
               const id = `af-${group.key}-${field.key}`;
               const rawValue = groupValues(profile, group.key)[field.key];
               const value = fieldValue(field, rawValue);
+              const hintId = field.hint ? `${id}-hint` : undefined;
               return (
                 <div key={field.key} className="grid gap-1.5">
-                  <Label htmlFor={id} optional={field.optional}>
+                  <Label htmlFor={id} optional={field.optional && group.key !== "eeo"}>
                     {field.label}
                   </Label>
+                  {field.hint ? (
+                    <p id={hintId} className="text-muted-foreground text-xs">
+                      {field.hint}
+                    </p>
+                  ) : null}
                   {field.type === "select" ? (
                     <Select
                       value={value}
@@ -825,8 +837,8 @@ function AutofillEditor({
                         )
                       }
                     >
-                      <SelectTrigger id={id} size="sm" className="w-full">
-                        <SelectValue placeholder="—">
+                      <SelectTrigger id={id} size="sm" className="w-full" aria-describedby={hintId}>
+                        <SelectValue placeholder="Choose">
                           {field.options?.find((o) => o.value === value)?.label}
                         </SelectValue>
                       </SelectTrigger>
@@ -843,7 +855,7 @@ function AutofillEditor({
                       id={id}
                       className="h-8 text-sm"
                       value={value}
-                      placeholder={field.placeholder}
+                      aria-describedby={hintId}
                       onChange={(e) => setField(group.key, field.key, e.target.value)}
                     />
                   )}
@@ -858,7 +870,7 @@ function AutofillEditor({
       <fieldset className="space-y-4">
         <legend className={LEGEND}>Education</legend>
         <p className="text-muted-foreground text-xs">
-          Most recent first, matching the Companion&apos;s repeated form blocks.
+          Most recent first.
         </p>
         {education.map((entry, i) => (
           <CardSection key={i} className="flex items-start gap-2">
@@ -872,7 +884,6 @@ function AutofillEditor({
                       id={id}
                       className="h-8 text-sm"
                       value={entry[field.key] ?? ""}
-                      placeholder={field.placeholder}
                       onChange={(e) =>
                         setEducation(
                           education.map((entry2, j) =>
@@ -906,10 +917,9 @@ function AutofillEditor({
       </fieldset>
 
       <fieldset className="space-y-4">
-        <legend className={LEGEND}>Custom questions</legend>
+        <legend className={LEGEND}>Your own questions</legend>
         <p className="text-muted-foreground text-xs">
-          Recurring form questions with your standard answers (matched by
-          question text).
+          Questions you get often, with your usual answers.
         </p>
         {custom.map((qa, i) => (
           <div key={i} className="flex items-start gap-2">
@@ -974,12 +984,65 @@ function AutofillEditor({
           disabled={save.isPending || !dirty}
           className="data-disabled:pointer-events-none data-disabled:opacity-50"
           onClick={() =>
-            save.mutate({ value: profileRef.current, revision: editRevision.current })
+            saveOnce({ value: profileRef.current, revision: editRevision.current })
           }
         >
-          {save.isPending ? "Saving…" : "Save autofill profile"}
+          {save.isPending ? "Saving…" : "Save answers"}
         </Button>
       </div>
     </div>
+  );
+}
+
+/** When the standing consent was given. One record holds both permissions, so both boxes read it. */
+function AgreedOn({ consent }: { consent: EeoConsent }) {
+  if (!consent.acknowledged_at) return null;
+  return (
+    <p className="text-muted-foreground text-[11px]">
+      You agreed on {new Date(consent.acknowledged_at).toLocaleString()}
+      {consent.policy_version ? ` (policy ${consent.policy_version})` : ""}
+    </p>
+  );
+}
+
+/** The permission that covers every application form, not the diversity
+ *  answers, so it heads the card in a box of its own. Stored beside the
+ *  diversity opt-in (one consent record) but decided apart: disclosing
+ *  protected characteristics and agreeing to an application's terms are not
+ *  the same thing, and one switch for both would mean nobody could have the
+ *  first without the second. */
+function CompanionPermissions({
+  consent,
+  pending,
+  onChange,
+}: {
+  consent: EeoConsent;
+  pending: boolean;
+  onChange: (consentForms: boolean) => void;
+}) {
+  return (
+    <CardSection className="border-primary/40 grid gap-3 border-l-2 px-3 py-2.5">
+      <p className="text-xs font-medium tracking-wide uppercase">
+        Companion permissions
+      </p>
+      <div className="flex items-center justify-between gap-4">
+        <div className="grid gap-1">
+          <Label htmlFor="consent-forms">
+            Let Companion tick agreement boxes
+          </Label>
+          <p className="text-muted-foreground text-xs">
+            Terms, certifications, arbitration and waiver boxes. It never signs
+            or submits, and never fills signatures, passwords or ID numbers.
+          </p>
+        </div>
+        <Switch
+          id="consent-forms"
+          checked={consent.consent_forms}
+          disabled={pending}
+          onCheckedChange={onChange}
+        />
+      </div>
+      {consent.consent_forms ? <AgreedOn consent={consent} /> : null}
+    </CardSection>
   );
 }

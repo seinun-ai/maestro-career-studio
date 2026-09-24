@@ -22,8 +22,8 @@ const DOC_MAX_FILES = 10;
 /** The backend's own cap (career_kb.ingest_document_first). */
 const DOC_MAX_BYTES = 10 * 1024 * 1024;
 
-/** Cover letters, certifications, reports — anything that is evidence about you
- *  but is not itself a resume. */
+/** Cover letters, certifications, reports: anything about your career that is
+ *  not itself a resume. */
 function DocumentLane({ onClose }: { onClose: () => void }) {
   const { rows, status, summary, add, run, cancel, reset } = useDocumentQueue();
   const busy = status === "running";
@@ -35,9 +35,9 @@ function DocumentLane({ onClose }: { onClose: () => void }) {
           not base resumes — conflating the two is the failure this lane split
           exists to prevent. */}
       <p className="text-muted-foreground text-xs">
-        Each file is read for evidence about your career and filed against the
-        matching Career KB entry, as <strong>draft points you review</strong>.
-        These do not become base resumes.
+        We add what we find to your career history as{" "}
+        <strong>draft bullets for you to review</strong>. These don&apos;t
+        become base resumes.
       </p>
 
       <Dropzone
@@ -45,7 +45,7 @@ function DocumentLane({ onClose }: { onClose: () => void }) {
         maxFiles={DOC_MAX_FILES}
         maxBytes={DOC_MAX_BYTES}
         disabled={busy}
-        hint={`PDF, DOCX, Markdown, text, or images · up to ${DOC_MAX_FILES} files, 10 MB each`}
+        hint={`PDF, Word, Markdown, text or images. Up to ${DOC_MAX_FILES} files, 10 MB each.`}
         onFiles={(files, rejected) => add(files, rejected)}
       />
 
@@ -58,8 +58,9 @@ function DocumentLane({ onClose }: { onClose: () => void }) {
                 <span className="truncate">{row.file.name}</span>
                 {row.state === "done" && (
                   <span className="text-muted-foreground block text-xs">
-                    {row.created ? "New" : "Matched"} {row.kind} “{row.entity}” ·{" "}
-                    {row.points} draft point{row.points === 1 ? "" : "s"}
+                    Added to {row.entity}
+                    {row.created ? " (new)" : ""}: {row.points} draft{" "}
+                    {row.points === 1 ? "bullet" : "bullets"}
                   </span>
                 )}
                 {row.state === "failed" && (
@@ -75,19 +76,19 @@ function DocumentLane({ onClose }: { onClose: () => void }) {
 
       {status === "halted" && summary.remaining > 0 && (
         <p className="text-muted-foreground text-xs">
-          Stopped with {summary.remaining} file
-          {summary.remaining === 1 ? "" : "s"} left. Anything already added is
-          saved. Retry picks up where it stopped.
+          Stopped with {summary.remaining}{" "}
+          {summary.remaining === 1 ? "file" : "files"} left. What was added is
+          saved.
         </p>
       )}
 
       {finished && (
         <p className="text-sm">
-          Added <strong>{summary.points}</strong> draft point
-          {summary.points === 1 ? "" : "s"} across{" "}
+          Added <strong>{summary.points}</strong> draft{" "}
+          {summary.points === 1 ? "bullet" : "bullets"} to{" "}
           <strong>{summary.entitiesCreated + summary.entitiesMatched}</strong>{" "}
-          entr{summary.entitiesCreated + summary.entitiesMatched === 1 ? "y" : "ies"}
-          {summary.failed > 0 && <> · {summary.failed} skipped</>}.{" "}
+          {summary.entitiesCreated + summary.entitiesMatched === 1 ? "item" : "items"}
+          {summary.failed > 0 && <> ({summary.failed} skipped)</>}.{" "}
           <Link className="underline" href="/career#kb-inbox" onClick={onClose}>
             Review them
           </Link>
@@ -114,7 +115,7 @@ function DocumentLane({ onClose }: { onClose: () => void }) {
             {busy
               ? "Reading…"
               : status === "halted"
-                ? `Retry ${summary.remaining}`
+                ? `Retry ${summary.remaining} ${summary.remaining === 1 ? "file" : "files"}`
                 : summary.remaining
                   ? `Add ${summary.remaining} document${summary.remaining === 1 ? "" : "s"}`
                   : "Add documents"}
@@ -124,8 +125,7 @@ function DocumentLane({ onClose }: { onClose: () => void }) {
 
       {busy && (
         <p className="text-muted-foreground text-xs">
-          Read one at a time, a few seconds each, so the same role is never
-          created twice.
+          Files are read one at a time, a few seconds each.
         </p>
       )}
     </div>
@@ -157,10 +157,10 @@ export function UploadDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent size="lg" finalFocus={finalFocus}>
         <DialogHeader>
-          <DialogTitle>Add your documents</DialogTitle>
+          <DialogTitle>Import resumes and documents</DialogTitle>
           <DialogDescription>
-            Resumes become base resumes you can tailor. Everything else becomes
-            evidence in your Career Knowledge Base.
+            Resumes become base resumes. Other documents add detail to your
+            career history.
           </DialogDescription>
         </DialogHeader>
 

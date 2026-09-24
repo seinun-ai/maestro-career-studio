@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { apiFetch } from "@/lib/api";
+import { errorDetail } from "@/lib/error-text";
 import { isLoadFailure } from "@/lib/query-state";
 import { anchorHref } from "@/lib/settings-tabs";
 import type { SetupStatus } from "@/lib/types";
@@ -27,7 +28,7 @@ const DISMISS_KEY = "maestro-cs:getting-started-dismissed";
 const ACTION_LABELS: Record<string, string> = {
   model_key: "Add API key",
   import: "Import resumes",
-  autofill: "Complete autofill",
+  autofill: "Add answers",
   job_preferences: "Set preferences",
   persona: "Write persona",
   template: "Choose template",
@@ -69,7 +70,7 @@ export function GettingStartedCard() {
       <LoadErrorState
         className="py-8"
         title="Couldn't load setup progress."
-        detail={(setupStatus.error as Error)?.message}
+        detail={errorDetail(setupStatus.error)}
         retrying={setupStatus.isFetching}
         onRetry={() => void setupStatus.refetch()}
       />
@@ -77,7 +78,11 @@ export function GettingStartedCard() {
   }
   if (setupStatus.isLoading || !status || status.complete) return null;
 
-  const rows = buildSetupSteps(status, pathname);
+  // A PDF step with nothing left to do is not a step (the strip drops it too);
+  // it stays while a few templates still need TeX.
+  const rows = buildSetupSteps(status, pathname).filter(
+    (row) => !(row.id === "engines" && row.done && status.engines.pdflatex.available),
+  );
   return (
     <>
       <Card className="border-primary/20 bg-primary/[0.03]">
@@ -86,13 +91,13 @@ export function GettingStartedCard() {
             <div>
               <p className="text-sm font-medium">Getting started</p>
               <p className="text-muted-foreground mt-0.5 text-sm">
-                Required steps first. The rest can wait until you need them.
+                Do the required steps first.
               </p>
             </div>
             <Button
               size="icon-sm"
               variant="ghost"
-              aria-label="Dismiss getting started checklist"
+              aria-label="Hide getting started"
               onClick={() => {
                 window.localStorage.setItem(DISMISS_KEY, "1");
                 setDismissed(true);
@@ -164,8 +169,7 @@ export function GettingStartedCard() {
           {status.suggested_bases.length > 0 ? (
             <div className="mt-5 border-t pt-4">
               <p className="text-muted-foreground text-xs">
-                You target these roles but have no base resume for them. Choose
-                the Career KB entries that belong on each one.
+                You want these roles but have no base resume for them yet.
               </p>
               <ul className="mt-3 space-y-2">
                 {status.suggested_bases.map((suggestion) => (
@@ -180,7 +184,7 @@ export function GettingStartedCard() {
                       variant="outline"
                       onClick={() => compose(suggestion)}
                     >
-                      Compose from KB
+                      Build from career history
                     </Button>
                   </li>
                 ))}

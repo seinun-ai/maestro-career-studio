@@ -6,7 +6,8 @@ from fastapi.testclient import TestClient
 
 from app.db import get_db
 from app.main import app
-from app.services import chat_agent
+from app.routers import chat as chat_router
+from app.services import chat_agent, llm
 
 
 def _client(db_session) -> TestClient:
@@ -54,6 +55,8 @@ def test_send_message_streams_sse(db_session, monkeypatch):
         yield {"type": "done", "session_id": str(row.id)}
 
     monkeypatch.setattr(chat_agent, "run_turn", fake_run_turn)
+    # The router resolves the model client before the stream (no key in tests).
+    monkeypatch.setattr(chat_router, "get_chat_client", lambda model: object())
 
     with client.stream(
         "POST", f"/api/chat/sessions/{session_id}/messages", json={"content": "hello"}
@@ -64,6 +67,23 @@ def test_send_message_streams_sse(db_session, monkeypatch):
 
     events = [json.loads(line[6:]) for line in body.splitlines() if line.startswith("data: ")]
     assert [e["type"] for e in events] == ["delta", "done"]
+
+
+def test_send_without_an_api_key_fails_before_the_stream(db_session, monkeypatch):
+    """No key: the client could not be built until inside `run_turn`, after the
+    SSE headers, so the browser got an empty stream and the message was lost.
+    Resolved in the router, it is a 422 in words the Assistant shows."""
+    client = _client(db_session)
+    session_id = client.post("/api/chat/sessions", json={}).json()["id"]
+    monkeypatch.setattr(llm, "get_openai_key", lambda: None)
+    monkeypatch.setattr(llm, "get_base_url", lambda: None)
+    monkeypatch.setattr(llm, "get_gemini_key", lambda: None)
+
+    resp = client.post(f"/api/chat/sessions/{session_id}/messages", json={"content": "hello"})
+
+    assert resp.status_code == 422
+    assert resp.json()["detail"] == "The Assistant needs an API key. Add one in Settings › AI & models."
+    assert client.get(f"/api/chat/sessions/{session_id}").json()["messages"] == []
 
 
 def test_send_empty_message_rejected(db_session):

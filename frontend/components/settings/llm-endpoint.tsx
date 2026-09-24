@@ -90,7 +90,7 @@ function EndpointDisclosure(props: EndpointProps) {
               Using <code className="font-mono text-xs">{info.base_url}</code>
             </>
           ) : (
-            "Not set. Models run on the OpenAI and Gemini APIs."
+            "Not set. Models run on OpenAI and Gemini."
           )}
         </p>
         <Button
@@ -126,17 +126,19 @@ function EndpointControls({ info, draft, onDraft, saving, onSave }: EndpointProp
     <div className="grid gap-4 @xl/setting:grid-cols-[2fr_1fr]">
       <div className="grid content-start gap-1.5">
         <Label htmlFor={endpointId} optional>
-          OpenAI-compatible endpoint
+          Server address
         </Label>
+        {/* Names only servers that run on this computer. A hosted service is
+            not local: it receives the key and the resume, which the warning
+            below says whenever the address is not local. */}
         <p id={endpointHintId} className="text-muted-foreground text-xs">
-          Point at Ollama, LM Studio, vLLM or OpenRouter and nothing leaves this
-          machine. Leave empty for the OpenAI API.
+          The address of a model server on your computer, such as Ollama or LM
+          Studio. It usually ends in /v1. Leave empty to use OpenAI and Gemini.
         </p>
         <div className="flex gap-2">
           <Input
             id={endpointId}
             aria-describedby={endpointHintId}
-            placeholder="e.g. http://host.docker.internal:11434/v1"
             value={value}
             // readOnly, not disabled, while it saves: a disabled field drops focus to <body>.
             readOnly={saving}
@@ -155,16 +157,18 @@ function EndpointControls({ info, draft, onDraft, saving, onSave }: EndpointProp
         </div>
         {isRemoteEndpoint(value) && (
           <p className="text-xs text-amber-700 dark:text-amber-500">
-            Your API key and resume text will be sent to this server. Only point
-            it somewhere you trust.
+            Your API key and resume will be sent to this server. Use one you
+            trust.
           </p>
         )}
       </div>
       <div className="grid content-start gap-1.5">
-        <Label htmlFor={jsonModeId}>JSON mode</Label>
+        {/* json_mode: Auto sends response_format only to OpenAI's own API; Off never
+            sends it, which is what a server that rejects the field needs. */}
+        <Label htmlFor={jsonModeId}>Strict reply format</Label>
         <p id={jsonModeHintId} className="text-muted-foreground text-xs">
-          Auto sends <code>response_format</code> only to the OpenAI API. Some
-          servers reject the field outright.
+          Asks the model to reply in the exact format the app reads. Leave on Auto. If your
+          server shows errors, choose Off.
         </p>
         <Select
           value={info.json_mode}

@@ -131,7 +131,8 @@ def test_the_model_words_live_in_one_import_free_helper():
     assert 'new Map([\n  ["openai", "OpenAI"],\n  ["gemini", "Gemini"],\n]);' in _MODEL_LIB
     assert 'if (source === "configured") return "In use";' in _MODEL_LIB
     assert 'return "Built-in";' in _MODEL_LIB
-    assert "return option.label.trim() !== option.id;" in _MODEL_LIB
+    # The id shows only when it says more than the name (lib/model-catalog.test.ts has the cases).
+    assert "if (name === id) return false;" in _MODEL_LIB
 
 
 def test_an_unknown_provider_reads_as_a_word():
@@ -312,7 +313,8 @@ def test_an_advanced_prompt_key_wraps_inside_its_row():
     # (`resume_finding_verify`), so its row ran 262px in a 239px body and Expand left the card.
     src = _read("components/settings/prompts-section.tsx")
     assert '<p className="font-mono text-sm wrap-anywhere">{prompt.key}</p>' in src
-    assert '<p className="text-muted-foreground font-mono text-xs wrap-anywhere">{prompt.key}</p>' in src
+    # Only a key PROMPT_TITLES lacks is shown at all (appendix D6.1); a titled one hides it.
+    assert '<p className="text-muted-foreground font-mono text-xs wrap-anywhere">{prompt.key}</p>' not in src
     assert '<span className="text-muted-foreground shrink-0 text-xs">' in src  # Expand keeps its width
 
 
@@ -364,7 +366,7 @@ def test_explicit_save_cards_ask_before_leaving():
 def test_the_blocklist_remove_is_a_named_target():
     # The × was a ~16px bare button; an IconButton is 24px, 44px on a coarse pointer.
     auto = _read("components/settings/auto-apply-section.tsx")
-    assert 'size="icon-xs"' in auto and "label={`Remove ${name} from blocklist`}" in auto
+    assert 'size="icon-xs"' in auto and "label={`Remove ${name}`}" in auto
     assert "rounded-full px-1" not in auto
     # The chip grows to hold the 44px coarse-pointer target, so wrapped rows never overlap.
     assert '"bg-muted inline-flex min-h-7 items-center' in auto
@@ -382,12 +384,12 @@ def test_a_save_that_disables_itself_keeps_focus():
     cases = [
         ("models-section.tsx", "saveKeysOnce({\n"),
         ("auto-apply-section.tsx", "onClick={() => draft && saveOnce(draft)}"),
-        ("autofill-section.tsx", "save.mutate({ value: profileRef.current, revision: editRevision.current })"),
+        ("autofill-section.tsx", "saveOnce({ value: profileRef.current, revision: editRevision.current })"),
         ("prompts-section.tsx", "onClick={() => saveOnce()}"),
         ("prompts-section.tsx", "onClick={() => resetOnce()}"),
         ("persona-section.tsx", "onClick={() => saveOnce(value)}"),
         ("llm-endpoint.tsx", "onSave({ base_url: draft?.trim() || null })"),
-        ("autofill-section.tsx", '{isFillingFromResume ? "Filling…" : "Fill from resume"}'),
+        ("autofill-section.tsx", '{isFillingFromResume ? "Filling…" : "Fill from career history"}'),
     ]
     for rel, marker in cases:
         button = _button_at(_read(f"components/settings/{rel}"), marker)

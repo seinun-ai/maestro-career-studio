@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { apiFetch, applyResumeEdits, setChatCardState } from "@/lib/api";
 import { describeEdits, type EditWords, type ResumeLike } from "@/lib/describe-edit";
+import { couldnt } from "@/lib/error-text";
 import { useBaseResumeName } from "@/hooks/use-base-resume-label";
 import { notifyRenderNote } from "@/lib/render-note";
 import type {
@@ -87,24 +88,24 @@ export function EditProposalCard({
       qc.invalidateQueries({ queryKey: ["resume-versions"] });
       onApplied?.(proposal.target_kind, proposal.target_key);
       notifyRenderNote(result);
-      toast.success("Suggestion applied to the resume");
+      toast.success("Edits applied");
     },
     onError: (err: Error) => {
       setFrozen(null);
-      toast.error(err.message);
+      toast.error(couldnt("apply the edits", err));
     },
   });
 
   // A tailored target is named by its job while the card has the application
   // loaded (it fetches it for the words); the payload itself carries only the
-  // id, so a resolved card after a reload says "tailored resume".
+  // id, so a resolved card after a reload says "the tailored resume".
   const job = app.data?.job;
   const targetLabel =
     proposal.target_kind === "base"
       ? baseName
       : job?.title
-        ? `tailored resume for ${job.company ? `${job.title} at ${job.company}` : job.title}`
-        : "tailored resume";
+        ? `the tailored resume for ${job.company ? `${job.title} at ${job.company}` : job.title}`
+        : "the tailored resume";
 
   return (
     <div className="rounded-xl border border-dashed px-3 py-2.5">
@@ -116,7 +117,7 @@ export function EditProposalCard({
         {proposal.summary ? (
           <span className="font-medium">{proposal.summary}</span>
         ) : null}
-        <span className="text-muted-foreground text-xs">→ {targetLabel}</span>
+        <span className="text-muted-foreground text-xs">For {targetLabel}</span>
       </div>
       <EditWordsList edits={edits} />
       <div className="mt-2 flex justify-end gap-2">

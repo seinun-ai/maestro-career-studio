@@ -3,6 +3,7 @@
 import { use } from "react";
 import { BookOpen } from "lucide-react";
 
+import { NewTabCue } from "@/components/new-tab-link";
 import { AboutSection } from "@/components/settings/about-section";
 import { AppearanceSection } from "@/components/settings/appearance-section";
 import { AutoApplySection } from "@/components/settings/auto-apply-section";
@@ -33,7 +34,8 @@ const guideButton = (
         rel="noopener noreferrer"
       >
         <BookOpen className="size-4" />
-        Getting started guide
+        Setup guide
+        <NewTabCue />
       </a>
     }
   />

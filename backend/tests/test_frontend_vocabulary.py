@@ -121,6 +121,9 @@ _ALLOWED: frozenset[tuple[str, str]] = frozenset(
         ("frontend/components/settings/connected-agents-card.tsx", "browser extension"),
         # The sidebar group that holds Career history, Base resumes and Templates.
         ("frontend/components/app-sidebar.tsx", "library"),
+        # A legal waiver box the Companion may tick (extension/shared/policy.js),
+        # not the health check's "waive".
+        ("frontend/components/settings/autofill-section.tsx", "waiver"),
         # Load-order errors for a developer; the panel never shows them.
         ("extension/panel/actions.js", "panel/actions"),
         ("extension/panel/stages.js", "panel/stages"),
@@ -560,25 +563,6 @@ _PENDING_T20: dict[str, int] = {  # D §5 Career history
     "frontend/components/career/send-to-resume-dialog.tsx": 10,
     "frontend/components/kb-sync-pill.tsx": 12,
 }
-_PENDING_T21: dict[str, int] = {  # D §6 Settings and Profile; D §7 Assistant, shell, errors, setup
-    "frontend/app/error.tsx": 1,
-    "frontend/app/global-error.tsx": 1,
-    "frontend/components/app-sidebar.tsx": 3,
-    "frontend/components/chat/chat-page.tsx": 1,
-    "frontend/components/chat/kb-capture-card.tsx": 1,
-    "frontend/components/chat/scope-picker.tsx": 8,
-    "frontend/components/settings/autofill-section.tsx": 8,
-    "frontend/components/settings/job-preferences-section.tsx": 1,
-    "frontend/components/settings/market-section.tsx": 1,
-    "frontend/components/settings/models-section.tsx": 1,
-    "frontend/components/settings/persona-section.tsx": 2,
-    "frontend/components/settings/prompts-section.tsx": 2,
-    "frontend/components/settings/quick-tailor-section.tsx": 4,
-    "frontend/components/setup/getting-started-card.tsx": 3,
-    "frontend/components/setup/setup-steps.ts": 4,
-    "frontend/components/setup/upload-dialog.tsx": 8,
-    "frontend/components/version-banner.tsx": 1,
-}
 _PENDING_T22: dict[str, int] = {  # D §8 the Companion panel
     "extension/panel/actions/fill.js": 3,
     "extension/panel/actions/job.js": 3,
@@ -593,7 +577,7 @@ _PENDING_T22: dict[str, int] = {  # D §8 the Companion panel
     "extension/panel/stages/score.js": 2,
     "extension/panel/stages/track.js": 1,
 }
-_BLOCKS = (_PENDING_T17, _PENDING_T18, _PENDING_T19, _PENDING_T20, _PENDING_T21, _PENDING_T22)
+_BLOCKS = (_PENDING_T17, _PENDING_T18, _PENDING_T19, _PENDING_T20, _PENDING_T22)
 _PENDING: dict[str, int] = {rel: n for block in _BLOCKS for rel, n in block.items()}
 
 

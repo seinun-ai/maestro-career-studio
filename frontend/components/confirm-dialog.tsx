@@ -23,9 +23,15 @@ import { finalFocusOn, focusReturnPoint } from "@/lib/focus";
 export interface ConfirmOptions {
   title: string;
   description?: string;
-  confirmLabel?: string;
+  /** The action's verb ("Delete", "Leave"). Required: a bare "Confirm" names no action. */
+  confirmLabel: string;
   cancelLabel?: string;
   destructive?: boolean;
+  /**
+   * Grants a standing permission (the Companion's consent switches). Opens on
+   * Cancel, like a destructive confirm: a reflex Enter must never consent.
+   */
+  consent?: boolean;
   /**
    * Where focus goes on close, when not the element that opened the confirm
    * (a menu item is gone by then). Null falls through to the default below.
@@ -94,7 +100,7 @@ export function ConfirmDialogProvider({ children }: { children: ReactNode }) {
         <DialogContent
           showCloseButton={false}
           className="sm:max-w-md"
-          initialFocus={opts?.destructive ? cancelRef : confirmRef}
+          initialFocus={opts?.destructive || opts?.consent ? cancelRef : confirmRef}
           finalFocus={() => finalFocusOn(opts?.returnFocus?.() ?? returnPoint.current())}
         >
           <DialogHeader>
@@ -116,7 +122,7 @@ export function ConfirmDialogProvider({ children }: { children: ReactNode }) {
               variant={opts?.destructive ? "destructive" : "default"}
               onClick={() => finish(true)}
             >
-              {opts?.confirmLabel ?? "Confirm"}
+              {opts?.confirmLabel}
             </Button>
           </DialogFooter>
         </DialogContent>

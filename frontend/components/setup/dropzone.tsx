@@ -3,14 +3,14 @@
 import React, { useRef, useState } from "react";
 import { Upload } from "lucide-react";
 
-import { acceptExtensions } from "@/lib/upload-accept";
+import { acceptedTypesLabel } from "@/lib/upload-accept";
 
 export type DropzoneRejection = { file: File; reason: string };
 
 function formatBytes(bytes: number): string {
-  if (bytes === 0) return "0 Bytes";
+  if (bytes === 0) return "0 bytes";
   const k = 1024;
-  const sizes = ["Bytes", "KB", "MB", "GB"];
+  const sizes = ["bytes", "KB", "MB", "GB"];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
 }
@@ -55,7 +55,7 @@ export function Dropzone({
       if (file.size > maxBytes) {
         rejected.push({
           file,
-          reason: `larger than ${formatBytes(maxBytes)}`,
+          reason: `Too large (over ${formatBytes(maxBytes)})`,
         });
         return;
       }
@@ -79,7 +79,8 @@ export function Dropzone({
         if (!matchesExt) {
           rejected.push({
             file,
-            reason: `unsupported format (expected ${acceptExtensions(accept).join(", ")})`,
+            // The caller's own list: a resume picker takes JSON, a document picker images.
+            reason: `This file type isn't supported. Use ${acceptedTypesLabel(accept)}.`,
           });
           return;
         }
@@ -89,7 +90,7 @@ export function Dropzone({
       if (accepted.length >= maxFiles) {
         rejected.push({
           file,
-          reason: `exceeds limit of ${maxFiles} file${maxFiles === 1 ? "" : "s"}`,
+          reason: `Too many files (limit ${maxFiles})`,
         });
         return;
       }
@@ -180,7 +181,13 @@ export function Dropzone({
       >
         <Upload className="size-5 text-muted-foreground" />
         <span className="font-medium">
-          {isDragging ? "Drop files here" : "Choose or drop files"}
+          {maxFiles === 1
+            ? isDragging
+              ? "Drop a file here"
+              : "Choose or drop a file"
+            : isDragging
+              ? "Drop files here"
+              : "Choose or drop files"}
         </span>
         <span className="text-xs text-muted-foreground">{hint}</span>
       </button>

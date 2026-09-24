@@ -4,6 +4,7 @@ import { createContext, useContext, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 import { LoadErrorState } from "@/components/load-error-state";
+import { errorDetail } from "@/lib/error-text";
 import { isLoadFailure } from "@/lib/query-state";
 import {
   Card,
@@ -55,12 +56,9 @@ export type SettingQuery<T> = {
   refetch: () => unknown;
 };
 
-function firstMessage(queries: SettingQuery<unknown>[]): string | undefined {
-  for (const query of queries) {
-    const message = (query.error as Error | null)?.message;
-    if (message) return message;
-  }
-  return undefined;
+/** The first query's error, for `errorDetail` to decide whether it is words for the user. */
+function firstError(queries: SettingQuery<unknown>[]): unknown {
+  return queries.find((query) => query.error)?.error;
 }
 
 /** The header's action node, filled once the card has committed. */
@@ -121,7 +119,7 @@ export function SettingCard<T>({
             <LoadErrorState
               className="py-8"
               title={errorTitle}
-              detail={firstMessage(queries)}
+              detail={errorDetail(firstError(queries))}
               retrying={queries.some((q) => q.isFetching)}
               onRetry={() => {
                 for (const q of queries) void q.refetch();

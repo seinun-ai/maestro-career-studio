@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { BriefcaseBusiness, ChevronDown, ChevronRight, Plus, X } from "lucide-react";
 
+import { LoadErrorState } from "@/components/load-error-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,11 +15,21 @@ import {
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { listKbEntities } from "@/lib/api";
+import { errorDetail } from "@/lib/error-text";
+import { isLoadFailure } from "@/lib/query-state";
 import type { ChatSelection, ResumeData } from "@/lib/types";
 
 function selectionKey(s: ChatSelection): string {
   if (s.kind === "kb_entity") return `kb:${s.entity_id}`;
   return `${s.section}:${s.index ?? ""}:${s.bullet_index ?? ""}`;
+}
+
+/** A chip's words when the selection carries no label: "Experience 3", never `experience[2]`. */
+function fallbackLabel(selection: ChatSelection): string {
+  if (selection.kind === "kb_entity") return "Career history item";
+  const words = (selection.section ?? "").replace(/_/g, " ").trim();
+  const name = words ? words[0].toUpperCase() + words.slice(1) : "Resume";
+  return selection.index != null ? `${name} ${selection.index + 1}` : name;
 }
 
 /** Removable pill showing one referenced item (Cursor-style atomic chip). */
@@ -29,21 +40,17 @@ export function SelectionChip({
   selection: ChatSelection;
   onRemove?: () => void;
 }) {
+  const label = selection.label ?? fallbackLabel(selection);
   return (
     <Badge variant="secondary" className="gap-1 font-normal">
       {selection.kind === "kb_entity" && (
         <BriefcaseBusiness className="size-3" aria-hidden="true" />
       )}
-      <span className="max-w-48 truncate">
-        {selection.label ??
-          (selection.kind === "kb_entity"
-            ? "KB entity"
-            : `${selection.section ?? "?"}${selection.index != null ? `[${selection.index}]` : ""}`)}
-      </span>
+      <span className="max-w-48 truncate">{label}</span>
       {onRemove && (
         <button
           type="button"
-          aria-label="Remove scope"
+          aria-label={`Remove ${label}`}
           className="hover:text-destructive"
           onClick={onRemove}
         >
@@ -103,7 +110,7 @@ function buildSections(data: ResumeData): SectionSpec[] {
       items:
         extra.type === "entries"
           ? extra.entries.map((e) => ({
-              label: e.heading || "Untitled entry",
+              label: e.heading || "Untitled item",
               bullets: e.bullets,
             }))
           : [],
@@ -115,7 +122,7 @@ function buildSections(data: ResumeData): SectionSpec[] {
 
 /**
  * Structured select-then-ask: resume sections → items → bullets from the
- * pinned resume, plus Career KB entities, become reference chips. Skills
+ * chosen resume, plus career history items, become reference chips. Skills
  * items are group-level only (the backend guards skills ops at section
  * granularity). Resume chips scope edits; KB chips pin context.
  */
@@ -165,25 +172,31 @@ export function ScopePickerDialog({
           <DialogTitle>Add context</DialogTitle>
         </DialogHeader>
         <p className="text-muted-foreground -mt-2 text-xs">
-          Resume chips limit what can be edited. Career KB chips add
-          background the assistant reads first.
+          Resume parts limit what the Assistant edits. Career history items
+          give it background.
         </p>
         <Tabs defaultValue="resume" className="flex min-h-0 flex-1 flex-col gap-3">
           <TabsList className="w-fit rounded-full bg-muted/70 p-1">
             <TabsTrigger value="resume">Resume</TabsTrigger>
-            <TabsTrigger value="kb">Career KB</TabsTrigger>
+            <TabsTrigger value="kb">Career history</TabsTrigger>
           </TabsList>
 
           <TabsContent value="kb" className="min-h-0 flex-1 overflow-y-auto pr-1">
-            {kbEntities.isLoading ? (
-              <p className="text-muted-foreground text-sm">Loading Career KB…</p>
-            ) : kbEntities.error ? (
-              <p role="alert" className="text-destructive text-sm">
-                {(kbEntities.error as Error).message}
-              </p>
+            {/* The failure first: a retry of a data-less query must not fall
+                into the loading line and drop Try again (and focus) mid-press. */}
+            {isLoadFailure(kbEntities) ? (
+              <LoadErrorState
+                className="py-6"
+                title="Couldn't load your career history."
+                detail={errorDetail(kbEntities.error)}
+                retrying={kbEntities.isFetching}
+                onRetry={() => void kbEntities.refetch()}
+              />
+            ) : kbEntities.isLoading ? (
+              <p className="text-muted-foreground text-sm">Loading your career history…</p>
             ) : (kbEntities.data ?? []).length === 0 ? (
               <p className="text-muted-foreground text-sm">
-                No Career KB entities yet.
+                Nothing in your career history yet.
               </p>
             ) : (
               <ul className="space-y-1">
@@ -202,7 +215,7 @@ export function ScopePickerDialog({
                     <Button
                       variant="ghost"
                       size="icon-sm"
-                      aria-label={`Pin ${entity.title}`}
+                      aria-label={`Add ${entity.title}`}
                       onClick={() =>
                         add({
                           kind: "kb_entity",
@@ -233,10 +246,10 @@ export function ScopePickerDialog({
                 role={resumeState === "error" ? "alert" : undefined}
               >
                 {resumeState === "loading"
-                  ? "Loading the pinned resume…"
+                  ? "Loading your resume…"
                   : resumeState === "error"
-                    ? "Couldn't load the pinned resume."
-                    : "Pin a resume in the composer to scope its sections."}
+                    ? "Couldn't load this resume."
+                    : "Choose a resume below the message box to pick its parts."}
               </p>
             ) : (
               buildSections(data).map((spec) => (
@@ -250,7 +263,7 @@ export function ScopePickerDialog({
                     add({ section: spec.section, label: spec.title })
                   }
                 >
-                  <Plus className="mr-1 size-3" /> whole section
+                  <Plus className="mr-1 size-3" /> Add whole section
                 </Button>
               </div>
               {spec.items.length > 0 && (
@@ -273,7 +286,8 @@ export function ScopePickerDialog({
                             {item.bullets.length > 0 ? (
                               <button
                                 type="button"
-                                aria-label="Show bullets"
+                                aria-label={expanded.has(expandKey) ? "Hide bullets" : "Show bullets"}
+                                aria-expanded={expanded.has(expandKey)}
                                 onClick={() => toggleExpand(expandKey)}
                                 className="text-muted-foreground shrink-0"
                               >
@@ -291,7 +305,7 @@ export function ScopePickerDialog({
                           <Button
                             variant="ghost"
                             size="icon-sm"
-                            aria-label={`Add ${item.label} to scope`}
+                            aria-label={`Add ${item.label}`}
                             onClick={() => add(itemSelection)}
                           >
                             <Plus className="size-3.5" />
@@ -310,7 +324,7 @@ export function ScopePickerDialog({
                                 <Button
                                   variant="ghost"
                                   size="icon-sm"
-                                  aria-label="Add bullet to scope"
+                                  aria-label={`Add bullet ${bulletIndex + 1}`}
                                   className="shrink-0"
                                   onClick={() =>
                                     add({

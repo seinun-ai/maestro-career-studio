@@ -53,7 +53,7 @@ def test_autofill_save_keeps_text_typed_while_it_ran():
     # Marking the form clean re-seeds it from the saved copy, overwriting what
     # was typed meanwhile, and disables Save. Clean only if nothing changed.
     src = _flat(_AUTOFILL)
-    assert "save.mutate({ value: profileRef.current, revision: editRevision.current })" in src
+    assert "saveOnce({ value: profileRef.current, revision: editRevision.current })" in src
     assert "if (editRevision.current === revision) setDirty(false);" in src
     assert "setDirty(false)" not in src.replace(
         "if (editRevision.current === revision) setDirty(false);", ""

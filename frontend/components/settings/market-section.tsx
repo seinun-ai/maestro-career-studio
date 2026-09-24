@@ -14,6 +14,7 @@ import {
 import { AutosaveStatus } from "@/components/settings/autosave-status";
 import { SettingCard, SettingCardAction } from "@/components/settings/setting-card";
 import { apiFetch } from "@/lib/api";
+import { couldnt } from "@/lib/error-text";
 import type { MarketSettingResponse } from "@/lib/types";
 
 /**
@@ -49,16 +50,16 @@ export function MarketSection() {
       qc.invalidateQueries({ queryKey: ["settings", "market"] });
     },
     // Errors still toast: a FAILED save is exactly the thing you must notice.
-    onError: () => toast.error("Could not save your market"),
+    onError: (err: Error) => toast.error(couldnt("save your country", err)),
   });
 
   return (
     <SettingCard
       id="market"
-      title="Market"
+      title="Where you apply"
       // No description: this card has one control, and its label plus the
       // aria-describedby hint below already say what a subtitle would repeat.
-      errorTitle="Couldn't load your market."
+      errorTitle="Couldn't load your country."
       skeleton="h-9 w-full max-w-sm"
       query={market}
     >
@@ -72,11 +73,10 @@ export function MarketSection() {
             </SettingCardAction>
             <div className="grid max-w-sm gap-1.5">
               <Label htmlFor="market-select" id="market-select-label">
-                Where you apply
+                Country
               </Label>
               <p id="market-select-hint" className="text-muted-foreground text-xs">
-                Sets the default currency for captured jobs and which voluntary
-                disclosures apply.
+                Sets the default currency for jobs you save and which diversity questions apply.
               </p>
               <Select
                 value={selected}
@@ -93,7 +93,7 @@ export function MarketSection() {
                 <SelectContent>
                   {data.supported.map((m) => (
                     <SelectItem key={m.key} value={m.key}>
-                      {m.label} · {m.currency}
+                      {m.label} ({m.currency})
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -102,11 +102,9 @@ export function MarketSection() {
 
             {current && !current.offers_eeo && (
               <p className="text-muted-foreground max-w-prose text-xs">
-                Maestro CS has no verified voluntary-disclosure question set for{" "}
-                {current.label}, so it does not ask for one. Those categories are
-                not interchangeable between countries, and answering the wrong
-                country&apos;s form would put inaccurate information under your
-                name.
+                Maestro CS has no verified diversity questions for {current.label},
+                so it won&apos;t ask them. Another country&apos;s questions could
+                put wrong information under your name.
               </p>
             )}
           </div>

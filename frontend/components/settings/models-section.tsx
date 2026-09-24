@@ -1,10 +1,11 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useId, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Loader2, X } from "lucide-react";
 import { toast } from "sonner";
 
+import { NewTabLink } from "@/components/new-tab-link";
 import { SettingCard } from "@/components/settings/setting-card";
 import { ACTION_ROW } from "@/components/settings/setting-layout";
 import { useLeaveGuard } from "@/hooks/use-leave-guard";
@@ -22,7 +23,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { apiFetch } from "@/lib/api";
-import { modelName, showsModelId } from "@/lib/model-catalog";
+import { couldnt, errorDetail } from "@/lib/error-text";
+import { modelName, providerLabel, showsModelId } from "@/lib/model-catalog";
 import type { CapabilityReport, OpenAIInfo } from "@/lib/types";
 
 export type ModelSettingsPatch = {
@@ -68,7 +70,7 @@ export function useSaveModelSettings(
       qc.invalidateQueries({ queryKey: ["setup-status"] });
       onSaved?.(result, patch);
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(couldnt("save your model settings", err)),
   });
 }
 
@@ -123,24 +125,33 @@ export function ModelsSection() {
       const missing = CAPABILITY_LABELS.filter(({ key }) => !report[key]).map(
         ({ label }) => label,
       );
+      // The name the picker shows, not the id the server sent back.
+      const name = modelName(info.data?.model_options ?? [], report.model);
       if (report.reachable === false) {
         // The call never reached the model, so this says nothing about it —
         // and nothing was recorded. Blaming the model here is what sent the
         // author hunting a model bug that was a mistyped key.
-        const why = Object.values(report.errors ?? {})[0] ?? "the request failed";
-        toast.error(
-          `Could not reach the API, so ${report.model} was not tested: ${why}. ` +
-            `Check the API key and endpoint, then test again.`,
-        );
+        // The server's reason goes to the console: it is the provider's own
+        // text (a status code, a URL), not words for the screen.
+        console.error("model test: unreachable", report.errors);
+        toast.error(unreachableText(info.data, report.model, name));
+        return;
+      }
+      // With no key (or a refused one) every capability fails on the key, and
+      // the report still reads as three Nos: the key is the cause, not the model.
+      const keyProblem = keyProblemIn(report);
+      if (keyProblem) {
+        toast.error(`Couldn't test ${name}. ${keyProblem}`);
       } else if (missing.length === 0) {
-        toast.success(`${report.model} works with every feature`);
+        toast.success(`${name} works with every feature`);
       } else {
         toast.warning(
-          `${report.model} can't do ${missing.join(", ")}. Everything else works.`,
+          `${name} can't do ${missing.join(", ")}.` +
+            (missing.length < CAPABILITY_LABELS.length ? " Everything else works." : ""),
         );
       }
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(couldnt("test the model", err)),
   });
 
   return (
@@ -176,6 +187,27 @@ export function ModelsSection() {
       )}
     </SettingCard>
   );
+}
+
+/** The key problem a test's errors name, in words ("Add an API key in Settings › AI & models."), if any. */
+function keyProblemIn(report: CapabilityReport): string | undefined {
+  return Object.values(report.errors)
+    .map((error) => errorDetail(new Error(error)))
+    .find((detail) => detail?.includes("API key"));
+}
+
+/** A model test that never reached the model, and what to check: the custom AI server's address
+ *  when one is set, else the provider's API key (there is no address to check then). */
+function unreachableText(info: OpenAIInfo | undefined, model: string, name: string): string {
+  if (!info || info.custom_endpoint) {
+    return `Couldn't reach your AI server, so ${name} wasn't tested. Check the server address, then try again.`;
+  }
+  const option = info.model_options.find((o) => o.id === model);
+  if (!option) {
+    return `Couldn't reach the AI provider, so ${name} wasn't tested. Check your API key, then try again.`;
+  }
+  const provider = providerLabel(option.provider);
+  return `Couldn't reach ${provider}, so ${name} wasn't tested. Check your ${provider} API key, then try again.`;
 }
 
 /** One role: its picker, then the chosen model's measured capabilities. */
@@ -279,9 +311,11 @@ function CapabilityMark({
   gates: string;
   error: string | undefined;
 }) {
+  // The provider's own error is not words for the screen: only a plain one (a key problem, named) is added.
+  const detail = error ? errorDetail(new Error(error)) : undefined;
   const reason = ok
     ? `${label}: supported. Enables ${gates}`
-    : `${label}: ${error ?? "unsupported"}. Disables ${gates}`;
+    : `${label}: not supported. Disables ${gates}.${detail ? ` ${detail}` : ""}`;
   // The reason is read as text, not only from `title`, which a keyboard or a
   // screen reader never reaches. The mark and the chip say it visually.
   return (
@@ -350,8 +384,9 @@ export function ApiKeysSection() {
     <SettingCard
       id="api-keys"
       title="API keys"
-      description="Provider credentials. Leave a field blank to fall back to .env."
-      errorTitle="Couldn't load your API key status."
+      // A custom AI server on this computer needs no key (llm._get_client).
+      description="Lets the app use OpenAI or Gemini. You need one unless you use a custom AI server."
+      errorTitle="Couldn't load your API keys."
       skeleton="h-32 w-full"
       query={info}
     >
@@ -364,7 +399,12 @@ export function ApiKeysSection() {
           <div className="grid items-end gap-4 @lg/setting:grid-cols-2">
             <KeyField
               label="OpenAI API key"
-              placeholderUnset="e.g. sk-..."
+              hintUnset={
+                <>
+                  Get one at{" "}
+                  <NewTabLink href="https://platform.openai.com/api-keys">platform.openai.com</NewTabLink>. It starts with sk-.
+                </>
+              }
               configured={data.api_key_configured}
               source={data.openai_key_source}
               value={openaiKey}
@@ -373,7 +413,12 @@ export function ApiKeysSection() {
             />
             <KeyField
               label="Gemini API key"
-              placeholderUnset="e.g. AIza..."
+              hintUnset={
+                <>
+                  Get one at{" "}
+                  <NewTabLink href="https://aistudio.google.com/apikey">aistudio.google.com</NewTabLink>. It starts with AIza.
+                </>
+              }
               configured={data.gemini_api_key_configured}
               source={data.gemini_key_source}
               value={geminiKey}
@@ -399,7 +444,7 @@ export function ApiKeysSection() {
                 })
               }
             >
-              {saveKeys.isPending ? "Saving…" : "Save API keys"}
+              {saveKeys.isPending ? "Saving…" : "Save"}
             </Button>
           </div>
         </div>
@@ -410,7 +455,7 @@ export function ApiKeysSection() {
 
 function KeyField({
   label,
-  placeholderUnset,
+  hintUnset,
   configured,
   source,
   value,
@@ -418,7 +463,8 @@ function KeyField({
   onChange,
 }: {
   label: string;
-  placeholderUnset: string;
+  /** Where to get a key and what it looks like, while none is saved. */
+  hintUnset: ReactNode;
   configured: boolean;
   source: OpenAIInfo["openai_key_source"];
   value: string | null;
@@ -433,27 +479,26 @@ function KeyField({
         <Label id={labelId}>{label}</Label>
         {configured ? (
           // Saying WHERE the key lives matters: one saved here beats .env, so
-          // a stale in-app key with a blank .env still reads "configured"
-          // while every call 401s.
+          // a stale in-app key with a blank .env still reads as set while
+          // every call 401s. "Set outside the app" is the .env key.
           <span className="font-medium text-emerald-700 dark:text-emerald-400">
-            {source === "env" ? "Configured · from .env" : "Configured · in-app"}
+            {source === "env" ? "Set outside the app" : "Saved"}
           </span>
         ) : (
-          <span className="text-destructive font-medium">Not configured</span>
+          <span className="text-destructive font-medium">Not added</span>
         )}
       </div>
-      {configured ? (
-        <p id={hintId} className="text-muted-foreground text-xs">
-          Type a new key to replace the saved one.
-        </p>
-      ) : null}
+      {/* The key's format while none is saved, and how to replace one once
+          it is: a hint, never an example in the blank field. */}
+      <p id={hintId} className="text-muted-foreground text-xs">
+        {configured ? "Type a new key to replace the saved one." : hintUnset}
+      </p>
       <Input
         type="password"
         // Named by the caption alone. The status beside it is live text that
         // would otherwise be read as part of the field's name.
         aria-labelledby={labelId}
-        aria-describedby={configured ? hintId : undefined}
-        placeholder={configured ? undefined : placeholderUnset}
+        aria-describedby={hintId}
         value={value ?? ""}
         onChange={(e) => onChange(e.target.value)}
         // readOnly, not disabled, while the keys save: a disabled field drops focus to <body>.
@@ -533,12 +578,13 @@ function FreeTextModel({
   return (
     <div className="grid gap-1.5">
       <Label htmlFor={id}>{label}</Label>
-      <p id={hintId} className="text-muted-foreground text-xs">{hint}</p>
+      <p id={hintId} className="text-muted-foreground text-xs">
+        {hint} Type the model name your server uses.
+      </p>
       <Input
         id={id}
         aria-describedby={hintId}
         value={draft ?? value}
-        placeholder="e.g. llama3.2:3b"
         readOnly={saving}
         onChange={(e) => setDraft(e.target.value)}
         onBlur={() => {
@@ -597,7 +643,7 @@ function ModelSelect({
         <SelectContent>
           {stale ? (
             <SelectItem value={value} disabled>
-              «{value}» · unavailable
+              {value} (no longer available)
             </SelectItem>
           ) : null}
           {groups.map((group) => (

@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { apiFetch } from "@/lib/api";
+import { couldnt } from "@/lib/error-text";
 import { useAutosave } from "@/lib/use-autosave";
 import type {
   FavoredRole,
@@ -31,8 +32,10 @@ import type {
 
 type JobPreferencesSetting = SettingEnvelope<JobPreferences>;
 
-const NOT_SPECIFIED = "__not_specified__";
-const REMOTE_OPTIONS = ["remote", "hybrid", "onsite", "any"] as const;
+// "No preference" writes null. A stored "any" (the old second option that
+// meant the same) reads "No preference" too; nothing migrates it.
+const NO_PREFERENCE = "__no_preference__";
+const REMOTE_OPTIONS = ["remote", "hybrid", "onsite"] as const;
 const EMPLOYMENT_TYPES = ["full_time", "contract", "part_time", "internship"] as const;
 const EMPLOYMENT_LABEL = {
   full_time: "Full-time",
@@ -44,12 +47,9 @@ const REMOTE_LABEL = {
   remote: "Remote",
   hybrid: "Hybrid",
   onsite: "On-site",
-  any: "Any",
 } as const;
 
-function isRemoteOption(
-  value: string,
-): value is NonNullable<JobPreferences["remote"]> {
+function isRemoteOption(value: string): value is (typeof REMOTE_OPTIONS)[number] {
   return (REMOTE_OPTIONS as readonly string[]).includes(value);
 }
 
@@ -70,7 +70,7 @@ export function JobPreferencesSection() {
     <SettingCard
       id="job-preferences"
       title="Job preferences"
-      description="Roles and conditions you're targeting. Drives base-resume suggestions."
+      description="The jobs you want. Used to suggest base resumes."
       errorTitle="Couldn't load your job preferences."
       skeleton="h-56 w-full"
       query={preferences}
@@ -112,7 +112,7 @@ function JobPreferencesEditor({
       qc.invalidateQueries({ queryKey: ["setup-status"] });
     },
     // Errors still toast: a FAILED save is exactly the thing you must notice.
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(couldnt("save your job preferences", err)),
   });
 
   const {
@@ -132,7 +132,8 @@ function JobPreferencesEditor({
         : [...current.employment_types, value],
     }));
   };
-  const remote = preferences.remote ?? NOT_SPECIFIED;
+  const remote =
+    preferences.remote && isRemoteOption(preferences.remote) ? preferences.remote : NO_PREFERENCE;
 
   const setFavoredRoles = (next: FavoredRole[]) => {
     update((current) => ({ ...current, favored_roles: next }));
@@ -145,7 +146,7 @@ function JobPreferencesEditor({
       </SettingCardAction>
       <div className="grid gap-1.5">
         <Label htmlFor="job-preferences-roles" optional>
-          Favored roles
+          Roles you want
         </Label>
         <RolePicker
           mode="multiple"
@@ -186,7 +187,7 @@ function JobPreferencesEditor({
 
         <div className="grid gap-1.5">
           <Label htmlFor="job-preferences-remote" optional>
-            Remote
+            Work location
           </Label>
           <Select
             value={remote}
@@ -199,15 +200,11 @@ function JobPreferencesEditor({
           >
             <SelectTrigger id="job-preferences-remote" className="w-full">
               <SelectValue>
-                {remote === NOT_SPECIFIED
-                  ? "Not specified"
-                  : isRemoteOption(remote)
-                    ? REMOTE_LABEL[remote]
-                    : remote}
+                {remote === NO_PREFERENCE ? "No preference" : REMOTE_LABEL[remote]}
               </SelectValue>
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value={NOT_SPECIFIED}>Not specified</SelectItem>
+              <SelectItem value={NO_PREFERENCE}>No preference</SelectItem>
               {REMOTE_OPTIONS.map((option) => (
                 <SelectItem key={option} value={option}>
                   {REMOTE_LABEL[option]}
@@ -245,7 +242,7 @@ function JobPreferencesEditor({
 
         <div className="grid gap-1.5">
           <Label htmlFor="job-preferences-min-salary" optional>
-            Min salary
+            Minimum salary
           </Label>
           <Input
             id="job-preferences-min-salary"
@@ -262,7 +259,7 @@ function JobPreferencesEditor({
 
       <div className="grid gap-1.5">
         <Label id={employmentLabelId} optional>
-          Employment types
+          Job types
         </Label>
         <div role="group" aria-labelledby={employmentLabelId} className="flex flex-wrap gap-2">
           {EMPLOYMENT_TYPES.map((type) => {
