@@ -96,7 +96,7 @@ def test_the_gap_page_and_score_tab_count_with_it():
     assert "{counts.open > 0 ? `${counts.open} open` : \"Nothing open\"}" in page
     panel = _read("components/ats-score-panel.tsx")
     assert "gapCounts(" in panel and "resolutions_json.length" not in panel
-    assert "` (${answered} answered)`" in panel
+    assert "` · ${answered} answered`" in panel
 
 
 def test_auto_filled_banner_names_the_job_s_own_words():
@@ -214,8 +214,38 @@ def test_a_running_button_keeps_focus(rel: str, marker: str):
 def test_find_gaps_keeps_focus_while_it_starts():
     panel = _read("components/ats-score-panel.tsx")
     card = panel[panel.index("function AtsScoreCard(") : panel.index("export function AtsScorePanel(")]
-    assert card.count("focusableWhenDisabled") >= 3  # Find gaps (or Start over), Mark applied
+    # Analyze gaps only: Restart gap analysis and Mark applied are ⋯ items, and a picked item closes
+    # the menu onto ⋯ (the DropdownMenu primitive), so neither holds focus while it runs.
+    assert card.count("focusableWhenDisabled") == 1
     assert "onAnalyze={() => createOnce(score.target_id)}" in panel
+
+
+def test_each_score_card_carries_one_button():
+    """Four blue "Find gaps and tailor" buttons, each with Start over and Mark applied under it, read as
+    clutter and hid "Best match". The best match's button is the tab's one filled button; the rarer
+    actions sit behind each card's ⋯, which hands focus to the card's button if it unmounts."""
+    panel = _read("components/ats-score-panel.tsx")
+    card = panel[panel.index("function AtsScoreCard(") : panel.index("export function AtsScorePanel(")]
+    assert 'const variant = top ? "default" : "outline";' in card
+    assert card.count("variant={variant}") == 2  # Analyze gaps, Continue gap analysis
+    assert '"Analyze gaps"' in card and "Find gaps and tailor" not in card
+    menu = panel[panel.index("function ScoreCardMenu(") : panel.index("function AtsScoreCard(")]
+    for item in ("Restart gap analysis", "Mark applied without tailoring"):
+        assert item in menu and item not in card.replace(menu, ""), item
+    assert "queueMicrotask(() => focusIfDropped(fallback()));" in menu
+    assert "onClick={() => onAppliedAsIs(() => triggerRef.current)}" in menu
+    assert "      returnFocus,\n    });" in panel  # the confirm returns to ⋯, not the gone item
+
+
+def test_low_coverage_on_every_resume_is_said_once():
+    """The banner claims "fewer than a quarter": the engine's threshold, so a change there fails here."""
+    from app.services.ats.engine import LOW_COVERAGE_THRESHOLD
+
+    assert LOW_COVERAGE_THRESHOLD == 0.25
+    assert "shows fewer than a quarter of this job's skills" in _read("lib/ats-words.ts")
+    panel = _read("components/ats-score-panel.tsx")
+    assert "baseRows.length > 1 && baseRows.every((row) => coverageWarning(row) != null);" in panel
+    assert "showCoverage={!lowCoverageEverywhere}" in panel
 
 
 def test_a_gap_row_hands_focus_to_what_replaces_it():

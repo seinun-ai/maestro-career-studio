@@ -66,7 +66,7 @@ _SITES = [
     ("components/proposals/triage-actions.tsx", "bulk"),
     ("components/proposals/triage-actions.tsx", "remove"),
     # The job workspace (IA wave 3 first read): a double click on Update scores sent a second POST
-    # that failed after the first succeeded, Create PDF rendered twice, Find gaps and tailor started
+    # that failed after the first succeeded, Create PDF rendered twice, Analyze gaps started
     # two gap analyses, and Use resume as is made two applications for one job.
     ("components/ats-score-panel.tsx", "run"),
     ("components/ats-score-panel.tsx", "createSession"),

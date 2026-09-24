@@ -171,7 +171,10 @@ file to open.
    warns (pay is negotiable). Informational like G11 tier 2: it flags; the
    consent/submit decision stays human.
 4. **Score** — Score and tailor auto-scores all active bases on first visit; per-base
-   cards → **Find gaps and tailor** creates a session. With no base resume the tab
+   cards → **Analyze gaps** creates a session (one filled button, on the best match;
+   Restart gap analysis and Mark applied without tailoring sit in each card's ⋯).
+   When every card draws the low-coverage warning, one banner says it instead.
+   With no base resume the tab
    offers Import resumes and documents instead, and scores once that dialog closes.
 5. **Gap analysis** — `/jobs/[id]/tailor/[sessionId]`: per-gap resolutions
    (add_keyword / user_input / attach_project / skip + enable_entry /

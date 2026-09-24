@@ -140,7 +140,7 @@ Five steps from nothing to a PDF:
    [Companion](#4-the-companion-browser-extension-optional). Maestro reads the
    job description and gives it a match score against your resumes.
 5. **Tailor and download the PDF.** On the job's **Score and tailor** tab, click
-   **Find gaps and tailor**. Each gap is a requirement your resume doesn't show
+   **Analyze gaps**. Each gap is a requirement your resume doesn't show
    yet. Answer its questions honestly — new true facts are saved to your career
    history for next time — then click **Tailor resume**. Every AI change is shown
    for you to accept or undo. On the **Resume** tab, click **Create PDF**, then
