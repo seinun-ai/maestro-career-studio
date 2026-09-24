@@ -88,8 +88,8 @@
   async function rulePass(store, facts, token) {
     const context = await store.api(`/api/autofill/context${resumeQuery(facts)}`);
     if (!context.profile || Object.keys(context.profile).length === 0) {
-      throw new Error("No autofill profile yet. Fill it in under Profile in "
-        + "Maestro CS.");
+      throw new Error("No saved answers yet. Add them in Maestro CS under "
+        + "Profile › Autofill.");
     }
     const frames = await store.broadcast({
       type: "profile_fill",
@@ -101,7 +101,7 @@
     });
     const result = reconcileFill(frames);
     store.telemetry("profile_fill", result.observations);
-    if (!result.reached) throw new Error(ns.guidedRun.NO_FRAME_REACHED);
+    if (!result.reached) throw ns.guidedRun.shown(ns.guidedRun.NO_FRAME_REACHED);
     // PAST THE GUARD, like every other write in this directory: a context read
     // and a fan-out are two round trips, and the user is free to leave across
     // either.
@@ -305,11 +305,10 @@
         // to `duringAction`'s stale check to be discarded — the right outcome
         // either way.
         if (store.read().fill === null) throw err;
-        throw new Error("The rules ran; the page stopped answering before the "
-          + "questions could be collected. What they filled is below — reload "
-          + "the tab to finish the rest.");
+        throw ns.guidedRun.shown(
+          "Couldn't finish filling this page. Reload the tab to fill the rest.");
       }
-    });
+    }, "Couldn't fill this form.");
     if (!done) return;
     const { out } = done;
     // RE-READ for the rule pass's own result: it landed in the store from
@@ -418,8 +417,8 @@
         // check discards the ERROR on a stale generation and cannot help here,
         // because by then this write has already landed.
         if (store.current(token)) store.write({ pdfReady: false });
-        throw new Error("The tailored PDF is not rendered anymore. Open it in "
-          + "Maestro CS and generate it again.");
+        throw ns.guidedRun.shown("Couldn't find the tailored PDF. Open it in "
+          + "Maestro CS and select Create PDF.");
       }
       const filename = detail.pdf_path.split(/[\\/]/).pop() || "tailored-resume.pdf";
       // THE OFFER'S OWN BELIEF, sent with the write. `facts.fileInputs` is what
@@ -439,7 +438,7 @@
       const count = frames.reduce((total, frame) => total + (frame.result ?? 0), 0);
       if (!count) {
         if (!frames.some((frame) => frame.result !== undefined)) {
-          throw new Error(ns.guidedRun.NO_FRAME_REACHED);
+          throw ns.guidedRun.shown(ns.guidedRun.NO_FRAME_REACHED);
         }
         // ZERO HAS TWO CAUSES and they are different news, so the panel asks
         // rather than guessing: the boxes refused the file, or the page grew
@@ -449,13 +448,14 @@
         // used had the page looked like this when we first asked.
         const now = await store.detectFileInputs();
         if (store.current(token)) store.write({ fileInputs: now });
-        throw new Error(now === expect
-          ? "No upload box on this page took the file. Attach it by hand."
-          : "This page's upload boxes changed while you were pressing, so "
-            + "nothing was attached.");
+        throw ns.guidedRun.shown(now === expect
+          ? "Couldn't attach your resume. No upload box took it, so attach it "
+            + "yourself."
+          : "Couldn't attach your resume. The page's upload boxes changed, so "
+            + "check them and try again.");
       }
       return { filename, count };
-    });
+    }, "Couldn't attach your resume.");
     if (!done) return;
     const attached = done.out;
     const after = store.read();

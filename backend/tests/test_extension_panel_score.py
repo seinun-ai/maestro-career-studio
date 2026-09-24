@@ -139,11 +139,11 @@ def test_the_ranked_list_is_the_ranking_and_never_the_library_order(tmp_path):
     assert selected["attrs"]["aria-checked"] == "true"
     assert [row["attrs"]["role"] for row in _by_class(out["loaded"]["rail"], "baserow")] == [
         "radio", "radio", "radio"]
-    # …and the line under it says how much of the list is real, with the engine
-    # that produced the numbers: a stored score outlives the scorer that made
-    # it, and re-running is the button in the footer.
+    # …and the line under it says how much of the list is real. No engine id:
+    # a version string is the scorer's name for itself, not a word for the
+    # user, and re-running is the button in the footer either way.
     assert _by_class(out["loaded"]["rail"], "sub")[0]["text"] == (
-        "2 base resumes scored against this JD · engine ats-2.3.0")
+        "2 base resumes scored for this job")
 
 
 def test_the_ranked_list_is_fed_by_the_shared_ranking(tmp_path):
@@ -609,7 +609,7 @@ def test_score_all_bases_is_the_one_compute_call_and_it_says_what_it_found(tmp_p
         ("AI/ML Engineer not scored", "score"),
     ]
     assert _by_class(out["loaded"]["rail"], "sub")[0]["text"] == (
-        "Not scored against this job yet — “Score all bases” runs it.")
+        "Not scored for this job yet. Select Score base resumes below.")
     # While it is open: out of reach, and saying so.
     [cta] = _by_class(out["clicked"]["foot"], "cta")
     assert cta["disabled"] is True
@@ -625,7 +625,7 @@ def test_score_all_bases_is_the_one_compute_call_and_it_says_what_it_found(tmp_p
     assert _base_rows(settled["rail"])[0] == ("AI/ML Engineer 72", "score good")
     assert _by_class(settled["identity"], "ring")[0]["text"] == "72"
     [note] = _by_class(settled["foot"], "note")
-    assert note["text"] == "Best match: AI/ML Engineer · ATS 72."
+    assert note["text"] == "Best match: AI/ML Engineer (ATS score 72)."
     assert note["class"] == "note"
     # Scoring is not answering: the stage still asks, because the pick is the
     # user's and the numbers only make it an informed one.
@@ -637,7 +637,8 @@ def test_a_score_that_fails_hands_the_button_back_and_says_why(tmp_path):
     be left with its one control permanently pressed."""
     out = _score(tmp_path, click=True, api={"GET /api/ats-scores": _reply([])})
     [note] = _by_class(out["settled"]["foot"], "note")
-    assert note["text"] == "the backend is unreachable"
+    assert note["text"] == (
+        "Couldn't score your base resumes. Check that Maestro CS is running.")
     assert note["class"] == "note error"
     [cta] = _by_class(out["settled"]["foot"], "cta")
     assert cta["disabled"] is False
@@ -678,6 +679,7 @@ def test_a_score_that_FAILS_after_you_switch_tabs_paints_nothing_either(tmp_path
                       "POST /api/ats-scores": {"ok": False, "error": "the scorer fell over"}})
     settled = out["settled"]
     assert "the scorer fell over" not in json.dumps(settled)
+    assert "Couldn't score" not in json.dumps(settled)
     # Nothing red, and nothing still spinning: `busy` belongs to the tab that
     # asked, and the early return leaves this one's render untouched.
     assert [n for n in _walk(settled["foot"]) if "error" in str(n.get("class"))] == []
@@ -729,31 +731,14 @@ def test_scoring_the_bases_again_never_costs_the_tailored_ring(tmp_path):
     assert "tailor to raise it" not in _text(settled["identity"])
 
 
-def test_a_library_scored_by_two_engines_names_neither(tmp_path):
-    """The provenance line is one engine or none.
-
-    A `config_version` move leaves stored scores from the old scorer beside
-    fresh ones from the new — this project's recurring state, and the one the
-    line exists to warn about. Printing the first row's version would put one
-    scorer's name on numbers that came from both, which is wrong in exactly the
-    case it was added for. The count stays; the claim goes.
-    """
-    mixed = [SCORE_ROWS[0], {**SCORE_ROWS[1], "engine_version": "ats-2.2.0"}]
-    out = _score(tmp_path, api={"GET /api/ats-scores": _reply(mixed)})
-    assert _by_class(out["loaded"]["rail"], "sub")[0]["text"] == (
-        "2 base resumes scored against this JD")
-
-
-def test_the_engine_is_read_off_the_rows_the_sentence_counts(tmp_path):
-    """The two halves of that line describe ONE set.
+def test_the_count_is_of_the_rows_the_ranking_shows(tmp_path):
+    """The line's count and the list describe ONE set.
 
     `card.scores` is wider than the ranking: it carries the tailored
     application's row, and base rows for slugs that have since left the library
     — a retired resume keeps its score row, and `/api/base-resumes` stops
     listing it. Those rows are not counted, are not rendered, and cannot be
-    picked, so an engine scanned over them would refuse to name a scorer
-    because of a number nobody can see. Here every VISIBLE row agrees, and the
-    line says so.
+    picked, so a count over them would name a number nobody can see.
     """
     out = _score(tmp_path, api={"GET /api/ats-scores": _reply([
         *SCORE_ROWS,
@@ -764,7 +749,7 @@ def test_the_engine_is_read_off_the_rows_the_sentence_counts(tmp_path):
         {**TAILORED_ROW, "engine_version": "ats-2.1.0"},
     ])})
     assert _by_class(out["loaded"]["rail"], "sub")[0]["text"] == (
-        "2 base resumes scored against this JD · engine ats-2.3.0")
+        "2 base resumes scored for this job")
     # …and the retired resume is not in the list either: the ranking is over
     # the LIBRARY, and a row for a resume the user cannot pick is not a row.
     assert [name for name, _chip in _base_rows(out["loaded"]["rail"])] == [

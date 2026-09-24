@@ -426,14 +426,14 @@ def test_before_a_fill_the_stage_offers_a_choice_and_reports_nothing(tmp_path):
     out = _fill(tmp_path)
     rows = _rows(_rail_rows({"regions": out["loaded"]}))
     assert rows["fill"]["state"] == "active"
-    assert out["modes"] == ["Rules only", "Rules + AI assist"]
+    assert out["modes"] == ["Saved answers only", "Saved answers + AI"]
     assert _by_class(out["loaded"]["rail"], "prog") == []
     assert _by_class(out["loaded"]["rail"], "resid") == []
     assert _by_class(out["loaded"]["rail"], "sub")[0]["text"].endswith(
-        "then asks for the rest. Identity fields are never sent.")
+        "then asks the AI for the rest. Your personal details never go to the AI.")
     # One primary, in the one place, and it says what it starts.
     [cta] = _by_class(out["loaded"]["foot"], "cta")
-    assert cta["text"] == "Start fill"
+    assert cta["text"] == "Fill this form"
     assert cta["disabled"] is False
     # Nothing has been injected and nothing has been asked of the page: the
     # panel prepares a tab when the user asks for something that needs it.
@@ -470,8 +470,8 @@ def test_the_stage_on_a_page_with_no_form_says_where_filling_happens(tmp_path):
     rail = out["loaded"]["rail"]
     assert _rows(_rail_rows({"regions": out["loaded"]}))["fill"]["state"] == "active"
     assert _by_class(rail, "sub")[0]["text"] == (
-        "No application form on this page — open the employer's Apply page; "
-        "filling starts there.")
+        "No application form here. Open the employer's Apply page to start "
+        "filling.")
     assert _by_class(out["loaded"]["foot"], "cta") == []
     assert _by_class(rail, "seg") == []
     assert "Ready to autofill" not in _text(out["loaded"]["identity"])
@@ -480,7 +480,7 @@ def test_the_stage_on_a_page_with_no_form_says_where_filling_happens(tmp_path):
     assert _by_class(rail, "resid") == []
     # The composer is still offered, closed, with its one line about what it is.
     [drawer] = _by_class(rail, "qna")
-    assert "Paste any question" in _text(drawer)
+    assert "Paste a question" in _text(drawer)
 
 
 def test_a_form_that_arrives_late_gives_the_stage_its_primary_back(tmp_path):
@@ -500,9 +500,9 @@ def test_a_form_that_arrives_late_gives_the_stage_its_primary_back(tmp_path):
         _reply({"tier": "B", "form": True, "score": 2})]})
     rail = out["loaded"]["rail"]
     assert _rows(_rail_rows({"regions": out["loaded"]}))["fill"]["state"] == "active"
-    assert out["modes"] == ["Rules only", "Rules + AI assist"]
+    assert out["modes"] == ["Saved answers only", "Saved answers + AI"]
     [cta] = _by_class(out["loaded"]["foot"], "cta")
-    assert cta["text"] == "Start fill"
+    assert cta["text"] == "Fill this form"
     assert cta["disabled"] is False
     assert "No application form on this page" not in _text(rail)
 
@@ -516,7 +516,7 @@ def test_the_default_mode_is_assist_and_the_choice_is_remembered_for_the_profile
     user who turns the model off wants it off on the next posting and in the
     next browser, not until their next tab switch.
     """
-    out = _fill(tmp_path, mode="Rules only")
+    out = _fill(tmp_path, mode="Saved answers only")
     [rules, assist] = _by_class(out["loaded"]["rail"], "seg")[0]["children"]
     # Before: assist, from the settings default, and said in words as well as
     # in the tint — "which pass is about to run" must not have to be inferred
@@ -528,7 +528,7 @@ def test_the_default_mode_is_assist_and_the_choice_is_remembered_for_the_profile
     [rules, assist] = _by_class(out["chosen"]["rail"], "seg")[0]["children"]
     assert (rules["class"], assist["class"]) == ("on", "")
     assert _by_class(out["chosen"]["rail"], "sub")[0]["text"] == (
-        "Fills what your profile answers for. Nothing is sent to a model.")
+        "Uses only your saved answers. Nothing goes to the AI.")
     # SYNC, not local: the session key and a preference are different kinds of
     # thing, and the panel writes them to different stores.
     assert out["syncWrites"] == [{"fillMode": "rules"}]
@@ -593,11 +593,11 @@ def test_the_progress_rows_are_the_runs_own_report(tmp_path):
     assert _rows_of(settled["rail"]) == [
         # filled + already + the one that would not stick, each its own count:
         # "0 filled" over a visibly full form was a lie on a re-run.
-        ("Profile fields", "2 filled · 1 already filled · 1 didn’t stick"),
+        ("Saved answers", "2 filled · 1 already filled · 1 not accepted"),
         # r1 and q1 were written; q2 abstained and q3 is an essay, so two are
         # still open.
         ("Application questions", "2 filled · 2 need you"),
-        ("Voluntary disclosures", "skipped — EEO off"),
+        ("Diversity questions", "turned off in Profile › Autofill"),
     ]
     # The marks carry the state in WORDS as well, because an emoji reaches
     # nobody using a screen reader.
@@ -648,7 +648,7 @@ def test_rules_only_asks_the_model_nothing_at_all(tmp_path):
     report of a narrower pass rather than a shorter list that would read as a
     better result.
     """
-    rules_only = _fill(tmp_path, mode="Rules only", start=True)
+    rules_only = _fill(tmp_path, mode="Saved answers only", start=True)
     assert _choose_calls(rules_only) == []
     # Nothing was asked, so nothing was answered: only the retryable — whose
     # value a RULE knew — is written, and all three questions are open.
@@ -685,7 +685,7 @@ def test_the_eeo_row_says_what_the_backend_consented_to_and_never_a_local_toggle
             **PROFILE_FRAMES[0]["result"],
             "eeoFilled": [{"label": "gender"}, {"label": "veteran status"}]}}]})
     assert dict(_rows_of(granted["settled"]["rail"]))[
-        "Voluntary disclosures"] == "2 filled"
+        "Diversity questions"] == "2 filled"
     # …and the consent reached the ENGINE as two separate permissions, because
     # disclosing a protected characteristic and ticking the application's own
     # agreement boxes are different things to be asked for.
@@ -695,7 +695,7 @@ def test_the_eeo_row_says_what_the_backend_consented_to_and_never_a_local_toggle
     silent = _fill(tmp_path, start=True, api={"/api/autofill/context": _reply(
         {k: v for k, v in FILL_CONTEXT.items() if k != "eeo_consent"})})
     assert dict(_rows_of(silent["settled"]["rail"]))[
-        "Voluntary disclosures"] == "not asked"
+        "Diversity questions"] == "not asked"
     rules = _page_message(silent, "profile_fill")["message"]
     assert (rules["eeoEnabled"], rules["consentForms"]) == (False, False)
 
@@ -808,17 +808,15 @@ def test_a_collect_that_reaches_nobody_never_erases_the_rule_pass(tmp_path):
     settled = out["settled"]
     # The rule pass's rows are on screen, because the rule pass happened.
     assert _rows_of(settled["rail"]) == [
-        ("Profile fields", "2 filled · 1 already filled · 1 didn’t stick"),
-        ("Voluntary disclosures", "skipped — EEO off"),
+        ("Saved answers", "2 filled · 1 already filled · 1 not accepted"),
+        ("Diversity questions", "turned off in Profile › Autofill"),
     ]
     # …and NOT a questions row: the collect never ran, so a row reading
     # "0 filled" there would report zeros about a step that did not happen.
     assert "Application questions" not in _text(settled["rail"])
     [note] = _by_class(settled["foot"], "note")
     assert note["text"] == (
-        "The rules ran; the page stopped answering before the questions could "
-        "be collected. What they filled is below — reload the tab to finish "
-        "the rest.")
+        "Couldn't finish filling this page. Reload the tab to fill the rest.")
     assert note["class"] == "note error"
     [cta] = _by_class(settled["foot"], "cta")
     assert cta["disabled"] is False
@@ -858,15 +856,15 @@ def test_a_second_press_reports_the_second_run_and_never_the_first(tmp_path):
         "frames": {"profile_fill": SECOND_PROFILE_FRAMES,
                    "collect_open_questions": [{"frameId": 0}]}})
     # Run 1 did what it always does: four fields reconciled, two still open.
-    assert dict(_rows_of(out["first"]["rail"]))["Profile fields"] == (
-        "2 filled · 1 already filled · 1 didn’t stick")
+    assert dict(_rows_of(out["first"]["rail"]))["Saved answers"] == (
+        "2 filled · 1 already filled · 1 not accepted")
     assert len(_by_class(out["first"]["rail"], "resid")[0]["children"]) == 2
 
     settled = out["settled"]
     # Run 2's rows, and only run 2's.
     assert _rows_of(settled["rail"]) == [
-        ("Profile fields", "1 filled"),
-        ("Voluntary disclosures", "skipped — EEO off"),
+        ("Saved answers", "1 filled"),
+        ("Diversity questions", "turned off in Profile › Autofill"),
     ]
     # Run 1's still-open list is GONE rather than restated: it described a page
     # the user has been working on since, and the second run never collected.
@@ -874,7 +872,7 @@ def test_a_second_press_reports_the_second_run_and_never_the_first(tmp_path):
     assert "preferred shift" not in json.dumps(settled)
     assert "why do you want this role?" not in json.dumps(settled)
     [note] = _by_class(settled["foot"], "note")
-    assert note["text"].startswith("The rules ran;")
+    assert note["text"].startswith("Couldn't finish filling")
 
 
 def test_a_finished_fill_is_reopened_for_the_wizards_next_page(tmp_path):
@@ -917,9 +915,9 @@ def test_a_finished_fill_is_reopened_for_the_wizards_next_page(tmp_path):
     settled = out["settled"]
     # Run 2's rows, and only run 2's: one field where run 1 reported four.
     assert _rows_of(settled["rail"]) == [
-        ("Profile fields", "1 filled"),
+        ("Saved answers", "1 filled"),
         ("Application questions", "2 filled · 2 need you"),
-        ("Voluntary disclosures", "skipped — EEO off"),
+        ("Diversity questions", "turned off in Profile › Autofill"),
     ]
     assert "2 filled · 1 already filled" not in _text(settled["rail"])
     # The still-open list is this page's, under a row that is still ticked.
@@ -965,8 +963,8 @@ def test_a_second_run_whose_rules_never_ran_says_so(tmp_path):
         "frames": {"collect_open_questions": [{"frameId": 0}]}})
     settled = out["settled"]
     [note] = _by_class(settled["foot"], "note")
-    assert note["text"].startswith("Can't reach this page.")
-    assert "The rules ran" not in note["text"]
+    assert note["text"].startswith("Couldn't reach this page.")
+    assert "Couldn't finish filling" not in note["text"]
     # …and nothing of either run is being reported.
     assert _by_class(settled["rail"], "prog") == []
     assert _by_class(settled["rail"], "resid") == []
@@ -986,7 +984,7 @@ def test_a_page_that_answers_nothing_at_all_is_the_only_unreachable_claim(tmp_pa
                         "collect_open_questions": [{"frameId": 0}]})
     settled = out["settled"]
     [note] = _by_class(settled["foot"], "note")
-    assert note["text"].startswith("Can't reach this page.")
+    assert note["text"].startswith("Couldn't reach this page.")
     assert note["class"] == "note error"
     assert _by_class(settled["rail"], "prog") == []
     assert _by_class(settled["rail"], "resid") == []
@@ -1310,7 +1308,7 @@ def test_a_typed_answer_is_written_to_the_one_field_it_names(tmp_path):
     # "Saved to your profile", because this question HAS a declared key — the
     # sentence names which of the two things happened.
     assert note["text"] == (
-        "Filled “how did you hear about us?”. Saved to your profile. "
+        "Filled “how did you hear about us?”. Saved to Profile › Autofill. "
         "1 field still needs you.")
 
 
@@ -1454,8 +1452,8 @@ def test_remember_unticked_fills_the_field_and_writes_nothing(tmp_path):
     assert [msg for msg in out["sent"] if msg["type"] == "api"
             and msg["path"] == "/api/settings/autofill"] == []
     [note] = _by_class(out["answered"]["foot"], "note")
-    assert "Remembered" not in note["text"]
-    assert "profile" not in note["text"]
+    assert "won’t ask again" not in note["text"]
+    assert "Profile" not in note["text"]
 
 
 def test_a_policy_blocked_row_is_offered_no_way_to_answer_it(tmp_path):
@@ -1548,7 +1546,8 @@ def test_a_row_the_rules_already_knew_the_answer_to_asks_you_to_confirm_it(tmp_p
     # failed to render reads as a bug rather than as a decision.
     assert [n for n in _walk(box) if n["id"] == "learn-r2"] == []
     assert _text(_by_class(box, "learn")[0]) == (
-        "Already in your profile — the field refused the write, not the answer.")
+        "Already in your saved answers. The page didn’t accept it, so check it and "
+        "fill again.")
 
     out = _answer(tmp_path, frames=frames, answer={"qid": "r2"})
     # The write went out with the known value, because the user pressed — never
@@ -1578,7 +1577,7 @@ def test_a_value_the_page_refuses_keeps_the_row_and_says_what_happened(tmp_path)
         "how did you hear about us?", "why do you want this role? · written answer"]
     [note] = _by_class(out["answered"]["foot"], "note")
     assert note["text"] == (
-        "That answer didn’t match any of the options — try one of them verbatim.")
+        "Couldn’t fill that. Type one of the options exactly as shown.")
     assert note["class"] == "note error"
     # And nothing was learned: an answer the form would not take is not an
     # answer worth teaching the rules.
@@ -1592,7 +1591,7 @@ def test_a_page_that_stopped_answering_says_so_and_changes_nothing(tmp_path):
     out = _answer(tmp_path, answer={"qid": "q2", "text": "LinkedIn"},
                   frames={"fill_answers": "gone"})
     [note] = _by_class(out["answered"]["foot"], "note")
-    assert note["text"].startswith("Can't reach this page.")
+    assert note["text"].startswith("Couldn't reach this page.")
     assert note["class"] == "note error"
     assert len(_by_class(out["answered"]["rail"], "resid")[0]["children"]) == 2
     assert _profile_put(out) == []
@@ -1617,8 +1616,8 @@ def test_a_learn_that_fails_leaves_the_field_filled_and_says_both(tmp_path):
     [note] = _by_class(out["answered"]["foot"], "note")
     # BOTH facts in one sentence, in the order they happened.
     assert note["text"] == (
-        "Filled “how did you hear about us?”. Filled, but not remembered: "
-        "500: settings unavailable 1 field still needs you.")
+        "Filled “how did you hear about us?”. Couldn’t save the answer, so it "
+        "will ask again. 1 field still needs you.")
 
 
 def test_the_last_open_field_finishes_the_fill_exactly_as_a_clean_run_would(tmp_path):
@@ -1760,8 +1759,8 @@ def test_the_action_refuses_a_policy_blocked_row_even_reached_directly(tmp_path)
     # the deny list holding on the page and not in the store.
     assert out["putsFor"] == [0, 0, 0, 1]
     assert out["notes"][:3] == [
-        "This one is never filled from here — signatures, passwords and "
-        "government IDs are yours to type."] * 3
+        "The Companion never fills this. Signatures, passwords and ID numbers "
+        "are yours to type."] * 3
 
 
 def test_enter_in_the_box_sends_the_answer_the_button_would(tmp_path):
@@ -1802,7 +1801,7 @@ def test_the_box_says_what_it_is_for_to_something_that_cannot_see_it(tmp_path):
     [field] = [n for n in _walk(box) if n["id"] == "answer-q2"]
     described = field["attrs"]["aria-describedby"]
     [note] = [n for n in _walk(box) if n["id"] == described]
-    assert note["text"] == "one of: LinkedIn · A friend"
+    assert note["text"] == "Options: LinkedIn · A friend"
 
     # The retryable's branch, where the same id lands on the sentence that
     # replaces the checkbox.
@@ -1817,7 +1816,7 @@ def test_the_box_says_what_it_is_for_to_something_that_cannot_see_it(tmp_path):
     [box2] = _by_class(other["settled"]["rail"], "needs")
     [field2] = [n for n in _walk(box2) if n["id"] == "answer-r2"]
     [note2] = [n for n in _walk(box2) if n["id"] == field2["attrs"]["aria-describedby"]]
-    assert note2["text"].startswith("Already in your profile")
+    assert note2["text"].startswith("Already in your saved answers")
 
 
 def test_a_submit_that_lands_after_you_switch_tabs_paints_nothing(tmp_path):
@@ -2194,7 +2193,7 @@ def test_the_drawer_is_offered_on_the_fill_stage_and_starts_closed(tmp_path):
     # (the header's deep link, the Resume fork's Custom in Studio), and this one
     # discloses a region directly below it. The mockup drew the glyph on its
     # teaser; the panel's own convention wins over it.
-    assert _text(drawer) == "Paste any question for a grounded answer Ask"
+    assert _text(drawer) == "Paste a question to answer from your resume Ask"
     # Nothing is disclosed yet, and it says so where a screen reader hears it —
     # and says ONLY that. The Tailor fork's rule, reused whole: closed, there is
     # no region, so a kept `aria-controls` would offer a jump that goes nowhere,
@@ -2284,7 +2283,7 @@ def test_an_ask_with_no_application_is_grounded_in_the_job(tmp_path):
     assert _qa_posts(out) == [{"job_id": "job-lightning", "base": "ai_ml_engineer",
                                "questions": ["Tell us about a hard project."]}]
     [note] = _by_class(out["answered"]["foot"], "note")
-    assert note["text"] == "Answered from your base resume and this posting."
+    assert note["text"] == "Answered from your base resume and this job."
 
 
 def test_a_page_with_nothing_to_ground_an_answer_in_says_so(tmp_path):
@@ -2294,7 +2293,7 @@ def test_a_page_with_nothing_to_ground_an_answer_in_says_so(tmp_path):
                api={"/api/qa": QA_REPLY})
     assert _qa_posts(out) == []
     [note] = _by_class(out["answered"]["foot"], "note")
-    assert note["text"].startswith("Add the job first")
+    assert note["text"].startswith("Save the job first")
 
 
 def test_a_job_with_no_base_picked_is_not_asked_from_a_default_nobody_chose(tmp_path):
@@ -2312,27 +2311,30 @@ def test_a_job_with_no_base_picked_is_not_asked_from_a_default_nobody_chose(tmp_
                api={"/api/qa": QA_REPLY, "/api/base-resumes": _reply([])})
     assert _qa_posts(out) == []
     [note] = _by_class(out["answered"]["foot"], "note")
-    assert note["text"] == "No base resume yet — build one in Maestro CS."
+    assert note["text"] == "No base resumes yet. Add one in Maestro CS."
 
 
 def test_a_refused_ask_reads_as_what_the_backend_said(tmp_path):
     """The guard's other end, driven from the surface that shows it.
 
     `run_qa` answers an unreadable base resume with a 400 and a detail naming
-    the slug; sw.js lifts `detail` out of the body and it arrives here as the
-    error's message. What the user must NOT see is the shape this replaced —
-    an unexplained 500, which reads as "the product is broken" for what is
-    really "that resume has no data file".
+    the slug; sw.js carries the status across with it. What the user must NOT
+    see is the shape this replaced — an unexplained 500, which reads as "the
+    product is broken" for what is really "that resume has no data file" — nor
+    the detail itself, which names a slug: the 400 gets its own sentence, one
+    that says where to look.
     """
     detail = ("Base resume 'ai_ml_engineer' is active but has no data file")
     out = _qna(tmp_path, open=True, question="Why us?", ask=True,
                stored={"widget.session": entry(applicationId=None, baseArmed=True,
                                                pdfReady=False)},
-               api={"/api/qa": {"ok": False, "error": detail}})
+               api={"/api/qa": {"ok": False, "error": detail, "status": 400}})
     # It was asked — this is the backend declining, not the panel refusing.
     assert len(_qa_posts(out)) == 1
     [note] = _by_class(out["answered"]["foot"], "note")
-    assert note["text"] == detail
+    assert note["text"] == (
+        "Couldn't answer from this base resume. Open it in Maestro CS to check it.")
+    assert "ai_ml_engineer" not in note["text"]
     assert note["class"] == "note error"
     # Nothing is claimed about an answer that never came.
     assert _by_class(out["answered"]["rail"], "ans") == []
@@ -2407,7 +2409,7 @@ def test_a_clipboard_that_refuses_says_so_rather_than_looking_ignored(tmp_path):
                clipboardThrows=True, **_with_application())
     assert out["copies"] == []
     [note] = _by_class(out["settled"]["foot"], "note")
-    assert note["text"].startswith("Could not copy:")
+    assert note["text"] == "Couldn't copy the answer. Select it and copy it yourself."
     assert note["class"] == "note error"
     # The button never claims the copy it did not make.
     [copy] = _by_class(_drawer(out["settled"]["rail"]), "copy")
@@ -2676,8 +2678,8 @@ def test_a_tracked_application_on_a_form_less_page_is_refused_its_primary(tmp_pa
         {"tier": "A", "form": False, "score": 0, "fileInputs": 0})})
     assert _by_class(out["loaded"]["foot"], "cta") == []
     assert _by_class(out["loaded"]["rail"], "sub")[0]["text"] == (
-        "No application form on this page — open the employer's Apply page; "
-        "filling starts there.")
+        "No application form here. Open the employer's Apply page to start "
+        "filling.")
 
 
 def test_a_page_with_no_upload_box_is_offered_nothing_at_all(tmp_path):
@@ -2765,7 +2767,7 @@ def test_a_page_that_grew_a_box_since_the_offer_attaches_nothing_and_says_why(tm
                       _reply({"tier": "B", "form": True, "score": 2, "fileInputs": 1}),
                       _reply({"tier": "B", "form": True, "score": 2, "fileInputs": 2})]})
     settled = out["settled"]
-    assert "upload boxes changed while you were pressing" in (
+    assert "upload boxes changed" in (
         _by_class(settled["foot"], "note")[0]["text"])
     # Nothing is claimed…
     assert "Resume attached" not in dict(_rows_of(settled["rail"]))
@@ -2780,8 +2782,8 @@ def test_a_page_whose_boxes_simply_refused_keeps_its_own_sentence(tmp_path):
     the boxes are the same boxes and they turned the file down."""
     out = _attach(tmp_path, press=True, attach_reply=ATTACH_NONE)
     note = _by_class(out["settled"]["foot"], "note")[0]["text"]
-    assert "No upload box on this page took the file" in note
-    assert "changed while you were pressing" not in note
+    assert "No upload box took it" in note
+    assert "upload boxes changed" not in note
 
 
 def test_an_attach_that_landed_is_reported_as_what_it_is(tmp_path):
@@ -2857,7 +2859,7 @@ def test_a_page_that_answered_and_had_nowhere_to_put_it_says_so(tmp_path):
     looked at — the same distinction the fill path makes."""
     out = _attach(tmp_path, press=True, attach_reply=ATTACH_NONE)
     note = _by_class(out["settled"]["foot"], "note")[0]
-    assert "No upload box on this page took the file" in note["text"]
+    assert "No upload box took it" in note["text"]
     # Nothing is claimed: no report row, and the step is not ticked.
     assert "Resume attached" not in dict(_rows_of(out["settled"]["rail"]))
     assert _rows(_rail_rows({"regions": out["settled"]}))["fill"]["state"] != "done"
@@ -2880,7 +2882,7 @@ def test_a_pdf_that_is_gone_takes_the_offer_away_with_the_message(tmp_path):
             "pdf_path": None}
     out = _attach(tmp_path, press=True,
                   detail=[_reply(_TAILORED_DETAIL), _reply(gone)])
-    assert "not rendered anymore" in _by_class(out["settled"]["foot"], "note")[0]["text"]
+    assert "Couldn't find the tailored PDF" in _by_class(out["settled"]["foot"], "note")[0]["text"]
     assert _by_class(out["settled"]["rail"], "attach") == []
     assert [msg for msg in out["sent"] if msg["type"] == "attach_pdf"] == []
 
@@ -2926,7 +2928,7 @@ def test_a_gone_pdf_answered_after_a_tab_switch_never_stamps_the_new_page(tmp_pa
     # Tab B still has its document, so it still has its offer. Without the guard
     # this is empty and the sentence below is on screen.
     assert _by_class(settled["rail"], "attach") != []
-    assert "not rendered anymore" not in json.dumps(settled)
+    assert "Couldn't find the tailored PDF" not in json.dumps(settled)
 
 
 def test_the_control_is_out_of_reach_while_the_attach_is_open(tmp_path):

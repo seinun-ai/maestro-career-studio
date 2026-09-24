@@ -49,14 +49,14 @@
     if (!store.read().job) {
       // The note slot's rather than a throw: this panel has no exception path
       // a click goes through.
-      store.write({ note: { text: "Add the job first." } });
+      store.write({ note: { text: "Save the job first." } });
       store.render();
       return;
     }
     const done = await duringAction(store, "score", () =>
       store.api("/api/ats-scores", {
         method: "POST", body: JSON.stringify({ job_id: store.read().job.id }),
-      }));
+      }), "Couldn't score your base resumes.");
     if (!done) return;
     // No `token` past here, and that is the same divergence the paragraph above
     // names: nothing is re-read, so there is no second round trip to guard.
@@ -95,13 +95,13 @@
       // has already made. It never sets `baseSelected` either — the Score
       // stage completes when the user picks, not when the numbers arrive.
       if (!facts.baseSelected) store.write({ baseSlug: best.slug });
-      store.write({ note: { text: `Best match: ${best.display_name || best.slug} · ATS ${
-        Math.round(best.score)}.` } });
+      store.write({ note: { text: `Best match: ${best.display_name || best.slug} (ATS score ${
+        Math.round(best.score)}).` } });
     } else {
       // Scored, and still nothing to rank: an empty library, or rows the
       // ranking could not put a number on. Saying "best match: undefined"
       // would be the panel claiming a judgement it does not have.
-      store.write({ note: { text: "Scored, but no base resume came back with a number." } });
+      store.write({ note: { text: "Scored, but no base resume got an ATS score." } });
     }
     store.render();
   }

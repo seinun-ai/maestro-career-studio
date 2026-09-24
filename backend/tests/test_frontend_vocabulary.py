@@ -579,21 +579,7 @@ _PENDING_T21: dict[str, int] = {  # D §6 Settings and Profile; D §7 Assistant,
     "frontend/components/setup/upload-dialog.tsx": 8,
     "frontend/components/version-banner.tsx": 1,
 }
-_PENDING_T22: dict[str, int] = {  # D §8 the Companion panel
-    "extension/panel/actions/fill.js": 3,
-    "extension/panel/actions/job.js": 3,
-    "extension/panel/actions/pause.js": 2,
-    "extension/panel/actions/qna.js": 3,
-    "extension/panel/actions/resume.js": 3,
-    "extension/panel/actions/track.js": 2,
-    "extension/panel/panel.js": 4,
-    "extension/panel/stages/fill.js": 4,
-    "extension/panel/stages/job.js": 3,
-    "extension/panel/stages/resume.js": 3,
-    "extension/panel/stages/score.js": 2,
-    "extension/panel/stages/track.js": 1,
-}
-_BLOCKS = (_PENDING_T17, _PENDING_T18, _PENDING_T19, _PENDING_T20, _PENDING_T21, _PENDING_T22)
+_BLOCKS = (_PENDING_T17, _PENDING_T18, _PENDING_T19, _PENDING_T20, _PENDING_T21)
 _PENDING: dict[str, int] = {rel: n for block in _BLOCKS for rel, n in block.items()}
 
 

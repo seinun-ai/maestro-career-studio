@@ -211,7 +211,7 @@
    * JOB IS ON IT ONLY FOR A CLAIM. A pick the user made is theirs to
    * withdraw, so a done Job row is a door when `claimed === true`. A backend
    * exact-match is the page being that posting; the web app is where a wrong
-   * JD gets fixed, and that Job row stays a wall. Re-offering "Add job" under
+   * JD gets fixed, and that Job row stays a wall. Re-offering "Save job" under
    * a backend-matched row that reads "✓ in library" is still the panel
    * offering to add a job it has just said is added — that case gets no door.
    *
@@ -229,7 +229,7 @@
    * path's own arithmetic (Score under the shortcut, Job on an unmatched apply
    * url) stays a wall, exactly as a backend-matched Job row does. Reported
    * live on an Itron wizard: the user armed the base, the Resume row read
-   * "Skipped — using base as-is", and the only way back to the tailoring fork
+   * "Skipped. Using your base resume as is.", and the only way back to the tailoring fork
    * was to unbind the whole page.
    */
   const REOPENABLE = ["score", "resume", "fill"];
@@ -272,8 +272,8 @@
    * stage, and a rename costs every reference to it — worth paying once, with
    * the move that took a sibling into its own file. */
   const STAGE_LABELS = {
-    job: "Add job",
-    score: "Score all bases",
+    job: "Save job",
+    score: "Score base resumes",
     // The words the stage body's own Quick limb uses, and deliberately the
     // same words: they run one function, and two labels for one behaviour is
     // how a user comes to believe there are two.
@@ -283,7 +283,7 @@
     // function, one label — and they are deliberately short, because this fill
     // is not only a form fill: the mode control above the button is what says
     // which pass is about to run.
-    fill: "Start fill",
+    fill: "Fill this form",
     // AND NO `track`, which is a decision rather than an omission — this map is
     // documented above as one a stage may be absent from, and Track is the
     // stage that is.
@@ -317,7 +317,7 @@
   // `skipped` NAMES the stages the current path does not require, and this is
   // the copy that says so. It is never a checkmark: "we did not need to" and
   // "we did it" are different claims (decisions.js's rule, rendered).
-  const SKIPPED_SUMMARY = "Skipped — using base as-is";
+  const SKIPPED_SUMMARY = "Skipped. Using your base resume as is.";
 
   // The QnA drawer's closed, empty state. FROZEN for `EMPTY_PREVIEW`'s reason:
   // it is the store's initial value and the value every page change resets to,
@@ -1014,7 +1014,7 @@
    * so here rather than by rewording itself. Both cases are a control that
    * would run into nothing.
    *
-   * - JOB, when the binding is the user's own claim. "Add job" under a row the
+   * - JOB, when the binding is the user's own claim. "Save job" under a row the
    *   user has already bound by hand is an offer to add what is added; the
    *   body offers the switcher and the un-pick instead.
    * - FILL, without a form on the page. This is where the shortcut's old
@@ -1058,17 +1058,24 @@
       store.application = null;
       store.claimed = false;
       store.pdfReady = false;
-      // §11.4: one line, naming the configured URL. Never a login-shaped card,
-      // because there is no account to log in to.
+      // One line, and never a login-shaped card, because there is no account
+      // to log in to.
       //
       // A `note` and not a `fault`, which is Task 5's split applied: this is
       // the answer to "what is this page?" — asked about ONE url, on ONE tab —
       // so it belongs to the page and dies with it. The settings failure is
       // the other kind: not knowing where the web app is stays true on every
       // tab, so that one survives `resetPageFacts` and this must not.
+      //
+      // A SENTENCE FOR A DESKTOP USER, never the configured URL or the fetch
+      // error (both words for whoever wrote this file; the console has them).
+      // A status on the result means the backend DID answer, so "check that
+      // it's running" would be the wrong instruction.
+      console.warn("[maestro-cs] match failed:", result.error);
       store.note = {
-        text: `Maestro CS is not reachable${
-          store.settings ? ` at ${store.settings.backendUrl}` : ""}: ${result.error}`,
+        text: result.status === undefined
+          ? "Couldn't reach Maestro CS. Check that it's running."
+          : "Couldn't check this page in Maestro CS. Try again.",
         error: true,
       };
       return store;
@@ -1206,6 +1213,16 @@
   // Every count this surface prints goes through it, because "1 skills" is the
   // sentence that tells a user nobody read the copy.
   const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+  /** An application status in the web app's words (`status-chip.tsx`'s
+   * labels): the key is what the backend stores and the PATCH sends, never
+   * what the user reads. An unknown key falls back to itself, as the web's
+   * does, rather than to a guess. */
+  const STATUS_LABELS = {
+    draft: "Draft", applied: "Applied", interviewing: "Interviewing", offered: "Offer",
+    accepted: "Accepted", rejected: "Rejected", withdrawn: "Withdrawn",
+  };
+  const statusLabel = (status) => STATUS_LABELS[status] ?? String(status);
 
   /** The composite `latest_scores` holds for one target, or null when there is
    * no row. Rendered, never computed: the panel does no scoring (design §4.2,
@@ -1505,9 +1522,12 @@
    * missing answer into a claim about the library. */
   function matchChip() {
     if (card.application) {
-      return node("span", "chip app", `Application · ${card.application.status ?? "draft"}`);
+      const status = card.application.status ?? "draft";
+      return node("span", "chip app",
+                  status === "draft" ? "Draft application" : statusLabel(status));
     }
-    if (card.match === "exact") return node("span", "chip lib", "In library");
+    // "Saved", the web tracker's word for a job with no application yet.
+    if (card.match === "exact") return node("span", "chip lib", "Saved");
     if (card.match === "none") return node("span", "chip new", "New");
     return null;
   }
@@ -1538,10 +1558,13 @@
       ? compositeFor(card.scores, "application", card.application.id, "tailored") : null;
 
     const ats = node("div", "ats");
-    attach(ats, ringColumn(before, "var(--cs-primary)", before === null ? "ATS" : "Base"));
+    attach(ats, ringColumn(before, "var(--cs-primary)",
+                           before === null ? "ATS score" : "Base"));
     if (after === null) {
+      // "not scored yet" and not "after adding the job": a job can be saved
+      // and still have no score, and the hint must stay true then too.
       attach(ats, node("span", "hint",
-                  before === null ? "score after adding the job" : "tailor to raise it"));
+                  before === null ? "not scored yet" : "tailor to raise it"));
       return ats;
     }
     attach(ats, node("span", "arrow", "→"),
@@ -1720,7 +1743,7 @@
              setFillMode, startFill, attachResume, scrollToField, editAnswer,
              rememberAnswer, submitAnswer, toggleQna, askAbout, editQuestion,
              askQuestion, copyAnswer, trackThis },
-      build: { node, attach, plural },
+      build: { node, attach, plural, statusLabel },
     };
   }
 
@@ -1829,7 +1852,8 @@
       render();
     }).catch((err) => {
       if (!current(token)) return;
-      card.note = { text: `Could not copy: ${String(err?.message ?? err)}`,
+      console.warn("[maestro-cs] copy failed:", err);
+      card.note = { text: "Couldn't copy the answer. Select it and copy it yourself.",
                     error: true };
       render();
     });
@@ -2158,7 +2182,7 @@
    * the one transition it is standing next to: the user has just filled a form,
    * and "did you submit it" is the question the page in front of them answers.
    */
-  const STATUS_OPTIONS = [["draft", "Draft"], ["applied", "Applied"]];
+  const STATUS_OPTIONS = ["draft", "applied"].map((key) => [key, STATUS_LABELS[key]]);
 
   /** Draft / Applied — the ONE control on this surface that writes a status.
    *
@@ -2185,7 +2209,7 @@
    * - A STATUS OUTSIDE THE PAIR, no segment either — an application moved to
    *   `interviewing` in the web app would render with NEITHER button checked,
    *   and pressing Draft would silently walk the record backwards past three
-   *   states. The identity chip still names it ("Application · interviewing")
+   *   states. The identity chip still names it ("Interviewing")
    *   and the Track body's own sentence says where to change it, so nothing is
    *   hidden; what is withheld is a two-value control over a seven-value field.
    */
@@ -2435,7 +2459,7 @@
     try {
       result = await api(`/api/jobs/match?url=${encodeURIComponent(card.url)}`);
     } catch (err) {
-      result = { error: String(err?.message ?? err) };
+      result = { error: String(err?.message ?? err), status: err?.status };
     }
     if (!current(token)) return;
     applyMatch(result, card);
@@ -3429,7 +3453,7 @@
       // action's PATCH answers with the same shape `loadContext`'s GET does, so
       // both fold it through ONE function rather than each reading `pdf_path`
       // and `applied_at` its own way.
-      build: { plural, ingestBodyFrom, evidenceFrom },
+      build: { plural, statusLabel, ingestBodyFrom, evidenceFrom },
     };
   }
 
@@ -3512,8 +3536,15 @@
   // Nobody awaits the boot, so an unhandled rejection here would leave a blank
   // panel and an empty log — the exact report sw.js's registration carries its
   // own `.catch` for ("the icon does nothing").
+  // The one tenant of that slot is `bindActiveTab`'s tab query (no focused
+  // window, a profile shutting down), so the sentence says what to do about
+  // it; the error itself is for the console.
   boot().catch((err) => {
-    card.fault = { text: String(err?.message ?? err), error: true };
+    console.error("[maestro-cs] panel could not start:", err);
+    card.fault = {
+      text: "Couldn't find the active tab. Click the page, then open the Companion again.",
+      error: true,
+    };
     render();
   });
 })();

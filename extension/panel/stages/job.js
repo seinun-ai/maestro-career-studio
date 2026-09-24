@@ -46,9 +46,9 @@
    */
   function previewNote(preview) {
     const text = String(preview.text ?? "").trim();
-    if (text) return `JD grabbed from this page · ${grouped(text.split(/\s+/).length)} words`;
+    if (text) return `Job description found (${grouped(text.split(/\s+/).length)} words)`;
     return preview.source === "unreachable"
-      ? "The companion cannot see this page — reload the tab."
+      ? "The Companion can't read this page. Reload the tab."
       : "No job description found on this page.";
   }
 
@@ -95,8 +95,8 @@
     const { facts, act, build } = ctx;
     const { node, attach } = build;
     const company = String(facts.job?.company ?? "").trim() || "Unknown company";
-    const title = String(facts.job?.title ?? "").trim() || "Untitled";
-    const status = String(facts.application?.status ?? "draft");
+    const title = String(facts.job?.title ?? "").trim() || "Untitled job";
+    const status = build.statusLabel(facts.application?.status ?? "draft");
     const bound = node("div", "sub", `${company} · ${title} · ${status}`);
     const stop = node("button", "unpick", "Stop using this draft");
     stop.type = "button";
@@ -150,11 +150,12 @@
    */
   const DRAFT_PICK_ID = "draft-pick";
 
+  // No status in the option: the list is drafts only (`?status=draft`, see
+  // `loadApplications` in panel.js), so "· draft" on every row said nothing.
   function optionLabel(app) {
     const company = String(app.job_company ?? "").trim() || "Unknown company";
-    const title = String(app.job_title ?? "").trim() || "Untitled";
-    const status = String(app.status ?? "draft");
-    return `${company} · ${title} · ${status}`;
+    const title = String(app.job_title ?? "").trim() || "Untitled job";
+    return `${company} · ${title}`;
   }
 
   function picker(ctx) {
@@ -198,7 +199,7 @@
       const id = event.target.value;
       if (id) ctx.act.pickApplication(id);
     });
-    const label = node("label", "sub", "Recent drafts — pick one to work on here");
+    const label = node("label", "sub", "Recent drafts");
     label.setAttribute("for", DRAFT_PICK_ID);
     return attach(node("div", "appick"), label, select);
   }

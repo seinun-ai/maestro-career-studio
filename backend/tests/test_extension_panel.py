@@ -881,7 +881,7 @@ def test_the_footer_carries_one_primary_and_it_refuses_an_empty_page(booted):
     LLM extraction on nothing and leaves a nameless row in the library, and the
     user's evidence that it happened would be a job called "None"."""
     [cta] = _by_class(booted["opened"]["foot"], "cta")
-    assert cta["text"] == "Add job"          # STAGE_LABELS["job"]
+    assert cta["text"] == "Save job"          # STAGE_LABELS["job"]
     # No application, so no status control: a Draft/Applied pair with nothing
     # to be draft ABOUT is a control naming a thing that does not exist.
     assert _by_class(booted["opened"]["foot"], "status-seg") == []
@@ -955,7 +955,7 @@ def test_a_panel_that_does_not_know_where_the_web_app_is_shows_no_link(booted_wi
     # can act on follows from "we could not read the settings", and the raw
     # message that used to land here was addressed to whoever wrote panel.js.
     [note] = _by_class(booted_without_settings["opened"]["foot"], "note")
-    assert note["text"].startswith("Maestro CS is not reachable")
+    assert note["text"].startswith("Couldn't reach Maestro CS")
     # In the slot's OTHER voice: a failure the user can act on must not read
     # like the inert-button chatter that shares the slot.
     assert note["class"] == "note error"
@@ -1007,7 +1007,7 @@ def test_a_backend_that_is_down_says_so_again_on_every_page_it_is_asked_about(bo
     about the page in front of them.
     """
     for phase in ("opened", "switched", "leftThePage"):
-        assert "not reachable" in _text(booted_without_settings[phase]["foot"]), phase
+        assert "Couldn't reach Maestro CS" in _text(booted_without_settings[phase]["foot"]), phase
 
 
 def test_a_panel_that_could_not_bind_to_a_tab_says_so_and_keeps_saying_it(tmp_path):
@@ -1022,7 +1022,7 @@ def test_a_panel_that_could_not_bind_to_a_tab_says_so_and_keeps_saying_it(tmp_pa
     """
     out = _load(tmp_path, tabsThrow=True)
     [note] = _by_class(out["regions"]["foot"], "note")
-    assert note["text"] == "no window is focused"
+    assert note["text"] == "Couldn't find the active tab. Click the page, then open the Companion again."
     assert note["class"] == "note error"
 
 
@@ -1145,7 +1145,7 @@ def test_skipped_is_rendered_as_skipped_and_never_as_done(rail):
     assert rows["fill"]["state"] == "active"
     assert rows["score"]["state"] == "skipped"
     assert rows["resume"]["state"] == "skipped"
-    assert rows["score"]["summary"] == "Skipped — using base as-is"
+    assert rows["score"]["summary"] == "Skipped. Using your base resume as is."
     # A done row carries no invented summary; the stage bodies (Tasks 7-9) are
     # what will fill those in from real data.
     assert rows["job"]["state"] == "done"
@@ -1450,6 +1450,10 @@ def applied_match(tmp_path_factory):
         "error": {"result": {"error": "Failed to fetch"},
                   "settings": {"backendUrl": "http://localhost:8001"}},
         "error_before_settings": {"result": {"error": "Failed to fetch"}},
+        # The backend ANSWERED, and refused: a status rides the result, and
+        # "check that it's running" would be the wrong instruction.
+        "error_answered": {"result": {"error": "Internal Server Error", "status": 500},
+                           "settings": {"backendUrl": "http://localhost:8001"}},
     }
     return run_node(_APPLY_MATCH_DRIVER_JS, {"cases": cases, "populated": STALE},
                     tmp_path_factory.mktemp("panel_match"), source=PANEL_SOURCE)
@@ -1490,20 +1494,25 @@ def test_an_unreachable_backend_clears_every_fact_it_could_no_longer_vouch_for(a
     assert store["pdfReady"] is False
 
 
-def test_the_unreachable_line_names_the_configured_url_and_is_never_login_shaped(applied_match):
-    """SYSTEM.md §11.4: one line, naming the configured URL. There is no account
-    to log in to, so a sentence that reads like a sign-in prompt would send the
-    user looking for a password that does not exist."""
+def test_the_unreachable_line_is_one_plain_sentence_and_never_login_shaped(applied_match):
+    """One line, and a sentence a desktop user can act on: no configured URL,
+    no fetch error, both of which are words for whoever wrote panel.js. There
+    is no account to log in to, so a sentence that reads like a sign-in prompt
+    would send the user looking for a password that does not exist."""
     note = applied_match["error"]["store"]["note"]
-    assert note["text"] == (
-        "Maestro CS is not reachable at http://localhost:8001: Failed to fetch")
+    assert note["text"] == "Couldn't reach Maestro CS. Check that it's running."
     assert note["error"] is True
-    for forbidden in ("sign in", "log in", "login", "password", "account"):
+    for forbidden in ("sign in", "log in", "login", "password", "account",
+                      "localhost", "failed to fetch"):
         assert forbidden not in note["text"].lower()
-    # Before the settings ask has answered we do not know where the backend is,
-    # so the sentence says less rather than guessing a default.
+    # The same sentence before the settings ask has answered: it never named
+    # the address, so there is nothing to say less of.
     assert applied_match["error_before_settings"]["store"]["note"]["text"] == (
-        "Maestro CS is not reachable: Failed to fetch")
+        "Couldn't reach Maestro CS. Check that it's running.")
+    # A backend that answered with an error is reachable: the sentence says the
+    # check failed and asks for another try, and still prints no server words.
+    assert applied_match["error_answered"]["store"]["note"] == {
+        "text": "Couldn't check this page in Maestro CS. Try again.", "error": True}
     # A note, not a fault: this is the answer to "what is this page?", asked
     # about ONE url, so it dies with the page. `fault` is the other lifetime —
     # the panel's own plumbing — and applyMatch never touches it.
@@ -1535,7 +1544,7 @@ def test_a_loaded_page_renders_as_itself_from_end_to_end(tmp_path):
     assert _by_class(identity, "title")[0]["text"] == "Research Engineer"
     assert _by_class(identity, "co")[0]["text"] == "Lightning AI"
     # The application outranks the library chip: the most specific truth wins.
-    assert _by_class(identity, "chip")[0]["text"] == "Application · draft"
+    assert _by_class(identity, "chip")[0]["text"] == "Draft application"
     # Before → After, both READ from latest_scores rows. The base is the best
     # ranked one rather than the first in the library.
     assert [ring["text"] for ring in _by_class(identity, "ring")] == ["72", "84"]
@@ -1586,7 +1595,7 @@ def test_a_tab_that_is_not_a_web_page_costs_no_round_trip(tmp_path):
     # Rendered, not dead: five rail rows and nothing claimed about the page.
     assert len(_by_class(out["regions"]["rail"], "stg")) == 5
     assert _by_class(out["regions"]["identity"], "chip") == []
-    assert _text(out["regions"]["foot"]).strip() == "Add job"
+    assert _text(out["regions"]["foot"]).strip() == "Save job"
 
 
 def test_a_load_that_fails_leaves_a_rendered_panel_rather_than_a_dead_one(tmp_path):
@@ -1596,12 +1605,12 @@ def test_a_load_that_fails_leaves_a_rendered_panel_rather_than_a_dead_one(tmp_pa
     no way back."""
     out = _load(tmp_path, api={})       # nothing answers
     [note] = _by_class(out["regions"]["foot"], "note")
-    assert "not reachable" in note["text"]
+    assert "Couldn't reach Maestro CS" in note["text"]
     assert note["class"] == "note error"
     # Still a whole panel: five rail rows, an identity line, a primary.
     assert len(_by_class(out["regions"]["rail"], "stg")) == 5
     assert "job-boards.greenhouse.io" in _text(out["regions"]["identity"])
-    assert _by_class(out["regions"]["foot"], "cta")[0]["text"] == "Add job"
+    assert _by_class(out["regions"]["foot"], "cta")[0]["text"] == "Save job"
 
 
 # ---------- the tab binding, with real loads in flight ----------
@@ -1770,7 +1779,7 @@ def test_a_pick_made_on_this_tenant_comes_back_after_the_page_reloads(tmp_path):
         {"match": "none", "job": None, "application": None}), **_SESSION_API},
         stored={"widget.session": entry()})
     assert _restored(out) == "app-remembered"
-    assert _by_class(out["regions"]["identity"], "chip")[0]["text"] == "Application · draft"
+    assert _by_class(out["regions"]["identity"], "chip")[0]["text"] == "Draft application"
     # What the page itself could not say: which job this is. The entry carries
     # it, so the identity line stops being a hostname.
     assert _by_class(out["regions"]["identity"], "title")[0]["text"] == "Research Engineer"
@@ -1894,7 +1903,7 @@ def test_the_backend_always_wins_over_the_memory(tmp_path):
     assert _restored(out) == "app-from-backend"
     # The status is the ROW's, re-read after the match — the memory would have
     # said "draft" here.
-    assert _by_class(out["regions"]["identity"], "chip")[0]["text"] == "Application · applied"
+    assert _by_class(out["regions"]["identity"], "chip")[0]["text"] == "Applied"
 
 
 # ---------- does the page in front of the user hold a form? ----------
@@ -2344,12 +2353,12 @@ def test_a_reopened_row_brings_its_primary_with_it(revisited):
     to act on it — and the alternative, a second Start fill inside the body, is
     the two-writers-for-one-behaviour that footer exists to prevent.
     """
-    assert _by_class(revisited["atFill"]["foot"], "cta")[0]["text"] == "Start fill"
-    assert _by_class(revisited["scoreOpen"]["foot"], "cta")[0]["text"] == "Score all bases"
+    assert _by_class(revisited["atFill"]["foot"], "cta")[0]["text"] == "Fill this form"
+    assert _by_class(revisited["scoreOpen"]["foot"], "cta")[0]["text"] == "Score base resumes"
     assert _by_class(revisited["resumeOpen"]["foot"], "cta")[0]["text"] == "Quick tailor"
     # Closing gives it back to the data — the two are the same answer whenever
     # nothing is reopened.
-    assert _by_class(revisited["scoreClosed"]["foot"], "cta")[0]["text"] == "Start fill"
+    assert _by_class(revisited["scoreClosed"]["foot"], "cta")[0]["text"] == "Fill this form"
     # The status segment is NOT the primary and does not move with it: it
     # belongs to the application, which is the same application either way.
     assert len(_by_class(revisited["scoreOpen"]["foot"], "status-seg")) == 1
@@ -2719,7 +2728,7 @@ def test_the_reopened_bodys_primary_is_the_one_that_actually_runs(undone):
     pressing it sends the OPEN row's round trip. A footer that read "Score all
     bases" and ran the Fill stage's runner would pass every assertion about the
     text on it."""
-    assert _by_class(undone["reopened"]["foot"], "cta")[0]["text"] == "Score all bases"
+    assert _by_class(undone["reopened"]["foot"], "cta")[0]["text"] == "Score base resumes"
     assert [msg["path"] for msg in undone["posts"]] == ["/api/ats-scores"]
     assert json.loads(undone["posts"][0]["init"]["body"]) == {"job_id": "job-lightning"}
 

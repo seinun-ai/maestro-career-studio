@@ -196,7 +196,7 @@ def test_the_journey_ends_on_the_track_row_and_the_body_says_where_you_are(draft
         assert rows[done]["state"] == "done", done
     body = _track_body(drafted["loaded"])
     assert "Still a draft" in _text(body)
-    assert "mark it Applied below" in _text(body)
+    assert "Mark it Applied below" in _text(body)
 
 
 def test_the_evidence_line_is_what_the_application_has_to_show_for_itself(drafted):
@@ -212,7 +212,7 @@ def test_the_evidence_line_is_what_the_application_has_to_show_for_itself(drafte
     where it attaches the same file.
     """
     [line] = _by_class(drafted["loaded"]["rail"], "evi")
-    assert _text(line) == "📎 tailored-resume.pdf rendered"
+    assert _text(line) == "📎 tailored-resume.pdf ready"
     # The paperclip is decoration and says so: an emoji reaches nobody using a
     # screen reader, so the text beside it has to carry the line on its own —
     # and it does.
@@ -229,7 +229,7 @@ def test_an_applied_application_carries_the_day_it_went_out(tmp_path):
     """
     out = _track(tmp_path, detail=APPLIED_DETAIL)
     [line] = _by_class(out["loaded"]["rail"], "evi")
-    assert _text(line) == "📎 tailored-resume.pdf rendered · applied 2026-08-18"
+    assert _text(line) == "📎 tailored-resume.pdf ready · applied 2026-08-18"
     assert "Marked applied" in _text(_track_body(out["loaded"]))
 
 
@@ -283,7 +283,7 @@ def test_a_page_filled_from_the_base_says_nothing_was_written_down(tmp_path):
     rows = _rows(_rail_rows({"regions": out["loaded"]}))
     assert rows["track"]["state"] == "active"
     body = _track_body(out["loaded"])
-    assert "filled from your base resume" in _text(body)
+    assert "Filled from your base resume" in _text(body)
     assert "Open Maestro CS" in _text(body)
     # No application, so no control: the footer's segment is gated on the
     # decision, and this decision's nudge is not `mark-applied`.
@@ -303,8 +303,8 @@ def test_a_status_this_panel_cannot_write_is_not_offered_a_two_value_control(tmp
     out = _track(tmp_path, detail={**DRAFT_DETAIL, "status": "interviewing"})
     assert out["statuses"] == []
     assert _by_class(out["loaded"]["identity"], "chip")[0]["text"] == (
-        "Application · interviewing")
-    assert "Status: interviewing" in _text(_track_body(out["loaded"]))
+        "Interviewing")
+    assert "Status: Interviewing" in _text(_track_body(out["loaded"]))
 
 
 # ---------- one control writes the status, and it is in the footer ----------
@@ -404,7 +404,7 @@ def test_the_track_this_state_is_not_contradicted_by_the_footer(tmp_path):
     # …and NOT ticked: a draft is on the Track step with the press still ahead
     # of it, which is what stops the tick from being "Track is always done".
     assert loaded_rows["track"]["numeral"] == "5"
-    assert "nothing has been written down" in _text(_track_body(out["loaded"]))
+    assert "not tracked yet" in _text(_track_body(out["loaded"]))
     assert _by_class(out["loaded"]["foot"], "cta") == []
     assert out["statuses"] == []
     assert _by_class(out["loaded"]["identity"], "linkish")[0]["text"] == (
@@ -447,7 +447,7 @@ def test_marking_it_applied_is_one_patch_and_the_whole_surface_moves(tmp_path):
     assert patch["init"]["body"] == '{"status":"applied"}'
 
     settled = out["settled"]
-    assert _by_class(settled["identity"], "chip")[0]["text"] == "Application · applied"
+    assert _by_class(settled["identity"], "chip")[0]["text"] == "Applied"
     [segment] = _by_class(settled["foot"], "status-seg")
     assert [button["attrs"]["aria-checked"] for button in segment["children"]] == [
         "false", "true"]
@@ -463,7 +463,7 @@ def test_marking_it_applied_is_one_patch_and_the_whole_surface_moves(tmp_path):
     # answers with the whole record, `applied_at` included, and it is folded
     # through the same `evidenceFrom` the GET is.
     assert _text(_by_class(settled["rail"], "evi")[0]) == (
-        "📎 tailored-resume.pdf rendered · applied 2026-08-18")
+        "📎 tailored-resume.pdf ready · applied 2026-08-18")
 
 
 def test_the_store_carries_the_servers_word_and_never_the_one_we_sent(tmp_path):
@@ -482,8 +482,8 @@ def test_the_store_carries_the_servers_word_and_never_the_one_we_sent(tmp_path):
             {**APPLIED_DETAIL, "status": "interviewing"})})
     settled = out["settled"]
     assert _by_class(settled["identity"], "chip")[0]["text"] == (
-        "Application · interviewing")
-    assert "Status: interviewing" in _text(_track_body(settled))
+        "Interviewing")
+    assert "Status: Interviewing" in _text(_track_body(settled))
     assert _by_class(settled["foot"], "status-seg") == []
     # …and the memory carries it too, so the next page of the wizard restores
     # the server's word rather than ours.
@@ -542,7 +542,7 @@ def test_a_status_write_that_fails_hands_the_control_back_and_says_why(tmp_path)
             "ok": False, "error": "the tracker is unreachable"}})
     settled = out["settled"]
     note = _by_class(settled["foot"], "note")[0]
-    assert note["text"] == "the tracker is unreachable"
+    assert note["text"] == "Couldn't update the status. Check that Maestro CS is running."
     assert note["class"] == "note error"
     [segment] = _by_class(settled["foot"], "status-seg")
     assert [button["attrs"]["aria-checked"] for button in segment["children"]] == [
@@ -710,7 +710,7 @@ def test_the_track_this_button_is_offered_when_the_job_is_already_in_the_library
     buttons = [node for node in _walk(body) if node["tag"] == "BUTTON"]
     assert [button["text"] for button in buttons] == ["Track this application"]
     assert buttons[0]["disabled"] is False
-    assert "filled from your base resume" in _text(body)
+    assert "Filled from your base resume" in _text(body)
     assert "Open Maestro CS" not in _text(body)
 
 
@@ -757,7 +757,8 @@ def test_a_track_this_that_fails_hands_the_control_back_and_says_why(tmp_path):
             "ok": False, "error": "the tracker is unreachable"}})
     settled = out["settled"]
     note = _by_class(settled["foot"], "note")[0]
-    assert note["text"] == "the tracker is unreachable"
+    assert note["text"] == (
+        "Couldn't track this application. Check that Maestro CS is running.")
     assert note["class"] == "note error"
     assert out["facts"]["applicationId"] is None
     assert out["facts"]["claimed"] is False

@@ -50,7 +50,7 @@
  *    the service worker scrubs it, and neither is bypassed from here.
  *
  * WHAT THIS FILE PUBLISHES: ns.guidedRun = { runGuidedFill, collectFromPage,
- * NO_FRAME_REACHED }.
+ * NO_FRAME_REACHED, shown }.
  */
 (() => {
   const ns = (window.careerStudioCompanion ??= {});
@@ -66,10 +66,26 @@
   // read it back off the namespace for their own checks (`panel/actions/
   // fill.js` and `panel/actions/pause.js` both throw it). If a later round
   // gives the fan-out a shared module of its own, the sentence belongs there.
+  //
+  // The last sentence is the WHY a user can act on: the page script loads with
+  // the page, so a tab that was open when the Companion was updated (or
+  // reloaded) does not have it until the tab reloads.
   const NO_FRAME_REACHED =
-    "Can't reach this page. Reload the tab, then try again. The page script "
-    + "loads with the page, so a tab that was already open when the extension "
-    + "last reloaded does not have it.";
+    "Couldn't reach this page. Reload the tab, then try again. Tabs that were "
+    + "open before the Companion updated need a reload.";
+
+  /** An Error whose message is already a sentence for the user.
+   *
+   * `shown` is the mark the panel's round-trip catch reads (`failureNote` in
+   * `panel/actions/during.js`): every other failure is replaced by the call
+   * site's own "Couldn't …" sentence, because its message is words for a
+   * developer, but this one was written for the person reading the panel and
+   * passes through as it is. */
+  function shown(text) {
+    const err = new Error(text);
+    err.shown = true;
+    return err;
+  }
 
   /** Every open control on the page, in one fan-out.
    *
@@ -81,7 +97,7 @@
   async function collectFromPage(broadcast) {
     const frames = await broadcast({ type: "collect_open_questions" });
     if (!frames.some((frame) => frame.result !== undefined)) {
-      throw new Error(NO_FRAME_REACHED);
+      throw shown(NO_FRAME_REACHED);
     }
     const retryables = frames.flatMap((frame) =>
       (frame.result?.retryables ?? []).map((row) => ({
@@ -235,7 +251,7 @@
     if (toWrite.length) {
       const written = await broadcast({ type: "guided_write", pairs: toWrite });
       if (!written.some((frame) => frame.result !== undefined)) {
-        throw new Error(NO_FRAME_REACHED);
+        throw shown(NO_FRAME_REACHED);
       }
       writeResults = written.flatMap((frame) => frame.result ?? []);
     }
@@ -268,5 +284,5 @@
     return { essays: routed.essays, residue, writeResults };
   }
 
-  ns.guidedRun = { runGuidedFill, collectFromPage, NO_FRAME_REACHED };
+  ns.guidedRun = { runGuidedFill, collectFromPage, NO_FRAME_REACHED, shown };
 })();

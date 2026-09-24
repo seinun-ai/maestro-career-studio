@@ -18,53 +18,18 @@
   const ns = (window.careerStudioCompanion ??= {});
   const { rankBaseResumes } = ns.decisions;
 
-  /** The engine that produced these numbers, or null when the rows do not
-   * agree on one.
-   *
-   * Provenance rather than decoration. Stored scores outlive the scorer that
-   * made them — this project has shipped a `config_version` move that left
-   * every stored score needing a re-run — so the one line under the ranking
-   * names which engine the user is comparing bases with, beside the button
-   * that would re-run it.
-   *
-   * ONE engine or none, and that is the same rule rather than a nicety: the
-   * state above is exactly when a library holds rows from TWO scorers, and
-   * naming the first row's version as THE engine would put one scorer's name
-   * on numbers that came from both — a provenance line that is wrong in
-   * precisely the case it exists for. Saying nothing is the honest reading,
-   * and the count beside it is true either way.
-   *
-   * OVER `ranked`, so the two halves of that sentence describe ONE set. The
-   * count is of ranked rows carrying a number — library-intersected, base
-   * phase, finite composite — and `facts.scores` is wider than that: it holds
-   * the tailored application's row, and base rows for slugs that have since
-   * left the library. An engine scanned over the wider set would name a
-   * scorer for numbers the sentence does not count, or refuse to name one
-   * because of a row nobody can see.
-   */
-  function engineOf(scores, ranked) {
-    const counted = new Set(
-      ranked.filter((entry) => entry.score !== null).map((entry) => entry.slug));
-    const seen = new Set((scores ?? [])
-      .filter((entry) => entry?.target_type === "base_resume"
-        && entry?.phase === "base"
-        && counted.has(entry?.target_id)
-        && entry?.engine_version)
-      .map((entry) => entry.engine_version));
-    return seen.size === 1 ? [...seen][0] : null;
-  }
-
   /** The one line under the ranked list: how much of it is real. */
-  function rankingNote({ facts, build }, ranked) {
-    if (!ranked.length) return "No base resumes yet — build one in Maestro CS.";
+  function rankingNote({ build }, ranked) {
+    if (!ranked.length) return "No base resumes yet. Add one in Maestro CS.";
     const scored = ranked.filter((row) => row.score !== null).length;
     // The affordance named in words, because the button that runs it sits in
-    // the footer rather than in this body — "Score all bases" is a compute
+    // the footer rather than in this body — "Score base resumes" is a compute
     // call, so it happens when the user asks and never on open.
-    if (!scored) return "Not scored against this job yet — “Score all bases” runs it.";
-    const engine = engineOf(facts.scores, ranked);
-    return `${build.plural(scored, "base resume")} scored against this JD${
-      engine ? ` · engine ${engine}` : ""}`;
+    if (!scored) return "Not scored for this job yet. Select Score base resumes below.";
+    // No engine id beside the count: a scorer's version string is its own
+    // name for itself, not a word a job seeker can act on. The count is over
+    // `ranked`, so it describes the rows on screen and nothing wider.
+    return `${build.plural(scored, "base resume")} scored for this job`;
   }
 
   /** One selectable base resume: the radio dot, the name, the composite.

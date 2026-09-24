@@ -167,7 +167,7 @@ def test_the_fork_belongs_to_the_step_you_are_on_and_asks_one_question_first(tmp
     assert rows[2]["class"] == "stg active"
     # One level, two limbs, and the Score row above it carries no body of its
     # own: a done row is a tick and a summary.
-    assert _limbs(out["loaded"]["rail"]) == ["Use base as-is", "Tailor"]
+    assert _limbs(out["loaded"]["rail"]) == ["Use base resume as is", "Tailor"]
     assert len(_by_class(out["loaded"]["rail"], "stg-body")) == 1
     assert _by_class(rows[1], "stg-body") == []
     # Nothing is pre-selected. Picking a tailoring path on the user's behalf is
@@ -181,8 +181,8 @@ def test_tailor_only_discloses_and_asks_the_backend_for_nothing(tmp_path):
     making up their mind, so it must cost nothing and claim nothing."""
     out = _resume(tmp_path, open=True)
     before = len(out["sent"])
-    assert out["limbs"] == ["Use base as-is", "Tailor",
-                            "Quick tailor", "Custom in Studio ↗"]
+    assert out["limbs"] == ["Use base resume as is", "Tailor",
+                            "Quick tailor", "Tailor in Maestro CS ↗"]
     # The branch the user is standing in, said in words as well as in colour.
     [_base, tailor] = _by_class(out["opened"]["rail"], "fork")[0]["children"]
     assert tailor["class"] == "sel"
@@ -195,8 +195,8 @@ def test_tailor_only_discloses_and_asks_the_backend_for_nothing(tmp_path):
     # past the explanation.
     [region] = [found for found in _walk(out["opened"]["rail"])
                 if found["id"] == tailor["attrs"]["aria-controls"]]
-    assert _limbs(region) == ["Quick tailor", "Custom in Studio ↗"]
-    assert _by_class(region, "sub")[0]["text"].startswith("Custom opens")
+    assert _limbs(region) == ["Quick tailor", "Tailor in Maestro CS ↗"]
+    assert _by_class(region, "sub")[0]["text"].startswith("Tailor in Maestro CS opens")
     # Closed, there is no region — this loop renders what is true — so the
     # button says only that it is closed. A pointer kept across the collapse
     # would be the same broken promise as a link to a guessed address.
@@ -206,8 +206,8 @@ def test_tailor_only_discloses_and_asks_the_backend_for_nothing(tmp_path):
     assert len(out["sent"]) == before
     assert _posts({"sent": out["sent"]}) == []
     assert _by_class(out["opened"]["rail"], "sub")[0]["text"] == (
-        "Custom opens the gap-filling tailor page; this panel picks the result "
-        "up when it’s rendered.")
+        "Tailor in Maestro CS opens the full tailor page. The Companion picks up "
+        "the tailored resume when its PDF is ready.")
 
 
 def test_custom_in_studio_is_a_link_out_and_never_an_api_call(tmp_path):
@@ -226,7 +226,7 @@ def test_custom_in_studio_is_a_link_out_and_never_an_api_call(tmp_path):
                 if limb["tag"] == "A"]
     assert custom["href"] == f"{APP_URL}/jobs/job-lightning?tab=fit"
     assert custom["attrs"] == {}
-    assert custom["text"] == "Custom in Studio ↗"
+    assert custom["text"] == "Tailor in Maestro CS ↗"
     # `target`/`rel` are plain properties on the fake node, like `href`.
     assert "quick-tailor" not in json.dumps(out["sent"])
 
@@ -240,7 +240,7 @@ def test_a_panel_that_does_not_know_where_the_studio_is_offers_no_way_there(tmp_
     the user leaves and there is nothing to leave through.
     """
     out = _resume(tmp_path, open=True, replies={})
-    assert out["limbs"] == ["Use base as-is", "Tailor", "Quick tailor"]
+    assert out["limbs"] == ["Use base resume as is", "Tailor", "Quick tailor"]
     assert _by_class(out["opened"]["rail"], "sub") == []
 
 
@@ -255,11 +255,11 @@ def test_use_base_as_is_skips_the_rest_visibly_and_outlives_the_page(tmp_path):
     apply page: `resetPageFacts` clears `baseArmed` on every page load, so
     without the entry the shortcut would exist for exactly one page.
     """
-    out = _resume(tmp_path, press="Use base as-is",
+    out = _resume(tmp_path, press="Use base resume as is",
                   page={"detect_page": _reply({"tier": "A", "form": True, "score": 3})})
     rows = _rows(_rail_rows({"regions": out["settled"]}))
     assert rows["resume"]["state"] == "skipped"
-    assert rows["resume"]["summary"] == "Skipped — using base as-is"
+    assert rows["resume"]["summary"] == "Skipped. Using your base resume as is."
     assert rows["fill"]["state"] == "active"
     # …and the shortcut's own copy, under the identity where it explains what
     # the rail just skipped.
@@ -283,7 +283,7 @@ def test_an_arming_made_on_the_posting_is_still_armed_on_the_apply_page(tmp_path
     nothing about the url. Without the remembered arming the panel would open
     that page at Job and ask them to add a posting they had already saved.
     """
-    armed = _resume(tmp_path, press="Use base as-is",
+    armed = _resume(tmp_path, press="Use base resume as is",
                     page={"detect_page": _reply({"tier": "A", "form": True, "score": 3})})
     out = _load(tmp_path, tabs=[{"id": 7, "url": LIGHTNING_APPLY_URL}],
                 stored={"widget.session": armed["writes"][0]["widget.session"]},
@@ -307,7 +307,7 @@ def test_arming_a_base_on_a_page_with_no_form_moves_the_rail_and_says_where(tmp_
     has been answered, still asking.
 
     WHAT THEY GET NOW is the shape the rest of the shortcut already had: Resume
-    reads "Skipped — using base as-is", the rail moves to Fill, and the FILL
+    reads "Skipped. Using your base resume as is.", the rail moves to Fill, and the FILL
     body says the true thing about this page and what to do about it. The
     sentence moved from a slot that scrolls past into the body of the step it
     is about, and there is exactly one of it.
@@ -316,16 +316,16 @@ def test_arming_a_base_on_a_page_with_no_form_moves_the_rail_and_says_where(tmp_
     fields in it and report "0 filled" — the button the old `hasForm` gate
     existed to withhold, withheld at the button (panel.js `primaryRefused`).
     """
-    out = _resume(tmp_path, press="Use base as-is")
+    out = _resume(tmp_path, press="Use base resume as is")
     rows = _rows(_rail_rows({"regions": out["settled"]}))
     assert rows["resume"]["state"] == "skipped"
-    assert rows["resume"]["summary"] == "Skipped — using base as-is"
+    assert rows["resume"]["summary"] == "Skipped. Using your base resume as is."
     assert rows["fill"]["state"] == "active"
     body = next(n for n in _walk(out["settled"]["rail"])
                 if n.get("id") == "stg-body-fill")
     assert _by_class(body, "sub")[0]["text"] == (
-        "No application form on this page — open the employer's Apply page; "
-        "filling starts there.")
+        "No application form here. Open the employer's Apply page to start "
+        "filling.")
     # The pass control is gone with the pass: a segment choosing between two
     # runs that cannot happen here decides nothing.
     assert _by_class(body, "seg") == []
@@ -368,10 +368,10 @@ def test_quick_tailor_creates_the_application_and_the_rings_say_so(tmp_path):
     # a link to the Studio is a way out of a tailor that is taking too long.
     assert {_text(limb): limb["disabled"] for limb in
             _by_class(out["clicked"]["rail"], "fork")[0]["children"]} == {
-        "Use base as-is": True, "Tailor": False}
+        "Use base resume as is": True, "Tailor": False}
     assert {_text(limb): limb["disabled"] for limb in
             _by_class(out["clicked"]["rail"], "fork")[1]["children"]} == {
-        "Quick tailor": True, "Custom in Studio ↗": False}
+        "Quick tailor": True, "Tailor in Maestro CS ↗": False}
     # …and it LOOKS out of reach, which `disabled` alone does not deliver here:
     # `.fork button` sets `background`, `color` and `cursor: pointer`
     # explicitly, and an author declaration beats the UA stylesheet's disabled
@@ -430,11 +430,15 @@ def test_a_tailor_that_fails_hands_the_button_back_and_says_why(tmp_path):
     must never leave the panel with its one control permanently pressed. The
     backend's own detail, verbatim — a heading per status code would be a claim
     about which of the 409s happened, and a health gate and an in-progress
-    session share one."""
+    session share one — so the sentence sends the user to the job in Maestro
+    CS, where the full reason is shown, and never prints the backend's
+    detail."""
     out = _resume(tmp_path, open=True, press="Quick tailor",
-                  api={"quick-tailor": {"ok": False, "error": "409: health gate"}})
+                  api={"quick-tailor": {"ok": False, "error": "409: health gate",
+                                        "status": 409}})
     [note] = _by_class(out["settled"]["foot"], "note")
-    assert note["text"] == "409: health gate"
+    assert note["text"] == (
+        "Couldn't tailor your resume. Open the job in Maestro CS to see why.")
     assert note["class"] == "note error"
     [cta] = _by_class(out["settled"]["foot"], "cta")
     assert cta["disabled"] is False
@@ -455,9 +459,9 @@ def test_a_tailor_that_renders_no_pdf_says_so_and_still_keeps_the_application(tm
     [note] = _by_class(out["settled"]["foot"], "note")
     # The health warning rides the sentence rather than being said first and
     # overwritten a line later, which is what the card does with it.
-    assert note["text"] == ("⚠ Base resume health is C Tailored, but the PDF "
-                            "render failed. Open it in Maestro CS to see why "
-                            "and re-render.")
+    assert note["text"] == ("⚠ Base resume health is C Tailored, but couldn't "
+                            "create the PDF. Open it in Maestro CS and select "
+                            "Create PDF.")
     assert note["class"] == "note error"
     assert out["writes"][-1]["widget.session"]["applicationId"] == "app-quick"
     assert out["writes"][-1]["widget.session"]["pdfReady"] is False
@@ -476,14 +480,14 @@ def test_nothing_to_tailor_claims_no_application_at_all(tmp_path):
         {"application_id": None, "session_id": "s", "applied": [],
          "pdf_ready": False, "nothing_to_tailor": True, "health_warning": None})})
     [note] = _by_class(out["settled"]["foot"], "note")
-    assert note["text"].startswith("Nothing to tailor.")
+    assert note["text"].startswith("Quick tailor has nothing to change")
     assert "Maestro CS" in note["text"]
     assert out["writes"] == []
     # The chip still reads the LIBRARY, never an application: "In library" is
     # what this page is, and `Application · draft` would be the panel claiming
     # a row the backend explicitly did not create.
     assert [chip["text"] for chip in _by_class(out["settled"]["identity"], "chip")] == [
-        "In library"]
+        "Saved"]
 
 
 def test_a_tailor_that_lands_after_you_switch_tabs_paints_nothing(tmp_path):
@@ -516,6 +520,7 @@ def test_a_tailor_that_FAILS_after_you_switch_tabs_paints_nothing_either(tmp_pat
                   api={"quick-tailor": {"ok": False, "error": "409: health gate"}})
     settled = out["settled"]
     assert "409: health gate" not in json.dumps(settled)
+    assert "Couldn't tailor" not in json.dumps(settled)
     # Nothing red, and nothing still spinning: `busy` belongs to the tab that
     # asked, and the early return leaves this one's render untouched.
     assert [n for n in _walk(settled["foot"]) if "error" in str(n.get("class"))] == []
@@ -529,8 +534,8 @@ def test_a_tailor_that_FAILS_after_you_switch_tabs_paints_nothing_either(tmp_pat
 
 # ---------- the base-as-is claim can be withdrawn ---------------------------
 #
-# "Use base as-is" finishes the Resume stage by SKIPPING it, and a skipped row
-# was a wall: the Resume row read "Skipped — using base as-is" and there was no
+# "Use base resume as is" finishes the Resume stage by SKIPPING it, and a skipped row
+# was a wall: the Resume row read "Skipped. Using your base resume as is." and there was no
 # way back to the tailoring fork short of unbinding the whole page (reported
 # live on an Itron wizard). The un-pick round already settled the grammar — a
 # claim the user made is theirs to withdraw — and these tests are that grammar
@@ -578,7 +583,7 @@ main(async () => {
     // BY LABEL as well as by class, for `press`'s reason above: a control that
     // is not on screen must fail loudly rather than leave the click unmade.
     const stop = withClass(REGIONS.rail, "unpick")
-      .find((limb) => limb.textContent === "Stop using base as-is");
+      .find((limb) => limb.textContent === "Stop using the base resume");
     if (!stop) throw new Error("the reopened body offers no way out");
     stop.click();
     await settle();
@@ -661,15 +666,15 @@ def test_the_reopened_base_as_is_row_names_the_choice_and_offers_both_ways_on(tm
     """What the door opens onto: the claim in the user's own words, the whole
     tailoring fork, and the way out.
 
-    The "Use base as-is" limb is GONE, and that is the one edit rather than a
+    The "Use base resume as is" limb is GONE, and that is the one edit rather than a
     trimmed-down body: pressing it would re-assert a claim already in force,
     which is a control that cannot do anything.
     """
     out = _armed(tmp_path)
     body = _body(out["reopened"])
-    assert "Using ai_ml_engineer as-is" in _text(body)
+    assert "Using AI/ML Engineer as is" in _text(body)
     assert _limbs(body) == ["Tailor"]
-    assert [n["text"] for n in _by_class(body, "unpick")] == ["Stop using base as-is"]
+    assert [n["text"] for n in _by_class(body, "unpick")] == ["Stop using the base resume"]
     # Nothing was asked of the backend to open a body.
     assert out["askedAfterBoot"] == []
 
@@ -684,7 +689,7 @@ def test_a_reopened_skipped_row_stays_skipped_and_the_rail_stays_put(tmp_path):
     out = _armed(tmp_path)
     rows = _rows(_rail_rows({"regions": out["reopened"]}))
     assert rows["resume"]["state"] == "skipped"
-    assert rows["resume"]["summary"] == "Skipped — using base as-is"
+    assert rows["resume"]["summary"] == "Skipped. Using your base resume as is."
     assert rows["resume"]["numeral"] != "✓"
     assert rows["fill"]["state"] == "active"
     door = next(n for n in _walk(out["reopened"]["rail"])
@@ -698,8 +703,8 @@ def test_the_second_fork_level_still_discloses_under_the_reopened_claim(tmp_path
     discloses Quick tailor and Custom in Studio, and the withdraw stays last —
     it is the way OUT of the stage, not one of the ways through it."""
     body = _body(_armed(tmp_path, matched=True, openTailor=True)["reopened"])
-    assert _limbs(body) == ["Tailor", "Quick tailor", "Custom in Studio ↗"]
-    assert _text(body["children"][-1]) == "Stop using base as-is"
+    assert _limbs(body) == ["Tailor", "Quick tailor", "Tailor in Maestro CS ↗"]
+    assert _text(body["children"][-1]) == "Stop using the base resume"
 
 
 def test_a_tailor_from_the_reopened_door_takes_the_claim_off_the_body(tmp_path):
@@ -712,19 +717,19 @@ def test_a_tailor_from_the_reopened_door_takes_the_claim_off_the_body(tmp_path):
     door stays open (correctly), and a body still reading "Using ⟨base⟩ as-is"
     over a withdraw that moves nothing would be a false sentence about which
     document is going into the form — beside a control that cannot do anything,
-    which is the very thing this body drops the "Use base as-is" limb to avoid.
+    which is the very thing this body drops the "Use base resume as is" limb to avoid.
     """
     out = _armed(tmp_path, matched=True, openTailor=True, quickTailor=True,
                  api={"quick-tailor": TAILORED_REPLY})
     rows = _rows(_rail_rows({"regions": out["reopened"]}))
     assert rows["resume"]["state"] == "done"        # the door is still open
     body = _body(out["reopened"])
-    assert "Using ai_ml_engineer as-is" not in _text(body)
+    assert "Using AI/ML Engineer as is" not in _text(body)
     assert _by_class(body, "unpick") == []
     # …and it is the ORDINARY fork again, arming limb and all: with no
     # application in the way that limb means something once more.
-    assert _limbs(body) == ["Use base as-is", "Tailor", "Quick tailor",
-                            "Custom in Studio ↗"]
+    assert _limbs(body) == ["Use base resume as is", "Tailor", "Quick tailor",
+                            "Tailor in Maestro CS ↗"]
 
 
 def test_stop_using_base_as_is_returns_the_rail_to_the_ladder(tmp_path):
@@ -768,16 +773,16 @@ def test_withdrawing_on_a_page_the_backend_knows_lands_on_the_resume_fork(tmp_pa
     """The other half of "back to the ladder", and the reason the rung is not
     hard-coded: with the job matched and a base already chosen, the ladder's
     own order puts the user at Resume — where the fork asks the question again,
-    with "Use base as-is" back on it.
+    with "Use base resume as is" back on it.
     """
     out = _armed(tmp_path, matched=True, withdraw=True)
     rows = _rows(_rail_rows({"regions": out["withdrawn"]}))
     assert rows["resume"]["state"] == "active"
     assert rows["job"]["state"] == "done"
     body = _body(out["withdrawn"])
-    assert _limbs(body) == ["Use base as-is", "Tailor"]
+    assert _limbs(body) == ["Use base resume as is", "Tailor"]
     assert _by_class(body, "unpick") == []
-    assert "Using ai_ml_engineer as-is" not in _text(body)
+    assert "Using AI/ML Engineer as is" not in _text(body)
 
 
 def test_withdrawing_stops_the_bridge_from_rearming_the_claim(tmp_path):
@@ -819,12 +824,12 @@ def test_the_arming_page_offers_the_way_out_too(tmp_path):
     door — and the body behind it is the same body, because it is keyed on the
     CLAIM rather than on which row it is under.
     """
-    out = _resume(tmp_path, press="Use base as-is", reopen="resume")
+    out = _resume(tmp_path, press="Use base resume as is", reopen="resume")
     rows = _rows(_rail_rows({"regions": out["settled"]}))
     assert rows["resume"]["state"] == "skipped"
     body = _body(out["reopened"])
-    assert "Using ai_ml_engineer as-is" in _text(body)
-    assert [n["text"] for n in _by_class(body, "unpick")] == ["Stop using base as-is"]
+    assert "Using AI/ML Engineer as is" in _text(body)
+    assert [n["text"] for n in _by_class(body, "unpick")] == ["Stop using the base resume"]
     # The limb that re-asserts a claim already in force is not offered here
     # either — the reopened body drops it wherever it is opened.
-    assert "Use base as-is" not in _limbs(out["reopened"]["rail"])
+    assert "Use base resume as is" not in _limbs(out["reopened"]["rail"])

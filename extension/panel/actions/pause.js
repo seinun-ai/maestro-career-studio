@@ -231,8 +231,8 @@
     if (ns.isPolicyBlocked(row.label ?? "")) {
       // Not an `error`: nothing went wrong. This is the panel declining, and
       // the sentence says which side declined and why.
-      store.write({ note: { text: "This one is never filled from here — "
-        + "signatures, passwords and government IDs are yours to type." } });
+      store.write({ note: { text: "The Companion never fills this. Signatures, "
+        + "passwords and ID numbers are yours to type." } });
       store.render();
       return;
     }
@@ -275,7 +275,7 @@
         pairs: [{ qid, answer, kind: row.kind }],
       });
       if (!frames.some((frame) => frame.result !== undefined)) {
-        throw new Error(ns.guidedRun.NO_FRAME_REACHED);
+        throw ns.guidedRun.shown(ns.guidedRun.NO_FRAME_REACHED);
       }
       // `fillAnswersByQid` returns the qids that STUCK — a select whose options
       // did not match, or an input that rejected the value, is simply absent.
@@ -286,8 +286,8 @@
         const target = await learnAnswer(store, row, answer);
         return { stuck,
           learned: target.store === "profile"
-            ? " Saved to your profile."
-            : " Remembered — this one won’t ask again." };
+            ? " Saved to Profile › Autofill."
+            : " Saved. It won’t ask again." };
       } catch (err) {
         // CAUGHT HERE rather than left to `duringAction`, and that is what keeps
         // the two halves independent now that they share a span. A throw out of
@@ -295,10 +295,10 @@
         // open. The field is already written, so the honest report is a sentence
         // beside the success — never a rollback, and never a red note about a
         // page that did what it was asked.
-        return { stuck, learned: ` Filled, but not remembered: ${
-          String(err?.message ?? err)}` };
+        console.warn("[maestro-cs] learning the answer failed:", err);
+        return { stuck, learned: " Couldn’t save the answer, so it will ask again." };
       }
-    });
+    }, "Couldn’t fill that field.");
     if (!done) return;
     const { out: { stuck, learned } } = done;
     if (!stuck) {
@@ -306,8 +306,8 @@
       // it is still open, and the sentence says what actually happened rather
       // than blaming the connection.
       store.write({ note: { text: row.options?.length
-        ? "That answer didn’t match any of the options — try one of them verbatim."
-        : "The field wouldn’t take that value. Try it on the page.", error: true } });
+        ? "Couldn’t fill that. Type one of the options exactly as shown."
+        : "Couldn’t fill that field. Type it on the page yourself.", error: true } });
       store.render();
       return;
     }

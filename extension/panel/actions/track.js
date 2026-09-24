@@ -75,7 +75,7 @@
     const done = await duringAction(store, "track", () =>
       store.api(`/api/applications/${facts.application.id}`, {
         method: "PATCH", body: JSON.stringify({ status }),
-      }));
+      }), "Couldn't update the status.");
     if (!done) return;
     const { out } = done;
     // RE-READ past the guard, this directory's rule: the PATCH is a round trip
@@ -101,7 +101,7 @@
       // the note via duringAction's catch, which is what the slot is for.
       note: status === "applied"
         ? null
-        : { text: `Status updated to ${status}.` },
+        : { text: `Status updated to ${store.build.statusLabel(status)}.` },
     });
     store.render();
     // The bridge entry carries `status`, so a pick remembered on the posting
@@ -141,7 +141,7 @@
     if (facts.application) return;
     if (!facts.job?.id || !facts.baseSlug) {
       store.write({
-        note: { text: "Nothing to track yet — this page's job is not in the library." },
+        note: { text: "Nothing to track yet. Save this job first." },
       });
       store.render();
       return;
@@ -153,7 +153,7 @@
           job_id: facts.job.id,
           base_resume: facts.baseSlug,
         }),
-      }));
+      }), "Couldn't track this application.");
     if (!done) return;
     const { token, out } = done;
     const after = store.read();
@@ -168,7 +168,7 @@
       claimed: true,
       pdfReady: Boolean(out.pdf_path),
       evidence: store.build.evidenceFrom(out),
-      note: { text: "Tracked. Mark it applied when you have submitted it." },
+      note: { text: "Tracked. Mark it Applied after you submit it." },
     });
     store.remember();
     store.render();

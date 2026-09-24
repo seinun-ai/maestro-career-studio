@@ -451,7 +451,7 @@ def test_a_page_that_answers_nothing_stops_the_run(tmp_path):
     page — not a residue list, and not an empty one."""
     out = _run_guided(tmp_path, questions=_open_questions(2), reachNobody=True)
 
-    assert out["threw"].startswith("Can't reach this page.")
+    assert out["threw"].startswith("Couldn't reach this page.")
     assert out["apiCalls"] == []
     assert _writes(out) == []
 

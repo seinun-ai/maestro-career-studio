@@ -65,8 +65,13 @@
    * so the second PUT erased the first row's key while its note already said the
    * answer was saved. The generation token cannot catch that: it moves on a tab
    * change, and both writes were the same tab. A tail that must not overlap the
-   * next press belongs inside the span, not after it. */
-  async function duringAction(store, kind, call) {
+   * next press belongs inside the span, not after it.
+   *
+   * `failed` IS THE CALL SITE'S SENTENCE, and a failure never reaches the note
+   * as raw text: "Couldn't <what>." (a string, or `{ what, answered }` when a
+   * refusal from the backend deserves its own sentence), finished by
+   * `failureNote` with the next step. */
+  async function duringAction(store, kind, call, failed) {
     const token = store.token();
     store.write({ busy: kind, note: null });
     store.render();
@@ -75,13 +80,37 @@
       out = await call();
     } catch (err) {
       if (!store.current(token)) return null;
-      store.write({ busy: null, note: { text: String(err?.message ?? err), error: true } });
+      store.write({ busy: null, note: { text: failureNote(failed, err), error: true } });
       store.render();
       return null;
     }
     if (!store.current(token)) return null;
     store.write({ busy: null });
     return { token, out };
+  }
+
+  /** What the note says when a round trip fails: "Couldn't <what>." and then
+   * what to do next, never the error's own text.
+   *
+   * The raw message is words for whoever wrote the code (a backend `detail`, a
+   * bare status, "Failed to fetch"), so it goes to the console and the user
+   * gets the sentence the call site wrote. A message the panel wrote itself
+   * passes through as it is, because it already IS that sentence: it carries
+   * `shown` (`ns.guidedRun.shown` makes one).
+   *
+   * THE NEXT STEP TURNS ON THE STATUS, `ask`'s one field that is not prose: no
+   * status means no HTTP answer came back, so the step is to check the app is
+   * running; any status means the backend answered and refused, so the step is
+   * the call site's `answered` sentence when it has one (a string, or a
+   * function of the error that may decline with null), else another try. */
+  function failureNote(failed, err) {
+    if (err?.shown === true) return String(err.message);
+    console.warn("[maestro-cs] panel action failed:", err);
+    const { what = "Couldn't do that.", answered = null } =
+      typeof failed === "string" ? { what: failed } : failed ?? {};
+    if (err?.status === undefined) return `${what} Check that Maestro CS is running.`;
+    const own = typeof answered === "function" ? answered(err) : answered;
+    return own || `${what} Try again.`;
   }
 
   ns.panelDuringAction = duringAction;
