@@ -1,7 +1,7 @@
 "use client";
 
 import { GuardedLink as Link } from "@/components/guarded-link";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   useIsMutating,
   useMutation,
@@ -28,6 +28,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { useBaseResumeLabel } from "@/hooks/use-base-resume-label";
 import { useDiscardableEditor } from "@/hooks/use-confirm-discard";
+import { focusIfDropped } from "@/hooks/use-focus-return";
+import { useSingleFlight } from "@/hooks/use-single-flight";
+import { focusTarget } from "@/lib/focus";
 import { deleteKbPoint, patchKbPoint, bulkKbPointState, KB_DRAFTS_LIMIT } from "@/lib/api";
 import { couldnt, errorDetail, isPlainSentence } from "@/lib/error-text";
 import { SECTION_ORDER_LABELS, type SectionKey } from "@/lib/formatting";
@@ -63,6 +66,25 @@ function invalidateKbPoints(queryClient: QueryClient) {
       queryClient.invalidateQueries({ queryKey }),
     ),
   );
+}
+
+/**
+ * Where focus goes when a draft leaves the list (approved, discarded, moved):
+ * `control` on the next draft, across groups, else the previous one's, else the
+ * panel. The next draft's Approve, never its Discard: Discard shows only on
+ * hover or keyboard focus. The order is read NOW, while the row is attached;
+ * the answer once the list has re-rendered.
+ */
+function draftSuccessor(row: HTMLElement | null, control: string): () => HTMLElement | null {
+  const panel = row?.closest<HTMLElement>("#inbox") ?? null;
+  const rows = panel ? [...panel.querySelectorAll<HTMLElement>("[data-draft-row]")] : [];
+  const at = row ? rows.indexOf(row) : -1;
+  const order = [...rows.slice(at + 1), ...rows.slice(0, Math.max(at, 0)).reverse()];
+  return () => {
+    const next = order.find((r) => r.isConnected);
+    if (!next) return panel;
+    return next.querySelector<HTMLElement>(`[data-draft-action="${control}"]`) ?? focusTarget(next);
+  };
 }
 
 /** A resume section's name ("extra" is the importer's key for Other sections). */
@@ -166,12 +188,15 @@ export function InboxPanel({
       // until this resolves, so the button stays disabled until the list has
       // refetched and a double click cannot re-submit the same ids.
       await invalidateKbPoints(queryClient);
+      // The button leaves with the last draft once the list re-renders (a
+      // frame after the refetch): the panel takes the focus.
+      requestAnimationFrame(() => focusIfDropped(document.getElementById("inbox")));
     },
     onError: (err: Error) => toast.error(couldnt("approve the bullets", err)),
   });
 
   return (
-    <Card id="inbox" className="scroll-mt-6 border-0 bg-muted/45 shadow-none ring-0">
+    <Card id="inbox" tabIndex={-1} className="scroll-mt-6 border-0 bg-muted/45 shadow-none ring-0 outline-none">
       <CardHeader className="pb-1">
         <div className="flex flex-wrap items-start justify-between gap-2">
           <CardTitle className="flex items-center gap-2">
@@ -201,8 +226,10 @@ export function InboxPanel({
             </div>
           )}
         </div>
+        {/* Drafts come from Quick capture, documents, resumes and agents, not
+            only from AI: the sentence says what the panel is for. */}
         <p className="text-muted-foreground text-sm">
-          Check AI-written bullets before they&apos;re added to your career history.
+          New bullets wait here as drafts until you approve them.
         </p>
       </CardHeader>
       <CardContent className="space-y-5">
@@ -282,6 +309,19 @@ function DraftRow({
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState(point.text);
+  // Approve, Discard, a move and Approve all take the row away. When it goes
+  // while holding focus, the next draft's Approve takes it (else the panel).
+  // A LAYOUT cleanup: it runs before React detaches the row, so its place in
+  // the list can still be read; the answer is read after the commit.
+  const articleRef = useRef<HTMLElement>(null);
+  useLayoutEffect(() => {
+    const row = articleRef.current;
+    return () => {
+      if (!row?.contains(document.activeElement)) return;
+      const next = draftSuccessor(row, "approve");
+      queueMicrotask(() => focusIfDropped(next()));
+    };
+  }, []);
 
   const update = useMutation({
     mutationKey: KB_POINT_MUTATION_KEY,
@@ -296,6 +336,8 @@ function DraftRow({
     },
     onError: (error: Error) => toast.error(couldnt("save the draft", error)),
   });
+  // One write per gesture: a double click on Approve sent two PATCHes.
+  const updateOnce = useSingleFlight(update.mutate);
 
   const discard = useMutation({
     mutationKey: KB_POINT_MUTATION_KEY,
@@ -307,6 +349,8 @@ function DraftRow({
     },
     onError: (error: Error) => toast.error(couldnt("discard the draft", error)),
   });
+  // One delete per gesture: the second click's DELETE came back "not found".
+  const discardOnce = useSingleFlight(discard.mutate);
 
   const selectedEntity = entities.find((entity) => entity.id === point.entity_id);
   const resumeName = useBaseResumeLabel();
@@ -330,7 +374,7 @@ function DraftRow({
 
   const approve = () => {
     const value = text.trim();
-    update.mutate({
+    updateOnce({
       payload: {
         state: "approved",
         ...(value && value !== point.text ? { text: value } : {}),
@@ -340,7 +384,11 @@ function DraftRow({
   };
 
   return (
-    <article className="group/draft rounded-xl bg-background/80 p-3 shadow-sm ring-1 ring-foreground/5">
+    <article
+      ref={articleRef}
+      data-draft-row
+      className="group/draft rounded-xl bg-background/80 p-3 shadow-sm ring-1 ring-foreground/5"
+    >
       {editing ? (
         <div className="space-y-2">
           <Label htmlFor={`draft-text-${point.id}`} className="sr-only">
@@ -360,7 +408,7 @@ function DraftRow({
               className="rounded-full px-4 data-disabled:pointer-events-none data-disabled:opacity-50"
               size="sm"
               onClick={() =>
-                onSave(() => update.mutate({ payload: { text: text.trim() }, success: "Draft updated" }))
+                onSave(() => updateOnce({ payload: { text: text.trim() }, success: "Draft updated" }))
               }
               // An emptied draft is not saved.
               disabled={!text.trim() || pending}
@@ -417,7 +465,15 @@ function DraftRow({
       )}
 
       <div className="mt-3 flex flex-wrap items-end gap-2 pt-1">
-        <Button className="rounded-full px-4" size="sm" onClick={approve} disabled={!text.trim() || pending}>
+        <Button
+          data-draft-action="approve"
+          className="rounded-full px-4 data-disabled:pointer-events-none data-disabled:opacity-50"
+          size="sm"
+          onClick={approve}
+          disabled={!text.trim() || pending}
+          // Disables itself while any draft saves: a native `disabled` drops focus.
+          focusableWhenDisabled
+        >
           <Check aria-hidden="true" />
           {update.isPending ? "Saving…" : "Approve"}
         </Button>
@@ -430,7 +486,7 @@ function DraftRow({
             onValueChange={(entityId) => {
               if (!entityId || entityId === point.entity_id) return;
               const target = entities.find((entity) => entity.id === entityId);
-              update.mutate({
+              updateOnce({
                 payload: { entity_id: entityId },
                 success: target ? `Moved to ${target.title}` : "Moved to another item",
               });
@@ -450,11 +506,14 @@ function DraftRow({
           </Select>
         </div>
         <Button
+          data-draft-action="discard"
           size="sm"
           variant="destructive"
-          className="rounded-full opacity-0 transition-opacity duration-150 group-hover/draft:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100"
-          onClick={() => discard.mutate()}
+          className="rounded-full opacity-0 transition-opacity duration-150 group-hover/draft:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100 data-disabled:pointer-events-none data-disabled:opacity-50"
+          onClick={() => discardOnce()}
           disabled={pending}
+          // Disables itself while any draft saves: a native `disabled` drops focus.
+          focusableWhenDisabled
         >
           <Trash2 aria-hidden="true" />
           {discard.isPending ? "Discarding…" : "Discard"}

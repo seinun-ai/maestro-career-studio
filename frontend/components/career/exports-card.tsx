@@ -79,7 +79,7 @@ export function CareerExportsCard() {
                 onClick={() => refresh.mutate()}
               >
                 {refresh.isPending ? <Loader2 className="animate-spin" /> : <RefreshCw />}
-                Update
+                Update file
               </Button>
             </div>
           </div>

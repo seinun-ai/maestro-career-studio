@@ -122,7 +122,7 @@ function ProfileView({ profile }: { profile: KBProfileOut }) {
             </span>
             Edit career profile
           </CardTitle>
-          <p className="text-muted-foreground text-sm">Your contact details and skills, shared by all your resumes.</p>
+          <p className="text-muted-foreground text-sm">Your contact details and skills. Resumes built from your career history start from these.</p>
         </CardHeader>
         <CardContent>
           <form
@@ -265,7 +265,7 @@ function ProfileView({ profile }: { profile: KBProfileOut }) {
             </span>
             Career profile
           </CardTitle>
-          <p className="text-muted-foreground mt-1 text-sm">Your contact details and skills, shared by all your resumes.</p>
+          <p className="text-muted-foreground mt-1 text-sm">Your contact details and skills. Resumes built from your career history start from these.</p>
         </div>
         <Button
           size="sm"

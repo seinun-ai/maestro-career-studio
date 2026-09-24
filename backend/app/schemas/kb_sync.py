@@ -27,6 +27,8 @@ class SyncStatus(BaseModel):
 
 class SyncResult(BaseModel):
     created: int
+    # Items created (see kb_base_sync.apply); additive, so 0 from an old caller.
+    items_added: int = 0
     drifted: int
     # Entities this sync RENAMED, because the base resume carried a strictly
     # richer form of a role title that near-matched. Empty on an ordinary sync;

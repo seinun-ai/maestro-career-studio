@@ -88,8 +88,28 @@ def test_upload_unextractable_marks_failed(client, monkeypatch, tmp_path):
     body = r.json()
     assert body["ingest_status"] == "failed"
     assert body["ingest_summary"]  # carries the extraction failure reason
+    # Nothing was read, so the Documents card says "Couldn't read".
+    assert body["has_text"] is False
 
     assert client.get("/api/kb/points?state=draft").json() == []
+
+
+def test_a_failed_suggestion_step_says_the_text_was_read(client, monkeypatch, tmp_path):
+    # Read, then the bullet step failed (no model key): the card says it
+    # couldn't suggest bullets, not that it couldn't read the file.
+    monkeypatch.setattr("app.services.kb_ingest.settings.kb_documents_dir", tmp_path)
+
+    def no_model(**_kw):
+        raise RuntimeError("No OpenAI API key configured")
+
+    monkeypatch.setattr("app.services.llm.call_openai", no_model)
+    eid = client.post("/api/kb/entities", json={"kind": "project", "title": "X"}).json()["id"]
+    body = client.post(
+        f"/api/kb/entities/{eid}/documents",
+        files={"file": ("r.md", b"# report\nwe cut latency", "text/markdown")},
+    ).json()
+    assert body["ingest_status"] == "failed"
+    assert body["has_text"] is True
 
 
 def test_upload_filename_path_traversal_is_neutralized(client, monkeypatch, tmp_path):

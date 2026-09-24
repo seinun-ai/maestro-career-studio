@@ -56,9 +56,11 @@ export function uniqueSectionKey(
   return candidate;
 }
 
+/** An other section's layout, in words: items that each have a heading, dates
+ *  and bullets, or one plain list. "Item", never "entry" (the glossary). */
 export const SECTION_TYPE_LABELS: Record<ExtraSectionType, string> = {
-  entries: "Items",
-  bullets: "List",
+  entries: "Items with dates",
+  bullets: "Simple list",
 };
 
 const EMPTY_ENTRY: ExtraSectionEntry = {

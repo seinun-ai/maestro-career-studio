@@ -158,7 +158,8 @@ export function CaptureBox() {
             <p id="career-capture-help" className="text-muted-foreground text-xs">
               Nothing goes on a resume until you approve it.
             </p>
-            <div className="flex items-center gap-2">
+            {/* Wraps at 375: the two buttons side by side pushed the page 22px sideways. */}
+            <div className="flex flex-wrap items-center gap-2">
               <Button
                 type="button"
                 variant="ghost"

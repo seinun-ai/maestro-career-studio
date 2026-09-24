@@ -61,6 +61,23 @@ _SITES = [
     ("components/proposals/triage-actions.tsx", "transition"),
     ("components/proposals/triage-actions.tsx", "bulk"),
     ("components/proposals/triage-actions.tsx", "remove"),
+    # Lane 8 first-read: a double click sent each of these twice (the pill's Add
+    # now wrote every draft twice; the second Discard or Merge came back "not
+    # found").
+    ("components/kb-sync-pill.tsx", "sync"),
+    ("components/resume-health/finding-cards.tsx", "markOk"),
+    ("components/resume-health/finding-cards.tsx", "unwaive"),
+    ("components/resume-health/finding-cards.tsx", "draft"),
+    ("components/resume-health/finding-cards.tsx", "apply"),
+    ("components/resume-health/health-report-page.tsx", "analyze"),
+    ("components/resume-editor/tailored-resume-studio.tsx", "rescore"),
+    ("components/career/inbox-panel.tsx", "update"),
+    ("components/career/inbox-panel.tsx", "discard"),
+    ("components/career/points-list.tsx", "update"),
+    ("components/career/merge-entity-dialog.tsx", "merge"),
+    ("components/resume-editor/kb-import-drawer.tsx", "importMutation"),
+    ("app/templates/[id]/page.tsx", "recompileM"),
+    ("components/resume-versions/version-history-sheet.tsx", "restore"),
 ]
 
 

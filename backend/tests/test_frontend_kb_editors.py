@@ -154,12 +154,12 @@ def test_save_arms_the_focus_return_then_saves_or_closes():
         (
             "point",
             _POINT_ROW,
-            'onClick={() => onSave(() => update.mutate({ payload: { text: text.trim() }, message: "Bullet updated" })) }',
+            'onClick={() => onSave(() => updateOnce({ payload: { text: text.trim() }, message: "Bullet updated" })) }',
         ),
         (
             "inbox draft",
             _DRAFT_ROW,
-            'onClick={() => onSave(() => update.mutate({ payload: { text: text.trim() }, success: "Draft updated" })) }',
+            'onClick={() => onSave(() => updateOnce({ payload: { text: text.trim() }, success: "Draft updated" })) }',
         ),
     ],
     ids=_IDS,

@@ -62,12 +62,15 @@ def test_kb_sync_pill_count_excludes_recorded_drift():
     already filed, and summing that in is what made the old bar nag about a
     resume with nothing to do.
     """
+    # The count moved to lib/kb-sync-words.ts (node-tested) with the words.
     source = (_FRONTEND / "components/kb-sync-pill.tsx").read_text()
-    block = source.split("function actionableCount")[1].split("\n}")[0]
+    words = (_FRONTEND / "lib/kb-sync-words.ts").read_text()
+    block = words.split("export function syncActionableCount")[1].split("\n}")[0]
     assert "counts.new" in block
     assert "counts.drift" in block
-    assert "skillsNew" in block
+    assert "counts.skills_new" in block
     assert "recorded_drift" not in block
+    assert "const count = syncActionableCount(status);" in source
     # recorded_drift still has to reach the UI — as its own muted line.
     assert "recorded_drift" in source
 
@@ -79,10 +82,14 @@ def test_kb_sync_pill_toast_counts_skill_items_not_categories():
     assert "onSuccess:" in source, "mutation success handler anchor is gone"
     assert "onError:" in source, "mutation error handler anchor is gone"
     block = source.split("onSuccess:")[1].split("onError:")[0]
-    assert "skills_added.length" in block
-    assert "result.skills.length" not in block
+    assert "syncResultSentence(result)" in block
+    # The words moved to lib/kb-sync-words.ts, which counts the skills.
+    words = (_FRONTEND / "lib/kb-sync-words.ts").read_text()
+    fn = words.split("export function syncResultSentence")[1].split("\n}")[0]
+    assert "skills_added.length" in fn
+    assert "result.skills.length" not in fn
     # Singular/plural, now that the number is worth reading.
-    assert '${added === 1 ? "skill" : "skills"}' in block
+    assert 'plural(result.skills_added.length, "skill", "skills")' in fn
 
 
 def test_types_sync_result_carries_skills_added():

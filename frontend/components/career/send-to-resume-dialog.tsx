@@ -126,8 +126,16 @@ export function SendToResumeDialog({
     // now comes back beside the success (it used to be a 4xx for a port that
     // had already landed), not instead of it.
     notifyRenderOutcome(response.resume, { staleLabel: targetLabel });
+    // The count leads: "Added 2 bullets to Jordan ML Engineer." An item with
+    // no new bullet (all already there, or none approved) says what did happen.
+    const added =
+      ported > 0
+        ? `Added ${ported} ${ported === 1 ? "bullet" : "bullets"} to ${targetLabel}.`
+        : item?.created_entry
+          ? `Added ${entity.title} to ${targetLabel}.`
+          : `Nothing new to add to ${targetLabel}.`;
     toast.success(
-      `Added to ${targetLabel}. ${ported} ${ported === 1 ? "bullet" : "bullets"} added${skipped ? `, ${skipped} already there` : ""}.`,
+      `${added}${skipped ? ` ${skipped} ${skipped === 1 ? "was" : "were"} already there.` : ""}`,
       {
         action: {
           label: "View resume",

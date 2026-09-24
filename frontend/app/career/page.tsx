@@ -87,7 +87,9 @@ export default function CareerPage() {
         }
       />
 
-      <div className="grid gap-6">
+      {/* One column that may shrink below its content's widest line: the cards
+          wrap inside it (at 375 an auto track grew to 317px in a 271px column). */}
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-6">
         <FirstRunImportCard />
         <CaptureBox />
         {/* Anchor: the document lane's summary links here to review drafts. */}

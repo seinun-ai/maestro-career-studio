@@ -18,7 +18,7 @@ import { toast } from "sonner";
 
 import { useConfirm } from "@/components/confirm-dialog";
 import { useLoadFailureError } from "@/hooks/use-last-seen";
-import { KB_KIND_LABELS, kbStatusLabel } from "@/components/career/career-labels";
+import { KB_KIND_LABELS, KB_STATUS_LABELS, kbStatusLabel } from "@/components/career/career-labels";
 import { DocumentsPanel } from "@/components/career/documents-panel";
 import { NotesEditor } from "@/components/career/notes-editor";
 import { PointsList } from "@/components/career/points-list";
@@ -51,22 +51,23 @@ import type {
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
+// Words from the one table (career-labels.ts); only the colours are this screen's.
 const STATUSES: { value: KBEntityStatus; label: string; chip: string; dot: string }[] = [
   {
     value: "ongoing",
-    label: "Ongoing",
+    label: KB_STATUS_LABELS.ongoing,
     chip: "bg-blue-600/10 text-blue-700 dark:bg-blue-400/15 dark:text-blue-300",
     dot: "bg-blue-600 dark:bg-blue-400",
   },
   {
     value: "completed",
-    label: "Completed",
+    label: KB_STATUS_LABELS.completed,
     chip: "bg-emerald-600/10 text-emerald-800 dark:bg-emerald-400/15 dark:text-emerald-300",
     dot: "bg-emerald-600 dark:bg-emerald-400",
   },
   {
     value: "archived",
-    label: "Archived",
+    label: KB_STATUS_LABELS.archived,
     chip: "bg-muted text-muted-foreground",
     dot: "bg-muted-foreground/50",
   },

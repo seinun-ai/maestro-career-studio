@@ -28,6 +28,7 @@ import { createKbEntity } from "@/lib/api";
 import { couldnt } from "@/lib/error-text";
 import {
   SECTION_PRESETS,
+  SECTION_TYPE_LABELS,
   TITLE_COLLISION_MESSAGE,
   isCoreSectionTitle,
   slugifyKey,
@@ -46,7 +47,8 @@ const STATUSES = (Object.keys(KB_STATUS_LABELS) as KBEntityStatus[]).map((value)
 }));
 
 // What the title and organization fields are called for each kind. A school
-// is a School (the glossary), and a certificate or an award is Issued by.
+// is a School (the glossary), a certificate is Issued by, and an other-section
+// entry's second line is its Subheading (the resume editor's word for it).
 const TITLE_LABELS: Record<KBEntityKind, string> = {
   experience: "Job title",
   project: "Project name",
@@ -59,7 +61,7 @@ const ORG_LABELS: Record<KBEntityKind, string> = {
   project: "Organization",
   education: "School",
   certification: "Issued by",
-  extra: "Issued by",
+  extra: "Subheading",
 };
 
 export function NewEntityDialog({
@@ -292,7 +294,7 @@ export function NewEntityDialog({
                         : "border-input hover:border-border text-muted-foreground",
                     )}
                   >
-                    <span className="text-xs font-semibold text-foreground">Items</span>
+                    <span className="text-xs font-semibold text-foreground">{SECTION_TYPE_LABELS.entries}</span>
                     <span className="text-[11px] text-muted-foreground">Each with a title and details</span>
                   </button>
                   <button
@@ -311,7 +313,7 @@ export function NewEntityDialog({
                         : "border-input hover:border-border text-muted-foreground",
                     )}
                   >
-                    <span className="text-xs font-semibold text-foreground">List</span>
+                    <span className="text-xs font-semibold text-foreground">{SECTION_TYPE_LABELS.bullets}</span>
                     <span className="text-[11px] text-muted-foreground">A simple list</span>
                   </button>
                 </div>

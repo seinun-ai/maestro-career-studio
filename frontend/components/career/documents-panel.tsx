@@ -11,12 +11,19 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   deleteKbDocument,
+  getKbEntity,
   remintKbDocument,
   uploadKbDocument,
 } from "@/lib/api";
+import {
+  documentAddedWords,
+  documentReadAgainWords,
+  documentStatusLabel,
+  draftsFromDocument,
+} from "@/lib/document-words";
 import { couldnt } from "@/lib/error-text";
 import { formatAbsoluteDateTime } from "@/lib/format-date";
-import type { KBDocumentOut } from "@/lib/types";
+import type { KBDocumentOut, KBEntityDetail } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { DOCUMENT_ACCEPT } from "@/lib/upload-accept";
 
@@ -37,14 +44,26 @@ export function DocumentsPanel({
     void queryClient.invalidateQueries({ queryKey: ["kb", "drafts"] });
   };
 
+  // The item's bullets as the server has them now (and in the cache): how many
+  // drafts a read made is counted from them, never claimed.
+  const freshDetail = () =>
+    queryClient.fetchQuery<KBEntityDetail>({
+      queryKey: ["kb", "entity", entityId],
+      queryFn: () => getKbEntity(entityId),
+      staleTime: 0,
+    });
+
   const upload = useMutation({
-    mutationFn: (file: File) => uploadKbDocument(entityId, file),
-    onSuccess: (document) => {
-      toast.success(
-        document.ingest_status === "minted"
-          ? "Document added. New bullets are ready to review."
-          : "Document added",
-      );
+    mutationFn: async (file: File) => {
+      const document = await uploadKbDocument(entityId, file);
+      const detail = await freshDetail().catch(() => undefined);
+      return { document, drafted: draftsFromDocument(detail?.points, document.id) };
+    },
+    onSuccess: ({ document, drafted }) => {
+      // Says what reading did: new bullets, none, or a failed suggestion step.
+      const words = documentAddedWords(document, drafted);
+      if (document.ingest_status === "failed") toast.warning(words);
+      else toast.success(words);
       if (inputRef.current) inputRef.current.value = "";
       invalidate();
     },
@@ -52,9 +71,19 @@ export function DocumentsPanel({
   });
 
   const remint = useMutation({
-    mutationFn: (documentId: string) => remintKbDocument(documentId),
-    onSuccess: () => {
-      toast.success("Document read again");
+    mutationFn: async (documentId: string) => {
+      const before = draftsFromDocument(
+        queryClient.getQueryData<KBEntityDetail>(["kb", "entity", entityId])?.points,
+        documentId,
+      );
+      const document = await remintKbDocument(documentId);
+      const detail = await freshDetail().catch(() => undefined);
+      return { document, drafted: Math.max(0, draftsFromDocument(detail?.points, documentId) - before) };
+    },
+    onSuccess: ({ document, drafted }) => {
+      const words = documentReadAgainWords(document, drafted);
+      if (document.ingest_status === "failed") toast.error(words);
+      else toast.success(words);
       invalidate();
     },
     onError: (error: Error) => toast.error(couldnt("read the document again", error)),
@@ -155,7 +184,7 @@ export function DocumentsPanel({
                             {formatBytes(document.size_bytes)} · {formatAbsoluteDateTime(document.created_at)}
                           </p>
                         </div>
-                        <DocumentStatus status={document.ingest_status} />
+                        <DocumentStatus document={document} />
                       </div>
                       {document.ingest_summary ? (
                         <p className="text-muted-foreground mt-2 text-xs leading-relaxed">
@@ -198,16 +227,10 @@ export function DocumentsPanel({
   );
 }
 
-// The stored status (extracted|minted|failed) in words.
-const DOCUMENT_STATUS_LABELS: Record<string, string | undefined> = {
-  minted: "Done",
-  extracted: "Read, no bullets",
-  failed: "Couldn't read",
-};
-
-function DocumentStatus({ status }: { status: string }) {
-  const failed = status === "failed";
-  const minted = status === "minted";
+// The stored status (extracted|minted|failed) in words: `documentStatusLabel`.
+function DocumentStatus({ document }: { document: KBDocumentOut }) {
+  const failed = document.ingest_status === "failed";
+  const minted = document.ingest_status === "minted";
   return (
     <span
       className={cn(
@@ -225,7 +248,7 @@ function DocumentStatus({ status }: { status: string }) {
           !failed && !minted && "bg-muted-foreground/50",
         )}
       />
-      {DOCUMENT_STATUS_LABELS[status] ?? "Reading"}
+      {documentStatusLabel(document)}
     </span>
   );
 }

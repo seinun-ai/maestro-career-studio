@@ -108,6 +108,12 @@ class KBDocument(Base):
 
     entity: Mapped[KBEntity] = relationship(back_populates="documents")
 
+    @property
+    def has_text(self) -> bool:
+        """Text was read from the file. A ``failed`` document WITH text failed
+        at suggesting bullets (the LLM step), not at reading it."""
+        return bool((self.text_content or "").strip())
+
 
 class KBPortLog(Base):
     __tablename__ = "kb_port_log"

@@ -16,6 +16,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { useSingleFlight } from "@/hooks/use-single-flight";
+import { finalFocusOn } from "@/lib/focus";
 import { ApiError, listKbEntities, mergeKbEntity } from "@/lib/api";
 import { couldnt } from "@/lib/error-text";
 import type { KBEntitySummary } from "@/lib/types";
@@ -45,6 +47,9 @@ export function MergeEntityDialog({
   const [picked, setPicked] = useState<KBEntitySummary | null>(null);
   const filterRef = useRef<HTMLInputElement>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
+  // The item merged INTO: its card takes the focus once the dialog closes. The
+  // ⋯ that opened the dialog belongs to the item that is now gone.
+  const survivor = useRef<string | null>(null);
 
   // Same query key and fetcher as the /career page, so this reads the list
   // already in the react-query cache rather than adding a prop that both the
@@ -95,6 +100,7 @@ export function MergeEntityDialog({
       void queryClient.invalidateQueries({ queryKey: ["kb", "entities"] });
       void queryClient.invalidateQueries({ queryKey: ["kb", "drafts"] });
       void queryClient.invalidateQueries({ queryKey: ["kb", "entity", target.id] });
+      survivor.current = target.id;
       close();
     },
     onError: (error: Error) => {
@@ -110,6 +116,8 @@ export function MergeEntityDialog({
       // stays open with the server's sentence in the toast.
     },
   });
+  // One merge per gesture: the second click's merge came back "not found".
+  const mergeOnce = useSingleFlight(merge.mutate);
 
   // Confirming is irreversible, and the Enter that picked a target is the same
   // key a reflex press sends — so the confirm step lands on Cancel. `picked` is
@@ -153,7 +161,15 @@ export function MergeEntityDialog({
           incident). This dialog opens FROM a dropdown menu — exactly the case
           where the menu's own focus restore won the race and focus stayed
           OUTSIDE the modal. */}
-      <DialogContent initialFocus={filterRef}>
+      <DialogContent
+        initialFocus={filterRef}
+        finalFocus={() => {
+          const id = survivor.current;
+          if (!id) return true;
+          survivor.current = null;
+          return finalFocusOn(document.querySelector<HTMLElement>(`a[href="/career/${id}"]`));
+        }}
+      >
         <DialogHeader>
           <DialogTitle>{picked ? "Merge these two?" : "Merge into…"}</DialogTitle>
           <DialogDescription>
@@ -251,10 +267,12 @@ export function MergeEntityDialog({
                 Cancel
               </Button>
               <Button
-                className="rounded-full px-4"
+                className="rounded-full px-4 data-disabled:pointer-events-none data-disabled:opacity-50"
                 variant="destructive"
-                onClick={() => merge.mutate(picked)}
+                onClick={() => mergeOnce(picked)}
                 disabled={merge.isPending}
+                // Disables itself while merging: a native `disabled` drops focus.
+                focusableWhenDisabled
               >
                 {merge.isPending ? "Merging…" : "Merge"}
               </Button>
