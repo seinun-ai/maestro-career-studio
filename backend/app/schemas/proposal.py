@@ -13,6 +13,9 @@ class ProposalCreate(BaseModel):
     referral_id: UUID | None = None
     fit: dict[str, Any] | None = None
     plan: dict[str, Any] | None = None
+    # The web app's own queue says "you"; nothing else is accepted from a body.
+    # A connected agent is named by the X-Maestro-CS-Origin headers, which win.
+    proposed_by: Literal["you"] | None = None
 
 
 class ConsentPayload(BaseModel):
@@ -82,6 +85,8 @@ class ProposalRead(BaseModel):
     evidence_json: list[dict[str, Any]] | None = None
     intervention_json: dict[str, Any] | None = None
     reason: str | None = None
+    # "you", an MCP client's clientInfo.name, or None when unknown.
+    proposed_by: str | None = None
     expires_at: datetime | None = None
     cap_reserved_at: datetime | None = None
     created_at: datetime

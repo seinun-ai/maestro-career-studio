@@ -12,6 +12,7 @@ from typing import Any
 import httpx
 
 from app.services.autofill_profile import canonical_identity_from_profile
+from app.write_origin import encode_detail
 
 DEFAULT_BASE_URL = "http://localhost:8000"
 
@@ -29,11 +30,14 @@ def _drop_none(**kwargs: Any) -> dict[str, Any]:
 
 
 def _origin_headers(origin_detail: str | None) -> dict[str, str]:
-    """Provenance for a KB write. Every MCP write is origin 'mcp'; the detail
-    names the client so the entity timeline can say who."""
+    """Provenance for a KB write or a proposal. Every MCP write is origin 'mcp';
+    the detail names the client so the entity timeline (or the proposal's
+    proposed_by) can say who. The name is percent-encoded (encode_detail), since
+    a header value must be ASCII and a client may call itself "クロード"."""
     headers = {"X-Maestro-CS-Origin": "mcp"}
-    if origin_detail:
-        headers["X-Maestro-CS-Origin-Detail"] = origin_detail
+    detail = encode_detail(origin_detail)
+    if detail:
+        headers["X-Maestro-CS-Origin-Detail"] = detail
     return headers
 
 
@@ -998,6 +1002,7 @@ class BackendClient:
         plan: dict | None = None,
         application_id: str | None = None,
         referral_id: str | None = None,
+        origin_detail: str | None = None,
     ) -> Any:
         payload = _drop_none(
             job_id=job_id,
@@ -1006,7 +1011,11 @@ class BackendClient:
             application_id=application_id,
             referral_id=referral_id,
         )
-        return self._request("POST", "/api/proposals", json=payload)
+        # The origin headers name the filer (the proposal's proposed_by),
+        # exactly as KB writes name their author; the body never does.
+        return self._request(
+            "POST", "/api/proposals", json=payload, headers=_origin_headers(origin_detail),
+        )
 
     def list_proposals(self, status: str | None = None) -> Any:
         params = _drop_none(status=status)

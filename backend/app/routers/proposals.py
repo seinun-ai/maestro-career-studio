@@ -27,12 +27,36 @@ from app.schemas.proposal import (
 )
 from app.services import artifacts, auto_apply_settings, proposal_evidence
 from app.services import proposals as svc
+from app.write_origin import WriteOrigin, get_write_origin
 
 router = APIRouter(prefix="/api/proposals", tags=["proposals"])
 
 
 def _job_summary(job: Job) -> JobSummary:
     return JobSummary.model_validate(job)
+
+
+def _read_fields(prop: ApplicationProposal, job: Job) -> dict:
+    """Every ProposalRead field, shared by the list and the detail so a new
+    column cannot reach one read and miss the other."""
+    return {
+        "id": prop.id,
+        "job_id": prop.job_id,
+        "application_id": prop.application_id,
+        "referral_id": prop.referral_id,
+        "status": prop.status,
+        "fit_json": prop.fit_json,
+        "plan_json": prop.plan_json,
+        "evidence_json": prop.evidence_json,
+        "intervention_json": prop.intervention_json,
+        "reason": prop.reason,
+        "proposed_by": prop.proposed_by,
+        "expires_at": prop.expires_at,
+        "cap_reserved_at": prop.cap_reserved_at,
+        "created_at": prop.created_at,
+        "updated_at": prop.updated_at,
+        "job": _job_summary(job),
+    }
 
 
 def _detail(db: Session, prop: ApplicationProposal) -> ProposalDetail:
@@ -65,23 +89,7 @@ def _detail(db: Session, prop: ApplicationProposal) -> ProposalDetail:
             ]
 
     return ProposalDetail(
-        id=prop.id,
-        job_id=prop.job_id,
-        application_id=prop.application_id,
-        referral_id=prop.referral_id,
-        status=prop.status,
-        fit_json=prop.fit_json,
-        plan_json=prop.plan_json,
-        evidence_json=prop.evidence_json,
-        intervention_json=prop.intervention_json,
-        reason=prop.reason,
-        expires_at=prop.expires_at,
-        cap_reserved_at=prop.cap_reserved_at,
-        created_at=prop.created_at,
-        updated_at=prop.updated_at,
-        job=_job_summary(job),
-        application=app_summary,
-        qa_entries=qa_entries_data,
+        **_read_fields(prop, job), application=app_summary, qa_entries=qa_entries_data,
     )
 
 
@@ -90,6 +98,7 @@ def create_proposal(
     payload: ProposalCreate,
     db: Annotated[Session, Depends(get_db)],
     response: Response,
+    write_origin: Annotated[WriteOrigin, Depends(get_write_origin)],
 ):
     job = db.get(Job, payload.job_id)
     if job is None:
@@ -152,6 +161,7 @@ def create_proposal(
     if payload.application_id is not None:
         _validate_and_stamp_application(db, payload.application_id)
 
+    # The idempotent return above keeps the FIRST filer.
     prop = svc.create_proposal(
         db,
         job_id=payload.job_id,
@@ -159,6 +169,9 @@ def create_proposal(
         referral_id=payload.referral_id,
         fit=payload.fit,
         plan=payload.plan,
+        proposed_by=svc.proposal_filer(
+            write_origin.origin, write_origin.detail, payload.proposed_by
+        ),
     )
     response.status_code = 201
     return _detail(db, prop)
@@ -191,26 +204,7 @@ def list_proposals(
     stmt = stmt.order_by(ApplicationProposal.created_at.desc()).offset(offset).limit(limit)
 
     results = db.execute(stmt).all()
-    items = [
-        ProposalRead(
-            id=prop.id,
-            job_id=prop.job_id,
-            application_id=prop.application_id,
-            referral_id=prop.referral_id,
-            status=prop.status,
-            fit_json=prop.fit_json,
-            plan_json=prop.plan_json,
-            evidence_json=prop.evidence_json,
-            intervention_json=prop.intervention_json,
-            reason=prop.reason,
-            expires_at=prop.expires_at,
-            cap_reserved_at=prop.cap_reserved_at,
-            created_at=prop.created_at,
-            updated_at=prop.updated_at,
-            job=_job_summary(job),
-        )
-        for prop, job in results
-    ]
+    items = [ProposalRead(**_read_fields(prop, job)) for prop, job in results]
     return ProposalListResponse(items=items, total=total)
 
 

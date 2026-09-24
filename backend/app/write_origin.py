@@ -7,7 +7,10 @@ five schemas that callers could also spoof per-field.
 
 from __future__ import annotations
 
+import string
+import unicodedata
 from dataclasses import dataclass
+from urllib.parse import quote, unquote
 
 from fastapi import Header
 
@@ -15,6 +18,28 @@ from fastapi import Header
 # that the timeline or a future filter has no meaning for.
 ALLOWED_ORIGINS = frozenset({"mcp"})
 _DETAIL_MAX = 120
+# Printable ASCII stays as it is on the wire, so the names already stored for
+# KB writes read the same; "%" is encoded so that decoding round-trips.
+_DETAIL_SAFE = "".join(c for c in string.punctuation if c != "%") + " "
+
+
+def _clean_detail(name: str) -> str:
+    """No control characters, trimmed, at most _DETAIL_MAX characters."""
+    visible = "".join(c for c in name if unicodedata.category(c) != "Cc")
+    return visible.strip()[:_DETAIL_MAX]
+
+
+def encode_detail(name: str | None) -> str | None:
+    """A client's name as an HTTP header value. Header values must be ASCII
+    (httpx raises UnicodeEncodeError otherwise), so "Café Agent" or "クロード"
+    travels percent-encoded; get_write_origin decodes it back."""
+    cleaned = _clean_detail(name or "")
+    return quote(cleaned, safe=_DETAIL_SAFE) if cleaned else None
+
+
+def decode_detail(raw: str | None) -> str | None:
+    """The real name from an encode_detail header value, cleaned the same way."""
+    return _clean_detail(unquote(raw or "")) or None
 
 
 @dataclass(frozen=True)
@@ -43,7 +68,5 @@ def get_write_origin(
     ).strip().lower()
     if origin not in ALLOWED_ORIGINS:
         return WriteOrigin()
-    detail = (
-        x_maestro_cs_origin_detail or x_career_studio_origin_detail or ""
-    ).strip()[:_DETAIL_MAX] or None
+    detail = decode_detail(x_maestro_cs_origin_detail or x_career_studio_origin_detail)
     return WriteOrigin(origin=origin, detail=detail)

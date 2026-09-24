@@ -18,6 +18,7 @@ import pytest
 import sqlalchemy as sa
 from alembic import command
 from alembic.config import Config
+from alembic.script import ScriptDirectory
 
 from app.db import make_engine
 from app.models.ats_score import AtsScore
@@ -405,13 +406,12 @@ def test_main_imports_into_a_migrated_but_empty_target_without_replace(tmp_path)
     assert (tmp_path / tool.MARKER_NAME).exists()
 
 
-@pytest.mark.legacy_postgres
-def test_export_from_real_postgres(tmp_path):
+def _legacy_source_url() -> str:
     source = os.environ.get("LEGACY_POSTGRES_TEST_URL")
     if not source:
         # Skipping is right locally, where there is no Postgres. In CI it would
         # mean the legacy-postgres-export job quietly stopped testing anything:
-        # its one test skips, pytest exits 0, and the job stays green forever.
+        # its tests skip, pytest exits 0, and the job stays green forever.
         # So under CI a missing URL is a failure, not a skip.
         if os.environ.get("CI", "").lower() not in ("", "0", "false"):
             pytest.fail(
@@ -419,7 +419,46 @@ def test_export_from_real_postgres(tmp_path):
                 "the legacy-postgres-export job must provide it"
             )
         pytest.skip("LEGACY_POSTGRES_TEST_URL not set (CI's legacy-postgres-export job sets it)")
+    return source
+
+
+# The legacy revision that adds application_proposals.proposed_by.
+_ADDS_PROPOSED_BY = "3a17da2f7144"
+
+
+def _drop_proposed_by_if_stamped_below_it(source: str) -> None:
+    """Make the column match the stamp. A run that died between a downgrade and
+    the next upgrade (or a revision run by hand, or a mutation check) can leave
+    proposed_by on a database stamped below the revision that adds it; the next
+    upgrade would then fail on a duplicate column, run after run."""
+    scripts = ScriptDirectory.from_config(Config(str(tool.LEGACY_INI)))
+    engine = sa.create_engine(tool.normalize_postgres_url(source), future=True)
+    try:
+        with engine.begin() as conn:
+            inspector = sa.inspect(conn)
+            if not inspector.has_table("alembic_version"):
+                return
+            stamped = conn.execute(sa.text("SELECT version_num FROM alembic_version")).scalar()
+            applied = {rev.revision for rev in scripts.iterate_revisions(stamped, "base")}
+            columns = {col["name"] for col in inspector.get_columns("application_proposals")}
+            if _ADDS_PROPOSED_BY not in applied and "proposed_by" in columns:
+                conn.execute(sa.text("ALTER TABLE application_proposals DROP COLUMN proposed_by"))
+    finally:
+        engine.dispose()
+
+
+def _upgraded_legacy_source() -> str:
+    """The real Postgres URL, healed of any half-migrated state a failed run
+    left behind, at the legacy chain's head."""
+    source = _legacy_source_url()
+    _drop_proposed_by_if_stamped_below_it(source)
     tool.upgrade_legacy_source(source)
+    return source
+
+
+@pytest.mark.legacy_postgres
+def test_export_from_real_postgres(tmp_path):
+    source = _upgraded_legacy_source()
     engine = sa.create_engine(tool.normalize_postgres_url(source), future=True)
     with engine.begin() as conn:
         conn.execute(sa.text("DELETE FROM ats_scores"))
@@ -462,3 +501,51 @@ def test_export_from_real_postgres(tmp_path):
 
     assert all(entry["ok"] for entry in report.values()), report
     assert report["jobs"]["rows"] == 1 and report["ats_scores"]["rows"] == 1
+
+
+PROMOTED = "Promoted from the tracker by the user"
+
+
+def _insert_pre_column_proposals(source: str) -> dict[str, str | None]:
+    """A job and two proposals written before `proposed_by` existed: the web
+    app's own promotion (fixed plan summary) and an agent's."""
+    engine = sa.create_engine(tool.normalize_postgres_url(source), future=True)
+    job_id, promoted, hunted = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    insert = sa.text(
+        "INSERT INTO application_proposals (id, job_id, plan_json) "
+        "VALUES (:id, :job_id, CAST(:plan AS jsonb))"
+    )
+    with engine.begin() as conn:
+        conn.execute(sa.text("DELETE FROM jobs"))
+        conn.execute(
+            sa.text("INSERT INTO jobs (id, raw_text, raw_text_hash) VALUES (:id, 'JD', 'h1')"),
+            {"id": job_id},
+        )
+        conn.execute(insert, {"id": promoted, "job_id": job_id, "plan": json.dumps({"summary": PROMOTED})})
+        conn.execute(insert, {"id": hunted, "job_id": job_id, "plan": json.dumps({"summary": "fit"})})
+    engine.dispose()
+    return {promoted.hex: "you", hunted.hex: None}
+
+
+@pytest.mark.legacy_postgres
+def test_the_legacy_chain_backfills_proposed_by_and_the_import_copies_it(tmp_path):
+    source = _upgraded_legacy_source()
+    cfg = Config(str(tool.LEGACY_INI))
+    cfg.set_main_option("sqlalchemy.url", tool.normalize_postgres_url(source).replace("%", "%%"))
+    command.downgrade(cfg, "85a1bb628e28")
+    expected = _insert_pre_column_proposals(source)
+    tool.upgrade_legacy_source(source)
+    dst = f"sqlite:///{tmp_path / 'dst.sqlite3'}"
+    _fresh_schema(dst)
+
+    report = tool.copy_database(source, dst, log=lambda *_: None)
+
+    assert report["application_proposals"]["ok"], report
+    engine = make_engine(dst)
+    try:
+        with engine.connect() as conn:
+            select = sa.text("SELECT id, proposed_by FROM application_proposals")
+            rows = dict(conn.execute(select).tuples().all())
+    finally:
+        engine.dispose()
+    assert rows == expected

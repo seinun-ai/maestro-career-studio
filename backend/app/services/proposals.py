@@ -3,6 +3,7 @@ or adversarial MCP caller cannot record a submission without consent: entering
 approved/rejected writes a ConsentEvent in the same transaction, and submitted
 additionally requires evidence. Expiry is lazy (expire_stale on reads) — this
 system deliberately has no scheduler."""
+import unicodedata
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
@@ -54,13 +55,37 @@ OPEN_STATUSES = frozenset({
 })
 
 
+# What the web app's own queue records as the filer (ProposalCreate.proposed_by).
+FILED_BY_YOU = "you"
+
+
+def _visible_letters(name: str) -> str:
+    """The name as a reader sees it: NFKC (fullwidth "ｙｏｕ" is "you"), without
+    whitespace or invisible format characters (BOM, zero-width), casefolded."""
+    return "".join(
+        c for c in unicodedata.normalize("NFKC", name)
+        if not c.isspace() and unicodedata.category(c) != "Cf"
+    ).casefold()
+
+
+def proposal_filer(origin: str | None, detail: str | None, claimed: str | None) -> str | None:
+    """Who is filing a new proposal. A connected agent (origin "mcp") is named
+    by its client's self-declared name and never by the body, so it cannot file
+    as "you": a client that DECLARES itself "you", however disguised, or whose
+    name shows nothing at all, reads as unknown instead."""
+    if origin == "mcp":
+        seen = _visible_letters(detail or "")
+        return None if seen in ("", FILED_BY_YOU) else detail
+    return claimed
+
+
 def create_proposal(session, *, job_id: UUID, application_id: UUID | None = None,
                     referral_id: UUID | None = None,
-                    fit=None, plan=None) -> ApplicationProposal:
+                    fit=None, plan=None, proposed_by: str | None = None) -> ApplicationProposal:
     cfg = auto_apply_settings.get_settings(session)
     prop = ApplicationProposal(
         job_id=job_id, application_id=application_id, referral_id=referral_id,
-        status="pending_review", fit_json=fit, plan_json=plan,
+        status="pending_review", fit_json=fit, plan_json=plan, proposed_by=proposed_by,
         expires_at=datetime.now(UTC) + timedelta(days=cfg.proposal_expiry_days),
     )
     session.add(prop)

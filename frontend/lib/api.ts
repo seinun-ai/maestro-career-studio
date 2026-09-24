@@ -204,6 +204,7 @@ export async function promoteJobToAgentQueue(jobId: UUID) {
           }
         : null,
       plan: { summary: "Promoted from the tracker by the user" },
+      proposed_by: "you",
     }),
   });
   await apiFetch(`/api/proposals/${prop.id}`, {
