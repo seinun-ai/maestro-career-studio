@@ -12,10 +12,13 @@ export type SourceFilter = (typeof SOURCES)[number];
 export function SourceToggle({
   value,
   onChange,
+  onPreview,
   className,
 }: {
   value: SourceFilter;
   onChange: (next: SourceFilter) => void;
+  /** A segment is hovered or focused: its list may be about to show. */
+  onPreview?: (next: SourceFilter) => void;
   className?: string;
 }) {
   return (
@@ -33,6 +36,8 @@ export function SourceToggle({
           type="button"
           aria-pressed={value === s}
           onClick={() => onChange(s)}
+          onPointerEnter={() => onPreview?.(s)}
+          onFocus={() => onPreview?.(s)}
           className={cn(
             "inline-flex h-7 cursor-pointer items-center gap-1 rounded-full px-3 text-xs font-medium transition-colors duration-150",
             value === s

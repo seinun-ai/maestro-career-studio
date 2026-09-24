@@ -206,11 +206,12 @@
      list chrome, not under it. --list-sticky-top is ListToolbar's height,
      written by it while mounted; --list-head-h is a sticky table header's
      h-10 plus 0.5rem for the focus ring. Both unset: 0, the default.
-     Only while focus is IN the list (after a ListToolbar, or in a sticky
-     table's body): a control in the stuck toolbar, a portalled popup or a
+     Only while focus is IN the list (on or in anything after a
+     ListToolbar, such as a lane root that takes focus itself, or in a
+     sticky table's body): a control in the stuck toolbar, a portalled popup or a
      dialog is never under the chrome, and padding for them scrolled the
      page to "clear" them, so the list jumped. */
-  html:has([data-slot="list-toolbar"] ~ * :focus,
+  html:has([data-slot="list-toolbar"] ~ :is(:focus, * :focus),
     [data-slot="table-header"][data-sticky] ~ [data-slot="table-body"] :focus) {
     scroll-padding-top: calc(var(--list-sticky-top, 0px) + var(--list-head-h, 0px));
   }

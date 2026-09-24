@@ -119,6 +119,18 @@ const SEQUENCE_STORE_KEY = "cs-tracker-seq";
 // Older rows are not loaded; the list says so at its end (ListCapNotice).
 const LIST_LIMIT = 500;
 
+// Saved jobs without an application, from one source. One definition for the
+// list's query and the Agents segment's prefetch, so the two share a cache entry.
+function savedJobsQuery(savedSource: "user" | "agent") {
+  return {
+    queryKey: ["jobs", "without-application", savedSource],
+    queryFn: () =>
+      apiFetch<Job[]>(
+        `/api/jobs?without_application=true&source=${savedSource}&limit=${LIST_LIMIT}`,
+      ),
+  };
+}
+
 function storedValue(key: string): string | null {
   if (typeof window === "undefined") return null;
   try {
@@ -201,13 +213,7 @@ function ApplicationsContent() {
   // user's own, so a busy hunt cannot push the user's saved jobs out of the
   // 500 (one mixed page did).
   const savedSource = source === "agent" ? "agent" : "user";
-  const savedJobs = useQuery({
-    queryKey: ["jobs", "without-application", savedSource],
-    queryFn: () =>
-      apiFetch<Job[]>(
-        `/api/jobs?without_application=true&source=${savedSource}&limit=${LIST_LIMIT}`,
-      ),
-  });
+  const savedJobs = useQuery(savedJobsQuery(savedSource));
 
   const patchStatus = useMutation({
     mutationFn: ({ id, status }: { id: string; status: ApplicationStatus }) =>
@@ -481,6 +487,11 @@ function ApplicationsContent() {
             className="ml-auto"
             value={source}
             onChange={setSourceAndUrl}
+            // Hover or focus on Agents starts its fetch, so the first switch
+            // shows rows instead of a skeleton. A fresh cache entry is kept.
+            onPreview={(next) => {
+              if (next === "agent") void qc.prefetchQuery(savedJobsQuery("agent"));
+            }}
           />
         </div>
       </ListToolbar>

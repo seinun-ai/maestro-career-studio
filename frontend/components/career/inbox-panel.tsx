@@ -27,7 +27,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { useDiscardableEditor } from "@/hooks/use-confirm-discard";
-import { deleteKbPoint, patchKbPoint, bulkKbPointState } from "@/lib/api";
+import { deleteKbPoint, patchKbPoint, bulkKbPointState, KB_DRAFTS_LIMIT } from "@/lib/api";
 import type { KBEntitySummary, KBInboxPoint, KBPointPatch, UUID } from "@/lib/types";
 
 type DraftGroup = {
@@ -43,10 +43,6 @@ type DraftGroup = {
 // deleted a point the bulk request had just approved, or reported a spurious
 // "not found" for a row the server had already moved.
 const KB_POINT_MUTATION_KEY = ["kb", "point-write"] as const;
-
-// listKbDrafts sends no limit, so the API's default page is the cap
-// (routers/career_kb.py list_points: limit=500), oldest first.
-const KB_DRAFTS_LIMIT = 500;
 
 // Approving, editing, reassigning and discarding a draft all move the same
 // three lists. This was copy-pasted at three call sites; kept in one place so

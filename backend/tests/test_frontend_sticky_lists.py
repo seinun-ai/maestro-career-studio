@@ -81,6 +81,29 @@ def test_the_container_scrolls_sideways_until_the_table_fits():
     assert "StickyHeadContext.Provider value={sticky.head}" in table
 
 
+def test_every_table_with_a_min_width_gets_it():
+    """Sticky or not: the width keeps the columns from crushing at narrow
+    widths, and it is what a sticky table measures its fit against."""
+    table = _body(_TABLE, "function Table(")
+    assert "const width = minWidth ? MIN_WIDTH[minWidth] : undefined" in table
+    assert 'className={cn("w-full caption-bottom text-sm", width?.table, className)}' in table
+
+
+def test_only_a_table_that_asks_for_it_sticks():
+    """A min width alone is not a sticky header: the Referrals-style opt-in
+    (`stickyHeader`) is what turns the scope, the clip and the class on."""
+    table = _body(_TABLE, "function Table(")
+    assert "const sticky = stickyHeader && width ? width : undefined" in table
+    assert "if (!sticky) return table" in table
+
+
+def test_a_sticky_header_carries_the_sticky_class_itself():
+    """The context's class (`@min-[..]/table:tall:sticky`) is what makes the
+    header stick; everything else in the array only dresses it."""
+    head = _body(_TABLE, "function TableHeader(")
+    assert re.search(r"sticky\s*\?\s*\[\s*sticky,\n", head)
+
+
 def test_a_sticky_header_is_opaque_ruled_stacked_and_placed_under_the_toolbar():
     head = _body(_TABLE, "function TableHeader(")
     for part in (
@@ -147,6 +170,41 @@ def test_the_toolbar_publishes_its_height():
     assert "--list-sticky-top" in _body(_TABLE, "function TableHeader(")
 
 
+def _toolbar_body() -> str:
+    return _body(_TOOLBAR, "export function ListToolbar(")
+
+
+def test_the_toolbar_measures_the_element_it_renders():
+    body = _toolbar_body()
+    assert "const el = ref.current;" in body
+    assert re.search(r"<search\n\s*ref=\{ref\}\n", body)
+
+
+def test_the_toolbar_measures_now_and_on_every_resize():
+    """Once on mount, so the header's first paint already sits under the
+    toolbar, then on every change of the toolbar's own size (it wraps, and a
+    filter label carries a count)."""
+    body = _toolbar_body()
+    assert "    write();\n    const observer = new ResizeObserver(write);\n" in body
+    assert "observer.observe(el);" in body
+
+
+def test_below_the_tall_query_the_toolbar_publishes_zero():
+    """Nothing sticks below TALL_QUERY, so the header sits at the top and the
+    focus clearance is the header alone."""
+    assert re.search(
+        r"written = tall\.matches\s*\?\s*`\$\{Math\.floor\(el\.getBoundingClientRect\(\)\.height\)\}px`"
+        r'\s*:\s*"0px";',
+        _toolbar_body(),
+    )
+
+
+def test_the_toolbar_stops_listening_when_it_unmounts():
+    body = _toolbar_body()
+    cleanup = body[body.index("return () => {") :]
+    assert 'tall.removeEventListener("change", write);' in cleanup
+
+
 def test_the_toolbar_takes_back_only_its_own_height():
     body = _body(_TOOLBAR, "export function ListToolbar(")
     cleanup = body[body.index("return () => {") :]
@@ -156,7 +214,7 @@ def test_the_toolbar_takes_back_only_its_own_height():
 
 _PAD = "scroll-padding-top: calc(var(--list-sticky-top, 0px) + var(--list-head-h, 0px));"
 _IN_LIST = (
-    'html:has([data-slot="list-toolbar"] ~ * :focus,\n'
+    'html:has([data-slot="list-toolbar"] ~ :is(:focus, * :focus),\n'
     '    [data-slot="table-header"][data-sticky] ~ [data-slot="table-body"] :focus) {'
 )
 
@@ -182,6 +240,29 @@ def test_only_focus_in_the_list_is_cleared():
     html = _CSS[_CSS.index("  html {") :]
     assert "scroll-padding" not in html[: html.index("}")]
     assert _CSS.count("scroll-padding-top") == 1
+
+
+def test_a_focused_lane_after_the_toolbar_is_cleared_too():
+    """A later sibling of the toolbar that takes focus ITSELF (a lane root
+    with tabIndex=-1, as the Agent inbox hands focus to) is in the list too.
+    `~ * :focus` matched only its descendants."""
+    assert '[data-slot="list-toolbar"] ~ :is(:focus, * :focus)' in _CSS
+
+
+_SLOT_OWNERS = {
+    "list-toolbar": ("components/list-toolbar.tsx", "export function ListToolbar("),
+    "table-header": ("components/ui/table.tsx", "function TableHeader("),
+    "table-body": ("components/ui/table.tsx", "function TableBody("),
+}
+
+
+def test_every_slot_the_css_names_is_rendered_by_its_owner():
+    """globals.css keys the head height and the focus clearance on data-slot
+    values. Renamed on one side only, the rule silently matches nothing."""
+    named = set(re.findall(r'\[data-slot="([\w-]+)"\]', _CSS))
+    assert named == set(_SLOT_OWNERS)
+    for slot, (rel, start) in _SLOT_OWNERS.items():
+        assert f'data-slot="{slot}"' in _body(_read(rel), start), slot
 
 
 # ── Applications and Referrals adopt them ────────────────────────────────────
@@ -251,6 +332,11 @@ def test_the_cap_rule_is_pure_and_exact_when_the_server_counts():
     assert (_FRONTEND / "lib/list-cap.test.ts").is_file()
 
 
+def test_a_whole_list_shows_no_notice():
+    body = _body(_read("components/list-cap-notice.tsx"), "export function ListCapNotice(")
+    assert "const sentence = listCapSentence(cap);\n  if (!sentence) return null;\n  return (" in body
+
+
 def test_the_notice_is_plain_text_not_a_live_region():
     src = _read("components/list-cap-notice.tsx")
     assert "listCapSentence(cap)" in src and "<p" in src
@@ -282,30 +368,79 @@ def test_a_busy_hunt_cannot_push_the_users_saved_jobs_out():
     assert 'source: Literal["user", "agent"] | None' in _backend_fn("app/routers/jobs.py", "list_jobs")
 
 
+def test_the_agents_list_is_fetched_before_the_first_switch():
+    """Hover or focus on the Agents segment prefetches its saved jobs through
+    the same query definition the list uses, so switching shows rows, not a
+    skeleton."""
+    toggle = _read("components/source-toggle.tsx")
+    assert "onPointerEnter={() => onPreview?.(s)}" in toggle
+    assert "onFocus={() => onPreview?.(s)}" in toggle
+    assert "const savedJobs = useQuery(savedJobsQuery(savedSource));" in _TRACKER
+    assert 'if (next === "agent") void qc.prefetchQuery(savedJobsQuery("agent"));' in _TRACKER
+
+
+def _caps() -> str:
+    caps = _TRACKER[_TRACKER.index("const caps = [") :]
+    return caps[: caps.index("].filter(isListCapped);")]
+
+
 def test_a_capped_tracker_says_so_at_the_end_of_the_list():
     assert "<ListCapNotice" in _TRACKER[_TRACKER.index("</TableFrame>") :]
     gate = _TRACKER[_TRACKER.index("{!loading && !loadFailed && caps.length > 0 ? (") :]
     assert gate.index("<ListCapNotice") < gate.index("</PageShell>")
-    caps = _TRACKER[_TRACKER.index("const caps = [") :]
-    caps = caps[: caps.index("].filter(isListCapped);")]
+    caps = _caps()
     # What is LOADED, before any filter: never `filtered` or `sourceScopedRows`.
     assert "apps.data?.length ?? 0" in caps and "savedJobs.data?.length ?? 0" in caps
     assert "filtered" not in caps and "sourceScoped" not in caps
 
 
-def test_the_draft_inbox_says_when_it_is_cut_off():
-    """Planner decision 17 (O8). listKbDrafts sends no limit, so the server's
-    DEFAULT is the cap, and it returns the OLDEST drafts first: the rows left
-    out are the newer ones, and the notice says so."""
-    src = _read("components/career/inbox-panel.tsx")
-    m = re.search(r"^const KB_DRAFTS_LIMIT = (\d+);", src, re.M)
+def test_each_cap_is_measured_against_the_limit_it_asked_for():
+    """The rule is `loaded >= limit`: a limit other than the one sent would
+    say rows are missing when none are, or miss a full page."""
+    caps = _caps()
+    assert caps.count("limit: LIST_LIMIT") == 2
+    assert caps.count("limit:") == 2
+
+
+def test_each_cap_names_the_rows_it_counts():
+    caps = _caps()
+    assert 'noun: "applications" }' in caps
+    assert 'noun: savedSource === "agent" ? "jobs from connected agents" : "saved jobs",' in caps
+
+
+def test_the_tracker_renders_each_cap_once_as_computed():
+    """One notice, at the end, with the cap unchanged: a `loaded` override
+    (say, the filtered count) would make it lie under a filter."""
+    assert _TRACKER.count("<ListCapNotice") == 1
+    assert re.search(
+        r"\{caps\.map\(\(cap\) => \(\s*<ListCapNotice key=\{cap\.noun\} \{\.\.\.cap\} />\s*\)\)\}",
+        _TRACKER,
+    )
+
+
+def test_the_draft_inbox_asks_for_its_limit_explicitly():
+    """listKbDrafts sends KB_DRAFTS_LIMIT, one the API accepts, instead of
+    relying on the server's default page, and the inbox reads the same
+    constant. The API returns the OLDEST drafts first."""
+    api = _read("lib/api.ts")
+    m = re.search(r"^export const KB_DRAFTS_LIMIT = (\d+);", api, re.M)
     assert m, "KB_DRAFTS_LIMIT"
-    assert int(m.group(1)) == _backend_limit("app/routers/career_kb.py", "list_points")[1]
-    assert 'apiFetch<KBInboxPoint[]>("/api/kb/points?state=draft")' in _read("lib/api.ts")
+    assert int(m.group(1)) <= _backend_limit("app/routers/career_kb.py", "list_points")[0]
+    assert "apiFetch<KBInboxPoint[]>(`/api/kb/points?state=draft&limit=${KB_DRAFTS_LIMIT}`)" in api
     assert ".order_by(KBPoint.created_at, KBPoint.id)" in _backend_fn(
         "app/routers/career_kb.py", "list_points"
     )
-    assert (
-        '<ListCapNotice loaded={drafts.length} limit={KB_DRAFTS_LIMIT} noun="draft bullets" order="oldest" />'
-        in src
+
+
+def test_the_draft_inbox_says_when_it_is_cut_off():
+    """Planner decision 17 (O8). Oldest first, so the rows left out are the
+    newer ones, and the notice says so. Not after a failed load: no rows
+    loaded is not a cut-off list."""
+    src = _read("components/career/inbox-panel.tsx")
+    assert re.search(r'import \{[^}]*\bKB_DRAFTS_LIMIT\b[^}]*\} from "@/lib/api";', src)
+    assert "const KB_DRAFTS_LIMIT" not in src
+    assert re.search(
+        r"\{!isLoading && !error \? \(\s*"
+        r'<ListCapNotice loaded=\{drafts\.length\} limit=\{KB_DRAFTS_LIMIT\} noun="draft bullets" order="oldest" />',
+        src,
     )
