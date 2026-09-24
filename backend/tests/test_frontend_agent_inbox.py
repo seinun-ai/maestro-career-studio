@@ -420,11 +420,15 @@ def test_queue_and_accept_say_queued():
         assert old not in _TRACKER, old
 
 
-def test_a_bulk_queue_that_partly_fails_says_queued():
+def test_a_bulk_queue_that_partly_fails_says_queue():
+    """The toast names the verb the inbox uses (Queue), and a server reason
+    only when it is a sentence for the user (D §2.7)."""
     bulk = _TRIAGE[_TRIAGE.index("onSuccess: (data, vars) => {") :]
     bulk = bulk[: bulk.index("onError")]
-    assert '"queued" : "skipped"' in bulk
-    assert "could not be ${verb}: ${sample}" in bulk
+    assert '"queue" : "skip"' in bulk
+    assert "`Couldn't ${verb} ${failed.length} of ${vars.ids.length}. ${why}`" in bulk
+    assert 'const why = isPlainSentence(sample) ? sample : "Try again.";' in bulk
+    assert "could not be" not in bulk
     assert " — " not in bulk
 
 

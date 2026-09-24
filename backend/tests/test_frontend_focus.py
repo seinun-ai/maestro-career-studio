@@ -355,7 +355,7 @@ def test_referral_rows_move_focus_into_the_edit_row_and_back():
     assert "useEditToggle<HTMLTableRowElement>();" in row
     assert "rowRef={editRef}" in row and "onDone={close}" in row
     assert "editButtonRef={openerRef}" in _squash(row) and "onEdit={open}" in row
-    assert "ref={editButtonRef}" in _icon_button(_REFERRALS, "Edit")
+    assert "ref={editButtonRef}" in _icon_button(_REFERRALS, "Edit referral")
     edit_row = _function(_REFERRALS, "function ReferralEditRow(")
     assert "<TableRow ref={rowRef}>" in edit_row
     # Save disables itself while it runs; a disabled <button> drops focus.
@@ -406,7 +406,7 @@ _NEW_JOB = _read("app/new/page.tsx")
         (_SEND, "onClick={() => applyOnce()}"),  # Apply N to resume
         (_CAPTURE, '"From document"'),  # Read document
         (_NEW_ENTITY, 'form="new-career-entity"'),  # Add career item
-        (_NEW_JOB, "onClick={() => extract(undefined)}"),  # Extract job on /new
+        (_NEW_JOB, "onClick={() => extract(undefined)}"),  # Save job on /new
         (_read("components/settings/persona-section.tsx"), "onClick={() => draftOnce(editRevision.current)}"),  # Draft from my career
         (_read("components/settings/model-catalog-panel.tsx"), "sync.mutate(provider)"),  # Find models
         (_read("components/settings/models-section.tsx"), "aria-label={`Test ${name}`}"),  # Test a model
@@ -626,7 +626,7 @@ def test_a_status_change_that_filters_out_its_row_hands_focus_to_the_next_chip()
     page = _squash(_TRACKER)
     assert "const leaving = useRef<{ key: string; next: () => HTMLElement | null } | null>(null);" in page
     patch = page[page.index("const patchStatus = useMutation(") : page.index("const deleteApp = useMutation(")]
-    assert "onError: (err: Error) => { leaving.current = null; toast.error(err.message); }," in patch
+    assert 'onError: (err: Error) => { leaving.current = null; toast.error(couldnt("change the status", err)); },' in patch
     assert (
         "useLayoutEffect(() => { const l = leaving.current; if (!l || filtered.some((r) => rowKey(r) === l.key)) return; "
         "leaving.current = null; focusIfDropped(l.next()); }, [filtered]);"

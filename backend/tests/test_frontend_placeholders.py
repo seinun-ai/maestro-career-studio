@@ -63,16 +63,6 @@ _PROMPTS = frozenset(
 # lines; a task lowers its counts as it goes and deletes its block when it
 # lands. The wave-2 lanes already removed the Agent inbox's score example and
 # the examples in the Settings cards they rewrote.
-_PENDING_EXAMPLES_T17: dict[tuple[str, str], int] = {  # D §2 jobs and tracking
-    ("app/new/page.tsx", "e.g. https://boards.example.com/job/123"): 1,
-    ("app/referrals/page.tsx", "e.g. Acme Corp"): 1,
-    ("app/referrals/page.tsx", "e.g. https://example.com/careers"): 1,
-    ("app/referrals/page.tsx", "e.g. Jane Doe"): 2,
-    ("app/referrals/page.tsx", "e.g. Met at the AWS meetup"): 2,
-    ("components/job-tracking-url-field.tsx", "https://" + _ELLIPSIS): 1,
-    ("components/proposals/triage-actions.tsx", "e.g. hiring freeze announced"): 1,
-    ("components/qa-tab.tsx", "e.g. Why this team?"): 1,
-}
 _PENDING_EXAMPLES_T18: dict[tuple[str, str], int] = {  # D §3 the gap page
     (
         "app/jobs/[id]/tailor/[sessionId]/page.tsx",
@@ -143,7 +133,6 @@ _PENDING_EXAMPLES_T21: dict[tuple[str, str], int] = {  # D §6 Settings and Prof
     ): 1,
 }
 _EXAMPLE_BLOCKS = (
-    _PENDING_EXAMPLES_T17,
     _PENDING_EXAMPLES_T18,
     _PENDING_EXAMPLES_T19,
     _PENDING_EXAMPLES_T20,
@@ -613,13 +602,9 @@ def test_question_constraint_is_a_hint():
     src = _src("components/qa-tab.tsx")
     assert "One question per line" + _ELLIPSIS not in src
     # The hint already says one per line; the name need not say it again.
-    assert 'aria-label="Questions to ask"' in src
-    _order(
-        src,
-        "One question per line.",
-        "aria-describedby={questionsHintId}",
-        'placeholder="e.g. Why this team?"',
-    )
+    assert 'aria-label="Application questions"' in src
+    _order(src, "One question per line.", "aria-describedby={questionsHintId}")
+    assert "placeholder=" not in src
 
 
 def test_saved_key_is_a_hint_not_a_placeholder():

@@ -77,12 +77,12 @@ _WORDS = [
      "matching the Companion&apos;s repeated form blocks."),
     # The Companion has no ⋯ menu and no switch for capture (extension/README.md, "Turn it off").
     ("components/analytics/autofill-coverage-card.tsx", "extension card's",
-     "Clearing removes what's recorded so far. Capture continues while the Companion runs."),
-    ("components/analytics/autofill-coverage-card.tsx", "⋯ menu", "It cannot be undone."),
+     "Recording continues while the Companion runs."),
+    ("components/analytics/autofill-coverage-card.tsx", "⋯ menu", "You can't undo this."),
     ("components/analytics/autofill-coverage-card.tsx", "where the extension's fill pipeline",
-     "where the Companion's fill pipeline fails."),
+     "where the Companion's autofill misses."),
     ("components/analytics/autofill-coverage-card.tsx", "with the extension to start capturing",
-     "with the Companion to start capturing"),
+     "Use the Companion on an application form to start."),
 ]
 
 

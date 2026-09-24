@@ -20,7 +20,24 @@ import {
 import { useConfirm } from "@/components/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { apiFetch } from "@/lib/api";
+import { couldnt } from "@/lib/error-text";
 import type { AutofillTelemetrySummary } from "@/lib/types";
+
+/** A form control's kind in words (the stored kinds are
+ * `schemas/autofill_telemetry.ObservationKind`). One word per kind: the chart
+ * draws a bar per kind, so two kinds under one word would read as a repeat. */
+const KIND_LABEL: Record<string, string> = {
+  text: "Text",
+  textarea: "Long text",
+  select: "Dropdown",
+  radio: "Multiple choice",
+  checkbox: "Checkbox",
+  combobox: "Searchable list",
+};
+
+function kindLabel(kind: string): string {
+  return KIND_LABEL[kind] ?? "Other";
+}
 
 function Tile({
   label,
@@ -55,7 +72,7 @@ function RateTooltip({
     <div className="bg-background rounded-md border p-2 text-xs shadow-sm">
       <p className="font-medium">{row.kind}</p>
       <p className="text-muted-foreground">
-        {row.rate.toFixed(0)}% · {row.success} filled or corrected vs {row.failure} failed
+        {row.rate.toFixed(0)}% · {row.success} filled, {row.failure} missed
       </p>
     </div>
   );
@@ -81,7 +98,7 @@ export function AutofillCoverageCard() {
         deleted === 1 ? "Cleared 1 captured field" : `Cleared ${deleted} captured fields`
       );
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(couldnt("clear the data", err)),
   });
 
   const hosts = data?.totals.hosts ?? 0;
@@ -95,12 +112,12 @@ export function AutofillCoverageCard() {
     const ok = await confirm({
       title: "Clear captured autofill data?",
       description:
-        `This deletes ${signatures} recorded field ${signatures === 1 ? "shape" : "shapes"}` +
-        ` across ${hosts} ${hosts === 1 ? "site" : "sites"}, including which sites they were` +
-        " seen on and when. It cannot be undone." +
+        `This deletes what was recorded about ${signatures} form ${signatures === 1 ? "field" : "fields"}` +
+        ` on ${hosts} ${hosts === 1 ? "site" : "sites"}, including which sites they were on and when.` +
+        " You can't undo this." +
         // The Companion has no switch for capture (extension/README.md), so
         // the confirm names none.
-        " Clearing removes what's recorded so far. Capture continues while the Companion runs.",
+        " Recording continues while the Companion runs.",
       confirmLabel: "Clear data",
       destructive: true,
     });
@@ -110,7 +127,7 @@ export function AutofillCoverageCard() {
   const rates = (data?.by_kind ?? [])
     .filter((kind) => kind.success_rate !== null)
     .map((kind) => ({
-      kind: kind.kind,
+      kind: kindLabel(kind.kind),
       rate: (kind.success_rate as number) * 100,
       success: kind.success,
       failure: kind.failure,
@@ -119,11 +136,11 @@ export function AutofillCoverageCard() {
   return (
     <ChartCard
       title="Autofill coverage"
-      description="What real application forms ask, and where the Companion's fill pipeline fails."
+      description="What application forms ask, and where the Companion's autofill misses."
       isLoading={isLoading}
       error={error as Error | null}
       empty={signatures === 0}
-      emptyText="No telemetry yet. Fill an application with the Companion to start capturing."
+      emptyText="No data yet. Use the Companion on an application form to start."
       action={
         signatures > 0 ? (
           <Button
@@ -141,7 +158,7 @@ export function AutofillCoverageCard() {
         <div className="grid gap-4">
           <div className="grid grid-cols-3 gap-3">
             <Tile label="Unique fields" value={String(data.totals.signatures)} />
-            <Tile label="Observations" value={String(data.totals.observations)} />
+            <Tile label="Times seen" value={String(data.totals.observations)} />
             <Tile label="Sites" value={String(data.totals.hosts)} />
           </div>
 
@@ -183,12 +200,10 @@ export function AutofillCoverageCard() {
                 <thead>
                   <tr className="text-muted-foreground text-left text-xs">
                     <th className="py-1.5 pr-3 font-normal">Field</th>
-                    <th className="py-1.5 pr-3 font-normal">Kind</th>
+                    <th className="py-1.5 pr-3 font-normal">Type</th>
                     <th className="py-1.5 pr-3 font-normal">Site</th>
                     <th className="py-1.5 pr-3 text-right font-normal">Seen</th>
-                    <th className="py-1.5 text-right font-normal">
-                      Failure share
-                    </th>
+                    <th className="py-1.5 text-right font-normal">Missed</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -198,7 +213,7 @@ export function AutofillCoverageCard() {
                         {row.label}
                       </td>
                       <td className="text-muted-foreground py-1.5 pr-3">
-                        {row.kind}
+                        {kindLabel(row.kind)}
                       </td>
                       <td className="text-muted-foreground max-w-40 truncate py-1.5 pr-3">
                         {row.host}
@@ -230,7 +245,7 @@ export function AutofillCoverageCard() {
                 </ResponsiveContainer>
               </div>
               <p className="text-muted-foreground text-xs">
-                New-field share, last {data.novelty.length} capture sessions.{" "}
+                New questions, last {data.novelty.length} forms.{" "}
                 {data.recommendation}
               </p>
             </div>

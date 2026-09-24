@@ -3,9 +3,14 @@
 import { useQuery } from "@tanstack/react-query";
 import { StatTile } from "@/components/analytics/stat-tile";
 
+import { humanizeEnum } from "@/components/job-extracted-fields";
+import { LoadErrorState } from "@/components/load-error-state";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch } from "@/lib/api";
+import { errorDetail } from "@/lib/error-text";
+import { formatShortDate } from "@/lib/format-date";
+import { isLoadFailure } from "@/lib/query-state";
 import type { ExploreCountRow, ExploreOverview } from "@/lib/types";
 import { LowSampleCaption } from "@/components/explore/low-sample-hint";
 import { useRoleLabel } from "@/components/role-category-picker";
@@ -53,8 +58,9 @@ function BarList({
   const max = Math.max(...rows.map((r) => r.count), 1);
   return (
     <div className="flex flex-col gap-1.5">
-      {rows.map((r) => (
-        <div key={r.label} className="flex items-center gap-2.5">
+      {rows.map((r, i) => (
+        // Two stored keys can share a word ("unstated", "unknown": Not stated).
+        <div key={`${i}:${r.label}`} className="flex items-center gap-2.5">
           <span
             className="text-foreground min-w-0 flex-shrink-0 basis-40 truncate text-sm"
             title={r.label}
@@ -78,6 +84,9 @@ function BarList({
 
 const toBars = (rows: ExploreCountRow[]) =>
   rows.map((r) => ({ label: r.key, count: r.count }));
+/** Bars whose keys are stored enums (`onsite`, `stem_opt_ok`): words, never the key. */
+const toEnumBars = (rows: ExploreCountRow[]) =>
+  rows.map((r) => ({ label: humanizeEnum(r.key) ?? r.key, count: r.count }));
 
 export function ExploreOverview({ filters }: { filters: Filters }) {
   const q = useQuery({
@@ -86,22 +95,32 @@ export function ExploreOverview({ filters }: { filters: Filters }) {
   });
   const label = useRoleLabel();
 
-  if (q.isLoading)
+  // Before the loading gate: a retry with no data is "pending" again, and the
+  // skeleton would unmount the focused Try again.
+  if (isLoadFailure(q))
+    return (
+      <LoadErrorState
+        className="py-8"
+        title="Couldn't load job market data."
+        detail={errorDetail(q.error)}
+        retrying={q.isFetching}
+        onRetry={() => void q.refetch()}
+      />
+    );
+  if (q.isLoading || !q.data)
     return (
       <div className="flex flex-col gap-4">
         <Skeleton className="h-20 w-full" />
         <Skeleton className="h-64 w-full" />
       </div>
     );
-  if (q.isError || !q.data)
-    return <p className="text-destructive text-sm">Failed to load overview.</p>;
 
   const o = q.data;
   const total = o.meta.total_jobs;
   if (total === 0)
     return (
       <p className="text-muted-foreground text-sm">
-        No job descriptions yet. Capture a few to see the dashboard.
+        Add a few jobs to see this.
       </p>
     );
 
@@ -115,7 +134,7 @@ export function ExploreOverview({ filters }: { filters: Filters }) {
     o.meta.salary_year_avg_max != null
       ? `${fmtK(o.meta.salary_year_avg_min, o.meta.salary_year_currency)}–${fmtK(o.meta.salary_year_avg_max, o.meta.salary_year_currency)}`
       : o.meta.salary_mixed_currencies
-        ? "mixed"
+        ? "Mixed currencies"
         : "—";
   const salarySub = o.meta.salary_mixed_currencies
     ? "Filter by currency"
@@ -128,21 +147,21 @@ export function ExploreOverview({ filters }: { filters: Filters }) {
       <LowSampleCaption n={total} lowSample={total < 5} unit="jobs" />
       <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-5">
         <StatTile
-          label="Job descriptions"
+          label="Jobs"
           value={String(total)}
-          sub={o.meta.since ? `Since ${o.meta.since.slice(0, 10)}` : undefined}
+          sub={o.meta.since ? `Since ${formatShortDate(o.meta.since)}` : undefined}
         />
         <StatTile
-          label="Role categories"
+          label="Roles"
           value={String(o.meta.role_category_count)}
         />
         <StatTile
-          label="Onsite"
+          label="On-site"
           value={`${pct(onsite, total)}%`}
           sub={`${onsite} of ${total}`}
         />
         <StatTile
-          label="Avg yearly salary"
+          label="Average yearly pay"
           value={salaryAvg}
           sub={salarySub}
         />
@@ -167,7 +186,7 @@ export function ExploreOverview({ filters }: { filters: Filters }) {
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>Role category mix</CardTitle>
+            <CardTitle>Roles</CardTitle>
           </CardHeader>
           <CardContent>
             <BarList
@@ -190,7 +209,7 @@ export function ExploreOverview({ filters }: { filters: Filters }) {
                 label: s.skill_name,
                 count: s.n,
               }))}
-              empty="No required skills tagged"
+              empty="No required skills found"
             />
           </CardContent>
         </Card>
@@ -200,7 +219,7 @@ export function ExploreOverview({ filters }: { filters: Filters }) {
             <CardTitle>Work mode</CardTitle>
           </CardHeader>
           <CardContent>
-            <BarList rows={toBars(o.work_mode)} empty="No data" />
+            <BarList rows={toEnumBars(o.work_mode)} empty="No data" />
           </CardContent>
         </Card>
 
@@ -208,11 +227,11 @@ export function ExploreOverview({ filters }: { filters: Filters }) {
           <CardHeader>
             <CardTitle>Level</CardTitle>
             <p className="text-muted-foreground text-xs font-normal">
-              Free text, so values may be inconsistent.
+              As written in each job.
             </p>
           </CardHeader>
           <CardContent>
-            <BarList rows={toBars(o.level_breakdown)} empty="No data" />
+            <BarList rows={toEnumBars(o.level_breakdown)} empty="No data" />
           </CardContent>
         </Card>
 
@@ -223,7 +242,7 @@ export function ExploreOverview({ filters }: { filters: Filters }) {
           <CardContent>
             <BarList
               rows={toBars(o.locations)}
-              empty="No locations extracted"
+              empty="No locations found"
             />
           </CardContent>
         </Card>
@@ -235,44 +254,42 @@ export function ExploreOverview({ filters }: { filters: Filters }) {
           <CardContent>
             <BarList
               rows={toBars(o.countries ?? [])}
-              empty="No countries extracted"
+              empty="No countries found"
             />
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle>OPT &amp; sponsorship</CardTitle>
+            <CardTitle>OPT and sponsorship</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
             <div>
               <p className="text-muted-foreground mb-1 text-xs">OPT accepted</p>
-              <BarList rows={toBars(o.work_auth.opt)} empty="No data" />
+              <BarList rows={toEnumBars(o.work_auth.opt)} empty="No data" />
             </div>
             <div>
               <p className="text-muted-foreground mb-1 text-xs">
                 Work authorization
               </p>
-              <BarList rows={toBars(o.work_auth.sponsorship)} empty="No data" />
+              <BarList rows={toEnumBars(o.work_auth.sponsorship)} empty="No data" />
             </div>
           </CardContent>
         </Card>
 
         <Card className="lg:col-span-2">
           <CardHeader>
-            <CardTitle>
-              Salary by track (yearly)
-            </CardTitle>
+            <CardTitle>Yearly pay by role</CardTitle>
             {o.meta.salary_mixed_currencies ? (
               <p className="text-muted-foreground text-xs font-normal">
-                Multiple currencies in scope, so rows are per currency rather than blended.
+                Shown per currency, since jobs use more than one.
               </p>
             ) : null}
           </CardHeader>
           <CardContent>
             {o.salary_by_role.length === 0 ? (
               <p className="text-muted-foreground text-sm">
-                No pay numbers yet. Most postings omit salary, and that is normal.
+                No pay data yet. Most jobs don&apos;t list pay.
               </p>
             ) : (
               <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4">
@@ -289,7 +306,7 @@ export function ExploreOverview({ filters }: { filters: Filters }) {
                       {fmtK(r.avg_min, r.currency)}–{fmtK(r.avg_max, r.currency)}
                     </p>
                     <p className="text-muted-foreground mt-0.5 text-xs">
-                      {r.n} disclosed
+                      {r.n} {r.n === 1 ? "job" : "jobs"}
                     </p>
                   </div>
                 ))}

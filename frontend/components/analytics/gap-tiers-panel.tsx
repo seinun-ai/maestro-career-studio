@@ -6,7 +6,11 @@ import { useQuery } from "@tanstack/react-query";
 import { buildQuery } from "@/components/charts/chart-kit";
 import type { TopSkillsFilters } from "@/components/charts/top-skills-chart";
 import { Skeleton } from "@/components/ui/skeleton";
+import { LoadErrorState } from "@/components/load-error-state";
 import { apiFetch } from "@/lib/api";
+import { requirementLabel } from "@/lib/ats-words";
+import { errorDetail } from "@/lib/error-text";
+import { isLoadFailure } from "@/lib/query-state";
 import type {
   BuildAreaRow,
   BuildAreaStatus,
@@ -15,27 +19,28 @@ import type {
 import { cn } from "@/lib/utils";
 
 /**
- * KB-evidence chip. Shown inside a tier, where the tier already states the
- * action — so the labels describe evidence, never prescribe work. ("missing"
- * is not always "go learn it": a surface row can be missing from the KB while
- * already sitting on a resume, just stale, mis-placed, or worded differently.)
+ * Career-history chip. Shown inside a tier, where the tier already states the
+ * action — so the labels say where the skill is, never prescribe work.
+ * ("missing" is not always "go learn it": a surface row can be missing from
+ * career history while already sitting on a resume, just stale, mis-placed,
+ * or worded differently.)
  */
 const STATUS_META: Record<
   BuildAreaStatus,
   { label: string; hint: string; chip: string }
 > = {
   missing: {
-    label: "Not in your KB",
-    hint: "No Career KB evidence for this skill.",
+    label: "Not in your career history",
+    hint: "Not in your career history.",
     chip: "bg-amber-500/15 text-amber-800 dark:bg-amber-400/15 dark:text-amber-200",
   },
   in_kb: {
-    label: "In your KB",
-    hint: "Evidence exists in your Career KB. Send it to a resume.",
+    label: "In your career history",
+    hint: "It's in your career history. Add it to a resume.",
     chip: "bg-primary/10 text-primary",
   },
   ported: {
-    label: "Ported before",
+    label: "Used before",
     hint: "Already on some resumes. Adapt it to the ones that miss it.",
     chip: "bg-muted text-muted-foreground",
   },
@@ -54,7 +59,7 @@ function tierOf(row: BuildAreaRow): BuildAreaTier {
 
 export function GapTiersPanel({ filters }: { filters: TopSkillsFilters }) {
   const query = buildQuery(filters);
-  const { data, isLoading, error } = useQuery({
+  const areas = useQuery({
     queryKey: ["explore", "build-areas", filters],
     queryFn: () =>
       apiFetch<BuildAreaRow[]>(
@@ -62,15 +67,21 @@ export function GapTiersPanel({ filters }: { filters: TopSkillsFilters }) {
       ),
   });
 
-  if (isLoading) return <Skeleton className="h-56 w-full" />;
-  if (error) {
+  // The failure first: a retry with no data is loading again, and the
+  // skeleton would unmount the focused Try again.
+  if (isLoadFailure(areas)) {
     return (
-      <p role="alert" className="text-destructive text-sm">
-        {(error as Error).message}
-      </p>
+      <LoadErrorState
+        className="py-8"
+        title="Couldn't load your skill gaps."
+        detail={errorDetail(areas.error)}
+        retrying={areas.isFetching}
+        onRetry={() => void areas.refetch()}
+      />
     );
   }
-  const rows = data ?? [];
+  if (areas.isLoading) return <Skeleton className="h-56 w-full" />;
+  const rows = areas.data ?? [];
   if (rows.length === 0) {
     return (
       <p className="text-muted-foreground text-sm">
@@ -92,26 +103,26 @@ export function GapTiersPanel({ filters }: { filters: TopSkillsFilters }) {
     ...surface.map((row) => row.n_jobs),
   );
 
-  // An empty Build section is a real answer, not an error — but it only
-  // licenses the first clause. "The work is below" needs there to be a below.
+  // An empty "Skills to learn" section is a real answer, not an error — but it
+  // only licenses the first sentence. "The ones below" needs there to be a below.
   const buildEmpty =
     surface.length > 0
-      ? "No true skill gaps — nothing here is a skill you have to go learn. The work is in Surface below: documentation, not learning."
-      : "No true skill gaps — nothing here is a skill you have to go learn.";
+      ? "No skills to learn. The ones below are already yours and just need showing."
+      : "No skills to learn.";
 
   return (
     <div className="grid gap-6">
       <TierSection
-        title="Build"
-        blurb="Nothing on your resume and nothing in your Career KB. These are the ones you actually have to go learn or earn."
+        title="Skills to learn"
+        blurb="Not on your resumes or in your career history."
         rows={build}
         maxJobs={maxJobs}
         emptyText={buildEmpty}
       />
       {surface.length > 0 ? (
         <TierSection
-          title="Surface"
-          blurb="Not skills to learn — the evidence is usually already there, in your Career KB or on a resume. Each row names what it actually needs."
+          title="Skills to show"
+          blurb="You likely have these already. Each row says what's needed."
           rows={surface}
           maxJobs={maxJobs}
         />
@@ -168,9 +179,9 @@ function GapRow({ row, maxJobs }: { row: BuildAreaRow; maxJobs: number }) {
     <div className="py-3">
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-sm font-medium">{row.skill}</span>
-        {row.requirement_level ? (
+        {requirementLabel(row.requirement_level) ? (
           <span className="text-muted-foreground text-xs">
-            {row.requirement_level}
+            {requirementLabel(row.requirement_level)}
           </span>
         ) : null}
         {meta ? (
@@ -195,11 +206,11 @@ function GapRow({ row, maxJobs }: { row: BuildAreaRow; maxJobs: number }) {
         />
       </div>
       <p className="text-muted-foreground mt-1.5 text-xs">
-        Missing in {row.n_jobs} {row.n_jobs === 1 ? "job" : "jobs"} · ≈
-        {row.avg_potential_points} ATS pts each
+        Missing in {row.n_jobs} {row.n_jobs === 1 ? "job" : "jobs"} · about{" "}
+        {row.avg_potential_points} points each
         {row.kb_entities.length > 0 ? (
           <>
-            {" · evidence: "}
+            {" · in: "}
             <Link href="/career" className="text-primary hover:underline">
               {row.kb_entities.join(", ")}
             </Link>
@@ -215,10 +226,10 @@ function WordingFootnote({ rows }: { rows: BuildAreaRow[] }) {
     <details className="rounded-lg bg-muted/40 px-3 py-2.5">
       <summary className="text-muted-foreground cursor-pointer text-xs">
         <span className="text-foreground font-medium">Wording only:</span>{" "}
-        {rows.length} {rows.length === 1 ? "skill" : "skills"} where your resume
-        already matches at full credit and only the JD&rsquo;s literal token is
-        missing. Adding it will not change your score — quick tailor mirrors
-        these for you while &ldquo;Mirror JD wording&rdquo; is on.
+        {rows.length} {rows.length === 1 ? "skill" : "skills"} your resume
+        already covers. Using the job&apos;s exact words won&apos;t change your
+        ATS score. Quick tailor adds them when “Use the job
+        description&apos;s wording” is on.
       </summary>
       <ul className="mt-2 grid gap-1">
         {rows.map((row) => (

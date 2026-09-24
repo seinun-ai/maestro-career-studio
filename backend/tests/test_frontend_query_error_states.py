@@ -63,14 +63,14 @@ _QUERY_SURFACES: list[tuple[str, str]] = [
     ("app/applications/[id]/resume/page.tsx", "query.isLoading || !query.data"),
     ("app/templates/[id]/page.tsx", "tq.isLoading || !tq.data"),
     # Already-correct surfaces that spell the check `.error`.
-    ("components/analytics/analytics-overview.tsx", "Submitted · last 7 days"),
+    ("components/analytics/analytics-overview.tsx", "Applied · last 7 days"),
     ("components/career/profile-panel.tsx", "No skill groups yet."),
     ("components/career/entity-detail.tsx", "The item may no longer exist."),
     ("app/career/page.tsx", "No custom sections yet"),
     ("components/career/inbox-panel.tsx", "Inbox clear"),
     ("components/analytics/agent-pipeline-card.tsx", "return null"),
     # Verified violations this round — each used to reach the marker on error.
-    ("components/qa-tab.tsx", "No Q&amp;A entries yet."),
+    ("components/qa-tab.tsx", "No answers yet."),
     ("components/proposals/proposals-section.tsx", "No proposals yet"),
     ("app/base-resumes/page.tsx", "No career-track resumes yet."),
     ("app/templates/page.tsx", "No templates yet."),
@@ -246,6 +246,12 @@ _FAILURE_BRANCHES = {
     "components/setup/getting-started-card.tsx": "if (isLoadFailure(setupStatus)) {",
     "components/proposals/proposals-section.tsx": "if (isLoadFailure({ data, isError, fetchStatus, errorUpdateCount })) {",
     "components/proposals/proposal-agent-panel.tsx": "if (isLoadFailure({ data, isError, fetchStatus, errorUpdateCount })) {",
+    # Analytics and the job market tab (Task 17): each card retries in place.
+    "components/analytics/analytics-overview.tsx": "{isLoadFailure(activity) ? (",
+    "components/analytics/base-summary-cards.tsx": "if (isLoadFailure(summaries)) {",
+    "components/analytics/gap-tiers-panel.tsx": "if (isLoadFailure(areas)) {",
+    "components/charts/top-skills-chart.tsx": "if (isLoadFailure(query)) {",
+    "components/explore/explore-overview.tsx": "if (isLoadFailure(q))",
     "app/base-resumes/[slug]/page.tsx": "if (isLoadFailure(query)) {",
     "app/applications/[id]/resume/page.tsx": "if (isLoadFailure(query)) {",
     "app/templates/[id]/page.tsx": "if (isLoadFailure(tq)) {",
@@ -282,6 +288,13 @@ _LOADING_GATES = [
     ("app/applications/page.tsx", "animate-shimmer h-12", "loadFailed ? ("),
     ("components/proposals/proposals-section.tsx", "if (isLoading) {", "if (isLoadFailure("),
     ("components/ats-score-panel.tsx", "scores.isLoading ||", "if (isLoadFailure(scores))"),
+    ("components/analytics/analytics-overview.tsx", "activity.isLoading ?", "isLoadFailure(activity) ?"),
+    ("components/analytics/analytics-overview.tsx", "gaps.isLoading ?", "isLoadFailure(gaps) ?"),
+    ("components/analytics/analytics-overview.tsx", "buildAreas.isLoading ?", "isLoadFailure(buildAreas) ?"),
+    ("components/analytics/base-summary-cards.tsx", "summaries.isLoading", "isLoadFailure(summaries)"),
+    ("components/analytics/gap-tiers-panel.tsx", "areas.isLoading", "isLoadFailure(areas)"),
+    ("components/charts/top-skills-chart.tsx", "if (isLoading)", "isLoadFailure(query)"),
+    ("components/explore/explore-overview.tsx", "q.isLoading", "isLoadFailure(q)"),
 ]
 
 

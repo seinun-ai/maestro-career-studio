@@ -42,8 +42,9 @@ export function FitDistributionChart() {
       COLORS.length,
     );
     const drawn = shown.flatMap((slug) => data.filter((row) => row.base_resume === slug));
+    // The keys are the server's ("0-20"); a range on screen takes an en dash.
     const chartData = BUCKETS.map((bucket) => ({
-      bucket,
+      bucket: bucket.replace("-", "–"),
       ...Object.fromEntries(drawn.map((row) => [row.base_resume, row.buckets[bucket] ?? 0])),
     }));
     return { chartData, drawn, hidden };
@@ -56,7 +57,7 @@ export function FitDistributionChart() {
 
   const caption = [
     drawn.some((d) => d.low_sample)
-      ? "Some resumes have fewer than 5 scores · those series are directional only."
+      ? "Some resumes have fewer than 5 scores, so treat those lines as rough."
       : "",
     hidden.length
       ? `Showing the ${COLORS.length} resumes with the most scores. ${hidden.length} more ${hidden.length === 1 ? "is" : "are"} not shown.`

@@ -129,7 +129,7 @@ def test_the_editing_state_lives_in_the_tab():
 
 def _generate_button() -> str:
     flat = _flat(_TAB)
-    start = flat.rindex("<Button", 0, flat.index('"Generate cover letter"'))
+    start = flat.rindex("<Button", 0, flat.index('"Write cover letter"'))
     return flat[start : flat.index("</Button>", start)]
 
 

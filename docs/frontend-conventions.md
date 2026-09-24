@@ -378,15 +378,15 @@
   saves, and focus returns to Edit after Save or Cancel when it fell to
   `<body>` (`useEditorFocusReturn`). An open edit that differs from the saved
   letter registers the leave guard. Replacing a saved letter asks "Replace
-  your cover letter?": Regenerate on it, and Generate cover letter, which
+  your cover letter?": Regenerate on it, and Write cover letter, which
   replaces every saved letter (`POST /api/qa` deletes them only after the new
   one is committed, so a failed generation keeps them). No "was edited"
   signal is stored, so any saved text counts. Which letters are open for
-  editing lives in `QATab`: while one is open, Generate and every letter's
-  Regenerate wait, and while Generate runs no letter opens for editing. One
+  editing lives in `QATab`: while one is open, Write and every letter's
+  Regenerate wait, and while Write runs no letter opens for editing. One
   entry regenerates at a time. Answer questions sends the text it read and
   clears the box only if it still holds that text. Answer questions,
-  Generate and Regenerate submit through `useSingleFlight` and stay
+  Write and Regenerate submit through `useSingleFlight` and stay
   focusable while they work. Pinned by `test_frontend_qa_tab.py` and
   `test_qa_router.py`.
 - **`PdfPagesPreview` owns the canvas and the zoom.** Pages sit on
@@ -640,7 +640,7 @@
     focus. So is every dialog button that generates, applies, creates or
     deletes (Suggest a selection and Create on New base resume, Draft rewrite
     and Apply, Adapt & preview, Send as-is and Apply on Send to resume, Add
-    career item, a base resume's Delete), `/new`'s Extract job and Quick
+    career item, a base resume's Delete), `/new`'s Save job and Quick
     capture's From document, each dimmed on
     `data-disabled`. So are Queue for agent (a tracker row's and the job
     header's) and the tailored studio's Build draft; each leaves once its
@@ -813,7 +813,7 @@
   rows). Each generate and apply button inside such a dialog (Suggest a
   selection, Propose, Apply, Draft rewrite, Adapt, Send as-is) submits
   through `useSingleFlight` too, and so do the Templates Create and Duplicate,
-  `/new`'s Extract, both studios' Save, the tailored studio's Build draft and
+  `/new`'s Save job, both studios' Save, the tailored studio's Build draft and
   Rebuild (one guard), Queue for agent (tracker row and job header), every
   explicit settings Save (API keys, Prompts' Save and Reset, Auto-apply,
   Persona and its Draft, Custom AI server) and Available models' + and Remove
@@ -834,7 +834,7 @@
   says so, and Apply is disabled. On Referrals the inline empty-state form
   shares the same draft, so text left by a failed dialog create pre-fills it
   once the last row is deleted. Pinned by `test_frontend_dialog_drafts.py`,
-  `test_frontend_referrals.py` and `test_frontend_single_flight.py` (Extract
+  `test_frontend_referrals.py` and `test_frontend_single_flight.py` (Save job
   by `test_frontend_unsaved_surfaces.py`).
 - Route-level `app/error.tsx` + `app/global-error.tsx` + `app/not-found.tsx`
   catch components that throw; page-level `isLoadFailure` branches handle query
@@ -889,10 +889,10 @@
   current and renders with the `default` (primary) variant, keeping that
   geometry; it stays `fab` on every other route. It rests flat
   and hover raises it one level: a resting shadow read as permanently hovered.
-  It is the one New application per screen, so the Applications header renders
+  It is the one Add job per screen, so the Applications header renders
   its own button only while `useSidebarHidden()` holds (collapsed, or the sheet
   closed below 768px), exactly when the FAB cannot be seen. The empty
-  tracker's ghost New application is the deliberate exception: an empty state
+  tracker's ghost Add job is the deliberate exception: an empty state
   offers its pathway as a control, not only a sentence (NN/g). Every nav link,
   the FAB included, takes `aria-current` from `navCurrent()` (`lib/nav.ts`):
   `"page"` on the route, `"true"` inside it (a studio under Base Resumes).
@@ -946,7 +946,9 @@
   only — the stored status stays `rejected`, as do the identifiers
   (`DeclineDialog`, `onDecline`, `DECLINE_REASONS`) and the API `reason`
   value `"declined by user"` (agent-visible vocabulary echoed verbatim by
-  `list_proposals`/`get_proposal`); only its label reads "skipped by you".
+  `list_proposals`/`get_proposal`); only its label reads "Not interested"
+  (`reasonLabel` in `components/proposals/triage-actions.tsx`, which the
+  job's Overview card reads too).
   **One word per kind of agent**: **Assistant** (the in-app chat),
   **connected agents** (MCP clients; **Connected agents** in Settings, whose
   first card says what one is and what it cannot do), **Companion** (the
@@ -955,7 +957,14 @@
   means only a job an agent filed; bare "Agent" only inside Agent inbox, the
   source toggle's "Agents" and Agent pipeline. Pinned by
   `test_frontend_agent_words.py`. A filer is named through
-  `lib/agent-name.ts`, never printed raw.
+  `lib/agent-name.ts`, never printed raw. The add-a-job flow is **Add job**
+  (sidebar, tracker, `/new`'s title "Add a job") and **Save job** (its
+  submit); a job becomes an application when you tailor or apply. The Agent
+  inbox's lanes are Needs you, To review, Queued, Applying and History, and
+  its chips come from `PROPOSAL_STATUS_CHIP` (Proposed, Queued, Approved,
+  Applied, Skipped, Needs you, Expired, Check if sent); the funnel and
+  Analytics use the same words, and the tracker's Agent inbox filter reads
+  To review for `proposed`.
 - Design language: tonal fills over borders, pill chips, 8px rhythm,
   `ease-out` micro-interactions ≤200ms, `active:scale-[0.97]` on pressables,
   `prefers-reduced-motion` respected globally, `pointer-coarse:` variants for
@@ -1209,10 +1218,10 @@
   started, `/new`), each `refetchOnMount: "always"` to bypass the 30-second
   stale window; Profile's section saves AND the Settings model/key save
   invalidate it. `/new` names a missing key BEFORE the paste: an amber notice
-  with Add API key, and a disabled Extract whose `aria-describedby` points at
+  with Add API key, and a disabled Save job whose `aria-describedby` points at
   it, since a disabled button says nothing about why. A failed status fetch
   blocks nothing. With no base resume the Score tab offers Import resumes
-  (Run ATS scoring could only return an empty list) and scores once the import
+  (Score my resumes could only return an empty list) and scores once the import
   dialog CLOSES, on a settled none-to-some change. Scoring sooner unmounted the
   dialog before the user confirmed each resume's role, and a cached `[]` must
   not arm it: a run beside the first-visit one collides on the base-score
@@ -1248,7 +1257,7 @@
   `components/charts/` and `components/analytics/`;
   the API prefix stays `/api/explore` and the seven MCP-wrapped chart endpoints
   keep their paths). Four `?tab=` deep-linkable tabs: Overview (KPI tiles,
-  activity, pipeline chips, teasers), Job market, Resume fit, Gaps & growth
+  activity, pipeline chips, teasers), Job market, Resume fit, Skill gaps
   (ONE **Skill gaps** card — `components/analytics/gap-tiers-panel.tsx`;
   gap-frequency chart and build-areas panel are merged into it). Salary
   aggregates on `/api/explore/overview` are currency-aware: filter by `country`

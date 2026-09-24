@@ -31,6 +31,7 @@ import { useEditorFocusReturn } from "@/hooks/use-confirm-discard";
 import { useLeaveGuard } from "@/hooks/use-leave-guard";
 import { useSingleFlight } from "@/hooks/use-single-flight";
 import { apiFetch, apiUrlForBrowserPdf } from "@/lib/api";
+import { couldnt, errorDetail } from "@/lib/error-text";
 import { isLoadFailure } from "@/lib/query-state";
 import { notifyRenderNote } from "@/lib/render-note";
 import type { QAEntry, QAResponse } from "@/lib/types";
@@ -75,7 +76,7 @@ export function QATab({ applicationId }: { applicationId: string }) {
         .split("\n")
         .map((q) => q.trim())
         .filter((q) => q.length > 0);
-      if (list.length === 0) throw new Error("No questions to ask");
+      if (list.length === 0) throw new Error("Type at least one question.");
       return apiFetch<QAResponse>("/api/qa", {
         method: "POST",
         body: JSON.stringify({
@@ -86,10 +87,10 @@ export function QATab({ applicationId }: { applicationId: string }) {
     },
     onSuccess: (_answers, sent) => {
       setQuestions((current) => (current === sent ? "" : current));
-      toast.success("Answers generated");
+      toast.success("Answers ready");
       invalidate();
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(couldnt("answer the questions", err)),
   });
 
   const coverLetter = useMutation({
@@ -102,17 +103,17 @@ export function QATab({ applicationId }: { applicationId: string }) {
         }),
       }),
     onSuccess: () => {
-      toast.success("Cover letter generated");
+      toast.success("Cover letter ready");
       invalidate();
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(couldnt("write the cover letter", err)),
   });
 
   const deleteEntry = useMutation({
     mutationFn: (entryId: string) =>
       apiFetch<void>(`/api/qa/${entryId}`, { method: "DELETE" }),
     onSuccess: invalidate,
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(couldnt("delete the answer", err)),
   });
 
   const regenerateEntry = useMutation({
@@ -122,10 +123,10 @@ export function QATab({ applicationId }: { applicationId: string }) {
         body: JSON.stringify(entry.kind === "cover_letter" ? { tone } : {}),
       }),
     onSuccess: () => {
-      toast.success("Regenerated");
+      toast.success("New version ready");
       invalidate();
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(couldnt("write a new version", err)),
   });
 
   const editEntry = useMutation({
@@ -140,11 +141,11 @@ export function QATab({ applicationId }: { applicationId: string }) {
       qc.setQueryData<QAEntry[]>(["qa", applicationId], (prev) =>
         prev?.map((e) => (e.id === updated.id ? updated : e)),
       );
-      toast.success("Saved");
+      toast.success("Cover letter saved");
       invalidate();
     },
     // Toasts; the card stays in edit mode with the typed text.
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(couldnt("save the cover letter", err)),
   });
 
   // One request per click: a double click read isPending === false twice and
@@ -184,23 +185,22 @@ export function QATab({ applicationId }: { applicationId: string }) {
       toast.success("Cover letter PDF ready");
       invalidate();
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(couldnt("create the PDF", err)),
   });
 
   return (
     <>
       <Card>
         <CardHeader>
-          <CardTitle>Ask questions</CardTitle>
+          <CardTitle>Application questions</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
           <p id={questionsHintId} className="text-muted-foreground text-xs">
             One question per line.
           </p>
           <Textarea
-            aria-label="Questions to ask"
+            aria-label="Application questions"
             aria-describedby={questionsHintId}
-            placeholder="e.g. Why this team?"
             value={questions}
             onChange={(e) => setQuestions(e.target.value)}
             rows={4}
@@ -242,7 +242,7 @@ export function QATab({ applicationId }: { applicationId: string }) {
             focusableWhenDisabled
             className="data-disabled:pointer-events-none data-disabled:opacity-50"
           >
-            {coverLetter.isPending ? "Generating…" : "Generate cover letter"}
+            {coverLetter.isPending ? "Writing…" : "Write cover letter"}
           </Button>
         </CardContent>
       </Card>
@@ -254,13 +254,13 @@ export function QATab({ applicationId }: { applicationId: string }) {
         {isLoadFailure({ data: entries, isError, fetchStatus, errorUpdateCount }) ? (
           <LoadErrorState
             className="py-8"
-            title="Couldn't load Q&A."
-            detail={(error as Error)?.message}
+            title="Couldn't load your answers."
+            detail={errorDetail(error)}
             retrying={isFetching}
             onRetry={() => void refetch()}
           />
         ) : !entries || entries.length === 0 ? (
-          <p className="text-muted-foreground text-sm">No Q&amp;A entries yet.</p>
+          <p className="text-muted-foreground text-sm">No answers yet.</p>
         ) : (
           entries.map((entry, i) => {
             const isRegenerating =
@@ -285,11 +285,11 @@ export function QATab({ applicationId }: { applicationId: string }) {
                 isSaving={isSaving}
                 onDelete={async () => {
                   const ok = await confirm({
-                    title: "Delete this Q&A entry?",
+                    title: "Delete this answer?",
                     description:
-                      entry.kind === "question"
-                        ? "The question and its answer will be removed from history."
-                        : `The ${KIND_LABELS[entry.kind]?.toLowerCase() ?? "entry"} will be removed from history.`,
+                      entry.kind === "cover_letter"
+                        ? "This deletes the cover letter."
+                        : "This deletes the question and its answer.",
                     confirmLabel: "Delete",
                     destructive: true,
                   });
@@ -387,7 +387,7 @@ function QAEntryCard({
             />
           ) : null}
           <IconButton
-            label="Copy to clipboard"
+            label="Copy"
             icon={<Copy />}
             onClick={() => {
               navigator.clipboard
@@ -397,7 +397,7 @@ function QAEntryCard({
           />
           {isCoverLetter ? (
             <IconButton
-              label="Render PDF"
+              label="Create PDF"
               icon={isRendering ? <Loader2 className="animate-spin" /> : <FileText />}
               onClick={onRender}
               disabled={isRendering || isSaving || editing}
@@ -427,7 +427,7 @@ function QAEntryCard({
             />
           ) : null}
           <IconButton
-            label="Delete entry"
+            label="Delete"
             icon={<Trash2 />}
             onClick={onDelete}
             disabled={isDeleting}

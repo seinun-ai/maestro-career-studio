@@ -63,26 +63,6 @@ _ALLOWED: dict[str, int] = {
 # task, so two lanes never edit the same lines. A task lowers its counts as it
 # goes and deletes its block when it lands. Tasks 22-23 have no block: the
 # Companion panel and the server are not scanned here.
-_PENDING_T17: dict[str, int] = {  # D §2 jobs and tracking
-    "app/applications/[id]/page.tsx": 1,
-    "app/applications/page.tsx": 5,
-    "app/jobs/[id]/page.tsx": 4,
-    "app/new/page.tsx": 1,
-    "app/referrals/page.tsx": 4,
-    "components/analytics/analytics-overview.tsx": 3,
-    "components/analytics/autofill-coverage-card.tsx": 1,
-    "components/analytics/base-summary-cards.tsx": 1,
-    "components/analytics/gap-tiers-panel.tsx": 1,
-    "components/application-panel.tsx": 3,
-    "components/ats-compare-panel.tsx": 3,
-    "components/ats-score-panel.tsx": 4,
-    "components/charts/chart-kit.tsx": 1,
-    "components/job-tracking-url-field.tsx": 1,
-    "components/proposals/proposal-agent-panel.tsx": 1,
-    "components/proposals/proposals-section.tsx": 1,
-    "components/proposals/triage-actions.tsx": 3,
-    "components/qa-tab.tsx": 7,
-}
 _PENDING_T18: dict[str, int] = {  # D §3 the gap page
     "app/jobs/[id]/tailor/[sessionId]/page.tsx": 6,
 }
@@ -143,7 +123,7 @@ _PENDING_T21: dict[str, int] = {  # D §6 Settings and Profile; D §7 Assistant,
     "components/setup/getting-started-card.tsx": 1,
     "components/setup/use-document-queue.ts": 1,
 }
-_BLOCKS = (_PENDING_T17, _PENDING_T18, _PENDING_T19, _PENDING_T20, _PENDING_T21)
+_BLOCKS = (_PENDING_T18, _PENDING_T19, _PENDING_T20, _PENDING_T21)
 _PENDING: dict[str, int] = {rel: n for block in _BLOCKS for rel, n in block.items()}
 
 

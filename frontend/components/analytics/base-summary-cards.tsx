@@ -4,9 +4,13 @@ import { GuardedLink as Link } from "@/components/guarded-link";
 import { InlineStat } from "@/components/analytics/stat-tile";
 import { useQuery } from "@tanstack/react-query";
 
+import { LoadErrorState } from "@/components/load-error-state";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useBaseResumeLabel } from "@/hooks/use-base-resume-label";
 import { apiFetch } from "@/lib/api";
+import { errorDetail } from "@/lib/error-text";
+import { isLoadFailure } from "@/lib/query-state";
 import { formatTimeAgo } from "@/lib/format-date";
 import type { BaseSummaryRow } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -20,25 +24,33 @@ const GRADE_STYLES: Record<string, string> = {
 };
 
 export function BaseSummaryCards() {
-  const { data, isLoading, error } = useQuery({
+  const baseName = useBaseResumeLabel();
+  const summaries = useQuery({
     queryKey: ["explore", "base-summaries"],
     queryFn: () => apiFetch<BaseSummaryRow[]>("/api/explore/base-summaries"),
   });
+  const { data } = summaries;
 
-  if (isLoading) {
+  // The failure first: a retry with no data is loading again, and the
+  // skeleton would unmount the focused Try again.
+  if (isLoadFailure(summaries)) {
+    return (
+      <LoadErrorState
+        className="py-8"
+        title="Couldn't load your resumes' scores."
+        detail={errorDetail(summaries.error)}
+        retrying={summaries.isFetching}
+        onRetry={() => void summaries.refetch()}
+      />
+    );
+  }
+  if (summaries.isLoading) {
     return (
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {Array.from({ length: 3 }).map((_, index) => (
           <Skeleton key={index} className="h-40 w-full" />
         ))}
       </div>
-    );
-  }
-  if (error) {
-    return (
-      <p role="alert" className="text-destructive text-sm">
-        {(error as Error).message}
-      </p>
     );
   }
   if ((data ?? []).length === 0) {
@@ -55,7 +67,7 @@ export function BaseSummaryCards() {
                 href={`/base-resumes/${row.slug}`}
                 className="hover:underline"
               >
-                {row.display_name ?? row.slug}
+                {row.display_name ?? baseName(row.slug)}
               </Link>
             </CardTitle>
             {row.health_grade ? (
@@ -66,7 +78,7 @@ export function BaseSummaryCards() {
                 )}
                 title={
                   row.health_score != null
-                    ? `Health ${row.health_score}/100`
+                    ? `Health score ${row.health_score} of 100`
                     : undefined
                 }
               >
@@ -81,7 +93,7 @@ export function BaseSummaryCards() {
           <CardContent>
             <div className="grid grid-cols-2 gap-x-3 gap-y-2.5">
               <InlineStat
-                label="Avg base ATS"
+                label="Average ATS score"
                 value={
                   row.avg_base_ats != null
                     ? `${row.avg_base_ats} · ${row.n_scored} ${row.n_scored === 1 ? "job" : "jobs"}`
@@ -89,7 +101,7 @@ export function BaseSummaryCards() {
                 }
               />
               <InlineStat
-                label="Avg lift"
+                label="Average score gain"
                 value={
                   row.avg_lift != null
                     ? `${row.avg_lift > 0 ? "+" : ""}${row.avg_lift} · ${row.n_tailored} tailored`
@@ -98,9 +110,9 @@ export function BaseSummaryCards() {
               />
               <InlineStat
                 label="Applications"
-                value={`${row.applications_submitted} sent · ${row.applications_total} total`}
+                value={`${row.applications_submitted} applied · ${row.applications_total} total`}
               />
-              <InlineStat label="In flight" value={String(row.in_flight)} />
+              <InlineStat label="In progress" value={String(row.in_flight)} />
             </div>
             {row.last_activity ? (
               <p className="text-muted-foreground mt-3 text-xs">

@@ -32,6 +32,7 @@ import { IconButton } from "@/components/icon-button";
 import {
   JobExtractedFields,
   formatSalary,
+  humanizeEnum,
 } from "@/components/job-extracted-fields";
 import { JobKnockoutCard } from "@/components/job-knockout-card";
 import { JobTrackingUrlField } from "@/components/job-tracking-url-field";
@@ -53,6 +54,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useSingleFlight } from "@/hooks/use-single-flight";
 import { proposalByLine, queuedToast } from "@/lib/agent-name";
 import { apiFetch, promoteJobToAgentQueue } from "@/lib/api";
+import { couldnt, errorDetail } from "@/lib/error-text";
 import { finalFocusOn, focusIfDropped, focusTarget } from "@/lib/focus";
 import { isLoadFailure } from "@/lib/query-state";
 import { cn } from "@/lib/utils";
@@ -78,7 +80,7 @@ function JobTabsList({ hasApp }: { hasApp: boolean }) {
   return (
     <TabsList>
       <TabsTrigger value="jd">Overview</TabsTrigger>
-      <TabsTrigger value="fit">Score &amp; Tailor</TabsTrigger>
+      <TabsTrigger value="fit">Score and tailor</TabsTrigger>
       <TabsTrigger value="output" {...lockedProps}>
         Resume
       </TabsTrigger>
@@ -162,11 +164,11 @@ export default function JobDetailPage({
     mutationFn: () =>
       apiFetch<Job>(`/api/jobs/${id}/re-extract`, { method: "POST" }),
     onSuccess: () => {
-      toast.success("Job re-extracted");
+      toast.success("Job details refreshed");
       qc.invalidateQueries({ queryKey: ["job-detail", id] });
       qc.invalidateQueries({ queryKey: ["jobs"] });
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(couldnt("refresh the job details", err)),
   });
 
   // Queue for agent leaves the header once the job has a proposal, taking focus with it: the
@@ -185,7 +187,7 @@ export default function JobDetailPage({
     },
     onError: (err: Error) => {
       queued.current = false;
-      toast.error(err.message);
+      toast.error(couldnt("queue the job", err));
     },
   });
   // A double click filed two accepted proposals for one job.
@@ -225,7 +227,7 @@ export default function JobDetailPage({
       qc.invalidateQueries({ queryKey: ["applications"] });
       router.push(fromProposals ? "/proposals" : "/applications");
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(couldnt("delete the job", err)),
   });
 
   const reExtractButton = useMemo(
@@ -235,10 +237,10 @@ export default function JobDetailPage({
         size="sm"
         onClick={async () => {
           const ok = await confirm({
-            title: "Re-run JD extraction?",
+            title: "Refresh the job details?",
             description:
-              "All extracted fields and skill rows for this job will be replaced.",
-            confirmLabel: "Re-extract",
+              "This reads the job description again and replaces the job details and skills.",
+            confirmLabel: "Refresh details",
           });
           if (!ok) return;
           reExtract.mutate();
@@ -248,7 +250,7 @@ export default function JobDetailPage({
         <RefreshCw
           className={reExtract.isPending ? "animate-spin" : undefined}
         />
-        {reExtract.isPending ? "Re-extracting…" : "Re-extract"}
+        {reExtract.isPending ? "Refreshing…" : "Refresh details"}
       </Button>
     ),
     [confirm, reExtract],
@@ -261,14 +263,14 @@ export default function JobDetailPage({
       <main className="mx-auto w-full max-w-6xl flex-1 space-y-4 p-6">
         <LoadErrorState
           title="Couldn't load this job."
-          detail={(error as Error)?.message}
+          detail={errorDetail(error)}
           retrying={isFetching}
           onRetry={() => void refetch()}
           action={
             <Button
               variant="outline"
               nativeButton={false}
-              render={<Link href="/applications">Back to Applications</Link>}
+              render={<Link href="/applications">Back to applications</Link>}
             />
           }
         />
@@ -295,9 +297,9 @@ export default function JobDetailPage({
   );
   const metaBits = [
     job.location,
-    job.work_mode,
+    humanizeEnum(job.work_mode),
     salary,
-    job.level,
+    humanizeEnum(job.level),
   ].filter(Boolean) as string[];
 
   const proposalStatus = job.proposal_status ?? null;
@@ -477,7 +479,7 @@ export default function JobDetailPage({
             ) : null}
             {job.source_url ? (
               <IconButton
-                label="Open application URL"
+                label="Open job link"
                 icon={<ExternalLink className="size-4" />}
                 size="icon-sm"
                 className="text-muted-foreground shrink-0"
@@ -501,7 +503,7 @@ export default function JobDetailPage({
                 const ok = await confirm({
                   title: "Delete this job?",
                   description:
-                    "Its application, ATS scores, tailoring sessions, and Q&A history will go with it.",
+                    "This also deletes its application, ATS scores, gap analyses and answers.",
                   confirmLabel: "Delete",
                   destructive: true,
                 });
@@ -560,7 +562,7 @@ export default function JobDetailPage({
                 onClick={() => setTab("output")}
                 className="text-primary inline-flex items-center gap-1 text-sm hover:underline"
               >
-                See before/after comparison on the Resume tab
+                Compare with your base resume on the Resume tab
                 <ArrowRight className="size-3.5" />
               </button>
             ) : null}

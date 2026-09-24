@@ -13,29 +13,28 @@ const STATUS_COPY: Record<
   { label: string; detail: string; icon: ReactNode; tone: string }
 > = {
   conflict: {
-    label: "Knock-out conflict",
-    detail: "A stated requirement contradicts your profile.",
+    label: "You may not qualify",
+    detail: "The job lists a requirement your profile doesn't meet.",
     icon: <ShieldAlert />,
     tone: "border-destructive/40 bg-destructive/5 text-destructive",
   },
   clear: {
-    label: "Stated requirements clear",
-    detail:
-      "Work authorization, OPT, salary, and experience match your profile where the posting states them.",
+    label: "You meet the listed requirements",
+    detail: "Your work authorization, OPT, pay and experience match what the job lists.",
     icon: <CircleCheck />,
     tone: "border-emerald-500/40 bg-emerald-500/5 text-emerald-700 dark:text-emerald-400",
   },
   incomplete_profile: {
-    label: "Profile can’t answer a stated requirement",
-    detail: "Fill the missing answer in your profile to screen this posting.",
+    label: "Your profile is missing an answer",
+    detail: "Add it to your profile to check this job.",
     icon: <CircleHelp />,
     tone: "border-amber-500/40 bg-amber-500/5 text-amber-700 dark:text-amber-400",
   },
-  // Deliberately NOT phrased as a pass: the posting states nothing to check.
+  // Deliberately NOT phrased as a pass: the job states nothing to check.
   unstated: {
-    label: "No screening requirements stated",
+    label: "No requirements listed",
     detail:
-      "The posting states no work-authorization, OPT, salary, or experience screens — that’s absence of signal, not a green light.",
+      "The job doesn't mention work authorization, OPT, pay or experience. That doesn't mean you qualify.",
     icon: <CircleHelp />,
     tone: "border-border bg-muted/40 text-muted-foreground",
   },
@@ -98,7 +97,7 @@ export function JobKnockoutCard({ scan }: { scan: KnockoutScan | null | undefine
           href={autofillHref(scan)}
           className="mt-2 inline-block text-xs underline underline-offset-2"
         >
-          Complete your autofill profile
+          Complete your profile
         </Link>
       )}
     </div>

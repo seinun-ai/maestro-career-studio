@@ -15,7 +15,9 @@ import type { ReactNode } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { LoadErrorState } from "@/components/load-error-state";
 import { Skeleton } from "@/components/ui/skeleton";
+import { reasonLabel } from "@/components/proposals/triage-actions";
 import { apiFetch } from "@/lib/api";
+import { errorDetail } from "@/lib/error-text";
 import { proposalByLine } from "@/lib/agent-name";
 import { isLoadFailure } from "@/lib/query-state";
 import { formatAbsoluteDateTime } from "@/lib/format-date";
@@ -43,7 +45,7 @@ export function ProposalAgentPanel({ proposalId }: { proposalId: string }) {
           <LoadErrorState
             className="py-8"
             title="Couldn't load this proposal."
-            detail={(error as Error)?.message}
+            detail={errorDetail(error)}
             retrying={isFetching}
             onRetry={() => void refetch()}
           />
@@ -86,7 +88,7 @@ export function ProposalAgentPanel({ proposalId }: { proposalId: string }) {
           <Fact label="Expires">
             {data.expires_at ? formatAbsoluteDateTime(data.expires_at) : "—"}
           </Fact>
-          {data.reason ? <Fact label="Reason">{data.reason}</Fact> : null}
+          {data.reason ? <Fact label="Reason">{reasonLabel(data.reason)}</Fact> : null}
         </dl>
 
         {companyNote ? (
@@ -131,7 +133,7 @@ export function ProposalAgentPanel({ proposalId }: { proposalId: string }) {
 
         {evidence.length > 0 ? (
           <section>
-            <SectionHeading icon={<Images />}>Evidence</SectionHeading>
+            <SectionHeading icon={<Images />}>Screenshots</SectionHeading>
             <div className="flex flex-wrap gap-2">
               {evidence.map((e) => {
                 const name = e.path.split("/").pop() ?? e.path;

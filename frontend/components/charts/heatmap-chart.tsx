@@ -59,7 +59,7 @@ export function HeatmapChart({
   return (
     <div className="overflow-x-auto">
       <p className="text-muted-foreground mb-3 text-xs">
-        Top-30% skills by rank; cell = % of jobs in that role mentioning the skill.
+        Share of jobs in each role that ask for each skill.
       </p>
       <table className="border-separate border-spacing-0.5 text-xs">
         <thead>

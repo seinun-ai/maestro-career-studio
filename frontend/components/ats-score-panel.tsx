@@ -15,6 +15,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { SUBSCORE_LABELS } from "@/lib/ats-words";
+import { couldnt, errorDetail } from "@/lib/error-text";
 import { isLoadFailure } from "@/lib/query-state";
 import { cn } from "@/lib/utils";
 import {
@@ -31,16 +33,14 @@ import {
   type TailoringSession,
 } from "@/lib/types";
 
-const SUBSCORE_LABELS: {
-  key: "keyword" | "placement_recency" | "semantic_fit" | "title" | "format";
-  label: string;
-}[] = [
-  { key: "keyword", label: "Keywords" },
-  { key: "placement_recency", label: "Placement & recency" },
-  { key: "semantic_fit", label: "Semantic fit" },
-  { key: "title", label: "Title" },
-  { key: "format", label: "Format" },
-];
+/** "ATS score" spelled out once, where the tab first shows one (conventions: Canonical terms). */
+function AtsScoreLead() {
+  return (
+    <p className="text-muted-foreground max-w-[60ch] text-sm">
+      An ATS score (0 to 100) is how an applicant tracking system would rate each resume for this job.
+    </p>
+  );
+}
 
 function SubscoreBar({ label, value }: { label: string; value: number }) {
   const pct = Math.round(value * 100);
@@ -130,9 +130,9 @@ function AtsScoreCard({
             </p>
             {(score.jd_skills_extracted_count || score.subscores_json?.jd_skills_extracted_count) ? (
               <p className="mt-0.5 text-[11px] opacity-80">
-                Only {score.jd_skills_matched_count ?? score.subscores_json?.jd_skills_matched_count ?? 0} of{" "}
-                {score.jd_skills_extracted_count ?? score.subscores_json?.jd_skills_extracted_count ?? 0} JD skills recognized
-                ({Math.round(((score.coverage_ratio ?? score.subscores_json?.coverage_ratio ?? 0) * 100))}% coverage).
+                We recognized only {score.jd_skills_matched_count ?? score.subscores_json?.jd_skills_matched_count ?? 0} of
+                the job&apos;s {score.jd_skills_extracted_count ?? score.subscores_json?.jd_skills_extracted_count ?? 0} skills
+                ({Math.round(((score.coverage_ratio ?? score.subscores_json?.coverage_ratio ?? 0) * 100))}%).
               </p>
             ) : null}
           </div>
@@ -145,8 +145,8 @@ function AtsScoreCard({
               nativeButton={false}
               render={
                 <Link href={`/jobs/${jobId}/tailor/${openSession.id}`}>
-                  Resume gap analysis
-                  {resolvedCount > 0 ? ` (${resolvedCount} resolved)` : ""}
+                  Continue gap analysis
+                  {resolvedCount > 0 ? ` (${resolvedCount} done)` : ""}
                 </Link>
               }
             />
@@ -169,7 +169,7 @@ function AtsScoreCard({
             disabled={analyzeDisabled}
           >
             {creating ? <Loader2 className="animate-spin" /> : <Wand2 />}
-            {creating ? "Analyzing gaps…" : "Analyze gaps & tailor"}
+            {creating ? "Analyzing gaps…" : "Find gaps and tailor"}
           </Button>
         )}
         <Button
@@ -180,7 +180,7 @@ function AtsScoreCard({
           disabled={applyingAsIs}
         >
           {applyingAsIs ? <Loader2 className="animate-spin" /> : <Check />}
-          Applied with base resume
+          Mark applied without tailoring
         </Button>
       </CardContent>
     </Card>
@@ -188,9 +188,9 @@ function AtsScoreCard({
 }
 
 /**
- * ATS Scores tab: deterministic per-base composite + subscore breakdown.
- * Auto-runs scoring on first visit (fast — no LLM); "Analyze gaps & tailor"
- * creates a tailoring session (LLM enrichment pass) and navigates to it.
+ * Score and tailor tab: deterministic per-base ATS score + subscore breakdown.
+ * Auto-runs scoring on first visit (fast — no LLM); "Find gaps and tailor"
+ * creates a gap analysis (LLM enrichment pass) and navigates to it.
  */
 export function AtsScorePanel({ jobId }: { jobId: string }) {
   const baseName = useBaseResumeLabel();
@@ -204,7 +204,7 @@ export function AtsScorePanel({ jobId }: { jobId: string }) {
   });
 
   // The engine scores every SELECTABLE base resume, the same set
-  // GET /api/base-resumes returns. With none, "Run ATS scoring" can only
+  // GET /api/base-resumes returns. With none, "Score my resumes" can only
   // return an empty list again, so the empty state offers the import instead.
   const bases = useBaseResumes();
   const noBases = bases.isSuccess && bases.data.length === 0;
@@ -243,7 +243,7 @@ export function AtsScorePanel({ jobId }: { jobId: string }) {
     // Returned: the run stays pending until the list has refetched, so the
     // skeleton hands straight to the cards with no empty-state frame.
     onSuccess: () => qc.invalidateQueries({ queryKey: ["ats-scores", jobId] }),
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(couldnt("score your resumes", err)),
   });
 
   const createSession = useMutation({
@@ -255,10 +255,10 @@ export function AtsScorePanel({ jobId }: { jobId: string }) {
       }
       router.push(`/jobs/${jobId}/tailor/${session.id}`);
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(couldnt("start the gap analysis", err)),
   });
 
-  // "Applied with base resume": the user override for skipping tailoring
+  // "Mark applied without tailoring": the user override for skipping tailoring
   // entirely (applied off-platform with the untouched base). One action:
   // from-base application (reuse policy updates the job's newest app for that
   // base — replaces any tailored draft, version history keeps it) + status
@@ -272,23 +272,22 @@ export function AtsScorePanel({ jobId }: { jobId: string }) {
       });
     },
     onSuccess: () => {
-      toast.success("Recorded as applied with the base resume");
+      toast.success("Marked as applied");
       qc.invalidateQueries({ queryKey: ["applications"] });
       qc.invalidateQueries({ queryKey: ["jobs", "without-application"] });
       qc.invalidateQueries({ queryKey: ["job-detail", jobId] });
       qc.invalidateQueries({ queryKey: ["proposals"] });
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(couldnt("mark the job applied", err)),
   });
 
   const appliedAsIsClick = async (baseResume: string) => {
     const ok = await confirm({
-      title: "Applied with base resume?",
+      title: "Mark as applied without tailoring?",
       description:
-        `Records an application using ${baseName(baseResume)} as-is and marks it Applied. ` +
-        "Any tailored draft for this job and base is replaced by the base content " +
-        "(version history keeps every prior draft), " +
-        "and any open proposal in your Agent inbox for this job is closed.",
+        `This marks the job Applied with ${baseName(baseResume)}, unchanged. ` +
+        "It replaces any tailored draft (Version history keeps it) " +
+        "and closes any open proposal in your Agent inbox for this job.",
       confirmLabel: "Mark applied",
     });
     if (ok) appliedAsIs.mutate(baseResume);
@@ -348,7 +347,7 @@ export function AtsScorePanel({ jobId }: { jobId: string }) {
       return (
         <LoadErrorState
           title="Couldn't load ATS scores."
-          detail={(scores.error as Error)?.message}
+          detail={errorDetail(scores.error)}
           retrying={scores.isFetching}
           onRetry={() => void scores.refetch()}
         />
@@ -380,7 +379,9 @@ export function AtsScorePanel({ jobId }: { jobId: string }) {
       // retrying can't succeed, so show the reason instead of a dead-end button.
       // It is checked first: an import cannot fix a job-level fact either.
       const unscorable =
-        run.error instanceof ApiError && run.error.status === 422 ? run.error.message : null;
+        run.error instanceof ApiError && run.error.status === 422
+          ? couldnt("score this job", run.error)
+          : null;
       // `importOpen` keeps the prompt behind the open dialog after the import
       // lands, while its report is still on screen (see the effect above).
       if (!unscorable && (noBases || importOpen)) {
@@ -388,8 +389,7 @@ export function AtsScorePanel({ jobId }: { jobId: string }) {
           <div className="flex flex-col items-center gap-3 py-8 text-center">
             <p className="text-sm font-medium">No base resumes to score against.</p>
             <p className="text-muted-foreground max-w-[50ch] text-sm">
-              Import the resumes you already have. Each becomes a base resume, and
-              this job is scored against all of them.
+              Import your resumes to score this job against each one.
             </p>
             <Button ref={importButtonRef} size="sm" onClick={() => setImportOpen(true)}>
               Import resumes
@@ -398,12 +398,13 @@ export function AtsScorePanel({ jobId }: { jobId: string }) {
         );
       }
       return (
-        <div className="flex flex-col items-center gap-3 py-8">
+        <div className="flex flex-col items-center gap-3 py-8 text-center">
+          {!unscorable && <AtsScoreLead />}
           <p className="text-muted-foreground text-sm">{unscorable ?? "No ATS scores yet."}</p>
           {!unscorable && (
             <Button size="sm" onClick={() => run.mutate()} disabled={run.isPending}>
               {run.isPending && <Loader2 className="animate-spin" />}
-              {run.isPending ? "Scoring…" : "Run ATS scoring"}
+              {run.isPending ? "Scoring…" : "Score my resumes"}
             </Button>
           )}
         </div>
@@ -414,15 +415,17 @@ export function AtsScorePanel({ jobId }: { jobId: string }) {
 
     return (
       <div className="@container space-y-3">
-        <div className="flex items-center justify-end">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <AtsScoreLead />
           <Button
             variant="outline"
             size="sm"
+            className="shrink-0"
             onClick={() => run.mutate()}
             disabled={run.isPending}
           >
             <RefreshCw className={run.isPending ? "animate-spin" : undefined} />
-            {run.isPending ? "Re-scoring…" : "Re-score base resumes"}
+            {run.isPending ? "Updating scores…" : "Update scores"}
           </Button>
         </div>
         <div className="grid gap-3 @md:grid-cols-2 @3xl:grid-cols-3">

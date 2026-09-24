@@ -482,31 +482,6 @@ def _counts() -> Counter[str]:
 # counts as it goes and deletes its block when it lands; the last one deletes
 # `_PENDING` itself. Task 23 (D §9, server-written messages) has no block:
 # this scan reads the frontend and the Companion panel only.
-_PENDING_T17: dict[str, int] = {  # D §2 jobs and tracking
-    "frontend/app/analytics/page.tsx": 7,
-    "frontend/app/applications/page.tsx": 4,
-    "frontend/app/jobs/[id]/page.tsx": 6,
-    "frontend/app/new/page.tsx": 7,
-    "frontend/app/referrals/page.tsx": 6,
-    "frontend/components/analytics/analytics-overview.tsx": 5,
-    "frontend/components/analytics/autofill-coverage-card.tsx": 1,
-    "frontend/components/analytics/base-summary-cards.tsx": 3,
-    "frontend/components/analytics/gap-tiers-panel.tsx": 18,
-    "frontend/components/application-panel.tsx": 1,
-    "frontend/components/ats-compare-panel.tsx": 6,
-    "frontend/components/ats-score-panel.tsx": 3,
-    "frontend/components/charts/ats-over-time-chart.tsx": 1,
-    "frontend/components/charts/heatmap-chart.tsx": 1,
-    "frontend/components/explore/explore-overview.tsx": 4,
-    "frontend/components/job-extracted-fields.tsx": 4,
-    "frontend/components/job-extraction-summary.tsx": 1,
-    "frontend/components/job-knockout-card.tsx": 4,
-    "frontend/components/job-tracking-url-field.tsx": 1,
-    "frontend/components/proposals/proposal-agent-panel.tsx": 1,
-    "frontend/components/proposals/proposals-section.tsx": 2,
-    "frontend/components/proposals/triage-actions.tsx": 4,
-    "frontend/components/qa-tab.tsx": 5,
-}
 _PENDING_T18: dict[str, int] = {  # D §3 the gap page
     "frontend/app/jobs/[id]/tailor/[sessionId]/page.tsx": 19,
     "frontend/components/gap-analysis/gap-card.tsx": 12,
@@ -593,7 +568,7 @@ _PENDING_T22: dict[str, int] = {  # D §8 the Companion panel
     "extension/panel/stages/score.js": 2,
     "extension/panel/stages/track.js": 1,
 }
-_BLOCKS = (_PENDING_T17, _PENDING_T18, _PENDING_T19, _PENDING_T20, _PENDING_T21, _PENDING_T22)
+_BLOCKS = (_PENDING_T18, _PENDING_T19, _PENDING_T20, _PENDING_T21, _PENDING_T22)
 _PENDING: dict[str, int] = {rel: n for block in _BLOCKS for rel, n in block.items()}
 
 

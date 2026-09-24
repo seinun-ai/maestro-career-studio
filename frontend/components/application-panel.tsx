@@ -38,6 +38,7 @@ import {
 import { JobTrackingUrlField } from "@/components/job-tracking-url-field";
 import { useBaseResumeName } from "@/hooks/use-base-resume-label";
 import { apiFetch, apiUrlForBrowserPdf } from "@/lib/api";
+import { couldnt } from "@/lib/error-text";
 import { notifyRenderNote } from "@/lib/render-note";
 import type { Application, Referral, RenderResult } from "@/lib/types";
 
@@ -82,7 +83,7 @@ export function useApplicationMutations({
       qc.invalidateQueries({ queryKey: ["job-detail", jobId] });
       qc.invalidateQueries({ queryKey: ["applications"] });
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(couldnt("update the application", err)),
   });
 
   const deleteApp = useMutation({
@@ -96,7 +97,7 @@ export function useApplicationMutations({
       qc.invalidateQueries({ queryKey: ["job-detail", jobId] });
       router.push(`/jobs/${jobId}`);
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(couldnt("delete the application", err)),
   });
 
   return { patch, deleteApp };
@@ -141,7 +142,7 @@ export function ApplicationDetailsMenu({
     const ok = await confirm({
       title: "Delete this application?",
       description:
-        "Its Q&A history and rendered PDF will be removed. The underlying job is preserved.",
+        "This deletes its tailored resume, answers and PDF. The job stays saved.",
       confirmLabel: "Delete",
       destructive: true,
     });
@@ -281,9 +282,9 @@ export function OutputTab({ app, jobId }: { app: Application; jobId: string }) {
         queryKey: ["pdf-preview", `/api/applications/${app.id}`],
       });
       notifyRenderNote(result);
-      toast.success("PDF generated");
+      toast.success("PDF ready");
     },
-    onError: (error: Error) => toast.error(error.message),
+    onError: (error: Error) => toast.error(couldnt("create the PDF", error)),
   });
   const pdfReady = hasPdf || renderPdf.isSuccess;
   const pdfHref = apiUrlForBrowserPdf(`/api/applications/${app.id}/pdf`);
@@ -291,10 +292,10 @@ export function OutputTab({ app, jobId }: { app: Application; jobId: string }) {
     app.pdf_path?.split(/[\\/]/).pop() ?? "tailored-resume.pdf";
 
   const status = pdfReady
-    ? "PDF ready. Review it below or download it."
+    ? "Your PDF is ready."
     : hasDraft
-      ? "Draft ready. Generate a PDF to preview and download it here."
-      : "No tailored resume yet. Run the Fit workflow to create a draft.";
+      ? "Draft ready. Create a PDF to preview it."
+      : "No tailored resume yet. Start on the Score and tailor tab.";
 
   return (
     <div className="space-y-4">
@@ -324,10 +325,10 @@ export function OutputTab({ app, jobId }: { app: Application; jobId: string }) {
                 <FileOutput className="size-4" />
               )}
               {renderPdf.isPending
-                ? "Generating…"
+                ? "Creating…"
                 : pdfReady
-                  ? "Regenerate PDF"
-                  : "Generate PDF"}
+                  ? "Update PDF"
+                  : "Create PDF"}
             </Button>
             <Button
               variant="outline"
@@ -357,14 +358,14 @@ export function OutputTab({ app, jobId }: { app: Application; jobId: string }) {
               <PdfPagesPreview
                 basePath={`/api/applications/${app.id}`}
                 version={`${app.updated_at}-${previewVersion}`}
-                emptyMessage="The PDF preview is unavailable. Regenerate the PDF to try again."
+                emptyMessage="Couldn't show the preview. Update the PDF to try again."
               />
             </div>
           ) : (
             <div className="text-muted-foreground flex h-40 items-center justify-center rounded-md border border-dashed p-6 text-center text-sm">
               {hasDraft
-                ? "No PDF yet. Generate one to preview it here."
-                : "Build a tailored draft before generating a PDF."}
+                ? "No PDF yet."
+                : "No tailored resume yet."}
             </div>
           )}
         </CardContent>

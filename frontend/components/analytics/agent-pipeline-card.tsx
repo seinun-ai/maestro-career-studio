@@ -1,6 +1,7 @@
 "use client";
 
 import { ChartCard } from "@/components/charts/chart-kit";
+import { CapToday } from "@/components/proposals/cap-today";
 import { useProposalFunnel } from "@/hooks/use-proposal-funnel";
 import type { ProposalFunnel } from "@/lib/types";
 
@@ -58,12 +59,7 @@ export function AgentPipelineCard() {
               </div>
             );
           })}
-          {data.cap ? (
-            <p className="text-muted-foreground text-xs tabular-nums">
-              Cap {data.cap.reserved_last_24h}/{data.cap.max_per_day} today ·{" "}
-              {data.cap.remaining} remaining
-            </p>
-          ) : null}
+          <CapToday className="text-muted-foreground mt-0" />
         </div>
       )}
     </ChartCard>

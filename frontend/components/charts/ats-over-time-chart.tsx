@@ -108,12 +108,12 @@ export function AtsOverTimeChart({ filters }: { filters: TopSkillsFilters }) {
   return (
     <div>
       <p className="text-muted-foreground mb-2 text-xs">
-        Solid = tailored · dashed = base. Weekly average ATS composite (0–100).
+        Solid lines: tailored. Dashed: base.
         {anyLow
-          ? " Weeks with fewer than 5 scores are directional only."
+          ? " Weeks with fewer than 5 scores are rough."
           : ""}
         {hidden.length
-          ? ` Showing the ${MAX_ROLE_SERIES} roles with the most scores. Pick a role category above to see the other ${hidden.length}.`
+          ? ` Showing the ${MAX_ROLE_SERIES} roles with the most scores. Pick a role above to see the other ${hidden.length}.`
           : ""}
       </p>
       <ResponsiveContainer width="100%" height={320}>

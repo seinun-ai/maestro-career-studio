@@ -5,6 +5,7 @@ import { RotateCw } from "lucide-react";
 import { RetryChip } from "@/components/retry-chip";
 import { useProposalFunnel } from "@/hooks/use-proposal-funnel";
 import { isLoadFailure } from "@/lib/query-state";
+import { cn } from "@/lib/utils";
 
 /**
  * "Cap today 2/10" under the Agent inbox subtitle: the one number from the old
@@ -16,8 +17,9 @@ import { isLoadFailure } from "@/lib/query-state";
  * and the spoken text says so. While loading it shows nothing, which claims
  * nothing. A failed first load is its own state, a retry chip, never a silent
  * blank (docs/frontend-conventions.md, "A failed fetch is a THIRD state").
+ * Analytics' Agent pipeline card shows the same line, so both say it one way.
  */
-export function CapToday() {
+export function CapToday({ className }: { className?: string }) {
   const query = useProposalFunnel();
   if (isLoadFailure(query)) {
     return (
@@ -34,7 +36,7 @@ export function CapToday() {
   const cap = query.data?.cap;
   if (!cap) return null;
   return (
-    <p className="mt-0.5 text-xs tabular-nums">
+    <p className={cn("mt-0.5 text-xs tabular-nums", className)}>
       <span aria-hidden="true">
         Cap today {cap.reserved_last_24h}/{cap.max_per_day}
       </span>

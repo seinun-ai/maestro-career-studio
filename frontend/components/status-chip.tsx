@@ -55,7 +55,7 @@ const STATUS_STYLES: Record<
 
 export function statusLabel(status: string | null): string {
   if (!status) return "Draft";
-  return STATUS_STYLES[status as ApplicationStatus]?.label ?? status;
+  return STATUS_STYLES[status as ApplicationStatus]?.label ?? "Unknown";
 }
 
 function chipClasses(interactive: boolean): string {
@@ -137,7 +137,7 @@ export const PROPOSAL_STATUS_CHIP: Record<
 
 /** Label-only view, for callers that bring their own container. */
 export function proposalStatusLabel(status: string): string {
-  return PROPOSAL_STATUS_CHIP[status]?.label ?? status;
+  return PROPOSAL_STATUS_CHIP[status]?.label ?? "Unknown";
 }
 
 const AGENT_LANE_CHIP = PROPOSAL_STATUS_CHIP;

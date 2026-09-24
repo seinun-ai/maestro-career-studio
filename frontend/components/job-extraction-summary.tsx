@@ -49,14 +49,15 @@ export function JobExtractionSummary({
             className="mt-1 flex items-center gap-2 rounded-lg border border-blue-500/40 bg-blue-500/10 p-3 text-sm text-blue-900 dark:text-blue-100"
           >
             <Info className="size-4 shrink-0" aria-hidden="true" />
-            Already tracked. This job matches one you saved earlier.
+            You already saved this job.
           </div>
         ) : (
           <p className="text-muted-foreground text-sm">
-            Extracted. Appears under{" "}
+            Saved to{" "}
             <Link href="/applications?status=saved" className="underline">
-              Saved
+              Applications
             </Link>
+            .
           </p>
         )}
       </CardHeader>
@@ -100,7 +101,7 @@ export function JobExtractionSummary({
           />
           {onScoreAts && (
             <Button size="sm" onClick={onScoreAts}>
-              Score &amp; tailor
+              Score and tailor
             </Button>
           )}
         </div>

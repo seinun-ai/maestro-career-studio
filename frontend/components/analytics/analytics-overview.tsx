@@ -16,7 +16,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { statusLabel } from "@/components/status-chip";
+import { LoadErrorState } from "@/components/load-error-state";
 import { apiFetch } from "@/lib/api";
+import { errorDetail } from "@/lib/error-text";
+import { isLoadFailure } from "@/lib/query-state";
 import { LowSampleBadge } from "@/components/explore/low-sample-hint";
 import type {
   ActivityResponse,
@@ -74,30 +77,36 @@ export function AnalyticsOverview({
         <SourceToggle value={source} onChange={setSource} />
       </div>
 
-      {activity.isLoading ? (
+      {/* The failure first: a retry with no data is loading again, and the
+          skeleton would unmount the focused Try again. */}
+      {isLoadFailure(activity) ? (
+        <LoadErrorState
+          className="py-8"
+          title="Couldn't load your activity."
+          detail={errorDetail(activity.error)}
+          retrying={activity.isFetching}
+          onRetry={() => void activity.refetch()}
+        />
+      ) : activity.isLoading ? (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           {Array.from({ length: 4 }).map((_, index) => (
             <Skeleton key={index} className="h-24 w-full" />
           ))}
         </div>
-      ) : activity.error ? (
-        <p role="alert" className="text-destructive text-sm">
-          {(activity.error as Error).message}
-        </p>
       ) : (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <StatTile
-            label="Submitted · last 7 days"
+            label="Applied · last 7 days"
             value={String(totals?.submitted_last7 ?? 0)}
             sub={`${totals?.submitted ?? 0} all time`}
           />
           <StatTile
-            label="In flight"
+            label="In progress"
             value={String(totals?.in_flight ?? 0)}
-            sub="applied · interviewing · offered"
+            sub="Applied, interviewing or offer"
           />
           <StatTile
-            label="At interview stage+"
+            label="Reached interviews"
             value={
               totals?.interview_rate != null
                 ? `${Math.round(totals.interview_rate * 100)}%`
@@ -105,14 +114,18 @@ export function AnalyticsOverview({
             }
             sub={
               totals?.submitted
-                ? `currently, of ${totals.submitted} submitted`
-                : "no submissions yet"
+                ? `of ${totals.submitted} applications`
+                : "No applications yet"
             }
           />
           <StatTile
-            label="Avg tailoring lift"
+            label="Average score gain"
             value={allLift ? `${allLift.avg_lift > 0 ? "+" : ""}${allLift.avg_lift}` : "—"}
-            sub={allLift ? `ATS points over ${allLift.n} tailored` : "nothing tailored yet"}
+            sub={
+              allLift
+                ? `points across ${allLift.n} tailored ${allLift.n === 1 ? "resume" : "resumes"}`
+                : "Nothing tailored yet"
+            }
           />
         </div>
       )}
@@ -141,15 +154,19 @@ export function AnalyticsOverview({
             <CardTitle>Most common gaps</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-2">
-            {gaps.isLoading ? (
+            {isLoadFailure(gaps) ? (
+              <LoadErrorState
+                className="py-6"
+                title="Couldn't load your most common gaps."
+                detail={errorDetail(gaps.error)}
+                retrying={gaps.isFetching}
+                onRetry={() => void gaps.refetch()}
+              />
+            ) : gaps.isLoading ? (
               <Skeleton className="h-20 w-full" />
-            ) : gaps.error ? (
-              <p role="alert" className="text-destructive text-sm">
-                {(gaps.error as Error).message}
-              </p>
             ) : (gaps.data ?? []).length === 0 ? (
               <p className="text-muted-foreground text-sm">
-                Score some jobs to see what you keep lacking.
+                Score a few jobs to see which skills come up most.
               </p>
             ) : (
               (gaps.data ?? []).map((row) => (
@@ -172,32 +189,36 @@ export function AnalyticsOverview({
               variant="secondary"
               onClick={() => onOpenTab("gaps")}
             >
-              Gaps & growth <ArrowRight aria-hidden="true" />
+              Skill gaps <ArrowRight aria-hidden="true" />
             </Button>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle>Quick wins from your Career KB</CardTitle>
+            <CardTitle>Quick wins from your career history</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-2">
-            {buildAreas.isLoading ? (
+            {isLoadFailure(buildAreas) ? (
+              <LoadErrorState
+                className="py-6"
+                title="Couldn't load your quick wins."
+                detail={errorDetail(buildAreas.error)}
+                retrying={buildAreas.isFetching}
+                onRetry={() => void buildAreas.refetch()}
+              />
+            ) : buildAreas.isLoading ? (
               <Skeleton className="h-20 w-full" />
-            ) : buildAreas.error ? (
-              <p role="alert" className="text-destructive text-sm">
-                {(buildAreas.error as Error).message}
-              </p>
             ) : quickWins.length === 0 ? (
               <p className="text-muted-foreground text-sm">
-                No in-demand skills are sitting unused in your Career KB right now.
+                No unused skills in your career history match what jobs ask for.
               </p>
             ) : (
               quickWins.map((row) => (
                 <div key={row.skill} className="flex items-center justify-between gap-3">
                   <span className="min-w-0 truncate text-sm">{row.skill}</span>
                   <span className="text-primary shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-xs">
-                    in your KB
+                    In your career history
                   </span>
                 </div>
               ))
@@ -208,7 +229,7 @@ export function AnalyticsOverview({
               variant="secondary"
               onClick={() => onOpenTab("gaps")}
             >
-              See all build areas <ArrowRight aria-hidden="true" />
+              See all skill gaps <ArrowRight aria-hidden="true" />
             </Button>
           </CardContent>
         </Card>

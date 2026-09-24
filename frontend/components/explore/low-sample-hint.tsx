@@ -4,10 +4,10 @@ import { cn } from "@/lib/utils";
 
 export function lowSampleLabel(n: number, unit = "applications"): string {
   const noun = n === 1 ? unit.replace(/s$/, "") : unit;
-  return `based on ${n} ${noun} · directional only`;
+  return `Based on only ${n} ${noun}`;
 }
 
-/** Muted n= badge. Renders nothing unless `lowSample` is set. */
+/** Muted "only N" badge. Renders nothing unless `lowSample` is set. */
 export function LowSampleBadge({
   n,
   lowSample,
@@ -28,7 +28,7 @@ export function LowSampleBadge({
       )}
       title={lowSampleLabel(n, unit)}
     >
-      n={n}
+      only {n}
     </span>
   );
 }

@@ -134,14 +134,15 @@ def test_new_application_names_the_key_before_the_paste():
     # Placeholders are example values only (conventions: microcopy rules).
     assert "Paste the full job description here" not in page
     assert '<Label htmlFor="source_url" optional>' in page
-    assert "The job is listed under Saved. Scoring comes next." in page
+    assert "Saved jobs appear in Applications, ready to score." in page
 
 
 def test_disabled_extract_explains_itself():
     page = _read("app/new/page.tsx")
     assert "id={keyNoticeId}" in page
     assert "aria-describedby={needsKey ? keyNoticeId : undefined}" in page
-    assert "Add an API key to extract." in page
+    assert "Add an API key to extract." not in page
+    assert "Saving a job reads its description with AI, so it needs an API key." in page
 
 
 def test_saving_model_settings_refreshes_setup_status():

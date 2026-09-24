@@ -27,6 +27,7 @@ import {
   useProposalActions,
 } from "@/components/proposals/triage-actions";
 import { IconButton } from "@/components/icon-button";
+import { humanizeEnum } from "@/components/job-extracted-fields";
 import { PROPOSAL_STATUS_CHIP } from "@/components/status-chip";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -48,6 +49,7 @@ import {
 } from "@/lib/agent-links";
 import { proposalByLine } from "@/lib/agent-name";
 import { apiFetch } from "@/lib/api";
+import { errorDetail } from "@/lib/error-text";
 import { formatTimeAgo } from "@/lib/format-date";
 import {
   SCORE_FLOORS,
@@ -363,7 +365,7 @@ export function ProposalsSection() {
     return (
       <LoadErrorState
         title="Couldn't load your Agent inbox."
-        detail={(error as Error)?.message}
+        detail={errorDetail(error)}
         retrying={isFetching}
         onRetry={() => void refetch()}
       />
@@ -814,7 +816,7 @@ function ProposalRow({
                 {job.disqualifying_for_opt ? (
                   <span
                     className="inline-flex items-center gap-1 text-xs text-amber-700 dark:text-amber-400"
-                    title="Extraction flagged this posting as disqualifying for OPT"
+                    title="This job may not accept OPT"
                   >
                     <AlertTriangle className="size-3.5" aria-hidden="true" />
                     OPT
@@ -822,12 +824,12 @@ function ProposalRow({
                 ) : null}
                 {isDup ? (
                   <span className="inline-flex items-center rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-800 dark:text-amber-400">
-                    possible duplicate
+                    Possible duplicate
                   </span>
                 ) : null}
               </div>
               <div className="text-muted-foreground truncate text-xs">
-                {[job.company, job.location, job.work_mode]
+                {[job.company, job.location, humanizeEnum(job.work_mode)]
                   .filter(Boolean)
                   .join(" · ")}
               </div>
@@ -838,7 +840,7 @@ function ProposalRow({
             {base ? (
               <span className="text-muted-foreground hidden shrink-0 rounded-full bg-muted/70 px-2 py-0.5 text-xs sm:inline-flex">
                 {baseName}
-                {score != null ? ` · ${score}` : ""}
+                {score != null ? ` · ATS score ${score}` : ""}
               </span>
             ) : null}
             <Badge
