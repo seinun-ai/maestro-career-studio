@@ -85,6 +85,9 @@ Adapt *how* when the plan conflicts with the code and log it below. If a change 
 | 9 | C5: the `TabsList` base string only | Also `relative` and `scroll-px-[3px]` on the row, `min-w-0` on the `Tabs` root | Browser check 2 failed with C5 alone: the dialog body is a grid, so the `Tabs` item took the row's full label width as its minimum and the whole dialog overflowed. Then Home left the first tab 16px under the edge: Base UI's scroll-into-view walks `offsetParent`s and the unpositioned row was not on that chain (the dialog's padding was counted). `scroll-px-[3px]` keeps an end tab's 3px focus ring inside. `min-w-0` measured: no size change on 7 other tabbed pages at 375 and 1280 |
 | 9 | C5 pin slices the variants block | The pin reads only the class string | The comment beside it names the classes (and "justify-center") |
 | all | One commit per task | Plus `4c9dbacb` splitting two pins | Two new pins reached cc 10, and backend `complexity_hotspots` went 423 → 425 (limit 424); split, now 423 |
+| review | Appendix C §4: `samePage` (pathname) in `arrive`/`judge` with the old unconditional `out.push(STOP)`; C §4's optional step: a same-page `GuardedLink` passes straight through | `showSamePage` in `leave-guard.ts`: same page decides only what ASKS, the URL decides what RENDERS (stop for the same URL, or while a question or a step over the duplicate settles; otherwise `t.page = e.url` and Next renders). A dirty same-page `GuardedLink` `preventDefault`s and `router.replace`s. The listeners' snapshot compares the exact URL again | **Plan defect** (review C1, I1): with the pathname compare every Back/Forward between two queries of one page (Analytics `?tab=`, Settings/Profile `?tab=`, `/chat?session=`) changed the address bar and not the screen, even with nothing unsaved; and a dirty same-page link pushed a normal entry above the duplicate, so Back #1 was a dead press. Adopted the reviewer's prototype re-derived, with two changes: a Back that steps over a leftover duplicate holds the page too (the prototype rendered the older tab for a frame before leaving), and `home` moves only to an entry whose URL is the page on screen ("Every Back shows the entry's page"; "never lose typed text") |
+| review | C5: wrapping rows "never overflow sideways, so none of this engages there" | `overflow-x-auto` scoped to `not-[.flex-wrap]`; triggers `group-[.flex-wrap]/tabs-list:h-auto`; comment rewritten; `scroll-px-1` (was `[3px]`) | Review I2: `overflow-x: auto` computes `overflow-y: auto`, so a wrapped row clipped its second line (Analytics "Gaps & growth" at 375, Career history at 375/768); the triggers' `h-[calc(100%-1px)]` had already spilled over the next card before this lane. At 3px the scroll-into-view stopped 1px short of the end (the verifier's clipped ring) |
+| review | (not in C) | `settingsPageAt()` in `lib/settings-tabs.ts`, shared by `anchorHref` and `use-focus-section.ts`'s `announce()`, which now writes `tabHref(page, tab, anchor)`; the in-page jump's poll is cancelled on unmount and by the next jump | Review minors M1/M2: the in-page jump left `?tab=` naming the old tab (a reload opened the wrong one); logic in two places goes through one helper |
 
 ## Gate results
 
@@ -114,13 +117,23 @@ Adapt *how* when the plan conflicts with the code and log it below. If a change 
 | end | `slop_scan.py check frontend`, `check backend` (export root) | both "slop ratchet OK" |
 | end | backend `complexity_hotspots` | 423 (≤ 424) |
 | end | `check_system_md.py` | OK, 1000/1000, 0 warnings (SYSTEM.md untouched) |
+| review fix `041a35cb` | node history tests (seen failing 6 of 10 new on `eb3774e7`'s machine) | 53/53 (43 + 10: review A–G re-derived, a same-page push while dirty, `samePage` with a hash); all node 187/187 |
+| review fix | pins (seen failing on `eb3774e7`: 3 leave-guard, 2 tab-row; the rest are pins for surviving mutants, each seen failing under its mutant) | `test_frontend_leave_guard.py` 24, `test_frontend_settings_pages.py` 19; all `test_frontend_*.py` 670 passed |
+| review fix | mutations (`/tmp/maestro-ia-lane3/scripts/mutate_fix.py`, backup copies) | 25/25 caught: C1 ×6 (stop always; judge or arrive unconditional stop; no hold, which is the prototype's flash; always hold; snapshot by pathname), I1 ×2 (pass-through push; `router.push`), I2 ×3 (unscoped overflow; trigger height; 3px scroll padding), the named survivors M1 M4 M8 M9 M10 M11 M13 M16 M17 M21 M22 (each by a pytest pin now, 4 also by node), minors ×3 (no unmount cancel; no replace-cancel; announce keeps the old `?tab=`). The reviewer's own list (`mutate_review.py`, M1–M23): 22/22 caught (M5 M6 M7 M12 M14 M15 M19 M23 also survived at `eb3774e7`; pinned too); M24's target line no longer exists (I1 replaced it) |
+| review fix | browser, real Back/Forward (`fix_browser.py`: `chrome.tabs.goBack/goForward` from an extension in headed Chrome for Testing) | 40/40; the same script on `eb3774e7`'s leave guard: 31/40 (C1 ×7, I1 ×2). Profile, Settings, Analytics `?tab=gaps`, `/chat?session=` Back/Forward cycles: URL and shown tab agree; dirty asks, Stay, Leave, one press after Save, Forward after Save; I1: no entry added, Back #1 asks |
+| review fix | browser, wrapped rows (`fix_wrap.py`, light 375/768/1280 + dark 375) | 110/110 (on `eb3774e7`'s `tabs.tsx`: 78/110). Analytics (both tabs, filter bar below), Career, both studios, KB import drawer: every tab hittable and inside its row, the row visible/visible, nothing below overlaps, a click selects each tab; job page, Settings, Profile still one 32px scrolling row; end tabs' ring: Settings 0px lost (was 0.7), job page 0.34px (sub-pixel: `scrollWidth` is an integer) |
+| review fix | browser, regressions and M2 (`t6`–`t9_browser.py`, `fix_announce.py`) | 26/26, 24/24, 23/23, 69/69; 4/4 (the strip's jump writes `?tab=autofill#autofill-…`, a reload opens it) |
+| review fix | full backend `pytest tests/ mcp_server/tests/ -q` | 4992 passed, 2 skipped (+10 pins over `4c9dbacb`'s 4982) |
+| review fix | tsc / lint / `ruff check .` / `npm run build` (last) | clean / 0 errors, 5 baseline warnings / All checks passed / OK (`/settings`, `/profile` ƒ) |
+| review fix | slop, clean `git archive HEAD` of `041a35cb` | frontend duplication 437 lines / 36 clones (≤ 437/36); `check frontend`, `check backend` OK; backend `complexity_hotspots` 423 (≤ 424; the tab-row pin that reached cc 10 was split) |
+| review fix | `check_system_md.py` | OK, 1000/1000, 0 warnings (SYSTEM.md untouched) |
 
-**Not verified:** Chromium only (no WebKit); Back and Forward driven by `history.back()`/`forward()` (the
-same `popstate` path as the toolbar buttons, not the buttons themselves); a touch swipe on the tab row
+**Not verified:** Chromium only (no WebKit); Tasks 6–9's Back and Forward were driven by `history.back()`/`forward()`
+(the review fix re-ran them with the browser's own Back via `chrome.tabs.goBack`); a touch swipe on the tab row
 (a horizontal wheel scrolled it); `/settings#model-catalog` and `#custom-endpoint` (lane 4's cards are not
 on this branch); C4's "cross-tab jump from inside a panel" (no such link until wave 2; a hash change
 that hides the focused panel was checked instead); the template editor's tab row (`/templates/[id]`).
-Browser scripts and screenshots: `/tmp/maestro-ia-lane3/scripts/t{6,7,8,9}_browser.py`,
+Browser scripts and screenshots: `/tmp/maestro-ia-lane3/scripts/t{6,7,8,9}_browser.py`, `fix_{browser,wrap,announce}.py`,
 `/tmp/maestro-ia-lane3/shots/`.
 
 ## Queued for Task 24 (SYSTEM.md changes Claude applies)
@@ -134,6 +147,9 @@ Browser scripts and screenshots: `/tmp/maestro-ia-lane3/scripts/t{6,7,8,9}_brows
 - §12 candidate (2026-09-23): **Base UI's arrow-key scroll-into-view walks `offsetParent`s up to the
   scroller**: an unpositioned tab row is not on that chain, so a dialog's padding was counted and Home left
   the first tab 16px cut off → the row is `relative` (`components/ui/tabs.tsx`).
+- §12 candidate (2026-09-23): **Same page is not same URL**: the leave guard stopped every popstate to the
+  same pathname, so Back between `?tab=` or `?session=` entries changed the URL and not the screen, on every
+  page → `samePage` decides what asks, the URL decides what renders (`showSamePage`).
 - §5 step 3 and §7 need nothing; §8 is an index (the conventions carry the rules).
 
 ## Deferred to merge (edits left for Claude, with file:line)
@@ -155,3 +171,5 @@ Browser scripts and screenshots: `/tmp/maestro-ia-lane3/scripts/t{6,7,8,9}_brows
   `SettingCard`, "Two save models" and legend bullets, so hunks may touch.
 - `frontend/components/settings/setting-card.tsx:70` (lane 4's file) still quotes `/profile#autofill` in a
   comment; harmless (the deep-link pin strips comments), but C9's copy lane may want `anchorHref` there.
+- Wave 3 (copy), from review M3: server messages still point Profile fields at Settings, and name
+  "Settings → Models" (now the "AI & models" tab). Not this lane's files; listed for the copy lane.
