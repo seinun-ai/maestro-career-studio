@@ -66,8 +66,8 @@ _QUERY_SURFACES: list[tuple[str, str]] = [
     ("components/analytics/analytics-overview.tsx", "Submitted · last 7 days"),
     ("components/career/profile-panel.tsx", "No skill groups yet."),
     ("components/career/entity-detail.tsx", "The item may no longer exist."),
-    ("app/career/page.tsx", "No custom sections yet"),
-    ("components/career/inbox-panel.tsx", "Inbox clear"),
+    ("app/career/page.tsx", "No other sections yet"),
+    ("components/career/inbox-panel.tsx", "Nothing to review"),
     ("components/analytics/agent-pipeline-card.tsx", "return null"),
     # Verified violations this round — each used to reach the marker on error.
     ("components/qa-tab.tsx", "No Q&amp;A entries yet."),

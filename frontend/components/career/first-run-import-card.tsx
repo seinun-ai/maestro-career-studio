@@ -9,6 +9,7 @@ import { LoadErrorState } from "@/components/load-error-state";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { apiFetch } from "@/lib/api";
+import { errorDetail } from "@/lib/error-text";
 import { isLoadFailure } from "@/lib/query-state";
 import type { KBEntitySummary } from "@/lib/types";
 
@@ -44,8 +45,8 @@ export function FirstRunImportCard() {
     return (
       <LoadErrorState
         className="py-8"
-        title="Couldn't check your career data."
-        detail={(entities.error as Error)?.message}
+        title="Couldn't check your career history."
+        detail={errorDetail(entities.error)}
         retrying={entities.isFetching}
         onRetry={() => void entities.refetch()}
       />
@@ -62,8 +63,8 @@ export function FirstRunImportCard() {
             <div className="space-y-1">
               <p className="text-sm font-medium">Start with the resumes you already have</p>
               <p className="text-muted-foreground text-sm">
-                Each one becomes a base resume, and their shared history
-                becomes your Career Knowledge Base.
+                Each becomes a base resume, and your career history is built
+                from them.
               </p>
             </div>
           </div>

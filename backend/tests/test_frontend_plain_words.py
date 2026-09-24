@@ -269,3 +269,62 @@ def test_health_counts_agree_with_their_nouns():
 
 def _flat(src: str) -> str:
     return " ".join(src.split())
+
+
+# --- Task 20 (appendix D §5): Career history --------------------------------
+
+
+def test_an_item_without_org_or_dates_claims_nothing():
+    # D10.7: a card with no organization and no dates read "Independent".
+    card = _read("components/career/entity-card.tsx")
+    assert '"Independent"' not in card
+    assert "{entity.org || dateRange ? (" in card
+
+
+def test_item_counts_agree_with_their_nouns():
+    # D10.8: "1 points", "1 drafts", "1 docs". Each Metric takes both nouns.
+    card = _read("components/career/entity-card.tsx")
+    for bare in ('label="points"', 'label="drafts"', 'label="docs"'):
+        assert bare not in card, bare
+    assert 'one="bullet" many="bullets"' in card
+    assert 'one="document" many="documents"' in card
+    assert "{value} {value === 1 ? one : many}" in card
+
+
+def test_add_files_names_what_it_opens():
+    # D10.6: "Add documents" opened the upload dialog on its Resumes tab.
+    # The dialog's own title is components/setup/upload-dialog.tsx (lane 9).
+    page = _read("app/career/page.tsx")
+    assert "Add documents" not in page
+    assert '<Upload aria-hidden="true" /> Add files' in page
+    assert "<UploadDialog open={importOpen} onOpenChange={setImportOpen} />" in page
+
+
+# One table names every item kind and status, so a kind is never "Custom
+# section" on one screen and "Other section" on the next, and a status never
+# prints its stored key.
+_KIND_TABLE_USERS = (
+    "components/career/entity-card.tsx",
+    "components/career/entity-detail.tsx",
+    "components/career/new-entity-dialog.tsx",
+    "components/career/merge-entity-dialog.tsx",
+    "components/base-resumes/new-base-resume-dialog.tsx",
+)
+
+
+def test_career_kinds_and_statuses_have_one_table():
+    labels = _read("components/career/career-labels.ts")
+    assert 'extra: "Other section",' in labels
+    assert ': "Unknown";' in labels
+    for rel in _KIND_TABLE_USERS:
+        src = _read(rel)
+        assert "KB_KIND_LABELS[" in src, rel
+        assert "custom section" not in src.lower(), rel
+    assert "kbStatusLabel(entity.status)" in _read("components/resume-editor/kb-import-drawer.tsx")
+    assert "kbStatusLabel(entity.status)" in _read("components/career/entity-card.tsx")
+
+
+def test_the_studio_pill_adds_to_career_history():
+    pill = _read("components/kb-sync-pill.tsx")
+    assert "Add to career history ({count})" in pill
+    assert "Sync to KB" not in pill.replace("// ", "")

@@ -405,7 +405,7 @@ _NEW_JOB = _read("app/new/page.tsx")
         (_SEND, "onClick={() => portOnce()}"),  # Send as-is
         (_SEND, "onClick={() => adaptOnce()}"),  # Adapt & preview
         (_SEND, "onClick={() => applyOnce()}"),  # Apply N to resume
-        (_CAPTURE, '"From document"'),  # Read document
+        (_CAPTURE, '"Add document"'),  # Read document
         (_NEW_ENTITY, 'form="new-career-entity"'),  # Add career item
         (_NEW_JOB, "onClick={() => extract(undefined)}"),  # Extract job on /new
         (_read("components/settings/persona-section.tsx"), "onClick={() => draftOnce(editRevision.current)}"),  # Draft from my career
@@ -424,7 +424,7 @@ def test_a_button_that_disables_itself_while_it_works_keeps_focus(src, marker):
 
 def test_read_document_opens_one_picker_per_gesture():
     # Mutant: the guard removed (a double click opened two file pickers).
-    button = _button_with(_CAPTURE, '"From document"')
+    button = _button_with(_CAPTURE, '"Add document"')
     assert "onClick={(event) => { if (event.detail > 1) return; fileInputRef.current?.click(); }}" in button
 
 

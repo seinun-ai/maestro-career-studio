@@ -114,8 +114,6 @@ _RULES: tuple[tuple[str, re.Pattern[str], str], ...] = (
 # (file, phrase): deliberate exceptions. Each must still occur, so the list shrinks.
 _ALLOWED: frozenset[tuple[str, str]] = frozenset(
     {
-        # Kilobytes in a file size, not the product.
-        ("frontend/components/career/documents-panel.tsx", "KB"),
         # The ONE sentence that says what the Companion is (appendix A8):
         # "Companion, the Maestro CS browser extension".
         ("frontend/components/settings/connected-agents-card.tsx", "browser extension"),
@@ -512,22 +510,6 @@ _PENDING_T18: dict[str, int] = {  # D §3 the gap page
     "frontend/components/gap-analysis/gap-card.tsx": 12,
     "frontend/components/gap-analysis/resolution-controls.tsx": 16,
 }
-_PENDING_T20: dict[str, int] = {  # D §5 Career history
-    "frontend/app/career/page.tsx": 5,
-    "frontend/components/career/capture-box.tsx": 1,
-    "frontend/components/career/documents-panel.tsx": 8,
-    "frontend/components/career/entity-detail.tsx": 4,
-    "frontend/components/career/exports-card.tsx": 1,
-    "frontend/components/career/first-run-import-card.tsx": 2,
-    "frontend/components/career/inbox-panel.tsx": 5,
-    "frontend/components/career/merge-entity-dialog.tsx": 6,
-    "frontend/components/career/new-entity-dialog.tsx": 15,
-    "frontend/components/career/points-list.tsx": 9,
-    "frontend/components/career/profile-panel.tsx": 2,
-    "frontend/components/career/resume-import-dialog.tsx": 5,
-    "frontend/components/career/send-to-resume-dialog.tsx": 10,
-    "frontend/components/kb-sync-pill.tsx": 12,
-}
 _PENDING_T21: dict[str, int] = {  # D §6 Settings and Profile; D §7 Assistant, shell, errors, setup
     "frontend/app/error.tsx": 1,
     "frontend/app/global-error.tsx": 1,
@@ -561,7 +543,7 @@ _PENDING_T22: dict[str, int] = {  # D §8 the Companion panel
     "extension/panel/stages/score.js": 2,
     "extension/panel/stages/track.js": 1,
 }
-_BLOCKS = (_PENDING_T17, _PENDING_T18, _PENDING_T20, _PENDING_T21, _PENDING_T22)
+_BLOCKS = (_PENDING_T17, _PENDING_T18, _PENDING_T21, _PENDING_T22)
 _PENDING: dict[str, int] = {rel: n for block in _BLOCKS for rel, n in block.items()}
 
 

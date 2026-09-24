@@ -14,6 +14,7 @@ import {
   remintKbDocument,
   uploadKbDocument,
 } from "@/lib/api";
+import { couldnt } from "@/lib/error-text";
 import { formatAbsoluteDateTime } from "@/lib/format-date";
 import type { KBDocumentOut } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -41,31 +42,31 @@ export function DocumentsPanel({
     onSuccess: (document) => {
       toast.success(
         document.ingest_status === "minted"
-          ? "Document uploaded and drafts minted"
-          : `Document uploaded (${document.ingest_status})`,
+          ? "Document added. New bullets are ready to review."
+          : "Document added",
       );
       if (inputRef.current) inputRef.current.value = "";
       invalidate();
     },
-    onError: (error: Error) => toast.error(error.message),
+    onError: (error: Error) => toast.error(couldnt("add the document", error)),
   });
 
   const remint = useMutation({
     mutationFn: (documentId: string) => remintKbDocument(documentId),
     onSuccess: () => {
-      toast.success("Document reprocessed");
+      toast.success("Document read again");
       invalidate();
     },
-    onError: (error: Error) => toast.error(error.message),
+    onError: (error: Error) => toast.error(couldnt("read the document again", error)),
   });
 
   const remove = useMutation({
     mutationFn: (documentId: string) => deleteKbDocument(documentId),
     onSuccess: () => {
-      toast.success("Source document deleted");
+      toast.success("Document deleted");
       invalidate();
     },
-    onError: (error: Error) => toast.error(error.message),
+    onError: (error: Error) => toast.error(couldnt("delete the document", error)),
   });
 
   const receiveFile = (file: File | undefined) => {
@@ -81,7 +82,7 @@ export function DocumentsPanel({
     const accepted = await confirm({
       title: `Delete ${document.filename}?`,
       description:
-        "The source file will be removed. Points already minted from it remain in the Career KB.",
+        "Bullets made from it stay.",
       confirmLabel: "Delete document",
       destructive: true,
     });
@@ -92,12 +93,12 @@ export function DocumentsPanel({
     <Card className="rounded-2xl">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <FileText className="size-4" aria-hidden="true" /> Source documents
+          <FileText className="size-4" aria-hidden="true" /> Documents
           <Badge className="rounded-full" variant="secondary">
             {documents.length}
           </Badge>
         </CardTitle>
-        <p className="text-muted-foreground text-sm">Evidence that can mint reviewable draft points.</p>
+        <p className="text-muted-foreground text-sm">We read these to suggest bullets for you to review.</p>
       </CardHeader>
       <CardContent className="space-y-3">
         <div
@@ -112,13 +113,13 @@ export function DocumentsPanel({
             accept={DOCUMENT_ACCEPT}
             onChange={(event) => receiveFile(event.target.files?.[0])}
             disabled={upload.isPending}
-            aria-label="Upload source document"
+            aria-label="Upload document"
           />
           <span className="mx-auto flex size-9 items-center justify-center rounded-full bg-background/80">
             <Upload className="text-muted-foreground size-4" aria-hidden="true" />
           </span>
-          <p className="mt-2 text-sm font-medium">Drop a source file</p>
-          <p className="text-muted-foreground mt-1 text-xs">PDF, DOCX, image, text, or Markdown · 10 MB max</p>
+          <p className="mt-2 text-sm font-medium">Drop a file here</p>
+          <p className="text-muted-foreground mt-1 text-xs">PDF, Word, image or text, up to 10 MB</p>
           <Button
             className="mt-3 rounded-full"
             size="sm"
@@ -126,14 +127,13 @@ export function DocumentsPanel({
             onClick={() => inputRef.current?.click()}
             disabled={upload.isPending}
           >
-            {upload.isPending ? "Extracting and minting…" : "Choose file"}
+            {upload.isPending ? "Reading…" : "Choose file"}
           </Button>
         </div>
 
         {documents.length === 0 ? (
           <div className="py-3 text-center">
-            <p className="text-sm font-medium">No source documents yet</p>
-            <p className="text-muted-foreground mt-1 text-xs">Uploads and their extraction status appear here.</p>
+            <p className="text-sm font-medium">No documents yet</p>
           </div>
         ) : (
           <ul className="divide-y divide-foreground/10">
@@ -173,7 +173,7 @@ export function DocumentsPanel({
                         onClick={() => remint.mutate(document.id)}
                         disabled={remint.isPending || remove.isPending}
                       >
-                        <RefreshCw aria-hidden="true" /> Re-mint
+                        <RefreshCw aria-hidden="true" /> Read again
                       </Button>
                     ) : null}
                     <Button
@@ -198,13 +198,20 @@ export function DocumentsPanel({
   );
 }
 
+// The stored status (extracted|minted|failed) in words.
+const DOCUMENT_STATUS_LABELS: Record<string, string | undefined> = {
+  minted: "Done",
+  extracted: "Read, no bullets",
+  failed: "Couldn't read",
+};
+
 function DocumentStatus({ status }: { status: string }) {
   const failed = status === "failed";
   const minted = status === "minted";
   return (
     <span
       className={cn(
-        "inline-flex h-6 items-center gap-1.5 rounded-full px-2 text-xs font-medium capitalize",
+        "inline-flex h-6 items-center gap-1.5 rounded-full px-2 text-xs font-medium",
         failed && "bg-destructive/10 text-destructive",
         minted && "bg-emerald-600/10 text-emerald-800 dark:bg-emerald-400/15 dark:text-emerald-300",
         !failed && !minted && "bg-muted text-muted-foreground",
@@ -218,7 +225,7 @@ function DocumentStatus({ status }: { status: string }) {
           !failed && !minted && "bg-muted-foreground/50",
         )}
       />
-      {status}
+      {DOCUMENT_STATUS_LABELS[status] ?? "Reading"}
     </span>
   );
 }

@@ -82,25 +82,6 @@ _PENDING_EXAMPLES_T18: dict[tuple[str, str], int] = {  # D §3 the gap page
     ("components/gap-analysis/resolution-controls.tsx", "e.g. PySpark"): 1,
     ("components/gap-analysis/resolution-controls.tsx", "e.g. Built the ingestion pipeline in Python and Airflow"): 2,
 }
-_PENDING_EXAMPLES_T20: dict[tuple[str, str], int] = {  # D §5 Career history
-    ("components/career/capture-box.tsx", "e.g. This week I shipped" + _ELLIPSIS): 1,
-    ("components/career/entity-detail.tsx", "e.g. Acme Labs"): 1,
-    ("components/career/entity-detail.tsx", "e.g. Jan 2025"): 1,
-    ("components/career/entity-detail.tsx", "e.g. Mar 2025"): 1,
-    ("components/career/new-entity-dialog.tsx", "e.g. AWS Solutions Architect"): 1,
-    ("components/career/new-entity-dialog.tsx", "e.g. Acme Corp"): 1,
-    ("components/career/new-entity-dialog.tsx", "e.g. Amazon Web Services"): 1,
-    ("components/career/new-entity-dialog.tsx", "e.g. Best Paper Award"): 1,
-    ("components/career/new-entity-dialog.tsx", "e.g. Fraud detection pipeline"): 1,
-    ("components/career/new-entity-dialog.tsx", "e.g. Jan 2025"): 1,
-    ("components/career/new-entity-dialog.tsx", "e.g. MSc Computer Science"): 1,
-    ("components/career/new-entity-dialog.tsx", "e.g. Mar 2025"): 1,
-    ("components/career/new-entity-dialog.tsx", "e.g. NeurIPS 2024"): 1,
-    ("components/career/new-entity-dialog.tsx", "e.g. Publications, Volunteer Work"): 1,
-    ("components/career/new-entity-dialog.tsx", "e.g. Senior Data Scientist"): 1,
-    ("components/career/new-entity-dialog.tsx", "e.g. University of Toronto"): 1,
-    ("components/career/profile-panel.tsx", "e.g. ML Ops"): 1,
-}
 _PENDING_EXAMPLES_T21: dict[tuple[str, str], int] = {  # D §6 Settings and Profile
     ("components/settings/autofill-section.tsx", "e.g. $120,000"): 1,
     ("components/settings/autofill-section.tsx", "e.g. 2 weeks"): 1,
@@ -126,7 +107,6 @@ _PENDING_EXAMPLES_T21: dict[tuple[str, str], int] = {  # D §6 Settings and Prof
 _EXAMPLE_BLOCKS = (
     _PENDING_EXAMPLES_T17,
     _PENDING_EXAMPLES_T18,
-    _PENDING_EXAMPLES_T20,
     _PENDING_EXAMPLES_T21,
 )
 _PENDING_EXAMPLES: dict[tuple[str, str], int] = {key: n for block in _EXAMPLE_BLOCKS for key, n in block.items()}
@@ -678,25 +658,14 @@ def test_custom_answer_has_a_visible_label_not_a_placeholder():
     )
 
 
-# kind -> (title example, organization example). Education and certification
-# used to fall through to the job-title and employer examples.
-_ENTITY_EXAMPLES = {
-    "extra": ("e.g. Best Paper Award", "e.g. NeurIPS 2024"),
-    "project": ("e.g. Fraud detection pipeline", None),
-    "education": ("e.g. MSc Computer Science", "e.g. University of Toronto"),
-    "certification": ("e.g. AWS Solutions Architect", "e.g. Amazon Web Services"),
-}
-
-
-def test_new_entity_placeholders_are_examples():
+def test_new_item_dialog_has_no_placeholders():
     src = _src("components/career/new-entity-dialog.tsx")
-    for kind, examples in _ENTITY_EXAMPLES.items():
-        for example in filter(None, examples):
-            assert re.search(rf'kind === "{kind}"\s*\?\s*"{re.escape(example)}"', src), example
-    for text in ("e.g. Senior Data Scientist", "e.g. Acme Corp", "e.g. Jan 2025", "e.g. Mar 2025"):
-        assert text in src, text
+    # No example in any field: a format is hint text between label and field.
+    assert "placeholder=" not in src
+    assert "Month and year, like Jan 2025." in src
+    assert 'aria-describedby="career-entity-start-hint"' in src
+    # ("Project name" is the project kind's label now, not a placeholder.)
     for retired in (
-        "Project name",
         "Role or title",
         "Conference, publisher, or org",
         "Company, institution, or issuer",
@@ -706,11 +675,10 @@ def test_new_entity_placeholders_are_examples():
         assert retired not in src, retired
 
 
-def test_entity_dates_are_examples_not_the_ongoing_word():
+def test_item_dates_are_hints_not_the_ongoing_word():
     src = _src("components/career/entity-detail.tsx")
-    assert 'placeholder="e.g. Acme Labs"' in src
-    assert 'placeholder="e.g. Jan 2025"' in src
-    assert 'placeholder="e.g. Mar 2025"' in src
+    assert "placeholder=" not in src
+    assert "Month and year, like Jan 2025." in src
     assert 'placeholder="Present"' not in src
 
 
@@ -718,13 +686,13 @@ def test_profile_and_notes_statements_are_hints():
     profile = _src("components/career/profile-panel.tsx")
     notes = _src("components/career/notes-editor.tsx")
     assert 'placeholder="ML Ops"' not in profile
-    assert 'placeholder="e.g. ML Ops"' in profile
+    assert "e.g." not in profile
     assert "Visa timeline, target roles" not in profile
     _order(
         profile,
         'htmlFor="kb-profile-notes"',
         'id="kb-profile-notes-hint"',
-        "Private context such as visa timeline, target roles, location constraints.",
+        "Only you and the AI see these, such as visa timing or where you can work.",
         'aria-describedby="kb-profile-notes-hint"',
         'id="kb-profile-notes"',
     )
@@ -733,7 +701,7 @@ def test_profile_and_notes_statements_are_hints():
         notes,
         "htmlFor={`kb-notes-${entityId}`}",
         "id={`kb-notes-${entityId}-hint`}",
-        "Stack, scale, constraints, collaborators, and what you owned.",
+        "Tools, team size, limits, who you worked with, and what you owned.",
         "aria-describedby={`kb-notes-${entityId}-hint`}",
         "id={`kb-notes-${entityId}`}",
     )

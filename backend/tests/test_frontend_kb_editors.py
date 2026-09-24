@@ -154,7 +154,7 @@ def test_save_arms_the_focus_return_then_saves_or_closes():
         (
             "point",
             _POINT_ROW,
-            'onClick={() => onSave(() => update.mutate({ payload: { text: text.trim() }, message: "Point updated" })) }',
+            'onClick={() => onSave(() => update.mutate({ payload: { text: text.trim() }, message: "Bullet updated" })) }',
         ),
         (
             "inbox draft",
@@ -184,6 +184,6 @@ def test_quick_capture_keeps_focus_while_it_captures():
     assert "readOnly={capture.isPending}" in textarea
     assert "disabled=" not in textarea
     flat = _flat(_CAPTURE)
-    submit = flat[flat.rindex("<Button", 0, flat.index('"Capturing…" : "Add to inbox"')) :]
+    submit = flat[flat.rindex("<Button", 0, flat.index('"Adding…" : "Add to drafts"')) :]
     assert "focusableWhenDisabled" in submit
     assert "data-disabled:opacity-50" in submit

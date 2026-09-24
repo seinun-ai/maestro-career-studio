@@ -16,6 +16,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { applyKbSync, getKbSyncStatus } from "@/lib/api";
+import { couldnt } from "@/lib/error-text";
 import { formatTimeAgo } from "@/lib/format-date";
 import { isLoadFailure } from "@/lib/query-state";
 import type { SyncStatus } from "@/lib/types";
@@ -51,14 +52,14 @@ function actionableCount(status: SyncStatus): number {
   return status.counts.new + status.counts.drift + skillsNew(status);
 }
 
-/** Section → singular noun. Bullet-bearing sections produce points; the rest
- *  produce whole entries, which are the cheap ones to accept. */
-const SECTION_NOUNS: [section: string, noun: string][] = [
-  ["experience", "new point"],
-  ["projects", "new project point"],
-  ["education", "new education entry"],
-  ["certifications", "new certification"],
-  ["extra", "new extra-section entry"],
+/** Section → its noun, one and many. Bullet-bearing sections produce bullets;
+ *  the rest produce whole items, which are the cheap ones to accept. */
+const SECTION_NOUNS: [section: string, one: string, many: string][] = [
+  ["experience", "new bullet", "new bullets"],
+  ["projects", "new project bullet", "new project bullets"],
+  ["education", "new education item", "new education items"],
+  ["certifications", "new certification", "new certifications"],
+  ["extra", "new item in other sections", "new items in other sections"],
 ];
 
 function breakdownLines(status: SyncStatus): string[] {
@@ -68,19 +69,19 @@ function breakdownLines(status: SyncStatus): string[] {
     counted.set(item.section, (counted.get(item.section) ?? 0) + 1);
   }
   const lines: string[] = [];
-  for (const [section, noun] of SECTION_NOUNS) {
+  for (const [section, one, many] of SECTION_NOUNS) {
     const n = counted.get(section) ?? 0;
-    if (n > 0) lines.push(`${n} ${noun}${n === 1 ? "" : "s"}`);
+    if (n > 0) lines.push(`${n} ${n === 1 ? one : many}`);
   }
   const skills = skillsNew(status);
   if (skills > 0) lines.push(`${skills} new skill${skills === 1 ? "" : "s"}`);
-  // Says what syncing will DO to it, because "drifted" alone reads like a
+  // Says what adding will DO to it, because "drifted" alone reads like a
   // problem being reported rather than a note about to be filed.
   const drift = status.counts.drift;
-  if (drift > 0) lines.push(`${drift} drifted (will be recorded)`);
+  if (drift > 0) lines.push(`${drift} reworded (we'll note the change)`);
   // The tier vocabulary belongs to the backend; if it grows a shape this list
   // does not name, still say how much there is rather than nothing.
-  if (lines.length === 0) lines.push(`${actionableCount(status)} to sync`);
+  if (lines.length === 0) lines.push(`${actionableCount(status)} to add`);
   return lines;
 }
 
@@ -98,7 +99,7 @@ export function KbSyncPill({ slug }: { slug: string }) {
   // A successful sync can drop the count to zero, which unmounts the whole
   // Popover subtree — the trigger the user just activated included — and drops
   // keyboard focus to <body>. Chosen over keeping a dead trigger mounted: the
-  // "KB synced" chip is the honest end state, and moving focus onto it also
+  // "Career history up to date" chip is the honest end state, and moving focus onto it also
   // announces the result, which a disabled leftover trigger would not.
   const restoreFocus = useRef(false);
   const chipRef = useRef<HTMLSpanElement>(null);
@@ -120,11 +121,15 @@ export function KbSyncPill({ slug }: { slug: string }) {
       // `skills_added`, never `skills`: the latter is CATEGORY names, so two
       // new skills filed under one category summarised as "1 skills".
       const added = result.skills_added.length;
-      const parts = [`${result.created} new`, `${result.drifted} drifted`];
-      if (added > 0) parts.push(`${added} skill${added === 1 ? "" : "s"}`);
+      const { created, drifted } = result;
+      const also = [
+        drifted > 0 ? `Noted ${drifted} wording ${drifted === 1 ? "change" : "changes"}.` : null,
+        added > 0 ? `Added ${added} ${added === 1 ? "skill" : "skills"}.` : null,
+      ].filter(Boolean);
       toast.success(
         <>
-          Synced {parts.join(" · ")}.{" "}
+          Added {created} new {created === 1 ? "bullet" : "bullets"} to your career
+          history.{also.length ? ` ${also.join(" ")}` : ""}{" "}
           <Link href="/career" className="underline">
             Review drafts
           </Link>
@@ -135,7 +140,7 @@ export function KbSyncPill({ slug }: { slug: string }) {
         queryKey: ["base-resumes", slug, "kb-sync-status"],
       });
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(couldnt("add to your career history", err)),
   });
 
   // The error branch comes FIRST: a failed status fetch must not be able to
@@ -145,9 +150,9 @@ export function KbSyncPill({ slug }: { slug: string }) {
     return (
       <RetryChip
         className={`${CHIP} text-muted-foreground hover:text-foreground hover:bg-muted/60 hover:border-border cursor-pointer transition-colors`}
-        title="Couldn't check Career KB sync. Try again."
+        title="Couldn't check your career history. Try again."
         icon={<RefreshCw className="size-3.5" />}
-        label="KB sync unavailable"
+        label="Career history unavailable"
         retrying={query.isFetching}
         onRetry={() => void query.refetch()}
       />
@@ -163,7 +168,7 @@ export function KbSyncPill({ slug }: { slug: string }) {
       <span
         className={CHIP}
         aria-busy="true"
-        aria-label="Checking Career KB sync"
+        aria-label="Checking career history"
       >
         <Skeleton className="h-3 w-12" />
       </span>
@@ -186,14 +191,14 @@ export function KbSyncPill({ slug }: { slug: string }) {
         className={`${CHIP} text-muted-foreground`}
         title={
           synced
-            ? `Career KB up to date · synced ${formatTimeAgo(synced)}`
-            : "Career KB up to date"
+            ? `Career history up to date, last updated ${formatTimeAgo(synced)}`
+            : "Career history up to date"
         }
       >
-        {/* Words, not "KB ✓": the abbreviation-plus-glyph was only legible to
+        {/* Words, not a glyph: the abbreviation-plus-check was only legible to
             someone who already knew what the pill was. */}
         <Check className="size-3.5" />
-        KB synced
+        Career history up to date
       </span>
     );
   }
@@ -204,9 +209,9 @@ export function KbSyncPill({ slug }: { slug: string }) {
         render={
           <Button variant="outline" size="sm">
             <RefreshCw />
-            {/* "Sync to KB", with the preposition: the label must say which
-                way the data flows — nothing here touches the resume. */}
-            Sync to KB ({count})
+            {/* "Add to career history", with the preposition: the label must
+                say which way the data flows — nothing here touches the resume. */}
+            Add to career history ({count})
           </Button>
         }
       />
@@ -216,10 +221,9 @@ export function KbSyncPill({ slug }: { slug: string }) {
       <PopoverContent align="end" className="w-72">
         <div className="flex flex-col gap-3">
           <div className="flex flex-col gap-0.5">
-            {/* Names the popup for screen readers via aria-labelledby. Not
-                "not yet in the KB" — drift IS in the KB, it has just moved. */}
+            {/* Names the popup for screen readers via aria-labelledby. */}
             <PopoverTitle className="text-muted-foreground text-xs font-medium">
-              To sync into the Career KB
+              Not yet in your career history
             </PopoverTitle>
             {breakdownLines(status).map((line) => (
               <p key={line} className="text-sm">
@@ -228,12 +232,12 @@ export function KbSyncPill({ slug }: { slug: string }) {
             ))}
           </div>
           {recorded > 0 && (
-            // Outside the titled group on purpose: everything under "To sync
-            // into the Career KB" is work about to be done, and this is the
+            // Outside the titled group on purpose: everything under "Not yet in
+            // your career history" is work about to be done, and this is the
             // opposite — already filed, and never added to the count. Listing
             // it there said the title was wrong about its own contents.
             <p className="text-muted-foreground text-xs">
-              {recorded} drift note{recorded === 1 ? "" : "s"} already recorded
+              {recorded} wording {recorded === 1 ? "change" : "changes"} already noted
             </p>
           )}
           <div className="flex items-center justify-between gap-2">
@@ -242,13 +246,13 @@ export function KbSyncPill({ slug }: { slug: string }) {
               onClick={() => sync.mutate()}
               disabled={sync.isPending}
             >
-              {sync.isPending ? "Syncing…" : "Sync now"}
+              {sync.isPending ? "Adding…" : "Add now"}
             </Button>
             <Link
               href="/career"
               className="text-muted-foreground hover:text-foreground text-xs"
             >
-              Career KB →
+              Open career history
             </Link>
           </div>
         </div>

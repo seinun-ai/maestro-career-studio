@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { kbImportConsolidate, kbImportResume } from "@/lib/api";
+import { couldnt, errorDetail } from "@/lib/error-text";
 import { notifyRenderNote } from "@/lib/render-note";
 import type { ImportReport } from "@/lib/types";
 import { RESUME_FILE_ACCEPT } from "@/lib/upload-accept";
@@ -69,7 +70,7 @@ export function ResumeImportPanel({ onClose }: { onClose: () => void }) {
         skipped.push(...result.skipped);
         setRows((prev) => prev.map((r, idx) => (idx === i ? { file, state: "done" } : r)));
       } catch (err) {
-        const reason = err instanceof Error ? err.message : String(err);
+        const reason = errorDetail(err) ?? "Couldn't read this file.";
         skipped.push({ filename: file.name, reason });
         setRows((prev) =>
           prev.map((r, idx) => (idx === i ? { file, state: "failed", reason } : r)),
@@ -89,7 +90,7 @@ export function ResumeImportPanel({ onClose }: { onClose: () => void }) {
         setConsolidate("done");
       } catch (err) {
         setConsolidate("failed");
-        toast.error(err instanceof Error ? err.message : String(err));
+        toast.error(couldnt("import the resumes", err));
       }
     } else {
       setConsolidate("idle");
@@ -124,7 +125,7 @@ export function ResumeImportPanel({ onClose }: { onClose: () => void }) {
               maxFiles={MAX_FILES}
               maxBytes={MAX_BYTES}
               disabled={busy}
-              hint={`PDF, DOCX, Markdown, text, or the app’s own JSON · up to ${MAX_FILES} files, 10 MB each`}
+              hint={`PDF, Word or text files. Up to ${MAX_FILES} files, 10 MB each.`}
               onFiles={(picked, skippedFiles) => {
                 setFiles(picked);
                 setRejected(skippedFiles);
@@ -160,7 +161,7 @@ export function ResumeImportPanel({ onClose }: { onClose: () => void }) {
                             : consolidate
                       }
                     />
-                    <span className="text-sm">Building your Career KB…</span>
+                    <span className="text-sm">Adding to your career history…</span>
                   </li>
                 )}
               </ul>
@@ -214,15 +215,15 @@ export function ResumeImportPanel({ onClose }: { onClose: () => void }) {
         ) : (
           <div className="space-y-4">
             {/* The disclosure. Both effects, stated plainly, including that the
-                imported points are already approved and can be reviewed. */}
+                imported bullets are already approved and can be reviewed. */}
             <p className="text-sm">
-              Created <strong>{report.bases.length}</strong> base resume
-              {report.bases.length === 1 ? "" : "s"}
+              Created <strong>{report.bases.length}</strong>{" "}
+              {report.bases.length === 1 ? "base resume" : "base resumes"}
               {pointsAdded > 0 && (
                 <>
                   {" "}
-                  and added <strong>{pointsAdded}</strong> approved point
-                  {pointsAdded === 1 ? "" : "s"} to your Career KB
+                  and added <strong>{pointsAdded}</strong> approved{" "}
+                  {pointsAdded === 1 ? "bullet" : "bullets"} to your career history
                 </>
               )}
               .
@@ -231,7 +232,7 @@ export function ResumeImportPanel({ onClose }: { onClose: () => void }) {
             {report.bases.length > 0 && (
               <div className="space-y-2">
                 <p className="text-muted-foreground text-xs">
-                  Confirm the target role for each — suggestions are guesses.
+                  Check the role for each. These are our best guesses.
                 </p>
                 <ul className="space-y-2">
                   {report.bases.map((b) => (
@@ -290,8 +291,8 @@ export function ResumeImportDialog({
         <DialogHeader>
           <DialogTitle>Import your resumes</DialogTitle>
           <DialogDescription>
-            Each file becomes a base resume you can tailor, and its content is
-            added to your Career Knowledge Base.
+            Each file becomes a base resume, and its content is added to your
+            career history.
           </DialogDescription>
         </DialogHeader>
         {/* Remount on each open so a previous run's report does not persist. */}

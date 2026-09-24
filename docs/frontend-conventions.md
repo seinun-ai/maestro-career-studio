@@ -56,8 +56,8 @@
   `test_selected_tonal_toggles_show_a_check` pins the first four. Three exceptions carry the state
   without a Check: the formatting panel's segmented buttons are solid
   `bg-primary` plus `aria-pressed` (a full-strength fill needs no second cue,
-  and a Check would widen every segment in a narrow pane), the Career KB's
-  new-entity section-type cards are a solid `border-primary` outline plus
+  and a Check would widen every segment in a narrow pane), Career history's
+  Add item layout cards are a solid `border-primary` outline plus
   `aria-pressed` (two option cards, each a title and a description line; the
   outline is the cue, as on a radio card), and the gap-target chips are solid
   `bg-primary` plus `aria-pressed` (dense truncating chips, and the fill is
@@ -639,21 +639,21 @@
     `focusableWhenDisabled` (Save, Widen/Narrow at their limits, a referral's
     Save and Delete, the Templates Create): a disabled `<button>` drops
     focus. So is every dialog button that generates, applies, creates or
-    deletes (Suggest a selection and Create on New base resume, Draft rewrite
-    and Apply, Adapt & preview, Send as-is and Apply on Send to resume, Add
+    deletes (Suggest items and Create on New base resume, Write new wording
+    and Apply, Adapt and preview, Add as is and Add N to resume on Add to a resume, Add
     career item, a base resume's Delete), `/new`'s Extract job and Quick
-    capture's From document, each dimmed on
+    capture's Add document, each dimmed on
     `data-disabled`. So are Queue for agent (a tracker row's and the job
     header's) and the tailored studio's Build draft; each leaves once its
     request lands, so focus is handed on: the row's ⋯, the header's first
     control, the studio's `<main>` (`BuildDraft`'s `useFocusHandoff`). A text
-    field a submit would disable goes `readOnly` instead (New career item's,
+    field a submit would disable goes `readOnly` instead (Add item's,
     the API key and Custom AI server fields while they save, and the Role
     dialog's picker while its pick saves: `RolePicker`'s `readOnly` keeps the
     list shut and its own Backspace and Enter from committing). A `Select`
     that saves on pick does the same (the Models role pickers, JSON mode):
     Base UI's `readOnly`, never `disabled`, or the trigger the list closes
-    onto drops focus to `<body>`. From document opens one file picker per
+    onto drops focus to `<body>`. Add document opens one file picker per
     gesture: a double click's second click (`event.detail > 1`) is ignored.
   - `RolePicker` refuses Base UI's Escape on a CLOSED list
     (`preventBaseUIHandler`): Base UI clears the value there and swallows the
@@ -664,9 +664,9 @@
   - A dialog whose opener goes dead returns elsewhere. Demonstrate skill's
     Apply disables its chip ("· done"), so its `finalFocus` is the opener
     while live, else the next skill still to do, else the notes
-    `<section tabIndex={-1}>`. New career item closes after a create only
+    `<section tabIndex={-1}>`. Add item closes after a create only
     once the refetched list holds the new card, and lands on it (on another
-    tab, the opener). Adapt & preview leaves with the select step; its
+    tab, the opener). Adapt and preview leaves with the select step; its
     success arms `useFocusOnNextCommit` with Apply. A create that navigates
     into an editor (Templates Create, New base resume) lands on the editor's
     `<main tabIndex={-1}>`: `FullscreenEditorPage` passes it the stable
@@ -795,7 +795,7 @@
   `DialogContent` unmounts on close, so Esc, an overlay click or the dismiss
   button would drop typed text and a proposal a model call produced. The
   field state and the one request live in the component that owns the dialog
-  (Referrals' `draft`, `NewEntityDialog`, `InstructSheet`, Send to resume,
+  (Referrals' `draft`, `NewEntityDialog`, `InstructSheet`, Add to a resume,
   Demonstrate skill), or the popup stays mounted (`DialogContent
   keepMounted`, New base resume, whose twelve fields and two requests live in
   the popup). A caller mounts such a dialog for the page's lifetime, never
@@ -811,8 +811,8 @@
   flight; every form the page shows reads the shared pending flag and submits
   through `useSingleFlight` (react-query re-renders `isPending` on a
   zero-delay timeout, so a double click read `false` twice and created two
-  rows). Each generate and apply button inside such a dialog (Suggest a
-  selection, Propose, Apply, Draft rewrite, Adapt, Send as-is) submits
+  rows). Each generate and apply button inside such a dialog (Suggest
+  items, Suggest edits, Apply, Write new wording, Adapt, Add as is) submits
   through `useSingleFlight` too, and so do the Templates Create and Duplicate,
   `/new`'s Extract, both studios' Save, the tailored studio's Build draft and
   Rebuild (one guard), Queue for agent (tracker row and job header), every
@@ -1228,14 +1228,14 @@
   `scores.isSuccess`: a failed refetch keeps its old `[]`, and without the
   check the skeleton hid the error and its Retry for good. Pinned by
   `test_frontend_first_run.py`.
-- Career KB pages follow the Base Resumes read/edit split: one card per
+- Career history pages follow the Base resumes read/edit split: one card per
   section, flat rows, hover-or-touch actions, local Save/Cancel editors with
   Escape. Do not regress these surfaces to always-editable form grids.
   Escape and Cancel over changed text ask through `useConfirmDiscard`
   ("Discard your changes?" / **Discard** / **Keep editing**, Keep editing
   focused; unchanged text closes at once), and a closing editor returns focus
   to its Edit button (`useDiscardableEditor({ editing, changed, close, busy })`
-  in `hooks/use-confirm-discard.ts`, used by the notes, point and inbox-draft
+  in `hooks/use-confirm-discard.ts`, used by the notes, bullet and draft-review
   editors; it returns Edit's `editRef`, the textarea's `onKeyDown`, Cancel's
   `onCancel` and Save's `onSave`, which closes at once when nothing changed, so each editor
   states its "changed" test once). After a Discard focus goes to Edit; after

@@ -86,23 +86,6 @@ _PENDING_T17: dict[str, int] = {  # D §2 jobs and tracking
 _PENDING_T18: dict[str, int] = {  # D §3 the gap page
     "app/jobs/[id]/tailor/[sessionId]/page.tsx": 6,
 }
-_PENDING_T20: dict[str, int] = {  # D §5 Career history
-    "app/career/page.tsx": 2,
-    "components/career/capture-box.tsx": 2,
-    "components/career/documents-panel.tsx": 3,
-    "components/career/entity-detail.tsx": 3,
-    "components/career/exports-card.tsx": 2,
-    "components/career/first-run-import-card.tsx": 1,
-    "components/career/inbox-panel.tsx": 4,
-    "components/career/merge-entity-dialog.tsx": 2,
-    "components/career/new-entity-dialog.tsx": 1,
-    "components/career/notes-editor.tsx": 1,
-    "components/career/points-list.tsx": 2,
-    "components/career/profile-panel.tsx": 2,
-    "components/career/resume-import-dialog.tsx": 2,
-    "components/career/send-to-resume-dialog.tsx": 4,
-    "components/kb-sync-pill.tsx": 1,
-}
 _PENDING_T21: dict[str, int] = {  # D §6 Settings and Profile; D §7 Assistant, shell, errors, setup
     "app/profile/page.tsx": 1,
     "components/chat/change-card.tsx": 1,
@@ -123,7 +106,7 @@ _PENDING_T21: dict[str, int] = {  # D §6 Settings and Profile; D §7 Assistant,
     "components/setup/getting-started-card.tsx": 1,
     "components/setup/use-document-queue.ts": 1,
 }
-_BLOCKS = (_PENDING_T17, _PENDING_T18, _PENDING_T20, _PENDING_T21)
+_BLOCKS = (_PENDING_T17, _PENDING_T18, _PENDING_T21)
 _PENDING: dict[str, int] = {rel: n for block in _BLOCKS for rel, n in block.items()}
 
 

@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { kbAdapt, kbAdaptApply, kbPort } from "@/lib/api";
+import { couldnt } from "@/lib/error-text";
 import { useBaseResumes } from "@/hooks/use-base-resume-label";
 import { useFocusOnNextCommit } from "@/hooks/use-focus-return";
 import { useSingleFlight } from "@/hooks/use-single-flight";
@@ -53,7 +54,7 @@ const ACTION_CHIPS: Record<KBAdaptAction, { label: string; chip: string }> = {
   rewritten: { label: "Rewritten", chip: "bg-primary/10 text-primary" },
   merged: { label: "Merged", chip: "bg-primary/10 text-primary" },
   replace: { label: "Replaces existing", chip: "bg-primary/10 text-primary" },
-  kept: { label: "Kept as-is", chip: "bg-muted text-muted-foreground" },
+  kept: { label: "Kept as is", chip: "bg-muted text-muted-foreground" },
 };
 
 /**
@@ -96,7 +97,6 @@ export function SendToResumeDialog({
   const [step, setStep] = useState<"select" | "review">("select");
   const [rows, setRows] = useState<ReviewRow[]>([]);
   const [dropped, setDropped] = useState<KBAdaptDropped[]>([]);
-  const [createEntry, setCreateEntry] = useState(false);
   const [existingBullets, setExistingBullets] = useState<string[]>([]);
   const [editingKey, setEditingKey] = useState<number | null>(null);
   const [editText, setEditText] = useState("");
@@ -110,9 +110,7 @@ export function SendToResumeDialog({
   const resumes = useBaseResumes(false, { enabled: open });
   const targets = resumes.data ?? [];
   const selectedTarget = targets.find((resume) => resume.slug === targetSlug);
-  const targetLabel = selectedTarget
-    ? (selectedTarget.display_name ?? baseResumeLabel(selectedTarget.slug))
-    : targetSlug;
+  const targetLabel = baseResumeLabel(targetSlug, targets);
 
   const finishPort = (response: KBPortResponse) => {
     const item = response.report.items[0];
@@ -129,7 +127,7 @@ export function SendToResumeDialog({
     // had already landed), not instead of it.
     notifyRenderOutcome(response.resume, { staleLabel: targetLabel });
     toast.success(
-      `${item?.created_entry ? "Added entity" : `Ported ${ported} ${ported === 1 ? "point" : "points"}`}${skipped ? ` · ${skipped} duplicate${skipped === 1 ? "" : "s"} skipped` : ""}`,
+      `Added to ${targetLabel}. ${ported} ${ported === 1 ? "bullet" : "bullets"} added${skipped ? `, ${skipped} already there` : ""}.`,
       {
         action: {
           label: "View resume",
@@ -161,7 +159,7 @@ export function SendToResumeDialog({
         ],
       }),
     onSuccess: finishPort,
-    onError: (error: Error) => toast.error(error.message),
+    onError: (error: Error) => toast.error(couldnt("add to the resume", error)),
   });
 
   const adapt = useMutation({
@@ -184,13 +182,12 @@ export function SendToResumeDialog({
         })),
       );
       setDropped(proposal.dropped);
-      setCreateEntry(proposal.create_entry);
       setExistingBullets(proposal.existing_bullets);
       setEditingKey(null);
       setStep("review");
       focusNext(applyRef);
     },
-    onError: (error: Error) => toast.error(error.message),
+    onError: (error: Error) => toast.error(couldnt("adapt the bullets", error)),
   });
 
   const apply = useMutation({
@@ -209,7 +206,7 @@ export function SendToResumeDialog({
           })),
       }),
     onSuccess: finishPort,
-    onError: (error: Error) => toast.error(error.message),
+    onError: (error: Error) => toast.error(couldnt("add to the resume", error)),
   });
 
   // One request per click: a double click read isPending === false twice
@@ -277,19 +274,19 @@ export function SendToResumeDialog({
       <DialogContent size="lg">
         <DialogHeader>
           <DialogTitle>
-            {step === "select" ? "Send to resume" : "Review adapted points"}
+            {step === "select" ? "Add to a resume" : "Review new wording"}
           </DialogTitle>
           <DialogDescription>
             {step === "select"
-              ? `Copy approved facts from ${entity.title} into one base resume. Adapt rewrites them to match that resume's voice; send as-is copies them verbatim.`
-              : `Only checked bullets are applied to ${targetLabel}${createEntry ? " as a new entry" : "'s matching entry"}. Edit any bullet before applying.`}
+              ? `Copy bullets from ${entity.title} to a base resume. Adapt rewrites them to fit it. Add as is copies them exactly.`
+              : "Only checked bullets are added. You can edit any of them first."}
           </DialogDescription>
         </DialogHeader>
 
         {step === "select" ? (
           <div className="grid gap-4">
             <div className="grid gap-1.5">
-              <Label htmlFor="kb-send-target">Target base resume</Label>
+              <Label htmlFor="kb-send-target">Resume</Label>
               <Select
                 value={targetSlug}
                 onValueChange={(value) => setTargetSlug(value ?? "")}
@@ -314,22 +311,21 @@ export function SendToResumeDialog({
               </Select>
               {resumes.error && (
                 <p role="alert" className="text-destructive text-xs">
-                  {resumes.error.message}
+                  {couldnt("load your resumes", resumes.error)}
                 </p>
               )}
               {!resumes.isLoading && !resumes.error && targets.length === 0 && (
                 <p className="text-muted-foreground text-xs">
-                  No base resumes are available.
+                  You have no base resumes yet.
                 </p>
               )}
             </div>
 
             <fieldset className="space-y-2">
-              <legend className="text-sm font-medium">Approved points</legend>
+              <legend className="text-sm font-medium">Approved bullets</legend>
               {approved.length === 0 ? (
                 <p className="text-muted-foreground rounded-xl bg-muted/45 p-3 text-xs">
-                  This item has no approved points. Its structured fields can still be
-                  added.
+                  No approved bullets. Its title and dates can still be added.
                 </p>
               ) : (
                 <div className="max-h-72 space-y-2 overflow-y-auto rounded-xl bg-muted/45 p-3">
@@ -355,7 +351,7 @@ export function SendToResumeDialog({
                     <div className="space-y-2">
                       <Textarea
                         rows={3}
-                        aria-label="Edit point text"
+                        aria-label="Edit bullet text"
                         value={editText}
                         onChange={(event) => setEditText(event.target.value)}
                         onKeyDown={(event) => {
@@ -410,7 +406,7 @@ export function SendToResumeDialog({
                               const source = pointText.get(id);
                               return source ? (
                                 <p key={id} className="text-muted-foreground mt-1 text-xs">
-                                  <span className="font-medium">From point:</span> {source}
+                                  <span className="font-medium">From bullet:</span> {source}
                                 </p>
                               ) : null;
                             })
@@ -453,7 +449,7 @@ export function SendToResumeDialog({
             {dropped.length > 0 ? (
               <div className="space-y-2">
                 <p className="text-muted-foreground text-xs font-medium">
-                  Left out, already covered by this resume
+                  Already on this resume
                 </p>
                 <ul className="space-y-2">
                   {dropped.map((item) => (
@@ -463,7 +459,7 @@ export function SendToResumeDialog({
                     >
                       <div className="min-w-0 flex-1">
                         <p className="text-muted-foreground text-sm leading-relaxed">
-                          {pointText.get(item.point_id) ?? "Unknown point"}
+                          {pointText.get(item.point_id) ?? "Unknown bullet"}
                         </p>
                         {item.reason ? (
                           <p className="text-muted-foreground mt-1 text-xs">
@@ -509,10 +505,10 @@ export function SendToResumeDialog({
                 focusableWhenDisabled
               >
                 {port.isPending
-                  ? "Sending…"
+                  ? "Adding…"
                   : adaptable
-                    ? "Send as-is"
-                    : "Send to resume"}
+                    ? "Add as is"
+                    : "Add to resume"}
               </Button>
               {adaptable ? (
                 <Button
@@ -522,7 +518,7 @@ export function SendToResumeDialog({
                   focusableWhenDisabled
                 >
                   <Sparkles aria-hidden="true" />
-                  {adapt.isPending ? "Adapting…" : "Adapt & preview"}
+                  {adapt.isPending ? "Adapting…" : "Adapt and preview"}
                 </Button>
               ) : null}
             </>
@@ -546,8 +542,8 @@ export function SendToResumeDialog({
                 focusableWhenDisabled
               >
                 {apply.isPending
-                  ? "Applying…"
-                  : `Apply ${includedCount} to resume`}
+                  ? "Adding…"
+                  : `Add ${includedCount} to resume`}
               </Button>
             </>
           )}

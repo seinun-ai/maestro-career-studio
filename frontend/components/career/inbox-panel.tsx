@@ -26,8 +26,11 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
+import { useBaseResumeLabel } from "@/hooks/use-base-resume-label";
 import { useDiscardableEditor } from "@/hooks/use-confirm-discard";
 import { deleteKbPoint, patchKbPoint, bulkKbPointState, KB_DRAFTS_LIMIT } from "@/lib/api";
+import { couldnt, errorDetail, isPlainSentence } from "@/lib/error-text";
+import { SECTION_ORDER_LABELS, type SectionKey } from "@/lib/formatting";
 import type { KBEntitySummary, KBInboxPoint, KBPointPatch, UUID } from "@/lib/types";
 
 type DraftGroup = {
@@ -60,6 +63,12 @@ function invalidateKbPoints(queryClient: QueryClient) {
       queryClient.invalidateQueries({ queryKey }),
     ),
   );
+}
+
+/** A resume section's name ("extra" is the importer's key for Other sections). */
+function sectionWord(section: string): string {
+  const key = (section === "extra" ? "extra_sections" : section) as SectionKey;
+  return SECTION_ORDER_LABELS[key] ?? "Other sections";
 }
 
 export function InboxPanel({
@@ -123,11 +132,11 @@ export function InboxPanel({
     mutationKey: KB_POINT_MUTATION_KEY,
     mutationFn: async (ids: UUID[]) => {
       const ok = await confirm({
-        title: `Approve ${ids.length} ${ids.length === 1 ? "point" : "points"}?`,
+        title: `Approve ${ids.length} ${ids.length === 1 ? "bullet" : "bullets"}?`,
         description:
           skipped > 0
-            ? `They join your career record. ${skipped} draft${skipped === 1 ? "" : "s"} with unsaved edits ${skipped === 1 ? "is" : "are"} not included.`
-            : "They join your career record. You can still edit them there afterwards.",
+            ? `They'll be added to your career history. ${skipped} with unsaved edits won't be.`
+            : "They'll be added to your career history. You can still edit them later.",
         confirmLabel: "Approve",
       });
       if (!ok) return null;
@@ -142,13 +151,15 @@ export function InboxPanel({
       const failed = ids.length - approved;
       if (failed === 0) {
         toast.success(
-          `Approved ${approved} ${approved === 1 ? "point" : "points"}`,
+          `Approved ${approved} ${approved === 1 ? "bullet" : "bullets"}`,
         );
       } else {
-        const detail =
-          body.results.find((row) => !row.ok)?.detail ?? "no reason given";
+        // The server's reason shows only when it is a sentence for the user.
+        const reason = body.results.find((row) => !row.ok)?.detail;
         toast.error(
-          `Approved ${approved} of ${ids.length} — ${failed} failed: ${detail}`,
+          `Approved ${approved} of ${ids.length}. Couldn't approve ${failed}. ${
+            reason && isPlainSentence(reason) ? reason : "Try again."
+          }`,
         );
       }
       // Awaited, not fire-and-forget. react-query holds the mutation pending
@@ -156,7 +167,7 @@ export function InboxPanel({
       // refetched and a double click cannot re-submit the same ids.
       await invalidateKbPoints(queryClient);
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(couldnt("approve the bullets", err)),
   });
 
   return (
@@ -167,7 +178,7 @@ export function InboxPanel({
             <span className="flex size-8 items-center justify-center rounded-full bg-background/80">
               <Inbox className="text-primary size-4" aria-hidden="true" />
             </span>
-            Draft inbox
+            Drafts to review
             {!isLoading && <Badge className="rounded-full" variant="secondary">{drafts.length}</Badge>}
           </CardTitle>
           {drafts.length > 0 && !isLoading && !error && (
@@ -183,7 +194,7 @@ export function InboxPanel({
               </Button>
               {skipped > 0 && (
                 <p className="text-muted-foreground text-xs">
-                  {skipped} with unsaved edits skipped — save or discard them
+                  {skipped} with unsaved edits were skipped. Save or discard them
                   first.
                 </p>
               )}
@@ -191,7 +202,7 @@ export function InboxPanel({
           )}
         </div>
         <p className="text-muted-foreground text-sm">
-          Review AI-written points before they become part of your career record.
+          Check AI-written bullets before they&apos;re added to your career history.
         </p>
       </CardHeader>
       <CardContent className="space-y-5">
@@ -203,8 +214,10 @@ export function InboxPanel({
           </div>
         ) : error ? (
           <div role="alert" className="rounded-xl bg-destructive/10 p-4">
-            <p className="text-sm font-medium">Couldn&apos;t load the draft inbox.</p>
-            <p className="text-muted-foreground mt-1 text-xs">{error.message}</p>
+            <p className="text-sm font-medium">Couldn&apos;t load the drafts to review.</p>
+            {errorDetail(error) ? (
+              <p className="text-muted-foreground mt-1 text-xs">{errorDetail(error)}</p>
+            ) : null}
             <Button className="mt-3" size="sm" variant="outline" onClick={onRetry}>
               Try again
             </Button>
@@ -214,9 +227,9 @@ export function InboxPanel({
             <span className="mx-auto flex size-9 items-center justify-center rounded-full bg-emerald-600/10 text-emerald-700 dark:text-emerald-300">
               <Check className="size-4" aria-hidden="true" />
             </span>
-            <p className="mt-2 text-sm font-medium">Inbox clear</p>
+            <p className="mt-2 text-sm font-medium">Nothing to review</p>
             <p className="text-muted-foreground text-xs">
-              Captures and rewritten consolidation points will appear here.
+              New bullets from Quick capture and imports appear here.
             </p>
           </div>
         ) : (
@@ -281,7 +294,7 @@ function DraftRow({
       toast.success(variables.success);
       await invalidateKbPoints(queryClient);
     },
-    onError: (error: Error) => toast.error(error.message),
+    onError: (error: Error) => toast.error(couldnt("save the draft", error)),
   });
 
   const discard = useMutation({
@@ -292,10 +305,11 @@ function DraftRow({
       toast.success("Draft discarded");
       await invalidateKbPoints(queryClient);
     },
-    onError: (error: Error) => toast.error(error.message),
+    onError: (error: Error) => toast.error(couldnt("discard the draft", error)),
   });
 
   const selectedEntity = entities.find((entity) => entity.id === point.entity_id);
+  const resumeName = useBaseResumeLabel();
   // The panel excludes dirty rows from "Approve all shown", so every path that
   // changes or resets the editor has to report the row's state.
   const changeText = (value: string) => {
@@ -321,7 +335,7 @@ function DraftRow({
         state: "approved",
         ...(value && value !== point.text ? { text: value } : {}),
       },
-      success: "Point approved",
+      success: "Bullet approved",
     });
   };
 
@@ -330,7 +344,7 @@ function DraftRow({
       {editing ? (
         <div className="space-y-2">
           <Label htmlFor={`draft-text-${point.id}`} className="sr-only">
-            Edit draft point
+            Edit draft bullet
           </Label>
           <Textarea
             id={`draft-text-${point.id}`}
@@ -385,7 +399,7 @@ function DraftRow({
 
       {point.merge_sources && point.merge_sources.length > 0 && (
         <div className="mt-3 rounded-xl bg-muted/55 p-3">
-          <p className="mb-2 text-xs font-medium">Original resume phrasings</p>
+          <p className="mb-2 text-xs font-medium">Wording from your resumes</p>
           <div className="grid gap-2 sm:grid-cols-2">
             {point.merge_sources.map((source, index) => (
               <div
@@ -393,7 +407,7 @@ function DraftRow({
                 className="rounded-lg bg-background/80 p-2"
               >
                 <p className="text-muted-foreground mb-1 text-[0.7rem] font-medium uppercase tracking-wide">
-                  {source.resume_key} · {source.section}
+                  {resumeName(source.resume_key)} · {sectionWord(source.section)}
                 </p>
                 <p className="text-xs leading-relaxed">{source.text}</p>
               </div>
@@ -409,7 +423,7 @@ function DraftRow({
         </Button>
         <div className="min-w-44 flex-1 sm:max-w-64">
           <Label htmlFor={`draft-entity-${point.id}`} className="sr-only">
-            Reassign draft
+            Move to another item
           </Label>
           <Select
             value={point.entity_id}
@@ -418,7 +432,7 @@ function DraftRow({
               const target = entities.find((entity) => entity.id === entityId);
               update.mutate({
                 payload: { entity_id: entityId },
-                success: `Draft reassigned${target ? ` to ${target.title}` : ""}`,
+                success: target ? `Moved to ${target.title}` : "Moved to another item",
               });
             }}
             disabled={pending || entities.length < 2}

@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useSingleFlight } from "@/hooks/use-single-flight";
 import { kbCapture, kbIngestDocument } from "@/lib/api";
+import { couldnt } from "@/lib/error-text";
 import { cn } from "@/lib/utils";
 import { DOCUMENT_ACCEPT } from "@/lib/upload-accept";
 
@@ -34,25 +35,24 @@ export function CaptureBox() {
     onSuccess: (result) => {
       const count = result.point_ids.length;
       toast.success(
-        `${count} ${count === 1 ? "point" : "points"} added to inbox for ${result.entity_title}`,
+        `${count} draft ${count === 1 ? "bullet" : "bullets"} added to ${result.entity_title}`,
       );
       setText("");
       invalidate();
     },
-    onError: (error: Error) => toast.error(error.message),
+    onError: (error: Error) => toast.error(couldnt("save your update", error)),
   });
 
   const ingest = useMutation({
     mutationFn: (file: File) => kbIngestDocument(file),
     onSuccess: (result) => {
-      const points =
-        result.point_count === 0
-          ? "document attached"
-          : result.point_count === 1
-            ? "1 point to review"
-            : `${result.point_count} points to review`;
+      // One sentence whether the item is new or matched: "Matched" and the
+      // raw kind were the pipeline's words, not the user's.
+      const n = result.point_count;
       toast.success(
-        `${result.created_entity ? "Created" : "Matched"} “${result.entity_title}” (${result.entity_kind}) · ${points}`,
+        n === 0
+          ? `Document attached to ${result.entity_title}.`
+          : `Added to ${result.entity_title}. ${n} ${n === 1 ? "bullet" : "bullets"} to review.`,
         {
           action: {
             label: "View",
@@ -66,7 +66,7 @@ export function CaptureBox() {
         queryKey: ["kb", "entity", result.entity_id],
       });
     },
-    onError: (error: Error) => toast.error(error.message),
+    onError: (error: Error) => toast.error(couldnt("read the document", error)),
   });
 
   // One request per click: a double click read isPending === false twice and
@@ -99,7 +99,7 @@ export function CaptureBox() {
     event.preventDefault();
     setDragging(false);
     const files = event.dataTransfer.files;
-    if (files.length > 1) toast.info("Using the first file only.");
+    if (files.length > 1) toast.info("Only one file at a time. Using the first.");
     onPickFile(files?.[0]);
   };
 
@@ -129,20 +129,16 @@ export function CaptureBox() {
           Quick capture
         </CardTitle>
         <p className="text-muted-foreground text-sm">
-          Type a recent win, or drop a certification or project doc and let
-          it fill itself in.
+          Type a recent win or add a document.
         </p>
       </CardHeader>
       <CardContent>
         <form className="space-y-3" onSubmit={submit}>
-          <Label htmlFor="career-capture" className="sr-only">
-            Career update
-          </Label>
+          <Label htmlFor="career-capture">What did you do?</Label>
           <Textarea
             id="career-capture"
             value={text}
             onChange={(event) => setText(event.target.value)}
-            placeholder="e.g. This week I shipped…"
             rows={4}
             readOnly={capture.isPending}
             aria-describedby="career-capture-help"
@@ -160,14 +156,14 @@ export function CaptureBox() {
           />
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p id="career-capture-help" className="text-muted-foreground text-xs">
-              Nothing is published to a resume until you approve it.
+              Nothing goes on a resume until you approve it.
             </p>
             <div className="flex items-center gap-2">
               <Button
                 type="button"
                 variant="ghost"
                 size="sm"
-                // Focusable while it reads, as Add to inbox is while it captures.
+                // Focusable while it reads, as Add to drafts is while it captures.
                 className="text-muted-foreground rounded-full data-disabled:pointer-events-none data-disabled:opacity-50"
                 disabled={ingest.isPending}
                 focusableWhenDisabled
@@ -183,7 +179,7 @@ export function CaptureBox() {
                 ) : (
                   <FileUp aria-hidden="true" />
                 )}
-                {ingest.isPending ? "Reading document…" : "From document"}
+                {ingest.isPending ? "Reading document…" : "Add document"}
               </Button>
               <Button
                 // Stays focusable while it captures: a disabled button that
@@ -193,7 +189,7 @@ export function CaptureBox() {
                 disabled={!text.trim() || capture.isPending}
                 focusableWhenDisabled
               >
-                {capture.isPending ? "Capturing…" : "Add to inbox"}
+                {capture.isPending ? "Adding…" : "Add to drafts"}
               </Button>
             </div>
           </div>
