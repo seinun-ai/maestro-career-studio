@@ -1255,7 +1255,7 @@
    * does, rather than to a guess. */
   const STATUS_LABELS = {
     draft: "Draft", applied: "Applied", interviewing: "Interviewing", offered: "Offer",
-    accepted: "Accepted", rejected: "Rejected", withdrawn: "Withdrawn",
+    accepted: "Offer accepted", rejected: "Rejected", withdrawn: "Withdrawn",
   };
   const statusLabel = (status) => STATUS_LABELS[status] ?? String(status);
 

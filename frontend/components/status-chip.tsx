@@ -37,7 +37,7 @@ const STATUS_STYLES: Record<
     dot: "bg-violet-600 dark:bg-violet-400",
   },
   accepted: {
-    label: "Accepted",
+    label: "Offer accepted",
     chip: "bg-green-600/10 text-green-800 dark:bg-green-400/15 dark:text-green-300",
     dot: "bg-green-600 dark:bg-green-400",
   },

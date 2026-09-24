@@ -96,7 +96,7 @@
    * They name an environment variable or quote a provider's 401, so the
    * panel recognises them and never shows them. */
   const MISSING_KEY = /\bno (?:openai |gemini )?api key\b|\b[A-Z]+_API_KEY is required\b/i;
-  const REFUSED_KEY = /invalid_api_key|incorrect api key|api key not valid|api_key_invalid|error code: 401\b/i;
+  const REFUSED_KEY = /invalid_api_key|incorrect api key|api key not valid|api_key_invalid|error code: 401\b|your key was refused|refused your api key/i;
 
   /** The two next steps a key failure has, in the panel's words: the
    * Settings path is the web app's, so it says where that is. */
