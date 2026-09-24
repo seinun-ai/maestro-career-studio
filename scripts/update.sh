@@ -314,7 +314,9 @@ backup_sqlite() {
   # umask in a subshell so the shell's redirection CREATES the file 0600: this
   # snapshot holds every resume, application and setting in the database, and a
   # chmod after the fact leaves it world-readable for the length of the dump.
-  # The IMAGE_TAG export lives and dies in that same subshell.
+  # The IMAGE_TAG export lives and dies in that same subshell. That is the
+  # intent, so the linter's "modification is local to the subshell" is silenced.
+  # shellcheck disable=SC2030
   if ! ( umask 077; if [ -n "$pin" ]; then export IMAGE_TAG="$pin"; fi; "${via[@]}" python -m app.tools.backup_db --stdout | gzip > "$dump" ); then
     rm -f "$dump"
     die "sqlite backup failed"
@@ -472,6 +474,9 @@ do_update() {
     tag_without_v=""
     if [ -n "$newest" ]; then
       tag_without_v="${newest#v}"
+      # This export is meant for the rest of the run; the backup's subshell
+      # export (above) is the one kept local on purpose.
+      # shellcheck disable=SC2031
       export IMAGE_TAG="$tag_without_v"
       note "pull-mode: pinning IMAGE_TAG=$IMAGE_TAG for this run (.env is not edited; IMAGE_TAG=latest stays the plain 'docker compose up' fallback)"
     fi
