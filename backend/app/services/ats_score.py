@@ -9,6 +9,7 @@ from app.models.application import Application
 from app.models.ats_score import AtsScore
 from app.models.base_resume import BaseResume
 from app.models.job import Job
+from app.services.application_writes import NO_TAILORED_RESUME
 from app.services import gap_analysis
 from app.services.ats import score_resume
 from app.services.ats.jd_normalizer import normalize_jd
@@ -26,7 +27,8 @@ def get_scorable_job(session: Session, job_id: UUID) -> Job:
     if job is None:
         raise ValueError(f"Job not found: {job_id}")
     if not job.extracted_json:
-        raise ValueError(f"Job has no extracted_json: {job_id}")
+        raise ValueError(
+            "This job's description hasn't been read yet. Choose Refresh details on the job page.")
     return job
 
 
@@ -42,7 +44,7 @@ def _resolve_resume_data(session: Session, target_type: str, target_id: str) -> 
         if application is None:
             raise ValueError(f"Application not found: {target_id}")
         if not application.customized_json:
-            raise ValueError("Application has no customized_json to score (materialize it first)")
+            raise ValueError(NO_TAILORED_RESUME)
         return application.customized_json, application.id
     raise ValueError(f"Unknown target_type: {target_type}")
 
@@ -176,7 +178,7 @@ def best_base(job_id: UUID, session: Session | None = None) -> str:
             if rows:
                 session.commit()
         if not rows:
-            raise ValueError("No base resumes could be scored for this job")
+            raise ValueError("None of your base resumes could be scored against this job.")
         # alphabetical slug tie-break keeps the pick deterministic
         return max(rows, key=lambda r: (float(r.composite), r.target_id)).target_id
     finally:
@@ -282,8 +284,8 @@ def compare(application_id: UUID, session: Session | None = None) -> dict[str, A
             tailored_row.engine_version, tailored_row.config_version
         ):
             raise ValueError(
-                "Scores were produced by different engine/config versions; re-run scoring "
-                "for both phases before comparing"
+                "These ATS scores came from different versions of the scorer. Score both "
+                "again to compare them."
             )
 
         before = {r["jd_skill"]: r for r in base_row.skill_table_json}

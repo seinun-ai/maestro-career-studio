@@ -41,7 +41,8 @@ from app.services import (
     resume_ops,
 )
 from app.services import proposals as proposal_svc
-from app.services.application_writes import stage_resume_update
+from app.services.application_writes import NO_TAILORED_RESUME, stage_resume_update
+from app.services.base_resume_data import resume_label
 from app.services.resume_edit import ContentChangedError, apply_edits
 from app.schemas.proposal import AssertOpenProposalBody
 
@@ -115,7 +116,7 @@ def create_application_from_base(
         application.base_resume = payload.base_resume
         if payload.user_prompt is not None:
             application.user_prompt = payload.user_prompt.strip() or None
-        summary = f"Rebuilt from base resume {payload.base_resume}"
+        summary = f"Rebuilt from {resume_label(db, payload.base_resume)}"
     else:
         application = Application(
             job_id=payload.job_id,
@@ -124,7 +125,7 @@ def create_application_from_base(
             user_prompt=(payload.user_prompt or "").strip() or None,
         )
         db.add(application)
-        summary = f"Created from base resume {payload.base_resume}"
+        summary = f"Created from {resume_label(db, payload.base_resume)}"
     stale, _ = stage_resume_update(
         db, application, customized, source="import", summary=summary
     )
@@ -232,7 +233,7 @@ def get_application_resume_diff(
     if not application.customized_json:
         raise HTTPException(
             status_code=409,
-            detail="Application has no tailored resume yet",
+            detail=NO_TAILORED_RESUME,
         )
     try:
         base = base_resume_data.load_base_resume(application.base_resume, session=db)
@@ -271,7 +272,7 @@ def coherence_check_application(
     if not application.customized_json:
         raise HTTPException(
             status_code=409,
-            detail="Application has no tailored resume yet",
+            detail=NO_TAILORED_RESUME,
         )
     try:
         base = base_resume_data.load_base_resume(application.base_resume, session=db)
@@ -470,7 +471,7 @@ def materialize_application_resume(
         application,
         snapshot,
         source="import",
-        summary=f"Materialized from base resume {application.base_resume}",
+        summary=f"Copied from {resume_label(db, application.base_resume)}",
     )
     db.commit()
     db.refresh(application)

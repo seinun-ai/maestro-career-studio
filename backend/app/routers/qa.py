@@ -174,10 +174,10 @@ def render_cover_letter(entry_id: UUID, db: Annotated[Session, Depends(get_db)])
     if entry.kind != "cover_letter":
         raise HTTPException(
             status_code=400,
-            detail="Only cover_letter entries can be rendered",
+            detail="Only cover letters can be made into a PDF.",
         )
     if not entry.answer:
-        raise HTTPException(status_code=400, detail="Entry has no text to render")
+        raise HTTPException(status_code=400, detail="This cover letter is empty.")
 
     application = db.get(Application, entry.application_id)
     job = db.get(Job, application.job_id) if application else None

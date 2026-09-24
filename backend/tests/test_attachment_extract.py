@@ -60,12 +60,12 @@ def test_extract_tex():
 
 
 def test_unsupported_type_raises():
-    with pytest.raises(ValueError, match="Unsupported"):
+    with pytest.raises(ValueError, match="Use a PDF, Word, text or image file."):
         extract_text("archive.zip", "application/zip", b"PK\x03\x04")
 
 
 def test_empty_extraction_raises():
-    with pytest.raises(ValueError, match="no extractable text"):
+    with pytest.raises(ValueError, match=r"^No text could be read in this file\.$"):
         extract_text("empty.txt", "text/plain", b"   ")
 
 
@@ -153,7 +153,7 @@ def test_sparse_pdf_vision_failure_degrades_to_layer_text(monkeypatch):
 
 def test_image_attachment_vision_failure_raises(monkeypatch):
     _mock_vision(monkeypatch, RuntimeError("provider down"))
-    with pytest.raises(ValueError, match="no extractable text"):
+    with pytest.raises(ValueError, match=r"^No text could be read in this file\.$"):
         extract_text("cert.png", "image/png", _small_png())
 
 

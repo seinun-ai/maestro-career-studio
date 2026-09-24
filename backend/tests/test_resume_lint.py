@@ -6,6 +6,8 @@ Pure `assemble` tests need no DB/LLM (levels + rewrite_fn are passed in).
 from copy import deepcopy
 from types import SimpleNamespace
 
+import pytest
+
 from app.services import bullet_classify, resume_versions
 from app.services import resume_lint as rl
 
@@ -262,6 +264,84 @@ def test_gap_emits_ask():
                for f in out["report"]["findings"])
 
 
+# ---------- finding ids survive a rewording (D9.1) ----------
+#
+# A saved ask answer is keyed on the finding id, and the id hashes the issue
+# text. The literals below are each reworded issue AS IT READ BEFORE the
+# rewording; they are copied here, not imported, so a change to the module's
+# frozen keys fails this file instead of moving both sides at once.
+_OLD_ISSUES = {
+    ("ask", ("experience", 0, 0)): "Has a scale metric, but not a business outcome.",
+    ("ask", ("experience", 0, 1)): "Ambiguous — this may be missing a number.",
+    ("ask", ("experience", None, None)): (
+        "12-month gap between A and B — 4 months covered by your education; "
+        "8 months unaccounted. (after a move)"),
+    ("note", ("projects", None, None)): "4 project bullets vs 3 employment bullets.",
+    ("note", ("projects", 0, 0)): "Your highest-evidence bullet is below the high-attention zone.",
+    ("ask", ("summary", None, None)): "Summary claims 8+ years; the dates support ~3.0.",
+}
+
+
+def _reworded_rules_report():
+    """One report that fires every rule whose issue was reworded."""
+    resume = _resume()
+    # Ten words a bullet, so no "Very short bullet" note shares a location.
+    resume["projects"] = [{"name": "P", "bullets": [f"p{i} " + "word " * 9 for i in range(4)]}]
+    levels = {
+        ("experience", 0, 0): _lv(0.8),                  # analogue ask (hot)
+        ("experience", 0, 1): _lv(0.5, uncertain=True),  # ambiguous ask
+        ("experience", 0, 2): _lv(0.5),
+        ("projects", 0, 0): _lv(1.0),                    # strongest, not hot: buried
+    }
+    hot = {("experience", 0, 0), ("experience", 0, 1), ("experience", 0, 2)}
+    gaps = [{"after": "A", "before": "B", "months": 12, "covered_months": 4,
+             "uncovered_months": 8, "context": "after a move"}]
+    c2 = {"claimed_years": 8, "actual_years": 3.0}
+    out = rl.assemble(resume, levels, PASS_GATES, "experienced", hot,
+                      gap_hits=gaps, c2_hit=c2)
+    return out["report"]["findings"]
+
+
+def _finding_at(findings, ftype, loc):
+    section, index, bullet = loc
+    return next(f for f in findings if f["type"] == ftype
+                and f["location"].get("section") == section
+                and f["location"].get("index") == index
+                and f["location"].get("bullet_index") == bullet)
+
+
+def test_reworded_findings_keep_their_ids():
+    findings = _reworded_rules_report()
+    for (ftype, loc), old_issue in _OLD_ISSUES.items():
+        finding = _finding_at(findings, ftype, loc)
+        # The words moved (D §9.2), and the id did not.
+        assert finding["issue"] != old_issue, (ftype, loc)
+        assert finding["id"] == rl._fid(ftype, loc, old_issue), (ftype, loc)
+
+
+def test_c2_says_the_claim_as_written_and_the_dates_in_whole_years():
+    findings = _reworded_rules_report()
+    assert _finding_at(findings, "ask", ("summary", None, None))["issue"] == (
+        "Your summary says 8+ years, but your dates add up to about 3.")
+
+
+def test_a_finding_id_survives_its_issue_being_reworded(monkeypatch):
+    """The proof the key does its job: reword every display text, and each
+    finding still carries the id a saved answer was stored under."""
+    before = {key: _finding_at(_reworded_rules_report(), *key)["id"] for key in _OLD_ISSUES}
+    monkeypatch.setitem(rl.LADDER_COPY["analogue"], "issue", "Reworded analogue.")
+    monkeypatch.setattr(rl, "_ISSUE_AMBIGUOUS", "Reworded ambiguous.")
+    monkeypatch.setattr(rl, "_ISSUE_BURIED", "Reworded buried.")
+    monkeypatch.setattr(rl, "_gap_issue", lambda *_a: "Reworded gap.")
+    monkeypatch.setattr(rl, "_projects_issue", lambda *_a: "Reworded projects.")
+    monkeypatch.setattr(rl, "_c2_detail", lambda _hit: "Reworded C2.")
+    after = _reworded_rules_report()
+    for key, fid in before.items():
+        finding = _finding_at(after, *key)
+        assert finding["issue"].startswith("Reworded"), key
+        assert finding["id"] == fid, key
+
+
 def test_findings_ordered_gates_first_then_cost_then_notes():
     resume = _resume()
     resume["experience"][0]["bullets"] = ["dead", "weak", "word " * 40]
@@ -469,7 +549,7 @@ def test_run_report_scans_extras_without_crashing(db_session, monkeypatch):
     assert {"score", "grade", "findings"} <= row.report_json.keys()
     s5 = next(g for g in row.report_json["gates"] if g["id"] == "S5")
     assert s5["status"] == "fail"
-    assert "awards" in s5["detail"]
+    assert "Awards" in s5["detail"]
     # Extras never entered the evidence ladder / features levels.
     assert all(not loc.startswith("extra") for loc in row.features_json["levels"])
 
@@ -914,3 +994,58 @@ def test_skill_no_longer_matches_as_substring_of_another_word():
     resume["skills"] = [{"category": "Languages", "items": ["Python"]}]
     notes = [n for n in rl._advisories(resume) if n.get("rule") == "skills.undemonstrated"]
     assert any(n["subject"] == "Python" for n in notes)
+
+
+# ---------- C1 and C2: true words, frozen ids ----------
+
+def _c1_report(section, tier):
+    resume = _resume()
+    resume["projects"] = [{"name": "P", "bullets": ["p0 " + "word " * 9]}]
+    loc = (section, 0, 0)
+    levels = {("summary", None, None): _lv(0.0), loc: _lv(0.0)}
+    out = rl.assemble(resume, levels, PASS_GATES, tier, {("summary", None, None), loc},
+                      rewrite_fn=lambda t: None)
+    return out
+
+
+@pytest.mark.parametrize("section, tier, opening", [
+    ("experience", "experienced", "Your summary and newest role are"),
+    # Early career: the hot zone is the first PROJECT, not a role.
+    ("projects", "early", "Your summary and first project are"),
+])
+def test_c1_names_the_top_of_this_resume(section, tier, opening):
+    out = _c1_report(section, tier)
+    [c1] = [g for g in out["report"]["gates"] if g["id"] == "C1"]
+    assert c1["label"] == "Strong opening"
+    assert c1["detail"] == (
+        f"{opening} weak, so a recruiter may stop reading before your best work.")
+
+
+def test_c1_keeps_the_id_it_had_before_the_rewording():
+    """The C1 gate finding hashes its PRE-lane text (e_hot to two places), so
+    the id a report stored holds while the words change. The literal is copied,
+    not imported."""
+    out = _c1_report("experience", "experienced")
+    [finding] = [f for f in out["report"]["findings"]
+                 if f["type"] == "gate" and f["label"] == "Strong opening"]
+    old = ("Top-of-resume evidence averages 0.00 (floor 0.4); a dead opening sharply "
+           "cuts the odds of a deep read.")
+    assert finding["id"] == rl._fid("gate", ("gate", None, None), old)
+
+
+def test_c2_keys_on_the_detectors_float_claim_as_it_read_before():
+    """The real detector returns the claim as a FLOAT (8.0), so the frozen key
+    read "8.0+ years", not "8+". A fixture with an int claim hid that."""
+    from app.services.health_gates import detect_claim_overstatement
+
+    resume = _resume()
+    resume["summary"] = "Data scientist with 8 years building ML systems."
+    resume["experience"][0].update(start_date="Jan 2023", end_date="Jan 2026")
+    hit = detect_claim_overstatement(resume, now=(2026, 1))
+    assert hit == {"claimed_years": 8.0, "actual_years": 3.0}
+    out = rl.assemble(resume, {("experience", 0, 0): _lv(1.0)}, PASS_GATES, "experienced",
+                      {("experience", 0, 0)}, c2_hit=hit, rewrite_fn=lambda t: None)
+    ask = _finding_at(out["report"]["findings"], "ask", ("summary", None, None))
+    assert ask["issue"] == "Your summary says 8+ years, but your dates add up to about 3."
+    assert ask["id"] == rl._fid("ask", ("summary", None, None),
+                                "Summary claims 8.0+ years; the dates support ~3.0.")

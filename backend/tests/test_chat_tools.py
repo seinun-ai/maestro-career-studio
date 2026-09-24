@@ -562,7 +562,7 @@ def test_set_default_template_requires_ready(db_session):
     _seed_template(db_session, "draftt", status="draft")
     ctx = ToolContext(db=db_session)
     err = execute_tool(ctx, "set_default_template", {"template_id": "draftt"})
-    assert "ready" in err["error"].lower()
+    assert "passed its check" in err["error"]
 
     _seed_template(db_session, "readyt", status="ready")
     ok = execute_tool(ctx, "set_default_template", {"template_id": "readyt"})

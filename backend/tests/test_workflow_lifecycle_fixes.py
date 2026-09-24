@@ -309,7 +309,7 @@ def test_re_extract_400_for_capture_path_job(db_session):
     finally:
         app.dependency_overrides.clear()
     assert response.status_code == 400
-    assert "re-ingest" in response.json()["detail"]
+    assert "Add the job again" in response.json()["detail"]
 
 
 def test_create_job_with_different_text_at_reused_url_is_a_new_job(db_session, monkeypatch):
@@ -490,7 +490,7 @@ def test_base_edit_makes_session_stale(db_session, tmp_path, monkeypatch):
             json={"resolutions": [], "replace": False},
         )
         assert resp.status_code == 409
-        assert "stale" in resp.json()["detail"]
+        assert "out of date because the base resume was edited" in resp.json()["detail"]
         tailor_resp = client.post(f"/api/tailoring-sessions/{row.id}/tailor", json={})
         assert tailor_resp.status_code == 409
         get_resp = client.get(f"/api/tailoring-sessions/{row.id}")
@@ -505,7 +505,8 @@ def test_jd_reextract_makes_session_stale(db_session, tmp_path, monkeypatch):
     db_session.commit()
 
     reason = tailoring_session.staleness_reason(row, db_session)
-    assert reason and "job description" in reason
+    # The glossary's word for re-reading a job is "Refresh details".
+    assert reason == "the job details were refreshed"
 
 
 def test_legacy_session_without_hashes_is_treated_fresh(db_session, tmp_path, monkeypatch):

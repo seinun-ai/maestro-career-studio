@@ -49,7 +49,7 @@ def test_gate_dates_passing_detail_does_not_claim_absent_dates_exist():
     result = gate_dates({"experience": [{"company": "A", "role": "R"}]})
 
     assert result["status"] == "pass"
-    assert result["detail"] == "No unparseable experience dates found."
+    assert result["detail"] == "All your job dates are readable."
 
 
 def test_detect_gaps_declines_to_guess_around_an_undated_role():
@@ -93,10 +93,8 @@ def test_gate_contract_covers_every_valid_id_with_coaching_copy():
     assert set(GATE_COPY) == VALID_GATE_IDS
     for gate_id in VALID_GATE_IDS:
         for gate in (
-            rl._gate_dict(gate_id, "serious", "pass", "Test", "A factual detail."),
-            health_gates._gate(
-                gate_id, "serious", "pass", "Test", "A factual detail."
-            ),
+            rl._gate_dict(gate_id, "serious", "pass", "A factual detail."),
+            health_gates.make_gate(gate_id, "serious", "pass", "A factual detail."),
         ):
             assert gate["why"].strip()
             assert gate["fix_hint"].strip()
@@ -283,7 +281,30 @@ def test_gate_placeholders_scans_extra_bullets_section():
          "bullets": ["First place, [YEAR]"]}]}
     g = gate_placeholders(resume)
     assert g["status"] == "fail" and g["id"] == "S5"
-    assert "awards" in g["detail"]
+    assert g["detail"] == "Awards, bullet 1"
+
+
+def test_placeholder_places_are_words_never_schema_paths():
+    """S5's detail is shown on the health report and the tailored review, so it
+    names each place the way the page does: never `experience[0].bullet[2]`.
+    One place is named once, however many of its fields hold a placeholder."""
+    resume = {
+        "summary": "Engineer with [N] years.",
+        "experience": [{"company": "Acme", "role": "[ROLE]", "bullets": [
+            "Shipped the thing.", "Cut costs by XX%."]}],
+        "education": [{"institution": "State U [CAMPUS]", "degree": "BS [MAJOR]"}],
+        "extra_sections": [{"key": "awards", "title": "Awards", "type": "entries",
+                            "enabled": True, "entries": [
+                                {"heading": "Dean's list", "date": "[YEAR]",
+                                 "bullets": ["TBD"]}]}],
+    }
+    g = gate_placeholders(resume)
+    assert g["label"] == "No placeholder text"
+    assert g["detail"] == (
+        "Summary, [ROLE] · Acme, [ROLE] · Acme, bullet 2, BS [MAJOR] · State U [CAMPUS], "
+        "Awards: Dean's list, Awards: Dean's list, bullet 1")
+    for path_shape in ("[0]", ".bullet", "extra[", "experience"):
+        assert path_shape not in g["detail"]
 
 
 def test_gate_placeholders_scans_extra_entry_metadata_and_bullets():
@@ -330,3 +351,48 @@ def test_gate_placeholders_survives_malformed_extra_sections():
                 {"extra_sections": [{"key": "k", "title": "T"}]}):  # no type/content
         resume = {"summary": "s", "experience": [], **bad}
         assert gate_placeholders(resume)["status"] in ("pass", "fail")
+
+
+def test_every_gate_is_named_in_the_health_reports_words():
+    """The seven labels, exactly: the gate rail, the must-fix sentence and the
+    read path's re-stamp all read this one table."""
+    assert health_gates.GATE_LABELS == {
+        "S1": "PDF text is readable",
+        "S2": "Email is readable",
+        "S3": "Dates are readable",
+        "S4": "Standard section headings",
+        "S5": "No placeholder text",
+        "C1": "Strong opening",
+        "C2": "Years match your dates",
+    }
+    for gate_id, label in health_gates.GATE_LABELS.items():
+        assert health_gates.make_gate(gate_id, "serious", "pass")["label"] == label
+    assert gate_dates(OK)["label"] == "Dates are readable"
+    assert health_gates.gate_placeholders(OK)["label"] == "No placeholder text"
+
+
+def test_the_must_fix_sentence_names_todays_labels_for_a_stored_old_one():
+    from app.services.tailoring_session import _must_fix_message
+
+    stored = [{"id": "S1", "label": "Parse fidelity"}, {"id": "S2", "label": "Contact reachable"}]
+    assert _must_fix_message(stored) == (
+        "Your base resume has must-fix problems: PDF text is readable, Email is "
+        "readable. Fix them or mark them as OK in the health report, then start the "
+        "gap analysis.")
+    # A gate the table does not know keeps what it carries.
+    assert _must_fix_message([{"id": "S9", "label": "Future gate"}]).startswith(
+        "Your base resume has a must-fix problem: Future gate.")
+
+
+def test_relabelling_a_stored_report_leaves_the_stored_dict_alone():
+    """The read path returns a copy: the ORM's JSON is not edited in place (an
+    in-place edit is invisible to change tracking and would leak into whatever
+    else holds the row this request)."""
+    import copy
+
+    stored = {"gates": [{"id": "S1", "label": "Parse fidelity", "detail": "d"}],
+              "findings": [{"type": "gate", "label": "Parse fidelity", "issue": "d"}]}
+    before = copy.deepcopy(stored)
+    shown = health_gates.with_current_labels(stored)
+    assert stored == before
+    assert shown["gates"][0]["label"] == shown["findings"][0]["label"] == "PDF text is readable"

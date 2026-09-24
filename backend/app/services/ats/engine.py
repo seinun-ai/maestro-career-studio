@@ -10,7 +10,19 @@ from app.services.ats.resume_indexer import index_resume
 from app.services.script_guard import extract_text_for_script_check, validate_script
 
 LOW_COVERAGE_THRESHOLD = 0.25
-LOW_COVERAGE_MESSAGE = "I could not read this posting — treat this score as unreliable"
+NO_JD_SKILLS_MESSAGE = "No skills were found in this job's description."
+
+
+def _coverage_message(matched: int, extracted: int) -> str:
+    """What the warning measured: how few of the job's skills the RESUME shows
+    (the job itself was read fine), or that the job named none."""
+    if extracted == 0:
+        return NO_JD_SKILLS_MESSAGE
+    noun = "skill" if extracted == 1 else "skills"
+    if matched == 0:
+        return f"Your resume shows none of this job's {extracted} {noun}."
+    percent = (matched * 100 + extracted // 2) // extracted  # half up: 1 of 8 is 13%
+    return f"Your resume shows only {matched} of this job's {extracted} {noun} ({percent}%)."
 
 
 @dataclass(frozen=True)
@@ -37,7 +49,7 @@ def _calc_coverage_signal(extracted_count: int, rows: list[Any]) -> tuple[int, f
     matched_count = sum(1 for r in rows if r.matched or r.match_form is not None)
     ratio = round(matched_count / max(1, extracted_count), 4)
     warning = (
-        LOW_COVERAGE_MESSAGE
+        _coverage_message(matched_count, extracted_count)
         if (extracted_count == 0 or ratio < LOW_COVERAGE_THRESHOLD)
         else None
     )

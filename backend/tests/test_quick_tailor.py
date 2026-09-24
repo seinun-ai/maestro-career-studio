@@ -325,9 +325,8 @@ def test_quick_tailor_zero_actionable_never_calls_tailor(db_session, tmp_path, m
 
 
 IN_PROGRESS_409_DETAIL = (
-    "An in-progress tailoring session with saved resolutions exists for this job "
-    "and base resume. Finish or close it in the web app, or run quick tailor "
-    "after discarding it."
+    "A gap analysis for this job and resume is in progress. Finish or close it in "
+    "Maestro CS first, then use Quick tailor."
 )
 
 
@@ -443,7 +442,8 @@ def test_quick_tailor_surfaces_health_warning(db_session, tmp_path, monkeypatch)
 
     seeded = _seed_open_session(db_session, job, slug, [])
     seeded.health_warning = (
-        "Base resume health is 42 (F); tailoring a weak base produces weak output."
+        "Your base resume's health score is 42 (F). Tailoring a weak resume gives "
+        "weak results."
     )
     monkeypatch.setattr(
         "app.routers.jobs.tailoring_session.create_session",
@@ -494,7 +494,9 @@ def test_quick_tailor_health_gate_409_passthrough(db_session, tmp_path, monkeypa
         app.dependency_overrides.clear()
 
     assert response.status_code == 409
-    assert "S1" in response.json()["detail"]
+    # The gate by TODAY's label (the fixture stores the old "Parse fidelity";
+    # GATE_LABELS wins), never its id.
+    assert "a must-fix problem: PDF text is readable." in response.json()["detail"]
 
 
 def test_quick_tailor_render_failure_degrades_not_fails(db_session, tmp_path, monkeypatch):

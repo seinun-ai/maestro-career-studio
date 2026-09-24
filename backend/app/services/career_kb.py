@@ -4,7 +4,7 @@ import copy
 import logging
 import re
 from collections import defaultdict
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 
 import uuid
 
@@ -26,7 +26,7 @@ from app.schemas.career_kb import (
     KBUsageOut,
 )
 from app.schemas.resume_edit import ResumeEditRequest
-from app.services import base_resume_render
+from app.services import agent_names, base_resume_render
 from app.services import base_resume_data
 from app.services.base_resume_data import write_base_resume_json
 from app.services.resume_edit import apply_edits
@@ -418,6 +418,11 @@ def _to_point_out(
     )
 
 
+def _items_added(n: int) -> str:
+    """A version summary for a copy from career history."""
+    return f"Added {n} {'item' if n == 1 else 'items'} from career history"
+
+
 def _truncate(text: str) -> str:
     text = text.strip()
     if len(text) <= _LABEL_MAX:
@@ -427,14 +432,14 @@ def _truncate(text: str) -> str:
 
 def _capture_timeline_events(point: KBPoint) -> list[KBTimelineEvent]:
     """Return one agent-capture event, or none for hand-written points."""
-    if point.origin not in {"mcp", "chat"}:
+    captured_by = agent_names.written_by(point.origin, point.origin_detail)
+    if captured_by is None:
         return []
-    captured_by = point.origin_detail or point.origin
     return [
         KBTimelineEvent(
             ts=point.created_at,
             type="point_captured",
-            label=f"{_truncate(point.text)} — added by {captured_by}",
+            label=f"Added by {captured_by}: {_truncate(point.text)}",
         )
     ]
 
@@ -444,15 +449,19 @@ def entity_timeline(
     points: Sequence[KBPoint],
     documents: Sequence[KBDocument],
     port_logs: Sequence[KBPortLog],
+    resume_names: Mapping[str, str] | None = None,
 ) -> list[KBTimelineEvent]:
-    """Derive a newest-first activity timeline from the entity's rows."""
-    # Agent-written rows say who; web/legacy rows keep the bare label.
-    created_by = entity.origin_detail or entity.origin
+    """Derive a newest-first activity timeline from the entity's rows.
+
+    Labels are built on every read, so every row speaks today's words.
+    `resume_names` maps a port log's `resume_key` to the resume's name."""
+    # Agent-written rows say who; web/import rows keep the bare label.
+    created_by = agent_names.written_by(entity.origin, entity.origin_detail)
     events: list[KBTimelineEvent] = [
         KBTimelineEvent(
             ts=entity.created_at,
             type="created",
-            label=f"Entity created by {created_by}" if created_by else "Entity created",
+            label=f"Item created by {created_by}" if created_by else "Item created",
         )
     ]
     for doc in documents:
@@ -462,7 +471,7 @@ def entity_timeline(
                 KBTimelineEvent(
                     ts=doc.created_at,
                     type="points_minted",
-                    label=doc.ingest_summary or "Points minted",
+                    label=doc.ingest_summary or "Draft bullets added",
                 )
             )
     for point in points:
@@ -477,7 +486,9 @@ def entity_timeline(
             )
     for log in port_logs:
         events.append(
-            KBTimelineEvent(ts=log.ported_at, type="ported", label=f"→ {log.resume_key}")
+            KBTimelineEvent(
+                ts=log.ported_at, type="ported",
+                label=f"Added to {(resume_names or {}).get(log.resume_key, 'a resume')}")
         )
     events.sort(key=lambda ev: ev.ts, reverse=True)
     return events
@@ -512,6 +523,16 @@ def entity_summary(session: Session, entity: KBEntity) -> KBEntitySummary:
     )
 
 
+def _port_resume_names(session: Session, port_logs: Sequence[KBPortLog]) -> dict[str, str]:
+    """Each port log's resume, by name: a base resume's own name, or "a
+    tailored resume" for an application (its key is an id, not a word)."""
+    return {
+        log.resume_key: (base_resume_data.resume_label(session, log.resume_key)
+                         if log.resume_kind == "base" else "a tailored resume")
+        for log in port_logs
+    }
+
+
 def entity_detail(session: Session, entity: KBEntity) -> KBEntityDetail:
     points = list(entity.points)  # relationship is ordered by created_at
     documents = list(entity.documents)
@@ -533,7 +554,8 @@ def entity_detail(session: Session, entity: KBEntity) -> KBEntityDetail:
             _to_point_out(session, p, port_logs=logs_by_point.get(p.id, [])) for p in points
         ],
         documents=[KBDocumentOut.model_validate(d) for d in documents],
-        timeline=entity_timeline(entity, points, documents, port_logs),
+        timeline=entity_timeline(entity, points, documents, port_logs,
+                                 _port_resume_names(session, port_logs)),
     )
 
 
@@ -589,7 +611,7 @@ def merge_entities(session: Session, source_id: uuid.UUID, target_id: uuid.UUID)
     target.
     """
     if source_id == target_id:
-        raise ValueError("Cannot merge an entity into itself")
+        raise ValueError("Pick a different item to merge with.")
     source = session.get(KBEntity, source_id)
     if source is None:
         raise LookupError("Source entity not found")
@@ -597,20 +619,14 @@ def merge_entities(session: Session, source_id: uuid.UUID, target_id: uuid.UUID)
     if target is None:
         raise LookupError("Target entity not found")
     if source.kind != target.kind:
-        raise ValueError(
-            f"Cannot merge a {source.kind} entity into a {target.kind} entity; "
-            "merge only works within one kind"
-        )
+        raise ValueError("You can only merge items of the same type.")
     if source.kind == "extra" and _section_key(source) != _section_key(target):
         # `extra` entities are section-scoped: folding one section into another
         # would silently relabel every point it carries.
-        raise ValueError(
-            f"Cannot merge extra section {_section_key(source)!r} into "
-            f"{_section_key(target)!r}; merge only works within one section"
-        )
+        raise ValueError("Both items must be in the same section.")
     if target.status == "archived":
         # An archived SOURCE is fine — that is how a duplicate holder is retired.
-        raise ValueError("Target entity is archived; unarchive it first, then merge")
+        raise ValueError("The item you picked is archived. Restore it first.")
 
     for field in _ABSORBED_FIELDS:
         if field == "end_date" and target.status == "ongoing":
@@ -946,10 +962,7 @@ def _compose_item_ops(
 
     section = _KIND_TO_SECTION.get(entity.kind)
     if section not in _CORE_PORT_SECTIONS:
-        raise ValueError(
-            f"entity {entity.id} kind {entity.kind!r} has no core resume section; "
-            "Career KB porting targets core sections only, not custom sections"
-        )
+        raise ValueError("This item has no section on a resume to be added to.")
 
     idx = _match_index(working, entity, section)
     if idx is not None:
@@ -1093,7 +1106,7 @@ def port_to_resume(
         target,
         working,
         port_log_rows,
-        summary=f"Ported {len(payload.items)} item(s) from Career KB",
+        summary=_items_added(len(payload.items)),
     )
     return target, KBPortReport(items=report_items, skills_merged=skills_merged)
 

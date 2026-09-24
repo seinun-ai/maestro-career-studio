@@ -740,7 +740,7 @@ def set_default(session: Session, template_id: str) -> Template:
     if row is None:
         raise LookupError(f"Template not found: {template_id}")
     if row.status != "ready":
-        raise ValueError("Only a 'ready' template can become the default")
+        raise ValueError("Only a template that passed its check can be the default.")
     session.execute(update(Template).where(Template.is_default.is_(True)).values(is_default=False))
     row.is_default = True
     session.commit()
@@ -753,6 +753,6 @@ def delete(session: Session, template_id: str) -> None:
     if row is None:
         raise LookupError(f"Template not found: {template_id}")
     if row.is_default:
-        raise ValueError("Cannot delete the default template")
+        raise ValueError("This is your default template. Make another one the default first.")
     session.delete(row)
     session.commit()

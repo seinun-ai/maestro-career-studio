@@ -349,10 +349,9 @@ def get_autofill_context(
     # The MCP client keeps its own strip: two gates, not a relocated one.
     #
     # Fails CLOSED — a consent section that failed to compute is not consent.
-    consent = sections.get("eeo_consent")
-    consented = isinstance(consent, dict) and bool(consent.get("enabled"))
-    if not consented and isinstance(sections.get("profile"), dict):
-        sections["profile"].pop("eeo", None)
+    # The one gate (`eeo_consent.withhold_unconsented`); /choose uses it too.
+    sections["profile"] = eeo_consent.withhold_unconsented(
+        sections["profile"], sections["eeo_consent"])
     return sections
 
 

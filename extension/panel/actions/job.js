@@ -46,7 +46,7 @@
       // and "this page has no posting on it" is a fact about the page — true of
       // most pages, and already visible in the three empty boxes above.
       store.write({
-        note: { text: "Nothing to save yet — add a title, or open a job posting." },
+        note: { text: "Nothing to save yet. Add a title or open a job page." },
       });
       store.render();
       return;
@@ -55,7 +55,8 @@
     // `duringAction` holds that guard on both limbs and hands back `null` when
     // there is nothing here left to say.
     const done = await duringAction(store, "job", () =>
-      store.api("/api/jobs", { method: "POST", body: JSON.stringify(body) }));
+      store.api("/api/jobs", { method: "POST", body: JSON.stringify(body) }),
+    "Couldn't save the job.");
     if (!done) return;
     const { token, out: job } = done;
     const skills = job.extracted_json?.skills?.length ?? 0;
@@ -66,8 +67,8 @@
       application: null,
       pdfReady: false,
       note: { text: job.already_existed === true
-        ? "Already tracked. This posting was saved earlier."
-        : `Saved with ${store.build.plural(skills, "skill")} extracted.` },
+        ? "Already saved in Maestro CS."
+        : `Saved. Found ${store.build.plural(skills, "skill")}.` },
     });
     store.render();
     // The stage advances because the data moved, not because anything here

@@ -27,7 +27,6 @@ import removes no artifacts, so re-running the same file is a merge, not a
 
 from __future__ import annotations
 
-import json
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -48,7 +47,7 @@ from app.services import (
     pdf_render,
     role_categories,
 )
-from app.services.attachment_extract import extract_text
+from app.services.attachment_extract import UnreadableFile, extract_text, plain_read_error
 from app.services.resume_versions import record_version
 
 logger = logging.getLogger(__name__)
@@ -85,6 +84,20 @@ class ImportResult:
     bases: list[ImportedBase] = field(default_factory=list)
     skipped: list[SkippedFile] = field(default_factory=list)
     kb: Any = None
+
+
+NOT_RESUME_JSON = "This file isn't a resume in the Maestro CS JSON format."
+
+
+def parse_resume_json(blob: bytes) -> dict:
+    """A JSON upload as ResumeData, or the one sentence both import paths show
+    (Career history › Import and New base resume › Import). Pydantic's field
+    paths are for whoever wrote the JSON by hand: they go to the log."""
+    try:
+        return ResumeData.model_validate_json(blob).model_dump(mode="json")
+    except ValueError as exc:
+        logger.info("import: not ResumeData JSON: %s", exc)
+        raise UnreadableFile(NOT_RESUME_JSON) from exc
 
 
 def _is_json(filename: str, mime: str | None) -> bool:
@@ -208,12 +221,12 @@ def import_resumes(
         safe = Path(filename or "upload").name or "upload"
         try:
             if len(blob) > MAX_BYTES:
-                raise ValueError("file exceeds the 10 MB limit")
+                raise UnreadableFile("This file is over 10 MB.")
 
             parse_warnings: list[str] = []
             if _is_json(safe, mime):
                 # The README's own file-drop format. No extraction, no LLM call.
-                parsed = ResumeData.model_validate(json.loads(blob)).model_dump(mode="json")
+                parsed = parse_resume_json(blob)
             else:
                 text = extract_text(safe, mime, blob)
                 parsed, parse_warnings = kb_consolidation.parse_resume_text(session, text)
@@ -237,14 +250,14 @@ def import_resumes(
         except Exception as exc:  # noqa: BLE001 — one bad file must not fail the batch
             session.rollback()
             logger.info("import: skipping %s: %s", safe, exc)
-            result.skipped.append(SkippedFile(filename=safe, reason=str(exc)[:300]))
+            result.skipped.append(SkippedFile(filename=safe, reason=plain_read_error(exc)))
 
     if len(uploads) > MAX_FILES:
         for filename, _, _ in uploads[MAX_FILES:]:
             result.skipped.append(
                 SkippedFile(
                     filename=Path(filename or "upload").name,
-                    reason=f"only the first {MAX_FILES} files are imported at once",
+                    reason=f"Only the first {MAX_FILES} files are imported at once.",
                 )
             )
 

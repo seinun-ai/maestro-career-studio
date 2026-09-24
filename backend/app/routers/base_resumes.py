@@ -46,13 +46,22 @@ from app.services import (
     pdf_preview,
     role_categories,
 )
-from app.services.attachment_extract import extract_text
+from app.services.base_resume_data import resume_label
+from app.services.attachment_extract import (
+    UPLOAD_UNREADABLE,
+    UnreadableFile,
+    extract_text,
+    plain_read_error,
+)
 from app.services import resume_ops
 from app.services.resume_edit import ContentChangedError
 from app.services.resume_versions import record_version
 
 
 logger = logging.getLogger(__name__)
+
+
+_NAME_TAKEN = "A base resume with this name already exists. Pick a different name."
 
 router = APIRouter(prefix="/api/base-resumes", tags=["base-resumes"])
 
@@ -226,9 +235,9 @@ def create_base_resume(
         if existing.deleted_at is not None:
             raise HTTPException(
                 status_code=409,
-                detail="A base resume with this slug was deleted; choose a different slug to preserve history",
+                detail="A deleted resume used this name. Pick a different name.",
             )
-        raise HTTPException(status_code=409, detail="Base resume already exists")
+        raise HTTPException(status_code=409, detail=_NAME_TAKEN)
 
     data_dict = payload.data.model_dump(mode="json")
     role_label, role_category = _resolved_tag(
@@ -404,11 +413,7 @@ def create_from_kb(
     ):
         raise HTTPException(
             status_code=422,
-            detail=(
-                "The selected entities produced no resume content. Pick at least "
-                "one experience, project, education entry, or certification that "
-                "has approved points."
-            ),
+            detail="None of the items you picked has approved bullets.",
         )
 
     if payload.summary is not None:
@@ -445,19 +450,19 @@ def _parse_resume_upload(db: Session, file: UploadFile) -> tuple[str, dict, list
     try:
         blob = file.file.read()
     except OSError as exc:
-        raise HTTPException(status_code=400, detail=f"{safe_name}: could not read upload") from exc
+        raise HTTPException(status_code=400, detail=UPLOAD_UNREADABLE) from exc
     if len(blob) > IMPORT_MAX_BYTES:
-        raise HTTPException(status_code=413, detail="file exceeds the 10 MB limit")
+        raise HTTPException(status_code=413, detail="This file is over 10 MB.")
 
     if kb_import._is_json(safe_name, file.content_type):
         try:
-            return safe_name, ResumeData.model_validate_json(blob).model_dump(mode="json"), []
-        except ValueError as exc:
-            raise HTTPException(status_code=422, detail=f"{safe_name}: {exc}") from exc
+            return safe_name, kb_import.parse_resume_json(blob), []
+        except UnreadableFile as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
     try:
         text = extract_text(safe_name, file.content_type, blob)
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+        raise HTTPException(status_code=422, detail=plain_read_error(exc)) from exc
     # Resolve the prompt and model BEFORE anything joins the session:
     # get_prompt commits its file default on first use (kb_import's rule).
     kb_consolidation.prefetch_prompts(db)
@@ -676,7 +681,7 @@ def port_project_to_base_resume(
         payload.target_slug,
         target_data,
         source="import",
-        summary=f"Ported project from {slug}",
+        summary=f"Copied a project from {resume_label(db, slug)}",
     )
     db.commit()
     db.refresh(target)
@@ -727,9 +732,9 @@ def duplicate_base_resume(
         if existing.deleted_at is not None:
             raise HTTPException(
                 status_code=409,
-                detail="A base resume with this slug was deleted; choose a different slug to preserve history",
+                detail="A deleted resume used this name. Pick a different name.",
             )
-        raise HTTPException(status_code=409, detail="Target slug already exists")
+        raise HTTPException(status_code=409, detail=_NAME_TAKEN)
 
     import copy
 
@@ -749,7 +754,7 @@ def duplicate_base_resume(
         payload.new_slug,
         data_copy,
         source="create",
-        summary=f"Duplicated from {slug}",
+        summary=f"Duplicated from {resume_label(db, slug)}",
     )
     db.commit()
     db.refresh(row)

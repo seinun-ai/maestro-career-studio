@@ -45,9 +45,10 @@
    * default (sw.js's `DEFAULTS`), so this order is NOT "selected last" — it is
    * "least to most", which is how a control that can send text to a model
    * should read. */
-  const FILL_MODES = [["rules", "Rules only"], ["assist", "Rules + AI assist"]];
+  const FILL_MODES = [["rules", "Saved answers only"], ["assist", "Saved answers + AI"]];
 
-  /** Rules only / Rules + AI assist.
+  /** Saved answers only / Saved answers + AI. The values ("rules", "assist")
+   * are what `chrome.storage.sync` holds; only these labels are words.
    *
    * A RADIOGROUP on real buttons, `baseRow`'s shape and its reasoning: the
    * segment IS the control, and a hidden input with a label wrapped round the
@@ -108,11 +109,11 @@
       `${counts.filled} filled`,
       counts.corrected ? `${counts.corrected} corrected` : null,
       counts.already ? `${counts.already} already filled` : null,
-      counts.notStuck ? `${counts.notStuck} didn’t stick` : null,
+      counts.notStuck ? `${counts.notStuck} not accepted` : null,
     ].filter(Boolean);
     const wrote = counts.filled + counts.corrected;
     return progressRow(ctx, counts.notStuck ? OPEN : wrote ? DONE : SKIPPED,
-                       "Profile fields", parts.join(" · "));
+                       "Saved answers", parts.join(" · "));
   }
 
   /** What the remainder pass did, and what it left.
@@ -138,7 +139,7 @@
                        "Application questions", parts.join(" · "));
   }
 
-  /** Voluntary disclosures, and the ONE thing this row may never do.
+  /** Diversity questions, and the ONE thing this row may never do.
    *
    * The answer is the BACKEND's standing consent (`eeo_consent` on
    * `/api/autofill/context`) and there is no local toggle that could turn it
@@ -146,20 +147,22 @@
    * held. Three states, and they are three different sentences:
    *
    * - consent granted: the count of protected-characteristic fields written;
-   * - consent withheld: "skipped — EEO off", which explains a silence that
-   *   would otherwise read as a fill that missed a whole section;
+   * - consent withheld: "turned off in Profile › Autofill", which explains a
+   *   silence that would otherwise read as a fill that missed a whole section,
+   *   and says where the switch is;
    * - no answer at all: "not asked". The endpoint told us nothing about
    *   consent, and reporting that as "off" would be this surface deciding a
    *   question it is not allowed to decide.
    */
   function eeoRow(ctx, fill, consent) {
-    if (consent === null) return progressRow(ctx, SKIPPED, "Voluntary disclosures",
+    if (consent === null) return progressRow(ctx, SKIPPED, "Diversity questions",
                                              "not asked");
     if (consent.enabled !== true) {
-      return progressRow(ctx, SKIPPED, "Voluntary disclosures", "skipped — EEO off");
+      return progressRow(ctx, SKIPPED, "Diversity questions",
+                         "turned off in Profile › Autofill");
     }
     const filled = fill.eeoFilled.length;
-    return progressRow(ctx, filled ? DONE : SKIPPED, "Voluntary disclosures",
+    return progressRow(ctx, filled ? DONE : SKIPPED, "Diversity questions",
                        `${filled} filled`);
   }
 
@@ -221,8 +224,8 @@
     const many = facts.fileInputs > 1;
     const box = build.node("div", "attach");
     const line = build.node("div", "sub", many
-      ? `This page has ${boxes(facts.fileInputs)} — attach your resume by hand `
-        + "so it goes to the right one."
+      ? `This page has ${boxes(facts.fileInputs)}. Attach your resume yourself `
+        + "so it goes in the right one."
       : facts.attachName
         ? `Put ${facts.attachName} in this page's upload box.`
         : "Put your tailored resume in this page's upload box.");
@@ -347,7 +350,7 @@
     // A closed list, shown. The writer matches the typed answer against these
     // exact strings, so a user who cannot see them is guessing at a menu.
     if (row.options?.length) {
-      const opts = node("div", "opts", `one of: ${row.options.join(" · ")}`);
+      const opts = node("div", "opts", `Options: ${row.options.join(" · ")}`);
       opts.id = noteId;
       attach(box, opts);
     }
@@ -372,8 +375,8 @@
       // options to take it, because a retryable is a `text` or `combobox` kind
       // and only the former reaches here: it never has a list to print, so the
       // two lines cannot collide over the id.
-      const why = node("div", "learn", "Already in your profile — the field "
-        + "refused the write, not the answer.");
+      const why = node("div", "learn", "Already in your saved answers. The page "
+        + "didn't accept it, so check it and fill again.");
       if (!row.options?.length) why.id = noteId;
       attach(box, why);
     }
@@ -534,7 +537,7 @@
     trigger.addEventListener("click", act.toggleQna);
     attach(drawer, attach(node("div", "row"),
                           node("span", null,
-                               "Paste any question for a grounded answer"),
+                               "Paste a question to answer from your resume"),
                           trigger));
     if (!facts.qna.open) return drawer;
     // ONE region, so `aria-controls` has one thing to point at: the box, the
@@ -588,8 +591,8 @@
    * captures today (see the round's handoff), and a link this surface cannot
    * ground is the guessed address this project keeps refusing to render.
    */
-  const NO_FORM_HERE = "No application form on this page — open the employer's "
-    + "Apply page; filling starts there.";
+  const NO_FORM_HERE = "No application form here. Open the employer's Apply "
+    + "page to start filling.";
 
   /** The Fill stage: choose the pass, run it, and read what it actually did.
    *
@@ -660,9 +663,11 @@
     // which is where the essays that feed it are.
     if (!facts.fill && !collected) {
       return attach(body, node("div", "sub", facts.fillMode === "rules"
-        ? "Fills what your profile answers for. Nothing is sent to a model."
-        : "Fills what your profile answers for, then asks for the rest. "
-          + "Identity fields are never sent."),
+        ? "Uses only your saved answers. Nothing goes to the AI."
+        // What /api/autofill/choose sends: the saved answers (diversity
+        // answers only under standing consent) and the career history.
+        : "Uses your saved answers, then asks the AI for the rest. "
+          + "The AI sees your saved answers and career history."),
                     // ON BOTH PATHS, and gated on neither: the attach is an
                     // offer about the PAGE, not a line of the run's report, so
                     // it stands before a fill as well as after one. A user who

@@ -158,10 +158,7 @@ def set_base_url(session: Session, value: str | None) -> str | None:
     if cleaned is not None:
         parsed = urlparse(cleaned)
         if parsed.scheme not in ("http", "https") or not parsed.netloc:
-            raise ValueError(
-                "base_url must be an absolute http:// or https:// URL, "
-                "e.g. http://host.docker.internal:11434/v1"
-            )
+            raise ValueError("Enter a full address that starts with http:// or https://.")
     return _set_raw_value(session, BASE_URL_KEY, cleaned)
 
 
@@ -314,7 +311,7 @@ def add_extra_model(
         raise ValueError(f"Model {cleaned_id} is already a built-in seed")
     extras = get_extra_models(session)
     if any(opt.id == cleaned_id for opt in extras):
-        raise ValueError(f"Model {cleaned_id} is already in the catalog")
+        raise ValueError("That model is already in your list.")
     option = ModelOption(
         cleaned_id,
         (label or cleaned_id).strip() or cleaned_id,
@@ -340,8 +337,8 @@ def remove_extra_model(session: Session, model_id: str) -> None:
     }
     if cleaned_id in in_use:
         raise ValueError(
-            f"Model {cleaned_id} is in use by Fast, Smart, or Chat — "
-            "change that role first"
+            f"The model {cleaned_id} is your Fast, Smart or Assistant model. Pick "
+            "another model for that first."
         )
     _save_extra_models(session, [opt for opt in extras if opt.id != cleaned_id])
 
@@ -371,7 +368,7 @@ def set_models(
         report = llm_capabilities.load(session, chat_model)
         if report is not None and not report.supports("tools"):
             raise ValueError(
-                "chat needs a model that passes the streaming tool-call test — run Test"
+                "The Assistant model has to pass the tool test. Press Test next to it first."
             )
         _set_value(session, CHAT_MODEL_KEY, chat_model)
     fast = _set_value(session, FAST_MODEL_KEY, fast_model)

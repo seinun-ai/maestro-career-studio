@@ -49,6 +49,11 @@
       {"path": "backend/tests/test_kb_provenance_stamping.py", "symbol": "test_no_writer_flips_user_cannot_confirm"},
       {"path": "backend/tests/test_gap_cannot_confirm.py", "symbol": "test_nothing_upgrades_user_cannot_confirm"}
     ],
+    "inv-eeo-standing-consent": [
+      {"path": "backend/app/services/eeo_consent.py", "symbol": "def withhold_unconsented"},
+      {"path": "backend/tests/test_autofill_router.py", "symbol": "test_context_withholds_eeo_values_without_consent"},
+      {"path": "backend/tests/test_autofill_choose.py", "symbol": "test_without_consent_no_diversity_answer_reaches_the_model"}
+    ],
     "inv-single-dialect": [
       {"path": "backend/tests/test_db_portability.py", "symbol": "test_no_dialect_imports_outside_types_module"},
       {"path": "backend/app/models/types.py", "symbol": "UTCDateTime"}
@@ -60,7 +65,6 @@
       "inv-honesty",
       "inv-tailor-vs-edit",
       "inv-autofill-telemetry-no-values",
-      "inv-eeo-standing-consent",
       "inv-pdf-word-spacing"
     ]
   }

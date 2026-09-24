@@ -703,7 +703,7 @@ def test_render_cover_letter_follows_the_resume_engine_without_tex(
     assert response.status_code == 200, response.text
     body = response.json()
     assert Path(body["pdf_path"]).exists()
-    assert "TeX is not installed" in body["render_note"]
+    assert "can't be used on this computer" in body["render_note"]
 
 
 def test_render_cover_letter_without_tex_or_typst_is_400_and_allocates_nothing(
@@ -728,7 +728,7 @@ def test_render_cover_letter_without_tex_or_typst_is_400_and_allocates_nothing(
     finally:
         app.dependency_overrides.clear()
     assert response.status_code == 400, response.text
-    assert "needs TeX" in response.json()["detail"]
+    assert "needs TeX, a tool" in response.json()["detail"]
     assert not any(tmp_path.iterdir())
     db_session.refresh(application)
     assert application.artifact_dir is None

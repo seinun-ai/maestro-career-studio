@@ -389,6 +389,11 @@ def test_duplicate_base_resume_copies_data(db_session, tmp_path, monkeypatch):
     assert response.json()["slug"] == "data_scientist_v2"
     assert response.json()["display_name"] == "DS v2"
     assert db_session.get(BaseResume, "data_scientist_v2") is not None
+    # The version summary names the source resume in words, never its slug.
+    from app.services import resume_versions
+
+    [version] = resume_versions.get_versions(db_session, "base", "data_scientist_v2")
+    assert version.summary == "Duplicated from Data Scientist"
 
 
 def test_get_base_resume_pdf_returns_file(db_session, tmp_path):
@@ -1153,8 +1158,8 @@ def test_put_re_render_incompatible_template_returns_400(db_session, tmp_path, m
 
     assert response.status_code == 400, response.text
     detail = response.json()["detail"]
-    assert "custom section" in detail.lower()
-    assert "awards" in detail
+    assert "other sections" in detail
+    assert "(Awards)" in detail
 
 
 def test_edit_ops_incompatible_template_degrades_to_render_error(
@@ -1193,7 +1198,7 @@ def test_edit_ops_incompatible_template_degrades_to_render_error(
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["render_error"] is not None
-    assert "custom section" in body["render_error"].lower()
+    assert "other sections" in body["render_error"]
     # The edit persisted despite the render failure.
     assert [s["key"] for s in body["data"]["extra_sections"]] == ["awards"]
 

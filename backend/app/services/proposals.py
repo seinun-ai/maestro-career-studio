@@ -37,6 +37,17 @@ ALLOWED = {
     # submitted / rejected / expired are terminal
 }
 
+# A proposal status as the Agent inbox's chip reads it (`PROPOSAL_STATUS_CHIP`
+# in frontend/components/status-chip.tsx, pinned equal by
+# test_proposal_state_machine.py): the bulk toast prints this refusal. The keys
+# stay what agents and the API use.
+STATUS_CHIP_WORDS = {
+    "pending_review": "Proposed", "needs_decision": "Needs you",
+    "needs_human": "Needs you", "accepted": "Queued", "approved": "Approved",
+    "submitted": "Applied", "submission_uncertain": "Check if sent",
+    "rejected": "Skipped", "expired": "Expired",
+}
+
 CONSENT_REQUIRED = {"accepted", "approved", "rejected"}
 CONSENT_CHANNELS = ("chat", "slack", "frontend", "mcp")
 
@@ -116,7 +127,9 @@ def transition(session: Session, prop: ApplicationProposal, new_status: str,
                intervention: dict | None = None,
                attested: bool = False) -> ApplicationProposal:
     if new_status not in ALLOWED.get(prop.status, set()):
-        raise TransitionError(f"cannot go {prop.status} -> {new_status}")
+        raise TransitionError(
+            f"This proposal's status is {STATUS_CHIP_WORDS.get(prop.status, prop.status)}, "
+            "so it can't be changed that way.")
     if new_status in CONSENT_REQUIRED:
         if not consent or consent.get("channel") not in CONSENT_CHANNELS:
             raise TransitionError(f"{new_status} requires consent with a valid channel")

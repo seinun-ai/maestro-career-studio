@@ -62,11 +62,18 @@
    */
   function customLink({ facts, build }) {
     if (!facts.appUrl || !facts.job?.id) return null;
-    const anchor = build.node("a", null, "Custom in Studio ↗");
+    const anchor = build.node("a", null, "Tailor in Maestro CS ↗");
     anchor.href = `${facts.appUrl}/jobs/${facts.job.id}?tab=fit`;
     anchor.target = "_blank";
     anchor.rel = "noopener noreferrer";
     return anchor;
+  }
+
+  /** The chosen base resume's name, as the web app shows it, or null: the
+   * slug is an API key, never a word for the user. */
+  function baseName({ facts }) {
+    return facts.resumes?.find((resume) => resume.slug === facts.baseSlug)
+      ?.display_name || null;
   }
 
   /** The way out of the base-as-is claim, and the twin of the claimed Job
@@ -80,7 +87,7 @@
    */
   function withdrawLimb(ctx) {
     const { facts, act, build } = ctx;
-    const stop = build.node("button", "unpick", "Stop using base as-is");
+    const stop = build.node("button", "unpick", "Stop using the base resume");
     stop.type = "button";
     stop.disabled = facts.busy === true;
     stop.addEventListener("click", act.stopUsingBaseAsIs);
@@ -89,21 +96,21 @@
 
   /** The Resume stage: three ways forward, on two levels.
    *
-   *   [ Use base as-is ]  [ Tailor ]
-   *   [ Quick tailor   ]  [ Custom in Studio ↗ ]     ← only once Tailor is open
+   *   [ Use base resume as is ]  [ Tailor ]
+   *   [ Quick tailor   ]  [ Tailor in Maestro CS ↗ ]     ← only once Tailor is open
    *
    * AND ONE MORE SHAPE, once the base is ARMED — which is this body reopened
-   * from a rail row that reads "Skipped — using base as-is", on a page with a
+   * from a rail row that reads "Skipped. Using your base resume as is.", on a page with a
    * form and on a posting page alike:
    *
-   *   Using ai_ml_engineer as-is
+   *   Using AI/ML Engineer as is
    *   [ Tailor ]
-   *   [ Quick tailor ] [ Custom in Studio ↗ ]        ← only once Tailor is open
-   *   [ Stop using base as-is ]
+   *   [ Quick tailor ] [ Tailor in Maestro CS ↗ ]        ← only once Tailor is open
+   *   [ Stop using the base resume ]
    *
    * TWO EDITS AND NOT A SECOND BODY. The claim is NAMED (the user's own words
    * back to them, with the resume they armed), the withdraw is offered at the
-   * bottom, and the "Use base as-is" limb is dropped — pressing it would
+   * bottom, and the "Use base resume as is" limb is dropped — pressing it would
    * re-assert a claim that is already in force, which is a control that cannot
    * do anything and therefore cannot be honest. Everything else composes
    * unchanged, which is the point: the tailoring fork is exactly what the user
@@ -128,13 +135,13 @@
    * WHAT EACH LIMB IS, because they are three different KINDS of control and
    * the difference is the honest part:
    *
-   * - "Use base as-is" ACTS, and finishes the stage: the shortcut arms, the
+   * - "Use base resume as is" ACTS, and finishes the stage: the shortcut arms, the
    *   rail skips Score and Resume visibly, and the user lands on Fill.
    * - "Tailor" DISCLOSES. It asks nothing of the backend, which is why it can
    *   be pressed by someone still making up their mind.
    * - "Quick tailor" ACTS, and it is the same function the footer's primary
    *   runs (see `STAGE_RUN` for why one behaviour is offered twice).
-   * - "Custom in Studio ↗" LEAVES: a real `<a target="_blank">` to the web app
+   * - "Tailor in Maestro CS ↗" LEAVES: a real `<a target="_blank">` to the web app
    *   and never an API call. The custom pass is a gap-filling conversation
    *   that belongs in a full page, and the panel has no business creating a
    *   tailoring session behind the user's back to open one — it picks the
@@ -169,11 +176,11 @@
     // DATA: `stageFor`'s `fillFromBase` requires `!hasApplication`, so the
     // moment a tailor commits one the shortcut stops firing, the flag goes
     // inert, and Fill attaches the tailored PDF rather than the base. Reading
-    // the flag alone put "Using ⟨base⟩ as-is" over the reopened row for a user
+    // the flag alone put "Using ⟨base⟩ as is" over the reopened row for a user
     // who had just pressed Quick tailor from it — a false sentence about which
     // document is going into the form — beside a withdraw that flips a flag
     // nothing reads. That is the same sin this body names when it drops the
-    // "Use base as-is" limb: a control that cannot do anything cannot be
+    // "Use base resume as is" limb: a control that cannot do anything cannot be
     // honest. Data wins over a claim here exactly as it wins over a reopened
     // view in `openRow`.
     const armed = facts.baseArmed === true && !facts.application;
@@ -183,11 +190,11 @@
                         // fallback is for a bridge entry that lost it rather
                         // than for a choice nobody made.
                         armed ? node("div", "sub",
-                                     `Using ${facts.baseSlug || "your base resume"} as-is`)
+                                     `Using ${baseName(ctx) || "your base resume"} as is`)
                           : null,
                         attach(node("div", "fork"),
                                armed ? null
-                                 : actingLimb(ctx, "Use base as-is", act.useBaseAsIs),
+                                 : actingLimb(ctx, "Use base resume as is", act.useBaseAsIs),
                                tailor));
     // The withdraw goes LAST on every path, under the second level when it is
     // open: it is the way out of the stage, not one of the ways through it.
@@ -205,9 +212,9 @@
            // The sentence belongs to the link: it promises what happens after
            // the user leaves, so with no link to leave through there is
            // nothing to promise.
-           custom ? node("div", "sub", "Custom opens the gap-filling "
-             + "tailor page; this panel picks the result up when it’s "
-             + "rendered.") : null);
+           custom ? node("div", "sub", "Tailor in Maestro CS opens the full "
+             + "tailor page. The Companion picks up the tailored resume when "
+             + "its PDF is ready.") : null);
     attach(body, options);
     return armed ? attach(body, withdrawLimb(ctx)) : body;
   }

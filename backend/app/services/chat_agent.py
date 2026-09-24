@@ -258,7 +258,8 @@ def run_turn(
             db,
             session_row,
             role="assistant",
-            content="(Stopped: too many consecutive tool calls in one turn.)",
+            content="I stopped because this took too many steps. Try asking for one thing "
+            "at a time.",
         )
         db.commit()
         yield {"type": "message", "id": str(assistant.id), "role": "assistant"}

@@ -13,6 +13,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from app.services import llm
+
 _ROOT = Path(__file__).resolve().parents[2]
 _FRONTEND = _ROOT / "frontend"
 
@@ -443,9 +445,12 @@ def test_a_missing_or_refused_key_says_what_to_do():
     text = _read("lib/error-text.ts")
     assert '"Add an API key in Settings › AI & models."' in text
     assert '"Check your API key in Settings › AI & models."' in text
-    llm = (_ROOT / "backend/app/services/llm.py").read_text(encoding="utf-8")
-    for message in ("No OpenAI API key configured.", "GEMINI_API_KEY is required", "No Gemini API key configured."):
-        assert message in llm, message
+    # The server's own no-key sentences (lane 10 rewrote them) still meet the
+    # frontend's MISSING_KEY pattern, so both sides move together.
+    missing = re.search(r"const MISSING_KEY = /(.+)/i;", text)
+    assert missing, "MISSING_KEY moved"
+    for message in (llm.NO_KEY_MESSAGE, llm.NO_GEMINI_KEY_MESSAGE):
+        assert re.search(missing.group(1), message, re.I), message
 
 
 # --- The Assistant: typed text, focus and state (first-read) -----------------------

@@ -134,7 +134,7 @@ def test_declined_job_cannot_be_reproposed(db_session):
 
     r2 = client.post("/api/proposals", json={"job_id": str(job.id)})
     assert r2.status_code == 409
-    assert "declined" in r2.json()["detail"]
+    assert "You skipped this job before" in r2.json()["detail"]
 
 
 def test_decline_does_not_cooldown_the_company(db_session):
@@ -209,7 +209,7 @@ def test_delete_refused_for_submitted_proposals(db_session):
     db_session.commit()
     r = client.delete(f"/api/proposals/{pid}")
     assert r.status_code == 409
-    assert "audit" in r.json()["detail"]
+    assert "kept as proof" in r.json()["detail"]
 
     prop.status = "submission_uncertain"
     db_session.commit()
@@ -229,7 +229,7 @@ def test_company_blocklist_409(db_session):
     job = _mk_job(db_session, company="BadCo")
     r = client.post("/api/proposals", json={"job_id": str(job.id)})
     assert r.status_code == 409
-    assert "blocklisted" in r.json()["detail"]
+    assert "Companies to skip" in r.json()["detail"]
 
 
 def test_list_proposals_multi_status_pagination_and_total(db_session):

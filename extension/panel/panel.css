@@ -322,9 +322,13 @@ button.stg-row:focus-visible { outline-offset: -2px; }
   display: flex; background: var(--cs-surface-2); border-radius: 10px;
   padding: 3px; gap: 3px; margin: 4px 0 10px;
 }
+/* `balance` and a real line height: at the narrowest panel (320px) "Saved
+ * answers + AI" does not fit one line, and a greedy wrap strands "AI" alone
+ * under "Saved answers +". Balanced, both labels break the same way. */
 .seg button {
-  flex: 1; border: none; border-radius: 8px; font: 600 12px/1 var(--cs-font);
-  padding: 8px 6px; background: none; color: var(--cs-muted); cursor: pointer;
+  flex: 1; border: none; border-radius: 8px; font: 600 12px/1.25 var(--cs-font);
+  padding: 7px 6px; background: none; color: var(--cs-muted); cursor: pointer;
+  text-wrap: balance;
 }
 .seg button.on {
   background: var(--cs-surface); color: var(--cs-text);

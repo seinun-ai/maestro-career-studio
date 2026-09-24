@@ -36,7 +36,7 @@ def test_add_rejects_seed_and_duplicate(db_session):
     with pytest.raises(ValueError, match="built-in seed"):
         model_settings.add_extra_model(db_session, "gpt-5.6-luna", "openai")
     model_settings.add_extra_model(db_session, "my-local-gpt", "openai")
-    with pytest.raises(ValueError, match="already in the catalog"):
+    with pytest.raises(ValueError, match="already in your list"):
         model_settings.add_extra_model(db_session, "my-local-gpt", "openai")
 
 
@@ -80,7 +80,7 @@ def test_chat_rejects_tools_false_row(db_session):
             errors={"tools": "model streamed no tool call"},
         ),
     )
-    with pytest.raises(ValueError, match="streaming tool-call test"):
+    with pytest.raises(ValueError, match="has to pass the tool test"):
         model_settings.set_models(
             "gemini-3.5-flash-lite",
             "gpt-5.6-luna",
@@ -92,7 +92,7 @@ def test_chat_rejects_tools_false_row(db_session):
 def test_remove_extra_rejects_when_in_use(db_session):
     model_settings.add_extra_model(db_session, "gpt-custom", "openai")
     model_settings.set_models("gpt-custom", "gpt-5.6-luna", db_session)
-    with pytest.raises(ValueError, match="in use"):
+    with pytest.raises(ValueError, match="is your Fast, Smart or Assistant model"):
         model_settings.remove_extra_model(db_session, "gpt-custom")
     model_settings.set_models("gemini-3.5-flash-lite", "gpt-5.6-luna", db_session)
     model_settings.remove_extra_model(db_session, "gpt-custom")

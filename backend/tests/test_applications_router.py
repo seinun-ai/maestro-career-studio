@@ -1647,8 +1647,8 @@ def test_render_incompatible_template_returns_400_not_500(db_session, tmp_path, 
 
     assert response.status_code == 400, response.text
     detail = response.json()["detail"]
-    assert "custom section" in detail.lower()
-    assert "awards" in detail  # names the offending section key
+    assert "other sections" in detail
+    assert "(Awards)" in detail  # names the offending section by its title
 
 
 def test_list_applications_filters_by_source(db_session):
@@ -1863,6 +1863,8 @@ def test_resume_diff_409_when_customized_json_empty(db_session):
         app.dependency_overrides.clear()
 
     assert response.status_code == 409
+    assert response.json()["detail"] == (
+        "This application has no tailored resume yet. Tailor it first.")
 
 
 def test_resume_diff_happy_path_attributes_via_newest_session(db_session, monkeypatch):

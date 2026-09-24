@@ -456,22 +456,22 @@ def _best_paying_titles(db_session, pay):
 def test_best_paying_signal_uses_role_label(db_session):
     """The insight names the catalog label, never the slug."""
     titles = _best_paying_titles(db_session, _TRACKS)
-    assert "Best-paying track: AI/ML Engineer" in titles
+    assert "Best-paying role: AI/ML Engineer" in titles
     assert not any("ai_ml_engineer" in title for title in titles)
 
 
 def test_best_paying_signal_skips_the_unknown_bucket(db_session):
     """A higher-paying `unknown` bucket is not a track."""
     titles = _best_paying_titles(db_session, [*_TRACKS, (None, 300000, 400000)])
-    best = [title for title in titles if title.startswith("Best-paying track:")]
-    assert best == ["Best-paying track: AI/ML Engineer"]
+    best = [title for title in titles if title.startswith("Best-paying role:")]
+    assert best == ["Best-paying role: AI/ML Engineer"]
 
 
 def test_best_paying_signal_skips_the_other_bucket(db_session):
     """A higher-paying `other` bucket is not a track either."""
     titles = _best_paying_titles(db_session, [*_TRACKS, ("other", 300000, 400000)])
-    best = [title for title in titles if title.startswith("Best-paying track:")]
-    assert best == ["Best-paying track: AI/ML Engineer"]
+    best = [title for title in titles if title.startswith("Best-paying role:")]
+    assert best == ["Best-paying role: AI/ML Engineer"]
 
 
 def test_top_skill_signal_title_starts_with_words(db_session):
@@ -481,7 +481,7 @@ def test_top_skill_signal_title_starts_with_words(db_session):
     _add_skill(db_session, job, "sql", requirement="required")
     db_session.flush()
     signals = explore_overview.candidate_signals(explore_overview.build_overview(db_session))
-    assert "Top required skill: sql (100% of JDs)" in [s["title"] for s in signals]
+    assert "Most required skill: sql (100% of jobs)" in [s["title"] for s in signals]
 
 
 def test_role_mix_over_time_groups_by_week(db_session):
@@ -592,3 +592,25 @@ def test_fit_distribution_excludes_soft_deleted_base_resume(db_session):
     slugs = {row["base_resume"] for row in response.json()}
     assert "data_scientist" in slugs   # on-disk-only slug preserved
     assert "old_track" not in slugs    # soft-deleted slug excluded
+
+
+def test_a_count_of_one_job_is_one_job():
+    """"(1 jobs)" and "from 1 jobs" are the plural bug appendix D §1 names."""
+    one = {
+        "meta": {"total_jobs": 1, "jobs_without_salary": 0, "salary_year_currency": "USD"},
+        "work_auth": {"opt": []},
+        "locations": [{"key": "Tacoma, WA", "count": 1}],
+        "top_required_skills": [{"skill_name": "sql", "n": 1}],
+        "salary_by_role": [{"role_category": "data_scientist", "avg_max": 150000, "n": 1,
+                            "currency": "USD"}],
+        "work_mode": [{"key": "onsite", "count": 1}],
+    }
+    copy = {s["title"]: s["detail"] for s in explore_overview.candidate_signals(one)}
+    assert "Most common location: Tacoma, WA (1 job)" in copy
+    assert copy["Most required skill: sql (100% of jobs)"] == (
+        "Required in 1 of 1 job, more than any other skill.")
+    assert copy["Best-paying role: Data Scientist"].endswith("from 1 job that lists pay.")
+    six = {**one, "meta": {**one["meta"], "total_jobs": 6},
+           "work_mode": [{"key": "remote", "count": 1}, {"key": "onsite", "count": 5}]}
+    remote = {s["title"]: s["detail"] for s in explore_overview.candidate_signals(six)}
+    assert remote["Remote roles are scarce (17%)"] == "Only 1 of 6 jobs is remote."

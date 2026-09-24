@@ -483,21 +483,7 @@ def _counts() -> Counter[str]:
 # counts as it goes and deletes its block when it lands; the last one deletes
 # `_PENDING` itself. Task 23 (D §9, server-written messages) has no block:
 # this scan reads the frontend and the Companion panel only.
-_PENDING_T22: dict[str, int] = {  # D §8 the Companion panel
-    "extension/panel/actions/fill.js": 3,
-    "extension/panel/actions/job.js": 3,
-    "extension/panel/actions/pause.js": 2,
-    "extension/panel/actions/qna.js": 3,
-    "extension/panel/actions/resume.js": 3,
-    "extension/panel/actions/track.js": 2,
-    "extension/panel/panel.js": 4,
-    "extension/panel/stages/fill.js": 4,
-    "extension/panel/stages/job.js": 3,
-    "extension/panel/stages/resume.js": 3,
-    "extension/panel/stages/score.js": 2,
-    "extension/panel/stages/track.js": 1,
-}
-_BLOCKS = (_PENDING_T22,)
+_BLOCKS: tuple[dict[str, int], ...] = ()
 _PENDING: dict[str, int] = {rel: n for block in _BLOCKS for rel, n in block.items()}
 
 

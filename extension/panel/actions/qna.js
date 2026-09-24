@@ -99,9 +99,8 @@
       // because two sentences for one condition is how a user comes to believe
       // there are two conditions.
       store.write({ note: { text: facts.job
-        ? "No base resume yet — build one in Maestro CS."
-        : "Add the job first — an answer is grounded in your resume and this "
-          + "posting." } });
+        ? "No base resumes yet. Add one in Maestro CS."
+        : "Save the job first. Answers come from your resume and this job." } });
       store.render();
       return;
     }
@@ -109,7 +108,14 @@
       store.api("/api/qa", {
         method: "POST",
         body: JSON.stringify({ ...grounding, questions: [question] }),
-      }));
+      }), {
+      what: "Couldn't answer that question.",
+      // A 400 is the backend saying the RESUME cannot be read (no data file),
+      // which is a fact about that resume and not a reason to try again.
+      answered: (err) => (err.status === 400
+        ? "Couldn't answer from this base resume. Open it in Maestro CS to check it."
+        : null),
+    });
     if (!done) return;
     // JOINED, not indexed: `_split_numbered_answers` may hand back one element
     // for a reply it could not split, and for a ONE-question ask that element
@@ -126,8 +132,8 @@
       // answer says out loud which question it is for.
       qna: { ...after.qna, answered: question, answer, copied: false },
       note: { text: grounding.application_id
-        ? "Saved to this application’s Q&A history."
-        : "Answered from your base resume and this posting." },
+        ? "Saved to this application's Q&A history."
+        : "Answered from your base resume and this job." },
     });
     store.render();
   }

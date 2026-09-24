@@ -418,7 +418,7 @@ vm.runInThisContext(source);
 main(async () => {
   const reply = await new Promise((resolve, rejectSend) => {
     const keptOpen = listener(
-      { type: "api", path: "/api/applications/app-1" },
+      spec.message ?? { type: "api", path: "/api/applications/app-1" },
       { id: chrome.runtime.id },
       resolve);
     if (!keptOpen) rejectSend(new Error("the router declined an api message"));
@@ -473,6 +473,20 @@ def test_a_server_error_is_not_a_missing_resource(tmp_path):
     """
     out = _api_failure(tmp_path, status=500, detail="Internal Server Error")
     assert out["reply"]["status"] == 500
+
+
+def test_a_pdf_the_backend_would_not_send_carries_its_status(tmp_path):
+    """The attach's PDF read is the SW's own fetch, not `api()`, so it has to
+    hang the status on its error itself. Without it a 404 for a PDF that is gone
+    reaches the panel with no status, and the panel's note then says "Check
+    that Maestro CS is running" about a backend that just answered.
+
+    THE MUTATION THIS DIES TO: throwing a bare Error in `attach_pdf`."""
+    out = _api_failure(tmp_path, status=404, message={
+        "type": "attach_pdf", "tabId": 7, "path": "/api/applications/app-1/pdf",
+        "filename": "resume.pdf", "expect": 1})
+    assert out["reply"]["ok"] is False
+    assert out["reply"]["status"] == 404
 
 
 # ---------- what the widget's test file used to be the only home for --------

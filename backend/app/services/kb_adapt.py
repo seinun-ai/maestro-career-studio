@@ -52,6 +52,11 @@ logger = logging.getLogger(__name__)
 _STYLE_SAMPLE_MAX = 8
 
 
+# One sentence for "the resume moved under a proposal the user reviewed": the
+# fix is the same whichever check caught it (a stale index, a changed line).
+_RESUME_CHANGED = "The resume changed since these bullets were reworded. Reword them again."
+
+
 def _entity_and_section(session: Session, entity_id) -> tuple[KBEntity, str]:
     entity = session.get(KBEntity, entity_id)
     if entity is None:
@@ -59,11 +64,12 @@ def _entity_and_section(session: Session, entity_id) -> tuple[KBEntity, str]:
     section = _KIND_TO_SECTION.get(entity.kind)
     if section is None or entity.kind == "certification":
         raise ValueError(
-            "certification entities port verbatim; there is nothing to adapt"
+            "A certification is added to a resume as it is, so there is nothing to reword."
         )
     if entity.kind == "extra":
         raise ValueError(
-            "custom section entities port directly; there is nothing to adapt"
+            "An item from other sections is added to a resume as it is, so there is "
+            "nothing to reword."
         )
     return entity, section
 
@@ -79,7 +85,7 @@ def adapt_points(session: Session, payload: KBAdaptRequest) -> KBAdaptProposal:
     entity, section = _entity_and_section(session, payload.entity_id)
     points = _resolve_points(session, entity, payload.point_ids)
     if not points:
-        raise ValueError("no approved points to adapt")
+        raise ValueError("This item has no approved bullets to reword.")
 
     data = target.data_json
     idx = _match_index(data, entity, section)
@@ -282,7 +288,8 @@ def apply_adapted(
             point = session.get(KBPoint, pid)
             if point is None or point.entity_id != entity.id or point.state != "approved":
                 raise ValueError(
-                    f"point {pid} is not an approved point of entity {entity.id}"
+                    "One of these bullets isn't an approved bullet of this item. "
+                    "Reword them again."
                 )
             points_by_id[pid] = point
 
@@ -295,10 +302,7 @@ def apply_adapted(
 
     if idx is None:
         if any(b.replaces_bullet_index is not None for b in payload.bullets):
-            raise ValueError(
-                "replaces_bullet_index requires a matching entry in the target "
-                "resume; it no longer matches — re-run adapt"
-            )
+            raise ValueError(_RESUME_CHANGED)
         texts: list[str] = []
         seen_norms: set[str] = set()
         for bullet in payload.bullets:
@@ -324,18 +328,13 @@ def apply_adapted(
                 add_items.append(bullet)
                 continue
             if not 0 <= replaces < len(existing):
-                raise ValueError(
-                    f"replaces_bullet_index {replaces} is out of range for the "
-                    "matched entry — re-run adapt"
-                )
+                raise ValueError(_RESUME_CHANGED)
             if replaces in used_replaces:
-                raise ValueError(f"two bullets replace the same index {replaces}")
+                raise ValueError("Two bullets replace the same line. Reword them again.")
             # The index alone can silently point at a bullet the user never
             # reviewed if the entry was edited between adapt and apply.
             if _norm(bullet.replaces_text) != _norm(existing[replaces]):
-                raise ValueError(
-                    "the matched entry changed since the proposal — re-run adapt"
-                )
+                raise ValueError(_RESUME_CHANGED)
             used_replaces.add(replaces)
             replace_items.append(bullet)
 
@@ -353,9 +352,7 @@ def apply_adapted(
             final.append(bullet.text)
 
         if not replace_items and not kept_adds:
-            raise ValueError(
-                "nothing to apply — every bullet already exists on the entry"
-            )
+            raise ValueError("Every one of these bullets is already on this item.")
         if section == "education":
             # AddBullet can't target education; recompose in one ReplaceEntry.
             value = copy.deepcopy(entry)
@@ -407,7 +404,8 @@ def apply_adapted(
         target,
         working,
         port_log_rows,
-        summary=f"Adapted {len(ported_ids)} point(s) from Career KB",
+        summary=(f"Added {len(ported_ids)} reworded "
+                 f"{'bullet' if len(ported_ids) == 1 else 'bullets'} from career history"),
     )
     report = KBPortReport(
         items=[

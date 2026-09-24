@@ -194,6 +194,22 @@ def test_json_upload_needs_no_llm(db_session, tmp_path, monkeypatch):
     assert resp.status_code == 200
 
 
+def test_a_skipped_file_is_reported_in_words(db_session, tmp_path, monkeypatch):
+    """The import report's reason is a sentence for the user; pydantic's field
+    paths from a malformed JSON file are not."""
+    _stub_pipeline(monkeypatch, tmp_path)
+    resp = _client(db_session).post(
+        "/api/kb/import",
+        files=[("files", ("john_doe_resume.json", io.BytesIO(b"{not json"),
+                          "application/json"))])
+    assert resp.status_code == 422
+    # The same sentence as New base resume › Import, and no file name in it:
+    # the import dialog prints the name beside the reason.
+    assert resp.json()["detail"] == (
+        "No resumes could be imported. This file isn't a resume in the Maestro CS "
+        "JSON format.")
+
+
 def test_consolidation_source_key_is_the_slug_not_the_filename(db_session, tmp_path, monkeypatch):
     """KBPortLog.resume_key and merge_sources_json store this; everywhere else it
     is a slug, so a filename there points at nothing."""

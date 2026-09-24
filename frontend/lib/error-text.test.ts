@@ -37,7 +37,8 @@ test("a missing or refused API key says what to do, whatever the server's words"
     "No OpenAI API key configured. Add one under Settings → Models in the web app, or set OPENAI_API_KEY in .env and restart the backend. To use a local model instead, set an OpenAI-compatible endpoint under Settings → Models.",
     "GEMINI_API_KEY is required for Gemini models",
     "No Gemini API key configured. Add one under Settings → Models.",
-    "No API key is set. Add one in Settings › AI & models › API keys.",
+    "No API key is set. Add one in Settings › AI & models › API keys. To use a model on your computer instead, add its address in Settings › AI & models › Custom AI server.",
+    "No Gemini API key is set. Add one in Settings › AI & models.",
   ]) {
     assert.equal(errorDetail(new Error(text)), missing, text);
   }

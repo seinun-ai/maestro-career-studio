@@ -128,6 +128,10 @@ def send_message(
 _RESOLVABLE_CARD_KEYS = ("proposal_ops", "proposal")
 
 
+# A resolved card's status in the words of the 409 a second click gets.
+_CARD_DONE = {"applied": "applied", "discarded": "discarded"}
+
+
 @router.patch("/messages/{message_id}/card-state", response_model=ChatMessageRead)
 def set_card_state(
     message_id: UUID, payload: ChatCardStateRequest, db: Annotated[Session, Depends(get_db)]
@@ -143,9 +147,8 @@ def set_card_state(
         )
     existing = (meta.get("card_state") or {}).get("status")
     if existing is not None and existing != payload.status:
-        raise HTTPException(
-            status_code=409, detail=f"Card already resolved as {existing!r}"
-        )
+        done = _CARD_DONE.get(existing, "resolved")
+        raise HTTPException(status_code=409, detail=f"This change was already {done}.")
     # Reassign (never mutate in place) so SQLAlchemy detects the JSONB change.
     row.meta_json = {
         **meta,
@@ -163,7 +166,7 @@ async def upload_attachment(
     _get_session_or_404(db, session_id)
     data = await file.read()
     if len(data) > MAX_ATTACHMENT_BYTES:
-        raise HTTPException(status_code=413, detail="Attachment exceeds 10 MB limit")
+        raise HTTPException(status_code=413, detail="This file is over 10 MB.")
     try:
         text = extract_text(file.filename or "upload", file.content_type, data)
     except ValueError as e:

@@ -1,6 +1,7 @@
 import base64
 import hashlib
 import json
+import logging
 import os
 from datetime import UTC, datetime
 from json import JSONDecodeError
@@ -16,6 +17,8 @@ from openai import OpenAI
 from app.config import settings
 from app.services import tracing
 
+logger = logging.getLogger(__name__)
+
 
 ResponseFormat = Literal["json", "text"]
 
@@ -27,7 +30,68 @@ class LLMProviderError(RuntimeError):
     by hand (career_kb) keep their behavior, while `app.main` can map THIS type
     globally without also swallowing the render/compile RuntimeErrors raised by
     pdf_render and typst_compiler, which are not gateway failures.
+
+    `str()` is a sentence for the user (the 502 detail, the Assistant's error
+    event); `provider_detail` keeps what the provider actually said, for the
+    log and for `llm_capabilities`' reachability check, which reads it.
     """
+
+    def __init__(self, message: str, provider_detail: str | None = None) -> None:
+        super().__init__(message)
+        self.provider_detail = provider_detail or message
+
+
+NO_KEY_MESSAGE = (
+    "No API key is set. Add one in Settings › AI & models › API keys. To use a model "
+    "on your computer instead, add its address in Settings › AI & models › Custom AI server."
+)
+NO_GEMINI_KEY_MESSAGE = "No Gemini API key is set. Add one in Settings › AI & models."
+
+
+def _no_answer(reason: str, provider_detail: str) -> LLMProviderError:
+    """The one sentence for a provider that failed a request."""
+    logger.warning("model provider failed: %s", provider_detail)
+    return LLMProviderError(
+        f"The AI model didn't answer ({reason}). Try again, or check your key in "
+        "Settings › AI & models.",
+        provider_detail=provider_detail,
+    )
+
+
+# A provider's error code or HTTP status in words, for the sentence a user
+# reads. The raw code stays in `provider_detail` (the log and the capability
+# probe read it); a code in the sentence ("insufficient_quota") is developer text
+# and the web app hides the whole message for it (`isPlainSentence`).
+_CODE_WORDS = {
+    "invalid_api_key": "your key was refused",
+    "insufficient_quota": "your account is out of credit",
+    "model_not_found": "that model wasn't found",
+    "rate_limit_exceeded": "too many requests",
+}
+_STATUS_WORDS = {
+    401: "your key was refused",
+    404: "that model wasn't found",
+    429: "too many requests",
+}
+
+
+def _status_reason(status: int, code: object = None) -> str:
+    """The code's words, else the status's, else "error {status}"."""
+    if isinstance(code, str) and code in _CODE_WORDS:
+        return _CODE_WORDS[code]
+    return _STATUS_WORDS.get(status, f"error {status}")
+
+
+def _openai_reason(exc: Exception) -> str:
+    """A few words for what went wrong, never the provider's body or code."""
+    status = getattr(exc, "status_code", None)
+    if isinstance(status, int):
+        return _status_reason(status, getattr(exc, "code", None))
+    if isinstance(exc, openai.APITimeoutError):
+        return "it timed out"
+    if isinstance(exc, openai.APIConnectionError):
+        return "no connection"
+    return "unknown error"
 
 
 # Langfuse usage_details shape: {"input": prompt tokens, "output": completion
@@ -89,12 +153,11 @@ def _get_client() -> OpenAI:
         # first-run user nothing. Name both places a key can go instead. A custom
         # endpoint is exempt: local servers ignore the key entirely.
         if not current_key and not base_url:
-            raise LLMProviderError(
-                "No OpenAI API key configured. Add one under Settings → Models "
-                "in the web app, or set OPENAI_API_KEY in .env and restart the "
-                "backend. To use a local model instead, set an OpenAI-compatible "
-                "endpoint under Settings → Models."
-            )
+            # The other place a key can go is for whoever runs the server,
+            # so it goes to the log and the docs, not the sentence a user reads.
+            logger.warning("no model key: add one in the web app, or set "
+                           "OPENAI_API_KEY in .env and restart the backend")
+            raise LLMProviderError(NO_KEY_MESSAGE)
         # Local servers (Ollama, LM Studio, vLLM) ignore the key entirely, but
         # the SDK refuses to construct without a non-empty string.
         _client = OpenAI(api_key=current_key or "local", base_url=base_url)
@@ -117,7 +180,7 @@ def get_chat_client(model: str) -> OpenAI:
     if _is_gemini_model(model):
         gemini_key = get_gemini_key()
         if not gemini_key:
-            raise LLMProviderError("GEMINI_API_KEY is required for Gemini models")
+            raise LLMProviderError(NO_GEMINI_KEY_MESSAGE)
         cache_key = ("gemini", gemini_key)
         cached = _chat_clients.get(cache_key)
         if cached is None:
@@ -195,7 +258,7 @@ def _call_gemini(
 ) -> tuple[str, Usage]:
     gemini_key = get_gemini_key()
     if not gemini_key:
-        raise LLMProviderError("GEMINI_API_KEY is required for Gemini models")
+        raise LLMProviderError(NO_GEMINI_KEY_MESSAGE)
 
     parts: list[dict[str, Any]] = [{"text": prompt}]
     for image in images or []:
@@ -229,7 +292,8 @@ def _call_gemini(
             data = json.loads(response.read().decode("utf-8"))
     except HTTPError as exc:
         body = exc.read().decode("utf-8", errors="replace")
-        raise LLMProviderError(f"Gemini API request failed: {exc.code} {body}") from exc
+        raise _no_answer(_status_reason(exc.code),
+                         f"Gemini API request failed: {exc.code} {body}") from exc
 
     return _gemini_text(data), _gemini_usage(data)
 
@@ -301,7 +365,7 @@ def _call_model(
         # the same type; without this, OpenAI SDK errors escaped as unhandled
         # 500s — an exhausted credit balance reached the UI as the detail-free
         # "Request failed: 500", with the real 429 visible only in a traceback.
-        raise LLMProviderError(f"OpenAI API request failed: {exc}") from exc
+        raise _no_answer(_openai_reason(exc), f"OpenAI API request failed: {exc}") from exc
     return _message_content(response), _openai_usage(response)
 
 
@@ -452,9 +516,7 @@ def list_gemini_models() -> list[dict[str, str]]:
     """Gemini models that support generateContent for the configured Gemini key."""
     gemini_key = get_gemini_key()
     if not gemini_key:
-        raise LLMProviderError(
-            "No Gemini API key configured. Add one under Settings → Models."
-        )
+        raise LLMProviderError(NO_GEMINI_KEY_MESSAGE)
 
     request = Request(
         "https://generativelanguage.googleapis.com/v1beta/models",

@@ -53,6 +53,14 @@ jobs:
       - name: Lint with ruff
         run: cd backend && ruff check .
 
+      # The parity tests that pin a Python twin to the web app's TypeScript
+      # (tests/node_ts.py: agent names, the plain-sentence rule) run it under
+      # node's type stripping, and FAIL rather than skip here when node is absent.
+      - name: Setup Node.js 24
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "24"
+
       - name: Run backend and MCP test suites
         run: |
           cd backend

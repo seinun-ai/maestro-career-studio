@@ -137,8 +137,7 @@ def test_merge_extra_requires_same_section_key(client, db_session):
 
     mismatch = client.post(f"/api/kb/entities/{a.id}/merge", json={"target_id": str(b.id)})
     assert mismatch.status_code == 400
-    assert "speaking" in mismatch.json()["detail"]
-    assert "awards" in mismatch.json()["detail"]
+    assert mismatch.json()["detail"] == "Both items must be in the same section."
 
     same_key_other_case = _entity(
         db_session, kind="extra", title="More talks", detail_json={"section_key": "SPEAKING"}
@@ -173,7 +172,7 @@ def test_merge_lost_race_is_409(client, db_session, monkeypatch):
     )
 
     assert response.status_code == 409
-    assert "refresh and retry" in response.json()["detail"].lower()
+    assert "refresh the page and try again" in response.json()["detail"].lower()
 
 
 def test_merge_does_not_absorb_origin_or_nonblank_notes(client, db_session):
@@ -224,7 +223,7 @@ def test_merge_same_id_is_400(client, db_session):
     )
 
     assert response.status_code == 400
-    assert "itself" in response.json()["detail"]
+    assert "Pick a different item" in response.json()["detail"]
 
 
 def test_merge_cross_kind_is_400(client, db_session):
@@ -236,8 +235,7 @@ def test_merge_cross_kind_is_400(client, db_session):
     )
 
     assert response.status_code == 400
-    assert "experience" in response.json()["detail"]
-    assert "certification" in response.json()["detail"]
+    assert response.json()["detail"] == "You can only merge items of the same type."
     db_session.expire_all()
     assert db_session.get(KBEntity, source.id) is not None
 
@@ -263,7 +261,7 @@ def test_merge_into_archived_target_is_400_but_archived_source_is_allowed(client
         f"/api/kb/entities/{source.id}/merge", json={"target_id": str(archived_target.id)}
     )
     assert blocked.status_code == 400
-    assert "unarchive" in blocked.json()["detail"].lower()
+    assert "restore it first" in blocked.json()["detail"].lower()
 
     # The reverse is how a duplicate holder is retired: archived source -> live target.
     allowed = client.post(

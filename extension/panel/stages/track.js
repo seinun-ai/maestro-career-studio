@@ -35,12 +35,13 @@
    * the panel reporting a state the record does not hold.
    */
   const TRACK_NOTES = {
-    draft: "Still a draft — mark it Applied below once you have submitted it.",
+    draft: "Still a draft. Mark it Applied below after you submit it.",
     // ONE sentence for this event, and `actions/track.js` deliberately stays
     // silent rather than printing a second: `applied_at` is stamped on entry to
     // applied and feeds the analytics series, and two descriptions of that on
     // one screen is how a user comes to believe two things were recorded.
-    applied: "Marked applied. The applied date is recorded.",
+    // The date itself is on the evidence line just above.
+    applied: "Marked applied.",
   };
 
   /** Nothing is written down for this page.
@@ -54,11 +55,9 @@
    * control whose POST would 404. The header's "Open in Maestro CS ↗" is that
    * route, which is why this line does not repeat it as a second link.
    */
-  const NOT_TRACKED = "This page was filled from your base resume, and nothing "
-    + "has been written down for it. Open Maestro CS to save the job and an "
-    + "application.";
-  const TRACK_THIS = "This page was filled from your base resume, and nothing "
-    + "has been written down for it.";
+  const NOT_TRACKED = "Filled from your base resume, but not tracked yet. Open "
+    + "Maestro CS to save the job and track it.";
+  const TRACK_THIS = "Filled from your base resume, but not tracked yet.";
 
   /** What this application has to show for itself, or nothing at all.
    *
@@ -75,10 +74,11 @@
    * step about whether the application went out is a row that reports its own
    * emptiness as a fact.
    *
-   * "rendered" AND NOT "attached", which is the word the mockup used and the
+   * "ready" AND NOT "attached", which is the word the mockup used and the
    * one thing in it this body would not repeat. Nothing attached that PDF to
-   * anything: it exists because a tailor rendered it. The panel says what is
-   * true of the record it is reading.
+   * anything: it exists because a tailor created it. The panel says what is
+   * true of the record it is reading (and "ready", not "rendered", which is
+   * the engine's word rather than the user's).
    *
    * The paperclip is DECORATION and says so: an emoji reaches nobody using a
    * screen reader, and the text beside it carries the whole line — the same
@@ -91,7 +91,7 @@
     if (!evidence) return null;
     const { node, attach } = build;
     const parts = [
-      evidence.pdfName ? `${evidence.pdfName} rendered` : null,
+      evidence.pdfName ? `${evidence.pdfName} ready` : null,
       evidence.appliedOn ? `applied ${evidence.appliedOn}` : null,
     ].filter(Boolean);
     const line = node("div", "evi");
@@ -132,7 +132,7 @@
     const status = facts.application.status ?? "draft";
     return attach(body, evidenceLine(ctx),
                   node("div", "sub", TRACK_NOTES[status]
-                    ?? `Status: ${status}. Change it in Maestro CS.`));
+                    ?? `Status: ${build.statusLabel(status)}. Change it in Maestro CS.`));
   }
 
   ns.panelStageTrack = trackBody;

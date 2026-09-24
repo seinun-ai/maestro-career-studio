@@ -313,6 +313,7 @@ def test_card_state_stamps_proposal_ops(db_session):
     finally:
         _teardown()
     assert conflict.status_code == 409
+    assert conflict.json()["detail"] == "This change was already applied."
 
 
 def test_card_state_validates_role_meta_and_status(db_session):

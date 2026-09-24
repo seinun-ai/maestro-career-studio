@@ -19,6 +19,7 @@ including `get_chat_client` routing — or its stored row shadows reality.
 """
 
 import json
+import logging
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 
@@ -27,6 +28,8 @@ from sqlalchemy.orm import Session
 
 from app.models.setting import Setting
 from app.services import llm
+
+logger = logging.getLogger(__name__)
 
 CAPABILITIES = ("text", "json", "tools")
 
@@ -160,7 +163,9 @@ _UNREACHABLE_SIGNS = (
 
 
 def _never_reached_the_model(exc: Exception) -> bool:
-    text = str(exc).lower()
+    # What the PROVIDER said (`LLMProviderError.provider_detail`), never the
+    # sentence written for the user, which names no status code.
+    text = str(getattr(exc, "provider_detail", None) or exc).lower()
     return any(sign in text for sign in _UNREACHABLE_SIGNS)
 
 
@@ -226,6 +231,12 @@ class CapabilityMissing(RuntimeError):
     """A surface needs something the configured model was measured not to do."""
 
 
+# A capability as the sentence a user reads says it.
+_CAPABILITY_WORDS = {
+    "text": "write text", "json": "return structured answers", "tools": "use tools",
+}
+
+
 def require(session: Session, model: str, capability: str) -> None:
     """Raise a message that names the capability, not a bare "request failed".
 
@@ -235,10 +246,13 @@ def require(session: Session, model: str, capability: str) -> None:
     report = load(session, model)
     if report is None or report.supports(capability):
         return
-    reason = report.errors.get(capability, "the capability probe found it unsupported")
+    # The probe's reason is words for a developer ("model streamed no tool
+    # call", a provider's error text): the log keeps it, the sentence names the
+    # model and the step.
+    logger.info("%s can't %s: %s", model, capability,
+                report.errors.get(capability, "the capability probe found it unsupported"))
     raise CapabilityMissing(
-        f"{model!r} does not support {capability}: {reason}. "
-        f"Choose a {capability}-capable model in Settings — the fast, smart and "
-        f"chat models are configured separately, so a local model can keep doing "
-        f"the rest."
+        f"The model {model} can't {_CAPABILITY_WORDS.get(capability, capability)}. "
+        "Pick a different model in Settings › AI & models. The Fast, Smart and "
+        "Assistant models are set separately."
     )

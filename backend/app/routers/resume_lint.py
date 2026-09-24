@@ -14,11 +14,13 @@ from app.models.health_ask_answer import HealthAskAnswer
 from app.models.health_gate_waiver import HealthGateWaiver
 from app.services import (
     bullet_classify,
+    health_gates,
     health_guards,
     health_score,
     resume_lint,
     resume_versions,
 )
+from app.services.application_writes import NO_TAILORED_RESUME
 from app.services.health_guards import RewriteObjective
 
 router = APIRouter(prefix="/api/resume-lint", tags=["resume-lint"])
@@ -144,7 +146,8 @@ def _read(row, *, stale: bool = False) -> LintReportRead:
         created_at=row.created_at,
         stale=stale,
         score_breakdown=_score_breakdown(row),
-        **row.report_json,
+        # A report stored before a gate was reworded shows today's label.
+        **health_gates.with_current_labels(row.report_json),
     )
 
 
@@ -171,7 +174,7 @@ def _load_resume(db: Session, kind: Kind, key: str) -> tuple[dict, str | None]:
     if application.customized_json is None:
         raise HTTPException(
             status_code=400,
-            detail="Application has no tailored resume yet — materialize it first",
+            detail=NO_TAILORED_RESUME,
         )
     return application.customized_json, application.template_id
 
@@ -196,7 +199,7 @@ def waive_gate(kind: Kind, key: str, gate_id: str, body: WaiveBody,
     if gate_id not in VALID_GATE_IDS:
         raise HTTPException(status_code=422, detail=f"Unknown gate id: {gate_id}")
     if not body.reason.strip():
-        raise HTTPException(status_code=422, detail="A waiver reason is required")
+        raise HTTPException(status_code=422, detail="Add a reason before you mark this as OK.")
     existing = _find_waiver(db, kind, key, gate_id)
     if existing is not None:
         existing.reason = body.reason

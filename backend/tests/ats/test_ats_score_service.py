@@ -302,5 +302,5 @@ def test_best_base_scores_all_bases_when_no_rows(db_session, tmp_path, monkeypat
 def test_best_base_raises_when_nothing_scoreable(db_session, tmp_path, monkeypatch):
     job = _seed_job(db_session)
     monkeypatch.setattr(settings, "base_resumes_dir", tmp_path)  # empty dir, no active slugs
-    with pytest.raises(ValueError, match="[Nn]o base"):
+    with pytest.raises(ValueError, match="None of your base resumes could be scored"):
         ats_score.best_base(job.id, db_session)

@@ -161,7 +161,7 @@ def test_the_job_preview_belongs_to_the_step_you_are_on(tmp_path):
     # …and the sub line says where that came from, with the size of what was
     # read: three filled boxes over an empty description would otherwise look
     # exactly like a successful grab.
-    assert _by_class(rows[0], "sub")[0]["text"] == "JD grabbed from this page · 11 words"
+    assert _by_class(rows[0], "sub")[0]["text"] == "Job description found (11 words)"
     assert len(_by_class(fresh["regions"]["rail"], "stg-body")) == 1
 
     known = _load(tmp_path, page={"extract_job_posting": POSTING_REPLY}, api={
@@ -380,7 +380,7 @@ def test_the_primary_is_out_of_reach_while_the_save_is_open(tmp_path):
     # …and the failure hands it back rather than leaving the panel frozen with
     # the one control it has permanently pressed.
     [note] = _by_class(out["settled"]["foot"], "note")
-    assert note["text"] == "the backend is unreachable"
+    assert note["text"] == "Couldn't save the job. Check that Maestro CS is running."
     assert note["class"] == "note error"
     [after] = _by_class(out["settled"]["foot"], "cta")
     assert after["disabled"] is False
@@ -446,6 +446,7 @@ def test_a_save_that_FAILS_after_you_switch_tabs_paints_nothing_either(tmp_path)
     assert len(_posts(out)) == 1
     settled = out["settled"]
     assert "the save came apart" not in json.dumps(settled)
+    assert "Couldn't save the job" not in json.dumps(settled)
     # Nothing red anywhere on a settings tab, and nothing still spinning: the
     # early return leaves this tab's own render untouched rather than half-lit.
     assert [n for n in _walk(settled["foot"]) if "error" in str(n.get("class"))] == []
@@ -493,7 +494,7 @@ def test_a_saved_job_is_sent_as_edited_and_the_stage_advances_on_the_reload(tmp_
         "POST /api/jobs", "GET /api/jobs/match", "GET /api/ats-scores"]
     settled = out["settled"]
     [note] = _by_class(settled["foot"], "note")
-    assert note["text"] == "Saved with 3 skills extracted."
+    assert note["text"] == "Saved. Found 3 skills."
     assert note["class"] == "note"
     rows = _rows(_rail_rows({"regions": settled}))
     assert rows["job"]["state"] == "done"
@@ -513,7 +514,7 @@ def test_a_posting_already_in_the_library_says_so_rather_than_claiming_a_save(tm
         "/api/base-resumes": _reply(BASE_RESUMES),
     })
     [note] = _by_class(out["settled"]["foot"], "note")
-    assert note["text"] == "Already tracked. This posting was saved earlier."
+    assert note["text"] == "Already saved in Maestro CS."
 
 
 # ---------- the application picker: no match, and the user's drafts ----------
@@ -651,7 +652,9 @@ def test_the_picker_renders_on_an_unmatched_page_with_candidates(tmp_path):
     shown = _text(options[0])
     assert "Acme 1" in shown
     assert "Research Engineer 1" in shown
-    assert "draft" in shown.lower()
+    # No status in the option: every row on this list is a draft, so the word
+    # said nothing (and it was the raw key).
+    assert shown == "Acme 1 · Research Engineer 1"
     assert "Acme 6" in _text(options[-1])
     # Placeholder first, disabled, not a draft.
     placeholder = select["children"][0]
@@ -672,7 +675,7 @@ def test_the_list_get_asks_for_drafts_and_the_label_says_what_a_pick_does(tmp_pa
     """
     out = _load(tmp_path, **_on_apply())
     labels = " ".join(n["text"] for n in _by_tag(out["regions"]["rail"], "LABEL"))
-    assert "Recent drafts — pick one to work on here" in labels
+    assert "Recent drafts" in labels
     [list_get] = _list_gets(out)
     assert "status=draft" in list_get["path"]
     assert "limit=" in list_get["path"]
@@ -791,7 +794,7 @@ def test_picking_an_application_arms_the_rail_and_writes_this_pages_tenant(tmp_p
     out = _pick(tmp_path)
     assert out["clicked"] is not None, "the picker never rendered a row to click"
     settled = out["settled"]
-    assert _by_class(settled["identity"], "chip")[0]["text"] == "Application · draft"
+    assert _by_class(settled["identity"], "chip")[0]["text"] == "Draft application"
     [link] = [n for n in _by_class(settled["identity"], "linkish")
               if "/applications/" in (n.get("href") or "")]
     assert link["href"] == f"{APP_URL}/applications/app-1"
@@ -858,9 +861,9 @@ def test_the_bridge_survives_a_detail_get_that_fails(tmp_path):
     # on the next load or the next press; the bridge is the one thing that
     # must not wait for either.
     [note] = _by_class(out["settled"]["foot"], "note")
-    assert note["text"] == "the backend is unreachable"
+    assert note["text"] == "Couldn't open that draft. Check that Maestro CS is running."
     assert _by_class(out["settled"]["identity"], "chip")[0]["text"] == (
-        "Application · draft")
+        "Draft application")
     rows = _rows(_rail_rows({"regions": out["settled"]}))
     assert rows["score"]["state"] == "active"
     assert rows["resume"]["state"] == "locked"
@@ -879,7 +882,7 @@ def test_a_pick_on_the_apply_page_restores_on_the_next_wizard_step(tmp_path):
                 stored={"widget.session": writes[-1]["widget.session"]},
                 api=_picker_api())
     assert _by_class(out["regions"]["identity"], "chip")[0]["text"] == (
-        "Application · draft")
+        "Draft application")
     [link] = [n for n in _by_class(out["regions"]["identity"], "linkish")
               if "/applications/" in (n.get("href") or "")]
     assert link["href"] == f"{APP_URL}/applications/app-1"
@@ -1334,7 +1337,7 @@ def test_the_late_yes_alone_arms_the_primary_and_moves_no_stage(tmp_path):
     assert _by_class(at_yes["foot"], "cta") == []
     assert _rows(_rail_rows({"regions": out["regions"]}))["fill"]["state"] == "active"
     [cta] = _by_class(out["regions"]["foot"], "cta")
-    assert cta["text"] == "Start fill"
+    assert cta["text"] == "Fill this form"
     assert cta["disabled"] is False
     # And no injection got us there: the page ANSWERED both times, and the
     # detect's injection rung reads a silence rather than a no.
@@ -1464,7 +1467,7 @@ def test_a_form_verdict_that_lands_after_you_switch_tabs_paints_nothing(tmp_path
     # put a Start fill under a `chrome://` page. Tab B's own primary — Add job,
     # over an empty Job stage nothing ever loaded — is what belongs there.
     assert [cta["text"] for cta in _by_class(out["regions"]["foot"], "cta")] == [
-        "Add job"]
+        "Save job"]
     assert _list_gets(out) == []
 
 
@@ -1531,7 +1534,7 @@ SHELL_POSTING = _reply({"url": POSTING_URL, "title": "Careers",
 # What `panel_frame0` answers when nothing in the tab is listening.
 NO_ANSWER = {"ok": False, "error": "no frame answered"}
 PREPARED = _reply({"injected": True})
-RELOAD_LINE = "The companion cannot see this page — reload the tab."
+RELOAD_LINE = "The Companion can't read this page. Reload the tab."
 
 
 def _extracts(out):
@@ -1603,7 +1606,7 @@ def test_a_workday_posting_that_renders_late_still_fills_the_preview(tmp_path):
         "company": "Lightning AI",
         "location": "Remote, US",
     }
-    assert _sub(out) == "JD grabbed from this page · 11 words"
+    assert _sub(out) == "Job description found (11 words)"
 
 
 EMPTY_ANSWER = _reply({"url": POSTING_URL, "title": "Careers",
@@ -1628,7 +1631,7 @@ def test_a_page_that_answers_empty_is_re_asked_and_never_injected_into(tmp_path)
     assert _prepares(out) == [], "an answered page was injected into"
     assert _preview_inputs(out["regions"]["rail"])["title"] == (
         "Machine Learning Engineer")
-    assert _sub(out) == "JD grabbed from this page · 11 words"
+    assert _sub(out) == "Job description found (11 words)"
 
 
 def test_a_posting_that_arrives_two_rungs_late_still_lands(tmp_path):
@@ -1656,7 +1659,7 @@ def test_a_posting_that_arrives_two_rungs_late_still_lands(tmp_path):
         "company": "Lightning AI",
         "location": "Remote, US",
     }
-    assert _sub(out) == "JD grabbed from this page · 11 words"
+    assert _sub(out) == "Job description found (11 words)"
 
 
 # The same page read the other way: no JSON-LD found this time, so the
@@ -1685,7 +1688,7 @@ def test_a_heavier_answer_from_a_worse_source_never_replaces_the_described_posti
         "company": "Lightning AI",
         "location": "Remote, US",
     }
-    assert _sub(out) == "JD grabbed from this page · 11 words"
+    assert _sub(out) == "Job description found (11 words)"
 
 
 def test_a_page_that_starts_answering_takes_back_the_reload_sentence(tmp_path):
@@ -1745,7 +1748,7 @@ def test_a_worse_answer_arriving_late_replaces_nothing(tmp_path):
         "company": "Lightning AI",
         "location": "Remote, US",
     }
-    assert _sub(out) == "JD grabbed from this page · 11 words"
+    assert _sub(out) == "Job description found (11 words)"
     assert len(_extracts(out)) == 2, "the ladder went on after a worse answer"
 
 
@@ -1881,7 +1884,7 @@ def test_a_tab_whose_scripts_were_orphaned_is_prepared_once_and_then_answers(
                    page={"extract_job_posting": [NO_ANSWER, POSTING_REPLY]})
     assert [msg["tabId"] for msg in _prepares(out)] == [7]
     assert _preview_inputs(out["regions"]["rail"])["company"] == "Lightning AI"
-    assert _sub(out) == "JD grabbed from this page · 11 words"
+    assert _sub(out) == "Job description found (11 words)"
 
 
 def test_a_page_that_never_answers_is_injected_into_once_and_told_the_truth(
@@ -1953,7 +1956,7 @@ def test_reloading_the_tab_the_panel_asked_you_to_reload_reads_the_posting_again
     assert out["before"]["rail"] and _by_class(
         out["before"]["rail"], "sub")[0]["text"] == RELOAD_LINE
     assert _preview_inputs(out["regions"]["rail"])["company"] == "Lightning AI"
-    assert _sub(out) == "JD grabbed from this page · 11 words"
+    assert _sub(out) == "Job description found (11 words)"
 
 
 def test_a_page_that_answered_is_not_re_read_every_time_a_load_completes(tmp_path):
@@ -2143,7 +2146,8 @@ def test_reopening_a_claimed_job_shows_the_binding_the_picker_and_a_way_out(tmp_
     shown = _text(body)
     assert "Acme 1" in shown
     assert "Research Engineer 1" in shown
-    assert "draft" in shown.lower()
+    # The binding's status in the web app's word, never the raw key.
+    assert "Acme 1 · Research Engineer 1 · Draft" in shown
     assert "Stop using this draft" in shown
     assert _picker(body) is not None
     # Preview fields belong to unmatched Job, not to a claimed binding.
@@ -2224,14 +2228,14 @@ def test_switching_to_a_different_draft_from_the_reopened_job_is_a_pick(tmp_path
     assert writes[-1]["widget.session"]["applicationId"] == "app-2"
     assert writes[-1]["widget.session"]["company"] == "Acme 2"
     chip = _by_class(out["switched"]["identity"], "chip")[0]["text"]
-    assert chip == "Application · draft"
+    assert chip == "Draft application"
 
 
 
 # ---------- the referent can die: a bridge that never re-validated ----------
 #
 # THE LIVE FINDING (2026-08-19): a draft deleted in the web app went on being
-# shown by the panel — "Application · draft", the armed rail, an
+# shown by the panel — "Draft application", the armed rail, an
 # Open-application link landing on "This application no longer exists" —
 # because `restoreSession` reads disk and asks nothing, and the detail GET that
 # runs right after it swallowed every failure identically. What follows pins
@@ -2293,14 +2297,17 @@ def _claims_an_application(regions):
     """Does the identity strip still say this page is bound to a draft?
 
     BOTH HALVES, because the ghost had two and losing either one would leave
-    the other lying on its own: the chip ("Application · draft") and the deep
+    the other lying on its own: the chip ("Draft application") and the deep
     link, which is the half that actually took the user to the web app's
     "this application no longer exists".
     """
-    chips = [node["text"] for node in _by_class(regions["identity"], "chip")]
+    # By the chip's CLASS, never its words: "Application" left the chip when
+    # it began to say "Draft application" / "Interviewing", and a word check
+    # would then pass vacuously.
+    chips = [node["class"].split() for node in _by_class(regions["identity"], "chip")]
     links = [node.get("href") or ""
              for node in _by_class(regions["identity"], "linkish")]
-    return (any("Application" in chip for chip in chips)
+    return (any("app" in classes for classes in chips)
             or any("/applications/" in href for href in links))
 
 
@@ -2390,7 +2397,12 @@ def test_a_restore_that_cannot_reach_the_backend_keeps_the_binding(tmp_path):
                 stored={"widget.session": _acme_entry()},
                 api=_unreachable_detail(_picker_api()))
     assert _by_class(out["regions"]["identity"], "chip")[0]["text"] == (
-        "Application · draft")
+        "Draft application")
+    # The helper's positive half, so its three `not` uses cannot pass
+    # vacuously: a kept binding is one it sees, by the chip's class as well as
+    # by the link.
+    assert "app" in _by_class(out["regions"]["identity"], "chip")[0]["class"].split()
+    assert _claims_an_application(out["regions"])
     assert _note(out["regions"]) != DELETED_NOTE
     assert _session_writes(out) == [], (
         "an unreachable backend rewrote the bridge")
@@ -2411,7 +2423,7 @@ def test_a_server_error_on_the_restore_read_keeps_the_binding_too(tmp_path):
     out = _load(tmp_path, tabs=[{"id": 7, "url": APPLY_NEXT_URL}], page=HAS_FORM,
                 stored={"widget.session": _acme_entry()}, api=api)
     assert _by_class(out["regions"]["identity"], "chip")[0]["text"] == (
-        "Application · draft")
+        "Draft application")
     assert _session_writes(out) == []
 
 
@@ -2469,7 +2481,7 @@ def test_a_pick_the_user_walked_away_from_never_unbinds_the_page_they_moved_to(
     out = run_node(_PICK_DRIVER_JS, spec, tmp_path, source=PANEL_SOURCE)
     settled = out["settled"]
     assert _by_class(settled["identity"], "chip")[0]["text"] == (
-        "Application · draft"), "tab B lost its binding to tab A's answer"
+        "Draft application"), "tab B lost its binding to tab A's answer"
     assert _note(settled) != DELETED_NOTE
     # The bridge write that stands is tab A's pick, made before the switch;
     # nothing withdrew it on the strength of an answer nobody may paint.
@@ -2594,7 +2606,7 @@ def test_the_backends_own_match_is_not_unbound_by_one_application_read(tmp_path)
     # done, so nothing offers to save this posting a second time.
     assert _rows(_rail_rows(out))["job"]["state"] in {"done", "active"}
     assert _by_class(out["regions"]["foot"], "cta") == [] or (
-        "Add job" not in _text(out["regions"]["foot"]))
+        "Save job" not in _text(out["regions"]["foot"]))
     # And the bridge is not rewritten on the strength of it.
     assert _session_writes(out) == []
 

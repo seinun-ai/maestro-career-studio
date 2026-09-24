@@ -46,6 +46,11 @@ def compute_signals(o: dict[str, Any]) -> list[dict[str, str]]:
     return candidate_signals(o)[:5]
 
 
+def _jobs(n: int) -> str:
+    """"1 job", "3 jobs": a count and its noun agree (appendix D §1)."""
+    return f"{n} {'job' if n == 1 else 'jobs'}"
+
+
 def candidate_signals(o: dict[str, Any]) -> list[dict[str, str]]:
     total = o["meta"]["total_jobs"]
     if not total:
@@ -55,26 +60,26 @@ def candidate_signals(o: dict[str, Any]) -> list[dict[str, str]]:
     opt = {r["key"]: r["count"] for r in o["work_auth"]["opt"]}
     accept = opt.get("yes", 0) + opt.get("stem_opt_ok", 0)
     signals.append({
-        "title": f"{round(accept / total * 100)}% of JDs explicitly accept OPT",
+        "title": f"{round(accept / total * 100)}% of jobs say they accept OPT",
         "detail": f"{accept} of {total} accept OPT or STEM OPT. The rest say no or don't say.",
     })
 
     if o["locations"]:
         top = o["locations"][0]
         signals.append({
-            "title": f"Top location: {top['key']} ({top['count']})",
-            "detail": "More JDs name this location than any other.",
+            "title": f"Most common location: {top['key']} ({_jobs(top['count'])})",
+            "detail": "More jobs list this location than any other.",
         })
 
     if o["top_required_skills"]:
         s = o["top_required_skills"][0]
         signals.append({
             # Skill names are stored casefolded, so the name never leads the title.
-            "title": f"Top required skill: {s['skill_name']} ({round(s['n'] / total * 100)}% of JDs)",
-            "detail": f"Required in {s['n']} of {total} JDs, more than any other skill.",
+            "title": f"Most required skill: {s['skill_name']} ({round(s['n'] / total * 100)}% of jobs)",
+            "detail": f"Required in {s['n']} of {_jobs(total)}, more than any other skill.",
         })
 
-    # Reserved buckets are not a "track": "Best-paying track: Unknown" says nothing.
+    # Reserved buckets are not a role: "Best-paying role: Unknown" says nothing.
     paid = [
         r for r in o["salary_by_role"]
         if r.get("avg_max") and r["role_category"] not in role_categories.RESERVED
@@ -84,17 +89,17 @@ def candidate_signals(o: dict[str, Any]) -> list[dict[str, str]]:
         cur = best.get("currency") or o["meta"].get("salary_year_currency")
         cur_bit = f" {cur}" if cur else ""
         signals.append({
-            "title": f"Best-paying track: {role_categories.label_for(best['role_category'])}",
+            "title": f"Best-paying role: {role_categories.label_for(best['role_category'])}",
             "detail": (
                 f"Average top of the pay range: about {round(best['avg_max'] / 1000)}k{cur_bit}, "
-                f"from {best['n']} JDs that list pay."
+                f"from {_jobs(best['n'])} that {'lists' if best['n'] == 1 else 'list'} pay."
             ),
         })
 
     without = o["meta"].get("jobs_without_salary") or 0
     if without:
         signals.append({
-            "title": f"{round(without / total * 100)}% of JDs state no salary",
+            "title": f"{round(without / total * 100)}% of jobs don't list pay",
             "detail": (
                 f"{without} of {total} leave pay out. That is common, so it is not a red flag."
             ),
@@ -106,7 +111,7 @@ def candidate_signals(o: dict[str, Any]) -> list[dict[str, str]]:
     if rpct < 20:
         signals.append({
             "title": f"Remote roles are scarce ({rpct}%)",
-            "detail": f"Only {remote} of {total} JDs are remote.",
+            "detail": f"Only {remote} of {_jobs(total)} {'is' if remote == 1 else 'are'} remote.",
         })
 
     return signals

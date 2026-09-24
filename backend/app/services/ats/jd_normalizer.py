@@ -42,7 +42,9 @@ def _requirement_lines(extracted_json: dict[str, Any], skills: list[JdSkill]) ->
 def normalize_jd(extracted_json: dict[str, Any]) -> JdProfile:
     raw_skills = extracted_json.get("skills") or []
     if not raw_skills:
-        raise ValueError("Job has no extracted skills; ATS scoring needs extracted_json.skills")
+        raise ValueError(
+            "No skills were found in this job's description. Check the description, then "
+            "choose Refresh details.")
 
     by_canonical: dict[str, JdSkill] = {}
     for raw in raw_skills:

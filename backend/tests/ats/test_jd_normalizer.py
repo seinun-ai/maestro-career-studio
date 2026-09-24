@@ -39,7 +39,7 @@ def test_normalize_jd_dedupes_and_defaults_level():
 
 def test_normalize_jd_requires_skills():
     import pytest
-    with pytest.raises(ValueError, match="no extracted skills"):
+    with pytest.raises(ValueError, match="No skills were found"):
         normalize_jd({"title": "X", "skills": []})
 
 

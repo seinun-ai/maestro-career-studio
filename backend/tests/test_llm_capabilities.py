@@ -84,7 +84,8 @@ def test_require_passes_for_unprobed_model(db_session):
     llm_capabilities.require(db_session, "never-probed", "tools")
 
 
-def test_require_names_the_missing_capability(db_session):
+def test_require_names_the_missing_capability(db_session, caplog):
+    caplog.set_level("INFO", logger="app.services.llm_capabilities")
     llm_capabilities.save(
         db_session,
         llm_capabilities.CapabilityReport(
@@ -96,10 +97,11 @@ def test_require_names_the_missing_capability(db_session):
         llm_capabilities.require(db_session, "llama3.2:3b", "tools")
 
     message = str(exc.value)
-    assert "tools" in message
-    assert "streamed no tool call" in message
-    # Points at the way out: the three models are configured separately.
-    assert "configured separately" in message
+    assert message == (
+        "The model llama3.2:3b can't use tools. Pick a different model in Settings › "
+        "AI & models. The Fast, Smart and Assistant models are set separately.")
+    # The probe's reason is for a developer: the log keeps it.
+    assert "model streamed no tool call" in caplog.text
 
 
 class _RecordingClient:

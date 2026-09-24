@@ -66,7 +66,7 @@
     // The note slot's rather than a throw: this panel has no exception path a
     // click goes through, so a throw here would be a silent no-op.
     if (!facts.job) {
-      store.write({ note: { text: "Add the job first." } });
+      store.write({ note: { text: "Save the job first." } });
       store.render();
       return;
     }
@@ -81,7 +81,15 @@
     const done = await duringAction(store, "resume", () =>
       store.api(`/api/jobs/${facts.job.id}/quick-tailor`, {
         method: "POST", body: JSON.stringify({ base_resume: facts.baseSlug }),
-      }));
+      }), {
+      what: "Couldn't tailor your resume.",
+      // A refusal (a must-fix health problem, a gap analysis in progress) is
+      // not explained by the job page on its own. "Tailor in Maestro CS" opens
+      // the job's Fit tab, which lists the gap analysis in progress, and
+      // starting one there shows the must-fix reason (the same guard).
+      answered: "Couldn't tailor your resume. Use Tailor in Maestro CS to see "
+        + "what's in the way.",
+    });
     if (!done) return;
     const { token, out } = done;
     // The warning rides whichever sentence follows it.
@@ -91,9 +99,8 @@
       // The session is left open server-side for a custom pass, which is what
       // "open it in Maestro CS" means here — and no application was created,
       // so nothing about the store moves.
-      store.write({ note: { text: `${warning}Nothing to tailor. No gap this profile is `
-        + "allowed to resolve. Attach the base resume instead, or open it in "
-        + "Maestro CS." } });
+      store.write({ note: { text: `${warning}Quick tailor has nothing to change for `
+        + "this job. Use your base resume as is, or tailor it in Maestro CS." } });
       store.render();
       return;
     }
@@ -111,8 +118,8 @@
         ? { text: applied
           ? `${warning}Tailored. ${store.build.plural(applied, "change")} applied.`
           : `${warning}Tailored.` }
-        : { text: `${warning}Tailored, but the PDF render failed. Open `
-          + "it in Maestro CS to see why and re-render.", error: true },
+        : { text: `${warning}Tailored, but couldn't create the PDF. Open `
+          + "it in Maestro CS and select Create PDF.", error: true },
     });
     store.render();
     // WRITTEN DOWN NOW, on the failure path as much as the success one:
@@ -156,7 +163,7 @@
       // as the default, so this is an EMPTY library rather than an unmade
       // choice — and arming a fill from no resume would be a shortcut to a
       // fill with nothing in it.
-      store.write({ note: { text: "No base resume yet — build one in Maestro CS." } });
+      store.write({ note: { text: "No base resumes yet. Add one in Maestro CS." } });
       store.render();
       return;
     }
@@ -167,7 +174,7 @@
       // shortcut needed a FORM to reach Fill, so arming on a posting moved
       // nothing and a click that changed nothing on screen reads as a click
       // that was ignored. The stage no longer asks about the form, so the rail
-      // moves here too — Resume goes to "Skipped — using base as-is" and Fill
+      // moves here too — Resume goes to "Skipped. Using your base resume as is." and Fill
       // becomes the step — and the Fill body itself says the part the note
       // used to carry, where the user is now looking. Two copies of one
       // sentence, one of them in a slot the next note overwrites, is worse

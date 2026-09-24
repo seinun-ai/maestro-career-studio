@@ -397,7 +397,7 @@ def test_chat_model_rejects_tools_false_row(db_session):
             },
         )
         assert resp.status_code == 400
-        assert "streaming tool-call test" in resp.json()["detail"]
+        assert "has to pass the tool test" in resp.json()["detail"]
 
         # No capability row → allowed through (require() doctrine).
         db_session.delete(db_session.get(Setting, "llm.capabilities.gemini-3.7-flash"))

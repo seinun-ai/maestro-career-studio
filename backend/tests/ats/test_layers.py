@@ -405,7 +405,38 @@ def test_l4_gate_warns_when_clearly_short():
     index = index_resume(SAMPLE_RESUME, as_of=AS_OF)
     warnings = layers.l4_gate(profile, index)
     assert len(warnings) == 1
-    assert "8" in warnings[0] and "5.0" in warnings[0]
+    assert warnings[0] == "The job asks for 8+ years. Your dates show about 5."
+
+
+def test_l4_gate_says_it_could_not_count_when_no_date_is_readable():
+    """0.0 years is not "you have no experience": it is dates nobody could read,
+    and the sentence must say that rather than "your dates show about 0"."""
+    undated = copy.deepcopy(SAMPLE_RESUME)
+    for entry in undated["experience"]:
+        entry["start_date"] = "sometime"
+        entry["end_date"] = "later"
+    profile = normalize_jd(dict(SAMPLE_JD, years_experience_min=3))
+    warnings = layers.l4_gate(profile, index_resume(undated, as_of=AS_OF))
+    assert warnings == [
+        "The job asks for 3+ years. We couldn't find readable job dates on your "
+        "resume, so we can't count yours."]
+
+
+@pytest.mark.parametrize("years, asked, shown", [
+    # round(4.6) is 5, which would read "asks for 5+ … about 5".
+    (4.6, 5, "about 4.6"),
+    (4.74, 5, "about 4.7"),
+    (3.4, 8, "about 3"),
+    (0.4, 2, "less than a year"),
+    (0.0, 2, "less than a year"),
+])
+def test_the_years_warning_never_contradicts_itself(years, asked, shown):
+    from types import SimpleNamespace
+
+    dated = SimpleNamespace(section="experience", date_parse_ok=True)
+    index = SimpleNamespace(entries=[dated], total_experience_years=years)
+    assert layers._years_warning(asked, index) == (
+        f"The job asks for {asked}+ years. Your dates show {shown}.")
 
 
 def test_l5_format_lint():

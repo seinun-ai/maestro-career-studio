@@ -29,6 +29,7 @@ from app.services import (
     ats_score,
     gap_analysis,
     gap_enrichment,
+    health_gates,
     kb_resolver,
     llm,
     model_settings,
@@ -66,26 +67,38 @@ def staleness_reason(tailoring: "TailoringSession", session: Session) -> str | N
         try:
             current = load_base_resume(tailoring.base_resume, session)
         except ValueError:
-            return "the base resume no longer exists"
+            return "the base resume was deleted"
         if _content_hash(current) != tailoring.base_content_hash:
             reasons.append("the base resume was edited")
     if tailoring.jd_extraction_hash:
         job = session.get(Job, tailoring.job_id)
         if job is None or not job.extracted_json:
-            return "the job no longer exists"
+            return "the job was deleted"
         if _content_hash(job.extracted_json) != tailoring.jd_extraction_hash:
-            reasons.append("the job description was re-extracted")
+            reasons.append("the job details were refreshed")
     if not reasons:
         return None
     return " and ".join(reasons)
+
+
+def _must_fix_message(failed: list[dict]) -> str:
+    """The failing fatal gates, named by today's labels (`GATE_LABELS`, the
+    words the health report shows, even for a report stored before a
+    rewording), never their ids. Agents find the ids in
+    get_health_report `gates[].id` (waive_health_gate's docstring says so)."""
+    labels = ", ".join(health_gates.gate_label(g) for g in failed)
+    many = len(failed) > 1
+    return (f"Your base resume has {'must-fix problems' if many else 'a must-fix problem'}: "
+            f"{labels}. Fix {'them' if many else 'it'} or mark {'them' if many else 'it'} "
+            "as OK in the health report, then start the gap analysis.")
 
 
 def _require_fresh(tailoring: "TailoringSession", session: Session) -> None:
     reason = staleness_reason(tailoring, session)
     if reason:
         raise StaleSessionError(
-            f"This gap analysis is stale — {reason} since it was created. "
-            "Start a new analysis (it will supersede this one)."
+            f"This gap analysis is out of date because {reason}. "
+            "Start a new gap analysis. It replaces this one."
         )
 
 
@@ -166,12 +179,9 @@ def create_session(
                 current_version.version_number if current_version else None
             )
             if health.resume_version_number != current_number:
-                report_version = health.resume_version_number
                 health_warning = (
-                    "Health report is stale "
-                    f"(ran against v{report_version if report_version is not None else '?'}; "
-                    f"resume is now v{current_number if current_number is not None else '?'}) "
-                    "— re-analyze."
+                    "Your health report is out of date. Choose Check again on the "
+                    "health report before you tailor."
                 )
             else:
                 rj = health.report_json
@@ -190,15 +200,11 @@ def create_session(
                     and g.get("id") not in waived
                 ]
                 if failed_fatal:
-                    raise HealthGateBlockedError(
-                        "Base resume has failing structural gate(s): "
-                        + ", ".join(g["id"] for g in failed_fatal)
-                        + ". Fix or waive them in the health check before tailoring."
-                    )
+                    raise HealthGateBlockedError(_must_fix_message(failed_fatal))
                 if rj.get("score", 100) < 55:
                     health_warning = (
-                        f"Base resume health is {rj.get('score')} ({rj.get('grade')}); "
-                        "tailoring a weak base produces weak output."
+                        f"Your base resume's health score is {rj.get('score')} "
+                        f"({rj.get('grade')}). Tailoring a weak resume gives weak results."
                     )
 
         # Run the engine ONCE: gaps are built from this result and the same
@@ -323,7 +329,7 @@ def close_session(session_id: UUID, *, session: Session | None = None) -> Tailor
             raise ValueError(f"Tailoring session not found: {session_id}")
         if tailoring.status != "open":
             raise SessionNotOpenError(
-                f"Tailoring session {session_id} is not open (status={tailoring.status!r})"
+                "This gap analysis is closed. Start a new one."
             )
         tailoring.status = "abandoned"
         session.commit()
@@ -811,7 +817,7 @@ def save_resolutions(
             raise ValueError(f"Tailoring session not found: {session_id}")
         if tailoring.status != "open":
             raise SessionNotOpenError(
-                f"Tailoring session {session_id} is not open (status={tailoring.status!r})"
+                "This gap analysis is closed. Start a new one."
             )
         _require_fresh(tailoring, session)
 
@@ -1019,8 +1025,8 @@ def _write_back_elicited_points(
             _skip(
                 item,
                 "too_short",
-                f"the answer is under {_WRITE_BACK_MIN_CHARS} characters — "
-                "too short to keep as evidence",
+                f"the answer is under {_WRITE_BACK_MIN_CHARS} characters, "
+                "too short to save",
             )
             continue
         target = payload.get("placement_target") or {}
@@ -1030,7 +1036,7 @@ def _write_back_elicited_points(
             _skip(
                 item,
                 "wrong_section",
-                "the answer isn't attached to an experience or project entry",
+                "the answer isn't placed on a job or project",
             )
             continue
         entries = base.get(section) or []
@@ -1038,7 +1044,7 @@ def _write_back_elicited_points(
             _skip(
                 item,
                 "wrong_section",
-                "the answer isn't attached to an experience or project entry",
+                "the answer isn't placed on a job or project",
             )
             continue
         entry = entries[index]
@@ -1049,7 +1055,7 @@ def _write_back_elicited_points(
             _skip(
                 item,
                 "no_entity_match",
-                "the target entry has no title to match a Career KB entity",
+                "that job or project has no title to match in your career history",
             )
             continue
         entity = db_session.scalar(
@@ -1062,7 +1068,7 @@ def _write_back_elicited_points(
             _skip(
                 item,
                 "no_entity_match",
-                f"no Career KB entity titled “{title}”",
+                f"your career history has no item called “{title}”",
             )
             continue
         existing_texts = [
@@ -1072,7 +1078,7 @@ def _write_back_elicited_points(
             _skip(
                 item,
                 "duplicate",
-                f"an equivalent point already exists on “{title}”",
+                f"“{title}” already has a bullet like this",
             )
             continue
         db_session.add(
@@ -1218,10 +1224,12 @@ def _reject_stale_placements(tailoring: TailoringSession, base: dict[str, Any]) 
         except ValueError:
             stale_gap_ids.append(item.get("gap_id"))
     if stale_gap_ids:
+        # The gap ids are for whoever debugs this; the sentence is for the user
+        # (and reads the same to an agent: start a new analysis).
+        logger.info("placement targets out of date for gaps %s", sorted(stale_gap_ids))
         raise ValueError(
-            "Placement target(s) no longer point at a valid destination on the "
-            f"base resume (gap_ids: {sorted(stale_gap_ids)}). The base resume "
-            "changed after these resolutions were saved — start a new analysis."
+            "Some answers point to parts of your base resume that changed. "
+            "Start a new gap analysis."
         )
 
 
@@ -1366,7 +1374,7 @@ def tailor(
             raise ValueError(f"Tailoring session not found: {session_id}")
         if tailoring.status != "open":
             raise SessionNotOpenError(
-                f"Tailoring session {session_id} is not open (status={tailoring.status!r})"
+                "This gap analysis is closed. Start a new one."
             )
         _require_fresh(tailoring, session)
 

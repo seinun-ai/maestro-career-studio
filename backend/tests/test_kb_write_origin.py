@@ -103,7 +103,8 @@ def test_timeline_names_the_client_that_captured_a_point(client, db_session):
 
     body = client.get(f"/api/kb/entities/{entity.id}").json()
     labels = [ev["label"] for ev in body["timeline"]]
-    assert "Entity created by ChatGPT" in labels
+    assert "Item created by ChatGPT" in labels
+    assert "Added by ChatGPT: Shipped the ingest pipeline." in labels
     assert any(
         ev["type"] == "point_captured" and "ChatGPT" in ev["label"]
         for ev in body["timeline"]
@@ -121,4 +122,4 @@ def test_web_written_points_add_no_capture_event(client, db_session):
 
     body = client.get(f"/api/kb/entities/{entity.id}").json()
     assert [ev for ev in body["timeline"] if ev["type"] == "point_captured"] == []
-    assert "Entity created" in [ev["label"] for ev in body["timeline"]]
+    assert "Item created" in [ev["label"] for ev in body["timeline"]]

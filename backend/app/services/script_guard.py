@@ -81,10 +81,8 @@ def validate_script(text: str, source_label: str = "input") -> None:
     unsupported = detect_unsupported_script(text)
     if unsupported:
         raise UnsupportedScriptError(
-            f"Unsupported script detected ({unsupported}) in {source_label}. "
-            "Maestro CS currently supports English resumes and job descriptions using Latin script "
-            "(including accented Latin characters such as Zürich, José, Nestlé, or São Paulo). "
-            "Non-Latin scripts are not supported yet and are refused to avoid unreliable scoring."
+            f"This {source_label} uses {unsupported} script. Maestro CS supports English "
+            "in Latin script (accented Latin letters, such as in Zürich, work)."
         )
 
 

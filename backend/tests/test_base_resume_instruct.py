@@ -105,15 +105,19 @@ def test_ops_that_do_not_apply_get_one_correction_then_422(db_session, row, monk
 
     fake = _llm(bad, bad)
     monkeypatch.setattr(llm, "call_openai", fake)
-    with pytest.raises(ValueError, match="could not produce"):
+    with pytest.raises(ValueError, match="That change couldn't be made. Try rewording it."):
         base_resume_instruct.propose(db_session, row, "reword")
 
 
-def test_an_unknown_op_kind_is_a_schema_failure_not_a_crash(db_session, row, monkeypatch):
+def test_an_unknown_op_kind_is_a_schema_failure_not_a_crash(
+        db_session, row, monkeypatch, caplog):
     monkeypatch.setattr(llm, "call_openai", _llm(
         {"summary": "", "notes": "", "ops": [{"kind": "rewrite_everything"}]}))
-    with pytest.raises(ValueError, match="invalid ops"):
+    with caplog.at_level("INFO", logger="app.services.base_resume_instruct"), pytest.raises(
+            ValueError, match="couldn't be made"):
         base_resume_instruct.propose(db_session, row, "x")
+    # The schema reason goes to the log; the user reads the sentence.
+    assert "invalid ops" in caplog.text
 
 
 def test_empty_and_oversized_instructions_are_refused_before_any_call(db_session, row, monkeypatch):

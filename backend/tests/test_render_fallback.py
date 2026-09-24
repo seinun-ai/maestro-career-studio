@@ -126,7 +126,7 @@ def test_latex_template_without_tex_renders_with_typst_and_says_so(db_session, m
     _seed_rows(db_session)
     tmpl, note = pdf_render.resolve_render_template("default", db_session)
     assert tmpl.id == reg.TYPST_CLASSIC_ID
-    assert "TeX is not installed" in note
+    assert "can't be used on this computer" in note
     assert "Typst Classic" in note and "Classic" in note
 
     doc = pdf_render.render_document(SAMPLE_RESUME, template_id="default", session=db_session)
@@ -174,7 +174,7 @@ def test_first_ready_typst_order_is_default_then_classic_then_by_id(db_session):
 def test_no_ready_typst_template_is_a_400_class_error(db_session, monkeypatch):
     _no_tex(monkeypatch)
     _seed_rows(db_session, typst_ready=False)
-    with pytest.raises(ValueError, match="needs TeX"):
+    with pytest.raises(ValueError, match="needs TeX, a tool"):
         pdf_render.resolve_render_template("default", db_session)
 
 
@@ -220,7 +220,7 @@ def test_base_resume_render_reports_the_fallback(db_session, tmp_path, monkeypat
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["resolved_engine"] == "typst"
-    assert "TeX is not installed" in body["render_note"]
+    assert "can't be used on this computer" in body["render_note"]
     # No explicit template_id was passed, so the substitution of the resume's
     # persisted choice leaves the flag False — render_note is the only signal.
     assert body["template_fallback"] is False
@@ -248,7 +248,7 @@ def test_application_render_reports_the_fallback(db_session, tmp_path, monkeypat
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["resolved_engine"] == "typst"
-    assert "TeX is not installed" in body["render_note"]
+    assert "can't be used on this computer" in body["render_note"]
     assert Path(body["pdf_path"]).exists()
 
 
@@ -288,7 +288,7 @@ def test_edits_response_reports_the_fallback(db_session, tmp_path, monkeypatch):
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["render_error"] is None
-    assert "TeX is not installed" in body["render_note"]
+    assert "can't be used on this computer" in body["render_note"]
 
 
 def test_a_failed_re_render_does_not_leave_a_stale_note(db_session, tmp_path, monkeypatch):
@@ -300,7 +300,7 @@ def test_a_failed_re_render_does_not_leave_a_stale_note(db_session, tmp_path, mo
     row = _seed(db_session, slug="data_scientist", data_json=SAMPLE_RESUME)
 
     base_resume_render.render_base_resume("data_scientist", db_session)
-    assert "TeX is not installed" in row.render_note
+    assert "can't be used on this computer" in row.render_note
 
     def boom(*a, **kw):
         raise RuntimeError("boom")
@@ -333,9 +333,9 @@ def test_extras_error_after_a_substitution_says_the_substitution_happened(
     with pytest.raises(pdf_render.TemplateMissingExtraSectionsError) as info:
         pdf_render.render_document(SAMPLE_RESUME, template_id="default", session=db_session)
     message = str(info.value)
-    assert "TeX is not installed" in message
+    assert "can't be used on this computer" in message
     assert "Plain" in message and "Classic" in message
-    assert "cannot render custom sections" in message
+    assert "can't show your other sections" in message
 
 
 # --- Validation and health gates without TeX ----------------------------------
@@ -400,10 +400,10 @@ def test_create_side_base_resume_responses_carry_the_note(db_session, tmp_path, 
             json={"slug": "made_here", "role_category": "data_scientist", "data": SAMPLE_RESUME},
         )
         assert created.status_code == 200, created.text
-        assert "TeX is not installed" in created.json()["render_note"]
+        assert "can't be used on this computer" in created.json()["render_note"]
         dup = client.post("/api/base-resumes/made_here/duplicate", json={"new_slug": "made_copy"})
         assert dup.status_code == 200, dup.text
-        assert "TeX is not installed" in dup.json()["render_note"]
+        assert "can't be used on this computer" in dup.json()["render_note"]
         # /import delegates to the create handler; a JSON upload needs no model.
         imported = client.post(
             "/api/base-resumes/import",
@@ -411,7 +411,7 @@ def test_create_side_base_resume_responses_carry_the_note(db_session, tmp_path, 
             files={"file": ("resume.json", json.dumps(SAMPLE_RESUME), "application/json")},
         )
         assert imported.status_code == 200, imported.text
-        assert "TeX is not installed" in imported.json()["render_note"]
+        assert "can't be used on this computer" in imported.json()["render_note"]
     finally:
         app.dependency_overrides.clear()
 
@@ -435,7 +435,7 @@ def test_port_project_reports_the_fallback(db_session, tmp_path, monkeypatch):
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["target_slug"] == "hybrid"
-    assert "TeX is not installed" in body["render_note"]
+    assert "can't be used on this computer" in body["render_note"]
 
 
 def test_kb_port_reports_the_fallback(db_session, tmp_path, monkeypatch):
@@ -462,7 +462,7 @@ def test_kb_port_reports_the_fallback(db_session, tmp_path, monkeypatch):
     resume = r.json()["resume"]
     # The port's tolerant render succeeded (under Typst) — not a recorded failure.
     assert resume["render_error"] is None
-    assert "TeX is not installed" in resume["render_note"]
+    assert "can't be used on this computer" in resume["render_note"]
 
 
 def test_version_restore_reports_the_fallback(db_session, tmp_path, monkeypatch):
@@ -484,7 +484,7 @@ def test_version_restore_reports_the_fallback(db_session, tmp_path, monkeypatch)
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["source"] == "restore"
-    assert "TeX is not installed" in body["render_note"]
+    assert "can't be used on this computer" in body["render_note"]
 
 
 def test_kb_port_adapt_apply_reports_the_fallback(db_session, tmp_path, monkeypatch):
@@ -522,7 +522,7 @@ def test_kb_port_adapt_apply_reports_the_fallback(db_session, tmp_path, monkeypa
     assert r.status_code == 200, r.text
     resume = r.json()["resume"]
     assert resume["render_error"] is None
-    assert "TeX is not installed" in resume["render_note"]
+    assert "can't be used on this computer" in resume["render_note"]
 
 
 def test_kb_import_reports_the_fallback(db_session, tmp_path, monkeypatch):
@@ -544,7 +544,7 @@ def test_kb_import_reports_the_fallback(db_session, tmp_path, monkeypatch):
     assert r.status_code == 200, r.text
     base = r.json()["bases"][0]
     assert base["render_error"] is None
-    assert "TeX is not installed" in base["render_note"]
+    assert "can't be used on this computer" in base["render_note"]
 
 
 def test_tex_present_leaves_the_note_null_on_every_re_rendering_route(
@@ -697,12 +697,12 @@ def test_port_project_without_a_typst_fallback_does_not_500(
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["render_note"] is None
-    assert "needs TeX" in body["render_error"]
+    assert "needs TeX, a tool" in body["render_error"]
     target = db_session.get(BaseResume, "hybrid")
     db_session.refresh(target)
     # The port landed, and the row itself says the PDF is stale.
     assert len(target.data_json["projects"]) == len(SAMPLE_RESUME["projects"]) + 1
-    assert "needs TeX" in target.render_error
+    assert "needs TeX, a tool" in target.render_error
 
 
 def test_version_restore_without_a_typst_fallback_does_not_500(
@@ -733,10 +733,10 @@ def test_version_restore_without_a_typst_fallback_does_not_500(
     body = r.json()
     assert body["source"] == "restore"
     assert body["render_note"] is None
-    assert "needs TeX" in body["render_error"]
+    assert "needs TeX, a tool" in body["render_error"]
     db_session.refresh(row)
     assert row.data_json["summary"] == SAMPLE_RESUME["summary"]
-    assert "needs TeX" in row.render_error
+    assert "needs TeX, a tool" in row.render_error
 
 
 def test_chat_edit_resume_card_reports_the_fallback(db_session, tmp_path, monkeypatch):
@@ -757,7 +757,7 @@ def test_chat_edit_resume_card_reports_the_fallback(db_session, tmp_path, monkey
 
     card = result["change_card"]
     assert card["version_number"] == 1
-    assert "TeX is not installed" in card["render_note"]
+    assert "can't be used on this computer" in card["render_note"]
 
 
 def test_kb_port_without_a_typst_fallback_degrades_like_the_others(
@@ -791,12 +791,12 @@ def test_kb_port_without_a_typst_fallback_degrades_like_the_others(
     assert r.status_code == 200, r.text
     resume = r.json()["resume"]
     assert resume["render_note"] is None
-    assert "needs TeX" in resume["render_error"]
+    assert "needs TeX, a tool" in resume["render_error"]
     row = db_session.get(BaseResume, "data_scientist")
     db_session.refresh(row)
     # The port landed: the entity is on the resume and the row says so.
     assert any(p.get("name") == "RAG Chatbot" for p in row.data_json["projects"])
-    assert "needs TeX" in row.render_error
+    assert "needs TeX, a tool" in row.render_error
 
 
 def test_kb_port_adapt_apply_without_a_typst_fallback_degrades_too(
@@ -836,7 +836,7 @@ def test_kb_port_adapt_apply_without_a_typst_fallback_degrades_too(
     assert r.status_code == 200, r.text
     resume = r.json()["resume"]
     assert resume["render_note"] is None
-    assert "needs TeX" in resume["render_error"]
+    assert "needs TeX, a tool" in resume["render_error"]
 
 
 # --- Creating a base resume: the row commits BEFORE the render ---------------
@@ -864,7 +864,7 @@ def _pdflatex_fails(monkeypatch):
 
 FAILURES = {
     "pdflatex_fails": (_pdflatex_fails, True, "no line here to end"),
-    "no_tex_no_typst": (_no_tex, False, "needs TeX"),
+    "no_tex_no_typst": (_no_tex, False, "needs TeX, a tool"),
 }
 
 
@@ -939,3 +939,18 @@ def test_a_blank_tab_resume_renders_on_the_default_template(db_session, tmp_path
     assert r.status_code == 200, r.text
     assert r.json()["render_error"] is None
     assert (tmp_path / "pdfs" / "blank.pdf").exists()
+
+
+def test_the_render_words_are_true_and_name_no_engine_needlessly():
+    """The fallback note names templates, never engines. The no-fallback error
+    is raised only when NO template here can make the PDF, so "pick another
+    template" would be false: it names what works (install TeX, or add a Typst
+    template), the one place an engine name is the step."""
+    note = pdf_render.tex_fallback_note("Classic", "Modern")
+    assert note == "Your Modern template can't be used on this computer, so this PDF uses Classic."
+    for engine in ("TeX", "LaTeX", "Typst", "render"):
+        assert engine not in note
+    assert pdf_render.TEX_MISSING_NO_TYPST == (
+        "This template needs TeX, a tool that isn't installed on this computer. "
+        "Install TeX, or add a Typst template, which doesn't need it.")
+    assert "another template" not in pdf_render.TEX_MISSING_NO_TYPST

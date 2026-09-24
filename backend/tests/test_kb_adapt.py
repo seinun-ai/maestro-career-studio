@@ -206,7 +206,7 @@ def test_adapt_certification_rejected_400(db_session, monkeypatch):
     finally:
         _teardown()
     assert resp.status_code == 400
-    assert "verbatim" in resp.json()["detail"]
+    assert "added to a resume as it is" in resp.json()["detail"]
 
 
 def test_adapt_unknown_target_404(db_session):
@@ -243,7 +243,7 @@ def test_adapt_no_approved_points_400(db_session):
     finally:
         _teardown()
     assert resp.status_code == 400
-    assert "no approved points" in resp.json()["detail"]
+    assert "has no approved bullets" in resp.json()["detail"]
 
 
 # --- adapt apply ------------------------------------------------------------
@@ -309,7 +309,7 @@ def test_apply_replace_and_add_with_provenance(db_session, monkeypatch, tmp_path
     )
     assert len(versions) == 1
     assert versions[0].source == "import"
-    assert "Adapted 3 point(s)" in versions[0].summary
+    assert "3 reworded bullets" in versions[0].summary
 
     # Adapted text differs from the point on purpose — that is NOT drift...
     db_session.refresh(points[0])
@@ -376,7 +376,7 @@ def test_apply_replace_without_match_400(db_session, monkeypatch, tmp_path):
     finally:
         _teardown()
     assert resp.status_code == 400
-    assert "re-run adapt" in resp.json()["detail"]
+    assert "Reword them again" in resp.json()["detail"]
 
 
 def test_apply_education_recomposes_single_entry(db_session, monkeypatch, tmp_path):
@@ -492,7 +492,7 @@ def test_apply_all_duplicates_400(db_session, monkeypatch, tmp_path):
     finally:
         _teardown()
     assert resp.status_code == 400
-    assert "nothing to apply" in resp.json()["detail"]
+    assert "already on this item" in resp.json()["detail"]
     assert db_session.query(KBPortLog).count() == 0
 
 
@@ -518,7 +518,7 @@ def test_apply_rejects_non_approved_source_400(db_session, monkeypatch, tmp_path
     finally:
         _teardown()
     assert resp.status_code == 400
-    assert "not an approved point" in resp.json()["detail"]
+    assert "isn't an approved bullet" in resp.json()["detail"]
 
 
 def test_apply_rejects_duplicate_replace_target_400(db_session, monkeypatch, tmp_path):
@@ -552,7 +552,7 @@ def test_apply_rejects_duplicate_replace_target_400(db_session, monkeypatch, tmp
     finally:
         _teardown()
     assert resp.status_code == 400
-    assert "replace the same index" in resp.json()["detail"]
+    assert "replace the same line" in resp.json()["detail"]
 
 
 def test_apply_stale_replace_echo_400(db_session, monkeypatch, tmp_path):
@@ -579,7 +579,7 @@ def test_apply_stale_replace_echo_400(db_session, monkeypatch, tmp_path):
     finally:
         _teardown()
     assert resp.status_code == 400
-    assert "changed since the proposal" in resp.json()["detail"]
+    assert "resume changed since" in resp.json()["detail"]
     assert db_session.query(KBPortLog).count() == 0
 
 

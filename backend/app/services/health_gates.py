@@ -29,11 +29,11 @@ GAP_THRESHOLD_MONTHS = 6
 # gate serializer and the agent-facing findings use the same explanation.
 GATE_COPY: dict[str, dict[str, str]] = {
     "S1": {
-        "why": "If the PDF drops or changes content, automated screeners and recruiters evaluate a different resume than the one you wrote. This blocks tailoring until fixed or waived.",
-        "fix_hint": "Use a template that preserves every section and bullet in extracted PDF text, then validate it again.",
+        "why": "If the PDF drops or changes content, automated screeners and recruiters evaluate a different resume than the one you wrote. You can't start a gap analysis until you fix it or mark it as OK.",
+        "fix_hint": "Use a template that preserves every section and bullet in extracted PDF text, then check it again.",
     },
     "S2": {
-        "why": "A resume that loses its email address in the PDF gives recruiters no reliable way to contact you. This blocks tailoring until fixed or waived.",
+        "why": "A resume that loses its email address in the PDF gives recruiters no reliable way to contact you. You can't start a gap analysis until you fix it or mark it as OK.",
         "fix_hint": "Add a valid email address and use a template that keeps it readable in extracted PDF text.",
     },
     "S3": {
@@ -42,7 +42,7 @@ GATE_COPY: dict[str, dict[str, str]] = {
     },
     "S4": {
         "why": "Standard section headings help screeners classify your experience, education, and skills instead of merging or skipping them.",
-        "fix_hint": "Use recognizable headings such as 'Experience', 'Education', and 'Technical Skills', then validate the template again.",
+        "fix_hint": "Use recognizable headings such as 'Experience', 'Education', and 'Technical Skills', then check the template again.",
     },
     "S5": {
         "why": "Placeholder text makes the resume look unfinished and can expose drafting notes to employers.",
@@ -54,24 +54,78 @@ GATE_COPY: dict[str, dict[str, str]] = {
     },
     "C2": {
         "why": "A years-of-experience claim that exceeds the dated work history can undermine trust in the rest of the resume.",
-        "fix_hint": "Add the missing dated role, correct the summary's years claim, or waive the gate with a recorded reason if the dates intentionally omit work.",
+        "fix_hint": "Add the missing dated role, correct the summary's years claim, or mark it as OK with a reason if your dates leave out work on purpose.",
     },
 }
+
+# The words the health report shows for each gate, by id: the ONE table.
+# `make_gate` stamps them on a new report; `with_current_labels` re-stamps them
+# on a STORED report when it is read, so a report computed before a rewording
+# shows today's words (the gate rail, the must-fix sentence) without a re-run.
+GATE_LABELS: dict[str, str] = {
+    "S1": "PDF text is readable",
+    "S2": "Email is readable",
+    "S3": "Dates are readable",
+    "S4": "Standard section headings",
+    "S5": "No placeholder text",
+    "C1": "Strong opening",
+    "C2": "Years match your dates",
+}
+
 
 def gate_copy(gate_id: str) -> dict[str, str]:
     """Return the report-contract coaching copy for one known health gate."""
     return GATE_COPY[gate_id]
 
 
-def _gate(gate_id: str, tier: str, status: str, label: str, detail: str = "") -> dict:
+def gate_label(gate: dict) -> str:
+    """A gate's words: the table's, else what the gate carries, else its id."""
+    return GATE_LABELS.get(gate.get("id")) or str(gate.get("label") or gate.get("id"))
+
+
+def make_gate(gate_id: str, tier: str, status: str, detail: str = "") -> dict:
     return {
         "id": gate_id,
         "tier": tier,
         "status": status,
-        "label": label,
+        "label": GATE_LABELS[gate_id],
         "detail": detail,
         **gate_copy(gate_id),
     }
+
+
+def with_current_labels(report: dict) -> dict:
+    """A stored report (a copy) whose gates, and the `gate` findings built from
+    them, carry today's labels. A gate finding is matched to its gate by its
+    issue, which is the gate's detail (`resume_lint._gate_findings`)."""
+    if not isinstance(report.get("gates"), list):
+        return report
+    gates = report["gates"]
+    by_detail = {g.get("detail"): gate_label(g) for g in gates}
+    out = {**report, "gates": [{**g, "label": gate_label(g)} for g in gates]}
+    if isinstance(report.get("findings"), list):
+        out["findings"] = [
+            {**f, "label": by_detail[f.get("issue")]}
+            if f.get("type") == "gate" and f.get("issue") in by_detail else f
+            for f in report["findings"]
+        ]
+    return out
+
+
+_LABEL_FIELDS = {
+    "experience": ("role", "company"),
+    "projects": ("name",),
+    "education": ("degree", "institution"),
+}
+_LABEL_FALLBACK = {"experience": "Experience", "projects": "Project", "education": "Education"}
+
+
+def entry_label(section: str, entry: dict) -> str:
+    """An entry in the words the web app uses (`groupTitle`): "Role · Company",
+    "Degree · School", or the project's name. A missing part is dropped, never
+    printed as "?"; with nothing to name, the section's own word stands in."""
+    parts = (str(entry.get(field) or "").strip() for field in _LABEL_FIELDS[section])
+    return " · ".join(part for part in parts if part) or _LABEL_FALLBACK[section]
 
 
 def gate_dates(resume: dict) -> dict:
@@ -85,19 +139,19 @@ def gate_dates(resume: dict) -> dict:
     """
     bad: list[str] = []
     for _, entry in enabled_entries(resume, "experience"):
-        name = f"{entry.get('company', '?')} — {entry.get('role', '?')}"
+        name = entry_label("experience", entry)
         raw_start = str(entry.get("start_date") or "").strip()
         raw_end = entry.get("end_date")
         open_ended = resume_dates.is_open_ended(raw_end)
         if not raw_start and open_ended:
             continue  # wholly undated role
         if raw_start and parse_ym(raw_start) in (None, "present"):
-            bad.append(f"{name}: start date unparseable")
+            bad.append(f"{name}: can't read the start date")
         if not open_ended and parse_ym(raw_end) is None:
-            bad.append(f"{name}: end date unparseable")
+            bad.append(f"{name}: can't read the end date")
     status = "fail" if bad else "pass"
-    return _gate("S3", "serious", status, "Dates parseable",
-                 "; ".join(bad) or "No unparseable experience dates found.")
+    return make_gate("S3", "serious", status,
+                 ", ".join(bad) or "All your job dates are readable.")
 
 
 def _extra_sections(resume: dict) -> list:
@@ -106,18 +160,22 @@ def _extra_sections(resume: dict) -> list:
 
 
 def _iter_texts(resume: dict):
-    yield "summary", str(resume.get("summary") or "")
+    """(where, text) for every rendered text, `where` in the user's words:
+    "Summary", "Role · Company, bullet 3", "Awards: Dean's list". Never a
+    schema path — this is the detail S5 shows on the health report."""
+    yield "Summary", str(resume.get("summary") or "")
     for section in ("experience", "projects"):
-        for index, entry in enabled_entries(resume, section):
+        for _index, entry in enabled_entries(resume, section):
+            label = entry_label(section, entry)
             for field in ("company", "role", "name"):
                 if entry.get(field):
-                    yield f"{section}[{index}].{field}", str(entry[field])
+                    yield label, str(entry[field])
             for bi, bullet in enumerate(entry.get("bullets") or []):
-                yield f"{section}[{index}].bullet[{bi}]", str(bullet)
-    for index, entry in enabled_entries(resume, "education"):
+                yield f"{label}, bullet {bi + 1}", str(bullet)
+    for _index, entry in enabled_entries(resume, "education"):
         for field in ("institution", "degree"):
             if entry.get(field):
-                yield f"education[{index}].{field}", str(entry[field])
+                yield entry_label("education", entry), str(entry[field])
     # Custom (extra) sections: phase 1 is ATS-neutral, but the placeholder gate
     # (S5) must still traverse every *rendered* extra text — title, entry
     # metadata, and bullets — so a "[TODO]" in a custom section can't ship. Only
@@ -127,29 +185,33 @@ def _iter_texts(resume: dict):
     for section in _extra_sections(resume):
         if not isinstance(section, dict) or section.get("enabled") is False:
             continue
-        key = section.get("key") or "?"
+        title = str(section.get("title") or section.get("key") or "Other section")
         if section.get("title"):
-            yield f"extra[{key}].title", str(section["title"])
+            yield title, str(section["title"])
         if section.get("type") == "bullets":
             for bi, bullet in enumerate(section.get("bullets") or []):
-                yield f"extra[{key}].bullet[{bi}]", str(bullet)
+                yield f"{title}, bullet {bi + 1}", str(bullet)
         else:  # entries (the default discriminator)
             for ei, entry in enumerate(section.get("entries") or []):
                 if not isinstance(entry, dict) or entry.get("enabled") is False:
                     continue
+                where = f"{title}: {entry.get('heading') or f'item {ei + 1}'}"
                 for field in ("heading", "subheading", "location", "date", "link"):
                     if entry.get(field):
-                        yield f"extra[{key}].entry[{ei}].{field}", str(entry[field])
+                        yield where, str(entry[field])
                 for bi, bullet in enumerate(entry.get("bullets") or []):
-                    yield f"extra[{key}].entry[{ei}].bullet[{bi}]", str(bullet)
+                    yield f"{where}, bullet {bi + 1}", str(bullet)
 
 
 def gate_placeholders(resume: dict) -> dict:
     """S5 — no unresolved placeholders anywhere a reader will look."""
-    hits = [where for where, text in _iter_texts(resume) if PLACEHOLDER.search(text)]
+    # dict.fromkeys: one place once, in reading order, however many of its
+    # fields carry a placeholder.
+    hits = list(dict.fromkeys(
+        where for where, text in _iter_texts(resume) if PLACEHOLDER.search(text)))
     status = "fail" if hits else "pass"
-    return _gate("S5", "serious", status, "No placeholders",
-                 "; ".join(hits) or "No placeholder text found.")
+    return make_gate("S5", "serious", status,
+                 ", ".join(hits) or "No placeholder text found.")
 
 
 def detect_claim_overstatement(resume: dict, now=None) -> dict | None:

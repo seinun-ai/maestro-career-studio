@@ -149,7 +149,7 @@
       store.api(`/api/applications/${applicationId}`).catch((err) => {
         deleted = err?.status === 404;
         throw err;
-      }));
+      }), "Couldn't open that draft.");
     if (!done) {
       // THE LIST WAS STALE. The pre-await remember is still right for every
       // other failure — see above; the hazard it exists for is a LOST bridge —

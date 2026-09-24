@@ -657,6 +657,31 @@ def l3_title(profile: JdProfile, index: ResumeIndex, cfg: AtsConfig) -> tuple[st
     return "none", credits["none"]
 
 
+def _a(word: str) -> str:
+    """"a bachelor's", "an associate's": the article agrees with the word."""
+    return f"{'an' if word[:1] in 'aeiou' else 'a'} {word}"
+
+
+def _years_warning(asked: int, index: ResumeIndex) -> str:
+    """0.0 years with no readable span is not "no experience": it is dates the
+    indexer could not read, and the sentence says so instead of "about 0"."""
+    readable = any(e.section == "experience" and e.date_parse_ok for e in index.entries)
+    if not readable:
+        return (f"The job asks for {asked}+ years. We couldn't find readable job dates "
+                "on your resume, so we can't count yours.")
+    return f"The job asks for {asked}+ years. Your dates show {_years_shown(index.total_experience_years, asked)}."
+
+
+def _years_shown(years: float, asked: int) -> str:
+    """Never "asks for 5+ … about 5": when the whole number would reach what the
+    job asks, one decimal ("about 4.6"). The warning fires only below
+    `asked - 0.25`, so one decimal always stays under it."""
+    if years < 1:
+        return "less than a year"
+    whole = round(years)
+    return f"about {whole}" if whole < asked else f"about {years:.1f}"
+
+
 def l4_gate(profile: JdProfile, index: ResumeIndex) -> list[str]:
     """Advisory warnings ONLY. engine.py builds the composite from `subscores`,
     so nothing here moves the score — by design. Education and years are enforced
@@ -665,18 +690,16 @@ def l4_gate(profile: JdProfile, index: ResumeIndex) -> list[str]:
     warnings: list[str] = []
     years = index.total_experience_years
     if profile.years_experience_min is not None and years < profile.years_experience_min - 0.25:
-        warnings.append(
-            f"JD asks for {profile.years_experience_min}+ years; dated entries show {years:.1f}"
-        )
+        warnings.append(_years_warning(profile.years_experience_min, index))
     asked = degrees.required_degree_level(profile.requirement_lines)
     shown = index.degree_level
     # Fail-silent: warn only on a POSITIVE reading that the resume is short. An
     # unparsed JD phrasing or an unparsed resume degree says nothing.
     if asked is not None and shown is not None and shown < asked:
         warnings.append(
-            f"JD asks for a {degrees.LEVEL_NAMES[asked]} degree; resume shows "
-            f"{degrees.LEVEL_NAMES[shown]}. This is normally an application-form "
-            f"question — answer it honestly; your score is unaffected."
+            f"The job asks for {_a(degrees.LEVEL_NAMES[asked])} degree and your resume "
+            f"shows {_a(degrees.LEVEL_NAMES[shown])}. Employers usually ask this on the "
+            "application form. Answer honestly. It doesn't change your ATS score."
         )
     return warnings
 
@@ -688,11 +711,11 @@ def l5_format(index: ResumeIndex, rows: list[SkillEvidence], cfg: AtsConfig) -> 
     dates_ok = all(e.date_parse_ok for e in index.entries if e.section == "experience")
     checks.append(dates_ok)
     if not dates_ok:
-        flags.append("Some experience dates failed to parse (use 'Jul 2022' format)")
+        flags.append("Some job dates can't be read. Write them like Jul 2022.")
 
     checks.append(index.contact_ok)
     if not index.contact_ok:
-        flags.append("Contact block missing name, email, or phone")
+        flags.append("Your contact details are missing a name, email or phone.")
 
     for section, present in index.sections_present.items():
         checks.append(present)

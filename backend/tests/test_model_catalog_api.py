@@ -69,7 +69,7 @@ def test_remove_in_use_returns_400(db_session):
         )
         resp = client.delete("/api/settings/openai/models/gpt-custom")
         assert resp.status_code == 400
-        assert "in use" in resp.json()["detail"]
+        assert "is your Fast, Smart or Assistant model" in resp.json()["detail"]
     finally:
         app.dependency_overrides.clear()
 
