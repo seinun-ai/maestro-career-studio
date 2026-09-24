@@ -91,5 +91,8 @@ def test_the_coverage_warning_says_what_it_measured():
     assert _calc_coverage_signal(8, rows) == (
         1, 0.125, "Your resume shows only 1 of this job's 8 skills (13%).")
     assert _calc_coverage_signal(0, [])[2] == "No skills were found in this job's description."
+    # None shown is "none", never "only 0 of … (0%)".
+    none = [SimpleNamespace(matched=False, match_form=None)] * 8
+    assert _calc_coverage_signal(8, none)[2] == "Your resume shows none of this job's 8 skills."
     enough = [SimpleNamespace(matched=True, match_form=None)] * 2 + rows[1:7]
     assert _calc_coverage_signal(8, enough)[2] is None

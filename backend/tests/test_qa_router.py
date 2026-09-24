@@ -728,7 +728,7 @@ def test_render_cover_letter_without_tex_or_typst_is_400_and_allocates_nothing(
     finally:
         app.dependency_overrides.clear()
     assert response.status_code == 400, response.text
-    assert "needs a tool" in response.json()["detail"]
+    assert "needs TeX, a tool" in response.json()["detail"]
     assert not any(tmp_path.iterdir())
     db_session.refresh(application)
     assert application.artifact_dir is None

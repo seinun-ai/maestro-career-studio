@@ -14,6 +14,7 @@ from app.models.health_ask_answer import HealthAskAnswer
 from app.models.health_gate_waiver import HealthGateWaiver
 from app.services import (
     bullet_classify,
+    health_gates,
     health_guards,
     health_score,
     resume_lint,
@@ -145,7 +146,8 @@ def _read(row, *, stale: bool = False) -> LintReportRead:
         created_at=row.created_at,
         stale=stale,
         score_breakdown=_score_breakdown(row),
-        **row.report_json,
+        # A report stored before a gate was reworded shows today's label.
+        **health_gates.with_current_labels(row.report_json),
     )
 
 

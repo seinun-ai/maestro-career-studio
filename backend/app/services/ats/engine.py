@@ -19,6 +19,8 @@ def _coverage_message(matched: int, extracted: int) -> str:
     if extracted == 0:
         return NO_JD_SKILLS_MESSAGE
     noun = "skill" if extracted == 1 else "skills"
+    if matched == 0:
+        return f"Your resume shows none of this job's {extracted} {noun}."
     percent = (matched * 100 + extracted // 2) // extracted  # half up: 1 of 8 is 13%
     return f"Your resume shows only {matched} of this job's {extracted} {noun} ({percent}%)."
 

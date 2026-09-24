@@ -79,7 +79,25 @@ def test_illegal_transitions_rejected(db_session):
         svc.transition(db_session, prop, "approved", consent={"channel": "chat"})
     # The bulk toast prints this: the Agent inbox's word, never a raw status.
     assert str(refused.value) == (
-        "This proposal is already skipped and can't be changed that way.")
+        "This proposal's status is Skipped, so it can't be changed that way.")
+
+
+def test_the_refusal_names_the_status_as_its_chip_does():
+    """The status words are the Agent inbox's chip labels, one table in two
+    languages: `PROPOSAL_STATUS_CHIP` (frontend/components/status-chip.tsx)."""
+    import re
+    from pathlib import Path
+
+    chip = (Path(__file__).resolve().parents[2] / "frontend" / "components"
+            / "status-chip.tsx").read_text(encoding="utf-8")
+    needs_you = re.search(r'const NEEDS_YOU = \{\s*label: "([^"]+)"', chip).group(1)
+    block = re.search(r"export const PROPOSAL_STATUS_CHIP: Record<.*?> = \{(.*?)\n\};",
+                      chip, re.S).group(1)
+    web = dict(re.findall(r'(\w+): \{ label: "([^"]+)"', block))
+    web.update({key: needs_you for key in re.findall(r"(\w+): NEEDS_YOU", block)})
+    assert web == svc.STATUS_CHIP_WORDS
+    # Every status the ledger can hold has a word.
+    assert set(svc.STATUS_CHIP_WORDS) >= set(svc.ALLOWED) | {"submitted", "rejected", "expired"}
 
 
 def test_needs_human_can_return_to_approved(db_session):

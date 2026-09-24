@@ -62,7 +62,7 @@ from app.services import kb_adapt
 from app.services import kb_consolidation
 from app.services import kb_ingest
 from app.services import exports as career_exports
-from app.services.attachment_extract import extract_text, plain_read_error
+from app.services.attachment_extract import UPLOAD_UNREADABLE, extract_text, plain_read_error
 from app.write_origin import WriteOrigin, get_write_origin
 
 logger = logging.getLogger(__name__)
@@ -813,14 +813,15 @@ def import_resumes_endpoint(
         try:
             uploads.append((name, f.content_type, f.file.read()))
         except OSError as exc:
-            raise HTTPException(status_code=400, detail=f"Couldn't read {name}. Try again.") from exc
+            raise HTTPException(status_code=400, detail=UPLOAD_UNREADABLE) from exc
 
     result = kb_import.import_resumes(db, uploads, consolidate=consolidate)
     if not result.bases and result.skipped:
         # Nothing landed — surface the first reason rather than a silent 200.
+        # The reason alone: the import dialog prints the file name beside it.
         raise HTTPException(
             status_code=422,
-            detail=f"No resumes could be imported. {result.skipped[0].filename}: {result.skipped[0].reason}",
+            detail=f"No resumes could be imported. {result.skipped[0].reason}",
         )
     career_exports.best_effort_refresh(db)
     return ImportReport(
@@ -874,7 +875,7 @@ def consolidate_endpoint(
         try:
             data = f.file.read()
         except OSError as exc:
-            raise HTTPException(status_code=400, detail=f"{safe_name}: could not read upload") from exc
+            raise HTTPException(status_code=400, detail=UPLOAD_UNREADABLE) from exc
         if len(data) > 10 * 1024 * 1024:
             raise HTTPException(status_code=413, detail="File exceeds 10 MB limit")
         try:

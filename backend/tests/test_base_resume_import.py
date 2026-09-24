@@ -142,9 +142,14 @@ def test_a_file_that_fails_for_a_developer_reason_is_reported_in_words(client):
     """A malformed JSON upload fails in pydantic, whose message (field paths,
     "json_invalid") is for a developer: the user reads what the file is not."""
     r = client.post("/api/base-resumes/import",
-                    files=_upload("resume.json", b"{not json", "application/json"))
+                    files=_upload("john_doe_resume.json", b"{not json", "application/json"))
     assert r.status_code == 422
-    assert r.json()["detail"] == "resume.json isn't a resume in the Maestro CS JSON format."
+    # No file name: "john_doe_resume.json" is text the web app refuses to show.
+    assert r.json()["detail"] == "This file isn't a resume in the Maestro CS JSON format."
+    # Valid JSON of the wrong shape reads the same.
+    r = client.post("/api/base-resumes/import",
+                    files=_upload("r.json", b'{"name": "x"}', "application/json"))
+    assert r.json()["detail"] == "This file isn't a resume in the Maestro CS JSON format."
 
 
 def test_a_provider_outage_is_a_502_not_a_bad_file(client, monkeypatch):

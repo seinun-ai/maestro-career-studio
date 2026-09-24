@@ -58,13 +58,35 @@ def _no_answer(reason: str, provider_detail: str) -> LLMProviderError:
     )
 
 
+# A provider's error code or HTTP status in words, for the sentence a user
+# reads. The raw code stays in `provider_detail` (the log and the capability
+# probe read it); a code in the sentence ("insufficient_quota") is developer text
+# and the web app hides the whole message for it (`isPlainSentence`).
+_CODE_WORDS = {
+    "invalid_api_key": "your key was refused",
+    "insufficient_quota": "your account is out of credit",
+    "model_not_found": "that model wasn't found",
+    "rate_limit_exceeded": "too many requests",
+}
+_STATUS_WORDS = {
+    401: "your key was refused",
+    404: "that model wasn't found",
+    429: "too many requests",
+}
+
+
+def _status_reason(status: int, code: object = None) -> str:
+    """The code's words, else the status's, else "error {status}"."""
+    if isinstance(code, str) and code in _CODE_WORDS:
+        return _CODE_WORDS[code]
+    return _STATUS_WORDS.get(status, f"error {status}")
+
+
 def _openai_reason(exc: Exception) -> str:
-    """A few words for what went wrong: the status and the provider's error
-    code ("error 429: insufficient_quota"), never its whole body."""
+    """A few words for what went wrong, never the provider's body or code."""
     status = getattr(exc, "status_code", None)
     if isinstance(status, int):
-        code = getattr(exc, "code", None)
-        return f"error {status}: {code}" if isinstance(code, str) and code else f"error {status}"
+        return _status_reason(status, getattr(exc, "code", None))
     if isinstance(exc, openai.APITimeoutError):
         return "it timed out"
     if isinstance(exc, openai.APIConnectionError):
@@ -270,7 +292,7 @@ def _call_gemini(
             data = json.loads(response.read().decode("utf-8"))
     except HTTPError as exc:
         body = exc.read().decode("utf-8", errors="replace")
-        raise _no_answer(f"error {exc.code}",
+        raise _no_answer(_status_reason(exc.code),
                          f"Gemini API request failed: {exc.code} {body}") from exc
 
     return _gemini_text(data), _gemini_usage(data)

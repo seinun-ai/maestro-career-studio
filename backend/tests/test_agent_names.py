@@ -2,19 +2,11 @@
 
 One table in two languages: the timeline the server writes and the by-lines
 the web renders must name the same client the same way. The TypeScript runs
-under node's own type stripping; with no node, or a node too old to strip
-types, the parity half is skipped and the Python half still runs.
+under node's own type stripping (`tests/node_ts.py`): with no such node the
+parity half skips locally and FAILS in CI, where the backend job installs node.
 """
-import json
-import shutil
-import subprocess
-from pathlib import Path
-
-import pytest
-
 from app.services.agent_names import agent_display_name, written_by
-
-FRONTEND = Path(__file__).resolve().parents[2] / "frontend"
+from tests.node_ts import ts_map
 
 NAMES = [
     "claude-ai", "Claude Desktop", "codex-mcp-client", "openai-mcp", "ChatGPT",
@@ -24,20 +16,7 @@ NAMES = [
 
 
 def _typescript_names(names: list[str]) -> list[str | None]:
-    node = shutil.which("node")
-    if node is None:
-        pytest.skip("node is not installed")
-    probe = subprocess.run([node, "-p", "Boolean(process.features.typescript)"],
-                           capture_output=True, text=True, check=False)
-    if probe.stdout.strip() != "true":
-        pytest.skip("this node cannot strip TypeScript types")
-    script = (
-        "import('./lib/agent-name.ts').then((m) => process.stdout.write("
-        f"JSON.stringify({json.dumps(names)}.map(m.agentDisplayName))))"
-    )
-    done = subprocess.run([node, "-e", script], cwd=FRONTEND, capture_output=True,
-                          text=True, check=True)
-    return json.loads(done.stdout)
+    return ts_map("./lib/agent-name.ts", "agentDisplayName", names)
 
 
 def test_the_server_names_agents_as_the_web_app_does():

@@ -166,16 +166,19 @@ app.add_middleware(TrustedHostMiddleware, allowed_hosts=app_settings.allowed_hos
 
 @app.exception_handler(LLMProviderError)
 async def llm_provider_error_handler(request: Request, exc: LLMProviderError):
-    """Upstream model provider failed → 502 with the provider's own message.
+    """Upstream model provider failed → 502 whose `detail` is the error's user
+    sentence (`str(exc)`: "The AI model didn't answer (…)", or the no-key
+    sentence). What the provider actually said is `exc.provider_detail`, and it
+    goes to the log, never to the UI.
 
     Every LLM-backed endpoint needs this and only career_kb had it, so an outage
     or an exhausted quota surfaced everywhere else as a bare 500 whose body
     carries no `detail` for the UI to show. Handled centrally rather than
     per-router: the provider boundary is one place, the routers are a dozen.
-    Routers that catch RuntimeError themselves still win — they run first, and
-    their local wording (e.g. the offending filename) is more useful than this.
+    Routers that catch RuntimeError themselves still win — they run first.
     """
-    logger.warning("LLM provider failure on %s %s: %s", request.method, request.url.path, exc)
+    logger.warning("LLM provider failure on %s %s: %s", request.method, request.url.path,
+                   getattr(exc, "provider_detail", None) or exc)
     return JSONResponse(status_code=502, content={"detail": str(exc)})
 
 

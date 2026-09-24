@@ -174,7 +174,7 @@ def test_first_ready_typst_order_is_default_then_classic_then_by_id(db_session):
 def test_no_ready_typst_template_is_a_400_class_error(db_session, monkeypatch):
     _no_tex(monkeypatch)
     _seed_rows(db_session, typst_ready=False)
-    with pytest.raises(ValueError, match="needs a tool"):
+    with pytest.raises(ValueError, match="needs TeX, a tool"):
         pdf_render.resolve_render_template("default", db_session)
 
 
@@ -697,12 +697,12 @@ def test_port_project_without_a_typst_fallback_does_not_500(
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["render_note"] is None
-    assert "needs a tool" in body["render_error"]
+    assert "needs TeX, a tool" in body["render_error"]
     target = db_session.get(BaseResume, "hybrid")
     db_session.refresh(target)
     # The port landed, and the row itself says the PDF is stale.
     assert len(target.data_json["projects"]) == len(SAMPLE_RESUME["projects"]) + 1
-    assert "needs a tool" in target.render_error
+    assert "needs TeX, a tool" in target.render_error
 
 
 def test_version_restore_without_a_typst_fallback_does_not_500(
@@ -733,10 +733,10 @@ def test_version_restore_without_a_typst_fallback_does_not_500(
     body = r.json()
     assert body["source"] == "restore"
     assert body["render_note"] is None
-    assert "needs a tool" in body["render_error"]
+    assert "needs TeX, a tool" in body["render_error"]
     db_session.refresh(row)
     assert row.data_json["summary"] == SAMPLE_RESUME["summary"]
-    assert "needs a tool" in row.render_error
+    assert "needs TeX, a tool" in row.render_error
 
 
 def test_chat_edit_resume_card_reports_the_fallback(db_session, tmp_path, monkeypatch):
@@ -791,12 +791,12 @@ def test_kb_port_without_a_typst_fallback_degrades_like_the_others(
     assert r.status_code == 200, r.text
     resume = r.json()["resume"]
     assert resume["render_note"] is None
-    assert "needs a tool" in resume["render_error"]
+    assert "needs TeX, a tool" in resume["render_error"]
     row = db_session.get(BaseResume, "data_scientist")
     db_session.refresh(row)
     # The port landed: the entity is on the resume and the row says so.
     assert any(p.get("name") == "RAG Chatbot" for p in row.data_json["projects"])
-    assert "needs a tool" in row.render_error
+    assert "needs TeX, a tool" in row.render_error
 
 
 def test_kb_port_adapt_apply_without_a_typst_fallback_degrades_too(
@@ -836,7 +836,7 @@ def test_kb_port_adapt_apply_without_a_typst_fallback_degrades_too(
     assert r.status_code == 200, r.text
     resume = r.json()["resume"]
     assert resume["render_note"] is None
-    assert "needs a tool" in resume["render_error"]
+    assert "needs TeX, a tool" in resume["render_error"]
 
 
 # --- Creating a base resume: the row commits BEFORE the render ---------------
@@ -864,7 +864,7 @@ def _pdflatex_fails(monkeypatch):
 
 FAILURES = {
     "pdflatex_fails": (_pdflatex_fails, True, "no line here to end"),
-    "no_tex_no_typst": (_no_tex, False, "needs a tool"),
+    "no_tex_no_typst": (_no_tex, False, "needs TeX, a tool"),
 }
 
 
@@ -939,3 +939,18 @@ def test_a_blank_tab_resume_renders_on_the_default_template(db_session, tmp_path
     assert r.status_code == 200, r.text
     assert r.json()["render_error"] is None
     assert (tmp_path / "pdfs" / "blank.pdf").exists()
+
+
+def test_the_render_words_are_true_and_name_no_engine_needlessly():
+    """The fallback note names templates, never engines. The no-fallback error
+    is raised only when NO template here can make the PDF, so "pick another
+    template" would be false: it names what works (install TeX, or add a Typst
+    template), the one place an engine name is the step."""
+    note = pdf_render.tex_fallback_note("Classic", "Modern")
+    assert note == "Your Modern template can't be used on this computer, so this PDF uses Classic."
+    for engine in ("TeX", "LaTeX", "Typst", "render"):
+        assert engine not in note
+    assert pdf_render.TEX_MISSING_NO_TYPST == (
+        "This template needs TeX, a tool that isn't installed on this computer. "
+        "Install TeX, or add a Typst template, which doesn't need it.")
+    assert "another template" not in pdf_render.TEX_MISSING_NO_TYPST

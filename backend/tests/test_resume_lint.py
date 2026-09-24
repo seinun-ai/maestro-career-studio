@@ -6,6 +6,8 @@ Pure `assemble` tests need no DB/LLM (levels + rewrite_fn are passed in).
 from copy import deepcopy
 from types import SimpleNamespace
 
+import pytest
+
 from app.services import bullet_classify, resume_versions
 from app.services import resume_lint as rl
 
@@ -992,3 +994,58 @@ def test_skill_no_longer_matches_as_substring_of_another_word():
     resume["skills"] = [{"category": "Languages", "items": ["Python"]}]
     notes = [n for n in rl._advisories(resume) if n.get("rule") == "skills.undemonstrated"]
     assert any(n["subject"] == "Python" for n in notes)
+
+
+# ---------- C1 and C2: true words, frozen ids ----------
+
+def _c1_report(section, tier):
+    resume = _resume()
+    resume["projects"] = [{"name": "P", "bullets": ["p0 " + "word " * 9]}]
+    loc = (section, 0, 0)
+    levels = {("summary", None, None): _lv(0.0), loc: _lv(0.0)}
+    out = rl.assemble(resume, levels, PASS_GATES, tier, {("summary", None, None), loc},
+                      rewrite_fn=lambda t: None)
+    return out
+
+
+@pytest.mark.parametrize("section, tier, opening", [
+    ("experience", "experienced", "Your summary and newest role are"),
+    # Early career: the hot zone is the first PROJECT, not a role.
+    ("projects", "early", "Your summary and first project are"),
+])
+def test_c1_names_the_top_of_this_resume(section, tier, opening):
+    out = _c1_report(section, tier)
+    [c1] = [g for g in out["report"]["gates"] if g["id"] == "C1"]
+    assert c1["label"] == "Strong opening"
+    assert c1["detail"] == (
+        f"{opening} weak, so a recruiter may stop reading before your best work.")
+
+
+def test_c1_keeps_the_id_it_had_before_the_rewording():
+    """The C1 gate finding hashes its PRE-lane text (e_hot to two places), so
+    the id a report stored holds while the words change. The literal is copied,
+    not imported."""
+    out = _c1_report("experience", "experienced")
+    [finding] = [f for f in out["report"]["findings"]
+                 if f["type"] == "gate" and f["label"] == "Strong opening"]
+    old = ("Top-of-resume evidence averages 0.00 (floor 0.4); a dead opening sharply "
+           "cuts the odds of a deep read.")
+    assert finding["id"] == rl._fid("gate", ("gate", None, None), old)
+
+
+def test_c2_keys_on_the_detectors_float_claim_as_it_read_before():
+    """The real detector returns the claim as a FLOAT (8.0), so the frozen key
+    read "8.0+ years", not "8+". A fixture with an int claim hid that."""
+    from app.services.health_gates import detect_claim_overstatement
+
+    resume = _resume()
+    resume["summary"] = "Data scientist with 8 years building ML systems."
+    resume["experience"][0].update(start_date="Jan 2023", end_date="Jan 2026")
+    hit = detect_claim_overstatement(resume, now=(2026, 1))
+    assert hit == {"claimed_years": 8.0, "actual_years": 3.0}
+    out = rl.assemble(resume, {("experience", 0, 0): _lv(1.0)}, PASS_GATES, "experienced",
+                      {("experience", 0, 0)}, c2_hit=hit, rewrite_fn=lambda t: None)
+    ask = _finding_at(out["report"]["findings"], "ask", ("summary", None, None))
+    assert ask["issue"] == "Your summary says 8+ years, but your dates add up to about 3."
+    assert ask["id"] == rl._fid("ask", ("summary", None, None),
+                                "Summary claims 8.0+ years; the dates support ~3.0.")

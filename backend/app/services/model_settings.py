@@ -337,8 +337,8 @@ def remove_extra_model(session: Session, model_id: str) -> None:
     }
     if cleaned_id in in_use:
         raise ValueError(
-            f"{cleaned_id} is your Fast, Smart or Assistant model. Pick another model "
-            "for that first."
+            f"The model {cleaned_id} is your Fast, Smart or Assistant model. Pick "
+            "another model for that first."
         )
     _save_extra_models(session, [opt for opt in extras if opt.id != cleaned_id])
 

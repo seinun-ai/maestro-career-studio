@@ -384,3 +384,29 @@ def test_non_mirror_wording_gap_has_no_score_effect():
 
     gap = _skill_gap(_skill_row(fix_hint="dual_place", contribution=0.8), "dual_place")
     assert "score_effect" not in gap
+
+
+def test_the_flags_l5_format_writes_are_the_ones_the_router_reads():
+    """`_format_flag_actionable` routes on the PREFIXES `layers.l5_format`
+    writes ("Section missing or empty: …", "… skills-section items have no
+    supporting evidence …"). The classification test above feeds it literals,
+    so a reworded flag in layers.py would pass it and silently fall to "Fix this
+    in the base resume". This one feeds it the flags l5_format really writes."""
+    import copy
+
+    from app.services.ats import layers
+    from app.services.ats.config import load_config
+    from app.services.ats.resume_indexer import index_resume
+    from app.services.gap_analysis import _format_flag_actionable
+
+    resume = copy.deepcopy(SAMPLE_RESUME)
+    resume["summary"] = None
+    resume["skills"] = [{"category": "Tools", "items": [f"Tool{i}" for i in range(12)]}]
+    index = index_resume(resume, as_of=date(2026, 7, 6))
+    _, flags = layers.l5_format(index, [], load_config())
+    assert "Section missing or empty: summary" in flags
+    stuffing = [f for f in flags if f.endswith(
+        "of skills-section items have no supporting evidence in any entry")]
+    assert len(stuffing) == 1
+    assert _format_flag_actionable("Section missing or empty: summary") is True
+    assert _format_flag_actionable(stuffing[0]) is True

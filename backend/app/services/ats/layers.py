@@ -669,8 +669,17 @@ def _years_warning(asked: int, index: ResumeIndex) -> str:
     if not readable:
         return (f"The job asks for {asked}+ years. We couldn't find readable job dates "
                 "on your resume, so we can't count yours.")
-    return (f"The job asks for {asked}+ years. "
-            f"Your dates show about {round(index.total_experience_years)}.")
+    return f"The job asks for {asked}+ years. Your dates show {_years_shown(index.total_experience_years, asked)}."
+
+
+def _years_shown(years: float, asked: int) -> str:
+    """Never "asks for 5+ … about 5": when the whole number would reach what the
+    job asks, one decimal ("about 4.6"). The warning fires only below
+    `asked - 0.25`, so one decimal always stays under it."""
+    if years < 1:
+        return "less than a year"
+    whole = round(years)
+    return f"about {whole}" if whole < asked else f"about {years:.1f}"
 
 
 def l4_gate(profile: JdProfile, index: ResumeIndex) -> list[str]:

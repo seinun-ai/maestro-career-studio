@@ -109,6 +109,11 @@ def _id_key_projects(proj_bullets: int, job_bullets: int) -> str:
     return f"{proj_bullets} project bullets vs {job_bullets} employment bullets."
 
 
+def _id_key_c1(e_hot: float) -> str:
+    return (f"Top-of-resume evidence averages {e_hot:.2f} (floor {HOT_ZONE_FLOOR}); "
+            "a dead opening sharply cuts the odds of a deep read.")
+
+
 def _id_key_c2(c2_hit: dict) -> str:
     return (f"Summary claims {c2_hit['claimed_years']}+ years; the dates support "
             f"~{c2_hit['actual_years']}.")
@@ -127,6 +132,17 @@ def _gap_issue(gap: dict, covered: int, uncovered: int) -> str:
 
 def _projects_issue(proj_bullets: int, job_bullets: int) -> str:
     return f"{proj_bullets} project bullets and {job_bullets} job bullets."
+
+
+def _c1_detail(hot: set) -> str:
+    """The top of the resume as the hot zone defines it for this candidate
+    (`health_zones.hot_locations`): the summary, plus the newest role for an
+    experienced one or the first project for an early-career one."""
+    sections = {loc[0] for loc in hot}
+    opening = ("Your summary and first project are" if "projects" in sections
+               else "Your summary and newest role are" if "experience" in sections
+               else "Your summary is")
+    return f"{opening} weak, so a recruiter may stop reading before your best work."
 
 
 def _c2_detail(c2_hit: dict) -> str:
@@ -224,15 +240,7 @@ def _classification_fields(resume: dict, loc: Location, result: dict) -> dict[st
     }
 
 
-def _gate_dict(gate_id: str, tier: str, status: str, label: str, detail: str) -> dict[str, Any]:
-    return {
-        "id": gate_id,
-        "tier": tier,
-        "status": status,
-        "label": label,
-        "detail": detail,
-        **health_gates.gate_copy(gate_id),
-    }
+_gate_dict = health_gates.make_gate
 
 
 def _prior_gate(prior_report: dict | None, gate_id: str) -> dict | None:
@@ -370,14 +378,14 @@ def structure_gates(db: Session, template_id: str | None, resume: dict) -> list[
     # The probe list (`report["missing"]`) stays in the template's own report:
     # it names test strings, not anything on the user's resume.
     if tmpl.parse_certified is None:
-        s1 = _gate_dict("S1", "fatal", "not_assessed", "PDF text is readable",
+        s1 = _gate_dict("S1", "fatal", "not_assessed",
                         "Couldn't check whether applicant tracking systems can read "
                         "this template's PDF.")
     elif tmpl.parse_certified:
-        s1 = _gate_dict("S1", "fatal", "pass", "PDF text is readable",
+        s1 = _gate_dict("S1", "fatal", "pass",
                         "Applicant tracking systems can read all of this template's PDF.")
     else:
-        s1 = _gate_dict("S1", "fatal", "fail", "PDF text is readable",
+        s1 = _gate_dict("S1", "fatal", "fail",
                         "Applicant tracking systems can't read some of this template's "
                         "text. Pick another template.")
 
@@ -387,34 +395,34 @@ def structure_gates(db: Session, template_id: str | None, resume: dict) -> list[
     has_email = bool(str(contact.get("email") or "").strip())
     email_ok = report.get("email_ok")  # True/False/None(not assessed)
     if not has_email:
-        s2 = _gate_dict("S2", "fatal", "fail", "Email is readable",
+        s2 = _gate_dict("S2", "fatal", "fail",
                         "Your resume has no email address, so recruiters can't reach you.")
     elif email_ok is False:
-        s2 = _gate_dict("S2", "fatal", "fail", "Email is readable",
+        s2 = _gate_dict("S2", "fatal", "fail",
                         "Your email is on your resume, but applicant tracking systems "
                         "can't read it in this template's PDF.")
     elif email_ok is None:
-        s2 = _gate_dict("S2", "fatal", "not_assessed", "Email is readable",
+        s2 = _gate_dict("S2", "fatal", "not_assessed",
                         "Your email is on your resume. Couldn't check whether this "
                         "template keeps it readable.")
     else:
-        s2 = _gate_dict("S2", "fatal", "pass", "Email is readable",
+        s2 = _gate_dict("S2", "fatal", "pass",
                         "Your email is on your resume and readable in the PDF.")
 
     # S4 — standard headers, from the template's extracted text
     if not report:
-        s4 = _gate_dict("S4", "serious", "not_assessed", "Standard section headings",
+        s4 = _gate_dict("S4", "serious", "not_assessed",
                         "Couldn't check this template's section headings.")
     else:
         headers_missing = report.get("headers_missing") or []
         if headers_missing:
             # Stored as section keys ("experience"); shown as headings.
             names = ", ".join(str(h).replace("_", " ").capitalize() for h in headers_missing)
-            s4 = _gate_dict("S4", "serious", "fail", "Standard section headings",
+            s4 = _gate_dict("S4", "serious", "fail",
                             f"Applicant tracking systems can't read these section "
                             f"headings: {names}.")
         else:
-            s4 = _gate_dict("S4", "serious", "pass", "Standard section headings",
+            s4 = _gate_dict("S4", "serious", "pass",
                             "Your section headings are standard and readable.")
 
     return [s1, s2, s4]
@@ -438,10 +446,7 @@ def _final_gates(
     hot_values = [levels_by_loc[loc]["value"] for loc in hot if loc in levels_by_loc]
     e_hot = sum(hot_values) / len(hot_values) if hot_values else None
     if e_hot is not None and e_hot < HOT_ZONE_FLOOR:
-        gates.append(_gate_dict(
-            "C1", "serious", "fail", "Strong opening",
-            "Your summary and newest role are weak, so a recruiter may stop reading "
-            "before your best work."))
+        gates.append(_gate_dict("C1", "serious", "fail", _c1_detail(hot)))
 
     # C2 — claim/date consistency: ask until a resume edit leaves it unresolved.
     if c2_hit:
@@ -452,7 +457,7 @@ def _final_gates(
             and prior_c2.get("status") in ("ask", "fail")
         )
         gates.append(_gate_dict(
-            "C2", "serious", "fail" if escalate else "ask", "Years match your dates",
+            "C2", "serious", "fail" if escalate else "ask",
             _c2_detail(c2_hit)))
 
     # Waivers: a user-waived FAILING gate stops capping.
@@ -464,19 +469,22 @@ def _final_gates(
     return gates, e_hot
 
 
-def _gate_findings(gates: list[dict], resume: dict, c2_hit: dict | None) -> list[dict]:
+def _gate_findings(gates: list[dict], resume: dict, c2_hit: dict | None,
+                   e_hot: float | None = None) -> list[dict]:
     """One finding per failing/asking gate (not pass/waived/not_assessed).
 
-    Only the C2 ASK carries an `id_key`: it is the one gate finding a user
-    answers. A `gate` finding holds no answer (waivers key on the gate id), so
-    its id may follow its wording."""
+    The C2 ASK carries an `id_key` because it is the one gate finding a user
+    answers. The C1 finding keeps its pre-rewording id too (`_id_key_c1`), so
+    the one reworded twice holds still; the other `gate` findings hold no
+    answer (waivers key on the gate id), so their ids may follow their wording."""
     findings: list[dict] = []
     for g in gates:
         if g["status"] == "fail":
             findings.append(_finding(
                 "gate", ("gate", None, None), g["label"], g["detail"],
                 g["why"], g["fix_hint"],
-                severity="critical", source="rule"))
+                severity="critical", source="rule",
+                id_key=_id_key_c1(e_hot) if g["id"] == "C1" and e_hot is not None else None))
         elif g["status"] == "ask" and g["id"] == "C2":
             findings.append(_finding(
                 "ask", ("summary", None, None), "Summary", g["detail"],
@@ -633,7 +641,7 @@ def assemble(resume: dict, levels_by_loc: dict[Location, dict], base_gates: list
 
     # 1) gates, 2) per-bullet ladder, 3) employment gaps
     findings = [
-        *_gate_findings(gates, resume, c2_hit),
+        *_gate_findings(gates, resume, c2_hit, e_hot),
         *_ladder_findings(resume, levels_by_loc, hot, rewrite_fn),
         *_gap_findings(gap_hits or []),
     ]

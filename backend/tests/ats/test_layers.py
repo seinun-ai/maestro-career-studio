@@ -422,6 +422,23 @@ def test_l4_gate_says_it_could_not_count_when_no_date_is_readable():
         "resume, so we can't count yours."]
 
 
+@pytest.mark.parametrize("years, asked, shown", [
+    # round(4.6) is 5, which would read "asks for 5+ … about 5".
+    (4.6, 5, "about 4.6"),
+    (4.74, 5, "about 4.7"),
+    (3.4, 8, "about 3"),
+    (0.4, 2, "less than a year"),
+    (0.0, 2, "less than a year"),
+])
+def test_the_years_warning_never_contradicts_itself(years, asked, shown):
+    from types import SimpleNamespace
+
+    dated = SimpleNamespace(section="experience", date_parse_ok=True)
+    index = SimpleNamespace(entries=[dated], total_experience_years=years)
+    assert layers._years_warning(asked, index) == (
+        f"The job asks for {asked}+ years. Your dates show {shown}.")
+
+
 def test_l5_format_lint():
     rows, cfg = _evidence()
     index = index_resume(SAMPLE_RESUME, as_of=AS_OF)

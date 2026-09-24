@@ -29,6 +29,7 @@ from app.services import (
     ats_score,
     gap_analysis,
     gap_enrichment,
+    health_gates,
     kb_resolver,
     llm,
     model_settings,
@@ -81,10 +82,11 @@ def staleness_reason(tailoring: "TailoringSession", session: Session) -> str | N
 
 
 def _must_fix_message(failed: list[dict]) -> str:
-    """The failing fatal gates, named by their labels (the words the health
-    report shows), never their ids. Agents find the ids in
+    """The failing fatal gates, named by today's labels (`GATE_LABELS`, the
+    words the health report shows, even for a report stored before a
+    rewording), never their ids. Agents find the ids in
     get_health_report `gates[].id` (waive_health_gate's docstring says so)."""
-    labels = ", ".join(str(g.get("label") or g.get("id")) for g in failed)
+    labels = ", ".join(health_gates.gate_label(g) for g in failed)
     many = len(failed) > 1
     return (f"Your base resume has {'must-fix problems' if many else 'a must-fix problem'}: "
             f"{labels}. Fix {'them' if many else 'it'} or mark {'them' if many else 'it'} "

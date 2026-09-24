@@ -823,3 +823,39 @@ def test_draft_rewrite_condense_returns_hash_of_source_text(db_session, monkeypa
         "content_hash": bullet_classify.content_hash(source),
     }
     assert seen and "CONDENSE OBJECTIVE" in seen[0]
+
+
+def test_a_stored_report_reads_back_with_todays_gate_labels(db_session):
+    """A report computed before the gate rewording stored "Parse fidelity" and
+    "Hot-zone evidence floor". The READ path re-stamps each gate, and the gate
+    finding built from it, with `GATE_LABELS` by id, so the health report shows
+    today's words without a Check again (the frontend reads `label`)."""
+    base = _seed(db_session, slug="data_scientist")
+    old = _complete_report_json(gates=[
+        {"id": "S1", "tier": "fatal", "status": "fail", "label": "Parse fidelity",
+         "detail": "Old S1 detail."},
+        {"id": "C1", "tier": "serious", "status": "fail", "label": "Hot-zone evidence floor",
+         "detail": "Old C1 detail."},
+        {"id": "S9", "tier": "serious", "status": "pass", "label": "Some future gate",
+         "detail": ""},
+    ])
+    old["findings"] = [
+        {"id": "f1", "type": "gate", "label": "Parse fidelity", "issue": "Old S1 detail."},
+        {"id": "f2", "type": "fix", "label": "Experience", "issue": "Old S1 detail."},
+    ]
+    db_session.add(ResumeLintReport(resume_kind="base", resume_key=base.slug, report_json=old))
+    db_session.commit()
+
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        body = TestClient(app).get("/api/resume-lint/base/data_scientist").json()
+    finally:
+        app.dependency_overrides.clear()
+
+    assert [g["label"] for g in body["gates"]] == [
+        "PDF text is readable", "Strong opening", "Some future gate"]
+    assert [f["label"] for f in body["findings"]] == ["PDF text is readable", "Experience"]
+    # The stored row is not rewritten by a read.
+    db_session.expire_all()
+    stored = db_session.query(ResumeLintReport).one().report_json
+    assert stored["gates"][0]["label"] == "Parse fidelity"

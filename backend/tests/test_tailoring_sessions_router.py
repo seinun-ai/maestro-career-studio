@@ -437,9 +437,12 @@ def test_create_session_blocked_by_failing_fatal_gate(db_session, tmp_path, monk
         app.dependency_overrides.clear()
 
     assert response.status_code == 409
-    # The failing gate by its label (the fixture stores the old one), never its id.
+    # The failing gate by TODAY's label (the fixture stores the pre-rewording
+    # "Parse fidelity"; GATE_LABELS wins), never its id.
     detail = response.json()["detail"]
-    assert "a must-fix problem: Parse fidelity." in detail
+    assert detail == (
+        "Your base resume has a must-fix problem: PDF text is readable. Fix it or "
+        "mark it as OK in the health report, then start the gap analysis.")
     assert "S1" not in detail
     # nothing was created — the block fires before the session row is inserted
     assert db_session.scalars(select(TailoringSession)).first() is None
@@ -609,7 +612,7 @@ def test_create_session_stays_blocked_when_the_waiver_names_another_gate(
         app.dependency_overrides.clear()
 
     assert response.status_code == 409
-    assert "Contact block" in response.json()["detail"]
+    assert "Email is readable" in response.json()["detail"]
 
 
 def test_create_session_waiver_does_not_travel_to_another_base_resume(
@@ -651,7 +654,7 @@ def test_create_session_waiver_does_not_travel_to_another_base_resume(
         app.dependency_overrides.clear()
 
     assert response.status_code == 409
-    assert "Parse fidelity" in response.json()["detail"]
+    assert "PDF text is readable" in response.json()["detail"]
 
 
 def test_create_session_warns_when_health_under_55(db_session, tmp_path, monkeypatch):

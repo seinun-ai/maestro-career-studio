@@ -74,8 +74,17 @@ def display_name_of(session: Session, slug: str) -> str | None:
 
 def resume_label(session: Session, slug: str) -> str:
     """A base resume's name for a sentence the user reads (a version summary,
-    a timeline row): its display name, else the slug's words, never the slug."""
-    return display_name_of(session, slug) or slug.replace("_", " ").replace("-", " ").title()
+    a timeline row): its display name; else, for a slug that is a role key
+    (`ai_ml_engineer`), the role's own label ("AI/ML Engineer", never "Ai Ml
+    Engineer"); else the slug's words; never the slug."""
+    from app.services import role_categories  # lazy: the catalog loads a YAML
+
+    named = display_name_of(session, slug)
+    if named:
+        return named
+    if role_categories.parent_of(slug) is not None:
+        return role_categories.label_for(slug)
+    return slug.replace("_", " ").replace("-", " ").title()
 
 
 def write_base_resume_json(slug: str, data: dict) -> None:

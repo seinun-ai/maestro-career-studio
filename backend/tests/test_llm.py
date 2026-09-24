@@ -233,6 +233,67 @@ def test_a_failed_request_is_a_sentence_and_keeps_the_providers_words():
     assert llm._openai_reason(openai_pkg.APIConnectionError(request=None)) == "no connection"
 
 
+def _provider_error(cls, status, code):
+    import httpx
+    import openai as openai_pkg
+
+    body = {"message": f"provider said {code}", "type": code, "code": code}
+    response = httpx.Response(status, json={"error": body}, request=httpx.Request(
+        "POST", "https://api.openai.com/v1/chat/completions"))
+    return getattr(openai_pkg, cls)(f"Error code: {status} - {body}", response=response,
+                                    body=body)
+
+
+@pytest.mark.parametrize("cls, status, code, words", [
+    ("AuthenticationError", 401, "invalid_api_key", "your key was refused"),
+    ("RateLimitError", 429, "insufficient_quota", "your account is out of credit"),
+    ("NotFoundError", 404, "model_not_found", "that model wasn't found"),
+    ("RateLimitError", 429, "rate_limit_exceeded", "too many requests"),
+    ("RateLimitError", 429, None, "too many requests"),
+    ("InternalServerError", 503, None, "error 503"),
+])
+def test_a_provider_code_is_said_in_words(cls, status, code, words):
+    """No code in the sentence ("insufficient_quota" is developer text, and the
+    web app hides a whole message holding an underscore); the code stays in
+    `provider_detail` for the log and the capability probe."""
+    err = llm._no_answer(llm._openai_reason(_provider_error(cls, status, code)), "detail")
+    assert str(err) == (f"The AI model didn't answer ({words}). Try again, or check "
+                        "your key in Settings › AI & models.")
+
+
+@pytest.mark.parametrize("cls, status, code", [
+    ("RateLimitError", 429, "insufficient_quota"),
+    ("InternalServerError", 502, None),
+    ("InternalServerError", 503, None),
+])
+def test_a_provider_failure_is_never_stored_as_a_missing_capability(
+        db_session, monkeypatch, cls, status, code):
+    """The provider's words ride `provider_detail` from `_call_model` to the
+    capability probe, which classifies them as "never reached the model" and
+    refuses to store the run: a 429 or a 5xx says nothing about the model, and
+    a stored No would block it after the outage ends."""
+    from types import SimpleNamespace
+
+    from app.services import llm_capabilities
+
+    def create(**_kwargs):
+        raise _provider_error(cls, status, code)
+
+    client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+    monkeypatch.setattr(llm, "_get_client", lambda: client)
+    monkeypatch.setattr(llm, "get_chat_client", lambda *_a, **_k: client)
+
+    with pytest.raises(llm.LLMProviderError) as raised:
+        llm._call_model("hi", "gpt-4o-mini", "text")
+    assert f"Error code: {status}" in raised.value.provider_detail
+    assert f"Error code: {status}" not in str(raised.value)
+    assert llm_capabilities._never_reached_the_model(raised.value)
+
+    report = llm_capabilities.probe_and_save(db_session, "gpt-4o-mini")
+    assert report.reachable is False
+    assert llm_capabilities.load(db_session, "gpt-4o-mini") is None
+
+
 def test_custom_endpoint_still_works_without_a_key(monkeypatch):
     """Ollama / LM Studio / vLLM ignore the key entirely, so a local endpoint
     must NOT be blocked by the missing-key guard — only api.openai.com is."""

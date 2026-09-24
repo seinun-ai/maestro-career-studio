@@ -548,8 +548,13 @@ class RenderedDoc:
         return ".typ" if self.engine == "typst" else ".tex"
 
 
+# Raised only when NO template here can make the PDF (no pdflatex, and no ready
+# Typst template to fall back to), so "pick another template" would be false:
+# the sentence names the two things that do work. The one place engine names
+# reach a user, because installing TeX is the step.
 TEX_MISSING_NO_TYPST = (
-    "This template needs a tool that isn't installed. Pick another template."
+    "This template needs TeX, a tool that isn't installed on this computer. "
+    "Install TeX, or add a Typst template, which doesn't need it."
 )
 
 

@@ -19,6 +19,7 @@ including `get_chat_client` routing — or its stored row shadows reality.
 """
 
 import json
+import logging
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 
@@ -27,6 +28,8 @@ from sqlalchemy.orm import Session
 
 from app.models.setting import Setting
 from app.services import llm
+
+logger = logging.getLogger(__name__)
 
 CAPABILITIES = ("text", "json", "tools")
 
@@ -243,9 +246,13 @@ def require(session: Session, model: str, capability: str) -> None:
     report = load(session, model)
     if report is None or report.supports(capability):
         return
-    reason = report.errors.get(capability, "the capability probe found it unsupported")
+    # The probe's reason is words for a developer ("model streamed no tool
+    # call", a provider's error text): the log keeps it, the sentence names the
+    # model and the step.
+    logger.info("%s can't %s: %s", model, capability,
+                report.errors.get(capability, "the capability probe found it unsupported"))
     raise CapabilityMissing(
-        f"{model} can't {_CAPABILITY_WORDS.get(capability, capability)} ({reason}). "
+        f"The model {model} can't {_CAPABILITY_WORDS.get(capability, capability)}. "
         "Pick a different model in Settings › AI & models. The Fast, Smart and "
         "Assistant models are set separately."
     )

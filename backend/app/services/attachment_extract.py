@@ -133,14 +133,24 @@ class UnreadableFile(ValueError):
 
 
 UNSUPPORTED_TYPE = "Use a PDF, Word, text or image file."
+# No file name inside a sentence: every surface that lists files already puts
+# the name beside the reason ("scan.png: This file isn't a readable image."),
+# and a name like "my_cv.pdf" is text the web app refuses to show
+# (`isPlainSentence`), hiding the whole reason.
+NOT_AN_IMAGE = "This file isn't a readable image."
+NO_TEXT = "No text could be read in this file."
+UPLOAD_UNREADABLE = "Couldn't read this file. Try again."
 
 
 def plain_read_error(exc: Exception) -> str:
     """Why a file could not be read, as a sentence for the user: the error's
     own words when it was written for them, else the generic one."""
-    from app.services.llm import LLMProviderError  # lazy, as above: llm is heavy
+    # lazy, as above: llm is heavy
+    from app.services.llm import LLMProviderError
+    from app.services.llm_capabilities import CapabilityMissing
 
-    if isinstance(exc, (UnreadableFile, UnsupportedScriptError, LLMProviderError)):
+    if isinstance(exc, (UnreadableFile, UnsupportedScriptError, LLMProviderError,
+                        CapabilityMissing)):
         return str(exc)
     return "Couldn't read this file."
 
@@ -163,7 +173,7 @@ def extract_text(filename: str, mime: str | None, data: bytes) -> str:
         try:
             pages = _image_png(data)
         except Exception as exc:  # corrupt/undecodable image bytes
-            raise UnreadableFile(f"{Path(filename or 'This file').name} isn't a readable image.") from exc
+            raise UnreadableFile(NOT_AN_IMAGE) from exc
         transcript = _transcribe_images(pages, filename)
         text = f"{VISION_MARKER}\n{transcript}" if transcript else ""
     elif suffix in _TEXT_SUFFIXES or mime in _TEXT_MIMES:
@@ -173,5 +183,5 @@ def extract_text(filename: str, mime: str | None, data: bytes) -> str:
 
     text = text.strip()
     if not text:
-        raise UnreadableFile(f"No text could be read in {Path(filename or 'this file').name}.")
+        raise UnreadableFile(NO_TEXT)
     return text[:MAX_CHARS]

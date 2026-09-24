@@ -58,20 +58,58 @@ GATE_COPY: dict[str, dict[str, str]] = {
     },
 }
 
+# The words the health report shows for each gate, by id: the ONE table.
+# `make_gate` stamps them on a new report; `with_current_labels` re-stamps them
+# on a STORED report when it is read, so a report computed before a rewording
+# shows today's words (the gate rail, the must-fix sentence) without a re-run.
+GATE_LABELS: dict[str, str] = {
+    "S1": "PDF text is readable",
+    "S2": "Email is readable",
+    "S3": "Dates are readable",
+    "S4": "Standard section headings",
+    "S5": "No placeholder text",
+    "C1": "Strong opening",
+    "C2": "Years match your dates",
+}
+
+
 def gate_copy(gate_id: str) -> dict[str, str]:
     """Return the report-contract coaching copy for one known health gate."""
     return GATE_COPY[gate_id]
 
 
-def _gate(gate_id: str, tier: str, status: str, label: str, detail: str = "") -> dict:
+def gate_label(gate: dict) -> str:
+    """A gate's words: the table's, else what the gate carries, else its id."""
+    return GATE_LABELS.get(gate.get("id")) or str(gate.get("label") or gate.get("id"))
+
+
+def make_gate(gate_id: str, tier: str, status: str, detail: str = "") -> dict:
     return {
         "id": gate_id,
         "tier": tier,
         "status": status,
-        "label": label,
+        "label": GATE_LABELS[gate_id],
         "detail": detail,
         **gate_copy(gate_id),
     }
+
+
+def with_current_labels(report: dict) -> dict:
+    """A stored report (a copy) whose gates, and the `gate` findings built from
+    them, carry today's labels. A gate finding is matched to its gate by its
+    issue, which is the gate's detail (`resume_lint._gate_findings`)."""
+    if not isinstance(report.get("gates"), list):
+        return report
+    gates = report["gates"]
+    by_detail = {g.get("detail"): gate_label(g) for g in gates}
+    out = {**report, "gates": [{**g, "label": gate_label(g)} for g in gates]}
+    if isinstance(report.get("findings"), list):
+        out["findings"] = [
+            {**f, "label": by_detail[f.get("issue")]}
+            if f.get("type") == "gate" and f.get("issue") in by_detail else f
+            for f in report["findings"]
+        ]
+    return out
 
 
 _LABEL_FIELDS = {
@@ -112,7 +150,7 @@ def gate_dates(resume: dict) -> dict:
         if not open_ended and parse_ym(raw_end) is None:
             bad.append(f"{name}: can't read the end date")
     status = "fail" if bad else "pass"
-    return _gate("S3", "serious", status, "Dates are readable",
+    return make_gate("S3", "serious", status,
                  ", ".join(bad) or "All your job dates are readable.")
 
 
@@ -172,7 +210,7 @@ def gate_placeholders(resume: dict) -> dict:
     hits = list(dict.fromkeys(
         where for where, text in _iter_texts(resume) if PLACEHOLDER.search(text)))
     status = "fail" if hits else "pass"
-    return _gate("S5", "serious", status, "No placeholder text",
+    return make_gate("S5", "serious", status,
                  ", ".join(hits) or "No placeholder text found.")
 
 

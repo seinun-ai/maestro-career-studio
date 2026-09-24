@@ -494,8 +494,9 @@ def test_quick_tailor_health_gate_409_passthrough(db_session, tmp_path, monkeypa
         app.dependency_overrides.clear()
 
     assert response.status_code == 409
-    # The gate by its label (the fixture stores the old one), never its id.
-    assert "a must-fix problem: Parse fidelity." in response.json()["detail"]
+    # The gate by TODAY's label (the fixture stores the old "Parse fidelity";
+    # GATE_LABELS wins), never its id.
+    assert "a must-fix problem: PDF text is readable." in response.json()["detail"]
 
 
 def test_quick_tailor_render_failure_degrades_not_fails(db_session, tmp_path, monkeypatch):

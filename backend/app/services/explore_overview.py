@@ -46,6 +46,11 @@ def compute_signals(o: dict[str, Any]) -> list[dict[str, str]]:
     return candidate_signals(o)[:5]
 
 
+def _jobs(n: int) -> str:
+    """"1 job", "3 jobs": a count and its noun agree (appendix D §1)."""
+    return f"{n} {'job' if n == 1 else 'jobs'}"
+
+
 def candidate_signals(o: dict[str, Any]) -> list[dict[str, str]]:
     total = o["meta"]["total_jobs"]
     if not total:
@@ -62,7 +67,7 @@ def candidate_signals(o: dict[str, Any]) -> list[dict[str, str]]:
     if o["locations"]:
         top = o["locations"][0]
         signals.append({
-            "title": f"Most common location: {top['key']} ({top['count']} jobs)",
+            "title": f"Most common location: {top['key']} ({_jobs(top['count'])})",
             "detail": "More jobs list this location than any other.",
         })
 
@@ -71,7 +76,7 @@ def candidate_signals(o: dict[str, Any]) -> list[dict[str, str]]:
         signals.append({
             # Skill names are stored casefolded, so the name never leads the title.
             "title": f"Most required skill: {s['skill_name']} ({round(s['n'] / total * 100)}% of jobs)",
-            "detail": f"Required in {s['n']} of {total} jobs, more than any other skill.",
+            "detail": f"Required in {s['n']} of {_jobs(total)}, more than any other skill.",
         })
 
     # Reserved buckets are not a role: "Best-paying role: Unknown" says nothing.
@@ -87,7 +92,7 @@ def candidate_signals(o: dict[str, Any]) -> list[dict[str, str]]:
             "title": f"Best-paying role: {role_categories.label_for(best['role_category'])}",
             "detail": (
                 f"Average top of the pay range: about {round(best['avg_max'] / 1000)}k{cur_bit}, "
-                f"from {best['n']} jobs that list pay."
+                f"from {_jobs(best['n'])} that {'lists' if best['n'] == 1 else 'list'} pay."
             ),
         })
 
@@ -106,7 +111,7 @@ def candidate_signals(o: dict[str, Any]) -> list[dict[str, str]]:
     if rpct < 20:
         signals.append({
             "title": f"Remote roles are scarce ({rpct}%)",
-            "detail": f"Only {remote} of {total} jobs are remote.",
+            "detail": f"Only {remote} of {_jobs(total)} {'is' if remote == 1 else 'are'} remote.",
         })
 
     return signals

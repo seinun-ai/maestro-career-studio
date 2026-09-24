@@ -47,7 +47,12 @@ from app.services import (
     role_categories,
 )
 from app.services.base_resume_data import resume_label
-from app.services.attachment_extract import extract_text, plain_read_error
+from app.services.attachment_extract import (
+    UPLOAD_UNREADABLE,
+    UnreadableFile,
+    extract_text,
+    plain_read_error,
+)
 from app.services import resume_ops
 from app.services.resume_edit import ContentChangedError
 from app.services.resume_versions import record_version
@@ -445,21 +450,15 @@ def _parse_resume_upload(db: Session, file: UploadFile) -> tuple[str, dict, list
     try:
         blob = file.file.read()
     except OSError as exc:
-        raise HTTPException(status_code=400, detail=f"Couldn't read {safe_name}. Try again.") from exc
+        raise HTTPException(status_code=400, detail=UPLOAD_UNREADABLE) from exc
     if len(blob) > IMPORT_MAX_BYTES:
         raise HTTPException(status_code=413, detail="This file is over 10 MB.")
 
     if kb_import._is_json(safe_name, file.content_type):
         try:
-            return safe_name, ResumeData.model_validate_json(blob).model_dump(mode="json"), []
-        except ValueError as exc:
-            # Pydantic's field paths are for whoever wrote the JSON by hand;
-            # they go to the log, and the user reads what the file is not.
-            logger.info("import: %s is not ResumeData JSON: %s", safe_name, exc)
-            raise HTTPException(
-                status_code=422,
-                detail=f"{safe_name} isn't a resume in the Maestro CS JSON format.",
-            ) from exc
+            return safe_name, kb_import.parse_resume_json(blob), []
+        except UnreadableFile as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
     try:
         text = extract_text(safe_name, file.content_type, blob)
     except ValueError as exc:
