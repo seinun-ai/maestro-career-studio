@@ -6,6 +6,7 @@ legacy Postgres import (which stays strict about missing columns)."""
 import sqlite3
 import uuid
 from contextlib import closing
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -16,7 +17,9 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.models.application_proposal import ApplicationProposal
+from app.services import proposals as svc
 from app.tools import migrate_from_postgres as importer
+from mcp_server.client import _origin_headers
 from tests.test_proposals_models import _mk_job
 
 client = TestClient(app)
@@ -33,7 +36,8 @@ def _file(job, headers=None, **body):
 
 
 def _as_client(name):
-    return {**_MCP, "X-Maestro-CS-Origin-Detail": name}
+    """The headers the MCP server really sends for a client of that name."""
+    return _origin_headers(name)
 
 
 def _sqlite_cfg(path: Path) -> Config:
@@ -69,7 +73,10 @@ def test_an_unnamed_mcp_client_is_unknown_and_cannot_claim_you(db_session):
     assert r.json()["proposed_by"] is None
 
 
-@pytest.mark.parametrize("declared", ["you", "You", " YOU "])
+_DISGUISED_YOU = ["\ufeffyou", "you\u200b", "\uff59\uff4f\uff55", "Y O U"]
+
+
+@pytest.mark.parametrize("declared", ["you", "You", " YOU ", *_DISGUISED_YOU])
 def test_a_client_that_declares_itself_you_is_still_an_agent(db_session, declared):
     # clientInfo.name is self-declared: a client calling itself "you" would
     # otherwise read as the web app's own "Queued by you".
@@ -77,6 +84,22 @@ def test_a_client_that_declares_itself_you_is_still_an_agent(db_session, declare
     r = _file(job, _as_client(declared), proposed_by="you")
     assert r.status_code == 201
     assert r.json()["proposed_by"] is None
+
+
+@pytest.mark.parametrize("declared", [*_DISGUISED_YOU, "\u200b\ufeff"])
+def test_the_filer_rule_sees_through_a_disguised_you(declared):
+    # A BOM, a zero-width space, fullwidth letters or inner spaces must not
+    # turn "you" into a name that reads as the web app's "Queued by you".
+    assert svc.proposal_filer("mcp", declared, "you") is None
+
+
+@pytest.mark.parametrize("name", ["Café Agent", "クロード"])
+def test_a_non_ascii_client_name_is_stored_as_itself(db_session, name):
+    job = _mk_job(db_session, company="Kappa", source="agent")
+    r = _file(job, _as_client(name))
+    assert r.status_code == 201
+    assert r.json()["proposed_by"] == name
+    assert client.get(f"/api/proposals/{r.json()['id']}").json()["proposed_by"] == name
 
 
 def test_the_web_apps_queue_says_you(db_session):
@@ -117,6 +140,25 @@ def test_job_reads_carry_the_newest_proposals_filer(db_session):
     assert bare_detail["job"]["proposal_proposed_by"] is None
 
 
+def test_job_reads_show_the_newest_filer_not_the_first(db_session):
+    # Two proposals, two filers: the older one closed a day earlier. Inserted
+    # oldest first, so a query that forgot to order newest first reads it.
+    job = _mk_job(db_session, company="Lambda", source="agent")
+    now = datetime.now(UTC)
+    for filer, status, created_at in [
+        ("codex-mcp-client", "rejected", now - timedelta(days=1)),
+        ("claude-ai", "pending_review", now),
+    ]:
+        db_session.add(ApplicationProposal(
+            job_id=job.id, proposed_by=filer, status=status, created_at=created_at,
+        ))
+        db_session.commit()
+    listed = {j["id"]: j for j in client.get("/api/jobs?limit=500").json()}
+    assert listed[str(job.id)]["proposal_proposed_by"] == "claude-ai"
+    detail = client.get(f"/api/jobs/{job.id}/detail").json()
+    assert detail["job"]["proposal_proposed_by"] == "claude-ai"
+
+
 def _seed_pre_column_proposals(path: Path) -> tuple[str, str]:
     job, promoted, hunted = (uuid.uuid4().hex for _ in range(3))
     with closing(sqlite3.connect(path)) as conn:
@@ -143,6 +185,34 @@ def test_the_migration_backfills_the_web_apps_own_promotions(tmp_path):
     with closing(sqlite3.connect(path)) as conn:
         rows = dict(conn.execute("SELECT id, proposed_by FROM application_proposals"))
     assert rows == {promoted: "you", hunted: None}
+
+
+def _proposal_table(path: Path) -> tuple[list[str], list[tuple], list[tuple], list[str]]:
+    """Columns, their definitions, foreign keys and indexes. Batch mode rebuilds
+    the table, so the stored CREATE text differs in quoting and FK order."""
+    with closing(sqlite3.connect(path)) as conn:
+        info = conn.execute("PRAGMA table_info(application_proposals)").fetchall()
+        fks = conn.execute("PRAGMA foreign_key_list(application_proposals)").fetchall()
+        indexes = conn.execute("PRAGMA index_list(application_proposals)").fetchall()
+    return (
+        [row[1] for row in info],
+        info,
+        sorted(row[2:] for row in fks),
+        sorted(row[1] for row in indexes),
+    )
+
+
+def test_the_migration_round_trips_from_head_to_the_baseline_and_back(tmp_path):
+    baseline, path = tmp_path / "base.sqlite3", tmp_path / "rt.sqlite3"
+    command.upgrade(_sqlite_cfg(baseline), SQLITE_BASELINE)
+    cfg = _sqlite_cfg(path)
+    command.upgrade(cfg, "head")
+    assert "proposed_by" in _proposal_table(path)[0]
+    command.downgrade(cfg, SQLITE_BASELINE)
+    assert _proposal_table(path) == _proposal_table(baseline)
+    assert "proposed_by" not in _proposal_table(path)[0]
+    command.upgrade(cfg, "head")
+    assert "proposed_by" in _proposal_table(path)[0]
 
 
 def test_the_legacy_import_refuses_a_source_without_the_column(tmp_path):

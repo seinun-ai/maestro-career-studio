@@ -287,7 +287,9 @@
   `base_sync`; `kb_points` and `kb_entities` carry a nullable `origin_detail`
   naming the MCP client. It arrives on `X-Maestro-CS-Origin` /
   `-Origin-Detail` headers (`app/write_origin.py`, allowlisted so a header
-  cannot invent an origin). NULL origin means web-written or predates the
+  cannot invent an origin; the detail is percent-encoded by `encode_detail`,
+  since a header value must be ASCII, and decoded without control characters,
+  ≤120 chars). NULL origin means web-written or predates the
   header — no backfill, because inventing an origin for historic rows would
   fabricate an audit trail. **Groundedness** is a separate nullable column
   `KBPoint.provenance`
@@ -437,12 +439,15 @@
   Expiry is lazy (`expire_stale` on reads) — no scheduler exists, on purpose.
   **Who filed it** (`proposed_by`): `'you'` from the web app's queue (a body
   field that accepts only `'you'`), the MCP client's self-declared
-  `clientInfo.name` from the `X-Maestro-CS-Origin-Detail` header (which wins
-  over the body; a client declaring itself "you" reads as unknown, so an agent
-  can never file as you), else NULL. A label, not an identity. The migration
-  backfills `'you'` onto past web promotions by their fixed plan summary
-  ("Promoted from the tracker by the user", `promoteJobToAgentQueue`), so that
-  text is load-bearing. Job list/detail expose the newest proposal's filer as
+  `clientInfo.name` from the `X-Maestro-CS-Origin-Detail` header
+  (percent-encoded on the wire, so any name files; it wins over the body; a
+  client declaring itself "you", in any case, spacing, width or with invisible
+  characters, reads as unknown, so an agent can never file as you), else NULL. A label, not an identity. The migration
+  backfills `'you'` onto promotions written by older frontends, which sent no
+  filer, by the plan summary they carry ("Promoted from the tracker by the
+  user", `promoteJobToAgentQueue`). That text has never changed, and changing
+  it now can't reach those rows: the queue sends `proposed_by: "you"` itself.
+  Job list/detail expose the newest proposal's filer as
   `proposal_proposed_by`, beside `proposal_status`/`proposal_id`.
   Dedup at `POST /api/proposals`: an **open** proposal for the job returns that
   proposal (HTTP 200, idempotent, keeping the first filer); if the caller also passes `application_id`

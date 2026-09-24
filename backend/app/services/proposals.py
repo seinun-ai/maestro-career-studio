@@ -3,6 +3,7 @@ or adversarial MCP caller cannot record a submission without consent: entering
 approved/rejected writes a ConsentEvent in the same transaction, and submitted
 additionally requires evidence. Expiry is lazy (expire_stale on reads) — this
 system deliberately has no scheduler."""
+import unicodedata
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
@@ -58,12 +59,23 @@ OPEN_STATUSES = frozenset({
 FILED_BY_YOU = "you"
 
 
+def _visible_letters(name: str) -> str:
+    """The name as a reader sees it: NFKC (fullwidth "ｙｏｕ" is "you"), without
+    whitespace or invisible format characters (BOM, zero-width), casefolded."""
+    return "".join(
+        c for c in unicodedata.normalize("NFKC", name)
+        if not c.isspace() and unicodedata.category(c) != "Cf"
+    ).casefold()
+
+
 def proposal_filer(origin: str | None, detail: str | None, claimed: str | None) -> str | None:
     """Who is filing a new proposal. A connected agent (origin "mcp") is named
     by its client's self-declared name and never by the body, so it cannot file
-    as "you" — a client that DECLARES itself "you" reads as unknown instead."""
+    as "you": a client that DECLARES itself "you", however disguised, or whose
+    name shows nothing at all, reads as unknown instead."""
     if origin == "mcp":
-        return None if detail is None or detail.casefold() == FILED_BY_YOU else detail
+        seen = _visible_letters(detail or "")
+        return None if seen in ("", FILED_BY_YOU) else detail
     return claimed
 
 

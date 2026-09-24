@@ -18,6 +18,7 @@ import pytest
 import sqlalchemy as sa
 from alembic import command
 from alembic.config import Config
+from alembic.script import ScriptDirectory
 
 from app.db import make_engine
 from app.models.ats_score import AtsScore
@@ -421,10 +422,43 @@ def _legacy_source_url() -> str:
     return source
 
 
+# The legacy revision that adds application_proposals.proposed_by.
+_ADDS_PROPOSED_BY = "3a17da2f7144"
+
+
+def _drop_proposed_by_if_stamped_below_it(source: str) -> None:
+    """Make the column match the stamp. A run that died between a downgrade and
+    the next upgrade (or a revision run by hand, or a mutation check) can leave
+    proposed_by on a database stamped below the revision that adds it; the next
+    upgrade would then fail on a duplicate column, run after run."""
+    scripts = ScriptDirectory.from_config(Config(str(tool.LEGACY_INI)))
+    engine = sa.create_engine(tool.normalize_postgres_url(source), future=True)
+    try:
+        with engine.begin() as conn:
+            inspector = sa.inspect(conn)
+            if not inspector.has_table("alembic_version"):
+                return
+            stamped = conn.execute(sa.text("SELECT version_num FROM alembic_version")).scalar()
+            applied = {rev.revision for rev in scripts.iterate_revisions(stamped, "base")}
+            columns = {col["name"] for col in inspector.get_columns("application_proposals")}
+            if _ADDS_PROPOSED_BY not in applied and "proposed_by" in columns:
+                conn.execute(sa.text("ALTER TABLE application_proposals DROP COLUMN proposed_by"))
+    finally:
+        engine.dispose()
+
+
+def _upgraded_legacy_source() -> str:
+    """The real Postgres URL, healed of any half-migrated state a failed run
+    left behind, at the legacy chain's head."""
+    source = _legacy_source_url()
+    _drop_proposed_by_if_stamped_below_it(source)
+    tool.upgrade_legacy_source(source)
+    return source
+
+
 @pytest.mark.legacy_postgres
 def test_export_from_real_postgres(tmp_path):
-    source = _legacy_source_url()
-    tool.upgrade_legacy_source(source)
+    source = _upgraded_legacy_source()
     engine = sa.create_engine(tool.normalize_postgres_url(source), future=True)
     with engine.begin() as conn:
         conn.execute(sa.text("DELETE FROM ats_scores"))
@@ -495,8 +529,7 @@ def _insert_pre_column_proposals(source: str) -> dict[str, str | None]:
 
 @pytest.mark.legacy_postgres
 def test_the_legacy_chain_backfills_proposed_by_and_the_import_copies_it(tmp_path):
-    source = _legacy_source_url()
-    tool.upgrade_legacy_source(source)
+    source = _upgraded_legacy_source()
     cfg = Config(str(tool.LEGACY_INI))
     cfg.set_main_option("sqlalchemy.url", tool.normalize_postgres_url(source).replace("%", "%%"))
     command.downgrade(cfg, "85a1bb628e28")

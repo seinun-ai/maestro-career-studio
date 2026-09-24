@@ -1,5 +1,6 @@
 """X-Maestro-CS-Origin headers -> a WriteOrigin the KB routers can persist."""
 
+import pytest
 from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 
@@ -56,3 +57,23 @@ def test_detail_is_truncated_and_stripped():
         },
     )
     assert len(resp.json()["detail"]) == 120
+
+
+def _detail(raw: str) -> str | None:
+    headers = {"X-Maestro-CS-Origin": "mcp", "X-Maestro-CS-Origin-Detail": raw}
+    return client.get("/probe", headers=headers).json()["detail"]
+
+
+@pytest.mark.parametrize(
+    ("raw", "detail"),
+    [
+        ("Caf%C3%A9 Agent", "Café Agent"),
+        ("%E3%82%AF%E3%83%AD%E3%83%BC%E3%83%89", "クロード"),
+        ("a%0D%0Ab%00", "ab"),
+        ("%E3%82%AF" * 500, "ク" * 120),
+    ],
+    ids=["latin", "japanese", "control-chars", "long"],
+)
+def test_a_percent_encoded_detail_is_read_as_the_real_name(raw, detail):
+    # Header values are ASCII, so the MCP client percent-encodes the name.
+    assert _detail(raw) == detail
