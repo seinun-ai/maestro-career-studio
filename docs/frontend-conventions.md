@@ -640,7 +640,13 @@
   never passes `outline-*`, `after:hidden` or another `overflow-*` to a panel
   (pinned). Settings and Profile pass `keepMounted` (through `SettingsTabs`),
   so every panel mounts at load and none unmounts on a switch: unsaved text
-  and leave-guard registrations survive a hidden tab.
+  and leave-guard registrations survive a hidden tab. `TabsList` scrolls
+  sideways inside itself instead of widening the page (`max-w-full
+  overflow-x-auto justify-center-safe`, scrollbar hidden, `relative` so Base
+  UI's arrow-key scroll-into-view measures from the row, `scroll-px-[3px]`
+  so an end tab keeps room for its focus ring); the `Tabs` root is
+  `min-w-0`, or a Tabs that is a grid item (a dialog body) takes the row's
+  full label width as its minimum.
 - **Landmarks: the PAGE owns `<main>`, the shell owns layout.**
   `SidebarInset` is a `<div>` (shadcn ships it as `<main>`, which nests a
   second main landmark). Every route must render exactly one `<main>` in EVERY

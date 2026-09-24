@@ -164,3 +164,33 @@ def test_a_section_lands_only_once_it_is_shown():
     # The landing and an in-page jump share one poll, and the landing's cleanup cancels it.
     assert src.count("whenShown(") == 3  # the definition and its two callers
     assert "cancel();" in src
+
+
+# ------------------------------------------------------------------------ Tab row
+
+
+def test_a_tab_row_scrolls_inside_itself_instead_of_widening_the_page():
+    """A `w-fit` row of `whitespace-nowrap` triggers was as wide as its labels: at 375px the
+    job page's Q&A tab ran off-screen and the five Settings tabs (~480px) widened the page."""
+    tabs = _read("components/ui/tabs.tsx")
+    section = tabs[tabs.index("const tabsListVariants") : tabs.index("function TabsList")]
+    base = re.search(r'^\s*"(group/tabs-list [^"]*)"', section, re.M).group(1)  # the class string, not comments
+    for cls in (
+        "max-w-full",
+        "justify-center-safe",
+        "group-data-horizontal/tabs:overflow-x-auto",
+        "group-data-horizontal/tabs:[scrollbar-width:none]",
+        "group-data-horizontal/tabs:[&::-webkit-scrollbar]:hidden",
+        # Base UI's scroll-into-view walks offsetParents to the row: without `relative` a
+        # dialog's padding was counted and Home left the first tab 16px under the edge.
+        "group/tabs-list relative ",
+        # A tab scrolled to an end keeps the row's 3px padding, room for its focus ring.
+        "group-data-horizontal/tabs:scroll-px-[3px]",
+    ):
+        assert cls in base, cls
+    # Centred overflow clips the first tab out of reach.
+    assert re.search(r"\bjustify-center\b(?!-)", base) is None
+    # A Tabs that is a grid item (the New base resume dialog) took the row's full label width
+    # as its minimum, so the row widened the dialog instead of scrolling.
+    root = tabs[tabs.index("function Tabs(") : tabs.index("const tabsListVariants")]
+    assert re.search(r'^\s*"group/tabs flex min-w-0 ', root, re.M)

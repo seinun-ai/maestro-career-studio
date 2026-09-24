@@ -15,7 +15,11 @@ function Tabs({
       data-slot="tabs"
       data-orientation={orientation}
       className={cn(
-        "group/tabs flex gap-2 data-horizontal:flex-col",
+        // min-w-0: a Tabs that is a grid or flex item (the New base resume
+        // dialog's body is a grid) otherwise takes its tab row's full label
+        // width as its minimum, and the row widens the dialog instead of
+        // scrolling inside itself (the list's max-w-full resolves against that).
+        "group/tabs flex min-w-0 gap-2 data-horizontal:flex-col",
         className
       )}
       {...props}
@@ -31,11 +35,29 @@ const tabsListVariants = cva(
   // while rows two and three spilled out below it and painted over the content
   // underneath. A minimum keeps single-row lists at exactly the same 32px and
   // lets a wrapped one grow to fit its own rows.
-  "group/tabs-list inline-flex w-fit items-center justify-center rounded-lg p-[3px] text-muted-foreground group-data-horizontal/tabs:min-h-8 group-data-vertical/tabs:h-fit group-data-vertical/tabs:flex-col data-[variant=line]:rounded-none",
+  //
+  // max-w-full + overflow-x-auto: a row wider than its container scrolls INSIDE
+  // itself instead of widening the page (the job page's Q&A tab ran off-screen at
+  // 375px, and the five Settings tabs need ~480px). A scroll container's
+  // min-width:auto is 0, so it also shrinks as a flex item. `justify-center-safe`,
+  // not plain centring: centred content that overflows clips its START, which no
+  // scroll can reach. Base UI scrolls the focused tab into view on arrow keys
+  // (composite `scrollIntoViewIfNeeded`). The scrollbar is hidden: the cut-off
+  // last label is the cue, and keys and swipes reach it. Wrapping rows (`h-auto
+  // flex-wrap`) never overflow sideways, so none of this engages there.
+  // `relative` makes the row its triggers' offsetParent: Base UI measures a
+  // tab's offsetLeft up the offsetParent chain and stops at the scroller only
+  // if it is on that chain, so without it a dialog's padding was counted in
+  // and Home left the first tab 16px under the row's left edge.
+  // `scroll-px-[3px]` matches the padding, so a tab scrolled to an end keeps
+  // the row's 3px around it, and its 3px focus ring is not cut off.
+  "group/tabs-list relative inline-flex w-fit max-w-full items-center justify-center-safe rounded-lg p-[3px] text-muted-foreground group-data-horizontal/tabs:min-h-8 group-data-horizontal/tabs:overflow-x-auto group-data-horizontal/tabs:scroll-px-[3px] group-data-horizontal/tabs:overscroll-x-contain group-data-horizontal/tabs:[scrollbar-width:none] group-data-horizontal/tabs:[&::-webkit-scrollbar]:hidden group-data-vertical/tabs:h-fit group-data-vertical/tabs:flex-col data-[variant=line]:rounded-none",
   {
     variants: {
       variant: {
         default: "bg-muted",
+        // No call site uses `line`: its indicator (`after:bottom-[-5px]` on the
+        // trigger) would be clipped by 2px by the scrolling row above.
         line: "gap-1 bg-transparent",
       },
     },
