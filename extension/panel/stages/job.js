@@ -23,6 +23,15 @@
    * user's, and this is one number inside an English sentence. */
   const grouped = (n) => String(n).replace(/\B(?=(\d{3})+$)/g, ",");
 
+  /** The extractor's sources that ARE a job description: a JobPosting record,
+   * or a job-description container (`extractJobPosting` in content/agent.js).
+   * `page` (a long <main>) and `body` (the whole page) are only the page's
+   * text. Task 25's first read found "Job description found (13 words)" over a
+   * recipe page, because the count was over whatever text a page had. The
+   * text is still in the boxes and still saved as it is; it is just not
+   * called a job description. */
+  const JOB_SIGNALS = new Set(["json-ld", "content"]);
+
   /** The one line under the preview: where the job description came from, and
    * how much of it there is. The count is the honest signal that the grab
    * WORKED — three filled boxes over an empty description would otherwise look
@@ -46,7 +55,9 @@
    */
   function previewNote(preview) {
     const text = String(preview.text ?? "").trim();
-    if (text) return `Job description found (${grouped(text.split(/\s+/).length)} words)`;
+    if (text && JOB_SIGNALS.has(preview.source)) {
+      return `Job description found (${grouped(text.split(/\s+/).length)} words)`;
+    }
     return preview.source === "unreachable"
       ? "The Companion can't read this page. Reload the tab."
       : "No job description found on this page.";
@@ -142,8 +153,7 @@
    *
    * A NATIVE SELECT, not a stack of buttons. Four-plus drafts overflowed the
    * Job body as rows; a select scrolls and is keyboard-accessible for free.
-   * Placeholder first ("Choose a draft
-   * application…"), newest first as the list endpoint returns them, change
+   * Placeholder first ("Choose one…"), newest first as the list endpoint returns them, change
    * fires `pickApplication`. No cap: every draft the loader returned is an
    * option. The label is the offer in words, wired to the select. The same
    * control is the switcher in the reopened claimed Job body — one definition.
@@ -180,11 +190,11 @@
     // something is bound that the list does not contain — a draft older than
     // the list's window, a list read before the pick, or a referent that has
     // been deleted. The honest rendering of both is the placeholder, whose
-    // words ("Choose a draft application…") are true in either.
+    // words ("Choose one…") are true in either.
     const bound = apps.some((app) => app.id === currentId);
     const select = node("select");
     select.id = DRAFT_PICK_ID;
-    const placeholder = node("option", null, "Choose a draft application…");
+    const placeholder = node("option", null, "Choose one…");
     placeholder.value = "";
     placeholder.disabled = true;
     if (!bound) placeholder.selected = true;
@@ -199,7 +209,9 @@
       const id = event.target.value;
       if (id) ctx.act.pickApplication(id);
     });
-    const label = node("label", "sub", "Recent drafts");
+    // The question the pick answers, rather than the list's name: "Recent
+    // drafts" left the reader to work out what choosing one would do.
+    const label = node("label", "sub", "Applying for one of these?");
     label.setAttribute("for", DRAFT_PICK_ID);
     return attach(node("div", "appick"), label, select);
   }

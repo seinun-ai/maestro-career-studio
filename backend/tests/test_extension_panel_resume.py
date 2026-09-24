@@ -73,6 +73,12 @@ const press = (label) => {
 };
 main(async () => {
   await settle();
+  // A base picked on the Score row first, for a page whose backend match names
+  // an application (no remembered pick is restored over one).
+  if (spec.pickBase !== undefined) {
+    withClass(REGIONS.rail, "baserow")[spec.pickBase].click();
+    await settle();
+  }
   const loaded = regions();
   let opened = null;
   if (spec.open === true) {
@@ -130,6 +136,16 @@ TAILORED_REPLY = _reply({"application_id": "app-quick", "session_id": "sess-1",
                          "applied": ["mirror_wording", "keywords_into_skills"],
                          "pdf_ready": True, "nothing_to_tailor": False,
                          "health_warning": None})
+
+
+# What each choice says it does, one short line each (Task 25).
+BASE_LINE = ("Use base resume as is: fill the application from your base "
+             "resume, unchanged.")
+TAILOR_LINE = "Tailor: fit your resume to this job first."
+QUICK_LINE = "Quick tailor: tailors your resume to this job here and creates its PDF."
+CUSTOM_LINE = ("Tailor in Maestro CS: opens this job in Maestro CS to start a "
+               "gap analysis. The Companion picks up the tailored resume when "
+               "its PDF is ready.")
 
 
 def _resume(tmp_path, **spec):
@@ -196,7 +212,7 @@ def test_tailor_only_discloses_and_asks_the_backend_for_nothing(tmp_path):
     [region] = [found for found in _walk(out["opened"]["rail"])
                 if found["id"] == tailor["attrs"]["aria-controls"]]
     assert _limbs(region) == ["Quick tailor", "Tailor in Maestro CS ↗"]
-    assert _by_class(region, "sub")[0]["text"].startswith("Tailor in Maestro CS opens")
+    assert [line["text"] for line in _by_class(region, "sub")] == [QUICK_LINE, CUSTOM_LINE]
     # Closed, there is no region — this loop renders what is true — so the
     # button says only that it is closed. A pointer kept across the collapse
     # would be the same broken promise as a link to a guessed address.
@@ -205,9 +221,12 @@ def test_tailor_only_discloses_and_asks_the_backend_for_nothing(tmp_path):
     # Not one message, and certainly not a POST: opening a menu is not a choice.
     assert len(out["sent"]) == before
     assert _posts({"sent": out["sent"]}) == []
-    assert _by_class(out["opened"]["rail"], "sub")[0]["text"] == (
-        "Tailor in Maestro CS opens the full tailor page. The Companion picks up "
-        "the tailored resume when its PDF is ready.")
+    # Each choice says what it does, one short line each: the first level's
+    # two before anything is opened, the second level's two inside the region.
+    assert [line["text"] for line in _by_class(out["loaded"]["rail"], "sub")] == [
+        BASE_LINE, TAILOR_LINE]
+    assert [line["text"] for line in _by_class(out["opened"]["rail"], "sub")] == [
+        BASE_LINE, TAILOR_LINE, QUICK_LINE, CUSTOM_LINE]
 
 
 def test_custom_in_studio_is_a_link_out_and_never_an_api_call(tmp_path):
@@ -241,7 +260,54 @@ def test_a_panel_that_does_not_know_where_the_studio_is_offers_no_way_there(tmp_
     """
     out = _resume(tmp_path, open=True, replies={})
     assert out["limbs"] == ["Use base resume as is", "Tailor", "Quick tailor"]
-    assert _by_class(out["opened"]["rail"], "sub") == []
+    assert [line["text"] for line in _by_class(out["opened"]["rail"], "sub")] == [
+        BASE_LINE, TAILOR_LINE, QUICK_LINE]
+
+
+def _described_by(region, control):
+    """The text of the one node `control`'s `aria-describedby` names."""
+    [reason] = [node for node in _walk(region)
+                if node["id"] and node["id"] == control["attrs"]["aria-describedby"]]
+    return reason["text"]
+
+
+def test_base_as_is_is_visibly_off_beside_a_draft_whose_resume_has_no_pdf(tmp_path):
+    """THE DEAD BUTTON (Task 25's first read). The page is tied to a draft
+    application whose tailored resume has no PDF, so the stage is Resume — and
+    "Use base resume as is" armed a claim `stageFor` ignores beside an
+    application (`fillFromBase` needs `!hasApplication`): a click that changed
+    nothing. Now it is disabled, and the sentence it points at says why and
+    what to do."""
+    out = _resume(tmp_path, pickBase=0, api={
+        "lightningai": _reply({"match": "exact", "job": LIGHTNING_JOB,
+                               "application": {"id": "app-1", "status": "draft"}}),
+        "/api/applications/app-1": _reply({"pdf_path": None, "status": "draft"})})
+    assert _rows(_rail_rows({"regions": out["loaded"]}))["resume"]["state"] == "active"
+    [base, tailor] = _by_class(out["loaded"]["rail"], "fork")[0]["children"]
+    assert base["text"] == "Use base resume as is"
+    assert base["disabled"] is True
+    assert tailor["disabled"] is False
+    assert _described_by(out["loaded"]["rail"], base) == (
+        "This job has a draft application, so your base resume can't be used "
+        "here. Open the application in Maestro CS and select Create PDF.")
+    # The line that would explain an offer it cannot make is gone with it.
+    assert BASE_LINE not in _text(out["loaded"]["rail"])
+
+
+def test_an_application_with_a_tailored_pdf_says_which_resume_the_companion_uses(tmp_path):
+    """The same limb over a reopened Resume row whose application HAS its PDF:
+    the answer is not "create it" but which document goes into the form."""
+    out = _resume(tmp_path, api={
+        "lightningai": _reply({"match": "exact", "job": LIGHTNING_JOB,
+                               "application": {"id": "app-1", "status": "draft"}}),
+        "/api/applications/app-1": _reply({"pdf_path": "renders/app-1.pdf",
+                                           "status": "draft"})},
+        reopen="resume")
+    [base, _tailor] = _by_class(out["reopened"]["rail"], "fork")[0]["children"]
+    assert base["disabled"] is True
+    assert _described_by(out["reopened"]["rail"], base) == (
+        "This application already has a tailored resume, so the Companion uses "
+        "that one.")
 
 
 def test_use_base_as_is_skips_the_rest_visibly_and_outlives_the_page(tmp_path):
@@ -259,7 +325,7 @@ def test_use_base_as_is_skips_the_rest_visibly_and_outlives_the_page(tmp_path):
                   page={"detect_page": _reply({"tier": "A", "form": True, "score": 3})})
     rows = _rows(_rail_rows({"regions": out["settled"]}))
     assert rows["resume"]["state"] == "skipped"
-    assert rows["resume"]["summary"] == "Skipped. Using your base resume as is."
+    assert rows["resume"]["summary"] == "Using your base resume as is."
     assert rows["fill"]["state"] == "active"
     # …and the shortcut's own copy, under the identity where it explains what
     # the rail just skipped.
@@ -307,7 +373,7 @@ def test_arming_a_base_on_a_page_with_no_form_moves_the_rail_and_says_where(tmp_
     has been answered, still asking.
 
     WHAT THEY GET NOW is the shape the rest of the shortcut already had: Resume
-    reads "Skipped. Using your base resume as is.", the rail moves to Fill, and the FILL
+    reads "Using your base resume as is.", the rail moves to Fill, and the FILL
     body says the true thing about this page and what to do about it. The
     sentence moved from a slot that scrolls past into the body of the step it
     is about, and there is exactly one of it.
@@ -319,7 +385,7 @@ def test_arming_a_base_on_a_page_with_no_form_moves_the_rail_and_says_where(tmp_
     out = _resume(tmp_path, press="Use base resume as is")
     rows = _rows(_rail_rows({"regions": out["settled"]}))
     assert rows["resume"]["state"] == "skipped"
-    assert rows["resume"]["summary"] == "Skipped. Using your base resume as is."
+    assert rows["resume"]["summary"] == "Using your base resume as is."
     assert rows["fill"]["state"] == "active"
     body = next(n for n in _walk(out["settled"]["rail"])
                 if n.get("id") == "stg-body-fill")
@@ -457,7 +523,20 @@ def test_a_tailor_the_model_failed_points_at_the_ai_key(tmp_path):
                                         "status": 502}})
     [note] = _by_class(out["settled"]["foot"], "note")
     assert note["text"] == (
-        "Couldn't tailor your resume. Check your AI key in Maestro CS under "
+        "Couldn't tailor your resume. Check your API key in Maestro CS under "
+        "Settings › AI & models.")
+
+
+def test_a_tailor_with_no_api_key_says_to_add_one(tmp_path):
+    """No key at all is not a refused key: the fix is to add one, and the
+    server's sentence names a Settings path the panel says in its own words."""
+    out = _resume(tmp_path, open=True, press="Quick tailor",
+                  api={"quick-tailor": {"ok": False, "status": 502, "error":
+                                        "No API key is set. Add one in Settings "
+                                        "› AI & models › API keys."}})
+    [note] = _by_class(out["settled"]["foot"], "note")
+    assert note["text"] == (
+        "Couldn't tailor your resume. Add an API key in Maestro CS under "
         "Settings › AI & models.")
 
 
@@ -549,7 +628,7 @@ def test_a_tailor_that_FAILS_after_you_switch_tabs_paints_nothing_either(tmp_pat
 # ---------- the base-as-is claim can be withdrawn ---------------------------
 #
 # "Use base resume as is" finishes the Resume stage by SKIPPING it, and a skipped row
-# was a wall: the Resume row read "Skipped. Using your base resume as is." and there was no
+# was a wall: the Resume row read "Using your base resume as is." and there was no
 # way back to the tailoring fork short of unbinding the whole page (reported
 # live on an Itron wizard). The un-pick round already settled the grammar — a
 # claim the user made is theirs to withdraw — and these tests are that grammar
@@ -703,7 +782,7 @@ def test_a_reopened_skipped_row_stays_skipped_and_the_rail_stays_put(tmp_path):
     out = _armed(tmp_path)
     rows = _rows(_rail_rows({"regions": out["reopened"]}))
     assert rows["resume"]["state"] == "skipped"
-    assert rows["resume"]["summary"] == "Skipped. Using your base resume as is."
+    assert rows["resume"]["summary"] == "Using your base resume as is."
     assert rows["resume"]["numeral"] != "✓"
     assert rows["fill"]["state"] == "active"
     door = next(n for n in _walk(out["reopened"]["rail"])

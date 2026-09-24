@@ -1,6 +1,7 @@
 /* Maestro CS Companion — the round trip every panel action is made of.
  *
- * ONE FUNCTION, ONE FILE, AND THAT IS THE POINT OF THE FILE. `duringAction` is
+ * ONE FUNCTION, ONE FILE, AND THAT IS THE POINT OF THE FILE (plus the words a
+ * failure ends with, `failureNote` and the key matching it shares with Fill). `duringAction` is
  * the `busy` span, and the `busy` span is this directory's ONE serialization
  * rule: every control on the surface reads `busy` to decide whether it may be
  * pressed, so a round trip that happens outside the span is one no control
@@ -89,6 +90,33 @@
     return { token, out };
   }
 
+  /** The server's API key failures, the SAME two patterns the web app's
+   * `errorDetail` reads (frontend/lib/error-text.ts; pinned equal by
+   * `test_the_panel_recognises_a_key_failure_by_the_web_apps_own_patterns`).
+   * They name an environment variable or quote a provider's 401, so the
+   * panel recognises them and never shows them. */
+  const MISSING_KEY = /\bno (?:openai |gemini )?api key\b|\b[A-Z]+_API_KEY is required\b/i;
+  const REFUSED_KEY = /invalid_api_key|incorrect api key|api key not valid|api_key_invalid|error code: 401\b/i;
+
+  /** The two next steps a key failure has, in the panel's words: the
+   * Settings path is the web app's, so it says where that is. */
+  const KEY_STEPS = {
+    missing: "Add an API key in Maestro CS under Settings › AI & models.",
+    refused: "Check your API key in Maestro CS under Settings › AI & models.",
+  };
+
+  /** Is this failure about the API key, and which way: `"missing"` (none is
+   * set), `"refused"` (the provider turned it down, or failed: a 502 is
+   * `app.main`'s LLMProviderError, whatever the call was), or null.
+   * Missing wins over the status, because no key and a bad key are opposite
+   * fixes and the server sends "No API key is set" as a 502 too. */
+  function keyProblem(err) {
+    const message = String(err?.message ?? "");
+    if (MISSING_KEY.test(message)) return "missing";
+    if (REFUSED_KEY.test(message) || err?.status === 502) return "refused";
+    return null;
+  }
+
   /** What the note says when a round trip fails: "Couldn't <what>." and then
    * what to do next, never the error's own text.
    *
@@ -98,26 +126,27 @@
    * passes through as it is, because it already IS that sentence: it carries
    * `shown` (`ns.guidedRun.shown` makes one).
    *
-   * THE NEXT STEP TURNS ON THE STATUS, `ask`'s one field that is not prose: no
-   * status means no HTTP answer came back, so the step is to check the app is
-   * running; 502 means the model provider failed, so the step is the AI key;
-   * any other status means the backend answered and refused, so the step is
-   * the call site's `answered` sentence when it has one (a string, or a
-   * function of the error that may decline with null), else another try. */
+   * THE NEXT STEP TURNS ON THE STATUS AND THE KEY: no status means no HTTP
+   * answer came back, so the step is to check the app is running; a key
+   * failure (`keyProblem`) is the key's step, add one or check it; any other
+   * status means the backend answered and refused, so the step is the call
+   * site's `answered` sentence when it has one (a string, or a function of the
+   * error that may decline with null), else another try. */
   function failureNote(failed, err) {
     if (err?.shown === true) return String(err.message);
     console.warn("[maestro-cs] panel action failed:", err);
     const { what = "Couldn't do that.", answered = null } =
       typeof failed === "string" ? { what: failed } : failed ?? {};
     if (err?.status === undefined) return `${what} Check that Maestro CS is running.`;
-    // 502 is the model provider failing (`app.main` maps LLMProviderError to
-    // it), whatever the call was: the step is the key, not another try.
-    if (err.status === 502) {
-      return `${what} Check your AI key in Maestro CS under Settings › AI & models.`;
-    }
+    const key = keyProblem(err);
+    if (key) return `${what} ${KEY_STEPS[key]}`;
     const own = typeof answered === "function" ? answered(err) : answered;
     return own || `${what} Try again.`;
   }
 
   ns.panelDuringAction = duringAction;
+  // Read by the Fill action, which reports a `/choose` failure the runner
+  // swallowed: the same key words, from the same patterns.
+  ns.panelKeyProblem = keyProblem;
+  ns.panelKeySteps = KEY_STEPS;
 })();

@@ -218,6 +218,42 @@ def test_a_page_with_no_posting_on_it_renders_an_empty_form_and_no_apology(tmp_p
     assert note["text"] == ""
 
 
+@pytest.mark.parametrize("source, words", [
+    # `document.body.innerText`: no job description container on the page.
+    ("body", "Weekend recipes Made-up page with no job on it. Pancakes, eggs and coffee."),
+    # A long `<main>` or `<article>` with nothing saying it is a job description.
+    ("page", "A blog post about pancakes. " * 20),
+])
+def test_page_text_is_never_called_a_job_description(tmp_path, source, words):
+    """Task 25's first read: "Job description found (13 words)" over a recipe
+    page. The count was over whatever text the page had. The panel claims a
+    job description only when the extractor found one by a job signal (a
+    JobPosting record, or a job-description container); any other text is
+    still editable and still saved as it is, but it is not called one."""
+    out = _load(tmp_path, page={
+        "extract_job_posting": _reply({"url": POSTING_URL, "title": "Recipes",
+                                       "text": words, "source": source}),
+        "detect_page": _reply({"tier": "none", "form": False, "score": 0})},
+                api={"lightningai": _reply({"match": "none", "job": None,
+                                            "application": None})})
+    assert _by_class(out["regions"]["rail"], "sub")[0]["text"] == (
+        "No job description found on this page.")
+
+
+def test_a_job_description_container_is_still_counted(tmp_path):
+    """The other half: a board with no JSON-LD whose description sits in a
+    job-description container (`source: "content"`) is a found description."""
+    out = _load(tmp_path, page={
+        "extract_job_posting": _reply({"url": POSTING_URL, "title": "Job",
+                                       "text": "We are hiring an engineer.",
+                                       "source": "content"}),
+        "detect_page": _reply({"tier": "none", "form": False, "score": 0})},
+                api={"lightningai": _reply({"match": "none", "job": None,
+                                            "application": None})})
+    assert _by_class(out["regions"]["rail"], "sub")[0]["text"] == (
+        "Job description found (5 words)")
+
+
 _INGEST_DRIVER_JS = _PANEL_FAKES_JS + r"""
 const ns = loadModules();
 main(async () => {
@@ -663,7 +699,7 @@ def test_the_picker_renders_on_an_unmatched_page_with_candidates(tmp_path):
     assert "choose" in placeholder["text"].lower()
     # Label wired to the select — no dead options, no unlabelled control.
     label = next(n for n in _walk(out["regions"]["rail"]) if n["tag"] == "LABEL"
-                 and "draft" in _text(n).lower())
+                 and _text(n) == "Applying for one of these?")
     assert label["attrs"].get("for") == select["id"]
     assert select["id"]
 
@@ -674,8 +710,11 @@ def test_the_list_get_asks_for_drafts_and_the_label_says_what_a_pick_does(tmp_pa
     The label is the offer in words, not a cap line: a select scrolls natively.
     """
     out = _load(tmp_path, **_on_apply())
-    labels = " ".join(n["text"] for n in _by_tag(out["regions"]["rail"], "LABEL"))
-    assert "Recent drafts" in labels
+    labels = [n["text"] for n in _by_tag(out["regions"]["rail"], "LABEL")]
+    # The question the pick answers, in the user's words: "Recent drafts" named
+    # a list and left the reader to work out what choosing from it would do.
+    assert "Applying for one of these?" in labels
+    assert "Recent drafts" not in labels
     [list_get] = _list_gets(out)
     assert "status=draft" in list_get["path"]
     assert "limit=" in list_get["path"]
@@ -802,6 +841,29 @@ def test_picking_an_application_arms_the_rail_and_writes_this_pages_tenant(tmp_p
     assert rows["job"]["state"] == "done"
     assert rows["fill"]["state"] == "active"
     assert _picker(settled["rail"]) is None
+
+
+def test_a_picked_draft_with_no_pdf_says_why_base_as_is_is_off_and_the_way_out(tmp_path):
+    """THE DEAD BUTTON, on the page it was found on (Task 25's first read): a
+    draft picked on an apply page, whose tailored resume has no PDF yet. The
+    stage is Resume, and "Use base resume as is" used to arm a claim nothing
+    reads beside an application. It is disabled now, and because this binding
+    is the user's own claim, the reason names the door that makes the base
+    usable again: Stop using this draft."""
+    out = _pick(tmp_path, api=_picker_api(**{
+        "GET /api/applications/app-1": _reply(
+            {"id": "app-1", "pdf_path": None, "status": "draft"})}))
+    settled = out["settled"]
+    assert _rows(_rail_rows({"regions": settled}))["resume"]["state"] == "active"
+    base = next(n for n in _walk(settled["rail"])
+                if n["tag"] == "BUTTON" and n["text"] == "Use base resume as is")
+    assert base["disabled"] is True
+    [reason] = [n for n in _walk(settled["rail"])
+                if n["id"] and n["id"] == base["attrs"]["aria-describedby"]]
+    assert reason["text"] == (
+        "This page is tied to a draft application, so your base resume can't be "
+        "used here. Select Stop using this draft under Job to use it, or open "
+        "the application in Maestro CS and select Create PDF.")
 
 
 def test_a_pick_writes_widget_session_scoped_to_this_pages_tenant(tmp_path):
@@ -1084,7 +1146,7 @@ def test_a_pick_on_one_workday_tenant_is_refused_on_another(tmp_path):
                 page=HAS_FORM,
                 stored={"widget.session": writes[-1]["widget.session"]},
                 api=_picker_api())
-    assert _by_class(out["regions"]["identity"], "chip")[0]["text"] == "New"
+    assert _by_class(out["regions"]["identity"], "chip")[0]["text"] == "Not saved yet"
     assert _rows(_rail_rows(out))["job"]["state"] == "active"
     hrefs = [n.get("href") or "" for n in _by_class(out["regions"]["identity"], "linkish")]
     assert all("/applications/app-1" not in href for href in hrefs)
@@ -1215,7 +1277,7 @@ def test_a_greenhouse_pick_is_refused_on_a_sibling_tenant(tmp_path):
             "/api/base-resumes": _reply(BASE_RESUMES),
             "/api/ats-scores": _reply(SCORES),
         })
-    assert _by_class(out["regions"]["identity"], "chip")[0]["text"] == "New"
+    assert _by_class(out["regions"]["identity"], "chip")[0]["text"] == "Not saved yet"
     hrefs = [n.get("href") or "" for n in _by_class(out["regions"]["identity"], "linkish")]
     assert all("/applications/app-1" not in href for href in hrefs)
 

@@ -35,6 +35,11 @@
  * never be written. */
 function collectOpenQuestions() {
   const norm = (s) => (s ?? "").toLowerCase().replace(/\s+/g, " ").trim();
+  // The question as the PAGE wrote it, whitespace collapsed and nothing else:
+  // `label` is lowercased for matching and for the model, and the Companion's
+  // open-field list is read by a person (Task 25: "why do you want to work at
+  // contoso health?").
+  const shown = (s) => (s ?? "").replace(/\s+/g, " ").trim().slice(0, 300);
   const token = Math.random().toString(36).slice(2, 8); // per-frame namespace
 
   // HR-3 is shared with the profile writer. This is the riskier path, so the
@@ -111,6 +116,10 @@ function collectOpenQuestions() {
   };
 
   const out = [];
+  // What this pass made addressable, so `countBlank` can leave it to the open
+  // list: a control, or a radio group by name.
+  const asked = new Set();
+  const askedGroups = new Set();
   const excluded = [];
   // Telemetry: which fields the gates rejected (label+kind+reason — no values).
   const reject = (label, kind, reason) =>
@@ -128,7 +137,8 @@ function collectOpenQuestions() {
     // Buttons enter the walk for ONE shape. Every other button — submit, the
     // header's utility menus, a page's own controls — is junk, not a field.
     if (el instanceof HTMLButtonElement && !isListboxButton(el)) continue;
-    const label = norm(questionTextFor(el));
+    const pageText = questionTextFor(el);
+    const label = norm(pageText);
     if (!label) continue;
     const k = renderedKind(el);
     // Ahead of EXCLUDE, and ahead of the per-type ladder below: declining to
@@ -167,9 +177,11 @@ function collectOpenQuestions() {
       if (attempted && unanswered) {
         const qid = `${token}-${n++}`;
         el.setAttribute("data-rt-qid", qid);
+        asked.add(el);
         retryables.push({
           qid,
           label: label.slice(0, 300),
+          text: shown(pageText),
           kind: k === "select" ? "select" : k === "combobox" ? "combobox" : "text",
           known_value: attempted,
         });
@@ -216,7 +228,8 @@ function collectOpenQuestions() {
       const legend = el.closest("fieldset")?.querySelector("legend");
       const container = el.closest("fieldset, div, li, tr");
       const q = container?.querySelector('[class*="label" i], [class*="question" i]');
-      const groupLabel = norm(legend?.innerText ?? q?.innerText ?? "") || label;
+      const groupText = legend?.innerText ?? q?.innerText ?? "";
+      const groupLabel = norm(groupText) || label;
       // Re-screened on the same ladder, policy first. A button's own label is
       // "Yes" — it has nothing in it to block — so on a grouped consent
       // question the legend is the ONLY string carrying the thing we refuse to
@@ -233,7 +246,9 @@ function collectOpenQuestions() {
       }
       const qid = `${token}-${n++}`;
       el.setAttribute("data-rt-qid", qid);
-      out.push({ qid, label: groupLabel.slice(0, 300), kind, options });
+      askedGroups.add(el.name);
+      out.push({ qid, label: groupLabel.slice(0, 300),
+                 text: shown(norm(groupText) ? groupText : pageText), kind, options });
       continue;
     } else if (released && ns.isCombobox(el)) {
       // A released input-combobox has already been opened by the rule pass.
@@ -252,11 +267,54 @@ function collectOpenQuestions() {
 
     const qid = `${token}-${n++}`;
     el.setAttribute("data-rt-qid", qid);
-    out.push({ qid, label: label.slice(0, 300), kind, options });
+    asked.add(el);
+    out.push({ qid, label: label.slice(0, 300), text: shown(pageText), kind, options });
   }
   // host: this frame's own hostname, so iframe-hosted ATS forms (Greenhouse
   // embeds) attribute AI observations truthfully, matching the profile path.
-  return { questions: out, excluded, retryables, host: location.hostname };
+  return { questions: out, excluded, retryables, host: location.hostname,
+           blank: countBlank() };
+
+  /** Every EMPTY field on this page that this pass did not collect: rule
+   * territory the rules left empty, a policy-blocked box, a text box with no
+   * question in its label, a select with nothing to choose. No list names
+   * them and nothing fills them, so the Companion says how many there are
+   * beside the open count (Task 25: "1 field still needs you" over nine empty
+   * boxes). A count, never a value or a label, so it is not telemetry.
+   *
+   * THE SAME WALK as the collect above (visible, enabled, a label, a real
+   * field), minus what it collected, and minus a site's own search box: an
+   * empty search box in the header is not a blank on the application. */
+  function countBlank() {
+    const NOT_A_FIELD = new Set(["submit", "button", "reset", "image", "hidden", "search"]);
+    const groups = new Set();
+    let blank = 0;
+    for (const el of document.querySelectorAll("textarea, input, select, button")) {
+      if (el.disabled || el.readOnly || !isVisible(el) || asked.has(el)) continue;
+      if (el instanceof HTMLButtonElement && !isListboxButton(el)) continue;
+      if (el instanceof HTMLInputElement && NOT_A_FIELD.has(el.type)) continue;
+      const label = norm(questionTextFor(el));
+      if (!label || /\bsearch\b/.test(label)) continue;
+      // A radio group, or a named set of checkboxes ("select all that
+      // apply"), is ONE field: blank when none of it is checked.
+      if (el.type === "radio" || (el.type === "checkbox" && el.name)) {
+        const key = `${el.type}:${el.name}`;
+        if (!el.name || groups.has(key)
+            || (el.type === "radio" && askedGroups.has(el.name))) continue;
+        groups.add(key);
+        const group = [...document.querySelectorAll(
+          `input[type="${el.type}"][name="${CSS.escape(el.name)}"]`)];
+        if (!group.some((box) => box.checked)) blank += 1;
+        continue;
+      }
+      const empty = el instanceof HTMLSelectElement ? !el.value
+        : isListboxButton(el) ? listboxButtonEmpty(el)
+        : el.type === "checkbox" ? !el.checked
+        : !el.value;
+      if (empty) blank += 1;
+    }
+    return blank;
+  }
 }
 // Historical sentinel retained for source-level diagnostics; the harness now
 // executes this module's published function directly.

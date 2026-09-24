@@ -262,6 +262,10 @@
    */
   const ANSWERABLE_KINDS = new Set(["text", "textarea", "select", "radio"]);
 
+  /** A field as the page wrote it (`text`), falling back to the lowercased
+   * `label` the collector matches on: a person reads this list. */
+  const fieldName = (row) => row.text || row.label;
+
   /** May this row be answered from here at all?
    *
    * TWO refusals, and they are different in kind. The policy one is absolute:
@@ -332,7 +336,7 @@
     // answer they are rewriting, and falling back to the known value there
     // would refill the box they just cleared.
     input.value = draft.text ?? known ?? "";
-    input.setAttribute("aria-label", `Answer for ${row.label}`);
+    input.setAttribute("aria-label", `Answer for ${fieldName(row)}`);
     input.setAttribute("aria-describedby", noteId);
     input.disabled = facts.busy === true;
     input.addEventListener("input", (event) => act.editAnswer(row.qid, event.target.value));
@@ -419,11 +423,14 @@
     const list = build.node("ul", "resid");
     list.setAttribute("aria-label", "Fields that still need you");
     for (const [row, kind] of rows) {
-      const button = build.node("button", null, row.label);
+      const button = build.node("button", null, fieldName(row));
       button.type = "button";
       button.addEventListener("click", () => act.scrollToField(row.qid));
+      // The kind mark ends in a space and the Ask handoff below starts with
+      // its own separator, so the row reads "… · written answer · Ask below"
+      // as words, not "written answerAsk below" (Task 25).
       const item = build.attach(build.node("li"), button,
-                                kind ? build.node("span", "kindmark", ` · ${kind}`) : null);
+                                kind ? build.node("span", "kindmark", ` · ${kind} `) : null);
       // The essay's own way forward, beside the jump rather than instead of it:
       // the user still has to reach the box on the page to paste into, so both
       // are true and both are offered. It says which question it will ask,
@@ -436,15 +443,19 @@
       // same body. The mockup drew the glyph on its teaser; the convention is
       // the panel's and it wins.
       if (kind !== null) {
-        const ask = build.node("button", "ask", "Ask below");
+        const ask = build.node("button", "ask");
+        // Hidden from a screen reader, which hears the button's own name.
+        const sep = build.node("span", null, "· ");
+        sep.setAttribute("aria-hidden", "true");
+        build.attach(ask, sep, build.node("span", null, "Ask below"));
         ask.type = "button";
-        ask.setAttribute("aria-label", `Ask about ${row.label}`);
+        ask.setAttribute("aria-label", `Ask about ${fieldName(row)}`);
         // Out of reach while anything runs, its row-mates' rule: the pause row
         // greys its input and its save, and a live control beside them that
         // silently refuses (`askQuestion` returns on `busy`) is the broken /
         // busy confusion this surface keeps naming.
         ask.disabled = ctx.facts.busy === true;
-        ask.addEventListener("click", () => act.askAbout(row.label));
+        ask.addEventListener("click", () => act.askAbout(fieldName(row)));
         build.attach(item, ask);
       }
       // `kind === null` is "this is residue, not an essay" — essays are Task
@@ -553,8 +564,11 @@
     // word. So `input` writes through `act.editQuestion` and does NOT render,
     // and the value is read back from the store.
     box.value = facts.qna.question;
-    box.setAttribute("aria-label", "Question to answer from your resume");
-    box.setAttribute("placeholder", "Paste one question…");
+    // A VISIBLE label, and no placeholder: a placeholder is an instruction
+    // that vanishes on the first keystroke, in a colour too faint to read
+    // (Task 25). The label is the box's name for a screen reader too.
+    const boxLabel = node("label", "sub", "Your question");
+    boxLabel.setAttribute("for", box.id);
     box.disabled = facts.busy === true;
     box.addEventListener("input", (event) => act.editQuestion(event.target.value));
     // NO ENTER-SUBMITS HERE, deliberately, where the pause row has one: a
@@ -564,7 +578,7 @@
     ask.type = "button";
     ask.disabled = facts.busy === true;
     ask.addEventListener("click", act.askQuestion);
-    return attach(drawer, attach(body, box, ask, answerBlock(ctx)));
+    return attach(drawer, attach(body, boxLabel, box, ask, answerBlock(ctx)));
   }
 
   /** What this stage says on a page that holds no application form.
@@ -679,6 +693,9 @@
                   residue: facts.residue ?? [], essays: facts.essays ?? [] };
     if (facts.fill) attach(body, profileRow(ctx, facts.fill));
     if (collected) attach(body, questionsRow(ctx, run));
+    // Why the AI answered nothing, under the row it would have filled: the
+    // open list already names the fields, and this says what to do about it.
+    if (collected && facts.aiNote) attach(body, node("div", "sub", facts.aiNote));
     if (facts.fill) attach(body, eeoRow(ctx, facts.fill, facts.eeoConsent));
     // AFTER the three run rows and before the still-open list: once it has
     // happened it IS a report row and belongs with them, and while it is still

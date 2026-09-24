@@ -68,10 +68,13 @@
  * its own — `panel/actions/during.js` — and every concern file reads it off the
  * namespace rather than carrying a `try` of its own.
  *
- * TWO OTHER THINGS CROSS THE FILES, and both are on the namespace for the same
- * reason: `ns.panelFillFinished` (published by `actions/fill.js`, read by
- * `actions/pause.js`, because the last pause row closing must mark the page
- * done exactly as a clean run would) and the pause row's three PURE pieces
+ * A FEW OTHER THINGS CROSS THE FILES, all on the namespace for the same
+ * reason: `ns.panelFillFinished` and `ns.panelLeftSentence` (published by
+ * `actions/fill.js`, read by `actions/pause.js`, because the last pause row
+ * closing must mark the page done, and say what is left, exactly as a clean
+ * run would), `ns.panelKeyProblem` and `ns.panelKeySteps` (published by
+ * `actions/during.js` beside `failureNote`, read by `actions/fill.js` to say
+ * why the AI pass answered nothing) and the pause row's three PURE pieces
  * (`ns.saveTargetFor`, `ns.withCustomAnswer`, `ns.withProfileAnswer`, published
  * by `actions/pause.js` because none of them needs a store handle to be
  * driven). Nothing else does, which is what "self-contained but for

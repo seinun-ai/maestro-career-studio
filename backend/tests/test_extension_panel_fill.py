@@ -641,7 +641,7 @@ def test_the_progress_rows_are_the_runs_own_report(tmp_path):
             _by_class(settled["rail"], "resid")[0]["children"]] == [
         "how did you hear about us?", "why do you want this role? · written answer"]
     [note] = _by_class(settled["foot"], "note")
-    assert note["text"] == "2 fields still need you."
+    assert note["text"] == "2 fields need your answer."
 
 
 def test_the_progress_rows_move_with_what_the_writer_actually_did(tmp_path):
@@ -770,7 +770,7 @@ def test_a_fill_that_lands_after_you_switch_tabs_paints_nothing(tmp_path):
     settled = out["settled"]
     assert _by_class(settled["rail"], "prog") == []
     assert _by_class(settled["rail"], "resid") == []
-    assert "still need you" not in _text(settled["foot"])
+    assert "need your answer" not in _text(settled["foot"])
     assert "preferred shift" not in json.dumps(settled)
     # Nothing still spinning, either: `busy` belongs to the tab that asked.
     assert [n for n in _walk(settled["foot"]) if "spin" in str(n.get("class"))] == []
@@ -959,7 +959,7 @@ def test_a_finished_fill_is_reopened_for_the_wizards_next_page(tmp_path):
     # that follows the stage.
     [body] = _by_class(settled["rail"], "stg-body")
     assert body["id"] == "stg-body-fill"
-    assert _by_class(settled["foot"], "note")[0]["text"] == "2 fields still need you."
+    assert _by_class(settled["foot"], "note")[0]["text"] == "2 fields need your answer."
     # WHILE THE RE-RUN IS OPEN the door is shut, `statusSegment`'s rule and its
     # reason: every control on this surface reads `busy`, and a reopen that
     # stayed live would swap the body out from under a fill the user is
@@ -989,7 +989,7 @@ def test_a_fill_with_no_saved_answers_says_where_to_add_them(tmp_path):
     [note] = _by_class(out["settled"]["foot"], "note")
     assert note["text"] == (
         "No saved answers yet. Add them in Maestro CS under Profile › Autofill. "
-        "2 fields still need you.")
+        "2 fields need your answer.")
     # Nothing was filled from a profile that has nothing in it.
     assert "profile_fill" not in _broadcast_types(out)
 
@@ -1378,7 +1378,7 @@ def test_a_typed_answer_is_written_to_the_one_field_it_names(tmp_path):
     # sentence names which of the two things happened.
     assert note["text"] == (
         "Filled “how did you hear about us?”. Saved to Profile › Autofill. "
-        "1 field still needs you.")
+        "1 field needs your answer.")
 
 
 def test_the_answer_is_remembered_in_the_profile_the_rules_actually_read(tmp_path):
@@ -1686,7 +1686,7 @@ def test_a_learn_that_fails_leaves_the_field_filled_and_says_both(tmp_path):
     # BOTH facts in one sentence, in the order they happened.
     assert note["text"] == (
         "Filled “how did you hear about us?”. Couldn't save the answer, so it "
-        "will ask again. 1 field still needs you.")
+        "will ask again. 1 field needs your answer.")
 
 
 def test_the_last_open_field_finishes_the_fill_exactly_as_a_clean_run_would(tmp_path):
@@ -3047,3 +3047,175 @@ def test_an_attach_that_lands_on_a_tab_the_user_left_changes_nothing(tmp_path):
     # action writes, and a sentence naming tab A's filename over tab B's form is
     # the same lie in the other slot.
     assert _by_class(settled["foot"], "note")[0]["text"] == ""
+
+
+# ---------- the run's report in plain words (Task 25) ----------
+
+NO_KEY_502 = {"ok": False, "status": 502, "error":
+              "No API key is set. Add one in Settings › AI & models › API keys."}
+
+
+def _ai_line(region):
+    return [line["text"] for line in _by_class(region, "sub")
+            if line["text"].startswith("AI help")]
+
+
+def test_an_ai_fill_with_no_api_key_says_ai_help_is_off(tmp_path):
+    """Task 25's first read: "Saved answers + AI" with no key ran, the model
+    was never asked, and nothing said so. The `/choose` failure still degrades
+    to the open list (the runner's rule 3); now the Fill step also says why."""
+    out = _fill(tmp_path, start=True, api={"/api/autofill/choose": NO_KEY_502})
+    assert _ai_line(out["settled"]["rail"]) == [
+        "AI help is off until you add an API key in Maestro CS under "
+        "Settings › AI & models."]
+    # The fields the AI would have answered are open, and listed.
+    assert dict(_rows_of(out["settled"]["rail"]))["Application questions"] == (
+        "1 filled · 3 need you")
+
+
+def test_a_refused_key_and_a_model_that_did_not_answer_say_different_things(tmp_path):
+    refused = _fill(tmp_path, start=True, api={"/api/autofill/choose": {
+        "ok": False, "status": 502, "error":
+        "The AI model didn't answer (your key was refused). Try again, or check "
+        "your key in Settings › AI & models."}})
+    assert _ai_line(refused["settled"]["rail"]) == [
+        "AI help didn't answer. Check your API key in Maestro CS under "
+        "Settings › AI & models."]
+    down = _fill(tmp_path, start=True, api={"/api/autofill/choose": {
+        "ok": False, "status": 500, "error": "boom"}})
+    assert _ai_line(down["settled"]["rail"]) == [
+        "AI help didn't answer this time. The fields it would have filled are "
+        "listed below."]
+
+
+def test_saved_answers_only_never_talks_about_ai_help(tmp_path):
+    """Rules only asks the model nothing, so there is nothing to report about
+    it, key or no key."""
+    out = _fill(tmp_path, start=True, replies={"read_settings": {"ok": True, "data": {
+        **SETTINGS_REPLY["data"], "fillMode": "rules"}}},
+                api={"/api/autofill/choose": NO_KEY_502})
+    assert _choose_calls(out) == []
+    assert _ai_line(out["settled"]["rail"]) == []
+
+
+def test_the_note_counts_the_blank_fields_as_well_as_the_open_ones(tmp_path):
+    """"1 field still needs you." over a form with nine empty boxes (Task 25).
+    The collector counts every blank field it did not collect, and the note
+    says both numbers."""
+    frames = [{"frameId": 0, "result": {**COLLECT_FRAMES[0]["result"], "blank": 9}}]
+    out = _fill(tmp_path, start=True, frames={"collect_open_questions": frames},
+                api={"/api/autofill/context": _reply({**FILL_CONTEXT, "profile": {}})})
+    [note] = _by_class(out["settled"]["foot"], "note")
+    assert note["text"] == (
+        "No saved answers yet. Add them in Maestro CS under Profile › Autofill. "
+        "9 fields are blank and 2 need your answer.")
+
+
+@pytest.mark.parametrize("blank, open_frames, text", [
+    # q1 and q2 answered, the essay open.
+    (1, COLLECT_FRAMES, "1 field is blank and 1 needs your answer."),
+    # Nothing open, some blank: never "Fill finished" over empty boxes.
+    (3, CLEAN_COLLECT_FRAMES, "3 fields are still blank. Review before you submit."),
+    (0, CLEAN_COLLECT_FRAMES, "Fill finished. Review before you submit."),
+])
+def test_the_note_agrees_with_its_numbers(tmp_path, blank, open_frames, text):
+    frames = [{"frameId": 0, "result": {**open_frames[0]["result"], "blank": blank}}]
+    out = _fill(tmp_path, start=True, frames={"collect_open_questions": frames},
+                api={"/api/autofill/choose": CLEAN_CHOOSE_REPLY})
+    [note] = _by_class(out["settled"]["foot"], "note")
+    assert note["text"] == text
+
+
+def test_the_open_list_shows_each_question_as_the_page_wrote_it(tmp_path):
+    """`label` is lowercased for matching; the list is read by a person, so it
+    shows `text`, the page's own words. The kind mark and the Ask handoff are
+    separate words, not "written answerAsk below"."""
+    frames = [{"frameId": 0, "result": {**COLLECT_FRAMES[0]["result"], "questions": [
+        {**q, "text": q["label"].capitalize().replace("us?", "Us?")}
+        for q in COLLECT_FRAMES[0]["result"]["questions"]]}}]
+    out = _fill(tmp_path, start=True, frames={"collect_open_questions": frames})
+    items = _by_class(out["settled"]["rail"], "resid")[0]["children"]
+    assert [_jump_label(item) for item in items] == [
+        "How did you hear about Us?", "Why do you want this role? · written answer"]
+    essay = items[-1]
+    assert _text(essay).endswith("written answer · Ask below")
+    # The screen reader still hears which question the Ask is about, in the
+    # page's words.
+    [ask] = _by_class(essay, "ask")
+    assert ask["attrs"]["aria-label"] == "Ask about Why do you want this role?"
+
+
+def test_the_question_box_has_a_label_you_can_see(tmp_path):
+    """A placeholder is an instruction that disappears as soon as you type,
+    in a colour too faint to read (Task 25). The box's name is a visible
+    label wired to it, and there is no placeholder left to disagree with it."""
+    out = _qna(tmp_path, open=True, question="", **_with_application())
+    drawer = _drawer(out["opened"]["rail"])
+    [box] = [one for one in _walk(drawer) if one["tag"] == "TEXTAREA"]
+    assert "placeholder" not in box["attrs"]
+    assert "aria-label" not in box["attrs"]
+    [label] = [one for one in _walk(drawer) if one["tag"] == "LABEL"]
+    assert label["attrs"].get("for") == box["id"]
+    assert label["text"] == "Your question"
+
+
+ESSAY_ONLY_FRAMES = [{"frameId": 0, "result": {
+    "host": "job-boards.greenhouse.io", "retryables": [], "blank": 0,
+    "questions": [{"qid": "q3", "label": "why do you want this role?",
+                   "text": "Why do you want this role?", "kind": "textarea",
+                   "options": []}]}}]
+NO_KEYS = _reply({"api_key_configured": False, "gemini_api_key_configured": False,
+                  "custom_endpoint": False, "fast_model": "gpt-5.4-mini"})
+
+
+def test_an_ai_fill_that_never_needed_choose_still_says_ai_help_is_off(tmp_path):
+    """Task 25's page: the only open field is an essay, so `/choose` is never
+    called and cannot fail, and "Saved answers + AI" said nothing about a
+    missing key. The panel reads the key booleans after the run (never the
+    key itself) and says AI help is off when there is none at all."""
+    out = _fill(tmp_path, start=True, frames={"collect_open_questions": ESSAY_ONLY_FRAMES},
+                api={"/api/settings/openai": NO_KEYS})
+    assert _choose_calls(out) == []
+    assert _ai_line(out["settled"]["rail"]) == [
+        "AI help is off until you add an API key in Maestro CS under "
+        "Settings › AI & models."]
+
+
+@pytest.mark.parametrize("info", [
+    {"api_key_configured": True, "gemini_api_key_configured": False,
+     "custom_endpoint": False},
+    {"api_key_configured": False, "gemini_api_key_configured": True,
+     "custom_endpoint": False},
+    # A model on your computer needs no key at all.
+    {"api_key_configured": False, "gemini_api_key_configured": False,
+     "custom_endpoint": True},
+])
+def test_any_key_or_a_custom_ai_server_is_not_called_off(tmp_path, info):
+    out = _fill(tmp_path, start=True, frames={"collect_open_questions": ESSAY_ONLY_FRAMES},
+                api={"/api/settings/openai": _reply(info)})
+    assert _ai_line(out["settled"]["rail"]) == []
+
+
+def test_the_key_read_is_skipped_in_saved_answers_only(tmp_path):
+    out = _fill(tmp_path, start=True, replies={"read_settings": {"ok": True, "data": {
+        **SETTINGS_REPLY["data"], "fillMode": "rules"}}},
+                frames={"collect_open_questions": ESSAY_ONLY_FRAMES},
+                api={"/api/settings/openai": NO_KEYS})
+    assert [msg for msg in out["sent"] if msg["type"] == "api"
+            and "/api/settings/openai" in msg["path"]] == []
+    assert _ai_line(out["settled"]["rail"]) == []
+
+
+def test_a_typed_answer_names_the_field_as_the_page_wrote_it_and_counts_the_blanks(tmp_path):
+    """The pause row's note is the run's own sentence one open field down: the
+    field in the page's words, and the blank count the run reported (Task 25)."""
+    frames = [{"frameId": 0, "result": {
+        **COLLECT_FRAMES[0]["result"], "blank": 9,
+        "questions": [{**q, "text": "How did you hear about us?"} if q["qid"] == "q2" else q
+                      for q in COLLECT_FRAMES[0]["result"]["questions"]]}}]
+    out = _answer(tmp_path, answer={"qid": "q2", "text": "LinkedIn"},
+                  frames={"collect_open_questions": frames})
+    [note] = _by_class(out["answered"]["foot"], "note")
+    assert note["text"] == (
+        "Filled “How did you hear about us?”. Saved to Profile › Autofill. "
+        "9 fields are blank and 1 needs your answer.")

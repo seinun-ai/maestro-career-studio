@@ -57,25 +57,33 @@
       };
     }
 
+    const described = [...document.querySelectorAll(
+      '[class*="job-description" i], [class*="jobDescription" i], [id*="job-description" i], '
+      + '[class*="description" i][class*="job" i], [data-testid*="description" i]'
+    )];
     const candidates = [
-      ...document.querySelectorAll(
-        '[class*="job-description" i], [class*="jobDescription" i], [id*="job-description" i], '
-        + '[class*="description" i][class*="job" i], [data-testid*="description" i]'
-      ),
+      ...described,
       document.querySelector("main"),
       document.querySelector("article"),
     ].filter(Boolean);
+    const usable = (node) => (node.innerText?.trim() ?? "").length > 300;
     let best = null;
     for (const node of candidates) {
       const text = node.innerText?.trim() ?? "";
-      if (text.length > 300 && (!best || text.length > best.length)) best = text;
+      if (usable(node) && (!best || text.length > best.length)) best = text;
     }
     const text = (best ?? document.body.innerText ?? "").trim().slice(0, 60000);
+    // WHERE the text came from, which is what the panel may claim about it:
+    // `content` only when a job-description container on this page held a
+    // usable description, `page` for a long <main>/<article> with none (a
+    // blog, a recipe), `body` for the whole page. The TEXT is chosen exactly
+    // as before (the longest usable candidate), so what a save sends has not
+    // changed; only "Job description found" is now said about a job signal.
     return {
       url: location.href,
       title: document.title,
       text,
-      source: best ? "content" : "body",
+      source: !best ? "body" : described.some(usable) ? "content" : "page",
     };
   }
 

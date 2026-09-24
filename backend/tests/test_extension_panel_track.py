@@ -25,6 +25,7 @@ the next author will not find.
 """
 import json
 import time
+from datetime import date
 
 import pytest
 
@@ -222,14 +223,16 @@ def test_the_evidence_line_is_what_the_application_has_to_show_for_itself(drafte
 def test_an_applied_application_carries_the_day_it_went_out(tmp_path):
     """The second fact, and the one the whole stage is about.
 
-    Sliced from the ISO timestamp rather than formatted: `toLocaleDateString`
+    Sliced from the ISO timestamp rather than parsed: `toLocaleDateString`
     would read the user's locale into one date inside an English sentence, and
     parsing it into a `Date` would be this panel taking a position on a
-    timezone the backend already resolved.
+    timezone the backend already resolved. The DAY is then said the way a
+    person says it (Task 25: "applied 2026-09-24" → "applied Sep 24"), with
+    the year only when it is not this one.
     """
     out = _track(tmp_path, detail=APPLIED_DETAIL)
     [line] = _by_class(out["loaded"]["rail"], "evi")
-    assert _text(line) == "📎 tailored-resume.pdf ready · applied 2026-08-18"
+    assert _text(line) == f"📎 tailored-resume.pdf ready · applied {AUG_18}"
     assert "Marked applied" in _text(_track_body(out["loaded"]))
 
 
@@ -244,7 +247,7 @@ def test_an_application_that_was_never_tailored_shows_only_the_day_it_went_out(
     """
     out = _track(tmp_path, detail={**APPLIED_DETAIL, "pdf_path": None})
     [line] = _by_class(out["loaded"]["rail"], "evi")
-    assert _text(line) == "applied 2026-08-18"
+    assert _text(line) == f"applied {AUG_18}"
     assert len(line["children"]) == 1
 
 
@@ -463,7 +466,7 @@ def test_marking_it_applied_is_one_patch_and_the_whole_surface_moves(tmp_path):
     # answers with the whole record, `applied_at` included, and it is folded
     # through the same `evidenceFrom` the GET is.
     assert _text(_by_class(settled["rail"], "evi")[0]) == (
-        "📎 tailored-resume.pdf ready · applied 2026-08-18")
+        f"📎 tailored-resume.pdf ready · applied {AUG_18}")
 
 
 def test_the_store_carries_the_servers_word_and_never_the_one_we_sent(tmp_path):
@@ -571,6 +574,18 @@ def test_a_status_change_that_lands_after_you_switch_tabs_paints_nothing(tmp_pat
 
 
 # ---------- what an application has to show for itself, as a table ----------
+
+
+# The day `APPLIED_DETAIL` went out, as the Track line says it: no year when it
+# is this year's, which it is while the fixture's year is the clock's.
+AUG_18 = "Aug 18" if date.today().year == 2026 else "Aug 18, 2026"
+
+
+def test_an_application_from_another_year_names_the_year(tmp_path):
+    out = _track(tmp_path, detail={**APPLIED_DETAIL, "pdf_path": None,
+                                   "applied_at": "2019-03-05T09:00:00+00:00"})
+    [line] = _by_class(out["loaded"]["rail"], "evi")
+    assert _text(line) == "applied Mar 5, 2019"
 
 _EVIDENCE_DRIVER_JS = _PANEL_FAKES_JS + r"""
 const ns = loadModules();

@@ -645,20 +645,56 @@ def test_a_score_that_fails_hands_the_button_back_and_says_why(tmp_path):
     assert cta["class"] == "cta"
 
 
-@pytest.mark.parametrize("status, step", [
+ADD_KEY = "Add an API key in Maestro CS under Settings › AI & models."
+CHECK_KEY = "Check your API key in Maestro CS under Settings › AI & models."
+
+
+@pytest.mark.parametrize("status, error, step", [
     # The backend answered and refused: another try is the step.
-    (500, "Try again."),
-    (409, "Try again."),
+    (500, "boom", "Try again."),
+    (409, "boom", "Try again."),
     # The model provider failed (LLMProviderError → 502): the key is the step.
-    (502, "Check your AI key in Maestro CS under Settings › AI & models."),
+    (502, "boom", CHECK_KEY),
+    # The server's own words for a refused key (`_CODE_WORDS`): the same step.
+    (502, "The AI model didn't answer (your key was refused). Try again, or "
+          "check your key in Settings › AI & models.", CHECK_KEY),
+    # NO key at all is a different fix, whatever the status: add one. The
+    # server's current sentence (`NO_KEY_MESSAGE`) and an older one.
+    (502, "No API key is set. Add one in Settings › AI & models › API keys. To "
+          "use a model on your computer instead, add its address in Settings › "
+          "AI & models › Custom AI server.", ADD_KEY),
+    (500, "GEMINI_API_KEY is required for Gemini models", ADD_KEY),
+    # A provider's raw 401, if one ever reaches the panel, is a refused key.
+    (500, "OpenAI API request failed: Error code: 401 - {'error': {'code': "
+          "'invalid_api_key'}}", CHECK_KEY),
 ])
-def test_a_refused_score_says_the_next_step_by_status(tmp_path, status, step):
+def test_a_refused_score_says_the_next_step_by_status(tmp_path, status, error, step):
     out = _score(tmp_path, click=True, api={
         "GET /api/ats-scores": _reply([]),
-        "POST /api/ats-scores": {"ok": False, "error": "boom", "status": status}})
+        "POST /api/ats-scores": {"ok": False, "error": error, "status": status}})
     [note] = _by_class(out["settled"]["foot"], "note")
     assert note["text"] == f"Couldn't score your base resumes. {step}"
     assert note["class"] == "note error"
+
+
+def _regex_literal(source, name):
+    found = re.search(rf"const {name} =\s*(/.+?/[a-z]*);", source)
+    assert found, f"no {name} in the source"
+    return found.group(1)
+
+
+def test_the_panel_recognises_a_key_failure_by_the_web_apps_own_patterns():
+    """ONE MATCHING, in two languages. The web app's `errorDetail`
+    (frontend/lib/error-text.ts) decides which server sentences mean "no API
+    key" and which mean "the key was refused"; the panel's `failureNote` reads
+    the same server, so it has to decide the same way. A pattern widened on
+    one side only would have one surface telling a user to add a key the other
+    says is refused."""
+    web = (EXTENSION.parent / "frontend" / "lib" / "error-text.ts").read_text(
+        encoding="utf-8")
+    panel = (EXTENSION / "panel" / "actions" / "during.js").read_text(encoding="utf-8")
+    for name in ("MISSING_KEY", "REFUSED_KEY"):
+        assert _regex_literal(panel, name) == _regex_literal(web, name), name
 
 
 def test_a_score_that_lands_after_you_switch_tabs_paints_nothing(tmp_path):
@@ -772,3 +808,42 @@ def test_the_count_is_of_the_rows_the_ranking_shows(tmp_path):
         "AI/ML Engineer 72", "Data Scientist 64", "Backend Engineer not scored"]
 
 
+
+
+# ---------- the header's numbers, in words (Task 25) ----------
+
+ATS_LEAD = ("An ATS score (0 to 100) is our estimate of how an applicant "
+            "tracking system would rate each resume for this job.")
+
+
+def test_the_header_names_the_base_resume_score_in_plain_words(tmp_path):
+    """"60 Base — tailor to raise it" joined two clauses with a dash and left
+    "Base" to be decoded. The ring now says whose score it is, and the hint is
+    a sentence."""
+    out = _score(tmp_path)
+    [ats] = _by_class(out["loaded"]["identity"], "ats")
+    assert [ring["text"] for ring in _by_class(ats, "ring")] == ["72"]
+    assert [label["text"] for label in _by_class(ats, "lbl")] == ["Base resume score"]
+    assert [hint["text"] for hint in _by_class(ats, "hint")] == ["Tailoring can raise it."]
+    assert "—" not in _text(ats)
+
+
+def test_an_unscored_header_says_so_as_a_sentence(tmp_path):
+    out = _score(tmp_path, api={"GET /api/ats-scores": _reply([])})
+    [ats] = _by_class(out["loaded"]["identity"], "ats")
+    assert [label["text"] for label in _by_class(ats, "lbl")] == ["ATS score"]
+    assert [hint["text"] for hint in _by_class(ats, "hint")] == ["Not scored yet."]
+
+
+def test_the_score_step_explains_the_ats_score_once(tmp_path):
+    """The glossary's rule: ATS score is spelled out once per surface, as the
+    app's own estimate, where the numbers first appear. In the Companion that
+    is the Score step, which lists one number per base resume; the web app's
+    Score and tailor tab says the same sentence (`ATS_SCORE_LEAD`)."""
+    out = _score(tmp_path)
+    lines = [line["text"] for line in _by_class(out["loaded"]["rail"], "sub")]
+    assert lines.count(ATS_LEAD) == 1
+    assert _text(out["loaded"]["rail"]).count("our estimate") == 1
+    web = (EXTENSION.parent / "frontend" / "lib" / "ats-words.ts").read_text(
+        encoding="utf-8")
+    assert ATS_LEAD in web.replace('"\n  + "', "").replace("\n", " ")

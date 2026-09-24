@@ -18,6 +18,13 @@
   const ns = (window.careerStudioCompanion ??= {});
   const { rankBaseResumes } = ns.decisions;
 
+  /** What an ATS score IS, said once in the panel where the numbers first
+   * appear, as the app's own estimate (docs/frontend-conventions.md, the
+   * glossary's ATS score). The web app's Score and tailor tab says the same
+   * sentence (`ATS_SCORE_LEAD`, frontend/lib/ats-words.ts). */
+  const ATS_SCORE_LEAD = "An ATS score (0 to 100) is our estimate of how an "
+    + "applicant tracking system would rate each resume for this job.";
+
   /** The one line under the ranked list: how much of it is real. */
   function rankingNote({ build }, ranked) {
     if (!ranked.length) return "No base resumes yet. Add one in Maestro CS.";
@@ -87,7 +94,8 @@
     list.setAttribute("aria-label", "Base resume, best match first");
     ranked.forEach((entry, index) => attach(list, baseRow(ctx, entry, index === best)));
     return attach(node("div", "stg-body"), list,
-                  node("div", "sub", rankingNote(ctx, ranked)));
+                  node("div", "sub", rankingNote(ctx, ranked)),
+                  node("div", "sub", ATS_SCORE_LEAD));
   }
 
   ns.panelStageScore = scoreBody;

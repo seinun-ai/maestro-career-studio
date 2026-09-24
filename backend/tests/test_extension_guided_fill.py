@@ -237,6 +237,7 @@ const collectFrames = [{
     host: spec.host ?? "acme.wd5.myworkdayjobs.com",
     questions: spec.questions ?? [],
     retryables: spec.retryables ?? [],
+    ...(spec.blank === undefined ? {} : { blank: spec.blank }),
   },
 }];
 
@@ -265,7 +266,11 @@ const deps = {
   },
   api: async (path, init) => {
     apiCalls.push({ path, body: JSON.parse(init.body) });
-    if (spec.chooseFails) throw new Error("500");
+    if (spec.chooseFails) {
+      const err = new Error(spec.chooseFails === true ? "500" : spec.chooseFails);
+      err.status = spec.chooseStatus ?? 500;
+      throw err;
+    }
     const choices = {};
     for (const field of JSON.parse(init.body).fields) {
       choices[field.qid] = spec.abstainAll
@@ -512,3 +517,29 @@ def test_a_rule_pass_that_throws_does_not_stop_the_guided_pass(tmp_path):
     assert out["threw"] is None
     assert out["rulePassRuns"] == 1
     assert len(out["apiCalls"]) == 1
+
+
+def test_the_run_reports_the_blank_fields_the_collector_counted(tmp_path):
+    """The collector's `blank` (every empty field it did not collect) rides
+    the run's return, so the panel can say "9 fields are blank" beside the
+    open list. A frame that reports none contributes nothing."""
+    out = _run_guided(tmp_path, questions=_open_questions(1), blank=9)
+    assert out["result"]["blank"] == 9
+    out = _run_guided(tmp_path, questions=_open_questions(1))
+    assert out["result"]["blank"] == 0
+
+
+def test_a_choose_failure_is_reported_as_well_as_residued(tmp_path):
+    """A `/choose` failure still degrades to the residue list (rule 3), and it
+    is no longer SILENT: the error rides the return as `aiFailure`, so the
+    panel can say "AI help is off until you add an API key" instead of
+    leaving the user to wonder why nothing was answered."""
+    failed = _run_guided(tmp_path, questions=_open_questions(2),
+                         chooseFails="No API key is set.", chooseStatus=502)
+    assert {row["qid"] for row in failed["result"]["residue"]} == {"q0", "q1"}
+    assert failed["result"]["aiFailure"] == {"status": 502}
+    fine = _run_guided(tmp_path, questions=_open_questions(2))
+    assert fine["result"]["aiFailure"] is None
+    rules = _run_guided(tmp_path, questions=_open_questions(2),
+                        chooseFails=True, options={"aiAssist": False})
+    assert rules["result"]["aiFailure"] is None

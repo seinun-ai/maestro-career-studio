@@ -74,14 +74,18 @@ not a sentence any of them can say. Three rules hold the shape up:
 - **Nothing is claimed that is not known.** `match !== "exact"` means "we do not
   know", not "none", so an unreachable backend opens the journey at Job rather
   than claiming the job exists. Skipping is not doing: arming a base resume skips
-  Score and Resume *visibly* — dashed, "Skipped. Using your base resume as is.",
-  never a tick. And `done.fill` is this extension's own claim that it filled or
+  Score and Resume *visibly* — dashed, "Using your base resume as is.", never a
+  tick, and never the word "Skipped" (it reads as declined, and it is the Agent
+  inbox's word for a rejected job; a screen reader hears "not needed"). And `done.fill` is this extension's own claim that it filled or
   attached HERE, so an application marked applied inside the web app does not
   put a checkmark on a page the extension never wrote to.
 
 Above the rail sits the panel's whole header, and it is one block: the job's
-identity and the match chip, the Base → Tailored ATS rings under them (read from
-stored scores, never computed here), and one deep link on the last line,
+identity and the match chip ("Not saved yet" for a job Maestro CS does not
+have, "Saved", or the application's status), the Base → Tailored ATS rings
+under them (read from stored scores, never computed here; with one ring, "Base
+resume score" and "Tailoring can raise it."; with none, "Not scored yet."), and
+one deep link on the last line,
 right-aligned. The link is labelled by the most specific thing we know — "Open
 application ↗", else "Open in Maestro CS ↗", and nothing at all until the
 service worker has said where the web app is; its `aria-label` spells the
@@ -108,15 +112,19 @@ asking permission of itself.
 - **Save job** — the Job stage shows title, company and the grabbed job
   description in three fields you can correct before anything is saved (schema.org
   `JobPosting` JSON-LD when the site provides it, visible text otherwise). The
-  line under them says where the JD came from and how many words it has, because
+  line under them says "Job description found (N words)" only for a job signal
+  (`source` `json-ld`, or `content`: a job-description container), because
   three filled boxes over an empty description otherwise looks exactly like a
-  successful read; when the page answers nothing at all it says the Companion
+  successful read; a long `<main>` (`page`) or the whole page (`body`) is only
+  the page's text, still editable and saved as it is, and the line says "No job
+  description found on this page"; when the page answers nothing at all it says the Companion
   can't read this page and to reload the tab, which is a claim about our reach
   rather than about the page. The backend extracts the JD immediately, so the job
   lands parsed and ready for ATS scoring, and a duplicate save says "Already
   saved in Maestro CS" rather than pretending it saved something new.
-- **Pick a draft** — on a page nothing has matched, the Job stage offers your
-  recent draft applications and you name the one you are here about. It is an
+- **Pick a draft** — on a page nothing has matched, the Job stage asks
+  "Applying for one of these?" over your recent draft applications and you name
+  the one you are here about. It is an
   OFFER, never a guess — the pick is your claim about the page — so it does not
   require a form to be visible: Workday's wizard urls match no job, its JD is in
   the DOM of pages that carry no form yet, and the form verdict at bind time is
@@ -128,7 +136,9 @@ asking permission of itself.
   blind. Scores are READ on open (cheap, computes nothing); **Score base
   resumes** is a button rather than something that happens on open, because
   scoring every base silently on every panel open is answering a question nobody
-  asked. A resume
+  asked. The Score step is also where the panel says, once, what an ATS score
+  is: the web app's `ATS_SCORE_LEAD` sentence, our estimate and not an
+  employer's reading. A resume
   with no score says "not scored" rather than zero and sorts last, a pick made by
   hand wins over the ranking permanently, and the line underneath names the
   engine version behind the numbers, or says nothing when the rows disagree about
@@ -141,6 +151,15 @@ asking permission of itself.
   behaviour and one label — and **Tailor in Maestro CS ↗**, a real link to
   `/jobs/{id}?tab=fit` and never an API call, because the panel has no business creating a tailoring
   session behind your back; it picks the result up on the next load instead.
+  Each choice carries one short line saying what it does, the first level's
+  two before anything is pressed and the second level's two with their limbs.
+- ***Use base resume as is* is off beside an application.** `stageFor`'s
+  shortcut needs no application, so armed beside one the claim changed nothing
+  on screen (a dead button, found on a picked draft whose resume had no PDF).
+  The limb is disabled and `aria-describedby` a sentence saying why: the
+  application already has its tailored resume (the one the Companion uses), or
+  it has no PDF yet (Create PDF in Maestro CS, and, for a picked draft, Stop
+  using this draft under Job to use the base).
 - ***Use base resume as is* asks the backend for nothing and arms a fill from
   your base resume, with no application at all.** It is the FIRST rung of `stageFor`, above
   the library ladder, because **filling a form is a question about the PAGE**
@@ -183,7 +202,15 @@ asking permission of itself.
   whole report on the residue erases filled fields and prints "Couldn't reach
   this page" about a page the panel just wrote into.
 - **"Fields that still need you"** — whatever the chooser abstained on, what
-  did not stick, and the essays. Click a row to scroll that control into view (the message
+  did not stick, and the essays, each named as the page wrote it (the
+  collector's `text`; its `label` is lowercased for matching). The note counts
+  them beside every BLANK field the collect did not take (the collector's
+  `blank`: rule territory left empty, a consent box, a text box with no
+  question in its label), so it reads "9 fields are blank and 1 needs your
+  answer" rather than one number over nine empty boxes. A `/choose` failure
+  still degrades to this list, and the Fill body now says why under the
+  questions row: "AI help is off until you add an API key …" for a missing
+  key (the runner's `aiFailure`, read with `failureNote`'s key matching). Click a row to scroll that control into view (the message
   carries a qid and nothing else, which is what makes it safe to broadcast to
   every frame). Where the panel can actually write the answer — text, textarea,
   `select`, `radio`, and never a policy-blocked label — the row carries an inline
@@ -266,9 +293,12 @@ know, and each one was learned from a live failure.
   it; `backend/tests/test_extension_posting_identity.py` pins the two copies.
 - **A failed round trip never prints the server's own text.**
   `actions/during.js`' `failureNote` writes the call site's "Couldn't <what>." and then a next step
-  chosen by `err.status`: no status means no answer came back, so check that
-  Maestro CS is running; 502 is the model provider failing, so the step is the
-  AI key; any other status gets the call site's own sentence, else "Try again."
+  chosen by `err.status` and the key: no status means no answer came back, so
+  check that Maestro CS is running; a missing key ("Add an API key in Maestro CS
+  under Settings › AI & models.") and a refused one or any 502 ("Check your API
+  key …") are told apart by `MISSING_KEY`/`REFUSED_KEY`, the web app's own
+  patterns (`frontend/lib/error-text.ts`, pinned equal); any other status gets
+  the call site's own sentence, else "Try again."
   The raw message goes to the console. A run with no saved answers leads its
   note with "No saved answers yet …", and `sw.js`' `attach_pdf` puts the status
   on its error the way `api()` does, so a failed PDF fetch reads as the backend
