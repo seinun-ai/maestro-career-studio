@@ -495,12 +495,74 @@
   768` (`hooks/use-mobile.ts`), so the sidebar becomes a sheet only BELOW
   768 — at exactly 768 the 256px rail is still pinned and a `max-w-6xl` page
   has 462px of usable width. Test tables and toolbars at 768, not just 1280
-  and 375. The Applications table carries `min-w-[52rem]` because
+  and 375. The Applications table carries `minWidth="52rem"` because
   `table-fixed` cannot grow a starved column. The base studio's Contact
   block is the worked case: its read grid is `@xs:grid-cols-[8rem_minmax(0,1fr)]`
   with `wrap-anywhere`, and below 20rem each label/value pair stacks, so a
   768px window with the sidebar pinned and the preview open does not grow a
   page scrollbar.
+- **Long lists keep their controls and column names in view**
+  (`components/list-toolbar.tsx`, `<Table minWidth stickyHeader>`). A list
+  page whose list can outgrow the window does two things:
+  - it puts its search, filter and sort row in `ListToolbar` (one per page,
+    a direct child of `PageShell`), with `ListSearch` as its search box
+    (Applications and the Agent inbox share it);
+  - it gives its table a `minWidth` from `MIN_WIDTH` plus `stickyHeader`.
+
+  The toolbar is a `<search>` landmark, not `role="toolbar"` (that role
+  promises arrow-key roving; these are separate Tab stops). It sticks to the
+  window's top on the page colour and publishes its height as
+  `--list-sticky-top` on `<html>`; the header sticks right under it.
+  **The window is the only scroller.** `SidebarInset`, `SidebarGutter`,
+  `PageShell`, and every element between a sticky element and `<html>`, stay
+  `overflow: visible`. A frame that clips rounded corners uses
+  `overflow-clip`, never `overflow-hidden`: `hidden` is a scroll container,
+  so a sticky child sticks to it and never moves. `TableFrame` is `clip`.
+  `Card` is still `hidden`, so a table in a card does not stick.
+  `stickyHeader` also needs a parent that gives the width (inline-size
+  containment).
+  **A header sticks only while its table fits.** Sideways scrolling and
+  window stickiness cannot share a box, so below its `minWidth` (the
+  `@min-[…]/table` container query) the table scrolls sideways and the
+  header scrolls away; the toolbar still sticks. Applications: both stick at
+  1280 with the sidebar pinned and at 1024 with it collapsed; only the
+  toolbar at 1024 pinned, 768 and 375.
+  **Nothing sticks below 40rem of height, or in print.** `tall:` is
+  `screen and (min-height: 40rem)` (landscape phones, 200–400% zoom; WCAG
+  1.4.10). Print is left out of the variant because a `print:static` beside
+  `tall:sticky` loses to it: the custom variant's rule comes later.
+  **Focus is never hidden under it.** `scroll-padding-top` reads the same
+  variables (WCAG 2.4.11, C43), and applies only while focus is in the list:
+  after a `ListToolbar`, or in a sticky table's body. On `<html>` for every
+  focus it counted the toolbar's own height, so focusing a toolbar control
+  or opening its popup scrolled the page to "clear" it. A new sticky element
+  adds its height to those variables.
+  **Stacking and offsets:**
+  - the toolbar is z-30, over a gallery card's z-20 actions;
+  - the header is z-10 inside its table;
+  - menus and popovers portal at z-50;
+  - the reveal pill is z-50 but sits in the gutter.
+
+  The offsets start at `top: 0` because nothing above a page sticks
+  (`VersionBanner` scrolls away, and there is no mobile header). A sticky
+  banner added later must add its height to `--list-sticky-top`.
+  Pinned by `test_frontend_sticky_lists.py`.
+- **A capped list says so at its end** (`components/list-cap-notice.tsx`;
+  the rule and the words are in `lib/list-cap.ts`). A list fetched with a
+  row limit ends with `ListCapNotice` when the fetch came back full, and
+  passes the server's `total` when the endpoint reports one (proposals does;
+  applications and jobs do not, so those never print an invented count).
+  - The sentence speaks of what is LOADED, so it stays true under any filter
+    or search, and it still shows under a filtered empty state.
+  - It names the rows left out: `order: "oldest"` for an endpoint that
+    returns oldest first (the Career history draft inbox, which sends no
+    limit, so the API's default page of 500 is its cap).
+  - It is plain text, not a live region.
+  - The limit is one named constant per page, at most the API's `le=`
+    (pinned).
+  - One kind of row must not crowd out another inside the cap: the tracker
+    fetches the user's saved jobs and agent captures apart (`source=`), since
+    one mixed page of 500 let a busy hunt push the user's own saved jobs out.
 - **`truncate` on a flex child that can reach `width: 0` hides the whole
   string** — `overflow: hidden` on a zero-width box shows nothing (`flex-1` is
   basis 0, so it never triggers a wrap next to a `shrink-0` cluster). A title
@@ -718,7 +780,7 @@
   Permissions-Policy on every route; a CSP is deferred (App Router inline
   bootstrap scripts need per-request nonces via middleware).
 - react-query keys: `["applications"]`, `["jobs"]`,
-  `["jobs","without-application"]`, `["job-detail", jobId]`,
+  `["jobs","without-application", source]`, `["job-detail", jobId]`,
   `["ats-scores", jobId]`, `["ats-compare", appId]`,
   `["tailoring-session", id]`, `["referrals"]`, `["qa", appId]`, … —
   invalidate job-detail alongside applications when status changes.
