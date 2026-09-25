@@ -39,12 +39,8 @@
     live.add(t);
     let timer;
     try {
-      const work = Promise.resolve(fn(t));
-      // After a timeout nobody awaits `work`; its late Cancelled is expected,
-      // not an uncaught rejection in the extension's error log.
-      work.catch(() => {});
       return await Promise.race([
-        work,
+        fn(t),
         new Promise((_, reject) => {
           timer = setTimeout(() => {
             t.cancelled = true;
@@ -81,17 +77,30 @@
   const ERROR_NODE = '[data-automation-id="errorMessage"], [role="alert"], [class*="error" i]';
   const ERROR_WORDS = /error|required|must|invalid|enter a/i;
   const byId = (el, id) => el.getRootNode().getElementById?.(id) ?? document.getElementById(id);
-  // A named field wrapper, else the highest of the nearest two ancestors that
-  // holds no OTHER control — a bare grandparent would be the whole form, and
-  // one field's error would mark every field beside it invalid.
-  const CONTROL = 'input:not([type="hidden"]), select, textarea, button, [role="combobox"], [contenteditable="true"]';
+  // The field's box: walk up while the ancestor holds no OTHER field, stopping
+  // at a named wrapper. A box holding a neighbour would let its error mark this
+  // field invalid ("form-fields" wrappers, a bare form). The field's own group
+  // (radios/checkboxes by group or name, a date's spinbutton sections) and a
+  // plain button (a Clear beside the box) are not "other fields".
+  const CONTROL = 'input:not([type="hidden"]), select, textarea, button[aria-haspopup], [role="combobox"], [contenteditable="true"]';
+  const NAMED = '[data-automation-id^="formField"], .form-group, .field, [class*="field" i]';
+  const GROUP = 'fieldset, [role="radiogroup"], [role="group"]';
+  const ownGroup = (el) => {
+    if (/^(radio|checkbox)$/.test(el.type)) return el.closest(GROUP) ?? el.parentElement;
+    if (el.getAttribute("role") === "spinbutton") {
+      return el.closest(`${GROUP}, [data-automation-id="dateInputWrapper"]`) ?? el.parentElement;
+    }
+    return null;
+  };
   const fieldBox = (el) => {
-    const named = el.closest('[data-automation-id^="formField"], .form-group, .field, [class*="field" i]');
-    if (named) return named;
+    const grp = ownGroup(el);
+    const foreign = (n) => [...n.querySelectorAll(CONTROL)].some((c) => c !== el && !el.contains(c)
+      && !grp?.contains(c) && !(el.name && c.name === el.name));
     let box = null;
-    for (let n = el.parentElement, depth = 0; n && depth < 2; n = n.parentElement, depth += 1) {
-      if ([...n.querySelectorAll(CONTROL)].some((c) => c !== el)) break;
+    for (let n = el.parentElement, d = 0; n && n !== document.body && d < 6; n = n.parentElement, d += 1) {
+      if (foreign(n)) break; // the next level up holds another field: stop below it
       box = n;
+      if (n.matches(NAMED)) break; // a named wrapper holding only this field is the box
     }
     return box;
   };

@@ -19,6 +19,36 @@ def test_an_unwrapped_field_reads_its_own_nearby_error_not_its_neighbours(page, 
     got = page.evaluate(f"() => ['e','f'].map(id => {B}.invalid(document.getElementById(id)))")
     assert got == [True, False]
 
+INVALID = f"ids => ids.map(id => {B}.invalid(document.getElementById(id)))"
+
+
+def test_a_wrapper_named_like_a_field_but_holding_two_fields_is_not_one_box(page, load):
+    load(page, """<div class='form-fields'><div><input id='a' value='x'></div>
+      <div><input id='b' value='x'><span class='error'>Must be a number</span></div></div>""")
+    assert page.evaluate(INVALID, ["a", "b"]) == [False, True]
+
+
+def test_a_plain_button_beside_an_input_does_not_hide_the_error_above(page, load):
+    load(page, """<form><div><div><input id='a' value='x'><button type='button'>Clear</button></div>
+      <span class='error'>Must be a number</span></div><div><input id='z'></div></form>""")
+    assert page.evaluate(INVALID, ["a"]) == [True]
+
+
+def test_an_unwrapped_radio_group_reads_its_group_error(page, load):
+    load(page, """<form><div><input type='radio' id='r1' name='auth' value='y'>
+      <input type='radio' id='r2' name='auth' value='n'><span class='error'>This field is required</span></div>
+      <div><input id='z'></div></form>""")
+    assert page.evaluate(INVALID, ["r1"]) == [True]
+
+
+def test_radios_in_their_own_field_and_workday_date_sections_read_the_field_error(page, load):
+    load(page, """<div class='field'><input type='radio' id='r1' name='auth'><input type='radio' id='r2' name='auth'>
+        <span class='error'>Required</span></div>
+      <div data-automation-id='formField-from'><div data-automation-id='dateInputWrapper'>
+        <input role='spinbutton' id='m' aria-label='Month'><input role='spinbutton' id='y' aria-label='Year'></div>
+        <p data-automation-id='errorMessage'>Error: The field From is required.</p></div>""")
+    assert page.evaluate(INVALID, ["r1", "m"]) == [True, True]
+
 def test_an_unlinked_popup_is_owned_only_when_it_alone_appeared(page, load):
     load(page, "<ul role='listbox' style='display:none'><li role='option'>Canada</li></ul><button id='b'>x</button><div id='p'></div>")
     one = page.evaluate(f"""() => {{ const before = {B}.popups();
