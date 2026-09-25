@@ -195,7 +195,9 @@ asking permission of itself.
   runner WRITES a closest answer like a matched one and hands it back as
   `closest`, and the Fill body lists those under **Closest matches to check**
   (written fields, never open ones; a closest write that did not stick is
-  residue instead). Nothing is submitted and no wizard step is advanced for you.
+  residue instead). A finished fill ticks the step and hides that list, so its
+  note names each pick instead ("Fill finished. Check the closest match before
+  you submit: major (Information Systems)."). Nothing is submitted and no wizard step is advanced for you.
 - **The progress rows are the report, and every number is the fill's own** —
   `14 filled · 2 corrected · 3 already filled · 1 not accepted` for the profile
   pass, written-versus-still-open for the application questions, and one row for

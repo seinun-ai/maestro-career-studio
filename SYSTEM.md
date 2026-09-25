@@ -602,13 +602,15 @@ file to open.
   timer-sampled and never defaults to failure: unconfirmable is
   `filled_unverified`, not `not_stuck`. Navigation and submit stay human.
   **`/choose` has two engines** (`llm.autofill_engine`, Settings › AI & models › **Form filling**,
-  `GET/PUT /api/settings/jev` + `/jev/probe`; `jev` only while a Jev key exists). `fast` is the
-  prompt above. `jev` (`autofill_choose._choose_with_jev`): one Jev call maps each field's LABEL to
-  an `autofill_slots` slot (no values sent), code reads the value, a second call picks the option
-  that states it; the slot's policy (`exact` work_auth/eligibility/eeo, `flag` personal/education,
-  `any` the rest) makes it `matched`, `closest` (flag only: written, listed under **Closest matches
-  to check**) or abstain. Free-text, unmapped, low-confidence and failed-call fields go to the fast
-  prompt unchanged, so a Jev outage never costs a fill.
+  `GET/PUT /api/settings/jev` + `/jev/probe`; `jev` only while a Jev key exists; a new endpoint
+  HOST forgets the key, which is never sent to another company). `fast` is the prompt above. `jev`
+  (`autofill_choose._choose_with_jev`): one Jev call maps each field's LABEL to an `autofill_slots`
+  slot (no values sent), code reads the value, a second call picks the option that states it; the
+  slot's policy (`exact` work_auth/eligibility/eeo, `flag` personal/education, `any` the rest) makes
+  it `matched`, `closest` (flag only, never from a list at the 30-option cap: written, then named in
+  the finished note and listed under **Closest matches to check**) or abstain. Free-text, unmapped,
+  shakily-mapped (an `exact` slot maps only at its write floor), `exact`-slot text boxes (codes) and
+  failed-call fields go to the fast prompt unchanged; if THAT fails, Jev's answers are kept.
 - **Streaming chat** needs the OpenAI streaming tool-call wire shape (OpenAI, or Gemini via the OpenAI-compat
   URL); eligibility is the tools probe.
 
