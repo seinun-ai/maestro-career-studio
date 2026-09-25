@@ -878,9 +878,9 @@ def _is_wording(note: dict) -> bool:
     return str(note.get("rule") or "").startswith("language.")
 
 
-def _guarded(original: str, edited: str) -> str | None:
-    """The code-edited text, only when the rewrite guards accept it."""
-    if not edited.strip() or edited == original:
+def _guarded(original: str, edited: str | None) -> str | None:
+    """The code-edited text, only when the rewrite guards accept it (None in, None out)."""
+    if edited is None or not edited.strip() or edited == original:
         return None
     return edited if not health_guards.guard_violations(original, edited) else None
 
@@ -888,14 +888,15 @@ def _guarded(original: str, edited: str) -> str | None:
 def _wording_notes(resume: dict, bank: health_wording.WordBank) -> list[dict]:
     """`language.cliche` / `language.filler`: one note per (location, bank word)
     over the summary and every scored bullet. `suggestion` is the text with the
-    word removed, when the guards accept it; `subject` is the bank word."""
+    word removed, when it reads cleanly at the cut (`health_wording.removal`) and
+    the guards accept it; `subject` is the bank word."""
     notes: list[dict] = []
     for loc, text in _ladder_items(resume):
         for kind, word in health_wording.matches(text, bank):
             issue, why, how = _WORDING_COPY[kind]
             notes.append(_finding(
                 "note", loc, _label_at(resume, loc), issue.format(w=word), why, how,
-                suggestion=_guarded(text, health_wording.remove(text, word)),
+                suggestion=_guarded(text, health_wording.removal(text, word)),
                 source="rule", rule=f"language.{kind}", subject=word,
                 content_hash=bullet_classify.content_hash(text)))
     return notes
@@ -926,7 +927,7 @@ def _slip_notes(resume: dict, levels_by_loc: dict[Location, dict],
                 f"'{span}' looks like a slip: '{fix}'.",
                 "Recruiters notice spelling and grammar slips, and read them as carelessness.",
                 "Apply the fix, or correct it in your own words.",
-                suggestion=_guarded(text, fixed) if fixed is not None else None,
+                suggestion=_guarded(text, fixed),
                 source="llm", rule="language.slip", subject=span,
                 content_hash=bullet_classify.content_hash(text)))
     return notes

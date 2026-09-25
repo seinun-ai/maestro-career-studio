@@ -132,7 +132,7 @@ def test_every_scored_bullet_is_checked_but_skills_are_not():
     ("successfully led the migration", "successfully", "led the migration"),
     ("Led the migration successfully.", "successfully", "Led the migration."),
     ("Led the migration, successfully, ahead of schedule", "successfully",
-     "Led the migration ahead of schedule"),
+     "Led the migration, ahead of schedule"),
     ("Led the migration , successfully .", "successfully", "Led the migration."),
     ("Built various dashboards", "various", "Built dashboards"),
     ("Engineer. Successfully led the migration", "successfully",
@@ -148,8 +148,22 @@ def test_every_scored_bullet_is_checked_but_skills_are_not():
     # the comma directly after the cut word goes (no determiner needed)
     ("Built dynamic, scalable systems", "dynamic", "Built scalable systems"),
     ("Built various, reusable dashboards", "various", "Built reusable dashboards"),
+    # commas: an -ly word keeps the comma after it; any other word takes it along,
+    # or the comma before it when there is none after; ", word," leaves one comma
     ("Led the migration successfully, then retired the old queue", "successfully",
-     "Led the migration then retired the old queue"),
+     "Led the migration, then retired the old queue"),
+    ("Migrated the service effectively, which cut latency", "effectively",
+     "Migrated the service, which cut latency"),
+    ("Results-driven, detail-oriented engineer", "detail-oriented", "Results-driven engineer"),
+    ("Hard worker, team player, self-starter", "team player", "Hard worker, self-starter"),
+    # a/an: vowel letter is not vowel sound, so u/eu/one/h leave the article alone
+    ("Built a very useful tool", "very", "Built a useful tool"),
+    ("Wrote a very one-off script", "very", "Wrote a one-off script"),
+    ("Joined a very European team", "very", "Joined a European team"),
+    # newlines survive the cut
+    ("Led the migration successfully\nShipped v2", "successfully", "Led the migration\nShipped v2"),
+    ("Led the migration\nSuccessfully shipped v2", "successfully", "Led the migration\nShipped v2"),
+    ("Led it very\nquickly", "very", "Led it\nquickly"),
     # no empty brackets, dangling slash or stray dash
     ("Led the migration (successfully) on time", "successfully", "Led the migration on time"),
     ("Kept it very/really simple", "very", "Kept it really simple"),
@@ -161,6 +175,59 @@ def test_every_scored_bullet_is_checked_but_skills_are_not():
 ])
 def test_remove_produces_clean_text(text, word, expected):
     assert health_wording.remove(text, word) == expected
+
+
+@pytest.mark.parametrize("text, word", [
+    # an article left before a function word or punctuation
+    ("Analyst with a track record of shipping", "track record"),
+    ("Worked as a team player with analysts", "team player"),
+    ("Hired the dynamic.", "dynamic"),
+    ("Joined as a go-getter", "go-getter"),
+    # a dangling conjunction at the cut
+    ("Detail-oriented and self-motivated data scientist", "self-motivated"),
+    ("Proactive and results-driven analyst", "results-driven"),
+    ("Hard worker, team player and self-starter with 5 years", "self-starter"),
+    ("Hard worker, team player and self-starter with 5 years", "team player"),
+    ("Worked on synergy and with partners", "synergy"),
+    # a sentence now opening with And / Or
+    ("Proactive and results-driven analyst", "proactive"),
+    ("Detail-oriented and self-motivated data scientist", "detail-oriented"),
+    ("Shipped it. Proactive or not, it worked", "proactive"),
+    # empty quotes
+    ("Called 'dynamic' by peers", "dynamic"),
+    ('Called "synergy" by peers', "synergy"),
+    ("Called ' synergy ' by peers", "synergy"),
+])
+def test_a_removal_that_breaks_the_sentence_is_copy_only(text, word):
+    assert health_wording.removal(text, word) is None
+
+
+@pytest.mark.parametrize("text, word, expected", [
+    ("Hard worker, team player and self-starter with 5 years", "hard worker",
+     "Team player and self-starter with 5 years"),
+    ("Built a very useful tool", "very", "Built a useful tool"),
+    ("Led the migration successfully, then retired the old queue", "successfully",
+     "Led the migration, then retired the old queue"),
+])
+def test_a_removal_that_reads_cleanly_is_offered(text, word, expected):
+    assert health_wording.removal(text, word) == expected
+
+
+@pytest.mark.parametrize("text, subject, suggestion", [
+    ("Detail-oriented and self-motivated data scientist", "detail-oriented", None),
+    ("Detail-oriented and self-motivated data scientist", "self-motivated", None),
+    ("Proactive and results-driven analyst", "proactive", None),
+    ("Proactive and results-driven analyst", "results-driven", None),
+    ("Hard worker, team player and self-starter with 5 years", "hard worker",
+     "Team player and self-starter with 5 years"),
+    ("Hard worker, team player and self-starter with 5 years", "team player", None),
+    ("Hard worker, team player and self-starter with 5 years", "self-starter", None),
+    ("Analyst with a track record of shipping", "track record", None),
+    ("Worked as a team player with analysts", "team player", None),
+])
+def test_reviewer_examples_offer_one_click_only_when_clean(text, subject, suggestion):
+    notes = {n["subject"]: n for n in _wording(rl.rule_notes(_resume([text])))}
+    assert notes[subject]["suggestion"] == suggestion
 
 
 def test_remove_leaves_no_double_space():
@@ -226,6 +293,17 @@ def test_a_slip_span_inside_a_hyphenated_word_does_not_count():
 def test_a_slip_span_found_only_inside_another_word_gets_no_note():
     assert _slip("Maintained the nightly ETL jobs for the finance team", "tain", "tin") == []
     assert _slip("Owned the in-house ETL jobs for the finance team", "in", "on") == []
+
+
+def test_never_flag_matches_a_span_whatever_its_inner_whitespace():
+    bank = health_wording.WordBank(cliche=(), filler=(), ignored=("dont  know",))
+    assert health_wording.is_ignored(" Dont\t know ", bank)  # a stored legacy double space
+    bank = health_wording.WordBank(cliche=(), filler=(), ignored=("dont know",))
+    assert health_wording.is_ignored("Dont  know", bank)
+    resume = _resume(["Said I dont  know when the vendor asked for the ETL"])
+    levels = {("experience", 0, 0): _lv(1.0, [{"span": "dont  know", "fix": "don't know"}])}
+    assert not [f for f in _assemble(resume, levels, bank)["findings"]
+                if f.get("rule") == "language.slip"]
 
 
 def test_apply_fix_is_none_unless_the_span_occurs_once():

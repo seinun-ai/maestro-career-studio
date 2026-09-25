@@ -84,11 +84,15 @@ approved evaluator contract. Code validates the model response and computes scor
   word (`health_wording.matches`). The user edits both lists and the Never flag list, and can reset
   the two lists to the defaults (Never flag is kept). **Known limitation:** matching is context-blind,
   so “dynamic programming” flags “dynamic”; the user adds “dynamic” to Never flag. Source: `health_wording.py`.
-- **Remove and Apply** [weak]: Remove deletes the word in code, tidying the seam: spaces, the comma
-  after it, empty brackets, a dangling slash or dash, the capital, and a/an before the next word (by
-  first letter, so "an hour" and "a user" can come out wrong). Apply swaps a slip's span for its fix,
-  only when the span occurs once as a whole word. Either text is offered only when it passes the
-  rewrite guards below, so a fix that adds a number or drops a named tool or company is copy-only.
+- **Remove and Apply** [weak]: Remove deletes the word in code, tidying the seam (spaces, a newline,
+  commas, empty brackets, a dangling slash or dash, the capital, and a/an by first letter, left alone
+  before u, eu, one and h). The rewrite guards check facts, not grammar, so a **seam check** is the
+  safety net: a Remove that leaves an article before a function word or punctuation ("with a of"), a
+  dangling and/or ("and analyst", "and with"), a sentence opening And/Or, or empty quotes is copy-only.
+  It is deliberately cautious: "dashboards and very useful tools" loses its one click too. Apply swaps
+  a slip's span for its fix, only when the span occurs once as a whole word. Either text is offered
+  only when it also passes the rewrite guards below, so a fix that adds a number or drops a named tool
+  or company is copy-only.
 
 ## User control and verification
 

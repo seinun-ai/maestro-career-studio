@@ -64,6 +64,11 @@ DEFAULT_BANK = WordBank(cliche=DEFAULT_CLICHE, filler=DEFAULT_FILLER)
 # --------------------------------------------------------------------------- #
 # normalization + storage
 
+def _key(word: str) -> str:
+    """The comparison form `normalize` stores: inner whitespace collapsed, lower-cased."""
+    return " ".join(str(word).split()).lower()
+
+
 def normalize(words: Iterable[str]) -> list[str]:
     """Trim, collapse inner whitespace, lower-case, dedupe (first wins).
 
@@ -71,7 +76,7 @@ def normalize(words: Iterable[str]) -> list[str]:
     than MAX_ENTRIES entries once deduped."""
     out: list[str] = []
     for word in words:
-        norm = " ".join(str(word).split()).lower()
+        norm = _key(word)
         if not 1 <= len(norm) <= MAX_CHARS:
             raise ValueError(f"Each word or phrase must be 1 to {MAX_CHARS} characters.")
         if norm not in out:
@@ -160,7 +165,7 @@ def _pattern(phrase: str) -> re.Pattern:
 
 
 def is_ignored(word: str, bank: WordBank) -> bool:
-    return word.strip().lower() in bank.ignored
+    return _key(word) in {_key(w) for w in bank.ignored}
 
 
 def matches(text: str, bank: WordBank) -> list[tuple[str, str]]:
@@ -181,34 +186,37 @@ _SENTENCE_END = ".!?"
 _JOINING = ",;:"
 _DASHES = "-–—"
 _BRACKETS = {"(": ")", "[": "]"}
+_DETERMINERS = frozenset({"a", "an", "the", "my", "our", "their", "his", "her", "its"})
+# Vowel LETTER is not vowel SOUND ("a useful", "a European", "a one-off", "an hour"),
+# so the article is left alone before these openings. Other exceptions ("an MBA",
+# "an FAQ") still come out wrong; the rewrite guards cannot see it.
+_ARTICLE_UNSURE = ("u", "eu", "one", "h")
+
+# The safety net: a Remove whose seam reads like any of these is copy-only.
+_ART_END = re.compile(r"\b(?:a|an|the)$", re.IGNORECASE)
+_FUNCTION_OR_PUNCT = re.compile(
+    r"(?:of|for|with|in|on|to|at|and|or|by|as)\b|[.,;:)]|$", re.IGNORECASE)
+_CONJ_END = re.compile(r"\b(?:and|or)$", re.IGNORECASE)
+_CONJ_START = re.compile(r"(?:and|or)\b", re.IGNORECASE)
+_QUOTES = "'\"‘’“”"
 
 
 def _article(before: str, after: str) -> str:
-    """`before` with a trailing "a"/"an" matched to the word that now follows it.
-
-    By first LETTER, not sound: "a hour", "an user", "a MBA" come out wrong. The
-    rewrite guards cannot see this, and a wrong article is rarer than the "a
-    engineer" this fixes."""
+    """`before` with a trailing "a"/"an" matched to the word that now follows it,
+    by first letter, except before u/eu/one/h (`_ARTICLE_UNSURE`)."""
     head, _, last = before.rpartition(" ")
-    if last.lower() not in ("a", "an") or not after[:1].isalpha():
+    nxt = after.lower()
+    if last.lower() not in ("a", "an") or not nxt[:1].isalpha() or nxt.startswith(_ARTICLE_UNSURE):
         return before
-    article = "an" if after[0].lower() in "aeiou" else "a"
+    article = "an" if nxt[0] in "aeiou" else "a"
     if last[0].isupper():
         article = article.capitalize()
     return f"{head} {article}" if head else article
 
 
-def _join(before: str, after: str) -> str:
-    if not before:
-        return after
-    before = _article(before, after)
-    return before + after if before[-1] in "([/" else f"{before} {after}"
-
-
-def _cut(text: str, start: int, end: int, capital: bool) -> str:
-    """`text` without [start, end), with the seam cleaned up."""
-    before, after = text[:start].rstrip(), text[end:].lstrip()
-    while before and after and _BRACKETS.get(before[-1]) == after[0]:  # "()" left empty
+def _unwrap(before: str, after: str) -> tuple[str, str]:
+    """Drop what the cut word leaves empty: brackets, a slash, a doubled dash."""
+    while before and after and _BRACKETS.get(before[-1]) == after[0]:
         before, after = before[:-1].rstrip(), after[1:].lstrip()
     if after.startswith("/"):  # "very/really" -> "really"
         after = after[1:].lstrip()
@@ -216,37 +224,92 @@ def _cut(text: str, start: int, end: int, capital: bool) -> str:
         before = before[:-1].rstrip()
     if before and before[-1] in _DASHES and (not after or after[0] in _DASHES):
         before = before[:-1].rstrip()  # "it - word - on" -> "it - on"
-    if not before or before[-1] in _SENTENCE_END:
-        # The cut word opened a sentence: no leading comma or dash, keep its capital.
-        after = after.lstrip(_JOINING + _DASHES + " ")
-        if capital:
-            after = after[:1].upper() + after[1:]
-        return f"{before} {after}".strip() if before else after
+    return before, after
+
+
+def _commas(before: str, after: str, word: str) -> tuple[str, str]:
+    """An -ly word not right after a determiner keeps the comma after it
+    ("effectively, which" -> ", which"); any other word takes that comma along,
+    or, with none after it, the comma before it. ", word," leaves one comma."""
+    if after.startswith(","):
+        if before.endswith(","):
+            return before, after[1:].lstrip()
+        last = before.split()[-1].lower() if before.split() else ""
+        if word.lower().endswith("ly") and last not in _DETERMINERS:
+            return before, after
+        return before, after[1:].lstrip()
+    if before.endswith(",") and after[:1] not in tuple(_JOINING + _SENTENCE_END + ")"):
+        return before[:-1].rstrip(), after
+    return before, after
+
+
+def _seam_ok(before: str, after: str) -> bool:
+    """False when the join reads broken: an article before a function word or
+    punctuation (or nothing), a dangling and/or, or empty quotes."""
+    if _ART_END.search(before) and _FUNCTION_OR_PUNCT.match(after):
+        return False
+    if _CONJ_END.search(before) or _CONJ_START.match(after):
+        return False
+    return not (before[-1:] and before[-1] in _QUOTES and after[:1] and after[0] in _QUOTES)
+
+
+def _glue(before: str, after: str, sep: str) -> str:
+    if not before or not after:
+        return before or after
+    return before + after if before[-1] in "([/" else f"{before}{sep}{after}"
+
+
+def _open_line(before: str, after: str, capital: bool, sep: str) -> tuple[str, bool]:
+    """The cut word opened a sentence or a line: no leading comma or dash, keep
+    its capital; the line before it loses a trailing comma."""
+    before = before.rstrip(_JOINING + _DASHES + " ")
+    after = after.lstrip(_JOINING + _DASHES + " ")
+    if capital:
+        after = after[:1].upper() + after[1:]
+    return _glue(before, after, sep), _seam_ok(before, "") and _seam_ok("", after)
+
+
+def _cut(text: str, start: int, end: int) -> tuple[str, bool]:
+    """`text` without [start, end) with the seam cleaned up, and whether the
+    result reads cleanly there (`_seam_ok`)."""
+    raw_before, word, raw_after = text[:start], text[start:end], text[end:]
+    before, after = _unwrap(raw_before.rstrip(), raw_after.lstrip())
+    gap = raw_before[len(raw_before.rstrip()):] + raw_after[:len(raw_after) - len(raw_after.lstrip())]
+    sep = "\n" if "\n" in gap else " "
+    if not before or before[-1] in _SENTENCE_END or sep == "\n":
+        return _open_line(before, after, word[:1].isupper(), sep)
+    before, after = _commas(before, after, word)
     if not after:
-        return before.rstrip(_JOINING + _DASHES + " ")
-    if after[0] == ",":
-        # The comma after a cut word goes with it ("dynamic, scalable" -> "scalable");
-        # ", word," was parenthetical, so its opening comma goes too. Known cost: a
-        # comma the sentence still needed after the cut word is lost as well.
-        if before[-1] == ",":
-            before = before[:-1].rstrip()
-        after = after[1:].lstrip()
-        return _join(before, after) if after else before
+        before = before.rstrip(_JOINING + _DASHES + " ")
+        return before, _seam_ok(before, "")
     if after[0] in _JOINING + _SENTENCE_END + ")":
         if before[-1] in _JOINING:
             before = before[:-1].rstrip()
-        return before + after  # no space before punctuation
-    return _join(before, after)
+        return before + after, _seam_ok(before, after)  # no space before punctuation
+    before = _article(before, after)
+    return _glue(before, after, sep), _seam_ok(before, after)
+
+
+def _remove(text: str, phrase: str) -> tuple[str, bool]:
+    pattern = _pattern(phrase)
+    clean, cut = True, False
+    while (m := pattern.search(text)) is not None:  # each cut shortens the text
+        text, ok = _cut(text, m.start(), m.end())
+        clean, cut = clean and ok, True
+    return (re.sub(r"[ \t]{2,}", " ", text) if cut else text), clean
 
 
 def remove(text: str, phrase: str) -> str:
     """`text` with every whole-word occurrence of `phrase` deleted."""
-    pattern = _pattern(phrase)
-    cut = False
-    while (m := pattern.search(text)) is not None:  # each cut shortens the text
-        text = _cut(text, m.start(), m.end(), m.group(0)[:1].isupper())
-        cut = True
-    return re.sub(r"[ \t]{2,}", " ", text) if cut else text
+    return _remove(text, phrase)[0]
+
+
+def removal(text: str, phrase: str) -> str | None:
+    """The Remove text to offer as one click, or None when a seam reads broken
+    ("with a of", "and analyst", a sentence opening "And", empty quotes): the
+    rewrite guards check facts, not grammar, so this is the grammar safety net."""
+    out, clean = _remove(text, phrase)
+    return out if clean else None
 
 
 def _span_pattern(span: str) -> re.Pattern:
