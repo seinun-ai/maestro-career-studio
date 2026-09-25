@@ -1168,6 +1168,11 @@ Commit: `docs: health check v3 (evaluator, disputes, flags, report layout)`
 | 7 | 409 only for changed text | A dispute on a hand-set rating would sit behind the override, unseen | 409 "You set this rating yourself. Set it back to automatic first." before any model call | Easy to read and quick to act on |
 | 7 | Reply level words | Replies should use the UI's labels | Quoted `EVIDENCE_LEVELS` labels: 'Re-read: now rated "Shows a result".', 'Re-read: on a closer look this is "Vague". …' | Easy to read and quick to act on |
 | 7 | `before`/`after` carry `question` | The model's question may be null; the report then shows static fallback copy | `question` is the one the report shows (fallback included); `ask_kind` is measure/detail/null (the fix path's "reword" is not reported) | Easy to read and quick to act on |
+| 8 | The reply renders in the card | A dispute that moves the rating re-runs the report, and a new ask kind or level changes the finding id, so the card remounts (collapsed, reply gone) | The page keeps the latest reply per content hash and passes it down (`dispute`, like `storedAnswer`); a card holding one mounts expanded on it | Easy to read and quick to act on |
+| 8 | Focus moves to the reply via `useFocusOnNextCommit` | The armed hook cannot follow the remount above | A layout effect keyed on the reply calls `focusIfDropped`: it lands in place (Send leaves with the form) and on the replacement card | Easy to read and quick to act on |
+| 8 | A 502 shows `couldnt("re-read this bullet", err)` | The unreadable 502's detail is that same sentence, so it printed twice | That one detail is matched (`DISPUTE_DETAIL.unreadable`, beside `overridden` in one constant pinned to health_disputes.py) and passed as no detail; any other failure goes through `couldnt` unchanged | Errors never print raw text |
+| 8 | "Not right?" hidden only for overrides | A stale card (`locked`) would only get the content-changed 409 | Also hidden on a locked card; its stored reply still shows | Easy to read and quick to act on |
+| 8 | Content-changed 409 reads "This bullet changed since the check. Check again?" | The card has the report's Check again | "Check again?" is a button running it when the page passes `onReanalyze`, plain text otherwise | Quick to act on |
 
 ## Gate results
 
@@ -1176,6 +1181,7 @@ Task 1: 14 frontend pins, lint (2 pre-existing warnings), tsc, and italic mutati
 Task 3: rubric, 80-case fixture and 12 disputes created; 4 tests, runner help and ruff pass. Owner labels and real evaluator gate remain unverified.
 Task 2: 23 Node tests and 15 frontend pins passed; disclosure mutation caught. Browser check follows Task 6.
 Task 7: full suite 5755 passed/1 skipped before → **5782 passed, 1 skipped** after; ruff, tsc, lint (2 pre-existing warnings) clean. Mutations caught: dropping the stored-flag carry-over, writing the dispute into the classification cache, dispute ranked above override, no read-time demotion. Real-provider dispute golden cases not run.
+Task 8: 7 new pins + the single-flight site, 2 new Node tests (288 pass); all `tests/ -k frontend` pins 1293 passed; lint (2 pre-existing warnings), tsc clean. Mutations caught, each by exactly its pin: "Not right?" offered on overrides, the OVERRIDDEN 409 branch dropped (also the Node test), the reply's `role="status"` removed. No browser check: needs a provider key for the dispute call.
 
 ## Goal critique
 

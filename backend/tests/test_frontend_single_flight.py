@@ -81,6 +81,7 @@ _SITES = [
     ("components/resume-health/finding-cards.tsx", "unwaive"),
     ("components/resume-health/finding-cards.tsx", "draft"),
     ("components/resume-health/finding-cards.tsx", "apply"),
+    ("components/resume-health/dispute-box.tsx", "send"),
     ("components/resume-health/health-report-page.tsx", "analyze"),
     ("components/resume-editor/tailored-resume-studio.tsx", "rescore"),
     ("components/career/inbox-panel.tsx", "update"),

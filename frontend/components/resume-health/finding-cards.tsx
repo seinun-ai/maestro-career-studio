@@ -10,6 +10,7 @@ import { MoreHorizontal } from "lucide-react";
 import { toast } from "sonner";
 
 import { DemonstrateSkillDialog } from "@/components/resume-health/demonstrate-skill-dialog";
+import { DisputeBox, type DisputeHandler } from "@/components/resume-health/dispute-box";
 import {
   emptyMetricAsk,
   MetricAskInput,
@@ -69,6 +70,7 @@ import { notifyRenderNote } from "@/lib/render-note";
 import { wordDiff } from "@/lib/word-diff";
 import { cn } from "@/lib/utils";
 import type {
+  DisputeResult,
   EvidenceLevel,
   LintFinding,
   LintGate,
@@ -109,6 +111,9 @@ export type FindingCardShared = {
   nScoreable?: number | null;
   hideHow?: boolean;
   storedAnswer?: StoredAskAnswer;
+  /** The latest "Not right?" reply for this bullet, kept by the page across re-runs. */
+  dispute?: DisputeResult;
+  onDisputed?: DisputeHandler;
 };
 
 export type ExpandedFindingChromeProps = {
@@ -690,8 +695,11 @@ export function FixCard({
   onReanalyze,
   locked,
   hideHow,
+  dispute,
+  onDisputed,
 }: FindingCardShared & { finding: LintFinding }) {
-  const [expanded, setExpanded] = useState(false);
+  // A card the re-run after a dispute replaced opens on its reply.
+  const [expanded, setExpanded] = useState(dispute != null);
   // Review leaves with the collapsed row: focus goes into the opened card
   // (its first field, else its first control), never to <body>.
   const cardRef = useRef<HTMLDivElement>(null);
@@ -750,6 +758,27 @@ export function FixCard({
           locked={locked}
         />
       )}
+      <DisputeBox
+        finding={finding}
+        kind={kind}
+        resumeKey={resumeKey}
+        result={dispute}
+        onDisputed={onDisputed}
+        onReanalyze={onReanalyze}
+        locked={locked}
+        renderSuggestion={(s) => (
+          <SuggestionBlock
+            finding={finding}
+            currentText={currentText ?? ""}
+            suggestion={s}
+            kind={kind}
+            resumeKey={resumeKey}
+            onApplied={onApplied}
+            onReanalyze={onReanalyze}
+            locked={locked}
+          />
+        )}
+      />
     </ExpandedFindingChrome>
   );
 }
@@ -765,8 +794,11 @@ export function AskCard({
   locked,
   hideHow,
   storedAnswer,
+  dispute,
+  onDisputed,
 }: FindingCardShared & { finding: LintFinding }) {
-  const [expanded, setExpanded] = useState(false);
+  // A card the re-run after a dispute replaced opens on its reply.
+  const [expanded, setExpanded] = useState(dispute != null);
   const [answerDraft, setAnswerDraft] = useState<string | null>(null);
   const [metricDraft, setMetricDraft] = useState<MetricAskValue | null>(null);
   const [localSuggestion, setLocalSuggestion] = useState<
@@ -848,6 +880,7 @@ export function AskCard({
 
   const showQuote =
     suggestion == null && currentText != null && currentText.trim().length > 0;
+  const answering = !(suggestion != null || notRewritable);
 
   return (
     <ExpandedFindingChrome
@@ -918,28 +951,50 @@ export function AskCard({
               disabled={locked}
             />
           )}
-          <div className="flex justify-end">
-            <Button
-              size="sm"
-              disabled={
-                context.length === 0 || draft.isPending || locked
-              }
-              title={locked ? STALE_APPLY_HINT : undefined}
-              // Disables itself while writing: a native `disabled` drops focus.
-              focusableWhenDisabled
-              // Locked keeps pointer events, so its hint shows on hover.
-              className={
-                locked
-                  ? `${LOCKED_BTN} data-disabled:opacity-50`
-                  : "data-disabled:pointer-events-none data-disabled:opacity-50"
-              }
-              onClick={() => draftOnce()}
-            >
-              {draft.isPending ? "Writing…" : "Write new wording"}
-            </Button>
-          </div>
         </div>
       )}
+      <DisputeBox
+        finding={finding}
+        kind={kind}
+        resumeKey={resumeKey}
+        result={dispute}
+        onDisputed={onDisputed}
+        onReanalyze={onReanalyze}
+        locked={locked}
+        // "Not right?" sits beside the answer's own control while the card asks.
+        controls={answering ? (
+          <Button
+            size="sm"
+            disabled={
+              context.length === 0 || draft.isPending || locked
+            }
+            title={locked ? STALE_APPLY_HINT : undefined}
+            // Disables itself while writing: a native `disabled` drops focus.
+            focusableWhenDisabled
+            // Locked keeps pointer events, so its hint shows on hover.
+            className={
+              locked
+                ? `${LOCKED_BTN} data-disabled:opacity-50`
+                : "data-disabled:pointer-events-none data-disabled:opacity-50"
+            }
+            onClick={() => draftOnce()}
+          >
+            {draft.isPending ? "Writing…" : "Write new wording"}
+          </Button>
+        ) : null}
+        renderSuggestion={(s) => (
+          <SuggestionBlock
+            finding={finding}
+            currentText={currentText ?? ""}
+            suggestion={s}
+            kind={kind}
+            resumeKey={resumeKey}
+            onApplied={onApplied}
+            onReanalyze={onReanalyze}
+            locked={locked}
+          />
+        )}
+      />
     </ExpandedFindingChrome>
   );
 }

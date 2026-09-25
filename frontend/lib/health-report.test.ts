@@ -3,6 +3,9 @@ import { test } from "node:test";
 
 import {
   CONTENT_CHANGED_PREFIX,
+  DISPUTE_DETAIL,
+  disputeChangedRating,
+  disputeFailure,
   composeMetricContext,
   explainScoreDelta,
   groupFindings,
@@ -405,4 +408,29 @@ test("nextGradeLine uses server distance with correct plural", () => {
   assert.equal(nextGradeLine({next_grade: {grade: "B", points: 12}}), "12 points to B");
   assert.equal(nextGradeLine({next_grade: null}), null);
   assert.equal(nextGradeLine({}), null);
+});
+
+test("disputeFailure tells the two 409s apart and leaves the rest to couldnt", () => {
+  assert.equal(
+    disputeFailure({ status: 409, message: `${CONTENT_CHANGED_PREFIX}; re-analyze before answering` }),
+    "changed",
+  );
+  assert.equal(disputeFailure({ status: 409, message: DISPUTE_DETAIL.overridden }), "overridden");
+  assert.equal(disputeFailure({ status: 409, message: "conflict" }), "failed");
+  assert.equal(disputeFailure({ status: 422, message: DISPUTE_DETAIL.overridden }), "failed");
+  assert.equal(disputeFailure({ status: 502, message: DISPUTE_DETAIL.unreadable }), "failed");
+  assert.equal(disputeFailure({ status: 0, message: "Maestro CS isn't responding." }), "failed");
+});
+
+test("disputeChangedRating is true when the level or the question moved", () => {
+  const same = { level: "adjacent" as const, question: "What came of it?" };
+  assert.equal(disputeChangedRating({ before: same, after: { ...same, ask_kind: "detail" } }), false);
+  assert.equal(
+    disputeChangedRating({ before: same, after: { ...same, level: "direct", ask_kind: null } }),
+    true,
+  );
+  assert.equal(
+    disputeChangedRating({ before: same, after: { ...same, question: "Who used it?", ask_kind: "detail" } }),
+    true,
+  );
 });

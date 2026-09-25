@@ -40,6 +40,7 @@ import { isLoadFailure } from "@/lib/query-state";
 import {
   addNumbersLabel,
   checkDoneWords,
+  disputeChangedRating,
   explainScoreDelta,
   filterFindings,
   groupFindings,
@@ -59,6 +60,7 @@ import {
 import { cn } from "@/lib/utils";
 import type {
   BaseResumeDetail,
+  DisputeResult,
   EvidenceLevel,
   LintFinding,
   LintReport,
@@ -268,6 +270,19 @@ export function HealthReportPage({
     await overrideLevel(contentHash, level, reason);
     const result = await runLintReport(kind, resumeKey);
     adoptReport(result, true);
+    await qc.invalidateQueries({
+      queryKey: ["resume-lint", kind, resumeKey],
+    });
+  };
+
+  // The latest "Not right?" reply per bullet (content hash). Kept here, not in the card: a dispute
+  // that moves the rating runs the report again, which can replace the card with a new one.
+  const [disputes, setDisputes] = useState<Record<string, DisputeResult>>({});
+  const afterDispute = async (result: DisputeResult) => {
+    setDisputes((d) => ({ ...d, [result.content_hash]: result }));
+    if (!disputeChangedRating(result)) return;
+    const fresh = await runLintReport(kind, resumeKey);
+    adoptReport(fresh, true);
     await qc.invalidateQueries({
       queryKey: ["resume-lint", kind, resumeKey],
     });
@@ -577,6 +592,8 @@ export function HealthReportPage({
                           resumeKey={resumeKey}
                           onApplied={invalidateAfterApply}
                           onClassificationChanged={overrideClassification}
+                          dispute={finding.content_hash ? disputes[finding.content_hash] : undefined}
+                          onDisputed={afterDispute}
                           onReanalyze={() => void reanalyzeReport()}
                           locked={stale && staleIds.has(finding.id)}
                           nScoreable={nScoreable}
@@ -592,6 +609,8 @@ export function HealthReportPage({
                           resumeKey={resumeKey}
                           onApplied={invalidateAfterApply}
                           onClassificationChanged={overrideClassification}
+                          dispute={finding.content_hash ? disputes[finding.content_hash] : undefined}
+                          onDisputed={afterDispute}
                           onReanalyze={() => void reanalyzeReport()}
                           locked={stale && staleIds.has(finding.id)}
                           nScoreable={nScoreable}

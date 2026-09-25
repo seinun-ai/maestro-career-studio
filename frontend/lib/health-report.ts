@@ -52,6 +52,37 @@ export function isContentChangedError(err: {
   );
 }
 
+/**
+ * The dispute endpoint's own sentences (backend/app/services/health_disputes.py OVERRIDDEN and
+ * UNREADABLE), matched to tell its failures apart, never shown from the error itself. Pinned equal
+ * to the Python by test_frontend_health_report.py.
+ */
+export const DISPUTE_DETAIL = {
+  overridden: "You set this rating yourself. Set it back to automatic first.",
+  unreadable: "Couldn't re-read this bullet. Try again.",
+} as const;
+
+/** Which words a failed dispute gets on its card: the two 409s differ only by `detail`. */
+export function disputeFailure(err: {
+  status?: number;
+  message?: string;
+}): "changed" | "overridden" | "failed" {
+  if (isContentChangedError(err)) return "changed";
+  if (err.status === 409 && err.message === DISPUTE_DETAIL.overridden) return "overridden";
+  return "failed";
+}
+
+/** A dispute moved the rating or the question: the report is out of date and runs again. */
+export function disputeChangedRating(result: {
+  before: { level: string; question: string | null };
+  after: { level: string; question: string | null };
+}): boolean {
+  return (
+    result.before.level !== result.after.level ||
+    result.before.question !== result.after.question
+  );
+}
+
 type GateLike = { tier: string; status: string };
 
 const problems = (n: number, tier: string) => `${n} ${tier} ${n === 1 ? "problem" : "problems"}`;
