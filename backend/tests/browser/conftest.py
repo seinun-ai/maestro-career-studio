@@ -21,6 +21,7 @@ FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "browser"
 ENGINE_SOURCES: list[str] = [
     "shared/policy.js",
     "content/field-reader.js",
+    "content/fill-base.js",
 ]
 
 
