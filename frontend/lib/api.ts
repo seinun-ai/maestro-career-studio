@@ -764,6 +764,39 @@ export function draftRewrite(
   );
 }
 
+/** Tell the check why a flag is wrong; 409 when the bullet changed since the report. */
+export function disputeBullet(
+  kind: "base" | "application",
+  key: string,
+  body: {
+    location: {
+      section: string;
+      index?: number | null;
+      bullet_index?: number | null;
+    };
+    expected_content_hash: string;
+    note: string;
+  },
+) {
+  return apiFetch<import("@/lib/types").DisputeResult>(
+    `/api/resume-lint/${kind}/${encodeURIComponent(key)}/dispute`,
+    { method: "POST", body: JSON.stringify(body) },
+  );
+}
+
+export function getDisputes(kind: "base" | "application", key: string) {
+  return apiFetch<import("@/lib/types").StoredDispute[]>(
+    `/api/resume-lint/${kind}/${encodeURIComponent(key)}/disputes`,
+  );
+}
+
+/** Reopen a dispute (the Done tab's Undo), including a stored "no number exists". */
+export function reopenDispute(contentHash: string) {
+  return apiFetch(`/api/resume-lint/disputes/${encodeURIComponent(contentHash)}`, {
+    method: "DELETE",
+  });
+}
+
 /**
  * PATCH the base-or-application `/edits` pair — the one write behind every
  * one-click apply (health findings, batch ask, demonstrate-a-skill, and the

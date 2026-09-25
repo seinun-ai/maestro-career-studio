@@ -347,8 +347,14 @@
   Evaluations are reused only for the current rubric version and smart model; manual overrides
   win across both changes. High levels need substantive verbatim evidence. Invalid number asks
   become detail questions. Evaluations store their rubric version, evidence, question, measure target, alternative and language
-  notes on `bullet_classifications`. `bullet_disputes` reserves separate note, before/after, reply and
-  suggestion fields plus a durable metric-unavailable flag for the dispute workflow.
+  notes on `bullet_classifications`. **Disputes** (`health_disputes.py`; `POST /{kind}/{key}/dispute`,
+  `GET /{kind}/{key}/disputes`, `DELETE /disputes/{content_hash}`) re-run the evaluator uncached on one
+  bullet with the user's note and store the result on `bullet_disputes`, never on
+  `bullet_classifications`. The note changes how the text is read; a fact it adds returns only as a
+  `guarded_rewrite` suggestion, and the reply is written in code from the before/after comparison.
+  `classify_items` precedence: override > dispute (same rubric version and model) > evaluation. A
+  dispute's `metric_unavailable` survives later disputes and model changes (read-time demotion of number
+  asks) until DELETE reopens it. Disputed findings carry `classification_source="dispute"`.
   Gates are `tier:
   "fatal"|"serious"` × `status: "pass"|"fail"|"not_assessed"`
   (`health_gates.py:3`), scored by `health_score.py`; a failing fatal, unwaived

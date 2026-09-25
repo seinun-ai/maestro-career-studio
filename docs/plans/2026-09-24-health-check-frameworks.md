@@ -1153,12 +1153,18 @@ Commit: `docs: health check v3 (evaluator, disputes, flags, report layout)`
 
 | 5 | Missing ask kind stays null | Number question could bypass detail sanitization | Normalize invalid/missing ask kind to detail before number checks | Never demand an unnatural number |
 
+| 7 | Stored `metric_unavailable` applied via `_validate(..., metric_unavailable=True)` on every evaluation | Applying it inside `_classify_batch` would write the demoted ask into the ordinary cache row, so DELETE could not reopen it | Applied at read time in `classify_items` (`without_number_ask`); cache rows stay the ordinary evaluation | Never demand an unnatural number; cache isolation |
+| 7 | Contract names `GET /disputes` and `DELETE /disputes/{hash}` without shapes | Task 11's Done tab needs to name the bullet and reopen it | GET returns `[{content_hash, location, label, text, note, reply, suggestion, metric_unavailable, before, after, created_at}]`, one row per location of a still-present text; DELETE is 204, idempotent, 422 on a non-hex hash | Allow "not right", reversible |
+| 7 | 200 / 409 / 422 | The model can return an invalid entry, or the provider can fail | 502 (`DisputeUnreadable` / provider `RuntimeError`), nothing stored; 422 also for an empty target text and a note over 1000 chars | Rewrites never invent |
+| 7 | `before`/`after` carry `question` | The model's question may be null; the report then shows static fallback copy | `question` is the one the report shows (fallback included); `ask_kind` is measure/detail/null (the fix path's "reword" is not reported) | Easy to read and quick to act on |
+
 ## Gate results
 
 Baseline at `444866c1`: `pytest tests/ mcp_server/tests/ -q` → **5706 passed, 1 skipped**, 256.23s.
 Task 1: 14 frontend pins, lint (2 pre-existing warnings), tsc, and italic mutation check passed.
 Task 3: rubric, 80-case fixture and 12 disputes created; 4 tests, runner help and ruff pass. Owner labels and real evaluator gate remain unverified.
 Task 2: 23 Node tests and 15 frontend pins passed; disclosure mutation caught. Browser check follows Task 6.
+Task 7: full suite 5755 passed/1 skipped before → **5782 passed, 1 skipped** after; ruff, tsc, lint (2 pre-existing warnings) clean. Mutations caught: dropping the stored-flag carry-over, writing the dispute into the classification cache, dispute ranked above override, no read-time demotion. Real-provider dispute golden cases not run.
 
 ## Goal critique
 

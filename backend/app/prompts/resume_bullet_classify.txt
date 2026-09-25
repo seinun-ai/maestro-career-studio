@@ -43,6 +43,12 @@ Examples across roles:
 Hints may accompany an item: "weak_opener" or "passive". Treat weak_opener as strong evidence for
 "unaddressed" unless the text clearly shows an action and a result.
 
+If an item has a "note" from the candidate, use it only to understand what the text means.
+Never credit a result the text does not show. If the note states a fact that is not in the
+text, copy that fact into "new_fact". If the note says a number does not exist, was never
+measured, or cannot be shared, set "metric_unavailable": true. Items without a note: null
+and false.
+
 "language": up to 3 clear spelling or grammar slips as {"span": "<exact text>", "fix": "<corrected>"}.
 Technical terms, names and abbreviations are NOT slips. [] when unsure.
 
@@ -54,4 +60,5 @@ Return JSON only: {"classifications": [one entry per input item, same ids]}, eac
   {"id": "...", "level": "...", "evidence": ["..."], "reason": "<= 12 words",
    "question": "..." | null, "ask_kind": "measure" | "detail" | null,
    "measure_target": "..." | null, "alt_question": "..." | null,
-   "confidence": 0.0, "language": []}
+   "confidence": 0.0, "language": [],
+   "new_fact": "..." | null, "metric_unavailable": true | false}

@@ -8,9 +8,11 @@ import math
 import re
 from string import Template as StringTemplate
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.bullet_classification import BulletClassification
+from app.models.bullet_dispute import BulletDispute
 from app.services import llm, model_settings, prompts
 from app.services.health_score import LEVEL_VALUES
 
@@ -122,6 +124,28 @@ def _result(level: str, *, reason: str = "", confidence: float | None = None,
     }
 
 
+_ASK_FIELDS = ("question", "ask_kind", "measure_target", "alt_question")
+
+
+def without_number_ask(text: str, result: dict) -> dict:
+    """`result` with `_validate(..., metric_unavailable=True)` applied to its ask: the user said no
+    number exists for this text, so a measure ask becomes its number-free alternative. Only the
+    ask fields change; the level, evidence and source stay as they are."""
+    revalidated = _validate(text, result, metric_unavailable=True)
+    if revalidated is None:
+        return result
+    return {**result, **{k: revalidated[k] for k in _ASK_FIELDS}}
+
+
+def _dispute_result(row: BulletDispute) -> dict:
+    revised = row.revised_json or {}
+    confidence = revised.get("confidence")
+    return _result(revised["level"], reason=revised.get("reason") or "", confidence=confidence,
+                   source="dispute",
+                   uncertain=(confidence if confidence is not None else 1.0) < CONFIDENCE_FLOOR,
+                   assessment=revised)
+
+
 def set_override(
     db: Session, chash: str, level: str | None, reason: str | None = None
 ) -> None:
@@ -138,10 +162,17 @@ def set_override(
 
 def classify_items(db: Session, items: list[dict]) -> dict[str, dict]:
     """items: [{text, hints: [str]}] → {content_hash: result}.
-    Empty text is deterministic; cached rows are free; only misses hit the LLM."""
+    Empty text is deterministic; cached rows are free; only misses hit the LLM.
+    Precedence: override > dispute (same rubric version and model) > evaluation. A dispute's
+    `metric_unavailable` is the user's fact about the work, so it demotes number asks on every
+    evaluation of that text, whatever the model or rubric."""
     out: dict[str, dict] = {}
     pending: dict[str, dict] = {}
+    texts: dict[str, str] = {}
     model = model_settings.get_smart_model(db)
+    hashes = {content_hash(str(item.get("text") or "").strip()) for item in items}
+    disputes = {d.content_hash: d for d in db.scalars(
+        select(BulletDispute).where(BulletDispute.content_hash.in_(hashes)))}
 
     for item in items:
         text = str(item.get("text") or "").strip()
@@ -152,13 +183,19 @@ def classify_items(db: Session, items: list[dict]) -> dict[str, dict]:
             out[chash] = _result("unaddressed", reason="empty bullet",
                                  confidence=1.0, source="deterministic")
             continue
+        texts[chash] = text
         row = db.get(BulletClassification, chash)
+        if row is not None and row.override_level:
+            out[chash] = _result(row.override_level,
+                                 reason=row.override_reason or "user override",
+                                 confidence=1.0, source="override")
+            continue
+        dispute = disputes.get(chash)
+        if (dispute is not None and dispute.rubric_version == RUBRIC_VERSION
+                and dispute.model == model):
+            out[chash] = _dispute_result(dispute)
+            continue
         if row is not None:
-            if row.override_level:
-                out[chash] = _result(row.override_level,
-                                     reason=row.override_reason or "user override",
-                                     confidence=1.0, source="override")
-                continue
             if row.rubric_version == RUBRIC_VERSION and row.model == model:
                 out[chash] = _result(
                     row.level, reason=row.reason or "", confidence=row.confidence,
@@ -174,6 +211,9 @@ def classify_items(db: Session, items: list[dict]) -> dict[str, dict]:
 
     if pending:
         out.update(_classify_batch(db, pending))
+    for chash, dispute in disputes.items():
+        if dispute.metric_unavailable and out.get(chash, {}).get("source") in ("cache", "llm"):
+            out[chash] = without_number_ask(texts[chash], out[chash])
     return out
 
 

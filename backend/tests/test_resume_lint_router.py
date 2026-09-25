@@ -1,3 +1,4 @@
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
@@ -862,3 +863,146 @@ def test_a_stored_report_reads_back_with_todays_gate_labels(db_session):
     db_session.expire_all()
     stored = db_session.query(ResumeLintReport).one().report_json
     assert stored["gates"][0]["label"] == "Parse fidelity"
+
+
+# --------------------------------------------------------------------------- #
+# disputes (plan Task 7): fake `llm.call_openai`, real validator and guards
+
+DISPUTED_BULLET = "Kept the lights on."
+_DISPUTE_URL = "/api/resume-lint/base/data_scientist/dispute"
+_BULLET_LOC = {"section": "experience", "index": 0, "bullet_index": 1}
+
+
+def _fake_evaluator(ordinary: dict, disputed: dict):
+    def fake(*, prompt, model, response_format, trace_name):
+        import json
+
+        if trace_name != "resume_bullet_classify":
+            return {"rewrite": None}
+        items = json.JSONDecoder().raw_decode(prompt.split("Items (JSON):", 1)[1].lstrip())[0]
+        return {"classifications": [
+            {**(disputed if "note" in item else ordinary), "id": item["id"]} for item in items]}
+    return fake
+
+
+def _install_evaluator(monkeypatch, ordinary=None, disputed=None):
+    ordinary = ordinary or {"level": "adjacent", "evidence": ["Kept the lights on."],
+                            "reason": "no result stated", "question": "What stayed up?",
+                            "ask_kind": "detail", "confidence": 0.9}
+    disputed = disputed or {**ordinary, "question": "Which systems did you keep running?"}
+    monkeypatch.setattr(bullet_classify.llm, "call_openai", _fake_evaluator(ordinary, disputed))
+    monkeypatch.setattr(bullet_classify.model_settings, "get_smart_model", lambda s: "test-model")
+
+
+def _client_call(db_session, method: str, url: str, **kwargs):
+    app.dependency_overrides[get_db] = _override_db(db_session)
+    try:
+        return getattr(TestClient(app), method)(url, **kwargs)
+    finally:
+        app.dependency_overrides.clear()
+
+
+def _dispute_body(note="You misread it.", expected=None):
+    return {"location": _BULLET_LOC, "note": note,
+            "expected_content_hash": expected or bullet_classify.content_hash(DISPUTED_BULLET)}
+
+
+def test_dispute_returns_before_after_and_a_reply(db_session, monkeypatch):
+    _seed(db_session)
+    _install_evaluator(monkeypatch)
+    r = _client_call(db_session, "post", _DISPUTE_URL, json=_dispute_body())
+    assert r.status_code == 200
+    assert r.json() == {
+        "before": {"level": "adjacent", "question": "What stayed up?"},
+        "after": {"level": "adjacent", "question": "Which systems did you keep running?",
+                  "ask_kind": "detail"},
+        "reply": "Same rating, a better question: Which systems did you keep running?",
+        "suggestion": None,
+        "content_hash": bullet_classify.content_hash(DISPUTED_BULLET),
+    }
+
+
+def test_dispute_stale_hash_returns_409_without_llm(db_session, monkeypatch):
+    _seed(db_session)
+    monkeypatch.setattr(bullet_classify.llm, "call_openai", _unexpected_llm_call)
+    r = _client_call(db_session, "post", _DISPUTE_URL, json=_dispute_body(
+        expected=bullet_classify.content_hash("Report-time bullet.")))
+    assert r.status_code == 409
+    assert r.json()["detail"] == lint_router.CONTENT_CHANGED
+
+
+@pytest.mark.parametrize("note", ["", "   ", "x" * 1001], ids=["empty", "blank", "too-long"])
+def test_dispute_rejects_an_empty_or_oversized_note(db_session, monkeypatch, note):
+    _seed(db_session)
+    monkeypatch.setattr(bullet_classify.llm, "call_openai", _unexpected_llm_call)
+    r = _client_call(db_session, "post", _DISPUTE_URL, json=_dispute_body(note=note))
+    assert r.status_code == 422
+
+
+def test_dispute_unreadable_model_output_returns_502(db_session, monkeypatch):
+    _seed(db_session)
+    _install_evaluator(monkeypatch, disputed={"level": "excellent"})
+    r = _client_call(db_session, "post", _DISPUTE_URL, json=_dispute_body())
+    assert r.status_code == 502
+
+
+def test_list_disputes_returns_only_hashes_matching_the_current_text(db_session, monkeypatch):
+    _seed(db_session)
+    _install_evaluator(monkeypatch)
+    assert _client_call(db_session, "post", _DISPUTE_URL, json=_dispute_body()).status_code == 200
+    # A dispute on text that is not in this resume never shows.
+    lint_router.health_disputes.dispute(db_session, "Ran an unrelated pilot.", "You misread it.")
+
+    listed = _client_call(db_session, "get", "/api/resume-lint/base/data_scientist/disputes")
+    assert listed.status_code == 200
+    (row,) = listed.json()
+    assert row["content_hash"] == bullet_classify.content_hash(DISPUTED_BULLET)
+    assert row["location"] == _BULLET_LOC
+    assert row["text"] == DISPUTED_BULLET
+    assert row["note"] == "You misread it."
+    assert row["after"]["question"] == "Which systems did you keep running?"
+
+    # Editing the bullet orphans its dispute: the new text has a new hash.
+    resume = db_session.get(BaseResume, "data_scientist")
+    data = {**resume.data_json}
+    data["experience"] = [{**data["experience"][0],
+                           "bullets": ["Led an analytics project.", "Kept the lights on nightly."]}]
+    resume.data_json = data
+    db_session.commit()
+    listed = _client_call(db_session, "get", "/api/resume-lint/base/data_scientist/disputes")
+    assert listed.json() == []
+
+
+def test_delete_dispute_reopens_the_ordinary_evaluation(db_session, monkeypatch):
+    _seed(db_session)
+    _install_evaluator(monkeypatch)
+    _client_call(db_session, "post", _DISPUTE_URL, json=_dispute_body())
+    chash = bullet_classify.content_hash(DISPUTED_BULLET)
+    shown = bullet_classify.classify_items(db_session, [{"text": DISPUTED_BULLET}])[chash]
+    assert shown["source"] == "dispute"
+
+    r = _client_call(db_session, "delete", f"/api/resume-lint/disputes/{chash}")
+    assert r.status_code == 204
+    assert _client_call(db_session, "get",
+                        "/api/resume-lint/base/data_scientist/disputes").json() == []
+    shown = bullet_classify.classify_items(db_session, [{"text": DISPUTED_BULLET}])[chash]
+    assert shown["source"] == "cache" and shown["question"] == "What stayed up?"
+    # Idempotent, and a malformed hash is refused.
+    assert _client_call(db_session, "delete", f"/api/resume-lint/disputes/{chash}").status_code == 204
+    assert _client_call(db_session, "delete", "/api/resume-lint/disputes/nothex").status_code == 422
+
+
+def test_report_marks_a_disputed_finding(db_session, monkeypatch):
+    from app.services import resume_lint
+
+    _seed(db_session)
+    _install_evaluator(monkeypatch)
+    _client_call(db_session, "post", _DISPUTE_URL, json=_dispute_body())
+    monkeypatch.setattr(resume_lint, "structure_gates", lambda db, tid, data: [])
+    monkeypatch.setattr(resume_lint.health_verify, "verify_detections",
+                        lambda db, data, gaps, c2, prior_cache: (gaps, c2, {}))
+    row = resume_lint.run_report(db_session, "base", "data_scientist", SAMPLE_DATA)
+    (finding,) = [f for f in row.report_json["findings"]
+                  if f.get("content_hash") == bullet_classify.content_hash(DISPUTED_BULLET)]
+    assert finding["classification_source"] == "dispute"
+    assert finding["question"] == "Which systems did you keep running?"
