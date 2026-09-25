@@ -127,6 +127,9 @@
   and a Check before its name, and says so with `aria-pressed`. The card's
   accessible name is only the template's name, so the default mark and the
   Needs setup badge and the ATS warning line are its `aria-describedby`.
+- **Judged resume text** is upright `text-sm text-foreground`, wrapped within `max-w-[65ch]`,
+  with a `border-l-2 border-border pl-3` quote rule. A compact quote uses `line-clamp-3` and a
+  visible Show all toggle with `aria-expanded`; metadata alone uses muted text.
 - **One page shell: `PageShell` + `PageHeader`** (`components/page-shell.tsx`).
   Every top-level route renders `PageShell` — `max-w-6xl`, `p-6`, `gap-6` —
   and `PageHeader` for its title block. Never assign per-page widths or

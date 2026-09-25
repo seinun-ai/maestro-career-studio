@@ -203,11 +203,10 @@ export function DemonstrateSkillDialog({
         </div>
         {picked && (
           <div className="space-y-2 border-t pt-3">
-            <p className="text-muted-foreground truncate text-xs">
-              <span className="font-medium">{picked.label}</span>
-              {" · "}
-              <span className="italic">{picked.text}</span>
-            </p>
+            <p className="text-muted-foreground text-xs">{picked.label}</p>
+            <blockquote className="border-l-2 border-border pl-3 text-foreground max-w-[65ch] text-sm">
+              {picked.text}
+            </blockquote>
             <Label htmlFor={rewriteId}>How you used {skill} in this bullet</Label>
             <Textarea
               id={rewriteId}

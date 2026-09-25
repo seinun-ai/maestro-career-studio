@@ -218,7 +218,7 @@ export function BatchAskDialog({
                 key={row.finding.id}
                 className="grid gap-3 border-b py-2 last:border-b-0 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]"
               >
-                <blockquote className="text-muted-foreground truncate text-sm italic">
+                <blockquote className="border-l-2 border-border pl-3 text-foreground max-w-[65ch] text-sm">
                   {quote ?? row.finding.issue}
                 </blockquote>
                 <div className="min-w-0 space-y-2">

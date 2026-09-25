@@ -462,21 +462,24 @@ function SuggestionCopyOnly({
   );
 }
 
-function SourceQuote({ text, truncated }: { text: string; truncated?: boolean }) {
+function SourceQuote({ text, clamp }: { text: string; clamp?: boolean }) {
+  const [open, setOpen] = useState(false);
   return (
-    <blockquote
-      className={cn(
-        "border-muted-foreground/30 border-l-2 pl-2 text-sm",
-        // Truncated one-liners are glanceable labels; keep them quiet. An
-        // expanded quote is body text the user actually reads — regular
-        // posture, near-full contrast, so it can't be mistaken for disabled.
-        truncated
-          ? "text-muted-foreground truncate italic"
-          : "text-foreground/80 max-w-[65ch]",
+    <div className="border-l-2 border-border pl-3">
+      <p className={cn("text-foreground max-w-[65ch] text-sm", clamp && !open && "line-clamp-3")}>
+        {text}
+      </p>
+      {clamp && (
+        <button
+          type="button"
+          className="text-primary mt-0.5 text-xs underline-offset-2 hover:underline"
+          aria-expanded={open}
+          onClick={() => setOpen((v) => !v)}
+        >
+          {open ? "Show less" : "Show all"}
+        </button>
       )}
-    >
-      {text}
-    </blockquote>
+    </div>
   );
 }
 
@@ -615,13 +618,8 @@ function CollapsedRow({
   // line the chips and the action ran past the card at 375 (scrollWidth 476).
   return (
     <div className="flex min-w-0 flex-wrap items-start gap-2">
-      <button
-        type="button"
-        className="flex min-w-0 flex-1 basis-48 flex-col items-start gap-1 text-left"
-        onClick={onExpand}
-        aria-expanded={false}
-        title={finding.label}
-      >
+      <div className="flex min-w-0 flex-1 basis-48 flex-col items-start gap-1 text-left">
+        <button type="button" onClick={onExpand} aria-expanded={false} title={finding.label}>
         <span className="flex min-w-0 flex-wrap items-center gap-1.5">
           <Badge
             variant="secondary"
@@ -644,16 +642,17 @@ function CollapsedRow({
             </span>
           ) : null}
         </span>
+        </button>
         {quote ? (
           <span className="block w-full min-w-0">
-            <SourceQuote text={quote} truncated />
+            <SourceQuote text={quote} clamp />
           </span>
         ) : (
           <span className="text-muted-foreground block w-full min-w-0 truncate text-sm">
             {finding.issue}
           </span>
         )}
-      </button>
+      </div>
       <div className="ml-auto flex shrink-0 items-center gap-2">
         <Button size="xs" variant="outline" onClick={onExpand}>
           {actionLabel}
@@ -875,7 +874,7 @@ export function AskCard({
       hideHow={hideHow}
     >
       {finding.question && (
-        <p className="text-muted-foreground mt-1 max-w-[65ch] text-sm italic">
+        <p className="text-foreground mt-1 max-w-[65ch] text-sm">
           {finding.question}
         </p>
       )}
@@ -993,7 +992,6 @@ export function NotesTable({
     queueMicrotask(() => focusIfDropped(sectionRef.current));
     return false;
   };
-  const [expandedQuotes, setExpandedQuotes] = useState<Set<string>>(new Set());
   const [condenseDraft, setCondenseDraft] = useState<{
     finding: LintFinding;
     suggestion: string;
@@ -1095,28 +1093,14 @@ export function NotesTable({
                       <ul className="mt-1.5 space-y-1">
                         {group.notes.map((note) => {
                           const quote = note.subject ?? note.issue;
-                          const open = expandedQuotes.has(note.id);
                           return (
                             <li
                               key={note.id}
                               className="flex items-start justify-between gap-2"
                             >
-                              <button
-                                type="button"
-                                className="text-muted-foreground min-w-0 flex-1 text-left text-xs italic"
-                                onClick={() =>
-                                  setExpandedQuotes((s) => {
-                                    const next = new Set(s);
-                                    if (next.has(note.id)) next.delete(note.id);
-                                    else next.add(note.id);
-                                    return next;
-                                  })
-                                }
-                              >
-                                <span className={open ? "whitespace-pre-wrap" : "truncate block"}>
-                                  {quote}
-                                </span>
-                              </button>
+                              <div className="min-w-0 flex-1">
+                                <SourceQuote text={quote} clamp />
+                              </div>
                               {group.rule === "bullet.too_long" && (
                                 <Button
                                   size="xs"

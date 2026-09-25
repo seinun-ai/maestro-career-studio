@@ -1141,6 +1141,7 @@ Commit: `docs: health check v3 (evaluator, disputes, flags, report layout)`
 
 | Task | Planned | Found | Done instead | Goal Card line |
 |---|---|---|---|---|
+| 1 | Put a toggle in SourceQuote, only above 220 chars | CollapsedRow already wraps it in a button; length does not predict wrapping | Quote is a sibling of the row button; every clamped quote has Show all | Easy to read and quick to act on |
 
 ## Gate results
 

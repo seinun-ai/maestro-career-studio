@@ -8,6 +8,7 @@ structural properties CI can actually check from source.
 from __future__ import annotations
 
 from pathlib import Path
+import re
 
 _FRONTEND = Path(__file__).resolve().parents[2] / "frontend"
 _PAGE = (_FRONTEND / "components/resume-health/health-report-page.tsx").read_text()
@@ -129,3 +130,18 @@ def test_hoist_blurb_does_not_conjugate_backend_copy():
     # backend's own sentence ("Has a scale metric…", "A reader can't tell…").
     assert "bullets here: " in helpers
     assert "items here are ${" not in helpers  # the old copula template
+
+
+def test_judged_text_is_never_italic_or_one_line_truncated():
+    for name in ("finding-cards", "batch-ask-dialog", "demonstrate-skill-dialog"):
+        src = (_FRONTEND / f"components/resume-health/{name}.tsx").read_text()
+        assert not re.search(r'className="[^"]*\bitalic\b', src), "judged text must be upright"
+    quote = _CARDS[_CARDS.index("function SourceQuote"):]
+    quote = quote[:quote.index("\n}\n")]
+    assert "truncate" not in quote
+    assert "text-muted-foreground" not in quote
+    assert "line-clamp-3" in quote
+    assert 'aria-expanded={open}' in quote
+    assert 'Show all' in quote
+    assert 'text.length >' not in quote
+    assert 'border-l-2 border-border pl-3' in quote
