@@ -190,7 +190,9 @@
     // A new runId starts a new run: the Stop latch is released and the
     // verified-values memory starts empty. consentForms is per call and
     // defaults to OFF.
-    inventory: (opts = {}) => {
+    // Queued like every other operation: a Stop latched under an operation
+    // already waiting is never released before that operation starts.
+    inventory: serial(async (opts = {}) => {
       if (opts.runId && opts.runId !== runId) {
         runId = opts.runId;
         ns.fillBase.resume();
@@ -198,7 +200,7 @@
       }
       consentForms = opts.consentForms === true;
       return inv().list({ consentForms });
-    },
+    }),
     explore: serial(explore), apply: serial(applyNow), sweep: serial(sweep), focus, budgets,
     // Stop: latch at once, then close any popup a commit left open on purpose.
     cancel: () => {

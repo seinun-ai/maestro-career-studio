@@ -586,7 +586,10 @@ def test_the_listener_keeps_the_channel_open():
     # …and it is registered ONCE per isolated world: panel_prepare re-injects
     # agent.js into a world that already runs it (driven in tests/browser).
     assert re.findall(r"onMessage\.addListener\(([A-Za-z]+)\)", js_code(AGENT_JS)) == ["onPageMessage"]
-    assert 'loaded.has("content/agent.js:listener")' in AGENT_JS
+    # Guarded by the LIVENESS of the runtime that registered it, so a listener
+    # left by a reloaded (dead) extension never blocks the live one.
+    assert "if (!alive(ns.listenerRuntime)) {" in AGENT_JS
+    assert "ns.listenerRuntime = chrome.runtime;" in AGENT_JS
 
 
 @pytest.mark.parametrize(

@@ -207,7 +207,8 @@
     const before = opened.get(el);
     const q = typed.get(el);
     typed.delete(el);
-    if (q && el.isConnected && el.value === q.query && q.prior !== q.query) {
+    const restore = q && el.isConnected && el.value === q.query && q.prior !== q.query;
+    if (restore) {
       b().typeText(el, q.prior, t, { undo: cleanup });
       const settled = () => !before || !own(el, before) || !busy(own(el, before));
       if (cleanup) {
@@ -221,6 +222,7 @@
     if (before && el.isConnected) own(el, before); // a menu re-rendered by that typing
     await b().closePopups(el, t, { cleanup });
     if (!cleanup) await blurOut(el, t);
+    else if (restore) el.blur?.(); // the undo focused the box: focus is not left in it
   };
 
   async function explore(el, shape, { term, consentForms } = {}, t) {
@@ -342,7 +344,10 @@
       await b().settle(t, 200);
       // The pick is committed: the query typed to find it is no longer the
       // engine's to take back (a free-text box whose pick equals the query).
-      if (holds(el, shape, hit.text)) typed.delete(el);
+      // Only when the box's own value IS the committed value: a widget that
+      // shows the pick in a pill and leaves the query in its box still gets
+      // the query taken back.
+      if (holds(el, shape, hit.text) && [shape.read(el)].flat().includes(el.value)) typed.delete(el);
       const after = own(el, before);
       const next = after ? b().optionsOf(after) : [];
       if (next.length && next.map((o) => o.text).join("\n") !== shown && same(shape.read(el), before0)) {

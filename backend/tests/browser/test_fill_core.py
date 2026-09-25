@@ -7,7 +7,7 @@ OPS = "window.careerStudioCompanion.fillOps"
 
 
 def inv(page, **opts):
-    return {f["question"]: f for f in page.evaluate(f"(o) => {OPS}.inventory(o).fields", opts)}
+    return {f["question"]: f for f in page.evaluate(f"async (o) => (await {OPS}.inventory(o)).fields", opts)}
 
 
 def apply(page, f, **action):
@@ -148,6 +148,7 @@ def test_cancel_stops_a_choose_before_it_clicks(page, load):
     # The engine's own query is taken back and no late search result is left open.
     assert page.input_value("#school") == ""
     assert page.evaluate("document.getElementById('portal').children.length") == 0
+    assert page.evaluate("document.activeElement.id") != "school"  # focus is not left in the engine's box
 
 
 def test_a_field_the_user_edits_while_the_model_decides_is_never_written(page, load):
@@ -205,10 +206,13 @@ def test_engine_writes_do_not_mark_a_field_touched(page, load):
 # --- review carry-overs: popups the engine opens are closed, policy per
 # option, typing refusals are outcomes, busy exemption covers clicks, and a
 # popup that will not close is not clicked at forever.
-def test_explore_leaves_no_menu_open_even_when_the_widget_rerenders_it(page, load):
+def test_explore_leaves_no_menu_open_when_the_widget_rerenders_it_per_keystroke(page, load):
     load(page, fixture_html("react_select.html"))
     explore(page, inv(page)["Country"], "united")
     assert page.evaluate("document.getElementById('menu-root').children.length") == 0
+
+
+def test_explore_leaves_no_results_open_after_a_debounced_search(page, load):
     load(page, fixture_html("workday_search.html"))
     explore(page, inv(page)["School or University"], "University of Texas")
     page.wait_for_timeout(500)  # past the widget's search debounce
@@ -413,6 +417,12 @@ def test_a_reinjected_agent_answers_a_message_once(page, load):
     }""")
     _reinject(page, ["content/agent.js", "content/agent.js"])
     assert page.evaluate("window.__listeners.length") == 1
+    # A listener registered by a dead extension context (reloaded under the
+    # page) does not stop a live one from registering.
+    page.evaluate("""() => { window.careerStudioCompanion.listenerRuntime = { get id() { throw new Error('invalidated'); } }; }""")
+    _reinject(page, ["content/agent.js"])
+    assert page.evaluate("window.__listeners.length") == 2
+    page.evaluate("window.__listeners.shift()")
     f = inv(page)["City"]
     reply = page.evaluate("""(a) => new Promise((resolve) => {
       for (const cb of window.__listeners) cb({ type: 'fill_apply', actions: [a] }, { id: 'ext' }, resolve);
@@ -494,3 +504,26 @@ def test_choose_on_a_multiple_select_keeps_the_other_selections(page, load):
     row = apply(page, inv(page)["Languages"], op="choose", text="Hindi")
     assert row["outcome"] == "verified"
     assert page.evaluate("[...document.getElementById('lang').selectedOptions].map(o => o.text)") == ["English", "Hindi"]
+
+
+def test_a_query_left_in_the_box_beside_a_committed_pill_is_taken_back(page, load):
+    html = fixture_html("workday_search.html").replace(
+        "            input.value = \"\";\n            close();", "            close();")
+    assert html != fixture_html("workday_search.html")
+    load(page, html)
+    row = apply(page, inv(page)["School or University"], op="choose", text="University of Texas at Dallas", term="Texas")
+    assert (row["outcome"], row["committed"]) == ("verified", "University of Texas at Dallas")
+    assert page.input_value("#school") == ""
+
+
+def test_a_new_run_waits_for_the_operation_in_flight(page, load):
+    """A new runId releases the Stop latch — never under an operation that
+    was queued before it and must still start cancelled."""
+    load(page, fixture_html("workday_text.html"))
+    f = inv(page)
+    page.evaluate(f"() => {OPS}.cancel()")
+    rows = page.evaluate(f"""(p) => {{
+      const queued = {OPS}.apply([p]);
+      {OPS}.inventory({{runId: 'fresh'}});
+      return queued; }}""", {"fid": f["City"]["fid"], "fp": f["City"]["fp"], "op": "write", "value": "Springfield"})
+    assert rows[0]["outcome"] == "cancelled" and page.input_value("#city") == ""

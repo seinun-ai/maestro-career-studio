@@ -350,13 +350,21 @@
     },
   };
 
-  // ONE listener per isolated world. panel_prepare re-injects this file into
-  // the world that already runs it; a second listener would run every page
-  // operation twice, concurrently. The handlers above are re-published (the
-  // same code), the registration is not.
-  const loaded = (ns.loadedOnce ??= new Set());
-  if (!loaded.has("content/agent.js:listener")) {
-    loaded.add("content/agent.js:listener");
+  // ONE LIVE listener per isolated world. panel_prepare re-injects this file
+  // into the world that already runs it; a second listener would run every
+  // page operation twice, concurrently. The handlers above are re-published
+  // (the same code), the registration is not — unless the runtime that
+  // registered it is dead (the extension reloaded under the page), whose
+  // listener can no longer answer anything.
+  const alive = (rt) => {
+    try {
+      return Boolean(rt?.id);
+    } catch {
+      return false;
+    }
+  };
+  if (!alive(ns.listenerRuntime)) {
+    ns.listenerRuntime = chrome.runtime;
     chrome.runtime.onMessage.addListener(onPageMessage);
   }
 

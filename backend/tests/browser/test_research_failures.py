@@ -7,7 +7,7 @@ NS = "window.careerStudioCompanion"
 
 
 def inventory(page):
-    return page.evaluate(f"() => {NS}.fillOps.inventory({{}}).fields")
+    return page.evaluate(f"async () => (await {NS}.fillOps.inventory({{}})).fields")
 
 
 def apply(page, action):
