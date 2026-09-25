@@ -221,8 +221,18 @@ def set_jev_api_key(session: Session, value: str | None) -> str | None:
 
 
 def set_jev_base_url(session: Session, value: str | None) -> str | None:
-    """Same scheme rule as `set_base_url`, for the same reason: it decides where the key goes."""
-    return _set_raw_value(session, JEV_BASE_URL_KEY, _checked_http_url(value))
+    """Same scheme rule as `set_base_url`, for the same reason: it decides where the key goes.
+
+    A different HOST is a different company (OpenRouter ↔ TypeSafe), and a key
+    for one is not a key for the other: keeping it would send it to the new host
+    on the next fill. So a host change forgets the key, and with it Jev as the
+    engine — the user adds the new provider's key."""
+    cleaned = _checked_http_url(value)
+    new_host = urlparse(cleaned or JEV_DEFAULT_BASE_URL).netloc.lower()
+    if new_host != urlparse(get_jev_base_url(session)).netloc.lower():
+        _set_raw_value(session, JEV_API_KEY_KEY, None)
+        _set_raw_value(session, AUTOFILL_ENGINE_KEY, None)
+    return _set_raw_value(session, JEV_BASE_URL_KEY, cleaned)
 
 
 def set_jev_model(session: Session, value: str | None) -> str | None:

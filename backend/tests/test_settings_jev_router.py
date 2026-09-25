@@ -54,3 +54,19 @@ def test_probe_reports_failure_without_a_502(client, monkeypatch):
     resp = client.post("/api/settings/jev/probe")
     assert resp.status_code == 200
     assert resp.json() == {"ok": False, "error": "Jev refused your API key."}
+
+
+def test_switching_provider_forgets_the_key(client):
+    """An OpenRouter key is not a TypeSafe key: keeping it across a provider
+    switch would send it to a different company on the next fill."""
+    client.put("/api/settings/jev", json={"api_key": "sk-or-test", "engine": "jev"})
+    body = client.put("/api/settings/jev", json={"base_url": "https://api.typesafe.ai"}).json()
+    assert body["api_key_configured"] is False and body["engine"] == "fast"
+
+
+def test_a_provider_switch_with_its_own_key_keeps_that_key(client):
+    body = client.put("/api/settings/jev", json={
+        "base_url": "https://api.typesafe.ai", "api_key": "ts-test"}).json()
+    assert body["api_key_configured"] is True
+    body = client.put("/api/settings/jev", json={"base_url": "https://api.typesafe.ai/"}).json()
+    assert body["api_key_configured"] is True  # same host: not a switch

@@ -437,11 +437,12 @@ def get_jev_info(db: Annotated[Session, Depends(get_db)]):
 def put_jev_info(payload: JevSettingsPayload, db: Annotated[Session, Depends(get_db)]):
     sent = payload.model_fields_set
     try:
-        # Key and endpoint first: the engine check reads the key.
-        if "api_key" in sent:
-            model_settings.set_jev_api_key(db, payload.api_key)
+        # Endpoint, then key, then engine: a host change forgets the stored key,
+        # so a key sent WITH the switch lands after it; the engine check reads it.
         if "base_url" in sent:
             model_settings.set_jev_base_url(db, payload.base_url)
+        if "api_key" in sent:
+            model_settings.set_jev_api_key(db, payload.api_key)
         if "model" in sent:
             model_settings.set_jev_model(db, payload.model)
         if "engine" in sent and payload.engine is not None:

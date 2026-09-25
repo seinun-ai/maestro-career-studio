@@ -58,9 +58,15 @@ export function FormFillingSection() {
   const save = useMutation({
     mutationFn: (patch: JevPatch) =>
       apiFetch<JevInfo>("/api/settings/jev", { method: "PUT", body: JSON.stringify(patch) }),
-    onSuccess: (result) => {
+    onSuccess: (result, patch) => {
+      const before = qc.getQueryData<JevInfo>(["settings", "jev"]);
       qc.setQueryData(["settings", "jev"], result);
       setKey(null);
+      // The server forgets a key when the provider changes: a key is only ever
+      // sent to the company it came from.
+      if (patch.base_url && before?.api_key_configured && !result.api_key_configured) {
+        toast.message("Add a key for the new provider. The old one was removed.");
+      }
     },
     onError: (err: Error) => toast.error(couldnt("save your form filling settings", err)),
   });
