@@ -378,13 +378,19 @@ export function getResumeVersion(
   );
 }
 
+/**
+ * Restore `version` as a new version. With `ifLatest` it is an undo: the server restores only while
+ * version `ifLatest` is still the latest (the check and the restore under one write lock), else 409.
+ */
 export function restoreResumeVersion(
   kind: "base" | "application",
   key: string,
   version: number,
+  { ifLatest }: { ifLatest?: number } = {},
 ) {
+  const query = ifLatest != null ? `?if_latest=${ifLatest}` : "";
   return apiFetch<import("@/lib/types").ResumeVersionRestoreResult>(
-    `/api/resume-versions/${kind}/${encodeURIComponent(key)}/${version}/restore`,
+    `/api/resume-versions/${kind}/${encodeURIComponent(key)}/${version}/restore${query}`,
     { method: "POST" },
   );
 }
