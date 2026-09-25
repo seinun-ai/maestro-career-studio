@@ -644,6 +644,21 @@ def test_the_progress_rows_are_the_runs_own_report(tmp_path):
     assert note["text"] == "2 fields need your answer."
 
 
+def test_a_closest_pick_is_listed_for_the_user_to_check(tmp_path):
+    """A `closest` answer is WRITTEN — the page had no exact option for the
+    profile's value and the nearest one was allowed — so it is filled, never
+    open; but the user must see it before submitting, so it has its own list."""
+    out = _fill(tmp_path, start=True, api={"/api/autofill/choose": _reply({"choices": {
+        "q1": {"answer": "Night", "reason": "closest"},
+        "q2": {"answer": "LinkedIn", "reason": "matched"},
+    }})})
+    [check] = [node for node in _by_class(out["settled"]["rail"], "resid")
+               if node.get("attrs", {}).get("aria-label") == "Closest matches to check"]
+    assert "preferred shift" in _text(check) and "Night" in _text(check)
+    # Written, so not among the fields still open.
+    rows = dict(_rows_of(out["settled"]["rail"]))
+    assert rows["Application questions"] == "3 filled · 1 needs you"
+
 def test_the_progress_rows_move_with_what_the_writer_actually_did(tmp_path):
     """The other half of "the run's own report": change what the ENGINE says
     and the rows change with it.

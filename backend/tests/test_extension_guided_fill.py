@@ -275,7 +275,9 @@ const deps = {
     for (const field of JSON.parse(init.body).fields) {
       choices[field.qid] = spec.abstainAll
         ? { answer: null, reason: "abstained" }
-        : { answer: "Yes", reason: "matched" };
+        : (spec.closest ?? []).includes(field.qid)
+          ? { answer: "Closest", reason: "closest" }
+          : { answer: "Yes", reason: "matched" };
     }
     return { choices };
   },
@@ -543,3 +545,23 @@ def test_a_choose_failure_is_reported_as_well_as_residued(tmp_path):
     rules = _run_guided(tmp_path, questions=_open_questions(2),
                         chooseFails=True, options={"aiAssist": False})
     assert rules["result"]["aiFailure"] is None
+
+
+def test_a_closest_answer_is_written_and_reported_for_checking(tmp_path):
+    """`closest` is an ANSWER — the model found no exact option and picked the
+    nearest one a factual slot allows — so it is written like `matched`, and
+    handed back separately so the Fill report can ask the user to check it."""
+    out = _run_guided(tmp_path, questions=_open_questions(2), closest=["q1"])
+
+    pairs = {pair["qid"]: pair["answer"] for pair in _writes(out)[0]["pairs"]}
+    assert pairs == {"q0": "Yes", "q1": "Closest"}
+    assert [(row["qid"], row["answer"]) for row in out["result"]["closest"]] == [
+        ("q1", "Closest")]
+    assert out["result"]["residue"] == []
+
+
+def test_a_closest_answer_that_did_not_stick_is_residue_not_a_check(tmp_path):
+    out = _run_guided(tmp_path, questions=_open_questions(1), closest=["q0"],
+                      writeOutcomes={"q0": "not_stuck"})
+    assert out["result"]["closest"] == []
+    assert [row["qid"] for row in out["result"]["residue"]] == ["q0"]

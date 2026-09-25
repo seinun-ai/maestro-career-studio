@@ -334,7 +334,7 @@
     // press starts from nothing known, which is also what the body should show
     // while the run is open.
     store.write({ fill: null, eeoConsent: null, residue: null, essays: null,
-                  writeResults: null, blank: null, aiNote: null });
+                  closest: null, writeResults: null, blank: null, aiNote: null });
     const aiAssist = facts.fillMode === "assist";
     let noSavedAnswers = false;
     const done = await duringAction(store, "fill", async () => {
@@ -413,6 +413,7 @@
     store.write({
       residue: out.residue,
       essays: out.essays,
+      closest: out.closest ?? [],
       writeResults: out.writeResults,
       blank,
       aiNote: aiNoteFor(out.aiFailure, out.keyless),

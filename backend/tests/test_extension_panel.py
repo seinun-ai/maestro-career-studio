@@ -1358,6 +1358,8 @@ def test_a_page_change_clears_every_fact_that_was_about_the_page(tmp_path):
         "answers": {"q2": {"text": "6 weeks", "learn": True}},
         "residue": [{"qid": "q2", "label": "Preferred shift"}],
         "essays": [{"qid": "q3", "label": "Why this role?"}],
+        # Written on the nearest option — a report row about THIS form.
+        "closest": [{"qid": "q2", "label": "Major", "answer": "Information Systems"}],
         # The run's two plain-words facts (Task 25): how many fields were
         # blank, and why the AI answered nothing. Both about THIS form.
         "blank": 9, "aiNote": "AI help is off until you add an API key.",
@@ -1395,7 +1397,7 @@ def test_a_page_change_clears_every_fact_that_was_about_the_page(tmp_path):
         "prepared": False, "tailorOpen": False,
         "revisit": None,
         "fill": None, "writeResults": None, "residue": None, "essays": None,
-        "blank": None, "aiNote": None,
+        "closest": None, "blank": None, "aiNote": None,
         "eeoConsent": None, "answers": {},
         "qna": {"open": False, "question": "", "answered": None, "answer": None,
                 "copied": False},
