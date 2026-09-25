@@ -1,12 +1,33 @@
 "use client";
 
-import { useId } from "react";
-import { ArrowDown, ArrowUp, Trash2 } from "lucide-react";
+import { useId, useRef } from "react";
+import { ArrowDown, ArrowUp, ArrowUpToLine, MoreHorizontal, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  DragHandle,
+  SortableItem,
+  SortableList,
+  rowSuccessor,
+  useRowIds,
+} from "@/components/ui/sortable-list";
 import { Textarea } from "@/components/ui/textarea";
+import { focusIfDropped } from "@/lib/focus";
 import { move } from "@/lib/utils";
 
+/**
+ * An entry's bullets while it is being edited. Each row is a drag handle, its text and a ⋯ menu: drag
+ * to reorder (pointer or keyboard), or Move to top / up / down and Delete from the menu. The menu is the
+ * click-only path WCAG 2.5.7 asks for beside dragging; it replaced three stacked buttons per row that made
+ * every row as tall as the stack.
+ */
 export function BulletList({
   label = "Bullets",
   itemLabel = "Bullet",
@@ -21,63 +42,100 @@ export function BulletList({
   onChange: (next: string[]) => void;
 }) {
   const labelId = useId();
+  const listRef = useRef<HTMLDivElement>(null);
+  const addRef = useRef<HTMLButtonElement>(null);
+  const { ids, moveId, removeId, addId } = useRowIds(value.length);
+  const noun = itemLabel.toLowerCase();
+
+  const moveRow = (from: number, to: number) => {
+    if (to < 0 || to >= value.length || from === to) return;
+    moveId(from, to);
+    onChange(move(value, from, to));
+  };
+
+  const deleteRow = (index: number) => {
+    // The row and its menu leave together: focus goes to the next bullet's text, else the previous
+    // one's, else Add bullet. Read now, while the row is still in the document.
+    const row = listRef.current?.querySelector(`[data-row-id="${ids[index]}"]`);
+    const next = rowSuccessor(row, "textarea", () => addRef.current);
+    removeId(index);
+    onChange(value.filter((_, i) => i !== index));
+    // After the menu has closed and tried its own return (to the ⋯ that is gone).
+    requestAnimationFrame(() => focusIfDropped(next()));
+  };
+
   return (
     <div className="space-y-2" role="group" aria-labelledby={labelId}>
       <span id={labelId} className="text-sm font-medium">
         {label}
       </span>
-      {value.map((bullet, i) => (
-        <div key={i} className="flex items-start gap-2">
-          <Textarea
-            rows={2}
-            // Position matters here — the reorder buttons beside each row are
-            // only meaningful if you can tell which bullet you are on.
-            aria-label={`${itemLabel} ${i + 1} of ${value.length}`}
-            value={bullet}
-            onChange={(e) =>
-              onChange(value.map((b, idx) => (idx === i ? e.target.value : b)))
-            }
-          />
-          {/* Names carry the position, like the textarea above: "Move up" three
-              times in a row tells a screen-reader user nothing about WHICH
-              bullet moves. These three were unnamed entirely — the most
-              repeated control in the editor, announced only as "button". */}
-          <div className="flex flex-col gap-1">
-            <Button
-              size="icon-sm"
-              variant="ghost"
-              aria-label={`Move ${itemLabel.toLowerCase()} ${i + 1} up`}
-              onClick={() => onChange(move(value, i, i - 1))}
-              disabled={i === 0}
-            >
-              <ArrowUp />
-            </Button>
-            <Button
-              size="icon-sm"
-              variant="ghost"
-              aria-label={`Move ${itemLabel.toLowerCase()} ${i + 1} down`}
-              onClick={() => onChange(move(value, i, i + 1))}
-              disabled={i === value.length - 1}
-            >
-              <ArrowDown />
-            </Button>
-            <Button
-              size="icon-sm"
-              variant="ghost"
-              aria-label={`Delete ${itemLabel.toLowerCase()} ${i + 1}`}
-              onClick={() => onChange(value.filter((_, idx) => idx !== i))}
-            >
-              <Trash2 />
-            </Button>
-          </div>
-        </div>
-      ))}
+      <div ref={listRef} className="space-y-2">
+        <SortableList ids={ids} itemLabel={(i) => `${itemLabel} ${i + 1}`} onMove={moveRow}>
+          {value.map((bullet, i) => (
+            <SortableItem key={ids[i]} id={ids[i]} className="flex items-start gap-1">
+              {(handle) => (
+                <>
+                  <DragHandle {...handle} label={`Drag ${noun} ${i + 1} to move it`} className="mt-1.5" />
+                  <Textarea
+                    rows={2}
+                    // Position matters here: the handle and the menu beside each row are only
+                    // meaningful if you can tell which bullet you are on.
+                    aria-label={`${itemLabel} ${i + 1} of ${value.length}`}
+                    value={bullet}
+                    onChange={(e) =>
+                      onChange(value.map((b, idx) => (idx === i ? e.target.value : b)))
+                    }
+                  />
+                  <DropdownMenu>
+                    <DropdownMenuTrigger
+                      render={
+                        <Button
+                          size="icon-sm"
+                          variant="ghost"
+                          className="text-muted-foreground mt-1"
+                          // Names carry the position, like the textarea: "More actions" on every row
+                          // tells a screen-reader user nothing about WHICH bullet it acts on.
+                          aria-label={`More actions for ${noun} ${i + 1}`}
+                        >
+                          <MoreHorizontal />
+                        </Button>
+                      }
+                    />
+                    <DropdownMenuContent align="end" className="w-auto min-w-44">
+                      <DropdownMenuItem disabled={i === 0} onClick={() => moveRow(i, 0)}>
+                        <ArrowUpToLine /> Move to top
+                      </DropdownMenuItem>
+                      <DropdownMenuItem disabled={i === 0} onClick={() => moveRow(i, i - 1)}>
+                        <ArrowUp /> Move up
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        disabled={i === value.length - 1}
+                        onClick={() => moveRow(i, i + 1)}
+                      >
+                        <ArrowDown /> Move down
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem variant="destructive" onClick={() => deleteRow(i)}>
+                        <Trash2 /> Delete {noun}
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </>
+              )}
+            </SortableItem>
+          ))}
+        </SortableList>
+      </div>
       <Button
+        ref={addRef}
         size="sm"
         variant="outline"
-        onClick={() => onChange([...value, ""])}
+        onClick={() => {
+          addId();
+          onChange([...value, ""]);
+        }}
       >
-        Add bullet
+        Add {noun}
       </Button>
     </div>
   );

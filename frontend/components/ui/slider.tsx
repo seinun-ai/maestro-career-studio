@@ -23,7 +23,8 @@ function Slider({
       >
         <SliderPrimitive.Track
           data-slot="slider-track"
-          className="relative h-1.5 w-full grow overflow-hidden rounded-full bg-muted"
+          // No overflow-hidden: the 16px thumb sits inside this 6px track, which clipped it to a sliver.
+          className="relative h-1.5 w-full grow rounded-full bg-muted"
         >
           <SliderPrimitive.Indicator
             data-slot="slider-indicator"

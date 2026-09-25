@@ -776,15 +776,21 @@
   picker is read by its placeholder, and by nothing once a role is set.
   `RoleCategoryPicker` defaults to "Target role"; a caller that knows more
   (the import dialog's per-resume rows) passes its own.
-- **Reordering is up/down buttons, not drag-and-drop** (`move()` from
-  `lib/utils`, as in `editor-scaffold.tsx` and the formatting panel's
-  `section_order` list, which has no drag path either). No dependency, and it
-  is keyboard- and screen-reader-reachable by construction rather than by extra
-  work; each button carries an `aria-label` naming the row AND the direction,
-  because the icon alone announces nothing. The section-order buttons are the
-  shared ghost `icon-xs` (24px, 44px on a coarse pointer): they are that list's
-  only pointer path, and two adjacent 18px buttons failed WCAG 2.5.8's target
-  spacing. A list-shaped knob also needs an order-sensitive
+- **A list that drags always has a click-only move too** (WCAG 2.5.7).
+  `components/ui/sortable-list.tsx` (dnd-kit) drags a row by its grip with a
+  pointer or the keyboard (Space, arrows, Space; Escape cancels), announcing
+  each step. Bullets (`BulletList`) and custom sections pair it with ⋯ items
+  (Move to top/up/down, Delete); the formatting panel's `section_order` pairs
+  it with up/down buttons, shown on row hover or focus (always on a coarse
+  pointer). Rows key by a STABLE id (`section.key`, a section name, or
+  `useRowIds` for bare strings) so a moved row keeps its field and focus; a
+  removed row hands focus on with `rowSuccessor`, never `focusSuccessor`
+  (dnd-kit's hidden instructions and live region are the list's last
+  children). Entry cards (`editor-scaffold.tsx`) still move from their ⋯
+  only (`move()` from `lib/utils`). Every move control's `aria-label` names
+  the row AND the direction, because the icon alone announces nothing. The
+  section-order buttons are the shared ghost `icon-xs` (24px, 44px on a coarse
+  pointer): two adjacent 18px buttons failed WCAG 2.5.8's target spacing. A list-shaped knob also needs an order-sensitive
   equality in `lib/formatting.ts` `diffFrom` — `!==` on a rebuilt array is always
   true, so reference compare stores a redundant "override" on every render.
   `section_order` compares what the control shows (`shownSectionOrder`: `null`

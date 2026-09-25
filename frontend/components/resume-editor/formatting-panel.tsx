@@ -10,6 +10,7 @@ import {
 
 import { LoadErrorState } from "@/components/load-error-state";
 import { Button } from "@/components/ui/button";
+import { DragHandle, SortableItem, SortableList } from "@/components/ui/sortable-list";
 import {
   Select,
   SelectContent,
@@ -233,16 +234,17 @@ export function FormattingPanel({
     );
   };
 
-  // A fourth control shape: an ordered list, reordered with up/down buttons
-  // rather than drag-and-drop (no new dependency, and it is keyboard-reachable
-  // by construction). `null` means "the template's own order", so the rows show
-  // the inherited order and the first move stores the whole explicit list —
-  // there is no half-specified state to reason about.
+  // A fourth control shape: an ordered list. Rows drag by their grip (pointer or keyboard,
+  // `SortableList`), and the up/down buttons stay as the click-only path WCAG 2.5.7 asks for;
+  // they repeat on every row, so they show on hover or focus (always on a coarse pointer).
+  // `null` means "the template's own order", so the rows show the inherited order and the
+  // first move stores the whole explicit list — there is no half-specified state to reason about.
   const sectionOrderRow = () => {
     const key: keyof ResumeFormatting = "section_order";
     const disabled = isDisabled(key);
     const labelId = rowLabelId(key);
     const order: SectionKey[] = shownSectionOrder(effective.section_order);
+    const name = (section: SectionKey) => SECTION_ORDER_LABELS[section] ?? section;
     return (
       <div className={cn("grid gap-1", disabled && "opacity-50")}>
         <span id={labelId} className="text-sm">
@@ -250,44 +252,55 @@ export function FormattingPanel({
         </span>
         {withTooltip(
           key,
-          <ul className="border-input grid gap-0.5 rounded-md border p-1">
-            {order.map((section, index) => (
-              <li
-                key={section}
-                className="flex items-center justify-between gap-2 rounded px-1.5 text-xs"
-              >
-                <span className="min-w-0 truncate">
-                  {SECTION_ORDER_LABELS[section] ?? section}
-                </span>
-                <span className="flex shrink-0 items-center">
-                  {(
-                    [
-                      ["up", ChevronUp, index - 1, index > 0],
-                      ["down", ChevronDown, index + 1, index < order.length - 1],
-                    ] as const
-                  ).map(([direction, Icon, target, enabled]) => (
-                    // icon-xs: 24px (44px on a coarse pointer). These are
-                    // the only pointer reorder path, and two adjacent 18px
-                    // buttons failed WCAG 2.5.8's target spacing.
-                    <Button
-                      key={direction}
-                      type="button"
-                      variant="ghost"
-                      size="icon-xs"
-                      disabled={disabled || !enabled}
-                      aria-label={`Move ${
-                        SECTION_ORDER_LABELS[section] ?? section
-                      } ${direction}`}
-                      onClick={() => setKey(key, move(order, index, target))}
-                      className="text-muted-foreground disabled:opacity-30"
-                    >
-                      <Icon className="size-3.5" />
-                    </Button>
-                  ))}
-                </span>
-              </li>
-            ))}
-          </ul>,
+          <div role="list" aria-labelledby={labelId} className="border-input grid gap-0.5 rounded-md border p-1">
+            <SortableList
+              ids={order}
+              itemLabel={(i) => name(order[i])}
+              onMove={(from, to) => setKey(key, move(order, from, to))}
+              disabled={disabled}
+            >
+              {order.map((section, index) => (
+                <SortableItem
+                  key={section}
+                  id={section}
+                  role="listitem"
+                  className="group/row flex items-center justify-between gap-2 px-0.5 text-xs"
+                >
+                  {(handle) => (
+                    <>
+                      <span className="flex min-w-0 items-center gap-1">
+                        <DragHandle {...handle} label={`Drag ${name(section)} to move it`} className="size-6" />
+                        <span className="min-w-0 truncate">{name(section)}</span>
+                      </span>
+                      <span className="flex shrink-0 items-center opacity-0 transition-opacity group-hover/row:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100">
+                        {(
+                          [
+                            ["up", ChevronUp, index - 1, index > 0],
+                            ["down", ChevronDown, index + 1, index < order.length - 1],
+                          ] as const
+                        ).map(([direction, Icon, target, enabled]) => (
+                          // icon-xs: 24px (44px on a coarse pointer). Two adjacent 18px
+                          // buttons failed WCAG 2.5.8's target spacing.
+                          <Button
+                            key={direction}
+                            type="button"
+                            variant="ghost"
+                            size="icon-xs"
+                            disabled={disabled || !enabled}
+                            aria-label={`Move ${name(section)} ${direction}`}
+                            onClick={() => setKey(key, move(order, index, target))}
+                            className="text-muted-foreground disabled:opacity-30"
+                          >
+                            <Icon className="size-3.5" />
+                          </Button>
+                        ))}
+                      </span>
+                    </>
+                  )}
+                </SortableItem>
+              ))}
+            </SortableList>
+          </div>,
         )}
       </div>
     );

@@ -1,12 +1,12 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef, useState, type RefObject } from "react";
 import {
   ArrowDown,
   ArrowUp,
-  Check,
   Eye,
   EyeOff,
+  MoreHorizontal,
   Pencil,
   Plus,
   Trash2,
@@ -26,6 +26,13 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   Dialog,
   DialogContent,
   DialogFooter,
@@ -34,8 +41,14 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
+import {
+  DragHandle,
+  SortableItem,
+  SortableList,
+  rowSuccessor,
+} from "@/components/ui/sortable-list";
 import { useFocusOnNextCommit } from "@/hooks/use-focus-return";
+import { focusIfDropped } from "@/lib/focus";
 import {
   SECTION_PRESETS,
   SECTION_TYPE_LABELS,
@@ -51,7 +64,7 @@ import type {
   ExtraSectionEntry,
   ExtraSectionType,
 } from "@/lib/types";
-import { cn } from "@/lib/utils";
+import { cn, move } from "@/lib/utils";
 
 /**
  * Shared editor for `ResumeData.extra_sections`, used by BOTH the base-resume
@@ -69,6 +82,8 @@ export function ExtraSectionsEditor({
   onChange: (next: ExtraSection[]) => void;
 }) {
   const [addOpen, setAddOpen] = useState(false);
+  // Where focus goes when the last section is deleted.
+  const addSectionRef = useRef<HTMLButtonElement>(null);
 
   const replaceAt = (i: number, next: ExtraSection) =>
     onChange(value.map((s, idx) => (idx === i ? next : s)));
@@ -87,18 +102,28 @@ export function ExtraSectionsEditor({
         </p>
       ) : (
         <div className="flex flex-col gap-3">
-          {value.map((section, i) => (
-            <SectionCard
-              key={section.key}
-              section={section}
-              onChange={(next) => replaceAt(i, next)}
-              {...cardReorderProps(value, i, onChange)}
-            />
-          ))}
+          {/* Keyed by `section.key`, which a rename never changes: a dragged or moved card keeps its
+              own open editor. */}
+          <SortableList
+            ids={existingKeys}
+            itemLabel={(i) => value[i]?.title.trim() || "Untitled section"}
+            onMove={(from, to) => onChange(move(value, from, to))}
+          >
+            {value.map((section, i) => (
+              <SectionCard
+                key={section.key}
+                section={section}
+                onChange={(next) => replaceAt(i, next)}
+                addSectionRef={addSectionRef}
+                {...cardReorderProps(value, i, onChange)}
+              />
+            ))}
+          </SortableList>
         </div>
       )}
 
       <Button
+        ref={addSectionRef}
         variant="ghost"
         size="sm"
         className="text-muted-foreground hover:text-foreground self-start"
@@ -120,193 +145,209 @@ export function ExtraSectionsEditor({
   );
 }
 
+/**
+ * One custom section. At rest it reads like the other tabs: its name, its layout, and its content as
+ * the resume shows it (a Simple list's bullets as a list; an Items-with-dates section's items as their
+ * own cards). Edit opens the section's name and, for a Simple list, its bullets; Hide, Move and Delete
+ * sit in ⋯ as on every other card, and the grip drags it.
+ */
 function SectionCard({
   section,
   onChange,
   onMoveUp,
   onMoveDown,
   onDelete,
+  addSectionRef,
 }: {
   section: ExtraSection;
   onChange: (next: ExtraSection) => void;
+  addSectionRef: RefObject<HTMLButtonElement | null>;
   onMoveUp?: () => void;
   onMoveDown?: () => void;
   onDelete: () => void;
 }) {
   const confirm = useConfirm();
-  const [renaming, setRenaming] = useState(false);
+  const [editing, setEditing] = useState(false);
   const enabled = isEnabled(section);
-  // Title captured when rename begins, restored if the user leaves a name that
-  // would collide with a core section header (which the schema also rejects).
-  const renameOriginalRef = useRef(section.title);
-  const titleCollides = renaming && isCoreSectionTitle(section.title);
-  // Names the move and delete buttons, which repeat on every section card.
+  // Title captured when editing begins: Escape in the name field puts it back, and a name that
+  // would collide with a core section header (which the schema also rejects) can't be kept.
+  const originalTitleRef = useRef(section.title);
+  const titleCollides = editing && isCoreSectionTitle(section.title);
+  // Names the handle, Edit and ⋯, which repeat on every section card.
   const sectionName = section.title.trim() || "this section";
-  // Enter, Escape and Done (and a blur the save shortcut forced) unmount the
-  // name input: focus moves to the rename button. Not after a blur INTO
-  // something (a click, Tab): that is where the user put focus.
-  const renameButtonRef = useRef<HTMLButtonElement>(null);
+  // Edit unmounts itself while the section is open; Done hands focus back to it.
+  const editButtonRef = useRef<HTMLButtonElement>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLButtonElement>(null);
   const focusNext = useFocusOnNextCommit();
 
-  const startRename = () => {
-    renameOriginalRef.current = section.title;
-    setRenaming(true);
+  const startEditing = () => {
+    originalTitleRef.current = section.title;
+    setEditing(true);
   };
-  const commitRename = (refocus = true) => {
-    // Never commit an empty title (schema contract) or one that duplicates a
-    // core section header — deny it here so Save can't fail on it later.
-    if (!section.title.trim()) {
-      onChange({ ...section, title: "Untitled section" });
-    } else if (isCoreSectionTitle(section.title)) {
-      onChange({ ...section, title: renameOriginalRef.current });
-    }
-    setRenaming(false);
-    if (refocus) focusNext(renameButtonRef);
+  const finishEditing = () => {
+    // Never keep an empty title (schema contract); a colliding one can't reach here (Done waits).
+    if (!section.title.trim()) onChange({ ...section, title: "Untitled section" });
+    setEditing(false);
+    focusNext(editButtonRef);
   };
 
   return (
-    <div
-      className={cn(
-        "rounded-lg border p-3",
-        !enabled && "bg-muted/20 opacity-70",
-      )}
-    >
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex min-w-0 flex-col gap-1">
-          <div className="flex min-w-0 items-center gap-2">
-            {renaming ? (
-              <Input
-                aria-label="Section name"
-                autoFocus
-                aria-invalid={titleCollides}
-                value={section.title}
-                onChange={(e) => onChange({ ...section, title: e.target.value })}
-                onKeyDown={(e) => {
-                  if (e.key === "Escape") {
-                    onChange({ ...section, title: renameOriginalRef.current });
-                    setRenaming(false);
-                    focusNext(renameButtonRef);
-                  } else if (e.key === "Enter" && !titleCollides) {
-                    // Focus moves to the rename button in this same event:
-                    // left alone, Enter's activation then pressed it and
-                    // reopened the rename.
-                    e.preventDefault();
-                    commitRename();
-                  }
-                }}
-                onBlur={(e) => commitRename(e.relatedTarget === null)}
-                className="h-7 w-56"
-              />
-            ) : (
+    <SortableItem id={section.key}>
+      {(handle) => (
+        <div
+          ref={cardRef}
+          className={cn(
+            "rounded-lg border p-3",
+            !enabled && "bg-muted/20 opacity-70",
+            editing && "bg-muted/20",
+          )}
+        >
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex min-w-0 items-center gap-1.5">
+              <DragHandle {...handle} label={`Drag ${sectionName} to move it`} />
               <span className="truncate text-sm font-semibold">
-                {section.title || (
-                  <em className="opacity-60">Untitled section</em>
-                )}
+                {section.title || <em className="opacity-60">Untitled section</em>}
               </span>
-            )}
-            <Badge variant="secondary" className="shrink-0 text-xs font-normal">
-              {SECTION_TYPE_LABELS[section.type]}
-            </Badge>
-            {!enabled && (
-              <Badge variant="outline" className="shrink-0 text-xs">
-                Hidden
+              <Badge variant="secondary" className="shrink-0 text-xs font-normal">
+                {SECTION_TYPE_LABELS[section.type]}
               </Badge>
+              <HiddenBadge enabled={enabled} />
+            </div>
+
+            {!editing && (
+              <div className="flex shrink-0 items-center gap-0.5">
+                <Button
+                  ref={editButtonRef}
+                  size="icon-sm"
+                  variant="ghost"
+                  aria-label={`Edit ${sectionName}`}
+                  onClick={startEditing}
+                >
+                  <Pencil className="size-3.5" />
+                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    render={
+                      <Button
+                        ref={menuRef}
+                        size="icon-sm"
+                        variant="ghost"
+                        aria-label={`More actions for ${sectionName}`}
+                      >
+                        <MoreHorizontal className="size-3.5" />
+                      </Button>
+                    }
+                  />
+                  <DropdownMenuContent align="end" className="w-auto min-w-44">
+                    <DropdownMenuItem onClick={() => onChange({ ...section, enabled: !enabled })}>
+                      {enabled ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+                      {enabled ? "Hide from resume" : "Show on resume"}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem disabled={!onMoveUp} onClick={onMoveUp}>
+                      <ArrowUp className="size-3.5" /> Move up
+                    </DropdownMenuItem>
+                    <DropdownMenuItem disabled={!onMoveDown} onClick={onMoveDown}>
+                      <ArrowDown className="size-3.5" /> Move down
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      variant="destructive"
+                      onClick={async () => {
+                        // The card goes with a confirmed delete: focus moves to the next section's
+                        // first control, read now while this card is in the document.
+                        const next = rowSuccessor(
+                          cardRef.current?.closest("[data-row-id]"),
+                          'button[aria-label^="Drag "]',
+                          () => addSectionRef.current,
+                        );
+                        const ok = await confirm({
+                          title: `Delete ${sectionName}?`,
+                          // Saved versions keep it: the confirm says Version history
+                          // restores it.
+                          description:
+                            "This deletes the section and everything in it. Version history keeps your saved versions, so you can restore it.",
+                          confirmLabel: "Delete section",
+                          destructive: true,
+                          // The item is gone once the menu closes: Cancel returns to ⋯.
+                          returnFocus: () => menuRef.current,
+                        });
+                        if (!ok) return;
+                        onDelete();
+                        requestAnimationFrame(() => focusIfDropped(next()));
+                      }}
+                    >
+                      <Trash2 className="size-3.5" /> Delete section
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             )}
           </div>
-          {titleCollides && (
-            <span className="text-destructive text-xs">
-              {TITLE_COLLISION_MESSAGE}
-            </span>
-          )}
-        </div>
 
-        <div className="flex items-center gap-1">
-          <label className="text-muted-foreground mr-1 flex items-center gap-1.5 text-xs">
-            {enabled ? (
-              <Eye className="size-3.5" />
-            ) : (
-              <EyeOff className="size-3.5" />
+          <div className="mt-3 flex flex-col gap-3">
+            {editing && (
+              <div className="grid gap-1.5">
+                <Label htmlFor={`section-name-${section.key}`}>Section name</Label>
+                <Input
+                  id={`section-name-${section.key}`}
+                  autoFocus
+                  aria-invalid={titleCollides}
+                  aria-describedby={titleCollides ? `section-name-${section.key}-error` : undefined}
+                  value={section.title}
+                  onChange={(e) => onChange({ ...section, title: e.target.value })}
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape") {
+                      // Puts the name back; the section stays open.
+                      e.preventDefault();
+                      onChange({ ...section, title: originalTitleRef.current });
+                    } else if (e.key === "Enter") {
+                      e.preventDefault();
+                      if (!titleCollides) finishEditing();
+                    }
+                  }}
+                  className="max-w-sm"
+                />
+                {titleCollides && (
+                  <span id={`section-name-${section.key}-error`} className="text-destructive text-xs">
+                    {TITLE_COLLISION_MESSAGE}
+                  </span>
+                )}
+              </div>
             )}
-            <Switch
-              aria-label={enabled ? "Hide section" : "Show section"}
-              checked={enabled}
-              onCheckedChange={(checked) =>
-                onChange({ ...section, enabled: checked })
-              }
-            />
-          </label>
-          <Button
-            ref={renameButtonRef}
-            size="icon-sm"
-            variant="ghost"
-            aria-label={renaming ? "Done renaming" : "Rename section"}
-            // Prevent the button press from blurring the rename input first
-            // (which would fire onBlur → renaming=false, then this toggle would
-            // flip it back to true and trap the user in rename mode).
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => (renaming ? commitRename() : startRename())}
-          >
-            {renaming ? (
-              <Check className="size-3.5" />
-            ) : (
-              <Pencil className="size-3.5" />
-            )}
-          </Button>
-          <Button
-            size="icon-sm"
-            variant="ghost"
-            aria-label={`Move ${sectionName} up`}
-            disabled={!onMoveUp}
-            onClick={onMoveUp}
-          >
-            <ArrowUp className="size-3.5" />
-          </Button>
-          <Button
-            size="icon-sm"
-            variant="ghost"
-            aria-label={`Move ${sectionName} down`}
-            disabled={!onMoveDown}
-            onClick={onMoveDown}
-          >
-            <ArrowDown className="size-3.5" />
-          </Button>
-          <Button
-            size="icon-sm"
-            variant="ghost"
-            aria-label={`Delete ${sectionName}`}
-            className="text-muted-foreground hover:text-destructive"
-            onClick={async () => {
-              const ok = await confirm({
-                title: `Delete ${sectionName}?`,
-                // Saved versions keep it: the confirm says Version history
-                // restores it.
-                description:
-                  "This deletes the section and everything in it. Version history keeps your saved versions, so you can restore it.",
-                confirmLabel: "Delete section",
-                destructive: true,
-              });
-              if (ok) onDelete();
-            }}
-          >
-            <Trash2 className="size-3.5" />
-          </Button>
-        </div>
-      </div>
 
-      <div className="mt-3">
-        {section.type === "entries" ? (
-          <EntriesEditor
-            entries={section.entries}
-            onChange={(entries) => onChange({ ...section, entries })}
-          />
-        ) : (
-          <BulletList
-            value={section.bullets}
-            onChange={(bullets) => onChange({ ...section, bullets })}
-          />
-        )}
-      </div>
-    </div>
+            {section.type === "entries" ? (
+              <EntriesEditor
+                entries={section.entries}
+                onChange={(entries) => onChange({ ...section, entries })}
+              />
+            ) : editing ? (
+              <BulletList
+                value={section.bullets}
+                onChange={(bullets) => onChange({ ...section, bullets })}
+              />
+            ) : (
+              <BulletsRead bullets={section.bullets} />
+            )}
+
+            {editing && (
+              <div className="flex justify-end">
+                <Button
+                  size="sm"
+                  className="data-disabled:pointer-events-none data-disabled:opacity-50"
+                  // Focusable while a colliding name holds it: a disabled button drops focus.
+                  focusableWhenDisabled
+                  disabled={titleCollides}
+                  onClick={finishEditing}
+                >
+                  Done
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </SortableItem>
   );
 }
 

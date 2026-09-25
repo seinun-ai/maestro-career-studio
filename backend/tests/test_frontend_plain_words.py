@@ -367,9 +367,10 @@ def test_a_bullet_label_is_singular_in_its_slot():
     src = _read("components/resume-editor/bullet-list.tsx")
     assert 'label = "Bullets",' in src and 'itemLabel = "Bullet",' in src
     assert "aria-label={`${itemLabel} ${i + 1} of ${value.length}`}" in src
-    for verb in ("Move ${itemLabel.toLowerCase()} ${i + 1} up", "Move ${itemLabel.toLowerCase()} ${i + 1} down",
-                 "Delete ${itemLabel.toLowerCase()} ${i + 1}"):
-        assert f"aria-label={{`{verb}`}}" in src, verb
+    # The row's handle and ⋯ carry its singular name and position; the menu's items then act on it.
+    assert "const noun = itemLabel.toLowerCase();" in src
+    for name in ("Drag ${noun} ${i + 1} to move it", "More actions for ${noun} ${i + 1}"):
+        assert f"`{name}`" in src, name
     assert "${label} ${i + 1}" not in src
     assert "label.toLowerCase()" not in src.replace("itemLabel.toLowerCase()", "")
 
