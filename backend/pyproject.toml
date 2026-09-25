@@ -46,6 +46,7 @@ dev = [
     # this bound is belt-and-braces — lift it deliberately, with a run.
     "ruff>=0.7,<0.17",
     "respx>=0.21",
+    "playwright>=1.49",
 ]
 mcp = [
     # Upper bound is load-bearing, not caution. mcp 2.0 removed

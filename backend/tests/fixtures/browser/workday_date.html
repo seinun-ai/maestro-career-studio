@@ -1,0 +1,15 @@
+<fieldset><legend>From*</legend>
+  <div data-automation-id="dateInputWrapper" id="from">
+    <input data-automation-id="dateSectionMonth-input" aria-label="Month" id="m">
+    <input data-automation-id="dateSectionYear-input" aria-label="Year" id="y">
+  </div></fieldset>
+<label for="n">Graduation date</label><input id="n" type="month">
+<label for="p">End date</label><input id="p" placeholder="MM/YYYY">
+<script>
+  const box = document.getElementById("from");
+  box.addEventListener("focusout", (e) => {
+    if (box.contains(e.relatedTarget)) return;
+    const m = document.getElementById("m"), y = document.getElementById("y");
+    if (m.value && !y.value) m.value = "";
+  });
+</script>

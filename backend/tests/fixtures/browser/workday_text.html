@@ -1,0 +1,23 @@
+<div data-automation-id="formField-city">
+  <label for="city">City*</label>
+  <input id="city" type="text" aria-required="true">
+  <p data-automation-id="errorMessage" id="city-err" hidden>Error: The field City is required and must have a value.</p>
+</div>
+<div data-automation-id="formField-zip">
+  <label for="zip">Postal Code*</label>
+  <input id="zip" type="text" value="00000" aria-invalid="true">
+  <p data-automation-id="errorMessage" id="zip-err">Error: The field Postal Code is required and must have a value.</p>
+</div>
+<script>
+  window.committed = {};
+  for (const id of ["city", "zip"]) {
+    const input = document.getElementById(id);
+    const err = document.getElementById(`${id}-err`);
+    input.addEventListener("input", (e) => { if (e.isTrusted) window.committed[id] = input.value; });
+    input.addEventListener("focusout", () => {
+      const ok = Boolean(window.committed[id]) && window.committed[id] === input.value;
+      err.hidden = ok;
+      input.setAttribute("aria-invalid", ok ? "false" : "true");
+    });
+  }
+</script>

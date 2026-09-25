@@ -47,6 +47,11 @@ jobs:
           python -m pip install --upgrade pip
           cd backend && pip install -e ".[dev,mcp]"
 
+      - name: Install Chromium for the extension browser tests
+        run: |
+          cd backend
+          python -m playwright install --with-deps chromium
+
       # Nothing enforced this before, so 76 findings accumulated unnoticed and
       # buried anything real. Kept as its own step so a lint failure is not
       # mistaken for a test failure.

@@ -1,0 +1,39 @@
+<fieldset><legend>How did you hear about us?</legend>
+  <button id="heard" aria-haspopup="listbox" aria-label=" Select One Required">Select One</button></fieldset>
+<fieldset><legend>Are you legally authorized to work in the United States?</legend>
+  <button id="auth" aria-haspopup="listbox" aria-label=" Select One Required">Select One</button></fieldset>
+<ul role="listbox" id="stale" style="display:none"><li role="option" id="stale-ca">Canada</li></ul>
+<div id="portal"></div>
+<script>
+  const TREES = {
+    heard: [["Job Board", ["LinkedIn", "Indeed"]], ["Social Media", ["Twitter"]], ["Employee Referral", null]],
+    auth: [["Yes", null], ["No", null]],
+  };
+  const portal = document.getElementById("portal");
+  let open = null;
+  const close = () => { portal.innerHTML = ""; open = null; };
+  const render = (btn, items) => {
+    portal.innerHTML = "";
+    const ul = document.createElement("ul");
+    ul.setAttribute("role", "listbox");
+    for (const [label, kids] of items) {
+      const li = document.createElement("li");
+      li.setAttribute("role", "option");
+      li.textContent = label;
+      li.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (kids) render(btn, kids.map((k) => [k, null]));
+        else { btn.textContent = label; close(); }
+      });
+      ul.append(li);
+    }
+    portal.append(ul);
+    open = btn;
+  };
+  for (const id of Object.keys(TREES)) {
+    const btn = document.getElementById(id);
+    btn.addEventListener("click", (e) => { e.stopPropagation(); render(btn, TREES[id]); });
+  }
+  document.body.addEventListener("click", () => { if (open) close(); });
+  document.getElementById("stale-ca").addEventListener("click", () => { window.staleHit = true; });
+</script>

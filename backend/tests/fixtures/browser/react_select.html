@@ -1,0 +1,33 @@
+<label id="lbl" for="country">Country*</label>
+<div class="select__container"><div class="select__control"><div class="select__value-container">
+  <div class="select__placeholder">Select...</div>
+  <input id="country" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-labelledby="lbl">
+</div></div></div>
+<div id="menu-root"></div>
+<script>
+  const OPTIONS = ["United States", "United Kingdom", "India", "Canada"];
+  const input = document.getElementById("country");
+  const menuRoot = document.getElementById("menu-root");
+  const valueBox = input.parentElement;
+  window.rejectClicks = false;
+  const closeMenu = () => { menuRoot.innerHTML = ""; input.removeAttribute("aria-controls"); input.setAttribute("aria-expanded", "false"); };
+  const pick = (text) => {
+    valueBox.querySelector(".select__placeholder, .select__single-value").outerHTML = `<div class="select__single-value">${text}</div>`;
+    input.value = "";
+    closeMenu();
+  };
+  const renderMenu = () => {
+    const q = input.value.toLowerCase();
+    menuRoot.innerHTML = `<div id="country-menu" role="listbox">${OPTIONS.filter((o) => o.toLowerCase().includes(q))
+      .map((o) => `<div role="option">${o}</div>`).join("")}</div>`;
+    input.setAttribute("aria-controls", "country-menu");
+    input.setAttribute("aria-expanded", "true");
+    for (const opt of menuRoot.querySelectorAll("[role=option]")) {
+      opt.addEventListener("mousedown", (e) => { e.preventDefault(); if (!window.rejectClicks) pick(opt.textContent); });
+    }
+  };
+  input.addEventListener("mousedown", renderMenu);
+  input.addEventListener("input", renderMenu);
+  input.addEventListener("keydown", (e) => { if (e.key === "Escape") closeMenu(); });
+  input.addEventListener("blur", () => { input.value = ""; setTimeout(closeMenu, 0); });
+</script>

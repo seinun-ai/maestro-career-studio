@@ -1,0 +1,42 @@
+<div data-automation-id="formField-school"><label id="school-l">School or University*</label>
+  <div data-uxi-widget-type="selectinput"><div data-automation-id="selectedItemList" id="school-pills"></div>
+  <input id="school" data-automation-id="searchBox" aria-labelledby="school-l"></div></div>
+<div data-automation-id="formField-skills"><label id="skills-l">Type to Add Skills</label>
+  <div data-uxi-widget-type="multiselectinput"><div data-automation-id="selectedItemList" id="skills-pills">
+    <div data-automation-id="selectedItem">SQL</div></div>
+  <input id="skills" data-automation-id="searchBox" aria-labelledby="skills-l"></div></div>
+<div id="portal"></div>
+<script>
+  const DATA = {
+    school: ["University of Texas at Austin", "University of Texas at Dallas", "Texas A&M University"],
+    skills: ["Python", "Python (Programming Language)", "SQL", "Tableau"],
+  };
+  const portal = document.getElementById("portal");
+  let timer = null;
+  const close = () => { portal.innerHTML = ""; };
+  for (const id of Object.keys(DATA)) {
+    const input = document.getElementById(id);
+    const pills = document.getElementById(`${id}-pills`);
+    input.addEventListener("input", () => {
+      clearTimeout(timer);
+      portal.innerHTML = `<div role="listbox"><div role="option">Searching…</div></div>`;
+      timer = setTimeout(() => {
+        const q = input.value.toLowerCase();
+        const hits = DATA[id].filter((o) => q && o.toLowerCase().includes(q));
+        if (id === "school") hits.push("Not in List");
+        portal.innerHTML = `<div role="listbox">${hits.map((h) => `<div role="option">${h}</div>`).join("")}</div>`;
+        for (const opt of portal.querySelectorAll("[role=option]")) {
+          opt.addEventListener("click", (e) => {
+            e.stopPropagation();
+            const pill = `<div data-automation-id="selectedItem">${opt.textContent}</div>`;
+            if (id === "school") pills.innerHTML = pill;
+            else if (![...pills.children].some((p) => p.textContent === opt.textContent)) pills.insertAdjacentHTML("beforeend", pill);
+            input.value = "";
+            close();
+          });
+        }
+      }, 300);
+    });
+  }
+  document.body.addEventListener("click", close);
+</script>

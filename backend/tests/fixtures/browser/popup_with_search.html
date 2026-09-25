@@ -1,0 +1,23 @@
+<label id="fos-l">Field of study</label>
+<button id="fos" aria-haspopup="dialog" aria-labelledby="fos-l">Select</button>
+<div id="portal"></div>
+<script>
+  const ALL = ["Business Administration", "Information Systems", "Computer Science", "Statistics"];
+  const btn = document.getElementById("fos");
+  const portal = document.getElementById("portal");
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    portal.innerHTML = `<div role="dialog"><input aria-label="Search" id="fos-q"><div role="listbox" id="fos-list"></div></div>`;
+    const q = document.getElementById("fos-q");
+    q.addEventListener("click", (ev) => ev.stopPropagation());
+    q.addEventListener("input", () => {
+      const list = document.getElementById("fos-list");
+      const hits = ALL.filter((o) => q.value && o.toLowerCase().includes(q.value.toLowerCase()));
+      list.innerHTML = hits.map((h) => `<div role="option">${h}</div>`).join("");
+      for (const opt of list.querySelectorAll("[role=option]")) {
+        opt.addEventListener("click", (ev) => { ev.stopPropagation(); btn.textContent = opt.textContent; portal.innerHTML = ""; });
+      }
+    });
+  });
+  document.body.addEventListener("click", () => { portal.innerHTML = ""; });
+</script>
