@@ -417,3 +417,11 @@ def test_shape_readers_do_not_depend_on_this(page, load):
     got = page.evaluate(f"""() => {{ const read = {NS}.shapes.byName('search').read;
         return read(document.getElementById('skills')); }}""")
     assert got == ["SQL"]
+
+
+def test_aria_haspopup_noise_is_not_listed(page, load):
+    load(page, """<label for='n'>Name</label><input id='n'>
+      <span aria-haspopup='dialog' tabindex='0'>?</span><a href='#h' aria-haspopup='true'>Help</a>
+      <div role='button' aria-haspopup='false' tabindex='0'>More</div>
+      <label id='d'>Degree</label><div role='button' aria-haspopup='listbox' aria-labelledby='d' tabindex='0'>Select</div>""")
+    assert [(f["shape"], f["question"]) for f in fields(page)] == [("text", "Name"), ("popup", "Degree")]

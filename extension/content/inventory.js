@@ -19,7 +19,10 @@
   const FRAME = Math.random().toString(36).slice(2, 8);
   // Known shapes plus ARIA widgets no shape claims yet: an unrecognised control
   // is still LISTED (shape "unknown") so the panel can name it, never dropped.
-  const CANDIDATE = 'input, select, textarea, button[aria-haspopup], [aria-haspopup]:not(button):not(input), '
+  // A non-button element with aria-haspopup counts only as a button or
+  // combobox (not an info icon or a Help link); aria-haspopup="false" never.
+  const CANDIDATE = 'input, select, textarea, button[aria-haspopup]:not([aria-haspopup="false"]), '
+    + '[aria-haspopup]:not([aria-haspopup="false"]):is([role="button"], [role="combobox"]):not(button):not(input), '
     + '[role="combobox"]:not(input), [contenteditable]:not([contenteditable="false"]), '
     + '[role="textbox"]:not(input):not(textarea), [role="radio"]:not(input), [role="checkbox"]:not(input), '
     + '[role="switch"], [role="spinbutton"]:not(input), [role="slider"]';
