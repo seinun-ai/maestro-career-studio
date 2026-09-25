@@ -288,3 +288,17 @@ def test_a_dispute_that_resolves_a_bullet_keeps_its_reply_and_focus():
     handoff = handoff[: handoff.index("}, [result, hash]);")]
     assert "document.activeElement !== reply" in handoff
     assert "queueMicrotask(" in handoff and '[data-resolved-hash="${hash}"]' in handoff
+
+
+def test_a_changed_question_is_not_a_fixed_bullet():
+    # adoptReport (every re-run: Check again, an override, a dispute) lists as fixed only a
+    # location nothing in the new report still asks or fixes; the finding id is not the test.
+    adopt = _PAGE[_PAGE.index("const adoptReport = ("):]
+    adopt = adopt[: adopt.index("\n  };\n")]
+    assert "setResolved(resolvedFindings(priorFindings.current, result.findings));" in adopt
+    assert "nextIds" not in adopt
+    fn = _HELPERS[_HELPERS.index("export function resolvedFindings<"):]
+    fn = fn[: fn.index("\n}\n")]
+    assert "!stillOpen.has(where(f))" in fn
+    assert "f.id" not in fn and "question" not in fn
+    assert _PAGE.count("adoptReport(result, true);") + _PAGE.count("adoptReport(fresh, true);") == 3

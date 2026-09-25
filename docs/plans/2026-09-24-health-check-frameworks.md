@@ -1183,6 +1183,7 @@ Task 2: 23 Node tests and 15 frontend pins passed; disclosure mutation caught. B
 Task 7: full suite 5755 passed/1 skipped before → **5782 passed, 1 skipped** after; ruff, tsc, lint (2 pre-existing warnings) clean. Mutations caught: dropping the stored-flag carry-over, writing the dispute into the classification cache, dispute ranked above override, no read-time demotion. Real-provider dispute golden cases not run.
 Task 8: 7 new pins + the single-flight site, 2 new Node tests (288 pass); all `tests/ -k frontend` pins 1293 passed; lint (2 pre-existing warnings), tsc clean. Mutations caught, each by exactly its pin: "Not right?" offered on overrides, the OVERRIDDEN 409 branch dropped (also the Node test), the reply's `role="status"` removed. No browser check: needs a provider key for the dispute call.
 Task 8 follow-up: a dispute that lifts a bullet out of the report puts its reply on the "Fixed" entry, which takes focus (mount effect, plus a layout-cleanup handoff from the leaving card). 1 pin + 1 Node test; both focus paths mutation-checked, each caught by that pin.
+Task 8 follow-up 2: a re-run lists a finding as fixed only when nothing in the new report still asks or fixes its location (`resolvedFindings`), so a dispute or override that changes a question no longer shows a false "Fixed". 1 pin + 1 Node test (question change, real fix, moved bullet); reverting adoptReport to the id test and switching the helper to ids were both caught.
 
 ## Goal critique
 

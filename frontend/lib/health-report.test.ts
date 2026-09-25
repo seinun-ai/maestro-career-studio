@@ -7,6 +7,7 @@ import {
   disputeChangedRating,
   disputeFailure,
   resolvedDisputeReply,
+  resolvedFindings,
   composeMetricContext,
   explainScoreDelta,
   groupFindings,
@@ -442,4 +443,23 @@ test("resolvedDisputeReply goes on the Fixed entry only once the bullet left the
   assert.equal(resolvedDisputeReply({ content_hash: "abc" }, [{ content_hash: "abc" }], disputes), undefined);
   assert.equal(resolvedDisputeReply({ content_hash: "zzz" }, [], disputes), undefined);
   assert.equal(resolvedDisputeReply({ content_hash: null }, [], disputes), undefined);
+});
+
+test("resolvedFindings: only a location no longer asked or fixed counts as fixed", () => {
+  const at = (bullet_index: number, type = "ask", id = `id${bullet_index}`) => ({
+    id,
+    type,
+    location: { section: "experience", index: 0, bullet_index },
+  });
+  // A dispute changed the question: new id, same bullet, still asked. Not fixed.
+  assert.deepEqual(resolvedFindings([at(1)], [at(1, "ask", "new-id")]), []);
+  // An ask that became a fix is still open.
+  assert.deepEqual(resolvedFindings([at(1)], [at(1, "fix", "new-id")]), []);
+  // A real fix: nothing is asked or fixed at that bullet any more (a note there does not count).
+  assert.deepEqual(resolvedFindings([at(1), at(2)], [at(2), at(1, "note", "n1")]), [at(1)]);
+  // A moved bullet: bullet 3 moved up into slot 2 and is still flagged, so slot 2 is not fixed;
+  // slot 3 is empty now, so its finding is listed (the test is the location, not the bullet).
+  assert.deepEqual(resolvedFindings([at(2), at(3)], [at(2, "ask", "moved")]), [at(3)]);
+  // Notes and gates are never listed.
+  assert.deepEqual(resolvedFindings([at(4, "note"), at(5, "gate")], []), []);
 });

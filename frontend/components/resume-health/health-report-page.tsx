@@ -43,6 +43,7 @@ import {
   disputeChangedRating,
   explainScoreDelta,
   resolvedDisputeReply,
+  resolvedFindings,
   filterFindings,
   groupFindings,
   groupTitle,
@@ -213,12 +214,7 @@ export function HealthReportPage({
       } else {
         setScoreDelta(null);
       }
-      const nextIds = new Set(result.findings.map((f) => f.id));
-      setResolved(
-        priorFindings.current.filter(
-          (f) => !nextIds.has(f.id) && f.type !== "note" && f.type !== "gate",
-        ),
-      );
+      setResolved(resolvedFindings(priorFindings.current, result.findings));
     }
     priorFindings.current = result.findings;
     priorScore.current = { grade: result.grade, score: result.score };

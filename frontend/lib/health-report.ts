@@ -97,6 +97,24 @@ export function resolvedDisputeReply(
   return disputes[hash]?.reply;
 }
 
+type Located = {
+  type: string;
+  location: { section: string; index?: number | null; bullet_index?: number | null };
+};
+
+/**
+ * The asks and fixes a re-run settled: nothing in the new report still asks or fixes their
+ * location. The finding id is not the test: a dispute or an override that changes a bullet's
+ * question gives it a new id while the bullet is still open.
+ */
+export function resolvedFindings<T extends Located>(prior: T[], next: Located[]): T[] {
+  const open = (f: Located) => f.type === "ask" || f.type === "fix";
+  const where = (f: Located) =>
+    JSON.stringify([f.location.section, f.location.index ?? null, f.location.bullet_index ?? null]);
+  const stillOpen = new Set(next.filter(open).map(where));
+  return prior.filter((f) => open(f) && !stillOpen.has(where(f)));
+}
+
 type GateLike = { tier: string; status: string };
 
 const problems = (n: number, tier: string) => `${n} ${tier} ${n === 1 ? "problem" : "problems"}`;
