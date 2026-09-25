@@ -43,6 +43,7 @@ export function DisputeBox({
   kind,
   resumeKey,
   result,
+  land,
   onDisputed,
   onReanalyze,
   locked,
@@ -53,6 +54,8 @@ export function DisputeBox({
   kind: "base" | "application";
   resumeKey: string;
   result?: DisputeResult;
+  /** The card opened on this reply because the dispute's re-run replaced it: focus lands here. */
+  land?: boolean;
   onDisputed?: DisputeHandler;
   onReanalyze?: () => void;
   locked?: boolean;
@@ -62,20 +65,27 @@ export function DisputeBox({
   const [open, setOpen] = useState(false);
   const [note, setNote] = useState("");
   const [failure, setFailure] = useState<Failure | null>(null);
+  // The page's re-run after a dispute that moved the rating: nothing more is sent until it lands.
+  const [rerunning, setRerunning] = useState(false);
+  // The reply this box mounted with: re-expanding a card shows it without taking focus.
+  const [mountResult] = useState(result);
   const noteId = useId();
   const hintId = useId();
   const panelId = useId();
   const replyRef = useRef<HTMLParagraphElement>(null);
   const offered = canDispute(finding) && Boolean(onDisputed) && !locked;
 
-  // Send leaves with the form, and a re-run can replace the whole card: either way focus that fell
-  // to <body> lands on the reply, the one thing that changed.
+  // A new reply takes focus that fell to <body>: in place (Send leaves with the form), or on the
+  // card a re-run put in place of this one (`land`). One this box mounted with, on a card the user
+  // re-expanded, does not.
   useLayoutEffect(() => {
-    if (result) focusIfDropped(replyRef.current);
-  }, [result]);
+    if (result && (result !== mountResult || land)) focusIfDropped(replyRef.current);
+  }, [result, mountResult, land]);
   // A dispute that lifts the bullet out of the report removes this card while the reply holds focus.
   // A LAYOUT cleanup runs before React detaches it; after the commit, focus goes to the resolved
   // "Fixed" entry that now carries the reply (ResolvedFinding takes it if it mounts later).
+  // Not useFocusHandoff: that returns focus to a point beside the card, and the target here is the
+  // entry for this bullet elsewhere on the page.
   const hash = finding.content_hash;
   useLayoutEffect(() => {
     const reply = replyRef.current;
@@ -102,9 +112,10 @@ export function DisputeBox({
     onSuccess: (reply) => {
       setOpen(false);
       setNote("");
-      onDisputed!(reply).catch((err: unknown) =>
-        toast.error(couldnt("update the report", err)),
-      );
+      setRerunning(true);
+      onDisputed!(reply)
+        .catch((err: unknown) => toast.error(couldnt("update the report", err)))
+        .finally(() => setRerunning(false));
     },
     onError: (err: Error) => {
       const why = disputeFailure(err);
@@ -127,10 +138,15 @@ export function DisputeBox({
           {offered && (
             <button
               type="button"
-              className="text-muted-foreground hover:text-foreground text-sm underline-offset-2 hover:underline"
+              className="text-muted-foreground hover:text-foreground text-sm underline-offset-2 hover:underline disabled:pointer-events-none disabled:opacity-50"
               aria-expanded={open}
-              aria-controls={panelId}
-              onClick={() => setOpen((v) => !v)}
+              aria-controls={open ? panelId : undefined}
+              disabled={send.isPending || rerunning}
+              onClick={() => {
+                // Closing the box takes its alert with it.
+                if (open) setFailure(null);
+                setOpen(!open);
+              }}
             >
               Not right?
             </button>
@@ -157,7 +173,7 @@ export function DisputeBox({
             <Button
               size="sm"
               variant="outline"
-              disabled={note.trim().length === 0 || send.isPending}
+              disabled={note.trim().length === 0 || send.isPending || rerunning}
               // Disables itself while sending: a native `disabled` drops focus.
               focusableWhenDisabled
               className="data-disabled:pointer-events-none data-disabled:opacity-50"

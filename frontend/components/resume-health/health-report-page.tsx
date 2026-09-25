@@ -42,7 +42,8 @@ import {
   checkDoneWords,
   disputeChangedRating,
   explainScoreDelta,
-  resolvedDisputeReply,
+  hasOpenRating,
+  liftedDispute,
   resolvedFindings,
   filterFindings,
   groupFindings,
@@ -56,6 +57,7 @@ import {
   nextGradeLine,
   sharedCoaching,
   hoistBlurb,
+  textAtLocation,
   type StreamFilter,
   staleFindingIds,
 } from "@/lib/health-report";
@@ -251,6 +253,7 @@ export function HealthReportPage({
   }, [report.data]);
 
   const reanalyzeReport = async () => {
+    setLastDisputed(null);
     const result = await runLintReport(kind, resumeKey);
     adoptReport(result, true);
     setAppliedCount(0);
@@ -265,6 +268,7 @@ export function HealthReportPage({
     reason: string,
   ) => {
     await overrideLevel(contentHash, level, reason);
+    setLastDisputed(null);
     const result = await runLintReport(kind, resumeKey);
     adoptReport(result, true);
     await qc.invalidateQueries({
@@ -275,17 +279,30 @@ export function HealthReportPage({
   // The latest "Not right?" reply per bullet (content hash). Kept here, not in the card: a dispute
   // that moves the rating runs the report again, which can replace the card with a new one.
   const [disputes, setDisputes] = useState<Record<string, DisputeResult>>({});
+  // The bullet of the page's latest action when that was a dispute: a card mounting on it opens
+  // on the reply. Any other action (Check again, an override, an Apply) clears it.
+  const [lastDisputed, setLastDisputed] = useState<string | null>(null);
+  // Bullets a dispute's own re-run lifted out of the report: their Fixed entry carries the reply.
+  const [lifted, setLifted] = useState<ReadonlySet<string>>(new Set());
   const afterDispute = async (result: DisputeResult) => {
-    setDisputes((d) => ({ ...d, [result.content_hash]: result }));
+    const hash = result.content_hash;
+    setDisputes((d) => ({ ...d, [hash]: result }));
+    setLastDisputed(hash);
     if (!disputeChangedRating(result)) return;
     const fresh = await runLintReport(kind, resumeKey);
     adoptReport(fresh, true);
+    if (!hasOpenRating(fresh.findings, hash)) setLifted((l) => new Set(l).add(hash));
     await qc.invalidateQueries({
       queryKey: ["resume-lint", kind, resumeKey],
     });
   };
 
-  const invalidateAfterApply = () => {
+  const invalidateAfterApply = (contentHash?: string | null) => {
+    // An Apply on a disputed bullet settles the dispute: its reply and suggestion go.
+    if (contentHash) {
+      setDisputes((d) => Object.fromEntries(Object.entries(d).filter(([h]) => h !== contentHash)));
+    }
+    setLastDisputed(null);
     setAppliedCount((n) => n + 1);
     void qc.invalidateQueries({ queryKey: ["resume-lint", kind, resumeKey, "answers"] });
     qc.invalidateQueries({ queryKey: ["base-resumes"] });
@@ -590,6 +607,7 @@ export function HealthReportPage({
                           onApplied={invalidateAfterApply}
                           onClassificationChanged={overrideClassification}
                           dispute={finding.content_hash ? disputes[finding.content_hash] : undefined}
+                          disputeFresh={finding.content_hash != null && finding.content_hash === lastDisputed}
                           onDisputed={afterDispute}
                           onReanalyze={() => void reanalyzeReport()}
                           locked={stale && staleIds.has(finding.id)}
@@ -607,6 +625,7 @@ export function HealthReportPage({
                           onApplied={invalidateAfterApply}
                           onClassificationChanged={overrideClassification}
                           dispute={finding.content_hash ? disputes[finding.content_hash] : undefined}
+                          disputeFresh={finding.content_hash != null && finding.content_hash === lastDisputed}
                           onDisputed={afterDispute}
                           onReanalyze={() => void reanalyzeReport()}
                           locked={stale && staleIds.has(finding.id)}
@@ -626,7 +645,8 @@ export function HealthReportPage({
                   <ResolvedFinding
                     key={finding.id}
                     finding={finding}
-                    reply={resolvedDisputeReply(finding, findings, disputes)}
+                    dispute={liftedDispute(finding, lifted, disputes)}
+                    currentText={resumeData ? textAtLocation(resumeData, finding) : null}
                   />
                 ))}
               </div>

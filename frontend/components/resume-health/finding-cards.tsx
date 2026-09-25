@@ -104,7 +104,8 @@ export type FindingCardShared = {
   data: ResumeData;
   kind: "base" | "application";
   resumeKey: string;
-  onApplied: () => void;
+  /** Called with the bullet's hash when an Apply on the card saved: its dispute reply is done. */
+  onApplied: (contentHash?: string | null) => void;
   onClassificationChanged?: ClassificationOverrideHandler;
   onReanalyze?: () => void;
   locked?: boolean;
@@ -113,6 +114,8 @@ export type FindingCardShared = {
   storedAnswer?: StoredAskAnswer;
   /** The latest "Not right?" reply for this bullet, kept by the page across re-runs. */
   dispute?: DisputeResult;
+  /** This bullet's dispute is the page's latest action: a card mounting now opens on the reply. */
+  disputeFresh?: boolean;
   onDisputed?: DisputeHandler;
 };
 
@@ -463,6 +466,32 @@ function SuggestionCopyOnly({
   );
 }
 
+/**
+ * A card's one suggestion: the hash-guarded editor (copy-only for Other sections, which have no
+ * bullet edit op), or the plain wording when the card has no text to compare it with.
+ */
+function CardSuggestion({
+  currentText,
+  suggestion,
+  ...rest
+}: {
+  finding: LintFinding;
+  currentText: string | null;
+  suggestion: string;
+  kind: "base" | "application";
+  resumeKey: string;
+  onApplied: () => void;
+  onReanalyze?: () => void;
+  locked?: boolean;
+}) {
+  if (currentText == null) {
+    return (
+      <p className="text-muted-foreground mt-2 max-w-[65ch] border-t pt-2 text-xs">{suggestion}</p>
+    );
+  }
+  return <SuggestionBlock currentText={currentText} suggestion={suggestion} {...rest} />;
+}
+
 function SourceQuote({ text, clamp }: { text: string; clamp?: boolean }) {
   const [open, setOpen] = useState(false);
   const [cut, setCut] = useState(false);
@@ -696,16 +725,35 @@ export function FixCard({
   locked,
   hideHow,
   dispute,
+  disputeFresh,
   onDisputed,
 }: FindingCardShared & { finding: LintFinding }) {
-  // A card the re-run after a dispute replaced opens on its reply.
-  const [expanded, setExpanded] = useState(dispute != null);
+  // A card the re-run after the latest dispute put in place opens on its reply and takes focus
+  // there; collapsing it ends that, so re-expanding never moves focus to an old reply.
+  const fresh = dispute != null && Boolean(disputeFresh);
+  const [expanded, setExpanded] = useState(fresh);
+  const [landOnReply, setLandOnReply] = useState(fresh);
   // Review leaves with the collapsed row: focus goes into the opened card
   // (its first field, else its first control), never to <body>.
   const cardRef = useRef<HTMLDivElement>(null);
   const focusNext = useFocusOnNextCommit();
   const currentText = textAtLocation(data, finding);
   const meta = TYPE_CHIP.fix;
+  const applied = () => onApplied(finding.content_hash);
+  const renderSuggestion = (s: string) => (
+    <CardSuggestion
+      finding={finding}
+      currentText={currentText}
+      suggestion={s}
+      kind={kind}
+      resumeKey={resumeKey}
+      onApplied={applied}
+      onReanalyze={onReanalyze}
+      locked={locked}
+    />
+  );
+  // One suggestion per card: a dispute's is newer than the check's own.
+  const disputeSuggestion = dispute?.suggestion ?? null;
   const overflow = (
     <FindingOverflow
       finding={finding}
@@ -732,6 +780,7 @@ export function FixCard({
 
   const showQuote =
     finding.suggestion == null &&
+    disputeSuggestion == null &&
     currentText != null &&
     currentText.trim().length > 0;
 
@@ -741,43 +790,25 @@ export function FixCard({
       finding={finding}
       cardClassName={meta.card}
       overflow={overflow}
-      onCollapse={() => setExpanded(false)}
+      onCollapse={() => {
+        setExpanded(false);
+        setLandOnReply(false);
+      }}
       quote={showQuote ? currentText : null}
       how={finding.how}
       hideHow={hideHow}
     >
-      {finding.suggestion != null && currentText != null && (
-        <SuggestionBlock
-          finding={finding}
-          currentText={currentText}
-          suggestion={finding.suggestion}
-          kind={kind}
-          resumeKey={resumeKey}
-          onApplied={onApplied}
-          onReanalyze={onReanalyze}
-          locked={locked}
-        />
-      )}
+      {finding.suggestion != null && disputeSuggestion == null && renderSuggestion(finding.suggestion)}
       <DisputeBox
         finding={finding}
         kind={kind}
         resumeKey={resumeKey}
         result={dispute}
+        land={landOnReply}
         onDisputed={onDisputed}
         onReanalyze={onReanalyze}
         locked={locked}
-        renderSuggestion={(s) => (
-          <SuggestionBlock
-            finding={finding}
-            currentText={currentText ?? ""}
-            suggestion={s}
-            kind={kind}
-            resumeKey={resumeKey}
-            onApplied={onApplied}
-            onReanalyze={onReanalyze}
-            locked={locked}
-          />
-        )}
+        renderSuggestion={renderSuggestion}
       />
     </ExpandedFindingChrome>
   );
@@ -795,10 +826,13 @@ export function AskCard({
   hideHow,
   storedAnswer,
   dispute,
+  disputeFresh,
   onDisputed,
 }: FindingCardShared & { finding: LintFinding }) {
-  // A card the re-run after a dispute replaced opens on its reply.
-  const [expanded, setExpanded] = useState(dispute != null);
+  // As on FixCard: opens on a fresh dispute's reply, and collapsing ends the landing.
+  const fresh = dispute != null && Boolean(disputeFresh);
+  const [expanded, setExpanded] = useState(fresh);
+  const [landOnReply, setLandOnReply] = useState(fresh);
   const [answerDraft, setAnswerDraft] = useState<string | null>(null);
   const [metricDraft, setMetricDraft] = useState<MetricAskValue | null>(null);
   const [localSuggestion, setLocalSuggestion] = useState<
@@ -837,6 +871,21 @@ export function AskCard({
       onClassificationChanged={onClassificationChanged}
     />
   );
+  const applied = () => onApplied(finding.content_hash);
+  const renderSuggestion = (s: string) => (
+    <CardSuggestion
+      finding={finding}
+      currentText={currentText}
+      suggestion={s}
+      kind={kind}
+      resumeKey={resumeKey}
+      onApplied={applied}
+      onReanalyze={onReanalyze}
+      locked={locked}
+    />
+  );
+  // One suggestion per card: a dispute's is newer than the answer's.
+  const disputeSuggestion = dispute?.suggestion ?? null;
 
   const context = metricAsk && !useAlternative ? metricContextFromValue(metric) : answer.trim();
 
@@ -879,7 +928,10 @@ export function AskCard({
   }
 
   const showQuote =
-    suggestion == null && currentText != null && currentText.trim().length > 0;
+    suggestion == null &&
+    disputeSuggestion == null &&
+    currentText != null &&
+    currentText.trim().length > 0;
   const answering = !(suggestion != null || notRewritable);
 
   return (
@@ -888,7 +940,10 @@ export function AskCard({
       finding={finding}
       cardClassName={meta.card}
       overflow={overflow}
-      onCollapse={() => setExpanded(false)}
+      onCollapse={() => {
+        setExpanded(false);
+        setLandOnReply(false);
+      }}
       quote={showQuote ? currentText : null}
       how={finding.how}
       hideHow={hideHow}
@@ -904,22 +959,11 @@ export function AskCard({
         </p>
       )}
 
-      {suggestion != null && currentText != null ? (
-        <SuggestionBlock
-          finding={finding}
-          currentText={currentText}
-          suggestion={suggestion}
-          kind={kind}
-          resumeKey={resumeKey}
-          onApplied={onApplied}
-          onReanalyze={onReanalyze}
-          locked={locked}
-        />
-      ) : notRewritable || (suggestion != null && currentText == null) ? (
+      {suggestion != null ? (
+        disputeSuggestion == null && renderSuggestion(suggestion)
+      ) : notRewritable ? (
         <p className="text-muted-foreground mt-2 max-w-[65ch] border-t pt-2 text-xs">
-          {suggestion != null && currentText == null
-            ? suggestion
-            : "There's no single bullet to rewrite here. Add this to your resume directly."}
+          There&apos;s no single bullet to rewrite here. Add this to your resume directly.
         </p>
       ) : (
         <div className="mt-2 space-y-2 border-t pt-2">
@@ -958,6 +1002,7 @@ export function AskCard({
         kind={kind}
         resumeKey={resumeKey}
         result={dispute}
+        land={landOnReply}
         onDisputed={onDisputed}
         onReanalyze={onReanalyze}
         locked={locked}
@@ -982,18 +1027,7 @@ export function AskCard({
             {draft.isPending ? "Writing…" : "Write new wording"}
           </Button>
         ) : null}
-        renderSuggestion={(s) => (
-          <SuggestionBlock
-            finding={finding}
-            currentText={currentText ?? ""}
-            suggestion={s}
-            kind={kind}
-            resumeKey={resumeKey}
-            onApplied={onApplied}
-            onReanalyze={onReanalyze}
-            locked={locked}
-          />
-        )}
+        renderSuggestion={renderSuggestion}
       />
     </ExpandedFindingChrome>
   );
@@ -1553,26 +1587,47 @@ export function GateBanner({
   );
 }
 
-export function ResolvedFinding({ finding, reply }: { finding: LintFinding; reply?: string }) {
+export function ResolvedFinding({
+  finding,
+  dispute,
+  currentText,
+}: {
+  finding: LintFinding;
+  /** The dispute whose re-run lifted this bullet out of the report: its reply stays in view. */
+  dispute?: { reply: string; suggestion: string | null };
+  currentText?: string | null;
+}) {
   const ref = useRef<HTMLDivElement>(null);
   // A dispute that lifted this bullet took its card, and the reply that held focus, with it. The
   // entry takes focus when it mounts after the card left; DisputeBox hands it over when the card
   // leaves after the entry mounted.
   useLayoutEffect(() => {
-    if (reply) focusIfDropped(ref.current);
-  }, [reply]);
+    if (dispute) focusIfDropped(ref.current);
+  }, [dispute]);
   return (
     <div
       ref={ref}
-      tabIndex={reply ? -1 : undefined}
-      data-resolved-hash={reply ? (finding.content_hash ?? undefined) : undefined}
+      tabIndex={dispute ? -1 : undefined}
+      data-resolved-hash={dispute ? (finding.content_hash ?? undefined) : undefined}
       className="rounded-md border border-dashed px-3 py-2 text-sm outline-none"
     >
       <p className="text-muted-foreground line-through">Fixed: {finding.label}</p>
-      {reply && (
-        <p role="status" className="text-foreground mt-1 max-w-[65ch]">
-          {reply}
-        </p>
+      {dispute && (
+        <>
+          <p role="status" className="text-foreground mt-1 max-w-[65ch]">
+            {dispute.reply}
+          </p>
+          {/* A fact from the note, as wording to copy: the bullet has left the report, so there is
+              no card to apply it from. */}
+          {dispute.suggestion != null &&
+            (currentText != null ? (
+              <SuggestionCopyOnly currentText={currentText} suggestion={dispute.suggestion} />
+            ) : (
+              <p className="text-muted-foreground mt-2 max-w-[65ch] border-t pt-2 text-xs">
+                {dispute.suggestion}
+              </p>
+            ))}
+        </>
       )}
     </div>
   );

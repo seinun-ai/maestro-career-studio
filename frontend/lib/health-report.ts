@@ -83,36 +83,52 @@ export function disputeChangedRating(result: {
   );
 }
 
-/**
- * The reply a resolved entry carries: a dispute lifted its bullet out of the report, so no current
- * finding holds that text any more and the card that showed the reply is gone.
- */
-export function resolvedDisputeReply(
-  finding: { content_hash?: string | null },
-  current: { content_hash?: string | null }[],
-  disputes: Record<string, { reply: string }>,
-): string | undefined {
-  const hash = finding.content_hash;
-  if (!hash || current.some((f) => f.content_hash === hash)) return undefined;
-  return disputes[hash]?.reply;
-}
-
-type Located = {
+type Rated = {
   type: string;
-  location: { section: string; index?: number | null; bullet_index?: number | null };
+  content_hash?: string | null;
+  classification_level?: string | null;
 };
 
+const isOpen = (f: { type: string }) => f.type === "ask" || f.type === "fix";
+/** A finding that rates its text (a bullet, the summary). The summary's years check (C2) carries
+ *  the summary's hash too, but rates nothing, so it is not one. */
+const ratesText = (f: Rated) => Boolean(f.content_hash && f.classification_level);
+
+/** Some ask or fix in `findings` still rates the text with this hash. */
+export function hasOpenRating(findings: Rated[], hash: string): boolean {
+  return findings.some((f) => isOpen(f) && ratesText(f) && f.content_hash === hash);
+}
+
 /**
- * The asks and fixes a re-run settled: nothing in the new report still asks or fixes their
- * location. The finding id is not the test: a dispute or an override that changes a bullet's
- * question gives it a new id while the bullet is still open.
+ * The asks and fixes a re-run settled. One that rates text is fixed once no open ask or fix rates
+ * that text any more, wherever it sits: a dispute or an override that changes the question gives it
+ * a new id, and a deleted bullet moves the ones below it. One that rates no text (an employment
+ * gap, the summary's years check) shares its location with others, so it keeps the id test.
  */
-export function resolvedFindings<T extends Located>(prior: T[], next: Located[]): T[] {
-  const open = (f: Located) => f.type === "ask" || f.type === "fix";
-  const where = (f: Located) =>
-    JSON.stringify([f.location.section, f.location.index ?? null, f.location.bullet_index ?? null]);
-  const stillOpen = new Set(next.filter(open).map(where));
-  return prior.filter((f) => open(f) && !stillOpen.has(where(f)));
+export function resolvedFindings<T extends Rated & { id: string }>(
+  prior: T[],
+  next: (Rated & { id: string })[],
+): T[] {
+  const nextIds = new Set(next.map((f) => f.id));
+  return prior.filter(
+    (f) =>
+      isOpen(f) &&
+      (ratesText(f) ? !hasOpenRating(next, f.content_hash!) : !nextIds.has(f.id)),
+  );
+}
+
+/**
+ * The dispute a Fixed entry carries: only one whose own re-run lifted the bullet out of the report
+ * (`lifted`, recorded by the page). A reply left from an earlier dispute that moved nothing never
+ * rides on a bullet the user later fixed by hand.
+ */
+export function liftedDispute<D>(
+  finding: { content_hash?: string | null },
+  lifted: ReadonlySet<string>,
+  disputes: Record<string, D>,
+): D | undefined {
+  const hash = finding.content_hash;
+  return hash && lifted.has(hash) ? disputes[hash] : undefined;
 }
 
 type GateLike = { tier: string; status: string };

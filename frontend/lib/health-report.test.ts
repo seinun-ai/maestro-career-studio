@@ -6,7 +6,8 @@ import {
   DISPUTE_DETAIL,
   disputeChangedRating,
   disputeFailure,
-  resolvedDisputeReply,
+  hasOpenRating,
+  liftedDispute,
   resolvedFindings,
   composeMetricContext,
   explainScoreDelta,
@@ -437,29 +438,58 @@ test("disputeChangedRating is true when the level or the question moved", () => 
   );
 });
 
-test("resolvedDisputeReply goes on the Fixed entry only once the bullet left the report", () => {
-  const disputes = { abc: { reply: "Re-read: now rated \"Shows a result\"." } };
-  assert.equal(resolvedDisputeReply({ content_hash: "abc" }, [], disputes), disputes.abc.reply);
-  assert.equal(resolvedDisputeReply({ content_hash: "abc" }, [{ content_hash: "abc" }], disputes), undefined);
-  assert.equal(resolvedDisputeReply({ content_hash: "zzz" }, [], disputes), undefined);
-  assert.equal(resolvedDisputeReply({ content_hash: null }, [], disputes), undefined);
-});
-
-test("resolvedFindings: only a location no longer asked or fixed counts as fixed", () => {
-  const at = (bullet_index: number, type = "ask", id = `id${bullet_index}`) => ({
+test("resolvedFindings: a rated bullet is fixed only once no open ask or fix rates its text", () => {
+  const rated = (id: string, hash: string, bullet_index: number, type = "ask") => ({
     id,
     type,
+    content_hash: hash,
+    classification_level: "adjacent",
     location: { section: "experience", index: 0, bullet_index },
   });
-  // A dispute changed the question: new id, same bullet, still asked. Not fixed.
-  assert.deepEqual(resolvedFindings([at(1)], [at(1, "ask", "new-id")]), []);
+  // A dispute changed the question: new id, same text, still asked. Not fixed.
+  assert.deepEqual(resolvedFindings([rated("a", "h1", 1)], [rated("b", "h1", 1)]), []);
   // An ask that became a fix is still open.
-  assert.deepEqual(resolvedFindings([at(1)], [at(1, "fix", "new-id")]), []);
-  // A real fix: nothing is asked or fixed at that bullet any more (a note there does not count).
-  assert.deepEqual(resolvedFindings([at(1), at(2)], [at(2), at(1, "note", "n1")]), [at(1)]);
-  // A moved bullet: bullet 3 moved up into slot 2 and is still flagged, so slot 2 is not fixed;
-  // slot 3 is empty now, so its finding is listed (the test is the location, not the bullet).
-  assert.deepEqual(resolvedFindings([at(2), at(3)], [at(2, "ask", "moved")]), [at(3)]);
+  assert.deepEqual(resolvedFindings([rated("a", "h1", 1)], [rated("b", "h1", 1, "fix")]), []);
+  // A real fix: the new text rates fine, and a note on the old text does not keep it open.
+  const note = { ...rated("n", "h1", 1, "note"), classification_level: null };
+  assert.deepEqual(resolvedFindings([rated("a", "h1", 1)], [note]), [rated("a", "h1", 1)]);
+  // A moved bullet: slot 2 was deleted and bullet 3 moved up into it, still flagged. Exactly the
+  // deleted bullet is fixed; the moved one is not.
+  assert.deepEqual(
+    resolvedFindings([rated("a", "h2", 2), rated("b", "h3", 3)], [rated("c", "h3", 2)]),
+    [rated("a", "h2", 2)],
+  );
+});
+
+test("resolvedFindings: findings that share a location and rate no text keep the id test", () => {
+  const gap = (id: string) => ({ id, type: "ask", location: { section: "experience" } });
+  // Two gaps, one explained: that one is fixed, the other is not.
+  assert.deepEqual(resolvedFindings([gap("g1"), gap("g2")], [gap("g2")]), [gap("g1")]);
+  // The summary's years check (C2) carries the summary's hash but rates nothing: it is fixed while
+  // the summary's own ask stays, and the ask's hash does not hold it open.
+  const c2 = { id: "c2", type: "ask", content_hash: "hs", location: { section: "summary" } };
+  const summaryAsk = {
+    id: "s1",
+    type: "ask",
+    content_hash: "hs",
+    classification_level: "implied",
+    location: { section: "summary" },
+  };
+  assert.deepEqual(resolvedFindings([c2, summaryAsk], [summaryAsk]), [c2]);
+  // And the other way: the summary's ask is fixed while C2 stays.
+  assert.deepEqual(resolvedFindings([c2, summaryAsk], [c2]), [summaryAsk]);
   // Notes and gates are never listed.
-  assert.deepEqual(resolvedFindings([at(4, "note"), at(5, "gate")], []), []);
+  assert.deepEqual(resolvedFindings([{ ...gap("n"), type: "note" }, { ...gap("x"), type: "gate" }], []), []);
+});
+
+test("a dispute reply goes on a Fixed entry only when that dispute's re-run lifted the bullet", () => {
+  const rated = { type: "ask", content_hash: "abc", classification_level: "adjacent" };
+  assert.equal(hasOpenRating([rated], "abc"), true);
+  assert.equal(hasOpenRating([{ ...rated, type: "note" }], "abc"), false);
+  assert.equal(hasOpenRating([{ ...rated, classification_level: null }], "abc"), false);
+  const disputes = { abc: { reply: "Re-read: now rated \"Shows a result\".", suggestion: null } };
+  assert.equal(liftedDispute({ content_hash: "abc" }, new Set(["abc"]), disputes), disputes.abc);
+  // A reply from an earlier dispute that moved nothing, then a real fix: no reply on the entry.
+  assert.equal(liftedDispute({ content_hash: "abc" }, new Set(), disputes), undefined);
+  assert.equal(liftedDispute({ content_hash: null }, new Set(["abc"]), disputes), undefined);
 });
