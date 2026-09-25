@@ -52,7 +52,8 @@
     "inv-eeo-standing-consent": [
       {"path": "backend/app/services/eeo_consent.py", "symbol": "def withhold_unconsented"},
       {"path": "backend/tests/test_autofill_router.py", "symbol": "test_context_withholds_eeo_values_without_consent"},
-      {"path": "backend/tests/test_autofill_choose.py", "symbol": "test_without_consent_no_diversity_answer_reaches_the_model"}
+      {"path": "backend/tests/test_autofill_choose.py", "symbol": "test_without_consent_no_diversity_answer_reaches_the_model"},
+      {"path": "backend/tests/test_autofill_choose_jev.py", "symbol": "test_eeo_values_never_reach_jev_without_consent"}
     ],
     "inv-single-dialect": [
       {"path": "backend/tests/test_db_portability.py", "symbol": "test_no_dialect_imports_outside_types_module"},

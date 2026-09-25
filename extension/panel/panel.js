@@ -582,6 +582,11 @@
      */
     residue: null,
     essays: null,
+    /** The runner's closest-match writes, `{qid, label, answer, …}`, or null
+     * until a fill has run. Written fields, not open ones — they never count
+     * toward `open`; the Fill body lists them so the user checks each one.
+     */
+    closest: null,
     /** How many fields the last run's collect found BLANK and did not collect
      * (rule territory, a policy-blocked box, a non-question text box): the
      * fields no list names and nobody fills. The note says it beside the open
@@ -733,6 +738,7 @@
     store.eeoConsent = null;
     store.residue = null;
     store.essays = null;
+    store.closest = null;
     store.blank = null;
     store.aiNote = null;
     store.writeResults = null;
@@ -1769,6 +1775,7 @@
         writeResults: card.writeResults,
         residue: card.residue,
         essays: card.essays,
+        closest: card.closest,
         aiNote: card.aiNote,
         eeoConsent: card.eeoConsent,
         // The pause rows' drafts. Handed over whole rather than per row: a body
