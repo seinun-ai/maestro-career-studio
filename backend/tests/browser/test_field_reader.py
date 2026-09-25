@@ -39,6 +39,8 @@ def test_a_dropdown_that_names_its_question_keeps_it(page, load):
     [
         ("Other languages Other Required", "Other", "Other languages"),
         ("Is a visa required to work here? Select One Required", "Select One", "Is a visa required to work here?"),
+        ("Country Required", "Select One", "Country"),
+        ("Country United States Required", "United States<span>▾</span>", "Country"),
     ],
 )
 def test_only_the_trailing_value_and_required_are_stripped_from_a_dropdown_label(page, load, label, value, question):
@@ -77,3 +79,9 @@ def test_a_step_counter_is_not_a_repeat_number(page, load):
     load(page, """<section><h2>Step 2 of 4</h2><label for='a'>City</label><input id='a'></section>
       <section><h3>Work Experience 2</h3><label for='b'>Job Title</label><input id='b'></section>""")
     assert [page.evaluate(READ, s)["repeatIndex"] for s in ("#a", "#b")] == [0, 1]
+
+
+def test_a_label_after_its_checkbox_is_read(page, load):
+    load(page, "<div class='row'><div class='c'><input type='checkbox' id='a'><div class='checkbox-label'>I agree to the terms</div></div>"
+               "<div class='c'><input type='checkbox' id='b'><div class='checkbox-label'>Send me updates</div></div></div>")
+    assert [page.evaluate(READ, s)["question"] for s in ("#a", "#b")] == ["I agree to the terms", "Send me updates"]

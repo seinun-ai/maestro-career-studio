@@ -98,21 +98,21 @@
   // plain button (a Clear beside the box), same-name radios/checkboxes, and the
   // field's own group — a fieldset/group/date wrapper holding ONLY this
   // radio/checkbox set or these date sections (a section fieldset is not one).
-  const CONTROL = 'input:not([type="hidden"]), select, textarea, button[aria-haspopup], [role="combobox"], [contenteditable="true"]';
   const NAMED = '[data-automation-id^="formField"], .form-group, .field, [class*="field" i]';
   const GROUP = 'fieldset, [role="radiogroup"], [role="group"]';
-  const isChoice = (c) => /^(radio|checkbox)$/.test(c.type);
+  // CONTROL / isChoice / otherControl: the field reader's rule (read at call time).
   const isDatePart = (c) => c.getAttribute("role") === "spinbutton";
-  const sameField = (c, el) => (isChoice(el) ? isChoice(c) && c.name === el.name : isDatePart(el) && isDatePart(c));
   const ownGroup = (el) => {
+    const { CONTROL, isChoice } = ns.fieldControls;
     if (!isChoice(el) && !isDatePart(el)) return null;
+    const sameField = (c) => (isChoice(el) ? isChoice(c) && c.name === el.name : isDatePart(c));
     const g = el.closest(isDatePart(el) ? `${GROUP}, [data-automation-id="dateInputWrapper"]` : GROUP) ?? el.parentElement;
-    return g && [...g.querySelectorAll(CONTROL)].every((c) => c === el || sameField(c, el)) ? g : null;
+    return g && [...g.querySelectorAll(CONTROL)].every((c) => c === el || sameField(c)) ? g : null;
   };
   const fieldBox = (el) => {
+    const { CONTROL, otherControl } = ns.fieldControls;
     const grp = ownGroup(el);
-    const foreign = (n) => [...n.querySelectorAll(CONTROL)].some((c) => c !== el && !el.contains(c)
-      && !grp?.contains(c) && !(isChoice(el) && el.name && isChoice(c) && c.name === el.name));
+    const foreign = (n) => [...n.querySelectorAll(CONTROL)].some((c) => otherControl(c, el) && !grp?.contains(c));
     let box = null;
     for (let n = el.parentElement, d = 0; n && n !== document.body && d < 6; n = n.parentElement, d += 1) {
       if (foreign(n)) break; // the next level up holds another field: stop below it
@@ -133,9 +133,11 @@
   const POPUP = '[role="listbox"], [role="menu"], [role="tree"], [role="grid"], [role="dialog"]';
   const popups = () => [...document.querySelectorAll(POPUP)].filter(visible);
   const ownedPopup = (el, before) => {
+    // A linked node is the popup only when it IS one (a popup role, or holds
+    // options) — aria-controls may point at a hint or a live region.
     const linked = ["aria-controls", "aria-owns"]
       .flatMap((a) => (el.getAttribute(a) ?? "").split(/\s+/).filter(Boolean))
-      .map((id) => byId(el, id)).find((n) => n && visible(n));
+      .map((id) => byId(el, id)).find((n) => n && visible(n) && (n.matches(POPUP) || n.querySelector(OPTION)));
     if (linked) return linked;
     const active = el.getAttribute("aria-activedescendant");
     const viaActive = active && byId(el, active)?.closest(POPUP);

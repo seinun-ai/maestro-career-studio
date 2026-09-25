@@ -21,18 +21,25 @@
     el?.tagName === "BUTTON" && /^(listbox|true|menu|dialog)$/.test(el.getAttribute("aria-haspopup") ?? "");
   const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   // "<question> <value> Required" → {label: "<question>", required: true}.
+  // The value is matched without trailing glyphs ("United States▾"); when it
+  // is not in the label at all, a bare trailing "Required" is still stripped.
+  const BARE_REQUIRED = /(?:^|\s+)(required)\s*$/i;
   const popupLabel = (el) => {
     const label = clean(el.getAttribute("aria-label"));
     if (!label || !isPopupButton(el)) return { label, required: false };
-    const own = text(el);
-    const tail = own ? new RegExp(`(?:^|\\s+)${escapeRe(own)}\\s*(required)?\\s*$`, "i") : /(?:^|\s+)(required)\s*$/i;
-    const m = tail.exec(label);
+    const own = clean(text(el).replace(/[\p{So}\s]+$/u, ""));
+    const m = (own && new RegExp(`(?:^|\\s+)${escapeRe(own)}\\s*(required)?\\s*$`, "i").exec(label))
+      || BARE_REQUIRED.exec(label);
     return m ? { label: clean(label.slice(0, m.index)), required: Boolean(m[1]) } : { label, required: false };
   };
-  // Another field's control (a same-name radio/checkbox is the same field).
+  // What counts as ANOTHER field's control; fill-base reads the same rule
+  // (ns.fieldControls) for its field box. A same-name radio/checkbox is the
+  // same field; a plain button (a Clear beside a box) is no field.
   const CONTROL = 'input:not([type="hidden"]), select, textarea, button[aria-haspopup], [role="combobox"], [contenteditable="true"]';
   const isChoice = (el) => /^(radio|checkbox)$/.test(el.type);
-  const otherControl = (c, el) => c !== el && !el.contains(c) && !(isChoice(el) && el.name && c.name === el.name);
+  const otherControl = (c, el) => c !== el && !el.contains(c)
+    && !(isChoice(el) && el.name && isChoice(c) && c.name === el.name);
+  ns.fieldControls = { CONTROL, isChoice, otherControl };
   const precedes = (a, b) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
   const withoutControls = (node) => {
     const copy = node.cloneNode(true);
@@ -51,19 +58,20 @@
     ["aria-label", (el) => popupLabel(el).label],
     ["legend", (el) => text(el.closest("fieldset")?.querySelector("legend"))],
     // The closest label-like node BEFORE the field with no other field between
-    // them; climbing stops at an ancestor that holds another field.
+    // them; at a level holding only this field, else the first one AFTER it (a
+    // checkbox's trailing label). Climbing stops at an ancestor holding another
+    // field.
     ["nearby", (el) => {
       let node = el.parentElement;
       for (let depth = 0; node && depth < 3; depth += 1, node = node.parentElement) {
         const others = [...node.querySelectorAll(CONTROL)].filter((c) => otherControl(c, el));
-        const cand = [...node.querySelectorAll('[class*="label" i], [class*="question" i]')]
-          .filter((c) => !c.contains(el) && precedes(c, el) && !c.querySelector("input, select, textarea, button"))
-          .at(-1);
-        if (cand && !others.some((c) => precedes(cand, c) && precedes(c, el))) {
-          const t = text(cand);
-          if (t) return t;
-        }
+        const cands = [...node.querySelectorAll('[class*="label" i], [class*="question" i]')]
+          .filter((c) => !c.contains(el) && !c.querySelector("input, select, textarea, button") && text(c));
+        const before = cands.filter((c) => precedes(c, el)).at(-1);
+        if (before && !others.some((c) => precedes(before, c) && precedes(c, el))) return text(before);
         if (others.length) break;
+        const after = cands.find((c) => precedes(el, c));
+        if (after) return text(after);
       }
       return "";
     }],

@@ -134,6 +134,11 @@ def test_aria_controls_wins_and_hidden_disabled_or_loading_options_are_dropped(p
     assert got == [["o1", "Yes"]]
 
 
+
+def test_an_aria_controls_target_that_is_no_popup_is_not_owned(page, load):
+    load(page, "<input id='c' role='combobox' aria-controls='hint'><div id='hint'>Type a city name</div>")
+    assert page.evaluate(f"() => {B}.ownedPopup(document.getElementById('c'), [])") is None
+
 def test_the_active_descendants_popup_is_owned(page, load):
     load(page, """<input id='c' role='combobox' aria-activedescendant='opt2'>
       <ul role='listbox'><li role='option'>A</li></ul><ul role='listbox'><li role='option' id='opt2'>B</li></ul>""")
