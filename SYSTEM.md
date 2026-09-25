@@ -101,6 +101,8 @@ base_resumes/          on-disk resume data (<slug>.json) + rendered tex/pdf outp
 applications/          rendered per-application artifacts (Company_Role_YYYYMMDD_<idprefix>/)
 extension/             browser-capture extension (posts pre-extracted JDs)
 scripts/               setup-mcp.sh (MCP registration), update.sh (user update path, §9)
+.claude/settings.json  shared Claude Code settings: enables the Superpowers plugin (obra/superpowers-marketplace);
+                       the only tracked file under .claude/ — settings.local.json and the rest stay gitignored
 ```
 
 ## 3. Architecture at a glance

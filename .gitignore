@@ -61,7 +61,8 @@ graphify-out
 .vscode/
 .idea/
 .cursor/
-.claude/
+.claude/*
+!.claude/settings.json
 .worktrees/
 
 # caches
