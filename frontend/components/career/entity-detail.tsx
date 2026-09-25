@@ -355,7 +355,7 @@ function EntityHeader({ entity }: { entity: KBEntityDetailType }) {
   }
 
   return (
-    <section className="group animate-fade-rise rounded-2xl bg-muted/45 px-5 py-6 sm:px-6">
+    <section className="animate-fade-rise rounded-2xl bg-muted/45 px-5 py-6 sm:px-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
@@ -387,7 +387,8 @@ function EntityHeader({ entity }: { entity: KBEntityDetailType }) {
           </div>
         </div>
         <Button
-          className="rounded-full opacity-0 transition-opacity duration-150 group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100"
+          // Always shown: a hover-only Edit read as details you couldn't change.
+          className="text-muted-foreground rounded-full"
           size="sm"
           variant="ghost"
           onClick={() => setEditing(true)}

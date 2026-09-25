@@ -195,6 +195,29 @@ export function InboxPanel({
     onError: (err: Error) => toast.error(couldnt("approve the bullets", err)),
   });
 
+  // No drafts is a status, not a task: one line instead of a panel that pushed the career
+  // history below the fold on most visits. Still `#inbox` with tabIndex -1, so the import dialog's and
+  // chat's links to /career#kb-inbox land here, and Approve all's focus handoff has a target once the
+  // last draft goes.
+  // Loading takes the same line, so the page doesn't open with a tall skeleton and then jump up.
+  if (isLoading || (!error && groups.length === 0)) {
+    return (
+      <Card id="inbox" tabIndex={-1} className="scroll-mt-6 border-0 bg-muted/45 py-3 shadow-none ring-0 outline-none">
+        <CardContent className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+          <Inbox className="text-primary size-4 shrink-0" aria-hidden="true" />
+          <span className="font-medium">Drafts to review</span>
+          {isLoading ? (
+            <Skeleton className="h-4 w-64" aria-label="Loading career drafts" />
+          ) : (
+            <span className="text-muted-foreground">
+              Nothing to review. New bullets from Quick capture and imports wait here until you approve them.
+            </span>
+          )}
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <Card id="inbox" tabIndex={-1} className="scroll-mt-6 border-0 bg-muted/45 shadow-none ring-0 outline-none">
       <CardHeader className="pb-1">
@@ -233,13 +256,7 @@ export function InboxPanel({
         </p>
       </CardHeader>
       <CardContent className="space-y-5">
-        {isLoading ? (
-          <div className="space-y-3" aria-label="Loading career drafts">
-            <Skeleton className="h-5 w-40" />
-            <Skeleton className="h-36 w-full" />
-            <Skeleton className="h-28 w-full" />
-          </div>
-        ) : error ? (
+        {error ? (
           <div role="alert" className="rounded-xl bg-destructive/10 p-4">
             <p className="text-sm font-medium">Couldn&apos;t load the drafts to review.</p>
             {errorDetail(error) ? (
@@ -248,16 +265,6 @@ export function InboxPanel({
             <Button className="mt-3" size="sm" variant="outline" onClick={onRetry}>
               Try again
             </Button>
-          </div>
-        ) : groups.length === 0 ? (
-          <div className="rounded-xl bg-background/65 py-7 text-center">
-            <span className="mx-auto flex size-9 items-center justify-center rounded-full bg-emerald-600/10 text-emerald-700 dark:text-emerald-300">
-              <Check className="size-4" aria-hidden="true" />
-            </span>
-            <p className="mt-2 text-sm font-medium">Nothing to review</p>
-            <p className="text-muted-foreground text-xs">
-              New bullets from Quick capture and imports appear here.
-            </p>
           </div>
         ) : (
           groups.map((group) => (

@@ -145,7 +145,7 @@ def test_the_sync_result_type_carries_the_item_count():
 def test_the_profile_says_what_starts_from_it():
     panel = _read("components/career/profile-panel.tsx")
     line = "Your contact details and skills. Resumes built from your career history start from these."
-    assert panel.count(line) == 2
+    assert panel.count(line) == 1  # the card's header; the sections edit in place under it
     assert "shared by all your resumes" not in panel
 
 
@@ -521,6 +521,38 @@ def test_career_history_fits_375():
     # An auto grid track grew to its cards' min-content (317px in a 271px
     # column): /career scrolled sideways at 375 (scrollWidth 397).
     capture = _read("components/career/capture-box.tsx")
-    assert '<div className="flex flex-wrap items-center gap-2">' in capture
+    # One grid whose text column may shrink; at 375 the textarea takes its own row.
+    assert "grid-cols-[minmax(0,1fr)_auto] items-center" in capture
+    assert "flex flex-wrap items-center justify-between gap-2" in capture
     # The page's one column may shrink below its content's widest line.
     assert '<div className="grid grid-cols-[minmax(0,1fr)] gap-6">' in _read("app/career/page.tsx")
+
+
+def test_career_history_opens_on_the_history_not_on_empty_panels():
+    """Quick capture's open box and an empty Drafts to review took ~800px above the career history on
+    most visits. Capture rests as one line; no drafts is one line that keeps the #inbox target."""
+    capture = _read("components/career/capture-box.tsx")
+    assert 'const open = focused || text !== "" || capture.isPending || ingest.isPending || dragging;' in capture
+    assert "rows={open ? 4 : 1}" in capture
+    # Folds only when focus leaves the whole form: tabbing to Add to drafts must not fold it away.
+    assert "if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocused(false);" in capture
+    inbox = _read("components/career/inbox-panel.tsx")
+    assert inbox.count('<Card id="inbox" tabIndex={-1}') == 2  # the one-line state and the list
+    assert "if (isLoading || (!error && groups.length === 0)) {" in inbox
+
+
+def test_a_sections_one_edit_is_always_shown():
+    """A hover-only Edit made the Career profile, an item's details and its notes read as read-only."""
+    profile = _read("components/career/profile-panel.tsx")
+    for rel in ("components/career/profile-panel.tsx", "components/career/entity-detail.tsx",
+                "components/career/notes-editor.tsx"):
+        assert "opacity-0" not in _read(rel), rel
+    for title in ('title="Contact"', 'title="Summary"', 'title="Skills"', 'title="Notes for the AI"'):
+        assert f"<ProfileSection\n          {title}" in profile, title
+    assert "aria-label={`Edit ${title.toLowerCase()}`}" in profile
+    # A section's save sends its own field (the PATCH leaves the rest alone).
+    assert "mutationFn: (value: T) => patchKbProfile(toPatch(value))," in profile
+    # Skills: the name over its pills, groups flowed into columns, none split across two.
+    assert '<dl className="gap-x-8 sm:columns-2 xl:columns-3">' in profile
+    assert 'className="mb-4 break-inside-avoid"' in profile
+    assert "const FOLDED_LINES = 2;" in profile and "aria-expanded={open}" in profile

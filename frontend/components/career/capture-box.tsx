@@ -7,7 +7,7 @@ import { FileUp, Loader2, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useSingleFlight } from "@/hooks/use-single-flight";
@@ -23,6 +23,10 @@ export function CaptureBox() {
   const router = useRouter();
   const [text, setText] = useState("");
   const [dragging, setDragging] = useState(false);
+  // One line at rest, the full box while in use: the box sat open above the career history on every
+  // visit and pushed it below the fold. It stays open while anything is typed, sending or reading, and
+  // while a file is dragged over it; it folds when focus leaves an empty box.
+  const [focused, setFocused] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const invalidate = () => {
@@ -89,6 +93,8 @@ export function CaptureBox() {
     ingestOnce(file);
   };
 
+  const open = focused || text !== "" || capture.isPending || ingest.isPending || dragging;
+
   const isFileDrag = (event: DragEvent) =>
     Array.from(event.dataTransfer?.types ?? []).includes("Files");
 
@@ -106,7 +112,7 @@ export function CaptureBox() {
   return (
     <Card
       className={cn(
-        "border-0 bg-primary/5 shadow-none ring-0 transition-shadow duration-150",
+        "border-0 bg-primary/5 py-3 shadow-none ring-0 transition-shadow duration-150",
         dragging && "ring-2 ring-primary/50",
       )}
       onDragOver={(event) => {
@@ -121,28 +127,37 @@ export function CaptureBox() {
       }}
       onDrop={onDrop}
     >
-      <CardHeader className="pb-1">
-        <CardTitle className="flex items-center gap-2">
-          <span className="flex size-8 items-center justify-center rounded-full bg-primary/10">
-            <Sparkles className="text-primary size-4" aria-hidden="true" />
-          </span>
-          Quick capture
-        </CardTitle>
-        <p className="text-muted-foreground text-sm">
-          Type a recent win or add a document.
-        </p>
-      </CardHeader>
       <CardContent>
-        <form className="space-y-3" onSubmit={submit}>
-          <Label htmlFor="career-capture">What did you do?</Label>
+        {/* One grid for both states: the textarea, the file button and the label keep their DOM places
+            (focus stays put) and only their cells change. At rest the three share a row (at 375 the
+            textarea takes a row of its own); open, the textarea spans a row and the footer follows. */}
+        <form
+          className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-3 sm:grid-cols-[auto_minmax(0,1fr)_auto]"
+          onSubmit={submit}
+          onFocus={() => setFocused(true)}
+          onBlur={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocused(false);
+          }}
+        >
+          <Label htmlFor="career-capture" className="col-start-1 row-start-1 flex items-center gap-2 text-sm font-medium whitespace-nowrap">
+            <span className="flex size-7 items-center justify-center rounded-full bg-primary/10">
+              <Sparkles className="text-primary size-3.5" aria-hidden="true" />
+            </span>
+            Quick capture
+          </Label>
           <Textarea
             id="career-capture"
             value={text}
             onChange={(event) => setText(event.target.value)}
-            rows={4}
+            rows={open ? 4 : 1}
             readOnly={capture.isPending}
             aria-describedby="career-capture-help"
-            className="rounded-2xl border-0 bg-background/90 px-4 py-3 shadow-sm ring-1 ring-foreground/10 transition-shadow focus-visible:ring-ring"
+            className={cn(
+              "col-span-2 row-start-2 rounded-2xl border-0 bg-background/90 px-4 shadow-sm ring-1 ring-foreground/10 transition-shadow focus-visible:ring-ring",
+              open
+                ? "min-h-24 py-3 sm:col-span-3"
+                : "min-h-9 resize-none py-1.5 sm:col-span-1 sm:col-start-2 sm:row-start-1",
+            )}
           />
           <input
             ref={fileInputRef}
@@ -154,34 +169,39 @@ export function CaptureBox() {
               event.target.value = "";
             }}
           />
-          <div className="flex flex-wrap items-center justify-between gap-2">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            // Focusable while it reads, as Add to drafts is while it captures.
+            className="text-muted-foreground col-start-2 row-start-1 justify-self-end rounded-full data-disabled:pointer-events-none data-disabled:opacity-50 sm:col-start-3"
+            disabled={ingest.isPending}
+            focusableWhenDisabled
+            // One picker per gesture: a double click's second click
+            // (detail 2) opened a second one.
+            onClick={(event) => {
+              if (event.detail > 1) return;
+              fileInputRef.current?.click();
+            }}
+          >
+            {ingest.isPending ? (
+              <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+            ) : (
+              <FileUp aria-hidden="true" />
+            )}
+            {ingest.isPending ? "Reading document…" : "Add document"}
+          </Button>
+          {/* The hint stays in the DOM at rest (sr-only), so the textarea's description never dangles. */}
+          <div
+            className={cn(
+              "col-span-2 row-start-3 flex flex-wrap items-center justify-between gap-2 sm:col-span-3",
+              !open && "sr-only",
+            )}
+          >
             <p id="career-capture-help" className="text-muted-foreground text-xs">
-              Nothing goes on a resume until you approve it.
+              Type a recent win or add a document. Nothing goes on a resume until you approve it.
             </p>
-            {/* Wraps at 375: the two buttons side by side pushed the page 22px sideways. */}
-            <div className="flex flex-wrap items-center gap-2">
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                // Focusable while it reads, as Add to drafts is while it captures.
-                className="text-muted-foreground rounded-full data-disabled:pointer-events-none data-disabled:opacity-50"
-                disabled={ingest.isPending}
-                focusableWhenDisabled
-                // One picker per gesture: a double click's second click
-                // (detail 2) opened a second one.
-                onClick={(event) => {
-                  if (event.detail > 1) return;
-                  fileInputRef.current?.click();
-                }}
-              >
-                {ingest.isPending ? (
-                  <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-                ) : (
-                  <FileUp aria-hidden="true" />
-                )}
-                {ingest.isPending ? "Reading document…" : "Add document"}
-              </Button>
+            {open ? (
               <Button
                 // Stays focusable while it captures: a disabled button that
                 // has focus drops it to the page.
@@ -192,7 +212,7 @@ export function CaptureBox() {
               >
                 {capture.isPending ? "Adding…" : "Add to drafts"}
               </Button>
-            </div>
+            ) : null}
           </div>
         </form>
       </CardContent>

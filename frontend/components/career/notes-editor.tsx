@@ -12,7 +12,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { useDiscardableEditor } from "@/hooks/use-confirm-discard";
 import { patchKbEntity } from "@/lib/api";
 import { couldnt } from "@/lib/error-text";
-import { cn } from "@/lib/utils";
 
 // The importer prefixes a line it thinks may be out of date with this mark.
 const STALE_MARK = "⚠ stale?";
@@ -130,7 +129,7 @@ export function NotesEditor({
   );
 
   return (
-    <Card className="group/notes rounded-2xl">
+    <Card className="rounded-2xl">
       <CardHeader className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
         <div>
           <CardTitle>Notes</CardTitle>
@@ -143,11 +142,8 @@ export function NotesEditor({
             ref={editRef}
             size="sm"
             variant="ghost"
-            className={cn(
-              "rounded-full",
-              hasNotes &&
-                "opacity-0 transition-opacity duration-150 group-hover/notes:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100",
-            )}
+            // Always shown: a hover-only Edit read as notes you couldn't change.
+            className="text-muted-foreground rounded-full"
             onClick={startEditing}
           >
             <Pencil aria-hidden="true" /> {hasNotes ? "Edit" : "Add notes"}

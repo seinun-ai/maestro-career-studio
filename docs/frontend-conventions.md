@@ -963,7 +963,13 @@
 - Design language: tonal fills over borders, pill chips, 8px rhythm,
   `ease-out` micro-interactions ≤200ms, `active:scale-[0.97]` on pressables,
   `prefers-reduced-motion` respected globally, `pointer-coarse:` variants for
-  hover-revealed controls.
+  hover-revealed controls. Hover-reveal is for controls that REPEAT on every
+  row or card of a list (a bullet's actions, a card's ⋯). A page or section's
+  one Edit stays visible: the Career profile's per-section Edit, an item's
+  Edit details and its notes' Edit hid until hover and read as read-only.
+- A panel with nothing to do is one line, not an empty-state card: Drafts to
+  review with no drafts, and Quick capture at rest (it opens while focused,
+  typed in, sending, reading a file or under a dragged file).
 - Type scale (canonical): page title `text-[22px] font-medium
   tracking-tight`; page subtitle `text-sm text-muted-foreground` (one
   clause); section/card title = CardTitle default (don't override sizes);
