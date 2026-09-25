@@ -164,8 +164,13 @@
    *                rules-only run rather than a shorter list.
    *   applicationId — grounds /choose in an application when there is one.
    *
-   * returns `{ essays, residue, writeResults, blank, aiFailure }`:
+   * returns `{ essays, residue, closest, writeResults, blank, aiFailure }`:
    *   residue      — the list the user is shown. Both surfaces read it.
+   *   closest      — fields WRITTEN on the page's nearest option rather than
+   *                  the profile's own value (`/choose` reason `closest`),
+   *                  each `{...field, answer}`, for the report to ask the
+   *                  user to check. A closest write that did not stick is
+   *                  residue instead, never both.
    *   essays       — the /api/qa queue. It arrives TWICE on purpose: through
    *                  `onProgress` at the moment it is routed, so the caller's
    *                  UI has it before the model is asked and keeps it if a
@@ -240,7 +245,8 @@
       ...routed.chooseFields
         .filter((field) => {
           const choice = choices[field.qid];
-          return choice && choice.reason === "matched" && choice.answer;
+          return choice && (choice.reason === "matched" || choice.reason === "closest")
+            && choice.answer;
         })
         .map((field) => ({
           qid: field.qid,
@@ -275,6 +281,13 @@
     const byQid = Object.fromEntries(
       [...questions, ...retryables].map((q) => [q.qid, q]));
     const residue = [...residueQids].map((qid) => byQid[qid]).filter(Boolean);
+    // Written, but on the page's nearest option rather than the profile's own
+    // value (a `closest` answer): the report asks the user to check these. A
+    // closest pick that did not stick is residue like any other write.
+    const closest = routed.chooseFields
+      .filter((field) => choices[field.qid]?.reason === "closest"
+        && writtenQids.has(field.qid) && !residueQids.has(field.qid))
+      .map((field) => ({ ...field, answer: choices[field.qid].answer }));
     onProgress({ phase: "residue", residue });
 
     const abstained = chooseResidue.filter((field) => {
@@ -291,7 +304,7 @@
     // three is the caller's copy, and the two surfaces say it differently.
     // `aiFailure` likewise: the `/choose` error itself (null when the AI
     // answered, or was not asked), for the caller to put into words.
-    return { essays: routed.essays, residue, writeResults, blank, aiFailure: failure };
+    return { essays: routed.essays, residue, closest, writeResults, blank, aiFailure: failure };
   }
 
   ns.guidedRun = { runGuidedFill, collectFromPage, NO_FRAME_REACHED, shown };

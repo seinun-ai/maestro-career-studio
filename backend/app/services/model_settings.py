@@ -154,12 +154,16 @@ def set_base_url(session: Session, value: str | None) -> str | None:
     we can refuse schemes that were never valid, which stops the field being used
     as a general-purpose sink.
     """
+    return _set_raw_value(session, BASE_URL_KEY, _checked_http_url(value))
+
+
+def _checked_http_url(value: str | None) -> str | None:
     cleaned = (value or "").strip() or None
     if cleaned is not None:
         parsed = urlparse(cleaned)
         if parsed.scheme not in ("http", "https") or not parsed.netloc:
             raise ValueError("Enter a full address that starts with http:// or https://.")
-    return _set_raw_value(session, BASE_URL_KEY, cleaned)
+    return cleaned
 
 
 JSON_MODES = ("auto", "on", "off")
@@ -171,6 +175,78 @@ def set_json_mode(session: Session, value: str | None) -> str | None:
         raise ValueError(f"json_mode must be one of {', '.join(JSON_MODES)}")
     # "auto" is the default, so store nothing rather than a redundant row.
     return _set_raw_value(session, JSON_MODE_KEY, None if normalized == "auto" else normalized)
+
+
+# Jev (TypeSafe AI) — the optional decision engine for the Companion's fill pass.
+# Its own key: an OpenRouter or TypeSafe key is not the OpenAI key above.
+JEV_API_KEY_KEY = "llm.jev_api_key"
+JEV_BASE_URL_KEY = "llm.jev_base_url"
+JEV_MODEL_KEY = "llm.jev_model"
+AUTOFILL_ENGINE_KEY = "llm.autofill_engine"
+
+JEV_DEFAULT_BASE_URL = "https://openrouter.ai/api"
+# Pinned, not -latest: a model that changes under the user changes their fills.
+JEV_DEFAULT_MODEL = "typesafe/jev-1.13"
+AUTOFILL_ENGINES = ("fast", "jev")
+
+
+def _read(session: Session | None, key: str) -> str | None:
+    if session is None:
+        with SessionLocal() as owned:
+            return _get_raw_value(owned, key)
+    return _get_raw_value(session, key)
+
+
+def get_jev_api_key(session: Session | None = None) -> str | None:
+    return _read(session, JEV_API_KEY_KEY)
+
+
+def get_jev_base_url(session: Session | None = None) -> str:
+    return _read(session, JEV_BASE_URL_KEY) or JEV_DEFAULT_BASE_URL
+
+
+def get_jev_model(session: Session | None = None) -> str:
+    return _read(session, JEV_MODEL_KEY) or JEV_DEFAULT_MODEL
+
+
+def get_autofill_engine(session: Session | None = None) -> str:
+    """`jev` only while a key exists: a keyless Jev engine would fail every fill."""
+    if _read(session, AUTOFILL_ENGINE_KEY) == "jev" and get_jev_api_key(session):
+        return "jev"
+    return "fast"
+
+
+def set_jev_api_key(session: Session, value: str | None) -> str | None:
+    return _set_raw_value(session, JEV_API_KEY_KEY, (value or "").strip() or None)
+
+
+def set_jev_base_url(session: Session, value: str | None) -> str | None:
+    """Same scheme rule as `set_base_url`, for the same reason: it decides where the key goes.
+
+    A different HOST is a different company (OpenRouter ↔ TypeSafe), and a key
+    for one is not a key for the other: keeping it would send it to the new host
+    on the next fill. So a host change forgets the key, and with it Jev as the
+    engine — the user adds the new provider's key."""
+    cleaned = _checked_http_url(value)
+    new_host = urlparse(cleaned or JEV_DEFAULT_BASE_URL).netloc.lower()
+    if new_host != urlparse(get_jev_base_url(session)).netloc.lower():
+        _set_raw_value(session, JEV_API_KEY_KEY, None)
+        _set_raw_value(session, AUTOFILL_ENGINE_KEY, None)
+    return _set_raw_value(session, JEV_BASE_URL_KEY, cleaned)
+
+
+def set_jev_model(session: Session, value: str | None) -> str | None:
+    return _set_raw_value(session, JEV_MODEL_KEY, (value or "").strip() or None)
+
+
+def set_autofill_engine(session: Session, value: str) -> str:
+    if value not in AUTOFILL_ENGINES:
+        raise ValueError(f"engine must be one of {', '.join(AUTOFILL_ENGINES)}")
+    if value == "jev" and not get_jev_api_key(session):
+        raise ValueError("Add a Jev API key before switching form filling to Jev.")
+    # "fast" is the default, so store nothing rather than a redundant row.
+    _set_raw_value(session, AUTOFILL_ENGINE_KEY, None if value == "fast" else value)
+    return value
 
 
 def using_custom_endpoint(session: Session | None = None) -> bool:

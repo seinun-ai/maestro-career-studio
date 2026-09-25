@@ -468,6 +468,26 @@
     return list;
   }
 
+  /** Fields the run WROTE on the page's nearest option, not the profile's own
+   * value — "Information Systems" for a Business Analytics major. Filled, so
+   * they are not in the still-open list and never hold the stage open; listed
+   * so the user can check each one before submitting. A jump per row, as
+   * `needsList`. */
+  function checkList(ctx, { closest }) {
+    const { build, act } = ctx;
+    if (!closest?.length) return null;
+    const list = build.node("ul", "resid checklist");
+    list.setAttribute("aria-label", "Closest matches to check");
+    for (const row of closest) {
+      const button = build.node("button", null, fieldName(row));
+      button.type = "button";
+      button.addEventListener("click", () => act.scrollToField(row.qid));
+      build.attach(list, build.attach(build.node("li"), button,
+        build.node("span", "kindmark", ` · closest match: ${row.answer} `)));
+    }
+    return list;
+  }
+
   /** The id the drawer trigger's `aria-controls` names, and the handle a focus
    * restore will reach for. A constant for `TAILOR_OPTIONS_ID`'s reason and
    * built the same way: two places forty lines apart have to agree on it. */
@@ -690,7 +710,8 @@
                     attachRow(ctx), qnaDrawer(ctx));
     }
     const run = { writeResults: facts.writeResults ?? [],
-                  residue: facts.residue ?? [], essays: facts.essays ?? [] };
+                  residue: facts.residue ?? [], essays: facts.essays ?? [],
+                  closest: facts.closest ?? [] };
     if (facts.fill) attach(body, profileRow(ctx, facts.fill));
     if (collected) attach(body, questionsRow(ctx, run));
     // Why the AI answered nothing, under the row it would have filled: the
@@ -701,7 +722,7 @@
     // happened it IS a report row and belongs with them, and while it is still
     // an offer it belongs above the fields that need the user rather than under
     // them, where a control mixed into that list would read as one of them.
-    return attach(body, attachRow(ctx), needsList(ctx, run), qnaDrawer(ctx));
+    return attach(body, attachRow(ctx), needsList(ctx, run), checkList(ctx, run), qnaDrawer(ctx));
   }
 
   ns.panelStageFill = fillBody;

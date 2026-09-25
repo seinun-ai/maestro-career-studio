@@ -87,7 +87,8 @@ backend/
                        artifacts, application_render, engines (the ONE probe),
                        pdf_render (dual-engine: pdflatex + typst), pdf_preview,
                        jd_extraction, resume_lint, health_*, career_kb,
-                       chat_agent, chat_tools, …)
+                       chat_agent, chat_tools, autofill_choose + autofill_slots
+                       + jev (the Companion's fill pass and its Jev engine), …)
     templates/         bundled .tex.j2 sources, typst_classic.typ and cover_letter.typ
     tools/             operator tools, `python -m app.tools.<name>`: backup_db
   mcp_server/          FastMCP server (server.py tools → client.py httpx → REST)
@@ -390,11 +391,13 @@ file to open.
   `consent_forms` authorizes ticking the application's OWN agreement boxes
   (inv-policy-deny-list-single-source). One flag for both would make opting into EEO fill silently
   agree to terms. ONE gate, `eeo_consent.withhold_unconsented`, strips `profile.eeo` unless `enabled`
-  for every reader that hands the profile outward: `GET /api/autofill/context` AND the `/choose`
-  prompt (a model provider is a recipient too); it fails CLOSED when consent cannot be computed. The
+  for every reader that hands the profile outward: `GET /api/autofill/context`, the `/choose`
+  prompt AND the Jev engine's slot catalog (model providers are recipients too — Jev, and OpenRouter
+  when it serves Jev); it fails CLOSED when consent cannot be computed. The
   MCP client keeps its OWN strip — two gates, not a relocated one. Which path asks must never decide
-  whether protected-class data is served. Pinned by `test_autofill_router.py` and
-  `test_autofill_choose.py` (`test_without_consent_no_diversity_answer_reaches_the_model`). No
+  whether protected-class data is served. Pinned by `test_autofill_router.py`,
+  `test_autofill_choose.py` (`test_without_consent_no_diversity_answer_reaches_the_model`) and
+  `test_autofill_choose_jev.py` (`test_eeo_values_never_reach_jev_without_consent`). No
   inference or invented EEO answers; never solicit pasted demographic answers in chat when consented
   values are in Profile. Human-only at ANY setting is `NEVER_FILLED` and nothing wider:
   signatures/initials, passwords, government IDs. The MODEL path is the separate rule —
@@ -589,7 +592,7 @@ file to open.
   ONE runner (`ns.guidedRun.runGuidedFill(deps, {aiAssist,
   applicationId})`; `aiAssist: false` skips `/choose` and residues the whole
   remainder) runs rule pass → collect → one batched `POST
-  /api/autofill/choose` (fast model, qid-keyed, ≤40/call; the option guard
+  /api/autofill/choose` (qid-keyed, ≤40/call; the option guard
   lives SERVER-side only — any answer not among rendered options, invented qid,
   or skipped qid collapses to abstain) → `ns.guidedWrite` sequenced by widget
   shape with ONE bounded retry. EXCLUDE'd controls a rule tried and missed
@@ -598,6 +601,16 @@ file to open.
   saved answers (EEO only under inv-eeo-standing-consent) and the career history. Readback is
   timer-sampled and never defaults to failure: unconfirmable is
   `filled_unverified`, not `not_stuck`. Navigation and submit stay human.
+  **`/choose` has two engines** (`llm.autofill_engine`, Settings › AI & models › **Form filling**,
+  `GET/PUT /api/settings/jev` + `/jev/probe`; `jev` only while a Jev key exists; a new endpoint
+  HOST forgets the key, which is never sent to another company). `fast` is the prompt above. `jev`
+  (`autofill_choose._choose_with_jev`): one Jev call maps each field's LABEL to an `autofill_slots`
+  slot (no values sent), code reads the value, a second call picks the option that states it; the
+  slot's policy (`exact` work_auth/eligibility/eeo, `flag` personal/education, `any` the rest) makes
+  it `matched`, `closest` (flag only, never from a list at the 30-option cap: written, then named in
+  the finished note and listed under **Closest matches to check**) or abstain. Free-text, unmapped,
+  shakily-mapped (an `exact` slot maps only at its write floor), `exact`-slot text boxes (codes) and
+  failed-call fields go to the fast prompt unchanged; if THAT fails, Jev's answers are kept.
 - **Streaming chat** needs the OpenAI streaming tool-call wire shape (OpenAI, or Gemini via the OpenAI-compat
   URL); eligibility is the tools probe.
 

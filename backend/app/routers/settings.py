@@ -24,6 +24,7 @@ from app.services import (
     auto_apply_settings,
     autofill_profile,
     eeo_consent,
+    jev,
     job_preferences,
     llm,
     llm_capabilities,
@@ -36,6 +37,29 @@ from app.services import (
     quick_tailor,
 )
 from app.services.llm import LLMProviderError
+
+
+class JevInfo(BaseModel):
+    """GET/PUT /api/settings/jev. Like OpenAIInfo: a `*_configured` flag, never the key."""
+
+    api_key_configured: bool
+    base_url: str
+    model: str
+    engine: Literal["fast", "jev"]
+
+
+class JevSettingsPayload(BaseModel):
+    """A patch, as ModelSettingsPayload: absent = leave alone; null/"" = clear."""
+
+    api_key: str | None = None
+    base_url: str | None = None
+    model: str | None = None
+    engine: Literal["fast", "jev"] | None = None
+
+
+class JevProbeResult(BaseModel):
+    ok: bool
+    error: str | None = None
 
 
 class OpenAIInfo(BaseModel):
@@ -397,6 +421,45 @@ def add_catalog_model(payload: ExtraModelPayload, db: Annotated[Session, Depends
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return get_openai_info(db)
+
+
+@router.get("/jev", response_model=JevInfo)
+def get_jev_info(db: Annotated[Session, Depends(get_db)]):
+    return JevInfo(
+        api_key_configured=bool(model_settings.get_jev_api_key(db)),
+        base_url=model_settings.get_jev_base_url(db),
+        model=model_settings.get_jev_model(db),
+        engine=model_settings.get_autofill_engine(db),
+    )
+
+
+@router.put("/jev", response_model=JevInfo)
+def put_jev_info(payload: JevSettingsPayload, db: Annotated[Session, Depends(get_db)]):
+    sent = payload.model_fields_set
+    try:
+        # Endpoint, then key, then engine: a host change forgets the stored key,
+        # so a key sent WITH the switch lands after it; the engine check reads it.
+        if "base_url" in sent:
+            model_settings.set_jev_base_url(db, payload.base_url)
+        if "api_key" in sent:
+            model_settings.set_jev_api_key(db, payload.api_key)
+        if "model" in sent:
+            model_settings.set_jev_model(db, payload.model)
+        if "engine" in sent and payload.engine is not None:
+            model_settings.set_autofill_engine(db, payload.engine)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return get_jev_info(db)
+
+
+@router.post("/jev/probe", response_model=JevProbeResult)
+def probe_jev(db: Annotated[Session, Depends(get_db)]):
+    """Never 502s: a refused key is a result the Settings card shows, like /openai/probe."""
+    try:
+        jev.probe(db)
+    except LLMProviderError as exc:
+        return JevProbeResult(ok=False, error=str(exc))
+    return JevProbeResult(ok=True)
 
 
 @router.delete("/openai/models/{model_id:path}", response_model=OpenAIInfo)

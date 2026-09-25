@@ -338,6 +338,14 @@ export interface ModelSyncResult {
   models: DiscoveredModel[];
 }
 
+/** GET/PUT /api/settings/jev. The key is write-only: only `api_key_configured` comes back. */
+export type JevInfo = {
+  api_key_configured: boolean;
+  base_url: string;
+  model: string;
+  engine: "fast" | "jev";
+};
+
 export interface OpenAIInfo {
   fast_model: string;
   smart_model: string;
