@@ -17,7 +17,9 @@
 
 **Environment (SYSTEM.md §9):**
 - Backend tests: `cd backend && /opt/anaconda3/bin/python3 -m pytest tests/ -q`; browser suite: `tests/browser -q`.
-- Browser tests need Python Playwright + Chromium (owner laptop has Playwright 1.49 and `~/Library/Caches/ms-playwright/chromium-1243`). They skip locally when absent and FAIL in CI.
+- Browser tests need Python Playwright + a MATCHING Chromium: the owner laptop's anaconda has Playwright **1.63.0**, which matches the cached `~/Library/Caches/ms-playwright/chromium-1243` (upgraded 2026-09-25; 1.49 wanted build 1148 and silently skipped). They skip locally when absent and FAIL in CI. A skipped browser test is NOT a pass — check `-rs` output.
+- `tests/browser` must stay synchronous (the `browser` fixture is package-scoped because an open sync-Playwright loop breaks `asyncio.run` elsewhere).
+- After Task 1, the committed fixtures in `backend/tests/fixtures/browser/` are the source of truth (review fixes changed them from the text below: React-Select commits on click, Workday pills are `role=option` and un-pick on click, outside-click listeners are on `document`, date sections are `role=spinbutton`, scripts are IIFE-wrapped).
 - Frontend: `cd frontend && npx tsc --noEmit && npm run lint`.
 - SYSTEM.md gate: `python3 scripts/check_system_md.py` (cap 1000; file is at 994 — Task 10 grooms first).
 - Commit after each step group marked **Commit**. Never push. Owner merges to local main and tests live (extension reload + tab reload; backend changes need `docker compose up -d --build backend`).
