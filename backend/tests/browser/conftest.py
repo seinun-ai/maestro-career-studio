@@ -20,6 +20,7 @@ FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "browser"
 # Dependency order, mirrors manifest.json. Tasks append as files land.
 ENGINE_SOURCES: list[str] = [
     "shared/policy.js",
+    "content/field-reader.js",
 ]
 
 
