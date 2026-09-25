@@ -251,8 +251,8 @@
 
   /** Preserve the message names, positional profile-fill call, and output shapes.
    *
-   * The six gated entries are exactly the fan-out set: five broadcastable
-   * types plus attach. Each returns its normal EMPTY shape when the frame is
+   * The gated entries are exactly the fan-out set: the broadcastable types
+   * (`fill_cancel` aside — see its note) plus attach. Each returns its normal EMPTY shape when the frame is
    * refused rather than throwing — `broadcastToFrames` turns a throw into a
    * per-frame `error`, and the panel's reconciliation strip would then report
    * "1 didn't stick" for an ad iframe that was never a target. Nothing to do
@@ -322,6 +322,32 @@
     attach_resume_pdf: (msg) => (frameMayReceiveUserData()
       ? attachResumePdf(msg.b64, msg.filename, msg.expect)
       : 0),
+    /* The fill engine's page operations (content/fill-ops.js). Gated like
+     * `guided_write`, each returning its empty shape in a refused frame: an
+     * inventory with no fields, no explored options, no applied rows, no
+     * sweep rows, no focus. `fill_inventory` forwards the run's standing
+     * consent AND its runId — a new runId is what releases a latched Stop.
+     * `fill_cancel` is ungated on purpose: it carries nothing and only stops
+     * work in flight, and a Stop that could miss a frame would be no Stop. */
+    fill_inventory: (msg) => (frameMayReceiveUserData()
+      ? ns.fillOps.inventory({ consentForms: msg.consentForms === true, runId: msg.runId })
+      : { frame: null, host: location.hostname, fields: [] }),
+    fill_explore: (msg) => (frameMayReceiveUserData()
+      ? ns.fillOps.explore(msg.requests)
+      : {}),
+    fill_apply: (msg) => (frameMayReceiveUserData()
+      ? ns.fillOps.apply(msg.actions)
+      : []),
+    fill_sweep: () => (frameMayReceiveUserData()
+      ? ns.fillOps.sweep()
+      : []),
+    fill_focus: (msg) => (frameMayReceiveUserData()
+      ? ns.fillOps.focus(msg.fid)
+      : false),
+    fill_cancel: () => {
+      ns.fillOps.cancel();
+      return true;
+    },
   };
 
   chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {

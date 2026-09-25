@@ -22,6 +22,12 @@ worker:
 | `shared/guided-run.js` | every frame **and** the panel document | the guided-fill runner: one sequencing/batching engine, transport injected |
 | `shared/policy.js` | every frame **and** the panel document | the shared never-fill policy — read by the fill engine and by the panel's pause row, whose render AND action are the half that is easy to miss |
 | `shared/profile-fields.js` | every frame **and** the panel document | the label patterns naming a TYPED home in the autofill profile: one table read by the rule that FILLS the field and by the pause row that decides where an answer is LEARNED |
+| `content/field-reader.js` | every frame | the new fill engine's one answer to "what is this field asking" (label-for → … → nearby), with its source |
+| `content/fill-base.js` | every frame | the engine's page primitives: budgets with real cancellation and a latched Stop, validation state, popup ownership, human typing, closing only popups the engine opened |
+| `content/shapes.js` | every frame | widget shapes: recognise, group, read what is COMMITTED, how a choice widget opens |
+| `content/inventory.js` | every frame | every fillable control as a field with an element-bound fid and a fingerprint; marks fields the user changed |
+| `content/fill-core.js` | every frame | the generic mechanics: write / explore / choose / set / recommit, verified after the final blur |
+| `content/fill-ops.js` | every frame | the engine's page operations behind agent.js's `fill_*` handlers — fingerprint, touched and policy re-checked at execution; every throw returned as an outcome |
 | `content/job-posting.js` | every frame, every page | the shared JSON-LD JobPosting walk |
 | `content/eeo.js` | every frame | voluntary EEO rules and protected-class control handling |
 | `content/autofill.js` | every frame | profile field matching and fill engine |
@@ -38,7 +44,10 @@ worker:
 The content scripts are injected into every frame of every page, and on almost
 every page on the web that is the whole of what they do: each module is an IIFE
 that publishes functions, and `agent.js` registers one message listener. Nothing
-detects on load, mounts anything, stores anything or sends anything.
+detects on load, mounts anything, stores anything or sends anything. The one
+other thing that runs at load is `inventory.js`'s capture listener for trusted
+`input`/`change` events: it remembers WHICH element the user changed (a weak
+reference, never a value) so the engine never overwrites it.
 
 `detect.js` is the decision point and it answers only when asked — the panel
 sends `detect_page` to frame 0 of the tab it is bound to, because a panel runs in

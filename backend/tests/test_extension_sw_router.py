@@ -618,7 +618,7 @@ def test_an_empty_batch_is_not_a_round_trip(tmp_path):
     assert out["posted"] == []
 
 
-def test_the_broadcast_allow_list_is_five_types_and_not_the_harmless_ones():
+def test_the_broadcast_allow_list_is_pinned_and_not_the_harmless_ones():
     """`page_broadcast`'s allow-list, beside the `panel_frame0` one it is
     deliberately NOT merged with (see that handler's own note: this list may
     not name a frame, the other one may).
@@ -642,6 +642,10 @@ def test_the_broadcast_allow_list_is_five_types_and_not_the_harmless_ones():
     assert re.findall(r'"([a-z_]+)"', listed.group(1)) == [
         "profile_fill", "collect_open_questions", "fill_answers",
         "guided_write", "scroll_to_field",
+        # The fill engine's page operations: a field can be in any frame, and
+        # each is gated on the receiving side (fill_cancel aside, which carries
+        # nothing) — see test_extension_frame_gate.
+        "fill_inventory", "fill_explore", "fill_apply", "fill_sweep", "fill_focus", "fill_cancel",
     ]
     # …and the one that must never join it, named rather than left to the list
     # above: a posting's JSON-LD is in the top document, so broadcasting the

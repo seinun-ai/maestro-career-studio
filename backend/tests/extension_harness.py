@@ -117,11 +117,43 @@ DETECTION_MODULE_SOURCES = [CONTENT / "job-posting.js", CONTENT / "detect.js"]
 # with no message boundary in it, reporting handlers as unreachable and page
 # functions as absent. An index range re-points itself when a file is added,
 # which is exactly how a driver ends up executing a set nobody chose.
-PAGE_RUNTIME_SOURCES = list(EXTENSION_SOURCES)
-assert PAGE_RUNTIME_SOURCES == EXTENSION_SOURCES, (
-    "PAGE_RUNTIME_SOURCES has diverged from EXTENSION_SOURCES. That is allowed "
-    "— but write the paths out, do not slice: a range silently re-points when "
-    "the manifest gains a file, and this assertion is the reminder to choose.")
+#
+# THEY DIVERGED with the fill engine (fill-engine plan Task 4), and this is the
+# written-out list that comment asked for. The engine's six files need a REAL
+# DOM — layout, focus, a MutationObserver, document listeners at load — which
+# this fake one cannot give, and they are driven in real Chromium instead
+# (tests/browser, whose ENGINE_SOURCES loads them in manifest order). Every
+# runtime driver here executes the page as it was before them; `agent.js`
+# reads `ns.fillOps` only when a fill_* message arrives, so nothing in this
+# world calls into the missing modules. Source scans still see all of it.
+FILL_ENGINE_SOURCES = [
+    CONTENT / "field-reader.js",
+    CONTENT / "fill-base.js",
+    CONTENT / "shapes.js",
+    CONTENT / "inventory.js",
+    CONTENT / "fill-core.js",
+    CONTENT / "fill-ops.js",
+]
+PAGE_RUNTIME_SOURCES = [
+    SHARED / "decisions.js",
+    SHARED / "choose.js",
+    SHARED / "guided-run.js",
+    SHARED / "policy.js",
+    SHARED / "profile-fields.js",
+    CONTENT / "job-posting.js",
+    CONTENT / "eeo.js",
+    CONTENT / "autofill.js",
+    CONTENT / "open-questions.js",
+    CONTENT / "detect.js",
+    CONTENT / "agent.js",
+]
+# The two lists PARTITION the manifest, each in its injection order: a file
+# the manifest gains must be placed in one of them on purpose.
+assert sorted(PAGE_RUNTIME_SOURCES + FILL_ENGINE_SOURCES) == sorted(EXTENSION_SOURCES), (
+    "the manifest's content scripts are no longer exactly PAGE_RUNTIME_SOURCES "
+    "plus FILL_ENGINE_SOURCES — place the new file in one of them on purpose")
+assert [p for p in EXTENSION_SOURCES if p in PAGE_RUNTIME_SOURCES] == PAGE_RUNTIME_SOURCES, (
+    "PAGE_RUNTIME_SOURCES is out of manifest order")
 
 
 def _content_source(paths: list[Path]) -> str:
@@ -132,6 +164,16 @@ def _content_source(paths: list[Path]) -> str:
 def extension_source() -> str:
     """Concatenated text of every extension content source for source scans."""
     return _content_source(EXTENSION_SOURCES)
+
+
+def observation_emitter_source() -> str:
+    """Every content source that can put an outcome into a telemetry
+    observation: all of them but the fill engine. Its `outcome`s ("verified",
+    "stale", "yours", …) are PAGE-OPERATION statuses returned to the fill loop,
+    never observations — the loop translates them into the telemetry contract
+    in one table (fill-engine plan Task 8), and that table is what the
+    contract's scan must read once it lands."""
+    return _content_source([p for p in EXTENSION_SOURCES if p not in FILL_ENGINE_SOURCES])
 
 
 def page_runtime_source() -> str:
@@ -1431,6 +1473,8 @@ def run_detect_fixture(tmp_path: Path, name: str) -> dict:
 def run_node(driver_js: str, spec: dict, tmp_path: Path, source: str | None = None) -> dict:
     """Run `driver_js` against the fake DOM and return what it emitted.
 
+    By default the driver runs PAGE_RUNTIME_SOURCES — the page without the
+    fill engine, which needs a real DOM (see FILL_ENGINE_SOURCES).
     `source` overrides what `extract` reads. It exists for `extension/sw.js`,
     which is NOT in EXTENSION_SOURCES: that list is the files the page
     functions may live in, and the service worker never runs in a page.
@@ -1448,7 +1492,7 @@ def run_node(driver_js: str, spec: dict, tmp_path: Path, source: str | None = No
     # PRELUDE_JS's `fs.readFileSync(process.argv[2])` contract intact — and
     # keeps the text off the command line, which has a length limit.
     source_file = tmp_path / "extension-source.js"
-    source_file.write_text(extension_source() if source is None else source, encoding="utf-8")
+    source_file.write_text(page_runtime_source() if source is None else source, encoding="utf-8")
 
     completed = subprocess.run(
         [node, str(harness), str(source_file), str(spec_file)],

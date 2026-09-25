@@ -7,7 +7,7 @@ from app.db import get_db
 from app.main import app
 from app.models.autofill_field_observation import AutofillFieldObservation
 from app.services import autofill_telemetry
-from tests.extension_harness import extension_source
+from tests.extension_harness import observation_emitter_source
 
 
 def _client(db_session):
@@ -219,7 +219,9 @@ def _outcomes_emitted_by_the_extension() -> set[str]:
     load-bearing. If an emitter is ever written that way again, `git log` has
     the function; the floor below is what will tell you to go and get it.
     """
-    src = extension_source()
+    # The fill engine's page-operation statuses are not observations (see
+    # observation_emitter_source), so they are not scanned as if they were.
+    src = observation_emitter_source()
     regions = [
         *re.findall(r"\bobserve\([^()]*?,\s*([^()]*?)\)", src),
         *re.findall(r"\boutcome\s*[:=]\s*(.*?)(?:;\n|,\n|\n\s*\})", src, re.S),

@@ -502,8 +502,16 @@ def test_every_type_a_caller_sends_is_a_type_the_page_handles():
     handled = set(_page_handler_keys())
 
     reachable = sent | called
-    assert reachable & handled == handled, (
-        f"page handlers nobody reaches: {sorted(handled - reachable)}")
+    # The fill engine's page operations landed before the loop that sends them
+    # (fill-engine plan Tasks 4 → 7/8). Named here so the exemption cannot
+    # outlive its reason: once a caller sends one, it must leave this set.
+    awaiting_sender = {
+        "fill_inventory", "fill_explore", "fill_apply", "fill_sweep", "fill_focus", "fill_cancel",
+    }
+    assert awaiting_sender & reachable == set(), (
+        f"these now have a sender — drop them from awaiting_sender: {sorted(awaiting_sender & reachable)}")
+    assert reachable & handled == handled - awaiting_sender, (
+        f"page handlers nobody reaches: {sorted(handled - reachable - awaiting_sender)}")
     assert handled == {
         "extract_job_posting", "detect_page", "profile_fill",
         "collect_open_questions", "fill_answers", "guided_write",
@@ -512,6 +520,8 @@ def test_every_type_a_caller_sends_is_a_type_the_page_handles():
         # no page — so the scroll is a message, fanned out because the control
         # can be in the application's subframe.
         "scroll_to_field",
+        # The fill engine's page operations (content/fill-ops.js).
+        "fill_inventory", "fill_explore", "fill_apply", "fill_sweep", "fill_focus", "fill_cancel",
     }
     assert called == set(), (
         "something calls a page handler in-frame again — see this test's "

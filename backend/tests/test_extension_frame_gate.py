@@ -104,12 +104,24 @@ ns.fillFormFromProfile = (...args) => {
 ns.collectOpenQuestions = () => { calls.push(["collectOpenQuestions", 0]); return { questions: [{ qid: "q1" }], excluded: [], host: "x" }; };
 ns.fillAnswersByQid = () => { calls.push(["fillAnswersByQid", 0]); return ["q1"]; };
 ns.applyGuidedChoices = () => { calls.push(["applyGuidedChoices", 0]); return []; };
+// The fill engine's page operations need a real DOM (tests/browser drives
+// them), so this world stubs them: what is asserted here is the gate.
+ns.fillOps = {
+  inventory: (opts) => { calls.push(["fillOps.inventory", opts]); return { frame: "f", host: "x", fields: [{ fid: "f-1" }] }; },
+  explore: (requests) => { calls.push(["fillOps.explore", requests]); return { "f-1": { options: [] } }; },
+  apply: (actions) => { calls.push(["fillOps.apply", actions]); return [{ fid: "f-1", outcome: "verified" }]; },
+  sweep: () => { calls.push(["fillOps.sweep", 0]); return [{ fid: "f-1", outcome: "verified" }]; },
+  focus: (fid) => { calls.push(["fillOps.focus", fid]); return true; },
+  cancel: () => { calls.push(["fillOps.cancel", 0]); },
+};
 
 main(async () => {
   const handler = ns.pageHandlers[spec.type];
   const data = await handler({
     type: spec.type, profile: { personal: { email: "a@b.test" } }, employment: [],
     skills: [], pairs: [], b64: "", filename: "resume.pdf",
+    consentForms: true, runId: "run-2", requests: [{ fid: "f-1", fp: "p" }],
+    actions: [{ fid: "f-1", fp: "p", op: "write", value: "x" }], fid: "f-1",
     // Only when the fixture states one — `undefined` is the shape the floating
     // card sends, and it must keep meaning "unchecked".
     ...(spec.expect === null ? {} : { expect: spec.expect }),
@@ -359,3 +371,42 @@ def test_the_offer_counts_exactly_the_boxes_the_attach_would_write_to(tmp_path):
                    file_inputs=boxes)["data"]
 
     assert counted == written == 2
+
+
+# The fill engine's page operations: every one that reads or writes the page is
+# gated exactly like guided_write, and a refused frame answers the operation's
+# EMPTY shape rather than an error.
+FILL_GATED = {
+    "fill_inventory": None,  # its empty shape carries the host: checked field by field
+    "fill_explore": {},
+    "fill_apply": [],
+    "fill_sweep": [],
+    "fill_focus": False,
+}
+
+
+@pytest.mark.parametrize("type_", sorted(FILL_GATED))
+def test_fill_operations_are_gated_by_frame(tmp_path, type_):
+    refused = _run(tmp_path, type_=type_, top_frame=False, form=False)
+    assert refused["calls"] == [], f"{type_} ran the engine in an unqualified subframe"
+    empty = FILL_GATED[type_]
+    if type_ == "fill_inventory":
+        assert refused["data"]["frame"] is None and refused["data"]["fields"] == []
+    else:
+        assert refused["data"] == empty
+    for top_frame, form in ((True, False), (False, True)):
+        out = _run(tmp_path, type_=type_, top_frame=top_frame, form=form)
+        assert out["calls"] != [], f"{type_} was refused in a frame that may receive user data"
+
+
+def test_fill_inventory_forwards_the_standing_consent_and_the_run_id(tmp_path):
+    """A new runId is what releases a latched Stop, and consent is per call."""
+    out = _run(tmp_path, type_="fill_inventory", top_frame=True)
+    assert out["calls"] == [["fillOps.inventory", {"consentForms": True, "runId": "run-2"}]]
+
+
+def test_fill_cancel_reaches_every_frame(tmp_path):
+    """Stop carries nothing and only stops work in flight — a gate could only
+    make it miss the frame that is working."""
+    out = _run(tmp_path, type_="fill_cancel", top_frame=False, form=False)
+    assert out["calls"] == [["fillOps.cancel", 0]] and out["data"] is True
