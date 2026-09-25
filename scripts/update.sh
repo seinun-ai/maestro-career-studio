@@ -43,7 +43,9 @@ env_get() {
 }
 
 compose() {
-  docker compose --project-directory "$REPO" "$@"
+  # PWD too: the compose file derives the upload host path from ${PWD}, and
+  # this script may be run from outside the checkout.
+  PWD="$REPO" docker compose --project-directory "$REPO" "$@"
 }
 
 is_pull_mode() {

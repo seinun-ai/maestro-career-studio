@@ -126,9 +126,12 @@ gone stale):
 
 - **Docker Desktop** (or Docker Engine + Compose v2). Docker runs the app in a
   self-contained box on your computer, so you don't install anything else.
+- **On Windows, WSL.** Install Docker Desktop with its WSL 2 engine, and run
+  every command below in the Ubuntu (WSL) window from your WSL home folder —
+  [step by step](docs/GETTING_STARTED.md#on-windows-use-wsl).
 - **Git** — it downloads the app and, later, its updates (macOS offers to
-  install it on first use; Windows takes
-  [Git for Windows](https://git-scm.com/download/win)).
+  install it on first use; on Windows, install it inside WSL with
+  `sudo apt install git`).
 - **Disk space** — about a 1 GB download, roughly 3–4 GB once unpacked. Most of
   it is the PDF tools and the small scoring model.
 - **An AI key — OpenAI or Gemini; either one is enough.** It powers tailoring,

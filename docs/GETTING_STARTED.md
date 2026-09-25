@@ -46,8 +46,8 @@ assistant** ([§5](#5-connect-your-ai-assistant-optional)).
   If the output ends without an error, you're fine.
 - **Git.** It downloads Maestro, and later its updates. macOS offers to
   install it the first time you run `git` (accept the "command line developer
-  tools" prompt). On Windows install
-  [Git for Windows](https://git-scm.com/download/win). On Linux, use your
+  tools" prompt). On Windows, install it inside WSL
+  ([below](#on-windows-use-wsl)). On Linux, use your
   package manager.
 - **Disk space.** About a 1 GB download, which takes roughly 3–4 GB once
   unpacked ([details](../README.md#prerequisites)).
@@ -57,6 +57,30 @@ assistant** ([§5](#5-connect-your-ai-assistant-optional)).
   ([No-Key Mode](../README.md#do-you-need-an-api-key)).
 
 You do **not** need Python or Node.
+
+### On Windows: use WSL
+
+On Windows, run Maestro from **WSL** (the Linux that ships with Windows).
+Every command in this guide then works exactly as written, and your data sits
+on a Linux disk, which the app's database needs. Windows is the least-tested
+platform so far — if a step here fails,
+[open an issue](https://github.com/seinun-ai/maestro-career-studio/issues).
+
+1. **Install Docker Desktop** and leave **Use the WSL 2 based engine** on (the
+   default). If you have no WSL yet, open PowerShell as administrator, run
+   `wsl --install`, and restart. That installs Ubuntu.
+2. In Docker Desktop, open **Settings › Resources › WSL integration** and
+   switch on your Ubuntu. That is what makes `docker` work inside WSL.
+3. Open **Ubuntu** from the Start menu. **Type every command in this guide
+   there**, not in PowerShell or Command Prompt.
+4. In that window, install Git with `sudo apt update && sudo apt install git`
+   (you don't need Git for Windows), then go to your WSL home with `cd ~` before
+   [installing](#2-install-and-start-the-app). **Don't clone into `/mnt/c/...`** (your `C:` drive): the app
+   runs slower there, and its database can report `database is locked`.
+
+The app still opens in your normal Windows browser at
+<http://localhost:3000>. To see the project folder in File Explorer, go to
+`\\wsl.localhost\Ubuntu\home\<your-user>\maestro-career-studio`.
 
 ## 2. Install and start the app
 
@@ -174,6 +198,13 @@ mark it applied — without leaving the tab. The app must be running.
    `maestro-career-studio`.
 3. Pin the icon, then click it on any job page to open the panel.
 
+**On Windows with WSL**, type
+`\\wsl.localhost\Ubuntu\home\<your-user>\maestro-career-studio\extension` in the
+folder picker's address bar. If Chrome won't load it from there, copy the
+folder to your `C:` drive from the Ubuntu window and load the copy instead:
+`cp -r extension /mnt/c/Users/<your-windows-user>/maestro-extension`. The copy
+doesn't update itself, so repeat that command after every update.
+
 There is nothing to set up if you kept the default ports. If you changed the
 ports in `.env`, the extension's addresses are set in `extension/sw.js`
 (`DEFAULTS`), or can be overridden in the extension's stored settings.
@@ -199,7 +230,9 @@ chatgpt.com in a web browser.
 Settings → **Extensions** → **Install Extension**, then select
 `maestro-career-studio/mcpb/maestro-career-studio.mcpb` inside your project
 folder. Leave the fields as they are. One install covers Claude Desktop and
-Claude Code sessions inside the Claude app.
+Claude Code sessions inside the Claude app. It works on macOS and Windows; on
+Windows with WSL, the file is at
+`\\wsl.localhost\Ubuntu\home\<your-user>\maestro-career-studio\mcpb\maestro-career-studio.mcpb`.
 
 Do **not** use Settings → Connectors → Add custom connector — that is for
 online services, and this runs on your computer.
@@ -237,6 +270,9 @@ paste into each app:
 ./scripts/setup-mcp.sh
 ```
 
+On Windows, skip the script: it writes Linux paths that Windows apps can't
+run. Use the extension, the plugin, or the config below.
+
 ### If the install did not work: write the config by hand
 
 Both apps read a plain config file, and adding the server there always
@@ -246,9 +282,11 @@ otherwise every tool shows up twice.
 <details><summary><b>Claude Desktop</b> — claude_desktop_config.json</summary>
 
 Open the file from **Settings → Developer → Edit Config**. It lives at
-`~/Library/Application Support/Claude/claude_desktop_config.json`.
+`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS
+and `%APPDATA%\Claude\claude_desktop_config.json` on Windows.
 
-**Fully quit Claude first** (Cmd+Q — closing the window is not enough), or
+**Fully quit Claude first** (Cmd+Q on macOS; on Windows, right-click the Claude
+icon by the clock and choose Quit — closing the window is not enough), or
 your edit may be lost. Add to `mcpServers`:
 
 ```json
@@ -269,7 +307,8 @@ Reopen Claude and check that it is listed under **Settings → Connectors**.
 <details><summary><b>Codex / ChatGPT desktop</b> — ~/.codex/config.toml</summary>
 
 Open the file from **Settings → Configuration → open config.toml** (labels
-vary between versions). It lives at `~/.codex/config.toml`. Append:
+vary between versions). It lives at `~/.codex/config.toml`
+(`%USERPROFILE%\.codex\config.toml` on Windows). Append:
 
 ```toml
 [mcp_servers.maestro-career-studio]
@@ -320,8 +359,9 @@ From the project folder:
 ./scripts/update.sh
 ```
 
-That is the whole update: it saves a database backup, moves to the newest
-release, and waits until the app is ready again. To only check whether
+(On Windows, run it in the Ubuntu window.) That is the whole update: it saves
+a database backup, moves to the newest release, and waits until the app is
+ready again. To only check whether
 there is anything new, run `./scripts/update.sh --check` — it changes nothing.
 
 - **Your resumes, applications and settings are not touched.**

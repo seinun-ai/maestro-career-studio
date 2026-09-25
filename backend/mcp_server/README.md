@@ -12,10 +12,11 @@ tool below is one action your assistant can take in the app.
   The backend is then on **http://localhost:8001** by default (set by
   `BACKEND_HOST_PORT` in `.env`). If you run the backend directly with
   `uvicorn app.main:app --port 8000` from `backend/`, it is on port 8000 instead.
-- The extension and plugin routes below need nothing else. Only the setup-script
-  and hand-config routes need a **host Python 3.12+** (a fresh macOS ships 3.9:
-  `brew install python@3.12`; Debian/Ubuntu: `sudo apt install python3.12
-  python3.12-venv`).
+- The extension and plugin routes below need nothing else, on macOS or
+  Windows. Only the setup-script and hand-config routes need a **host Python
+  3.12+** (a fresh macOS ships 3.9: `brew install python@3.12`; Debian/Ubuntu:
+  `sudo apt install python3.12 python3.12-venv`). On Windows, use the extension
+  or the plugin: the script writes Linux paths that Windows apps can't run.
 
 ## Install
 
@@ -102,8 +103,9 @@ Templates with every profile filled in:
 - **Claude Desktop and most stdio clients** (Cursor, Windsurf):
   [`claude_desktop_config.example.json`](./claude_desktop_config.example.json).
   On macOS the Desktop file is
-  `~/Library/Application Support/Claude/claude_desktop_config.json`. **Quit
-  Claude Desktop fully (Cmd+Q) before editing**: the app writes this file too
+  `~/Library/Application Support/Claude/claude_desktop_config.json`; on Windows,
+  `%APPDATA%\Claude\claude_desktop_config.json`. **Quit Claude Desktop fully
+  (Cmd+Q, or Quit from its Windows tray icon) before editing**: the app writes this file too
   and can discard an edit made while it is open. Merge the entries you want into
   `mcpServers`, restart, and check the server is listed under Settings →
   Connectors.
@@ -186,6 +188,14 @@ Playwright's `--output-dir` must be the parent `.playwright-mcp` folder. Enable
 only these two servers for apply chats, and restart Claude Desktop (Cmd+Q)
 after changing the config. If Claude asks once for access to `.playwright-mcp`,
 approve it.
+
+When the server runs inside the container (the extension and plugin routes),
+`upload_path` is rewritten to the same folder as your computer sees it:
+`<folder you ran docker compose from>/.playwright-mcp/uploads`. If the browser
+sees the checkout under a different path, set `MAESTRO_CS_UPLOAD_HOST_ROOT` in
+`.env` and run `docker compose up -d`. The usual case is a WSL clone driven by a
+browser on Windows:
+`MAESTRO_CS_UPLOAD_HOST_ROOT=\\wsl.localhost\Ubuntu\home\<you>\maestro-career-studio\.playwright-mcp\uploads`.
 
 ## Skills
 

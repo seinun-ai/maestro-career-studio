@@ -6,7 +6,7 @@ import logging
 import os
 import tempfile
 from email.message import Message
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
 
 import httpx
@@ -175,7 +175,7 @@ def _default_upload_root() -> Path:
     return Path(__file__).resolve().parents[2] / ".playwright-mcp" / "uploads"
 
 
-def _host_visible(path: Path, upload_root: Path) -> Path:
+def _host_visible(path: Path, upload_root: Path) -> str:
     """Rewrite an upload path into the one the BROWSER can open.
 
     This server may run inside the backend container (`docker exec`), while the
@@ -185,11 +185,17 @@ def _host_visible(path: Path, upload_root: Path) -> Path:
     names the host side of the same bind mount; unset (the venv transport, where
     both are one filesystem) this is inert, because rewriting a path that was
     already right is its own bug.
+
+    The host may be Windows (`C:\\...`, or `\\\\wsl.localhost\\...` for a WSL
+    clone) while this code runs on Linux, so the join follows the ROOT's
+    flavour: a POSIX join would hand the browser `C:\\...\\uploads/<id>/<file>`.
     """
     host_root = os.environ.get("MAESTRO_CS_UPLOAD_HOST_ROOT")
     if not host_root:
-        return path
-    return Path(host_root) / path.relative_to(upload_root)
+        return str(path)
+    windows = "\\" in host_root or (len(host_root) > 1 and host_root[1] == ":")
+    root = PureWindowsPath(host_root) if windows else PurePosixPath(host_root)
+    return str(root.joinpath(*path.relative_to(upload_root).parts))
 
 
 def _atomic_write_bytes(destination: Path, content: bytes) -> None:
@@ -837,7 +843,7 @@ class BackendClient:
         return {
             "application_id": application_id,
             "canonical_filename": canonical_filename,
-            "upload_path": str(_host_visible(upload_path, upload_root)),
+            "upload_path": _host_visible(upload_path, upload_root),
             "size_bytes": len(content),
             "sha256": hashlib.sha256(content).hexdigest(),
             **inspection,

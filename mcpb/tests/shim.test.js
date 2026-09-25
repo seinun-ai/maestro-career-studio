@@ -87,3 +87,43 @@ test("unsaved user_config placeholders are ignored, not obeyed", (t) => {
   assert.doesNotMatch(r.stderr, /user_config/,
     "no placeholder should reach docker as a real value");
 });
+
+test("Windows looks where Docker Desktop installs, not in POSIX paths", () => {
+  // The manifest lists win32, so the search list has to be one that can hit on
+  // Windows: HOME is unset there and none of the macOS/Linux paths exist.
+  const { dockerCandidates } = require(SHIM);
+  const found = dockerCandidates("win32", {
+    ProgramFiles: "D:\\Apps", ProgramData: "C:\\ProgramData",
+    USERPROFILE: "C:\\Users\\me",
+  });
+  assert.deepStrictEqual(found, [
+    "D:\\Apps\\Docker\\Docker\\resources\\bin\\docker.exe",
+    "C:\\ProgramData\\DockerDesktop\\version-bin\\docker.exe",
+    "C:\\Users\\me\\.docker\\bin\\docker.exe",
+  ]);
+  assert.ok(found.every((p) => !p.startsWith("/")), "no POSIX path on Windows");
+  // Defaults when the environment carries neither variable.
+  assert.strictEqual(dockerCandidates("win32", {})[0],
+    "C:\\Program Files\\Docker\\Docker\\resources\\bin\\docker.exe");
+});
+
+test("PATH is searched last, with the platform's separator and executable name", () => {
+  const { onPath } = require(SHIM);
+  assert.deepStrictEqual(
+    onPath("win32", { Path: "C:\\Tools\;C:\\Docker\\bin" }),
+    ["C:\\Tools\\docker.exe", "C:\\Docker\\bin\\docker.exe"],
+  );
+  assert.deepStrictEqual(onPath("darwin", { PATH: "/a:/b/" }), ["/a/docker", "/b/docker"]);
+  assert.deepStrictEqual(onPath("darwin", { PATH: "" }), []);
+});
+
+test("requiring the shim for its helpers does not start docker", () => {
+  // The helpers above are loaded with require(); main() must only run when the
+  // file is launched, or every test import would spawn `docker exec`.
+  const r = spawnSync(process.execPath, ["-e", `require(${JSON.stringify(SHIM)})`], {
+    env: { PATH: "", MAESTRO_CS_DOCKER: "/nonexistent/docker" },
+    encoding: "utf8",
+  });
+  assert.strictEqual(r.status, 0);
+  assert.strictEqual(r.stderr, "");
+});
