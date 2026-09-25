@@ -141,8 +141,9 @@ mapped to a value (prose goes to `/choose` in parallel) → `/pick` in one batch
 commit each → adaptive step for `unexpected` commits → sweep → next round only
 if something changed. Max 4 rounds.
 
-- **Sets** (skills, multi-selects): Noul membership over visible options, or per
-  item search-and-pick for search widgets. Verified only when every approved item
+- **Sets** (skills, multi-selects): one pick per approved item — over the
+  visible options, or search-and-pick for search widgets — so every chosen
+  option maps back to the item it stands for. Verified only when every approved item
   is committed; otherwise reported as partial ("3 of 5 added") under Needs your
   answer.
 - **Stale decisions are dropped:** an action carries the field fingerprint and
