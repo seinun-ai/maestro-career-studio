@@ -22,6 +22,8 @@ ENGINE_SOURCES: list[str] = [
     "shared/policy.js",
     "content/field-reader.js",
     "content/fill-base.js",
+    "content/shapes.js",
+    "content/inventory.js",
 ]
 
 
