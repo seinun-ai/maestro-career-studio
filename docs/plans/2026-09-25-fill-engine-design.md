@@ -65,7 +65,7 @@ round:
   if the commit ended somewhere unexpected:
     ┌ fill_step_state ──────────────────────▶ candidate moves for this field now
     │ POST /api/autofill/step (Jev picks one move)
-    └ fill_apply {move} ────────────────────▶ execute, verify     (≤ 6 steps / 8 s)
+    └ fill_apply {move} ────────────────────▶ execute, verify     (≤ 6 steps, 25 s per field)
   sweep ────────────────── fill_sweep ──────▶ re-commit text showing an error
 repeat while progress, max 4 rounds
 ```
@@ -129,7 +129,7 @@ the fact or one of its words into an owned search box) · `open` · `scroll` ·
 server-side from the slot), the last moves and their outcomes, and the candidate
 descriptions; Jev returns one move id (Choice with `give_up` as abstention; a
 probability floor per slot policy). The page executes it and reports the new
-state. At most 6 steps / 8 s per field; `give_up` or the budget → "Needs your
+state. At most 6 steps within the field's 25 s deadline; `give_up` or the budget → "Needs your
 answer" or "Could not operate". This one loop replaces hand-written category
 descent, typeahead fallbacks and retry ladders. Models never emit selectors,
 code or free text here.
