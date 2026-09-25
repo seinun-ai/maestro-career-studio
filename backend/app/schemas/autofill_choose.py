@@ -45,7 +45,9 @@ class ChooseRequest(BaseModel):
 
 class Choice(BaseModel):
     answer: str | None
-    reason: Literal["matched", "abstained"]
+    # closest: written, but the page had no exact option for the profile's value
+    # (Jev path, `flag` slots only) — the Fill report tells the user to check it.
+    reason: Literal["matched", "closest", "abstained"]
 
 
 class ChooseResponse(BaseModel):
