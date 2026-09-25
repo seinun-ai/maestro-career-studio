@@ -80,8 +80,12 @@ work. Returns question, help, section, repeat index, required, and the source.
 
 **`content/inventory.js`** — every fillable control in the frame, grouped (radio
 by name, checkbox groups, date sections) into fields
-`{fid, shape, question, section, repeatIndex, required, committed, options?,
-optionsComplete, invalid, touched, policyBlocked}`. `fid` is bound to the
+`{fid, fp, shape, question, section, repeatIndex, required, committed, answered,
+options?, optionsComplete, invalid, touched, policyBlocked}`. Modal application
+forms are walked; only popups the engine itself opened are skipped. A control no
+shape recognises is still listed (`unknown`) so the report can name it.
+`answered` is stricter than "has a value": an unchecked lone checkbox or a set
+with some chips is not finished. `fid` is bound to the
 element (WeakMap) with a fingerprint for reacquiring a re-rendered node. Display
 text is never identity. Fields the user typed in are `touched` and left alone.
 
@@ -102,7 +106,9 @@ Shape-specific knowledge is only a **committed-value reader** per shape (native
 `value`/`selectedOptions`, `checked`, button text, single-value node, pill/chip
 set, hidden backing input, `aria-selected`) and **how to open** it. Verify always
 runs after the final blur and treats a visible field error / `aria-invalid` as
-not filled. Search-box text is never proof.
+not filled. Search-box text is never proof. Equality keeps punctuation (only
+phone numbers compare by digits); dates never gain precision the fact lacks;
+the sweep also catches a verified value the page reverted later.
 
 **Cancellation is real.** Every page operation carries an op token; when its
 budget runs out or the user presses Stop the token is cancelled, and every
@@ -140,8 +146,15 @@ if something changed. Max 4 rounds.
   is committed; otherwise reported as partial ("3 of 5 added") under Needs your
   answer.
 - **Stale decisions are dropped:** an action carries the field fingerprint and
-  option text; the page re-checks both before acting.
-- Stop cancels between any two actions and cancels the in-flight op token.
+  option text (adaptive moves also the state version); the page re-checks them
+  — and whether the user edited the field or policy now blocks it — at
+  execution time.
+- **An honest abstain over a popup goes to the adaptive step** (the fact may sit
+  under a category or behind a search), not straight to "Needs your answer".
+- **Deadlines:** every model call (10 s), field (25 s) and run (3 min) has a
+  clock; a late answer is ignored.
+- Stop is latched for the run: it cancels the in-flight op token and every
+  later operation until the next run starts.
 - Navigation and Submit stay with the user.
 
 **Panel report groups:** Filled (verified), Closest match — check, Answered for
@@ -155,12 +168,16 @@ each. The blank count comes from verified state.
   answers; codes turned into the words forms show; built from the consent-gated
   profile plus the selected resume.
 - **`POST /api/autofill/map`** — one Jev Choice per field over fact
-  *descriptions* (never values) plus `free_text`, `none`, `low_stakes` (setting
-  on), `blocked_eeo` (no consent). Returns route + slot + value (to the local
-  extension).
+  *descriptions* (never values) plus `free_text`, `none`, `blocked_eeo` (no
+  consent). Returns route + slot + value (to the local extension). With the
+  low-stakes setting on, a **second pass** asks (Noul) only about choice fields
+  no fact answered — so a real profile answer always wins.
 - **`POST /api/autofill/pick`** — Choice over live option ids + `none`; Noul
   per option for sets; `category` step; policy thresholds from the slot.
-- **`POST /api/autofill/step`** — Choice over candidate move ids + `give_up`.
+- **`POST /api/autofill/step`** — Choice over candidate move ids + `give_up`;
+  a click needs the slot's match floor, and a closest click needs the page to
+  report every option in view. `/pick` and `/step` re-check the low-stakes
+  setting server-side.
 - **Both engines, same floors.** With engine = fast (or a failed Jev batch) the
   fast model returns a key **and a 0–1 confidence**, and the same per-policy
   floors apply; exact-policy facts are never written on a low-confidence answer.

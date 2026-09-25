@@ -26,7 +26,16 @@
 
 **House rules:** content scripts are IIFEs publishing on `window.careerStudioCompanion` (`ns`) and read each other at call time; new content files go into `extension/manifest.json` before `content/agent.js`; page text is data (every model question includes `_PAGE_TEXT_IS_DATA` from `autofill_choose.py`) and models only ever choose among ids code generated; telemetry carries no values.
 
-**Codex review fixes built in (2026-09-25):** verify runs after the final blur and treats a field error as not filled; sets are verified only when complete (else `partial`); page operations are cancellable (a late click cannot land); actions carry a field fingerprint checked before acting; the fast-model fallback returns a confidence and meets the same floors.
+**Codex (GPT-6 Astra) review fixes built in, two rounds (2026-09-25):**
+- Verify runs after the final blur and treats a field error as not filled; equivalence keeps punctuation meaningful (phones compare by digits); dates never gain precision the fact lacks and every part the fact has must match.
+- Sets are verified only when every approved item is committed (the 10-item cap limits work, never the bar); an existing chip or an unchecked lone checkbox is not "already answered".
+- Cancellation is real and latched per run: primitives check a token, the outside-click close re-checks after its wait, cleanup never clears a text value.
+- Actions need a fingerprint and are re-checked at execution for user edits and policy; adaptive moves carry the state version they were chosen from.
+- An honest "no option states it" over a popup hands over to the adaptive step (categories, searches, "Not in list").
+- Never stall is enforced: per-call, per-field and per-run deadlines in the loop; per-set page budget capped.
+- Low-stakes is a second pass for fields no fact answered, and `/pick`/`/step` re-check the setting server-side; closest needs a complete view on `/step` too.
+- Modal application forms are walked; only popups the engine opened are skipped; unrecognised controls are listed, not dropped.
+- The end-to-end gate runs before the engine is switched on; evaluation adds adaptive-step cases and measures both engines separately.
 
 **Task map:** 1 corpus · 2 field reader + primitives · 3 shapes + inventory · 4 generic mechanics + page ops · 5 backend decisions · 6 adaptive step · 7 loop · 8 panel + telemetry · 9 low-stakes setting · 10 evaluate, cut over, document.
 
@@ -663,6 +672,24 @@ def test_cancel_all_stops_an_operation_in_flight(page, load):
         {B}.press(document.getElementById('x'), t); }}, 5000).catch(e => e.name);
         {B}.cancelAll(); return run; }}""")
     assert out == "Cancelled" and page.evaluate("window.clicks === undefined")
+
+
+def test_stop_is_latched_until_the_next_run(page, load):
+    load(page, "<button id='x'>x</button>")
+    got = page.evaluate(f"""async () => {{ {B}.cancelAll();
+        const after = await {B}.withinBudget(async (t) => {{ {B}.check(t); return 'ran'; }}, 1000).catch(e => e.name);
+        {B}.resume();
+        const next = await {B}.withinBudget(async (t) => {{ {B}.check(t); return 'ran'; }}, 1000).catch(e => e.name);
+        return [after, next]; }}""")
+    assert got == ["Cancelled", "ran"]
+
+
+def test_equivalence_keeps_punctuation_meaningful_except_for_phones(page, load):
+    load(page, "<div></div>")
+    got = page.evaluate(f"""() => [
+        {B}.equivalent('C', 'C++'), {B}.equivalent('José', 'jose'), {B}.equivalent('(555) 010-0000', '5550100000'),
+        {B}.equivalent('a.b@x.test', 'ab@x.test'), {B}.equivalent('', '')]""")
+    assert got == [False, True, True, False, False]
 ```
 
 **Step 4: Implement** `content/fill-base.js`:
@@ -687,6 +714,13 @@ def test_cancel_all_stops_an_operation_in_flight(page, load):
     }
   }
   const live = new Set();
+  // Stop is LATCHED for the run: once cancelAll() fires, every operation that
+  // starts afterwards is born cancelled, until the panel starts a new run
+  // (fill-ops resets the latch when it sees a new runId).
+  let halted = false;
+  const resume = () => {
+    halted = false;
+  };
   const check = (t) => {
     if (t?.cancelled) throw new Cancelled();
   };
@@ -697,7 +731,7 @@ def test_cancel_all_stops_an_operation_in_flight(page, load):
     check(t);
   };
   const withinBudget = async (fn, ms) => {
-    const t = { cancelled: false };
+    const t = { cancelled: halted };
     live.add(t);
     let timer;
     try {
@@ -716,6 +750,7 @@ def test_cancel_all_stops_an_operation_in_flight(page, load):
     }
   };
   const cancelAll = () => {
+    halted = true;
     for (const t of live) t.cancelled = true;
   };
   const waitFor = async (fn, ms, t, step = 50) => {
@@ -787,10 +822,13 @@ def test_cancel_all_stops_an_operation_in_flight(page, load):
     el.dispatchEvent(new MouseEvent("click", at));
   };
   // Workday ignores a synthetic Escape; an outside click closes its popups.
-  const closePopups = async (el, t) => {
-    check(t);
+  // Closing is cleanup, so it may run on a cancelled token — but the outside
+  // CLICK re-checks after the wait: a cancelled run never clicks the page.
+  const closePopups = async (el, t, { cleanup = false } = {}) => {
+    if (!cleanup) check(t);
     el?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     await sleep(60);
+    if (!cleanup) check(t);
     if (popups().length) {
       document.body.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
       document.body.click();
@@ -811,17 +849,34 @@ def test_cancel_all_stops_an_operation_in_flight(page, load):
     el.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: value }));
     el.dispatchEvent(new Event("change", { bubbles: true }));
   };
-  // Equal after folding case, accents and punctuation; both empty is NOT equal.
-  const sameIgnoringFormat = (actual, wrote) => {
-    const strip = (s) => String(s ?? "").normalize("NFKD").replace(/\p{M}/gu, "")
-      .toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
-    const left = strip(actual);
-    return left !== "" && left === strip(wrote);
+  // Equal after folding case, accents and whitespace ONLY — punctuation is
+  // meaning ("C" ≠ "C++", two emails differing by a dot differ). The one
+  // format a page may legitimately impose is a phone number's punctuation, so
+  // phone-shaped values compare by digits. Both empty is NOT equal.
+  const PHONEISH = /^[\d\s()+.-]{7,}$/;
+  const fold = (s) => String(s ?? "").normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase().replace(/\s+/g, " ").trim();
+  const equivalent = (actual, wrote) => {
+    const a = fold(actual);
+    const w = fold(wrote);
+    if (!a || !w) return false;
+    if (PHONEISH.test(a) && PHONEISH.test(w)) return a.replace(/\D/g, "") === w.replace(/\D/g, "");
+    return a === w;
+  };
+  // Popups the engine itself opened: their controls are never inventoried as
+  // page fields (a real modal form, which the engine did not open, is).
+  const enginePopups = new WeakSet();
+  const markEnginePopup = (pop) => {
+    if (pop) enginePopups.add(pop);
+  };
+  const insideEnginePopup = (el) => {
+    for (let n = el; n; n = n.parentElement) if (enginePopups.has(n)) return true;
+    return false;
   };
 
   ns.fillBase = {
-    Cancelled, check, sleep, settle, withinBudget, cancelAll, waitFor, visible, invalid,
-    popups, ownedPopup, optionsOf, press, closePopups, typeText, sameIgnoringFormat, clean,
+    Cancelled, check, sleep, settle, withinBudget, cancelAll, resume, waitFor, visible, invalid,
+    popups, ownedPopup, optionsOf, press, closePopups, typeText, equivalent, clean,
+    markEnginePopup, insideEnginePopup,
   };
 })();
 ```
@@ -902,6 +957,24 @@ def test_open_shadow_roots_are_walked(page, load):
     page.evaluate("""() => { const r = document.getElementById('host').attachShadow({mode:'open'});
         r.innerHTML = "<label for='z'>Zip</label><input id='z'>"; }""")
     assert [f["question"] for f in fields(page)] == ["Zip"]
+
+
+def test_a_modal_application_form_is_walked(page, load):
+    load(page, "<div role='dialog' aria-modal='true'><label for='e'>Email</label><input id='e'></div>")
+    assert [f["question"] for f in fields(page)] == ["Email"]
+
+
+def test_an_unrecognised_control_is_listed_as_unknown_not_dropped(page, load):
+    load(page, "<span id='q'>Rate your SQL</span><div role='slider' aria-labelledby='q' tabindex='0'></div>")
+    assert [(f["shape"], f["question"]) for f in fields(page)] == [("unknown", "Rate your SQL")]
+
+
+def test_answered_is_stricter_than_has_a_value(page, load):
+    load(page, fixture_html("native.html") + fixture_html("workday_search.html"))
+    by_q = {f["question"]: f for f in fields(page)}
+    assert by_q["I have a preferred name"]["answered"] is False       # unchecked reads "No"
+    assert by_q["Type to Add Skills"]["answered"] is False            # one chip is not a finished set
+    assert by_q["Highest degree"]["answered"] is False
 ```
 
 (`policy.js`'s never-fill list includes signature; if its API differs from `ns.isPolicyBlocked(label, {consentForms})`, adapt the call and note it.)
@@ -991,6 +1064,7 @@ def test_open_shadow_roots_are_walked(page, load):
       passive: (el) => (lone(el)
         ? { options: [{ oid: "yes", text: "Yes", selected: el.checked }, { oid: "no", text: "No", selected: !el.checked }], complete: true }
         : { options: members(el).map((m, i) => ({ oid: `o${i + 1}`, text: labelOf(m), selected: m.checked })), complete: true }),
+      answered: (el) => (lone(el) ? el.checked : el.type === "radio" && members(el).some((m) => m.checked)),
       read: (el) => {
         if (lone(el)) return el.checked ? "Yes" : "No";
         const on = members(el).filter((m) => m.checked).map(labelOf);
@@ -1038,11 +1112,18 @@ def test_open_shadow_roots_are_walked(page, load):
 (() => {
   const ns = (window.careerStudioCompanion ??= {});
   const FRAME = Math.random().toString(36).slice(2, 8);
-  const CANDIDATE = 'input, select, textarea, button[aria-haspopup], [role="combobox"]:not(input)';
+  // Known shapes plus ARIA widgets no shape claims yet: an unrecognised control
+  // is still LISTED (shape "unknown") so the panel can name it, never dropped.
+  const CANDIDATE = 'input, select, textarea, button[aria-haspopup], [role="combobox"]:not(input), '
+    + '[contenteditable="true"], [role="textbox"]:not(input):not(textarea), [role="radio"]:not(input), '
+    + '[role="checkbox"]:not(input), [role="switch"], [role="spinbutton"]:not(input), [role="slider"]';
   const SKIP = new Set(["hidden", "submit", "button", "reset", "image", "file", "password"]);
   let counter = 0;
+  let lastConsentForms = false;
   const fidOf = new WeakMap();
-  const registry = new Map(); // fid -> { ref, fp, shape }
+  const registry = new Map(); // fid -> { ref, fp, shape, question }
+  // A control no shape recognises: listed so the report can name it, never acted on.
+  const UNKNOWN = { name: "unknown", kind: "unknown", read: (el) => ns.fillBase.clean(el.value ?? el.textContent ?? "") };
   const touched = new Set();
 
   const walk = (root, out = []) => {
@@ -1052,19 +1133,22 @@ def test_open_shadow_roots_are_walked(page, load):
   };
   const eligible = (el) => {
     if (el.tagName === "INPUT" && SKIP.has((el.getAttribute("type") ?? "").toLowerCase())) return false;
-    if (el.disabled || el.readOnly || el.closest('[role="listbox"], [role="menu"], [role="dialog"]')) return false;
+    // Options inside a popup are not fields; neither is anything inside a popup
+    // the ENGINE opened. A modal application form (a dialog the page opened)
+    // is walked like any other part of the page.
+    if (el.disabled || el.readOnly || el.closest('[role="listbox"], [role="menu"]') || ns.fillBase.insideEnginePopup(el)) return false;
     const custom = el.type === "radio" || el.type === "checkbox";
     return ns.fillBase.visible(el) || (custom && ns.fillBase.visible(el.closest("label") ?? el.parentElement));
   };
 
-  const list = ({ consentForms = false } = {}) => {
+  const list = ({ consentForms = lastConsentForms } = {}) => {
+    lastConsentForms = consentForms;
     const groups = new Set();
     const ordinals = new Map();
     const fields = [];
     for (const el of walk(document)) {
       if (!eligible(el)) continue;
-      const shape = ns.shapes.of(el);
-      if (!shape) continue;
+      const shape = ns.shapes.of(el) ?? UNKNOWN;
       const group = shape.groupKey?.(el);
       if (group) {
         if (groups.has(group)) continue;
@@ -1086,13 +1170,18 @@ def test_open_shadow_roots_are_walked(page, load):
         fid ??= `${FRAME}-${(counter += 1)}`;
         fidOf.set(el, fid);
       }
-      registry.set(fid, { ref: new WeakRef(el), fp, shape: shape.name });
+      registry.set(fid, { ref: new WeakRef(el), fp, shape: shape.name, question: d.question });
       const passive = shape.passive?.(el) ?? null;
+      const committed = shape.read(el);
       fields.push({
         fid, fp, shape: shape.name, kind: shape.kind, multi: Boolean(shape.multi?.(el)),
         question: d.question, source: d.source, section: d.section, repeatIndex: d.repeatIndex,
         required: d.required, help: d.help,
-        committed: shape.read(el),
+        committed,
+        // "Answered" is stricter than "has a value": an unchecked lone checkbox
+        // reads "No" but was never answered, and a multi-select is never
+        // finished just because one chip exists — missing items may be added.
+        answered: shape.answered ? shape.answered(el) : (shape.multi?.(el) ? false : Boolean(committed)),
         options: passive?.options ?? null,
         optionsComplete: passive?.complete ?? false,
         invalid: ns.fillBase.invalid(el),
@@ -1127,7 +1216,9 @@ def test_open_shadow_roots_are_walked(page, load):
   ns.fillInventory = {
     list, resolve, frame: FRAME,
     fpOf: (fid) => registry.get(fid)?.fp ?? null,
-    shapeOf: (fid) => ns.shapes.byName(registry.get(fid)?.shape),
+    shapeOf: (fid) => (registry.get(fid)?.shape === "unknown" ? UNKNOWN : ns.shapes.byName(registry.get(fid)?.shape)),
+    isTouched: (fid) => touched.has(fid),
+    isBlocked: (fid) => Boolean(ns.isPolicyBlocked?.(registry.get(fid)?.question ?? "", { consentForms: lastConsentForms })),
   };
 })();
 ```
@@ -1157,7 +1248,7 @@ Note: a radio/checkbox group's fid is its FIRST member; the `touched` walk marks
 | `fill_focus` | `{fid}` | `true` if owned |
 | `fill_cancel` | – | cancels every operation in flight |
 
-Outcomes: `verified` · `partial` (sets) · `unexpected` (with `reason`: `no_popup`, `empty_popup`, `option_missing`, `new_options`, `not_committed`) · `reverted` · `stale` (fp mismatch / node gone) · `cancelled` · `timeout`.
+Outcomes: `verified` · `partial` (sets) · `unexpected` (with `reason`: `no_popup`, `empty_popup`, `option_missing`, `new_options`, `not_committed`, `needs_more_date_precision`) · `reverted` · `stale` (fp missing/mismatched, node gone) · `yours` (user edited it) · `blocked` (policy) · `unsupported` (unknown shape) · `cancelled` · `timeout`. `fill_inventory` takes `{consentForms, runId}`; a new `runId` releases the Stop latch. `fill_sweep` also reports `reverted` for any field whose verified value no longer holds.
 
 **Step 1: Failing tests** — `test_fill_core.py`:
 
@@ -1206,6 +1297,13 @@ def test_workday_date_sections_are_written_before_one_blur(page, load):
     assert (page.input_value("#m"), page.input_value("#y")) == ("08", "2019")
     assert apply(page, fields["End date"], op="write", value="2021-05")["outcome"] == "verified"
     assert page.input_value("#p") == "05/2021"
+
+
+def test_a_date_widget_asking_for_a_day_the_fact_lacks_is_left_alone(page, load):
+    load(page, "<label for='d'>Start date</label><input id='d' type='date'>")
+    row = apply(page, inv(page)["Start date"], op="write", value="2021-05")
+    assert (row["outcome"], row["reason"]) == ("unexpected", "needs_more_date_precision")
+    assert page.input_value("#d") == ""
 
 
 # --- choice-like, passive
@@ -1301,6 +1399,48 @@ def test_cancel_stops_a_choose_before_it_clicks(page, load):
     assert page.evaluate("document.getElementById('school-pills').children.length") == 0
 
 
+def test_a_field_the_user_edits_while_the_model_decides_is_never_written(page, load):
+    load(page, fixture_html("workday_text.html"))
+    f = inv(page)["City"]
+    page.type("#city", "Mine")
+    row = apply(page, f, op="write", value="Springfield")
+    assert row["outcome"] == "yours" and page.input_value("#city") == "Mine"
+
+
+def test_an_action_without_a_fingerprint_is_refused(page, load):
+    load(page, fixture_html("native.html"))
+    f = inv(page)["Highest degree"]
+    got = page.evaluate(f"(a) => {OPS}.apply([a])", {"fid": f["fid"], "op": "choose", "text": "Master's"})[0]
+    assert got["outcome"] == "stale"
+
+
+def test_stop_is_latched_between_fields_until_the_next_run(page, load):
+    load(page, fixture_html("native.html"))
+    f = inv(page)
+    page.evaluate(f"() => {OPS}.cancel()")
+    assert apply(page, f["Highest degree"], op="choose", text="Master's")["outcome"] == "cancelled"
+    page.evaluate(f"() => {OPS}.inventory({{runId: 'next'}})")
+    assert apply(page, f["Highest degree"], op="choose", text="Master's")["outcome"] == "verified"
+
+
+def test_cancel_cleanup_never_wipes_a_text_value(page, load):
+    load(page, fixture_html("workday_text.html"))
+    f = inv(page)["City"]
+    apply(page, f, op="write", value="Springfield")
+    page.evaluate(f"() => {OPS}.cancel()")
+    apply(page, f, op="write", value="Other")
+    assert page.input_value("#city") == "Springfield"
+
+
+def test_the_sweep_catches_a_value_the_page_reverts_later(page, load):
+    load(page, "<label for='a'>Q</label><input id='a'><script>document.getElementById('a').addEventListener("
+               "'focusout', e => setTimeout(() => { e.target.value = ''; }, 400));</script>")
+    f = inv(page)["Q"]
+    assert apply(page, f, op="write", value="x")["outcome"] == "verified"
+    page.wait_for_timeout(500)
+    assert {r["fid"]: r["outcome"] for r in page.evaluate(f"() => {OPS}.sweep()")}[f["fid"]] == "reverted"
+
+
 def test_engine_writes_do_not_mark_a_field_touched(page, load):
     load(page, fixture_html("workday_text.html"))
     apply(page, inv(page)["City"], op="write", value="Springfield")
@@ -1344,9 +1484,11 @@ def test_engine_writes_do_not_mark_a_field_touched(page, load):
       const want = parseDate(expected);
       if (shape.dateKind(el) === "pattern") return want && el.value === formatPattern(el.getAttribute("placeholder"), want) ? "verified" : "reverted";
       const got = parseDate(have[0]);
-      return got && want && got.year === want.year && (!want.month || got.month === want.month) ? "verified" : "reverted";
+      // Every part the fact HAS must match; parts the fact lacks are never invented.
+      return got && want && got.year === want.year && (!want.month || got.month === want.month)
+        && (!want.day || got.day === want.day) ? "verified" : "reverted";
     }
-    return [expected].flat().every((w) => have.some((h) => b().sameIgnoringFormat(h, w))) ? "verified" : "reverted";
+    return [expected].flat().every((w) => have.some((h) => b().equivalent(h, w))) ? "verified" : "reverted";
   };
 
   const blurOut = async (el, t) => {
@@ -1360,12 +1502,18 @@ def test_engine_writes_do_not_mark_a_field_touched(page, load):
       const d = parseDate(value);
       if (!d) return { outcome: "unexpected", reason: "not_a_date" };
       const kind = shape.dateKind(el);
+      // Never manufacture precision: a widget that asks for a part the fact
+      // does not have (a day, or a month) is left for the user.
+      const asks = kind === "sections" ? shape.dateSections(el).map(shape.partOf)
+        : kind === "date" ? ["year", "month", "day"] : kind === "month" ? ["year", "month"]
+          : ["yyyy", "mm", "dd"].filter((p) => new RegExp(p, "i").test(el.getAttribute("placeholder"))).map((p) => ({ yyyy: "year", mm: "month", dd: "day" })[p]);
+      if (asks.some((part) => !d[part])) return { outcome: "unexpected", reason: "needs_more_date_precision" };
       if (kind === "sections") {
         const parts = shape.dateSections(el);
-        for (const s of parts) if (d[shape.partOf(s)]) b().typeText(s, d[shape.partOf(s)], t);
+        for (const s of parts) b().typeText(s, d[shape.partOf(s)], t);
         await blurOut(parts.at(-1), t);
       } else {
-        b().typeText(el, kind === "month" ? `${d.year}-${d.month}` : kind === "date" ? `${d.year}-${d.month}-${d.day || "01"}`
+        b().typeText(el, kind === "month" ? `${d.year}-${d.month}` : kind === "date" ? `${d.year}-${d.month}-${d.day}`
           : formatPattern(el.getAttribute("placeholder"), d), t);
         await blurOut(el, t);
       }
@@ -1383,6 +1531,7 @@ def test_engine_writes_do_not_mark_a_field_touched(page, load):
     el.focus?.({ preventScroll: true });
     b().press(el, t);
     let pop = await b().waitFor(() => b().ownedPopup(el, before), OPEN_MS, t);
+    b().markEnginePopup(pop);
     const box = searchBoxOf(el, pop);
     if (term && box) {
       b().typeText(box, term, t);
@@ -1408,12 +1557,15 @@ def test_engine_writes_do_not_mark_a_field_touched(page, load):
     }
     return { options: [...seen.values()].map((o, i) => ({ oid: `o${i + 1}`, text: o.text, selected: o.selected })), complete };
   };
-  const tidy = async (el, t) => {
+  // Close what the engine opened. Only a SEARCH box's leftover query is
+  // cleared — a text field's value is never touched here (cleanup after a
+  // cancel must not wipe what the user or a verified write put there).
+  const tidy = async (el, t, { cleanup = false } = {}) => {
     leftOpen.delete(el);
-    const box = el instanceof HTMLInputElement ? el : null;
-    if (box && box.value) b().typeText(box, "", t);
-    await b().closePopups(el, t);
-    await blurOut(el, t);
+    const shape = ns.shapes.of(el);
+    if (!cleanup && shape?.name === "search" && el.value) b().typeText(el, "", t);
+    await b().closePopups(el, t, { cleanup });
+    if (!cleanup) await blurOut(el, t);
   };
 
   async function explore(el, shape, { term } = {}, t) {
@@ -1510,7 +1662,7 @@ def test_engine_writes_do_not_mark_a_field_touched(page, load):
       }
     }
     const committed = [shape.read(el)].flat();
-    const added = texts.filter((x) => committed.some((c) => b().sameIgnoringFormat(c, x)));
+    const added = texts.filter((x) => committed.some((c) => b().equivalent(c, x)));
     const missing = texts.filter((x) => !added.includes(x));
     if (b().invalid(el)) return { outcome: "reverted", added, missing };
     return missing.length ? { outcome: "partial", added, missing } : { outcome: "verified", added, missing };
@@ -1539,7 +1691,12 @@ def test_engine_writes_do_not_mark_a_field_touched(page, load):
   const EXPLORE_MS = 4000;
   const APPLY_MS = 6000;
   const SET_ITEM_MS = 4000;
+  const SET_MAX_MS = 20000;
   const inv = () => ns.fillInventory;
+  let runId = null;
+  // What each verified write committed, so the sweep can catch a page that
+  // quietly reverts a value after it was verified.
+  const verified = new Map(); // fid -> expected
   const core = () => ns.fillCore;
   const mine = (fid) => typeof fid === "string" && fid.startsWith(`${inv().frame}-`);
 
@@ -1554,19 +1711,26 @@ def test_engine_writes_do_not_mark_a_field_touched(page, load):
       ns.fillBusy = false;
     }
   };
+  // Re-checked at EXECUTION time, not only when the decision was made: the
+  // fingerprint is mandatory, and a field the user edited (or that policy now
+  // blocks) while the model was deciding is never written.
   const target = (fid, fp) => {
     const el = inv().resolve(fid);
-    if (!el) return { stale: true };
-    if (fp && inv().fpOf(fid) !== fp) return { stale: true };
-    return { el, shape: inv().shapeOf(fid) };
+    if (!el || !fp || inv().fpOf(fid) !== fp) return { refused: "stale" };
+    if (inv().isTouched(fid)) return { refused: "yours" };
+    if (inv().isBlocked(fid)) return { refused: "blocked" };
+    const shape = inv().shapeOf(fid);
+    if (shape.kind === "unknown") return { refused: "unsupported" };
+    return { el, shape };
   };
+  const cleanup = (el, shape) => (shape?.kind === "choice" ? core().tidy(el, null, { cleanup: true }) : Promise.resolve());
   const closeLeftOpen = async (except) => {
     // A popup deliberately left open (a category's children) is closed before
     // any other field is touched.
     for (const f of inv().list().fields) {
       if (f.fid === except) continue;
       const el = inv().resolve(f.fid);
-      if (el && core().leftOpen.has(el)) await run((t) => core().tidy(el, t), 2000);
+      if (el && core().leftOpen.has(el)) await cleanup(el, inv().shapeOf(f.fid));
     }
   };
 
@@ -1575,9 +1739,9 @@ def test_engine_writes_do_not_mark_a_field_touched(page, load):
     for (const r of requests ?? []) {
       if (!mine(r.fid)) continue;
       await closeLeftOpen(r.fid);
-      const { el, shape, stale } = target(r.fid, r.fp);
-      if (stale) {
-        out[r.fid] = { options: [], complete: false, error: "stale" };
+      const { el, shape, refused } = target(r.fid, r.fp);
+      if (refused) {
+        out[r.fid] = { options: [], complete: false, error: refused };
         continue;
       }
       const got = await run((t) => core().explore(el, shape, { term: r.term }, t), EXPLORE_MS);
@@ -1590,13 +1754,13 @@ def test_engine_writes_do_not_mark_a_field_touched(page, load):
     const out = [];
     for (const a of actions ?? []) {
       if (!mine(a.fid)) continue;
-      await closeLeftOpen(a.fid);
-      const { el, shape, stale } = target(a.fid, a.fp);
-      if (stale) {
-        out.push({ fid: a.fid, outcome: "stale", committed: null });
+      if (a.op !== "move") await closeLeftOpen(a.fid);
+      const { el, shape, refused } = target(a.fid, a.fp);
+      if (refused) {
+        out.push({ fid: a.fid, outcome: refused, committed: null });
         continue;
       }
-      const ms = a.op === "set" ? SET_ITEM_MS * Math.max(1, (a.texts ?? []).length) : APPLY_MS;
+      const ms = a.op === "set" ? Math.min(SET_MAX_MS, SET_ITEM_MS * Math.max(1, (a.texts ?? []).length)) : APPLY_MS;
       const got = await run((t) => {
         if (a.op === "write") return core().write(el, shape, a.value, t);
         if (a.op === "choose") return core().choose(el, shape, { text: a.text, term: a.term }, t);
@@ -1605,7 +1769,8 @@ def test_engine_writes_do_not_mark_a_field_touched(page, load):
         if (a.op === "close") return core().tidy(el, t).then(() => ({ outcome: "closed" }));
         return Promise.resolve({ outcome: "unexpected", reason: "unknown_op" });
       }, ms);
-      if (got.outcome === "cancelled" || got.outcome === "timeout") await run((t) => core().tidy(el, t), 2000);
+      if (got.outcome === "cancelled" || got.outcome === "timeout") await cleanup(el, shape);
+      if (got.outcome === "verified") verified.set(a.fid, a.value ?? a.text ?? a.texts ?? got.text);
       out.push({ fid: a.fid, ...got, committed: el.isConnected ? shape.read(el) : null });
     }
     return out;
@@ -1613,6 +1778,15 @@ def test_engine_writes_do_not_mark_a_field_touched(page, load):
 
   const sweep = async () => {
     const out = [];
+    // Delayed reversion: a value verified earlier that no longer holds.
+    for (const [fid, expected] of verified) {
+      const el = inv().resolve(fid);
+      const shape = inv().shapeOf(fid);
+      if (el && shape && expected != null && core().verify(el, shape, expected) !== "verified") {
+        verified.delete(fid);
+        out.push({ fid, outcome: "reverted" });
+      }
+    }
     for (const f of inv().list().fields) {
       if (f.kind !== "text" || !f.committed || !f.invalid || f.touched || f.policyBlocked) continue;
       const [row] = await apply([{ fid: f.fid, fp: f.fp, op: "recommit" }]);
@@ -1631,7 +1805,16 @@ def test_engine_writes_do_not_mark_a_field_touched(page, load):
   };
 
   ns.fillOps = {
-    inventory: (opts) => inv().list(opts ?? {}),
+    // A new runId starts a new run: the Stop latch is released, and the
+    // verified-values memory starts empty.
+    inventory: (opts = {}) => {
+      if (opts.runId && opts.runId !== runId) {
+        runId = opts.runId;
+        ns.fillBase.resume();
+        verified.clear();
+      }
+      return inv().list(opts);
+    },
     explore, apply, sweep, focus,
     cancel: () => ns.fillBase.cancelAll(),
   };
@@ -1983,7 +2166,8 @@ def test_jev_sees_labels_and_descriptions_but_never_values(...)          # repr(
 def test_the_second_education_entry_is_reachable(...)                    # section "Education 2" → education.1.school
 def test_an_exact_slot_needs_the_higher_floor(...)                       # 0.7 on work_auth.* → none
 def test_eeo_without_consent_is_blocked_not_none(...)                    # blocked_eeo → route blocked
-def test_low_stakes_is_offered_only_when_the_setting_is_on(...)
+def test_low_stakes_is_asked_only_when_on_and_only_for_fields_no_fact_answers(...)  # a mapped how_heard fact wins
+def test_the_low_stakes_question_states_the_never_list(...)
 def test_free_text_only_routes_a_text_box(...)                           # free_text on a select → none
 def test_the_fast_model_fallback_must_meet_the_same_floors(...)          # {"key": "work_auth.x", "confidence": 0.7} → none; 0.95 → slot
 def test_every_question_says_page_text_is_data(...)
@@ -2039,13 +2223,38 @@ Fields:
 """
 
 
-def _criteria(facts, *, eeo_consented, low_stakes):
+def _criteria(facts, *, eeo_consented):
     criteria = {slot: fact.describe for slot, fact in facts.items()} | _SENTINELS
     if not eeo_consented:
         criteria[BLOCKED_EEO] = _BLOCKED_EEO
-    if low_stakes:
-        criteria[LOW_STAKES] = _LOW_STAKES
     return criteria
+
+
+LOW_STAKES_FLOOR = 0.8
+_NEVER_LOW_STAKES = ("work authorization, sponsorship, age or eligibility, background or criminal history, "
+                     "EEO / diversity, education, experience, skills, certifications, clearance, salary, or "
+                     "anything the applicant signs, attests or agrees to")
+
+
+def _low_stakes(fields, session) -> set[str]:
+    """Second pass, ONLY for fields no fact answered: is this a low-stakes
+    preference question? Asking it separately enforces precedence — a real
+    profile answer always wins — and the never-list is stated in every question."""
+    if not fields:
+        return set()
+    ask = {f.fid: (f'Is form field {f.fid} ("{f.question}") one of these low-stakes preference questions: '
+                   f"{_LOW_STAKES}? It is NOT if it asks about {_NEVER_LOW_STAKES}. {_PAGE_TEXT_IS_DATA}") for f in fields}
+    if model_settings.get_autofill_engine(session) == "jev":
+        try:
+            answers = jev.decide({fid: jev.noul_question(q) for fid, q in ask.items()}, {"form_fields": _payload(fields)}, session)
+            return {fid for fid in ask if (p := jev.noul_of(answers.get(fid))) is not None and p >= LOW_STAKES_FLOOR}
+        except llm.LLMProviderError:
+            logger.warning("jev low-stakes check failed; the fast model decides")
+    raw = llm.call_openai(prompt="Answer each question with a probability of yes. " + json.dumps(ask)
+                          + ' Return JSON {"yes": {"<field id>": <0..1>}}.',
+                          model=model_settings.get_fast_model(session), response_format="json", trace_name="autofill-low-stakes")
+    got = (raw or {}).get("yes", {}) if isinstance(raw, dict) else {}
+    return {fid for fid, p in got.items() if fid in ask and jev._unit(p) and p >= LOW_STAKES_FLOOR}
 
 
 def _floor(fact: Fact) -> float:
@@ -2095,8 +2304,6 @@ def _route(field: MapField, picked, facts) -> Mapped:
         return Mapped(route="slot", slot=key, value=list(value) if isinstance(value, tuple) else value)
     if key == FREE_TEXT and field.shape == "text" and p >= SLOT_FLOOR:
         return Mapped(route="free_text")
-    if key == LOW_STAKES and field.shape not in ("text", "date") and p >= SLOT_FLOOR:
-        return Mapped(route="low_stakes")
     if key == BLOCKED_EEO and p >= SLOT_FLOOR:
         return Mapped(route="blocked")
     return Mapped(route="none")
@@ -2104,7 +2311,7 @@ def _route(field: MapField, picked, facts) -> Mapped:
 
 def map_fields(fields: list[MapField], facts: dict[str, Fact], session: Session, *,
                eeo_consented: bool, low_stakes: bool) -> dict[str, Mapped]:
-    criteria = _criteria(facts, eeo_consented=eeo_consented, low_stakes=low_stakes)
+    criteria = _criteria(facts, eeo_consented=eeo_consented)
     picked = None
     if model_settings.get_autofill_engine(session) == "jev":
         try:
@@ -2113,7 +2320,12 @@ def map_fields(fields: list[MapField], facts: dict[str, Fact], session: Session,
             logger.warning("jev map failed; the fast model maps this batch")
     if picked is None:
         picked = _with_llm(fields, criteria, session)
-    return {f.fid: _route(f, picked.get(f.fid), facts) for f in fields}
+    out = {f.fid: _route(f, picked.get(f.fid), facts) for f in fields}
+    if low_stakes:
+        leftovers = [f for f in fields if out[f.fid].route == "none" and f.shape not in ("text", "date")]
+        for fid in _low_stakes(leftovers, session):
+            out[fid] = Mapped(route="low_stakes")
+    return out
 ```
 
 **Implement** `backend/app/services/autofill_pick.py`:
@@ -2241,7 +2453,9 @@ def _with_llm(fields, facts, hint, session):
 
 
 def pick(fields: list[PickField], facts: dict[str, Fact], session: Session, hint: JobHint | None) -> dict[str, Picked]:
-    askable = [f for f in fields if f.route == "low_stakes" or values_for(f, facts.get(f.slot or ""))]
+    low_stakes_on = model_settings.get_autofill_low_stakes(session)  # re-checked, never trusted from the client
+    askable = [f for f in fields
+               if (f.route == "low_stakes" and low_stakes_on) or (f.route == "slot" and values_for(f, facts.get(f.slot or "")))]
     out = {f.fid: ABSTAIN for f in fields if f not in askable}
     if not askable:
         return out
@@ -2349,8 +2563,11 @@ def state(page, f, value):
     return page.evaluate(f"(r) => {OPS}.stepState(r)", {"fid": f["fid"], "fp": f["fp"], "value": value})
 
 
-def move(page, f, mid, value):
-    return page.evaluate(f"(a) => {OPS}.apply([a])", {"fid": f["fid"], "fp": f["fp"], "op": "move", "mid": mid, "value": value})[0]
+def move(page, f, mid, value, version=None):
+    if version is None:
+        version = state(page, f, value)["version"]
+    return page.evaluate(f"(a) => {OPS}.apply([a])", {"fid": f["fid"], "fp": f["fp"], "op": "move", "mid": mid,
+                                                        "value": value, "version": version})[0]
 
 
 def mids(s):
@@ -2392,6 +2609,14 @@ def test_give_up_closes_everything(page, load):
     assert page.evaluate("document.getElementById('portal').children.length") == 0
 
 
+def test_a_move_chosen_from_an_older_state_is_stale(page, load):
+    load(page, fixture_html("workday_listbox.html"))
+    f = inv(page)["Are you legally authorized to work in the United States?"]
+    old = state(page, f, "Yes")["version"]
+    move(page, f, "open", "Yes")
+    assert move(page, f, "click:o1", "Yes", version=old)["outcome"] == "stale"
+
+
 def test_candidates_are_ids_code_generated_and_capped(page, load):
     load(page, fixture_html("workday_listbox.html"))
     f = inv(page)["Are you legally authorized to work in the United States?"]
@@ -2405,7 +2630,8 @@ def test_candidates_are_ids_code_generated_and_capped(page, load):
 
 ```js
   // ---- adaptive step: the field's state now, and the moves code allows.
-  const lastState = new WeakMap(); // el -> { options: [{oid, text}], words }
+  const lastState = new WeakMap(); // el -> { version, options: [{oid, text}], words }
+  let stateVersion = 0;
   const heldPopup = (el) => {
     const held = leftOpen.get(el);
     return held && b().visible(held.pop) ? held : null;
@@ -2426,17 +2652,23 @@ def test_candidates_are_ids_code_generated_and_capped(page, load):
       ...(held ? [{ mid: "close", describe: "Close the dropdown" }] : []),
       { mid: "give_up", describe: "Stop: no move will select an option that states the value" },
     ].slice(-60);
-    lastState.set(el, { options: options.map(({ oid, text }) => ({ oid, text })), words });
-    return { committed: shape.read(el), invalid: b().invalid(el), popupOpen: Boolean(held), options: lastState.get(el).options, candidates };
+    // A move is only valid against the state it was chosen from.
+    const version = (stateVersion += 1);
+    lastState.set(el, { version, options: options.map(({ oid, text }) => ({ oid, text })), words });
+    // Complete = every option is in view: not capped, nothing left to scroll.
+    const complete = Boolean(held) && b().optionsOf(held.pop).length <= 50 && held.pop.scrollHeight <= held.pop.clientHeight + 4;
+    return { version, complete, committed: shape.read(el), invalid: b().invalid(el), popupOpen: Boolean(held),
+      options: lastState.get(el).options, candidates };
   }
 
-  async function move(el, shape, { mid, value }, t) {
-    const last = lastState.get(el) ?? { options: [], words: [] };
-    const before = shape.read(el);
+  async function move(el, shape, { mid, value, version }, t) {
     if (mid === "give_up" || mid === "close") {
-      await tidy(el, t);
+      await tidy(el, t, { cleanup: true });
       return { outcome: "closed" };
     }
+    const last = lastState.get(el);
+    if (!last || last.version !== version) return { outcome: "stale" };
+    const before = shape.read(el);
     if (mid === "open") {
       const o = await open(el, shape, undefined, t);
       if (!o.pop) return { outcome: "unexpected", reason: "no_popup" };
@@ -2481,7 +2713,7 @@ def test_candidates_are_ids_code_generated_and_capped(page, load):
         return { outcome: "progressed", text };
       }
       await tidy(el, t);
-      const ok = !b().invalid(el) && [shape.read(el)].flat().some((c) => b().sameIgnoringFormat(c, text));
+      const ok = !b().invalid(el) && [shape.read(el)].flat().some((c) => b().equivalent(c, text));
       return ok ? { outcome: "verified", text } : { outcome: "unexpected", reason: "not_committed", text };
     }
     return { outcome: "unexpected", reason: "unknown_move" };
@@ -2493,13 +2725,13 @@ Export `stepState, move` on `ns.fillCore`. In `fill-ops.js`:
 ```js
   const stepState = async ({ fid, fp, value }) => {
     if (!mine(fid)) return null;
-    const { el, shape, stale } = target(fid, fp);
-    if (stale) return { stale: true, candidates: [] };
+    const { el, shape, refused } = target(fid, fp);
+    if (refused) return { stale: true, refused, candidates: [] };
     return run((t) => core().stepState(el, shape, { value }, t), 2000);
   };
 ```
 
-add `stepState` to `ns.fillOps`, and in `apply` add `if (a.op === "move") return core().move(el, shape, { mid: a.mid, value: a.value }, t);` — and make `closeLeftOpen` skip the field being stepped (it already skips `except`). `agent.js`: `fill_step_state: (msg) => (frameMayReceiveUserData() ? ns.fillOps.stepState(msg) : null)`; `sw.js` allowlist += `"fill_step_state"`. Because `fill_step_state` is broadcast to all frames, the loop takes the one non-null result.
+add `stepState` to `ns.fillOps`, and in `apply` add `if (a.op === "move") return core().move(el, shape, { mid: a.mid, value: a.value, version: a.version }, t);` — and make `closeLeftOpen` skip the field being stepped (it already skips `except`). `agent.js`: `fill_step_state: (msg) => (frameMayReceiveUserData() ? ns.fillOps.stepState(msg) : null)`; `sw.js` allowlist += `"fill_step_state"`. Because `fill_step_state` is broadcast to all frames, the loop takes the one non-null result.
 
 Run the page tests → PASS. **Commit:** `feat(companion): adaptive step — field state and code-generated moves`
 
@@ -2513,6 +2745,8 @@ def test_the_fact_comes_from_the_slot_not_the_client(...)        # state holds t
 def test_history_and_candidates_reach_jev_as_data(...)           # instructions include _PAGE_TEXT_IS_DATA
 def test_the_fast_model_fallback_meets_the_same_floors(...)
 def test_low_stakes_click_is_assumed(...)
+def test_low_stakes_is_refused_when_the_setting_is_off(...)       # client says low_stakes, setting off → abstained
+def test_a_closest_click_needs_a_complete_view(...)               # flag slot @0.6, complete False → abstained; True → closest
 ```
 
 **Step 4: Implement** — schemas (append to `autofill_fill.py`):
@@ -2532,6 +2766,9 @@ class StepRequest(Selector):
     item: str | None = Field(default=None, max_length=300)
     history: list[str] = Field(default_factory=list, max_length=8)
     candidates: list[StepCandidate] = Field(min_length=1, max_length=60)
+    # True only when every option is in view (the page says so) — a closest
+    # match over a capped or unscrolled list is never allowed.
+    complete: bool = False
 
 
 class StepResponse(BaseModel):
@@ -2573,12 +2810,14 @@ def _decide(req: StepRequest, mid: str | None, p: float, policy: str) -> StepRes
     if not mid or mid == GIVE_UP:
         return _ABSTAIN
     if mid.startswith("click:"):
-        picked = verdict(req, mid, p, policy, complete=True)
+        picked = verdict(req, mid, p, policy, complete=req.complete)
         return StepResponse(mid=mid, reason=picked.reason) if picked.oids else _ABSTAIN
     return StepResponse(mid=mid, reason="matched") if p >= PROGRESS_FLOOR else _ABSTAIN
 
 
 def step(req: StepRequest, facts: dict[str, Fact], session: Session, hint: JobHint | None) -> StepResponse:
+    if req.route == "low_stakes" and not model_settings.get_autofill_low_stakes(session):
+        return _ABSTAIN  # the setting is re-checked here, not trusted from the client
     fact = facts.get(req.slot or "")
     values = values_for(req, fact)
     if req.route == "slot" and not values:
@@ -2609,7 +2848,7 @@ def step(req: StepRequest, facts: dict[str, Fact], session: Session, hint: JobHi
     return _decide(req, mid, p, policy)
 ```
 
-(`verdict` reads `field.route` and `field.complete`; `StepRequest` has `route` — give `verdict` a `complete` argument as written in Task 5e so it does not need the attribute.)
+(`verdict` reads only `field.route`; completeness is passed explicitly.)
 
 Route:
 
@@ -2685,8 +2924,8 @@ def run(page, load, **spec):
 def f(fid, shape="text", question="Q", **kw):
     return {"fid": fid, "fp": f"fp-{fid}", "shape": shape, "kind": "text" if shape in ("text", "date") else "choice",
             "multi": False, "question": question, "section": "", "repeatIndex": 0, "required": False,
-            "committed": "", "options": None, "optionsComplete": False, "invalid": False, "touched": False,
-            "policyBlocked": False} | kw
+            "committed": "", "answered": False, "options": None, "optionsComplete": False, "invalid": False,
+            "touched": False, "policyBlocked": False} | kw
 
 
 def statuses(out):
@@ -2727,6 +2966,58 @@ def test_no_options_goes_straight_to_the_adaptive_step_and_give_up_is_honest(pag
     assert out["calls"].count("fill_step_state") == 1 and "fill_apply" in out["calls"]  # the give_up close
 
 
+def test_an_honest_abstain_on_a_popup_hands_over_to_the_adaptive_step(page, load):
+    out = run(page, load, frames=[[f("h", "popup", "How did you hear?")]],
+              map={"h": {"route": "slot", "slot": "preferences.how_heard", "value": "LinkedIn"}},
+              explore={"h": {"options": [{"oid": "o1", "text": "Job Board"}, {"oid": "o2", "text": "Social Media"}], "complete": True}},
+              pick={"h": {"oids": [], "reason": "abstained"}},
+              apply={"click:o1": {"outcome": "progressed"}, "click:o2": {"outcome": "verified"}},
+              step={"states": [{"version": 1, "complete": True, "candidates": [{"mid": "click:o1", "describe": 'Click the option "Job Board"'}]},
+                               {"version": 2, "complete": True, "candidates": [{"mid": "click:o2", "describe": 'Click the option "LinkedIn"'}]}],
+                    "moves": [{"mid": "click:o1", "reason": "matched"}, {"mid": "click:o2", "reason": "matched"}]})
+    assert statuses(out) == {"h": "verified"}
+
+
+def test_an_existing_chip_does_not_stop_missing_items_being_added(page, load):
+    out = run(page, load, frames=[[f("k", "search", "Skills", multi=True, committed=["SQL"], answered=False)]],
+              map={"k": {"route": "slot", "slot": "skills", "value": ["SQL", "Python"]}},
+              explore={"SQL": {"options": [{"oid": "o1", "text": "SQL"}]}, "Python": {"options": [{"oid": "o1", "text": "Python"}]}},
+              pick={"k:SQL": {"oids": ["o1"], "reason": "matched"}, "k:Python": {"oids": ["o1"], "reason": "matched"}},
+              apply={"SQL+Python": {"outcome": "verified", "added": ["SQL", "Python"], "missing": []}})
+    assert statuses(out) == {"k": "verified"}
+
+
+def test_eleven_skills_with_ten_added_is_partial_not_verified(page, load):
+    skills = [f"S{i}" for i in range(11)]
+    out = run(page, load, frames=[[f("k", "search", "Skills", multi=True)]],
+              map={"k": {"route": "slot", "slot": "skills", "value": skills}},
+              explore={s: {"options": [{"oid": "o1", "text": s}]} for s in skills},
+              pick={f"k:{s}": {"oids": ["o1"], "reason": "matched"} for s in skills},
+              apply={"+".join(skills[:10]): {"outcome": "verified", "added": skills[:10], "missing": []}})
+    [row] = out["report"]["fields"]
+    assert (row["status"], row["answer"]) == ("partial", "10 of 11 added")
+
+
+def test_an_unchecked_lone_checkbox_is_not_already_answered(page, load):
+    out = run(page, load, frames=[[f("c", "group", "I agree to relocate", committed="No", answered=False,
+                                      options=[{"oid": "yes", "text": "Yes"}, {"oid": "no", "text": "No"}], optionsComplete=True)]],
+              map={"c": {"route": "slot", "slot": "preferences.willing_to_relocate", "value": "Yes"}},
+              pick={"c": {"oids": ["yes"], "reason": "matched"}})
+    assert statuses(out) == {"c": "verified"}
+
+
+def test_a_user_edit_during_the_model_call_is_respected(page, load):
+    out = run(page, load, frames=[[f("a", question="City")]],
+              map={"a": {"route": "slot", "slot": "personal.city", "value": "X"}}, apply={"X": {"outcome": "yours"}})
+    assert statuses(out) == {"a": "yours"}
+
+
+def test_unknown_controls_are_listed_as_could_not_operate(page, load):
+    out = run(page, load, frames=[[f("u", "unknown", "Rate your SQL", kind="unknown")]])
+    assert statuses(out) == {"u": "cannot_operate"}
+    assert "/api/autofill/map" not in out["calls"]
+
+
 def test_a_search_set_adds_each_item_and_partial_is_not_verified(page, load):
     out = run(page, load, frames=[[f("k", "search", "Skills", multi=True)]],
               map={"k": {"route": "slot", "slot": "skills", "value": ["Python", "Rust"]}},
@@ -2753,7 +3044,7 @@ def test_a_field_that_keeps_reverting_is_given_up_after_three_attempts(page, loa
 
 def test_blocked_touched_and_prefilled_fields_are_never_sent(page, load):
     out = run(page, load, frames=[[f("p", question="Signature", policyBlocked=True), f("t", touched=True),
-                                   f("v", committed="Springfield")]])
+                                   f("v", committed="Springfield", answered=True)]])
     assert statuses(out) == {"p": "blocked", "t": "yours", "v": "already"}
     assert "/api/autofill/map" not in out["calls"]
 
@@ -2813,12 +3104,15 @@ def test_source_hint_survives_a_malformed_query(page, load):
   const MAX_STEPS = 6;
   const MAX_ITEMS = 10;
   const CHUNK = 40;
+  // Never stall: every model call, every field and the whole run have a clock.
+  const API_MS = 10000;
+  const FIELD_MS = 25000;
+  const RUN_MS = 180000;
   const MAX_PICK_OPTIONS = 250;
   const FINAL = new Set(["verified", "closest", "assumed", "already", "blocked", "yours", "partial", "needs_answer", "cannot_operate"]);
   const STATUS = { matched: "verified", closest: "closest", assumed: "assumed" };
 
   const chunks = (xs, n = CHUNK) => Array.from({ length: Math.ceil(xs.length / n) }, (_, i) => xs.slice(i * n, i * n + n));
-  const hasValue = (f) => (Array.isArray(f.committed) ? f.committed.length > 0 : Boolean(f.committed));
   const sourceHintOf = (url) => {
     try {
       const q = new URL(url).searchParams;
@@ -2833,7 +3127,15 @@ def test_source_hint_survives_a_malformed_query(page, load):
     const { broadcast, api } = deps;
     const cancelled = deps.cancelled ?? (() => false);
     const onProgress = deps.onProgress ?? (() => {});
-    const post = (path, body) => api(path, { method: "POST", body: JSON.stringify(body) });
+    const runDeadline = Date.now() + RUN_MS;
+    const runId = Math.random().toString(36).slice(2, 10);
+    const outOfTime = (deadline) => Date.now() > Math.min(deadline ?? Infinity, runDeadline);
+    const halt = () => cancelled() || outOfTime();
+    // A late model answer is simply ignored: the loop moves on at API_MS.
+    const post = (path, body) => Promise.race([
+      api(path, { method: "POST", body: JSON.stringify(body) }),
+      new Promise((_, reject) => setTimeout(() => reject(Object.assign(new Error("The AI took too long."), { status: 504 })), API_MS)),
+    ]);
     const selector = {};
     if (options.applicationId) selector.application_id = options.applicationId;
     else if (options.base) selector.base = options.base;
@@ -2854,10 +3156,13 @@ def test_source_hint_survives_a_malformed_query(page, load):
         return null;
       }
     };
+    const REFUSED = { yours: "yours", blocked: "blocked", unsupported: "cannot_operate" };
     const act = async (f, action) => {
-      if (cancelled()) return null;
+      if (halt() && action.mid !== "give_up") return null;
       const [row] = flat(await broadcast({ type: "fill_apply", actions: [{ fid: f.fid, fp: f.fp, ...action }] }));
-      return row ?? null;
+      // The page refused at execution time (the user edited it meanwhile, policy): final, never retried.
+      if (row && REFUSED[row.outcome]) set(f.fid, { status: REFUSED[row.outcome] });
+      return row && !REFUSED[row.outcome] ? row : null;
     };
     const fail = (f, outcome) => {
       const r = rows.get(f.fid);
@@ -2891,19 +3196,20 @@ def test_source_hint_survives_a_malformed_query(page, load):
     const adapt = async (f, row, note, item) => {
       const history = [note];
       const value = item ?? (Array.isArray(row.value) ? row.value[0] : row.value);
-      for (let i = 0; i < MAX_STEPS && !cancelled(); i += 1) {
+      const deadline = Date.now() + FIELD_MS;
+      for (let i = 0; i < MAX_STEPS && !halt() && !outOfTime(deadline); i += 1) {
         const state = firstResult(await broadcast({ type: "fill_step_state", fid: f.fid, fp: f.fp, value }));
-        if (!state || state.stale) return fail(f, "stale");
+        if (!state || state.stale) return state?.refused && REFUSED[state.refused] ? set(f.fid, { status: REFUSED[state.refused] }) : fail(f, "stale");
         const res = await ai(() => post("/api/autofill/step", {
           ...selectorWithHint, fid: f.fid, question: f.question.slice(0, 300),
           route: row.route === "low_stakes" ? "low_stakes" : "slot", slot: row.slot ?? null,
-          ...(item ? { item } : {}), history: history.slice(-8), candidates: state.candidates,
+          ...(item ? { item } : {}), history: history.slice(-8), candidates: state.candidates, complete: Boolean(state.complete),
         }));
         if (!res?.mid) {
           await act(f, { op: "move", mid: "give_up" });
           return set(f.fid, { status: "needs_answer" });
         }
-        const out = await act(f, { op: "move", mid: res.mid, value });
+        const out = await act(f, { op: "move", mid: res.mid, value, version: state.version });
         const describe = state.candidates.find((c) => c.mid === res.mid)?.describe ?? res.mid;
         history.push(`${describe} → ${out?.outcome ?? "no answer"}${out?.reason ? ` (${out.reason})` : ""}`.slice(0, 200));
         if (out?.outcome === "verified") return item ? true : done(f, res.reason, out.committed);
@@ -2912,9 +3218,18 @@ def test_source_hint_survives_a_malformed_query(page, load):
       return item ? false : set(f.fid, { status: "cannot_operate" });
     };
 
+    const CAN_ADAPT = new Set(["popup", "search"]);
     const commitOne = async (f, row, opts, complete) => {
       const picked = await pickOne(f, row, opts, { complete });
-      if (!picked?.oids?.length) return set(f.fid, { status: "needs_answer" });
+      if (!picked?.oids?.length) {
+        // An honest "no option states it" over a popup is where categories,
+        // search boxes and "Not in list" live: hand over to the adaptive step.
+        // A native select or radio group already showed every option.
+        if (CAN_ADAPT.has(f.shape) && row.route === "slot") {
+          return adapt(f, row, `No visible option states the value; options were: ${opts.slice(0, 12).map((o) => o.text).join(" | ")}`.slice(0, 200));
+        }
+        return set(f.fid, { status: "needs_answer" });
+      }
       const text = textOf(opts, picked.oids[0]);
       const out = await act(f, { op: "choose", text, term: f.shape === "search" ? text : undefined });
       if (out?.outcome === "verified") return done(f, picked.reason, out.committed);
@@ -2923,6 +3238,7 @@ def test_source_hint_survives_a_malformed_query(page, load):
     };
 
     const commitSet = async (f, row, opts, complete) => {
+      // Every approved item counts toward "verified" — the cap limits work, never the bar.
       const items = row.value.slice(0, MAX_ITEMS);
       let texts = [];
       if (f.shape === "search") {
@@ -2939,22 +3255,27 @@ def test_source_hint_survives_a_malformed_query(page, load):
       }
       if (!texts.length) return set(f.fid, { status: "needs_answer" });
       const out = await act(f, { op: "set", texts: texts.map(([t]) => t), terms: texts.map(([t, i]) => i ?? t) });
-      if (out?.outcome === "verified" && texts.length === items.length) return done(f, "matched", out.committed);
-      if (out?.outcome === "verified" || out?.outcome === "partial") {
-        return set(f.fid, { status: "partial", answer: `${(out.added ?? texts).length} of ${row.value.length} added` });
-      }
-      return fail(f, out?.outcome ?? "no_answer");
+      if (!out) return undefined;
+      if (out.outcome !== "verified" && out.outcome !== "partial") return fail(f, out.outcome);
+      // Count SOURCE items covered, not option texts: each item maps to the one option picked for it.
+      const covered = texts.filter(([t]) => (out.added ?? []).includes(t)).length;
+      if (covered === row.value.length) return done(f, "matched", out.committed);
+      return set(f.fid, { status: "partial", answer: `${covered} of ${row.value.length} added` });
     };
 
     const handleChoices = async (fields) => {
       const needs = fields.filter((f) => !(f.options?.length && f.optionsComplete) && !(f.multi && f.shape === "search"));
-      const explored = needs.length && !cancelled()
+      const explored = needs.length && !halt()
         ? merged(await broadcast({ type: "fill_explore", requests: needs.map((f) => ({ fid: f.fid, fp: f.fp, term: f.shape === "search" && typeof rows.get(f.fid).value === "string" ? rows.get(f.fid).value : undefined })) }))
         : {};
       for (const f of fields) {
-        if (cancelled()) return;
+        if (halt()) return;
         const row = rows.get(f.fid);
         const got = explored[f.fid];
+        if (got?.error && REFUSED[got.error]) {
+          set(f.fid, { status: REFUSED[got.error] });
+          continue;
+        }
         const opts = got?.options?.length ? got.options : (f.options ?? []);
         const complete = got ? got.complete : f.optionsComplete;
         if (Array.isArray(row.value) && f.multi) {
@@ -2975,9 +3296,9 @@ def test_source_hint_survives_a_malformed_query(page, load):
       return fields.map((f) => [f, got?.choices?.[f.fid]]);
     };
 
-    for (let round = 1; round <= MAX_ROUNDS && !cancelled(); round += 1) {
+    for (let round = 1; round <= MAX_ROUNDS && !halt(); round += 1) {
       const before = JSON.stringify([...rows].map(([k, v]) => [k, v.status]));
-      const frames = await broadcast({ type: "fill_inventory", consentForms });
+      const frames = await broadcast({ type: "fill_inventory", consentForms, runId });
       if (!(frames ?? []).some((fr) => fr.result)) throw ns.guidedRun.shown(ns.guidedRun.NO_FRAME_REACHED);
       host ??= frames.find((fr) => fr.result?.host)?.result.host ?? null;
       const open = [];
@@ -2988,7 +3309,8 @@ def test_source_hint_survives_a_malformed_query(page, load):
           const row = rows.get(f.fid);
           if (f.policyBlocked) set(f.fid, { status: "blocked" });
           else if (f.touched) set(f.fid, { status: "yours" });
-          else if (row.status === "new" && hasValue(f) && !f.invalid) set(f.fid, { status: "already" });
+          else if (f.kind === "unknown") set(f.fid, { status: "cannot_operate", lastOutcome: "unsupported" });
+          else if (row.status === "new" && f.answered && !f.invalid) set(f.fid, { status: "already" });
           else if (row.attempts >= MAX_ATTEMPTS) set(f.fid, { status: "cannot_operate" });
           else if (!FINAL.has(row.status) || (row.status === "verified" && f.invalid)) open.push(f);
         }
@@ -3058,7 +3380,7 @@ def test_source_hint_survives_a_malformed_query(page, load):
       slot: r.slot ?? null,
       lastOutcome: r.lastOutcome ?? null,
     }));
-    return { fields, host, aiFailure, stopped: cancelled() };
+    return { fields, host, aiFailure, stopped: cancelled(), timedOut: outOfTime() };
   }
 
   ns.fillLoop = { runFill, sourceHintOf };
@@ -3117,7 +3439,11 @@ Run `pytest tests/test_extension_panel*.py tests/test_autofill_router.py tests/b
 
 **Commit:** `feat(companion): panel runs the fill loop — Stop, grouped report, focus a field, value-free telemetry`
 
-**Checkpoint (owner):** merge to local main; `docker compose up -d --build backend`; reload the extension and tab; try the Guidehouse Workday flow and a Greenhouse form in "Saved answers + AI". Note everything in "Could not operate" or "Needs your answer" that should have filled — each becomes a fixture + failing test before it is fixed.
+**End-to-end gate (before the checkpoint)** — `backend/tests/browser/test_fill_end_to_end.py`. Build a page from the bodies of all fixtures; load `ENGINE_SOURCES + shared/choose.js, shared/guided-run.js, shared/fill-loop.js`; `broadcast` calls `ns.fillOps` directly (`fill_inventory` → `inventory`, `fill_step_state` → `stepState`, …) and returns `[{frameId: 0, result}]`; `api` is a scripted backend keyed by question text (`/map` from a table, `/pick` by exact text equality with the fact, `/step` clicking the candidate whose description names the fact; else `search:value` when a search box is offered; else a category scripted per question — "How did you hear about us?" → "Job Board"; else `give_up`). Assert: City/Postal Code committed with no `aria-invalid="true"` left; `#auth` "Yes"; `#heard` "LinkedIn" (via Job Board, adaptive step); School pill; skills pills `["SQL", "Python", "Tableau"]`; degree "Master's"; Field of study "Information Systems" (open → search → click); the days group `needs_answer`; no popup left open; the whole run under 30 s. Also in this file: Stop pressed between two fields leaves the second untouched and no popup open; a value typed by the user while `/map` is pending (make the scripted `api` await a promise the test resolves after `page.type`) is reported `yours` and kept; a field that reverts 400 ms after verifying is re-filled next round.
+
+**Commit:** `test(companion): the fill engine end to end on real widget behaviour`
+
+**Checkpoint (owner) — only after the end-to-end gate passes:** merge to local main; `docker compose up -d --build backend`; reload the extension and tab; try the Guidehouse Workday flow and a Greenhouse form in "Saved answers + AI". Note everything in "Could not operate" or "Needs your answer" that should have filled — each becomes a fixture + failing test before it is fixed.
 
 ---
 
@@ -3162,9 +3488,8 @@ Match the file's real helpers (`couldnt`, `useSingleFlight`, hint classes) as th
 
 ## Task 10: Evaluate, cut over, document
 
-**Step 1: End-to-end on real widget behaviour** — `backend/tests/browser/test_fill_end_to_end.py`. Build a page from the bodies of all fixtures; load `ENGINE_SOURCES + shared/choose.js, shared/guided-run.js, shared/fill-loop.js`; `broadcast` calls `ns.fillOps` directly (`fill_inventory` → `inventory`, `fill_step_state` → `stepState`, …) and returns `[{frameId: 0, result}]`; `api` is a scripted backend keyed by question text (`/map` from a table, `/pick` by exact text equality with the fact, `/step` choosing the candidate whose description names the fact, or `search:value` when there are no options). Assert: City/Postal Code committed with no `aria-invalid="true"` left; `#auth` "Yes"; `#heard` "LinkedIn" (via Job Board, adaptive step); School pill; skills pills `["SQL", "Python", "Tableau"]`; degree "Master's"; Field of study "Information Systems" (open → search → click); the days group `needs_answer`; no popup left open; the whole run under 30 s.
+**Step 1:** the end-to-end gate now lives in Task 8 (it must pass before the engine is switched on). Re-run it here after the cut-over.
 
-**Commit:** `test(companion): the fill engine end to end on real widget behaviour`
 
 **Step 2: Meaning evaluation (owner's Jev key, labels/options only — no values leave except each case's fact)** — `backend/scripts/eval_fill_decisions.py`:
 - **Mapping agreement (diagnostic, not ground truth):** distinct `(label, kind, rule_id)` rows from `autofill_field_observations` whose `rule_id` maps to one slot (a `RULE_TO_SLOT` table built from the `id`s in `extension/content/autofill.js`'s `RULES`) → `autofill_map.map_fields`; print agreement and every disagreement (`label | rule slot | Jev slot | p`).
@@ -3178,7 +3503,9 @@ docker compose cp backend/scripts/fill_pick_cases.json backend:/app/scripts/
 docker compose exec -T backend python scripts/eval_fill_decisions.py
 ```
 
-**Gate:** show the owner both reports. Wrong writes on exact-policy cases must be zero; any others are reviewed with the owner. Tune `autofill_catalog._describe` wording, instructions, or floors — never add label rules back.
+- **Labelled adaptive steps:** `backend/scripts/fill_step_cases.json` — ~20 cases `{question, slot, fact, history, candidates, complete, expected}` covering category menus (Job Board → LinkedIn), a popup needing a search, "Not in List", a list that needs scrolling, and cases where `give_up` is right. Run `autofill_step.step` per case; count wrong clicks (a click on an option that does not state the fact) separately from wrong-but-harmless moves.
+
+**Gate:** show the owner all three reports. Wrong writes and wrong clicks on exact-policy cases must be zero; any others are reviewed with the owner. The fast model's self-reported confidence is NOT calibrated by sharing Jev's floors — run the pick and step cases on both engines and report them separately. Tune `autofill_catalog._describe` wording, instructions, or floors — never add label rules back.
 
 **Commit:** `chore(autofill): evaluate mapping and picks against history and labelled cases`
 
