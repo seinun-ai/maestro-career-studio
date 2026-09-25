@@ -867,7 +867,7 @@ _WORDING_COPY = {
     "cliche": ("'{w}' is a cliché.",
                "Hiring managers rate words like this as meaningless: they claim a trait "
                "without showing it.",
-               "Remove it, or show the trait through what you did."),
+               "Rewrite this phrase in your own words, or cut it."),
     "filler": ("'{w}' adds nothing.",
                "It makes the line longer without telling the reader anything.",
                "Remove it."),
@@ -887,16 +887,19 @@ def _guarded(original: str, edited: str | None) -> str | None:
 
 def _wording_notes(resume: dict, bank: health_wording.WordBank) -> list[dict]:
     """`language.cliche` / `language.filler`: one note per (location, bank word)
-    over the summary and every scored bullet. `suggestion` is the text with the
-    word removed, when it reads cleanly at the cut (`health_wording.removal`) and
-    the guards accept it; `subject` is the bank word."""
+    over the summary and every scored bullet. A cliché never carries a
+    `suggestion`: it is a noun or adjective the sentence needs, so it is
+    rewritten by hand. A filler word's `suggestion` is the text with it cut,
+    when that reads cleanly (`health_wording.removal`) and the guards accept it.
+    `subject` is the bank word."""
     notes: list[dict] = []
     for loc, text in _ladder_items(resume):
         for kind, word in health_wording.matches(text, bank):
             issue, why, how = _WORDING_COPY[kind]
             notes.append(_finding(
                 "note", loc, _label_at(resume, loc), issue.format(w=word), why, how,
-                suggestion=_guarded(text, health_wording.removal(text, word)),
+                suggestion=(_guarded(text, health_wording.removal(text, word))
+                            if kind == "filler" else None),
                 source="rule", rule=f"language.{kind}", subject=word,
                 content_hash=bullet_classify.content_hash(text)))
     return notes

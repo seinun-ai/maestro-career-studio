@@ -186,32 +186,38 @@ _SENTENCE_END = ".!?"
 _JOINING = ",;:"
 _DASHES = "-–—"
 _BRACKETS = {"(": ")", "[": "]"}
-_DETERMINERS = frozenset({"a", "an", "the", "my", "our", "their", "his", "her", "its"})
-# Vowel LETTER is not vowel SOUND ("a useful", "a European", "a one-off", "an hour"),
-# so the article is left alone before these openings. Other exceptions ("an MBA",
-# "an FAQ") still come out wrong; the rewrite guards cannot see it.
-_ARTICLE_UNSURE = ("u", "eu", "one", "h")
+_QUOTES = "'\"‘’“”"
+_EDGE_PUNCT = _SENTENCE_END + _JOINING + _QUOTES + "()[]"
 
-# The safety net: a Remove whose seam reads like any of these is copy-only.
-_ART_END = re.compile(r"\b(?:a|an|the)$", re.IGNORECASE)
+# One-click Remove is for FILLER words only (clichés are nouns and adjectives
+# the sentence needs; they are rewritten by hand). A filler cut is copy-only
+# when the word before it makes the filler part of the claim ("did not really
+# own"), sits after a linking verb or "of", or is an article (no a/an guessing);
+# or when a non -ly filler is followed by a function word or relative pronoun
+# ("several of the").
+_BLOCK_PREV = frozenset({"not", "is", "was", "are", "were", "be", "been", "being", "as",
+                         "of", "a", "an"})
+_BLOCK_NEXT = frozenset({"of", "to", "for", "in", "on", "at", "by", "with", "across",
+                         "from", "about", "who", "that", "which"})
+
+# The seam check: "the of", "the." or a sentence-final "the"; an and/or left
+# with nothing to join; a sentence opening And/Or; empty quotes.
+_THE_END = re.compile(r"\bthe$", re.IGNORECASE)
 _FUNCTION_OR_PUNCT = re.compile(
     r"(?:of|for|with|in|on|to|at|and|or|by|as)\b|[.,;:)]|$", re.IGNORECASE)
 _CONJ_END = re.compile(r"\b(?:and|or)$", re.IGNORECASE)
 _CONJ_START = re.compile(r"(?:and|or)\b", re.IGNORECASE)
-_QUOTES = "'\"‘’“”"
 
 
-def _article(before: str, after: str) -> str:
-    """`before` with a trailing "a"/"an" matched to the word that now follows it,
-    by first letter, except before u/eu/one/h (`_ARTICLE_UNSURE`)."""
-    head, _, last = before.rpartition(" ")
-    nxt = after.lower()
-    if last.lower() not in ("a", "an") or not nxt[:1].isalpha() or nxt.startswith(_ARTICLE_UNSURE):
-        return before
-    article = "an" if nxt[0] in "aeiou" else "a"
-    if last[0].isupper():
-        article = article.capitalize()
-    return f"{head} {article}" if head else article
+def _edge_word(text: str, index: int) -> str:
+    words = text.split()
+    return words[index].strip(_EDGE_PUNCT).lower() if words else ""
+
+
+def _filler_ok(before: str, after: str, word: str) -> bool:
+    if _edge_word(before, -1) in _BLOCK_PREV:
+        return False
+    return word.lower().endswith("ly") or _edge_word(after, 0) not in _BLOCK_NEXT
 
 
 def _unwrap(before: str, after: str) -> tuple[str, str]:
@@ -228,27 +234,22 @@ def _unwrap(before: str, after: str) -> tuple[str, str]:
 
 
 def _commas(before: str, after: str, word: str) -> tuple[str, str]:
-    """An -ly word not right after a determiner keeps the comma after it
-    ("effectively, which" -> ", which"); any other word takes that comma along,
-    or, with none after it, the comma before it. ", word," leaves one comma."""
-    if after.startswith(","):
-        if before.endswith(","):
-            return before, after[1:].lstrip()
-        last = before.split()[-1].lower() if before.split() else ""
-        if word.lower().endswith("ly") and last not in _DETERMINERS:
-            return before, after
-        return before, after[1:].lstrip()
-    if before.endswith(",") and after[:1] not in tuple(_JOINING + _SENTENCE_END + ")"):
-        return before[:-1].rstrip(), after
-    return before, after
+    """The comma BEFORE a filler word always stays ("fast, very cheap"). An -ly
+    word keeps the comma after it ("effectively, which" -> ", which") unless it
+    was parenthetical (", successfully," drops both); any other word takes the
+    comma after it along (", various," leaves one)."""
+    if not after.startswith(","):
+        return before, after
+    ly = word.lower().endswith("ly")
+    if before.endswith(","):
+        return (before[:-1].rstrip() if ly else before), after[1:].lstrip()
+    return before, (after if ly else after[1:].lstrip())
 
 
 def _seam_ok(before: str, after: str) -> bool:
-    """False when the join reads broken: an article before a function word or
-    punctuation (or nothing), a dangling and/or, or empty quotes."""
-    if _ART_END.search(before) and _FUNCTION_OR_PUNCT.match(after):
+    if _THE_END.search(before) and _FUNCTION_OR_PUNCT.match(after):
         return False
-    if _CONJ_END.search(before) or _CONJ_START.match(after):
+    if _CONJ_START.match(after) or (_CONJ_END.search(before) and _FUNCTION_OR_PUNCT.match(after)):
         return False
     return not (before[-1:] and before[-1] in _QUOTES and after[:1] and after[0] in _QUOTES)
 
@@ -271,45 +272,39 @@ def _open_line(before: str, after: str, capital: bool, sep: str) -> tuple[str, b
 
 def _cut(text: str, start: int, end: int) -> tuple[str, bool]:
     """`text` without [start, end) with the seam cleaned up, and whether the
-    result reads cleanly there (`_seam_ok`)."""
+    result reads cleanly there (`_filler_ok`, `_seam_ok`)."""
     raw_before, word, raw_after = text[:start], text[start:end], text[end:]
     before, after = _unwrap(raw_before.rstrip(), raw_after.lstrip())
+    ok = _filler_ok(before, after, word)
     gap = raw_before[len(raw_before.rstrip()):] + raw_after[:len(raw_after) - len(raw_after.lstrip())]
     sep = "\n" if "\n" in gap else " "
     if not before or before[-1] in _SENTENCE_END or sep == "\n":
-        return _open_line(before, after, word[:1].isupper(), sep)
+        out, seam = _open_line(before, after, word[:1].isupper(), sep)
+        return out, ok and seam
     before, after = _commas(before, after, word)
     if not after:
         before = before.rstrip(_JOINING + _DASHES + " ")
-        return before, _seam_ok(before, "")
+        return before, ok and _seam_ok(before, "")
     if after[0] in _JOINING + _SENTENCE_END + ")":
         if before[-1] in _JOINING:
             before = before[:-1].rstrip()
-        return before + after, _seam_ok(before, after)  # no space before punctuation
-    before = _article(before, after)
-    return _glue(before, after, sep), _seam_ok(before, after)
+        return before + after, ok and _seam_ok(before, after)  # no space before punctuation
+    return _glue(before, after, sep), ok and _seam_ok(before, after)
 
 
-def _remove(text: str, phrase: str) -> tuple[str, bool]:
-    pattern = _pattern(phrase)
+def removal(text: str, filler: str) -> str | None:
+    """`text` with every whole-word occurrence of the FILLER word cut, or None
+    when any cut reads broken or risky (`_filler_ok`, `_seam_ok`): the rewrite
+    guards check facts, not grammar, so this is the grammar safety net.
+    Clichés never come here (`resume_lint._wording_notes`)."""
+    pattern = _pattern(filler)
     clean, cut = True, False
     while (m := pattern.search(text)) is not None:  # each cut shortens the text
         text, ok = _cut(text, m.start(), m.end())
         clean, cut = clean and ok, True
-    return (re.sub(r"[ \t]{2,}", " ", text) if cut else text), clean
-
-
-def remove(text: str, phrase: str) -> str:
-    """`text` with every whole-word occurrence of `phrase` deleted."""
-    return _remove(text, phrase)[0]
-
-
-def removal(text: str, phrase: str) -> str | None:
-    """The Remove text to offer as one click, or None when a seam reads broken
-    ("with a of", "and analyst", a sentence opening "And", empty quotes): the
-    rewrite guards check facts, not grammar, so this is the grammar safety net."""
-    out, clean = _remove(text, phrase)
-    return out if clean else None
+    if not clean:
+        return None
+    return re.sub(r"[ \t]{2,}", " ", text) if cut else text
 
 
 def _span_pattern(span: str) -> re.Pattern:

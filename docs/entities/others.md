@@ -361,7 +361,8 @@
   it fires when 4+ scored bullets exist and none has a number (`_has_metric`); never a penalty or a quota.
   **Wording** notes (`language.cliche`/`language.filler` from the code-matched word bank in `health_wording.py`;
   `language.slip` from the stored `language` field) are zero-score, never skipped under a ladder ask, and carry
-  `subject`, the ORIGINAL text's `content_hash`, and a `suggestion` only when `guard_violations` is empty. The
+  `subject` and the ORIGINAL text's `content_hash`; a cliché never has a `suggestion`, a filler or slip has one only
+  when `health_wording` finds the edit clean and `guard_violations` is empty. The
   bank lives in `Setting` rows `health.word_bank` (absent = defaults) and `health.ignored_words` (Never flag),
   edited through `GET`/`PUT /api/resume-lint/wording` and `POST /wording/reset`; the coherence check uses it too.
   Gates are `tier:

@@ -84,15 +84,18 @@ approved evaluator contract. Code validates the model response and computes scor
   word (`health_wording.matches`). The user edits both lists and the Never flag list, and can reset
   the two lists to the defaults (Never flag is kept). **Known limitation:** matching is context-blind,
   so “dynamic programming” flags “dynamic”; the user adds “dynamic” to Never flag. Source: `health_wording.py`.
-- **Remove and Apply** [weak]: Remove deletes the word in code, tidying the seam (spaces, a newline,
-  commas, empty brackets, a dangling slash or dash, the capital, and a/an by first letter, left alone
-  before u, eu, one and h). The rewrite guards check facts, not grammar, so a **seam check** is the
-  safety net: a Remove that leaves an article before a function word or punctuation ("with a of"), a
-  dangling and/or ("and analyst", "and with"), a sentence opening And/Or, or empty quotes is copy-only.
-  It is deliberately cautious: "dashboards and very useful tools" loses its one click too. Apply swaps
-  a slip's span for its fix, only when the span occurs once as a whole word. Either text is offered
-  only when it also passes the rewrite guards below, so a fix that adds a number or drops a named tool
-  or company is copy-only.
+- **Remove and Apply** [weak]: a **cliché** never gets one-click Remove: it is a noun or adjective the
+  sentence needs, so the note asks for a rewrite in the user's own words (or a cut by hand). A
+  **filler** word gets Remove, which cuts every whole-word occurrence and tidies the seam (spaces, a
+  newline, empty brackets, a dangling slash or dash, the capital; the comma before a filler always
+  stays, an -ly word keeps the comma after it unless both surround it). The rewrite guards check facts,
+  not grammar, so Remove is copy-only when the cut is risky or reads broken: after "not", a linking
+  verb (is, was, are, were, be, been, being, as), "of" or an a/an article; a non -ly filler before a
+  function word or relative pronoun ("several of the"); "the" before a function word or punctuation;
+  an and/or left with nothing to join or opening a sentence; empty quotes. Apply swaps a slip's span
+  for its fix, only when the span occurs once as a whole word. Either text is offered only when it
+  also passes the rewrite guards below, so a fix that adds a number or drops a named tool or company
+  is copy-only.
 
 ## User control and verification
 

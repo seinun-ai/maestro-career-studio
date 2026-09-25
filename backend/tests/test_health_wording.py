@@ -124,133 +124,234 @@ def test_every_scored_bullet_is_checked_but_skills_are_not():
 
 
 # --------------------------------------------------------------------------- #
-# Remove: clean text, guarded
+# Remove: one click for filler words only, and only when the result reads cleanly
 
-@pytest.mark.parametrize("text, word, expected", [
-    ("Successfully led the migration", "successfully", "Led the migration"),
-    ("Successfully, led the migration", "successfully", "Led the migration"),
-    ("successfully led the migration", "successfully", "led the migration"),
-    ("Led the migration successfully.", "successfully", "Led the migration."),
-    ("Led the migration, successfully, ahead of schedule", "successfully",
-     "Led the migration, ahead of schedule"),
-    ("Led the migration , successfully .", "successfully", "Led the migration."),
-    ("Built various dashboards", "various", "Built dashboards"),
-    ("Engineer. Successfully led the migration", "successfully",
-     "Engineer. Led the migration"),
-    ("I think outside the box daily", "think outside the box", "I daily"),
-    ("Hired a results-driven data analyst", "results-driven", "Hired a data analyst"),
-    ("A dynamic, detail-oriented engineer", "dynamic", "A detail-oriented engineer"),
-    ("Very very fast", "very", "Fast"),
-    # the article follows the next word
-    ("A dynamic engineer", "dynamic", "An engineer"),
-    ("Joined as a proactive owner of billing", "proactive", "Joined as an owner of billing"),
-    ("Hired an efficiently run team", "efficiently", "Hired a run team"),
-    # the comma directly after the cut word goes (no determiner needed)
-    ("Built dynamic, scalable systems", "dynamic", "Built scalable systems"),
-    ("Built various, reusable dashboards", "various", "Built reusable dashboards"),
-    # commas: an -ly word keeps the comma after it; any other word takes it along,
-    # or the comma before it when there is none after; ", word," leaves one comma
-    ("Led the migration successfully, then retired the old queue", "successfully",
-     "Led the migration, then retired the old queue"),
-    ("Migrated the service effectively, which cut latency", "effectively",
-     "Migrated the service, which cut latency"),
-    ("Results-driven, detail-oriented engineer", "detail-oriented", "Results-driven engineer"),
-    ("Hard worker, team player, self-starter", "team player", "Hard worker, self-starter"),
-    # a/an: vowel letter is not vowel sound, so u/eu/one/h leave the article alone
-    ("Built a very useful tool", "very", "Built a useful tool"),
-    ("Wrote a very one-off script", "very", "Wrote a one-off script"),
-    ("Joined a very European team", "very", "Joined a European team"),
-    # newlines survive the cut
-    ("Led the migration successfully\nShipped v2", "successfully", "Led the migration\nShipped v2"),
-    ("Led the migration\nSuccessfully shipped v2", "successfully", "Led the migration\nShipped v2"),
-    ("Led it very\nquickly", "very", "Led it\nquickly"),
-    # no empty brackets, dangling slash or stray dash
-    ("Led the migration (successfully) on time", "successfully", "Led the migration on time"),
-    ("Kept it very/really simple", "very", "Kept it really simple"),
-    ("Kept it really/very simple", "very", "Kept it really simple"),
-    ("Shipped it - successfully - on time", "successfully", "Shipped it - on time"),
-    ("Successfully - shipped it on time", "successfully", "Shipped it on time"),
-    ("Shipped it on time - successfully", "successfully", "Shipped it on time"),
-    ("very\nvery\nvery\nvery", "very", ""),
-])
-def test_remove_produces_clean_text(text, word, expected):
-    assert health_wording.remove(text, word) == expected
+NO_NOTE = "<no note>"
+
+
+def _offer(text, word, bank=DEFAULT):
+    """The one-click Remove text on `word`'s note for a bullet reading `text`."""
+    notes = [n for n in _wording(rl.rule_notes(_resume([text]), word_bank=bank))
+             if n["subject"] == word]
+    return notes[0]["suggestion"] if notes else NO_NOTE
+
+
+# The reviewer's probe rows (every cliché row: clichés are rewritten by hand).
+CLICHE_ROWS = [
+    ('Built dynamic, scalable systems for the retail team', 'dynamic'),
+    ('A dynamic, detail-oriented engineer who builds data systems', 'dynamic'),
+    ('Hard worker, team player, self-starter with 5 years in analytics', 'team player'),
+    ('Hard worker, team player, self-starter with 5 years in analytics', 'self-starter'),
+    ('Hard worker, team player, self-starter with 5 years in analytics', 'hard worker'),
+    ('Proactive, results-driven engineer who ships ML systems', 'proactive'),
+    ('Results-driven, detail-oriented engineer who ships ML systems', 'detail-oriented'),
+    ('Results-driven, self-motivated, detail-oriented engineer who ships ML systems', 'self-motivated'),
+    ('Detail-oriented and self-motivated data scientist with 5 years in retail', 'self-motivated'),
+    ('Detail-oriented and self-motivated data scientist with 5 years in retail', 'detail-oriented'),
+    ('Proactive and results-driven analyst who owns reporting end to end', 'results-driven'),
+    ('Hard worker, team player and self-starter with 5 years in analytics', 'self-starter'),
+    ('Analyst with a track record of shipping dashboards on time', 'track record'),
+    ('Known as a team player on the payments team', 'team player'),
+    ('Known as the go-to person for Kafka at Acme', 'go-to person'),
+    ('Brought synergy to the sales and ops teams', 'synergy'),
+    ('Drove synergy across three product teams', 'synergy'),
+    ('A dynamic engineer who builds data systems', 'dynamic'),
+    ('Served as a proactive owner of the release train', 'proactive'),
+    ('Was a team player and a self-starter on the data team', 'team player'),
+    ('Was a team player and a self-starter on the data team', 'self-starter'),
+    ('Showed thought leadership in ML infra across the org', 'thought leadership'),
+    ('Delivered value add features for the sales org', 'value add'),
+    ('Is a hard worker who owns outcomes end to end', 'hard worker'),
+    ('Has a proven track record in ML ops at scale', 'track record'),
+    ('A self-starter who ships ML systems end to end', 'self-starter'),
+    ('Self-starter who ships ML systems end to end', 'self-starter'),
+    ('I think outside the box daily on hard problems', 'think outside the box'),
+    ("Became the team's go-to person for Kafka and Flink", 'go-to person'),
+    ('Built a best of breed ML platform for the retail team', 'best of breed'),
+    ('Acted as a strategic thinker for the ML org', 'strategic thinker'),
+    ('Strategic thinker with 5 years in ML ops', 'strategic thinker'),
+    ('Go-getter with 5 years in ML ops at Acme', 'go-getter'),
+    ('Led synergy efforts across teams at Acme', 'synergy'),
+    ('Grew a self-motivated team of 5 engineers at Acme', 'self-motivated'),
+    ('Grew a team of 5 self-motivated engineers at Acme', 'self-motivated'),
+    ('Owned billing; was proactive about incidents', 'proactive'),
+    ('Owned billing and was proactive about incidents', 'proactive'),
+    ('Owned billing and was very proactive about incidents', 'proactive'),
+    ('Known for being detail-oriented at Acme', 'detail-oriented'),
+    ('Seen as results-oriented by the sales org', 'results-oriented'),
+    ('Led efforts; results-driven', 'results-driven'),
+]
+
+
+@pytest.mark.parametrize("text, word", CLICHE_ROWS)
+def test_a_cliche_never_gets_a_one_click_remove(text, word):
+    notes = [n for n in _wording(rl.rule_notes(_resume([text]))) if n["subject"] == word]
+    assert [(n["rule"], n["suggestion"]) for n in notes] == [("language.cliche", None)]
+    assert notes[0]["how"] == "Rewrite this phrase in your own words, or cut it."
+    assert notes[0]["issue"] == f"'{word}' is a cliché."
 
 
 @pytest.mark.parametrize("text, word", [
-    # an article left before a function word or punctuation
-    ("Analyst with a track record of shipping", "track record"),
-    ("Worked as a team player with analysts", "team player"),
-    ("Hired the dynamic.", "dynamic"),
-    ("Joined as a go-getter", "go-getter"),
-    # a dangling conjunction at the cut
-    ("Detail-oriented and self-motivated data scientist", "self-motivated"),
-    ("Proactive and results-driven analyst", "results-driven"),
-    ("Hard worker, team player and self-starter with 5 years", "self-starter"),
-    ("Hard worker, team player and self-starter with 5 years", "team player"),
-    ("Worked on synergy and with partners", "synergy"),
-    # a sentence now opening with And / Or
-    ("Proactive and results-driven analyst", "proactive"),
-    ("Detail-oriented and self-motivated data scientist", "detail-oriented"),
-    ("Shipped it. Proactive or not, it worked", "proactive"),
-    # empty quotes
-    ("Called 'dynamic' by peers", "dynamic"),
-    ('Called "synergy" by peers', "synergy"),
-    ("Called ' synergy ' by peers", "synergy"),
+    ("Engineer who thinks outside the box on hard problems", "think outside the box"),
+    ("Built a team-player culture across the ML org", "team player"),
 ])
-def test_a_removal_that_breaks_the_sentence_is_copy_only(text, word):
+def test_an_inflected_or_hyphenated_cliche_is_not_flagged(text, word):
+    """Whole-phrase matching: "thinks" and "team-player" are other words."""
+    assert _offer(text, word) == NO_NOTE
+
+
+def test_a_user_added_cliche_gets_no_one_click_but_a_user_added_filler_does():
+    bank = health_wording.WordBank(cliche=("rockstar",), filler=("literally",))
+    assert _offer("Rockstar engineer who ships billing systems", "rockstar", bank) is None
+    assert _offer("Literally rebuilt the billing queue", "literally", bank) == \
+        "Rebuilt the billing queue"
+
+
+# The reviewer's probe rows for filler words, judged by hand: clean text or None.
+FILLER_ROWS = [
+    ('Led the migration successfully, then retired the old queue', 'successfully', 'Led the migration, then retired the old queue'),
+    ('Shipped it efficiently, cutting cloud cost for the data team', 'efficiently', 'Shipped it, cutting cloud cost for the data team'),
+    ('Migrated the service effectively, which cut latency for checkout', 'effectively', 'Migrated the service, which cut latency for checkout'),
+    ('Built various, reusable dashboards for the sales team', 'various', 'Built reusable dashboards for the sales team'),
+    ('Led the migration, successfully, ahead of schedule', 'successfully', 'Led the migration ahead of schedule'),
+    ('Worked with various teams, vendors and partners on billing', 'various', 'Worked with teams, vendors and partners on billing'),
+    ('Led sales, really, and ops for the region', 'really', None),
+    ('Served as an actually useful mentor to new hires', 'actually', None),
+    ('Hired a very experienced analyst for the pricing team', 'very', None),
+    ('Built a very useful alerting tool for the on-call team', 'very', None),
+    ('Shipped a very user-friendly dashboard for the sales team', 'very', None),
+    ('Built a very hourly batch job for the finance team', 'very', None),
+    ('Built a very 3-tier app for the retail team', 'very', None),
+    ("Built a 'very' good parser for the log pipeline", 'very', None),
+    ('"Successfully" led the rollout of the new queue', 'successfully', None),
+    ('Led the migration (successfully) on time for billing', 'successfully', 'Led the migration on time for billing'),
+    ('Led the migration (very successfully) on time', 'very', 'Led the migration (successfully) on time'),
+    ('Shipped (via various teams) the new billing app', 'various', 'Shipped (via teams) the new billing app'),
+    ('Led the very/really fast rollout of the new queue', 'very', 'Led the really fast rollout of the new queue'),
+    ('Led it - successfully - on time for the finance team', 'successfully', 'Led it - on time for the finance team'),
+    ('Led it — successfully — on time for the finance team', 'successfully', 'Led it — on time for the finance team'),
+    ('Successfully and effectively led the billing migration', 'successfully', None),
+    ('Led X; Successfully shipped the new billing queue', 'successfully', None),
+    ('Very, very fast rollout of the new billing queue', 'very', 'Fast rollout of the new billing queue'),
+    ('Led a very, very fast migration of the billing queue', 'very', None),
+    # The guards read a capital after a newline as a name, so these two stay
+    # copy-only; the newline itself survives (test_a_newline_at_the_cut_survives).
+    ('Line one of the summary.\nSuccessfully led two teams', 'successfully', None),
+    ('Led the team successfully... then moved to billing', 'successfully', 'Led the team... then moved to billing'),
+    ('Led the team; successfully, then moved to billing', 'successfully', 'Led the team, then moved to billing'),
+    ('Owned the pipeline end to end, actually.', 'actually', 'Owned the pipeline end to end.'),
+    ('Owned the pipeline and basically rebuilt it', 'basically', 'Owned the pipeline and rebuilt it'),
+    ('Basically rebuilt the pipeline for the finance team', 'basically', 'Rebuilt the pipeline for the finance team'),
+    ('Rebuilt the pipeline, which was basically unmaintained', 'basically', None),
+    ('Cut the build time by a very large margin for mobile', 'very', None),
+    ('Improved a very slow, very old billing job', 'very', None),
+    ('Shipped features for several teams and various customers', 'several', 'Shipped features for teams and various customers'),
+    ('Shipped features for several teams and various customers', 'various', 'Shipped features for several teams and customers'),
+    ('Worked across several time zones with the ML team', 'several', 'Worked across time zones with the ML team'),
+    ('Reduced errors very significantly across the ingest jobs', 'very', 'Reduced errors significantly across the ingest jobs'),
+    ('Wrote docs that were really, really clear for new hires', 'really', None),
+    ('Led efforts that were very successful across teams', 'very', None),
+    ('Delivered effectively and on time for every release', 'effectively', None),
+    ('Delivered on time and effectively for every release', 'effectively', None),
+    ('Delivered on time, effectively and under budget', 'effectively', None),
+    ('Was actually the first to ship the new queue', 'actually', None),
+    ('Did not really own the queue but fixed it anyway', 'really', None),
+    ('Built tools (e.g. various parsers) for the log team', 'various', 'Built tools (e.g. parsers) for the log team'),
+    ('Worked at Acme Inc. Successfully shipped the queue', 'successfully', 'Worked at Acme Inc. Shipped the queue'),
+    ('One of several teams that shipped the billing queue', 'several', None),
+    ('Worked on several of the ML projects at Acme', 'several', None),
+    ('Worked with the various teams at Acme on billing', 'various', 'Worked with the teams at Acme on billing'),
+    ('Hired a very SQL-savvy analyst for the data team', 'very', None),
+    ('Built an actually MLOps-ready pipeline for Acme', 'actually', None),
+    ('Led a very European rollout of the billing queue', 'very', None),
+    ('Led a very one-off migration of the billing queue', 'very', None),
+    ('Led an effectively honest review of the billing queue', 'effectively', None),
+    ('Reduced p99 latency by 40% very quickly for checkout', 'very', 'Reduced p99 latency by 40% quickly for checkout'),
+    ('Cut cost by $2M, successfully, for the billing team', 'successfully', 'Cut cost by $2M for the billing team'),
+    ('Worked really hard on the billing queue at Acme', 'really', 'Worked hard on the billing queue at Acme'),
+    ('Was very much involved in the billing migration', 'very', None),
+    ('Delivered the very first ML model at Acme', 'very', 'Delivered the first ML model at Acme'),
+    ('Owned 3 pipelines; actually rebuilt 2 of them', 'actually', 'Owned 3 pipelines; rebuilt 2 of them'),
+    ('Built pipelines: very fast, very cheap', 'very', 'Built pipelines: fast, cheap'),
+    ('Built pipelines — really fast ones — for billing', 'really', 'Built pipelines — fast ones — for billing'),
+    ('Led the migration & successfully shipped it', 'successfully', 'Led the migration & shipped it'),
+    ('Led the migration and, successfully, shipped it', 'successfully', 'Led the migration and shipped it'),
+    ('Led the migration successfully and on time', 'successfully', None),
+    ('Hired an efficient, reliable vendor for the data team', 'efficient', NO_NOTE),
+]
+
+# Earlier rounds' filler cases.
+EARLIER_ROWS = [
+    ('Successfully led the migration', 'successfully', 'Led the migration'),
+    ('Successfully, led the migration', 'successfully', 'Led the migration'),
+    ('successfully led the migration', 'successfully', 'led the migration'),
+    ('Led the migration successfully.', 'successfully', 'Led the migration.'),
+    ('Led the migration , successfully .', 'successfully', 'Led the migration.'),
+    ('Built various dashboards', 'various', 'Built dashboards'),
+    ('Engineer. Successfully led the migration', 'successfully', 'Engineer. Led the migration'),
+    ('Very very fast', 'very', 'Fast'),
+    ('Led the migration successfully\nShipped v2', 'successfully', 'Led the migration\nShipped v2'),
+    ('Led the migration\nSuccessfully shipped v2', 'successfully', None),
+    ('Led it very\nquickly', 'very', 'Led it\nquickly'),
+    ('Kept it very/really simple', 'very', 'Kept it really simple'),
+    ('Kept it really/very simple', 'very', 'Kept it really simple'),
+    ('Shipped it - successfully - on time', 'successfully', 'Shipped it - on time'),
+    ('Successfully - shipped it on time', 'successfully', 'Shipped it on time'),
+    ('Shipped it on time - successfully', 'successfully', 'Shipped it on time'),
+    ('Migrated the service effectively, which cut latency', 'effectively', 'Migrated the service, which cut latency'),
+    ('Built a very useful tool', 'very', None),
+    ('Hired an efficiently run team', 'efficiently', None),
+]
+
+
+@pytest.mark.parametrize("text, word, expected", FILLER_ROWS + EARLIER_ROWS)
+def test_a_filler_remove_is_clean_or_copy_only(text, word, expected):
+    assert _offer(text, word) == expected
+
+
+@pytest.mark.parametrize("text, word", [
+    ("Did not really own the queue", "really"),          # "not": the claim changes
+    ("The queue was basically unmaintained", "basically"),  # linking verb
+    ("Served as a very early adopter", "very"),           # "as" (and an article)
+    ("One of several teams on billing", "several"),       # "of"
+    ("Hired an actually useful vendor", "actually"),      # a/an: no article guessing
+    ("Worked on several of the ML projects", "several"),  # function word next, not -ly
+    ("Talked to various who owned it", "various"),        # relative pronoun next
+])
+def test_filler_rules_send_a_risky_cut_to_copy_only(text, word):
     assert health_wording.removal(text, word) is None
 
 
-@pytest.mark.parametrize("text, word, expected", [
-    ("Hard worker, team player and self-starter with 5 years", "hard worker",
-     "Team player and self-starter with 5 years"),
-    ("Built a very useful tool", "very", "Built a useful tool"),
-    ("Led the migration successfully, then retired the old queue", "successfully",
-     "Led the migration, then retired the old queue"),
+def test_an_ly_filler_before_a_function_word_is_still_offered():
+    assert health_wording.removal("Shipped it successfully for the team", "successfully") == \
+        "Shipped it for the team"
+
+
+@pytest.mark.parametrize("text, expected", [
+    ("Line one of the summary.\nSuccessfully led two teams", "Line one of the summary.\nLed two teams"),
+    ("Led the migration\nSuccessfully shipped v2", "Led the migration\nShipped v2"),
 ])
-def test_a_removal_that_reads_cleanly_is_offered(text, word, expected):
-    assert health_wording.removal(text, word) == expected
+def test_a_newline_at_the_cut_survives(text, expected):
+    assert health_wording.removal(text, "successfully") == expected
 
 
-@pytest.mark.parametrize("text, subject, suggestion", [
-    ("Detail-oriented and self-motivated data scientist", "detail-oriented", None),
-    ("Detail-oriented and self-motivated data scientist", "self-motivated", None),
-    ("Proactive and results-driven analyst", "proactive", None),
-    ("Proactive and results-driven analyst", "results-driven", None),
-    ("Hard worker, team player and self-starter with 5 years", "hard worker",
-     "Team player and self-starter with 5 years"),
-    ("Hard worker, team player and self-starter with 5 years", "team player", None),
-    ("Hard worker, team player and self-starter with 5 years", "self-starter", None),
-    ("Analyst with a track record of shipping", "track record", None),
-    ("Worked as a team player with analysts", "team player", None),
-])
-def test_reviewer_examples_offer_one_click_only_when_clean(text, subject, suggestion):
-    notes = {n["subject"]: n for n in _wording(rl.rule_notes(_resume([text])))}
-    assert notes[subject]["suggestion"] == suggestion
-
-
-def test_remove_leaves_no_double_space():
-    out = health_wording.remove("Shipped   successfully   -   on time", "successfully")
-    assert "  " not in out
+def test_every_occurrence_is_cut_and_nothing_is_left_behind():
+    assert health_wording.removal("very\nvery\nvery\nvery", "very") == ""
+    assert "  " not in health_wording.removal("Shipped   successfully   -   on time", "successfully")
 
 
 def test_remove_note_carries_a_guarded_suggestion_subject_and_hash():
     text = "Successfully led the AWS migration for the billing team"
-    resume = _resume([text])
-    [note] = _wording(rl.rule_notes(resume))
+    [note] = _wording(rl.rule_notes(_resume([text])))
     assert note["suggestion"] == "Led the AWS migration for the billing team"
     assert note["subject"] == "successfully"
     assert note["content_hash"] == bullet_classify.content_hash(text)
     assert note["type"] == "note" and note["cost"] == 0 and note["severity"] == "minor"
 
 
-def test_remove_that_drops_a_proper_noun_gets_no_suggestion():
-    # "Dynamic" mid-sentence is capitalised, so the guard reads it as an entity.
-    resume = _resume(["Built the Dynamic Pricing engine for the retail team"])
-    [note] = _wording(rl.rule_notes(resume))
-    assert note["subject"] == "dynamic"
-    assert note["suggestion"] is None
+def test_a_filler_remove_that_drops_a_proper_noun_gets_no_suggestion():
+    # "Very" capitalised mid-sentence reads as a name to the guards.
+    assert _offer("Observed with the Very Large Array for the survey", "very") is None
 
 
 # --------------------------------------------------------------------------- #
