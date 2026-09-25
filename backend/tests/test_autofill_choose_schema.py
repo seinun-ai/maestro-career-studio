@@ -36,3 +36,9 @@ def test_the_batch_is_capped():
                 ChooseField(qid=f"a-{i}", label="q", kind="text") for i in range(41)
             ]
         )
+
+
+def test_closest_is_a_reason():
+    from app.schemas.autofill_choose import Choice
+
+    assert Choice(answer="Information Systems", reason="closest").reason == "closest"

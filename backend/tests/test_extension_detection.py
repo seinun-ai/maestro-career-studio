@@ -654,3 +654,62 @@ def test_an_ats_posting_page_with_an_apply_button_reads_as_a_form(tmp_path):
 
     assert result["tier"] == "B"
     assert _signals(result) == {"ats:workday", "ats-dom-marker", "apply-affordance"}
+
+
+# ---------- Workday's apply flow ----------
+#
+# Every Workday apply step but one used to score 1 and read as no form, so the
+# panel withheld Fill over a full form (live, pg.wd5, 2026-09-25): Workday
+# renders no <form> and no <select> (so the page text is never read and the
+# self-identification block cannot count), its phone box is `type="text"`
+# named `phoneNumber` and My Information asks no email (so the identity
+# cluster stops at two), and its button says "Save and Continue". Only My
+# Experience, with its résumé upload, reached 2. The apply ROUTE is the one
+# thing every step shares, and it is Workday's alone: search and posting pages
+# never carry it, so the host-is-never-enough rule above still holds.
+
+_WORKDAY_MY_INFORMATION = {
+    "url": "https://pg.wd5.myworkdayjobs.com/en-GB/1000/job/CINCINNATI-GENERAL-OFFICES/"
+           "Data-Scientist_R000001/apply/applyManually",
+    "text": "My Information. Legal Name. First Name. Last Name. Phone Number.",
+    "elements": [
+        {"tag": "div", "attrs": {"data-automation-id": "applyFlowMyInfoPage"}},
+        {"tag": "input", "attrs": {"type": "text", "name": "legalName--firstName"}},
+        {"tag": "input", "attrs": {"type": "text", "name": "legalName--lastName"}},
+        {"tag": "input", "attrs": {"type": "text", "name": "phoneNumber"}},
+        {"tag": "button", "attrs": {"data-automation-id": "pageFooterNextButton"},
+         "text": "Save and Continue"},
+    ],
+}
+
+
+@pytest.mark.parametrize("path", [
+    "/apply/applyManually", "/apply/autofillWithResume", "/apply/useMyLastApplication", "/apply",
+])
+def test_every_step_of_a_workday_apply_flow_is_a_form(tmp_path, path):
+    url = _WORKDAY_MY_INFORMATION["url"].rsplit("/apply", 1)[0] + path
+    result = run_detect(tmp_path, page={**_WORKDAY_MY_INFORMATION, "url": url})
+
+    assert result["form"] is True
+    assert result["tier"] == "B"
+    assert _signals(result) >= {"ats:workday", "ats-dom-marker", "workday-apply-route"}
+
+
+def test_a_workday_posting_is_not_on_the_apply_route(tmp_path):
+    """The route is the apply flow's, not the job's: a posting URL that merely
+    contains the word must not count."""
+    url = "https://pg.wd5.myworkdayjobs.com/en-GB/1000/job/Remote/Apply-Scientist_R000002"
+    result = run_detect(tmp_path, page={**_WORKDAY_MY_INFORMATION, "url": url})
+
+    assert "workday-apply-route" not in _signals(result)
+    assert result["form"] is False
+
+
+def test_an_apply_route_off_workday_scores_nothing(tmp_path):
+    """Workday's alone: the same path and marker on any other host is the
+    ordinary one point it always was."""
+    url = "https://careers.example.test/jobs/42/apply/applyManually"
+    result = run_detect(tmp_path, page={**_WORKDAY_MY_INFORMATION, "url": url})
+
+    assert "workday-apply-route" not in _signals(result)
+    assert result["form"] is False

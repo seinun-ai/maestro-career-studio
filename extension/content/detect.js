@@ -185,14 +185,29 @@ function detectPage() {
     evidence.push(["ats-dom-marker", 1]);
   }
 
+  // Workday's apply flow, by its ROUTE. Every step after Apply lives under
+  // `…/apply/…`, and nothing else on a tenant does — search and posting pages
+  // never carry it — so this is the flow and not the host, and the
+  // host-is-never-enough rule above still holds. It exists because the other
+  // signals cannot see these steps: Workday renders no <form> and no <select>
+  // (so the text gate below never opens and the self-identification block
+  // cannot count), its phone box is `type="text"` and My Information asks no
+  // email (so the identity cluster stops at two), and its button says "Save
+  // and Continue". Every step but the résumé upload used to score 1, and the
+  // panel withheld Fill over a full form (live, pg.wd5, 2026-09-25). A
+  // location read, not a DOM read, and only on a Workday host.
+  if (vendor === "workday" && /\/apply(\/|$)/i.test(location.pathname || "")) {
+    evidence.push(["workday-apply-route", 1]);
+  }
+
   // Anchored at the start of the control's own text, so this means "the
   // control that applies" and not "the word appears somewhere" — the second
   // reading fires on every "How to apply" heading on the web.
   //
   // `continue` is deliberately NOT here. It is the label on every wizard,
-  // checkout and onboarding step ever built, and it buys nothing: an ATS
-  // application step that says Continue also carries its vendor's DOM marker
-  // and its identity fields, so the page is already recognised without it.
+  // checkout and onboarding step ever built. An ATS application step that says
+  // Continue is recognised another way — its vendor's marker plus its identity
+  // fields, or, on Workday, where neither of those is enough, the apply route.
   const APPLY_TEXT = /^\s*(apply|submit application)\b/i;
   let affordance = false;
   for (const el of document.querySelectorAll(

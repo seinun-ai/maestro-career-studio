@@ -211,13 +211,27 @@
     return null;
   }
 
+  /** "Fill finished", naming every closest-match write (`/choose` reason
+   * `closest`). A finished fill ticks the step, which takes the body and its
+   * "Closest matches to check" list off screen, so this sentence is the one
+   * place left to say that a near-miss major or degree went onto the page.
+   *
+   * ON THE NAMESPACE for `leftSentence`'s reason: the pause row finishes a
+   * fill too, and says the same sentence. */
+  function finishedSentence(closest) {
+    if (!closest?.length) return "Fill finished. Review before you submit.";
+    const picks = closest.map((row) => `${row.text || row.label} (${row.answer})`).join(", ");
+    const what = closest.length === 1 ? "the closest match" : "the closest matches";
+    return `Fill finished. Check ${what} before you submit: ${picks}.`;
+  }
+
   /** The run's one sentence. With no saved answers the rule pass filled
    * nothing, so that leads; "Fill finished" follows only a run that wrote
    * something and left nothing open or blank, since a run over an empty
    * profile that found nothing else to answer has finished nothing. */
-  function fillNote({ open, blank, finished, noSavedAnswers }, plural) {
+  function fillNote({ open, blank, finished, noSavedAnswers, closest }, plural) {
     const outcome = leftSentence({ open, blank }, plural)
-      ?? (finished || !noSavedAnswers ? "Fill finished. Review before you submit." : null);
+      ?? (finished || !noSavedAnswers ? finishedSentence(closest) : null);
     return [noSavedAnswers ? NO_SAVED_ANSWERS : null, outcome].filter(Boolean).join(" ");
   }
 
@@ -334,7 +348,7 @@
     // press starts from nothing known, which is also what the body should show
     // while the run is open.
     store.write({ fill: null, eeoConsent: null, residue: null, essays: null,
-                  writeResults: null, blank: null, aiNote: null });
+                  closest: null, writeResults: null, blank: null, aiNote: null });
     const aiAssist = facts.fillMode === "assist";
     let noSavedAnswers = false;
     const done = await duringAction(store, "fill", async () => {
@@ -413,6 +427,7 @@
     store.write({
       residue: out.residue,
       essays: out.essays,
+      closest: out.closest ?? [],
       writeResults: out.writeResults,
       blank,
       aiNote: aiNoteFor(out.aiFailure, out.keyless),
@@ -421,7 +436,8 @@
       // is still open, and an unanswered essay is exactly that — they are kept
       // apart in the store because they are ANSWERED differently, not because
       // they are different news.
-      note: { text: fillNote({ open, blank, finished, noSavedAnswers }, store.build.plural) },
+      note: { text: fillNote({ open, blank, finished, noSavedAnswers, closest: out.closest },
+                             store.build.plural) },
     });
     if (finished) store.write({ touched: true });
     store.render();
@@ -583,4 +599,5 @@
   ns.panelActionsFill = { startFill, attachResume };
   ns.panelFillFinished = fillFinished;
   ns.panelLeftSentence = leftSentence;
+  ns.panelFinishedSentence = finishedSentence;
 })();
