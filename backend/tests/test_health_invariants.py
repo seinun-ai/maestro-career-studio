@@ -55,6 +55,28 @@ def test_advisories_are_free_many_notes_move_score_by_zero():
     assert out["report"]["score"] == base
 
 
+def test_advisories_are_free_the_no_numbers_flag_moves_score_by_zero():
+    """`evidence.no_numbers` is a highlighted flag, never a penalty: the same levels
+    score the same whether or not the flag is present."""
+    bullets = ["Owned the vendor onboarding checklist", "Rebuilt the triage rota",
+               "Wrote the escalation runbook", "Chose Postgres over Mongo for audit needs",
+               "Trained new hires on the ticket queue"]
+    lv = {("experience", 0, i): _lv(0.5) for i in range(5)}
+    hot = set(lv)
+
+    silent = _resume()
+    silent["experience"][0]["bullets"] = [*bullets[:4], "Cut latency 40%"]
+    flagged = _resume()
+    flagged["experience"][0]["bullets"] = bullets
+
+    a = rl.assemble(silent, lv, PASS_GATES, "experienced", hot)["report"]
+    b = rl.assemble(flagged, lv, PASS_GATES, "experienced", hot)["report"]
+    assert not [f for f in a["findings"] if f.get("rule") == "evidence.no_numbers"]
+    [flag] = [f for f in b["findings"] if f.get("rule") == "evidence.no_numbers"]
+    assert flag["type"] == "note" and flag["cost"] == 0 and flag["gain"] == 0
+    assert (b["score"], b["grade"], b["next_grade"]) == (a["score"], a["grade"], a["next_grade"])
+
+
 def test_determinism_five_runs_zero_variance():
     r = _resume()
     lv = {("experience", 0, 0): _lv(0.5), ("experience", 0, 1): _lv(0.0),

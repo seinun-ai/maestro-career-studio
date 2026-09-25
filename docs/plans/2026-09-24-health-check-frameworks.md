@@ -1173,6 +1173,8 @@ Commit: `docs: health check v3 (evaluator, disputes, flags, report layout)`
 | 8 | A 502 shows `couldnt("re-read this bullet", err)` | The unreadable 502's detail is that same sentence, so it printed twice | That one detail is matched (`DISPUTE_DETAIL.unreadable`, beside `overridden` in one constant pinned to health_disputes.py) and passed as no detail; any other failure goes through `couldnt` unchanged | Errors never print raw text |
 | 8 | "Not right?" hidden only for overrides | A stale card (`locked`) would only get the content-changed 409 | Also hidden on a locked card; its stored reply still shows | Easy to read and quick to act on |
 | 8 | Content-changed 409 reads "This bullet changed since the check. Check again?" | The card has the report's Check again | "Check again?" is a button running it when the page passes `onReanalyze`, plain text otherwise | Quick to act on |
+| 9 | Frontend callout in the summary band | Task 11 rebuilds the summary band | Task 9 frontend callout deferred to Task 11 (the summary band is rebuilt there); Task 9 is backend only | Easy to read and quick to act on |
+| 9 | Location unspecified | The flag is about the whole resume, not one bullet | Task 11 finds it by `rule == "evidence.no_numbers"` at location `{"section": "resume"}` (no index, no bullet_index), label "No numbers anywhere", `type: "note"`, from `_shape_notes`; "scored bullets" are `_ladder_items` minus the summary (resume text, not classified levels, so it fires without the LLM) | Every bullet earns its place |
 
 ## Gate results
 
@@ -1184,6 +1186,7 @@ Task 7: full suite 5755 passed/1 skipped before → **5782 passed, 1 skipped** a
 Task 8: 7 new pins + the single-flight site, 2 new Node tests (288 pass); all `tests/ -k frontend` pins 1293 passed; lint (2 pre-existing warnings), tsc clean. Mutations caught, each by exactly its pin: "Not right?" offered on overrides, the OVERRIDDEN 409 branch dropped (also the Node test), the reply's `role="status"` removed. No browser check: needs a provider key for the dispute call.
 Task 8 follow-up: a dispute that lifts a bullet out of the report puts its reply on the "Fixed" entry, which takes focus (mount effect, plus a layout-cleanup handoff from the leaving card). 1 pin + 1 Node test; both focus paths mutation-checked, each caught by that pin.
 Task 8 follow-up 2: a re-run lists a finding as fixed only when nothing in the new report still asks or fixes its location (`resolvedFindings`), so a dispute or override that changes a question no longer shows a false "Fixed". 1 pin + 1 Node test (question change, real fix, moved bullet); reverting adoptReport to the id test and switching the helper to ids were both caught.
+Task 9 (backend only): full suite **5821 passed, 1 skipped** (247.77s); ruff clean. 15 new tests (8-row `_has_metric` table, fire/silence/extras/summary/min-count/version cases, a no-penalty invariant). Mutations caught: dropping the `MIN_SCOREABLE_ITEMS` guard (the min-count test), dropping version stripping (2 table rows + the versions-alone test; "v2.1" is also blocked by the lookbehind, so that row alone does not catch it).
 
 ## Goal critique
 

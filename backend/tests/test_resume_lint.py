@@ -1111,3 +1111,82 @@ def test_weak_bullet_rewrite_keeps_reword_kind_and_next_level_gain():
     report = rl.assemble(_resume(), levels, PASS_GATES, "experienced", set(), rewrite_fn=lambda text: "Built the tool.")["report"]
     fix = next(f for f in report["findings"] if f["type"] == "fix")
     assert fix["ask_kind"] == "reword" and fix["gain"] == 20
+
+
+# --------------------------------------------------------------------------- #
+# evidence.no_numbers: a highlighted flag, zero score, no count of "enough"
+
+@pytest.mark.parametrize("text, expected", [
+    ("Python 3.11 in 2024", False),
+    ("Built with Airflow 2.8 and Spark 3.5.1", False),
+    ("Shipped v2.1 of the SDK", False),
+    ("Cut latency 40%", True),
+    ("Led 3 engineers", True),
+    ("Raised AUC from 0.759 to 0.789", True),
+    ("Mentored two interns", True),
+    ("Grew revenue $1.2M", True),
+])
+def test_has_metric_table(text, expected):
+    assert rl._has_metric(text) is expected
+
+
+_NUMBER_FREE = ["Owned the vendor onboarding checklist", "Rebuilt the triage rota",
+                "Wrote the escalation runbook", "Chose Postgres over Mongo for audit needs",
+                "Trained new hires on the ticket queue"]
+
+
+def _no_numbers(resume, n_levels=None):
+    bullets = resume["experience"][0]["bullets"]
+    levels = {("experience", 0, i): _lv(0.5) for i in range(n_levels or len(bullets))}
+    report = rl.assemble(resume, levels, PASS_GATES, "experienced", set(levels))["report"]
+    return [f for f in report["findings"] if f.get("rule") == "evidence.no_numbers"]
+
+
+def test_five_number_free_bullets_fire_the_no_numbers_flag():
+    resume = _resume()
+    resume["experience"][0]["bullets"] = list(_NUMBER_FREE)
+    [flag] = _no_numbers(resume)
+    assert flag["type"] == "note" and flag["severity"] == "minor"
+    assert flag["location"] == {"section": "resume"}
+    assert flag["level"] is None and flag["cost"] == 0 and flag["gain"] == 0
+    assert flag["issue"] == "None of your bullets has a number."
+    assert flag["why"] == ("Hiring managers often pass over a resume with no measured results at all. "
+                           "Bullets without numbers are fine; a resume with none reads as unmeasured.")
+    assert flag["how"] == "Add a real number to one or two bullets where one exists."
+
+
+def test_one_number_silences_the_no_numbers_flag():
+    resume = _resume()
+    resume["experience"][0]["bullets"] = [*_NUMBER_FREE[:4], "Cut latency 40%"]
+    assert _no_numbers(resume) == []
+
+
+def test_a_number_in_an_extras_bullet_silences_the_no_numbers_flag():
+    resume = _resume()
+    resume["experience"][0]["bullets"] = list(_NUMBER_FREE)
+    resume["extra_sections"] = [{"key": "awards", "title": "Awards", "type": "bullets",
+                                 "enabled": True, "bullets": ["Top 3 of 200 entrants"]}]
+    assert _no_numbers(resume) == []
+
+
+def test_fewer_than_min_scoreable_bullets_never_fire_the_no_numbers_flag():
+    # A number-free summary is on the ladder but is not a scored bullet.
+    resume = _resume()
+    resume["summary"] = "Support lead who builds calm, repeatable processes."
+    resume["experience"][0]["bullets"] = _NUMBER_FREE[:rl.MIN_SCOREABLE_ITEMS - 1]
+    assert _no_numbers(resume) == []
+    resume["experience"][0]["bullets"] = _NUMBER_FREE[:rl.MIN_SCOREABLE_ITEMS]
+    assert len(_no_numbers(resume)) == 1
+
+
+def test_a_number_in_the_summary_alone_does_not_silence_the_no_numbers_flag():
+    resume = _resume()
+    resume["summary"] = "Support lead with 8 years in fintech operations."
+    resume["experience"][0]["bullets"] = list(_NUMBER_FREE)
+    assert len(_no_numbers(resume)) == 1
+
+
+def test_versions_alone_do_not_silence_the_no_numbers_flag():
+    resume = _resume()
+    resume["experience"][0]["bullets"] = [*_NUMBER_FREE[:4], "Migrated jobs to Airflow 2.8"]
+    assert len(_no_numbers(resume)) == 1

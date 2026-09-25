@@ -55,9 +55,18 @@ approved evaluator contract. Code validates the model response and computes scor
 - **Existing advisories** [weak]: missing summary, entry bullet count, long or short bullets,
   duplicate or undemonstrated skills, sentence-like skills, punctuation and duplicate certifications
   remain suggestions with no score impact. Source: `resume_lint._advisories` and `_shape_notes`.
-- **No numbers** [moderate, later wave]: `evidence.no_numbers` highlights a resume with no measured
-  bullets, with zero penalty and no quota. Source: CareerBuilder/Harris resume survey cited by the
-  approved design. The detector is heuristic: bare “Python 3” counts; “AUC 0.789” resembles a version.
+- **No numbers** [moderate]: `evidence.no_numbers` is a whole-resume note (location
+  `{"section": "resume"}`, no index) that fires when at least `MIN_SCOREABLE_ITEMS` (4) scored bullets
+  exist (experience, projects, extras; the summary is not one) and none contains a number. It is a
+  highlighted flag with zero score impact and no quota: one number anywhere silences it, and nothing
+  counts how many are "enough". Source: CareerBuilder/Harris resume survey cited by the approved design;
+  `resume_lint._no_numbers_note`.
+  **The detector** (`_has_metric`) strips versions first (a capitalised name followed by a dotted number,
+  “Spark 3.5.1”, or a v-number, “v2.1”), ignores years 1900–2099, and counts digits, “two” to “ten”,
+  dozens, hundreds, thousands and millions. **Known limits:** a bare “Python 3” (no dot) still counts as
+  a number, so the flag stays silent in that rare case; “AUC 0.789” (a capitalised word directly before
+  a decimal) reads as a version, so the flag can fire when that is the only number. Both errors affect
+  only this zero-score note.
 - **Language slips** [strong, later wave]: `language.slip` reports clear spelling and grammar
   corrections, with no score impact. Source: [recruiter experiment](https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0283280).
 - **Word bank** [moderate, later wave]: cliché and filler notes use an editable whole-word bank

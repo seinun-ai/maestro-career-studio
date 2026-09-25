@@ -736,6 +736,39 @@ def _sort_key(f: dict) -> tuple:
 # --------------------------------------------------------------------------- #
 # shape notes + advisories (deterministic, weight 0)
 
+# Versions are stripped first: a capitalised name followed by a dotted number ("Python 3.11",
+# "Spark 3.5.1") or a v-number ("v2.1"). Years are excluded by the lookahead.
+# Known limits (docs/health-check-rubric.md): a bare "Python 3" counts as a number, and
+# "AUC 0.789" reads as a version. Both only affect the zero-score evidence.no_numbers note.
+_VERSION = re.compile(r"\b[A-Z][A-Za-z+#.-]*\s+v?\d+(?:\.\d+)+\b|\bv\d+(?:\.\d+)*\b")
+_METRIC = re.compile(
+    r"(?<![\w.])(?!(?:19|20)\d\d\b)\d[\d,]*(?:\.\d+)?"
+    r"|\b(?:two|three|four|five|six|seven|eight|nine|ten|dozens?|hundreds?|thousands?|millions?)\b",
+    re.IGNORECASE,
+)
+
+
+def _has_metric(text: str) -> bool:
+    return bool(_METRIC.search(_VERSION.sub(" ", text)))
+
+
+def _no_numbers_note(resume: dict) -> dict | None:
+    """`evidence.no_numbers`: no scored bullet (experience, projects, extras) has a
+    number. A highlighted flag, never a penalty: zero score, and no count of how many
+    numbers are "enough". The summary is not a scored bullet, so it neither counts
+    toward MIN_SCOREABLE_ITEMS nor silences the flag."""
+    scored = [text for loc, text in _ladder_items(resume) if loc[0] != "summary"]
+    if len(scored) < MIN_SCOREABLE_ITEMS or any(_has_metric(t) for t in scored):
+        return None
+    return _finding(
+        "note", ("resume", None, None), "No numbers anywhere",
+        "None of your bullets has a number.",
+        "Hiring managers often pass over a resume with no measured results at all. "
+        "Bullets without numbers are fine; a resume with none reads as unmeasured.",
+        "Add a real number to one or two bullets where one exists.",
+        source="rule", rule="evidence.no_numbers")
+
+
 def _shape_notes(resume: dict, levels_by_loc: dict, tier: str, hot: set) -> list[dict]:
     notes: list[dict] = []
     exp = health_zones.enabled_entries(resume, "experience")
@@ -771,6 +804,10 @@ def _shape_notes(resume: dict, levels_by_loc: dict, tier: str, hot: set) -> list
                 "A screener may never reach it in the first pass.",
                 "Move it into the summary or the top of the first role.", source="rule",
                 id_key=_ID_KEY_BURIED))
+
+    no_numbers = _no_numbers_note(resume)
+    if no_numbers is not None:
+        notes.append(no_numbers)
 
     return notes
 

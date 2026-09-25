@@ -357,6 +357,8 @@
   asks) until DELETE reopens it. Disputed findings carry `classification_source="dispute"`. A dispute
   on an overridden rating is 409; `extra:` bullets are disputable (text read with `_text_at`); a
   `new_fact` carrying a number the note and bullet never gave yields no suggestion.
+  **`evidence.no_numbers`** is a zero-score `note` at `{"section": "resume"}` (no index), from `_shape_notes`:
+  it fires when 4+ scored bullets exist and none has a number (`_has_metric`); never a penalty or a quota.
   Gates are `tier:
   "fatal"|"serious"` × `status: "pass"|"fail"|"not_assessed"`
   (`health_gates.py:3`), scored by `health_score.py`; a failing fatal, unwaived
