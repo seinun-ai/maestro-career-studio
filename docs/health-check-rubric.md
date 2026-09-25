@@ -1,7 +1,8 @@
 # Health-check rubric
 
 > Reference tier of [SYSTEM.md](../SYSTEM.md). Its living-document contract applies.
-> This rubric defines the evaluator; later-wave disputes and flags are identified below until available.
+> This rubric says what the evaluator judges and why. The code's contract (fields, endpoints, errors) is
+> `docs/entities/others.md`, ResumeLintReport; where the two disagree, the code wins and this file is fixed.
 
 - **Evidence tags** [weak]: strong means direct empirical evidence, moderate means career-service
   guidance or surveys, and weak means a product heuristic. These tags describe support for the principle,
@@ -32,11 +33,15 @@ approved evaluator contract. Code validates the model response and computes scor
 - **One question** [weak]: ask for the single missing piece: what changed, who used it, why that
   approach, or a natural measure. Every measure question names its target and has a number-free
   alternative. Source: approved evaluator contract.
-- **Evidence validation** [weak]: high levels require a substantive quote from the bullet. Quotes
-  validate structure, not the truth or quality of a model's judgment. Source: evaluator contract.
+- **Evidence validation** [weak]: `analogue` and `direct` need a verbatim quote of at least three words
+  from the bullet, else the level drops to `adjacent`. A measure question survives only when its target
+  is in the bullet's own words and its alternative asks for no number; otherwise the alternative is
+  asked instead. Quotes validate structure, not the truth or quality of a model's judgment.
+  Source: evaluator contract, `bullet_classify._validate`.
 - **Scoring** [weak]: the score is the plain mean of enabled experience, project and extra-section
   bullet levels. The summary is assessed but is not scored. Attention zones order suggestions;
-  gates can cap the score. Source: `health_score.py`.
+  gates can cap the score. A finding shows what moving its bullet ONE level up is worth, and the
+  report the points to the next grade. Source: `health_score.py`.
 
 ## Writing examples
 
@@ -99,14 +104,18 @@ approved evaluator contract. Code validates the model response and computes scor
 
 ## User control and verification
 
-- **Precedence** [weak, disputes in a later wave]: manual override > current dispute > evaluation.
-  A note can clarify a reading; new facts count only after acceptance into the bullet. “No number
-  exists” stays in force for that text until the dispute is reopened. Source: approved dispute contract.
+- **Precedence** [weak]: manual override > current dispute > evaluation. A dispute (**Not right?**)
+  re-reads one bullet with the user's note: the note can clarify a reading, but the level never rises
+  without a verbatim quote, and a new fact counts only once the user accepts it into the bullet (it
+  comes back as a guarded suggestion). “No number exists” stays in force for that text, across later
+  disputes and model or rubric changes, until the dispute is reopened. A hand-set rating is not
+  disputable: set it back to automatic first. Source: approved dispute contract, `health_disputes.py`.
 - **Rewrites** [weak]: never invent numbers, drop protected entities or introduce placeholders.
   All appliable rewrites pass `health_guards`; a rejected suggestion is copy-only or absent.
   Source: `health_guards.py` and the product truthfulness requirement.
-- **Repeatability** [weak]: cache by text, rubric version and model, with user overrides preserved.
-  Source: evaluator cache contract. Repeatability is not proof of an accurate judgment.
+- **Repeatability** [weak]: cache by text, rubric version and model, with user overrides preserved;
+  a change to what the prompt judges bumps the rubric version. Source: evaluator cache contract.
+  Repeatability is not proof of an accurate judgment.
 - **Golden set** [weak]: 80 synthetic bullets across eight roles plus 12 adversarial disputes are
   a pilot, not broad validation. Five bullets per role are development examples and five are held
   out. The owner must approve the labels before judging the evaluator. Tune only on development
@@ -114,3 +123,7 @@ approved evaluator contract. Code validates the model response and computes scor
 - **Pilot gate** [weak]: across three held-out trials, each role needs 80% within-one-level agreement,
   overall needs 90% within-one and 70% exact; unnatural number asks and overcredited disputes must
   be zero. Persisted no-number facts must suppress measure asks. Source: evaluation plan.
+- **Known limits** [weak]: disputes are web-only (no MCP tool); a rating hand-set to `direct`
+  leaves the report, so it can't be set back from the report's Done tab; custom-section suggestions
+  are copy-only (no bullet edit op for them); a tailored draft gets the word bank but no automatic
+  rubric check. Source: SYSTEM.md §11.

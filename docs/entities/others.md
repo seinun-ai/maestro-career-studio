@@ -343,92 +343,119 @@
   `entity_timeline` emits `point_captured` **only** for `mcp`/`chat` points (a
   hand-typed KB grows no timeline entry per bullet). `patch_point` clears
   `approved_at` when a point leaves `approved`.
-- **ResumeLintReport** (health check): the [health rubric](../health-check-rubric.md) defines bullet evidence.
-  Evaluations are reused only for the current rubric version and smart model; manual overrides
-  win across both changes. High levels need substantive verbatim evidence. Invalid number asks
-  become detail questions. Evaluations store their rubric version, evidence, question, measure target, alternative and language
-  notes on `bullet_classifications`. **Disputes** (`health_disputes.py`; `POST /{kind}/{key}/dispute`,
-  `GET /{kind}/{key}/disputes`, `DELETE /disputes/{content_hash}`) re-run the evaluator uncached on one
-  bullet with the user's note and store the result on `bullet_disputes`, never on
-  `bullet_classifications`. The note changes how the text is read; a fact it adds returns only as a
-  `guarded_rewrite` suggestion, and the reply is written in code from the before/after comparison.
-  `classify_items` precedence: override > dispute (same rubric version and model) > evaluation. A
-  dispute's `metric_unavailable` survives later disputes and model changes (read-time demotion of number
-  asks) until DELETE reopens it. Disputed findings carry `classification_source="dispute"`. A dispute
-  on an overridden rating is 409; `extra:` bullets are disputable (text read with `_text_at`); a
-  `new_fact` carrying a number the note and bullet never gave yields no suggestion.
-  **`evidence.no_numbers`** is a zero-score `note` at `{"section": "resume"}` (no index), from `_shape_notes`:
-  it fires when 4+ scored bullets exist and none has a number (`_has_metric`); never a penalty or a quota.
-  **Wording** notes (`language.cliche`/`language.filler` from the code-matched word bank in `health_wording.py`;
-  `language.slip` from the stored `language` field) are zero-score, never skipped under a ladder ask, and carry
-  `subject` and the ORIGINAL text's `content_hash`; a cliché never has a `suggestion`, a filler or slip has one only
-  when `health_wording` finds the edit clean and `guard_violations` is empty. The
-  bank lives in `Setting` rows `health.word_bank` (absent = defaults) and `health.ignored_words` (Never flag),
-  edited through `GET`/`PUT /api/resume-lint/wording` and `POST /wording/reset`; the coherence check uses it too,
-  and tailoring gets it as one "Never use these words: …" line `prompt_assembly._skill_preamble` appends (minus Never flag).
-  Gates are `tier:
-  "fatal"|"serious"` × `status: "pass"|"fail"|"not_assessed"`
-  (`health_gates.py:3`), scored by `health_score.py`; a failing fatal, unwaived
-  gate BLOCKS tailoring-session creation — but only a FRESH one: a stale report
-  (its `resume_version_number` no longer the latest version) counts as NO
-  report for the block and only sets a re-analyze `health_warning`.
-  Report reads carry `stale`, `insufficient_evidence` (fewer
-  scoreable bullets than `MIN_SCOREABLE_ITEMS = 4` — grade withheld in the UI),
-  and `next_grade` (next band and points, null at A or when capped). Classifier findings carry
-  `ask_kind`, `measure_target`, `alt_question`, verbatim `evidence` and next-level `gain`; summary
-  gain is zero. Questions are per bullet with number-free detail fallbacks. Answered rewrites
-  receive that question as context. `score_breakdown` (`raw_score`/`e_hot`/`n_scoreable`/`capped_by`, from
-  `features_json`). `replace_bullet`/`replace_summary` ops accept
-  `expected_content_hash` (the classifier hash of the text being replaced);
-  a mismatch — or a vanished target when a hash was sent — is 409 "content
-  changed since analysis", and ask-answer applies the same guard. C2 escalates
-  ask→fail only when the resume CHANGED since the prior report, and
-  `guarded_rewrite` permits numbers the candidate's answer supplies
-  (`guard_violations(..., supplied=)`). Unattended (context="") strengthen
-  rewrites are cached on `bullet_rewrites` by `content_hash` — a row with
-  NULL text is "tried, ask", absence is "never tried"; answered rewrites
-  persist on `health_ask_answers` (written before the LLM call;
-  `GET /api/resume-lint/{kind}/{key}/answers` rehydrates). **Finding ids are frozen
-  keys**: `_fid` hashes the finding's type, location and issue text, and saved ask
-  answers key on that id, so a finding whose `issue` is reworded passes its OLD text
-  as `id_key` (`LADDER_COPY`'s `id_key`, the `_ID_KEY_*` constants and `_id_key_*`
-  builders in `resume_lint.py`); never edit one, or every saved answer is orphaned.
-  Gate words are one table, `health_gates.GATE_LABELS`, re-stamped on every READ
-  (`with_current_labels`), so a relabel needs no re-run and no frontend map.
-  `POST .../draft-rewrite`
-  is the generic guarded-draft path (`objective=strengthen|condense`, optional
-  `expected_content_hash`, always returns the hash of the text drafted FROM).
-  `skills.undemonstrated` is a token-boundary match (alphanumeric lookarounds,
-  not `\\b`, so C++ still matches; ≤2-char tokens cannot hit inside "for").
-  **The `HealthGateWaiver` table is the
-  authority on waivers**, never a stored report's statuses: waiving writes a row
-  and nothing else, so a snapshot says `fail` until the next RUN folds waivers
-  in. Readers go through `resume_lint.gate_waivers(db, kind, key)` — reading
-  statuses kept MCP's `waive_health_gate` escape hatch shut (waive → retry →
-  same 409), and only the web's re-run after waiving hid it. The evidence ladder covers summary +
-  experience/projects/**custom-section** bullets (locations `extra:<key>`), so
-  an extras-heavy resume (academic CV, licenses) scores on its real content
-  instead of 0/F; extras are never hot zones and never get rewrite
-  suggestions — no bullet-scoped `/edits` op exists for them (§11 item 20), so
-  both frontend cards render extras suggestions copy-only. Stale `extra:`
-  locations (section renamed/deleted between runs) degrade to empty text, never
-  raise. Each gate carries backend-owned static `why` and `fix_hint` separately
-  from factual per-run `detail`; failed and waived cards disclose that coaching,
-  and waived gates include the stored reason when available. Static gate
-  findings remain for verbatim MCP report consumers. Bullet classification overrides (with
-  reason) let the user overrule an evidence tier from the health report page.
-  **Attention zones govern severity, ordering and C1; the score is a plain mean.**
-  `health_zones.hot_locations` returns the summary plus whichever ONE section
-  carries that candidate's evidence — the most recent enabled ROLE for
-  `experienced`/`unknown`, the first enabled PROJECT for `early` (with no
-  employment history the projects ARE the experience). One choice, never both:
-  marking both made most of a junior document hot, and `cost()` can only order
-  the fix list if some content is cold. There is no three-bullet cap — an
-  entry's bullets are one unit of evidence. Editors render no amber zone wash
-  and make no "read first by a recruiter" claim (a fixed positional heuristic
-  must not be stated as fact about a reader); the marker survives ONLY on the
-  health report, labelled `Higher priority`.
-  `lib/health-zones.ts` mirrors the Python; update both together.
+- **ResumeLintReport** (health check): the [health rubric](../health-check-rubric.md) says what each
+  level, flag and word-bank default means and why; this entry is the code's contract. Gates are `tier:
+  "fatal"|"serious"` × `status: "pass"|"fail"|"not_assessed"` (`health_gates.py:3`), scored by
+  `health_score.py` (the plain mean of experience, project and custom-section bullet levels; the
+  summary is judged, never scored); a failing fatal, unwaived gate BLOCKS tailoring-session creation
+  — but only a FRESH one: a stale report (its `resume_version_number` no longer the latest version)
+  counts as NO report for the block and only sets a re-analyze `health_warning`. Report reads carry
+  `stale`, `insufficient_evidence` (fewer scoreable bullets than `MIN_SCOREABLE_ITEMS = 4` — grade
+  withheld in the UI), `score_breakdown` (`raw_score`/`e_hot`/`n_scoreable`/`capped_by`, from
+  `features_json`) and `next_grade` (`{grade, points}` to the next band's floor; null at A, and when
+  a gate cap lowered the score). Every ask and fix on a scored bullet carries `gain`: the points one
+  level up is worth (`100 × step / n_scored`), never a promised jump to full credit; summary asks and
+  every note carry 0.
+- **The health evaluator** (`bullet_classify.py`, prompt `resume_bullet_classify`) judges; code
+  validates and does all arithmetic. One batched smart-model call for the texts nothing stored
+  answers returns, per text, a level, 1–3 `evidence` quotes, one `question`, `ask_kind`
+  (`measure`|`detail`), `measure_target`, `alt_question`, up to three `language` slips
+  (`{span, fix}`), a reason and a confidence. `_validate` is STRUCTURAL: a quote must be verbatim
+  (case and whitespace aside) and at least three words, and `analogue`/`direct` without one drops to
+  `adjacent`; a `measure` ask survives only when its target names the bullet's own words (half its
+  content words, as whole words) AND its alternative asks for no number — otherwise it becomes a
+  detail ask carrying that alternative (or none, and the report falls back to static per-level copy,
+  `FALLBACK_QUESTION`); a detail question that demands a number is swapped the same way; `direct`
+  asks nothing; a slip's span must occur verbatim. A text the model skips reads `implied` + uncertain
+  and is not stored. Results cache on `bullet_classifications` by `content_hash` and are reused only
+  under the current `RUBRIC_VERSION` AND smart model, so a prompt-contract change bumps the version
+  (SYSTEM.md §12); overrides survive both. Findings carry `ask_kind` (`reword` on a fix, and on the
+  ask a ≤0.30 bullet gets when no safe rewrite exists), `measure_target` and `alt_question` (measure
+  asks only), verbatim `evidence`, `classification_source` (which of override, dispute or evaluation
+  rated it) and the question itself, which also reaches every rewrite of that bullet as context
+  (`guarded_rewrite(question=)`). `evaluate_uncached` never touches the cache: disputes and
+  `scripts/health_golden.py` (the rubric's pilot gate, run by hand) rely on that.
+- **Health disputes** (`health_disputes.py`; `POST /{kind}/{key}/dispute`, `GET /{kind}/{key}/disputes`,
+  `DELETE /disputes/{content_hash}`) are the **Not right?** control: the evaluator re-run uncached on
+  one bullet with the user's note (≤1000 chars). The note changes how the text is READ; the level
+  may not rise without a verbatim quote (`dispute` keeps the earlier reading, whatever `_validate`
+  allowed). A fact the note adds comes back only as a `guarded_rewrite` `suggestion`, dropped when the
+  model's `new_fact` carries a number neither the note nor the bullet gave ("Add it to the bullet in
+  your own words."). The reply is written in code from the before/after comparison, quoting the UI's
+  level labels. One `bullet_disputes` row per text, never on `bullet_classifications`;
+  `classify_items` precedence is **override > dispute (same rubric version and model) > evaluation**,
+  and a disputed finding says `classification_source="dispute"`. `metric_unavailable` ("no number
+  exists") persists: later disputes keep it, and it demotes number asks at READ time on every
+  evaluation of that text (`without_number_ask`), whatever the model or rubric, until DELETE
+  reopens it. Errors: 409 for changed text (the `expected_content_hash` guard, including a vanished
+  bullet) and for a hand-set rating ("You set this rating yourself. Set it back to automatic first.",
+  before any model call); 422 for a blank note or no text; 502 when the answer fails validation
+  (nothing stored) or the provider is down. Custom-section (`extra:`) bullets are disputable, their
+  text read with `_text_at`. GET lists disputes whose text is still in the resume, one row per
+  location; DELETE is 204 and idempotent. The write lock is taken only after every model call.
+- **`evidence.no_numbers`** is a zero-score `note` at `{"section": "resume"}` (no index), from
+  `_shape_notes`: it fires when 4+ scored bullets exist and none has a number (`_has_metric`, which
+  ignores versions and years); a highlighted flag, never a penalty or a quota.
+- **Wording notes** are `language.cliche` / `language.filler` (code-matched against the user's word
+  bank, `health_wording.py`, from `_advisories`, so `rule_notes` and the coherence check carry them)
+  and `language.slip` (the stored `language` field, built in `assemble`; not in the coherence check),
+  over the summary and every scored bullet: one note per location and word or span, zero score, never
+  skipped under a ladder ask, with `subject` (the word or span) and the ORIGINAL text's
+  `content_hash`. A cliché never has a `suggestion` (a rewrite by hand); a filler's is the text with
+  every whole-word occurrence cut, and a slip's the fix swapped in only when the span occurs once —
+  each only when `health_wording` finds the seam clean (the Remove safety net: rubric, "Remove and
+  Apply") and `guard_violations` is empty. The bank is two `Setting` rows: `health.word_bank`
+  (absent = defaults; reset deletes it) and `health.ignored_words` (Never flag, which also silences a
+  slip; reset keeps it), edited through `GET`/`PUT /api/resume-lint/wording` and `POST
+  /wording/reset`, all three answering `{cliche, filler, ignored, defaults}`; entries are trimmed,
+  lower-cased and deduped (1–40 chars, ≤200 per list, else 422) and an unreadable row reads as the
+  default. Tailoring avoids the same words: `prompt_assembly._skill_preamble` appends one "Never use
+  these words: …" line (clichés then filler, minus Never flag).
+- **Health finding ids are frozen keys**: `_fid` hashes the finding's type, location and issue text,
+  and saved ask answers key on that id, so a finding whose `issue` is reworded passes its OLD text as
+  `id_key` (`LADDER_COPY`'s and `ASK_ISSUE`'s `id_key`, the `_ID_KEY_*` constants and `_id_key_*`
+  builders in `resume_lint.py`); never edit one, or every saved answer is orphaned. Which asks kept
+  their keys: SYSTEM.md §12.
+- **Health rewrites and answers**: `replace_bullet`/`replace_summary` ops accept `expected_content_hash`
+  (the classifier hash of the text being replaced); a mismatch — or a vanished target when a hash was
+  sent — is 409 "content changed since analysis", and ask-answer applies the same guard. C2 escalates
+  ask→fail only when the resume CHANGED since the prior report, and `guarded_rewrite` permits numbers
+  the candidate's answer supplies (`guard_violations(..., supplied=)`). Unattended (context="")
+  strengthen rewrites are cached on `bullet_rewrites` by `content_hash` — a row with NULL text is
+  "tried, ask", absence is "never tried"; answered rewrites persist on `health_ask_answers` (written
+  before the LLM call; `GET /api/resume-lint/{kind}/{key}/answers` rehydrates). `POST
+  .../draft-rewrite` is the generic guarded-draft path (`objective=strengthen|condense`, optional
+  `expected_content_hash`, always returns the hash of the text drafted FROM). Base `PATCH /edits`
+  answers with `version_number`, the version it left latest (the question pass's Undo:
+  [resume-version.md](resume-version.md)). `skills.undemonstrated` is a token-boundary match
+  (alphanumeric lookarounds, not `\\b`, so C++ still matches; ≤2-char tokens cannot hit inside "for").
+- **Health gates and waivers**: gate words are one table, `health_gates.GATE_LABELS`, re-stamped on
+  every READ (`with_current_labels`), so a relabel needs no re-run and no frontend map. **The
+  `HealthGateWaiver` table is the authority on waivers**, never a stored report's statuses: waiving
+  writes a row and nothing else, so a snapshot says `fail` until the next RUN folds waivers in. Readers
+  go through `resume_lint.gate_waivers(db, kind, key)` — reading statuses kept MCP's
+  `waive_health_gate` escape hatch shut (waive → retry → same 409), and only the web's re-run after
+  waiving hid it. Each gate carries backend-owned static `why` and `fix_hint` separately from factual
+  per-run `detail`; failed and waived cards disclose that coaching, and waived gates include the
+  stored reason when available. Static gate findings remain for verbatim MCP report consumers.
+  Bullet classification overrides (with reason, `POST /classification-override`) let the user
+  overrule a level from the report.
+- **Health coverage and attention zones**: the evidence ladder covers summary +
+  experience/projects/**custom-section** bullets (locations `extra:<key>`), so an extras-heavy resume
+  (academic CV, licenses) scores on its real content instead of 0/F; extras are never hot zones and
+  never get rewrite suggestions — no bullet-scoped `/edits` op exists for them (SYSTEM.md §11 item
+  20), so every extras suggestion (fix, dispute, wording) renders copy-only. Stale `extra:` locations
+  (section renamed/deleted between runs) degrade to empty text, never raise. **Attention zones govern
+  severity, ordering and C1; the score is a plain mean.** `health_zones.hot_locations` returns the
+  summary plus whichever ONE section carries that candidate's evidence — the most recent enabled
+  ROLE for `experienced`/`unknown`, the first enabled PROJECT for `early` (with no employment history
+  the projects ARE the experience). One choice, never both: marking both made most of a junior
+  document hot, and `cost()` can only order the fix list if some content is cold. There is no
+  three-bullet cap — an entry's bullets are one unit of evidence. A strong (`analogue`) cold bullet
+  gets no ask. Editors render no amber zone wash and make no "read first by a recruiter" claim (a
+  fixed positional heuristic must not be stated as fact about a reader); the marker survives ONLY on
+  the health report, labelled `Higher priority`. `lib/health-zones.ts` mirrors the Python; update both
+  together.
 - **ApplicationProposal + ConsentEvent** (auto-apply ledger; migrations
   `56ade310b259` + `11b61fe1ace9`, lifecycle fields `0c677ba4cbcb`, filer
   `9a5744f9b9d9`, the one revision after the SQLite baseline): the

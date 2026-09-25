@@ -94,7 +94,7 @@ backend/
   mcp_server/          FastMCP server (server.py tools → client.py httpx → REST)
   migrations/          alembic: the SQLite chain, baseline 871d0425b64c + revisions (ids: §9; §12 has the revision-id gotcha)
   tests/               pytest on a throwaway SQLite file, no service; mcp_server/tests/ uses respx (no DB)
-  scripts/             calibration + parity tooling (ats_*, template_parity), run from backend/
+  scripts/             calibration + parity tooling (ats_*, template_parity, health_golden), run from backend/
 frontend/              Next.js 16 (App Router) + React 19 + Tailwind v4 + Base UI-flavored
                        shadcn. AGENTS.md: read node_modules/next/dist/docs before writing code.
 data/                  the database: maestro_cs.sqlite3 + its -wal/-shm sidecars (bind-mounted, PII)
@@ -136,7 +136,7 @@ file to open.
 | TailoringSession (`models/tailoring_session.py`) | [`docs/entities/tailoring-session.md`](docs/entities/tailoring-session.md) | the open → tailored | superseded | abandoned machine; frozen gaps |
 | AtsScore (`models/ats_score.py`) | [`docs/entities/ats-score.md`](docs/entities/ats-score.md) | base upsert-singletons vs appended tailored history; deterministic engine |
 | ResumeVersion (`models/resume_version.py`) | [`docs/entities/resume-version.md`](docs/entities/resume-version.md) | append-only snapshots on every write path — the undo story |
-| Health rubric | [docs/health-check-rubric.md](docs/health-check-rubric.md) | bullet levels, questions, flags and shared writing guidance |
+| Health rubric | [docs/health-check-rubric.md](docs/health-check-rubric.md) | what the check judges and why: levels, questions, flags, word bank, disputes (the report's code contract: Others, ResumeLintReport) |
 | Others | [`docs/entities/others.md`](docs/entities/others.md) | BaseResume, and the secondary entities that need rules but not a file each |
 
 ## 5. The application workflow, end to end (web)
@@ -449,7 +449,9 @@ file to open.
   `tests/test_agent_names.py`: add a known client to BOTH), base resumes
   (`list_resume_versions`/`get_resume_version`/`restore_resume_version` — kind is REST `base`|`application`, a
   restore is a new version; `archive_base_resume`/`unarchive_base_resume` hide from `list_base_resumes`
-  without deleting; those five are **full-profile only** this round), health (run/get + waivers), the full
+  without deleting; those five are **full-profile only** this round), health (run/get + waivers; a finding carries its
+  bullet's own `question`, `ask_kind`, `measure_target`/`alt_question`, `evidence` and `gain`, a report `next_grade`;
+  disputes and the word bank are web-only), the full
   tailoring workflow (session tools take **`tailoring_session_id`** — breaking rename, no legacy alias;
   `resolve_gaps`' evidence-carrying actions are gated server-side — §4; `quick_tailor` is the profile-driven
   fast path), render + slim PDF inspection (`get_rendered_pdf` has **no** `page_images_b64`;
@@ -724,7 +726,9 @@ KB + extension Q&A) → **2026-07-16 custom resume sections (`extra_sections`) p
 (fixed-core-plus-typed-extras, then versioned ATS evidence + stable-key gap placement) → MCP guided tailoring
 (caller-authored ops, hint envelope) → MCP onboarding: reversed "approving from MCP is unrepresentable" — a
 draft gate needs an approver wherever review happens, and agent transcription is NOT the verbatim-file
-exception, so ingest lands drafts and consent-gated `kb_approve_points` is the one approval path from MCP.
+exception, so ingest lands drafts and consent-gated `kb_approve_points` is the one approval path from MCP. →
+Health check v3: a concrete result stated in words earns full credit (no number quota), and the evaluator asks
+each bullet its own question, a number only where one is natural.
 
 ## 11. Known deferred items (priority order)
 
@@ -767,8 +771,8 @@ citation. Priority lives in the item text, not in the ordinal.
 19. Auto-apply follow-ups: `source` threading through the explore builders; Telegram consent channel
     (rejected for v1); extension-less CDP fill (HARD constraint: backend CORS must never admit ATS/web
     origins).
-20. `extra_sections` remainder: calibrate the `extra_only` multiplier; nested extra-section entry/bullet ops
-    are still unbuilt.
+20. `extra_sections` remainder: calibrate the `extra_only` multiplier; nested extra-section entry/bullet ops are
+    unbuilt (a bullet op would make the health check's custom-section suggestions appliable, not copy-only).
 21. MCP onboarding follow-ups: `near_duplicate_of` hints in the ingest report (normalized-distance vs
     existing points, so the agent can retire one copy without the LLM clusterer); a batch `sources` variant
     of `kb_ingest_resume` (single-source calls make profile seeding order-dependent); a consent story for
@@ -827,6 +831,12 @@ citation. Priority lives in the item text, not in the ordinal.
     Settings, Analytics and Career repeats one error (a page-level message needs a shared mechanism).
 39. Windows is unverified end to end: install, update, Companion load from `\\wsl.localhost\...` (GETTING_STARTED
     gives a copy-to-`C:` fallback), `.mcpb` on Windows Claude Desktop, and the WSL upload host root.
+40. Health report and question pass gaps: a **Not right?** reply landing while its row is queued for Write is
+    overwritten by the draft; a rating hand-set to "Shows a result" leaves the report and Done lists only the
+    overrides in it, so it can't be set back; `BaseResumeDetail.version_number` reads better as `edit_version_number`.
+41. Health check follow-ups: a one-at-a-time question mode beside the one-page pass; repeated-opener notes (one
+    first verb across many bullets); an automatic rubric check on tailored drafts (tailoring gets only the word
+    bank line; the coherence check runs rule notes); a dispute MCP tool (disputes are web-only).
 
 ## 12. Gotchas that have bitten before
 
@@ -840,9 +850,12 @@ citation. Priority lives in the item text, not in the ordinal.
   that chain, so a dialog's padding was counted and Home left the first tab cut off → the row is `relative`.
 - **An sr-only span beside a flex item is out of flow** (2026-09-24): Chrome's accessible name gains a space
   ("Agent inbox , 3 need you") → a one-phrase count goes in `aria-label`; check Chrome's AX tree.
-- **Rewording a health `issue` orphans saved ask answers** (2026-09-24): `_fid` hashes the text → a
-  measure asks and numeric analogues retain old `id_key`s (`resume_lint.py`); new detail asks have new keys.
-- **Prompt contracts need versions** (2026-09-25): changed judgments → bump `RUBRIC_VERSION` and resync defaults; overrides survive.
+- **Rewording a health `issue` orphans saved ask answers** (2026-09-24): `_fid` hashes the text → pass the old
+  text as `id_key` (`resume_lint.py`). v3 kept measure asks (old adjacent key), analogue asks quoting a digit (old
+  analogue key) and uncertain asks; detail asks have new ids, so answers saved on those old asks no longer show.
+- **A prompt-contract change bumps `RUBRIC_VERSION`** (2026-09-25): classifier cache rows are keyed by text +
+  rubric version + model, so unchanged text kept its old judgment → bump `bullet_classify.RUBRIC_VERSION` and
+  resync the default prompt row (`d08dd68e4eff`); overrides survive, and so does a dispute's "no number".
 - **A GUI-launched process has no shell `PATH`** (2026-09-20): MacTeX at `/Library/TeX/texbin` is invisible
   to the desktop shell and to a Claude Desktop child, so a bare `pdflatex` does not resolve.
   `engines.find_pdflatex` searches the TeX homes after PATH, and every run spawns the resolved ABSOLUTE path.
@@ -883,8 +896,7 @@ citation. Priority lives in the item text, not in the ordinal.
   Smart barely moves outcomes — re-benchmark FAST before changing model defaults.
 - **`autoflush=False` sessions**: two `session.merge`s that canonicalize to the same PK in one flush both
   INSERT (no dedup) → IntegrityError. Dedupe in Python first (see `_insert_skills`).
-- **Pydantic error mapping order**: `ValidationError` subclasses `ValueError` — catch it FIRST or 422s
-  silently become 400s (render endpoint comment).
+- **Pydantic error mapping order**: `ValidationError` subclasses `ValueError` — catch it FIRST or 422s become 400s.
 - **Transient response attrs**: `already_existed` (Job) and `health_warning` (TailoringSession) are instance attrs
   set after refresh, never columns — don't "fix" them into the ORM.
 - **score_target(result=...)**: passes a precomputed engine result to persist; the double-run it replaced was
@@ -895,10 +907,8 @@ citation. Priority lives in the item text, not in the ordinal.
 - **PDFium is not thread-safe** (2026-09-23): `/templates` fetched gallery previews in parallel on the threadpool
   and segfaulted libpdfium (`FPDF_LoadPage`). Every PDFium use under `app/` holds
   `services/pdfium_lock.PDFIUM_LOCK`, pinned by an AST scan in `tests/test_pdfium_lock.py`.
-- **Worktree subagents**: agents may edit the MAIN checkout instead of the worktree — hand them absolute worktree
-  paths and verify with `git -C <worktree> status`.
-- **Ports**: 8000/8001 may be squatted by unrelated apps or stale servers — verify identity via
-  `GET /openapi.json` `info.title == "Maestro CS API"`.
+- **Worktree subagents** may edit the MAIN checkout: hand them absolute worktree paths, verify with `git -C <wt> status`.
+- **Ports 8000/8001 may be squatted** by other apps or stale servers: `/openapi.json` `info.title` is "Maestro CS API".
 - **Check model capability in the ROUTER, never inside `run_turn`**: `run_turn` is a generator — anything it
   raises fires after the SSE headers are out and reaches the browser as a truncated stream. Capabilities are
   probed on save (`llm_capabilities.probe()`); `require()` raises `CapabilityMissing`; unprobed models are
