@@ -1,18 +1,24 @@
 """Manual pilot: python scripts/health_golden.py --split test --trials 3.
 
 Synthetic text, uncached requests, disposable SQLite. Configure the provider via
-its environment settings. Disputes need the note-aware prompt from Task 7.
+its environment settings (the disposable database holds no stored key, model or
+endpoint). Needs no DATABASE_URL: see `golden_session`.
 """
 from __future__ import annotations
 import argparse
+from collections.abc import Iterator
+from contextlib import contextmanager
 import json
+import os
 from pathlib import Path
 import sys
 import tempfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from sqlalchemy.orm import Session
-from app.db import Base, make_engine
+import app.models  # noqa: F401 -- registers every table for create_all
+from app.config import settings
+from app.db import Base, SessionLocal, make_engine
 from app.services import bullet_classify as bc, model_settings
 
 FIXTURE = Path(__file__).resolve().parents[1] / "tests/fixtures/health_golden.json"
@@ -77,6 +83,31 @@ def run_trials(db: Session, cases: list[dict], disputes: list[dict], trials: int
     return summarize(cases, runs, disputes, dispute_runs)
 
 
+@contextmanager
+def golden_session(directory: str) -> Iterator[Session]:
+    """A session on a fresh SQLite file in `directory`, and every app read with it.
+
+    The session passed around is not the only reader: `llm.call_openai` reads `llm.json_mode`,
+    the API keys and the base URL through the app's global `SessionLocal`, whose engine is
+    whatever DATABASE_URL named at import (unset: a file with no tables). So `SessionLocal`
+    is bound to this engine for the run and handed back after. Call logs land in `directory`
+    too, unless LOGS_DIR says otherwise (the default, /app/logs, exists only in the image).
+    """
+    engine = make_engine(f"sqlite:///{directory}/golden.sqlite3")
+    Base.metadata.create_all(engine)
+    previous_bind, previous_logs = SessionLocal.kw.get("bind"), settings.logs_dir
+    SessionLocal.configure(bind=engine)
+    if "LOGS_DIR" not in os.environ:
+        settings.logs_dir = Path(directory) / "logs"
+    try:
+        with SessionLocal() as db:
+            yield db
+    finally:
+        SessionLocal.configure(bind=previous_bind)
+        settings.logs_dir = previous_logs
+        engine.dispose()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--split", choices=("dev", "test"), default="dev")
@@ -87,16 +118,11 @@ def main() -> int:
     fixture = json.loads(FIXTURE.read_text())
     cases = [c for c in fixture["bullets"] if c["split"] == args.split]
     with tempfile.TemporaryDirectory(prefix="health-golden-") as directory:
-        engine = make_engine(f"sqlite:///{directory}/golden.sqlite3")
-        Base.metadata.create_all(engine)
-        try:
-            with Session(engine) as db:
-                report = run_trials(db, cases, fixture["disputes"], args.trials)
-                report.update(split=args.split, trials=args.trials,
-                              model=model_settings.get_smart_model(db),
-                              rubric_version=getattr(bc, "RUBRIC_VERSION", 1))
-        finally:
-            engine.dispose()
+        with golden_session(directory) as db:
+            report = run_trials(db, cases, fixture["disputes"], args.trials)
+            report.update(split=args.split, trials=args.trials,
+                          model=model_settings.get_smart_model(db),
+                          rubric_version=bc.RUBRIC_VERSION)
     print(json.dumps(report, indent=2))
     return 0 if report["passed"] else 1
 
