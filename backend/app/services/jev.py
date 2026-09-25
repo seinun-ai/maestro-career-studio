@@ -84,6 +84,25 @@ def choice_of(answer: object, offered: Collection[str]) -> ChoiceAnswer | None:
     return ChoiceAnswer(choice, float(probabilities[choice]), float(confidence))
 
 
+def noul_question(instructions: str) -> dict[str, Any]:
+    return {"type": "noul", "instructions": instructions}
+
+
+def noul_of(answer: object) -> float | None:
+    """P(yes) from a Noul answer ({"type": "noul", "noul": p}), or None.
+
+    A missing `type` is tolerated; any other type, or p outside [0, 1] (or a
+    bool), is refused and logged like `choice_of`'s refusals."""
+    if not isinstance(answer, dict) or answer.get("type", "noul") != "noul":
+        logger.warning("jev noul answer refused: not a noul answer")
+        return None
+    p = answer.get("noul")
+    if not _unit(p):
+        logger.warning("jev noul answer refused: not a probability")
+        return None
+    return float(p)
+
+
 def _unit(n: object) -> bool:
     # `type(...) in`, not isinstance: a bool is an int and never a probability.
     return type(n) in (int, float) and math.isfinite(n) and 0 <= n <= 1
@@ -142,8 +161,4 @@ def decide(
 
 def probe(session: Session | None = None) -> None:
     """One tiny Noul call; raises LLMProviderError when the key or endpoint is wrong."""
-    decide(
-        {"ok": {"type": "noul", "instructions": "Is the state the word yes?"}},
-        "yes",
-        session,
-    )
+    decide({"ok": noul_question("Is the state the word yes?")}, "yes", session)

@@ -132,3 +132,16 @@ def test_the_call_log_keeps_metadata_only(db_session, tmp_path):
     jev.decide(QUESTIONS, {"secret": "Ada Lovelace"}, db_session)
     [logged] = list((tmp_path / "llm_calls").iterdir())
     assert "Ada Lovelace" not in logged.read_text()
+
+
+@pytest.mark.parametrize("answer, expected", [
+    ({"type": "noul", "noul": 0.93}, 0.93), ({"noul": 0}, 0.0),
+    ({"type": "noul", "noul": 1.2}, None), ({"type": "noul", "noul": True}, None),
+    ({"type": "choice", "noul": 0.5}, None), ({"type": "noul"}, None), ("yes", None),
+])
+def test_noul_of_accepts_only_a_probability(answer, expected):
+    assert jev.noul_of(answer) == expected
+
+
+def test_noul_question_shape():
+    assert jev.noul_question("Is it?") == {"type": "noul", "instructions": "Is it?"}
