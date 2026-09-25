@@ -32,7 +32,8 @@ def _unavailable(why: str):
 # Package scope, not session: while sync_playwright() is open its event loop
 # counts as RUNNING on this thread, so every later test calling asyncio.run()
 # fails ("cannot be called from a running event loop"). One Chromium for this
-# package, closed before the rest of tests/ runs.
+# package, closed before the rest of tests/ runs. Tests in tests/browser must
+# stay synchronous: no async tests or asyncio.run() here while that loop is open.
 @pytest.fixture(scope="package")
 def browser():
     try:
@@ -50,14 +51,14 @@ def browser():
 
 @pytest.fixture
 def page(browser):
-    context = browser.new_context(viewport={"width": 1280, "height": 900})
+    context = browser.new_context(viewport={"width": 1280, "height": 900}, offline=True)
     pg = context.new_page()
     yield pg
     context.close()
 
 
 def fixture_html(name: str) -> str:
-    return (FIXTURES / name).read_text()
+    return (FIXTURES / name).read_text(encoding="utf-8")
 
 
 @pytest.fixture
@@ -65,7 +66,7 @@ def load():
     def _load(pg, html: str, sources: list[str] | None = None):
         pg.set_content(html)
         for src in sources if sources is not None else ENGINE_SOURCES:
-            pg.add_script_tag(content=(EXTENSION / src).read_text())
+            pg.add_script_tag(content=(EXTENSION / src).read_text(encoding="utf-8"))
         return pg
 
     return _load

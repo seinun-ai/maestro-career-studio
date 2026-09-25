@@ -5,6 +5,7 @@
 </div></div></div>
 <div id="menu-root"></div>
 <script>
+(() => {
   const OPTIONS = ["United States", "United Kingdom", "India", "Canada"];
   const input = document.getElementById("country");
   const menuRoot = document.getElementById("menu-root");
@@ -23,11 +24,15 @@
     input.setAttribute("aria-controls", "country-menu");
     input.setAttribute("aria-expanded", "true");
     for (const opt of menuRoot.querySelectorAll("[role=option]")) {
-      opt.addEventListener("mousedown", (e) => { e.preventDefault(); if (!window.rejectClicks) pick(opt.textContent); });
+      // react-select commits on the option's click (its onClick).
+      opt.addEventListener("click", () => { if (!window.rejectClicks) pick(opt.textContent); });
     }
   };
+  // Pressing on the menu must not blur the input, or blur would close it first.
+  menuRoot.addEventListener("mousedown", (e) => e.preventDefault());
   input.addEventListener("mousedown", renderMenu);
   input.addEventListener("input", renderMenu);
   input.addEventListener("keydown", (e) => { if (e.key === "Escape") closeMenu(); });
   input.addEventListener("blur", () => { input.value = ""; setTimeout(closeMenu, 0); });
+})();
 </script>

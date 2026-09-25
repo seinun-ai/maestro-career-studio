@@ -5,6 +5,7 @@
 <ul role="listbox" id="stale" style="display:none"><li role="option" id="stale-ca">Canada</li></ul>
 <div id="portal"></div>
 <script>
+(() => {
   const TREES = {
     heard: [["Job Board", ["LinkedIn", "Indeed"]], ["Social Media", ["Twitter"]], ["Employee Referral", null]],
     auth: [["Yes", null], ["No", null]],
@@ -34,6 +35,7 @@
     const btn = document.getElementById(id);
     btn.addEventListener("click", (e) => { e.stopPropagation(); render(btn, TREES[id]); });
   }
-  document.body.addEventListener("click", () => { if (open) close(); });
+  document.addEventListener("click", () => { if (open) close(); });
   document.getElementById("stale-ca").addEventListener("click", () => { window.staleHit = true; });
+})();
 </script>

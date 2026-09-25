@@ -9,6 +9,7 @@
   <p data-automation-id="errorMessage" id="zip-err">Error: The field Postal Code is required and must have a value.</p>
 </div>
 <script>
+(() => {
   window.committed = {};
   for (const id of ["city", "zip"]) {
     const input = document.getElementById(id);
@@ -20,4 +21,5 @@
       input.setAttribute("aria-invalid", ok ? "false" : "true");
     });
   }
+})();
 </script>

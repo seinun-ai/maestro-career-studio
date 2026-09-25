@@ -2,6 +2,7 @@
 <button id="fos" aria-haspopup="dialog" aria-labelledby="fos-l">Select</button>
 <div id="portal"></div>
 <script>
+(() => {
   const ALL = ["Business Administration", "Information Systems", "Computer Science", "Statistics"];
   const btn = document.getElementById("fos");
   const portal = document.getElementById("portal");
@@ -19,5 +20,6 @@
       }
     });
   });
-  document.body.addEventListener("click", () => { portal.innerHTML = ""; });
+  document.addEventListener("click", () => { portal.innerHTML = ""; });
+})();
 </script>
