@@ -1106,6 +1106,38 @@ def test_next_grade_is_absent_for_capped_or_top_grade():
         assert rl.assemble(_resume(), levels, gates, "experienced", set())["report"]["next_grade"] is None
 
 
+def _next_grade_under(values, failed=()):
+    resume = _resume()
+    resume["experience"][0]["bullets"] = [f"b{i}" for i in range(len(values))]
+    levels = {("experience", 0, i): _lv(v) for i, v in enumerate(values)}
+    gates = [dict(g, status="fail") if g["id"] in failed else g for g in PASS_GATES]
+    out = rl.assemble(resume, levels, gates, "experienced", set())
+    return out["features"]["raw_score"], out["report"]["next_grade"]
+
+
+def test_next_grade_is_absent_when_a_gate_cap_blocks_the_next_band():
+    # Fatal cap 54: a raw 50 is not lowered, but C (55) is out of reach.
+    assert _next_grade_under([0.5, 0.5], failed={"S1"}) == (50, None)
+    # Serious cap 69: C (55) is reachable from 50, B (70) is not from 60 or 66.
+    assert _next_grade_under([0.5, 0.5], failed={"S4"}) == (50, {"grade": "C", "points": 5})
+    assert _next_grade_under([1.0, 0.5, 0.5, 0.5, 0.5], failed={"S4"}) == (60, None)
+    assert _next_grade_under([1.0, 0.8, 0.5, 0.5, 0.5], failed={"S4"}) == (66, None)
+    # No cap: unchanged.
+    assert _next_grade_under([0.5, 0.5]) == (50, {"grade": "C", "points": 5})
+    assert _next_grade_under([1.0, 0.8, 0.5, 0.5, 0.5]) == (66, {"grade": "B", "points": 4})
+
+
+def test_measure_ask_and_adjacent_ladder_share_one_frozen_id_key():
+    key = "Specific, but carries no number."
+    assert rl.ASK_ISSUE["measure"]["id_key"] == rl.LADDER_COPY["adjacent"]["id_key"] == key
+    levels = {("experience", 0, 0): dict(_lv(0.5), ask_kind="measure", question="How much time?",
+                                         measure_target="processing time", alt_question="What became easier?")}
+    report = rl.assemble(_resume(), levels, PASS_GATES, "experienced", set())["report"]
+    ask = _finding_at(report["findings"], "ask", ("experience", 0, 0))
+    assert ask["ask_kind"] == "measure"
+    assert ask["id"] == rl._fid("ask", ("experience", 0, 0), key)
+
+
 def test_weak_bullet_rewrite_keeps_reword_kind_and_next_level_gain():
     levels = {("experience", 0, 0): dict(_lv(0.3), question="What did you build?")}
     report = rl.assemble(_resume(), levels, PASS_GATES, "experienced", set(), rewrite_fn=lambda text: "Built the tool.")["report"]

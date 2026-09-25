@@ -234,8 +234,11 @@ def run_health_check(kind: str, key: str) -> Any:
     application. `kind` is 'base' (then `key` is the base-resume slug) or
     'application' (then `key` is the application id). Classifies every bullet on
     the evidence ladder, checks structure/content gates, and returns
-    {score, grade, tier, gates, counts, findings} ranked by what each defect costs.
-    Concrete qualitative results can earn full credit; findings include their own question and next-level gain.
+    {score, grade, tier, next_grade, gates, counts, findings} ranked by what each defect costs.
+    Concrete qualitative results can earn full credit. An ask/fix finding carries
+    question, ask_kind (measure|detail|reword), measure_target, alt_question, gain
+    and evidence. Notes score zero: the evidence.no_numbers flag and language.*
+    wording notes. Disputes and the word bank are web-only for now.
     Run this BEFORE create_tailoring_session — tailoring blocks on a failing fatal gate."""
     return _client.run_health_check(kind, key)
 
@@ -245,9 +248,9 @@ def run_health_check(kind: str, key: str) -> Any:
 def get_health_report(kind: str, key: str) -> Any:
     """Fetch the most recent stored health report for a base resume or application
     without re-running it. `kind` is 'base' or 'application', `key` is the slug or
-    application id. Returns {score, grade, tier, gates, counts, findings}, or an
-    error if no report exists yet (run run_health_check first).
-    Findings include per-bullet questions, measure alternatives and next-level gains."""
+    application id. Returns {score, grade, tier, next_grade, gates, counts, findings}
+    (fields as in run_health_check), or an error if no report exists yet (run
+    run_health_check first)."""
     return _client.get_health_report(kind, key)
 
 

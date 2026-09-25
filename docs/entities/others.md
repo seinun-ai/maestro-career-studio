@@ -353,7 +353,7 @@
   `stale`, `insufficient_evidence` (fewer scoreable bullets than `MIN_SCOREABLE_ITEMS = 4` — grade
   withheld in the UI), `score_breakdown` (`raw_score`/`e_hot`/`n_scoreable`/`capped_by`, from
   `features_json`) and `next_grade` (`{grade, points}` to the next band's floor; null at A, and when
-  a gate cap lowered the score). Every ask and fix on a scored bullet carries `gain`: the points one
+  a failed gate's cap sits below that floor, so a raw 50 under the fatal 54 cap gets no "5 points to C"). Every ask and fix on a scored bullet carries `gain`: the points one
   level up is worth (`100 × step / n_scored`), never a promised jump to full credit; summary asks and
   every note carry 0.
 - **The health evaluator** (`bullet_classify.py`, prompt `resume_bullet_classify`) judges; code

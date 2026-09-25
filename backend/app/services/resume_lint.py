@@ -63,6 +63,7 @@ LADDER_COPY: dict[str, dict[str, str]] = {
         "why": "The contribution is vague or team-level, so your role is unclear.",
         "how": "Rewrite to name the specific action you personally took.",
     },
+    # adjacent/analogue: read only for id_key (asks use ASK_ISSUE); keep them, the id_keys are frozen.
     "adjacent": {
         "issue": "Specific, but has no number.",
         "id_key": "Specific, but carries no number.",  # frozen, see _fid
@@ -506,7 +507,7 @@ def _gate_findings(gates: list[dict], resume: dict, c2_hit: dict | None,
 
 ASK_ISSUE = {
     "measure": {"issue": "Specific, but has no number.",
-                "id_key": "Specific, but carries no number.",
+                "id_key": LADDER_COPY["adjacent"]["id_key"],  # one frozen key, see _fid
                 "why": "This result is usually measured; a number makes it checkable.",
                 "how": "Add the number, or answer the no-number question instead."},
     "detail": {"issue": "Says what you did, not what came of it.",
@@ -717,9 +718,7 @@ def assemble(resume: dict, levels_by_loc: dict[Location, dict], base_gates: list
 
     report = {
         "score": score, "grade": grade, "tier": tier,
-        "next_grade": next(( {"grade": letter, "points": floor - score}
-                             for floor, letter in reversed(health_score.GRADE_BANDS) if floor > score), None)
-                      if score == raw_score else None,
+        "next_grade": _next_grade(score, gates),
         "gates": gates, "counts": counts, "findings": findings,
         "insufficient_evidence": len(score_levels) < MIN_SCOREABLE_ITEMS,
     }
@@ -731,6 +730,23 @@ def assemble(resume: dict, levels_by_loc: dict[Location, dict], base_gates: list
         "hot": [f"{loc[0]}:{loc[1]}:{loc[2]}" for loc in sorted(hot, key=str)],
     }
     return {"report": report, "features": features}
+
+
+def _next_grade(score: int, gates: list[dict]) -> dict | None:
+    """The next band up and the points to it; None when a failed gate's cap blocks it.
+
+    The cap blocks it whenever the next band's floor sits above the cap: a score the
+    cap lowered, and a raw 50 under the fatal 54 cap, which can never reach C.
+    """
+    nxt = next(((floor, letter) for floor, letter in reversed(health_score.GRADE_BANDS)
+                if floor > score), None)
+    if nxt is None:
+        return None
+    cap = {"fatal": health_score.FATAL_CAP, "serious": health_score.SERIOUS_CAP}.get(
+        health_score.gate_cap_tier(gates) or "")
+    if cap is not None and nxt[0] > cap:
+        return None
+    return {"grade": nxt[1], "points": nxt[0] - score}
 
 
 _TYPE_RANK = {"gate": 0, "fix": 1, "ask": 1, "note": 2}
