@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useLayoutEffect, useRef, useState, type ReactNode, type Ref, type RefObject } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode, type Ref, type RefObject } from "react";
 import { GuardedLink as Link } from "@/components/guarded-link";
 import {
   ATTENTION_BADGE_LABEL,
@@ -460,12 +460,26 @@ function SuggestionCopyOnly({
 
 function SourceQuote({ text, clamp }: { text: string; clamp?: boolean }) {
   const [open, setOpen] = useState(false);
+  const [cut, setCut] = useState(false);
+  const quoteRef = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    const el = quoteRef.current;
+    if (!clamp || open || !el) return;
+    // Measured, never guessed from length: only a quote the clamp actually cuts
+    // offers "Show all" (a toggle under every short bullet was the clutter).
+    const observer = new ResizeObserver(() => setCut(el.scrollHeight > el.clientHeight + 1));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [clamp, open, text]);
   return (
     <div className="border-l-2 border-border pl-3">
-      <p className={cn("text-foreground max-w-[65ch] text-sm", clamp && !open && "line-clamp-3")}>
+      <p
+        ref={quoteRef}
+        className={cn("text-foreground max-w-[65ch] text-sm", clamp && !open && "line-clamp-3")}
+      >
         {text}
       </p>
-      {clamp && (
+      {clamp && (open || cut) && (
         <button
           type="button"
           className="text-primary mt-0.5 text-xs underline-offset-2 hover:underline"

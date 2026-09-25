@@ -65,9 +65,9 @@
     },
     {
       "split": "test",
-      "text": "Prototyped a private key rotation design for an ongoing security investigation.",
+      "text": "Supported the team that modernized the billing platform.",
       "role": "software",
-      "expected_level": "adjacent",
+      "expected_level": "implied",
       "number_natural": false
     },
     {
@@ -128,9 +128,9 @@
     },
     {
       "split": "dev",
-      "text": "Documented the limitations of an ongoing privacy study for the review board.",
+      "text": "Contributed to various analytics initiatives across the business.",
       "role": "data",
-      "expected_level": "adjacent",
+      "expected_level": "implied",
       "number_natural": false
     },
     {
@@ -205,9 +205,9 @@
     },
     {
       "split": "test",
-      "text": "Explained comfort-care options to a family during an ongoing consultation.",
+      "text": "Supported unit-wide efforts to improve patient care.",
       "role": "nursing",
-      "expected_level": "adjacent",
+      "expected_level": "implied",
       "number_natural": false
     },
     {
@@ -268,9 +268,9 @@
     },
     {
       "split": "dev",
-      "text": "Prepared a confidential negotiation brief for the account director.",
+      "text": "Contributed to the team's growth in the enterprise segment.",
       "role": "sales",
-      "expected_level": "adjacent",
+      "expected_level": "implied",
       "number_natural": false
     },
     {
@@ -345,9 +345,9 @@
     },
     {
       "split": "test",
-      "text": "Explored privacy-preserving research methods for a confidential client project.",
+      "text": "Played a part in several product launches with the design team.",
       "role": "product design",
-      "expected_level": "adjacent",
+      "expected_level": "implied",
       "number_natural": false
     },
     {
@@ -408,9 +408,9 @@
     },
     {
       "split": "dev",
-      "text": "Drafted an ethics rationale for an ongoing oral-history study.",
+      "text": "Took part in the lab's work on protein folding.",
       "role": "research/academia",
-      "expected_level": "adjacent",
+      "expected_level": "implied",
       "number_natural": false
     },
     {
@@ -485,9 +485,9 @@
     },
     {
       "split": "test",
-      "text": "Compared escalation policies for a safety committee review.",
+      "text": "Was part of the push to streamline warehouse operations.",
       "role": "operations",
-      "expected_level": "adjacent",
+      "expected_level": "implied",
       "number_natural": false
     },
     {
@@ -548,9 +548,9 @@
     },
     {
       "split": "dev",
-      "text": "Drafted an empathetic response for a confidential customer complaint.",
+      "text": "Had a hand in improving the support team's service quality.",
       "role": "customer support",
-      "expected_level": "adjacent",
+      "expected_level": "implied",
       "number_natural": false
     },
     {

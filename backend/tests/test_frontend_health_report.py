@@ -144,6 +144,9 @@ def test_judged_text_is_never_italic_or_one_line_truncated():
     assert 'aria-expanded={open}' in quote
     assert 'Show all' in quote
     assert 'text.length >' not in quote
+    # "Show all" appears only when the clamp actually cuts the quote (measured).
+    assert 'ResizeObserver' in quote and 'scrollHeight > el.clientHeight' in quote
+    assert '(open || cut)' in quote
     assert 'border-l-2 border-border pl-3' in quote
 
 
