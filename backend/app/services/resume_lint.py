@@ -905,7 +905,8 @@ def _slip_notes(resume: dict, levels_by_loc: dict[Location, dict],
                 bank: health_wording.WordBank) -> list[dict]:
     """`language.slip`: one note per stored classifier `language` entry
     ({span, fix}), across every classified ladder item. A span on the Never flag
-    list, or no longer in the text, is skipped."""
+    list, or no longer in the text as a whole word, is skipped. Apply text is
+    offered only for a span that occurs once (`health_wording.apply_fix`)."""
     notes: list[dict] = []
     for loc, result in levels_by_loc.items():
         entries = result.get("language") or []
@@ -915,16 +916,17 @@ def _slip_notes(resume: dict, levels_by_loc: dict[Location, dict],
         seen: set[str] = set()
         for entry in entries:
             span, fix = str(entry.get("span") or ""), str(entry.get("fix") or "")
-            if (not span or not fix or span in seen or span not in text
+            if (not span or not fix or span in seen or not health_wording.span_count(text, span)
                     or health_wording.is_ignored(span, bank)):
                 continue
             seen.add(span)
+            fixed = health_wording.apply_fix(text, span, fix)
             notes.append(_finding(
                 "note", loc, _label_at(resume, loc),
                 f"'{span}' looks like a slip: '{fix}'.",
                 "Recruiters notice spelling and grammar slips, and read them as carelessness.",
                 "Apply the fix, or correct it in your own words.",
-                suggestion=_guarded(text, health_wording.apply_fix(text, span, fix)),
+                suggestion=_guarded(text, fixed) if fixed is not None else None,
                 source="llm", rule="language.slip", subject=span,
                 content_hash=bullet_classify.content_hash(text)))
     return notes

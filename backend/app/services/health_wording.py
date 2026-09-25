@@ -18,6 +18,7 @@ import re
 from collections.abc import Iterable
 from dataclasses import dataclass
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.setting import Setting
@@ -111,22 +112,33 @@ def load(db: Session) -> WordBank:
     return WordBank(cliche=cliche, filler=filler, ignored=ignored)
 
 
-def _write(db: Session, key: str, value) -> None:
-    payload = json.dumps(value)
-    row = db.get(Setting, key)
-    if row is None:
-        db.add(Setting(key=key, value=payload))
-    else:
-        row.value = payload
+def _write(db: Session, values: dict[str, object]) -> None:
+    """Upsert Setting rows and commit. Two first edits can both read "absent" and
+    both INSERT; the loser's IntegrityError is rolled back and retried once, when
+    the rows exist and the write is an update."""
+    for attempt in range(2):
+        for key, value in values.items():
+            payload = json.dumps(value)
+            row = db.get(Setting, key)
+            if row is None:
+                db.add(Setting(key=key, value=payload))
+            else:
+                row.value = payload
+        try:
+            db.commit()
+            return
+        except IntegrityError:
+            db.rollback()
+            if attempt:
+                raise
 
 
 def save(db: Session, *, cliche: Iterable[str], filler: Iterable[str],
          ignored: Iterable[str]) -> WordBank:
     bank = WordBank(cliche=tuple(normalize(cliche)), filler=tuple(normalize(filler)),
                     ignored=tuple(normalize(ignored)))
-    _write(db, BANK_KEY, {"cliche": list(bank.cliche), "filler": list(bank.filler)})
-    _write(db, IGNORED_KEY, list(bank.ignored))
-    db.commit()
+    _write(db, {BANK_KEY: {"cliche": list(bank.cliche), "filler": list(bank.filler)},
+                IGNORED_KEY: list(bank.ignored)})
     return bank
 
 
@@ -167,49 +179,94 @@ def matches(text: str, bank: WordBank) -> list[tuple[str, str]]:
 
 _SENTENCE_END = ".!?"
 _JOINING = ",;:"
-# "A dynamic, detail-oriented engineer": the comma after a cut adjective
-# belongs to it when a determiner precedes it.
-_DETERMINERS = frozenset({"a", "an", "the", "my", "our", "their", "his", "her", "its"})
+_DASHES = "-–—"
+_BRACKETS = {"(": ")", "[": "]"}
+
+
+def _article(before: str, after: str) -> str:
+    """`before` with a trailing "a"/"an" matched to the word that now follows it.
+
+    By first LETTER, not sound: "a hour", "an user", "a MBA" come out wrong. The
+    rewrite guards cannot see this, and a wrong article is rarer than the "a
+    engineer" this fixes."""
+    head, _, last = before.rpartition(" ")
+    if last.lower() not in ("a", "an") or not after[:1].isalpha():
+        return before
+    article = "an" if after[0].lower() in "aeiou" else "a"
+    if last[0].isupper():
+        article = article.capitalize()
+    return f"{head} {article}" if head else article
+
+
+def _join(before: str, after: str) -> str:
+    if not before:
+        return after
+    before = _article(before, after)
+    return before + after if before[-1] in "([/" else f"{before} {after}"
 
 
 def _cut(text: str, start: int, end: int, capital: bool) -> str:
     """`text` without [start, end), with the seam cleaned up."""
     before, after = text[:start].rstrip(), text[end:].lstrip()
+    while before and after and _BRACKETS.get(before[-1]) == after[0]:  # "()" left empty
+        before, after = before[:-1].rstrip(), after[1:].lstrip()
+    if after.startswith("/"):  # "very/really" -> "really"
+        after = after[1:].lstrip()
+    elif before.endswith("/"):
+        before = before[:-1].rstrip()
+    if before and before[-1] in _DASHES and (not after or after[0] in _DASHES):
+        before = before[:-1].rstrip()  # "it - word - on" -> "it - on"
     if not before or before[-1] in _SENTENCE_END:
-        # The cut word opened a sentence: no leading comma, keep its capital.
-        after = after.lstrip(_JOINING + " ")
+        # The cut word opened a sentence: no leading comma or dash, keep its capital.
+        after = after.lstrip(_JOINING + _DASHES + " ")
         if capital:
             after = after[:1].upper() + after[1:]
         return f"{before} {after}".strip() if before else after
     if not after:
-        return before.rstrip(_JOINING)
-    if after[0] == "," and before.split()[-1].lower() in _DETERMINERS:
-        return f"{before} {after[1:].lstrip()}"
+        return before.rstrip(_JOINING + _DASHES + " ")
+    if after[0] == ",":
+        # The comma after a cut word goes with it ("dynamic, scalable" -> "scalable");
+        # ", word," was parenthetical, so its opening comma goes too. Known cost: a
+        # comma the sentence still needed after the cut word is lost as well.
+        if before[-1] == ",":
+            before = before[:-1].rstrip()
+        after = after[1:].lstrip()
+        return _join(before, after) if after else before
     if after[0] in _JOINING + _SENTENCE_END + ")":
         if before[-1] in _JOINING:
-            if after[0] == "," and before[-1] == ",":
-                # ", word," was parenthetical: drop both commas.
-                return f"{before[:-1].rstrip()} {after[1:].lstrip()}".rstrip()
             before = before[:-1].rstrip()
         return before + after  # no space before punctuation
-    return f"{before} {after}"
+    return _join(before, after)
 
 
 def remove(text: str, phrase: str) -> str:
     """`text` with every whole-word occurrence of `phrase` deleted."""
     pattern = _pattern(phrase)
-    for _ in range(text.count(" ") + 2):  # each pass removes one; bounded
-        m = pattern.search(text)
-        if m is None:
-            break
+    cut = False
+    while (m := pattern.search(text)) is not None:  # each cut shortens the text
         text = _cut(text, m.start(), m.end(), m.group(0)[:1].isupper())
-    return text
+        cut = True
+    return re.sub(r"[ \t]{2,}", " ", text) if cut else text
 
 
-def apply_fix(text: str, span: str, fix: str) -> str:
-    """`text` with the slip `span` (verbatim, case-sensitive) replaced by `fix`.
-    A span that begins or ends with a word character must not be part of a
-    longer word."""
-    lead = r"(?<!\w)" if span[:1].isalnum() or span[:1] == "_" else ""
-    tail = r"(?!\w)" if span[-1:].isalnum() or span[-1:] == "_" else ""
-    return re.sub(f"{lead}{re.escape(span)}{tail}", lambda _m: fix, text)
+def _span_pattern(span: str) -> re.Pattern:
+    r"""A slip span, verbatim and case-sensitive, with the matcher's `[\w-]`
+    boundaries on whichever ends are word characters (so "in" never hits
+    "in-house", and ", and" can still follow a word)."""
+    edge = re.compile(r"[\w-]")
+    lead = r"(?<![\w-])" if edge.match(span[:1]) else ""
+    tail = r"(?![\w-])" if edge.match(span[-1:]) else ""
+    return re.compile(f"{lead}{re.escape(span)}{tail}")
+
+
+def span_count(text: str, span: str) -> int:
+    return len(_span_pattern(span).findall(text)) if span else 0
+
+
+def apply_fix(text: str, span: str, fix: str) -> str | None:
+    """`text` with the slip `span` replaced by `fix`, or None unless the span
+    occurs exactly once: a short span ("a") repeated elsewhere would be fixed
+    where it was never wrong."""
+    if span_count(text, span) != 1:
+        return None
+    return _span_pattern(span).sub(lambda _m: fix, text, count=1)

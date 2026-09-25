@@ -84,8 +84,10 @@ approved evaluator contract. Code validates the model response and computes scor
   word (`health_wording.matches`). The user edits both lists and the Never flag list, and can reset
   the two lists to the defaults (Never flag is kept). **Known limitation:** matching is context-blind,
   so “dynamic programming” flags “dynamic”; the user adds “dynamic” to Never flag. Source: `health_wording.py`.
-- **Remove and Apply** [weak]: Remove deletes the word in code (tidying the space, comma and capital
-  around it); Apply swaps a slip's span for its fix. Either text is offered only when it passes the
+- **Remove and Apply** [weak]: Remove deletes the word in code, tidying the seam: spaces, the comma
+  after it, empty brackets, a dangling slash or dash, the capital, and a/an before the next word (by
+  first letter, so "an hour" and "a user" can come out wrong). Apply swaps a slip's span for its fix,
+  only when the span occurs once as a whole word. Either text is offered only when it passes the
   rewrite guards below, so a fix that adds a number or drops a named tool or company is copy-only.
 
 ## User control and verification

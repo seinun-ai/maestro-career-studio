@@ -138,14 +138,34 @@ def test_every_scored_bullet_is_checked_but_skills_are_not():
     ("Engineer. Successfully led the migration", "successfully",
      "Engineer. Led the migration"),
     ("I think outside the box daily", "think outside the box", "I daily"),
-    ("Led the migration successfully, then retired the old queue", "successfully",
-     "Led the migration, then retired the old queue"),
     ("Hired a results-driven data analyst", "results-driven", "Hired a data analyst"),
     ("A dynamic, detail-oriented engineer", "dynamic", "A detail-oriented engineer"),
     ("Very very fast", "very", "Fast"),
+    # the article follows the next word
+    ("A dynamic engineer", "dynamic", "An engineer"),
+    ("Joined as a proactive owner of billing", "proactive", "Joined as an owner of billing"),
+    ("Hired an efficiently run team", "efficiently", "Hired a run team"),
+    # the comma directly after the cut word goes (no determiner needed)
+    ("Built dynamic, scalable systems", "dynamic", "Built scalable systems"),
+    ("Built various, reusable dashboards", "various", "Built reusable dashboards"),
+    ("Led the migration successfully, then retired the old queue", "successfully",
+     "Led the migration then retired the old queue"),
+    # no empty brackets, dangling slash or stray dash
+    ("Led the migration (successfully) on time", "successfully", "Led the migration on time"),
+    ("Kept it very/really simple", "very", "Kept it really simple"),
+    ("Kept it really/very simple", "very", "Kept it really simple"),
+    ("Shipped it - successfully - on time", "successfully", "Shipped it - on time"),
+    ("Successfully - shipped it on time", "successfully", "Shipped it on time"),
+    ("Shipped it on time - successfully", "successfully", "Shipped it on time"),
+    ("very\nvery\nvery\nvery", "very", ""),
 ])
 def test_remove_produces_clean_text(text, word, expected):
     assert health_wording.remove(text, word) == expected
+
+
+def test_remove_leaves_no_double_space():
+    out = health_wording.remove("Shipped   successfully   -   on time", "successfully")
+    assert "  " not in out
 
 
 def test_remove_note_carries_a_guarded_suggestion_subject_and_hash():
@@ -185,6 +205,33 @@ def test_a_slip_note_swaps_the_span_for_the_fix():
     assert slip["subject"] == "Maintaned"
     assert slip["content_hash"] == bullet_classify.content_hash(text)
     assert slip["type"] == "note" and slip["cost"] == 0
+
+
+def _slip(text, span, fix):
+    report = _assemble(_resume([text]), {("experience", 0, 0): _lv(1.0, [
+        {"span": span, "fix": fix}])})
+    return [f for f in report["findings"] if f.get("rule") == "language.slip"]
+
+
+def test_a_slip_span_that_occurs_twice_is_copy_only():
+    [slip] = _slip("Ran a hour-long review of a data pipeline", "a", "an")
+    assert slip["suggestion"] is None
+
+
+def test_a_slip_span_inside_a_hyphenated_word_does_not_count():
+    [slip] = _slip("Built in-house dashboards in a single week", "in", "within")
+    assert slip["suggestion"] == "Built in-house dashboards within a single week"
+
+
+def test_a_slip_span_found_only_inside_another_word_gets_no_note():
+    assert _slip("Maintained the nightly ETL jobs for the finance team", "tain", "tin") == []
+    assert _slip("Owned the in-house ETL jobs for the finance team", "in", "on") == []
+
+
+def test_apply_fix_is_none_unless_the_span_occurs_once():
+    assert health_wording.apply_fix("a hour and a day", "a", "an") is None
+    assert health_wording.apply_fix("teh cat", "teh", "the") == "the cat"
+    assert health_wording.apply_fix("shipped it", "shipped it.", "x") is None
 
 
 def test_slips_cover_the_summary_too():
@@ -261,6 +308,26 @@ def test_reset_restores_the_defaults_but_keeps_the_ignored_list(db_session):
     assert (bank.cliche, bank.filler) == (DEFAULT.cliche, DEFAULT.filler)
     assert bank.ignored == ("dynamic",)
     assert health_wording.load(db_session) == bank
+
+
+def test_a_first_edit_that_loses_the_insert_race_retries_as_an_update(db_session, monkeypatch):
+    from sqlalchemy import insert
+    # Another request inserted both rows between our read and our commit.
+    db_session.execute(insert(Setting).values(key=health_wording.BANK_KEY, value="{}"))
+    db_session.execute(insert(Setting).values(key=health_wording.IGNORED_KEY, value="[]"))
+    db_session.commit()
+    real_get, calls = db_session.get, []
+
+    def stale_get(model, key):
+        calls.append(key)
+        return None if len(calls) <= 2 else real_get(model, key)
+
+    monkeypatch.setattr(db_session, "get", stale_get)
+    health_wording.save(db_session, cliche=["rockstar"], filler=[], ignored=["dynamic"])
+    monkeypatch.undo()
+    bank = health_wording.load(db_session)
+    assert (bank.cliche, bank.ignored) == (("rockstar",), ("dynamic",))
+    assert len(calls) == 4  # one failed attempt, one retry
 
 
 def test_a_corrupt_row_reads_as_the_defaults(db_session):
