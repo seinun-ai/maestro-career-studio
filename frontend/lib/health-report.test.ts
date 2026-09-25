@@ -31,6 +31,15 @@ import {
   contentHash16,
   staleFindingIds,
   shortFindingLabel,
+  addWord,
+  canIgnore,
+  isWordingRule,
+  normalizeWord,
+  slipFix,
+  splitWordingNotes,
+  withIgnored,
+  wordingEditOp,
+  WORD_LIST_MAX,
 } from "./health-report.ts";
 
 test("reportIsStale treats missing as false", () => {
@@ -497,4 +506,104 @@ test("a dispute reply goes on a Fixed entry only when that dispute's re-run lift
   // A reply from an earlier dispute that moved nothing, then a real fix: no reply on the entry.
   assert.equal(liftedDispute({ content_hash: "abc" }, new Set(), disputes), undefined);
   assert.equal(liftedDispute({ content_hash: null }, new Set(["abc"]), disputes), undefined);
+});
+
+// --- Task 10b: the Wording checklist ------------------------------------------------------------
+
+test("wording notes are every language.* rule, and only those", () => {
+  assert.equal(isWordingRule("language.cliche"), true);
+  assert.equal(isWordingRule("language.filler"), true);
+  assert.equal(isWordingRule("language.slip"), true);
+  assert.equal(isWordingRule("languages.listed"), false);
+  assert.equal(isWordingRule("bullet.too_long"), false);
+  assert.equal(isWordingRule(undefined), false);
+  const note = (rule?: string) => ({ rule, label: "x", issue: "y" });
+  const { wording, other } = splitWordingNotes([
+    note("language.slip"),
+    note("bullet.too_long"),
+    note("language.cliche"),
+    note(undefined),
+  ]);
+  assert.deepEqual(wording.map((n) => n.rule), ["language.slip", "language.cliche"]);
+  assert.deepEqual(other.map((n) => n.rule), ["bullet.too_long", undefined]);
+});
+
+test("slipFix reads the fix out of the backend's issue sentence", () => {
+  assert.equal(slipFix({ subject: "teh", issue: "'teh' looks like a slip: 'the'." }), "the");
+  // An apostrophe inside the span or the fix is not a delimiter.
+  assert.equal(
+    slipFix({ subject: "its' team", issue: "'its' team' looks like a slip: 'its team'." }),
+    "its team",
+  );
+  assert.equal(slipFix({ subject: "teh", issue: "'teh' is a cliché." }), null);
+  assert.equal(slipFix({ issue: "'teh' looks like a slip: 'the'." }), null);
+});
+
+test("wordingEditOp sends the guarded suggestion with its hash, never a copy-only one", () => {
+  const bullet = {
+    location: { section: "experience", index: 1, bullet_index: 2 },
+    suggestion: "Led the migration.",
+    content_hash: "abc",
+  };
+  assert.deepEqual(wordingEditOp(bullet), {
+    kind: "replace_bullet",
+    section: "experience",
+    index: 1,
+    bullet_index: 2,
+    value: "Led the migration.",
+    expected_content_hash: "abc",
+  });
+  assert.deepEqual(wordingEditOp({ ...bullet, location: { section: "summary" } }), {
+    kind: "replace_summary",
+    value: "Led the migration.",
+    expected_content_hash: "abc",
+  });
+  // The guards objected: nothing to apply.
+  assert.equal(wordingEditOp({ ...bullet, suggestion: null }), null);
+  // Other sections have no bullet edit op: copy-only.
+  assert.equal(
+    wordingEditOp({ ...bullet, location: { section: "extra:awards", index: 0, bullet_index: 0 } }),
+    null,
+  );
+  // No hash, no guarded write.
+  assert.equal(wordingEditOp({ ...bullet, content_hash: null }), null);
+});
+
+test("normalizeWord trims, collapses inner space and lower-cases, like the backend", () => {
+  assert.equal(normalizeWord("  Team   Player "), "team player");
+  assert.equal(normalizeWord("RESULTS-DRIVEN"), "results-driven");
+  assert.equal(normalizeWord("   "), "");
+});
+
+test("addWord mirrors the backend's limits and says what is wrong", () => {
+  assert.deepEqual(addWord(["synergy"], " Go-Getter "), { list: ["synergy", "go-getter"] });
+  assert.deepEqual(addWord(["synergy"], "  "), { error: "Type a word or phrase." });
+  assert.deepEqual(addWord([], "x".repeat(41)), { error: "Keep it to 40 characters or fewer." });
+  assert.deepEqual(addWord([], "x".repeat(40)), { list: ["x".repeat(40)] });
+  assert.deepEqual(addWord(["synergy"], "SYNERGY"), { error: "That's already on this list." });
+  const full = Array.from({ length: WORD_LIST_MAX }, (_, i) => `w${i}`);
+  assert.deepEqual(addWord(full, "new"), { error: "This list is full (200). Remove one first." });
+});
+
+test("withIgnored adds the lower-cased subject to Never flag and keeps the bank", () => {
+  const wording = {
+    cliche: ["synergy"],
+    filler: ["very"],
+    ignored: ["dynamic"],
+    defaults: { cliche: [], filler: [] },
+  };
+  assert.deepEqual(withIgnored(wording, " Teh "), {
+    cliche: ["synergy"],
+    filler: ["very"],
+    ignored: ["dynamic", "teh"],
+  });
+  // Already there: the list is unchanged, not doubled.
+  assert.deepEqual(withIgnored(wording, "Dynamic").ignored, ["dynamic"]);
+});
+
+test("canIgnore offers Ignore only for a subject Never flag can hold", () => {
+  assert.equal(canIgnore("teh"), true);
+  assert.equal(canIgnore("  "), false);
+  assert.equal(canIgnore(undefined), false);
+  assert.equal(canIgnore("x".repeat(41)), false);
 });

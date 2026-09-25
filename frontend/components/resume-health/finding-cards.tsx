@@ -11,6 +11,7 @@ import { toast } from "sonner";
 
 import { DemonstrateSkillDialog } from "@/components/resume-health/demonstrate-skill-dialog";
 import { DisputeBox, type DisputeHandler } from "@/components/resume-health/dispute-box";
+import { WordingChecklist } from "@/components/resume-health/wording-checklist";
 import {
   emptyMetricAsk,
   MetricAskInput,
@@ -59,6 +60,7 @@ import {
   groupPoints,
   punctFixOps,
   sharedCoaching,
+  splitWordingNotes,
   STALE_APPLY_HINT,
   type StoredAskAnswer,
   textAtLocation,
@@ -388,7 +390,7 @@ export const GRADE_STYLES: Record<string, string> = {
   F: "bg-destructive/10 text-destructive",
 };
 
-function DiffText({ oldText, newText }: { oldText: string; newText: string }) {
+export function DiffText({ oldText, newText }: { oldText: string; newText: string }) {
   return (
     <p className="max-w-[65ch] text-sm leading-relaxed">
       {wordDiff(oldText, newText).map((token, i) => (
@@ -448,7 +450,7 @@ function SuggestionBlock({
   );
 }
 
-function SuggestionCopyOnly({
+export function SuggestionCopyOnly({
   currentText,
   suggestion,
 }: {
@@ -493,7 +495,7 @@ function CardSuggestion({
   return <SuggestionBlock currentText={currentText} suggestion={suggestion} {...rest} />;
 }
 
-function SourceQuote({ text, clamp }: { text: string; clamp?: boolean }) {
+export function SourceQuote({ text, clamp }: { text: string; clamp?: boolean }) {
   const [open, setOpen] = useState(false);
   const [cut, setCut] = useState(false);
   const quoteRef = useRef<HTMLParagraphElement>(null);
@@ -1056,6 +1058,7 @@ export function NotesTable({
   onApplied,
   locked,
   onReanalyze,
+  onWordingChanged,
 }: {
   /** The findings filter leaves notes out: hidden, not unmounted, so its
    *  kept Demonstrate-skill drafts survive the filter. */
@@ -1067,8 +1070,12 @@ export function NotesTable({
   onApplied: () => void;
   locked?: boolean;
   onReanalyze?: () => void;
+  /** Runs the report again after the word list changed (an Ignore, the word list's Save). */
+  onWordingChanged: () => Promise<void>;
 }) {
-  const groups = groupNotesByRule(notes);
+  // Wording notes (spelling and grammar slips, clichés, filler) are one checklist of their own.
+  const { wording, other } = splitWordingNotes(notes);
+  const groups = groupNotesByRule(other);
   const [notesOpen, setNotesOpen] = useState(false);
   const [skill, setSkill] = useState<string | null>(null);
   // One kept dialog per skill the user has opened, so a drafted rewrite
@@ -1133,139 +1140,154 @@ export function NotesTable({
           Notes ({notes.length}). These don&apos;t change your score.
         </button>
       </h2>
-      <div hidden={!notesOpen} className="overflow-x-auto rounded-md border">
-        <table className="w-full table-fixed text-sm">
-          <tbody>
-            {groups.map((group) => {
-              const ops =
-                data && isMechanicalPunctRule(group.rule)
-                  ? punctFixOps(group.rule, group.subjects, data)
-                  : null;
-              const bulletRows = isBulletSubjectRule(group.rule);
-              const undemonstrated = group.rule === "skills.undemonstrated";
-              const subjectLine =
-                !bulletRows && !undemonstrated && group.subjects.length > 0
-                  ? group.subjects.slice(0, 8).join(", ") +
-                    (group.subjects.length > 8 ? ", …" : "")
-                  : null;
-              return (
-                <tr key={group.rule} className="border-b last:border-b-0">
-                  <td className="px-3 py-2 align-top">
-                    <p className="font-medium">
-                      {group.title} ({group.count})
-                    </p>
-                    {undemonstrated && (
-                      <div className="mt-1.5 flex flex-wrap gap-1">
-                        {group.subjects.map((subject) => {
-                          const done = doneSkills.has(subject);
-                          return (
-                            <button
-                              key={subject}
-                              type="button"
-                              data-skill={subject}
-                              className={cn(
-                                "rounded-full border px-2 py-0.5 text-xs",
-                                done
-                                  ? "text-muted-foreground line-through"
-                                  : "hover:bg-muted",
-                              )}
-                              onClick={() => !done && openSkill(subject)}
-                              disabled={done || locked || !data}
-                            >
-                              {subject}
-                              {done ? " · done" : ""}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-                    {subjectLine && (
-                      <p className="text-muted-foreground mt-0.5 max-w-[65ch] text-xs">
-                        {subjectLine}
-                      </p>
-                    )}
-                    {group.shapeNote &&
-                      group.notes.map((note) => (
-                        <p
-                          key={note.id}
-                          className="text-muted-foreground mt-0.5 max-w-[65ch] text-xs"
-                        >
-                          {note.issue} {note.how}
+      <div hidden={!notesOpen} className="space-y-2">
+        {wording.length > 0 && (
+          <WordingChecklist
+            notes={wording}
+            data={data ?? null}
+            kind={kind}
+            resumeKey={resumeKey}
+            onApplied={onApplied}
+            onReanalyze={onReanalyze}
+            onWordingChanged={onWordingChanged}
+          />
+        )}
+        {groups.length > 0 && (
+          <div className="overflow-x-auto rounded-md border">
+            <table className="w-full table-fixed text-sm">
+              <tbody>
+                {groups.map((group) => {
+                  const ops =
+                    data && isMechanicalPunctRule(group.rule)
+                      ? punctFixOps(group.rule, group.subjects, data)
+                      : null;
+                  const bulletRows = isBulletSubjectRule(group.rule);
+                  const undemonstrated = group.rule === "skills.undemonstrated";
+                  const subjectLine =
+                    !bulletRows && !undemonstrated && group.subjects.length > 0
+                      ? group.subjects.slice(0, 8).join(", ") +
+                        (group.subjects.length > 8 ? ", …" : "")
+                      : null;
+                  return (
+                    <tr key={group.rule} className="border-b last:border-b-0">
+                      <td className="px-3 py-2 align-top">
+                        <p className="font-medium">
+                          {group.title} ({group.count})
                         </p>
-                      ))}
-                    {bulletRows && (
-                      <ul className="mt-1.5 space-y-1">
-                        {group.notes.map((note) => {
-                          const quote = note.subject ?? note.issue;
-                          return (
-                            <li
-                              key={note.id}
-                              className="flex items-start justify-between gap-2"
-                            >
-                              <div className="min-w-0 flex-1">
-                                <SourceQuote text={quote} clamp />
-                              </div>
-                              {group.rule === "bullet.too_long" && (
-                                <Button
-                                  size="xs"
-                                  variant="outline"
-                                  disabled={locked || condense.isPending}
-                                  title={locked ? STALE_APPLY_HINT : undefined}
-                                  className={locked ? LOCKED_BTN : undefined}
-                                  onClick={() => condense.mutate(note)}
+                        {undemonstrated && (
+                          <div className="mt-1.5 flex flex-wrap gap-1">
+                            {group.subjects.map((subject) => {
+                              const done = doneSkills.has(subject);
+                              return (
+                                <button
+                                  key={subject}
+                                  type="button"
+                                  data-skill={subject}
+                                  className={cn(
+                                    "rounded-full border px-2 py-0.5 text-xs",
+                                    done
+                                      ? "text-muted-foreground line-through"
+                                      : "hover:bg-muted",
+                                  )}
+                                  onClick={() => !done && openSkill(subject)}
+                                  disabled={done || locked || !data}
                                 >
-                                  Shorten
-                                </Button>
-                              )}
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    )}
-                    {condenseDraft &&
-                      group.notes.some((n) => n.id === condenseDraft.finding.id) &&
-                      data && (
-                        <div className="mt-2">
-                          <SuggestionEditor
-                            finding={condenseDraft.finding}
-                            currentText={
-                              textAtLocation(data, condenseDraft.finding) ??
-                              condenseDraft.finding.subject ??
-                              ""
-                            }
-                            suggestion={condenseDraft.suggestion}
-                            kind={kind}
-                            resumeKey={resumeKey}
-                            onApplied={() => {
-                              setCondenseDraft(null);
-                              onApplied();
-                            }}
-                            onReanalyze={onReanalyze}
-                            locked={locked}
-                            expectedHash={condenseDraft.content_hash}
-                          />
-                        </div>
-                      )}
-                  </td>
-                  <td className="w-28 px-3 py-2 align-top text-right">
-                    {ops ? (
-                      <Button
-                        size="xs"
-                        variant="outline"
-                        disabled={locked || applyOps.isPending}
-                        title={locked ? STALE_APPLY_HINT : undefined}
-                        className={locked ? LOCKED_BTN : undefined}
-                        onClick={() => applyOps.mutate(ops)}
-                      >
-                        Fix all
-                      </Button>
-                    ) : null}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+                                  {subject}
+                                  {done ? " · done" : ""}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                        {subjectLine && (
+                          <p className="text-muted-foreground mt-0.5 max-w-[65ch] text-xs">
+                            {subjectLine}
+                          </p>
+                        )}
+                        {group.shapeNote &&
+                          group.notes.map((note) => (
+                            <p
+                              key={note.id}
+                              className="text-muted-foreground mt-0.5 max-w-[65ch] text-xs"
+                            >
+                              {note.issue} {note.how}
+                            </p>
+                          ))}
+                        {bulletRows && (
+                          <ul className="mt-1.5 space-y-1">
+                            {group.notes.map((note) => {
+                              const quote = note.subject ?? note.issue;
+                              return (
+                                <li
+                                  key={note.id}
+                                  className="flex items-start justify-between gap-2"
+                                >
+                                  <div className="min-w-0 flex-1">
+                                    <SourceQuote text={quote} clamp />
+                                  </div>
+                                  {group.rule === "bullet.too_long" && (
+                                    <Button
+                                      size="xs"
+                                      variant="outline"
+                                      disabled={locked || condense.isPending}
+                                      title={locked ? STALE_APPLY_HINT : undefined}
+                                      className={locked ? LOCKED_BTN : undefined}
+                                      onClick={() => condense.mutate(note)}
+                                    >
+                                      Shorten
+                                    </Button>
+                                  )}
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        )}
+                        {condenseDraft &&
+                          group.notes.some((n) => n.id === condenseDraft.finding.id) &&
+                          data && (
+                            <div className="mt-2">
+                              <SuggestionEditor
+                                finding={condenseDraft.finding}
+                                currentText={
+                                  textAtLocation(data, condenseDraft.finding) ??
+                                  condenseDraft.finding.subject ??
+                                  ""
+                                }
+                                suggestion={condenseDraft.suggestion}
+                                kind={kind}
+                                resumeKey={resumeKey}
+                                onApplied={() => {
+                                  setCondenseDraft(null);
+                                  onApplied();
+                                }}
+                                onReanalyze={onReanalyze}
+                                locked={locked}
+                                expectedHash={condenseDraft.content_hash}
+                              />
+                            </div>
+                          )}
+                      </td>
+                      <td className="w-28 px-3 py-2 align-top text-right">
+                        {ops ? (
+                          <Button
+                            size="xs"
+                            variant="outline"
+                            disabled={locked || applyOps.isPending}
+                            title={locked ? STALE_APPLY_HINT : undefined}
+                            className={locked ? LOCKED_BTN : undefined}
+                            onClick={() => applyOps.mutate(ops)}
+                          >
+                            Fix all
+                          </Button>
+                        ) : null}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
       {data && opened.map((s) => (
         <DemonstrateSkillDialog

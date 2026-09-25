@@ -133,10 +133,10 @@ def test_hoist_blurb_does_not_conjugate_backend_copy():
 
 
 def test_judged_text_is_never_italic_or_one_line_truncated():
-    for name in ("finding-cards", "batch-ask-dialog", "demonstrate-skill-dialog"):
+    for name in ("finding-cards", "batch-ask-dialog", "demonstrate-skill-dialog", "wording-checklist", "word-list-dialog"):
         src = (_FRONTEND / f"components/resume-health/{name}.tsx").read_text()
         assert not re.search(r'className="[^"]*\bitalic\b', src), "judged text must be upright"
-    quote = _CARDS[_CARDS.index("function SourceQuote"):]
+    quote = _CARDS[_CARDS.index("function SourceQuote("):]
     quote = quote[:quote.index("\n}\n")]
     assert "truncate" not in quote
     assert "text-muted-foreground" not in quote
@@ -359,3 +359,149 @@ def test_a_changed_question_is_not_a_fixed_bullet():
     # C2 carries the summary's hash but rates nothing: it must not hold the summary's ask open.
     assert "const ratesText = (f: Rated) => Boolean(f.content_hash && f.classification_level);" in _HELPERS
     assert _PAGE.count("adoptReport(result, true);") + _PAGE.count("adoptReport(fresh, true);") == 3
+
+
+# --- Task 10b: the Wording checklist and its word list ------------------------------------------
+
+def _wording() -> str:
+    return (_FRONTEND / "components/resume-health/wording-checklist.tsx").read_text()
+
+
+def _word_list_dialog() -> str:
+    return (_FRONTEND / "components/resume-health/word-list-dialog.tsx").read_text()
+
+
+def _fn(src: str, head: str) -> str:
+    body = src[src.index(head):]
+    return body[: body.index("\n}\n")]
+
+
+def test_wording_notes_are_one_group_by_the_language_prefix():
+    assert 'rule.startsWith("language.")' in _fn(_HELPERS, "export function isWordingRule(")
+    split = _fn(_HELPERS, "export function splitWordingNotes<")
+    assert "isWordingRule(note.rule)" in split
+    notes = _fn(_CARDS, "export function NotesTable(")
+    # The rule table never sees a wording note; the Wording group gets every one.
+    assert "const { wording, other } = splitWordingNotes(notes);" in notes
+    assert "const groups = groupNotesByRule(other);" in notes
+    assert "<WordingChecklist" in notes and "notes={wording}" in notes
+    # Inside the Notes disclosure, collapsed with it.
+    assert notes.index("hidden={!notesOpen}") < notes.index("<WordingChecklist")
+    assert "onWordingChanged={reanalyzeReport}" in _PAGE
+
+
+def test_the_wording_header_says_it_never_changes_the_score_and_opens_the_word_list():
+    src = _wording()
+    assert "These never change your score." in src
+    assert "Edit word list" in src and "<WordListDialog" in src
+    # One filled button per view: the header's link and every row action are text-style.
+    assert re.search(r'variant="link"[^>]*>\s*Edit word list', src) or re.search(
+        r"Edit word list[\s\S]{0,40}</Button>", src)
+    assert "<Button" in src
+    for tag in re.findall(r"<Button\b[^>]*>", src, flags=re.S):
+        assert 'variant="link"' in tag, tag
+
+
+def test_apply_and_remove_send_the_guarded_suggestion_with_its_hash():
+    op = _fn(_HELPERS, "export function wordingEditOp(")
+    assert "note.suggestion == null" in op and 'startsWith("extra:")' in op
+    # Both writes carry the hash: the summary's and a bullet's.
+    assert op.count("expected_content_hash: note.content_hash") == 2
+    assert 'kind: "replace_summary"' in op and 'kind: "replace_bullet"' in op
+    assert "value: note.suggestion" in op
+    src = _wording()
+    assert "mutationFn: (edit: LintEditOp) => applyResumeEdits(kind, resumeKey, [edit])," in src
+    assert "onClick={() => applyOnce(op)}" in src
+    assert "const applyOnce = useSingleFlight(apply.mutate);" in src
+    assert '{slip ? "Apply" : "Remove"}' in src
+    # Apply leaves with its button: "Applied" takes the focus, and the page invalidates like any Apply.
+    assert "focusNext(appliedRef)" in src and "onApplied();" in src
+
+
+def test_a_null_or_other_section_suggestion_is_copy_only():
+    src = _wording()
+    row = _fn(src, "function WordingRow(")
+    assert "const op = data ? wordingEditOp(note) : null;" in row
+    # No Apply or Remove without an op; an Other section's guarded wording is copy-only.
+    assert "op && (\n" in row
+    assert 'note.location.section.startsWith("extra:")' in row
+    assert "<SuggestionCopyOnly" in row
+    assert "Can&apos;t apply this fix here." in row and "Can&apos;t remove it here." in row
+    assert "export function SuggestionCopyOnly(" in _CARDS
+
+
+def test_a_changed_bullet_shows_on_its_row():
+    row = _fn(_wording(), "function WordingRow(")
+    assert "isContentChangedError(err)" in row
+    assert 'role="alert"' in row
+    assert "This bullet changed since the check." in row and "Check again?" in row
+    assert "err.message}" not in row
+    # A re-run on changed text keeps the note id: the row is keyed by the text's hash as well, so
+    # its "changed since the check" (and "Applied") never outlive the text they were about.
+    assert 'key={`${note.id}:${note.content_hash ?? ""}`}' in _wording()
+
+
+def test_ignore_adds_the_subject_to_never_flag_and_re_runs():
+    src = _wording()
+    assert "const ignoreOnce = useSingleFlight(ignore.mutate);" in src
+    ignore = src[src.index("const ignoreWord = async ("):]
+    ignore = ignore[: ignore.index("\n  };\n")]
+    assert ignore.index("await getWording()") < ignore.index("await putWording(withIgnored(")
+    assert ignore.index("await putWording(") < ignore.index("await onWordingChanged()")
+    fn = _fn(_HELPERS, "export function withIgnored(")
+    assert "normalizeWord(subject)" in fn and "...wording.ignored" in fn
+    assert 'apiFetch<WordingRead>("/api/resume-lint/wording", {' in (_FRONTEND / "lib/api.ts").read_text()
+    assert 'method: "PUT"' in _fn((_FRONTEND / "lib/api.ts").read_text(), "export function putWording(")
+
+
+def test_the_word_list_dialog_has_three_lists_and_reset():
+    src = _word_list_dialog()
+    for title in ('"Clichés"', '"Filler words"', '"Never flag"'):
+        assert title in src
+    assert "Reset to defaults" in src
+    assert "wording.defaults.cliche" in src and "wording.defaults.filler" in src
+    assert "aria-label={`Remove ${word}`}" in src
+    assert re.search(r"onClick=\{add\}>\s*Add\s*</Button>", src)
+    assert 'if (e.key === "Enter")' in src
+    assert "addWord(" in src and 'role="alert"' in src
+    assert "const saveOnce = useSingleFlight(save.mutate);" in src
+    assert "putWording({ cliche, filler, ignored })" in src
+    assert "Cancel" in src
+    # Save re-runs the report after the dialog closes; the close returns to the opener or what survived.
+    assert src.index("onClose();") < src.index("onSaved();")
+    assert "const returnToOpener = useOpenerReturn(open);" in src
+    assert 'finalFocus={returnToOpener}' in src
+
+
+def test_word_list_limits_mirror_the_backend():
+    from app.services import health_wording
+
+    assert f"export const WORD_MAX_CHARS = {health_wording.MAX_CHARS};" in _HELPERS
+    assert f"export const WORD_LIST_MAX = {health_wording.MAX_ENTRIES};" in _HELPERS
+    norm = _fn(_HELPERS, "export function normalizeWord(")
+    assert ".toLowerCase()" in norm and ".split(/\\s+/)" in norm
+
+
+def test_slip_fix_reads_the_backend_issue_sentence():
+    backend = (_FRONTEND.parent / "backend/app/services/resume_lint.py").read_text()
+    assert "f\"'{span}' looks like a slip: '{fix}'.\"" in backend
+    fn = _fn(_HELPERS, "export function slipFix(")
+    assert "`'${note.subject}' looks like a slip: '`" in fn
+
+
+def test_wording_rows_hand_focus_on_when_they_leave():
+    src = _wording()
+    assert "useFocusHandoff(groupRef);" in src
+    assert "tabIndex={-1}" in src
+    leave = _fn(src, "function useSuccessorOnLeave(")
+    assert "useLayoutEffect(" in leave and "row.contains(document.activeElement)" in leave
+    assert 'focusSuccessor(row, "[data-wording-action]")' in leave
+    assert "queueMicrotask(" in leave and "focusIfDropped(" in leave
+    assert src.count("focusableWhenDisabled") >= 2
+
+
+def test_wording_rows_show_the_bullet_upright_and_in_full():
+    row = _fn(_wording(), "function WordingRow(")
+    assert "<SourceQuote text={currentText} clamp />" in row
+    assert "export function SourceQuote(" in _CARDS
+    assert "{note.label}" in row

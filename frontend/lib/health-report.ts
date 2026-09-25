@@ -6,7 +6,7 @@
  * mirror) — both must stay in lockstep with health_score.LEVEL_VALUES.
  */
 
-import type { ResumeData } from "./types";
+import type { ResumeData, WordingBody, WordingRead } from "./types";
 
 export const LEVEL_VALUES: Record<string, number> = {
   direct: 1.0,
@@ -714,4 +714,90 @@ export async function staleFindingIds<
     }),
   );
   return stale;
+}
+
+// --- Wording: spelling and grammar slips, clichés and filler (zero score) ----------------------
+
+/** A wording note: `language.cliche`, `language.filler` or `language.slip`. */
+export function isWordingRule(rule: string | undefined): boolean {
+  return rule != null && rule.startsWith("language.");
+}
+
+/** The Wording checklist's notes, and the rest for the rule table. */
+export function splitWordingNotes<T extends { rule?: string }>(notes: T[]): { wording: T[]; other: T[] } {
+  const wording: T[] = [];
+  const other: T[] = [];
+  for (const note of notes) (isWordingRule(note.rule) ? wording : other).push(note);
+  return { wording, other };
+}
+
+/**
+ * A slip's fix, read from its issue sentence (resume_lint.py `_slip_notes`: "'<span>' looks like a
+ * slip: '<fix>'."). The span is the note's `subject`, so an apostrophe in either one is not a
+ * delimiter. Null when the sentence is not that one.
+ */
+export function slipFix(note: { subject?: string; issue: string }): string | null {
+  if (!note.subject) return null;
+  const head = `'${note.subject}' looks like a slip: '`;
+  if (!note.issue.startsWith(head) || !note.issue.endsWith("'.")) return null;
+  return note.issue.slice(head.length, -2) || null;
+}
+
+/**
+ * The hash-guarded edit that applies a wording note's `suggestion` (the backend's whole edited text,
+ * set only when the rewrite guards accept it). Null when there is nothing to apply here: no
+ * suggestion, no hash, or an Other section, which has no bullet edit op (its wording is copy-only).
+ */
+export function wordingEditOp(note: {
+  location: { section: string; index?: number | null; bullet_index?: number | null };
+  suggestion?: string | null;
+  content_hash?: string | null;
+}): LintEditOp | null {
+  const { section, index, bullet_index } = note.location;
+  if (note.suggestion == null || !note.content_hash || section.startsWith("extra:")) return null;
+  return section === "summary"
+    ? { kind: "replace_summary", value: note.suggestion, expected_content_hash: note.content_hash }
+    : {
+        kind: "replace_bullet",
+        section,
+        index,
+        bullet_index,
+        value: note.suggestion,
+        expected_content_hash: note.content_hash,
+      };
+}
+
+/** health_wording.MAX_CHARS and MAX_ENTRIES (pinned equal by test_frontend_health_report.py). */
+export const WORD_MAX_CHARS = 40;
+export const WORD_LIST_MAX = 200;
+
+/** As health_wording.normalize: trimmed, inner whitespace collapsed, lower-cased. */
+export function normalizeWord(raw: string): string {
+  return raw.trim().split(/\s+/).filter(Boolean).join(" ").toLowerCase();
+}
+
+/** `list` with `raw` added, or why it can't be: the backend's limits, said before the Save. */
+export function addWord(list: string[], raw: string): { list: string[] } | { error: string } {
+  const word = normalizeWord(raw);
+  if (!word) return { error: "Type a word or phrase." };
+  if (word.length > WORD_MAX_CHARS) return { error: `Keep it to ${WORD_MAX_CHARS} characters or fewer.` };
+  if (list.includes(word)) return { error: "That's already on this list." };
+  if (list.length >= WORD_LIST_MAX) return { error: `This list is full (${WORD_LIST_MAX}). Remove one first.` };
+  return { list: [...list, word] };
+}
+
+/** Never flag can hold this subject (Ignore is offered). */
+export function canIgnore(subject: string | undefined): subject is string {
+  const word = normalizeWord(subject ?? "");
+  return word.length > 0 && word.length <= WORD_MAX_CHARS;
+}
+
+/** The PUT /wording body with `subject` on Never flag: the whole current lists, as the PUT wants. */
+export function withIgnored(wording: WordingRead, subject: string): WordingBody {
+  const word = normalizeWord(subject);
+  return {
+    cliche: wording.cliche,
+    filler: wording.filler,
+    ignored: wording.ignored.includes(word) ? wording.ignored : [...wording.ignored, word],
+  };
 }

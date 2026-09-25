@@ -666,6 +666,7 @@ export function HealthReportPage({
                 onApplied={invalidateAfterApply}
                 locked={false}
                 onReanalyze={() => void reanalyzeReport()}
+                onWordingChanged={reanalyzeReport}
               />
             )}
           </div>

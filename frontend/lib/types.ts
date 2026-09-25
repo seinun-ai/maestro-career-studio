@@ -1761,6 +1761,18 @@ export interface LintFinding {
   rule?: string;
 }
 
+/** GET /api/resume-lint/wording: the user's word bank, Never flag list and the default bank. */
+export interface WordingRead {
+  cliche: string[];
+  filler: string[];
+  /** "Never flag": skipped whether the word is on the bank or a slip. */
+  ignored: string[];
+  defaults: { cliche: string[]; filler: string[] };
+}
+
+/** PUT /api/resume-lint/wording: all three lists, whole (the backend normalizes them again). */
+export type WordingBody = Pick<WordingRead, "cliche" | "filler" | "ignored">;
+
 /** POST /api/resume-lint/{kind}/{key}/dispute: the bullet re-read with the user's note. */
 export interface DisputeResult {
   before: { level: EvidenceLevel; question: string | null };

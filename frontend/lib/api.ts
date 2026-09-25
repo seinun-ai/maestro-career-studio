@@ -33,6 +33,8 @@ import type {
   TailoringSession,
   TailorResult,
   UUID,
+  WordingBody,
+  WordingRead,
 } from "@/lib/types";
 
 /**
@@ -762,6 +764,19 @@ export function draftRewrite(
     `/api/resume-lint/${kind}/${encodeURIComponent(key)}/draft-rewrite`,
     { method: "POST", body: JSON.stringify(body) },
   );
+}
+
+/** The health check's word bank (clichés, filler) and its Never flag list. */
+export function getWording() {
+  return apiFetch<WordingRead>("/api/resume-lint/wording");
+}
+
+/** Replace all three lists; 422 when a list holds more than 200 words or a word is outside 1 to 40 characters. */
+export function putWording(body: WordingBody) {
+  return apiFetch<WordingRead>("/api/resume-lint/wording", {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
 }
 
 /** Tell the check why a flag is wrong; 409 when the bullet changed since the report. */
