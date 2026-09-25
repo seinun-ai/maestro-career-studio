@@ -20,7 +20,7 @@
     + '[role="radio"]:not(input), [role="checkbox"]:not(input), [role="switch"], '
     + '[role="spinbutton"]:not(input), [role="slider"]';
   const SKIP = new Set(["hidden", "submit", "button", "reset", "image", "file", "password"]);
-  const NOT_A_FIELD = '[role="listbox"], [role="menu"], [role="tree"], [role="grid"]';
+  const NOT_A_FIELD = '[role="listbox"], [role="menu"]';
   let counter = 0;
   let lastConsentForms = false;
   const fidOf = new WeakMap(); // element (every part of a field) -> fid

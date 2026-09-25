@@ -32,18 +32,29 @@
   };
 
   // A search widget's box: Workday's widget wrapper, else the highest ancestor
-  // (3 levels, never <body>) holding no OTHER field — a page-wide "container"
-  // would read a neighbour's value as this one's.
+  // (3 levels) holding no OTHER field, never <body>, <html> or a <form> — a
+  // page-wide wrapper would read a neighbour's value as this one's. No such
+  // ancestor: no box, and nothing but the widget itself is read.
   const box = (el) => {
     const own = el.closest(SEARCH_BOX);
     if (own) return own;
     const { CONTROL, otherControl } = ns.fieldControls;
-    let found = el.parentElement;
-    for (let n = el.parentElement, d = 0; n && n !== document.body && d < 3; n = n.parentElement, d += 1) {
+    let found = null;
+    for (let n = el.parentElement, d = 0; n && d < 3; n = n.parentElement, d += 1) {
+      if (n === document.body || n === document.documentElement || n.tagName === "FORM") break;
       if ([...n.querySelectorAll(CONTROL)].some((c) => otherControl(c, el))) break;
       found = n;
     }
     return found;
+  };
+  // A hidden backing input counts only when it is structurally the widget's:
+  // inside Workday's widget wrapper, the element's own combobox wrapper, or a
+  // react-select-style container within the box — never a form's csrf token.
+  const backing = (el) => {
+    const container = el.closest('[class*="container" i]');
+    const root = el.closest(SEARCH_BOX) ?? el.parentElement?.closest('[role="combobox"]')
+      ?? (container && box(el)?.contains(container) ? container : null);
+    return root?.querySelector('input[type="hidden"]')?.value ?? "";
   };
   const chips = (el) => [...(box(el)?.querySelectorAll(CHIP) ?? [])].map((c) => clean(c.textContent)).filter(Boolean);
 
@@ -58,6 +69,37 @@
   };
   const lone = (el) => el.type === "checkbox" && members(el).length < 2;
   const labelOf = (input) => ns.readField(input).question;
+  // A group with no container question asks the text BEFORE its first member:
+  // the nearest preceding visible sibling (climbing at most 4 levels) that is
+  // not a member's label, stopping at another field's control.
+  const STAR = /\s*\*+\s*$/;
+  const precedingQuestion = (el, ms) => {
+    const { CONTROL } = ns.fieldControls;
+    const memberLabels = new Set(ms.flatMap((m) => [...(m.labels ?? [])]));
+    let node = ms[0].closest("label") ?? ms[0];
+    for (let d = 0; node && d < 4; d += 1, node = node.parentElement) {
+      if (node === document.body || node === document.documentElement) break;
+      for (let s = node.previousElementSibling; s; s = s.previousElementSibling) {
+        if (s.matches("script, style, template") || !ns.fillBase.visible(s)) continue;
+        const controls = [...(s.matches(CONTROL) ? [s] : []), ...s.querySelectorAll(CONTROL)];
+        if (controls.some((c) => !ms.includes(c))) return null;
+        if (controls.length || memberLabels.has(s)) continue;
+        const t = clean(s.innerText || s.textContent);
+        if (t) return { question: clean(t.replace(STAR, "")), source: "nearby", required: STAR.test(t) };
+      }
+    }
+    return null;
+  };
+  // Never a member's own option label ("Yes"): no question beats a wrong one.
+  const groupQuestion = (el) => {
+    const ms = members(el);
+    const options = new Set(ms.map(labelOf));
+    const fromContainer = describeBy(el.closest(GROUPER));
+    if (fromContainer.question && !options.has(fromContainer.question)) return fromContainer;
+    const before = precedingQuestion(el, ms);
+    if (before?.question && !options.has(before.question)) return before;
+    return { question: "", source: null };
+  };
   const realOptions = (el) => [...el.options].filter((o, i) => !o.disabled && clean(o.text)
     && !(i === 0 && (o.value === "" || /^(select|choose|please select|--|—)/i.test(clean(o.text)))));
 
@@ -121,7 +163,7 @@
       multi: (el) => el.type === "checkbox" && !lone(el),
       groupKey: (el) => (lone(el) ? null : members(el)[0]),
       parts: (el) => (lone(el) ? [el] : members(el)),
-      describe: (el) => (lone(el) ? {} : describeBy(el.closest(GROUPER))),
+      describe: (el) => (lone(el) ? {} : groupQuestion(el)),
       passive: (el) => (lone(el)
         ? { options: [{ oid: "yes", text: "Yes", selected: el.checked }, { oid: "no", text: "No", selected: !el.checked }], complete: true }
         : { options: members(el).map((m, i) => ({ oid: `o${i + 1}`, text: labelOf(m), selected: m.checked })), complete: true }),
@@ -147,7 +189,7 @@
         const single = box(el)?.querySelector(SINGLE);
         if (single) return clean(single.textContent);
         if (chips(el)[0]) return chips(el)[0];
-        return box(el)?.querySelector('input[type="hidden"]')?.value ?? "";
+        return backing(el);
       },
     },
     {
@@ -175,9 +217,9 @@
     groupKey: (el) => ariaGroup(el) ?? null,
     parts: ariaMembers,
     describe: (el) => (ariaGroup(el) ? describeBy(ariaGroup(el)) : {}),
-    answered: (el) => (el.matches(CHECKABLE)
-      ? ariaMembers(el).some((m) => m.getAttribute("aria-checked") === "true")
-      : Boolean(UNKNOWN.read(el))),
+    // Never answered: a default aria-valuenow or a pre-set state is not the
+    // user's answer, and nothing here can tell them apart.
+    answered: () => false,
     read: (el) => {
       if (el.matches(CHECKABLE)) {
         return ariaMembers(el).filter((m) => m.getAttribute("aria-checked") === "true")

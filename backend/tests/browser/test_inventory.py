@@ -23,6 +23,8 @@ def test_every_shape_is_listed_once_with_its_question(page, load):
     assert [(f["shape"], f["question"]) for f in fields(page)] == [
         ("text", "First name"), ("group", "Are you 18 or older?"),
         ("search", "What is your preferred shift?"), ("popup", "State")]
+    shift = by_question(page)["What is your preferred shift?"]
+    assert (shift["committed"], shift["answered"]) == ("", False)  # the page's hidden input is not its value
 
 
 def test_a_field_record_carries_every_key_later_tasks_read(page, load):
@@ -223,3 +225,47 @@ def test_an_aria_1_1_combobox_wrapper_is_its_input_not_a_second_field(page, load
     load(page, """<label id='l'>Office</label>
       <div role='combobox' aria-labelledby='l'><input aria-labelledby='l'></div>""")
     assert [(f["shape"], f["question"]) for f in fields(page)] == [("search", "Office")]
+
+
+def test_a_search_box_never_reads_an_unrelated_hidden_input(page, load):
+    load(page, """<form><input type='hidden' name='csrf' value='TOKEN'>
+      <div><div><label for='s'>Shift</label><input id='s' role='combobox'></div></div></form>""")
+    assert [(f["question"], f["committed"]) for f in fields(page)] == [("Shift", "")]
+
+
+def test_a_search_box_does_not_read_a_neighbours_single_value(page, load):
+    load(page, """<div class='row'><label for='a'>A</label><input id='a' role='combobox'>
+      <div class='x__single-value'>Z</div><label for='b'>B</label><input id='b' value='bee'></div>""")
+    assert by_question(page)["A"]["committed"] == ""
+
+
+def test_a_hidden_input_inside_the_widget_is_its_value(page, load):
+    load(page, """<label id='l'>Office</label><div class='sel__container'>
+      <div><input role='combobox' aria-labelledby='l'></div><input type='hidden' name='office' value='Austin'></div>""")
+    assert fields(page)[0]["committed"] == "Austin"
+
+
+def test_fields_inside_a_grid_are_listed(page, load):
+    load(page, "<div role='grid'><div role='row'><div role='gridcell'><label for='c'>Company</label><input id='c'></div></div></div>")
+    assert [f["question"] for f in fields(page)] == ["Company"]
+
+
+def test_named_radios_without_a_container_ask_the_text_before_them(page, load):
+    load(page, """<p class='question-label'>Are you 18?</p>
+      <label><input type='radio' name='a'>Yes</label><label><input type='radio' name='a'>No</label>""")
+    assert [(f["shape"], f["question"]) for f in fields(page)] == [("group", "Are you 18?")]
+
+
+def test_named_radios_take_plain_preceding_text_and_never_an_option_label(page, load):
+    load(page, """<label for='x'>City</label><input id='x'>
+      <div><p>Do you need sponsorship?*</p>
+        <div><input type='radio' name='sp' id='y'><label for='y'>Yes</label></div>
+        <div><input type='radio' name='sp' id='n'><label for='n'>No</label></div></div>
+      <div><label><input type='radio' name='q'>Yes</label><label><input type='radio' name='q'>No</label></div>""")
+    got = fields(page)
+    assert [(f["question"], f["required"]) for f in got[1:]] == [("Do you need sponsorship?", True), ("", False)]
+
+
+def test_an_unknown_control_is_never_answered(page, load):
+    load(page, "<span id='q'>Rate</span><div role='slider' aria-labelledby='q' aria-valuenow='3' tabindex='0'></div>")
+    assert [(f["shape"], f["committed"], f["answered"]) for f in fields(page)] == [("unknown", "3", False)]
