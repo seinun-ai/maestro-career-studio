@@ -73,6 +73,19 @@ export function DisputeBox({
   useLayoutEffect(() => {
     if (result) focusIfDropped(replyRef.current);
   }, [result]);
+  // A dispute that lifts the bullet out of the report removes this card while the reply holds focus.
+  // A LAYOUT cleanup runs before React detaches it; after the commit, focus goes to the resolved
+  // "Fixed" entry that now carries the reply (ResolvedFinding takes it if it mounts later).
+  const hash = finding.content_hash;
+  useLayoutEffect(() => {
+    const reply = replyRef.current;
+    return () => {
+      if (!reply || document.activeElement !== reply) return;
+      queueMicrotask(() =>
+        focusIfDropped(document.querySelector<HTMLElement>(`[data-resolved-hash="${hash}"]`)),
+      );
+    };
+  }, [result, hash]);
 
   const send = useMutation({
     mutationFn: () =>

@@ -136,7 +136,8 @@
   and offers its number-free alternative; the summary shows the server-provided next-grade distance.
   A rated bullet offers a quiet **Not right?** (a free-text dispute, `dispute-box.tsx`) unless the user
   set its rating by hand; the page keeps the reply per content hash, so it survives the re-run a moved
-  rating triggers, and a suggestion in it applies through the same hash-guarded Apply.
+  rating triggers (a bullet the dispute lifts out of the report carries it on its Fixed entry, which
+  takes focus), and a suggestion in it applies through the same hash-guarded Apply.
 - **One page shell: `PageShell` + `PageHeader`** (`components/page-shell.tsx`).
   Every top-level route renders `PageShell` — `max-w-6xl`, `p-6`, `gap-6` —
   and `PageHeader` for its title block. Never assign per-page widths or

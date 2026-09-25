@@ -42,6 +42,7 @@ import {
   checkDoneWords,
   disputeChangedRating,
   explainScoreDelta,
+  resolvedDisputeReply,
   filterFindings,
   groupFindings,
   groupTitle,
@@ -626,7 +627,11 @@ export function HealthReportPage({
             {resolved.length > 0 && (
               <div className="space-y-2">
                 {resolved.map((finding) => (
-                  <ResolvedFinding key={finding.id} finding={finding} />
+                  <ResolvedFinding
+                    key={finding.id}
+                    finding={finding}
+                    reply={resolvedDisputeReply(finding, findings, disputes)}
+                  />
                 ))}
               </div>
             )}

@@ -6,6 +6,7 @@ import {
   DISPUTE_DETAIL,
   disputeChangedRating,
   disputeFailure,
+  resolvedDisputeReply,
   composeMetricContext,
   explainScoreDelta,
   groupFindings,
@@ -433,4 +434,12 @@ test("disputeChangedRating is true when the level or the question moved", () => 
     disputeChangedRating({ before: same, after: { ...same, question: "Who used it?", ask_kind: "detail" } }),
     true,
   );
+});
+
+test("resolvedDisputeReply goes on the Fixed entry only once the bullet left the report", () => {
+  const disputes = { abc: { reply: "Re-read: now rated \"Shows a result\"." } };
+  assert.equal(resolvedDisputeReply({ content_hash: "abc" }, [], disputes), disputes.abc.reply);
+  assert.equal(resolvedDisputeReply({ content_hash: "abc" }, [{ content_hash: "abc" }], disputes), undefined);
+  assert.equal(resolvedDisputeReply({ content_hash: "zzz" }, [], disputes), undefined);
+  assert.equal(resolvedDisputeReply({ content_hash: null }, [], disputes), undefined);
 });

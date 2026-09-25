@@ -270,3 +270,21 @@ def test_a_dispute_that_moves_the_rating_re_runs_the_report():
     assert after.index("adoptReport(") < after.index("qc.invalidateQueries(")
     assert _PAGE.count("onDisputed={afterDispute}") == 2
     assert _PAGE.count("dispute={finding.content_hash ? disputes[finding.content_hash] : undefined}") == 2
+
+
+def test_a_dispute_that_resolves_a_bullet_keeps_its_reply_and_focus():
+    # The card leaves with the bullet; its reply moves onto the "Fixed" entry, which takes focus.
+    assert "reply={resolvedDisputeReply(finding, findings, disputes)}" in _PAGE
+    fn = _HELPERS[_HELPERS.index("export function resolvedDisputeReply("):]
+    fn = fn[: fn.index("\n}\n")]
+    assert "current.some((f) => f.content_hash === hash)" in fn
+    entry = _CARDS[_CARDS.index("export function ResolvedFinding("):]
+    assert 'role="status"' in entry and "{reply}" in entry
+    assert "if (reply) focusIfDropped(ref.current);" in entry
+    assert "data-resolved-hash=" in entry and "tabIndex={reply ? -1 : undefined}" in entry
+    # Whichever commit comes last: the leaving card hands focus to the entry.
+    box = _dispute_box()
+    handoff = box[box.index("const reply = replyRef.current;"):]
+    handoff = handoff[: handoff.index("}, [result, hash]);")]
+    assert "document.activeElement !== reply" in handoff
+    assert "queueMicrotask(" in handoff and '[data-resolved-hash="${hash}"]' in handoff

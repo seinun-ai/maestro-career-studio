@@ -1553,10 +1553,27 @@ export function GateBanner({
   );
 }
 
-export function ResolvedFinding({ finding }: { finding: LintFinding }) {
+export function ResolvedFinding({ finding, reply }: { finding: LintFinding; reply?: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  // A dispute that lifted this bullet took its card, and the reply that held focus, with it. The
+  // entry takes focus when it mounts after the card left; DisputeBox hands it over when the card
+  // leaves after the entry mounted.
+  useLayoutEffect(() => {
+    if (reply) focusIfDropped(ref.current);
+  }, [reply]);
   return (
-    <div className="text-muted-foreground rounded-md border border-dashed px-3 py-2 text-sm line-through">
-      Fixed: {finding.label}
+    <div
+      ref={ref}
+      tabIndex={reply ? -1 : undefined}
+      data-resolved-hash={reply ? (finding.content_hash ?? undefined) : undefined}
+      className="rounded-md border border-dashed px-3 py-2 text-sm outline-none"
+    >
+      <p className="text-muted-foreground line-through">Fixed: {finding.label}</p>
+      {reply && (
+        <p role="status" className="text-foreground mt-1 max-w-[65ch]">
+          {reply}
+        </p>
+      )}
     </div>
   );
 }

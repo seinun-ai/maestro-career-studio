@@ -83,6 +83,20 @@ export function disputeChangedRating(result: {
   );
 }
 
+/**
+ * The reply a resolved entry carries: a dispute lifted its bullet out of the report, so no current
+ * finding holds that text any more and the card that showed the reply is gone.
+ */
+export function resolvedDisputeReply(
+  finding: { content_hash?: string | null },
+  current: { content_hash?: string | null }[],
+  disputes: Record<string, { reply: string }>,
+): string | undefined {
+  const hash = finding.content_hash;
+  if (!hash || current.some((f) => f.content_hash === hash)) return undefined;
+  return disputes[hash]?.reply;
+}
+
 type GateLike = { tier: string; status: string };
 
 const problems = (n: number, tier: string) => `${n} ${tier} ${n === 1 ? "problem" : "problems"}`;
