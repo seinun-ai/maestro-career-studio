@@ -659,6 +659,22 @@ def test_a_closest_pick_is_listed_for_the_user_to_check(tmp_path):
     rows = dict(_rows_of(out["settled"]["rail"]))
     assert rows["Application questions"] == "3 filled · 1 needs you"
 
+def test_a_finished_fill_still_names_its_closest_picks(tmp_path):
+    """A finished fill ticks the step and takes the body — and its check list —
+    off screen, so the foot note is the only place left to say it. A closest
+    pick is a factual answer the page had no exact option for: finishing
+    silently would write a near-miss major or degree with nobody told."""
+    out = _fill(tmp_path, start=True,
+                frames={"collect_open_questions": CLEAN_COLLECT_FRAMES},
+                api={"/api/autofill/choose": _reply({"choices": {
+                    "q1": {"answer": "Night", "reason": "closest"},
+                    "q2": {"answer": "LinkedIn", "reason": "matched"},
+                }})})
+    [note] = _by_class(out["settled"]["foot"], "note")
+    assert note["text"] == (
+        "Fill finished. Check the closest match before you submit: "
+        "preferred shift (Night).")
+
 def test_the_progress_rows_move_with_what_the_writer_actually_did(tmp_path):
     """The other half of "the run's own report": change what the ENGINE says
     and the rows change with it.
@@ -1703,6 +1719,21 @@ def test_a_learn_that_fails_leaves_the_field_filled_and_says_both(tmp_path):
         "Filled “how did you hear about us?”. Couldn't save the answer, so it "
         "will ask again. 1 field needs your answer.")
 
+
+def test_the_pause_row_that_finishes_the_fill_names_its_closest_picks(tmp_path):
+    """The pause path's half of the finished note: it finishes a fill too, and
+    the check list goes off screen with the tick either way."""
+    out = _answer(tmp_path, answer={"qid": "q2", "text": "LinkedIn"},
+                  frames={"collect_open_questions": CLEAN_COLLECT_FRAMES,
+                          "fill_answers": True},
+                  api={"/api/autofill/choose": _reply({"choices": {
+                      "q1": {"answer": "Night", "reason": "closest"},
+                      "q2": {"answer": None, "reason": "abstained"}}}),
+                       "/api/settings/autofill": STORED_PROFILE})
+    [note] = _by_class(out["answered"]["foot"], "note")
+    assert note["text"].endswith(
+        "Fill finished. Check the closest match before you submit: "
+        "preferred shift (Night).")
 
 def test_the_last_open_field_finishes_the_fill_exactly_as_a_clean_run_would(tmp_path):
     """CONVERGENCE with `startFill`, which is the half of this feature that

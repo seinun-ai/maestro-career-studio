@@ -336,7 +336,7 @@
     // field named as the page wrote it (`text`; `label` is lowercased).
     const left = ns.panelLeftSentence({ open, blank: after.blank ?? 0 },
                                       store.build.plural)
-      ?? "Fill finished. Review before you submit.";
+      ?? ns.panelFinishedSentence(after.closest);
     store.write({
       note: { text: `Filled “${row.text || row.label}”.${learned} ${left}` },
     });
