@@ -173,8 +173,9 @@ each. The blank count comes from verified state.
   consent). Returns route + slot + value (to the local extension). With the
   low-stakes setting on, a **second pass** asks (Noul) only about choice fields
   no fact answered — so a real profile answer always wins.
-- **`POST /api/autofill/pick`** — Choice over live option ids + `none`; Noul
-  per option for sets; `category` step; policy thresholds from the slot.
+- **`POST /api/autofill/pick`** — Choice over live option ids + `none`; sets
+  are picked one approved item per question; policy thresholds from the slot.
+  Categories are handled by the adaptive step.
 - **`POST /api/autofill/step`** — Choice over candidate move ids + `give_up`;
   a click needs the slot's match floor, and a closest click needs the page to
   report every option in view. `/pick` and `/step` re-check the low-stakes
