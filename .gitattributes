@@ -1,0 +1,17 @@
+# Every text file is checked out with LF line endings, on every OS.
+#
+# Git for Windows defaults to core.autocrlf=true, which rewrites text files to
+# CRLF on checkout. The files that then break are the ones that run INSIDE Linux
+# (the Docker images, WSL): a CRLF shebang fails as `/usr/bin/env: 'bash\r'`,
+# and a CRLF .env copied from .env.example ends every value in a stray \r that
+# update.sh's parser keeps. `eol=lf` overrides autocrlf, so a Windows clone
+# matches a macOS or Linux one byte for byte.
+* text=auto eol=lf
+
+# Binary: never normalized, never diffed as text.
+*.png binary
+*.gif binary
+*.ico binary
+*.otf binary
+*.pdf binary
+*.mcpb binary

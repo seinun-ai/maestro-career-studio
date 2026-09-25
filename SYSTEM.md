@@ -654,6 +654,12 @@ bought it. Code citing "§8" lands here.
   and an update exits before touching anything, printing the import-through-v0.4.0 steps (docs/UPDATING.md).
   A v0.3.0 user's OWN old script cannot run the guard — it jumps straight to the newest tag, and the app
   comes up empty on a demo database; the same steps recover it (the data stays in the volume).
+- **Windows = WSL.** The supported route is Docker Desktop's WSL 2 engine with the clone in the WSL home, never
+  `/mnt/c` (SQLite WAL over the Windows share is untrusted; the scripts are bash). `.gitattributes` forces LF
+  so a Git-for-Windows clone cannot CRLF the scripts or `.env`. The `.mcpb` shim searches Docker Desktop's
+  Windows paths, then PATH (`dockerCandidates`/`onPath`, `mcpb/tests/shim.test.js`); `setup-mcp.sh` is not
+  a Windows route. The upload host root is `${PWD}` (compose falls back to its own cwd; `update.sh` pins it
+  to the repo) unless `MAESTRO_CS_UPLOAD_HOST_ROOT` says otherwise; a Windows-shaped root joins with `\`.
 - **Version identity**: the tag bakes into both images as `APP_VERSION`, served by `GET /api/version` with
   the live alembic revision; the frontend warns when its baked copy disagrees, unless either side STARTS
   WITH `dev` (local or dispatch build) = do not compare — which also keeps it off contributors.
@@ -817,6 +823,8 @@ citation. Priority lives in the item text, not in the ordinal.
     job undated (the UI says so). More formats move scores: calibrate first (§9 `ats_calibration`).
 38. A double-clicked "Tailor resume" opens and closes its confirm; with the backend down, every card on
     Settings, Analytics and Career repeats one error (a page-level message needs a shared mechanism).
+39. Windows is unverified end to end: install, update, Companion load from `\\wsl.localhost\...` (GETTING_STARTED
+    gives a copy-to-`C:` fallback), `.mcpb` on Windows Claude Desktop, and the WSL upload host root.
 
 ## 12. Gotchas that have bitten before
 

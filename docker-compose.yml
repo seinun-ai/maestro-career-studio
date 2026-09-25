@@ -71,9 +71,14 @@ services:
       # opens the file runs on the host, so it needs BOTH sides of the mount:
       # UPLOAD_DIR to write to, UPLOAD_HOST_ROOT to report back. Unset
       # UPLOAD_HOST_ROOT (the host-venv transport) makes the translation inert.
-      # ${PWD} is the shell's directory, so run compose from the repo root.
+      # ${PWD} is the directory compose runs from (compose falls back to its own
+      # working directory where the shell exports no PWD, e.g. PowerShell), so
+      # run compose from the repo root. Set MAESTRO_CS_UPLOAD_HOST_ROOT in .env
+      # when the browser sees the checkout under a different path than the
+      # shell does — a WSL clone driven from a Windows browser needs its
+      # \\wsl.localhost\<distro>\... form.
       MAESTRO_CS_UPLOAD_DIR: /app/.playwright-mcp/uploads
-      MAESTRO_CS_UPLOAD_HOST_ROOT: ${PWD}/.playwright-mcp/uploads
+      MAESTRO_CS_UPLOAD_HOST_ROOT: ${MAESTRO_CS_UPLOAD_HOST_ROOT:-${PWD}/.playwright-mcp/uploads}
     volumes:
       # The database: maestro_cs.sqlite3 plus its -wal/-shm sidecars and the
       # import marker. PII like every other mount here. Never open it from the

@@ -353,6 +353,40 @@ def test_prepare_upload_translates_container_path_to_host_when_host_root_set(
     assert not (host_root / "a1" / "Resume.pdf").exists()
 
 
+@pytest.mark.parametrize(
+    ("host_root", "expected"),
+    [
+        # Docker Desktop on Windows: compose falls back to its own working
+        # directory for ${PWD}, so the root arrives with a mixed separator.
+        (
+            "C:\\Users\\me\\maestro-career-studio/.playwright-mcp/uploads",
+            "C:\\Users\\me\\maestro-career-studio\\.playwright-mcp\\uploads\\a1\\Resume.pdf",
+        ),
+        # A WSL clone opened by a Windows browser, set in .env by hand.
+        (
+            "\\\\wsl.localhost\\Ubuntu\\home\\me\\m\\.playwright-mcp\\uploads",
+            "\\\\wsl.localhost\\Ubuntu\\home\\me\\m\\.playwright-mcp\\uploads\\a1\\Resume.pdf",
+        ),
+    ],
+)
+@respx.mock
+def test_prepare_upload_joins_a_windows_host_root_with_backslashes(
+    tmp_path, monkeypatch, host_root, expected
+):
+    # This code runs on Linux inside the container; a POSIX join would append
+    # "/a1/Resume.pdf" to a Windows root and hand the browser a mixed path.
+    monkeypatch.setenv("MAESTRO_CS_UPLOAD_DIR", str(tmp_path / "uploads"))
+    monkeypatch.setenv("MAESTRO_CS_UPLOAD_HOST_ROOT", host_root)
+    respx.get(f"{BASE}/api/applications/a1/pdf").mock(
+        return_value=_pdf_response(multipage_text_pdf_bytes(["Win"]), "Resume.pdf")
+    )
+
+    _mock_assert_open_proposal()
+    out = BackendClient(BASE).prepare_application_pdf_upload("a1")
+
+    assert out["upload_path"] == expected
+
+
 @respx.mock
 def test_prepare_upload_path_unchanged_when_host_root_unset(tmp_path, monkeypatch):
     # The venv transport writes and reads one filesystem, so translation must be
