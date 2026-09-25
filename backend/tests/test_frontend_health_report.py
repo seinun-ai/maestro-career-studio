@@ -18,6 +18,7 @@ _ZONES = (_FRONTEND / "lib/health-zones.ts").read_text()
 _HELPERS = (_FRONTEND / "lib/health-report.ts").read_text()
 _BADGES = (_FRONTEND / "components/resume-health/health-badges.tsx").read_text()
 _GALLERY = (_FRONTEND / "components/base-resumes/base-resume-gallery.tsx").read_text()
+_JUDGED = (_FRONTEND / "components/resume-health/judged-text.tsx").read_text()
 
 
 def test_two_pane_not_page_measure():
@@ -133,10 +134,11 @@ def test_hoist_blurb_does_not_conjugate_backend_copy():
 
 
 def test_judged_text_is_never_italic_or_one_line_truncated():
-    for name in ("finding-cards", "batch-ask-dialog", "demonstrate-skill-dialog", "wording-checklist", "word-list-dialog"):
+    for name in ("finding-cards", "batch-ask-dialog", "demonstrate-skill-dialog", "wording-checklist", "word-list-dialog",
+                 "judged-text"):
         src = (_FRONTEND / f"components/resume-health/{name}.tsx").read_text()
         assert not re.search(r'className="[^"]*\bitalic\b', src), "judged text must be upright"
-    quote = _CARDS[_CARDS.index("function SourceQuote("):]
+    quote = _JUDGED[_JUDGED.index("export function SourceQuote("):]
     quote = quote[:quote.index("\n}\n")]
     assert "truncate" not in quote
     assert "text-muted-foreground" not in quote
@@ -280,7 +282,7 @@ def test_a_dispute_suggestion_uses_the_guarded_apply_and_is_copy_only_for_other_
     box = _dispute_box()
     assert "renderSuggestion(result.suggestion)" in box
     # One suggestion component: the guarded editor, or plain wording when there is no text.
-    helper = _CARDS[_CARDS.index("function CardSuggestion("): _CARDS.index("function SourceQuote(")]
+    helper = _CARDS[_CARDS.index("function CardSuggestion("): _CARDS.index("export function SuggestionEditor(")]
     assert helper.index("if (currentText == null)") < helper.index("<SuggestionBlock")
     for card, own in (("export function FixCard(", "finding.suggestion != null && disputeSuggestion == null && renderSuggestion(finding.suggestion)"),
                       ("export function AskCard(", "disputeSuggestion == null && renderSuggestion(suggestion)")):
@@ -292,7 +294,7 @@ def test_a_dispute_suggestion_uses_the_guarded_apply_and_is_copy_only_for_other_
         # A dispute's suggestion is newer: the card's own gives way to it.
         assert "const disputeSuggestion = dispute?.suggestion ?? null;" in body and own in body
         assert "onApplied={onApplied}" in body
-    block = _CARDS[_CARDS.index("function SuggestionBlock("): _CARDS.index("function SuggestionCopyOnly(")]
+    block = _CARDS[_CARDS.index("function SuggestionBlock("): _CARDS.index("function CardSuggestion(")]
     assert block.index('finding.location.section.startsWith("extra:")') < block.index("<SuggestionCopyOnly")
     assert block.index("<SuggestionCopyOnly") < block.index("<SuggestionEditor")
 
@@ -303,7 +305,7 @@ def test_a_dispute_that_moves_the_rating_re_runs_the_report():
     after = after[: after.index("\n  };\n")]
     assert "setDisputes(" in after
     assert "if (!disputeChangedRating(result)) return;" in after
-    assert after.index("runLintReport(kind, resumeKey)") < after.index("adoptReport(")
+    assert after.index("const fresh = await runLatest();") < after.index("if (!fresh) return;") < after.index("adoptReport(")
     assert after.index("adoptReport(") < after.index("qc.invalidateQueries(")
     # Only this dispute's own re-run marks the bullet lifted (its Fixed entry carries the reply).
     lift = "if (!hasOpenRating(fresh.findings, hash)) setLifted((l) => new Set(l).add(hash));"
@@ -376,6 +378,14 @@ def _fn(src: str, head: str) -> str:
     return body[: body.index("\n}\n")]
 
 
+def _row() -> str:
+    return _fn(_wording(), "function WordingRow(")
+
+
+def _checklist() -> str:
+    return _fn(_wording(), "export function WordingChecklist(")
+
+
 def test_wording_notes_are_one_group_by_the_language_prefix():
     assert 'rule.startsWith("language.")' in _fn(_HELPERS, "export function isWordingRule(")
     split = _fn(_HELPERS, "export function splitWordingNotes<")
@@ -384,57 +394,81 @@ def test_wording_notes_are_one_group_by_the_language_prefix():
     # The rule table never sees a wording note; the Wording group gets every one.
     assert "const { wording, other } = splitWordingNotes(notes);" in notes
     assert "const groups = groupNotesByRule(other);" in notes
-    assert "<WordingChecklist" in notes and "notes={wording}" in notes
-    # Inside the Notes disclosure, collapsed with it.
-    assert notes.index("hidden={!notesOpen}") < notes.index("<WordingChecklist")
+    assert "notes={wording}" in notes
     assert "onWordingChanged={reanalyzeReport}" in _PAGE
 
 
-def test_the_wording_header_says_it_never_changes_the_score_and_opens_the_word_list():
-    src = _wording()
-    assert "These never change your score." in src
-    assert "Edit word list" in src and "<WordListDialog" in src
+def test_the_wording_group_and_its_word_list_are_there_with_no_hits():
+    # Planner decision: Edit word list must be reachable with zero wording hits, so the Notes
+    # disclosure renders with any report and the Wording group renders in it unconditionally.
+    notes = _fn(_CARDS, "export function NotesTable(")
+    at = notes.index("<WordingChecklist")
+    assert notes.index("hidden={!notesOpen}") < at
+    # Unconditional: the element opens its own line in the disclosure, and no count guards it.
+    assert "*/}\n        <WordingChecklist\n          notes={wording}" in notes
+    assert "wording.length" not in notes
+    assert "{body && (\n              <NotesTable" in _PAGE
+    group = _checklist()
+    assert "notes.length === 0 ?" in group and "No wording issues." in group
+    header = group[: group.index("notes.length === 0 ?")]
+    assert "Edit word list" in header and "These never change your score." in header
+
+
+def test_the_wording_actions_are_text_style():
     # One filled button per view: the header's link and every row action are text-style.
-    assert re.search(r'variant="link"[^>]*>\s*Edit word list', src) or re.search(
-        r"Edit word list[\s\S]{0,40}</Button>", src)
-    assert "<Button" in src
-    for tag in re.findall(r"<Button\b[^>]*>", src, flags=re.S):
+    src = _wording()
+    tags = re.findall(r"<Button\b[\s\S]*?>(?=\s*[{A-Z])", src)
+    assert len(tags) == 3
+    for tag in tags:
         assert 'variant="link"' in tag, tag
 
 
 def test_apply_and_remove_send_the_guarded_suggestion_with_its_hash():
     op = _fn(_HELPERS, "export function wordingEditOp(")
     assert "note.suggestion == null" in op and 'startsWith("extra:")' in op
-    # Both writes carry the hash: the summary's and a bullet's.
-    assert op.count("expected_content_hash: note.content_hash") == 2
-    assert 'kind: "replace_summary"' in op and 'kind: "replace_bullet"' in op
-    assert "value: note.suggestion" in op
-    src = _wording()
-    assert "mutationFn: (edit: LintEditOp) => applyResumeEdits(kind, resumeKey, [edit])," in src
-    assert "onClick={() => applyOnce(op)}" in src
-    assert "const applyOnce = useSingleFlight(apply.mutate);" in src
-    assert '{slip ? "Apply" : "Remove"}' in src
-    # Apply leaves with its button: "Applied" takes the focus, and the page invalidates like any Apply.
-    assert "focusNext(appliedRef)" in src and "onApplied();" in src
+    assert "return bulletEditOp(note.location, note.suggestion, note.content_hash);" in op
+    edit = _fn(_HELPERS, "export function bulletEditOp(")
+    assert "hash != null ? { expected_content_hash: hash } : {}" in edit
+    assert edit.count("...guard") == 2
+    # SuggestionEditor writes through the same op.
+    assert "bulletEditOp(finding.location, draft, expectedHash ?? finding.content_hash)" in _CARDS
+    row = _row()
+    assert "const op = data ? wordingEditOp(note) : null;" in row
+    assert "mutationFn: (edit: LintEditOp) => applyResumeEdits(kind, resumeKey, [edit])," in row
+    assert "const applyOnce = useSingleFlight(apply.mutate);" in row
+    assert "onClick={() => applyOnce(op)}" in row
+    # Apply leaves with its button: "Applied" (or "Removed") takes the focus once the write lands.
+    on_success = row[row.index("onSuccess: (result) => {"): row.index("onError:", row.index("onSuccess: (result) => {"))]
+    assert "focusNext(appliedRef);" in on_success and "onApplied();" in on_success
+    assert '{slip ? "Applied" : "Removed"}' in row
+
+
+def test_row_actions_have_unique_names():
+    row = _row()
+    assert 'aria-label={slip ? `Apply fix to "${word}"` : `Remove "${word}"`}' in row
+    assert 'aria-label={`Ignore "${word}"`}' in row
 
 
 def test_a_null_or_other_section_suggestion_is_copy_only():
-    src = _wording()
-    row = _fn(src, "function WordingRow(")
-    assert "const op = data ? wordingEditOp(note) : null;" in row
-    # No Apply or Remove without an op; an Other section's guarded wording is copy-only.
-    assert "op && (\n" in row
-    assert 'note.location.section.startsWith("extra:")' in row
-    assert "<SuggestionCopyOnly" in row
-    assert "Can&apos;t apply this fix here." in row and "Can&apos;t remove it here." in row
-    assert "export function SuggestionCopyOnly(" in _CARDS
+    row = _row()
+    assert "const fix = slip ? slipFix(note) : null;" in row
+    assert "const otherSection = note.location.section.startsWith(\"extra:\");" in row
+    assert "const copyOnly = otherSection && note.suggestion != null && currentText != null;" in row
+    # The copy-only diff is gated on the Other section; with it, the slip's own diff gives way.
+    gate = row[row.index("{data && !op && !applied &&"):]
+    assert gate.index("copyOnly &&") < gate.index("<SuggestionCopyOnly")
+    assert "{fix != null && !copyOnly ? (" in row
+    assert "Can&apos;t apply this fix here." in row and "Can&apos;t remove it here. Edit the {thing} in the resume." in row
+    # Nothing to act on (no action, no "Can't apply") until the resume text has loaded.
+    assert row.count("{data && (") == 1 and "{data && !op && !applied &&" in row
+    assert 'const thing = note.location.section === "summary" ? "summary" : "bullet";' in row
 
 
 def test_a_changed_bullet_shows_on_its_row():
-    row = _fn(_wording(), "function WordingRow(")
+    row = _row()
     assert "isContentChangedError(err)" in row
     assert 'role="alert"' in row
-    assert "This bullet changed since the check." in row and "Check again?" in row
+    assert "This {thing} changed since the check." in row and "Check again?" in row
     assert "err.message}" not in row
     # A re-run on changed text keeps the note id: the row is keyed by the text's hash as well, so
     # its "changed since the check" (and "Applied") never outlive the text they were about.
@@ -444,19 +478,54 @@ def test_a_changed_bullet_shows_on_its_row():
 def test_ignore_adds_the_subject_to_never_flag_and_re_runs():
     src = _wording()
     assert "const ignoreOnce = useSingleFlight(ignore.mutate);" in src
-    ignore = src[src.index("const ignoreWord = async ("):]
-    ignore = ignore[: ignore.index("\n  };\n")]
+    group = _checklist()
+    ignore = group[group.index("const ignoreWord = (subject: string) =>"):]
+    ignore = ignore[: ignore.index("\n    });\n")]
+    assert "exclusive(async () => {" in ignore
     assert ignore.index("await getWording()") < ignore.index("await putWording(withIgnored(")
-    assert ignore.index("await putWording(") < ignore.index("await onWordingChanged()")
+    assert ignore.index("await putWording(") < ignore.index("await rerun()")
+    assert "await onWordingChanged();" in group[group.index("const rerun = async () => {"):]
+    assert "onIgnore={ignoreWord}" in group
     fn = _fn(_HELPERS, "export function withIgnored(")
     assert "normalizeWord(subject)" in fn and "...wording.ignored" in fn
-    assert 'apiFetch<WordingRead>("/api/resume-lint/wording", {' in (_FRONTEND / "lib/api.ts").read_text()
-    assert 'method: "PUT"' in _fn((_FRONTEND / "lib/api.ts").read_text(), "export function putWording(")
+    api = (_FRONTEND / "lib/api.ts").read_text()
+    assert 'apiFetch<WordingRead>("/api/resume-lint/wording", {' in api
+    assert 'method: "PUT"' in _fn(api, "export function putWording(")
+
+
+def test_one_word_list_change_at_a_time():
+    # Two Ignores each PUT the lists they read: the later one dropped the earlier word. The group
+    # runs one GET -> PUT -> re-run at a time and disables every Ignore and the word list's Save.
+    group = _checklist()
+    ex = group[group.index("const exclusive = async ("):]
+    ex = ex[: ex.index("\n  };\n")]
+    assert "if (changing.current) return;" in ex
+    assert ex.index("changing.current = true;") < ex.index("await change();")
+    assert "finally {" in ex and "changing.current = false;" in ex and "setWordingBusy(false);" in ex
+    assert "wordingBusy={wordingBusy}" in group and "busy={wordingBusy}" in group
+    assert "onSaved={() => void exclusive(() => rerun())}" in group
+    assert "disabled={busy || wordingBusy}" in _row()
+    form = _fn(_word_list_dialog(), "function WordListForm(")
+    assert "const busy = save.isPending || groupBusy;" in form
+    save = form[form.rindex("<Button", 0, form.index("onClick={submit}")): form.index("onClick={submit}")]
+    assert "disabled={busy}" in save
+
+
+def test_an_older_report_never_replaces_a_newer_one():
+    latest = _PAGE[_PAGE.index("const runLatest = async ("):]
+    latest = latest[: latest.index("\n  };\n")]
+    assert latest.index("const seq = ++runSeq.current;") < latest.index("await runLintReport(kind, resumeKey)")
+    assert latest.index("await runLintReport(") < latest.index("if (seq < adoptedSeq.current) return null;")
+    assert latest.index("return null;") < latest.index("adoptedSeq.current = seq;")
+    # Every re-run goes through it, and adopts only what it returned.
+    assert _PAGE.count("runLintReport(") == 1
+    assert _PAGE.count("await runLatest();") == 3 and "mutationFn: runLatest," in _PAGE
+    assert _PAGE.count("if (!result) return;") == 3 and _PAGE.count("if (!fresh) return;") == 1
 
 
 def test_the_word_list_dialog_has_three_lists_and_reset():
     src = _word_list_dialog()
-    for title in ('"Clichés"', '"Filler words"', '"Never flag"'):
+    for title in ('title="Clichés"', 'title="Filler words"', 'title="Never flag"'):
         assert title in src
     assert "Reset to defaults" in src
     assert "wording.defaults.cliche" in src and "wording.defaults.filler" in src
@@ -465,12 +534,28 @@ def test_the_word_list_dialog_has_three_lists_and_reset():
     assert 'if (e.key === "Enter")' in src
     assert "addWord(" in src and 'role="alert"' in src
     assert "const saveOnce = useSingleFlight(save.mutate);" in src
-    assert "putWording({ cliche, filler, ignored })" in src
+    assert "mutationFn: (body: WordingBody) => putWording(body)," in src
     assert "Cancel" in src
-    # Save re-runs the report after the dialog closes; the close returns to the opener or what survived.
+    # Save closes, then the checklist re-runs; the close returns to the opener or what survived.
     assert src.index("onClose();") < src.index("onSaved();")
     assert "const returnToOpener = useOpenerReturn(open);" in src
-    assert 'finalFocus={returnToOpener}' in src
+    assert "finalFocus={returnToOpener}" in src
+
+
+def test_save_commits_a_typed_word_or_stops_with_its_error():
+    form = _fn(_word_list_dialog(), "function WordListForm(")
+    submit = form[form.index("const submit = () => {"):]
+    submit = submit[: submit.index("\n  };\n")]
+    assert "withDraft(lists[key], drafts[key])" in submit
+    assert submit.index("if (LISTS.some((key) => found[key])) return setErrors(found);") < submit.index("saveOnce(body);")
+    assert "onClick={submit}" in form
+    assert "return normalizeWord(draft) ? addWord(list, draft) : { list };" in _HELPERS
+
+
+def test_the_form_copies_the_lists_only_after_the_refetch_on_open():
+    src = _word_list_dialog()
+    assert "const ready = wording.data != null && !wording.isFetching;" in src
+    assert "{ready ? (" in src and "<WordListForm wording={wording.data!}" in src
 
 
 def test_word_list_limits_mirror_the_backend():
@@ -491,8 +576,8 @@ def test_slip_fix_reads_the_backend_issue_sentence():
 
 def test_wording_rows_hand_focus_on_when_they_leave():
     src = _wording()
-    assert "useFocusHandoff(groupRef);" in src
-    assert "tabIndex={-1}" in src
+    group = _checklist()
+    assert '<div tabIndex={-1} className="rounded-md border outline-none">' in group
     leave = _fn(src, "function useSuccessorOnLeave(")
     assert "useLayoutEffect(" in leave and "row.contains(document.activeElement)" in leave
     assert 'focusSuccessor(row, "[data-wording-action]")' in leave
@@ -501,7 +586,15 @@ def test_wording_rows_hand_focus_on_when_they_leave():
 
 
 def test_wording_rows_show_the_bullet_upright_and_in_full():
-    row = _fn(_wording(), "function WordingRow(")
+    row = _row()
     assert "<SourceQuote text={currentText} clamp />" in row
-    assert "export function SourceQuote(" in _CARDS
+    assert "export function SourceQuote(" in _JUDGED
     assert "{note.label}" in row
+
+
+def test_judged_text_has_one_home_and_no_import_cycle():
+    for name in ("DiffText", "SuggestionCopyOnly", "SourceQuote"):
+        assert f"export function {name}(" in _JUDGED
+        assert f"function {name}(" not in _CARDS
+    assert "@/components/resume-health/finding-cards" not in _wording()
+    assert "@/components/resume-health/judged-text" in _wording()

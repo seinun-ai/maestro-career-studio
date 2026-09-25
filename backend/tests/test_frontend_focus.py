@@ -549,7 +549,8 @@ def test_every_kept_mounted_dialog_names_its_return_target():
 def test_a_list_item_hands_focus_to_its_neighbour_then_its_landmark():
     # Mutants: previous before next; the item itself (still connected at menu
     # close) as the fallback; siblings read late, after the item has gone; the
-    # neighbour's matching control ignored.
+    # neighbour's matching control ignored; a neighbour that cannot take focus (a row with no
+    # action) returned instead of the landmark.
     assert (
         "export function focusSuccessor(item: Element | null | undefined, control?: string): () => HTMLElement | null {"
     ) in _FOCUS
@@ -560,8 +561,12 @@ def test_a_list_item_hands_focus_to_its_neighbour_then_its_landmark():
         "item?.parentElement?.closest<HTMLElement>('[tabindex=\"-1\"]') ?? document.getElementById(MAIN_CONTENT_ID), ); "
         "return () => { const sibling = siblings.find((s): s is HTMLElement => s instanceof HTMLElement && s.isConnected); "
         "if (!sibling) return landmark(); "
-        "return (control ? sibling.querySelector<HTMLElement>(control) : null) ?? focusTarget(sibling); };"
+        "const target = (control ? sibling.querySelector<HTMLElement>(control) : null) ?? focusTarget(sibling); "
+        "// A neighbour with nothing that takes focus (a row with no action): its focus() would do nothing. "
+        "return canTakeFocus(target) ? target : landmark(); };"
     )
+    can = _fn_body(_FOCUS, "function canTakeFocus(")
+    assert can == "return el.matches(TABBABLE) || el.matches('[tabindex=\"-1\"]');"
 
 
 _BASE_LIST = _read("app/base-resumes/page.tsx")

@@ -140,11 +140,14 @@
   wording to copy, on its Fixed entry, which takes focus), and a suggestion in it applies through the
   same hash-guarded Apply (one suggestion per card: the dispute's replaces the card's own).
   Wording notes (`language.*`: slips, clichés, filler; zero score) are one **Wording** checklist inside
-  Notes (`wording-checklist.tsx`): a row shows the bullet as judged text, the slip as a word diff or the
-  issue, and text-style **Apply**/**Remove** (the backend's guarded `suggestion`, hash-guarded; copy-only
-  for Other sections or when the guards refused) and **Ignore** (adds the word to Never flag, then re-runs).
-  **Edit word list** (`word-list-dialog.tsx`) edits Clichés, Filler words and Never flag as a draft that
-  Cancel drops; Save sends all three and re-runs.
+  Notes (`wording-checklist.tsx`), shown with every report ("No wording issues." with no hits) so **Edit
+  word list** is always reachable. A row shows the bullet as judged text (`judged-text.tsx`), the slip as
+  a word diff or the issue, and text-style **Apply**/**Remove** (the backend's guarded `suggestion`
+  through `bulletEditOp`, hash-guarded; copy-only for Other sections or when the guards refused) and
+  **Ignore** (adds the word to Never flag, then re-runs). One word list change runs at a time (GET, PUT,
+  re-run), and the page adopts no report older than the last one it adopted (`runLatest`). **Edit word
+  list** (`word-list-dialog.tsx`) edits Clichés, Filler words and Never flag as a draft that Cancel drops;
+  Save commits a typed-but-unadded word (or stops on its error), sends all three and re-runs.
 - **One page shell: `PageShell` + `PageHeader`** (`components/page-shell.tsx`).
   Every top-level route renders `PageShell` — `max-w-6xl`, `p-6`, `gap-6` —
   and `PageHeader` for its title block. Never assign per-page widths or

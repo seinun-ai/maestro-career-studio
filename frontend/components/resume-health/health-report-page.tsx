@@ -223,9 +223,22 @@ export function HealthReportPage({
     qc.setQueryData(["resume-lint", kind, resumeKey], result);
   };
 
+  // Re-runs overlap (two quick Ignores, a Check again during a dispute's re-run): each request is
+  // numbered, and a report older than the last one adopted is dropped, never adopted over it.
+  const runSeq = useRef(0);
+  const adoptedSeq = useRef(0);
+  const runLatest = async (): Promise<LintReport | null> => {
+    const seq = ++runSeq.current;
+    const result = await runLintReport(kind, resumeKey);
+    if (seq < adoptedSeq.current) return null;
+    adoptedSeq.current = seq;
+    return result;
+  };
+
   const analyze = useMutation({
-    mutationFn: () => runLintReport(kind, resumeKey),
+    mutationFn: runLatest,
     onSuccess: (result) => {
+      if (!result) return;
       adoptReport(result, Boolean(report.data));
       setAppliedCount(0);
       // "Too little to grade" in the rail: the toast never names a grade.
@@ -254,7 +267,8 @@ export function HealthReportPage({
 
   const reanalyzeReport = async () => {
     setLastDisputed(null);
-    const result = await runLintReport(kind, resumeKey);
+    const result = await runLatest();
+    if (!result) return;
     adoptReport(result, true);
     setAppliedCount(0);
     await qc.invalidateQueries({
@@ -269,7 +283,8 @@ export function HealthReportPage({
   ) => {
     await overrideLevel(contentHash, level, reason);
     setLastDisputed(null);
-    const result = await runLintReport(kind, resumeKey);
+    const result = await runLatest();
+    if (!result) return;
     adoptReport(result, true);
     await qc.invalidateQueries({
       queryKey: ["resume-lint", kind, resumeKey],
@@ -290,7 +305,8 @@ export function HealthReportPage({
     setDisputes((d) => ({ ...d, [hash]: result }));
     if (!disputeChangedRating(result)) return;
     setLastDisputed(hash);
-    const fresh = await runLintReport(kind, resumeKey);
+    const fresh = await runLatest();
+    if (!fresh) return;
     adoptReport(fresh, true);
     if (!hasOpenRating(fresh.findings, hash)) setLifted((l) => new Set(l).add(hash));
     await qc.invalidateQueries({
@@ -655,8 +671,9 @@ export function HealthReportPage({
             )}
 
             {/* Hidden, not unmounted, when the filter leaves notes out: it
-                holds the kept Demonstrate-skill drafts. */}
-            {notes.length > 0 && (
+                holds the kept Demonstrate-skill drafts. Always there with a report, so the
+                Wording group's Edit word list is reachable with no wording hits. */}
+            {body && (
               <NotesTable
                 hidden={!showNotes}
                 notes={notes}

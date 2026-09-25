@@ -32,11 +32,13 @@ import {
   staleFindingIds,
   shortFindingLabel,
   addWord,
+  bulletEditOp,
   canIgnore,
   isWordingRule,
   normalizeWord,
   slipFix,
   splitWordingNotes,
+  withDraft,
   withIgnored,
   wordingEditOp,
   WORD_LIST_MAX,
@@ -606,4 +608,30 @@ test("canIgnore offers Ignore only for a subject Never flag can hold", () => {
   assert.equal(canIgnore("  "), false);
   assert.equal(canIgnore(undefined), false);
   assert.equal(canIgnore("x".repeat(41)), false);
+});
+
+test("bulletEditOp replaces the summary or one bullet, hash-guarded when it has a hash", () => {
+  assert.deepEqual(bulletEditOp({ section: "summary" }, "New summary.", "h1"), {
+    kind: "replace_summary",
+    value: "New summary.",
+    expected_content_hash: "h1",
+  });
+  assert.deepEqual(bulletEditOp({ section: "projects", index: 0, bullet_index: 3 }, "New bullet.", "h2"), {
+    kind: "replace_bullet",
+    section: "projects",
+    index: 0,
+    bullet_index: 3,
+    value: "New bullet.",
+    expected_content_hash: "h2",
+  });
+  // No hash (an older report): the write goes unguarded rather than sending null.
+  assert.equal("expected_content_hash" in bulletEditOp({ section: "summary" }, "x", null), false);
+  assert.equal("expected_content_hash" in bulletEditOp({ section: "summary" }, "x"), false);
+});
+
+test("withDraft commits a typed-but-unadded word on Save, and refuses an invalid one", () => {
+  assert.deepEqual(withDraft(["synergy"], "  "), { list: ["synergy"] });
+  assert.deepEqual(withDraft(["synergy"], " Go-Getter "), { list: ["synergy", "go-getter"] });
+  assert.deepEqual(withDraft(["synergy"], "Synergy"), { error: "That's already on this list." });
+  assert.deepEqual(withDraft([], "x".repeat(41)), { error: "Keep it to 40 characters or fewer." });
 });

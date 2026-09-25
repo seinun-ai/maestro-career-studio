@@ -284,7 +284,8 @@ def test_the_findings_filter_hides_notes_instead_of_unmounting_them():
     """The notes table holds the kept Demonstrate-skill drafts."""
     flat = _flat(_HEALTH_PAGE)
     assert "showNotes && notes.length > 0" not in flat
-    assert "{notes.length > 0 && ( <NotesTable hidden={!showNotes}" in flat
+    # Always there with a report (Task 10b review): the Wording group's Edit word list needs it.
+    assert "{body && ( <NotesTable hidden={!showNotes}" in flat
     assert "<section ref={sectionRef} id=\"notes\" tabIndex={-1} hidden={hidden}" in _FINDINGS
 
 

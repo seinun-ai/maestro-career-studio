@@ -716,6 +716,22 @@ export async function staleFindingIds<
   return stale;
 }
 
+/**
+ * The one write behind every health Apply: the summary, or one bullet, replaced by `value`. With a
+ * `hash`, the server refuses it (409) when the text changed since the check.
+ */
+export function bulletEditOp(
+  location: { section: string; index?: number | null; bullet_index?: number | null },
+  value: string,
+  hash?: string | null,
+): LintEditOp {
+  const guard = hash != null ? { expected_content_hash: hash } : {};
+  const { section, index, bullet_index } = location;
+  return section === "summary"
+    ? { kind: "replace_summary", value, ...guard }
+    : { kind: "replace_bullet", section, index, bullet_index, value, ...guard };
+}
+
 // --- Wording: spelling and grammar slips, clichés and filler (zero score) ----------------------
 
 /** A wording note: `language.cliche`, `language.filler` or `language.slip`. */
@@ -753,18 +769,8 @@ export function wordingEditOp(note: {
   suggestion?: string | null;
   content_hash?: string | null;
 }): LintEditOp | null {
-  const { section, index, bullet_index } = note.location;
-  if (note.suggestion == null || !note.content_hash || section.startsWith("extra:")) return null;
-  return section === "summary"
-    ? { kind: "replace_summary", value: note.suggestion, expected_content_hash: note.content_hash }
-    : {
-        kind: "replace_bullet",
-        section,
-        index,
-        bullet_index,
-        value: note.suggestion,
-        expected_content_hash: note.content_hash,
-      };
+  if (note.suggestion == null || !note.content_hash || note.location.section.startsWith("extra:")) return null;
+  return bulletEditOp(note.location, note.suggestion, note.content_hash);
 }
 
 /** health_wording.MAX_CHARS and MAX_ENTRIES (pinned equal by test_frontend_health_report.py). */
@@ -784,6 +790,11 @@ export function addWord(list: string[], raw: string): { list: string[] } | { err
   if (list.includes(word)) return { error: "That's already on this list." };
   if (list.length >= WORD_LIST_MAX) return { error: `This list is full (${WORD_LIST_MAX}). Remove one first.` };
   return { list: [...list, word] };
+}
+
+/** `list` with its add field's text committed, as Save sends it: a blank field adds nothing. */
+export function withDraft(list: string[], draft: string): { list: string[] } | { error: string } {
+  return normalizeWord(draft) ? addWord(list, draft) : { list };
 }
 
 /** Never flag can hold this subject (Ignore is offered). */

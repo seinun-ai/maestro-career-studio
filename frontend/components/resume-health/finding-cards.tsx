@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode, type Ref, type RefObject } from "react";
+import { useId, useLayoutEffect, useRef, useState, type ReactNode, type Ref, type RefObject } from "react";
 import { GuardedLink as Link } from "@/components/guarded-link";
 import {
   ATTENTION_BADGE_LABEL,
@@ -11,6 +11,7 @@ import { toast } from "sonner";
 
 import { DemonstrateSkillDialog } from "@/components/resume-health/demonstrate-skill-dialog";
 import { DisputeBox, type DisputeHandler } from "@/components/resume-health/dispute-box";
+import { DiffText, SourceQuote, SuggestionCopyOnly } from "@/components/resume-health/judged-text";
 import { WordingChecklist } from "@/components/resume-health/wording-checklist";
 import {
   emptyMetricAsk,
@@ -50,6 +51,7 @@ import { couldnt } from "@/lib/error-text";
 import { toastContentChanged, toastRewriteError } from "./report-errors";
 import {
   answerMatchesFinding,
+  bulletEditOp,
   groupNotesByRule,
   hoistBlurb,
   isBulletSubjectRule,
@@ -69,7 +71,6 @@ import {
 import { focusIfDropped, useEditToggle, useFocusOnNextCommit } from "@/hooks/use-focus-return";
 import { useSingleFlight } from "@/hooks/use-single-flight";
 import { notifyRenderNote } from "@/lib/render-note";
-import { wordDiff } from "@/lib/word-diff";
 import { cn } from "@/lib/utils";
 import type {
   DisputeResult,
@@ -390,28 +391,6 @@ export const GRADE_STYLES: Record<string, string> = {
   F: "bg-destructive/10 text-destructive",
 };
 
-export function DiffText({ oldText, newText }: { oldText: string; newText: string }) {
-  return (
-    <p className="max-w-[65ch] text-sm leading-relaxed">
-      {wordDiff(oldText, newText).map((token, i) => (
-        <span
-          key={i}
-          className={cn(
-            token.kind === "removed" &&
-              "bg-destructive/10 text-destructive line-through",
-            token.kind === "added" &&
-              "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
-          )}
-        >
-          {token.text}{" "}
-        </span>
-      ))}
-    </p>
-  );
-}
-
-/** Current text at a finding's location, for the tracked-changes view. */
-
 function SuggestionBlock({
   finding,
   currentText,
@@ -450,25 +429,6 @@ function SuggestionBlock({
   );
 }
 
-export function SuggestionCopyOnly({
-  currentText,
-  suggestion,
-}: {
-  currentText: string;
-  suggestion: string;
-}) {
-  return (
-    <div className="mt-2 space-y-2 border-t pt-2">
-      <div className="bg-muted/40 rounded-md p-2">
-        <DiffText oldText={currentText} newText={suggestion} />
-      </div>
-      <p className="text-muted-foreground max-w-[65ch] text-xs">
-        Can&apos;t apply this here yet. Copy the new wording into the resume.
-      </p>
-    </div>
-  );
-}
-
 /**
  * A card's one suggestion: the hash-guarded editor (copy-only for Other sections, which have no
  * bullet edit op), or the plain wording when the card has no text to compare it with.
@@ -493,41 +453,6 @@ function CardSuggestion({
     );
   }
   return <SuggestionBlock currentText={currentText} suggestion={suggestion} {...rest} />;
-}
-
-export function SourceQuote({ text, clamp }: { text: string; clamp?: boolean }) {
-  const [open, setOpen] = useState(false);
-  const [cut, setCut] = useState(false);
-  const quoteRef = useRef<HTMLParagraphElement>(null);
-  useEffect(() => {
-    const el = quoteRef.current;
-    if (!clamp || open || !el) return;
-    // Measured, never guessed from length: only a quote the clamp actually cuts
-    // offers "Show all" (a toggle under every short bullet was the clutter).
-    const observer = new ResizeObserver(() => setCut(el.scrollHeight > el.clientHeight + 1));
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [clamp, open, text]);
-  return (
-    <div className="border-l-2 border-border pl-3">
-      <p
-        ref={quoteRef}
-        className={cn("text-foreground max-w-[65ch] text-sm", clamp && !open && "line-clamp-3")}
-      >
-        {text}
-      </p>
-      {clamp && (open || cut) && (
-        <button
-          type="button"
-          className="text-primary mt-0.5 text-xs underline-offset-2 hover:underline"
-          aria-expanded={open}
-          onClick={() => setOpen((v) => !v)}
-        >
-          {open ? "Show less" : "Show all"}
-        </button>
-      )}
-    </div>
-  );
 }
 
 export function SuggestionEditor({
@@ -558,24 +483,10 @@ export function SuggestionEditor({
   const focusNext = useFocusOnNextCommit();
 
   const apply = useMutation({
-    mutationFn: () => {
-      const { section, index, bullet_index } = finding.location;
-      const hashValue = expectedHash ?? finding.content_hash;
-      const hash =
-        hashValue != null ? { expected_content_hash: hashValue } : {};
-      const op =
-        section === "summary"
-          ? { kind: "replace_summary", value: draft, ...hash }
-          : {
-              kind: "replace_bullet",
-              section,
-              index,
-              bullet_index,
-              value: draft,
-              ...hash,
-            };
-      return applyResumeEdits(kind, resumeKey, [op]);
-    },
+    mutationFn: () =>
+      applyResumeEdits(kind, resumeKey, [
+        bulletEditOp(finding.location, draft, expectedHash ?? finding.content_hash),
+      ]),
     onSuccess: (result) => {
       setApplied(true);
       focusNext(appliedRef);
@@ -1048,7 +959,6 @@ export function AskCard({
   );
 }
 
-
 export function NotesTable({
   hidden,
   notes,
@@ -1141,17 +1051,16 @@ export function NotesTable({
         </button>
       </h2>
       <div hidden={!notesOpen} className="space-y-2">
-        {wording.length > 0 && (
-          <WordingChecklist
-            notes={wording}
-            data={data ?? null}
-            kind={kind}
-            resumeKey={resumeKey}
-            onApplied={onApplied}
-            onReanalyze={onReanalyze}
-            onWordingChanged={onWordingChanged}
-          />
-        )}
+        {/* Always, even with no hits: Edit word list lives in its header. */}
+        <WordingChecklist
+          notes={wording}
+          data={data ?? null}
+          kind={kind}
+          resumeKey={resumeKey}
+          onApplied={onApplied}
+          onReanalyze={onReanalyze}
+          onWordingChanged={onWordingChanged}
+        />
         {groups.length > 0 && (
           <div className="overflow-x-auto rounded-md border">
             <table className="w-full table-fixed text-sm">
