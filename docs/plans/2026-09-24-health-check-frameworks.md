@@ -804,7 +804,13 @@ Commit: `feat(health): free-text disputes re-evaluate the bullet with the user's
 - **The reply** renders inline as plain text (`role="status"`), and focus moves to it (`useFocusOnNextCommit`).
 - **A suggestion** renders the existing `SuggestionBlock`, which uses the same hash-guarded Apply.
 - **When the level or ask changed,** re-run the report (the existing `overrideClassification` pattern).
-- **A 409** shows on the card: "This bullet changed since the check. Check again?"
+- **A 409** shows on the card. The endpoint has two 409s, told apart by `detail`:
+  - the content-changed guard → "This bullet changed since the check. Check again?"
+  - `detail` equal to the service's OVERRIDDEN text → that text ("You set this rating yourself. Set it back to
+    automatic first.").
+- **When the user has overridden the rating** (`classification_source === "override"`), don't offer "Not right?".
+- **A custom-section (`extra:`) bullet** is disputable. A `new_info` suggestion for it renders copy-only (no Apply):
+  there is no bullet edit op for extras.
 
 Commit: `feat(health): tell the check why a flag is wrong`
 
@@ -1148,7 +1154,7 @@ Commit: `docs: health check v3 (evaluator, disputes, flags, report layout)`
 
 | 3 | Owner labels before judging evaluator | Fixture newly created | Labels provisional; requested owner sign-off through Claude; no real provider run | Works beyond tech |
 
-| 5 | Batch evaluation reused by disputes | `_classify_batch` writes the ordinary cache | Extract `_evaluate_batch` with validated fields and no classification writes; runner uses it | Judge the page; cache isolation |
+| 5 | Batch evaluation reused by disputes | `_classify_batch` writes the ordinary cache | Extract `_evaluate_batch` (since renamed `evaluate_uncached`) with validated fields and no classification writes; runner uses it | Judge the page; cache isolation |
 | 5 | Tune prompt on dev if key available | Real-provider gate delegated to Claude | Keep prompt exactly as specified; no tuning or held-out calls | Works beyond tech |
 
 | 5 | Missing ask kind stays null | Number question could bypass detail sanitization | Normalize invalid/missing ask kind to detail before number checks | Never demand an unnatural number |
