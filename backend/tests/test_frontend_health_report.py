@@ -159,3 +159,15 @@ def test_status_is_text_points_are_grouped_and_notes_start_closed():
     assert "aria-expanded={notesOpen}" in notes
     assert "hidden={!notesOpen}" in notes
     assert "export function groupPoints" in _HELPERS
+    assert 'label: "Specific, no result"' in _CARDS
+    assert 'label: "Partial result"' in _CARDS
+
+
+def test_per_bullet_metric_contract_and_alternative_are_wired():
+    assert "isMetricAsk(finding)" in _CARDS
+    assert "isMetricAsk(f)" in _PAGE
+    assert "No number? Answer this instead" in _CARDS
+    assert "finding.alt_question" in _CARDS and "finding.measure_target" in _CARDS
+    assert "metricAsk && !useAlternative" in _CARDS
+    assert "nextGradeLine(body)" in _PAGE
+    assert 'ask_kind?: "measure" | "detail" | "reword" | null' in _TYPES

@@ -1744,6 +1744,11 @@ export interface LintFinding {
   zone?: "hot" | "cold" | null;
   suggestion?: string | null;
   question?: string | null;
+  ask_kind?: "measure" | "detail" | "reword" | null;
+  measure_target?: string | null;
+  alt_question?: string | null;
+  evidence?: string[];
+  gain?: number;
   source: string;
   /** Stable hash of the normalized text, present only for classifier findings. */
   content_hash?: string | null;
@@ -1793,6 +1798,7 @@ export interface LintReport {
   insufficient_evidence?: boolean;
   /** Absent until the scoring lane lands. */
   score_breakdown?: LintScoreBreakdown | null;
+  next_grade?: { grade: string; points: number } | null;
 }
 
 /** ---- Agent proposal ledger (auto-apply lane) ---- */

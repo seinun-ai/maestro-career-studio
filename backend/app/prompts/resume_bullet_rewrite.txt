@@ -8,9 +8,11 @@ HARD RULES — the rewrite is machine-checked and rejected if it breaks any of t
 2. Preserve every number, tool name, proper noun, organization, and credential from the
    original. You may reorder and reword; you may not drop.
 3. One sentence, no trailing period inconsistency with the original style.
+4. A qualitative result is a complete answer; never add a number the candidate did not give.
 
 Original bullet: $bullet
 Additional context from the candidate (may be empty): $context
+The question this rewrite should answer (with the candidate's context if given): $question
 Previous attempt's violations to fix (may be empty): $violations
 
 Return JSON only: {"rewrite": "<the rewritten bullet>"}

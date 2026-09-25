@@ -843,7 +843,8 @@ citation. Priority lives in the item text, not in the ordinal.
 - **An sr-only span beside a flex item is out of flow** (2026-09-24): Chrome's accessible name gains a space
   ("Agent inbox , 3 need you") → a one-phrase count goes in `aria-label`; check Chrome's AX tree.
 - **Rewording a health `issue` orphans saved ask answers** (2026-09-24): `_fid` hashes the text → a
-  reworded finding passes its old text as `id_key`; the frozen keys live beside the text (`resume_lint.py`).
+  measure asks and numeric analogues retain old `id_key`s (`resume_lint.py`); new detail asks have new keys.
+- **Prompt contracts need versions** (2026-09-25): changed judgments → bump `RUBRIC_VERSION` and resync defaults; overrides survive.
 - **A GUI-launched process has no shell `PATH`** (2026-09-20): MacTeX at `/Library/TeX/texbin` is invisible
   to the desktop shell and to a Claude Desktop child, so a bare `pdflatex` does not resolve.
   `engines.find_pdflatex` searches the TeX homes after PATH, and every run spawns the resolved ABSOLUTE path.

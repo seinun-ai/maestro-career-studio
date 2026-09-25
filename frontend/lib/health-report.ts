@@ -386,8 +386,13 @@ export function filterFindings<T extends { type: string }>(
 
 export const METRIC_ASK_NEEDLE = "What number measures this";
 
-export function isMetricAsk(question: string | null | undefined): boolean {
-  return (question ?? "").includes(METRIC_ASK_NEEDLE);
+export function isMetricAsk(finding: { ask_kind?: string | null; question?: string | null }): boolean {
+  return finding.ask_kind ? finding.ask_kind === "measure" : (finding.question ?? "").includes(METRIC_ASK_NEEDLE);
+}
+
+export function nextGradeLine(report: { next_grade?: { grade: string; points: number } | null }): string | null {
+  const next = report.next_grade;
+  return next ? `${next.points} ${next.points === 1 ? "point" : "points"} to ${next.grade}` : null;
 }
 
 export function isBulletSubjectRule(rule: string | undefined): boolean {

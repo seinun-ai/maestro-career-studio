@@ -167,6 +167,8 @@ def _finding(ftype: str, location: Location, label: str, issue: str, why: str, h
              *, severity: str = "minor", level: float | None = None, cost: float = 0.0,
              zone: str | None = None, suggestion: str | None = None,
              question: str | None = None, source: str = "rule",
+             ask_kind: str | None = None, measure_target: str | None = None,
+             alt_question: str | None = None, evidence: list[str] | None = None,
              content_hash: str | None = None,
              classification_level: str | None = None,
              classification_source: str | None = None,
@@ -199,6 +201,8 @@ def _finding(ftype: str, location: Location, label: str, issue: str, why: str, h
         "zone": zone,                # hot | cold | None
         "suggestion": suggestion,
         "question": question,
+        "ask_kind": ask_kind, "measure_target": measure_target, "alt_question": alt_question,
+        "evidence": evidence or [], "gain": 0,
         "source": source,
     }
     if content_hash is not None:
@@ -238,6 +242,7 @@ def _classification_fields(resume: dict, loc: Location, result: dict) -> dict[st
         "classification_level": result["level"],
         "classification_source": result.get("source"),
         "classification_reason": result.get("reason") or None,
+        "evidence": result.get("evidence") or [],
     }
 
 
@@ -498,6 +503,33 @@ def _gate_findings(gates: list[dict], resume: dict, c2_hit: dict | None,
     return findings
 
 
+ASK_ISSUE = {
+    "measure": {"issue": "Specific, but has no number.",
+                "id_key": "Specific, but carries no number.",
+                "why": "This result is usually measured; a number makes it checkable.",
+                "how": "Add the number, or answer the no-number question instead."},
+    "detail": {"issue": "Says what you did, not what came of it.",
+               "why": "Every strong bullet ends in a result; it doesn't have to be a number.",
+               "how": "Answer the question below in a few words."},
+}
+FALLBACK_QUESTION = {
+    "analogue": "What came of this: what changed, or who used it?",
+    "adjacent": "What came of this work: what changed, or who used it?",
+    "implied": "What did you personally do here?",
+    "unaddressed": "What did you personally do here, and what changed because of it?",
+}
+
+
+def _question_fields(result: dict) -> dict:
+    question = result.get("question")
+    kind = result.get("ask_kind") or "detail"
+    target, alt = result.get("measure_target"), result.get("alt_question")
+    if kind != "measure" or not (question and target and alt):
+        kind, target, alt = "detail", None, None
+    return {"question": question or FALLBACK_QUESTION[result["level"]],
+            "ask_kind": kind, "measure_target": target, "alt_question": alt}
+
+
 def _ladder_findings(
     resume: dict, levels_by_loc: dict[Location, dict], hot: set,
     rewrite_fn: Callable[[str], str | None] | None,
@@ -514,34 +546,24 @@ def _ladder_findings(
         label = _label_at(resume, loc)
         classification = _classification_fields(resume, loc, r)
 
-        if r.get("uncertain"):
-            copy = LADDER_COPY["adjacent"]
-            findings.append(_finding(
-                "ask", loc, label, _ISSUE_AMBIGUOUS,
-                "We couldn't tell how strong this is. Usually a number is almost there.",
-                copy["how"], severity=sev, level=value, cost=cost, zone=zone,
-                question="Is there a number attached to this that you left out?", source="llm",
-                id_key=_ID_KEY_AMBIGUOUS, **classification))
-            continue
         if value >= 1.0:
-            continue  # direct accomplishment — nothing to say
-        if value >= 0.80:
-            if not is_hot:
-                continue  # stop nagging strong cold bullets
-            copy = LADDER_COPY["analogue"]
-            findings.append(_finding(
-                "ask", loc, label, copy["issue"], copy["why"], copy["how"],
-                severity=sev, level=value, cost=cost, zone=zone,
-                question=copy["question"], source="llm", id_key=copy.get("id_key"),
-                **classification))
             continue
-        if value >= 0.50:
-            copy = LADDER_COPY["adjacent"]
+        if r.get("uncertain") or value >= 0.50:
+            if value >= 0.80 and not is_hot and not r.get("uncertain"):
+                continue
+            fields = _question_fields(r)
+            copy = ASK_ISSUE[fields["ask_kind"]]
+            id_key = copy.get("id_key")
+            if value >= 0.80 and any(re.search(r"\d", span) for span in r.get("evidence") or []):
+                id_key = LADDER_COPY["analogue"]["id_key"]
+            issue, why = copy["issue"], copy["why"]
+            if r.get("uncertain"):
+                issue, id_key = _ISSUE_AMBIGUOUS, _ID_KEY_AMBIGUOUS
+                why = "We couldn't tell how strong this is. Your answer can clarify the work."
             findings.append(_finding(
-                "ask", loc, label, copy["issue"], copy["why"], copy["how"],
-                severity=sev, level=value, cost=cost, zone=zone,
-                question=copy["question"], source="llm", id_key=copy.get("id_key"),
-                **classification))
+                "ask", loc, label, issue, why, copy["how"],
+                severity=sev, level=value, cost=cost, zone=zone, source="llm",
+                id_key=id_key, **fields, **classification))
             continue
         # value <= 0.30 → fix candidate (rewrite), deferred so we can rank by cost
         fix_candidates.append((loc, r))
@@ -567,13 +589,13 @@ def _ladder_findings(
             findings.append(_finding(
                 "fix", loc, label, copy["issue"], copy["why"], copy["how"],
                 severity=sev, level=value, cost=cost, zone=zone,
-                suggestion=suggestion, source="llm", **classification))
+                suggestion=suggestion, source="llm", ask_kind="reword", **classification))
         else:
             findings.append(_finding(
                 "ask", loc, label, copy["issue"], copy["why"], copy["how"],
                 severity=sev, level=value, cost=cost, zone=zone,
-                question="What did you personally do here, and what changed because of it?",
-                source="llm", **classification))
+                question=r.get("question") or FALLBACK_QUESTION[r["level"]],
+                source="llm", ask_kind="reword", **classification))
     return findings
 
 
@@ -647,6 +669,16 @@ def assemble(resume: dict, levels_by_loc: dict[Location, dict], base_gates: list
         *_gap_findings(gap_hits or []),
     ]
 
+    # A gain is the next achievable level, never a promised jump to full credit.
+    for finding in findings:
+        value = finding.get("level")
+        section = finding["location"].get("section", "")
+        if finding["type"] in ("ask", "fix") and value is not None and score_levels and (
+            section in ("experience", "projects") or section.startswith("extra:")
+        ):
+            next_value = min((v for v in health_score.LEVEL_VALUES.values() if v > value), default=value)
+            finding["gain"] = round(100 * (next_value - value) / len(score_levels))
+
     # 4) shape notes + advisories — all type=note, weight 0.
     # A per-bullet advisory (length, etc.) must not duplicate a bullet that
     # already carries a ladder fix/ask; the ladder finding is the primary signal.
@@ -677,6 +709,9 @@ def assemble(resume: dict, levels_by_loc: dict[Location, dict], base_gates: list
 
     report = {
         "score": score, "grade": grade, "tier": tier,
+        "next_grade": next(( {"grade": letter, "points": floor - score}
+                             for floor, letter in reversed(health_score.GRADE_BANDS) if floor > score), None)
+                      if score == raw_score else None,
         "gates": gates, "counts": counts, "findings": findings,
         "insufficient_evidence": len(score_levels) < MIN_SCOREABLE_ITEMS,
     }
@@ -919,6 +954,7 @@ def run_report(db: Session, kind: str, key: str, resume: dict, *,
     items = _ladder_items(resume)
     levels_by_loc: dict[Location, dict] = {}
     model = None
+    classified: dict[str, dict] = {}
     if use_llm and items:
         model = model_settings.get_smart_model(db)
         classified = bullet_classify.classify_items(
@@ -946,7 +982,10 @@ def run_report(db: Session, kind: str, key: str, resume: dict, *,
 
     def _rewrite(text: str) -> str | None:
         try:
-            return health_guards.guarded_rewrite(db, text, context="")
+            return health_guards.guarded_rewrite(
+                db, text, context="",
+                question=classified.get(bullet_classify.content_hash(text), {}).get("question") or "",
+            )
         except Exception:  # noqa: BLE001 — a failed rewrite just degrades to ask
             logger.exception("guarded_rewrite failed")
             return None

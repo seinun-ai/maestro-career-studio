@@ -97,6 +97,11 @@ class ScoreBreakdown(BaseModel):
     capped_by: Literal["fatal", "serious"] | None = None
 
 
+class NextGrade(BaseModel):
+    grade: str
+    points: int
+
+
 class LintReportRead(BaseModel):
     id: UUIDType
     resume_kind: str
@@ -111,6 +116,7 @@ class LintReportRead(BaseModel):
     stale: bool = False
     insufficient_evidence: bool = False
     score_breakdown: ScoreBreakdown | None = None
+    next_grade: NextGrade | None = None
     model: str | None = None
     created_at: datetime
 
@@ -349,7 +355,9 @@ def answer_ask(kind: Kind, key: str, finding_id: str, body: AnswerBody,
         answer=body.answer,
         suggestion=None,
     )
-    suggestion = health_guards.guarded_rewrite(db, text, context=body.answer)
+    suggestion = health_guards.guarded_rewrite(
+        db, text, context=body.answer, question=finding.get("question") or "",
+    )
     if suggestion is None:
         raise HTTPException(status_code=422,
                             detail="Couldn't produce a safe rewrite from that answer")

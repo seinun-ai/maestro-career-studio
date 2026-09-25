@@ -235,6 +235,7 @@ def run_health_check(kind: str, key: str) -> Any:
     'application' (then `key` is the application id). Classifies every bullet on
     the evidence ladder, checks structure/content gates, and returns
     {score, grade, tier, gates, counts, findings} ranked by what each defect costs.
+    Concrete qualitative results can earn full credit; findings include their own question and next-level gain.
     Run this BEFORE create_tailoring_session — tailoring blocks on a failing fatal gate."""
     return _client.run_health_check(kind, key)
 
@@ -245,7 +246,8 @@ def get_health_report(kind: str, key: str) -> Any:
     """Fetch the most recent stored health report for a base resume or application
     without re-running it. `kind` is 'base' or 'application', `key` is the slug or
     application id. Returns {score, grade, tier, gates, counts, findings}, or an
-    error if no report exists yet (run run_health_check first)."""
+    error if no report exists yet (run run_health_check first).
+    Findings include per-bullet questions, measure alternatives and next-level gains."""
     return _client.get_health_report(kind, key)
 
 

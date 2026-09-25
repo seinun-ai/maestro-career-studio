@@ -344,6 +344,7 @@ def test_answer_ask_returns_suggestion(db_session, monkeypatch):
         db_session, "data_scientist",
         [{
             "id": "ask-bullet-1", "type": "ask",
+            "question": "Who used the platform?",
             "location": {"section": "experience", "index": 0, "bullet_index": 1},
         }],
     )
@@ -353,6 +354,7 @@ def test_answer_ask_returns_suggestion(db_session, monkeypatch):
         nonlocal calls
         calls += 1
         assert "Original bullet: Kept the lights on." in prompt
+        assert "Who used the platform?" in prompt
         assert (
             "Additional context from the candidate (may be empty): served 5000 users"
             in prompt
@@ -392,6 +394,7 @@ def test_answer_ask_matching_content_hash_returns_suggestion(db_session, monkeyp
             {
                 "id": "ask-current-bullet",
                 "type": "ask",
+                "question": "Who used the platform?",
                 "content_hash": bullet_classify.content_hash("Kept the lights on."),
                 "location": {
                     "section": "experience",

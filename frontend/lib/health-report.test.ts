@@ -7,6 +7,7 @@ import {
   explainScoreDelta,
   groupFindings,
   groupPoints,
+  nextGradeLine,
   groupNotesByRule,
   hoistBlurb,
   isBulletSubjectRule,
@@ -206,11 +207,11 @@ test("stripTrailingPunct drops the stray mark and preceding space", () => {
 
 test("isMetricAsk matches the adjacent number question", () => {
   assert.equal(
-    isMetricAsk("What number measures this — users, rows, %, time saved?"),
+    isMetricAsk({question: "What number measures this — users, rows, %, time saved?"}),
     true,
   );
-  assert.equal(isMetricAsk("What did you personally do here?"), false);
-  assert.equal(isMetricAsk(undefined), false);
+  assert.equal(isMetricAsk({question: "What did you personally do here?"}), false);
+  assert.equal(isMetricAsk({}), false);
 });
 
 test("composeMetricContext builds the walk-through sentence", () => {
@@ -390,4 +391,18 @@ test("groupPoints sums gains once and supports older reports", () => {
   assert.equal(groupPoints([{level: 0.5}], null), 0);
   assert.equal(groupPoints([{level: 0.5, gain: 0}, {level: 0.3, gain: 2}], 28), 2);
   assert.equal(groupPoints([], 28), 0);
+});
+
+
+test("explicit ask kind wins over legacy question wording", () => {
+  assert.equal(isMetricAsk({ask_kind: "measure", question: "How fast?"}), true);
+  assert.equal(isMetricAsk({ask_kind: "detail", question: "What number measures this?"}), false);
+  assert.equal(isMetricAsk({ask_kind: "reword", question: null}), false);
+});
+
+test("nextGradeLine uses server distance with correct plural", () => {
+  assert.equal(nextGradeLine({next_grade: {grade: "A", points: 1}}), "1 point to A");
+  assert.equal(nextGradeLine({next_grade: {grade: "B", points: 12}}), "12 points to B");
+  assert.equal(nextGradeLine({next_grade: null}), null);
+  assert.equal(nextGradeLine({}), null);
 });

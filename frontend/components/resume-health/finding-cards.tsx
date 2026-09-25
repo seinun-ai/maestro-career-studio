@@ -85,8 +85,8 @@ type ClassificationOverrideHandler = (
 // analogue, …) stay the stored values.
 const EVIDENCE_LEVELS: { value: EvidenceLevel; label: string }[] = [
   { value: "direct", label: "Shows a result" },
-  { value: "analogue", label: "Shows scale" },
-  { value: "adjacent", label: "Specific, no number" },
+  { value: "analogue", label: "Partial result" },
+  { value: "adjacent", label: "Specific, no result" },
   { value: "implied", label: "Vague" },
   { value: "unaddressed", label: "Lists a duty" },
 ];
@@ -765,7 +765,8 @@ export function AskCard({
   const focusNext = useFocusOnNextCommit();
   const currentText = textAtLocation(data, finding);
   const meta = TYPE_CHIP.ask;
-  const metricAsk = isMetricAsk(finding.question);
+  const metricAsk = isMetricAsk(finding);
+  const [useAlternative, setUseAlternative] = useState(false);
   const storedFresh = answerMatchesFinding(storedAnswer, finding.content_hash);
   const staleDraft = Boolean(storedAnswer && !storedFresh);
   const answer = answerDraft ?? (storedFresh ? storedAnswer.answer : "");
@@ -791,7 +792,7 @@ export function AskCard({
     />
   );
 
-  const context = metricAsk ? metricContextFromValue(metric) : answer.trim();
+  const context = metricAsk && !useAlternative ? metricContextFromValue(metric) : answer.trim();
 
   const draft = useMutation({
     mutationFn: () => answerAsk(kind, resumeKey, finding.id, context),
@@ -847,7 +848,7 @@ export function AskCard({
     >
       {finding.question && (
         <p className="text-foreground mt-1 max-w-[65ch] text-sm">
-          {finding.question}
+          {useAlternative ? finding.alt_question : finding.question}
         </p>
       )}
       {staleDraft && (
@@ -875,8 +876,20 @@ export function AskCard({
         </p>
       ) : (
         <div className="mt-2 space-y-2 border-t pt-2">
-          {metricAsk ? (
+          {metricAsk && finding.alt_question && (
+            <button
+              type="button"
+              className="text-primary text-sm underline-offset-2 hover:underline"
+              aria-expanded={useAlternative}
+              onClick={() => { setUseAlternative((v) => !v); focusNext(cardRef); }}
+              disabled={locked}
+            >
+              {useAlternative ? "Use the number fields" : "No number? Answer this instead"}
+            </button>
+          )}
+          {metricAsk && !useAlternative ? (
             <MetricAskInput
+              label={finding.measure_target ? `Number for: ${finding.measure_target}` : undefined}
               value={metric}
               onChange={setMetricDraft}
               disabled={locked}

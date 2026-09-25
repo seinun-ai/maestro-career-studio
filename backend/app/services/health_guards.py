@@ -75,6 +75,7 @@ def guarded_rewrite(
     original: str,
     *,
     context: str = "",
+    question: str = "",
     objective: RewriteObjective = "strengthen",
 ) -> str | None:
     """One rewrite attempt + one guarded re-prompt. None = caller emits `ask`.
@@ -98,6 +99,7 @@ def guarded_rewrite(
         prompt = StringTemplate(template).safe_substitute(
             bullet=original,
             context=context,
+            question=question,
             violations=json.dumps(violations),
         )
         if context:

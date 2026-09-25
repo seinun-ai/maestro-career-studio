@@ -125,3 +125,13 @@ def test_unrun_gate_is_not_a_passed_gate(db_session, monkeypatch):
     s1 = next(g for g in gates if g["id"] == "S1")
     assert s1["status"] == "not_assessed"
     assert health_score.apply_gates(90, gates) == 90
+
+
+def test_measure_findings_always_have_target_and_alternative():
+    r = _resume()
+    lv = {("experience", 0, 0): dict(_lv(0.5), ask_kind="measure", question="How many?"),
+          ("experience", 0, 1): dict(_lv(0.8), ask_kind="measure", question="How much time?", measure_target="time", alt_question="What became easier?")}
+    report = rl.assemble(r, lv, PASS_GATES, "experienced", set(lv))["report"]
+    for f in report["findings"]:
+        if f.get("ask_kind") == "measure":
+            assert f["measure_target"] and f["alt_question"]

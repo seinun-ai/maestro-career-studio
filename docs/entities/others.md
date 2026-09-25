@@ -357,7 +357,10 @@
   report for the block and only sets a re-analyze `health_warning`.
   Report reads carry `stale`, `insufficient_evidence` (fewer
   scoreable bullets than `MIN_SCOREABLE_ITEMS = 4` — grade withheld in the UI),
-  and `score_breakdown` (`raw_score`/`e_hot`/`n_scoreable`/`capped_by`, from
+  and `next_grade` (next band and points, null at A or when capped). Classifier findings carry
+  `ask_kind`, `measure_target`, `alt_question`, verbatim `evidence` and next-level `gain`; summary
+  gain is zero. Questions are per bullet with number-free detail fallbacks. Answered rewrites
+  receive that question as context. `score_breakdown` (`raw_score`/`e_hot`/`n_scoreable`/`capped_by`, from
   `features_json`). `replace_bullet`/`replace_summary` ops accept
   `expected_content_hash` (the classifier hash of the text being replaced);
   a mismatch — or a vanished target when a hash was sent — is 409 "content
@@ -397,7 +400,7 @@
   and waived gates include the stored reason when available. Static gate
   findings remain for verbatim MCP report consumers. Bullet classification overrides (with
   reason) let the user overrule an evidence tier from the health report page.
-  **Attention zones are a SCORING input, not a UI layer** (owner decision).
+  **Attention zones govern severity, ordering and C1; the score is a plain mean.**
   `health_zones.hot_locations` returns the summary plus whichever ONE section
   carries that candidate's evidence — the most recent enabled ROLE for
   `experienced`/`unknown`, the first enabled PROJECT for `early` (with no
@@ -407,7 +410,7 @@
   entry's bullets are one unit of evidence. Editors render no amber zone wash
   and make no "read first by a recruiter" claim (a fixed positional heuristic
   must not be stated as fact about a reader); the marker survives ONLY on the
-  health report, labelled `weighted higher` — which is what it actually is.
+  health report, labelled `Higher priority`.
   `lib/health-zones.ts` mirrors the Python; update both together.
 - **ApplicationProposal + ConsentEvent** (auto-apply ledger; migrations
   `56ade310b259` + `11b61fe1ace9`, lifecycle fields `0c677ba4cbcb`, filer

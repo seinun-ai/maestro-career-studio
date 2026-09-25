@@ -50,6 +50,7 @@ import {
   reportInsufficientEvidence,
   reportIsStale,
   scoreCompositionLine,
+  nextGradeLine,
   sharedCoaching,
   hoistBlurb,
   type StreamFilter,
@@ -317,7 +318,7 @@ export function HealthReportPage({
   const notes = findings.filter((f) => f.type === "note");
   const nonNote = findings.filter((f) => f.type !== "note");
   const metricAsks = nonNote.filter(
-    (f) => f.type === "ask" && isMetricAsk(f.question),
+    (f) => f.type === "ask" && isMetricAsk(f),
   );
   const visibleNonNote =
     filter === "note" ? [] : filterFindings(nonNote, filter);
@@ -452,6 +453,9 @@ export function HealthReportPage({
                   )}
                 </div>
               </div>
+              {!reportInsufficientEvidence(body) && nextGradeLine(body) && (
+                <p className="text-muted-foreground text-xs">{nextGradeLine(body)}</p>
+              )}
               {composition && (
                 <p className="text-muted-foreground text-xs">{composition}</p>
               )}

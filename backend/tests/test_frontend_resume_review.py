@@ -501,9 +501,9 @@ def test_finding_rows_wrap_inside_their_cards():
     cards = _read("components/resume-health/finding-cards.tsx")
     row = _block(cards, "function CollapsedRow(", "\nexport function FindingGroupHeader(")
     assert '<div className="flex min-w-0 flex-wrap items-start gap-2">' in row
-    assert '<span className="flex min-w-0 flex-wrap items-center gap-1.5">' in row
+    assert '<span className="text-muted-foreground min-w-0 text-xs break-words">' in row
     chrome = _block(cards, "export function ExpandedFindingChrome(", "\nfunction ClassificationOverrideDialog(")
-    assert "whitespace-normal" in chrome and "flex-wrap" in chrome
+    assert "break-words" in chrome and "flex-wrap" in chrome
 
 
 # --- Item 14: the number question starts empty ------------------------------

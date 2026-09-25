@@ -131,7 +131,9 @@
   with a `border-l-2 border-border pl-3` quote rule. A compact quote uses `line-clamp-3` and a
   visible Show all toggle with `aria-expanded`; metadata alone uses muted text. Health findings show
   location, level and attention as plain text; potential points appear once per group. Notes start
-  collapsed behind a disclosure and stay mounted to preserve drafts.
+  collapsed behind a disclosure and stay mounted to preserve drafts. Health ask controls read
+  `ask_kind` (legacy stored reports fall back to question wording). A measure ask names its target
+  and offers its number-free alternative; the summary shows the server-provided next-grade distance.
 - **One page shell: `PageShell` + `PageHeader`** (`components/page-shell.tsx`).
   Every top-level route renders `PageShell` — `max-w-6xl`, `p-6`, `gap-6` —
   and `PageHeader` for its title block. Never assign per-page widths or
