@@ -1146,10 +1146,13 @@ Commit: `docs: health check v3 (evaluator, disputes, flags, report layout)`
 | All | Astra CLI attribution | Exact model variant unavailable in this desktop session | Use GPT-6 (Codex) attribution | Truthful reporting |
 | 2 | Browser check before Task 2 commit | Later evaluator fields affect these same cards | Verify integrated Wave 1 at both widths before checkpoint | Easy to read and quick to act on |
 
+| 3 | Owner labels before judging evaluator | Fixture newly created | Labels provisional; requested owner sign-off through Claude; no real provider run | Works beyond tech |
+
 ## Gate results
 
 Baseline at `444866c1`: `pytest tests/ mcp_server/tests/ -q` → **5706 passed, 1 skipped**, 256.23s.
 Task 1: 14 frontend pins, lint (2 pre-existing warnings), tsc, and italic mutation check passed.
+Task 3: rubric, 80-case fixture and 12 disputes created; 4 tests, runner help and ruff pass. Owner labels and real evaluator gate remain unverified.
 Task 2: 23 Node tests and 15 frontend pins passed; disclosure mutation caught. Browser check follows Task 6.
 
 ## Goal critique
