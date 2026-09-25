@@ -97,3 +97,14 @@ def test_the_reserved_oid_is_the_pick_no_match_key():
     from app.services.autofill_choose import NO_OPTION
 
     assert RESERVED_OID == NO_OPTION
+
+
+def test_field_ids_are_the_extensions_shape():
+    """`<frame>-<n>` (inventory.js): letters, digits, `-` and `_` only."""
+    assert MapField(**_map_field(fid="k3x9ab-12")).fid == "k3x9ab-12"
+    assert PickField(**_pick_field(fid="k3x9ab-12")).fid == "k3x9ab-12"
+    for fid in ("", "a b", 'f"; x', "x" * 65, "a\nb"):
+        with pytest.raises(ValidationError):
+            MapField(**_map_field(fid=fid))
+        with pytest.raises(ValidationError):
+            PickField(**_pick_field(fid=fid))

@@ -3,11 +3,14 @@
 Jev picks ONE candidate move id (the page's code generated them from the live
 widget) or `give_up`. Clicking an option is a semantic answer and must clear
 the slot's match floor through the same `verdict` /pick uses (a flag slot may
-take a `closest` click only on a complete view); opening, searching, scrolling
-and closing only need PROGRESS_FLOOR. The fact comes from the SLOT,
-server-side; the request carries none. Low-stakes (setting re-checked here,
-never trusted from the client) is only for a field with no slot, and states
-the never-list. The fast model is the same-floors fallback.
+take a `closest` click only on a complete view). A move that is not an answer —
+open, search, scroll, or a click the page described as opening a group
+("Open the group …") — only needs PROGRESS_FLOOR and answers `progress`. The
+fact comes from the SLOT, server-side; the request carries none. Low-stakes
+(setting re-checked here, never trusted from the client) is only for a field
+with no slot, and states the never-list; its answer click is `assumed` at
+ASSUMED_FLOOR (0.4) and its other moves need PROGRESS_FLOOR like any field's.
+The fast model is the same-floors fallback.
 """
 
 import json
@@ -27,6 +30,11 @@ logger = logging.getLogger(__name__)
 
 PROGRESS_FLOOR = 0.5
 GIVE_UP = "give_up"
+# The page's description of a click that opens a group of options (fill-core
+# stepState). Page text only ever follows it, JSON-quoted.
+GROUP_CLICK = "Open the group "
+CLICK_RULE = ("Click an option only if it states the applicant value; open a group only if its sub-options "
+              "will contain it; a click on anything that is not a group selects it as the answer.")
 _GIVE_UP_TEXT = "Stop: no move will select an option that states the value"
 ABSTAIN = StepResponse(mid=None, reason="abstained")
 _LLM_PROMPT = """{instructions}
@@ -35,13 +43,19 @@ Moves (id: what it does): {moves}
 Return JSON {{"move": "<move id>", "confidence": <0..1>}}."""
 
 
+def _is_answer(req: StepRequest, mid: str) -> bool:
+    """A click selects an answer — unless the page described it as opening a group."""
+    describe = next(c.describe for c in req.candidates if c.mid == mid)
+    return mid.startswith("click:") and not describe.startswith(GROUP_CLICK)
+
+
 def _decide(req: StepRequest, mid: str | None, p: float, policy: str) -> StepResponse:
     if not mid or mid == GIVE_UP:
         return ABSTAIN
-    if mid.startswith("click:"):
+    if _is_answer(req, mid):
         picked = verdict(req, mid, p, policy, complete=req.complete)
         return StepResponse(mid=mid, reason=picked.reason) if picked.oids else ABSTAIN
-    return StepResponse(mid=mid, reason="matched") if p >= PROGRESS_FLOOR else ABSTAIN
+    return StepResponse(mid=mid, reason="progress") if p >= PROGRESS_FLOOR else ABSTAIN
 
 
 def _instructions(req: StepRequest, values: list[str], hint: JobHint | None) -> str:
@@ -54,7 +68,7 @@ def _instructions(req: StepRequest, values: list[str], hint: JobHint | None) -> 
     else:
         goal = f"the option that states the applicant value {json.dumps(values[0])}"
     return (f"You are filling {field} on a job application. The goal is to select {goal}. "
-            "The moves tried so far are the state's history. Which next move gets closer to that goal? "
+            f"The moves tried so far are the state's history. Which next move gets closer to that goal? {CLICK_RULE} "
             f"Give up when no move will. {_PAGE_TEXT_IS_DATA}")
 
 

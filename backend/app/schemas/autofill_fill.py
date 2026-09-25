@@ -15,6 +15,8 @@ MAX_PICK_OPTIONS = 250  # Jev Choice ceiling 255 incl. `none`
 # option may never be offered under it, or "no option states it" and that
 # option would be one answer.
 RESERVED_OID = "none"
+# The extension's field id, `<frame>-<n>` (content/inventory.js).
+FID = r"^[A-Za-z0-9_-]{1,64}$"
 
 
 class Selector(BaseModel):
@@ -27,7 +29,7 @@ class Selector(BaseModel):
 
 class MapField(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    fid: str = Field(min_length=1, max_length=64)
+    fid: str = Field(min_length=1, max_length=64, pattern=FID)
     question: str = Field(max_length=300)
     section: str | None = Field(default=None, max_length=200)
     repeat_index: int = Field(default=0, ge=0, le=20)
@@ -66,7 +68,7 @@ class PickOption(BaseModel):
 
 class PickField(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    fid: str = Field(min_length=1, max_length=64)
+    fid: str = Field(min_length=1, max_length=64, pattern=FID)
     question: str = Field(max_length=300)
     route: Literal["slot", "low_stakes"]
     slot: str | None = Field(default=None, max_length=120)
@@ -94,22 +96,30 @@ MAX_STEP_CANDIDATES = 60
 MAX_STEP_HISTORY = 8
 # The structural injection guard: only ids shaped like the ones the page's code
 # generates get in — never an option's text, never a free-form instruction.
-MOVE_ID = r"^(click:o\d+|search:value|search:word:\d|open|scroll|close|give_up)$"
+MOVE_ID = r"^(click:o\d+|search:value|search:word:\d|open|scroll|give_up)$"
+# A history entry is built by the loop from a move id (or the generic `choose`)
+# and its outcome, with an optional reason — never from page text.
+HISTORY_ENTRY = (r"^(click:o\d+|search:value|search:word:\d|open|scroll|close|give_up|choose)"
+                 r" -> [a-z_]+( \([a-z_]+\))?$")
+# Reasons a /step answer can carry: /pick's, plus `progress` for a move that is
+# not an answer (open, search, scroll, or opening a group of options).
+StepReason = Literal["matched", "closest", "assumed", "progress", "abstained"]
 
 
 class StepCandidate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     mid: str = Field(max_length=40, pattern=MOVE_ID)
-    describe: str = Field(max_length=320)
+    describe: str = Field(min_length=1, max_length=320)
 
 
 class StepRequest(Selector):
-    fid: str = Field(min_length=1, max_length=64)
+    fid: str = Field(min_length=1, max_length=64, pattern=FID)
     question: str = Field(max_length=300)
     route: Literal["slot", "low_stakes"]
     slot: str | None = Field(default=None, max_length=120)
     item: str | None = Field(default=None, max_length=300)  # one member of a set slot
-    history: list[Annotated[str, Field(max_length=300)]] = Field(default_factory=list, max_length=MAX_STEP_HISTORY)
+    history: list[Annotated[str, Field(max_length=80, pattern=HISTORY_ENTRY)]] = Field(
+        default_factory=list, max_length=MAX_STEP_HISTORY)
     candidates: list[StepCandidate] = Field(min_length=1, max_length=MAX_STEP_CANDIDATES)
     # True only when every option is in view (the page says so) — a closest
     # match over a capped, unscrolled or filtered list is never allowed.
@@ -126,6 +136,7 @@ class StepRequest(Selector):
 
 class StepResponse(BaseModel):
     mid: str | None
-    # A click that commits: matched / closest / assumed. Any other move that
-    # clears the progress floor: matched. `abstained` (mid None) = give up.
-    reason: Reason
+    # A click on an answer: matched / closest / assumed. A move that is not an
+    # answer (open, search, scroll, open a group) and clears the progress
+    # floor: progress. `abstained` (mid None) = give up.
+    reason: StepReason
