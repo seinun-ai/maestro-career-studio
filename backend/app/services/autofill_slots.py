@@ -18,7 +18,7 @@ FREE_TEXT = "free_text"
 NO_SLOT = "none"
 
 _EXACT_SECTIONS = frozenset({"work_auth", "eligibility", "eeo"})
-_FLAG_SECTIONS = frozenset({"education", "personal"})
+_FLAG_SECTIONS = frozenset({"education", "personal", "experience", "skills", "custom"})
 
 
 def policy_for(slot: str | None) -> Policy:
