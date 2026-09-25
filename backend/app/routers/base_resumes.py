@@ -169,6 +169,7 @@ def _detail(
     resolved_engine: str | None = None,
     template_fallback: bool | None = None,
     render_note: str | None = None,
+    version_number: int | None = None,
 ) -> BaseResumeDetail:
     return BaseResumeDetail(
         slug=row.slug,
@@ -190,6 +191,7 @@ def _detail(
         updated_at=row.updated_at,
         archived_at=row.archived_at,
         applied=applied,
+        version_number=version_number,
     )
 
 
@@ -333,7 +335,7 @@ def edit_base_resume(
     # extras-incompatible template) degrade to a persisted render_error, NEVER
     # a 4xx that would push clients to retry already-applied ops.
     try:
-        row, _, _, applied = resume_ops.edit_base(
+        row, version, _, applied = resume_ops.edit_base(
             db, row, payload.ops, source="edit_ops", template_id=template_id
         )
     except LookupError as e:
@@ -342,7 +344,12 @@ def edit_base_resume(
         raise HTTPException(status_code=409, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
-    return _detail(row, applied=applied, render_note=getattr(row, "render_note", None))
+    return _detail(
+        row,
+        applied=applied,
+        render_note=getattr(row, "render_note", None),
+        version_number=version.version_number,
+    )
 
 
 @router.post("/from-kb/plan", response_model=BaseFromKBPlanRead)

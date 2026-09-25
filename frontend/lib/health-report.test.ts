@@ -57,7 +57,12 @@ import {
   passOutcome,
   passOutcomeWords,
   passProgress,
-  writeVersionsLabel,
+  writeWordingsLabel,
+  changesText,
+  passRowOpen,
+  passRowDisputable,
+  saveBatch,
+  undoTarget,
 } from "./health-report.ts";
 
 test("reportIsStale treats missing as false", () => {
@@ -704,10 +709,10 @@ test("passProgress: a skipped row still counts in the total, and is not answered
   assert.equal(passProgress([]).words, "0 of 0 answered");
 });
 
-test("writeVersionsLabel agrees with its count", () => {
-  assert.equal(writeVersionsLabel(1), "Write 1 new version");
-  assert.equal(writeVersionsLabel(3), "Write 3 new versions");
-  assert.equal(writeVersionsLabel(0), "Write new versions");
+test("writeWordingsLabel agrees with its count (a version is the resume's, the bullet's is wording)", () => {
+  assert.equal(writeWordingsLabel(1), "Write 1 new wording");
+  assert.equal(writeWordingsLabel(3), "Write 3 new wordings");
+  assert.equal(writeWordingsLabel(0), "Write new wordings");
 });
 
 test("batchEditOps: one hash-guarded op per accepted row, the summary as replace_summary", () => {
@@ -873,4 +878,122 @@ test("mergeResolved keeps the page session's fixes across re-runs", () => {
   assert.deepEqual(mergeResolved([a, b, gap], [], [rated("z", "h1"), { ...gap }]), [b]);
   // A note or a changed text at the same hash is not open again.
   assert.deepEqual(mergeResolved([a], [], [{ id: "n", type: "note", content_hash: "h1", classification_level: null }]), [a]);
+});
+
+test("passRowOpen: a queued or drafting row's answer, Skip and Not right? are shut", () => {
+  assert.equal(passRowOpen("answering"), true);
+  assert.equal(passRowOpen("failed"), true);
+  for (const status of ["queued", "drafting", "drafted", "saving", "saved", "changed", "checking", "gone"] as const) {
+    assert.equal(passRowOpen(status), false, status);
+  }
+});
+
+test("passRowDisputable: never while written, writing, saved or changed", () => {
+  for (const status of ["answering", "failed", "drafted", "unrewritable"] as const) {
+    assert.equal(passRowDisputable(status), true, status);
+  }
+  for (const status of ["queued", "drafting", "saving", "saved", "changed", "checking", "gone"] as const) {
+    assert.equal(passRowDisputable(status), false, status);
+  }
+});
+
+test("changesText: wording equal to the bullet, spaces aside, saves nothing", () => {
+  assert.equal(changesText("Built a model.", "  Built a model. "), false);
+  assert.equal(changesText("Built a model.", "Built a pricing model."), true);
+  assert.equal(changesText("Built a model.", "   "), false);
+  assert.equal(changesText(null, "Anything"), false);
+});
+
+test("undoTarget: Undo only when this write is the version after V0", () => {
+  assert.equal(undoTarget(7, 8), 7);
+  assert.equal(undoTarget(7, 7), null); // wrote nothing: an Undo would discard version 7's writer
+  assert.equal(undoTarget(7, 9), null); // another write landed first
+  assert.equal(undoTarget(null, 8), null);
+  assert.equal(undoTarget(7, null), null);
+});
+
+type Row = { key: string };
+const changed409 = Object.assign(new Error("content changed since analysis"), { status: 409 });
+function deps(over: Partial<Parameters<typeof saveBatch<Row, { version_number?: number | null }>>[1]> = {}) {
+  const writes: string[][] = [];
+  return {
+    writes,
+    deps: {
+      latestVersion: async () => 4,
+      write: async (rows: Row[]) => {
+        writes.push(rows.map((r) => r.key));
+        return { version_number: 5 };
+      },
+      changedKeys: async () => new Set<string>(),
+      isChanged: (err: unknown) => (err as { status?: number }).status === 409,
+      keyOf: (row: Row) => row.key,
+      ...over,
+    },
+  };
+}
+const rows: Row[] = [{ key: "a" }, { key: "b" }, { key: "c" }];
+
+test("saveBatch: every row in ONE write, and Undo to V0 when the write is V0 + 1", async () => {
+  const { writes, deps: d } = deps();
+  const out = await saveBatch(rows, d);
+  assert.deepEqual(writes, [["a", "b", "c"]]);
+  assert.deepEqual(out.sent.map((r) => r.key), ["a", "b", "c"]);
+  assert.equal(out.undoTo, 4);
+  assert.equal(out.changed.size, 0);
+});
+
+test("saveBatch: a 409 drops the rows whose text changed and sends the rest once", async () => {
+  let first = true;
+  const { writes, deps: d } = deps({ changedKeys: async () => new Set(["b"]) });
+  const write = d.write;
+  d.write = async (r: Row[]) => {
+    if (first) {
+      first = false;
+      writes.push(r.map((x) => x.key));
+      throw changed409;
+    }
+    return write(r);
+  };
+  const out = await saveBatch(rows, d);
+  assert.deepEqual(writes, [["a", "b", "c"], ["a", "c"]]);
+  assert.deepEqual([...out.changed], ["b"]);
+  assert.deepEqual(out.sent.map((r) => r.key), ["a", "c"]);
+  assert.equal(out.undoTo, 4);
+});
+
+test("saveBatch: a 409 that no row explains marks every row changed and sends nothing more", async () => {
+  const { writes, deps: d } = deps();
+  d.write = async (r: Row[]) => {
+    writes.push(r.map((x) => x.key));
+    throw changed409;
+  };
+  const out = await saveBatch(rows, d);
+  assert.equal(writes.length, 1);
+  assert.deepEqual([...out.changed].sort(), ["a", "b", "c"]);
+  assert.deepEqual(out.sent, []);
+  assert.equal(out.result, null);
+});
+
+test("saveBatch: a second 409 marks the rest changed", async () => {
+  const { writes, deps: d } = deps({ changedKeys: async () => new Set(["a"]) });
+  d.write = async (r: Row[]) => {
+    writes.push(r.map((x) => x.key));
+    throw changed409;
+  };
+  const out = await saveBatch(rows, d);
+  assert.deepEqual(writes, [["a", "b", "c"], ["b", "c"]]);
+  assert.deepEqual([...out.changed].sort(), ["a", "b", "c"]);
+  assert.deepEqual(out.sent, []);
+});
+
+test("saveBatch: no Undo when the write made no new version, or V0 could not be read", async () => {
+  const same = deps({ write: async () => ({ version_number: 4 }) });
+  assert.equal((await saveBatch(rows, same.deps)).undoTo, null);
+  const unread = deps({ latestVersion: async () => Promise.reject(new Error("offline")) });
+  assert.equal((await saveBatch(rows, unread.deps)).undoTo, null);
+});
+
+test("saveBatch: any other failure is the caller's", async () => {
+  const { deps: d } = deps({ write: async () => Promise.reject(new Error("boom")) });
+  await assert.rejects(saveBatch(rows, d), /boom/);
 });

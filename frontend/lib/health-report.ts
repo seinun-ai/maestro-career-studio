@@ -925,10 +925,101 @@ export function passProgress(rows: { answered: boolean; skipped: boolean }[]): {
   return { answered, total, words: `${answered} of ${total} answered` };
 }
 
-/** The pass's primary button: "Write 3 new versions" ("Write new versions" with none to write). */
-export function writeVersionsLabel(n: number): string {
-  if (n === 0) return "Write new versions";
-  return `Write ${n} new ${n === 1 ? "version" : "versions"}`;
+/**
+ * The pass's primary button: "Write 3 new wordings" ("Write new wordings" with none to write). A
+ * bullet's drafted text is its wording; "version" is only ever the resume's.
+ */
+export function writeWordingsLabel(n: number): string {
+  if (n === 0) return "Write new wordings";
+  return `Write ${n} new ${n === 1 ? "wording" : "wordings"}`;
+}
+
+/** Where a pass row is: typing, queued for or being drafted, drafted, saved, or overtaken by a change. */
+export type PassStatus =
+  | "answering"
+  | "queued"
+  | "drafting"
+  | "failed"
+  | "drafted"
+  | "saving"
+  | "saved"
+  | "changed"
+  | "checking"
+  | "gone"
+  | "unrewritable";
+
+/**
+ * A row's answer, Skip for now and Not right? are open only while nothing writes it: Write N new
+ * wordings drafts from the answers it read on the click, so a queued row is shut until its draft lands.
+ */
+export function passRowOpen(status: PassStatus): boolean {
+  return status === "answering" || status === "failed";
+}
+
+/** Not right? is offered on a row the check still rates as it stands: never while it is written or saved. */
+export function passRowDisputable(status: PassStatus): boolean {
+  return status === "answering" || status === "failed" || status === "drafted" || status === "unrewritable";
+}
+
+/** New wording that would change the bullet: blank, or the bullet itself (spaces aside), saves nothing. */
+export function changesText(original: string | null, text: string): boolean {
+  const next = text.trim();
+  return original != null && next.length > 0 && next !== original.trim();
+}
+
+/**
+ * The version an Undo restores: V0, only when this write is the version right after it. A write that
+ * changed nothing leaves V0 latest, and one another write beat to V0 + 1 is later still; restoring V0
+ * then would throw someone else's write away.
+ */
+export function undoTarget(v0: number | null, written: number | null | undefined): number | null {
+  return v0 != null && written != null && written === v0 + 1 ? v0 : null;
+}
+
+export type SaveBatchDeps<R, W> = {
+  /** The latest version before the write (V0); a failed read saves without an Undo. */
+  latestVersion: () => Promise<number | null>;
+  /** ONE `/edits` call for these rows, answering with the version it left latest. */
+  write: (rows: R[]) => Promise<W>;
+  /** After a 409: the rows whose text no longer matches their hash. */
+  changedKeys: (rows: R[]) => Promise<Set<string>>;
+  /** The 409 a hash guard answers. */
+  isChanged: (err: unknown) => boolean;
+  keyOf: (row: R) => string;
+};
+
+/**
+ * Save a batch of rows as one write. The 409 does not say which op failed, so the rows whose text no
+ * longer matches are dropped and the rest sent once more; when no row explains it, or the second write
+ * 409s too, every row left is marked changed and nothing more is sent. `undoTo` is V0 only when the
+ * write is V0 + 1 (`undoTarget`). Any other failure is the caller's.
+ */
+export async function saveBatch<R, W extends { version_number?: number | null }>(
+  targets: R[],
+  deps: SaveBatchDeps<R, W>,
+): Promise<{ sent: R[]; changed: Set<string>; undoTo: number | null; result: W | null }> {
+  const v0 = await deps.latestVersion().catch(() => null);
+  const changed = new Set<string>();
+  let sent = targets;
+  let result: W;
+  try {
+    result = await deps.write(sent);
+  } catch (err) {
+    if (!deps.isChanged(err)) throw err;
+    const found = await deps.changedKeys(sent);
+    for (const row of sent) if (found.size === 0 || found.has(deps.keyOf(row))) changed.add(deps.keyOf(row));
+    sent = sent.filter((row) => !changed.has(deps.keyOf(row)));
+    if (sent.length === 0) return { sent, changed, undoTo: null, result: null };
+    try {
+      // The rest, once.
+      result = await deps.write(sent);
+    } catch (again) {
+      if (!deps.isChanged(again)) throw again;
+      for (const row of sent) changed.add(deps.keyOf(row));
+      return { sent: [], changed, undoTo: null, result: null };
+    }
+  }
+  return { sent, changed, undoTo: undoTarget(v0, result.version_number), result };
 }
 
 /**

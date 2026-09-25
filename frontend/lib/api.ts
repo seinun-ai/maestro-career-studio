@@ -838,7 +838,8 @@ export function applyResumeEdits(
     kind === "base"
       ? `/api/base-resumes/${encodeURIComponent(key)}/edits`
       : `/api/applications/${encodeURIComponent(key)}/edits`;
-  return apiFetch<RenderNoted>(path, {
+  // A base edit also says which version it left latest (the question pass's Undo reads it).
+  return apiFetch<RenderNoted & { version_number?: number | null }>(path, {
     method: "PATCH",
     body: JSON.stringify({ ops }),
   });

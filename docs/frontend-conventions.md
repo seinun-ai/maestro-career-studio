@@ -160,16 +160,21 @@
   on one page, rows fixed when it opens, each the full bullet, its own question and field (a measure
   ask's labelled number fields with the number-free swap, a detail ask's two-line box), **Not right?**
   and **Skip for now** (this visit only; the row still counts in "2 of 6 answered"). The one filled
-  button is **Write N new versions** (three `answerAsk` drafts at a time, rows filling in as each
-  lands) until nothing is left to write, then **Accept all shown**, which first lists the rows with a
-  checkbox each. Every accept, one row or all, is ONE hash-guarded `/edits` call and one version; a
-  409 marks the rows whose text no longer matches ("This bullet changed. Write it again?", which
-  re-runs the check for that row) and sends the rest once. The toast's Undo restores the version read
-  before the write only while the write is still the latest (`if_latest`, a 409 says to use Version
-  history). At 1280 and up a context pane shows the active row's item with its bullet highlighted;
-  below that, its dates and the bullets above and below sit on the row. Typed answers and open edits
-  register the leave guard; leaving re-runs the check in the background and says what the pass did in
-  one toast (`passOutcomeWords`).
+  button is **Write N new wordings** (three `answerAsk` drafts at a time, rows filling in as each
+  lands; the rows it reads are queued, their fields, Skip and Not right? shut until their draft lands)
+  until nothing is left to write, then **Accept all shown**, which first lists the rows with a
+  checkbox each (`accept-all-dialog.tsx`). Wording that equals its bullet says "No change to save" and
+  is never sent. Every accept, one row or all, is ONE hash-guarded `/edits` call and one version
+  (`saveBatch`, in `use-pass-writes.ts`); a 409 marks the rows whose text no longer matches ("This
+  bullet changed. Write it again?", which re-runs the check for that row, one row at a time) and sends
+  the rest once. Undo is offered only when the write is the version right after the one read before it
+  (`/edits` answers with `version_number`), and restores that version only while the write is still
+  the latest (`if_latest`; a 409 says to use Version history, and focus lands on the row's Saved line).
+  Not right? is offered only on rows the check still rates as they stand (`passRowDisputable`). At 1280 and up a context pane shows the active row's item with its bullet highlighted;
+  below that, its dates and the bullets above and below sit on the row. Typed answers (changed rows
+  included) and open edits register the leave guard; leaving re-runs the check in the background,
+  adopts its report only if none newer is cached, and says what the pass did in one toast
+  (`passOutcomeWords`).
 - **One page shell: `PageShell` + `PageHeader`** (`components/page-shell.tsx`).
   Every top-level route renders `PageShell` — `max-w-6xl`, `p-6`, `gap-6` —
   and `PageHeader` for its title block. Never assign per-page widths or
@@ -1160,7 +1165,9 @@
     the group is **Checks**; a fatal check's badge is **Must fix** and the
     other tier **Serious**; **Mark as OK** and **Undo**, never gate, blocker
     or waive; **Check health**, **Check again**, **Health report**; **Check
-    template**, never certify. **Version 12** and **Version history**.
+    template**, never certify. **Version 12** and **Version history**: "version" is only ever the
+    resume's. A bullet's drafted text is its **wording** (**Write new wording**, **Write 3 new
+    wordings**, **Accept 2 new wordings**), never a new version.
     **skill group**, **School**, **On-site**, **Role**, **Employment type**,
     **Offer**, **Diversity questions (voluntary)**. **Persona** keeps its
     name. The model roles are **Fast model**, **Smart model** and

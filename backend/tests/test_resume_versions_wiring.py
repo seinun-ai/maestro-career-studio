@@ -155,3 +155,23 @@ def test_edits_succeed_even_when_pdf_render_fails(db_session, monkeypatch, tmp_p
     assert resp.status_code == 200
     assert resp.json()["data"]["summary"] == "Still saved."
     assert [v.source for v in get_versions(db_session, "base", "ds")][0] == "edit_ops"
+
+
+def test_base_edits_answer_with_the_version_they_wrote(db_session, monkeypatch, tmp_path):
+    """The question pass offers Undo only when ITS write is the version after V0: /edits says which
+    version it wrote, and an edit that changes nothing writes none (the latest comes back)."""
+    client = _client(db_session, monkeypatch, tmp_path)
+    _seed_base(db_session)
+    first = client.patch(
+        "/api/base-resumes/ds/edits",
+        json={"ops": [{"kind": "replace_summary", "value": "New summary"}]},
+    )
+    assert first.status_code == 200
+    written = first.json()["version_number"]
+    assert written == max(v.version_number for v in get_versions(db_session, "base", "ds"))
+    same = client.patch(
+        "/api/base-resumes/ds/edits",
+        json={"ops": [{"kind": "replace_summary", "value": "New summary"}]},
+    )
+    assert same.status_code == 200
+    assert same.json()["version_number"] == written
