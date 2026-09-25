@@ -1269,9 +1269,9 @@ Planner (Claude), 2026-09-25. Judged against the Goal Card, not against this pla
 | Asks each bullet only for the one thing it lacks | Met | One `question` per finding, written by the evaluator. Fallbacks are static and number-free. |
 | Never demands a number where one isn't natural | Met structurally; judgment partly verified | `_validate` requires a named target in the text and a number-free alternative. `metric_unavailable` persists. Dev split: 0 unnatural number asks. The **test split is pending owner label sign-off**, and the real-resume check is pending. |
 | Easy to read and quick to act on | Met | Upright, full-contrast, clamped judged text (0 italic in the browser). Action tabs with each rule stated once. Summary band with the distance to the next grade. One filled button per view (pinned). Checked at 1280 and 1024. |
-| Answer in one pass or card by card | Met | Question pass (table view) with one batch write and undo gated on `if_latest`. Cards on the report. One-at-a-time mode is deferred by the owner (§11 item 41). |
+| Answer in one pass or card by card | Met | Question pass (table view) with one batch write and undo gated on `if_latest`. Cards on the report. One-at-a-time mode is deferred by the owner (§11 item 40). |
 | Tell the check in their own words why a flag is wrong | Met; the live round trip was checked only via the golden disputes | Free-text disputes, the verbatim-quote rule, low levels held without a quote, and new facts arriving only as guarded suggestions. Golden adversarial disputes: 0 above the maximum and 0 measure asks surviving, on the real model. The browser checked the no-key error path only. |
-| Tailoring follows the same guidance | Met | Tailoring prompts rewritten and resynced. The chat prompt was fixed too. The word bank's "Never use these words" line is shared. The automatic check on tailored drafts is deferred (§11 item 41). |
+| Tailoring follows the same guidance | Met | Tailoring prompts rewritten and resynced. The chat prompt was fixed too. The word bank's "Never use these words" line is shared. The automatic check on tailored drafts is deferred (§11 item 40). |
 
 **Principles:**
 - **Judge the page, not the claim.** Holds.

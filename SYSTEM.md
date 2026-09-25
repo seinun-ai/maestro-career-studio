@@ -851,12 +851,10 @@ citation. Priority lives in the item text, not in the ordinal.
     Settings, Analytics and Career repeats one error (a page-level message needs a shared mechanism).
 39. Windows is unverified end to end: install, update, Companion load from `\\wsl.localhost\...` (GETTING_STARTED
     gives a copy-to-`C:` fallback), `.mcpb` on Windows Claude Desktop, and the WSL upload host root.
-40. Health report and question pass gaps: a **Not right?** reply landing while its row is queued for Write is
-    overwritten by the draft; a rating hand-set to "Shows a result" leaves the report and Done lists only the
-    overrides in it, so it can't be set back; `BaseResumeDetail.version_number` reads better as `edit_version_number`.
-41. Health check follow-ups: a one-at-a-time question mode beside the one-page pass; repeated-opener notes (one
-    first verb across many bullets); an automatic rubric check on tailored drafts (tailoring gets only the word
-    bank line; the coherence check runs rule notes); a dispute MCP tool (disputes are web-only).
+40. Health check follow-ups: one-at-a-time question mode; repeated-opener notes; a rubric check on tailored drafts;
+    a dispute MCP tool (disputes are web-only); a **Not right?** reply on a row queued for Write is overwritten
+    by its draft; a hand-set "Shows a result" leaves the report, so Done can't reset it; rename
+    `BaseResumeDetail.version_number` to `edit_version_number`.
 
 ## 12. Gotchas that have bitten before
 
@@ -871,11 +869,9 @@ citation. Priority lives in the item text, not in the ordinal.
 - **An sr-only span beside a flex item is out of flow** (2026-09-24): Chrome's accessible name gains a space
   ("Agent inbox , 3 need you") → a one-phrase count goes in `aria-label`; check Chrome's AX tree.
 - **Rewording a health `issue` orphans saved ask answers** (2026-09-24): `_fid` hashes the text → pass the old
-  text as `id_key` (`resume_lint.py`). v3 kept measure asks (old adjacent key), analogue asks quoting a digit (old
-  analogue key) and uncertain asks; detail asks have new ids, so answers saved on those old asks no longer show.
-- **A prompt-contract change bumps `RUBRIC_VERSION`** (2026-09-25): classifier cache rows are keyed by text +
-  rubric version + model, so unchanged text kept its old judgment → bump `bullet_classify.RUBRIC_VERSION` and
-  resync the default prompt row (`d08dd68e4eff`); overrides survive, and so does a dispute's "no number".
+  text as `id_key` (`resume_lint.py`). v3 kept the measure, digit-quoting analogue and uncertain keys; detail asks are new.
+- **A prompt-contract change bumps `RUBRIC_VERSION`** (2026-09-25): cache rows key on text + rubric version + model,
+  so unchanged text kept its old judgment → bump it and resync the prompt row; overrides and "no number" survive.
 - **A GUI-launched process has no shell `PATH`** (2026-09-20): MacTeX at `/Library/TeX/texbin` is invisible
   to the desktop shell and to a Claude Desktop child, so a bare `pdflatex` does not resolve.
   `engines.find_pdflatex` searches the TeX homes after PATH, and every run spawns the resolved ABSOLUTE path.
