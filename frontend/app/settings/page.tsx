@@ -8,6 +8,7 @@ import { AboutSection } from "@/components/settings/about-section";
 import { AppearanceSection } from "@/components/settings/appearance-section";
 import { AutoApplySection } from "@/components/settings/auto-apply-section";
 import { ConnectedAgentsCard } from "@/components/settings/connected-agents-card";
+import { FormFillingSection } from "@/components/settings/form-filling-section";
 import { McpWorkflowSection } from "@/components/settings/mcp-workflow-section";
 import {
   ApiKeysSection,
@@ -70,6 +71,7 @@ export default function SettingsPage({
             <>
               <ApiKeysSection />
               <ModelsSection />
+              <FormFillingSection />
               <ModelCatalogSection />
               <CustomEndpointSection />
               <PromptsSection />

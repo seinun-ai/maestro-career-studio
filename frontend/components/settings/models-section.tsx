@@ -488,7 +488,7 @@ export function ApiKeysSection() {
   );
 }
 
-function KeyField({
+export function KeyField({
   label,
   hintUnset,
   configured,
