@@ -134,7 +134,7 @@ def test_context_nulls_only_the_section_that_failed(db_session, tmp_path, monkey
     def _explode(_resume_json):
         raise RuntimeError("skills feed exploded")
 
-    monkeypatch.setattr(autofill_router, "_resume_skills", _explode)
+    monkeypatch.setattr(autofill_router, "resume_skills", _explode)
     app.dependency_overrides[get_db] = _override_db(db_session)
     try:
         response = TestClient(app).get(f"/api/autofill/context?base={slug}")

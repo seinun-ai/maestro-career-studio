@@ -152,7 +152,7 @@ def test_workday_employment_block_today(tmp_path):
     Task 9 (block-scoped resolution) took Location from `no_rule` to `filled`,
     which needed BOTH halves of the fix: a rule that recognises an employment
     block's Location, and a `location` key in
-    `routers/autofill._employment_blocks`, which had none — a perfect rule would
+    `services/autofill_context.employment_blocks`, which had none — a perfect rule would
     have had nothing to write.
 
     Company was `no_rule` here and is now `filled`, but nothing about the RULE

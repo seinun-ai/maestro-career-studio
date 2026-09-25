@@ -114,7 +114,7 @@ async function fillFormFromProfile(
   const custom = Array.isArray(profile.custom) ? profile.custom : [];
   const emp = Array.isArray(employment) ? employment : [];
   // The resume's skills, flat and already de-duplicated by
-  // routers/autofill._resume_skills. Kept in resume order, which is what the
+  // services/autofill_context.resume_skills. Kept in resume order, which is what the
   // cap below selects on.
   const skillList = (Array.isArray(skills) ? skills : [])
     .map((skill) => String(skill ?? "").trim())
@@ -165,7 +165,7 @@ async function fillFormFromProfile(
   // A date, split into its parts. Every shape the two sources actually hold has
   // to parse, and the widest of them is the one that matters: the employment
   // payload passes `resume_json.experience[*].start_date` through verbatim
-  // (routers/autofill._employment_blocks) and the resume data model is
+  // (services/autofill_context.employment_blocks) and the resume data model is
   // "Mon YYYY" — see services/ats/resume_indexer.parse_month_year. This used to
   // accept only a leading ISO year, so every real employment date parsed to
   // NOTHING; that is what made `emp-start-month` look valueless, sent matchRule
@@ -483,7 +483,7 @@ async function fillFormFromProfile(
     // box by growing a value.
     //
     // Provenance, end to end: the resume's `end_date` really does hold the
-    // literal string "Present"; `routers/autofill._employment_blocks` reads
+    // literal string "Present"; `services/autofill_context.employment_blocks` reads
     // that (and an absent end date) as `current: true` with `end_date` blanked
     // to null; this reads that flag rather than re-deriving it, which is what
     // `empEndText`/`empEndDate` above already do. WHICH job is the block's

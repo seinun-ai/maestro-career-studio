@@ -46,7 +46,7 @@ def _employer_box(block: str) -> dict:
 # Exactly what /api/autofill/employment-blocks returns. `end_date` is None and
 # `current` is true for the job in progress: the RESUME stores the literal
 # string "Present" (it is one of the four distinct end_date values in the live
-# base_resumes corpus), and `routers/autofill._employment_blocks` is what
+# base_resumes corpus), and `services/autofill_context.employment_blocks` is what
 # normalizes it — `current = not end or end.lower() in {present, current, now}`,
 # with `end_date` blanked to None whenever that holds. So the extension never
 # sees "Present" in `end_date`, and the derivation reads the flag that says so
