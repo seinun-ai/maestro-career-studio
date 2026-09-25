@@ -21,18 +21,17 @@ _GALLERY = (_FRONTEND / "components/base-resumes/base-resume-gallery.tsx").read_
 _JUDGED = (_FRONTEND / "components/resume-health/judged-text.tsx").read_text()
 
 
-def test_two_pane_not_page_measure():
+def test_the_left_rail_and_its_filters_are_gone():
+    # Task 11 (owner decision 8): no two-pane rail, no jump list, no filter chips, no "Add numbers".
     assert "PageMeasure" not in _PAGE
-    assert "lg:grid-cols-[18.75rem_minmax(0,1fr)]" in _PAGE
-    assert "lg:sticky" in _PAGE
-    assert "Too little to grade" in _PAGE
-    assert "scoreCompositionLine" in _PAGE
-
-
-def test_groups_by_location_and_renames_heading():
-    assert "groupFindings" in _PAGE
-    assert "Biggest problems first" in _PAGE
-    assert "What it" not in _PAGE  # old "What it's costing you, in order"
+    assert "lg:grid-cols-[18.75rem_minmax(0,1fr)]" not in _PAGE
+    assert "lg:sticky" not in _PAGE
+    assert "<aside" not in _PAGE
+    assert 'aria-label="Report sections"' not in _PAGE
+    assert "FILTERS" not in _PAGE and "aria-pressed" not in _PAGE
+    assert "addNumbersLabel" not in _PAGE and "BatchAskDialog" not in _PAGE
+    assert "filterFindings" not in _HELPERS and "StreamFilter" not in _HELPERS
+    assert "Biggest problems first" not in _PAGE
 
 
 def test_finding_at_rest_is_one_line():
@@ -83,17 +82,12 @@ def test_list_grade_chip():
 
 
 def test_close_the_loop_round2_surfaces():
-    assert "addNumbersLabel(metricAsks.length)" in _PAGE
-    assert "BatchAskDialog" in _PAGE
     assert "MetricAskInput" in _CARDS
     assert "DemonstrateSkillDialog" in _CARDS
     assert "ExpandedFindingChrome" in _CARDS
     assert "Shorten" in _CARDS
     assert "draftRewrite" in _CARDS
     assert "explainScoreDelta" in _PAGE
-    # (The T10 pin here asserted 'This bullet is ${lowered}', which encoded the
-    # broken conjugation — see test_hoist_blurb_does_not_conjugate_backend_copy.)
-    assert "hoistBlurb" in _HELPERS
     assert "Something else" in (
         _FRONTEND / "components/resume-health/metric-ask-input.tsx"
     ).read_text()
@@ -114,23 +108,16 @@ def test_level_values_mirrored_in_health_zones():
 def test_collapsed_row_cannot_overflow_on_a_long_entry_label():
     """A long entry name used to push the chips and action past the card edge.
 
-    Two guards, both required: the badge shows only the label tail (the group
-    header already names the entry) AND it is width-capped + truncating, so a
-    pathological label still cannot grow the row.
+    The group header names the rule now, not the entry, so the row shows the whole label
+    ("<entry> · bullet N"), wrapping inside the card rather than widening it.
     """
-    assert "shortFindingLabel(finding.label)" in _CARDS
-    assert "break-words" in _CARDS
+    row = _CARDS[_CARDS.index("function CollapsedRow("): _CARDS.index("export function FindingGroupHeader(")]
+    assert "{finding.label} · <LevelChip finding={finding} />" in row
+    assert "shortFindingLabel" not in _CARDS and "shortFindingLabel" not in _HELPERS
+    assert "break-words" in row
     # The action + overflow menu hold their width instead of being squeezed,
     # and wrap under the chips at 375 rather than push the page sideways.
     assert 'className="ml-auto flex shrink-0 items-center gap-2"' in _CARDS
-
-
-def test_hoist_blurb_does_not_conjugate_backend_copy():
-    helpers = (_FRONTEND / "lib/health-report.ts").read_text()
-    # The count is introduced with a colon; no copula is inserted before the
-    # backend's own sentence ("Has a scale metric…", "A reader can't tell…").
-    assert "bullets here: " in helpers
-    assert "items here are ${" not in helpers  # the old copula template
 
 
 def test_judged_text_is_never_italic_or_one_line_truncated():
@@ -159,10 +146,10 @@ def test_status_is_text_points_are_grouped_and_notes_start_closed():
     header = _CARDS[_CARDS.index("export function FindingGroupHeader("): _CARDS.index("export function FixCard(")]
     assert "groupPoints(findings, nScoreable)" in header
     assert "nScoreable={nScoreable}" in _PAGE
+    # Notes are a tab now: the tab is the disclosure, so the table holds no second one.
     notes = _CARDS[_CARDS.index("export function NotesTable("):]
-    assert "[notesOpen, setNotesOpen] = useState(false)" in notes
-    assert "aria-expanded={notesOpen}" in notes
-    assert "hidden={!notesOpen}" in notes
+    assert "notesOpen" not in notes
+    assert "These don&apos;t change your score." in notes
     assert "export function groupPoints" in _HELPERS
     assert 'label: "Specific, no result"' in _CARDS
     assert 'label: "Partial result"' in _CARDS
@@ -170,7 +157,7 @@ def test_status_is_text_points_are_grouped_and_notes_start_closed():
 
 def test_per_bullet_metric_contract_and_alternative_are_wired():
     assert "isMetricAsk(finding)" in _CARDS
-    assert "isMetricAsk(f)" in _PAGE
+    assert 'isMetricAsk(finding) ? "number" : "detail"' in _HELPERS
     assert "No number? Answer this instead" in _CARDS
     assert "finding.alt_question" in _CARDS and "finding.measure_target" in _CARDS
     assert "metricAsk && !useAlternative" in _CARDS
@@ -317,7 +304,10 @@ def test_a_dispute_that_moves_the_rating_re_runs_the_report():
     applied = _PAGE[_PAGE.index("const invalidateAfterApply = () => {"):]
     applied = applied[: applied.index("\n  };\n")]
     assert "setDisputes" not in applied
-    assert _PAGE.count("setDisputes(") == 1
+    # The only other change is Reopen's, which drops that bullet's reply with the dispute.
+    assert _PAGE.count("setDisputes(") == 2
+    reopen = _PAGE[_PAGE.index("const reopen = async ("):]
+    assert "setDisputes((d) => Object.fromEntries(Object.entries(d).filter(([key]) => key !== hash)));" in reopen[: reopen.index("\n  };\n")]
     assert _PAGE.count("onDisputed={afterDispute}") == 2
     assert _PAGE.count("dispute={finding.content_hash ? disputes[finding.content_hash] : undefined}") == 2
 
@@ -393,7 +383,7 @@ def test_wording_notes_are_one_group_by_the_language_prefix():
     notes = _fn(_CARDS, "export function NotesTable(")
     # The rule table never sees a wording note; the Wording group gets every one.
     assert "const { wording, other } = splitWordingNotes(notes);" in notes
-    assert "const groups = groupNotesByRule(other);" in notes
+    assert "const allGroups = groupNotesByRule(other);" in notes
     assert "notes={wording}" in notes
     assert "onWordingChanged={reanalyzeReport}" in _PAGE
 
@@ -402,12 +392,13 @@ def test_the_wording_group_and_its_word_list_are_there_with_no_hits():
     # Planner decision: Edit word list must be reachable with zero wording hits, so the Notes
     # disclosure renders with any report and the Wording group renders in it unconditionally.
     notes = _fn(_CARDS, "export function NotesTable(")
-    at = notes.index("<WordingChecklist")
-    assert notes.index("hidden={!notesOpen}") < at
-    # Unconditional: the element opens its own line in the disclosure, and no count guards it.
-    assert "*/}\n        <WordingChecklist\n          notes={wording}" in notes
+    # Unconditional: the element opens its own line in the table, and no count guards it.
+    assert "*/}\n      <WordingChecklist\n        notes={wording}" in notes
     assert "wording.length" not in notes
-    assert "{body && (\n              <NotesTable" in _PAGE
+    # The Notes tab renders it with every report (its panel is kept mounted).
+    notes_tab = _PAGE[_PAGE.index('<TabsContent value="notes"'):]
+    notes_tab = notes_tab[: notes_tab.index("</TabsContent>")]
+    assert "<NotesTable" in notes_tab and "notes={tabs.notes}" in notes_tab
     group = _checklist()
     assert "notes.length === 0 ?" in group and "No wording issues." in group
     header = group[: group.index("notes.length === 0 ?")]
@@ -514,8 +505,8 @@ def test_one_word_list_change_at_a_time():
 def test_an_older_report_never_replaces_a_newer_one():
     latest = _PAGE[_PAGE.index("const runLatest = async ("):]
     latest = latest[: latest.index("\n  };\n")]
-    assert latest.index("const seq = ++runSeq.current;") < latest.index("await runLintReport(kind, resumeKey)")
-    assert latest.index("await runLintReport(") < latest.index("if (seq < adoptedSeq.current) return null;")
+    assert latest.index("const seq = ++runSeq.current;") < latest.index("runLintReport(kind, resumeKey)")
+    assert latest.index("runLintReport(") < latest.index("if (seq < adoptedSeq.current) return null;")
     assert latest.index("return null;") < latest.index("adoptedSeq.current = seq;")
     # Every re-run goes through it, and adopts only what it returned.
     assert _PAGE.count("runLintReport(") == 1
@@ -619,3 +610,174 @@ def test_a_cliche_row_says_to_rewrite_it_not_that_it_cannot():
     cliche = gate.index('note.rule === "language.cliche" ? (')
     assert gate.index("<SuggestionCopyOnly") < cliche < gate.index("Can&apos;t apply this fix here.")
     assert "{note.how}</p>" in gate[cliche: gate.index("Can&apos;t apply this fix here.")]
+
+
+# --- Task 11: summary band, action tabs, no left rail --------------------------------------------
+
+_ROUTE = (_FRONTEND / "app/base-resumes/[slug]/health/page.tsx").read_text()
+_QUESTIONS = _FRONTEND / "app/base-resumes/[slug]/health/questions/page.tsx"
+
+
+def _done() -> str:
+    return (_FRONTEND / "components/resume-health/done-tab.tsx").read_text()
+
+
+def _band() -> str:
+    band = _PAGE[_PAGE.index("data-summary-band"):]
+    return band[: band.index("</section>")]
+
+
+def test_the_summary_band_holds_the_grade_the_next_band_and_the_one_filled_button():
+    band = _band()
+    assert "Too little to grade" in band and "GRADE_STYLES[body.grade]" in band
+    assert "TIER_LABELS[body.tier]" in band and "{body.score}/100" in band
+    # The bar to the next band, with its words.
+    assert "const progress = body && !insufficient ? nextGradeProgress(body) : null;" in _PAGE
+    assert "progress != null &&" in band and "nextGradeLine(body)" in band
+    assert "composition" in band
+    # The stale banner, as before, now in the band.
+    assert "Your resume changed since this check. Check again to update it." in band
+    # The page's one filled button, hidden at zero asks, opening the question pass.
+    assert "Start the questions ({askCount})" in band
+    assert "askCount > 0 &&" in band
+    assert "href={questionsHref}" in band
+    assert "{marked} marked not right" in band and "marked > 0 &&" in band
+    # One filled button: every other Button on the page names a quieter variant (the first check's
+    # Check health is filled only while there is no report, so no band exists).
+    tags = re.findall(r"<Button\b[^>]*?>", _PAGE, flags=re.S)
+    filled = [t for t in tags if "variant=" not in t]
+    assert len(filled) == 1 and "questionsHref" in filled[0], filled
+    assert 'variant={body ? "outline" : "default"}' in _PAGE
+    # Card actions are tonal, never filled: an open card beside the band keeps one filled button.
+    for label in ('{draft.isPending ? "Writing…" : "Write new wording"}', '{apply.isPending ? "Applying…" : "Apply suggestion"}'):
+        at = _CARDS.index(label)
+        tag = _CARDS[_CARDS.rindex("<Button", 0, at): at]
+        assert 'variant="tonal"' in tag, label
+
+
+def test_the_questions_placeholder_page_links_back():
+    src = _QUESTIONS.read_text()
+    assert "use(params)" in src and "<PageShell>" in src
+    assert "Task 12" in src
+    assert "href={`/base-resumes/${slug}/health`}" in src
+    assert 'questionsHref={`/base-resumes/${slug}/health/questions`}' in _ROUTE
+
+
+def test_no_numbers_anywhere_is_a_highlighted_callout_not_a_note():
+    band = _band()
+    assert "noNumbers &&" in band
+    assert "bg-amber-50" in band and "dark:bg-amber-950" in band
+    for part in ("{noNumbers.label}", "{noNumbers.issue}", "{noNumbers.why}", "{noNumbers.how}"):
+        assert part in band
+    # It links to the Needs a number tab only when that tab has something in it.
+    assert "tabs.number.length > 0 &&" in band and 'openTab("number")' in band
+    open_tab = _PAGE[_PAGE.index("const openTab = (id: HealthTab) => {"):]
+    open_tab = open_tab[: open_tab.index("\n  };\n")]
+    assert open_tab.index("flushSync(() => selectTab(id));") < open_tab.index("?.focus();")
+    assert 'export const NO_NUMBERS_RULE = "evidence.no_numbers";' in _HELPERS
+    assert "f.rule === NO_NUMBERS_RULE" in _PAGE
+    backend = (_FRONTEND.parent / "backend/app/services/resume_lint.py").read_text()
+    assert 'rule="evidence.no_numbers"' in backend
+
+
+def test_findings_are_grouped_by_action_in_six_tabs():
+    for label in ('"Needs a number"', '"Needs detail"', '"Reword"', '"Shorten"', '"Notes"', '"Done"'):
+        assert f"label: {label}" in _HELPERS
+    fn = _fn(_HELPERS, "export function actionTabOf(")
+    assert 'if (finding.type === "ask") return isMetricAsk(finding) ? "number" : "detail";' in fn
+    assert 'if (finding.type === "fix") return "reword";' in fn
+    assert "if (finding.rule === NO_NUMBERS_RULE) return null;" in fn
+    assert 'return finding.rule === "bullet.too_long" ? "shorten" : "notes";' in fn
+    # Gates stay above the tabs; the tabs are the shared primitive, every panel kept mounted.
+    assert _PAGE.index("<GateBanner") < _PAGE.index("<Tabs ")
+    assert "@/components/ui/tabs" in _PAGE
+    assert _PAGE.count("<TabsContent") == _PAGE.count("keepMounted") == 4  # 3 card tabs mapped, then 3
+    assert "CARD_TABS.map((id) => (" in _PAGE
+    for tab in ("shorten", "notes", "done"):
+        assert f'<TabsContent value="{tab}" keepMounted data-health-tab="{tab}"' in _PAGE
+    # Plain counts on the tabs.
+    assert '<span className="tabular-nums">{countOf(t.id)}</span>' in _PAGE
+
+
+def test_the_tab_comes_from_the_url_and_defaults_to_the_largest_gain():
+    assert "use(searchParams);" in _ROUTE and "searchParams: Promise<" in _ROUTE
+    assert 'parseHealthTab(useSearchParams().get("tab"))' in _PAGE
+    assert "window.history.replaceState(null, \"\", `${window.location.pathname}?tab=${next}`);" in _PAGE
+    assert "defaultHealthTab(" in _PAGE
+    fn = _fn(_HELPERS, "export function defaultHealthTab<")
+    assert "gain ?? 0" in _HELPERS and "> best" in fn
+
+
+def test_a_tab_groups_its_rows_by_rule_and_states_each_rule_once():
+    assert "ruleGroups(" in _PAGE
+    header = _CARDS[_CARDS.index("export function FindingGroupHeader("): _CARDS.index("export function FixCard(")]
+    assert header.count("groupPoints(findings, nScoreable)") == 1
+    assert "coaching.why" in header and "coaching.how" in header
+    assert "renderFinding(finding, Boolean(sharedCoaching(group.findings)))" in _PAGE
+    # A row: the entry and bullet, the clamped quote, the bullet's own question, one text-style action, ⋯.
+    row = _CARDS[_CARDS.index("function CollapsedRow("): _CARDS.index("export function FindingGroupHeader(")]
+    assert "<SourceQuote text={quote} clamp />" in row
+    assert "{finding.question}" in row
+    assert 'variant="link"' in row and 'variant="outline"' not in row
+    assert "{overflow}" in row
+
+
+def test_shorten_rows_live_in_their_own_tab():
+    shorten = _fn(_CARDS, "export function ShortenList(")
+    assert "draftRewrite(" in shorten and 'objective: "condense"' in shorten
+    assert 'variant="link"' in shorten and '"Shorten"' in shorten
+    assert "<SourceQuote" in shorten and "{note.label}" in shorten
+    notes = _fn(_CARDS, "export function NotesTable(")
+    assert "condense" not in notes and "bullet.too_long" not in notes
+
+
+def test_unscored_skills_are_a_table_with_a_show_it_action():
+    notes = _fn(_CARDS, "export function NotesTable(")
+    assert "<th" in notes and ">Skill</th>" in notes and ">Listed in</th>" in notes
+    assert "skillGroupOf(data, subject)" in notes
+    assert "Show it in a bullet" in notes and "data-skill={subject}" in notes
+    assert "rounded-full border px-2" not in notes  # the old chips
+    assert "export function skillGroupOf(" in _HELPERS
+
+
+def test_the_done_tab_lists_fixes_disputes_and_corrected_ratings():
+    done = _done()
+    assert "Fixed this session" in done and "<ResolvedFinding" in done
+    assert "Marked not right" in done and "{d.note}" in done and "{d.reply}" in done
+    assert "Corrected ratings" in done
+    assert 'action="Reopen"' in done and 'action="Back to automatic"' in done
+    assert "onAct={() => onReopen(d.content_hash)}" in done
+    assert "onAct={() => onBackToAutomatic(f.content_hash!)}" in done
+    # Reopen deletes the dispute, then re-runs; Back to automatic clears the override, then re-runs.
+    page_reopen = _PAGE[_PAGE.index("const reopen = async ("):]
+    page_reopen = page_reopen[: page_reopen.index("\n  };\n")]
+    assert page_reopen.index("await reopenDispute(hash);") < page_reopen.index("await reanalyzeReport();")
+    assert "overrideClassification(hash, null, \"\")" in _PAGE
+    assert 'f.classification_source === "override"' in _PAGE
+    assert "getDisputes(kind, resumeKey)" in _PAGE
+    # Only the Fixed entry a dispute lifted carries the reply (and data-resolved-hash, the focus
+    # target): it renders in the tab it came from, while Done lists every fix without it.
+    assert "dispute={liftedDispute(finding, lifted, disputes)}" in _PAGE
+    assert "dispute=" not in done[done.index("<ResolvedFinding"): done.index("/>", done.index("<ResolvedFinding"))]
+    # A row that leaves (reopened, back to automatic) hands focus to the next row's action.
+    assert 'focusSuccessor(row, "[data-done-action]")' in done
+
+
+def test_the_header_has_the_stamp_and_a_quiet_check_again():
+    assert "checkedWords(formatTimeAgo(body.created_at), body.resume_version_number)" in _PAGE
+    assert "`Checked ${ago} · Version ${version}`" in _HELPERS
+    head = _PAGE[_PAGE.index("<PageHeader"): _PAGE.index("{reportFailed ? (")]
+    assert "<IconButton" in head and "ref={checkRef}" in head
+    assert '"Check again"' in head and "RefreshCw" in head
+    assert "onClick={() => analyzeOnce()}" in head and "focusableWhenDisabled" in head
+
+
+def test_re_runs_run_one_at_a_time():
+    # Overlapping runs let the SERVER's latest report be the older one (it orders by created_at, set
+    # when a run finishes). Each re-run starts only after the previous one settled.
+    latest = _PAGE[_PAGE.index("const runLatest = async ("):]
+    latest = latest[: latest.index("\n  };\n")]
+    assert "const turn = runQueue.current.then(() => runLintReport(kind, resumeKey));" in latest
+    assert "runQueue.current = turn.catch(() => undefined);" in latest
+    assert latest.index("runQueue.current = turn") < latest.index("const result = await turn;")
+    assert "const runQueue = useRef<Promise<unknown>>(Promise.resolve());" in _PAGE

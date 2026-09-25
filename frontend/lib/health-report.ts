@@ -23,8 +23,6 @@ export type ScoreBreakdown = {
   capped_by: "fatal" | "serious" | null;
 };
 
-export type StreamFilter = "all" | "fix" | "ask" | "note";
-
 export const CONTENT_CHANGED_PREFIX = "content changed since analysis";
 
 export const STALE_APPLY_HINT = "This text changed. Check again before applying.";
@@ -201,7 +199,7 @@ export function checkDoneWords(report: { grade: string; insufficient_evidence?: 
     : `Check done. Grade ${report.grade}.`;
 }
 
-/** "Add numbers to 2 bullets": the button that opens the number questions. */
+/** "Add numbers to 2 bullets": the add-numbers dialog's title (Task 12 replaces the dialog). */
 export function addNumbersLabel(n: number): string {
   return `Add numbers to ${n} ${n === 1 ? "bullet" : "bullets"}`;
 }
@@ -251,26 +249,6 @@ export function groupKey(finding: {
   return section;
 }
 
-export type FindingGroup<T> = { key: string; findings: T[] };
-
-export function groupFindings<
-  T extends { location: { section: string; index?: number | null } },
->(findings: T[]): FindingGroup<T>[] {
-  const order: string[] = [];
-  const buckets = new Map<string, T[]>();
-  for (const finding of findings) {
-    const key = groupKey(finding);
-    let bucket = buckets.get(key);
-    if (!bucket) {
-      bucket = [];
-      buckets.set(key, bucket);
-      order.push(key);
-    }
-    bucket.push(finding);
-  }
-  return order.map((key) => ({ key, findings: buckets.get(key)! }));
-}
-
 export function sharedCoaching(
   findings: { why: string; how: string }[],
 ): { why: string; how: string } | null {
@@ -282,48 +260,6 @@ export function sharedCoaching(
     return { why, how };
   }
   return null;
-}
-
-/**
- * Group-header blurb when every finding shares issue + how.
- *
- * The backend's `issue` strings are complete sentences with varying subjects
- * ("Has a scale metric…", "A reader can't tell what you did here.") — they
- * CANNOT be conjugated into a count-led sentence, which is how this shipped
- * "2 items here are a reader can't tell what you did here". Both copy strings
- * are therefore reproduced verbatim; the count is introduced with a colon,
- * which is agreement-free. The rail's jump list already carries counts, so a
- * plural-shaped sentence buys nothing.
- */
-export function hoistBlurb(
-  findings: { issue: string; how: string }[],
-): string | null {
-  if (findings.length === 0) return null;
-  const issue = findings[0].issue;
-  const how = findings[0].how;
-  if (!issue && !how) return null;
-  if (!findings.every((f) => f.issue === issue && f.how === how)) return null;
-  const count = findings.length;
-  const how1 =
-    count > 1 ? how.replace(/\bthis bullet\b/gi, "each bullet") : how;
-  const body = [issue, how1].filter(Boolean).join(" ");
-  if (count === 1) return body;
-  const lowered = issue ? issue.charAt(0).toLowerCase() + issue.slice(1) : "";
-  return `${count} bullets here: ${[lowered, how1].filter(Boolean).join(" ")}`;
-}
-
-/**
- * The part of a finding label that the group header does NOT already say.
- * Labels arrive as "<entry> · bullet N"; the header names the entry, so the
- * collapsed row shows only the tail. Without this a long entry name ("Bone
- * Muscle Research Center — Research Assistant - Data Science & Bioinformatics")
- * eats the whole row and pushes the chips and action past the card edge.
- */
-export function shortFindingLabel(label: string): string {
-  const cut = label.lastIndexOf(" · ");
-  if (cut < 0) return label;
-  const tail = label.slice(cut + 3).trim();
-  return tail || label;
 }
 
 export function groupTitle(key: string, data?: ResumeData | null): string {
@@ -470,14 +406,6 @@ export function fatalGateFailed(gates: { tier: string; status: string }[] | unde
   return (gates ?? []).some((g) => g.tier === "fatal" && g.status === "fail");
 }
 
-export function filterFindings<T extends { type: string }>(
-  findings: T[],
-  filter: StreamFilter,
-): T[] {
-  if (filter === "all") return findings;
-  return findings.filter((f) => f.type === filter);
-}
-
 export const METRIC_ASK_NEEDLE = "What number measures this";
 
 export function isMetricAsk(finding: { ask_kind?: string | null; question?: string | null }): boolean {
@@ -487,6 +415,137 @@ export function isMetricAsk(finding: { ask_kind?: string | null; question?: stri
 export function nextGradeLine(report: { next_grade?: { grade: string; points: number } | null }): string | null {
   const next = report.next_grade;
   return next ? `${next.points} ${next.points === 1 ? "point" : "points"} to ${next.grade}` : null;
+}
+
+/** The grade bands' floors, lowest first: `health_score.GRADE_BANDS` (below 40 is F). */
+export const GRADE_FLOORS = [40, 55, 70, 85] as const;
+
+/**
+ * How far the score is from its band's floor to the next band's (0 to 1), for the summary band's bar.
+ * Null when there is no next grade to reach (an A, or a score a failed check caps).
+ */
+export function nextGradeProgress(report: {
+  score: number;
+  next_grade?: { grade: string; points: number } | null;
+}): number | null {
+  const next = report.next_grade;
+  if (!next) return null;
+  const target = report.score + next.points;
+  const floor = Math.max(0, ...GRADE_FLOORS.filter((f) => f <= report.score));
+  if (target <= floor) return null;
+  return Math.min(1, Math.max(0, (report.score - floor) / (target - floor)));
+}
+
+/** "Checked 2 minutes ago · Version 28": the header's stamp (`ago` is the relative time). */
+export function checkedWords(ago: string, version: number | null | undefined): string {
+  return version != null ? `Checked ${ago} · Version ${version}` : `Checked ${ago}`;
+}
+
+/** The report's flag for a resume with no number in any scored bullet: the summary band's callout. */
+export const NO_NUMBERS_RULE = "evidence.no_numbers";
+
+/** The report's tabs, one per kind of action, then what is done. */
+export type HealthTab = "number" | "detail" | "reword" | "shorten" | "notes" | "done";
+export type ActionTab = Exclude<HealthTab, "done">;
+
+export const HEALTH_TABS: { id: HealthTab; label: string }[] = [
+  { id: "number", label: "Needs a number" },
+  { id: "detail", label: "Needs detail" },
+  { id: "reword", label: "Reword" },
+  { id: "shorten", label: "Shorten" },
+  { id: "notes", label: "Notes" },
+  { id: "done", label: "Done" },
+];
+
+const ACTION_TABS: ActionTab[] = ["number", "detail", "reword", "shorten", "notes"];
+
+/** `?tab=` as a tab, or null for anything else (no param, an old or mistyped value). */
+export function parseHealthTab(raw: string | null | undefined): HealthTab | null {
+  return HEALTH_TABS.find((t) => t.id === raw)?.id ?? null;
+}
+
+type Actionable = {
+  type: string;
+  ask_kind?: string | null;
+  question?: string | null;
+  rule?: string;
+};
+
+/**
+ * The tab a finding is acted on in: a number question, any other question, a rewrite, a too-long
+ * bullet, or any other note. Null for a check (the banner above the tabs) and for "No numbers
+ * anywhere" (the summary band's callout).
+ */
+export function actionTabOf(finding: Actionable): ActionTab | null {
+  if (finding.type === "ask") return isMetricAsk(finding) ? "number" : "detail";
+  if (finding.type === "fix") return "reword";
+  if (finding.type === "note") {
+    if (finding.rule === NO_NUMBERS_RULE) return null;
+    return finding.rule === "bullet.too_long" ? "shorten" : "notes";
+  }
+  return null;
+}
+
+/** Every finding in its tab, in report order. */
+export function findingsByTab<T extends Actionable>(findings: T[]): Record<ActionTab, T[]> {
+  const tabs: Record<ActionTab, T[]> = { number: [], detail: [], reword: [], shorten: [], notes: [] };
+  for (const finding of findings) {
+    const tab = actionTabOf(finding);
+    if (tab) tabs[tab].push(finding);
+  }
+  return tabs;
+}
+
+/**
+ * The tab to open on: the one whose findings would gain the most points, the earlier tab on a tie.
+ * With no gain anywhere, the first tab with anything in it; with nothing at all, Notes (it always
+ * holds the Wording group and its Edit word list).
+ */
+export function defaultHealthTab<T extends Actionable & { gain?: number | null }>(findings: T[]): ActionTab {
+  const tabs = findingsByTab(findings);
+  let pick: ActionTab | null = null;
+  let best = 0;
+  for (const tab of ACTION_TABS) {
+    const gain = tabs[tab].reduce((sum, f) => sum + (f.gain ?? 0), 0);
+    if (gain > best) {
+      best = gain;
+      pick = tab;
+    }
+  }
+  return pick ?? ACTION_TABS.find((tab) => tabs[tab].length > 0) ?? "notes";
+}
+
+export type RuleGroup<T> = { key: string; title: string; findings: T[] };
+
+/**
+ * A tab's rows grouped by the rule they break, first appearance first, so each rule is stated once
+ * in its group's header. A finding with a detector id groups by it (titled from RULE_TITLES); a
+ * question or a rewrite has none, and groups by its issue sentence, which is the rule's own words.
+ */
+export function ruleGroups<T extends { rule?: string; issue: string }>(findings: T[]): RuleGroup<T>[] {
+  const order: string[] = [];
+  const buckets = new Map<string, T[]>();
+  for (const finding of findings) {
+    const key = finding.rule ?? finding.issue;
+    let bucket = buckets.get(key);
+    if (!bucket) {
+      bucket = [];
+      buckets.set(key, bucket);
+      order.push(key);
+    }
+    bucket.push(finding);
+  }
+  return order.map((key) => {
+    const list = buckets.get(key)!;
+    const rule = list[0].rule;
+    return { key, title: (rule && RULE_TITLES[rule]) || list[0].issue, findings: list };
+  });
+}
+
+/** The skill group a listed skill sits in ("Languages"), for the unscored-skills table. */
+export function skillGroupOf(data: ResumeData | null | undefined, skill: string): string | null {
+  const group = data?.skills?.find((g) => g.items.includes(skill));
+  return group ? group.category || null : null;
 }
 
 export function isBulletSubjectRule(rule: string | undefined): boolean {

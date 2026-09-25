@@ -11,11 +11,9 @@ import {
   resolvedFindings,
   composeMetricContext,
   explainScoreDelta,
-  groupFindings,
   groupPoints,
   nextGradeLine,
   groupNotesByRule,
-  hoistBlurb,
   isBulletSubjectRule,
   isContentChangedError,
   isMetricAsk,
@@ -30,7 +28,6 @@ import {
   stripTrailingPunct,
   contentHash16,
   staleFindingIds,
-  shortFindingLabel,
   addWord,
   bulletEditOp,
   canIgnore,
@@ -42,6 +39,16 @@ import {
   withIgnored,
   wordingEditOp,
   WORD_LIST_MAX,
+  actionTabOf,
+  checkedWords,
+  defaultHealthTab,
+  findingsByTab,
+  GRADE_FLOORS,
+  nextGradeProgress,
+  NO_NUMBERS_RULE,
+  parseHealthTab,
+  ruleGroups,
+  skillGroupOf,
 } from "./health-report.ts";
 
 test("reportIsStale treats missing as false", () => {
@@ -107,47 +114,6 @@ test("potentialPoints is 100 × (1 − level) / n_scoreable", () => {
   assert.equal(potentialPoints("unaddressed", 4), 25);
   assert.equal(potentialPoints("direct", 8), 0);
   assert.equal(potentialPoints("adjacent", null), null);
-});
-
-test("groupFindings orders groups by first appearance, findings within by input order", () => {
-  const findings = [
-    { id: "a", location: { section: "experience", index: 1 } },
-    { id: "b", location: { section: "summary" } },
-    { id: "c", location: { section: "experience", index: 1 } },
-    { id: "d", location: { section: "skills" } },
-    { id: "e", location: { section: "experience", index: 0 } },
-  ];
-  const groups = groupFindings(findings);
-  assert.deepEqual(
-    groups.map((g) => g.key),
-    ["experience:1", "summary", "skills", "experience:0"],
-  );
-  assert.deepEqual(
-    groups[0].findings.map((f) => f.id),
-    ["a", "c"],
-  );
-});
-
-test("hoistBlurb fires only when issue and how are identical", () => {
-  const shared = [
-    { issue: "Specific, but has no number.", how: "Add the metric that measures it." },
-    { issue: "Specific, but has no number.", how: "Add the metric that measures it." },
-  ];
-  assert.equal(
-    hoistBlurb(shared),
-    "2 bullets here: specific, but has no number. Add the metric that measures it.",
-  );
-  assert.equal(
-    hoistBlurb([shared[0]]),
-    "Specific, but has no number. Add the metric that measures it.",
-  );
-  assert.equal(
-    hoistBlurb([
-      shared[0],
-      { issue: "A reader can't tell what you did here.", how: shared[0].how },
-    ]),
-    null,
-  );
 });
 
 test("groupNotesByRule counts subjects inline", () => {
@@ -362,44 +328,6 @@ test("staleFindingIds flags only findings whose text drifted", async () => {
   ];
   const stale = await staleFindingIds(findings as never, data);
   assert.deepEqual([...stale].sort(), ["drifted", "vanished"]);
-});
-
-test("hoistBlurb never conjugates a backend issue sentence", () => {
-  // These three shapes are why count-led phrasing was wrong: the issue is a
-  // full sentence whose subject varies, so "N items here are <issue>" produced
-  // "are a reader can't tell what you did here" / "are has a number for size".
-  const analogue = {
-    issue: "Has a number for size, but not for the result.",
-    how: "Add the outcome if you have it; otherwise this bullet is already strong.",
-  };
-  assert.equal(
-    hoistBlurb([analogue, analogue, analogue]),
-    "3 bullets here: has a number for size, but not for the result. " +
-      "Add the outcome if you have it; otherwise each bullet is already strong.",
-  );
-  const implied = {
-    issue: "A reader can't tell what you did here.",
-    how: "Rewrite to name the specific action you personally took.",
-  };
-  assert.equal(
-    hoistBlurb([implied, implied]),
-    "2 bullets here: a reader can't tell what you did here. " +
-      "Rewrite to name the specific action you personally took.",
-  );
-  // "it" refers to the metric, never to the bullet — it must survive verbatim.
-  assert.match(hoistBlurb([analogue, analogue])!, /if you have it;/);
-});
-
-test("shortFindingLabel drops the entry name the group header already shows", () => {
-  assert.equal(
-    shortFindingLabel(
-      "Bone Muscle Research Center — Research Assistant - Data Science & Bioinformatics · bullet 1",
-    ),
-    "bullet 1",
-  );
-  assert.equal(shortFindingLabel("Awards & Honors · bullet 2"), "bullet 2");
-  assert.equal(shortFindingLabel("Summary"), "Summary");
-  assert.equal(shortFindingLabel("Trailing · "), "Trailing · ");
 });
 
 
@@ -634,4 +562,122 @@ test("withDraft commits a typed-but-unadded word on Save, and refuses an invalid
   assert.deepEqual(withDraft(["synergy"], " Go-Getter "), { list: ["synergy", "go-getter"] });
   assert.deepEqual(withDraft(["synergy"], "Synergy"), { error: "That's already on this list." });
   assert.deepEqual(withDraft([], "x".repeat(41)), { error: "Keep it to 40 characters or fewer." });
+});
+
+// --- Task 11: action tabs, the default tab, the summary band ------------------------------------
+
+const f = (over: Record<string, unknown>) =>
+  ({ type: "ask", issue: "i", why: "w", how: "h", gain: 0, ...over }) as {
+    type: string;
+    issue: string;
+    why: string;
+    how: string;
+    gain?: number;
+    ask_kind?: string | null;
+    question?: string | null;
+    rule?: string;
+  };
+
+test("actionTabOf sends each finding to the tab it is acted on in", () => {
+  assert.equal(actionTabOf(f({ ask_kind: "measure" })), "number");
+  assert.equal(actionTabOf(f({ ask_kind: "detail" })), "detail");
+  assert.equal(actionTabOf(f({ ask_kind: "reword" })), "detail");
+  // A legacy stored report has no ask_kind: its number question is still a number question.
+  assert.equal(actionTabOf(f({ ask_kind: null, question: "What number measures this result?" })), "number");
+  assert.equal(actionTabOf(f({ ask_kind: null, question: "Who used it?" })), "detail");
+  assert.equal(actionTabOf(f({ type: "fix", ask_kind: "reword" })), "reword");
+  assert.equal(actionTabOf(f({ type: "note", rule: "bullet.too_long" })), "shorten");
+  assert.equal(actionTabOf(f({ type: "note", rule: "bullet.too_short" })), "notes");
+  assert.equal(actionTabOf(f({ type: "note", rule: "language.filler" })), "notes");
+  assert.equal(actionTabOf(f({ type: "note" })), "notes"); // a shape note has no rule
+  // The flag is the summary band's callout, never a note in a tab; a check is the banner's.
+  assert.equal(actionTabOf(f({ type: "note", rule: NO_NUMBERS_RULE })), null);
+  assert.equal(NO_NUMBERS_RULE, "evidence.no_numbers");
+  assert.equal(actionTabOf(f({ type: "gate" })), null);
+});
+
+test("findingsByTab keeps report order inside each tab", () => {
+  const a = f({ ask_kind: "measure", issue: "a" });
+  const b = f({ type: "fix", issue: "b" });
+  const c = f({ ask_kind: "measure", issue: "c" });
+  const flag = f({ type: "note", rule: NO_NUMBERS_RULE });
+  const tabs = findingsByTab([a, b, flag, c]);
+  assert.deepEqual(tabs.number, [a, c]);
+  assert.deepEqual(tabs.reword, [b]);
+  assert.deepEqual(tabs.notes, []);
+});
+
+test("defaultHealthTab opens the tab with the largest summed gain", () => {
+  assert.equal(
+    defaultHealthTab([
+      f({ ask_kind: "measure", gain: 3 }),
+      f({ ask_kind: "detail", gain: 2 }),
+      f({ ask_kind: "detail", gain: 2 }),
+      f({ type: "fix", gain: 3 }),
+    ]),
+    "detail",
+  );
+  // A tie goes to the earlier tab.
+  assert.equal(defaultHealthTab([f({ type: "fix", gain: 4 }), f({ ask_kind: "measure", gain: 4 })]), "number");
+  // No gain anywhere: the first tab with something in it; nothing at all: Notes.
+  assert.equal(defaultHealthTab([f({ type: "note", rule: "bullet.too_long" }), f({ type: "note" })]), "shorten");
+  assert.equal(defaultHealthTab([f({ ask_kind: "detail", gain: undefined })]), "detail");
+  assert.equal(defaultHealthTab([]), "notes");
+  assert.equal(defaultHealthTab([f({ type: "note", rule: NO_NUMBERS_RULE })]), "notes");
+});
+
+test("parseHealthTab reads only the six tabs", () => {
+  assert.equal(parseHealthTab("number"), "number");
+  assert.equal(parseHealthTab("done"), "done");
+  assert.equal(parseHealthTab("fix"), null);
+  assert.equal(parseHealthTab(null), null);
+  assert.equal(parseHealthTab(undefined), null);
+});
+
+test("ruleGroups states each rule once: by detector id, else by the issue sentence", () => {
+  const m1 = f({ issue: "Specific, but has no number.", ask_kind: "measure" });
+  const d1 = f({ issue: "Says what you did, not what came of it." });
+  const m2 = f({ issue: "Specific, but has no number.", ask_kind: "measure" });
+  const long1 = f({ type: "note", rule: "bullet.too_long", issue: "32 words." });
+  const long2 = f({ type: "note", rule: "bullet.too_long", issue: "35 words." });
+  const groups = ruleGroups([m1, d1, m2, long1, long2]);
+  assert.deepEqual(
+    groups.map((g) => [g.title, g.findings.length]),
+    [
+      ["Specific, but has no number.", 2],
+      ["Says what you did, not what came of it.", 1],
+      ["Bullet is too long", 2],
+    ],
+  );
+  assert.deepEqual(groups[0].findings, [m1, m2]);
+});
+
+test("nextGradeProgress measures from the band's floor to the next band", () => {
+  assert.deepEqual([...GRADE_FLOORS], [40, 55, 70, 85]);
+  // 61 is a C (55 to 69): 6 of the 15 points to a B.
+  assert.equal(nextGradeProgress({ score: 61, next_grade: { grade: "B", points: 9 } }), 6 / 15);
+  // An F measures from 0.
+  assert.equal(nextGradeProgress({ score: 20, next_grade: { grade: "D", points: 20 } }), 0.5);
+  // On the floor: nothing yet.
+  assert.equal(nextGradeProgress({ score: 70, next_grade: { grade: "A", points: 15 } }), 0);
+  assert.equal(nextGradeProgress({ score: 90, next_grade: null }), null);
+  assert.equal(nextGradeProgress({ score: 54 }), null);
+});
+
+test("checkedWords stamps the time and the version", () => {
+  assert.equal(checkedWords("2 minutes ago", 28), "Checked 2 minutes ago · Version 28");
+  assert.equal(checkedWords("just now", null), "Checked just now");
+});
+
+test("skillGroupOf names the group a skill is listed in", () => {
+  const data = {
+    skills: [
+      { category: "Languages", items: ["Python", "SQL"] },
+      { category: "", items: ["Excel"] },
+    ],
+  } as unknown as Parameters<typeof skillGroupOf>[0];
+  assert.equal(skillGroupOf(data, "SQL"), "Languages");
+  assert.equal(skillGroupOf(data, "Excel"), null);
+  assert.equal(skillGroupOf(data, "Rust"), null);
+  assert.equal(skillGroupOf(null, "SQL"), null);
 });

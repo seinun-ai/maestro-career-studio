@@ -281,12 +281,13 @@ def test_a_failed_refresh_keeps_the_career_item_page():
 
 
 def test_the_findings_filter_hides_notes_instead_of_unmounting_them():
-    """The notes table holds the kept Demonstrate-skill drafts."""
+    """The notes table holds the kept Demonstrate-skill drafts: its tab is kept mounted (Task 11)."""
     flat = _flat(_HEALTH_PAGE)
     assert "showNotes && notes.length > 0" not in flat
     # Always there with a report (Task 10b review): the Wording group's Edit word list needs it.
-    assert "{body && ( <NotesTable hidden={!showNotes}" in flat
-    assert "<section ref={sectionRef} id=\"notes\" tabIndex={-1} hidden={hidden}" in _FINDINGS
+    assert '<TabsContent value="notes" keepMounted data-health-tab="notes">' in flat
+    assert flat.index('<TabsContent value="notes"') < flat.index("<NotesTable notes={tabs.notes}")
+    assert "<section ref={sectionRef} id=\"notes\" tabIndex={-1} className=" in _FINDINGS
 
 
 def test_new_entity_keeps_its_draft():

@@ -130,8 +130,15 @@
 - **Judged resume text** is upright `text-sm text-foreground`, wrapped within `max-w-[65ch]`,
   with a `border-l-2 border-border pl-3` quote rule. A compact quote uses `line-clamp-3` and a
   visible Show all toggle with `aria-expanded`; metadata alone uses muted text. Health findings show
-  location, level and attention as plain text; potential points appear once per group. Notes start
-  collapsed behind a disclosure and stay mounted to preserve drafts. Health ask controls read
+  location, level and attention as plain text. The report's tabs group findings by ACTION
+  (`actionTabOf`: Needs a number, Needs detail, Reword, Shorten, Notes, then Done), with plain counts;
+  `?tab=` is read with `useSearchParams`, and with none the tab whose findings gain the most opens,
+  chosen once per visit. Every panel is `keepMounted`, so drafts survive a switch. In a tab, rows
+  group by the rule they break (`ruleGroups`), whose header states the rule and its points once; a
+  row is the entry and bullet, the clamped quote, the bullet's own question, one text-style action
+  and ⋯. Card actions are tonal: the page's one filled button is Start the questions. Done lists
+  this session's fixes, disputes (Reopen) and hand-set ratings (Back to automatic). Re-runs of the
+  report run one at a time (`runLatest`'s queue). Health ask controls read
   `ask_kind` (legacy stored reports fall back to question wording). A measure ask names its target
   and offers its number-free alternative; the summary shows the server-provided next-grade distance.
   A rated bullet offers a quiet **Not right?** (a free-text dispute, `dispute-box.tsx`) unless the user
@@ -154,10 +161,11 @@
   rhythms: the shell is `mx-auto`, so a narrower cap indents the whole column.
   **A narrow reading measure is a BODY concern (`PageMeasure` or
   `max-w-[65ch]` on the sentences), never a shell concern.** The health
-  report is two-pane at ≥1024px: a sticky ~300px rail (grade, composition,
-  jump list, filters, batch number-asks, Check again) and a finding stream; the ~65ch measure
-  lives inside card prose, not as `PageMeasure` around the page. Below 1024px
-  the rail stacks above the stream. `PageHeader` owns the type scale; call sites pass
+  report is one column (owner decision: no rail): the header's stamp ("Checked 2 minutes ago ·
+  Version 28") with an icon Check again, a full-width summary band (grade, the bar to the next band,
+  composition, the "No numbers anywhere" callout, the stale banner and the page's one filled
+  button, Start the questions), the checks, then tabs by action; the ~65ch measure lives inside card
+  prose, not as `PageMeasure` around the page. `PageHeader` owns the type scale; call sites pass
   `title`/`subtitle`/`actions`/`leading` and do not restate classes; its
   actions cluster sits in a wrapping row under `justify-between` so a long
   title never squeezes the title block to zero width, and so a toolbar that

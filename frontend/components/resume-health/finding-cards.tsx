@@ -53,7 +53,6 @@ import {
   answerMatchesFinding,
   bulletEditOp,
   groupNotesByRule,
-  hoistBlurb,
   isBulletSubjectRule,
   isContentChangedError,
   isMechanicalPunctRule,
@@ -62,11 +61,11 @@ import {
   groupPoints,
   punctFixOps,
   sharedCoaching,
+  skillGroupOf,
   splitWordingNotes,
   STALE_APPLY_HINT,
   type StoredAskAnswer,
   textAtLocation,
-  shortFindingLabel,
 } from "@/lib/health-report";
 import { focusIfDropped, useEditToggle, useFocusOnNextCommit } from "@/hooks/use-focus-return";
 import { useSingleFlight } from "@/hooks/use-single-flight";
@@ -96,7 +95,7 @@ const EVIDENCE_LEVELS: { value: EvidenceLevel; label: string }[] = [
   { value: "unaddressed", label: "Lists a duty" },
 ];
 
-const EVIDENCE_LABELS = Object.fromEntries(
+export const EVIDENCE_LABELS = Object.fromEntries(
   EVIDENCE_LEVELS.map(({ value, label }) => [value, label]),
 ) as Record<EvidenceLevel, string>;
 
@@ -527,8 +526,10 @@ export function SuggestionEditor({
         disabled={locked}
       />
       <div className="flex justify-end">
+        {/* Tonal: the report's one filled button is Start the questions. */}
         <Button
           size="sm"
+          variant="tonal"
           disabled={!canApply || apply.isPending || locked}
           title={locked ? STALE_APPLY_HINT : undefined}
           focusableWhenDisabled
@@ -568,29 +569,39 @@ function CollapsedRow({
   onExpand: () => void;
   overflow: ReactNode;
 }) {
-  // Two lines that wrap inside the card: the chips, then the quote. On one
-  // line the chips and the action ran past the card at 375 (scrollWidth 476).
+  // The group header states the rule, so the row names its place in full ("<entry> · bullet 3"),
+  // then the bullet as judged text and the bullet's own question. The label wraps inside the card:
+  // a long entry name must not push the action and ⋯ off it.
   return (
     <div className="flex min-w-0 flex-wrap items-start gap-2">
       <div className="flex min-w-0 flex-1 basis-48 flex-col items-start gap-1 text-left">
-        <button type="button" onClick={onExpand} aria-expanded={false} title={finding.label}>
-        <span className="text-muted-foreground min-w-0 text-xs break-words">
-          {shortFindingLabel(finding.label)} · <LevelChip finding={finding} />
-          {finding.zone === "hot" && <> · {ATTENTION_BADGE_LABEL}</>}
-        </span>
+        <button type="button" onClick={onExpand} aria-expanded={false} className="text-left">
+          <span className="text-muted-foreground min-w-0 text-xs break-words">
+            {finding.label} · <LevelChip finding={finding} />
+            {finding.zone === "hot" && <> · {ATTENTION_BADGE_LABEL}</>}
+          </span>
         </button>
         {quote ? (
           <span className="block w-full min-w-0">
             <SourceQuote text={quote} clamp />
           </span>
         ) : (
-          <span className="text-muted-foreground block w-full min-w-0 truncate text-sm">
+          <span className="text-muted-foreground block w-full min-w-0 text-sm">
             {finding.issue}
           </span>
         )}
+        {finding.question && (
+          <p className="text-foreground max-w-[65ch] text-sm">{finding.question}</p>
+        )}
       </div>
       <div className="ml-auto flex shrink-0 items-center gap-2">
-        <Button size="xs" variant="outline" onClick={onExpand}>
+        <Button
+          size="xs"
+          variant="link"
+          // Every row's action has its own name: "Answer: Data Analyst · Acme · bullet 3".
+          aria-label={`${actionLabel}: ${finding.label}`}
+          onClick={onExpand}
+        >
           {actionLabel}
         </Button>
         {overflow}
@@ -599,6 +610,11 @@ function CollapsedRow({
   );
 }
 
+/**
+ * A tab's group: the rule its rows break, stated once. The title is the rule (a detector's title, or
+ * the issue sentence every row shares), then the points the whole group could gain, then the why and
+ * how when every row shares them (the rows then leave their own out).
+ */
 export function FindingGroupHeader({
   title,
   findings,
@@ -611,19 +627,18 @@ export function FindingGroupHeader({
   nScoreable?: number | null;
 }) {
   const points = groupPoints(findings, nScoreable);
-  const blurb = hoistBlurb(findings);
   const coaching = sharedCoaching(findings);
   return (
     <div id={id} className="scroll-mt-6 space-y-1">
-      <h3 className="text-sm font-medium">{title}</h3>
+      <h3 className="text-sm font-medium">
+        {title} <span className="text-muted-foreground font-normal">({findings.length})</span>
+      </h3>
       {points > 0 && <p className="text-muted-foreground text-xs">Up to +{points} points</p>}
-      {blurb ? (
-        <p className="text-muted-foreground max-w-[65ch] text-sm">{blurb}</p>
-      ) : coaching ? (
+      {coaching && (
         <p className="text-muted-foreground max-w-[65ch] text-sm">
           {coaching.why} {coaching.how}
         </p>
-      ) : null}
+      )}
     </div>
   );
 }
@@ -936,6 +951,7 @@ export function AskCard({
         controls={answering ? (
           <Button
             size="sm"
+            variant="tonal"
             disabled={
               context.length === 0 || draft.isPending || locked
             }
@@ -959,8 +975,12 @@ export function AskCard({
   );
 }
 
+/**
+ * The Notes tab: the Wording group, the rule table and the unscored skills. None changes the score.
+ * Too-long bullets are the Shorten tab's (`ShortenList`), and "No numbers anywhere" is the summary
+ * band's callout, so neither reaches here.
+ */
 export function NotesTable({
-  hidden,
   notes,
   data,
   kind,
@@ -970,9 +990,6 @@ export function NotesTable({
   onReanalyze,
   onWordingChanged,
 }: {
-  /** The findings filter leaves notes out: hidden, not unmounted, so its
-   *  kept Demonstrate-skill drafts survive the filter. */
-  hidden?: boolean;
   notes: LintFinding[];
   data?: ResumeData | null;
   kind: "base" | "application";
@@ -985,8 +1002,9 @@ export function NotesTable({
 }) {
   // Wording notes (spelling and grammar slips, clichés, filler) are one checklist of their own.
   const { wording, other } = splitWordingNotes(notes);
-  const groups = groupNotesByRule(other);
-  const [notesOpen, setNotesOpen] = useState(false);
+  const allGroups = groupNotesByRule(other);
+  const skills = allGroups.find((g) => g.rule === "skills.undemonstrated") ?? null;
+  const groups = allGroups.filter((g) => g !== skills);
   const [skill, setSkill] = useState<string | null>(null);
   // One kept dialog per skill the user has opened, so a drafted rewrite
   // survives closing it and opening another skill.
@@ -996,7 +1014,7 @@ export function NotesTable({
     setSkill(subject);
   };
   const [doneSkills, setDoneSkills] = useState<Set<string>>(new Set());
-  // An Apply marks its chip "· done", which disables it, and Base UI's return
+  // An Apply marks its row "Done", which disables its action, and Base UI's return
   // to a disabled button lands on <body>. Focus goes to the opener while it is
   // live, else the next skill still to do, else the notes section itself (a
   // tabIndex={-1} target Base UI would pass to its first tabbable child).
@@ -1011,11 +1029,6 @@ export function NotesTable({
     queueMicrotask(() => focusIfDropped(sectionRef.current));
     return false;
   };
-  const [condenseDraft, setCondenseDraft] = useState<{
-    finding: LintFinding;
-    suggestion: string;
-    content_hash: string;
-  } | null>(null);
 
   const applyOps = useMutation({
     mutationFn: (ops: Record<string, unknown>[]) =>
@@ -1028,167 +1041,123 @@ export function NotesTable({
     onError: (err: Error) => toastRewriteError(err, onReanalyze),
   });
 
-  const condense = useMutation({
-    mutationFn: (finding: LintFinding) =>
-      draftRewrite(kind, resumeKey, {
-        location: {
-          section: finding.location.section,
-          index: finding.location.index,
-          bullet_index: finding.location.bullet_index,
-        },
-        objective: "condense",
-        expected_content_hash: finding.content_hash ?? undefined,
-      }).then((result) => ({ finding, ...result })),
-    onSuccess: (result) => setCondenseDraft(result),
-    onError: (err: Error) => toastRewriteError(err, onReanalyze, "write new wording"),
-  });
-
   return (
-    <section ref={sectionRef} id="notes" tabIndex={-1} hidden={hidden} className="scroll-mt-6 space-y-2 outline-none">
-      <h2 className="text-muted-foreground text-sm font-medium">
-        <button type="button" aria-expanded={notesOpen} onClick={() => setNotesOpen((v) => !v)}>
-          Notes ({notes.length}). These don&apos;t change your score.
-        </button>
-      </h2>
-      <div hidden={!notesOpen} className="space-y-2">
-        {/* Always, even with no hits: Edit word list lives in its header. */}
-        <WordingChecklist
-          notes={wording}
-          data={data ?? null}
-          kind={kind}
-          resumeKey={resumeKey}
-          onApplied={onApplied}
-          onReanalyze={onReanalyze}
-          onWordingChanged={onWordingChanged}
-        />
-        {groups.length > 0 && (
-          <div className="overflow-x-auto rounded-md border">
-            <table className="w-full table-fixed text-sm">
-              <tbody>
-                {groups.map((group) => {
-                  const ops =
-                    data && isMechanicalPunctRule(group.rule)
-                      ? punctFixOps(group.rule, group.subjects, data)
-                      : null;
-                  const bulletRows = isBulletSubjectRule(group.rule);
-                  const undemonstrated = group.rule === "skills.undemonstrated";
-                  const subjectLine =
-                    !bulletRows && !undemonstrated && group.subjects.length > 0
-                      ? group.subjects.slice(0, 8).join(", ") +
-                        (group.subjects.length > 8 ? ", …" : "")
-                      : null;
-                  return (
-                    <tr key={group.rule} className="border-b last:border-b-0">
-                      <td className="px-3 py-2 align-top">
-                        <p className="font-medium">
-                          {group.title} ({group.count})
+    <section ref={sectionRef} id="notes" tabIndex={-1} className="scroll-mt-6 space-y-3 outline-none">
+      <p className="text-muted-foreground text-sm">These don&apos;t change your score.</p>
+      {/* Always, even with no hits: Edit word list lives in its header. */}
+      <WordingChecklist
+        notes={wording}
+        data={data ?? null}
+        kind={kind}
+        resumeKey={resumeKey}
+        onApplied={onApplied}
+        onReanalyze={onReanalyze}
+        onWordingChanged={onWordingChanged}
+      />
+      {groups.length > 0 && (
+        <div className="overflow-x-auto rounded-md border">
+          <table className="w-full table-fixed text-sm">
+            <tbody>
+              {groups.map((group) => {
+                const ops =
+                  data && isMechanicalPunctRule(group.rule)
+                    ? punctFixOps(group.rule, group.subjects, data)
+                    : null;
+                const bulletRows = isBulletSubjectRule(group.rule);
+                const subjectLine =
+                  !bulletRows && group.subjects.length > 0
+                    ? group.subjects.slice(0, 8).join(", ") +
+                      (group.subjects.length > 8 ? ", …" : "")
+                    : null;
+                return (
+                  <tr key={group.rule} className="border-b last:border-b-0">
+                    <td className="px-3 py-2 align-top">
+                      <p className="font-medium">
+                        {group.title} ({group.count})
+                      </p>
+                      {subjectLine && (
+                        <p className="text-muted-foreground mt-0.5 max-w-[65ch] text-xs">
+                          {subjectLine}
                         </p>
-                        {undemonstrated && (
-                          <div className="mt-1.5 flex flex-wrap gap-1">
-                            {group.subjects.map((subject) => {
-                              const done = doneSkills.has(subject);
-                              return (
-                                <button
-                                  key={subject}
-                                  type="button"
-                                  data-skill={subject}
-                                  className={cn(
-                                    "rounded-full border px-2 py-0.5 text-xs",
-                                    done
-                                      ? "text-muted-foreground line-through"
-                                      : "hover:bg-muted",
-                                  )}
-                                  onClick={() => !done && openSkill(subject)}
-                                  disabled={done || locked || !data}
-                                >
-                                  {subject}
-                                  {done ? " · done" : ""}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        )}
-                        {subjectLine && (
-                          <p className="text-muted-foreground mt-0.5 max-w-[65ch] text-xs">
-                            {subjectLine}
-                          </p>
-                        )}
-                        {group.shapeNote &&
-                          group.notes.map((note) => (
-                            <p
-                              key={note.id}
-                              className="text-muted-foreground mt-0.5 max-w-[65ch] text-xs"
-                            >
-                              {note.issue} {note.how}
-                            </p>
-                          ))}
-                        {bulletRows && (
-                          <ul className="mt-1.5 space-y-1">
-                            {group.notes.map((note) => {
-                              const quote = note.subject ?? note.issue;
-                              return (
-                                <li
-                                  key={note.id}
-                                  className="flex items-start justify-between gap-2"
-                                >
-                                  <div className="min-w-0 flex-1">
-                                    <SourceQuote text={quote} clamp />
-                                  </div>
-                                  {group.rule === "bullet.too_long" && (
-                                    <Button
-                                      size="xs"
-                                      variant="outline"
-                                      disabled={locked || condense.isPending}
-                                      title={locked ? STALE_APPLY_HINT : undefined}
-                                      className={locked ? LOCKED_BTN : undefined}
-                                      onClick={() => condense.mutate(note)}
-                                    >
-                                      Shorten
-                                    </Button>
-                                  )}
-                                </li>
-                              );
-                            })}
-                          </ul>
-                        )}
-                        {condenseDraft &&
-                          group.notes.some((n) => n.id === condenseDraft.finding.id) &&
-                          data && (
-                            <div className="mt-2">
-                              <SuggestionEditor
-                                finding={condenseDraft.finding}
-                                currentText={
-                                  textAtLocation(data, condenseDraft.finding) ??
-                                  condenseDraft.finding.subject ??
-                                  ""
-                                }
-                                suggestion={condenseDraft.suggestion}
-                                kind={kind}
-                                resumeKey={resumeKey}
-                                onApplied={() => {
-                                  setCondenseDraft(null);
-                                  onApplied();
-                                }}
-                                onReanalyze={onReanalyze}
-                                locked={locked}
-                                expectedHash={condenseDraft.content_hash}
-                              />
-                            </div>
-                          )}
-                      </td>
-                      <td className="w-28 px-3 py-2 align-top text-right">
-                        {ops ? (
-                          <Button
-                            size="xs"
-                            variant="outline"
-                            disabled={locked || applyOps.isPending}
-                            title={locked ? STALE_APPLY_HINT : undefined}
-                            className={locked ? LOCKED_BTN : undefined}
-                            onClick={() => applyOps.mutate(ops)}
+                      )}
+                      {group.shapeNote &&
+                        group.notes.map((note) => (
+                          <p
+                            key={note.id}
+                            className="text-muted-foreground mt-0.5 max-w-[65ch] text-xs"
                           >
-                            Fix all
-                          </Button>
-                        ) : null}
+                            {note.issue} {note.how}
+                          </p>
+                        ))}
+                      {bulletRows && (
+                        <ul className="mt-1.5 space-y-1">
+                          {group.notes.map((note) => (
+                            <li key={note.id} className="min-w-0">
+                              <SourceQuote text={note.subject ?? note.issue} clamp />
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </td>
+                    <td className="w-28 px-3 py-2 align-top text-right">
+                      {ops ? (
+                        <Button
+                          size="xs"
+                          variant="outline"
+                          disabled={locked || applyOps.isPending}
+                          title={locked ? STALE_APPLY_HINT : undefined}
+                          className={locked ? LOCKED_BTN : undefined}
+                          onClick={() => applyOps.mutate(ops)}
+                        >
+                          Fix all
+                        </Button>
+                      ) : null}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {skills && (
+        <div className="space-y-1.5">
+          <h3 className="text-sm font-medium">
+            {skills.title} ({skills.count})
+          </h3>
+          <p className="text-muted-foreground max-w-[65ch] text-sm">{skills.notes[0].how}</p>
+          <div className="overflow-x-auto rounded-md border">
+            <table className="w-full text-sm">
+              <thead className="text-muted-foreground text-left text-xs">
+                <tr className="border-b">
+                  <th scope="col" className="px-3 py-2 font-medium">Skill</th>
+                  <th scope="col" className="px-3 py-2 font-medium">Listed in</th>
+                  <th scope="col" className="px-3 py-2 font-medium">
+                    <span className="sr-only">Action</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {skills.subjects.map((subject) => {
+                  const done = doneSkills.has(subject);
+                  return (
+                    <tr key={subject} className="border-b last:border-b-0">
+                      <td className="px-3 py-1.5 break-words">{subject}</td>
+                      <td className="text-muted-foreground px-3 py-1.5">
+                        {skillGroupOf(data, subject) ?? "—"}
+                      </td>
+                      <td className="px-3 py-1.5 text-right">
+                        <Button
+                          size="xs"
+                          variant="link"
+                          data-skill={subject}
+                          // The visible words first (WCAG 2.5.3), then the skill: every row's name differs.
+                          aria-label={done ? `Done: ${subject}` : `Show it in a bullet: ${subject}`}
+                          onClick={() => !done && openSkill(subject)}
+                          disabled={done || locked || !data}
+                        >
+                          {done ? "Done" : "Show it in a bullet"}
+                        </Button>
                       </td>
                     </tr>
                   );
@@ -1196,8 +1165,8 @@ export function NotesTable({
               </tbody>
             </table>
           </div>
-        )}
-      </div>
+        </div>
+      )}
       {data && opened.map((s) => (
         <DemonstrateSkillDialog
           key={s}
@@ -1219,6 +1188,92 @@ export function NotesTable({
         />
       ))}
     </section>
+  );
+}
+
+/**
+ * The Shorten tab: each too-long bullet with one text-style Shorten, which drafts a shorter version
+ * (`draft-rewrite`, objective "condense", hash-guarded) into the same editor every Apply uses.
+ */
+export function ShortenList({
+  notes,
+  data,
+  kind,
+  resumeKey,
+  onApplied,
+  locked,
+  onReanalyze,
+}: {
+  notes: LintFinding[];
+  data: ResumeData;
+  kind: "base" | "application";
+  resumeKey: string;
+  onApplied: () => void;
+  locked?: boolean;
+  onReanalyze?: () => void;
+}) {
+  const [condenseDraft, setCondenseDraft] = useState<{
+    finding: LintFinding;
+    suggestion: string;
+    content_hash: string;
+  } | null>(null);
+  const condense = useMutation({
+    mutationFn: (finding: LintFinding) =>
+      draftRewrite(kind, resumeKey, {
+        location: {
+          section: finding.location.section,
+          index: finding.location.index,
+          bullet_index: finding.location.bullet_index,
+        },
+        objective: "condense",
+        expected_content_hash: finding.content_hash ?? undefined,
+      }).then((result) => ({ finding, ...result })),
+    onSuccess: (result) => setCondenseDraft(result),
+    onError: (err: Error) => toastRewriteError(err, onReanalyze, "write new wording"),
+  });
+  return (
+    <ul className="space-y-2">
+      {notes.map((note) => {
+        const current = textAtLocation(data, note) ?? note.subject ?? "";
+        return (
+          <li key={note.id} className="min-w-0 rounded-md border px-3 py-2">
+            <div className="flex min-w-0 flex-wrap items-start gap-2">
+              <div className="flex min-w-0 flex-1 basis-48 flex-col gap-1">
+                <span className="text-muted-foreground text-xs break-words">{note.label}</span>
+                <SourceQuote text={current || note.issue} clamp />
+                <p className="text-muted-foreground max-w-[65ch] text-xs">{note.issue}</p>
+              </div>
+              <Button
+                size="xs"
+                variant="link"
+                className={cn("ml-auto shrink-0", locked && LOCKED_BTN)}
+                disabled={locked || condense.isPending}
+                title={locked ? STALE_APPLY_HINT : undefined}
+                onClick={() => condense.mutate(note)}
+              >
+                {condense.isPending && condense.variables?.id === note.id ? "Shortening…" : "Shorten"}
+              </Button>
+            </div>
+            {condenseDraft?.finding.id === note.id && (
+              <SuggestionEditor
+                finding={note}
+                currentText={current}
+                suggestion={condenseDraft.suggestion}
+                kind={kind}
+                resumeKey={resumeKey}
+                onApplied={() => {
+                  setCondenseDraft(null);
+                  onApplied();
+                }}
+                onReanalyze={onReanalyze}
+                locked={locked}
+                expectedHash={condenseDraft.content_hash}
+              />
+            )}
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 

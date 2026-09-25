@@ -452,7 +452,7 @@ def test_a_demonstrated_skill_returns_focus_to_a_live_chip():
     ) in body
     assert "finalFocus={returnFrom(s)}" in body
     assert "data-skill={subject}" in body
-    assert '<section ref={sectionRef} id="notes" tabIndex={-1} hidden={hidden} className="' in body
+    assert '<section ref={sectionRef} id="notes" tabIndex={-1} className="' in body
 
 
 def test_new_career_item_returns_focus_to_its_opener_or_the_new_card():
