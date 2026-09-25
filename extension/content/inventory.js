@@ -4,35 +4,65 @@
  * (shape, question, section, repeat, name, ordinal) reacquires a re-rendered
  * node and lets an action prove it still targets the field it was decided for.
  * A field made of several elements (a radio/checkbox set, date sections) is ONE
- * field whose fid every part maps to.
+ * field whose fid every part maps to. In one pass no two fields share a fid; a
+ * fid whose node left the page and was not reacquired by the very next pass is
+ * dead (resolve → null) and never handed to another field.
  *
  * A field the user changed (trusted input/change while the engine is not
- * typing into THAT element) is `touched`. Never-fill fields (shared/policy.js)
- * are `policyBlocked`. Controls no shape recognises are listed as "unknown".
+ * working on THAT field) is `touched`. Never-fill fields (shared/policy.js) are
+ * `policyBlocked` — by question, or when every option is a never-fill one;
+ * each option also carries its own `policyBlocked`. Controls no shape
+ * recognises are listed as "unknown".
  */
 (() => {
   const ns = (window.careerStudioCompanion ??= {});
   const FRAME = Math.random().toString(36).slice(2, 8);
   // Known shapes plus ARIA widgets no shape claims yet: an unrecognised control
   // is still LISTED (shape "unknown") so the panel can name it, never dropped.
-  const CANDIDATE = 'input, select, textarea, button[aria-haspopup], [role="combobox"]:not(input), '
-    + '[contenteditable]:not([contenteditable="false"]), [role="textbox"]:not(input):not(textarea), '
-    + '[role="radio"]:not(input), [role="checkbox"]:not(input), [role="switch"], '
-    + '[role="spinbutton"]:not(input), [role="slider"]';
+  const CANDIDATE = 'input, select, textarea, button[aria-haspopup], [aria-haspopup]:not(button):not(input), '
+    + '[role="combobox"]:not(input), [contenteditable]:not([contenteditable="false"]), '
+    + '[role="textbox"]:not(input):not(textarea), [role="radio"]:not(input), [role="checkbox"]:not(input), '
+    + '[role="switch"], [role="spinbutton"]:not(input), [role="slider"]';
   const SKIP = new Set(["hidden", "submit", "button", "reset", "image", "file", "password"]);
-  const NOT_A_FIELD = '[role="listbox"], [role="menu"]';
+  // Options inside a popup are not fields; site chrome (header, nav) is not the form.
+  const NOT_A_FIELD = '[role="listbox"], [role="menu"], header, nav, [role="banner"], [role="navigation"]';
   let counter = 0;
   let lastConsentForms = false;
   const fidOf = new WeakMap(); // element (every part of a field) -> fid
-  const registry = new Map(); // fid -> { ref, fp, shape, question }
+  const registry = new Map(); // fid -> { ref, fp, shape, question, options }
+  let lastSeen = new Set(); // fids the previous pass listed
   const touched = new Set(); // fids
   const touchedEls = new WeakSet(); // elements changed before any inventory saw them
-  const UNKNOWN = () => ns.shapes.unknown;
-  const shapeFor = (el) => ns.shapes.of(el) ?? UNKNOWN();
+  const shapeFor = (el) => ns.shapes.of(el) ?? ns.shapes.unknown;
 
+  // The DOM generation: resolve() re-lists at most once per change. Shadow
+  // roots are observed as the walk finds them.
+  let generation = 0;
+  let listedAt = -1;
+  const observer = new MutationObserver(() => {
+    generation += 1;
+  });
+  const OBSERVE = {
+    childList: true, subtree: true, attributes: true,
+    attributeFilter: ["style", "class", "hidden", "disabled", "readonly", "aria-hidden", "role", "name", "id", "type"],
+  };
+  const observed = new WeakSet();
+  const observe = (root) => {
+    if (observed.has(root)) return;
+    observed.add(root);
+    observer.observe(root, OBSERVE);
+  };
+  const flush = () => {
+    if (observer.takeRecords().length) generation += 1;
+  };
+
+  // Document order, shadow-root fields in place.
   const walk = (root, out = []) => {
-    out.push(...root.querySelectorAll(CANDIDATE));
-    for (const host of root.querySelectorAll("*")) if (host.shadowRoot) walk(host.shadowRoot, out);
+    observe(root);
+    for (const el of root.querySelectorAll("*")) {
+      if (el.matches(CANDIDATE)) out.push(el);
+      if (el.shadowRoot) walk(el.shadowRoot, out);
+    }
     return out;
   };
   const shown = (el) => {
@@ -44,30 +74,42 @@
   };
   const eligible = (el) => {
     if (el instanceof HTMLInputElement && SKIP.has(el.type)) return false;
-    if (el.disabled || el.readOnly) return false;
+    if (el.disabled) return false;
+    const shape = ns.shapes.of(el);
+    // Read-only is not fillable — unless it opens a list when pressed.
+    if (el.readOnly && shape?.name !== "popup") return false;
     // A node inside a rich-text box is the box's content, not a field.
     if (el.parentElement?.isContentEditable) return false;
-    // Options inside a popup are not fields; neither is anything inside a popup
-    // the ENGINE opened. A modal application form (a dialog the page opened)
-    // is walked like any other part of the page.
+    // A modal application form (a dialog the page opened) is walked; a popup
+    // the ENGINE opened is not.
     if (el.closest(NOT_A_FIELD) || ns.fillBase.insideEnginePopup(el)) return false;
+    // A toggle beside a search input is part of the input's field.
+    if (ns.shapes.companionSearch(el)) return false;
     // An unrecognised wrapper around a real control: the control is the field.
-    if (!ns.shapes.of(el) && el.querySelector(ns.fieldControls.CONTROL)) return false;
+    if (!shape && el.querySelector(ns.fieldControls.CONTROL)) return false;
     return shown(el);
   };
   const describe = (el, shape) => {
-    const own = ns.readField(el);
+    const own = ns.shapes.readField(el);
     const over = shape.describe?.(el) ?? {};
     return { ...own, ...over, required: own.required || Boolean(over.required) };
   };
   const baseFp = (el, shape, d) => [shape.name, d.question, d.section, d.repeatIndex, el.getAttribute("name") ?? ""].join("|");
-  const blocked = (question, consentForms) => Boolean(ns.isPolicyBlocked?.(question ?? "", { consentForms }));
+  const blocked = (text, consentForms) => Boolean(ns.isPolicyBlocked?.(text ?? "", { consentForms }));
+  // Blocked by its question, or when EVERY option is a never-fill one (an
+  // "Acknowledgements" set of attestations). Lone checkboxes' Yes/No never are.
+  const fieldBlocked = (question, options, consentForms) => blocked(question, consentForms)
+    || (options.length > 0 && options.every((t) => blocked(t, consentForms)));
 
-  const list = ({ consentForms = lastConsentForms } = {}) => {
-    lastConsentForms = consentForms;
+  const scan = (consentForms) => {
     const groups = new Set();
     const ordinals = new Map();
+    const used = new Set();
+    const claimed = new Map(); // fid -> element, this pass
     const fields = [];
+    // Re-rendered nodes reacquire only from fields the PREVIOUS pass listed
+    // whose node has since left the page.
+    const orphans = [...lastSeen].filter((fid) => registry.has(fid) && !registry.get(fid).ref.deref()?.isConnected);
     for (const el of walk(document)) {
       if (!eligible(el)) continue;
       const shape = shapeFor(el);
@@ -83,24 +125,21 @@
       ordinals.set(base, ordinal);
       const fp = `${base}|${ordinal}`;
       let fid = fidOf.get(el);
+      if (fid && used.has(fid)) fid = null; // a part mapping outlived its group
       if (!fid) {
-        // A re-rendered node takes over the fid of a disconnected node with the
-        // same fingerprint.
-        for (const [known, entry] of registry) {
-          if (entry.fp === fp && !entry.ref.deref()?.isConnected) {
-            fid = known;
-            break;
-          }
-        }
-        fid ??= `${FRAME}-${(counter += 1)}`;
+        fid = orphans.find((o) => !used.has(o) && registry.get(o).fp === fp)
+          ?? `${FRAME}-${(counter += 1)}`;
       }
+      used.add(fid);
+      claimed.set(fid, el);
       for (const part of parts) {
         fidOf.set(part, fid);
         if (touchedEls.has(part)) touched.add(fid);
       }
       fidOf.set(el, fid);
-      registry.set(fid, { ref: new WeakRef(el), fp, shape: shape.name, question: d.question });
       const passive = shape.passive?.(el) ?? null;
+      const optionTexts = (shape.name === "group" && shape.lone?.(el)) ? [] : (passive?.options ?? []).map((o) => o.text);
+      registry.set(fid, { ref: new WeakRef(el), fp, shape: shape.name, question: d.question, options: optionTexts });
       const committed = shape.read(el);
       const multi = Boolean(shape.multi?.(el));
       fields.push({
@@ -112,13 +151,30 @@
         // reads "No" but was never answered, and a multi-select is never
         // finished just because one chip exists — missing items may be added.
         answered: shape.answered ? Boolean(shape.answered(el)) : (multi ? false : Boolean(committed)),
-        options: passive?.options ?? null,
+        options: passive?.options.map((o) => ({ ...o, policyBlocked: blocked(o.text, consentForms) })) ?? null,
         optionsComplete: passive?.complete ?? false,
         invalid: ns.fillBase.invalid(el),
         touched: touched.has(fid),
-        policyBlocked: blocked(d.question, consentForms),
+        policyBlocked: fieldBlocked(d.question, optionTexts, consentForms),
       });
     }
+    // A fid not listed now whose node left the page is dead: never reacquired
+    // by another field, and resolve() answers null at once.
+    for (const [fid, entry] of registry) {
+      if (!claimed.has(fid) && !entry.ref.deref()?.isConnected) registry.delete(fid);
+    }
+    lastSeen = new Set(claimed.keys());
+    return fields;
+  };
+
+  // consentForms is per call and defaults to OFF: a caller that does not pass
+  // the standing consent never inherits a previous run's.
+  const list = ({ consentForms = false } = {}) => {
+    lastConsentForms = consentForms;
+    flush();
+    const fields = ns.shapes.pass(() => scan(consentForms));
+    flush();
+    listedAt = generation;
     return { frame: FRAME, host: location.hostname, fields };
   };
 
@@ -132,27 +188,36 @@
     return `${baseFp(el, shape, describe(el, shape))}|${entry.fp.split("|").at(-1)}`;
   };
 
+  // A live node answers at once; a missing one costs at most ONE re-list per
+  // DOM change, however many fids are asked about.
   const resolve = (fid) => {
-    const entry = registry.get(fid);
-    if (!entry) return null;
-    if (entry.ref.deref()?.isConnected) return entry.ref.deref();
-    list();
-    const again = registry.get(fid)?.ref.deref();
-    return again?.isConnected ? again : null;
+    const live = () => {
+      const el = registry.get(fid)?.ref.deref();
+      return el?.isConnected ? el : null;
+    };
+    if (!registry.has(fid)) return null;
+    if (live()) return live();
+    flush();
+    if (listedAt === generation) return null;
+    ns.fillInventory.list({ consentForms: lastConsentForms });
+    return live();
   };
 
-  // Only the element the engine is typing into right now is exempt: the user
-  // typing in ANOTHER field while the engine works still marks it theirs.
-  // composedPath: a change inside an open shadow root reaches document
-  // retargeted to its host.
+  // Only the field the engine is working on right now is exempt — at FIELD
+  // level, because a synthetic click on a radio fires a TRUSTED change on
+  // whichever member it lands on. The user changing ANOTHER field while the
+  // engine works still marks that field theirs. composedPath: a change inside
+  // an open shadow root reaches document retargeted to its host.
   const onUserChange = (e) => {
     if (!e.isTrusted) return;
     const path = e.composedPath().filter((n) => n instanceof Element);
     if (!path.length) return;
+    const busy = ns.fillBusyEl ?? null;
+    const busyFid = busy ? fidOf.get(busy) : undefined;
     for (const el of path) {
-      if (el === ns.fillBusyEl) return;
+      if (el === busy) return;
       if (fidOf.has(el)) {
-        touched.add(fidOf.get(el));
+        if (fidOf.get(el) !== busyFid) touched.add(fidOf.get(el));
         return;
       }
     }
@@ -166,6 +231,6 @@
     liveFp,
     shapeOf: (fid) => (registry.has(fid) ? ns.shapes.byName(registry.get(fid).shape) : null),
     isTouched: (fid) => touched.has(fid),
-    isBlocked: (fid) => blocked(registry.get(fid)?.question, lastConsentForms),
+    isBlocked: (fid) => fieldBlocked(registry.get(fid)?.question, registry.get(fid)?.options ?? [], lastConsentForms),
   };
 })();

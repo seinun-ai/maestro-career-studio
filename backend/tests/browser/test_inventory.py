@@ -269,3 +269,151 @@ def test_named_radios_take_plain_preceding_text_and_never_an_option_label(page, 
 def test_an_unknown_control_is_never_answered(page, load):
     load(page, "<span id='q'>Rate</span><div role='slider' aria-labelledby='q' aria-valuenow='3' tabindex='0'></div>")
     assert [(f["shape"], f["committed"], f["answered"]) for f in fields(page)] == [("unknown", "3", False)]
+
+
+# ---------- code-quality review fixes ----------
+
+
+def test_an_engine_click_on_another_member_of_the_busy_group_is_not_the_user(page, load):
+    # A synthetic click on a radio fires a TRUSTED change: the exemption is per field.
+    load(page, """<fieldset><legend>Q</legend><label><input type='radio' name='q' id='y'>Yes</label>
+        <label for='n'>No</label><input type='radio' name='q' id='n'></fieldset>
+      <label for='c'>City</label><input id='c'>""")
+    fields(page)
+    page.evaluate(f"""() => {{ {NS}.fillBusyEl = document.getElementById('y');
+        document.querySelector("label[for='n']").dispatchEvent(new MouseEvent('click', {{bubbles: true, cancelable: true}})); }}""")
+    page.type("#c", "x")
+    assert [(f["question"], f["committed"], f["touched"]) for f in fields(page)] == [
+        ("Q", "No", False), ("City", "x", True)]
+
+
+def test_popup_placeholders_are_not_committed_values(page, load):
+    texts = ["Select...", "Select an option", "-- Select --", "Please choose", "Select One ▾", "Choose one…"]
+    load(page, "".join(f"<label id='l{i}'>Q{i}</label><button aria-haspopup='listbox' aria-labelledby='l{i}'>{t}</button>"
+                       for i, t in enumerate(texts)) + "<label id='v'>Q9</label><button aria-haspopup='listbox' aria-labelledby='v'>Texas ▾</button>")
+    got = [(f["committed"], f["answered"]) for f in fields(page)]
+    assert got == [("", False)] * len(texts) + [("Texas", True)]
+
+
+def test_a_rerendered_field_never_takes_a_deleted_fields_fid(page, load):
+    load(page, """<div class='job'><h3>Job</h3><label for='a'>Job Title</label><input id='a'></div>
+       <div class='job'><h3>Job</h3><label for='b'>Job Title</label><input id='b'></div>""")
+    first, second = (f["fid"] for f in fields(page))
+    page.evaluate("() => document.querySelector('.job').remove()")
+    assert [f["fid"] for f in fields(page)] == [second]
+    page.evaluate("() => { const o = document.getElementById('b'); o.replaceWith(o.cloneNode(true)); }")
+    assert [f["fid"] for f in fields(page)] == [second]
+    assert page.evaluate(f"(fid) => {INV}.resolve(fid)", first) is None
+
+
+def test_two_fields_never_share_a_fid_in_one_pass(page, load):
+    load(page, """<div><fieldset id='fs'><legend>Pick</legend><label><input type='checkbox'>Alpha</label>
+      <label><input type='checkbox'>Beta</label></fieldset></div>""")
+    assert len(fields(page)) == 1
+    page.evaluate("() => { const fs = document.getElementById('fs'); fs.querySelector('legend').remove(); fs.replaceWith(...fs.childNodes); }")
+    got = fields(page)
+    assert [f["question"] for f in got] == ["Alpha", "Beta"] and got[0]["fid"] != got[1]["fid"]
+
+
+def test_resolve_relists_at_most_once_per_dom_change_and_remembers_dead_fids(page, load):
+    load(page, "".join(f"<label for='t{i}'>T{i}</label><input id='t{i}'>" for i in range(10)))
+    fids = [f["fid"] for f in fields(page)]
+    page.evaluate(f"""() => {{ window.calls = 0; const inv = {INV}; const real = inv.list;
+        inv.list = (...a) => {{ window.calls += 1; return real(...a); }}; }}""")
+    page.evaluate("() => document.querySelectorAll('input').forEach((i) => i.remove())")
+    assert page.evaluate(f"(fids) => fids.map((f) => {INV}.resolve(f))", fids) == [None] * 10
+    assert page.evaluate("window.calls") == 1
+    assert page.evaluate(f"(fids) => fids.map((f) => {INV}.resolve(f))", fids) == [None] * 10
+    assert page.evaluate("window.calls") == 1
+
+
+def test_consent_options_are_flagged_and_an_all_consent_group_is_blocked(page, load):
+    load(page, """<fieldset><legend>Acknowledgements</legend>
+      <label><input type='checkbox' name='ack'>I certify that my answers are true</label>
+      <label><input type='checkbox' name='ack'>I agree to the privacy policy</label></fieldset>
+      <fieldset><legend>Final step</legend>
+      <label><input type='checkbox'>I agree to the terms of service</label>
+      <label><input type='checkbox'>Send me job alerts</label></fieldset>""")
+    ack, final = fields(page)
+    assert [o["policyBlocked"] for o in ack["options"]] == [True, True] and ack["policyBlocked"] is True
+    assert page.evaluate(f"(fid) => {INV}.isBlocked(fid)", ack["fid"]) is True
+    assert [o["policyBlocked"] for o in final["options"]] == [True, False] and final["policyBlocked"] is False
+    ack, final = fields(page, consent_forms=True)
+    assert ack["policyBlocked"] is False and not any(o["policyBlocked"] for o in final["options"])
+
+
+def test_a_readonly_combobox_input_is_a_popup(page, load):
+    load(page, """<label for='x'>Degree</label><div class='ant-select'><div class='ant-select-selector'>
+      <input id='x' role='combobox' readonly aria-haspopup='listbox' aria-expanded='false'>
+      <span class='ant-select-selection-placeholder'>Select</span></div></div>""")
+    assert [(f["shape"], f["question"], f["committed"]) for f in fields(page)] == [("popup", "Degree", "")]
+    assert page.evaluate(f"(fid) => {INV}.shapeOf(fid).open", fields(page)[0]["fid"]) == "press"
+
+
+def test_a_div_button_with_a_popup_is_a_popup(page, load):
+    load(page, """<label id='lab'>Degree</label><div role='button' aria-haspopup='listbox' aria-labelledby='lab' tabindex='0'>&#8203;</div>
+      <input aria-hidden='true' tabindex='-1' style='opacity:0;position:absolute' value=''>""")
+    assert [(f["shape"], f["question"], f["answered"]) for f in fields(page)] == [("popup", "Degree", False)]
+
+
+def test_a_select_without_a_placeholder_is_answered_only_when_chosen(page, load):
+    load(page, """<label for='s'>How did you hear about us?</label><select id='s'><option>Career fair</option><option>LinkedIn</option></select>
+      <label for='t'>Referral source</label><select id='t'><option selected>Career fair</option><option>LinkedIn</option></select>
+      <label for='u'>Other source</label><select id='u'><option>Career fair</option><option>LinkedIn</option></select>""")
+    page.select_option("#u", "LinkedIn")
+    assert [f["answered"] for f in fields(page)] == [False, True, True]
+
+
+def test_a_date_is_answered_only_when_every_section_is_there(page, load):
+    load(page, """<fieldset><legend>From</legend><div data-automation-id='dateInputWrapper'>
+        <input data-automation-id='dateSectionMonth-input' role='spinbutton' aria-label='Month' id='m' value='5'>
+        <input data-automation-id='dateSectionYear-input' role='spinbutton' aria-label='Year' id='y'></div></fieldset>""")
+    assert fields(page)[0]["answered"] is False
+    page.evaluate("() => { document.getElementById('y').value = '2021'; }")
+    assert [(f["committed"], f["answered"]) for f in fields(page)] == [("2021-05", True)]
+
+
+def test_consent_forms_default_to_off_on_every_list(page, load):
+    load(page, "<label><input type='checkbox'>I certify that the above is true</label>")
+    assert fields(page, consent_forms=True)[0]["policyBlocked"] is False
+    assert page.evaluate(f"() => {INV}.list().fields[0].policyBlocked") is True
+
+
+def test_header_and_nav_controls_are_not_fields(page, load):
+    load(page, """<header><button aria-haspopup='menu' aria-label='Account menu'></button></header>
+      <nav><button aria-haspopup='true'>English</button></nav><div role='banner'><input aria-label='Search jobs'></div>
+      <main><label for='n'>Name</label><input id='n'></main>""")
+    assert [f["question"] for f in fields(page)] == ["Name"]
+
+
+def test_a_headless_ui_combobox_is_one_search_field(page, load):
+    load(page, """<label id='cl'>Office</label><div><input role='combobox' aria-labelledby='cl' aria-controls='lb' aria-expanded='false'>
+      <button aria-haspopup='listbox' aria-labelledby='cl' aria-expanded='false'>v</button></div>""")
+    assert [(f["shape"], f["question"]) for f in fields(page)] == [("search", "Office")]
+
+
+def test_autocomplete_none_is_text_and_free_text_autocomplete_reads_its_value(page, load):
+    load(page, """<label for='t'>Nickname</label><input id='t' aria-autocomplete='none' value='Bob'>
+      <label for='loc'>Location (City)</label><input id='loc' aria-autocomplete='list' role='combobox' value='Austin, TX'>""")
+    assert [(f["shape"], f["committed"]) for f in fields(page)] == [("text", "Bob"), ("search", "Austin, TX")]
+
+
+def test_fields_come_in_document_order_with_shadow_fields_in_place(page, load):
+    load(page, "<label for='a'>A</label><input id='a'><div id='host'></div><label for='c'>C</label><input id='c'>")
+    page.evaluate("""() => { document.getElementById('host').attachShadow({mode: 'open'})
+        .innerHTML = "<label for='b'>B</label><input id='b'>"; }""")
+    assert [f["question"] for f in fields(page)] == ["A", "B", "C"]
+
+
+def test_two_unwrapped_date_widgets_under_one_parent_stay_two_fields(page, load):
+    load(page, """<div><label for='m'>From</label>
+      <input data-automation-id='dateSectionMonth-input' id='m' value='01'><input data-automation-id='dateSectionYear-input' value='2020'>
+      <input data-automation-id='dateSectionMonth-input' aria-label='To month' value='12'><input data-automation-id='dateSectionYear-input' value='2022'></div>""")
+    assert [(f["shape"], f["committed"]) for f in fields(page)] == [("date", "2020-01"), ("date", "2022-12")]
+
+
+def test_shape_readers_do_not_depend_on_this(page, load):
+    load(page, fixture_html("workday_search.html"))
+    got = page.evaluate(f"""() => {{ const read = {NS}.shapes.byName('search').read;
+        return read(document.getElementById('skills')); }}""")
+    assert got == ["SQL"]
