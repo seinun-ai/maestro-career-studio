@@ -5,11 +5,10 @@ widget) or `give_up`. Clicking an option is a semantic answer and must clear
 the slot's match floor through the same `verdict` /pick uses (a flag slot may
 take a `closest` click only on a complete view). A move that is not an answer —
 open, search, scroll, or a click the page described as opening a group
-("Open the group …") — only needs PROGRESS_FLOOR and answers `progress`. A plain
-click below its answer floor is TENTATIVE progress at PROGRESS_FLOOR (an
-unmarked category, Workday's "Job Board" on the way to "LinkedIn"), except on an
-exact slot, where a plain click is an answer or nothing; the loop sends it
-`as: "progress"`, so the page never verifies it as the answer. The
+("Open the group …") — only needs PROGRESS_FLOOR and answers `progress`; the
+loop sends that click `as: "progress"`. A plain click is an answer or nothing:
+an unmarked category (Workday's "Job Board" on the way to "LinkedIn") is an
+answer click the page reports as progressed when its children appear. The
 fact comes from the SLOT, server-side; the request carries none. Low-stakes
 (setting re-checked here, never trusted from the client) is only for a field
 with no slot, and states the never-list; its answer click is `assumed` at
@@ -59,12 +58,7 @@ def _decide(req: StepRequest, mid: str | None, p: float, policy: str) -> StepRes
         return ABSTAIN
     if _is_answer(req, mid):
         picked = verdict(req, mid, p, policy, complete=req.complete)
-        if picked.oids:
-            return StepResponse(mid=mid, reason=picked.reason)
-        # Not sure it is the answer: it may still open the category that holds it.
-        if policy != "exact" and p >= PROGRESS_FLOOR:
-            return StepResponse(mid=mid, reason="progress")
-        return ABSTAIN
+        return StepResponse(mid=mid, reason=picked.reason) if picked.oids else ABSTAIN
     return StepResponse(mid=mid, reason="progress") if p >= PROGRESS_FLOOR else ABSTAIN
 
 

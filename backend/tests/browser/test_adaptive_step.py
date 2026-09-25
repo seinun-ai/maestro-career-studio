@@ -358,23 +358,34 @@ def test_a_menu_the_widget_re_renders_is_found_again_and_still_closed(page, load
 
 
 def test_an_unmarked_category_is_clicked_as_progress_then_its_leaf_as_the_answer(page, load):
-    """Workday: "Job Board" carries no ARIA marker; /step says `progress`."""
+    """Workday: "Job Board" carries no ARIA marker; it is clicked as an answer."""
     load(page, fixture_html("workday_listbox.html"))
     f = inv(page)["How did you hear about us?"]
     assert move(page, f, "open", "LinkedIn")["outcome"] == "progressed"
     s = state(page, f, "LinkedIn")
     assert [c["describe"] for c in s["candidates"] if c["mid"].startswith("click:")] == [
         'Click the option "Job Board"', 'Click the option "Social Media"', 'Click the option "Employee Referral"']
-    assert move(page, f, "click:o1", "LinkedIn", **{"as": "progress"})["outcome"] == "progressed"
+    # /step judges it an answer click (complete view); the page reports the
+    # children it revealed.
+    assert move(page, f, "click:o1", "LinkedIn")["outcome"] == "progressed"
     s = state(page, f, "LinkedIn")
     assert [o["text"] for o in s["options"]] == ["LinkedIn", "Indeed"]
     row = move(page, f, "click:o1", "LinkedIn")
     assert (row["outcome"], row["committed"]) == ("verified", "LinkedIn")
 
 
-def test_a_leaf_clicked_as_progress_that_commits_is_never_verified(page, load):
+def test_a_plain_option_sent_as_progress_is_refused_without_a_click(page, load):
     load(page, fixture_html("workday_listbox.html"))
     f = inv(page)["How did you hear about us?"]
     move(page, f, "open", "LinkedIn")
     row = move(page, f, "click:o3", "LinkedIn", **{"as": "progress"})  # "Employee Referral" is a leaf
-    assert (row["outcome"], row["reason"], row["committed"]) == ("unexpected", "group_committed", "Employee Referral")
+    assert (row["outcome"], row["reason"], row["committed"]) == ("unexpected", "not_a_group", "")
+    assert page.inner_text("#heard") == "Select One"
+
+
+def test_a_group_sent_as_progress_that_commits_is_never_verified(page, load):
+    load(page, GROUPS)
+    f = inv(page)["How did you hear about us?"]
+    move(page, f, "open", "LinkedIn")
+    row = move(page, f, "click:o2", "LinkedIn", **{"as": "progress"})  # "Referral": marked, but commits
+    assert (row["outcome"], row["reason"], row["committed"]) == ("unexpected", "group_committed", "Referral")

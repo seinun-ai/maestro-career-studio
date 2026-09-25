@@ -544,10 +544,10 @@
   }
 
   // One move against the state it was chosen from (`version`). A click is an
-  // answer unless it opens a group, or the loop sends it `as: "progress"` (a
-  // plain option /step judged a likely category): such a click that reveals
-  // options progressed, one that commits a value is group_committed — never
-  // verified. Outcomes:
+  // answer unless it opens a group (sent `as: "progress"`): a group click that
+  // reveals options progressed, one that commits a value is group_committed —
+  // never verified. `as: "progress"` on an option not described as a group is
+  // refused unclicked (not_a_group). Outcomes:
   // verified (a click committed), progressed (the page moved on: a popup
   // opened, a search listed results, a category showed its children, the list
   // scrolled), closed, stale, unexpected (with a reason), blocked.
@@ -609,6 +609,7 @@
       const now = held ? offered(el, shape, held.pop, consentForms) : [];
       if (!held || !same(ids(now), last.clicks)) return { outcome: "stale" };
       const hit = now.find((o) => `click:${o.oid}` === mid);
+      if (as === "progress" && !hit.group) return { outcome: "unexpected", reason: "not_a_group" };
       const before0 = shape.read(el);
       const shown = b().optionsOf(held.pop).map((o) => o.text).join("\n");
       hit.el.scrollIntoView?.({ block: "nearest" });
@@ -625,7 +626,7 @@
         // Only a click that changed nothing at all gets the second gesture.
         if (!unchanged || next !== shown || !hit.el.isConnected) break;
       }
-      if (hit.group || as === "progress") {
+      if (hit.group) {
         // Not an answer: one that committed a value is reported, never verified.
         const committed = !same(shape.read(el), before0);
         await tidy(el, t);

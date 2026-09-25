@@ -233,9 +233,7 @@ def test_the_fast_model_low_stakes_step_states_the_never_list(db_session, monkey
 def test_a_closest_click_needs_a_complete_view(db_session, monkeypatch):
     fake_jev(monkeypatch, ("click:o1", 0.6))
     flag = {"slot": "education.0.discipline"}
-    # Never an answer on a partial view — at most a tentative (progress) click,
-    # which the page never verifies as the answer.
-    assert step(req(complete=False, **flag), db_session) == {"mid": "click:o1", "reason": "progress"}
+    assert step(req(complete=False, **flag), db_session) == {"mid": None, "reason": "abstained"}
     assert step(req(complete=True, **flag), db_session) == {"mid": "click:o1", "reason": "closest"}
 
 
@@ -280,21 +278,23 @@ def test_step_request_bounds():
 
 
 @pytest.mark.usefixtures("jev_on")
-def test_a_plain_click_below_the_answer_floor_is_tentative_progress_except_on_exact_slots(db_session, monkeypatch):
-    """Unmarked categories (Workday "Job Board" -> "LinkedIn") are plain
-    options: a click the model is unsure answers the field may still lead to
-    it — never on an exact slot, where a plain click is an answer only."""
+def test_a_plain_click_is_an_answer_only_and_only_a_group_click_is_progress(db_session, monkeypatch):
+    """No tentative plain clicks: on an incomplete view (search results, a long
+    list) they are almost always leaves, and a "progress" click that commits a
+    leaf would leave an unverified value on the page. Unmarked categories are
+    reached by an answer click the page reports as progressed."""
     plain = cands("click:o1", GIVE_UP)
+    fake_jev(monkeypatch, ("click:o1", 0.6))
+    assert step(req(slot="education.0.discipline", candidates=plain), db_session) == {
+        "mid": None, "reason": "abstained"}
+    assert step(req(slot="education.0.discipline", candidates=plain, complete=True), db_session) == {
+        "mid": "click:o1", "reason": "closest"}
     fake_jev(monkeypatch, ("click:o1", 0.55))
-    flag = req(slot="education.0.discipline", candidates=plain)  # flag: answer floor 0.85
-    assert step(flag, db_session) == {"mid": "click:o1", "reason": "progress"}
-    exact = req(slot="work_auth.sponsorship_now", candidates=plain)
-    assert step(exact, db_session) == {"mid": None, "reason": "abstained"}
     how_heard = autofill_catalog.build({"preferences": {"how_heard": "LinkedIn"}}, [], [])
-    anyslot = req(slot="preferences.how_heard", candidates=plain)  # any: answer floor 0.5 — an answer
+    anyslot = req(slot="preferences.how_heard", candidates=plain)
     assert autofill_step.step(anyslot, how_heard, db_session, None).model_dump() == {
         "mid": "click:o1", "reason": "matched"}
-    fake_jev(monkeypatch, ("click:o1", 0.9))
-    assert step(flag, db_session) == {"mid": "click:o1", "reason": "matched"}
-    fake_jev(monkeypatch, ("click:o1", 0.45))
-    assert step(flag, db_session)["reason"] == "abstained"
+    group = [{"mid": "click:o1", "describe": 'Open the group "Degrees"'}]
+    assert step(req(slot="education.0.discipline", candidates=group), db_session) == {
+        "mid": "click:o1", "reason": "progress"}
+    assert step(req(slot="work_auth.sponsorship_now", candidates=plain), db_session)["reason"] == "abstained"
