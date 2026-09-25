@@ -49,6 +49,10 @@
      load. choose.js first for that reason; both before the actions file whose
      Start-fill calls the runner.
 
+     fill-loop.js (the fill engine's loop) right after the runner, as a READING
+     order: it reads `ns.guidedRun`, `ns.requestChoose` and `ns.isPolicyBlocked`
+     when it RUNS, not when it loads.
+
      policy.js is the FOURTH, and it arrives at Task 13 for choose.js's exact
      reason: the pause row must refuse a policy-blocked field — no input for a
      password, no save path behind it — and the deny list is single-source by
@@ -94,6 +98,7 @@
 <script src="../shared/decisions.js"></script>
 <script src="../shared/choose.js"></script>
 <script src="../shared/guided-run.js"></script>
+<script src="../shared/fill-loop.js"></script>
 <script src="../shared/policy.js"></script>
 <script src="../shared/profile-fields.js"></script>
 <script src="stages/job.js"></script>
