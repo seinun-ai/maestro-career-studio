@@ -1320,7 +1320,8 @@ global.document = {
     get textContent() { queries.push("body.textContent"); return page.text ?? ""; },
   },
 };
-global.location = { href: page.url, hostname: new URL(page.url).hostname };
+global.location = { href: page.url, hostname: new URL(page.url).hostname,
+                    pathname: new URL(page.url).pathname };
 
 main(async () => {
   const ns = loadModules();
@@ -1347,7 +1348,7 @@ def run_detect(tmp_path: Path, *, page: dict) -> dict:
 
     A page is a dict of:
 
-    * `url` — what `location.href`/`location.hostname` report;
+    * `url` — what `location.href`/`location.hostname`/`location.pathname` report;
     * `elements` — `{"tag", "attrs", "text"}` specs, matched by a real (small)
       selector engine, so `attrs` are the page's actual attributes;
     * `jsonLd` — `{"shape": "bare"|"array"|"graph", "types": [...]}` entries,

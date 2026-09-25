@@ -934,6 +934,9 @@ citation. Priority lives in the item text, not in the ordinal.
 - **`delete-orphan` cascade vs bulk re-point**: a bulk `update()` that moves children off a parent does not
   refresh the parent's already-loaded collection, so a following `session.delete(parent)` cascades away the
   rows just moved — expire the parent between the two (`career_kb.merge_entities`).
+- **Workday apply steps read as "no form"** (2026-09-25): Workday has no `<form>`/`<select>`, a `type="text"`
+  phone and no email on My Information, so every step but the résumé upload scored 1 and Fill was withheld.
+  Measure `detectPage`'s signals on the live page before blaming timing; the fix is `workday-apply-route`.
 ## 13. Active migrations & deprecation ledger
 
 **The rule.** A row is born the moment work lands that SUPERSEDES something without deleting it; it dies
