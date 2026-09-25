@@ -1,4 +1,4 @@
-"""POST /api/autofill/map and /pick — what the routes decide before the services run."""
+"""POST /api/autofill/map, /pick and /step — what the routes decide before the services run."""
 
 from uuid import uuid4
 
@@ -9,9 +9,17 @@ from app.config import settings
 from app.db import get_db
 from app.main import app
 from app.models.job import Job
-from app.schemas.autofill_fill import Mapped, Picked
+from app.schemas.autofill_fill import Mapped, Picked, StepResponse
 from app.schemas.eeo_consent import EeoConsent
-from app.services import autofill_map, autofill_pick, autofill_profile, eeo_consent, llm, model_settings
+from app.services import (
+    autofill_map,
+    autofill_pick,
+    autofill_profile,
+    autofill_step,
+    eeo_consent,
+    llm,
+    model_settings,
+)
 from tests.ats.fixtures import SAMPLE_RESUME
 from tests.test_autofill_router import _override_db, _seed_application, _seed_base
 
@@ -202,4 +210,66 @@ def test_malformed_fast_model_json_is_a_502_with_a_detail(db_session, monkeypatc
 
     monkeypatch.setattr(target.llm, "call_openai", unreadable)
     r = _post(db_session, path, {"fields": [field]})
+    assert r.status_code == 502 and r.json()["detail"] == "The AI model sent an answer we couldn't read."
+
+
+# ---------- /step
+
+
+STEP = {"fid": "g", "question": "Gender", "route": "slot", "slot": "eeo.gender",
+        "candidates": [{"mid": "click:o1", "describe": 'Click the option "Female"'},
+                       {"mid": "give_up", "describe": "Stop"}]}
+
+
+def _spy_step(monkeypatch):
+    seen = {}
+
+    def step(req, facts, session, hint):
+        seen.update(req=req, facts=facts, hint=hint)
+        return StepResponse(mid=None, reason="abstained")
+
+    monkeypatch.setattr(autofill_step, "step", step)
+    return seen
+
+
+@pytest.mark.usefixtures("profile")
+def test_step_builds_facts_from_the_consent_gated_profile_and_passes_the_hint(db_session, monkeypatch, tmp_path):
+    slug = _seed_base(db_session, tmp_path, monkeypatch)
+    application = _seed_application(db_session, slug)
+    job = db_session.get(Job, application.job_id)
+    job.title, job.company = "Data Scientist", "Acme"
+    db_session.commit()
+    seen = _spy_step(monkeypatch)
+    r = _post(db_session, "/api/autofill/step", {**STEP, "application_id": str(application.id), "source_hint": "Indeed"})
+    assert r.status_code == 200 and r.json() == {"mid": None, "reason": "abstained"}
+    assert "personal.city" in seen["facts"] and "eeo.gender" not in seen["facts"]
+    assert seen["hint"] == autofill_pick.JobHint(title="Data Scientist", company="Acme", source="indeed")
+
+
+@pytest.mark.usefixtures("profile")
+def test_an_eeo_step_without_consent_reaches_no_model(db_session, monkeypatch):
+    asked = []
+    monkeypatch.setattr(autofill_step.llm, "call_openai", lambda **kw: asked.append(kw) or {})
+    monkeypatch.setattr(autofill_step.jev, "decide", lambda *a, **k: asked.append(a) or {})
+    r = _post(db_session, "/api/autofill/step", STEP)
+    assert r.json() == {"mid": None, "reason": "abstained"} and asked == []
+
+
+def test_step_refuses_a_value_or_a_move_id_the_page_could_not_have_made(db_session):
+    assert _post(db_session, "/api/autofill/step", {**STEP, "value": "Female"}).status_code == 422
+    bad = {**STEP, "candidates": [{"mid": "click:Female", "describe": "x"}]}
+    assert _post(db_session, "/api/autofill/step", bad).status_code == 422
+
+
+def test_step_on_an_unknown_application_is_404(db_session):
+    assert _post(db_session, "/api/autofill/step", {**STEP, "application_id": str(uuid4())}).status_code == 404
+
+
+@pytest.mark.usefixtures("profile")
+def test_step_provider_failures_are_502(db_session, monkeypatch):
+    def unreadable(**kw):
+        raise ValueError("OpenAI response was not valid JSON after retries")
+
+    monkeypatch.setattr(autofill_step.llm, "call_openai", unreadable)
+    r = _post(db_session, "/api/autofill/step", {**STEP, "slot": "personal.city"})
     assert r.status_code == 502 and r.json()["detail"] == "The AI model sent an answer we couldn't read."

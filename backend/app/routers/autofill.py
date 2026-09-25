@@ -26,7 +26,14 @@ from app.models.application import Application
 from app.models.autofill_field_observation import AutofillFieldObservation
 from app.models.job import Job
 from app.schemas.autofill_choose import ChooseRequest, ChooseResponse
-from app.schemas.autofill_fill import MapRequest, MapResponse, PickRequest, PickResponse
+from app.schemas.autofill_fill import (
+    MapRequest,
+    MapResponse,
+    PickRequest,
+    PickResponse,
+    StepRequest,
+    StepResponse,
+)
 from app.schemas.autofill_telemetry import TelemetryBatch, TelemetryObservation
 from app.services import (
     autofill_catalog,
@@ -34,6 +41,7 @@ from app.services import (
     autofill_map,
     autofill_pick,
     autofill_profile,
+    autofill_step,
     autofill_telemetry,
     base_resume_data,
     eeo_consent,
@@ -305,7 +313,7 @@ def post_choose(
     )
 
 
-# ---------- the fill loop's asks: /map and /pick ----------
+# ---------- the fill loop's asks: /map, /pick and /step ----------
 
 
 def _facts(
@@ -374,3 +382,11 @@ def post_pick(payload: PickRequest, db: Annotated[Session, Depends(get_db)]) -> 
     facts, _ = _facts(db, payload.application_id, payload.base)
     return PickResponse(picks=autofill_pick.pick(
         payload.fields, facts, db, _job_hint(db, payload.application_id, payload.source_hint)))
+
+
+@router.post("/step", response_model=StepResponse)
+def post_step(payload: StepRequest, db: Annotated[Session, Depends(get_db)]) -> StepResponse:
+    """The next move for a field the generic path could not finish, chosen from
+    the moves the page's code generated. The fact comes from the slot."""
+    facts, _ = _facts(db, payload.application_id, payload.base)
+    return autofill_step.step(payload, facts, db, _job_hint(db, payload.application_id, payload.source_hint))
