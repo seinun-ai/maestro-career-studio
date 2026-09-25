@@ -544,9 +544,9 @@ file to open.
   capability check (no key → a 422 "The Assistant needs an API key…") and hands it to
   `run_turn`; working chips are words (`TOOL_PHRASES`), and deleting a chat asks first.
   Prompt-file changes need the DB `prompt.chat_system` Setting row reset to take effect
-  (Settings › AI & models › AI instructions → Reset to default, or delete the row); the resync-on-deploy
-  precedent (`86ac8658395f`) was in the pre-SQLite chain (gone since v0.5.0; read it at the v0.4.0 tag),
-  so doing it now needs a fresh SQLite-chain migration.
+  (Settings › AI & models › AI instructions → Reset to default, or delete the row); a deploy ships one with a
+  SQLite-chain migration that deletes the row only while it still equals the previous default
+  (`4022b54933e6` did it for `chat_system`; `tests/test_prompt_sync_guard.py` explains the mechanic).
 - **Persona draft** (`POST /api/settings/persona/draft`): one smart-model proposal grounded in the whole-KB
   compose/context + typed job preferences. Returns `{draft}` and persists **nothing** — Profile puts it into the
   persona editor as a dirty edit; only `PUT /api/settings/persona` saves; an empty Career KB 422s with an

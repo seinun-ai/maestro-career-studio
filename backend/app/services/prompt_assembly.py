@@ -2,7 +2,8 @@ import json
 from string import Template
 from typing import Any
 
-from app.services import prompts
+from app.db import SessionLocal
+from app.services import health_wording, prompts
 
 
 def _json_block(data: dict[str, Any]) -> str:
@@ -18,8 +19,25 @@ def _skill_preamble() -> str:
     """The tailoring judgment doc, prepended (not $-substituted) into the writing
     prompts. Prepend, not placeholder: safe_substitute silently drops unknown
     $vars and a DB-seeded prompt row would never gain a new one, so a placeholder
-    would vanish on seeded deployments. get_prompt lazy-seeds its own key."""
-    return prompts.get_prompt("tailoring_skill").strip()
+    would vanish on seeded deployments. get_prompt lazy-seeds its own key.
+
+    The health check's word bank rides along as one appended line, built in
+    code so a customized `prompt.tailoring_skill` row still carries it."""
+    skill = prompts.get_prompt("tailoring_skill").strip()
+    avoid = _avoid_words_line()
+    return f"{skill}\n{avoid}" if avoid else skill
+
+
+def _avoid_words_line() -> str:
+    """The "Never use these words: …" line from the user's word bank (clichés, then
+    filler, minus Never flag): the ONE list the health check flags, so tailoring
+    avoids exactly those words. Its own short-lived session, as get_prompt
+    opens one above; "" when nothing is left to list."""
+    with SessionLocal() as session:
+        bank = health_wording.load(session)
+    words = [w for w in dict.fromkeys(bank.cliche + bank.filler)
+             if not health_wording.is_ignored(w, bank)]
+    return f"Never use these words: {', '.join(words)}." if words else ""
 
 
 def _persona_block(persona: str) -> str:

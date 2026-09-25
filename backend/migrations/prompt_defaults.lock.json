@@ -4,12 +4,12 @@
     "autofill_choose": "6533037b6af1b1390da2c514d5fe19f71b49e41346f73bb4d5d8c9cda41fa018",
     "base_from_kb_plan": "9dcb06b4a55e57abfd6d52eee01d8544ae39975f669f5d0f223cc8d8329d45ec",
     "base_resume_instruct": "c9bc50773feb42d8d979166b1539ee46f363e8cd793f485c61fbe27eaf0bdda7",
-    "chat_system": "f40881cb314fdaef1ae0b1c2ad96966bc09b02b4cf8b2c5121ee899c44234ef4",
+    "chat_system": "aed453bce89f4b215bb872a8da1aa673f87a716265e4968ea8be66c60aead0f7",
     "coherence_check": "2286c214b4578a559112300f175ecb9ea86c7cf109f3681026fe566c35b548fc",
     "cover_letter": "b9cdf001fcf1e18e0cb4330514cd645e8d10e0873ca2ec6476e169e4edb2a1b5",
     "extract_jd": "fd955b146690cb9820623d375cd6ff054f38cf76354582ea1ec42a302f092608",
     "gap_enrichment": "62c0f7b8e9d2b4f44b100b539c2a40bbe3ed0364009ae4a1a0480a3319ccda6c",
-    "gap_tailor": "8a28e2534ea90473394c4e94abe0e35924a66af0b3e3f8e4f45bce9beccb02b9",
+    "gap_tailor": "e3dbba497bb57ba53bf4d9489fe23bd9e91864ab6ef14eeee11b44fdc0401eac",
     "kb_adapt": "237b63cbe7999a881b6ab0d3a2b458da8096968ac9d14311ae55ad8d9645f513",
     "kb_capture": "d12c83bd72282ac3f8ec6219ca490631397b39d1e1db76df95ddfc9173e0437c",
     "kb_cluster_points": "90958c6f80247a51e1f156465b3e12ea9f8e776dbe89adda93e1920e6dd667e4",
@@ -22,6 +22,6 @@
     "resume_bullet_classify": "8940e86cb6242ac5a3e1a120566e80ba844cbc477d83fabf4d1956e0e46dabf7",
     "resume_bullet_rewrite": "b964968c4b85dd97588b8aea0040bf3e6491a30e9c7b4457b4d091d40b8d63be",
     "resume_finding_verify": "a2065f903bf4e7105d9968a76cd9b688ec5c6b213c7d15e0925f1d7d0dabb405",
-    "tailoring_skill": "afba8d2f74f8d8b519a8370c3be57749bef769394c6bf1593a2fdf22de5af348"
+    "tailoring_skill": "69da0661e0fc534f35a275b07e97db17abe04bec1c58e90a712e0ef48334d401"
   }
 }

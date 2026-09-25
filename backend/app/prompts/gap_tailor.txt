@@ -25,8 +25,8 @@ Rules:
   payload.placement_target (or the answer); if none is named, prefer the summary or skills over guessing.
 - Ignore skipped gaps — do not touch them at all.
 - Mirror the JD's literal keyword tokens where a resolution asks for wording changes.
-- Keep every bullet truthful, specific, and quantified with real numbers. Write in the voice the
-  JUDGMENT RULES describe (XYZ by default; result-first for the lead or highest-impact bullet).
+- Keep every bullet truthful, specific and ending in a result, as the JUDGMENT RULES describe; use
+  real numbers only where given.
 
 Resume:
 $resume_json

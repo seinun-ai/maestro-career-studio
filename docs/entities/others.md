@@ -364,7 +364,8 @@
   `subject` and the ORIGINAL text's `content_hash`; a cliché never has a `suggestion`, a filler or slip has one only
   when `health_wording` finds the edit clean and `guard_violations` is empty. The
   bank lives in `Setting` rows `health.word_bank` (absent = defaults) and `health.ignored_words` (Never flag),
-  edited through `GET`/`PUT /api/resume-lint/wording` and `POST /wording/reset`; the coherence check uses it too.
+  edited through `GET`/`PUT /api/resume-lint/wording` and `POST /wording/reset`; the coherence check uses it too,
+  and tailoring gets it as one "Never use these words: …" line `prompt_assembly._skill_preamble` appends (minus Never flag).
   Gates are `tier:
   "fatal"|"serious"` × `status: "pass"|"fail"|"not_assessed"`
   (`health_gates.py:3`), scored by `health_score.py`; a failing fatal, unwaived
