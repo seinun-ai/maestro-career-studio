@@ -1919,6 +1919,12 @@
   function pickBase(slug) {
     card.baseSlug = slug;
     card.baseSelected = true;
+    // A pick made in a REOPENED Score row answers the question it was reopened
+    // to ask, so the view closes. It has to be said here because a switch made
+    // from Resume leaves the stage on Resume, and `openRow`'s "the rail moved
+    // on" limb never fires: the Score body stayed open under an active Resume
+    // row, and the tailoring fork never came back (reported live).
+    card.revisit = null;
     // Painted BEFORE the write, and the order is the point: the store is the
     // truth this surface renders, storage is only where it survives. A picked
     // row that waited for a storage round trip to look picked would be a
@@ -2116,7 +2122,12 @@
       // row: the whole line is the target, it has to be reachable and pressable
       // from the keyboard, and `aria-expanded` is how a screen reader is told
       // that this is a thing that opens rather than a heading that moved.
-      const reopenable = isReopenable(row);
+      // THE WAY BACK: while another row's body is open, the ACTIVE row is a door
+      // too, and pressing it closes that view. It is the row a user presses to
+      // return to the step they are on, and as a plain `div` it did nothing —
+      // the only way back was the ▾ on the reopened row.
+      const wayBack = row.state === "active" && row.key !== open;
+      const reopenable = isReopenable(row) || wayBack;
       const line = node(reopenable ? "button" : "div", "stg-row");
       if (reopenable) {
         line.type = "button";
@@ -2133,7 +2144,9 @@
         // (`stages/resume.js`) and the same reasoning: `aria-controls` naming
         // an id nothing carries offers a jump that goes nowhere.
         if (row.key === open) line.setAttribute("aria-controls", STAGE_BODY_ID(row.key));
-        line.addEventListener("click", () => toggleRevisit(row.key));
+        // The way back closes the OPEN row's view; `toggleRevisit` on the key
+        // that is open is exactly that close.
+        line.addEventListener("click", () => toggleRevisit(wayBack ? open : row.key));
       }
       attach(line, numeral,
              node("span", "stg-name", row.name),

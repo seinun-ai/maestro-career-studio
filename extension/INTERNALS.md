@@ -64,7 +64,10 @@ not a sentence any of them can say. Three rules hold the shape up:
   reset — and it rewinds no tick. In code the reopened row is `card.revisit`; a
   row skipped by a CLAIM (`choiceSkipped`: base as is' Resume row names the
   choice and carries its withdraw) reopens too, a skip the path computed does
-  not, and the active row keeps its styling while another is open.
+  not, and the active row keeps its styling while another is open — and is
+  itself a button then, the way back, which closes the reopened view. A base
+  pick in a reopened Score closes it too (`pickBase`): switching base from
+  Resume leaves the stage on Resume, so nothing else would.
 - **The footer holds exactly one primary**, and it follows the OPEN row: Save
   job, Score base resumes, Quick tailor, Fill this form (withheld by
   `primaryRefused` on a page with no form; a late detect yes gives it back,

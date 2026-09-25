@@ -624,6 +624,105 @@ def test_a_tailor_that_FAILS_after_you_switch_tabs_paints_nothing_either(tmp_pat
     assert out["writes"] == []
 
 
+# ---------- switching base from the reopened Score row ----------------------
+#
+# Standing on Resume, the user reopens Score to switch base and picks one. The
+# stage does not move — Resume is still the open question, only about another
+# base — so `openRow`'s "the rail moved on" limb never fires. Reported live:
+# the Score body stayed open under a Resume row that was active and had no way
+# in, so the tailoring fork never came back.
+
+_SWITCH_BASE_DRIVER_JS = _PANEL_FAKES_JS + r"""
+loadModules();
+const door = (key) => findById(REGIONS.rail, `stg-open-${key}`);
+main(async () => {
+  await settle();
+  const loaded = regions();
+  door("score").click();
+  await settle();
+  const reopened = regions();
+  if (spec.back === true) {
+    // Not picking at all: the user presses the row they are ON to go back.
+    const back = door("resume");
+    if (!back) throw new Error("the active Resume row is not a way back");
+    back.click();
+    await settle();
+    emit({ loaded, reopened, back: regions(), writes });
+    return;
+  }
+  // By the name the user reads: the fake's `textContent` is the node's own
+  // text, so the name is looked for on the row's children.
+  const row = withClass(REGIONS.rail, "baserow")
+    .find((one) => one.children.some((child) => child.textContent === spec.pick));
+  if (!row) throw new Error(`no base row reads "${spec.pick}"`);
+  row.click();
+  await settle();
+  emit({ loaded, reopened, picked: regions(), writes });
+});
+"""
+
+
+def _switch_base(tmp_path, pick=None, back=False):
+    api = {"lightningai": _reply({"match": "exact", "job": LIGHTNING_JOB,
+                                  "application": None}),
+           "/api/base-resumes": _reply(SCORE_RESUMES),
+           "GET /api/ats-scores": _reply(SCORE_ROWS)}
+    return run_node(_SWITCH_BASE_DRIVER_JS, {
+        "tabs": [{"id": 7, "url": POSTING_URL}],
+        "replies": {"read_settings": SETTINGS_REPLY},
+        "stored": {"widget.session": {**PICKED_ENTRY, "at": int(time.time() * 1000)}},
+        "api": api,
+        "pick": pick,
+        "back": back,
+    }, tmp_path, source=PANEL_SOURCE)
+
+
+def _open_bodies(region):
+    return [node["id"].removeprefix("stg-body-") for node in _by_class(region, "stg-body")]
+
+
+def test_a_base_picked_from_the_reopened_score_row_returns_to_the_tailoring_fork(tmp_path):
+    """The pick answers the question the Score row was reopened to ask, so the
+    view closes and the body goes back to the step the user is on: the fork,
+    now for the base they just chose."""
+    out = _switch_base(tmp_path, "Data Scientist")
+    assert _rows(_rail_rows({"regions": out["loaded"]}))["resume"]["state"] == "active"
+    assert _open_bodies(out["reopened"]["rail"]) == ["score"]
+    picked = out["picked"]
+    assert _rows(_rail_rows({"regions": picked}))["resume"]["state"] == "active"
+    assert _open_bodies(picked["rail"]) == ["resume"]
+    assert _limbs(picked["rail"]) == ["Use base resume as is", "Tailor"]
+    # The footer follows the open row, so it is the fork's primary again and
+    # not a re-score of the list the user just chose from.
+    assert _text(_by_class(picked["foot"], "cta")[0]) == "Quick tailor"
+    assert _by_class(picked["rail"], "baserow") == []
+    # …and the pick itself is what the fork now builds on, remembered for the
+    # next page of the wizard.
+    assert out["writes"][-1]["widget.session"]["baseSlug"] == "data_scientist"
+
+
+def test_repicking_the_same_base_from_the_reopened_row_also_closes_it(tmp_path):
+    """Clicking the base that was already chosen is the same answer as clicking
+    another one: the user looked, confirmed, and wants the fork back."""
+    out = _switch_base(tmp_path, "AI/ML Engineer")
+    assert _open_bodies(out["picked"]["rail"]) == ["resume"]
+
+
+def test_the_step_you_are_on_is_a_way_back_while_another_row_is_open(tmp_path):
+    """Reopened Score, then changed their mind without picking: the active row
+    is the natural thing to press, and before this it was not a control at
+    all, so the only way back was the ▾ on the row they had opened."""
+    out = _switch_base(tmp_path, back=True)
+    reopened = out["reopened"]["rail"]
+    door = next(node for node in _walk(reopened) if node["id"] == "stg-open-resume")
+    assert door["tag"] == "BUTTON"
+    assert door["attrs"]["aria-expanded"] == "false"
+    back = out["back"]
+    assert _open_bodies(back["rail"]) == ["resume"]
+    assert _limbs(back["rail"]) == ["Use base resume as is", "Tailor"]
+    # Back on the step it is on, the active row has no door: its body is open.
+    assert [node for node in _walk(back["rail"]) if node["id"] == "stg-open-resume"] == []
+
 
 # ---------- the base-as-is claim can be withdrawn ---------------------------
 #

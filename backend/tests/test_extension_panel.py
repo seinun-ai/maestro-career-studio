@@ -2550,19 +2550,20 @@ def test_nothing_can_be_started_from_a_door_while_an_action_is_open(revisited):
     stage's step while the action is still writing.
 
     So the claim is over the whole rail: with a run open, no door is pressable.
-    Two of them exist in this fixture, which is what makes the "open one" answer
-    and the "every one" answer different assertions.
+    Three of them exist in this fixture — Score reopened, Resume done beside it,
+    and the active Fill row as the way back — which is what makes the "open one"
+    answer and the "every one" answer different assertions.
     """
     doors = _openers(revisited["duringRun"])
-    assert sorted(doors) == ["resume", "score"]
+    assert sorted(doors) == ["fill", "resume", "score"]
     assert {key: door["disabled"] for key, door in doors.items()} == {
-        "score": True, "resume": True}
+        "score": True, "resume": True, "fill": True}
     # The footer's own primary greys with them — one action at a time is the
     # rule they are all reading.
     assert _by_class(revisited["duringRun"]["foot"], "cta")[0]["disabled"] is True
     # …and they come back when the round trip lands, rather than staying shut.
     assert {key: door["disabled"] for key, door in _openers(revisited["afterRun"]).items()} == {
-        "score": False, "resume": False}
+        "score": False, "resume": False, "fill": False}
     # The run was the reopened row's, and the view it was started from survived
     # it: the report lands under the body the user opened.
     assert _open_body(revisited["afterRun"]) == "score"

@@ -556,7 +556,8 @@ file to open.
   INFERRED from the store by `ns.decisions.stageFor` every render, never set by what was
   clicked. A stage is "which question is still open", so `hasForm` is NOT one of its inputs:
   whether filling can happen HERE is decided at the Fill body and the footer. ONE row shows a
-  body (the active one, or a DONE row reopened as view state), and the footer's one primary
+  body (the active one, or a DONE row reopened as view state; the active row is the way back,
+  and a base pick closes a reopened Score), and the footer's one primary
   follows the OPEN row: Save job, Score base resumes, Quick tailor, Fill this form.
   The panel document is a family of scripts (panel.html owns roster and order): `panel.js`
   owns the store, the loaders and the generation guard; per-STAGE bodies (`panel/stages/*.js`)
@@ -906,7 +907,6 @@ citation. Priority lives in the item text, not in the ordinal.
 - **`delete-orphan` cascade vs bulk re-point**: a bulk `update()` that moves children off a parent does not
   refresh the parent's already-loaded collection, so a following `session.delete(parent)` cascades away the
   rows just moved — expire the parent between the two (`career_kb.merge_entities`).
-
 ## 13. Active migrations & deprecation ledger
 
 **The rule.** A row is born the moment work lands that SUPERSEDES something without deleting it; it dies
