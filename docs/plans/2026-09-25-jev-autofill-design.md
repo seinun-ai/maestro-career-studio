@@ -1,6 +1,7 @@
 # Jev as the Companion's form-filling decision engine — design
 
-Status: approved 2026-09-25. Implementation plan: `2026-09-25-jev-autofill.md`.
+Status: implemented 2026-09-25 (live check pending with the owner's key). Implementation plan:
+`2026-09-25-jev-autofill.md`.
 
 ## Goal
 
