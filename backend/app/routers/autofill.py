@@ -26,7 +26,7 @@ from app.models.application import Application
 from app.models.autofill_field_observation import AutofillFieldObservation
 from app.models.job import Job
 from app.schemas.autofill_choose import ChooseRequest, ChooseResponse
-from app.schemas.autofill_fill import MapRequest, MapResponse, PickRequest, PickResponse, Selector
+from app.schemas.autofill_fill import MapRequest, MapResponse, PickRequest, PickResponse
 from app.schemas.autofill_telemetry import TelemetryBatch, TelemetryObservation
 from app.services import (
     autofill_catalog,
@@ -308,15 +308,6 @@ def post_choose(
 # ---------- the fill loop's asks: /map and /pick ----------
 
 
-def _app_id(payload: Selector) -> UUID | None:
-    if not payload.application_id:
-        return None
-    try:
-        return UUID(payload.application_id)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail="application_id is not a UUID") from exc
-
-
 def _facts(
     db: Session, application_id: UUID | None, base: str | None
 ) -> tuple[dict[str, autofill_catalog.Fact], bool]:
@@ -371,7 +362,7 @@ def post_map(payload: MapRequest, db: Annotated[Session, Depends(get_db)]) -> Ma
     """Which applicant fact each field asks for; labels only reach the model.
 
     Low-stakes comes from the server-side setting, never the request."""
-    facts, consented = _facts(db, _app_id(payload), payload.base)
+    facts, consented = _facts(db, payload.application_id, payload.base)
     return MapResponse(fields=autofill_map.map_fields(
         payload.fields, facts, db, eeo_consented=consented,
         low_stakes=model_settings.get_autofill_low_stakes(db)))
@@ -380,7 +371,6 @@ def post_map(payload: MapRequest, db: Annotated[Session, Depends(get_db)]) -> Ma
 @router.post("/pick", response_model=PickResponse)
 def post_pick(payload: PickRequest, db: Annotated[Session, Depends(get_db)]) -> PickResponse:
     """Which live option states each field's fact."""
-    application_id = _app_id(payload)
-    facts, _ = _facts(db, application_id, payload.base)
+    facts, _ = _facts(db, payload.application_id, payload.base)
     return PickResponse(picks=autofill_pick.pick(
-        payload.fields, facts, db, _job_hint(db, application_id, payload.source_hint)))
+        payload.fields, facts, db, _job_hint(db, payload.application_id, payload.source_hint)))

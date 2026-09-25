@@ -85,6 +85,7 @@ def test_resume_facts_and_saved_answers_are_flag_policy(slot, policy):
     ("Aug 2021", "2021-08"), ("August 2021", "2021-08"), ("Sept. 2019", "2019-09"),
     ("2021-08-01", "2021-08"), ("2021-8", "2021-08"), ("08/2021", "2021-08"), ("2021", "2021"),
     ("Present", None), ("", None), (None, None), ("Foo 2021", None),
+    ("13/2021", None), ("00/2021", None), ("2021-00", None), ("2021-13", None), ("2021-12", "2021-12"),
 ])
 def test_ym_reads_the_resume_date_shapes(text, expected):
     assert cat.ym(text) == expected
@@ -94,3 +95,25 @@ def test_a_hand_edited_profile_of_the_wrong_shapes_builds_what_it_can():
     f = cat.build({"personal": "Sample", "education": "State University", "custom": {"q": "a"},
                    "preferences": {"how_heard": "LinkedIn"}}, [], [])
     assert list(f) == ["preferences.how_heard"]
+
+
+def test_exact_slots_are_described_in_words_a_form_uses():
+    f = cat.build({
+        "work_auth": {"status": "opt", "authorized_now": True, "sponsorship_now": False,
+                      "sponsorship_future": True, "authorization_expires_on": "2027-01-01",
+                      "countries_authorized": ["United States"]},
+        "eligibility": {"over_18": True, "previously_employed_here": False, "non_compete": False},
+        "eeo": {"gender": "female", "race_ethnicity": ["Asian"], "hispanic_latino": False,
+                "veteran_status": "not_veteran", "disability_status": "no"},
+    }, [], [])
+    assert f["work_auth.sponsorship_now"].describe == "needs employer visa sponsorship now (yes/no)"
+    assert f["work_auth.authorized_now"].describe == "legally authorized to work in the country now (yes/no)"
+    assert f["work_auth.sponsorship_future"].describe == "will need visa sponsorship in the future (yes/no)"
+    assert f["work_auth.status"].describe == "current work-authorization / visa status"
+    assert f["eligibility.over_18"].describe == "is 18 or older (yes/no)"
+    assert f["eligibility.previously_employed_here"].describe == "has worked for this company before (yes/no)"
+    exact = [fact for fact in f.values() if fact.policy == "exact"]
+    assert len(exact) == 14
+    for fact in exact:
+        assert ":" not in fact.describe, fact.slot  # hand-written, not the slot's path
+        assert str(fact.value) not in fact.describe, fact.slot

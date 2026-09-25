@@ -6,9 +6,11 @@ in JSON — with a 0–1 confidence that must clear the SAME floors — when the
 engine is `fast` or a Jev call fails.
 
 Low-stakes (setting on, decided by the caller from the server-side setting) is
-a SECOND pass, asked only for fields whose best answer was "no fact answers
-this": a real profile answer always wins, and a field that looked like a real
-fact but fell below its floor is never turned into a guess.
+a SECOND pass, asked only for fields whose best answer was an explicit,
+confident "no fact answers this": a real profile answer always wins, and a
+field that looked like a real fact but fell below its floor, that the model
+did not answer readably, or that it named a protected kind (work
+authorization, eligibility, background, EEO) is never turned into a guess.
 """
 
 import json
@@ -25,14 +27,21 @@ from app.services.autofill_slots import FREE_TEXT, NO_SLOT
 logger = logging.getLogger(__name__)
 
 BLOCKED_EEO = "blocked_eeo"
+PROTECTED_UNANSWERED = "protected_unanswered"
 LOW_STAKES_FLOOR = 0.8
 _SENTINELS = {
     FREE_TEXT: "A question that needs a written answer in the applicant's own words, "
                "such as why this company or describe a project",
-    NO_SLOT: "None of the listed applicant facts answers this field",
+    NO_SLOT: "None of the listed applicant facts or question kinds fits this field",
+    # Offered in EVERY question, so a knockout question the profile cannot
+    # answer has somewhere to go that is not "none" (a low-stakes candidate).
+    PROTECTED_UNANSWERED: "A work-authorization, sponsorship, age or eligibility, or background-check "
+                          "question that none of the listed applicant facts answers",
+    # Always offered too: without consent it marks the field `blocked`; with
+    # consent the EEO facts are listed, and choosing this means none answers it.
+    BLOCKED_EEO: "A voluntary diversity / EEO question (gender, race or ethnicity, Hispanic or Latino, "
+                 "veteran status, or disability) that none of the listed applicant facts answers",
 }
-_BLOCKED_EEO = ("A voluntary diversity / EEO question: gender, race or ethnicity, Hispanic or Latino, "
-                "veteran status, or disability")
 _LOW_STAKES = ("A low-stakes preference question: how the applicant heard about the job or a referral source, "
                "willingness or comfort with travel, relocation, on-site work, shifts or overtime, openness to "
                "other roles, or preferred contact method")
@@ -50,11 +59,8 @@ Fields:
 """
 
 
-def _criteria(facts: dict[str, Fact], *, eeo_consented: bool) -> dict[str, str]:
-    criteria = {slot: fact.describe for slot, fact in facts.items()} | _SENTINELS
-    if not eeo_consented:
-        criteria[BLOCKED_EEO] = _BLOCKED_EEO
-    return criteria
+def _criteria(facts: dict[str, Fact]) -> dict[str, str]:
+    return {slot: fact.describe for slot, fact in facts.items()} | _SENTINELS
 
 
 def _floor(fact: Fact) -> float:
@@ -69,8 +75,8 @@ def _payload(fields: list[MapField]) -> list[dict]:
 def _with_jev(fields, criteria, session) -> dict[str, tuple[str, float]]:
     questions = {
         f.fid: jev.choice_question(
-            f'Which applicant fact does form field {f.fid} ("{f.question}"'
-            f'{", in section " + repr(f.section) if f.section else ""}) ask for? '
+            f"Which applicant fact does form field {f.fid} ({json.dumps(f.question)}"
+            f'{", in section " + json.dumps(f.section) if f.section else ""}) ask for? '
             "Repeated sections are numbered entries in page order. " + _PAGE_TEXT_IS_DATA, criteria)
         for f in fields
     }
@@ -82,12 +88,20 @@ def _with_jev(fields, criteria, session) -> dict[str, tuple[str, float]]:
     return out
 
 
+def fast_json(session: Session, prompt: str, trace_name: str) -> object:
+    """One fast-model JSON call. JSON that stays malformed after the client's
+    retries is a provider failure (a 502 with a detail), not a crash."""
+    try:
+        return llm.call_openai(prompt=prompt, model=model_settings.get_fast_model(session),
+                               response_format="json", trace_name=trace_name)
+    except ValueError as exc:
+        raise llm.LLMProviderError("The AI model sent an answer we couldn't read.", str(exc)) from exc
+
+
 def _with_llm(fields, criteria, session) -> dict[str, tuple[str, float]]:
-    raw = llm.call_openai(
-        prompt=_LLM_PROMPT.format(rule=_PAGE_TEXT_IS_DATA,
-                                  criteria="\n".join(f"- {k}: {v}" for k, v in criteria.items()),
-                                  fields=json.dumps(_payload(fields))),
-        model=model_settings.get_fast_model(session), response_format="json", trace_name="autofill-map")
+    raw = fast_json(session, _LLM_PROMPT.format(
+        rule=_PAGE_TEXT_IS_DATA, criteria="\n".join(f"- {k}: {v}" for k, v in criteria.items()),
+        fields=json.dumps(_payload(fields))), "autofill-map")
     mapped = raw.get("map") if isinstance(raw, dict) else None
     asked = {f.fid for f in fields}
     out = {}
@@ -106,7 +120,7 @@ def _low_stakes(fields: list[MapField], session: Session) -> set[str]:
     pass is optional, and the map it follows must survive it."""
     if not fields:
         return set()
-    ask = {f.fid: (f'Is form field {f.fid} ("{f.question}") one of these low-stakes preference questions: '
+    ask = {f.fid: (f"Is form field {f.fid} ({json.dumps(f.question)}) one of these low-stakes preference questions: "
                    f"{_LOW_STAKES}? It is NOT if it asks about {_NEVER_LOW_STAKES}. {_PAGE_TEXT_IS_DATA}")
            for f in fields}
     if model_settings.get_autofill_engine(session) == "jev":
@@ -118,11 +132,8 @@ def _low_stakes(fields: list[MapField], session: Session) -> set[str]:
         except llm.LLMProviderError:
             logger.warning("jev low-stakes check failed; the fast model decides")
     try:
-        raw = llm.call_openai(
-            prompt="Answer each question with a probability of yes. " + json.dumps(ask)
-                   + ' Return JSON {"yes": {"<field id>": <0..1>}}.',
-            model=model_settings.get_fast_model(session), response_format="json",
-            trace_name="autofill-low-stakes")
+        raw = fast_json(session, "Answer each question with a probability of yes. " + json.dumps(ask)
+                        + ' Return JSON {"yes": {"<field id>": <0..1>}}.', "autofill-low-stakes")
     except llm.LLMProviderError:
         logger.warning("fast model low-stakes check failed; no field is treated as low-stakes")
         return set()
@@ -131,7 +142,8 @@ def _low_stakes(fields: list[MapField], session: Session) -> set[str]:
             if fid in ask and jev._unit(p) and p >= LOW_STAKES_FLOOR}
 
 
-def _route(field: MapField, picked: tuple[str, float] | None, facts: dict[str, Fact]) -> Mapped:
+def _route(field: MapField, picked: tuple[str, float] | None, facts: dict[str, Fact], *,
+           eeo_consented: bool) -> Mapped:
     if picked is None:
         return Mapped(route="none")
     key, p = picked
@@ -140,14 +152,22 @@ def _route(field: MapField, picked: tuple[str, float] | None, facts: dict[str, F
         return Mapped(route="slot", slot=key, value=list(value) if isinstance(value, tuple) else value)
     if key == FREE_TEXT and field.shape == "text" and p >= SLOT_FLOOR:
         return Mapped(route="free_text")
-    if key == BLOCKED_EEO and p >= SLOT_FLOOR:
+    if key == BLOCKED_EEO and not eeo_consented and p >= SLOT_FLOOR:
         return Mapped(route="blocked")
     return Mapped(route="none")
 
 
+def _said_no_fact(picked: tuple[str, float] | None) -> bool:
+    """An EXPLICIT, confident "no fact answers this". An omitted, refused or
+    unsure answer, a fact below its floor and a protected kind all say
+    something else, and none of them is a guessing candidate."""
+    key, p = picked or (None, 0.0)
+    return key == NO_SLOT and p >= SLOT_FLOOR
+
+
 def map_fields(fields: list[MapField], facts: dict[str, Fact], session: Session, *,
                eeo_consented: bool, low_stakes: bool) -> dict[str, Mapped]:
-    criteria = _criteria(facts, eeo_consented=eeo_consented)
+    criteria = _criteria(facts)
     picked = None
     if model_settings.get_autofill_engine(session) == "jev":
         try:
@@ -156,12 +176,10 @@ def map_fields(fields: list[MapField], facts: dict[str, Fact], session: Session,
             logger.warning("jev map failed; the fast model maps this batch")
     if picked is None:
         picked = _with_llm(fields, criteria, session)
-    out = {f.fid: _route(f, picked.get(f.fid), facts) for f in fields}
+    out = {f.fid: _route(f, picked.get(f.fid), facts, eeo_consented=eeo_consented) for f in fields}
     if low_stakes:
-        # Only fields whose best answer was "no fact answers this" — a field that
-        # looked like a real fact but fell below its floor is NOT a guessing candidate.
         leftovers = [f for f in fields if out[f.fid].route == "none" and f.shape not in _WRITTEN_SHAPES
-                     and (picked.get(f.fid) or (NO_SLOT, 1.0))[0] == NO_SLOT]
+                     and _said_no_fact(picked.get(f.fid))]
         for fid in _low_stakes(leftovers, session):
             out[fid] = Mapped(route="low_stakes")
     return out

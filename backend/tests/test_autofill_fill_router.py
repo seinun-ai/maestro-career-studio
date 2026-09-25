@@ -190,3 +190,16 @@ def test_a_provider_failure_is_502(db_session, monkeypatch, path, field, target)
     monkeypatch.setattr(target, "map_fields" if target is autofill_map else "pick", down)
     r = _post(db_session, path, {"fields": [field]})
     assert r.status_code == 502 and r.json()["detail"] == "The AI model didn't answer."
+
+
+@pytest.mark.usefixtures("profile")
+@pytest.mark.parametrize("path, field, target", [
+    ("/api/autofill/map", MAP_FIELD, autofill_map),
+    ("/api/autofill/pick", {**PICK_FIELD, "slot": "personal.city"}, autofill_pick)])
+def test_malformed_fast_model_json_is_a_502_with_a_detail(db_session, monkeypatch, path, field, target):
+    def unreadable(**kw):
+        raise ValueError("OpenAI response was not valid JSON after retries")
+
+    monkeypatch.setattr(target.llm, "call_openai", unreadable)
+    r = _post(db_session, path, {"fields": [field]})
+    assert r.status_code == 502 and r.json()["detail"] == "The AI model sent an answer we couldn't read."

@@ -31,6 +31,26 @@ _WORDS: dict[str, dict[str, str]] = {
     "eeo.gender": {"male": "Male", "female": "Female", "non_binary": "Non-binary", "decline": "Decline to self-identify"},
     "eeo.hispanic_latino": {"yes": "Yes", "no": "No", "decline": "Decline to self-identify"},
 }
+# Exact-policy slots are knockout and protected answers: their describe is
+# written out in the words a form asks with, so /map tells "sponsorship now"
+# from "sponsorship in the future" by meaning, not by a slot path. Value-free.
+_DESCRIBES: dict[str, str] = {
+    "work_auth.status": "current work-authorization / visa status",
+    "work_auth.authorized_now": "legally authorized to work in the country now (yes/no)",
+    "work_auth.sponsorship_now": "needs employer visa sponsorship now (yes/no)",
+    "work_auth.sponsorship_future": "will need visa sponsorship in the future (yes/no)",
+    "work_auth.authorization_expires_on": "date the current work authorization expires",
+    "work_auth.countries_authorized": "countries the applicant is authorized to work in (a list)",
+    "eligibility.over_18": "is 18 or older (yes/no)",
+    "eligibility.previously_employed_here": "has worked for this company before (yes/no)",
+    "eligibility.non_compete": "is bound by a non-compete or similar agreement (yes/no)",
+    "eeo.gender": "gender (voluntary self-identification)",
+    "eeo.gender_self_describe": "gender in the applicant's own words (voluntary self-identification)",
+    "eeo.race_ethnicity": "race or ethnicity (voluntary self-identification, a list)",
+    "eeo.hispanic_latino": "is Hispanic or Latino (voluntary self-identification)",
+    "eeo.veteran_status": "protected veteran status (voluntary self-identification)",
+    "eeo.disability_status": "disability status (voluntary self-identification)",
+}
 _MONTHS = {m: i for i, m in enumerate(
     ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"], start=1)}
 
@@ -44,16 +64,22 @@ class Fact:
 
 
 def _describe(slot: str) -> str:
+    if slot in _DESCRIBES:
+        return _DESCRIBES[slot]
     return re.sub(r"\.(\d+)\.", lambda m: f" entry {int(m.group(1)) + 1}: ", slot).replace(".", ": ").replace("_", " ")
+
+
+def _month(year: str, month: int) -> str | None:
+    return f"{year}-{month:02d}" if 1 <= month <= 12 else None
 
 
 def ym(text: str | None) -> str | None:
     """"Aug 2021" / "August 2021" / "2021-08(-01)" / "08/2021" / "2021" → "2021-08" / "2021"."""
     s = (text or "").strip().lower()
     if m := re.fullmatch(r"(\d{4})-(\d{1,2})(?:-\d{1,2})?", s):
-        return f"{m[1]}-{int(m[2]):02d}"
+        return _month(m[1], int(m[2]))
     if m := re.fullmatch(r"(\d{1,2})/(\d{4})", s):
-        return f"{m[2]}-{int(m[1]):02d}"
+        return _month(m[2], int(m[1]))
     if m := re.fullmatch(r"([a-z]{3})[a-z]*\.?\s+(\d{4})", s):
         month = _MONTHS.get(m[1])
         return f"{m[2]}-{month:02d}" if month else None

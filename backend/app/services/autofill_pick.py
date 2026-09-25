@@ -19,6 +19,7 @@ from app.schemas.autofill_fill import Picked, PickField
 from app.services import jev, llm, model_settings
 from app.services.autofill_catalog import Fact
 from app.services.autofill_choose import _PAGE_TEXT_IS_DATA, CLOSEST_FLOOR, MATCH_FLOOR, NO_OPTION
+from app.services.autofill_map import _NEVER_LOW_STAKES, fast_json
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +27,10 @@ ASSUMED_FLOOR = 0.4
 ABSTAIN = Picked(oids=[], reason="abstained")
 _NO_OPTION_TEXT = "No option states this value"
 _LLM_PROMPT = """For each form field return the option id that states the applicant value, or none. {rule}
-Return JSON {{"picks": {{"<field id>": {{"oids": ["<option id>"], "confidence": <0..1>}}}}}}.
+A field marked low_stakes has no applicant value: return the option an applicant keen on this job would
+choose, unless the field asks about {never} — then return none.
+Return JSON {{"picks": {{"<field id>": {{"oids": ["<option id>"], "confidence": <0..1>}}}}}};
+for none, "oids": [].
 Job: {job}
 Fields: {fields}
 """
@@ -41,13 +45,14 @@ class JobHint:
 
 def values_for(field, fact: Fact | None) -> list[str]:
     """The applicant values a field is picked against, from the SLOT's fact —
-    never from the client. One `item` of a set slot stands alone, and only when
-    the set really holds it."""
+    never from the client. A set slot is picked one `item` at a time, and only
+    an item the set really holds; a set slot with no item has nothing to pick."""
     if field.route == "low_stakes" or fact is None:
         return []
-    if getattr(field, "item", None):
-        return [field.item] if isinstance(fact.value, tuple) and field.item in fact.value else []
-    return list(fact.value) if isinstance(fact.value, tuple) else [fact.value]
+    item = getattr(field, "item", None)
+    if isinstance(fact.value, tuple):
+        return [item] if item and item in fact.value else []
+    return [] if item else [fact.value]
 
 
 def verdict(field, oid: str | None, p: float, policy: str, *, complete: bool) -> Picked:
@@ -72,11 +77,13 @@ def _policy(field: PickField, facts: dict[str, Fact]) -> str:
 
 
 def _instructions(field: PickField, values: list[str], hint: JobHint | None) -> str:
-    q = f'form field {field.fid} ("{field.question}")'
+    q = f"form field {field.fid} ({json.dumps(field.question)})"
     if field.route == "low_stakes":
-        src = f" If an option names where this job was found ({hint.source}), choose it." if hint and hint.source else ""
-        return f"Which option of {q} would an applicant keen on this job choose?{src} {_PAGE_TEXT_IS_DATA}"
-    return f'Which option of {q} states the applicant value "{values[0]}"? {_PAGE_TEXT_IS_DATA}'
+        src = (f" If an option names where this job was found ({json.dumps(hint.source)}), choose it."
+               if hint and hint.source else "")
+        return (f"Which option of {q} would an applicant keen on this job choose?{src} If the field asks "
+                f"about {_NEVER_LOW_STAKES}, choose none. {_PAGE_TEXT_IS_DATA}")
+    return f"Which option of {q} states the applicant value {json.dumps(values[0])}? {_PAGE_TEXT_IS_DATA}"
 
 
 def _with_jev(fields, facts, hint, session) -> dict[str, Picked]:
@@ -100,10 +107,9 @@ def _with_llm(fields, facts, hint, session) -> dict[str, Picked]:
     payload = [{"id": f.fid, "question": f.question, "low_stakes": f.route == "low_stakes",
                 "applicant_values": values_for(f, facts.get(f.slot or "")),
                 "options": [o.model_dump() for o in f.options]} for f in fields]
-    raw = llm.call_openai(
-        prompt=_LLM_PROMPT.format(rule=_PAGE_TEXT_IS_DATA, job=json.dumps(asdict(hint) if hint else None),
-                                  fields=json.dumps(payload)),
-        model=model_settings.get_fast_model(session), response_format="json", trace_name="autofill-pick")
+    raw = fast_json(session, _LLM_PROMPT.format(
+        rule=_PAGE_TEXT_IS_DATA, never=_NEVER_LOW_STAKES, job=json.dumps(asdict(hint) if hint else None),
+        fields=json.dumps(payload)), "autofill-pick")
     picks = raw.get("picks") if isinstance(raw, dict) else None
     picks = picks if isinstance(picks, dict) else {}
     out = {}
@@ -121,8 +127,10 @@ def _with_llm(fields, facts, hint, session) -> dict[str, Picked]:
 
 def pick(fields: list[PickField], facts: dict[str, Fact], session: Session, hint: JobHint | None) -> dict[str, Picked]:
     low_stakes_on = model_settings.get_autofill_low_stakes(session)  # re-checked, never trusted from the client
+    # A low-stakes field carries no slot: one that names a slot is a fact field
+    # the client mis-routed, and a keen-applicant guess would answer it.
     askable = [f for f in fields
-               if (f.route == "low_stakes" and low_stakes_on)
+               if (f.route == "low_stakes" and low_stakes_on and not f.slot)
                or (f.route == "slot" and values_for(f, facts.get(f.slot or "")))]
     asked = {f.fid for f in askable}
     out = {f.fid: ABSTAIN for f in fields if f.fid not in asked}

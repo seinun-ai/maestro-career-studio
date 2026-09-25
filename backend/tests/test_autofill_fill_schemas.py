@@ -68,3 +68,32 @@ def test_the_source_hint_is_bounded():
     assert PickRequest(fields=[_pick_field()], source_hint="rec_linkedin").source_hint == "rec_linkedin"
     with pytest.raises(ValidationError):
         PickRequest(fields=[_pick_field()], source_hint="x" * 61)
+
+
+def test_the_no_option_key_is_reserved():
+    with pytest.raises(ValidationError):
+        PickField(**_pick_field(options=[{"oid": "none", "text": "No"}]))
+    with pytest.raises(ValidationError):
+        PickField(**_pick_field(options=[{"oid": "", "text": "No"}]))
+
+
+def test_selectors_and_ids_are_validated_at_the_edge():
+    from uuid import UUID
+
+    app_id = "4f1c3c0e-7d7e-4f5a-9d0a-2b1f5b3c9e11"
+    assert MapRequest(fields=[_map_field()], application_id=app_id).application_id == UUID(app_id)
+    with pytest.raises(ValidationError):
+        MapRequest(fields=[_map_field()], application_id="not-a-uuid")
+    with pytest.raises(ValidationError):
+        MapRequest(fields=[_map_field()], base="x" * 201)
+    with pytest.raises(ValidationError):
+        MapField(**_map_field(fid=""))
+    with pytest.raises(ValidationError):
+        PickField(**_pick_field(fid=""))
+
+
+def test_the_reserved_oid_is_the_pick_no_match_key():
+    from app.schemas.autofill_fill import RESERVED_OID
+    from app.services.autofill_choose import NO_OPTION
+
+    assert RESERVED_OID == NO_OPTION
