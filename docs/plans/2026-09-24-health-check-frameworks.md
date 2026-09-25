@@ -1261,4 +1261,26 @@ Task 15 (docs and gates, after the runner fix `f8ffa092`): full suite **6075 pas
 
 ## Goal critique
 
-(Filled in Task 15.)
+Planner (Claude), 2026-09-25. Judged against the Goal Card, not against this plan.
+
+| Goal Card line | Verdict | Evidence |
+|---|---|---|
+| A bullet earns its place with a number OR other concrete evidence | Met | The level contract counts a qualitative result as `direct` (1.0). Golden dev split: 100% exact across 8 roles × 3 real trials. |
+| Asks each bullet only for the one thing it lacks | Met | One `question` per finding, written by the evaluator. Fallbacks are static and number-free. |
+| Never demands a number where one isn't natural | Met structurally; judgment partly verified | `_validate` requires a named target in the text and a number-free alternative. `metric_unavailable` persists. Dev split: 0 unnatural number asks. The **test split is pending owner label sign-off**, and the real-resume check is pending. |
+| Easy to read and quick to act on | Met | Upright, full-contrast, clamped judged text (0 italic in the browser). Action tabs with each rule stated once. Summary band with the distance to the next grade. One filled button per view (pinned). Checked at 1280 and 1024. |
+| Answer in one pass or card by card | Met | Question pass (table view) with one batch write and undo gated on `if_latest`. Cards on the report. One-at-a-time mode is deferred by the owner (§11 item 41). |
+| Tell the check in their own words why a flag is wrong | Met; the live round trip was checked only via the golden disputes | Free-text disputes, the verbatim-quote rule, low levels held without a quote, and new facts arriving only as guarded suggestions. Golden adversarial disputes: 0 above the maximum and 0 measure asks surviving, on the real model. The browser checked the no-key error path only. |
+| Tailoring follows the same guidance | Met | Tailoring prompts rewritten and resynced. The chat prompt was fixed too. The word bank's "Never use these words" line is shared. The automatic check on tailored drafts is deferred (§11 item 41). |
+
+**Principles:**
+- **Judge the page, not the claim.** Holds.
+- **Rewrites never invent.** Holds: every appliable text passes `health_guards`, including wording fixes, and a dispute `new_fact` with an unsupported number is dropped.
+- **The prompt judges; code validates.** Holds.
+- **Works beyond tech.** Holds on the pilot dev split.
+
+**Open items:**
+- Golden test split (after owner sign-off).
+- The real-resume read-only check (needs owner consent).
+- The summary band gives no reason when a gate cap blocks the next grade (it only shows the failed gate in the list). Minor; follow-up.
+- FixCard/AskCard dispute setup is duplicated (about 60 lines). Refactor follow-up.
