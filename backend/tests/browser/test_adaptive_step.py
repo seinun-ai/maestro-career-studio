@@ -6,7 +6,7 @@ from tests.browser.conftest import fixture_html
 from tests.browser.test_fill_core import POLICY_PAGE
 
 OPS = "window.careerStudioCompanion.fillOps"
-MOVE_KINDS = {"click", "search", "open", "scroll", "close", "give_up"}
+MOVE_KINDS = {"click", "search", "open", "scroll", "give_up"}
 
 
 def inv(page, **opts):
@@ -153,6 +153,8 @@ def test_candidates_are_ids_code_generated_and_capped(page, load):
     s = state(page, f, "Yes")
     assert all(c["mid"].split(":")[0] in MOVE_KINDS for c in s["candidates"])
     assert len(s["candidates"]) <= 60 and s["candidates"][-1]["mid"] == "give_up"
+    assert "close" not in mids(s)  # give_up closes; close stays a cleanup move only
+    assert move(page, f, "close", "Yes")["outcome"] == "closed" and portal_empty(page)
 
 
 LONG_LIST = """<label id='l'>Country</label>
@@ -169,6 +171,34 @@ LONG_LIST = """<label id='l'>Country</label>
   document.addEventListener('click', () => { portal.innerHTML = ''; });
 })();
 </script>"""
+
+
+def test_a_long_list_is_offered_a_window_at_a_time_down_to_its_last_option(page, load):
+    load(page, LONG_LIST)
+    f = inv(page)["Country"]
+    move(page, f, "open", "Country 70")
+    for _ in range(6):
+        s = state(page, f, "Country 70")
+        if 'Click the option "Country 70"' in [c["describe"] for c in s["candidates"]]:
+            break
+        assert "scroll" in mids(s)
+        assert move(page, f, "scroll", "Country 70", version=s["version"])["outcome"] == "progressed"
+    else:
+        raise AssertionError("Country 70 was never offered")
+    clicks = [c for c in s["candidates"] if c["mid"].startswith("click:")]
+    # Still capped, and oids still number the FULL list.
+    assert len(clicks) == 50 and clicks[-1]["mid"] == "click:o70"
+    assert "scroll" not in mids(s) and s["complete"] is False
+    assert [o["text"] for o in s["options"]][-1] == "Country 70"
+    # A scroll chosen on an older view of a list the page has since scrolled
+    # to its end moves nothing.
+    load(page, LONG_LIST)
+    f = inv(page)["Country"]
+    move(page, f, "open", "x")
+    v = state(page, f, "x")["version"]
+    page.evaluate("(() => { const u = document.querySelector('#portal ul'); u.scrollTop = u.scrollHeight; })()")
+    row = move(page, f, "scroll", "x", version=v)
+    assert (row["outcome"], row["reason"]) == ("unexpected", "list_end")
 
 
 def test_a_long_list_is_capped_scrollable_and_never_complete(page, load):
@@ -239,3 +269,89 @@ def test_a_passive_field_offers_only_give_up(page, load):
     load(page, fixture_html("native.html"))
     s = state(page, inv(page)["Highest degree"], "Master's")
     assert mids(s) == ["give_up"] and s["popupOpen"] is False
+
+
+SILENT_SEARCH = """<label id='l'>City</label>
+<input id='city' role='combobox' aria-autocomplete='list' aria-labelledby='l'>"""
+
+
+def test_a_search_that_opens_nothing_takes_its_query_back(page, load):
+    load(page, SILENT_SEARCH)
+    f = inv(page)["City"]
+    row = move(page, f, "search:value", "Austin")
+    assert (row["outcome"], row["reason"]) == ("unexpected", "no_popup")
+    assert page.input_value("#city") == ""
+
+
+GROUPS = """<label id='l'>How did you hear about us?</label>
+<button id='h' aria-haspopup='listbox' aria-labelledby='l'>Select One</button>
+<div id='portal'></div>
+<script>
+(() => {
+  const btn = document.getElementById('h'), portal = document.getElementById('portal');
+  const render = (html) => { portal.innerHTML = "<ul role='listbox'>" + html + "</ul>"; };
+  const top = () => render("<li role='option' aria-expanded='false' id='jb'>Job Board</li>"
+    + "<li role='option' aria-haspopup='true' id='ref'>Referral</li><li role='option' id='q'>Say \\"hi\\"</li>");
+  btn.addEventListener('click', (e) => { e.stopPropagation(); top(); });
+  portal.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const li = e.target.closest('li');
+    if (!li) return;
+    if (li.id === 'jb') render("<li role='option'>LinkedIn</li><li role='option'>Indeed</li>");
+    else { btn.textContent = li.textContent; portal.innerHTML = ''; }  // Referral: a "group" that commits
+  });
+  document.addEventListener('click', () => { portal.innerHTML = ''; });
+})();
+</script>"""
+
+
+def test_group_options_are_described_as_groups_and_open_to_their_children(page, load):
+    load(page, GROUPS)
+    f = inv(page)["How did you hear about us?"]
+    move(page, f, "open", "LinkedIn")
+    s = state(page, f, "LinkedIn")
+    assert [c["describe"] for c in s["candidates"] if c["mid"].startswith("click:")] == [
+        'Open the group "Job Board"', 'Open the group "Referral"', 'Click the option "Say \\"hi\\""']
+    assert move(page, f, "click:o1", "LinkedIn")["outcome"] == "progressed"
+    assert move(page, f, "click:o1", "LinkedIn")["outcome"] == "verified"
+    assert page.inner_text("#h") == "LinkedIn"
+
+
+def test_a_group_that_commits_a_value_is_never_verified(page, load):
+    load(page, GROUPS)
+    f = inv(page)["How did you hear about us?"]
+    move(page, f, "open", "LinkedIn")
+    row = move(page, f, "click:o2", "LinkedIn")
+    assert (row["outcome"], row["reason"]) == ("unexpected", "group_committed")
+    assert portal_empty(page)
+
+
+def test_chips_a_multi_widget_already_holds_are_never_click_moves(page, load):
+    load(page, fixture_html("workday_search.html"))
+    f = inv(page)["Type to Add Skills"]
+    assert move(page, f, "search:value", "SQL")["outcome"] == "progressed"
+    s = state(page, f, "SQL")
+    assert [o["text"] for o in s["options"]] == ["SQL"]
+    assert not [m for m in mids(s) if m.startswith("click:")]
+
+
+def test_a_click_the_widget_ignores_is_not_committed(page, load):
+    load(page, fixture_html("react_select.html"))
+    f = inv(page)["Country"]
+    page.evaluate("window.rejectClicks = true")
+    assert move(page, f, "search:value", "India")["outcome"] == "progressed"
+    row = move(page, f, "click:o1", "India")
+    assert (row["outcome"], row["reason"], row["committed"]) == ("unexpected", "not_committed", "")
+
+
+def test_a_menu_the_widget_re_renders_is_found_again_and_still_closed(page, load):
+    load(page, fixture_html("react_select.html"))
+    f = inv(page)["Country"]
+    assert move(page, f, "open", "India")["outcome"] == "progressed"
+    first = page.evaluate("document.getElementById('country-menu') !== null")
+    page.evaluate("document.getElementById('menu-root').innerHTML = document.getElementById('menu-root').innerHTML")
+    s = state(page, f, "India")  # the menu node was swapped under the held popup
+    assert first and s["popupOpen"] is True and "click:o3" in mids(s)
+    page.evaluate("document.getElementById('menu-root').innerHTML = document.getElementById('menu-root').innerHTML")
+    assert move(page, f, "give_up", "India")["outcome"] == "closed"
+    assert page.evaluate("document.getElementById('menu-root').innerHTML") == ""

@@ -18,8 +18,9 @@
  * THE ADAPTIVE STEP (stepState/move) is for a popup widget the generic path
  * could not finish. stepState reports the field's state now and the moves code
  * allows — click:<oid> (never a blocked option, never an item a multi widget
- * already holds), search:value, search:word:<n>, open, scroll, close, give_up —
- * under a fresh VERSION. The model chooses one of those ids; move() acts only
+ * already holds; an option that opens a group is described as one), search:value,
+ * search:word:<n>, open, scroll, give_up — under a fresh VERSION. A long list is
+ * offered 50 options at a time, starting at the first one in view. The model chooses one of those ids; move() acts only
  * on the state it was chosen from, consumes that state (one move per state),
  * refuses an id the state did not offer, and treats a click on a list that
  * changed since as stale. A filtered search view is never complete.
@@ -431,9 +432,21 @@
   const MAX_CLICKS = 50;
   const MAX_WORDS = 4; // the backend accepts search:word:0..9
   const GIVE_UP = { mid: "give_up", describe: "Stop: no move will select an option that states the value" };
-  const lastState = new WeakMap(); // el -> { version, mids, clicks: [{oid, text}], value, words }
+  const lastState = new WeakMap(); // el -> { version, mids, clicks: [{oid, text, group}], value, words }
   let stateVersion = 0;
-  const quote = (s) => (s.length > 200 ? `${s.slice(0, 199)}…` : s);
+  // Page text inside a description is a JSON string: a quote in it cannot end
+  // the description early. Kept well under the backend's 320 characters.
+  const quote = (text) => {
+    let s = text.length > 200 ? `${text.slice(0, 199)}…` : text;
+    while (JSON.stringify(s).length > 280) s = s.slice(0, -10);
+    return JSON.stringify(s);
+  };
+  // An option that opens a group of options rather than being an answer.
+  const isGroup = (o) => {
+    const popup = o.getAttribute("aria-haspopup");
+    return (Boolean(popup) && popup !== "false") || o.hasAttribute("aria-expanded")
+      || (o.getAttribute("role") === "treeitem" && o.querySelector('[role="group"]') !== null);
+  };
   const wordsOf = (value) => {
     const whole = String(value ?? "").trim();
     return [...new Set(whole.split(/[\s,/()&-]+/).filter((w) => w.length > 2 && w !== whole))].slice(0, MAX_WORDS);
@@ -459,14 +472,36 @@
     return inner || (shape.open === "search" ? el : null);
   };
   // The options a click move may name: never a never-fill one, never an item a
-  // multi widget already holds (a click would un-pick it). Capped.
+  // multi widget already holds (a click would un-pick it).
   const clickable = (el, shape, pop, consentForms) => {
     const multi = Boolean(shape.multi?.(el));
     return b().optionsOf(pop)
-      .filter((o) => !blockedText(o.text, consentForms) && !(multi && (o.selected || holds(el, shape, o.text))))
-      .slice(0, MAX_CLICKS);
+      .filter((o) => !blockedText(o.text, consentForms) && !(multi && (o.selected || holds(el, shape, o.text))));
   };
-  const ids = (options) => options.map(({ oid, text }) => ({ oid, text }));
+  // At most MAX_CLICKS of them, nearest what the list shows now: from the
+  // first one in view (filled up from before it at the end of the list).
+  // Oids keep numbering the FULL list.
+  const windowOf = (options, scroller) => {
+    if (options.length <= MAX_CLICKS || !scroller) return options.slice(0, MAX_CLICKS);
+    const top = scroller.getBoundingClientRect().top;
+    const first = options.findIndex((o) => o.el.getBoundingClientRect().bottom > top + 1);
+    const start = Math.max(0, Math.min(first < 0 ? options.length : first, options.length - MAX_CLICKS));
+    return options.slice(start, start + MAX_CLICKS);
+  };
+  const offered = (el, shape, pop, consentForms) => windowOf(clickable(el, shape, pop, consentForms), scrollerOf(pop))
+    .map((o) => ({ ...o, group: isGroup(o.el) }));
+  const ids = (options) => options.map(({ oid, text, group }) => ({ oid, text, group }));
+  // Whether a scroll can show an option not already offered: the list is not
+  // at its end, and it holds options past the window — or rows it has not
+  // rendered yet (a virtualized list's scroll area reaches past its last row).
+  const canScroll = (scroller, all, clicks, window) => {
+    if (!scroller || scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 4) return false;
+    if (clicks.length && window.at(-1) !== clicks.at(-1)) return true;
+    const lastRow = all.at(-1)?.el.getBoundingClientRect();
+    if (!lastRow) return false;
+    const reach = lastRow.bottom - scroller.getBoundingClientRect().top + scroller.scrollTop;
+    return reach < scroller.scrollHeight - Math.max(8, lastRow.height);
+  };
 
   async function stepState(el, shape, { value, consentForms } = {}, t) {
     b().check(t);
@@ -475,19 +510,22 @@
     const adaptive = shape.kind === "choice" && !shape.passive;
     const held = adaptive ? heldPopup(el) : null;
     const all = held ? b().optionsOf(held.pop) : [];
-    const clicks = held ? clickable(el, shape, held.pop, consentForms) : [];
+    const scroller = held ? scrollerOf(held.pop) : null;
+    const clicksAll = held ? clickable(el, shape, held.pop, consentForms) : [];
+    const clicks = held ? offered(el, shape, held.pop, consentForms) : [];
     const box = adaptive ? searchBoxOf(el, shape, held?.pop) : null;
     const whole = String(value ?? "").trim();
     const words = box ? wordsOf(whole) : [];
-    const scroller = held ? scrollerOf(held.pop) : null;
-    const more = Boolean(scroller) && scroller.scrollTop + scroller.clientHeight < scroller.scrollHeight - 4;
+    const more = held ? canScroll(scroller, all, clicksAll, windowOf(clicksAll, scroller)) : false;
+    // No `close`: give_up closes. (move() still takes `close` for cleanup.)
     const candidates = adaptive ? [
-      ...clicks.map((o) => ({ mid: `click:${o.oid}`, describe: `Click the option "${quote(o.text)}"` })),
+      ...clicks.map((o) => ({
+        mid: `click:${o.oid}`, describe: `${o.group ? "Open the group" : "Click the option"} ${quote(o.text)}`,
+      })),
       ...(box && whole ? [{ mid: "search:value", describe: "Type the applicant value into the search box" }] : []),
-      ...words.map((w, i) => ({ mid: `search:word:${i}`, describe: `Type "${quote(w)}" into the search box` })),
+      ...words.map((w, i) => ({ mid: `search:word:${i}`, describe: `Type ${quote(w)} into the search box` })),
       ...(held ? [] : [{ mid: "open", describe: "Open the dropdown" }]),
       ...(more ? [{ mid: "scroll", describe: "Scroll the list to see more options" }] : []),
-      ...(held ? [{ mid: "close", describe: "Close the dropdown" }] : []),
       GIVE_UP,
     ] : [GIVE_UP];
     lastState.set(el, { version, mids: new Set(candidates.map((c) => c.mid)), clicks: ids(clicks), value: whole, words });
@@ -495,9 +533,13 @@
     // not a filtered search result (a search widget's list always is one).
     const complete = Boolean(held) && shape.open !== "search" && !searched.has(el)
       && all.length <= MAX_CLICKS && !scroller;
+    // The options around the offered window (never-fill ones flagged, not dropped).
+    const lo = clicks.length ? all.findIndex((o) => o.oid === clicks[0].oid) : 0;
+    const hi = clicks.length ? all.findIndex((o) => o.oid === clicks.at(-1).oid) + 1 : MAX_CLICKS;
+    const shown = all.length <= MAX_CLICKS ? all : all.slice(lo, hi);
     return {
       version, complete, committed: shape.read(el), invalid: b().invalid(el), popupOpen: Boolean(held),
-      options: flag(all.slice(0, MAX_CLICKS), consentForms), candidates,
+      options: flag(shown, consentForms), candidates,
     };
   }
 
@@ -530,9 +572,15 @@
     if (mid === "scroll") {
       const box = held && scrollerOf(held.pop);
       if (!box) return { outcome: "stale" };
-      b().check(t);
+      // Bring the first option past the offered window to the top, so the
+      // next state's window starts there; at least one page down.
+      const all = b().optionsOf(held.pop);
+      const seen = new Set(last.clicks.map((c) => c.oid));
+      const next = all[all.findLastIndex((o) => seen.has(o.oid)) + 1];
       const top = box.scrollTop;
-      box.scrollTop = top + box.clientHeight;
+      const to = next ? top + next.el.getBoundingClientRect().top - box.getBoundingClientRect().top : 0;
+      b().check(t);
+      box.scrollTop = Math.max(to, top + box.clientHeight);
       await b().settle(t, 120);
       return box.scrollTop === top ? { outcome: "unexpected", reason: "list_end" } : { outcome: "progressed" };
     }
@@ -545,13 +593,16 @@
       await typeQuery(box, term, t, { own: box === el });
       searched.add(el);
       const pop = await waitOptions(el, before, t);
-      if (!pop) return { outcome: "unexpected", reason: "no_popup" };
+      if (!pop) { // nothing opened: the query the engine typed is taken back
+        await tidy(el, t);
+        return { outcome: "unexpected", reason: "no_popup" };
+      }
       leftOpen.set(el, { pop, before });
       return b().optionsOf(pop).length ? { outcome: "progressed" } : { outcome: "unexpected", reason: "no_results" };
     }
     if (mid.startsWith("click:")) {
       // The popup must still show the list the decision was made on.
-      const now = held ? clickable(el, shape, held.pop, consentForms) : [];
+      const now = held ? offered(el, shape, held.pop, consentForms) : [];
       if (!held || !same(ids(now), last.clicks)) return { outcome: "stale" };
       const hit = now.find((o) => `click:${o.oid}` === mid);
       const before0 = shape.read(el);
@@ -569,6 +620,13 @@
         }
         // Only a click that changed nothing at all gets the second gesture.
         if (!unchanged || next !== shown || !hit.el.isConnected) break;
+      }
+      if (hit.group) {
+        // A group is never an answer: one that committed a value is reported,
+        // never verified.
+        const committed = !same(shape.read(el), before0);
+        await tidy(el, t);
+        return { outcome: "unexpected", reason: committed ? "group_committed" : "not_committed" };
       }
       if (holds(el, shape, hit.text) && [shape.read(el)].flat().includes(el.value)) typed.delete(el);
       await tidy(el, t);
