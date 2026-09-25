@@ -4,7 +4,9 @@
  * A Workday dropdown's aria-label is "<question> <value> Required"; on its
  * Application Questions step the question part is EMPTY and the real question
  * is the fieldset legend — so the button's own value and "Required" are
- * stripped, and an aria-label left empty falls through to the legend.
+ * stripped from the END only (a question may contain either word), a stripped
+ * "Required" makes the field required, and an aria-label left empty falls
+ * through to the legend.
  * Zero-width characters are whitespace; ids resolve in the element's own root.
  */
 (() => {
@@ -17,6 +19,21 @@
   const byId = (el, id) => rootOf(el).getElementById?.(id) ?? document.getElementById(id);
   const isPopupButton = (el) =>
     el?.tagName === "BUTTON" && /^(listbox|true|menu|dialog)$/.test(el.getAttribute("aria-haspopup") ?? "");
+  const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  // "<question> <value> Required" → {label: "<question>", required: true}.
+  const popupLabel = (el) => {
+    const label = clean(el.getAttribute("aria-label"));
+    if (!label || !isPopupButton(el)) return { label, required: false };
+    const own = text(el);
+    const tail = own ? new RegExp(`(?:^|\\s+)${escapeRe(own)}\\s*(required)?\\s*$`, "i") : /(?:^|\s+)(required)\s*$/i;
+    const m = tail.exec(label);
+    return m ? { label: clean(label.slice(0, m.index)), required: Boolean(m[1]) } : { label, required: false };
+  };
+  // Another field's control (a same-name radio/checkbox is the same field).
+  const CONTROL = 'input:not([type="hidden"]), select, textarea, button[aria-haspopup], [role="combobox"], [contenteditable="true"]';
+  const isChoice = (el) => /^(radio|checkbox)$/.test(el.type);
+  const otherControl = (c, el) => c !== el && !el.contains(c) && !(isChoice(el) && el.name && c.name === el.name);
+  const precedes = (a, b) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
   const withoutControls = (node) => {
     const copy = node.cloneNode(true);
     copy.querySelectorAll("input, select, textarea, button, [role=listbox]").forEach((n) => n.remove());
@@ -31,29 +48,34 @@
     }],
     ["label-wrap", (el) => (el.closest("label") ? withoutControls(el.closest("label")) : "")],
     ["labelledby", (el) => fromIds(el, "aria-labelledby")],
-    ["aria-label", (el) => {
-      let label = clean(el.getAttribute("aria-label"));
-      if (label && isPopupButton(el)) {
-        const own = text(el);
-        if (own) label = clean(label.split(own).join(" "));
-        label = clean(label.replace(/\brequired\b/gi, " "));
-      }
-      return label;
-    }],
+    ["aria-label", (el) => popupLabel(el).label],
     ["legend", (el) => text(el.closest("fieldset")?.querySelector("legend"))],
+    // The closest label-like node BEFORE the field with no other field between
+    // them; climbing stops at an ancestor that holds another field.
     ["nearby", (el) => {
       let node = el.parentElement;
       for (let depth = 0; node && depth < 3; depth += 1, node = node.parentElement) {
-        const cand = node.querySelector('[class*="label" i], [class*="question" i]');
-        if (cand && !cand.contains(el) && !cand.querySelector("input, select, textarea, button")) {
+        const others = [...node.querySelectorAll(CONTROL)].filter((c) => otherControl(c, el));
+        const cand = [...node.querySelectorAll('[class*="label" i], [class*="question" i]')]
+          .filter((c) => !c.contains(el) && precedes(c, el) && !c.querySelector("input, select, textarea, button"))
+          .at(-1);
+        if (cand && !others.some((c) => precedes(cand, c) && precedes(c, el))) {
           const t = text(cand);
           if (t) return t;
         }
+        if (others.length) break;
       }
       return "";
     }],
   ];
   const HEADING = "h1, h2, h3, h4, h5, [role=heading]";
+  // "Work Experience 2" is the second repeat; "Step 2 of 4" / "Page 2" is not.
+  const REPEAT = /(\p{L}+)\s+(\d+)$/u;
+  const NOT_REPEAT = /^(of|step|page)$/i;
+  const repeatIndex = (section) => {
+    const m = REPEAT.exec(section);
+    return m && !NOT_REPEAT.test(m[1]) ? Math.max(0, Number(m[2]) - 1) : 0;
+  };
   const sectionOf = (el) => {
     for (let node = el.parentElement; node; node = node.parentElement) {
       const heads = [...node.querySelectorAll(HEADING)]
@@ -80,14 +102,14 @@
     }
     const starred = STAR.test(question);
     const section = sectionOf(el);
-    const m = /(\d+)\s*$/.exec(section);
     return {
       question: clean(question.replace(STAR, "")),
       source,
       help: fromIds(el, "aria-describedby"),
       section,
-      repeatIndex: m ? Math.max(0, Number(m[1]) - 1) : 0,
-      required: Boolean(el.required) || el.getAttribute("aria-required") === "true" || starred,
+      repeatIndex: repeatIndex(section),
+      required: Boolean(el.required) || el.getAttribute("aria-required") === "true" || starred
+        || popupLabel(el).required,
     };
   };
 })();

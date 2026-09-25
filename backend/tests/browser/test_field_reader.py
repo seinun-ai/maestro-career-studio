@@ -30,7 +30,27 @@ def test_a_workday_dropdown_labelled_only_by_its_value_asks_its_legend(page, loa
 def test_a_dropdown_that_names_its_question_keeps_it(page, load):
     load(page, "<fieldset><legend>Address</legend><button id='a' aria-haspopup='listbox' "
                "aria-label='State Select One Required'>Select One</button></fieldset>")
-    assert page.evaluate(READ, "#a")["question"] == "State"
+    got = page.evaluate(READ, "#a")
+    assert (got["question"], got["source"], got["required"]) == ("State", "aria-label", True)
+
+
+@pytest.mark.parametrize(
+    "label, value, question",
+    [
+        ("Other languages Other Required", "Other", "Other languages"),
+        ("Is a visa required to work here? Select One Required", "Select One", "Is a visa required to work here?"),
+    ],
+)
+def test_only_the_trailing_value_and_required_are_stripped_from_a_dropdown_label(page, load, label, value, question):
+    load(page, f"<button id='a' aria-haspopup='listbox' aria-label='{label}'>{value}</button>")
+    got = page.evaluate(READ, "#a")
+    assert (got["question"], got["required"]) == (question, True)
+
+
+def test_a_nearby_label_is_the_closest_one_before_the_field(page, load):
+    load(page, "<div class='row'><div class='label'>Phone</div><input id='p'>"
+               "<div class='label'>Email</div><input id='e'><input id='x'></div>")
+    assert [page.evaluate(READ, s)["question"] for s in ("#p", "#e", "#x")] == ["Phone", "Email", ""]
 
 
 def test_labelledby_resolves_inside_an_open_shadow_root(page, load):
@@ -51,3 +71,9 @@ def test_section_repeat_index_required_and_help(page, load):
     assert (a["question"], a["required"], a["repeatIndex"]) == ("Job Title", True, 0)
     assert (b["section"], b["repeatIndex"], b["required"], b["help"]) == (
         "Work Experience 2", 1, True, "As on your offer letter")
+
+
+def test_a_step_counter_is_not_a_repeat_number(page, load):
+    load(page, """<section><h2>Step 2 of 4</h2><label for='a'>City</label><input id='a'></section>
+      <section><h3>Work Experience 2</h3><label for='b'>Job Title</label><input id='b'></section>""")
+    assert [page.evaluate(READ, s)["repeatIndex"] for s in ("#a", "#b")] == [0, 1]
