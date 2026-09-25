@@ -7,6 +7,10 @@
 >
 > Every rule here was paid for by a defect. Read the matching one before
 > changing layout, tokens, focus behaviour, or user-facing copy.
+>
+> **Supported widths: desktop, 1024px and up** (SYSTEM.md §8). Check a change
+> at 1280 and 1024. Rules below that name 768 or 375 record what those widths
+> taught; keep their markup, but don't hold a change for a width under 1024.
 
 
 - Next.js 16 App Router, React 19, Tailwind v4 tokens in `app/globals.css`
@@ -509,8 +513,8 @@
 - **The 768–1023px band is the layout's worst case.** `MOBILE_BREAKPOINT =
   768` (`hooks/use-mobile.ts`), so the sidebar becomes a sheet only BELOW
   768 — at exactly 768 the 256px rail is still pinned and a `max-w-6xl` page
-  has 462px of usable width. Test tables and toolbars at 768, not just 1280
-  and 375. The Jobs table carries `minWidth="52rem"` because
+  has 462px of usable width. Below 1024 is best-effort (see the header): the
+  wrap rules here stay, but a change isn't held for 768. The Jobs table carries `minWidth="52rem"` because
   `table-fixed` cannot grow a starved column. The base studio's Contact
   block is the worked case: its read grid is `@xs:grid-cols-[8rem_minmax(0,1fr)]`
   with `wrap-anywhere`, and below 20rem each label/value pair stacks, so a

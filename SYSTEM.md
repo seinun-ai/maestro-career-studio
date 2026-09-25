@@ -63,7 +63,8 @@ deterministic ATS engine, walk a gap-analysis workflow, LLM-tailor the resume, r
 apply package (cover letter, screening answers), and track every application from Saved to Accepted. Three
 surfaces drive the same backend: a Next.js web app, an MCP server (Claude Desktop et al.; on screen its clients
 are **connected agents**), and an in-app chat agent (the **Assistant**); the Chrome extension (the **Companion**)
-captures and fills from job pages.
+captures and fills from job pages. The web app is desktop-only (1024px and up; checked at 1280 and 1024, never
+at phone widths; §8's reference file says what stays best-effort below that).
 
 ## 2. Repo layout
 
@@ -798,8 +799,6 @@ citation. Priority lives in the item text, not in the ordinal.
     changes chip is hidden for it; an `"unknown"` value would change the endpoint's response); the analogue
     finding's `how` has a semicolon, and its "this bullet" is what the frontend's `hoistBlurb` regex
     (`lib/health-report.ts`) rewrites, so reword the two together.
-31. Narrow widths (375px): the Assistant composer's Send runs off-screen; the base studio squeezes the editor
-    to ~64px inputs beside the preview; a gap card's entry chip clips.
 32. Small UI gaps: `/base-resumes/<unknown>/health` shows a skeleton ~7 s before its error (the 404 takes
     react-query's three default retries; `app/providers.tsx` sets no `retry`); `/templates`' stale-chip tooltip
     sits under `GalleryCard`'s `z-10` stretched link; three hint/control pairs keep hardcoded ids

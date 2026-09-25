@@ -136,18 +136,6 @@ def test_the_sort_values_describe_themselves():
     assert "Role A–Z" not in _SECTION
 
 
-def test_the_filters_share_a_line_on_a_phone_where_they_fit():
-    """At 375 min-w-[10rem] put the four pills one per line. Below sm they
-    take their own width and grow into the line: two to a line at 375, and a
-    long value (a board's host) wraps to its own line instead of clipping."""
-    toolbar = _toolbar()
-    assert '<div className="flex flex-wrap items-center gap-1.5">' in toolbar
-    for cls, label in re.findall(r'<SelectTrigger\s+className="([^"]*)"\s+aria-label="([^"]+)"', toolbar):
-        classes = cls.split()
-        assert {"shrink-0", "grow", "sm:grow-0"} <= set(classes), label
-        assert not [c for c in classes if c.startswith("min-w-")], label  # only from sm up
-
-
 def test_the_search_box_is_the_shared_one():
     assert '<ListSearch label="Search the Agent inbox" value={q} onChange={setQ} />' in _toolbar()
 

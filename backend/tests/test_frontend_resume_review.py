@@ -494,7 +494,7 @@ def test_update_preview_keeps_focus():
     assert "const recompileOnce = useSingleFlight(recompileM.mutate);" in editor
 
 
-# --- Item 13: no horizontal scroll at 375 -------------------------------------
+# --- Item 13: rows wrap instead of scrolling sideways -------------------------
 
 
 def test_finding_rows_wrap_inside_their_cards():
@@ -517,11 +517,11 @@ def test_the_number_question_starts_with_no_unit():
     assert 'if (!value.unit) return "";' in ctx
 
 
-def test_career_history_fits_375():
-    # An auto grid track grew to its cards' min-content (317px in a 271px
-    # column): /career scrolled sideways at 375 (scrollWidth 397).
+def test_career_history_columns_may_shrink():
+    # An auto grid track grew to its cards' min-content, so /career scrolled
+    # sideways once its column got narrower than its widest card.
     capture = _read("components/career/capture-box.tsx")
-    # One grid whose text column may shrink; at 375 the textarea takes its own row.
+    # One grid whose text column may shrink.
     assert "grid-cols-[minmax(0,1fr)_auto] items-center" in capture
     assert "flex flex-wrap items-center justify-between gap-2" in capture
     # The page's one column may shrink below its content's widest line.

@@ -117,7 +117,8 @@ def test_the_gap_page_names_the_ats_score_and_every_action():
     assert "`ATS score: ${base.composite.toFixed(1)} to ${tailored.composite.toFixed(1)}" in page
 
 
-def test_gap_rows_read_whole_at_375():
+def test_gap_rows_read_whole():
+    # A truncated title or entry chip hides text at any width; nothing here is phone-only.
     card = _read("components/gap-analysis/gap-card.tsx")
     assert "Skipped <span className=\"text-foreground font-medium\">{title}</span>" in card
     assert "Can&apos;t confirm <span className=\"text-foreground font-medium\">{title}</span>" in card
