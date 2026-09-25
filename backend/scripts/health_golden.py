@@ -64,13 +64,13 @@ def run_trials(db: Session, cases: list[dict], disputes: list[dict], trials: int
     for _ in range(trials):
         pending = {bc.content_hash(c["text"]): {"id": bc.content_hash(c["text"]),
                    "text": c["text"], "hints": []} for c in cases}
-        results = bc._classify_batch(db, pending)  # bypass classify_items cache
+        results = bc._evaluate_batch(db, pending)  # bypass classify_items cache
         runs.append([results.get(bc.content_hash(c["text"]), {}) for c in cases])
         trial = []
         # Same text with different notes must not collapse in a hash-keyed batch.
         for case in disputes:
             key = bc.content_hash(case["text"])
-            result = bc._classify_batch(db, {key: {"id": key, "text": case["text"],
+            result = bc._evaluate_batch(db, {key: {"id": key, "text": case["text"],
                                         "note": case["note"], "hints": []}})
             trial.append(result.get(key, {}))
         dispute_runs.append(trial)

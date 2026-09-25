@@ -344,7 +344,9 @@
   hand-typed KB grows no timeline entry per bullet). `patch_point` clears
   `approved_at` when a point leaves `approved`.
 - **ResumeLintReport** (health check): the [health rubric](../health-check-rubric.md) defines bullet evidence.
-  Evaluations store their rubric version, evidence, question, measure target, alternative and language
+  Evaluations are reused only for the current rubric version and smart model; manual overrides
+  win across both changes. High levels need substantive verbatim evidence. Invalid number asks
+  become detail questions. Evaluations store their rubric version, evidence, question, measure target, alternative and language
   notes on `bullet_classifications`. `bullet_disputes` reserves separate note, before/after, reply and
   suggestion fields plus a durable metric-unavailable flag for the dispute workflow.
   Gates are `tier:

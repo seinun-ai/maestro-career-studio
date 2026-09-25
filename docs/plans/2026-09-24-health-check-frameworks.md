@@ -1148,6 +1148,11 @@ Commit: `docs: health check v3 (evaluator, disputes, flags, report layout)`
 
 | 3 | Owner labels before judging evaluator | Fixture newly created | Labels provisional; requested owner sign-off through Claude; no real provider run | Works beyond tech |
 
+| 5 | Batch evaluation reused by disputes | `_classify_batch` writes the ordinary cache | Extract `_evaluate_batch` with validated fields and no classification writes; runner uses it | Judge the page; cache isolation |
+| 5 | Tune prompt on dev if key available | Real-provider gate delegated to Claude | Keep prompt exactly as specified; no tuning or held-out calls | Works beyond tech |
+
+| 5 | Missing ask kind stays null | Number question could bypass detail sanitization | Normalize invalid/missing ask kind to detail before number checks | Never demand an unnatural number |
+
 ## Gate results
 
 Baseline at `444866c1`: `pytest tests/ mcp_server/tests/ -q` → **5706 passed, 1 skipped**, 256.23s.

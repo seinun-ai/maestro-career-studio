@@ -28,3 +28,23 @@ def test_health_schema_preserves_old_cache_and_false_default(tmp_path):
         assert db.execute("SELECT level FROM bullet_classifications WHERE content_hash='old'").fetchone()[0] == 'adjacent'
         assert "rubric_version" not in {row[1] for row in db.execute("PRAGMA table_info(bullet_classifications)")}
         assert not db.execute("SELECT name FROM sqlite_master WHERE name='bullet_disputes'").fetchall()
+
+
+def test_prompt_resync_deletes_only_previous_default(tmp_path):
+    from importlib import import_module
+    old = import_module("migrations.versions.d08dd68e4eff_resync_health_prompts").OLD_RESUME_BULLET_CLASSIFY
+    path = tmp_path / "prompts.sqlite3"
+    cfg = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
+    cfg.set_main_option("sqlalchemy.url", f"sqlite:///{path}")
+    for value, should_survive in [(old, False), ("my custom evaluator", True)]:
+        command.upgrade(cfg, "980498217fe6")
+        with closing(sqlite3.connect(path)) as db:
+            db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('prompt.resume_bullet_classify', ?)", (value,))
+            db.commit()
+        command.upgrade(cfg, "head")
+        with closing(sqlite3.connect(path)) as db:
+            row = db.execute("SELECT value FROM settings WHERE key='prompt.resume_bullet_classify'").fetchone()
+            assert bool(row) is should_survive
+            if row:
+                assert row[0] == value
+        command.downgrade(cfg, "980498217fe6")
