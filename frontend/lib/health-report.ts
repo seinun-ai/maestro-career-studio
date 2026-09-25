@@ -244,11 +244,6 @@ export function checkDoneWords(report: { grade: string; insufficient_evidence?: 
     : `Check done. Grade ${report.grade}.`;
 }
 
-/** "Add numbers to 2 bullets": the add-numbers dialog's title (Task 12 replaces the dialog). */
-export function addNumbersLabel(n: number): string {
-  return `Add numbers to ${n} ${n === 1 ? "bullet" : "bullets"}`;
-}
-
 export function potentialPoints(
   levelName: string | null | undefined,
   nScoreable: number | null | undefined,
@@ -915,4 +910,139 @@ export function withIgnored(wording: WordingRead, subject: string): WordingBody 
     filler: wording.filler,
     ignored: wording.ignored.includes(word) ? wording.ignored : [...wording.ignored, word],
   };
+}
+
+// --- The question pass: every ask on one page, answered in one go --------------------------------
+
+/** "2 of 6 answered". A skipped row still counts: Skip lasts this visit, so the total is every row. */
+export function passProgress(rows: { answered: boolean; skipped: boolean }[]): {
+  answered: number;
+  total: number;
+  words: string;
+} {
+  const answered = rows.filter((row) => row.answered && !row.skipped).length;
+  const total = rows.length;
+  return { answered, total, words: `${answered} of ${total} answered` };
+}
+
+/** The pass's primary button: "Write 3 new versions" ("Write new versions" with none to write). */
+export function writeVersionsLabel(n: number): string {
+  if (n === 0) return "Write new versions";
+  return `Write ${n} new ${n === 1 ? "version" : "versions"}`;
+}
+
+/**
+ * Accept all shown: every accepted row as ONE `/edits` call (one transaction, one new version), each
+ * op guarded by its bullet's hash so a bullet that changed since the check refuses the batch (409).
+ */
+export function batchEditOps(
+  rows: {
+    finding: {
+      location: { section: string; index?: number | null; bullet_index?: number | null };
+      content_hash?: string | null;
+    };
+    text: string;
+  }[],
+): LintEditOp[] {
+  return rows.map((row) => bulletEditOp(row.finding.location, row.text, row.finding.content_hash));
+}
+
+/** The latest version number in a versions list (null with none): the V0 an undo restores. */
+export function latestVersionNumber(versions: { version_number: number }[]): number | null {
+  return versions.length === 0 ? null : Math.max(...versions.map((v) => v.version_number));
+}
+
+/** Runs `fn` over `items`, at most `limit` at a time (the pass drafts three at once). */
+export async function mapPool<T>(
+  items: T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<void>,
+): Promise<void> {
+  let next = 0;
+  async function worker() {
+    while (next < items.length) {
+      const index = next;
+      next += 1;
+      await fn(items[index], index);
+    }
+  }
+  const n = Math.min(limit, items.length);
+  await Promise.all(Array.from({ length: n }, () => worker()));
+}
+
+export type PassOutcome = { points: number; fixed: number; notRight: number; skipped: number };
+
+/**
+ * What a pass did, from the report it started on and the check it closes with: the score change,
+ * the pass's own rows the check now calls fixed (`resolvedFindings`; a row the user marked not right
+ * counts there instead), and the rows marked not right or skipped.
+ */
+export function passOutcome<T extends Rated & { id: string; location: Where }>(
+  prior: { score: number; findings: T[] },
+  next: { score: number; findings: (Rated & { id: string; location: Where })[] },
+  passIds: ReadonlySet<string>,
+  disputedHashes: ReadonlySet<string>,
+  skipped: number,
+): PassOutcome {
+  const fixed = resolvedFindings(prior.findings, next.findings).filter(
+    (f) => passIds.has(f.id) && !(f.content_hash && disputedHashes.has(f.content_hash)),
+  ).length;
+  return { points: next.score - prior.score, fixed, notRight: disputedHashes.size, skipped };
+}
+
+/** The one toast a pass closes with: "+6 points · 3 fixed · 2 not right · 1 skipped". */
+export function passOutcomeWords({ points, fixed, notRight, skipped }: PassOutcome): string {
+  const score =
+    points === 0
+      ? "Same score"
+      : `${points > 0 ? "+" : ""}${points} ${Math.abs(points) === 1 ? "point" : "points"}`;
+  const parts = [score];
+  if (fixed > 0) parts.push(`${fixed} fixed`);
+  if (notRight > 0) parts.push(`${notRight} not right`);
+  if (skipped > 0) parts.push(`${skipped} skipped`);
+  return parts.join(" · ");
+}
+
+export type BulletContext = { heading: string; dates: string | null; bullets: string[]; active: number };
+
+const dateRange = (...parts: (string | null | undefined)[]) =>
+  parts.filter(Boolean).join(" – ") || null;
+
+/**
+ * The item an asked bullet sits in, from the resume: its heading, dates and every bullet, with the
+ * asked one's index (the pass's context pane). Null when the place no longer holds a bullet.
+ */
+export function bulletContext(
+  data: ResumeData,
+  location: { section: string; index?: number | null; bullet_index?: number | null },
+): BulletContext | null {
+  const { section, index, bullet_index } = location;
+  const make = (heading: string, dates: string | null, bullets: string[] | undefined, active: number) =>
+    bullets && active >= 0 && active < bullets.length ? { heading, dates, bullets, active } : null;
+  if (section === "summary") return data.summary ? make("Summary", null, [data.summary], 0) : null;
+  if (bullet_index == null) return null;
+  if (section.startsWith("extra:")) {
+    const sec = data.extra_sections?.find((s) => s.key === section.slice("extra:".length));
+    if (!sec) return null;
+    if (sec.type === "bullets") return make(sec.title, null, sec.bullets, bullet_index);
+    const entry = index != null ? sec.entries?.[index] : undefined;
+    return entry ? make(entry.heading || sec.title, dateRange(entry.date), entry.bullets, bullet_index) : null;
+  }
+  if (index == null) return null;
+  const heading = groupTitle(`${section}:${index}`, data);
+  if (section === "experience") {
+    const entry = data.experience?.[index];
+    return entry ? make(heading, dateRange(entry.start_date, entry.end_date), entry.bullets, bullet_index) : null;
+  }
+  if (section === "projects") {
+    const entry = data.projects?.[index];
+    return entry ? make(heading, dateRange(entry.date), entry.bullets, bullet_index) : null;
+  }
+  if (section === "education") {
+    const entry = data.education?.[index];
+    return entry
+      ? make(heading, dateRange(entry.start_date, entry.end_date ?? entry.graduation_date), entry.bullets, bullet_index)
+      : null;
+  }
+  return null;
 }

@@ -155,6 +155,21 @@
   re-run), and the page adopts no report older than the last one it adopted (`runLatest`). **Edit word
   list** (`word-list-dialog.tsx`) edits Clichés, Filler words and Never flag as a draft that Cancel drops;
   Save commits a typed-but-unadded word (or stops on its error), sends all three and re-runs.
+  **Start the questions** opens the question pass (`/base-resumes/[slug]/health/questions`,
+  `question-pass.tsx`; `?from=<tab>`, read with `useSearchParams`, sends Back to that tab): every ask
+  on one page, rows fixed when it opens, each the full bullet, its own question and field (a measure
+  ask's labelled number fields with the number-free swap, a detail ask's two-line box), **Not right?**
+  and **Skip for now** (this visit only; the row still counts in "2 of 6 answered"). The one filled
+  button is **Write N new versions** (three `answerAsk` drafts at a time, rows filling in as each
+  lands) until nothing is left to write, then **Accept all shown**, which first lists the rows with a
+  checkbox each. Every accept, one row or all, is ONE hash-guarded `/edits` call and one version; a
+  409 marks the rows whose text no longer matches ("This bullet changed. Write it again?", which
+  re-runs the check for that row) and sends the rest once. The toast's Undo restores the version read
+  before the write only while the write is still the latest (`if_latest`, a 409 says to use Version
+  history). At 1280 and up a context pane shows the active row's item with its bullet highlighted;
+  below that, its dates and the bullets above and below sit on the row. Typed answers and open edits
+  register the leave guard; leaving re-runs the check in the background and says what the pass did in
+  one toast (`passOutcomeWords`).
 - **One page shell: `PageShell` + `PageHeader`** (`components/page-shell.tsx`).
   Every top-level route renders `PageShell` — `max-w-6xl`, `p-6`, `gap-6` —
   and `PageHeader` for its title block. Never assign per-page widths or

@@ -24,7 +24,6 @@ import {
   healthCounts,
   leftToFix,
   checkDoneWords,
-  addNumbersLabel,
   stripTrailingPunct,
   contentHash16,
   staleFindingIds,
@@ -51,6 +50,14 @@ import {
   parseHealthTab,
   ruleGroups,
   skillGroupOf,
+  batchEditOps,
+  bulletContext,
+  latestVersionNumber,
+  mapPool,
+  passOutcome,
+  passOutcomeWords,
+  passProgress,
+  writeVersionsLabel,
 } from "./health-report.ts";
 
 test("reportIsStale treats missing as false", () => {
@@ -107,8 +114,6 @@ test("must fix counts only failed fatal checks, and left to fix agrees with it",
 test("a check with too little to grade never announces a grade", () => {
   assert.equal(checkDoneWords({ grade: "F", insufficient_evidence: true }), "Check done. Too little to grade yet.");
   assert.equal(checkDoneWords({ grade: "B" }), "Check done. Grade B.");
-  assert.equal(addNumbersLabel(2), "Add numbers to 2 bullets");
-  assert.equal(addNumbersLabel(1), "Add numbers to 1 bullet");
 });
 
 test("potentialPoints is 100 × (1 − level) / n_scoreable", () => {
@@ -682,6 +687,159 @@ test("skillGroupOf names the group a skill is listed in", () => {
   assert.equal(skillGroupOf(data, "Excel"), null);
   assert.equal(skillGroupOf(data, "Rust"), null);
   assert.equal(skillGroupOf(null, "SQL"), null);
+});
+
+// --- The question pass (Task 12) -------------------------------------------------------------------
+
+test("passProgress: a skipped row still counts in the total, and is not answered", () => {
+  const rows = [
+    { answered: true, skipped: false },
+    { answered: true, skipped: false },
+    { answered: false, skipped: false },
+    { answered: true, skipped: true },
+    { answered: false, skipped: true },
+    { answered: false, skipped: false },
+  ];
+  assert.deepEqual(passProgress(rows), { answered: 2, total: 6, words: "2 of 6 answered" });
+  assert.equal(passProgress([]).words, "0 of 0 answered");
+});
+
+test("writeVersionsLabel agrees with its count", () => {
+  assert.equal(writeVersionsLabel(1), "Write 1 new version");
+  assert.equal(writeVersionsLabel(3), "Write 3 new versions");
+  assert.equal(writeVersionsLabel(0), "Write new versions");
+});
+
+test("batchEditOps: one hash-guarded op per accepted row, the summary as replace_summary", () => {
+  const ops = batchEditOps([
+    {
+      finding: { location: { section: "experience", index: 0, bullet_index: 2 }, content_hash: "aaaa" },
+      text: "Cut invoice time by 3 days",
+    },
+    { finding: { location: { section: "summary" }, content_hash: "bbbb" }, text: "New summary" },
+  ]);
+  assert.deepEqual(ops, [
+    {
+      kind: "replace_bullet",
+      section: "experience",
+      index: 0,
+      bullet_index: 2,
+      value: "Cut invoice time by 3 days",
+      expected_content_hash: "aaaa",
+    },
+    { kind: "replace_summary", value: "New summary", expected_content_hash: "bbbb" },
+  ]);
+});
+
+test("latestVersionNumber reads the highest version, null with none", () => {
+  assert.equal(latestVersionNumber([{ version_number: 7 }, { version_number: 9 }, { version_number: 8 }]), 9);
+  assert.equal(latestVersionNumber([]), null);
+});
+
+test("mapPool runs at most `limit` at once and visits every item", async () => {
+  let running = 0;
+  let peak = 0;
+  const seen: number[] = [];
+  await mapPool([1, 2, 3, 4, 5, 6, 7], 3, async (item) => {
+    running += 1;
+    peak = Math.max(peak, running);
+    await new Promise((r) => setTimeout(r, 5));
+    seen.push(item);
+    running -= 1;
+  });
+  assert.equal(peak, 3);
+  assert.deepEqual([...seen].sort(), [1, 2, 3, 4, 5, 6, 7]);
+});
+
+test("passOutcome counts the pass's own rows: fixed, not right, skipped, and the score change", () => {
+  const ask = (id: string, hash: string, bullet: number) => ({
+    id,
+    type: "ask",
+    content_hash: hash,
+    classification_level: "adjacent",
+    location: { section: "experience", index: 0, bullet_index: bullet },
+  });
+  const prior = [ask("a", "h1", 0), ask("b", "h2", 1), ask("c", "h3", 2), ask("d", "h4", 3), ask("x", "h9", 9)];
+  // a and b were rewritten (new text, no ask left), c was disputed and lifted, x (not in the pass) went too.
+  const next = [ask("d", "h4", 3)];
+  const outcome = passOutcome(
+    { score: 61, findings: prior },
+    { score: 67, findings: next },
+    new Set(["a", "b", "c", "d"]),
+    new Set(["h3"]),
+    1,
+  );
+  assert.deepEqual(outcome, { points: 6, fixed: 2, notRight: 1, skipped: 1 });
+});
+
+test("passOutcomeWords: one line, zero parts left out, points signed", () => {
+  assert.equal(
+    passOutcomeWords({ points: 6, fixed: 3, notRight: 2, skipped: 1 }),
+    "+6 points · 3 fixed · 2 not right · 1 skipped",
+  );
+  assert.equal(passOutcomeWords({ points: 1, fixed: 1, notRight: 0, skipped: 0 }), "+1 point · 1 fixed");
+  assert.equal(passOutcomeWords({ points: -2, fixed: 0, notRight: 0, skipped: 2 }), "-2 points · 2 skipped");
+  assert.equal(passOutcomeWords({ points: 0, fixed: 0, notRight: 1, skipped: 0 }), "Same score · 1 not right");
+});
+
+test("bulletContext: the item's heading, dates and every bullet, with the asked one marked", () => {
+  const data = {
+    contact: { name: "A" },
+    summary: "A summary",
+    skills: [],
+    experience: [
+      {
+        company: "Acme",
+        role: "Analyst",
+        start_date: "2021",
+        end_date: "2024",
+        bullets: ["one", "two", "three"],
+      },
+    ],
+    projects: [{ name: "Tool", date: "2023", bullets: ["p1"] }],
+    education: [],
+    certifications: [],
+    extra_sections: [
+      { key: "talks", title: "Talks", type: "bullets", bullets: ["t1", "t2"] },
+      {
+        key: "vol",
+        title: "Volunteering",
+        type: "entries",
+        entries: [{ heading: "Food bank", date: "2020", bullets: ["v1"] }],
+      },
+    ],
+  } as unknown as Parameters<typeof bulletContext>[0];
+  assert.deepEqual(bulletContext(data, { section: "experience", index: 0, bullet_index: 1 }), {
+    heading: "Analyst · Acme",
+    dates: "2021 – 2024",
+    bullets: ["one", "two", "three"],
+    active: 1,
+  });
+  assert.deepEqual(bulletContext(data, { section: "summary" }), {
+    heading: "Summary",
+    dates: null,
+    bullets: ["A summary"],
+    active: 0,
+  });
+  assert.deepEqual(bulletContext(data, { section: "projects", index: 0, bullet_index: 0 }), {
+    heading: "Tool",
+    dates: "2023",
+    bullets: ["p1"],
+    active: 0,
+  });
+  assert.deepEqual(bulletContext(data, { section: "extra:talks", bullet_index: 1 }), {
+    heading: "Talks",
+    dates: null,
+    bullets: ["t1", "t2"],
+    active: 1,
+  });
+  assert.deepEqual(bulletContext(data, { section: "extra:vol", index: 0, bullet_index: 0 }), {
+    heading: "Food bank",
+    dates: "2020",
+    bullets: ["v1"],
+    active: 0,
+  });
+  assert.equal(bulletContext(data, { section: "experience", index: 4, bullet_index: 0 }), null);
 });
 
 test("disputeTabMove opens the tab a dispute moved its bullet to", () => {

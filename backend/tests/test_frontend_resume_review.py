@@ -319,7 +319,7 @@ def test_health_copy_first_read():
     band = _read("components/resume-health/summary-band.tsx")
     assert "Start the questions ({askCount})" in band and "number questions" not in page
     assert "checkedWords(formatTimeAgo(body.created_at), body.resume_version_number)" in page
-    assert "number questions" not in _read("components/resume-health/batch-ask-dialog.tsx")
+    assert "number questions" not in _read("components/resume-health/question-pass.tsx")
     cards = _read("components/resume-health/finding-cards.tsx")
     assert "This rating is wrong…" in cards and ">\n            Change rating\n" not in cards
 

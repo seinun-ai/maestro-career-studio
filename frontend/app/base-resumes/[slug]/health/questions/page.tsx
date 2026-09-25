@@ -1,41 +1,20 @@
 "use client";
 
 import { use } from "react";
-import { ArrowLeft } from "lucide-react";
 
-import { GuardedLink as Link } from "@/components/guarded-link";
-import { IconButton } from "@/components/icon-button";
-import { PageHeader, PageShell } from "@/components/page-shell";
+import { QuestionPass } from "@/components/resume-health/question-pass";
 
-/**
- * A placeholder until Task 12 of the health check v3 plan builds the question pass here
- * (`question-pass.tsx`): the report's Start the questions already opens this route.
- */
+/** The health report's question pass: every question on one page (Start the questions opens it). */
 export default function HealthQuestionsPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string }>;
+  searchParams: Promise<{ from?: string | string[] }>;
 }) {
   const { slug } = use(params);
-  return (
-    <PageShell>
-      <PageHeader
-        leading={
-          <IconButton
-            label="Back to the health report"
-            icon={<ArrowLeft className="size-4" />}
-            size="icon-sm"
-            className="mt-1.5 shrink-0"
-            nativeButton={false}
-            render={<Link href={`/base-resumes/${slug}/health`} className="text-muted-foreground" />}
-          />
-        }
-        title="Questions"
-      />
-      <p className="text-muted-foreground max-w-[65ch] text-sm">
-        Answering every question in one pass is coming in Task 12. Until then, answer each one on
-        its card in the health report.
-      </p>
-    </PageShell>
-  );
+  // Read, not used: it makes the route dynamic, so the pass's useSearchParams (`?from=`) needs no
+  // Suspense boundary. The prop itself keeps its arrival value after a replaceState (SYSTEM.md §12).
+  use(searchParams);
+  return <QuestionPass resumeKey={slug} />;
 }

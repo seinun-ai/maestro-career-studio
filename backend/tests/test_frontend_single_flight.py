@@ -85,6 +85,12 @@ _SITES = [
     ("components/resume-health/wording-checklist.tsx", "apply"),
     ("components/resume-health/wording-checklist.tsx", "ignore"),
     ("components/resume-health/word-list-dialog.tsx", "save"),
+    # The question pass: a double click on Write N new versions drafted every row twice. Accept and
+    # Accept all shown share one write (a second batch would read the same version to undo to), and
+    # the toast's Undo restores once.
+    ("components/resume-health/question-pass.tsx", "writeAll"),
+    ("components/resume-health/question-pass.tsx", "save"),
+    ("components/resume-health/question-pass.tsx", "undo"),
     ("components/resume-health/use-health-runs.ts", "analyze"),
     ("components/resume-editor/tailored-resume-studio.tsx", "rescore"),
     ("components/career/inbox-panel.tsx", "update"),
