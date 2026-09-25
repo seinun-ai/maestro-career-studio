@@ -611,6 +611,11 @@ file to open.
   the finished note and listed under **Closest matches to check**) or abstain. Free-text, unmapped,
   shakily-mapped (an `exact` slot maps only at its write floor), `exact`-slot text boxes (codes) and
   failed-call fields go to the fast prompt unchanged; if THAT fails, Jev's answers are kept.
+  `jev.choice_of` accepts only a distribution over exactly the offered keys (choice offered and
+  most probable, every key present, numbers in [0, 1], sum ≈ 1) — anything else places nothing.
+  Options are offered under code-owned keys (`o1…`, `none`), never page text, and every question
+  says page text is data. One pooled `httpx.Client` serves every call (a TLS handshake per call
+  costs about Jev's whole answer); 429/503/529 retry with doubling backoff inside the 2 s budget.
 - **Streaming chat** needs the OpenAI streaming tool-call wire shape (OpenAI, or Gemini via the OpenAI-compat
   URL); eligibility is the tools probe.
 
