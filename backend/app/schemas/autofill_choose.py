@@ -15,6 +15,8 @@ from pydantic import BaseModel, ConfigDict, Field
 ChooseKind = Literal["text", "textarea", "select", "radio", "checkbox", "combobox"]
 
 MAX_FIELDS = 40
+# The extension sends at most this many of a control's options.
+MAX_OPTIONS = 30
 
 
 class ChooseField(BaseModel):
@@ -25,7 +27,7 @@ class ChooseField(BaseModel):
     kind: ChooseKind
     # Verbatim as the page renders them. The model must return one of these
     # strings exactly; anything else is treated as an abstention by the caller.
-    options: list[str] = Field(default_factory=list, max_length=30)
+    options: list[str] = Field(default_factory=list, max_length=MAX_OPTIONS)
     # The value the profile already holds, when the page's own matcher could not
     # map it onto any rendered option. Its presence changes the question from
     # "what is the answer" to "which of these IS this answer" — one field, not a

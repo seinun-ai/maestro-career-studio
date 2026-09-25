@@ -188,3 +188,70 @@ def test_a_failed_option_call_sends_only_option_fields_to_the_fast_model(
         None, db_session)
     assert out["a"].answer == "Ada" and out["h"].answer == "LinkedIn"
     assert '"h"' in prompts[0] and '"a"' not in prompts[0]
+
+
+def test_a_text_field_on_an_exact_slot_goes_to_the_fast_model(db_session, monkeypatch, jev_on):
+    """Exact slots store CODES (`work_auth.status` = "stem_opt"): typed verbatim
+    into a text box they are a wrong answer to a knockout question. The fast
+    model sees the same profile and words it."""
+    autofill_profile.set_profile({**PROFILE, "work_auth": {"status": "stem_opt"}}, db_session)
+    _fake_jev(monkeypatch, slot_for={"v": ("work_auth.status", 0.97)})
+    prompts = _fake_llm(monkeypatch, answers={"v": "F-1 STEM OPT"})
+    out = autofill_choose.choose([_field("v", "What visa do you hold?")], None, db_session)
+    assert out["v"].answer == "F-1 STEM OPT" and len(prompts) == 1
+
+
+def test_a_fast_model_failure_keeps_what_jev_placed(db_session, monkeypatch, jev_on):
+    """A Jev-key-only user (or a provider outage) must not lose Jev's answers
+    because the free-text remainder could not be answered."""
+    _fake_jev(monkeypatch, slot_for={"a": ("personal.first_name", 0.97),
+                                     "w": (autofill_slots.FREE_TEXT, 0.9)})
+
+    def no_key(**kwargs):
+        raise LLMProviderError("No OpenAI API key is set.")
+
+    monkeypatch.setattr(autofill_choose.llm, "call_openai", no_key)
+    out = autofill_choose.choose([_field("a", "First name"), _field("w", "Why us?")],
+                                 None, db_session)
+    assert (out["a"].answer, out["a"].reason) == ("Ada", "matched")
+    assert (out["w"].answer, out["w"].reason) == (None, "abstained")
+
+
+def test_a_fast_model_failure_with_nothing_placed_still_raises(db_session, monkeypatch, jev_on):
+    """Nothing to keep: the error goes to the extension, which says why (no key)."""
+    _fake_jev(monkeypatch, slot_for={"w": (autofill_slots.FREE_TEXT, 0.9)})
+
+    def no_key(**kwargs):
+        raise LLMProviderError("No OpenAI API key is set.")
+
+    monkeypatch.setattr(autofill_choose.llm, "call_openai", no_key)
+    with pytest.raises(LLMProviderError):
+        autofill_choose.choose([_field("w", "Why us?")], None, db_session)
+
+
+def test_an_exact_slot_needs_a_confident_mapping(db_session, monkeypatch, jev_on):
+    """"Will you NOW OR IN THE FUTURE need sponsorship?" half-maps onto
+    `sponsorship_now`; its "No" would answer an OPT holder's knockout question
+    wrongly. A shaky map onto an exact slot goes to the fast model, which sees
+    both answers."""
+    field = _field("s", "Will you now or in the future require sponsorship?", "select",
+                   ["I will require sponsorship", "I will not require sponsorship"])
+    calls = _fake_jev(monkeypatch, slot_for={"s": ("work_auth.sponsorship_now", 0.62)},
+                      option_for={"s": ("I will not require sponsorship", 0.97)})
+    prompts = _fake_llm(monkeypatch, answers={"s": "I will require sponsorship"})
+    out = autofill_choose.choose([field], None, db_session)
+    assert out["s"].answer == "I will require sponsorship"
+    assert len(calls) == 1 and len(prompts) == 1
+
+
+def test_no_closest_pick_from_a_cut_option_list(db_session, monkeypatch, jev_on):
+    """A list at the cap is probably the first 30 of a longer one: its nearest
+    option is a guess over a partial list, so it abstains rather than write one."""
+    from app.schemas.autofill_choose import MAX_OPTIONS
+
+    options = ["Information Systems"] + [f"Major {i}" for i in range(MAX_OPTIONS - 1)]
+    field = _field("m", "Major", "select", options)
+    _fake_jev(monkeypatch, slot_for={"m": ("education.discipline", 0.93)},
+              option_for={"m": ("Information Systems", 0.6)})
+    _fake_llm(monkeypatch)
+    assert autofill_choose.choose([field], None, db_session)["m"].reason == "abstained"
