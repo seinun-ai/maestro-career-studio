@@ -122,6 +122,16 @@ export function potentialPoints(
   return Math.round((100 * (1 - value)) / nScoreable);
 }
 
+export function groupPoints(
+  findings: { level?: number | null; gain?: number | null }[],
+  nScoreable: number | null | undefined,
+): number {
+  return findings.reduce((sum, finding) => {
+    if (finding.gain != null) return sum + finding.gain;
+    return sum + (potentialPoints(levelNameOf(finding), nScoreable) ?? 0);
+  }, 0);
+}
+
 export function levelNameOf(finding: {
   classification_level?: string | null;
   level?: number | null;

@@ -118,7 +118,7 @@ def test_collapsed_row_cannot_overflow_on_a_long_entry_label():
     pathological label still cannot grow the row.
     """
     assert "shortFindingLabel(finding.label)" in _CARDS
-    assert "max-w-[10rem] shrink-0 truncate" in _CARDS
+    assert "break-words" in _CARDS
     # The action + overflow menu hold their width instead of being squeezed,
     # and wrap under the chips at 375 rather than push the page sideways.
     assert 'className="ml-auto flex shrink-0 items-center gap-2"' in _CARDS
@@ -145,3 +145,17 @@ def test_judged_text_is_never_italic_or_one_line_truncated():
     assert 'Show all' in quote
     assert 'text.length >' not in quote
     assert 'border-l-2 border-border pl-3' in quote
+
+
+def test_status_is_text_points_are_grouped_and_notes_start_closed():
+    row = _CARDS[_CARDS.index("function CollapsedRow("): _CARDS.index("export function FindingGroupHeader(")]
+    assert "<Badge" not in row
+    assert "+{pts} points" not in _CARDS
+    header = _CARDS[_CARDS.index("export function FindingGroupHeader("): _CARDS.index("export function FixCard(")]
+    assert "groupPoints(findings, nScoreable)" in header
+    assert "nScoreable={nScoreable}" in _PAGE
+    notes = _CARDS[_CARDS.index("export function NotesTable("):]
+    assert "[notesOpen, setNotesOpen] = useState(false)" in notes
+    assert "aria-expanded={notesOpen}" in notes
+    assert "hidden={!notesOpen}" in notes
+    assert "export function groupPoints" in _HELPERS

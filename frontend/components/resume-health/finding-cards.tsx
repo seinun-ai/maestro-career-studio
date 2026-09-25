@@ -3,7 +3,6 @@
 import { useId, useLayoutEffect, useRef, useState, type ReactNode, type Ref, type RefObject } from "react";
 import { GuardedLink as Link } from "@/components/guarded-link";
 import {
-  ATTENTION_BADGE,
   ATTENTION_BADGE_LABEL,
 } from "@/components/attention-zone";
 import { useMutation } from "@tanstack/react-query";
@@ -56,7 +55,7 @@ import {
   isMechanicalPunctRule,
   isMetricAsk,
   levelNameOf,
-  potentialPoints,
+  groupPoints,
   punctFixOps,
   sharedCoaching,
   STALE_APPLY_HINT,
@@ -146,12 +145,9 @@ export function ExpandedFindingChrome({
         >
           {/* A long label ("Harbor Loop Logistics · bullet 3") wraps inside
               the card: at 375 it pushed the page sideways. */}
-          <Badge
-            variant="secondary"
-            className="text-muted-foreground h-auto max-w-full text-left text-xs break-words whitespace-normal"
-          >
-            {finding.label}
-          </Badge>
+          <span className="text-muted-foreground min-w-0 text-xs break-words">
+            {finding.label} ·
+          </span>
           <LevelChip finding={finding} />
         </button>
         {overflow}
@@ -593,9 +589,7 @@ function LevelChip({ finding }: { finding: LintFinding }) {
   if (!name) return null;
   const label = EVIDENCE_LABELS[name as EvidenceLevel] ?? name;
   return (
-    <Badge variant="secondary" className="shrink-0 text-xs">
-      {label}
-    </Badge>
+    <span className="text-muted-foreground text-xs">{label}</span>
   );
 }
 
@@ -603,14 +597,12 @@ function CollapsedRow({
   finding,
   quote,
   actionLabel,
-  pts,
   onExpand,
   overflow,
 }: {
   finding: LintFinding;
   quote: string | null;
   actionLabel: string;
-  pts?: number | null;
   onExpand: () => void;
   overflow: ReactNode;
 }) {
@@ -620,27 +612,9 @@ function CollapsedRow({
     <div className="flex min-w-0 flex-wrap items-start gap-2">
       <div className="flex min-w-0 flex-1 basis-48 flex-col items-start gap-1 text-left">
         <button type="button" onClick={onExpand} aria-expanded={false} title={finding.label}>
-        <span className="flex min-w-0 flex-wrap items-center gap-1.5">
-          <Badge
-            variant="secondary"
-            className="text-muted-foreground max-w-[10rem] shrink-0 truncate text-xs"
-          >
-            {shortFindingLabel(finding.label)}
-          </Badge>
-          <LevelChip finding={finding} />
-          {finding.zone === "hot" && (
-            <Badge
-              variant="secondary"
-              className={`${ATTENTION_BADGE} text-xs`}
-            >
-              {ATTENTION_BADGE_LABEL}
-            </Badge>
-          )}
-          {pts != null && pts > 0 ? (
-            <span className="text-muted-foreground text-xs">
-              +{pts} points
-            </span>
-          ) : null}
+        <span className="text-muted-foreground min-w-0 text-xs break-words">
+          {shortFindingLabel(finding.label)} · <LevelChip finding={finding} />
+          {finding.zone === "hot" && <> · {ATTENTION_BADGE_LABEL}</>}
         </span>
         </button>
         {quote ? (
@@ -667,16 +641,20 @@ export function FindingGroupHeader({
   title,
   findings,
   id,
+  nScoreable,
 }: {
   title: string;
   findings: LintFinding[];
   id: string;
+  nScoreable?: number | null;
 }) {
+  const points = groupPoints(findings, nScoreable);
   const blurb = hoistBlurb(findings);
   const coaching = sharedCoaching(findings);
   return (
     <div id={id} className="scroll-mt-6 space-y-1">
       <h3 className="text-sm font-medium">{title}</h3>
+      {points > 0 && <p className="text-muted-foreground text-xs">Up to +{points} points</p>}
       {blurb ? (
         <p className="text-muted-foreground max-w-[65ch] text-sm">{blurb}</p>
       ) : coaching ? (
@@ -697,7 +675,6 @@ export function FixCard({
   onClassificationChanged,
   onReanalyze,
   locked,
-  nScoreable,
   hideHow,
 }: FindingCardShared & { finding: LintFinding }) {
   const [expanded, setExpanded] = useState(false);
@@ -707,7 +684,6 @@ export function FixCard({
   const focusNext = useFocusOnNextCommit();
   const currentText = textAtLocation(data, finding);
   const meta = TYPE_CHIP.fix;
-  const pts = potentialPoints(levelNameOf(finding), nScoreable);
   const overflow = (
     <FindingOverflow
       finding={finding}
@@ -722,7 +698,6 @@ export function FixCard({
           finding={finding}
           quote={currentText}
           actionLabel="Review"
-          pts={pts}
           onExpand={() => {
             setExpanded(true);
             focusNext(cardRef);
@@ -774,7 +749,6 @@ export function AskCard({
   onClassificationChanged,
   onReanalyze,
   locked,
-  nScoreable,
   hideHow,
   storedAnswer,
 }: FindingCardShared & { finding: LintFinding }) {
@@ -791,7 +765,6 @@ export function AskCard({
   const focusNext = useFocusOnNextCommit();
   const currentText = textAtLocation(data, finding);
   const meta = TYPE_CHIP.ask;
-  const pts = potentialPoints(levelNameOf(finding), nScoreable);
   const metricAsk = isMetricAsk(finding.question);
   const storedFresh = answerMatchesFinding(storedAnswer, finding.content_hash);
   const staleDraft = Boolean(storedAnswer && !storedFresh);
@@ -848,7 +821,6 @@ export function AskCard({
           finding={finding}
           quote={currentText}
           actionLabel="Answer"
-          pts={pts}
           onExpand={() => {
             setExpanded(true);
             focusNext(cardRef);
@@ -968,6 +940,7 @@ export function NotesTable({
   onReanalyze?: () => void;
 }) {
   const groups = groupNotesByRule(notes);
+  const [notesOpen, setNotesOpen] = useState(false);
   const [skill, setSkill] = useState<string | null>(null);
   // One kept dialog per skill the user has opened, so a drafted rewrite
   // survives closing it and opening another skill.
@@ -1027,9 +1000,11 @@ export function NotesTable({
   return (
     <section ref={sectionRef} id="notes" tabIndex={-1} hidden={hidden} className="scroll-mt-6 space-y-2 outline-none">
       <h2 className="text-muted-foreground text-sm font-medium">
-        Notes ({notes.length}). These don&apos;t change your score.
+        <button type="button" aria-expanded={notesOpen} onClick={() => setNotesOpen((v) => !v)}>
+          Notes ({notes.length}). These don&apos;t change your score.
+        </button>
       </h2>
-      <div className="overflow-x-auto rounded-md border">
+      <div hidden={!notesOpen} className="overflow-x-auto rounded-md border">
         <table className="w-full table-fixed text-sm">
           <tbody>
             {groups.map((group) => {

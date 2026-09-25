@@ -1143,9 +1143,14 @@ Commit: `docs: health check v3 (evaluator, disputes, flags, report layout)`
 |---|---|---|---|---|
 | 1 | Put a toggle in SourceQuote, only above 220 chars | CollapsedRow already wraps it in a button; length does not predict wrapping | Quote is a sibling of the row button; every clamped quote has Show all | Easy to read and quick to act on |
 
+| All | Astra CLI attribution | Exact model variant unavailable in this desktop session | Use GPT-6 (Codex) attribution | Truthful reporting |
+| 2 | Browser check before Task 2 commit | Later evaluator fields affect these same cards | Verify integrated Wave 1 at both widths before checkpoint | Easy to read and quick to act on |
+
 ## Gate results
 
-(Baseline at the starting commit, then per phase; the golden-set results from Task 5.)
+Baseline at `444866c1`: `pytest tests/ mcp_server/tests/ -q` → **5706 passed, 1 skipped**, 256.23s.
+Task 1: 14 frontend pins, lint (2 pre-existing warnings), tsc, and italic mutation check passed.
+Task 2: 23 Node tests and 15 frontend pins passed; disclosure mutation caught. Browser check follows Task 6.
 
 ## Goal critique
 

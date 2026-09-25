@@ -129,7 +129,9 @@
   Needs setup badge and the ATS warning line are its `aria-describedby`.
 - **Judged resume text** is upright `text-sm text-foreground`, wrapped within `max-w-[65ch]`,
   with a `border-l-2 border-border pl-3` quote rule. A compact quote uses `line-clamp-3` and a
-  visible Show all toggle with `aria-expanded`; metadata alone uses muted text.
+  visible Show all toggle with `aria-expanded`; metadata alone uses muted text. Health findings show
+  location, level and attention as plain text; potential points appear once per group. Notes start
+  collapsed behind a disclosure and stay mounted to preserve drafts.
 - **One page shell: `PageShell` + `PageHeader`** (`components/page-shell.tsx`).
   Every top-level route renders `PageShell` — `max-w-6xl`, `p-6`, `gap-6` —
   and `PageHeader` for its title block. Never assign per-page widths or

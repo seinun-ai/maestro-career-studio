@@ -558,6 +558,7 @@ export function HealthReportPage({
                       id={`group-${group.key}`}
                       title={groupTitle(group.key, resumeData)}
                       findings={group.findings}
+                      nScoreable={nScoreable}
                     />
                     {group.findings.map((finding) => {
                       const hideHow = Boolean(

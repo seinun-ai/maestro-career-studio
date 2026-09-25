@@ -6,6 +6,7 @@ import {
   composeMetricContext,
   explainScoreDelta,
   groupFindings,
+  groupPoints,
   groupNotesByRule,
   hoistBlurb,
   isBulletSubjectRule,
@@ -381,4 +382,12 @@ test("shortFindingLabel drops the entry name the group header already shows", ()
   assert.equal(shortFindingLabel("Awards & Honors · bullet 2"), "bullet 2");
   assert.equal(shortFindingLabel("Summary"), "Summary");
   assert.equal(shortFindingLabel("Trailing · "), "Trailing · ");
+});
+
+
+test("groupPoints sums gains once and supports older reports", () => {
+  assert.equal(groupPoints([{level: 0.5}, {level: 0.5}, {level: 0.8}], 28), 5);
+  assert.equal(groupPoints([{level: 0.5}], null), 0);
+  assert.equal(groupPoints([{level: 0.5, gain: 0}, {level: 0.3, gain: 2}], 28), 2);
+  assert.equal(groupPoints([], 28), 0);
 });
