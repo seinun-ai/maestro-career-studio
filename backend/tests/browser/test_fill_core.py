@@ -254,7 +254,13 @@ def test_a_policy_blocked_option_is_never_chosen_or_ticked(page, load):
     assert apply(page, f["Before you continue"], op="choose", text="I certify that the above is true")["outcome"] == "blocked"
     assert page.is_checked("input[value=b]") is False
     row = apply(page, f["Topics"], op="set", texts=["Data", "I agree to the privacy policy"])
-    assert (row["outcome"], row["missing"]) == ("partial", ["I agree to the privacy policy"])
+    # Policy is told apart from not-found: blocked items are their own list.
+    assert (row["outcome"], row["added"], row["missing"], row["blocked"]) == (
+        "partial", ["Data"], [], ["I agree to the privacy policy"])
+    row = apply(page, inv(page)["Topics"], op="set", texts=["I agree to the privacy policy"])
+    assert (row["outcome"], row["missing"], row["blocked"]) == ("blocked", [], ["I agree to the privacy policy"])
+    row = apply(page, inv(page)["Topics"], op="set", texts=["Data", "Nope"])
+    assert (row["outcome"], row["missing"], row["blocked"]) == ("partial", ["Nope"], [])
     assert page.is_checked("input[value='2']") is False
     got = explore(page, f["Where did you find us?"])
     assert [(o["text"], o["policyBlocked"]) for o in got["options"]] == [
@@ -312,3 +318,49 @@ def test_focus_scrolls_to_an_owned_field_only(page, load):
     assert page.evaluate(f"(fid) => {OPS}.focus(fid)", f["fid"]) is True
     assert page.evaluate("document.activeElement.id") == "deg"
     assert page.evaluate(f"() => {OPS}.focus('zzzzzz-1')") is False
+
+
+def test_a_popup_that_closes_a_little_late_is_still_closed_every_time(page, load):
+    """Only a popup that NEVER closes stops being clicked at: one that closes
+    after an exit transition is closed on every operation."""
+    load(page, """<label id='l'>Pick</label><button id='b' aria-haspopup='listbox' aria-controls='pop' aria-labelledby='l'>Select One</button>
+      <ul role='listbox' id='pop' style='display:none'><li role='option'>A</li><li role='option'>B</li></ul><script>
+      const pop = document.getElementById('pop');
+      document.getElementById('b').addEventListener('click', (e) => { e.stopPropagation(); pop.style.display = 'block'; });
+      document.addEventListener('click', () => setTimeout(() => { pop.style.display = 'none'; }, 120));</script>""")
+    f = inv(page)["Pick"]
+    for _ in range(4):
+        assert [o["text"] for o in explore(page, f)["options"]] == ["A", "B"]
+        page.wait_for_timeout(200)
+        assert page.evaluate("getComputedStyle(document.getElementById('pop')).display") == "none"
+
+
+def test_a_passive_option_that_vanished_is_option_missing_not_an_error(page, load):
+    load(page, fixture_html("native.html"))
+    f = inv(page)
+    page.evaluate("""() => { const s = window.careerStudioCompanion.shapes.byName('select'); const real = s.passive;
+      s.passive = (el) => { const p = real(el); return { ...p, options: [...p.options, { oid: 'x', text: 'Ghost' }] }; }; }""")
+    row = apply(page, f["Highest degree"], op="choose", text="Ghost")
+    assert (row["outcome"], row["reason"]) == ("unexpected", "option_missing")
+    page.evaluate("""() => { const s = window.careerStudioCompanion.shapes.byName('group'); const real = s.passive;
+      s.passive = (el) => { const p = real(el); return { ...p, options: [...p.options, { oid: 'x', text: 'Maybe' }] }; }; }""")
+    row = apply(page, f["Willing to relocate?"], op="choose", text="Maybe")
+    assert (row["outcome"], row["reason"]) == ("unexpected", "option_missing")
+
+
+def test_an_editable_box_that_refuses_typing_is_an_outcome(page, load):
+    # Chrome does not let a page cancel execCommand's input, so the browser's
+    # refusal (an editor that swallows insertText) is simulated directly.
+    load(page, "<div contenteditable='true' id='a' aria-label='Summary'></div>"
+               "<script>document.execCommand = () => false;</script>")
+    row = apply(page, inv(page)["Summary"], op="write", value="x")
+    assert (row["outcome"], row["reason"]) == ("unexpected", "page_error")
+
+
+def test_a_field_removed_mid_operation_is_stale(page, load):
+    load(page, "<div><label for='a'>Q</label><input id='a'></div><div><label for='b'>R</label><input id='b'></div><script>"
+               "document.getElementById('a').addEventListener('input', (e) => e.target.remove());"
+               "document.getElementById('b').addEventListener('focus', (e) => e.target.remove());</script>")
+    f = inv(page)
+    assert apply(page, f["Q"], op="write", value="x")["outcome"] == "stale"
+    assert apply(page, f["R"], op="write", value="x")["outcome"] == "stale"

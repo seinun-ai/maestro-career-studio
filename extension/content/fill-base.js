@@ -175,8 +175,8 @@
   // popup is still open. Normal mode checks the token before each gesture.
   // CLEANUP mode (after a cancel/timeout) skips the checks: closing a popup the
   // engine opened is the one thing a cancelled run may still do.
-  // BOUNDED: an engine popup that survives MAX_OUTSIDE outside clicks is not
-  // clicked at again (nor sent Escape) — a popup that will not close is left,
+  // BOUNDED: an engine popup that survives MAX_OUTSIDE outside clicks in a
+  // row (each given CLOSE_WAIT_MS to close) is not clicked at again (nor sent Escape) — a popup that will not close is left,
   // never fought in a loop that clicks the page on every later operation.
   const closePopups = async (el, t, { cleanup = false } = {}) => {
     if (!cleanup) check(t);
@@ -187,7 +187,10 @@
     if (engineOpen()) {
       document.body.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
       document.body.click();
-      await sleep(60);
+      // A popup with an exit transition closes a little late: give it that
+      // long before counting it as one that survived the click.
+      const end = Date.now() + CLOSE_WAIT_MS;
+      do await sleep(40); while (engineOpen() && Date.now() < end);
       for (const p of enginePopups) if (visible(p)) survived.set(p, (survived.get(p) ?? 0) + 1);
     }
   };
@@ -246,9 +249,15 @@
     if (pop) enginePopups.add(pop);
   };
   const MAX_OUTSIDE = 2;
-  const survived = new WeakMap(); // engine popup -> outside clicks it outlived
+  const CLOSE_WAIT_MS = 300;
+  // Engine popup -> outside clicks it outlived IN A ROW: a popup seen closed
+  // starts again at zero, so only one that never closes stops being clicked at.
+  const survived = new WeakMap();
   const engineOpen = () => {
-    for (const p of enginePopups) if (!p.isConnected) enginePopups.delete(p);
+    for (const p of enginePopups) {
+      if (!p.isConnected) enginePopups.delete(p);
+      else if (!visible(p)) survived.delete(p);
+    }
     return [...enginePopups].some((p) => visible(p) && (survived.get(p) ?? 0) < MAX_OUTSIDE);
   };
   const insideEnginePopup = (el) => {

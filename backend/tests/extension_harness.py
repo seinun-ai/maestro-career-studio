@@ -120,9 +120,11 @@ DETECTION_MODULE_SOURCES = [CONTENT / "job-posting.js", CONTENT / "detect.js"]
 #
 # THEY DIVERGED with the fill engine (fill-engine plan Task 4), and this is the
 # written-out list that comment asked for. The engine's six files need a REAL
-# DOM — layout, focus, a MutationObserver, document listeners at load — which
-# this fake one cannot give, and they are driven in real Chromium instead
-# (tests/browser, whose ENGINE_SOURCES loads them in manifest order). Every
+# DOM — layout, focus, and at load inventory.js constructs a MutationObserver
+# and registers document input/change listeners (this fake document has no
+# addEventListener) — which this fake one cannot give, so they are driven in
+# real Chromium instead (tests/browser, whose ENGINE_SOURCES loads them in
+# manifest order). Every
 # runtime driver here executes the page as it was before them; `agent.js`
 # reads `ns.fillOps` only when a fill_* message arrives, so nothing in this
 # world calls into the missing modules. Source scans still see all of it.

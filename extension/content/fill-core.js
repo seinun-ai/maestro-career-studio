@@ -250,13 +250,18 @@
     if (hits.length !== 1) return { outcome: "unexpected", reason: "option_missing", options };
     if (hits[0].policyBlocked) return { outcome: "blocked" };
     const want = hits[0].text;
+    // The control behind the option, found again: an option the page dropped
+    // since it was read is missing, not an error.
     if (shape.name === "select") {
       const opt = shape.realOptions(el).find((o) => b().clean(o.text) === want);
+      if (!opt) return { outcome: "unexpected", reason: "option_missing", options };
       if (!opt.selected) selectIndex(el, opt.index, t);
     } else if (shape.lone(el)) {
+      if (want !== "Yes" && want !== "No") return { outcome: "unexpected", reason: "option_missing", options };
       if (el.checked !== (want === "Yes")) tick(el, t);
     } else {
       const input = shape.members(el).find((m) => shape.labelOf(m) === want);
+      if (!input) return { outcome: "unexpected", reason: "option_missing", options };
       if (!input.checked) tick(input, t);
     }
     await blurOut(el, t);
@@ -309,15 +314,19 @@
   }
 
   // Sets add, never remove: an existing choice is kept and never unticked,
-  // and a set is verified only when EVERY requested item is committed.
+  // and a set is verified only when EVERY requested item is committed. Items
+  // the never-fill policy refuses are reported as `blocked`, apart from the
+  // `missing` ones the page did not offer or did not take.
   async function set(el, shape, { texts = [], terms = [], consentForms } = {}, t) {
     if (shape.kind !== "choice" || !shape.multi?.(el)) return { outcome: "unexpected", reason: "not_a_set" };
-    const allowed = texts.filter((x) => !blockedText(x, consentForms));
-    if (texts.length && !allowed.length) return { outcome: "blocked", added: [], missing: [...texts] };
+    const options = shape.passive ? flag(shape.passive(el).options, consentForms) : null;
+    // Blocked by its own text, or (passive) by the one option it names.
+    const blocked = texts.filter((x) => blockedText(x, consentForms)
+      || (options && match(options, x).length === 1 && match(options, x)[0].policyBlocked));
+    const allowed = texts.filter((x) => !blocked.includes(x));
+    if (texts.length && !allowed.length) return { outcome: "blocked", added: [], missing: [], blocked };
     if (shape.passive) {
-      const options = flag(shape.passive(el).options, consentForms);
-      const wanted = allowed.map((x) => match(options, x)).filter((h) => h.length === 1 && !h[0].policyBlocked)
-        .map(([h]) => h.text);
+      const wanted = allowed.map((x) => match(options, x)).filter((h) => h.length === 1).map(([h]) => h.text);
       if (shape.name === "select") {
         const add = shape.realOptions(el).filter((o) => !o.selected && wanted.includes(b().clean(o.text)));
         if (add.length) {
@@ -340,15 +349,16 @@
     } else {
       for (const [i, text] of texts.entries()) {
         if (!allowed.includes(text) || verify(el, shape, text) === "verified") continue;
-        await choose(el, shape, { text, term: terms[i] ?? text, consentForms }, t);
+        const got = await choose(el, shape, { text, term: terms[i] ?? text, consentForms }, t);
+        if (got.outcome === "blocked") blocked.push(text); // the option shown for it is a never-fill one
         if (leftOpen.has(el)) await tidy(el, t); // a category is not an item: close it and move on
       }
     }
     const committed = [shape.read(el)].flat();
-    const added = texts.filter((x) => allowed.includes(x) && committed.some((c) => b().equivalent(c, x)));
-    const missing = texts.filter((x) => !added.includes(x));
-    if (b().invalid(el)) return { outcome: "reverted", added, missing };
-    return { outcome: missing.length ? "partial" : "verified", added, missing };
+    const added = allowed.filter((x) => committed.some((c) => b().equivalent(c, x)));
+    const missing = allowed.filter((x) => !added.includes(x) && !blocked.includes(x));
+    if (b().invalid(el)) return { outcome: "reverted", added, missing, blocked };
+    return { outcome: missing.length || blocked.length ? "partial" : "verified", added, missing, blocked };
   }
 
   // A text field holding a value the page shows an error on: commit its OWN
