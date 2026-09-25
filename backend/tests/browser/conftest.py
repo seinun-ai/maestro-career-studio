@@ -24,6 +24,8 @@ ENGINE_SOURCES: list[str] = [
     "content/fill-base.js",
     "content/shapes.js",
     "content/inventory.js",
+    "content/fill-core.js",
+    "content/fill-ops.js",
 ]
 
 

@@ -175,6 +175,9 @@
   // popup is still open. Normal mode checks the token before each gesture.
   // CLEANUP mode (after a cancel/timeout) skips the checks: closing a popup the
   // engine opened is the one thing a cancelled run may still do.
+  // BOUNDED: an engine popup that survives MAX_OUTSIDE outside clicks is not
+  // clicked at again (nor sent Escape) — a popup that will not close is left,
+  // never fought in a loop that clicks the page on every later operation.
   const closePopups = async (el, t, { cleanup = false } = {}) => {
     if (!cleanup) check(t);
     if (!engineOpen()) return;
@@ -185,6 +188,7 @@
       document.body.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
       document.body.click();
       await sleep(60);
+      for (const p of enginePopups) if (visible(p)) survived.set(p, (survived.get(p) ?? 0) + 1);
     }
   };
   const proto = (el) => (el instanceof HTMLTextAreaElement ? HTMLTextAreaElement : HTMLInputElement).prototype;
@@ -241,9 +245,11 @@
   const markEnginePopup = (pop) => {
     if (pop) enginePopups.add(pop);
   };
+  const MAX_OUTSIDE = 2;
+  const survived = new WeakMap(); // engine popup -> outside clicks it outlived
   const engineOpen = () => {
     for (const p of enginePopups) if (!p.isConnected) enginePopups.delete(p);
-    return [...enginePopups].some(visible);
+    return [...enginePopups].some((p) => visible(p) && (survived.get(p) ?? 0) < MAX_OUTSIDE);
   };
   const insideEnginePopup = (el) => {
     for (let n = el; n; n = n.parentElement) if (enginePopups.has(n)) return true;

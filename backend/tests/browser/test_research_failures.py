@@ -1,13 +1,7 @@
 """The six failures docs/reports/2026-09-25-extension-reliability-research.md
 reproduced, asserted as the new engine must behave."""
 
-import pytest
-
 from tests.browser.conftest import fixture_html
-
-# raises=Exception keeps "FAIL in CI without Chromium" alive: the harness's
-# pytest.fail() is a BaseException, so it is not swallowed as the expected failure.
-pytestmark = pytest.mark.xfail(strict=True, raises=Exception, reason="engine lands in Tasks 2-4")
 
 NS = "window.careerStudioCompanion"
 
@@ -38,9 +32,11 @@ def test_3_an_unmatched_input_combobox_is_listed(page, load):
 
 def test_4_a_closed_dropdown_is_explored_before_anyone_decides(page, load):
     load(page, fixture_html("workday_listbox.html"))
-    fid = next(f["fid"] for f in inventory(page) if f["question"].startswith("Are you legally"))
-    got = page.evaluate(f"(fid) => {NS}.fillOps.explore([{{fid}}])", fid)
-    assert [o["text"] for o in got[fid]["options"]] == ["Yes", "No"]
+    f = next(f for f in inventory(page) if f["question"].startswith("Are you legally"))
+    # Every page operation carries the fingerprint it was decided on (explore
+    # opens the popup, so it is refused without one like any other action).
+    got = page.evaluate(f"(r) => {NS}.fillOps.explore([r])", {"fid": f["fid"], "fp": f["fp"]})
+    assert [o["text"] for o in got[f["fid"]]["options"]] == ["Yes", "No"]
 
 
 def test_5_a_rejected_click_is_never_reported_filled(page, load):
