@@ -24,6 +24,7 @@ from app.services import (
     health_guards,
     health_score,
     health_verify,
+    health_wording,
     health_zones,
     model_settings,
     pdf_render,
@@ -633,7 +634,9 @@ def assemble(resume: dict, levels_by_loc: dict[Location, dict], base_gates: list
              waivers: set[str] | Mapping[str, str] | None = None,
              gap_hits: list[dict] | None = None,
              c2_hit: dict | None = None,
-             rewrite_fn: Callable[[str], str | None] | None = None) -> dict[str, Any]:
+             rewrite_fn: Callable[[str], str | None] | None = None,
+             word_bank: health_wording.WordBank = health_wording.DEFAULT_BANK,
+             ) -> dict[str, Any]:
     """Turn classified levels + gates into a scored report with typed findings.
 
     This is the Health Report ASSEMBLY INTERFACE — the pure seam the test suite
@@ -643,6 +646,8 @@ def assemble(resume: dict, levels_by_loc: dict[Location, dict], base_gates: list
     `rewrite_fn(text) -> str | None` produces a guarded rewrite (None = ask). It is
     called for at most MAX_REWRITES fix candidates, ranked by cost.
     `resume_changed_since_prior` defaults on to preserve existing direct callers.
+    `word_bank` is the user's cliché/filler bank and Never flag list
+    (`health_wording.load`); it defaults to the built-in bank.
     """
     gates, e_hot = _final_gates(
         levels_by_loc,
@@ -682,6 +687,8 @@ def assemble(resume: dict, levels_by_loc: dict[Location, dict], base_gates: list
     # 4) shape notes + advisories — all type=note, weight 0.
     # A per-bullet advisory (length, etc.) must not duplicate a bullet that
     # already carries a ladder fix/ask; the ladder finding is the primary signal.
+    # Wording notes are the exception: a cliché or a slip is a different defect
+    # from a weak result, and the ask does not fix it.
     covered = {
         (f["location"].get("section"), f["location"].get("index"),
          f["location"].get("bullet_index"))
@@ -689,13 +696,14 @@ def assemble(resume: dict, levels_by_loc: dict[Location, dict], base_gates: list
         if f["type"] in ("fix", "ask") and f["location"].get("bullet_index") is not None
     }
     findings.extend(_shape_notes(resume, levels_by_loc, tier, hot))
-    for note in _advisories(resume):
+    for note in _advisories(resume, word_bank=word_bank):
         nloc = note["location"]
-        if nloc.get("bullet_index") is not None and (
+        if not _is_wording(note) and nloc.get("bullet_index") is not None and (
             nloc.get("section"), nloc.get("index"), nloc.get("bullet_index")
         ) in covered:
             continue
         findings.append(note)
+    findings.extend(_slip_notes(resume, levels_by_loc, word_bank))
 
     findings.sort(key=_sort_key)
 
@@ -852,8 +860,79 @@ def _skill_demonstrated(token: str, blob: str) -> bool:
     return re.search(rf"(?<![A-Za-z0-9]){escaped}(?![A-Za-z0-9])", blob) is not None
 
 
-def _advisories(resume: dict) -> list[dict]:
+# --------------------------------------------------------------------------- #
+# wording (clichés, filler, slips) — weight 0, never suppressed by a ladder ask
+
+_WORDING_COPY = {
+    "cliche": ("'{w}' is a cliché.",
+               "Hiring managers rate words like this as meaningless: they claim a trait "
+               "without showing it.",
+               "Remove it, or show the trait through what you did."),
+    "filler": ("'{w}' adds nothing.",
+               "It makes the line longer without telling the reader anything.",
+               "Remove it."),
+}
+
+
+def _is_wording(note: dict) -> bool:
+    return str(note.get("rule") or "").startswith("language.")
+
+
+def _guarded(original: str, edited: str) -> str | None:
+    """The code-edited text, only when the rewrite guards accept it."""
+    if not edited.strip() or edited == original:
+        return None
+    return edited if not health_guards.guard_violations(original, edited) else None
+
+
+def _wording_notes(resume: dict, bank: health_wording.WordBank) -> list[dict]:
+    """`language.cliche` / `language.filler`: one note per (location, bank word)
+    over the summary and every scored bullet. `suggestion` is the text with the
+    word removed, when the guards accept it; `subject` is the bank word."""
     notes: list[dict] = []
+    for loc, text in _ladder_items(resume):
+        for kind, word in health_wording.matches(text, bank):
+            issue, why, how = _WORDING_COPY[kind]
+            notes.append(_finding(
+                "note", loc, _label_at(resume, loc), issue.format(w=word), why, how,
+                suggestion=_guarded(text, health_wording.remove(text, word)),
+                source="rule", rule=f"language.{kind}", subject=word,
+                content_hash=bullet_classify.content_hash(text)))
+    return notes
+
+
+def _slip_notes(resume: dict, levels_by_loc: dict[Location, dict],
+                bank: health_wording.WordBank) -> list[dict]:
+    """`language.slip`: one note per stored classifier `language` entry
+    ({span, fix}), across every classified ladder item. A span on the Never flag
+    list, or no longer in the text, is skipped."""
+    notes: list[dict] = []
+    for loc, result in levels_by_loc.items():
+        entries = result.get("language") or []
+        if not entries:
+            continue
+        text = _text_at(resume, loc)
+        seen: set[str] = set()
+        for entry in entries:
+            span, fix = str(entry.get("span") or ""), str(entry.get("fix") or "")
+            if (not span or not fix or span in seen or span not in text
+                    or health_wording.is_ignored(span, bank)):
+                continue
+            seen.add(span)
+            notes.append(_finding(
+                "note", loc, _label_at(resume, loc),
+                f"'{span}' looks like a slip: '{fix}'.",
+                "Recruiters notice spelling and grammar slips, and read them as carelessness.",
+                "Apply the fix, or correct it in your own words.",
+                suggestion=_guarded(text, health_wording.apply_fix(text, span, fix)),
+                source="llm", rule="language.slip", subject=span,
+                content_hash=bullet_classify.content_hash(text)))
+    return notes
+
+
+def _advisories(resume: dict, *,
+                word_bank: health_wording.WordBank = health_wording.DEFAULT_BANK) -> list[dict]:
+    notes: list[dict] = list(_wording_notes(resume, word_bank))
     if not (resume.get("summary") or "").strip():
         notes.append(_finding(
             "note", ("summary", None, None), "Summary", "No summary.",
@@ -960,14 +1039,17 @@ def _advisories(resume: dict) -> list[dict]:
     return notes
 
 
-def rule_notes(resume: dict) -> list[dict]:
+def rule_notes(resume: dict, *,
+               word_bank: health_wording.WordBank = health_wording.DEFAULT_BANK) -> list[dict]:
     """Deterministic, JD-independent rule notes for a resume dict.
 
     Public because the post-tailoring coherence check reuses these rules
     (design 2026-08-12). Pure — no DB, no LLM, no template. `_shape_notes` is
-    deliberately NOT included: it reads LLM-classified evidence levels.
+    deliberately NOT included: it reads LLM-classified evidence levels. Nor are
+    `language.slip` notes, which read the classifier's `language` field.
+    `word_bank` is passed in (callers with a Session use `health_wording.load`).
     """
-    return _advisories(resume)
+    return _advisories(resume, word_bank=word_bank)
 
 
 # --------------------------------------------------------------------------- #
@@ -1035,6 +1117,7 @@ def run_report(db: Session, kind: str, key: str, resume: dict, *,
         gap_hits=gap_hits,
         c2_hit=c2_hit,
         rewrite_fn=_rewrite if use_llm else None,
+        word_bank=health_wording.load(db),
     )
     result["features"]["verifier"] = verifier_cache
 

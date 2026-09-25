@@ -67,11 +67,26 @@ approved evaluator contract. Code validates the model response and computes scor
   a number, so the flag stays silent in that rare case; “AUC 0.789” (a capitalised word directly before
   a decimal) reads as a version, so the flag can fire when that is the only number. Both errors affect
   only this zero-score note.
-- **Language slips** [strong, later wave]: `language.slip` reports clear spelling and grammar
-  corrections, with no score impact. Source: [recruiter experiment](https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0283280).
-- **Word bank** [moderate, later wave]: cliché and filler notes use an editable whole-word bank
-  and a Never flag list. Source: the approved design's CareerBuilder/Harris and Boston University
-  guidance. Matching is contextuality-blind: “dynamic programming” flags “dynamic” until ignored.
+- **Wording is flagged, never scored**: every `language.*` note is a zero-score `note`, and a ladder
+  ask on the same bullet never hides it. A word or span on the user's **Never flag** list is skipped.
+- **Language slips** [strong]: `language.slip` reports each spelling or grammar correction the evaluator
+  already returns in its `language` field (verbatim span and fix, at most three per bullet; no extra
+  model call), for the summary and every scored bullet. Source: [recruiter experiment](https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0283280).
+- **Clichés** [moderate]: `language.cliche` flags words hiring managers rate as meaningless, matched by
+  code against an editable bank. Defaults: results-driven, results-oriented, team player, go-getter,
+  think outside the box, synergy, best of breed, go-to person, thought leadership, value add,
+  detail-oriented, self-motivated, hard worker, strategic thinker, dynamic, proactive, track record,
+  self-starter. Source: CareerBuilder/Harris Poll 2014 survey of hiring managers, “worst resume terms”.
+- **Filler words** [moderate]: `language.filler` flags words that lengthen a line without informing:
+  successfully, effectively, efficiently, various, several, very, really, basically, actually.
+  Source: the VMock filler-word list, as published by Boston University career services.
+- **Word bank matching** [weak]: whole words or phrases, case-insensitive, one note per location and
+  word (`health_wording.matches`). The user edits both lists and the Never flag list, and can reset
+  the two lists to the defaults (Never flag is kept). **Known limitation:** matching is context-blind,
+  so “dynamic programming” flags “dynamic”; the user adds “dynamic” to Never flag. Source: `health_wording.py`.
+- **Remove and Apply** [weak]: Remove deletes the word in code (tidying the space, comma and capital
+  around it); Apply swaps a slip's span for its fix. Either text is offered only when it passes the
+  rewrite guards below, so a fix that adds a number or drops a named tool or company is copy-only.
 
 ## User control and verification
 

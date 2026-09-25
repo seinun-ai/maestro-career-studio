@@ -77,6 +77,28 @@ def test_advisories_are_free_the_no_numbers_flag_moves_score_by_zero():
     assert (b["score"], b["grade"], b["next_grade"]) == (a["score"], a["grade"], a["next_grade"])
 
 
+def test_advisories_are_free_twenty_wording_notes_move_score_by_zero():
+    """Wording notes (clichés, filler, slips) are flags, never a penalty — and they
+    survive the ladder ask on the same bullet, so this also covers the asked case."""
+    lv = {("experience", 0, i): _lv(0.5) for i in range(5)}
+    lv[("experience", 0, 0)] = {**lv[("experience", 0, 0)],
+                                "language": [{"span": "owned", "fix": "owns"}]}
+    hot = set(lv)
+    clean = _resume()
+    clean["experience"][0]["bullets"] = ["Owned the vendor onboarding checklist for support"] * 5
+    wordy = _resume()
+    wordy["experience"][0]["bullets"] = [
+        "Successfully and effectively owned various very dynamic synergy work"] * 5
+
+    a = rl.assemble(clean, lv, PASS_GATES, "experienced", hot)["report"]
+    b = rl.assemble(wordy, lv, PASS_GATES, "experienced", hot)["report"]
+    wording = [f for f in b["findings"] if str(f.get("rule", "")).startswith("language.")]
+    assert len(wording) >= 20
+    assert {f["rule"] for f in wording} == {"language.cliche", "language.filler", "language.slip"}
+    assert all(f["type"] == "note" and f["cost"] == 0 and f["gain"] == 0 for f in wording)
+    assert (b["score"], b["grade"], b["next_grade"]) == (a["score"], a["grade"], a["next_grade"])
+
+
 def test_determinism_five_runs_zero_variance():
     r = _resume()
     lv = {("experience", 0, 0): _lv(0.5), ("experience", 0, 1): _lv(0.0),

@@ -359,6 +359,11 @@
   `new_fact` carrying a number the note and bullet never gave yields no suggestion.
   **`evidence.no_numbers`** is a zero-score `note` at `{"section": "resume"}` (no index), from `_shape_notes`:
   it fires when 4+ scored bullets exist and none has a number (`_has_metric`); never a penalty or a quota.
+  **Wording** notes (`language.cliche`/`language.filler` from the code-matched word bank in `health_wording.py`;
+  `language.slip` from the stored `language` field) are zero-score, never skipped under a ladder ask, and carry
+  `subject`, the ORIGINAL text's `content_hash`, and a `suggestion` only when `guard_violations` is empty. The
+  bank lives in `Setting` rows `health.word_bank` (absent = defaults) and `health.ignored_words` (Never flag),
+  edited through `GET`/`PUT /api/resume-lint/wording` and `POST /wording/reset`; the coherence check uses it too.
   Gates are `tier:
   "fatal"|"serious"` × `status: "pass"|"fail"|"not_assessed"`
   (`health_gates.py:3`), scored by `health_score.py`; a failing fatal, unwaived

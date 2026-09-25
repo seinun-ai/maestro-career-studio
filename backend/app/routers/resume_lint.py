@@ -18,6 +18,7 @@ from app.services import (
     health_gates,
     health_guards,
     health_score,
+    health_wording,
     resume_lint,
     resume_versions,
 )
@@ -107,6 +108,31 @@ class StoredDispute(BaseModel):
     before: DisputeBefore
     after: DisputeAfter
     created_at: datetime
+
+
+class WordingBody(BaseModel):
+    """The user's word bank. Each list is trimmed, lower-cased and deduped;
+    an entry outside 1–40 characters, or more than 200 entries, is a 422."""
+    cliche: list[str]
+    filler: list[str]
+    ignored: list[str]
+
+    @field_validator("cliche", "filler", "ignored")
+    @classmethod
+    def normalize_words(cls, value: list[str]) -> list[str]:
+        return health_wording.normalize(value)
+
+
+class WordingDefaults(BaseModel):
+    cliche: list[str]
+    filler: list[str]
+
+
+class WordingRead(BaseModel):
+    cliche: list[str]
+    filler: list[str]
+    ignored: list[str]
+    defaults: WordingDefaults
 
 
 class AskAnswerRead(BaseModel):
@@ -228,6 +254,24 @@ def _load_resume(db: Session, kind: Kind, key: str) -> tuple[dict, str | None]:
             detail=NO_TAILORED_RESUME,
         )
     return application.customized_json, application.template_id
+
+
+@router.get("/wording", response_model=WordingRead)
+def get_wording(db: Annotated[Session, Depends(get_db)]):
+    """The cliché and filler word bank, the Never flag list, and the defaults."""
+    return health_wording.load(db).payload()
+
+
+@router.put("/wording", response_model=WordingRead)
+def put_wording(body: WordingBody, db: Annotated[Session, Depends(get_db)]):
+    return health_wording.save(
+        db, cliche=body.cliche, filler=body.filler, ignored=body.ignored).payload()
+
+
+@router.post("/wording/reset", response_model=WordingRead)
+def reset_wording(db: Annotated[Session, Depends(get_db)]):
+    """Default clichés and filler again; the Never flag list is kept."""
+    return health_wording.reset(db).payload()
 
 
 @router.post("/{kind}/{key}/run", response_model=LintReportRead)
