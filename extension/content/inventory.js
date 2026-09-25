@@ -16,6 +16,12 @@
  */
 (() => {
   const ns = (window.careerStudioCompanion ??= {});
+  // LOAD ONCE. panel_prepare re-injects every content script into the SAME
+  // isolated world; a second run would reset this module's state (see
+  // INTERNALS.md, "A tab that was already open…").
+  const loaded = (ns.loadedOnce ??= new Set());
+  if (loaded.has("content/inventory.js")) return;
+  loaded.add("content/inventory.js");
   const FRAME = Math.random().toString(36).slice(2, 8);
   // Known shapes plus ARIA widgets no shape claims yet: an unrecognised control
   // is still LISTED (shape "unknown") so the panel can name it, never dropped.

@@ -551,7 +551,11 @@ Two things bound that:
   "No job description found on this page" over a visible JD, forever. The panel
   injects them (`panel_prepare`, `chrome.scripting`) on three routes and no
   others: Fill this form and Attach resume, both user gestures, and once per page
-  after a posting read has come back silent. Never speculatively on a load —
+  after a posting read has come back silent. In a tab that already HAS them
+  (every Fill this form does this) the files re-run in the same isolated world:
+  the fill engine's modules and `agent.js`'s message listener load once
+  (`ns.loadedOnce`), so the user's edits, a latched Stop and the verified-value
+  memory survive and every message is still handled exactly once. Never speculatively on a load —
   injecting into a page nobody asked about is exactly the always-on cost the
   detection gate exists to avoid — so anywhere else the panel says it cannot see
   the page and to reload the tab, rather than claiming it had nothing on it.

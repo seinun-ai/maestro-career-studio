@@ -350,7 +350,17 @@
     },
   };
 
-  chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  // ONE listener per isolated world. panel_prepare re-injects this file into
+  // the world that already runs it; a second listener would run every page
+  // operation twice, concurrently. The handlers above are re-published (the
+  // same code), the registration is not.
+  const loaded = (ns.loadedOnce ??= new Set());
+  if (!loaded.has("content/agent.js:listener")) {
+    loaded.add("content/agent.js:listener");
+    chrome.runtime.onMessage.addListener(onPageMessage);
+  }
+
+  function onPageMessage(msg, sender, sendResponse) {
     // Reading `chrome.runtime.id` THROWS once the extension has been reloaded
     // under a page that is still running this script, so the guard that
     // authorizes the sender is itself a place this can die.
@@ -381,7 +391,7 @@
       }
     })();
     return true;
-  });
+  }
 
   ns.pageHandlers = PAGE_HANDLERS;
 })();

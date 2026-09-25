@@ -19,10 +19,17 @@
  */
 (() => {
   const ns = (window.careerStudioCompanion ??= {});
+  // LOAD ONCE. panel_prepare re-injects every content script into the SAME
+  // isolated world; a second run would reset this module's state (see
+  // INTERNALS.md, "A tab that was already open…").
+  const loaded = (ns.loadedOnce ??= new Set());
+  if (loaded.has("content/fill-core.js")) return;
+  loaded.add("content/fill-core.js");
   const b = () => ns.fillBase;
   const OPEN_MS = 2500; // a pressed widget's popup, or a typed search's results
   const SEARCH_OPEN_MS = 1000; // a search box pressed with no term may show nothing at all
   const EMPTY_MS = 600; // a popup that lists nothing and is not loading this long is empty
+  const CLEANUP_WAIT_MS = 500; // a cancelled search's debounce, waited out before closing
   const BUSY = /^(loading|searching)/i;
   const OPTIONISH = '[role="option"], [role="menuitem"], [role="treeitem"], [role="menuitemradio"], [role="menuitemcheckbox"]';
   const INNER_SEARCH = 'input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"])';
@@ -69,6 +76,7 @@
   };
 
   const blurOut = async (el, t) => {
+    b().check(t);
     el.blur?.();
     await b().settle(t, 150);
   };
@@ -129,10 +137,12 @@
     }, OPEN_MS, t);
     return pop ?? own(el, before);
   };
-  const typeQuery = async (box, term, t) => {
-    if (!typed.has(box)) typed.set(box, { prior: box.value ?? "", query: null });
+  // A query typed into the field's OWN box is remembered so tidy can take it
+  // back; one typed into a search box inside the popup leaves with the popup.
+  const typeQuery = async (box, term, t, { own: remember = false } = {}) => {
+    if (remember && !typed.has(box)) typed.set(box, { prior: box.value ?? "", query: null });
     b().typeText(box, term, t);
-    typed.get(box).query = box.value;
+    if (remember) typed.get(box).query = box.value;
     await b().settle(t, 100); // let a debounced search replace the old list first
   };
   const open = async (el, shape, term, t) => {
@@ -142,7 +152,7 @@
     // A search widget with a term is typed into, never pressed: some close
     // their results on a click in their own box.
     if (searchable && term) {
-      await typeQuery(el, term, t);
+      await typeQuery(el, term, t, { own: true });
       return { pop: await waitOptions(el, before, t), before, searchable };
     }
     el.focus?.({ preventScroll: true });
@@ -189,15 +199,24 @@
   // held before; a value anybody else put there is never touched, and CLEANUP
   // (after a cancel or timeout) never types at all — it may only close popups
   // the engine opened.
+  // In CLEANUP (after Stop or a timeout) taking back the engine's own query
+  // is still allowed — it undoes the engine's write, nobody else's — and the
+  // search it re-triggers is waited out (bounded) so no late result stays open.
   const tidy = async (el, t, { cleanup = false } = {}) => {
     leftOpen.delete(el);
     const before = opened.get(el);
     const q = typed.get(el);
     typed.delete(el);
-    if (!cleanup && q && el.isConnected && el.value === q.query && q.prior !== q.query) {
-      b().typeText(el, q.prior, t);
-      await b().settle(t, 120);
-      if (before) await b().waitFor(() => !own(el, before) || !busy(own(el, before)), OPEN_MS, t);
+    if (q && el.isConnected && el.value === q.query && q.prior !== q.query) {
+      b().typeText(el, q.prior, t, { undo: cleanup });
+      const settled = () => !before || !own(el, before) || !busy(own(el, before));
+      if (cleanup) {
+        await b().sleep(120);
+        for (const end = Date.now() + CLEANUP_WAIT_MS; !settled() && Date.now() < end;) await b().sleep(40);
+      } else {
+        await b().settle(t, 120);
+        await b().waitFor(settled, OPEN_MS, t);
+      }
     }
     if (before && el.isConnected) own(el, before); // a menu re-rendered by that typing
     await b().closePopups(el, t, { cleanup });
@@ -244,6 +263,14 @@
     el.dispatchEvent(new Event("change", { bubbles: true }));
   };
 
+  const addSelected = (el, opts, t) => {
+    b().check(t);
+    el.focus({ preventScroll: true });
+    for (const o of opts) o.selected = true;
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+    el.dispatchEvent(new Event("change", { bubbles: true }));
+  };
+
   async function choosePassive(el, shape, text, t, consentForms) {
     const options = flag(shape.passive(el).options, consentForms);
     const hits = match(options, text);
@@ -255,7 +282,8 @@
     if (shape.name === "select") {
       const opt = shape.realOptions(el).find((o) => b().clean(o.text) === want);
       if (!opt) return { outcome: "unexpected", reason: "option_missing", options };
-      if (!opt.selected) selectIndex(el, opt.index, t);
+      if (!opt.selected && el.multiple) addSelected(el, [opt], t); // the other selections stay
+      else if (!opt.selected) selectIndex(el, opt.index, t);
     } else if (shape.lone(el)) {
       if (want !== "Yes" && want !== "No") return { outcome: "unexpected", reason: "option_missing", options };
       if (el.checked !== (want === "Yes")) tick(el, t);
@@ -273,10 +301,20 @@
     b().check(t);
     o.click();
   }];
+  // Whether the field's committed value already holds this text — presence
+  // only, whatever error the field shows.
+  const holds = (el, shape, x) => [shape.read(el)].flat().some((h) => b().equivalent(h, x));
+  // An item a multi widget already holds is never clicked (a click toggles it off).
+  const alreadyThere = (el, shape, text) => ({
+    outcome: verify(el, shape, text) === "verified" ? "verified" : "reverted", text,
+  });
+
   async function choose(el, shape, { text, term, consentForms } = {}, t) {
     if (shape.kind !== "choice") return { outcome: "unexpected", reason: "not_a_choice" };
     if (blockedText(text, consentForms)) return { outcome: "blocked" };
     if (shape.passive) return choosePassive(el, shape, text, t, consentForms);
+    const multi = Boolean(shape.multi?.(el));
+    if (multi && holds(el, shape, text)) return alreadyThere(el, shape, text);
     const before0 = shape.read(el);
     for (const gesture of GESTURES) {
       const { pop, before } = await open(el, shape, shape.open === "search" ? (term ?? text) : term, t);
@@ -294,10 +332,17 @@
         await tidy(el, t);
         return { outcome: "blocked" };
       }
+      if (multi && (hit.selected || holds(el, shape, hit.text))) {
+        await tidy(el, t);
+        return alreadyThere(el, shape, hit.text);
+      }
       const shown = b().optionsOf(pop).map((o) => o.text).join("\n");
       hit.el.scrollIntoView?.({ block: "nearest" });
       gesture(hit.el, t);
       await b().settle(t, 200);
+      // The pick is committed: the query typed to find it is no longer the
+      // engine's to take back (a free-text box whose pick equals the query).
+      if (holds(el, shape, hit.text)) typed.delete(el);
       const after = own(el, before);
       const next = after ? b().optionsOf(after) : [];
       if (next.length && next.map((o) => o.text).join("\n") !== shown && same(shape.read(el), before0)) {
@@ -325,17 +370,12 @@
       || (options && match(options, x).length === 1 && match(options, x)[0].policyBlocked));
     const allowed = texts.filter((x) => !blocked.includes(x));
     if (texts.length && !allowed.length) return { outcome: "blocked", added: [], missing: [], blocked };
+    const had = [shape.read(el)].flat();
     if (shape.passive) {
       const wanted = allowed.map((x) => match(options, x)).filter((h) => h.length === 1).map(([h]) => h.text);
       if (shape.name === "select") {
         const add = shape.realOptions(el).filter((o) => !o.selected && wanted.includes(b().clean(o.text)));
-        if (add.length) {
-          b().check(t);
-          el.focus({ preventScroll: true });
-          for (const o of add) o.selected = true;
-          el.dispatchEvent(new Event("input", { bubbles: true }));
-          el.dispatchEvent(new Event("change", { bubbles: true }));
-        }
+        if (add.length) addSelected(el, add, t);
       } else {
         for (const want of wanted) {
           const input = shape.members(el).find((m) => shape.labelOf(m) === want);
@@ -348,15 +388,15 @@
       await blurOut(el, t);
     } else {
       for (const [i, text] of texts.entries()) {
-        if (!allowed.includes(text) || verify(el, shape, text) === "verified") continue;
+        if (!allowed.includes(text) || holds(el, shape, text)) continue;
         const got = await choose(el, shape, { text, term: terms[i] ?? text, consentForms }, t);
         if (got.outcome === "blocked") blocked.push(text); // the option shown for it is a never-fill one
         if (leftOpen.has(el)) await tidy(el, t); // a category is not an item: close it and move on
       }
     }
-    const committed = [shape.read(el)].flat();
-    const added = allowed.filter((x) => committed.some((c) => b().equivalent(c, x)));
-    const missing = allowed.filter((x) => !added.includes(x) && !blocked.includes(x));
+    // `added` is what THIS call added; `missing` what the field still lacks.
+    const added = allowed.filter((x) => holds(el, shape, x) && !had.some((h) => b().equivalent(h, x)));
+    const missing = allowed.filter((x) => !holds(el, shape, x) && !blocked.includes(x));
     if (b().invalid(el)) return { outcome: "reverted", added, missing, blocked };
     return { outcome: missing.length || blocked.length ? "partial" : "verified", added, missing, blocked };
   }

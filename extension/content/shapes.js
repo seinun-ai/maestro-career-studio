@@ -15,6 +15,12 @@
  */
 (() => {
   const ns = (window.careerStudioCompanion ??= {});
+  // LOAD ONCE. panel_prepare re-injects every content script into the SAME
+  // isolated world; a second run would reset this module's state (see
+  // INTERNALS.md, "A tab that was already open…").
+  const loaded = (ns.loadedOnce ??= new Set());
+  if (loaded.has("content/shapes.js")) return;
+  loaded.add("content/shapes.js");
   const clean = (s) => ns.readFieldText(s);
   const TEXT_TYPES = new Set(["text", "email", "tel", "url", "number", "search"]);
   const SEARCH_BOX = '[data-uxi-widget-type="selectinput"], [data-uxi-widget-type="multiselectinput"]';

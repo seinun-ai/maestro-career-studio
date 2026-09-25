@@ -145,6 +145,9 @@ def test_cancel_stops_a_choose_before_it_clicks(page, load):
     assert row["outcome"] == "cancelled"
     page.wait_for_timeout(600)
     assert page.evaluate("document.getElementById('school-pills').children.length") == 0
+    # The engine's own query is taken back and no late search result is left open.
+    assert page.input_value("#school") == ""
+    assert page.evaluate("document.getElementById('portal').children.length") == 0
 
 
 def test_a_field_the_user_edits_while_the_model_decides_is_never_written(page, load):
@@ -308,6 +311,8 @@ def test_a_timeout_is_reported_as_timeout_not_cancelled(page, load):
     assert row["outcome"] == "timeout"
     page.wait_for_timeout(600)
     assert page.evaluate("document.getElementById('school-pills').children.length") == 0
+    assert page.input_value("#school") == ""
+    assert page.evaluate("document.getElementById('portal').children.length") == 0
     page.evaluate("window.careerStudioCompanion.fillOps.budgets.apply = 6000")
     assert apply(page, f, op="choose", text="Texas A&M University", term="Texas")["outcome"] == "verified"
 
@@ -364,3 +369,128 @@ def test_a_field_removed_mid_operation_is_stale(page, load):
     f = inv(page)
     assert apply(page, f["Q"], op="write", value="x")["outcome"] == "stale"
     assert apply(page, f["R"], op="write", value="x")["outcome"] == "stale"
+
+
+# --- code-quality review: re-injection, serialization, and commit edge cases
+ENGINE = ["content/field-reader.js", "content/fill-base.js", "content/shapes.js",
+          "content/inventory.js", "content/fill-core.js", "content/fill-ops.js"]
+
+
+def _reinject(page, files):
+    from tests.browser.conftest import EXTENSION
+    for src in files:
+        page.add_script_tag(content=(EXTENSION / src).read_text(encoding="utf-8"))
+
+
+def test_reinjecting_the_engine_keeps_its_state(page, load):
+    """panel_prepare re-runs every content script in the same isolated world:
+    the user's edits, the Stop latch and the field ids must survive it."""
+    load(page, fixture_html("workday_text.html"))
+    f = inv(page)["City"]
+    page.type("#city", "Mine")
+    page.evaluate(f"() => {OPS}.cancel()")
+    _reinject(page, ENGINE)
+    g = inv(page)["City"]
+    assert g["fid"] == f["fid"] and g["touched"] is True
+    assert apply(page, g, op="write", value="Springfield")["outcome"] in ("yours", "cancelled")
+    assert page.input_value("#city") == "Mine"
+    page.evaluate(f"() => {OPS}.inventory({{runId: 'r2'}})")
+    zip_ = inv(page)["Postal Code"]
+    page.evaluate(f"() => {OPS}.cancel()")
+    _reinject(page, ENGINE)
+    assert apply(page, zip_, op="write", value="12345")["outcome"] == "cancelled"
+
+
+def test_a_reinjected_agent_answers_a_message_once(page, load):
+    load(page, fixture_html("workday_text.html"))
+    page.evaluate("""() => {
+      window.chrome = window.chrome || {};
+      window.__listeners = [];
+      Object.defineProperty(window.chrome, 'runtime', { configurable: true, value: {
+        id: 'ext', onMessage: { addListener: (cb) => window.__listeners.push(cb) } } });
+      window.__writes = 0;
+      document.getElementById('city').addEventListener('focus', () => { window.__writes += 1; });
+    }""")
+    _reinject(page, ["content/agent.js", "content/agent.js"])
+    assert page.evaluate("window.__listeners.length") == 1
+    f = inv(page)["City"]
+    reply = page.evaluate("""(a) => new Promise((resolve) => {
+      for (const cb of window.__listeners) cb({ type: 'fill_apply', actions: [a] }, { id: 'ext' }, resolve);
+    })""", {"fid": f["fid"], "fp": f["fp"], "op": "write", "value": "Springfield"})
+    assert reply["ok"] and reply["data"][0]["outcome"] == "verified"
+    assert page.evaluate("window.__writes") == 1
+
+
+def test_concurrent_operations_run_one_at_a_time(page, load):
+    load(page, fixture_html("workday_text.html"))
+    f = inv(page)
+    page.evaluate("""() => { window.__log = [];
+      for (const id of ['city', 'zip']) for (const ev of ['focus', 'blur'])
+        document.getElementById(id).addEventListener(ev, () => window.__log.push(id + ':' + ev)); }""")
+    rows = page.evaluate(f"""(p) => Promise.all([
+        {OPS}.apply([p[0]]).then((r) => {{ window.__log.push('city:done'); return r; }}),
+        {OPS}.apply([p[1]]).then((r) => {{ window.__log.push('zip:done'); return r; }})])""", [
+        {"fid": f["City"]["fid"], "fp": f["City"]["fp"], "op": "write", "value": "Springfield"},
+        {"fid": f["Postal Code"]["fid"], "fp": f["Postal Code"]["fp"], "op": "write", "value": "12345"}])
+    assert [r[0]["outcome"] for r in rows] == ["verified", "verified"]
+    assert page.evaluate("window.__log") == ["city:focus", "city:blur", "city:done", "zip:focus", "zip:blur", "zip:done"]
+
+
+FREE_TEXT = """<label for='loc'>Location (City)</label>
+<input id='loc' role='combobox' aria-autocomplete='list' aria-controls='lb'>
+<ul id='lb' role='listbox' style='display:none'></ul>
+<script>
+(() => {
+  const i = document.getElementById('loc'), lb = document.getElementById('lb');
+  const DATA = ['Springfield', 'Springfield, IL', 'Spring Hill'];
+  i.addEventListener('input', () => setTimeout(() => {
+    const q = i.value.toLowerCase();
+    lb.innerHTML = '';
+    for (const d of DATA.filter((x) => q && x.toLowerCase().startsWith(q))) {
+      const li = document.createElement('li'); li.setAttribute('role', 'option'); li.textContent = d;
+      li.addEventListener('click', () => { i.value = d; lb.style.display = 'none'; });
+      lb.append(li);
+    }
+    lb.style.display = lb.children.length ? 'block' : 'none';
+  }, 50));
+  document.addEventListener('click', (e) => { if (!lb.contains(e.target) && e.target !== i) lb.style.display = 'none'; });
+})();
+</script>"""
+
+
+def test_a_free_text_pick_equal_to_the_typed_query_is_kept(page, load):
+    load(page, FREE_TEXT)
+    f = inv(page)["Location (City)"]
+    row = apply(page, f, op="choose", text="Springfield")
+    assert (row["outcome"], row["committed"]) == ("verified", "Springfield")
+    assert page.input_value("#loc") == "Springfield"
+
+
+def test_a_set_never_clicks_an_item_that_is_already_there(page, load):
+    """A toggling multiselect showing an error: SQL is kept (never re-clicked,
+    which would un-pick it) and Python is added."""
+    html = fixture_html("workday_search.html").replace(
+        '<input id="skills"', '<div data-automation-id="errorMessage">Please fix</div><input id="skills"').replace(
+        "else if (![...pills.children].some((p) => p.textContent === hit)) pills.append(makePill(hit));",
+        "else { window.clicks = (window.clicks || []).concat(hit); const ex = [...pills.children].find((p) => p.textContent === hit);"
+        " if (ex) ex.remove(); else pills.append(makePill(hit)); }")
+    load(page, html)
+    row = apply(page, inv(page)["Type to Add Skills"], op="set", texts=["SQL", "Python"])
+    assert row["committed"] == ["SQL", "Python"] and row["added"] == ["Python"]
+    assert page.evaluate("window.clicks") == ["Python"]
+
+
+def test_stop_closes_a_category_popup_left_open(page, load):
+    load(page, fixture_html("workday_listbox.html"))
+    row = apply(page, inv(page)["How did you hear about us?"], op="choose", text="Job Board")
+    assert row["reason"] == "new_options"
+    page.evaluate(f"() => {OPS}.cancel()")
+    page.wait_for_timeout(400)
+    assert page.evaluate("document.getElementById('portal').children.length") == 0
+
+
+def test_choose_on_a_multiple_select_keeps_the_other_selections(page, load):
+    load(page, fixture_html("native.html"))
+    row = apply(page, inv(page)["Languages"], op="choose", text="Hindi")
+    assert row["outcome"] == "verified"
+    assert page.evaluate("[...document.getElementById('lang').selectedOptions].map(o => o.text)") == ["English", "Hindi"]

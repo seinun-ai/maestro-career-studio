@@ -578,11 +578,15 @@ def test_the_listener_keeps_the_channel_open():
     the caller sees "no reply from the page" and the fill silently does nothing
     it can report. Nothing else in this repo would notice."""
     listener = re.search(
-        r"chrome\.runtime\.onMessage\.addListener\(\(msg, sender, sendResponse\) => \{"
-        r"(.*?)\n  \}\);", AGENT_JS, re.S)
+        r"function onPageMessage\(msg, sender, sendResponse\) \{"
+        r"(.*?)\n  \}\n", AGENT_JS, re.S)
     assert listener, "agent.js's onMessage listener is not where this test expects it"
 
     assert listener.group(1).rstrip().endswith("return true;")
+    # …and it is registered ONCE per isolated world: panel_prepare re-injects
+    # agent.js into a world that already runs it (driven in tests/browser).
+    assert re.findall(r"onMessage\.addListener\(([A-Za-z]+)\)", js_code(AGENT_JS)) == ["onPageMessage"]
+    assert 'loaded.has("content/agent.js:listener")' in AGENT_JS
 
 
 @pytest.mark.parametrize(

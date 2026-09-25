@@ -10,6 +10,12 @@
  */
 (() => {
   const ns = (window.careerStudioCompanion ??= {});
+  // LOAD ONCE. panel_prepare re-injects every content script into the SAME
+  // isolated world; a second run would reset this module's state (see
+  // INTERNALS.md, "A tab that was already open…").
+  const loaded = (ns.loadedOnce ??= new Set());
+  if (loaded.has("content/fill-base.js")) return;
+  loaded.add("content/fill-base.js");
   const clean = (s) => ns.readFieldText(s);
 
   class Cancelled extends Error {
@@ -203,8 +209,10 @@
   // throws Unfocusable rather than typing into another field. The setter is a
   // fallback only when typing changed nothing; a page that reformatted or
   // truncated (maxlength) what was typed has answered, and is not overwritten.
-  const typeText = (el, value, t) => {
-    check(t);
+  // `undo` skips the token and latch checks for ONE purpose: a cancelled or
+  // timed-out operation taking back a search query the engine itself typed.
+  const typeText = (el, value, t, { undo = false } = {}) => {
+    if (!undo) check(t);
     el.focus({ preventScroll: true });
     if (!focused(el)) throw new Unfocusable();
     if (el.isContentEditable) {

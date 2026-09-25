@@ -16,6 +16,12 @@
  */
 (() => {
   const ns = (window.careerStudioCompanion ??= {});
+  // LOAD ONCE. panel_prepare re-injects every content script into the SAME
+  // isolated world; a second run would reset this module's state (see
+  // INTERNALS.md, "A tab that was already open…").
+  const loaded = (ns.loadedOnce ??= new Set());
+  if (loaded.has("content/fill-ops.js")) return;
+  loaded.add("content/fill-ops.js");
   // Mutable so a test can force a timeout; the loop never changes them.
   const budgets = { explore: 4000, apply: 6000, setItem: 4000, setMax: 20000 };
   const inv = () => ns.fillInventory;
@@ -57,6 +63,8 @@
     ns.fillBusyEl = el;
     try {
       await core().tidy(el, null, { cleanup: true });
+    } catch {
+      // Best effort: cleanup never turns an outcome into a throw.
     } finally {
       ns.fillBusyEl = null;
     }
@@ -75,6 +83,16 @@
   const closeLeftOpen = async (exceptFid) => {
     const keep = exceptFid ? inv().resolve(exceptFid) : null;
     for (const el of [...core().leftOpen.keys()]) if (el !== keep) await cleanup(el);
+  };
+
+  // ONE operation at a time per frame: each shares fillBusyEl, the focus and
+  // the page, so a second message waits for the first (a Stop does not — it
+  // latches at once and every queued operation then starts cancelled).
+  let queue = Promise.resolve();
+  const serial = (fn) => (...args) => {
+    const next = queue.then(() => fn(...args));
+    queue = next.catch(() => {});
+    return next;
   };
 
   const explore = async (requests) => {
@@ -104,7 +122,7 @@
     return Promise.resolve({ outcome: "unexpected", reason: "unknown_op" });
   };
 
-  const apply = async (actions) => {
+  const applyNow = async (actions) => {
     const out = [];
     for (const a of actions ?? []) {
       if (!mine(a?.fid)) continue;
@@ -153,7 +171,7 @@
     for (const f of inv().list({ consentForms }).fields) {
       if (halted()) break;
       if (reported.has(f.fid) || f.kind !== "text" || !f.committed || !f.invalid || f.touched || f.policyBlocked) continue;
-      const [row] = await apply([{ fid: f.fid, fp: f.fp, op: "recommit" }]);
+      const [row] = await applyNow([{ fid: f.fid, fp: f.fp, op: "recommit" }]);
       if (row) out.push({ fid: f.fid, outcome: row.outcome });
     }
     return out;
@@ -181,7 +199,11 @@
       consentForms = opts.consentForms === true;
       return inv().list({ consentForms });
     },
-    explore, apply, sweep, focus, budgets,
-    cancel: () => ns.fillBase.cancelAll(),
+    explore: serial(explore), apply: serial(applyNow), sweep: serial(sweep), focus, budgets,
+    // Stop: latch at once, then close any popup a commit left open on purpose.
+    cancel: () => {
+      ns.fillBase.cancelAll();
+      return closeLeftOpen(null);
+    },
   };
 })();

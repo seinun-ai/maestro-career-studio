@@ -642,8 +642,10 @@ const HANDLERS = {
   /** Make sure the content scripts exist in the panel's tab before a fill or
    * extract. A tab open since before the extension was installed or reloaded
    * has none, and every route into it simply fails there — this is the only
-   * thing that closes that gap now. Idempotent, because every content module
-   * is an IIFE that re-publishes onto the same namespace.
+   * thing that closes that gap now. Idempotent: it re-runs every module in
+   * the isolated world that already has them, where the plain modules only
+   * re-publish onto the same namespace, and the ones with state (the fill
+   * engine) and agent.js's listener registration load once (`ns.loadedOnce`).
    *
    * Panel-only, and the guard comes FIRST — before any field of `msg` is read
    * — because the whole of the panel's extra reach is "it may name a tab". A
