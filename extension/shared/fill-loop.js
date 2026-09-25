@@ -282,11 +282,14 @@
       if (!cancelled()) await act(f, { op: "move", mid: "give_up" }, { closing: true });
       return { outcome };
     };
+    // Stopped: the panel's fill_cancel closes what the engine held. The run's
+    // clock ran out: nobody else will, so give_up closes it.
+    const halted = (f) => (cancelled() ? { outcome: "halted" } : giveUp(f, "halted"));
     const adapt = async (f, row, first, item) => {
       const value = item ?? (typeof row.value === "string" ? row.value : undefined);
       const history = first ? [first] : [];
       for (let i = 0; i < L.MAX_STEPS; i += 1) {
-        if (halt()) return { outcome: "halted" };
+        if (halt()) return halted(f);
         if (fieldLate(f)) return giveUp(f, "late");
         const [state] = results(await broadcast({
           type: "fill_step_state", fid: f.fid, fp: f.fp, ...(value !== undefined ? { value } : {}),
@@ -310,7 +313,7 @@
           candidates: state.candidates.slice(0, STEP_CANDIDATES),
           complete: Boolean(state.complete),
         }, rows.get(f.fid).deadline);
-        if (halt()) return { outcome: "halted" };
+        if (halt()) return halted(f);
         if (fieldLate(f)) return giveUp(f, "late");
         const chosen = res?.mid && res.mid !== "give_up" ? state.candidates.find((c) => c.mid === res.mid) : null;
         if (!chosen) return giveUp(f, res ? "gave_up" : "no_answer");
@@ -318,7 +321,7 @@
         const out = await act(f, {
           op: "move", mid: chosen.mid, version: state.version, ...(asProgress ? { as: "progress" } : {}),
         });
-        if (out.outcome === "halted") return { outcome: "halted" };
+        if (out.outcome === "halted") return halted(f);
         if (out.outcome === "refused") return { outcome: "final" };
         if (out.outcome === "late") return giveUp(f, "late");
         const entry = historyEntry(chosen.mid, out.outcome, out.reason);
@@ -395,9 +398,11 @@
       } else {
         // Native (and popup) lists: one pick per source item over the full
         // list, so every chosen option maps back to the item it stands for.
-        const got = await Promise.all(worked.filter((item) => !byPolicy.has(item))
-          .map(async (item) => [item, await pick(f, row, opts, complete, item)]));
-        for (const [item, p] of got) {
+        // One at a time, so a Stop or the field's clock holds between items.
+        for (const item of worked) {
+          if (byPolicy.has(item)) continue;
+          if (halt() || fieldLate(f)) break;
+          const p = await pick(f, row, opts, complete, item);
           if (p?.text) pairs.push([p.text, item, p.reason]);
           else if (p?.abstained) missed.set(item, historyEntry("choose", "abstained"));
         }
@@ -443,7 +448,7 @@
       const n = all.length;
       const notes = [
         ...(byPolicy.size ? [`${byPolicy.size} left to you by policy`] : []),
-        ...landed.map(landedNote),
+        ...[...new Set(landed)].map(landedNote),
       ];
       if (covered.size === n) return done(f, [...covered.values()].includes("closest") ? "closest" : "matched", committed);
       if (!covered.size) {

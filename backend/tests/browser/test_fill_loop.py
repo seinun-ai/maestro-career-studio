@@ -5,6 +5,8 @@ and recorded so a test can pin what the loop SENT."""
 import re
 from pathlib import Path
 
+import pytest
+
 from tests.browser.conftest import EXTENSION
 
 LOOP_SOURCES = ["shared/policy.js", "shared/choose.js", "shared/guided-run.js", "shared/fill-loop.js"]
@@ -18,7 +20,11 @@ DRIVER = """async (spec) => {
   const calls = [];
   const sent = [];
   const posts = [];
+  const progress = [];
+  const inflight = {};
+  const peak = {};
   let round = 0;
+  let stop = false;
   const one = (result) => [{frameId: 0, result}];
   // A scripted answer may be a list: one entry per call, the last one repeating.
   const take = (v) => (Array.isArray(v) ? (v.length > 1 ? v.shift() : v[0]) : v);
@@ -27,8 +33,14 @@ DRIVER = """async (spec) => {
   const broadcast = async (msg) => {
     calls.push(msg.type);
     sent.push(JSON.parse(JSON.stringify(msg)));
-    if (msg.type === "fill_inventory") { round += 1; return one({frame: "f", host: "x.test", fields: spec.frames[Math.min(round, spec.frames.length) - 1]}); }
+    if (msg.type === "fill_inventory") {
+      round += 1;
+      const fields = spec.frames[Math.min(round, spec.frames.length) - 1];
+      // null: the page no longer answers (a frame that went away).
+      return fields === null ? [{frameId: 0, error: "gone"}] : one({frame: "f", host: "x.test", fields});
+    }
     if (msg.type === "fill_explore") return one(Object.fromEntries(msg.requests.map(r => [r.fid, take(spec.explore[r.term ?? r.fid]) ?? {options: [], complete: false, error: "no_popup"}])));
+    if (msg.type === "fill_apply" && spec.stopAfterApply) stop = true;
     if (msg.type === "fill_apply") return one(msg.actions.map(a => {
       const key = a.op === "move" ? a.mid : (a.text ?? a.value ?? (a.texts || []).join("+") ?? a.fid);
       return {fid: a.fid, committed: a.text ?? a.value ?? a.texts ?? null, ...(take(spec.apply[key]) ?? {outcome: a.op === "move" && a.mid === "give_up" ? "closed" : "verified"})};
@@ -44,7 +56,10 @@ DRIVER = """async (spec) => {
     const body = init?.body ? JSON.parse(init.body) : null;
     calls.push(path.split("?")[0]);
     posts.push({path, body});
+    inflight[path] = (inflight[path] ?? 0) + 1;
+    peak[path] = Math.max(peak[path] ?? 0, inflight[path]);
     if (spec.apiDelay?.[path]) await sleep(spec.apiDelay[path]);
+    inflight[path] -= 1;
     if (spec.apiHang?.includes(path)) return new Promise(() => {});
     if (path.startsWith("/api/autofill/context")) return {eeo_consent: {consent_forms: false}};
     if (path === "/api/autofill/map") return {fields: Object.fromEntries(body.fields.map(f => [f.fid, spec.map[f.fid] ?? {route: "none"}]))};
@@ -56,8 +71,9 @@ DRIVER = """async (spec) => {
   let budget = spec.stopAfter ?? Infinity;
   const t0 = Date.now();
   const report = await window.careerStudioCompanion.fillLoop.runFill(
-    {broadcast, api, cancelled: () => (budget -= 1) < 0}, spec.options ?? {sourceHint: null});
-  return {report, calls, sent, posts, ms: Date.now() - t0};
+    {broadcast, api, cancelled: () => stop || (budget -= 1) < 0, onProgress: (u) => progress.push(u)},
+    spec.options ?? {sourceHint: null});
+  return {report, calls, sent, posts, progress, peak, ms: Date.now() - t0};
 }"""
 
 
@@ -541,6 +557,7 @@ def test_a_field_out_of_time_is_given_up_and_the_run_moves_on(page, load):
               step={"states": states, "moves": [{"mid": "scroll", "reason": "progress"}] * 6})
     assert statuses(out) == {"h": "cannot_operate", "c": "verified"}
     assert row(out, "h")["lastOutcome"] == "timeout"
+    assert out["report"]["aiFailure"] is None  # a clock running out is not the AI failing
     assert actions(out, "move")[-1]["mid"] == "give_up"  # the popup it held is closed
     assert len(bodies(out, "/api/autofill/step")) < 6
 
@@ -551,8 +568,160 @@ def test_the_run_has_a_deadline(page, load):
               map={"a": {"route": "slot", "slot": "personal.city", "value": "X"},
                    "b": {"route": "slot", "slot": "personal.state", "value": "Y"}})
     assert out["report"]["timedOut"] is True
+    assert out["report"]["aiFailure"] is None
     assert not actions(out)
     assert statuses(out) == {"a": "needs_answer", "b": "needs_answer"}
+
+
+def test_the_run_running_out_mid_step_closes_the_popup_it_held(page, load):
+    states = [{"candidates": [{"mid": "scroll", "describe": "Scroll"}, GIVE_UP]} for _ in range(8)]
+    out = run(page, load, frames=[[f("h", "popup")]], limits={"RUN_MS": 250},
+              apiDelay={"/api/autofill/step": 100},
+              map={"h": {"route": "slot", "slot": "preferences.how_heard", "value": "LinkedIn"}},
+              explore={"h": {"options": [], "complete": False, "error": "empty_popup"}},
+              apply={"scroll": {"outcome": "progressed"}},
+              step={"states": states, "moves": [{"mid": "scroll", "reason": "progress"}] * 8})
+    assert out["report"]["timedOut"] is True
+    moves = [a["mid"] for a in actions(out, "move")]
+    assert moves[0] == "scroll" and moves[-1] == "give_up"
+    assert out["report"]["aiFailure"] is None
+
+
+def test_a_stop_mid_step_sends_no_give_up(page, load):
+    out = run(page, load, frames=[[f("h", "popup")]], stopAfterApply=True,
+              map={"h": {"route": "slot", "slot": "preferences.how_heard", "value": "LinkedIn"}},
+              explore={"h": {"options": [], "complete": False, "error": "empty_popup"}},
+              apply={"scroll": {"outcome": "progressed"}},
+              step={"states": [{"candidates": [{"mid": "scroll", "describe": "Scroll"}, GIVE_UP]}] * 3,
+                    "moves": [{"mid": "scroll", "reason": "progress"}] * 3})
+    # The panel's fill_cancel closes what the engine held; the loop sends nothing more.
+    assert [a["mid"] for a in actions(out, "move")] == ["scroll"]
+    assert out["report"]["stopped"] is True
+
+
+def test_native_set_picks_run_one_at_a_time(page, load):
+    options = [opt(f"o{i}", t) for i, t in enumerate("ABCD")]
+    out = run(page, load, frames=[[f("k", "select", "Skills", multi=True, options=options, optionsComplete=True)]],
+              apiDelay={"/api/autofill/pick": 20},
+              map={"k": {"route": "slot", "slot": "skills", "value": list("ABCD")}},
+              pick={f"k:{t}": {"oids": [f"o{i}"], "reason": "matched"} for i, t in enumerate("ABCD")},
+              apply={"A+B+C+D": {"outcome": "verified", "added": list("ABCD"), "missing": []}})
+    assert statuses(out) == {"k": "verified"}
+    assert out["peak"]["/api/autofill/pick"] == 1
+    assert [b["fields"][0]["item"] for b in bodies(out, "/api/autofill/pick")] == list("ABCD")
+
+
+def test_a_stop_between_native_set_items_stops_the_picks(page, load):
+    options = [opt(f"o{i}", t) for i, t in enumerate("ABCD")]
+    load(page, "<div></div>", sources=LOOP_SOURCES)
+    got = page.evaluate("""async (options) => {
+      const ns = window.careerStudioCompanion; ns.fillLoop.limits.TAIL_MS = 0;
+      let stop = false, picks = 0, applies = 0;
+      const field = {fid: "k", fp: "p", shape: "select", kind: "choice", multi: true, question: "Skills",
+                     options, optionsComplete: true, committed: [], answered: false};
+      const broadcast = async (m) => {
+        if (m.type === "fill_inventory") return [{frameId: 0, result: {frame: "f", host: "x", fields: [field]}}];
+        if (m.type === "fill_apply") applies += 1;
+        return [{frameId: 0, result: []}];
+      };
+      const api = async (p, init) => {
+        if (p.startsWith("/api/autofill/context")) return {};
+        if (p === "/api/autofill/map") return {fields: {k: {route: "slot", slot: "skills", value: ["A", "B", "C", "D"]}}};
+        picks += 1; if (picks === 2) stop = true;
+        return {picks: {k: {oids: ["o0"], reason: "matched"}}};
+      };
+      const r = await ns.fillLoop.runFill({broadcast, api, cancelled: () => stop}, {});
+      return {picks, applies, stopped: r.stopped};
+    }""", options)
+    assert got == {"picks": 2, "applies": 0, "stopped": True}
+
+
+@pytest.mark.parametrize(("item_ms", "status", "picks"), [(150, "verified", 3), (0, "cannot_operate", 2)])
+def test_a_set_clock_grows_per_item(page, load, item_ms, status, picks):
+    options = [opt(f"o{i}", t) for i, t in enumerate("ABC")]
+    out = run(page, load, frames=[[f("k", "select", "Skills", multi=True, options=options, optionsComplete=True)]],
+              limits={"FIELD_MS": 100, "ITEM_MS": item_ms}, apiDelay={"/api/autofill/pick": 60},
+              map={"k": {"route": "slot", "slot": "skills", "value": list("ABC")}},
+              pick={f"k:{t}": {"oids": [f"o{i}"], "reason": "matched"} for i, t in enumerate("ABC")},
+              apply={"A+B+C": {"outcome": "verified", "added": list("ABC"), "missing": []}})
+    assert statuses(out) == {"k": status}
+    assert len(bodies(out, "/api/autofill/pick")) == picks
+
+
+def test_a_group_committed_inside_a_set_is_named_once(page, load):
+    group = {"candidates": [{"mid": "click:o1", "describe": 'Open the group "Job Board"'}, GIVE_UP]}
+    out = run(page, load, frames=[[f("k", "search", "Where did you hear?", multi=True)]],
+              map={"k": {"route": "slot", "slot": "preferences.how_heard", "value": ["A", "B", "C"]}},
+              explore={"A": {"options": [opt("o1", "A")]}},
+              pick={"k:A": {"oids": ["o1"], "reason": "matched"}},
+              apply={"A": {"outcome": "verified", "added": ["A"], "missing": []},
+                     "click:o1": {"outcome": "unexpected", "reason": "group_committed"}},
+              step={"states": [group, group], "moves": [{"mid": "click:o1", "reason": "progress"}] * 2})
+    r = row(out, "k")
+    assert (r["status"], r["answer"]) == ("partial", '1 of 3 added · Companion clicked "Job Board" — check it')
+    assert [(m["mid"], m.get("as")) for m in actions(out, "move")] == [("click:o1", "progress")] * 2
+    assert [s["item"] for s in bodies(out, "/api/autofill/step")] == ["B", "C"]
+
+
+def test_a_field_re_listed_under_a_new_fid_keeps_its_row(page, load):
+    out = run(page, load, frames=[[f("a", question="City", fp="same")],
+                                  [f("a2", question="City", fp="same", committed="X", answered=True)]],
+              map={"a": {"route": "slot", "slot": "personal.city", "value": "X"}})
+    assert statuses(out) == {"a2": "verified"}  # not "already": the engine wrote it
+    assert [[x["fid"] for x in b["fields"]] for b in bodies(out, "/api/autofill/map")] == [["a"]]
+    assert row(out, "a2")["slot"] == "personal.city"
+
+
+def test_a_later_round_that_reaches_no_frame_keeps_the_report(page, load):
+    out = run(page, load, frames=[[f("a", question="City")], None],
+              map={"a": {"route": "slot", "slot": "personal.city", "value": "X"}})
+    assert statuses(out) == {"a": "verified"}
+
+
+def test_the_report_lists_only_the_latest_inventory(page, load):
+    out = run(page, load, frames=[[f("a", question="City"), f("b", question="Gone")], [f("a", question="City")]],
+              map={"a": {"route": "slot", "slot": "personal.city", "value": "X"}})
+    assert [r["fid"] for r in out["report"]["fields"]] == ["a"]
+
+
+def test_a_set_fact_on_a_one_answer_field_is_left_for_the_user(page, load):
+    out = run(page, load, frames=[[f("d", "popup", "Main skill")]],
+              map={"d": {"route": "slot", "slot": "skills", "value": ["SQL", "Python"]}})
+    assert (row(out, "d")["status"], row(out, "d")["lastOutcome"]) == ("needs_answer", "set_for_one")
+    assert "fill_explore" not in out["calls"] and "/api/autofill/pick" not in out["calls"]
+
+
+def test_a_native_list_that_surprises_is_retried_next_round_not_stepped(page, load):
+    options = [opt("o1", "Select…"), opt("o2", "United States")]
+    out = run(page, load, frames=[[f("s", "select", "Country", options=options, optionsComplete=True)]] * 3,
+              map={"s": {"route": "slot", "slot": "personal.country", "value": "United States"}},
+              pick={"s": {"oids": ["o2"], "reason": "matched"}},
+              apply={"United States": [{"outcome": "unexpected", "reason": "option_missing"}, {"outcome": "verified"}]})
+    assert statuses(out) == {"s": "verified"}
+    assert "fill_step_state" not in out["calls"] and "/api/autofill/step" not in out["calls"]
+    assert len(actions(out, "choose")) == 2
+
+
+def test_a_stop_between_two_writes_ends_the_run(page, load):
+    out = run(page, load, frames=[[f("a", question="City"), f("b", question="State")]], stopAfterApply=True,
+              map={"a": {"route": "slot", "slot": "personal.city", "value": "X"},
+                   "b": {"route": "slot", "slot": "personal.state", "value": "Y"}})
+    assert [a["fid"] for a in actions(out)] == ["a"]
+    assert statuses(out) == {"a": "verified", "b": "needs_answer"}
+    assert out["report"]["stopped"] is True
+    assert "fill_sweep" not in out["calls"]
+
+
+def test_progress_events_name_each_field_once_and_each_round(page, load):
+    out = run(page, load, frames=[[f("a", question="City"), f("v", committed="x", answered=True)]] * 2,
+              map={"a": {"route": "slot", "slot": "personal.city", "value": "X"}})
+    events = out["progress"]
+    assert {"phase": "field", "fid": "a", "status": "verified"} in events
+    assert {"phase": "field", "fid": "v", "status": "already"} in events
+    assert {"phase": "round", "round": 1} in events
+    assert all(set(e) in ({"phase", "fid", "status"}, {"phase", "round"}) for e in events)
+    fields = [(e["fid"], e["status"]) for e in events if e["phase"] == "field"]
+    assert len(fields) == len(set(fields))
 
 
 # ---------- the wire
