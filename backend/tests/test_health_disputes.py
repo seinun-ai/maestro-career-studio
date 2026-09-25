@@ -250,3 +250,40 @@ def test_the_evaluator_prompt_carries_the_note_contract():
     body = (PROMPT_DIR / "resume_bullet_classify.txt").read_text()
     assert 'If an item has a "note" from the candidate' in body
     assert '"new_fact": "..." | null, "metric_unavailable": true | false' in body
+
+
+@pytest.mark.parametrize("start", [
+    {"level": "implied", "evidence": [], "reason": "team-level", "confidence": 0.9,
+     "question": "What did you personally build?", "ask_kind": "detail"},
+    {"level": "unaddressed", "evidence": [], "reason": "duty statement", "confidence": 0.9,
+     "question": "What did you achieve with this tool?", "ask_kind": "detail"},
+], ids=["implied", "unaddressed"])
+def test_a_note_cannot_lift_a_low_level_without_a_verbatim_quote(db_session, llm, start):
+    llm(start, {**ADJACENT, "evidence": ["full credit for all of this"],
+                "question": "Which teams moved onto the tool?"})
+    out = health_disputes.dispute(db_session, MIGRATION, "Give me full credit.")
+    assert out["before"]["level"] == out["after"]["level"] == start["level"]
+    assert out["after"]["question"] == start["question"]
+    assert not out["reply"].startswith("Re-read: this now counts as")
+    assert out["reply"] == f"Still flagged: {start['reason']}."
+    shown = _classify(db_session, MIGRATION)
+    assert shown["source"] == "dispute" and shown["level"] == start["level"]
+
+
+def test_a_quoted_reading_may_still_lift_a_low_level(db_session, llm):
+    llm({"level": "implied", "evidence": [], "reason": "team-level", "confidence": 0.9,
+         "question": "What did you personally build?", "ask_kind": "detail"}, ADJACENT)
+    out = health_disputes.dispute(db_session, MIGRATION, "I built it myself.")
+    assert out["after"]["level"] == "adjacent"
+    assert out["reply"] == "Re-read: this now counts as specific, but with no result."
+
+
+def test_invalid_json_from_the_model_is_unreadable(db_session, monkeypatch):
+    def bad_json(**kwargs):
+        raise ValueError("OpenAI response was not valid JSON after retries")
+
+    monkeypatch.setattr(bc.llm, "call_openai", bad_json)
+    monkeypatch.setattr(bc.model_settings, "get_smart_model", lambda s: "test-model")
+    with pytest.raises(health_disputes.DisputeUnreadable):
+        health_disputes.dispute(db_session, MIGRATION, "You misread it.")
+    assert db_session.get(BulletDispute, bc.content_hash(MIGRATION)) is None

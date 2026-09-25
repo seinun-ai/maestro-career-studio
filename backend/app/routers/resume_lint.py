@@ -452,7 +452,8 @@ def dispute_bullet(kind: Kind, key: str, body: DisputeBody,
         raise HTTPException(status_code=422, detail="There is no text here to re-read.")
     try:
         return health_disputes.dispute(db, text, body.note)
-    except RuntimeError as e:  # unreadable model output or a provider failure
+    except health_disputes.DisputeUnreadable as e:
+        # A provider outage (llm.LLMProviderError) is left to app.main's central 502 handler.
         raise HTTPException(status_code=502, detail=str(e)) from e
 
 

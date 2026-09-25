@@ -1006,3 +1006,31 @@ def test_report_marks_a_disputed_finding(db_session, monkeypatch):
                   if f.get("content_hash") == bullet_classify.content_hash(DISPUTED_BULLET)]
     assert finding["classification_source"] == "dispute"
     assert finding["question"] == "Which systems did you keep running?"
+
+
+def test_dispute_invalid_model_json_returns_502(db_session, monkeypatch):
+    _seed(db_session)
+    _install_evaluator(monkeypatch)
+
+    def bad_json(**kwargs):
+        raise ValueError("OpenAI response was not valid JSON after retries")
+
+    monkeypatch.setattr(bullet_classify.llm, "call_openai", bad_json)
+    r = _client_call(db_session, "post", _DISPUTE_URL, json=_dispute_body())
+    assert r.status_code == 502
+    assert r.json()["detail"] == lint_router.health_disputes.UNREADABLE
+
+
+def test_dispute_provider_outage_uses_the_central_502(db_session, monkeypatch):
+    from app.services.llm import LLMProviderError
+
+    _seed(db_session)
+    _install_evaluator(monkeypatch)
+
+    def outage(**kwargs):
+        raise LLMProviderError("The AI model didn't answer.", provider_detail="503 upstream")
+
+    monkeypatch.setattr(bullet_classify.llm, "call_openai", outage)
+    r = _client_call(db_session, "post", _DISPUTE_URL, json=_dispute_body())
+    assert r.status_code == 502
+    assert r.json()["detail"] == "The AI model didn't answer."

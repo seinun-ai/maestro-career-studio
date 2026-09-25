@@ -26,6 +26,7 @@ LEVEL_WORDS = {
     "unaddressed": "a duty statement",
 }
 ADD_IT_YOURSELF = "Add it to the bullet in your own words."
+UNREADABLE = "Couldn't re-read this bullet. Try again."
 
 
 class DisputeUnreadable(RuntimeError):
@@ -69,19 +70,29 @@ def dispute(db: Session, text: str, note: str) -> dict:
         raise ValueError("A dispute needs a bullet and a note.")
     chash = bullet_classify.content_hash(text)
     hints = resume_lint._classify_hints(text)
-    before = bullet_classify.classify_items(db, [{"text": text, "hints": hints}])[chash]
-    # Uncached on purpose: the note must never reach the ordinary evaluation's cache row.
-    after = bullet_classify._evaluate_batch(
-        db, {chash: {"id": chash, "text": text, "note": note, "hints": hints}}).get(chash)
+    try:
+        before = bullet_classify.classify_items(db, [{"text": text, "hints": hints}])[chash]
+        # Uncached on purpose: the note must never reach the ordinary evaluation's cache row.
+        after = bullet_classify._evaluate_batch(
+            db, {chash: {"id": chash, "text": text, "note": note, "hints": hints}}).get(chash)
+    except ValueError as e:  # llm.call_openai: no valid JSON after its retries
+        raise DisputeUnreadable(UNREADABLE) from e
     if after is None:
-        raise DisputeUnreadable("Couldn't re-read this bullet. Try again.")
+        raise DisputeUnreadable(UNREADABLE)
+    rank = bullet_classify._LEVEL_RANK.index
+    if rank(after["level"]) > rank(before["level"]) and not after["evidence"]:
+        # `_validate` only caps analogue/direct without a quote; a note must not lift
+        # unaddressed or implied either. Keep the reading the user already had.
+        after = {**after, "level": before["level"],
+                 **{k: before.get(k) for k in ("question", "ask_kind", "measure_target",
+                                               "alt_question", "reason")}}
     row = db.get(BulletDispute, chash)
     # A stored "no number exists" stays until the user reopens it, whatever this note says.
     if row is not None and row.metric_unavailable:
         after = bullet_classify._validate(text, after, metric_unavailable=True)
 
     before_shown, after_shown = shown(before), shown(after)
-    reply = _reply(before_shown, after_shown, after["reason"])
+    reply = _reply(before_shown, after_shown, after["reason"] or "")
     suggestion = None
     if after["new_fact"]:
         suggestion = _suggest(db, text, after["new_fact"], after_shown["question"])
