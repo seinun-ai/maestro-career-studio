@@ -76,6 +76,7 @@ export function DisputeBox({
   const hintId = useId();
   const panelId = useId();
   const replyRef = useRef<HTMLParagraphElement>(null);
+  const noteRef = useRef<HTMLTextAreaElement>(null);
   const offered = canDispute(finding) && Boolean(onDisputed) && !locked;
 
   // A new reply takes focus that fell to <body>: in place (Send leaves with the form), or on the
@@ -87,6 +88,12 @@ export function DisputeBox({
   useEffect(() => {
     if (result && land) onLanded?.();
   }, [result, land, onLanded]);
+  // Opening the box means "I want to type": focus goes into Tell us why, as Answer lands in its
+  // field. Not focusIfDropped: the trigger stays (or a click left focus on the page's <main>), so
+  // focus has not dropped to <body> and would never move.
+  useEffect(() => {
+    if (open) noteRef.current?.focus();
+  }, [open]);
   // A dispute that lifts the bullet out of the report removes this card while the reply holds focus.
   // A LAYOUT cleanup runs before React detaches it; after the commit, focus goes to the resolved
   // "Fixed" entry that now carries the reply (ResolvedFinding takes it if it mounts later).
@@ -164,6 +171,7 @@ export function DisputeBox({
         <div id={panelId} className="mt-2 grid max-w-[65ch] gap-1.5">
           <Label htmlFor={noteId}>Tell us why</Label>
           <Textarea
+            ref={noteRef}
             id={noteId}
             rows={2}
             value={note}

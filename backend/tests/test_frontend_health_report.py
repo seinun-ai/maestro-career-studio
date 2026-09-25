@@ -598,3 +598,24 @@ def test_judged_text_has_one_home_and_no_import_cycle():
         assert f"function {name}(" not in _CARDS
     assert "@/components/resume-health/finding-cards" not in _wording()
     assert "@/components/resume-health/judged-text" in _wording()
+
+
+def test_opening_not_right_puts_focus_in_tell_us_why():
+    # Browser check: opening the box left focus on the page's <main>, so typing went nowhere.
+    box = _dispute_box()
+    assert "const noteRef = useRef<HTMLTextAreaElement>(null);" in box
+    effect = box[box.rfind("useEffect(() => {", 0, box.index("noteRef.current?.focus()")):]
+    effect = effect[: effect.index("]);") + 3]
+    assert "if (open) noteRef.current?.focus();" in effect and effect.endswith("}, [open]);")
+    area = box[box.index("<Textarea"): box.index("/>", box.index("<Textarea"))]
+    assert "ref={noteRef}" in area and "id={noteId}" in area
+
+
+def test_a_cliche_row_says_to_rewrite_it_not_that_it_cannot():
+    # Clichés never get a suggestion (by design): the row shows the note's own advice. Filler and
+    # slips whose suggestion the guards refused keep the can't-apply wording.
+    row = _row()
+    gate = row[row.index("{data && !op && !applied &&"):]
+    cliche = gate.index('note.rule === "language.cliche" ? (')
+    assert gate.index("<SuggestionCopyOnly") < cliche < gate.index("Can&apos;t apply this fix here.")
+    assert "{note.how}</p>" in gate[cliche: gate.index("Can&apos;t apply this fix here.")]

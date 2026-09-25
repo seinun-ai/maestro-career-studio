@@ -169,6 +169,9 @@ function WordingRow({
       {data && !op && !applied &&
         (copyOnly && currentText != null && note.suggestion != null ? (
           <SuggestionCopyOnly currentText={currentText} suggestion={note.suggestion} />
+        ) : note.rule === "language.cliche" ? (
+          // A cliché is rewritten by hand, by design (no suggestion): its own advice, not a limit.
+          <p className="text-muted-foreground max-w-[65ch] text-xs">{note.how}</p>
         ) : (
           // A fix the rewrite guards refused is left to the user.
           <p className="text-muted-foreground max-w-[65ch] text-xs">
