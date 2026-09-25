@@ -233,7 +233,9 @@ def test_the_fast_model_low_stakes_step_states_the_never_list(db_session, monkey
 def test_a_closest_click_needs_a_complete_view(db_session, monkeypatch):
     fake_jev(monkeypatch, ("click:o1", 0.6))
     flag = {"slot": "education.0.discipline"}
-    assert step(req(complete=False, **flag), db_session)["reason"] == "abstained"
+    # Never an answer on a partial view — at most a tentative (progress) click,
+    # which the page never verifies as the answer.
+    assert step(req(complete=False, **flag), db_session) == {"mid": "click:o1", "reason": "progress"}
     assert step(req(complete=True, **flag), db_session) == {"mid": "click:o1", "reason": "closest"}
 
 
@@ -275,3 +277,24 @@ def test_step_request_bounds():
         with pytest.raises(ValidationError):
             req(fid=fid)
     assert req(fid="k3x9ab-12").fid == "k3x9ab-12"
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_plain_click_below_the_answer_floor_is_tentative_progress_except_on_exact_slots(db_session, monkeypatch):
+    """Unmarked categories (Workday "Job Board" -> "LinkedIn") are plain
+    options: a click the model is unsure answers the field may still lead to
+    it — never on an exact slot, where a plain click is an answer only."""
+    plain = cands("click:o1", GIVE_UP)
+    fake_jev(monkeypatch, ("click:o1", 0.55))
+    flag = req(slot="education.0.discipline", candidates=plain)  # flag: answer floor 0.85
+    assert step(flag, db_session) == {"mid": "click:o1", "reason": "progress"}
+    exact = req(slot="work_auth.sponsorship_now", candidates=plain)
+    assert step(exact, db_session) == {"mid": None, "reason": "abstained"}
+    how_heard = autofill_catalog.build({"preferences": {"how_heard": "LinkedIn"}}, [], [])
+    anyslot = req(slot="preferences.how_heard", candidates=plain)  # any: answer floor 0.5 — an answer
+    assert autofill_step.step(anyslot, how_heard, db_session, None).model_dump() == {
+        "mid": "click:o1", "reason": "matched"}
+    fake_jev(monkeypatch, ("click:o1", 0.9))
+    assert step(flag, db_session) == {"mid": "click:o1", "reason": "matched"}
+    fake_jev(monkeypatch, ("click:o1", 0.45))
+    assert step(flag, db_session)["reason"] == "abstained"

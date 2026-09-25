@@ -120,7 +120,11 @@
     if (a.op === "recommit") return core().recommit(el, shape, t);
     if (a.op === "close") return core().tidy(el, t).then(() => ({ outcome: "closed" }));
     // An adaptive move carries the state version it was chosen from.
-    if (a.op === "move") return core().move(el, shape, { mid: a.mid, version: a.version, consentForms }, t);
+    // `as: "progress"`: /step judged the click a step toward the value (a
+    // category), not the answer — it must never be verified as one.
+    if (a.op === "move") {
+      return core().move(el, shape, { mid: a.mid, version: a.version, as: a.as, consentForms }, t);
+    }
     return Promise.resolve({ outcome: "unexpected", reason: "unknown_op" });
   };
 

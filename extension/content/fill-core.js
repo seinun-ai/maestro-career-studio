@@ -543,11 +543,15 @@
     };
   }
 
-  // One move against the state it was chosen from (`version`). Outcomes:
+  // One move against the state it was chosen from (`version`). A click is an
+  // answer unless it opens a group, or the loop sends it `as: "progress"` (a
+  // plain option /step judged a likely category): such a click that reveals
+  // options progressed, one that commits a value is group_committed — never
+  // verified. Outcomes:
   // verified (a click committed), progressed (the page moved on: a popup
   // opened, a search listed results, a category showed its children, the list
   // scrolled), closed, stale, unexpected (with a reason), blocked.
-  async function move(el, shape, { mid, version, consentForms } = {}, t) {
+  async function move(el, shape, { mid, version, as = "answer", consentForms } = {}, t) {
     b().check(t);
     const last = lastState.get(el);
     const closing = mid === "give_up" || mid === "close";
@@ -621,9 +625,8 @@
         // Only a click that changed nothing at all gets the second gesture.
         if (!unchanged || next !== shown || !hit.el.isConnected) break;
       }
-      if (hit.group) {
-        // A group is never an answer: one that committed a value is reported,
-        // never verified.
+      if (hit.group || as === "progress") {
+        // Not an answer: one that committed a value is reported, never verified.
         const committed = !same(shape.read(el), before0);
         await tidy(el, t);
         return { outcome: "unexpected", reason: committed ? "group_committed" : "not_committed" };

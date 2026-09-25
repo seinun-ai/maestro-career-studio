@@ -17,11 +17,11 @@ def state(page, f, value):
     return page.evaluate(f"(r) => {OPS}.stepState(r)", {"fid": f["fid"], "fp": f["fp"], "value": value})
 
 
-def move(page, f, mid, value, version=None):
+def move(page, f, mid, value, version=None, **extra):
     if version is None:
         version = state(page, f, value)["version"]
     return page.evaluate(f"(a) => {OPS}.apply([a])", {"fid": f["fid"], "fp": f["fp"], "op": "move", "mid": mid,
-                                                        "value": value, "version": version})[0]
+                                                        "value": value, "version": version, **extra})[0]
 
 
 def mids(s):
@@ -355,3 +355,26 @@ def test_a_menu_the_widget_re_renders_is_found_again_and_still_closed(page, load
     page.evaluate("document.getElementById('menu-root').innerHTML = document.getElementById('menu-root').innerHTML")
     assert move(page, f, "give_up", "India")["outcome"] == "closed"
     assert page.evaluate("document.getElementById('menu-root').innerHTML") == ""
+
+
+def test_an_unmarked_category_is_clicked_as_progress_then_its_leaf_as_the_answer(page, load):
+    """Workday: "Job Board" carries no ARIA marker; /step says `progress`."""
+    load(page, fixture_html("workday_listbox.html"))
+    f = inv(page)["How did you hear about us?"]
+    assert move(page, f, "open", "LinkedIn")["outcome"] == "progressed"
+    s = state(page, f, "LinkedIn")
+    assert [c["describe"] for c in s["candidates"] if c["mid"].startswith("click:")] == [
+        'Click the option "Job Board"', 'Click the option "Social Media"', 'Click the option "Employee Referral"']
+    assert move(page, f, "click:o1", "LinkedIn", **{"as": "progress"})["outcome"] == "progressed"
+    s = state(page, f, "LinkedIn")
+    assert [o["text"] for o in s["options"]] == ["LinkedIn", "Indeed"]
+    row = move(page, f, "click:o1", "LinkedIn")
+    assert (row["outcome"], row["committed"]) == ("verified", "LinkedIn")
+
+
+def test_a_leaf_clicked_as_progress_that_commits_is_never_verified(page, load):
+    load(page, fixture_html("workday_listbox.html"))
+    f = inv(page)["How did you hear about us?"]
+    move(page, f, "open", "LinkedIn")
+    row = move(page, f, "click:o3", "LinkedIn", **{"as": "progress"})  # "Employee Referral" is a leaf
+    assert (row["outcome"], row["reason"], row["committed"]) == ("unexpected", "group_committed", "Employee Referral")
