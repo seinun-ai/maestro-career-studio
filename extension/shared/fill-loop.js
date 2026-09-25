@@ -15,8 +15,12 @@
  * - `answered` (not "has a value") decides "already". Unknown controls are
  *   listed as cannot_operate and never mapped. Page refusals (yours, blocked,
  *   unsupported) are final and never retried.
- * - Policy-blocked options are never offered to /pick or /map; every set, search
- *   or native, is picked one source item at a time (`item`).
+ * - Policy-blocked options are never offered to /pick or /map. Every set, search
+ *   or native, is picked one source item at a time (`item`); single-answer
+ *   fields whose whole list the inventory read are picked together, 40 a call.
+ *   Only matched / closest / assumed (and /step's progress) count as answers.
+ * - A field whose fingerprint changed under the same fid is a new question:
+ *   mapped again, nothing carried over.
  * - When the generic path is surprised (an unexpected commit, no options, an
  *   honest "no option states it" over a popup), /step picks the next move from
  *   the moves the page's code listed. A click is sent `as: "progress"` only when
@@ -34,8 +38,22 @@
  * - Stop: `cancelled()` is checked before every page action; the panel also
  *   sends `fill_cancel`, which cancels the page operation in flight.
  *
- * Final statuses: verified | closest | assumed | already | blocked | yours |
- *                 partial | needs_answer | cannot_operate
+ * THE OUTCOME VOCABULARIES, and where each one ends
+ *   page outcome   verified | partial | unexpected (+reason) | reverted | stale |
+ *     (fill-ops)   progressed | closed | yours | blocked | unsupported |
+ *                  cancelled | timeout
+ *                  → read by act(); never leaves this file as a status.
+ *   act()          the page's outcome, or halted (Stop / run clock) | late
+ *                  (field clock) | refused (yours/blocked/unsupported, already
+ *                  recorded as the row's final status) | stale (no frame owns it)
+ *                  → the caller turns it into a row status (notDone, settle).
+ *   adapt()        verified (+reason) | landed (group_committed) | gave_up |
+ *                  no_answer | exhausted | late | stale | final | halted
+ *                  → settle() (one value) or commitSet (one item).
+ *   row status     new | open | retry while working; the final ones below.
+ *                  `lastOutcome` keeps the word that decided it.
+ *   report status  verified | closest | assumed | already | blocked | yours |
+ *                  partial | needs_answer | cannot_operate — what the panel shows.
  *
  * WHAT THIS FILE PUBLISHES: ns.fillLoop = { runFill, sourceHintOf, limits }.
  */
@@ -65,7 +83,9 @@
   const FINAL = new Set(["verified", "closest", "assumed", "already", "blocked", "yours", "partial", "needs_answer", "cannot_operate"]);
   // What the engine itself committed: the only rows a sweep may reopen.
   const DONE = new Set(["verified", "closest", "assumed", "partial"]);
+  // The only reasons that make an answer; anything else a backend says is an abstain.
   const STATUS = { matched: "verified", closest: "closest", assumed: "assumed" };
+  const STEP_REASONS = new Set([...Object.keys(STATUS), "progress"]);
   const REFUSED = { yours: "yours", blocked: "blocked", unsupported: "cannot_operate" };
   const CAN_ADAPT = new Set(["popup", "search"]);
 
@@ -135,7 +155,7 @@
     };
     const selector = {};
     if (options.applicationId) selector.application_id = options.applicationId;
-    else if (options.base) selector.base = options.base;
+    else if (options.base) selector.base = String(options.base).slice(0, 200);
     const asked = { ...selector, source_hint: options.sourceHint ? String(options.sourceHint).slice(0, 60) : null };
     const rows = new Map(); // fid -> { fid, field, frameId, status, attempts, route, slot, value, answer, lastOutcome, deadline }
     let listed = []; // the latest inventory's fids, in page order
@@ -154,9 +174,12 @@
     const fail = (f, outcome) => set(f.fid, {
       status: "retry", attempts: (rows.get(f.fid).attempts ?? 0) + 1, lastOutcome: outcome ?? "no_answer",
     });
-    const done = (f, reason, committed) => finish(f, STATUS[reason] ?? "verified", {
-      answer: Array.isArray(committed) ? committed.join(", ") : committed ?? null, lastOutcome: "verified",
-    });
+    const done = (f, reason, committed) => {
+      const answer = Array.isArray(committed) ? committed.join(", ") : committed ?? null;
+      // Never "verified" by default: a value that landed without an answer reason is the user's to check.
+      if (!STATUS[reason]) return finish(f, "needs_answer", { answer: landedNote(answer), lastOutcome: "unconfirmed" });
+      return finish(f, STATUS[reason], { answer, lastOutcome: "verified" });
+    };
     // One clock per field, started when the loop starts on it.
     const work = (f, ms = L.FIELD_MS) => set(f.fid, { status: "open", deadline: Date.now() + ms });
     const fieldLate = (f) => Date.now() >= (rows.get(f.fid)?.deadline ?? Infinity);
@@ -198,9 +221,10 @@
     // One action on one field. Outcomes beyond the page's own: halted (Stop or
     // the run's end), late (the field's clock), refused (recorded as final here).
     // `closing` (give_up) may still run out of time — it only closes a popup.
-    const act = async (f, action, { closing = false } = {}) => {
+    // `overtime` (a set committing what it already picked) may run past the field's clock.
+    const act = async (f, action, { closing = false, overtime = false } = {}) => {
       if (cancelled() || (!closing && timedOut())) return { outcome: "halted" };
-      if (!closing && fieldLate(f)) return { outcome: "late" };
+      if (!closing && !overtime && fieldLate(f)) return { outcome: "late" };
       const [got] = rowsOf(await broadcast({ type: "fill_apply", actions: [{ fid: f.fid, fp: f.fp, ...action }] }))
         .filter((r) => r?.fid === f.fid);
       if (!got) return { outcome: "stale" }; // no frame owns the fid any more
@@ -256,23 +280,52 @@
     }
 
     // ---- picking: { text, reason } | { abstained: true } | null (no answer)
-    const pick = async (f, row, opts, complete, item) => {
+    const pickAsk = (f, row, opts, complete, item) => {
       const offered = usable(opts);
-      if (!offered.length || halt() || fieldLate(f)) return null;
-      const res = await post("/api/autofill/pick", {
-        ...asked,
-        fields: [{
+      return {
+        offered,
+        field: {
           fid: f.fid, question: question(f), route: routeOf(row), slot: row.slot ?? null,
           ...(item !== undefined ? { item: String(item).slice(0, 300) } : {}),
           options: offered.slice(0, PICK_OPTIONS).map(({ oid, text }) => ({ oid, text: text.slice(0, 300) })),
           // Complete only when the model sees EVERY option: none hidden by policy, none past the cap.
           complete: Boolean(complete) && offered.length === (opts ?? []).length && offered.length <= PICK_OPTIONS,
-        }],
-      }, rows.get(f.fid).deadline);
-      const got = res?.picks?.[f.fid];
+        },
+      };
+    };
+    const pickOf = (got, offered) => {
       if (!got) return null;
-      const text = got.oids?.length ? offered.find((o) => o.oid === got.oids[0])?.text : undefined;
+      const text = got.oids?.length && STATUS[got.reason] ? offered.find((o) => o.oid === got.oids[0])?.text : undefined;
       return text ? { text, reason: got.reason } : { abstained: true };
+    };
+    const pick = async (f, row, opts, complete, item) => {
+      const { offered, field } = pickAsk(f, row, opts, complete, item);
+      if (!offered.length || halt() || fieldLate(f)) return null;
+      const res = await post("/api/autofill/pick", { ...asked, fields: [field] }, rows.get(f.fid).deadline);
+      return pickOf(res?.picks?.[f.fid], offered);
+    };
+    // The one item of a one-item list fact on a one-answer field (the slot is a
+    // set, so /pick and /step need the item).
+    // A text field takes a string fact, or the one item of a one-item list.
+    const textOf = (f, row) => (typeof row.value === "string" ? row.value : itemOf(f, row)) || null;
+    const itemOf = (f, row) => (Array.isArray(row.value) && !f.multi && row.value.length === 1 ? String(row.value[0]) : undefined);
+    // Fields whose whole option list the inventory already read (native
+    // select, radio, checkbox): no explore, so they are picked together, 40 a call.
+    const pickedTogether = (f, row) => Boolean(f.options?.length && f.optionsComplete && usable(f.options).length)
+      && (row.route === "low_stakes" || (typeof row.value === "string" && row.value) || itemOf(f, row) !== undefined);
+    const pickBatch = async (fields) => {
+      const out = new Map();
+      const asks = fields.map((f) => {
+        const row = rows.get(f.fid);
+        return [f, pickAsk(f, row, f.options, f.optionsComplete, itemOf(f, row))];
+      });
+      for (let i = 0; i < asks.length; i += CHUNK) {
+        if (halt()) break;
+        const part = asks.slice(i, i + CHUNK);
+        const res = await post("/api/autofill/pick", { ...asked, fields: part.map(([, a]) => a.field) });
+        for (const [f, a] of part) out.set(f.fid, pickOf(res?.picks?.[f.fid], a.offered));
+      }
+      return out;
     };
 
     // ---- the adaptive step. Returns { outcome } — verified (+reason,
@@ -315,7 +368,8 @@
         }, rows.get(f.fid).deadline);
         if (halt()) return halted(f);
         if (fieldLate(f)) return giveUp(f, "late");
-        const chosen = res?.mid && res.mid !== "give_up" ? state.candidates.find((c) => c.mid === res.mid) : null;
+        const chosen = res?.mid && res.mid !== "give_up" && STEP_REASONS.has(res.reason)
+          ? state.candidates.find((c) => c.mid === res.mid) : null;
         if (!chosen) return giveUp(f, res ? "gave_up" : "no_answer");
         const asProgress = res.reason === "progress" && chosen.mid.startsWith("click:");
         const out = await act(f, {
@@ -347,8 +401,8 @@
     };
 
     // ---- one value
-    const commitOne = async (f, row, opts, complete, term) => {
-      const picked = await pick(f, row, opts, complete);
+    const commitOne = async (f, row, opts, complete, term, item, prepicked) => {
+      const picked = prepicked !== undefined ? prepicked : await pick(f, row, opts, complete, item);
       if (!picked) {
         if (halt() || fieldLate(f)) return lateOrHalted(f);
         return finish(f, "needs_answer", { lastOutcome: "no_answer" });
@@ -356,53 +410,65 @@
       if (picked.abstained) {
         // An honest "no option states it" over a popup is where categories,
         // search boxes and "Not in list" live. A native list showed everything.
-        if (CAN_ADAPT.has(f.shape)) return settle(f, await adapt(f, row, historyEntry("choose", "abstained")));
+        if (CAN_ADAPT.has(f.shape)) return settle(f, await adapt(f, row, historyEntry("choose", "abstained"), item));
         return finish(f, "needs_answer", { lastOutcome: "abstained" });
       }
       const out = await act(f, { op: "choose", text: picked.text, ...(f.shape === "search" ? { term: term ?? picked.text } : {}) });
       if (notDone(f, out)) return undefined;
       if (out.outcome === "verified") return done(f, picked.reason, out.committed);
       if (out.outcome === "unexpected" && CAN_ADAPT.has(f.shape)) {
-        return settle(f, await adapt(f, row, historyEntry("choose", "unexpected", out.reason)));
+        return settle(f, await adapt(f, row, historyEntry("choose", "unexpected", out.reason), item));
       }
       return fail(f, out.reason ?? out.outcome);
     };
 
     // ---- a set: every source item picked on its own, coverage counted per item
     const commitSet = async (f, row, opts, complete, noOptions) => {
-      const all = row.value.map(String);
+      const all = [...new Set(row.value.map(String))];
       const worked = all.slice(0, L.MAX_ITEMS);
       const byPolicy = new Set(worked.filter(policyBlocks));
+      const todo = worked.filter((item) => !byPolicy.has(item));
       const pairs = []; // [option text, source item, reason]
       const missed = new Map(); // source item -> the history entry the adaptive step starts from
-      if (f.shape === "search") {
-        for (const item of worked) {
-          if (byPolicy.has(item)) continue;
-          const got = await explore(f, item);
-          if (!got) return lateOrHalted(f);
-          if (exploreRefused(f, got)) return undefined;
-          if (got.options?.length && !usable(got.options).length) {
-            byPolicy.add(item); // every option shown for it is a never-fill one
-            continue;
-          }
-          if (!got.options?.length) {
-            missed.set(item, historyEntry("search:value", "unexpected", got.error ?? "no_results"));
-            continue;
-          }
-          const p = await pick(f, row, got.options, false, item);
-          if (p?.text) pairs.push([p.text, item, p.reason]);
-          else if (p?.abstained) missed.set(item, historyEntry("choose", "abstained"));
-        }
-      } else if (noOptions) {
-        for (const item of worked) if (!byPolicy.has(item)) missed.set(item, noOptions);
+      const late = []; // source items the field's clock ran out on
+      if (noOptions) {
+        for (const item of todo) missed.set(item, noOptions);
       } else {
-        // Native (and popup) lists: one pick per source item over the full
-        // list, so every chosen option maps back to the item it stands for.
-        // One at a time, so a Stop or the field's clock holds between items.
-        for (const item of worked) {
-          if (byPolicy.has(item)) continue;
-          if (halt() || fieldLate(f)) break;
-          const p = await pick(f, row, opts, complete, item);
+        // One item at a time, so a Stop or the field's clock holds between
+        // items. A native (or popup) list is picked per source item over the
+        // full list, so every chosen option maps back to the item it stands for.
+        for (const [i, item] of todo.entries()) {
+          if (halt()) return undefined;
+          if (fieldLate(f)) {
+            late.push(...todo.slice(i));
+            break;
+          }
+          let shown = opts;
+          let whole = complete;
+          if (f.shape === "search") {
+            const got = await explore(f, item);
+            if (!got) {
+              if (halt()) return undefined;
+              late.push(...todo.slice(i));
+              break;
+            }
+            if (exploreRefused(f, got)) return undefined;
+            if (got.options?.length && !usable(got.options).length) {
+              byPolicy.add(item); // every option shown for it is a never-fill one
+              continue;
+            }
+            if (!got.options?.length) {
+              missed.set(item, historyEntry("search:value", "unexpected", got.error ?? "no_results"));
+              continue;
+            }
+            shown = got.options;
+            whole = false;
+          }
+          const p = await pick(f, row, shown, whole, item);
+          if (!p && fieldLate(f)) {
+            late.push(...todo.slice(i));
+            break;
+          }
           if (p?.text) pairs.push([p.text, item, p.reason]);
           else if (p?.abstained) missed.set(item, historyEntry("choose", "abstained"));
         }
@@ -416,7 +482,8 @@
         const action = { op: "set", texts };
         // A search set types the item that found each option.
         if (f.shape === "search") action.terms = texts.map((t) => pairs.find(([x]) => x === t)[1]);
-        const out = await act(f, action);
+        // What was picked is committed even when the clock ran out picking the rest.
+        const out = await act(f, action, { overtime: true });
         if (notDone(f, out)) return undefined;
         if (out.outcome !== "verified" && out.outcome !== "partial") return fail(f, out.reason ?? out.outcome);
         committed = out.committed ?? null;
@@ -430,16 +497,24 @@
       }
       // What the generic path missed, on a popup widget: the adaptive step, one item at a time.
       if (CAN_ADAPT.has(f.shape) && routeOf(row) === "slot") {
-        for (const [item, first] of missed) {
-          if (halt() || fieldLate(f)) break;
+        const queue = [...missed].filter(([item]) => !late.includes(item));
+        for (const [i, [item, first]] of queue.entries()) {
+          if (halt()) return undefined;
+          if (fieldLate(f)) {
+            late.push(...queue.slice(i).map(([x]) => x));
+            break;
+          }
           const r = await adapt(f, row, first, item);
           if (FINAL.has(rows.get(f.fid).status) || r.outcome === "halted") return undefined;
-          if (r.outcome === "verified") {
+          if (r.outcome === "verified" && STATUS[r.reason]) {
             covered.set(item, r.reason);
             committed = r.committed ?? committed;
-          } else if (r.outcome === "landed") {
-            landed.push(r.text);
-          } else if (r.outcome === "late" || r.outcome === "stale") {
+          } else if (r.outcome === "verified" || r.outcome === "landed") {
+            landed.push(r.text ?? ([r.committed].flat().filter(Boolean).join(", ") || null));
+          } else if (r.outcome === "late") {
+            late.push(...queue.slice(i).map(([x]) => x));
+            break;
+          } else if (r.outcome === "stale") {
             break;
           }
         }
@@ -448,33 +523,38 @@
       const n = all.length;
       const notes = [
         ...(byPolicy.size ? [`${byPolicy.size} left to you by policy`] : []),
+        ...(late.length ? [`${late.length} ran out of time`] : []),
         ...[...new Set(landed)].map(landedNote),
       ];
       if (covered.size === n) return done(f, [...covered.values()].includes("closest") ? "closest" : "matched", committed);
+      const lastOutcome = late.length ? "timeout" : landed.length ? "group_committed" : "missing";
       if (!covered.size) {
         if (byPolicy.size === n) return finish(f, "blocked", { lastOutcome: "blocked" });
-        return finish(f, "needs_answer", {
-          answer: notes.length ? notes.join(" · ") : null, lastOutcome: landed.length ? "group_committed" : "missing",
+        return finish(f, late.length ? "cannot_operate" : "needs_answer", {
+          answer: notes.length ? notes.join(" · ") : null, lastOutcome,
         });
       }
-      return finish(f, "partial", { answer: [`${covered.size} of ${n} added`, ...notes].join(" · "), lastOutcome: "partial" });
+      return finish(f, "partial", {
+        answer: [`${covered.size} of ${n} added`, ...notes].join(" · "), lastOutcome: late.length ? "timeout" : "partial",
+      });
     };
 
     // ---- a choice field: explore when the list is not already whole, then pick and commit
-    const fillChoice = async (f, row) => {
+    const fillChoice = async (f, row, prepicked) => {
       const { value } = row;
       if (row.route === "slot" && (value == null || value === "" || (Array.isArray(value) && !value.length))) {
         return finish(f, "needs_answer", { lastOutcome: "no_value" });
       }
       const isSet = Array.isArray(value) && Boolean(f.multi);
-      // A set fact on a one-answer field: no single item is THE answer.
-      if (Array.isArray(value) && !isSet) return finish(f, "needs_answer", { lastOutcome: "set_for_one" });
+      const item = itemOf(f, row);
+      // A set fact on a one-answer field: no single item is THE answer — unless it holds just one.
+      if (Array.isArray(value) && !isSet && item === undefined) return finish(f, "needs_answer", { lastOutcome: "set_for_one" });
       let opts = f.options ?? [];
       let complete = Boolean(f.optionsComplete);
       let term;
       let noOptions = null;
       if (!(isSet && f.shape === "search") && !(opts.length && complete)) {
-        term = f.shape === "search" && typeof value === "string" ? value : undefined;
+        term = f.shape === "search" ? item ?? (typeof value === "string" ? value : undefined) : undefined;
         const got = await explore(f, term);
         if (!got) return lateOrHalted(f);
         if (exploreRefused(f, got)) return undefined;
@@ -487,8 +567,8 @@
       }
       if (opts.length && !usable(opts).length) return finish(f, "blocked", { lastOutcome: "blocked" });
       if (isSet) return commitSet(f, row, opts, complete, noOptions);
-      if (noOptions) return settle(f, await adapt(f, row, noOptions));
-      return commitOne(f, row, opts, complete, term);
+      if (noOptions) return settle(f, await adapt(f, row, noOptions, item));
+      return commitOne(f, row, opts, complete, term, item, prepicked);
     };
 
     const fillText = async (f, value, format) => {
@@ -517,6 +597,12 @@
       listed = [];
       const open = [];
       for (const [frameId, f] of now) {
+        const had = rows.get(f.fid);
+        if (had?.field && had.field.fp !== f.fp) {
+          // The same element now asks something else (relabelled, re-purposed):
+          // nothing decided about the old question carries over.
+          rows.set(f.fid, { fid: f.fid, attempts: 0, status: "new" });
+        }
         if (!rows.has(f.fid)) {
           // A node re-inserted while the page was being listed comes back
           // under a NEW fid: it is the same field (same frame, same
@@ -621,25 +707,19 @@
           if (f.kind === "text") prose.push(f);
           else finish(f, "needs_answer", { lastOutcome: "no_fact" });
         } else if (f.kind === "text") {
-          if (row.route === "slot" && typeof row.value === "string" && row.value) texts.push(f);
+          if (row.route === "slot" && textOf(f, row)) texts.push(f);
           else finish(f, "needs_answer", { lastOutcome: "no_value" });
         } else choices.push(f);
       }
 
-      const proseAnswers = prose.length ? answerProse(prose) : null;
-      for (const f of texts) {
-        if (halt()) break;
-        const row = work(f);
-        await fillText(f, row.value, /phone/i.test(row.slot ?? "") ? "phone" : undefined);
-      }
-      for (const f of choices) {
-        if (halt()) break;
-        const row = rows.get(f.fid);
-        const items = Array.isArray(row.value) ? Math.min(row.value.length, L.MAX_ITEMS) : 1;
-        await fillChoice(f, work(f, L.FIELD_MS + L.ITEM_MS * Math.max(0, items - 1)));
-      }
-      if (proseAnswers && !halt()) {
-        const answers = await proseAnswers;
+      // Model calls run beside the page work; page actions stay one at a time.
+      let answers = null;
+      const asking = prose.length ? answerProse(prose).then((got) => { answers = got; }) : null;
+      let proseWritten = !prose.length;
+      // Prose is written as soon as its answers are in, between other fields.
+      const writeProse = async () => {
+        if (proseWritten || !answers || halt()) return;
+        proseWritten = true;
         for (const f of prose) {
           if (halt()) break;
           const choice = answers[f.fid];
@@ -650,6 +730,26 @@
           work(f);
           await fillText(f, choice.answer);
         }
+      };
+      const prepicking = pickBatch(choices.filter((f) => pickedTogether(f, rows.get(f.fid))));
+      for (const f of texts) {
+        if (halt()) break;
+        const row = work(f);
+        await fillText(f, textOf(f, row), /phone/i.test(row.slot ?? "") ? "phone" : undefined);
+        await writeProse();
+      }
+      const prepicked = await prepicking;
+      for (const f of choices) {
+        if (halt()) break;
+        await writeProse();
+        const row = rows.get(f.fid);
+        const items = Array.isArray(row.value) ? Math.min(new Set(row.value).size, L.MAX_ITEMS) : 1;
+        await fillChoice(f, work(f, L.FIELD_MS + L.ITEM_MS * Math.max(0, items - 1)),
+          prepicked.has(f.fid) ? prepicked.get(f.fid) : undefined);
+      }
+      if (asking && !proseWritten && !halt()) {
+        await asking;
+        await writeProse();
       }
       if (!halt()) await sweep();
       tell({ phase: "round", round });
@@ -675,7 +775,8 @@
         answer: r.answer ?? null,
         route: r.route ?? null,
         slot: r.slot ?? null,
-        lastOutcome: r.lastOutcome ?? null,
+        // Left open when the run's clock ran out: the panel can say so.
+        lastOutcome: over && !FINAL.has(r.status) ? "timeout" : r.lastOutcome ?? null,
       };
     });
     return { runId, fields, host, aiFailure, stopped, timedOut: over };

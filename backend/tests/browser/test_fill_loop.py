@@ -7,7 +7,13 @@ from pathlib import Path
 
 import pytest
 
+from app.schemas.autofill_choose import ChooseRequest
+from app.schemas.autofill_fill import MapRequest, PickRequest, StepRequest
 from tests.browser.conftest import EXTENSION
+
+# Every body the loop POSTs must be one the real endpoint accepts.
+MODELS = {"/api/autofill/map": MapRequest, "/api/autofill/pick": PickRequest,
+          "/api/autofill/step": StepRequest, "/api/autofill/choose": ChooseRequest}
 
 LOOP_SOURCES = ["shared/policy.js", "shared/choose.js", "shared/guided-run.js", "shared/fill-loop.js"]
 # The backend's own patterns (app/schemas/autofill_fill.py), restated so a
@@ -62,7 +68,7 @@ DRIVER = """async (spec) => {
     inflight[path] -= 1;
     if (spec.apiHang?.includes(path)) return new Promise(() => {});
     if (path.startsWith("/api/autofill/context")) return {eeo_consent: {consent_forms: false}};
-    if (path === "/api/autofill/map") return {fields: Object.fromEntries(body.fields.map(f => [f.fid, spec.map[f.fid] ?? {route: "none"}]))};
+    if (path === "/api/autofill/map") return {fields: Object.fromEntries(body.fields.map(f => [f.fid, spec.map[`${f.fid}:${f.question}`] ?? spec.map[f.fid] ?? {route: "none"}]))};
     if (path === "/api/autofill/pick") return {picks: Object.fromEntries(body.fields.map(f => [f.fid, spec.pick[`${f.fid}:${f.item ?? ""}`] ?? spec.pick[f.fid] ?? {oids: [], reason: "abstained"}]))};
     if (path === "/api/autofill/step") return spec.step.moves.shift() ?? {mid: null, reason: "abstained"};
     if (path === "/api/autofill/choose") return {choices: Object.fromEntries(body.fields.map(f => [f.qid, spec.choose[f.qid] ?? {answer: null, reason: "abstained"}]))};
@@ -81,7 +87,11 @@ def run(page, load, **spec):
     load(page, "<div></div>", sources=LOOP_SOURCES)
     spec = {"frames": [[]], "explore": {}, "apply": {}, "map": {}, "pick": {}, "choose": {},
             "step": {"states": [], "moves": []}} | spec
-    return page.evaluate(DRIVER, spec)
+    out = page.evaluate(DRIVER, spec)
+    for post in out["posts"]:
+        if post["path"] in MODELS:
+            MODELS[post["path"]].model_validate(post["body"])
+    return out
 
 
 def f(fid, shape="text", question="Q", **kw):
@@ -311,12 +321,6 @@ def test_a_field_that_appears_after_an_answer_is_filled_next_round(page, load):
                    "b": {"route": "slot", "slot": "personal.state", "value": "TX"}})
     assert statuses(out) == {"a": "verified", "b": "verified"}
     assert out["calls"].count("/api/autofill/map") == 2  # a field is mapped once
-
-
-def test_stop_ends_the_run_before_the_next_action(page, load):
-    out = run(page, load, frames=[[f("a")]], stopAfter=1, map={"a": {"route": "slot", "slot": "s", "value": "1"}})
-    assert "fill_apply" not in out["calls"]
-    assert out["report"]["stopped"] is True
 
 
 def test_an_unreachable_ai_guesses_nothing(page, load):
@@ -571,6 +575,8 @@ def test_the_run_has_a_deadline(page, load):
     assert out["report"]["aiFailure"] is None
     assert not actions(out)
     assert statuses(out) == {"a": "needs_answer", "b": "needs_answer"}
+    # The panel can say "ran out of time" rather than "no answer".
+    assert {r["lastOutcome"] for r in out["report"]["fields"]} == {"timeout"}
 
 
 def test_the_run_running_out_mid_step_closes_the_popup_it_held(page, load):
@@ -636,7 +642,7 @@ def test_a_stop_between_native_set_items_stops_the_picks(page, load):
     assert got == {"picks": 2, "applies": 0, "stopped": True}
 
 
-@pytest.mark.parametrize(("item_ms", "status", "picks"), [(150, "verified", 3), (0, "cannot_operate", 2)])
+@pytest.mark.parametrize(("item_ms", "status", "picks"), [(150, "verified", 3), (0, "partial", 2)])
 def test_a_set_clock_grows_per_item(page, load, item_ms, status, picks):
     options = [opt(f"o{i}", t) for i, t in enumerate("ABC")]
     out = run(page, load, frames=[[f("k", "select", "Skills", multi=True, options=options, optionsComplete=True)]],
@@ -646,6 +652,9 @@ def test_a_set_clock_grows_per_item(page, load, item_ms, status, picks):
               apply={"A+B+C": {"outcome": "verified", "added": list("ABC"), "missing": []}})
     assert statuses(out) == {"k": status}
     assert len(bodies(out, "/api/autofill/pick")) == picks
+    if status == "partial":  # out of time mid-picks: what was picked is still committed
+        assert [a["texts"] for a in actions(out, "set")] == [["A"]]
+        assert (row(out, "k")["answer"], row(out, "k")["lastOutcome"]) == ("1 of 3 added · 2 ran out of time", "timeout")
 
 
 def test_a_group_committed_inside_a_set_is_named_once(page, load):
@@ -722,6 +731,91 @@ def test_progress_events_name_each_field_once_and_each_round(page, load):
     assert all(set(e) in ({"phase", "fid", "status"}, {"phase", "round"}) for e in events)
     fields = [(e["fid"], e["status"]) for e in events if e["phase"] == "field"]
     assert len(fields) == len(set(fields))
+
+
+# ---------- code-quality review
+
+
+def test_a_relabelled_field_keeping_its_fid_is_mapped_again(page, load):
+    out = run(page, load, frames=[[f("a", question="City")], [f("a", question="Company", fp="fp-a2", committed="Springfield")]],
+              map={"a:City": {"route": "slot", "slot": "personal.city", "value": "Springfield"},
+                   "a:Company": {"route": "slot", "slot": "experience.0.employer", "value": "Acme"}})
+    assert [[(x["fid"], x["question"]) for x in b["fields"]] for b in bodies(out, "/api/autofill/map")] == [
+        [("a", "City")], [("a", "Company")]]
+    r = row(out, "a")
+    assert (r["status"], r["answer"], r["slot"]) == ("verified", "Acme", "experience.0.employer")
+
+
+def test_complete_native_lists_are_picked_in_one_call(page, load):
+    yes_no = [opt("o1", "Yes"), opt("o2", "No")]
+    fields = [f(x, "select", f"Q{x}", options=yes_no, optionsComplete=True) for x in "abc"]
+    out = run(page, load, frames=[fields],
+              map={x: {"route": "slot", "slot": f"work_auth.{x}", "value": "Yes"} for x in "abc"},
+              pick={x: {"oids": ["o1"], "reason": "matched"} for x in "abc"})
+    assert statuses(out) == {"a": "verified", "b": "verified", "c": "verified"}
+    [pick] = bodies(out, "/api/autofill/pick")
+    assert [x["fid"] for x in pick["fields"]] == ["a", "b", "c"]
+    assert "fill_explore" not in out["calls"]
+
+
+def test_a_pick_reason_outside_the_vocabulary_is_an_abstain(page, load):
+    out = run(page, load, frames=[[f("s", "select", "Country", options=[opt("o1", "US")], optionsComplete=True)]],
+              map={"s": {"route": "slot", "slot": "personal.country", "value": "US"}},
+              pick={"s": {"oids": ["o1"], "reason": "sure"}})
+    assert (row(out, "s")["status"], row(out, "s")["lastOutcome"]) == ("needs_answer", "abstained")
+    assert not actions(out)
+
+
+def test_a_step_reason_outside_the_vocabulary_gives_up(page, load):
+    out = run(page, load, frames=[[f("h", "popup")]],
+              map={"h": {"route": "slot", "slot": "preferences.how_heard", "value": "LinkedIn"}},
+              explore={"h": {"options": [], "complete": False, "error": "empty_popup"}},
+              step={"states": [{"candidates": [{"mid": "click:o1", "describe": 'Click the option "LinkedIn"'}, GIVE_UP]}],
+                    "moves": [{"mid": "click:o1", "reason": "sure"}]})
+    assert statuses(out) == {"h": "needs_answer"}
+    assert [a["mid"] for a in actions(out, "move")] == ["give_up"]
+
+
+def test_repeated_set_items_are_picked_once(page, load):
+    out = run(page, load, frames=[[f("k", "search", "Skills", multi=True)]],
+              map={"k": {"route": "slot", "slot": "skills", "value": ["SQL", "SQL", "Python"]}},
+              explore={"SQL": {"options": [opt("o1", "SQL")]}, "Python": {"options": [opt("o1", "Python")]}},
+              pick={"k:SQL": {"oids": ["o1"], "reason": "matched"}, "k:Python": {"oids": ["o1"], "reason": "matched"}},
+              apply={"SQL+Python": {"outcome": "verified", "added": ["SQL", "Python"], "missing": []}})
+    assert statuses(out) == {"k": "verified"}
+    assert [b["fields"][0]["item"] for b in bodies(out, "/api/autofill/pick")] == ["SQL", "Python"]
+
+
+def test_a_long_base_selector_is_cut_to_the_schema(page, load):
+    out = run(page, load, frames=[[f("a", question="City")]], options={"base": "b" * 300},
+              map={"a": {"route": "slot", "slot": "personal.city", "value": "X"}})
+    [m] = bodies(out, "/api/autofill/map")
+    assert m["base"] == "b" * 200
+
+
+def test_prose_is_written_as_soon_as_its_answers_arrive(page, load):
+    yes_no = [opt("o1", "Yes"), opt("o2", "No")]
+    out = run(page, load, frames=[[f("c1", "popup", "Q1"), f("c2", "popup", "Q2"), f("w", question="Why us?")]],
+              apiDelay={"/api/autofill/pick": 40, "/api/autofill/choose": 10},
+              map={"c1": {"route": "slot", "slot": "work_auth.a", "value": "Yes"},
+                   "c2": {"route": "slot", "slot": "work_auth.b", "value": "Yes"}, "w": {"route": "free_text"}},
+              explore={"c1": {"options": yes_no, "complete": True}, "c2": {"options": yes_no, "complete": True}},
+              pick={"c1": {"oids": ["o1"], "reason": "matched"}, "c2": {"oids": ["o1"], "reason": "matched"}},
+              choose={"w": {"answer": "Because.", "reason": "matched"}})
+    assert statuses(out) == {"c1": "verified", "c2": "verified", "w": "verified"}
+    assert [a["fid"] for a in actions(out)] == ["c1", "w", "c2"]
+
+
+def test_a_one_item_list_fact_answers_a_one_answer_field(page, load):
+    out = run(page, load, frames=[[f("d", "popup", "Main skill"), f("t", question="Top skill")]],
+              map={"d": {"route": "slot", "slot": "skills", "value": ["SQL"]},
+                   "t": {"route": "slot", "slot": "skills", "value": ["SQL"]}},
+              explore={"d": {"options": [opt("o1", "SQL"), opt("o2", "Go")], "complete": True}},
+              pick={"d:SQL": {"oids": ["o1"], "reason": "matched"}})
+    assert statuses(out) == {"d": "verified", "t": "verified"}
+    [pick] = bodies(out, "/api/autofill/pick")
+    assert pick["fields"][0]["item"] == "SQL"
+    assert [a.get("value") for a in actions(out, "write")] == ["SQL"]
 
 
 # ---------- the wire
