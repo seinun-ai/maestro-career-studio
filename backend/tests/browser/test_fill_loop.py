@@ -746,6 +746,30 @@ def test_a_relabelled_field_keeping_its_fid_is_mapped_again(page, load):
     assert (r["status"], r["answer"], r["slot"]) == ("verified", "Acme", "experience.0.employer")
 
 
+@pytest.mark.parametrize("remapped", [True, False])
+def test_a_relabelled_field_holding_the_engines_old_write_is_not_already(page, load, remapped):
+    relabelled = f("a", question="Company", fp="fp-a2", committed="Springfield", answered=True)
+    mapping = {"a:City": {"route": "slot", "slot": "personal.city", "value": "Springfield"}}
+    if remapped:
+        mapping["a:Company"] = {"route": "slot", "slot": "experience.0.employer", "value": "Acme"}
+    out = run(page, load, frames=[[f("a", question="City")], [relabelled]], map=mapping)
+    r = row(out, "a")
+    assert len(bodies(out, "/api/autofill/map")) == 2
+    if remapped:
+        assert (r["status"], r["answer"]) == ("verified", "Acme")
+        assert [a["value"] for a in actions(out, "write")] == ["Springfield", "Acme"]
+    else:
+        assert r["status"] == "needs_answer"
+        assert r["answer"] == 'Companion wrote "Springfield" here for an earlier question — check it'
+
+
+def test_a_relabelled_field_holding_someone_elses_value_is_already(page, load):
+    out = run(page, load, frames=[[f("a", question="City")],
+                                  [f("a", question="Company", fp="fp-a2", committed="Initech", answered=True)]],
+              map={"a:City": {"route": "slot", "slot": "personal.city", "value": "Springfield"}})
+    assert statuses(out) == {"a": "already"}
+
+
 def test_complete_native_lists_are_picked_in_one_call(page, load):
     yes_no = [opt("o1", "Yes"), opt("o2", "No")]
     fields = [f(x, "select", f"Q{x}", options=yes_no, optionsComplete=True) for x in "abc"]

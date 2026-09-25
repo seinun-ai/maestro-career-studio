@@ -177,8 +177,8 @@
     const done = (f, reason, committed) => {
       const answer = Array.isArray(committed) ? committed.join(", ") : committed ?? null;
       // Never "verified" by default: a value that landed without an answer reason is the user's to check.
-      if (!STATUS[reason]) return finish(f, "needs_answer", { answer: landedNote(answer), lastOutcome: "unconfirmed" });
-      return finish(f, STATUS[reason], { answer, lastOutcome: "verified" });
+      if (!STATUS[reason]) return finish(f, "needs_answer", { answer: landedNote(answer), lastOutcome: "unconfirmed", wrote: answer });
+      return finish(f, STATUS[reason], { answer, lastOutcome: "verified", wrote: answer });
     };
     // One clock per field, started when the loop starts on it.
     const work = (f, ms = L.FIELD_MS) => set(f.fid, { status: "open", deadline: Date.now() + ms });
@@ -392,7 +392,9 @@
     const settle = (f, r) => {
       if (FINAL.has(rows.get(f.fid).status)) return; // refused while stepping
       if (r.outcome === "verified") done(f, r.reason, r.committed);
-      else if (r.outcome === "landed") finish(f, "needs_answer", { answer: landedNote(r.text), lastOutcome: "group_committed" });
+      else if (r.outcome === "landed") {
+        finish(f, "needs_answer", { answer: landedNote(r.text), lastOutcome: "group_committed", wrote: r.text });
+      }
       else if (r.outcome === "gave_up") finish(f, "needs_answer", { lastOutcome: "abstained" });
       else if (r.outcome === "no_answer") finish(f, "needs_answer", { lastOutcome: "no_answer" });
       else if (r.outcome === "exhausted") finish(f, "cannot_operate", { lastOutcome: "step_budget" });
@@ -536,6 +538,7 @@
       }
       return finish(f, "partial", {
         answer: [`${covered.size} of ${n} added`, ...notes].join(" · "), lastOutcome: late.length ? "timeout" : "partial",
+        wrote: [committed].flat().filter(Boolean).join(", ") || null,
       });
     };
 
@@ -600,8 +603,12 @@
         const had = rows.get(f.fid);
         if (had?.field && had.field.fp !== f.fp) {
           // The same element now asks something else (relabelled, re-purposed):
-          // nothing decided about the old question carries over.
-          rows.set(f.fid, { fid: f.fid, attempts: 0, status: "new" });
+          // nothing decided about the old question carries over. If it still
+          // holds what the engine wrote for the old question, that is not an
+          // answer to the new one: it is mapped again, and if nothing answers
+          // it the leftover is named for the user to check.
+          const mine = had.wrote && same(f.committed, had.wrote);
+          rows.set(f.fid, { fid: f.fid, attempts: 0, status: "new", ...(mine ? { leftover: had.wrote } : {}) });
         }
         if (!rows.has(f.fid)) {
           // A node re-inserted while the page was being listed comes back
@@ -621,7 +628,7 @@
         else if (f.touched) finish(f, "yours", { lastOutcome: "yours" });
         else if (f.kind === "unknown" || f.shape === "unknown" || !FID.test(f.fid)) {
           finish(f, "cannot_operate", { lastOutcome: "unsupported" });
-        } else if (row.status === "new" && f.answered && !f.invalid) finish(f, "already");
+        } else if (row.status === "new" && f.answered && !f.invalid && !row.leftover) finish(f, "already");
         else if (FINAL.has(row.status) && !(row.status === "verified" && f.invalid)) continue;
         else if ((row.attempts ?? 0) >= L.MAX_ATTEMPTS) finish(f, "cannot_operate");
         else open.push(f);
@@ -673,6 +680,10 @@
       if (L.TAIL_MS > 0) await wait(Math.min(L.TAIL_MS, runDeadline - Date.now()));
       if (halt()) return true;
       return (await sweep()) === 0;
+    };
+    const same = (committed, wrote) => {
+      const norm = (x) => [x].flat().filter((v) => v != null && v !== "").join(", ").replace(/\s+/g, " ").trim().toLowerCase();
+      return norm(committed) !== "" && norm(committed) === norm(wrote);
     };
     const snapshot = () => JSON.stringify([...rows.values()].map((r) => [r.fid, r.status, r.attempts]));
 
@@ -772,7 +783,8 @@
         shape: r.field?.shape,
         status: FINAL.has(r.status) ? r.status
           : r.status === "retry" && !stopped && !over ? "cannot_operate" : "needs_answer",
-        answer: r.answer ?? null,
+        answer: r.answer ?? (r.leftover && !DONE.has(r.status)
+          ? `Companion wrote "${r.leftover}" here for an earlier question — check it` : null),
         route: r.route ?? null,
         slot: r.slot ?? null,
         // Left open when the run's clock ran out: the panel can say so.
