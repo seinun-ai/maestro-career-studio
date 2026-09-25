@@ -14,8 +14,11 @@ import { couldnt } from "@/lib/error-text";
 import { DISPUTE_DETAIL, disputeFailure } from "@/lib/health-report";
 import type { DisputeResult, LintFinding } from "@/lib/types";
 
-/** The page keeps the reply (by content hash) and runs the report again when the rating moved. */
-export type DisputeHandler = (result: DisputeResult) => Promise<void>;
+/**
+ * The page keeps the reply (by content hash) and runs the report again when the rating moved. The
+ * bullet's place comes too: a re-run that moves it to another tab opens that tab first.
+ */
+export type DisputeHandler = (result: DisputeResult, where: LintFinding["location"]) => Promise<void>;
 
 /**
  * A bullet the check rated can be disputed, unless the user set its rating by hand: the endpoint
@@ -126,7 +129,7 @@ export function DisputeBox({
       setOpen(false);
       setNote("");
       setRerunning(true);
-      onDisputed!(reply)
+      onDisputed!(reply, finding.location)
         .catch((err: unknown) => toast.error(couldnt("update the report", err)))
         .finally(() => setRerunning(false));
     },

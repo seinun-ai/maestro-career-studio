@@ -42,6 +42,8 @@ import {
   actionTabOf,
   checkedWords,
   defaultHealthTab,
+  disputeTabMove,
+  mergeResolved,
   findingsByTab,
   GRADE_FLOORS,
   nextGradeProgress,
@@ -680,4 +682,37 @@ test("skillGroupOf names the group a skill is listed in", () => {
   assert.equal(skillGroupOf(data, "Excel"), null);
   assert.equal(skillGroupOf(data, "Rust"), null);
   assert.equal(skillGroupOf(null, "SQL"), null);
+});
+
+test("disputeTabMove opens the tab a dispute moved its bullet to", () => {
+  const where = { section: "experience", index: 0, bullet_index: 1 };
+  const measure = { id: "a", type: "ask", ask_kind: "measure", content_hash: "h1", classification_level: "adjacent", location: where };
+  const detail = { ...measure, id: "b", ask_kind: "detail" };
+  // "No number exists": the number question becomes a detail question.
+  assert.equal(disputeTabMove([measure], [detail], "h1", where), "detail");
+  // Same tab, or gone from the report (its Fixed entry shows in the tab it came from): no move.
+  assert.equal(disputeTabMove([measure], [{ ...measure, id: "c" }], "h1", where), null);
+  assert.equal(disputeTabMove([measure], [], "h1", where), null);
+  // The same text at another place is another bullet.
+  const elsewhere = { ...detail, location: { ...where, bullet_index: 2 } };
+  assert.equal(disputeTabMove([measure], [elsewhere], "h1", where), null);
+  // A rewrite offered after the dispute: Reword.
+  assert.equal(disputeTabMove([measure], [{ ...measure, type: "fix", id: "d" }], "h1", where), "reword");
+});
+
+test("mergeResolved keeps the page session's fixes across re-runs", () => {
+  const rated = (id: string, hash: string) =>
+    ({ id, type: "ask", content_hash: hash, classification_level: "adjacent" });
+  const gap = { id: "gap", type: "ask", content_hash: null, classification_level: null };
+  const a = rated("a", "h1");
+  const b = rated("b", "h2");
+  // A re-run that fixes nothing new keeps what the last one fixed.
+  assert.deepEqual(mergeResolved([a], [], []), [a]);
+  // New fixes join; the same id twice is one entry, the newer one.
+  const a2 = { ...a, label: "newer" };
+  assert.deepEqual(mergeResolved([a, gap], [b, a2], []), [a2, gap, b]);
+  // A fix whose finding is open again leaves: rated text by its hash, the rest by id.
+  assert.deepEqual(mergeResolved([a, b, gap], [], [rated("z", "h1"), { ...gap }]), [b]);
+  // A note or a changed text at the same hash is not open again.
+  assert.deepEqual(mergeResolved([a], [], [{ id: "n", type: "note", content_hash: "h1", classification_level: null }]), [a]);
 });

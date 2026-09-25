@@ -85,7 +85,7 @@ _SITES = [
     ("components/resume-health/wording-checklist.tsx", "apply"),
     ("components/resume-health/wording-checklist.tsx", "ignore"),
     ("components/resume-health/word-list-dialog.tsx", "save"),
-    ("components/resume-health/health-report-page.tsx", "analyze"),
+    ("components/resume-health/use-health-runs.ts", "analyze"),
     ("components/resume-editor/tailored-resume-studio.tsx", "rescore"),
     ("components/career/inbox-panel.tsx", "update"),
     ("components/career/inbox-panel.tsx", "discard"),

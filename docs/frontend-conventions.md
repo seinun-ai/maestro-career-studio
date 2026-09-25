@@ -536,7 +536,8 @@
   that content. A chip that renders a resume-derived string needs a width cap
   plus `truncate`, its row's trailing controls need `shrink-0` so they hold
   their place, and if a heading already names the thing, render only the part
-  the heading does not (`shortFindingLabel`). Also: `truncate` inside a TABLE
+  the heading does not; a label that must show whole (a health row's "<entry> · bullet N", under a
+  rule heading) wraps with `break-words` instead. Also: `truncate` inside a TABLE
   needs `table-fixed` — auto layout sizes the cell to its longest content, so
   the cell never shrinks and the ellipsis never engages.
 - **The 768–1023px band is the layout's worst case.** `MOBILE_BREAKPOINT =

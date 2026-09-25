@@ -803,9 +803,7 @@ citation. Priority lives in the item text, not in the ordinal.
 30. Raw keys or jargon still reach the user or an agent: MCP `explore_*` results carry role slugs with no
     `role_label`; the Assistant's Edited and project cards call an application target only "tailored resume";
     `resume_diff.attribute` labels any unmatched change `"llm"` (the Review
-    changes chip is hidden for it; an `"unknown"` value would change the endpoint's response); the analogue
-    finding's `how` has a semicolon, and its "this bullet" is what the frontend's `hoistBlurb` regex
-    (`lib/health-report.ts`) rewrites, so reword the two together.
+    changes chip is hidden for it; an `"unknown"` value would change the endpoint's response).
 32. Small UI gaps: `/base-resumes/<unknown>/health` shows a skeleton ~7 s before its error (the 404 takes
     react-query's three default retries; `app/providers.tsx` sets no `retry`); `/templates`' stale-chip tooltip
     sits under `GalleryCard`'s `z-10` stretched link; three hint/control pairs keep hardcoded ids

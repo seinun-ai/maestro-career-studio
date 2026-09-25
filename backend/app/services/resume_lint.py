@@ -74,7 +74,7 @@ LADDER_COPY: dict[str, dict[str, str]] = {
         "issue": "Has a number for size, but not for the result.",
         "id_key": "Has a scale metric, but not a business outcome.",  # frozen, see _fid
         "why": "The number measures the thing, not the result it produced.",
-        "how": "Add the outcome if you have it; otherwise this bullet is already strong.",
+        "how": "Add the outcome if you have it. If you don't, it's already strong.",
         "question": "Do you know what this saved, earned, or improved?",
     },
 }

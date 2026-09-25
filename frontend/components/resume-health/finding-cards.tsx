@@ -42,7 +42,6 @@ import {
   answerAsk,
   ApiError,
   applyResumeEdits,
-  draftRewrite,
   unwaiveGate,
   validateTemplate,
   waiveGate,
@@ -99,7 +98,7 @@ export const EVIDENCE_LABELS = Object.fromEntries(
   EVIDENCE_LEVELS.map(({ value, label }) => [value, label]),
 ) as Record<EvidenceLevel, string>;
 
-const LOCKED_BTN =
+export const LOCKED_BTN =
   "disabled:pointer-events-auto aria-disabled:pointer-events-auto";
 
 export type FindingCardShared = {
@@ -618,18 +617,16 @@ function CollapsedRow({
 export function FindingGroupHeader({
   title,
   findings,
-  id,
   nScoreable,
 }: {
   title: string;
   findings: LintFinding[];
-  id: string;
   nScoreable?: number | null;
 }) {
   const points = groupPoints(findings, nScoreable);
   const coaching = sharedCoaching(findings);
   return (
-    <div id={id} className="scroll-mt-6 space-y-1">
+    <div className="space-y-1">
       <h3 className="text-sm font-medium">
         {title} <span className="text-muted-foreground font-normal">({findings.length})</span>
       </h3>
@@ -1192,92 +1189,6 @@ export function NotesTable({
 }
 
 /**
- * The Shorten tab: each too-long bullet with one text-style Shorten, which drafts a shorter version
- * (`draft-rewrite`, objective "condense", hash-guarded) into the same editor every Apply uses.
- */
-export function ShortenList({
-  notes,
-  data,
-  kind,
-  resumeKey,
-  onApplied,
-  locked,
-  onReanalyze,
-}: {
-  notes: LintFinding[];
-  data: ResumeData;
-  kind: "base" | "application";
-  resumeKey: string;
-  onApplied: () => void;
-  locked?: boolean;
-  onReanalyze?: () => void;
-}) {
-  const [condenseDraft, setCondenseDraft] = useState<{
-    finding: LintFinding;
-    suggestion: string;
-    content_hash: string;
-  } | null>(null);
-  const condense = useMutation({
-    mutationFn: (finding: LintFinding) =>
-      draftRewrite(kind, resumeKey, {
-        location: {
-          section: finding.location.section,
-          index: finding.location.index,
-          bullet_index: finding.location.bullet_index,
-        },
-        objective: "condense",
-        expected_content_hash: finding.content_hash ?? undefined,
-      }).then((result) => ({ finding, ...result })),
-    onSuccess: (result) => setCondenseDraft(result),
-    onError: (err: Error) => toastRewriteError(err, onReanalyze, "write new wording"),
-  });
-  return (
-    <ul className="space-y-2">
-      {notes.map((note) => {
-        const current = textAtLocation(data, note) ?? note.subject ?? "";
-        return (
-          <li key={note.id} className="min-w-0 rounded-md border px-3 py-2">
-            <div className="flex min-w-0 flex-wrap items-start gap-2">
-              <div className="flex min-w-0 flex-1 basis-48 flex-col gap-1">
-                <span className="text-muted-foreground text-xs break-words">{note.label}</span>
-                <SourceQuote text={current || note.issue} clamp />
-                <p className="text-muted-foreground max-w-[65ch] text-xs">{note.issue}</p>
-              </div>
-              <Button
-                size="xs"
-                variant="link"
-                className={cn("ml-auto shrink-0", locked && LOCKED_BTN)}
-                disabled={locked || condense.isPending}
-                title={locked ? STALE_APPLY_HINT : undefined}
-                onClick={() => condense.mutate(note)}
-              >
-                {condense.isPending && condense.variables?.id === note.id ? "Shortening…" : "Shorten"}
-              </Button>
-            </div>
-            {condenseDraft?.finding.id === note.id && (
-              <SuggestionEditor
-                finding={note}
-                currentText={current}
-                suggestion={condenseDraft.suggestion}
-                kind={kind}
-                resumeKey={resumeKey}
-                onApplied={() => {
-                  setCondenseDraft(null);
-                  onApplied();
-                }}
-                onReanalyze={onReanalyze}
-                locked={locked}
-                expectedHash={condenseDraft.content_hash}
-              />
-            )}
-          </li>
-        );
-      })}
-    </ul>
-  );
-}
-
-/**
  * A check that flips (Mark as OK, Undo) swaps its row for the other kind, and
  * the button the user pressed leaves with the old row. The row that replaces it
  * takes the focus back onto its own action: `land` marks the check just changed.
@@ -1379,8 +1290,10 @@ function FailedGate({
             >
               Cancel
             </Button>
+            {/* Tonal: the report's one filled button is Start the questions. */}
             <Button
               size="sm"
+              variant="tonal"
               disabled={reason.trim().length === 0 || markOk.isPending}
               onClick={() => waiveOnce()}
               // Disables itself while saving: a native `disabled` drops focus.

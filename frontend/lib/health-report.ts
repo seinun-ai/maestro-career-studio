@@ -131,6 +131,51 @@ export function resolvedFindings<T extends Rated & { id: string; location: Where
 }
 
 /**
+ * "Fixed this session" across re-runs (planner decision: the session is the page's). The entries
+ * kept so far and a re-run's newly fixed ones merge by id (a newer entry replaces an older one), and
+ * an entry whose finding is open again in `next` leaves: rated text an open ask or fix rates again,
+ * or, for one that rates no text, its id back among the open findings.
+ */
+export function mergeResolved<T extends Rated & { id: string }>(
+  kept: T[],
+  fresh: T[],
+  next: (Rated & { id: string })[],
+): T[] {
+  const openIds = new Set(next.filter(isOpen).map((f) => f.id));
+  const reopened = (f: T) => (ratesText(f) ? hasOpenRating(next, f.content_hash!) : openIds.has(f.id));
+  const byId = new Map<string, T>();
+  for (const f of [...kept, ...fresh]) byId.set(f.id, f);
+  return [...byId.values()].filter((f) => !reopened(f));
+}
+
+const samePlace = (a: Where, b: Where) =>
+  a.section === b.section &&
+  (a.index ?? null) === (b.index ?? null) &&
+  (a.bullet_index ?? null) === (b.bullet_index ?? null);
+
+/**
+ * The tab a dispute's re-run moves the disputed bullet to, or null when it stays put (or left the
+ * report). The bullet is the open ask or fix with the disputed text AT the disputed place, before and
+ * after: "no number exists" turns a number question into a detail question, and the page opens the
+ * detail tab before it adopts the report, so the new card mounts in the open panel on its reply.
+ */
+export function disputeTabMove<T extends Actionable & Rated & { location: Where }>(
+  prior: T[],
+  next: T[],
+  hash: string,
+  where: Where,
+): ActionTab | null {
+  const at = (list: T[]) =>
+    list.find((f) => isOpen(f) && f.content_hash === hash && samePlace(f.location, where));
+  const before = at(prior);
+  const after = at(next);
+  if (!before || !after) return null;
+  const from = actionTabOf(before);
+  const to = actionTabOf(after);
+  return from && to && from !== to ? to : null;
+}
+
+/**
  * The dispute a Fixed entry carries: only one whose own re-run lifted the bullet out of the report
  * (`lifted`, recorded by the page). A reply left from an earlier dispute that moved nothing never
  * rides on a bullet the user later fixed by hand.

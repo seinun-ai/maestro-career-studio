@@ -19,6 +19,10 @@ _HELPERS = (_FRONTEND / "lib/health-report.ts").read_text()
 _BADGES = (_FRONTEND / "components/resume-health/health-badges.tsx").read_text()
 _GALLERY = (_FRONTEND / "components/base-resumes/base-resume-gallery.tsx").read_text()
 _JUDGED = (_FRONTEND / "components/resume-health/judged-text.tsx").read_text()
+# Task 11 review: the page's runs, its summary band and the Shorten tab have their own files.
+_RUNS = (_FRONTEND / "components/resume-health/use-health-runs.ts").read_text()
+_BAND = (_FRONTEND / "components/resume-health/summary-band.tsx").read_text()
+_SHORTEN = (_FRONTEND / "components/resume-health/shorten-list.tsx").read_text()
 
 
 def test_the_left_rail_and_its_filters_are_gone():
@@ -63,7 +67,7 @@ def test_stale_is_surfaced_and_apply_locks():
 
 
 def test_apply_sends_content_hash_and_handles_409():
-    assert "expected_content_hash" in _CARDS
+    assert "expected_content_hash" in _SHORTEN and "expectedHash ?? finding.content_hash" in _CARDS
     assert "isContentChangedError" in _CARDS
     assert "content changed since analysis" in _HELPERS
 
@@ -85,9 +89,9 @@ def test_close_the_loop_round2_surfaces():
     assert "MetricAskInput" in _CARDS
     assert "DemonstrateSkillDialog" in _CARDS
     assert "ExpandedFindingChrome" in _CARDS
-    assert "Shorten" in _CARDS
-    assert "draftRewrite" in _CARDS
-    assert "explainScoreDelta" in _PAGE
+    assert "Shorten" in _SHORTEN
+    assert "draftRewrite" in _SHORTEN
+    assert "explainScoreDelta" in _RUNS
     assert "Something else" in (
         _FRONTEND / "components/resume-health/metric-ask-input.tsx"
     ).read_text()
@@ -121,8 +125,8 @@ def test_collapsed_row_cannot_overflow_on_a_long_entry_label():
 
 
 def test_judged_text_is_never_italic_or_one_line_truncated():
-    for name in ("finding-cards", "batch-ask-dialog", "demonstrate-skill-dialog", "wording-checklist", "word-list-dialog",
-                 "judged-text"):
+    for name in ("finding-cards", "demonstrate-skill-dialog", "wording-checklist", "word-list-dialog",
+                 "judged-text", "summary-band", "shorten-list", "done-tab"):
         src = (_FRONTEND / f"components/resume-health/{name}.tsx").read_text()
         assert not re.search(r'className="[^"]*\bitalic\b', src), "judged text must be upright"
     quote = _JUDGED[_JUDGED.index("export function SourceQuote("):]
@@ -161,7 +165,7 @@ def test_per_bullet_metric_contract_and_alternative_are_wired():
     assert "No number? Answer this instead" in _CARDS
     assert "finding.alt_question" in _CARDS and "finding.measure_target" in _CARDS
     assert "metricAsk && !useAlternative" in _CARDS
-    assert "nextGradeLine(body)" in _PAGE
+    assert "nextGradeLine(body)" in _BAND
     assert 'ask_kind?: "measure" | "detail" | "reword" | null' in _TYPES
 
 
@@ -288,25 +292,25 @@ def test_a_dispute_suggestion_uses_the_guarded_apply_and_is_copy_only_for_other_
 
 def test_a_dispute_that_moves_the_rating_re_runs_the_report():
     assert "export function disputeChangedRating" in _HELPERS
-    after = _PAGE[_PAGE.index("const afterDispute = async ("):]
+    after = _RUNS[_RUNS.index("const afterDispute = async ("):]
     after = after[: after.index("\n  };\n")]
     assert "setDisputes(" in after
     assert "if (!disputeChangedRating(result)) return;" in after
     assert after.index("const fresh = await runLatest();") < after.index("if (!fresh) return;") < after.index("adoptReport(")
-    assert after.index("adoptReport(") < after.index("qc.invalidateQueries(")
+    assert after.index("adoptReport(") < after.index("await qc.invalidateQueries(")
     # Only this dispute's own re-run marks the bullet lifted (its Fixed entry carries the reply).
     lift = "if (!hasOpenRating(fresh.findings, hash)) setLifted((l) => new Set(l).add(hash));"
-    assert after.index("adoptReport(") < after.index(lift) < after.index("qc.invalidateQueries(")
+    assert after.index("adoptReport(") < after.index(lift) < after.index("await qc.invalidateQueries(")
     # Only a dispute whose re-run may replace its card is "fresh".
     assert after.index("if (!disputeChangedRating(result)) return;") < after.index("setLastDisputed(hash);")
     # An Apply never drops a dispute: that unmounted the applied editor (focus to <body>) and put the
     # check's old suggestion back against changed text. Disputes are only ever added.
-    applied = _PAGE[_PAGE.index("const invalidateAfterApply = () => {"):]
+    applied = _RUNS[_RUNS.index("const invalidateAfterApply = () => {"):]
     applied = applied[: applied.index("\n  };\n")]
     assert "setDisputes" not in applied
     # The only other change is Reopen's, which drops that bullet's reply with the dispute.
-    assert _PAGE.count("setDisputes(") == 2
-    reopen = _PAGE[_PAGE.index("const reopen = async ("):]
+    assert _RUNS.count("setDisputes(") == 2 and "setDisputes(" not in _PAGE
+    reopen = _RUNS[_RUNS.index("const reopen = async ("):]
     assert "setDisputes((d) => Object.fromEntries(Object.entries(d).filter(([key]) => key !== hash)));" in reopen[: reopen.index("\n  };\n")]
     assert _PAGE.count("onDisputed={afterDispute}") == 2
     assert _PAGE.count("dispute={finding.content_hash ? disputes[finding.content_hash] : undefined}") == 2
@@ -336,9 +340,9 @@ def test_a_dispute_that_resolves_a_bullet_keeps_its_reply_and_focus():
 def test_a_changed_question_is_not_a_fixed_bullet():
     # adoptReport (every re-run: Check again, an override, a dispute) lists as fixed only a
     # location nothing in the new report still asks or fixes; the finding id is not the test.
-    adopt = _PAGE[_PAGE.index("const adoptReport = ("):]
+    adopt = _RUNS[_RUNS.index("const adoptReport = ("):]
     adopt = adopt[: adopt.index("\n  };\n")]
-    assert "setResolved(resolvedFindings(priorFindings.current, result.findings));" in adopt
+    assert "const fresh = resolvedFindings(priorFindings.current, result.findings);" in adopt
     assert "nextIds" not in adopt
     fn = _HELPERS[_HELPERS.index("export function resolvedFindings<"):]
     fn = fn[: fn.index("\n}\n")]
@@ -350,7 +354,7 @@ def test_a_changed_question_is_not_a_fixed_bullet():
     assert "question" not in fn
     # C2 carries the summary's hash but rates nothing: it must not hold the summary's ask open.
     assert "const ratesText = (f: Rated) => Boolean(f.content_hash && f.classification_level);" in _HELPERS
-    assert _PAGE.count("adoptReport(result, true);") + _PAGE.count("adoptReport(fresh, true);") == 3
+    assert _RUNS.count("adoptReport(result, true);") + _RUNS.count("adoptReport(fresh, true);") == 3
 
 
 # --- Task 10b: the Wording checklist and its word list ------------------------------------------
@@ -503,15 +507,15 @@ def test_one_word_list_change_at_a_time():
 
 
 def test_an_older_report_never_replaces_a_newer_one():
-    latest = _PAGE[_PAGE.index("const runLatest = async ("):]
+    latest = _RUNS[_RUNS.index("const runLatest = async ("):]
     latest = latest[: latest.index("\n  };\n")]
     assert latest.index("const seq = ++runSeq.current;") < latest.index("runLintReport(kind, resumeKey)")
     assert latest.index("runLintReport(") < latest.index("if (seq < adoptedSeq.current) return null;")
     assert latest.index("return null;") < latest.index("adoptedSeq.current = seq;")
     # Every re-run goes through it, and adopts only what it returned.
-    assert _PAGE.count("runLintReport(") == 1
-    assert _PAGE.count("await runLatest();") == 3 and "mutationFn: runLatest," in _PAGE
-    assert _PAGE.count("if (!result) return;") == 3 and _PAGE.count("if (!fresh) return;") == 1
+    assert _RUNS.count("runLintReport(") == 1 and "runLintReport" not in _PAGE
+    assert _RUNS.count("await runLatest();") == 3 and "mutationFn: runLatest," in _RUNS
+    assert _RUNS.count("if (!result) return;") == 3 and _RUNS.count("if (!fresh) return;") == 1
 
 
 def test_the_word_list_dialog_has_three_lists_and_reset():
@@ -615,62 +619,63 @@ def test_a_cliche_row_says_to_rewrite_it_not_that_it_cannot():
 # --- Task 11: summary band, action tabs, no left rail --------------------------------------------
 
 _ROUTE = (_FRONTEND / "app/base-resumes/[slug]/health/page.tsx").read_text()
-_QUESTIONS = _FRONTEND / "app/base-resumes/[slug]/health/questions/page.tsx"
+_DONE = (_FRONTEND / "components/resume-health/done-tab.tsx").read_text()
+_BOX = (_FRONTEND / "components/resume-health/dispute-box.tsx").read_text()
 
-
-def _done() -> str:
-    return (_FRONTEND / "components/resume-health/done-tab.tsx").read_text()
-
-
-def _band() -> str:
-    band = _PAGE[_PAGE.index("data-summary-band"):]
-    return band[: band.index("</section>")]
+# Every component the report page renders its controls from (a dialog is its own view).
+_ON_PAGE = {
+    "health-report-page": _PAGE, "summary-band": _BAND, "finding-cards": _CARDS, "done-tab": _DONE,
+    "shorten-list": _SHORTEN, "dispute-box": _BOX,
+    "wording-checklist": (_FRONTEND / "components/resume-health/wording-checklist.tsx").read_text(),
+}
 
 
 def test_the_summary_band_holds_the_grade_the_next_band_and_the_one_filled_button():
-    band = _band()
-    assert "Too little to grade" in band and "GRADE_STYLES[body.grade]" in band
-    assert "TIER_LABELS[body.tier]" in band and "{body.score}/100" in band
+    assert "<SummaryBand" in _PAGE and "data-summary-band" in _BAND
+    assert "Too little to grade" in _BAND and "GRADE_STYLES[body.grade]" in _BAND
+    assert "TIER_LABELS[body.tier]" in _BAND and "{body.score}/100" in _BAND
     # The bar to the next band, with its words.
-    assert "const progress = body && !insufficient ? nextGradeProgress(body) : null;" in _PAGE
-    assert "progress != null &&" in band and "nextGradeLine(body)" in band
-    assert "composition" in band
-    # The stale banner, as before, now in the band.
-    assert "Your resume changed since this check. Check again to update it." in band
-    # The page's one filled button, hidden at zero asks, opening the question pass.
-    assert "Start the questions ({askCount})" in band
-    assert "askCount > 0 &&" in band
-    assert "href={questionsHref}" in band
-    assert "{marked} marked not right" in band and "marked > 0 &&" in band
-    # One filled button: every other Button on the page names a quieter variant (the first check's
-    # Check health is filled only while there is no report, so no band exists).
-    tags = re.findall(r"<Button\b[^>]*?>", _PAGE, flags=re.S)
-    filled = [t for t in tags if "variant=" not in t]
-    assert len(filled) == 1 and "questionsHref" in filled[0], filled
-    assert 'variant={body ? "outline" : "default"}' in _PAGE
-    # Card actions are tonal, never filled: an open card beside the band keeps one filled button.
-    for label in ('{draft.isPending ? "Writing…" : "Write new wording"}', '{apply.isPending ? "Applying…" : "Apply suggestion"}'):
-        at = _CARDS.index(label)
-        tag = _CARDS[_CARDS.rindex("<Button", 0, at): at]
-        assert 'variant="tonal"' in tag, label
-
-
-def test_the_questions_placeholder_page_links_back():
-    src = _QUESTIONS.read_text()
-    assert "use(params)" in src and "<PageShell>" in src
-    assert "Task 12" in src
-    assert "href={`/base-resumes/${slug}/health`}" in src
+    assert "const progress = !insufficient ? nextGradeProgress(body) : null;" in _BAND
+    assert "progress != null &&" in _BAND and "nextGradeLine(body)" in _BAND
+    assert "scoreCompositionLine(body.score, body.score_breakdown, gates)" in _BAND
+    # The stale banner, as before, in the band (the page passes it: it hands focus to Check again).
+    band_call = _PAGE[_PAGE.index("<SummaryBand"): _PAGE.index("</SummaryBand>")]
+    assert "Your resume changed since this check. Check again to update it." in band_call
+    assert "marked={disputeRows.length}" in band_call
+    assert "{marked} marked not right" in _BAND and "marked > 0 &&" in _BAND
+    # The page's one filled control opens the question pass, hidden at zero asks, as a LINK styled
+    # as the button (SYSTEM.md §11 item 29), carrying the tab to come back to.
+    assert "askCount > 0 &&" in _BAND
+    assert '<Link href={startHref} className={cn(buttonVariants(), "ml-auto")}>' in _BAND
+    assert "Start the questions ({askCount})" in _BAND
+    assert "startHref={`${questionsHref}?from=${tab}`}" in band_call
     assert 'questionsHref={`/base-resumes/${slug}/health/questions`}' in _ROUTE
 
 
+def test_one_filled_button_per_view():
+    # Every Button the page renders names a quieter variant; the only filled control is the band's
+    # Start link. The first check's Check health is filled only while there is no report (no band).
+    for name, src in _ON_PAGE.items():
+        for tag in re.findall(r"<Button\b[^>]*?>", src, flags=re.S):
+            assert "variant=" in tag, (name, tag)
+    assert "nativeButton" not in _BAND
+    assert sum(src.count("buttonVariants()") for src in _ON_PAGE.values()) == 1
+    assert 'variant={body ? "outline" : "default"}' in _PAGE
+    for label in ('{draft.isPending ? "Writing…" : "Write new wording"}',
+                  '{apply.isPending ? "Applying…" : "Apply suggestion"}',
+                  '{markOk.isPending ? "Saving…" : "Mark as OK"}'):
+        at = _CARDS.index(label)
+        assert 'variant="tonal"' in _CARDS[_CARDS.rindex("<Button", 0, at): at], label
+
+
 def test_no_numbers_anywhere_is_a_highlighted_callout_not_a_note():
-    band = _band()
-    assert "noNumbers &&" in band
-    assert "bg-amber-50" in band and "dark:bg-amber-950" in band
+    assert "noNumbers &&" in _BAND
+    assert "bg-amber-50" in _BAND and "dark:bg-amber-950" in _BAND
     for part in ("{noNumbers.label}", "{noNumbers.issue}", "{noNumbers.why}", "{noNumbers.how}"):
-        assert part in band
+        assert part in _BAND
     # It links to the Needs a number tab only when that tab has something in it.
-    assert "tabs.number.length > 0 &&" in band and 'openTab("number")' in band
+    assert "numberCount > 0 &&" in _BAND and "numberCount={tabs.number.length}" in _PAGE
+    assert 'onOpenNumberTab={() => openTab("number")}' in _PAGE
     open_tab = _PAGE[_PAGE.index("const openTab = (id: HealthTab) => {"):]
     open_tab = open_tab[: open_tab.index("\n  };\n")]
     assert open_tab.index("flushSync(() => selectTab(id));") < open_tab.index("?.focus();")
@@ -695,8 +700,9 @@ def test_findings_are_grouped_by_action_in_six_tabs():
     assert "CARD_TABS.map((id) => (" in _PAGE
     for tab in ("shorten", "notes", "done"):
         assert f'<TabsContent value="{tab}" keepMounted data-health-tab="{tab}"' in _PAGE
-    # Plain counts on the tabs.
+    # Plain counts on the tabs, said in one phrase in the name.
     assert '<span className="tabular-nums">{countOf(t.id)}</span>' in _PAGE
+    assert "aria-label={`${t.label} ${countOf(t.id)}`}" in _PAGE
 
 
 def test_the_tab_comes_from_the_url_and_defaults_to_the_largest_gain():
@@ -708,25 +714,74 @@ def test_the_tab_comes_from_the_url_and_defaults_to_the_largest_gain():
     assert "gain ?? 0" in _HELPERS and "> best" in fn
 
 
+def test_a_dispute_that_moves_its_bullet_opens_the_new_tab_with_the_report():
+    # "No number exists" turns a number question into a detail question: the new card must mount in
+    # the OPEN panel, or it mounts inert and focus drops to <body>.
+    assert "onDisputed!(reply, finding.location)" in _BOX
+    after = _RUNS[_RUNS.index("const afterDispute = async ("):]
+    after = after[: after.index("\n  };\n")]
+    move = "const moved = disputeTabMove(priorFindings.current, fresh.findings, hash, where);"
+    assert after.index("if (!fresh) return;") < after.index(move)
+    assert after.index(move) < after.index("if (moved) onDisputeMovesTab(moved, fresh.id);") < after.index("adoptReport(fresh, true);")
+    assert "onDisputeMovesTab: moveTabWith," in _PAGE
+    # The page opens that tab in the render the re-run's report arrives in (react-query hands it over
+    # a tick after a state update, so a plain tab switch rendered first and the panel took focus).
+    assert "if (tabMove && report.data?.id === tabMove.reportId) {\n    setTabMove(null);\n    setPicked(tabMove.tab);\n  }" in _PAGE
+    fn = _fn(_HELPERS, "export function disputeTabMove<")
+    assert "samePlace(f.location, where)" in fn and "f.content_hash === hash" in fn
+    assert "return from && to && from !== to ? to : null;" in fn
+
+
+def test_every_dispute_refreshes_the_done_tab():
+    # A dispute that keeps its rating never re-runs; its Done row and the band's count still update.
+    after = _RUNS[_RUNS.index("const afterDispute = async ("):]
+    after = after[: after.index("\n  };\n")]
+    assert after.index("void qc.invalidateQueries({ queryKey: disputesKey });") < after.index(
+        "if (!disputeChangedRating(result)) return;")
+    assert 'const disputesKey = ["resume-lint", kind, resumeKey, "disputes"];' in _RUNS
+    assert "queryKey: disputesKey," in _RUNS
+
+
+def test_fixed_this_session_is_the_page_session():
+    adopt = _RUNS[_RUNS.index("const adoptReport = ("):]
+    adopt = adopt[: adopt.index("\n  };\n")]
+    assert "setResolved((kept) => mergeResolved(kept, fresh, result.findings));" in adopt
+    fn = _fn(_HELPERS, "export function mergeResolved<")
+    assert "for (const f of [...kept, ...fresh]) byId.set(f.id, f);" in fn
+    assert ".filter((f) => !reopened(f))" in fn
+
+
 def test_a_tab_groups_its_rows_by_rule_and_states_each_rule_once():
     assert "ruleGroups(" in _PAGE
     header = _CARDS[_CARDS.index("export function FindingGroupHeader("): _CARDS.index("export function FixCard(")]
     assert header.count("groupPoints(findings, nScoreable)") == 1
     assert "coaching.why" in header and "coaching.how" in header
+    # No ids built from sentences.
+    assert "id=" not in header and "group-" not in _PAGE
     assert "renderFinding(finding, Boolean(sharedCoaching(group.findings)))" in _PAGE
     # A row: the entry and bullet, the clamped quote, the bullet's own question, one text-style action, ⋯.
     row = _CARDS[_CARDS.index("function CollapsedRow("): _CARDS.index("export function FindingGroupHeader(")]
     assert "<SourceQuote text={quote} clamp />" in row
     assert "{finding.question}" in row
     assert 'variant="link"' in row and 'variant="outline"' not in row
+    assert "aria-label={`${actionLabel}: ${finding.label}`}" in row
     assert "{overflow}" in row
 
 
-def test_shorten_rows_live_in_their_own_tab():
-    shorten = _fn(_CARDS, "export function ShortenList(")
+def test_shorten_rows_keep_focus():
+    shorten = _fn(_SHORTEN, "export function ShortenList(")
     assert "draftRewrite(" in shorten and 'objective: "condense"' in shorten
-    assert 'variant="link"' in shorten and '"Shorten"' in shorten
     assert "<SourceQuote" in shorten and "{note.label}" in shorten
+    button = shorten[shorten.index("<Button"): shorten.index("</Button>")]
+    assert 'variant="link"' in button and "focusableWhenDisabled" in button
+    assert "aria-label={`Shorten: ${note.label}`}" in button
+    assert "onClick={() => condenseOnce(note)}" in button
+    # Apply never unmounts its editor: the draft stays, so "Applied" takes the focus; the row loses
+    # only its Shorten.
+    assert shorten.count("setDrafts(") == 1 and "onSuccess: (result) => setDrafts(" in shorten
+    assert "setApplied((a) => new Set(a).add(note.id));" in shorten
+    assert "{!applied.has(note.id) && (" in shorten
+    assert "function ShortenList(" not in _CARDS and "draftRewrite" not in _CARDS
     notes = _fn(_CARDS, "export function NotesTable(")
     assert "condense" not in notes and "bullet.too_long" not in notes
 
@@ -741,7 +796,7 @@ def test_unscored_skills_are_a_table_with_a_show_it_action():
 
 
 def test_the_done_tab_lists_fixes_disputes_and_corrected_ratings():
-    done = _done()
+    done = _DONE
     assert "Fixed this session" in done and "<ResolvedFinding" in done
     assert "Marked not right" in done and "{d.note}" in done and "{d.reply}" in done
     assert "Corrected ratings" in done
@@ -749,12 +804,12 @@ def test_the_done_tab_lists_fixes_disputes_and_corrected_ratings():
     assert "onAct={() => onReopen(d.content_hash)}" in done
     assert "onAct={() => onBackToAutomatic(f.content_hash!)}" in done
     # Reopen deletes the dispute, then re-runs; Back to automatic clears the override, then re-runs.
-    page_reopen = _PAGE[_PAGE.index("const reopen = async ("):]
-    page_reopen = page_reopen[: page_reopen.index("\n  };\n")]
-    assert page_reopen.index("await reopenDispute(hash);") < page_reopen.index("await reanalyzeReport();")
+    reopen = _RUNS[_RUNS.index("const reopen = async ("):]
+    reopen = reopen[: reopen.index("\n  };\n")]
+    assert reopen.index("await reopenDispute(hash);") < reopen.index("await reanalyzeReport();")
     assert "overrideClassification(hash, null, \"\")" in _PAGE
     assert 'f.classification_source === "override"' in _PAGE
-    assert "getDisputes(kind, resumeKey)" in _PAGE
+    assert "getDisputes(kind, resumeKey)" in _RUNS
     # Only the Fixed entry a dispute lifted carries the reply (and data-resolved-hash, the focus
     # target): it renders in the tab it came from, while Done lists every fix without it.
     assert "dispute={liftedDispute(finding, lifted, disputes)}" in _PAGE
@@ -775,9 +830,16 @@ def test_the_header_has_the_stamp_and_a_quiet_check_again():
 def test_re_runs_run_one_at_a_time():
     # Overlapping runs let the SERVER's latest report be the older one (it orders by created_at, set
     # when a run finishes). Each re-run starts only after the previous one settled.
-    latest = _PAGE[_PAGE.index("const runLatest = async ("):]
+    latest = _RUNS[_RUNS.index("const runLatest = async ("):]
     latest = latest[: latest.index("\n  };\n")]
     assert "const turn = runQueue.current.then(() => runLintReport(kind, resumeKey));" in latest
     assert "runQueue.current = turn.catch(() => undefined);" in latest
     assert latest.index("runQueue.current = turn") < latest.index("const result = await turn;")
-    assert "const runQueue = useRef<Promise<unknown>>(Promise.resolve());" in _PAGE
+    assert "const runQueue = useRef<Promise<unknown>>(Promise.resolve());" in _RUNS
+
+
+def test_grade_floors_mirror_the_backend_bands():
+    from app.services import health_score
+
+    floors = sorted(floor for floor, _ in health_score.GRADE_BANDS)
+    assert f"export const GRADE_FLOORS = [{', '.join(map(str, floors))}] as const;" in _HELPERS

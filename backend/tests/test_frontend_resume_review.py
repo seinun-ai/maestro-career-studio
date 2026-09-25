@@ -224,8 +224,10 @@ def test_every_health_surface_says_the_same_count():
     assert "const counts = body ? healthCounts(body) : {};" in page
     assert "body.counts?.[key]" not in page
     assert "leftToFix(\n    counts,\n    findings.filter((f) => f.type === \"fix\" || f.type === \"ask\").length,\n  );" in page
-    assert "checkDoneWords(result)" in page and "Check done. Grade ${result.grade}." not in page
-    assert "scoreCompositionLine(body.score, body.score_breakdown, gates)" in page
+    runs = _read("components/resume-health/use-health-runs.ts")
+    band = _read("components/resume-health/summary-band.tsx")
+    assert "checkDoneWords(result)" in runs and "Check done. Grade ${result.grade}." not in runs
+    assert "scoreCompositionLine(body.score, body.score_breakdown, gates)" in band
     assert "summarizeCounts(healthCounts(data))" in _read("components/resume-health/health-badges.tsx")
 
 
@@ -314,7 +316,8 @@ def test_health_copy_first_read():
     # The zone orders the fix list and sets severity; it never weights the score (health_score).
     assert 'ATTENTION_BADGE_LABEL = "Higher priority";' in _read("components/attention-zone.tsx")
     page = _read("components/resume-health/health-report-page.tsx")
-    assert "Start the questions ({askCount})" in page and "number questions" not in page
+    band = _read("components/resume-health/summary-band.tsx")
+    assert "Start the questions ({askCount})" in band and "number questions" not in page
     assert "checkedWords(formatTimeAgo(body.created_at), body.resume_version_number)" in page
     assert "number questions" not in _read("components/resume-health/batch-ask-dialog.tsx")
     cards = _read("components/resume-health/finding-cards.tsx")
