@@ -344,6 +344,9 @@
   hand-typed KB grows no timeline entry per bullet). `patch_point` clears
   `approved_at` when a point leaves `approved`.
 - **ResumeLintReport** (health check): the [health rubric](../health-check-rubric.md) defines bullet evidence.
+  Evaluations store their rubric version, evidence, question, measure target, alternative and language
+  notes on `bullet_classifications`. `bullet_disputes` reserves separate note, before/after, reply and
+  suggestion fields plus a durable metric-unavailable flag for the dispute workflow.
   Gates are `tier:
   "fatal"|"serious"` × `status: "pass"|"fail"|"not_assessed"`
   (`health_gates.py:3`), scored by `health_score.py`; a failing fatal, unwaived
