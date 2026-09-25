@@ -99,21 +99,36 @@ export function hasOpenRating(findings: Rated[], hash: string): boolean {
   return findings.some((f) => isOpen(f) && ratesText(f) && f.content_hash === hash);
 }
 
+type Where = { section: string; index?: number | null; bullet_index?: number | null };
+
 /**
- * The asks and fixes a re-run settled. One that rates text is fixed once no open ask or fix rates
- * that text any more, wherever it sits: a dispute or an override that changes the question gives it
- * a new id, and a deleted bullet moves the ones below it. One that rates no text (an employment
- * gap, the summary's years check) shares its location with others, so it keeps the id test.
+ * The asks and fixes a re-run settled. One that rates text stays open while any open ask or fix
+ * rates that text, wherever it sits (a dispute or an override that changes the question gives it a
+ * new id; a deleted bullet moves the ones below it), and while its place holds an open ask or fix on
+ * text the prior report never had (an applied rewrite that is still flagged). A bullet that only
+ * moved keeps a hash the prior report had, so it never holds another place open. One that rates no
+ * text (an employment gap, the summary's years check) shares its location with others, so it keeps
+ * the id test.
  */
-export function resolvedFindings<T extends Rated & { id: string }>(
+export function resolvedFindings<T extends Rated & { id: string; location: Where }>(
   prior: T[],
-  next: (Rated & { id: string })[],
+  next: (Rated & { id: string; location: Where })[],
 ): T[] {
   const nextIds = new Set(next.map((f) => f.id));
+  const priorHashes = new Set(prior.map((f) => f.content_hash).filter(Boolean));
+  const where = (f: { location: Where }) =>
+    JSON.stringify([f.location.section, f.location.index ?? null, f.location.bullet_index ?? null]);
+  const rewrittenOpen = new Set(
+    next
+      .filter((f) => isOpen(f) && ratesText(f) && !priorHashes.has(f.content_hash))
+      .map(where),
+  );
   return prior.filter(
     (f) =>
       isOpen(f) &&
-      (ratesText(f) ? !hasOpenRating(next, f.content_hash!) : !nextIds.has(f.id)),
+      (ratesText(f)
+        ? !hasOpenRating(next, f.content_hash!) && !rewrittenOpen.has(where(f))
+        : !nextIds.has(f.id)),
   );
 }
 

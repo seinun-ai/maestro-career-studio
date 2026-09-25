@@ -453,6 +453,11 @@ test("resolvedFindings: a rated bullet is fixed only once no open ask or fix rat
   // A real fix: the new text rates fine, and a note on the old text does not keep it open.
   const note = { ...rated("n", "h1", 1, "note"), classification_level: null };
   assert.deepEqual(resolvedFindings([rated("a", "h1", 1)], [note]), [rated("a", "h1", 1)]);
+  // A rewrite that is still flagged: same place, new text (a hash the prior report never had),
+  // still asked. Not fixed.
+  assert.deepEqual(resolvedFindings([rated("a", "h1", 1)], [rated("b", "h9", 1)]), []);
+  // A real rewrite elsewhere does not hold this one open.
+  assert.deepEqual(resolvedFindings([rated("a", "h1", 1)], [rated("b", "h9", 4)]), [rated("a", "h1", 1)]);
   // A moved bullet: slot 2 was deleted and bullet 3 moved up into it, still flagged. Exactly the
   // deleted bullet is fixed; the moved one is not.
   assert.deepEqual(

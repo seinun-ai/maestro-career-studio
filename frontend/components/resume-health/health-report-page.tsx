@@ -279,16 +279,17 @@ export function HealthReportPage({
   // The latest "Not right?" reply per bullet (content hash). Kept here, not in the card: a dispute
   // that moves the rating runs the report again, which can replace the card with a new one.
   const [disputes, setDisputes] = useState<Record<string, DisputeResult>>({});
-  // The bullet of the page's latest action when that was a dispute: a card mounting on it opens
-  // on the reply. Any other action (Check again, an override, an Apply) clears it.
+  // The bullet of a dispute whose re-run may replace its card: the card mounting on it opens on the
+  // reply. Its landing or collapse clears it, as does any other action (Check again, an override,
+  // an Apply).
   const [lastDisputed, setLastDisputed] = useState<string | null>(null);
   // Bullets a dispute's own re-run lifted out of the report: their Fixed entry carries the reply.
   const [lifted, setLifted] = useState<ReadonlySet<string>>(new Set());
   const afterDispute = async (result: DisputeResult) => {
     const hash = result.content_hash;
     setDisputes((d) => ({ ...d, [hash]: result }));
-    setLastDisputed(hash);
     if (!disputeChangedRating(result)) return;
+    setLastDisputed(hash);
     const fresh = await runLintReport(kind, resumeKey);
     adoptReport(fresh, true);
     if (!hasOpenRating(fresh.findings, hash)) setLifted((l) => new Set(l).add(hash));
@@ -297,11 +298,10 @@ export function HealthReportPage({
     });
   };
 
-  const invalidateAfterApply = (contentHash?: string | null) => {
-    // An Apply on a disputed bullet settles the dispute: its reply and suggestion go.
-    if (contentHash) {
-      setDisputes((d) => Object.fromEntries(Object.entries(d).filter(([h]) => h !== contentHash)));
-    }
+  // Disputes are never dropped on Apply: the applied editor stays on screen with its "Applied" (and
+  // the focus) until the next report, whose new text matches no stored dispute. A stale reply never
+  // reaches a Fixed entry, which shows only a bullet its own dispute lifted.
+  const invalidateAfterApply = () => {
     setLastDisputed(null);
     setAppliedCount((n) => n + 1);
     void qc.invalidateQueries({ queryKey: ["resume-lint", kind, resumeKey, "answers"] });
@@ -608,6 +608,7 @@ export function HealthReportPage({
                           onClassificationChanged={overrideClassification}
                           dispute={finding.content_hash ? disputes[finding.content_hash] : undefined}
                           disputeFresh={finding.content_hash != null && finding.content_hash === lastDisputed}
+                          onDisputeSeen={() => setLastDisputed(null)}
                           onDisputed={afterDispute}
                           onReanalyze={() => void reanalyzeReport()}
                           locked={stale && staleIds.has(finding.id)}
@@ -626,6 +627,7 @@ export function HealthReportPage({
                           onClassificationChanged={overrideClassification}
                           dispute={finding.content_hash ? disputes[finding.content_hash] : undefined}
                           disputeFresh={finding.content_hash != null && finding.content_hash === lastDisputed}
+                          onDisputeSeen={() => setLastDisputed(null)}
                           onDisputed={afterDispute}
                           onReanalyze={() => void reanalyzeReport()}
                           locked={stale && staleIds.has(finding.id)}

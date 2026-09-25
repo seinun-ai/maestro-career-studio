@@ -236,6 +236,11 @@ def test_dispute_reply_is_a_status_line_that_takes_focus():
         assert "const fresh = dispute != null && Boolean(disputeFresh);" in body
         assert "useState(fresh);" in body and body.count("setLandOnReply(false);") == 1
         assert "land={landOnReply}" in body
+        # The landing is spent once: on the reply's first landing, or on collapse.
+        assert "onLanded={endLanding}" in body and "onDisputeSeen?.();" in body
+        assert body.count("endLanding();") == 1
+    assert "if (result && land) onLanded?.();" in box
+    assert _PAGE.count("onDisputeSeen={() => setLastDisputed(null)}") == 2
     assert _PAGE.count("disputeFresh={finding.content_hash != null && finding.content_hash === lastDisputed}") == 2
 
 
@@ -286,7 +291,7 @@ def test_a_dispute_suggestion_uses_the_guarded_apply_and_is_copy_only_for_other_
         assert "renderSuggestion={renderSuggestion}" in body
         # A dispute's suggestion is newer: the card's own gives way to it.
         assert "const disputeSuggestion = dispute?.suggestion ?? null;" in body and own in body
-        assert "const applied = () => onApplied(finding.content_hash);" in body
+        assert "onApplied={onApplied}" in body
     block = _CARDS[_CARDS.index("function SuggestionBlock("): _CARDS.index("function SuggestionCopyOnly(")]
     assert block.index('finding.location.section.startsWith("extra:")') < block.index("<SuggestionCopyOnly")
     assert block.index("<SuggestionCopyOnly") < block.index("<SuggestionEditor")
@@ -303,10 +308,14 @@ def test_a_dispute_that_moves_the_rating_re_runs_the_report():
     # Only this dispute's own re-run marks the bullet lifted (its Fixed entry carries the reply).
     lift = "if (!hasOpenRating(fresh.findings, hash)) setLifted((l) => new Set(l).add(hash));"
     assert after.index("adoptReport(") < after.index(lift) < after.index("qc.invalidateQueries(")
-    # An Apply on the bullet settles its dispute.
-    applied = _PAGE[_PAGE.index("const invalidateAfterApply = (contentHash?: string | null) => {"):]
+    # Only a dispute whose re-run may replace its card is "fresh".
+    assert after.index("if (!disputeChangedRating(result)) return;") < after.index("setLastDisputed(hash);")
+    # An Apply never drops a dispute: that unmounted the applied editor (focus to <body>) and put the
+    # check's old suggestion back against changed text. Disputes are only ever added.
+    applied = _PAGE[_PAGE.index("const invalidateAfterApply = () => {"):]
     applied = applied[: applied.index("\n  };\n")]
-    assert "filter(([h]) => h !== contentHash)" in applied
+    assert "setDisputes" not in applied
+    assert _PAGE.count("setDisputes(") == 1
     assert _PAGE.count("onDisputed={afterDispute}") == 2
     assert _PAGE.count("dispute={finding.content_hash ? disputes[finding.content_hash] : undefined}") == 2
 
@@ -342,8 +351,11 @@ def test_a_changed_question_is_not_a_fixed_bullet():
     fn = _HELPERS[_HELPERS.index("export function resolvedFindings<"):]
     fn = fn[: fn.index("\n}\n")]
     # Rated text: open while any ask or fix rates the same hash. No rated text (gaps, C2): the id.
-    assert "ratesText(f) ? !hasOpenRating(next, f.content_hash!) : !nextIds.has(f.id)" in fn
-    assert "question" not in fn and "location" not in fn
+    assert "!hasOpenRating(next, f.content_hash!) && !rewrittenOpen.has(where(f))" in fn
+    assert ": !nextIds.has(f.id)" in fn
+    # A still-flagged rewrite: new text (a hash the prior report never had) open at the same place.
+    assert "!priorHashes.has(f.content_hash)" in fn
+    assert "question" not in fn
     # C2 carries the summary's hash but rates nothing: it must not hold the summary's ask open.
     assert "const ratesText = (f: Rated) => Boolean(f.content_hash && f.classification_level);" in _HELPERS
     assert _PAGE.count("adoptReport(result, true);") + _PAGE.count("adoptReport(fresh, true);") == 3

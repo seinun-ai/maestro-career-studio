@@ -104,8 +104,7 @@ export type FindingCardShared = {
   data: ResumeData;
   kind: "base" | "application";
   resumeKey: string;
-  /** Called with the bullet's hash when an Apply on the card saved: its dispute reply is done. */
-  onApplied: (contentHash?: string | null) => void;
+  onApplied: () => void;
   onClassificationChanged?: ClassificationOverrideHandler;
   onReanalyze?: () => void;
   locked?: boolean;
@@ -116,6 +115,8 @@ export type FindingCardShared = {
   dispute?: DisputeResult;
   /** This bullet's dispute is the page's latest action: a card mounting now opens on the reply. */
   disputeFresh?: boolean;
+  /** The fresh dispute's card landed on its reply, or was collapsed: it is fresh no more. */
+  onDisputeSeen?: () => void;
   onDisputed?: DisputeHandler;
 };
 
@@ -726,6 +727,7 @@ export function FixCard({
   hideHow,
   dispute,
   disputeFresh,
+  onDisputeSeen,
   onDisputed,
 }: FindingCardShared & { finding: LintFinding }) {
   // A card the re-run after the latest dispute put in place opens on its reply and takes focus
@@ -733,13 +735,17 @@ export function FixCard({
   const fresh = dispute != null && Boolean(disputeFresh);
   const [expanded, setExpanded] = useState(fresh);
   const [landOnReply, setLandOnReply] = useState(fresh);
+  const endLanding = () => {
+    if (!landOnReply) return;
+    setLandOnReply(false);
+    onDisputeSeen?.();
+  };
   // Review leaves with the collapsed row: focus goes into the opened card
   // (its first field, else its first control), never to <body>.
   const cardRef = useRef<HTMLDivElement>(null);
   const focusNext = useFocusOnNextCommit();
   const currentText = textAtLocation(data, finding);
   const meta = TYPE_CHIP.fix;
-  const applied = () => onApplied(finding.content_hash);
   const renderSuggestion = (s: string) => (
     <CardSuggestion
       finding={finding}
@@ -747,7 +753,7 @@ export function FixCard({
       suggestion={s}
       kind={kind}
       resumeKey={resumeKey}
-      onApplied={applied}
+      onApplied={onApplied}
       onReanalyze={onReanalyze}
       locked={locked}
     />
@@ -792,7 +798,7 @@ export function FixCard({
       overflow={overflow}
       onCollapse={() => {
         setExpanded(false);
-        setLandOnReply(false);
+        endLanding();
       }}
       quote={showQuote ? currentText : null}
       how={finding.how}
@@ -805,6 +811,7 @@ export function FixCard({
         resumeKey={resumeKey}
         result={dispute}
         land={landOnReply}
+        onLanded={endLanding}
         onDisputed={onDisputed}
         onReanalyze={onReanalyze}
         locked={locked}
@@ -827,12 +834,18 @@ export function AskCard({
   storedAnswer,
   dispute,
   disputeFresh,
+  onDisputeSeen,
   onDisputed,
 }: FindingCardShared & { finding: LintFinding }) {
   // As on FixCard: opens on a fresh dispute's reply, and collapsing ends the landing.
   const fresh = dispute != null && Boolean(disputeFresh);
   const [expanded, setExpanded] = useState(fresh);
   const [landOnReply, setLandOnReply] = useState(fresh);
+  const endLanding = () => {
+    if (!landOnReply) return;
+    setLandOnReply(false);
+    onDisputeSeen?.();
+  };
   const [answerDraft, setAnswerDraft] = useState<string | null>(null);
   const [metricDraft, setMetricDraft] = useState<MetricAskValue | null>(null);
   const [localSuggestion, setLocalSuggestion] = useState<
@@ -871,7 +884,6 @@ export function AskCard({
       onClassificationChanged={onClassificationChanged}
     />
   );
-  const applied = () => onApplied(finding.content_hash);
   const renderSuggestion = (s: string) => (
     <CardSuggestion
       finding={finding}
@@ -879,7 +891,7 @@ export function AskCard({
       suggestion={s}
       kind={kind}
       resumeKey={resumeKey}
-      onApplied={applied}
+      onApplied={onApplied}
       onReanalyze={onReanalyze}
       locked={locked}
     />
@@ -942,7 +954,7 @@ export function AskCard({
       overflow={overflow}
       onCollapse={() => {
         setExpanded(false);
-        setLandOnReply(false);
+        endLanding();
       }}
       quote={showQuote ? currentText : null}
       how={finding.how}
@@ -1003,6 +1015,7 @@ export function AskCard({
         resumeKey={resumeKey}
         result={dispute}
         land={landOnReply}
+        onLanded={endLanding}
         onDisputed={onDisputed}
         onReanalyze={onReanalyze}
         locked={locked}

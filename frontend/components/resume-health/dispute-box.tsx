@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
 
@@ -44,6 +44,7 @@ export function DisputeBox({
   resumeKey,
   result,
   land,
+  onLanded,
   onDisputed,
   onReanalyze,
   locked,
@@ -56,6 +57,8 @@ export function DisputeBox({
   result?: DisputeResult;
   /** The card opened on this reply because the dispute's re-run replaced it: focus lands here. */
   land?: boolean;
+  /** The landing is spent: the card stops treating this reply as new. */
+  onLanded?: () => void;
   onDisputed?: DisputeHandler;
   onReanalyze?: () => void;
   locked?: boolean;
@@ -81,6 +84,9 @@ export function DisputeBox({
   useLayoutEffect(() => {
     if (result && (result !== mountResult || land)) focusIfDropped(replyRef.current);
   }, [result, mountResult, land]);
+  useEffect(() => {
+    if (result && land) onLanded?.();
+  }, [result, land, onLanded]);
   // A dispute that lifts the bullet out of the report removes this card while the reply holds focus.
   // A LAYOUT cleanup runs before React detaches it; after the commit, focus goes to the resolved
   // "Fixed" entry that now carries the reply (ResolvedFinding takes it if it mounts later).
