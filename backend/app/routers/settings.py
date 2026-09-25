@@ -2,7 +2,7 @@ from dataclasses import asdict
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from app.config import settings as app_settings
@@ -55,6 +55,13 @@ class JevSettingsPayload(BaseModel):
     base_url: str | None = None
     model: str | None = None
     engine: Literal["fast", "jev"] | None = None
+
+
+class AutofillOptions(BaseModel):
+    """GET/PUT /api/settings/autofill-options — how far the Companion's fill may go."""
+
+    model_config = ConfigDict(extra="forbid")
+    low_stakes: bool
 
 
 class JevProbeResult(BaseModel):
@@ -450,6 +457,17 @@ def put_jev_info(payload: JevSettingsPayload, db: Annotated[Session, Depends(get
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return get_jev_info(db)
+
+
+@router.get("/autofill-options", response_model=AutofillOptions)
+def get_autofill_options(db: Annotated[Session, Depends(get_db)]):
+    return AutofillOptions(low_stakes=model_settings.get_autofill_low_stakes(db))
+
+
+@router.put("/autofill-options", response_model=AutofillOptions)
+def put_autofill_options(payload: AutofillOptions, db: Annotated[Session, Depends(get_db)]):
+    model_settings.set_autofill_low_stakes(db, payload.low_stakes)
+    return get_autofill_options(db)
 
 
 @router.post("/jev/probe", response_model=JevProbeResult)

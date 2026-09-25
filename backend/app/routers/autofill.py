@@ -13,6 +13,7 @@ import logging
 from collections import Counter
 from datetime import UTC, datetime
 from typing import Annotated, Any
+from urllib.parse import parse_qs, urlsplit
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
@@ -23,14 +24,20 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.models.application import Application
 from app.models.autofill_field_observation import AutofillFieldObservation
+from app.models.job import Job
 from app.schemas.autofill_choose import ChooseRequest, ChooseResponse
+from app.schemas.autofill_fill import MapRequest, MapResponse, PickRequest, PickResponse, Selector
 from app.schemas.autofill_telemetry import TelemetryBatch, TelemetryObservation
 from app.services import (
+    autofill_catalog,
     autofill_choose,
+    autofill_map,
+    autofill_pick,
     autofill_profile,
     autofill_telemetry,
     base_resume_data,
     eeo_consent,
+    model_settings,
 )
 from app.services.autofill_context import employment_blocks, resume_skills
 
@@ -296,3 +303,84 @@ def post_choose(
     return ChooseResponse(
         choices=autofill_choose.choose(payload.fields, application_id, db)
     )
+
+
+# ---------- the fill loop's asks: /map and /pick ----------
+
+
+def _app_id(payload: Selector) -> UUID | None:
+    if not payload.application_id:
+        return None
+    try:
+        return UUID(payload.application_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="application_id is not a UUID") from exc
+
+
+def _facts(
+    db: Session, application_id: UUID | None, base: str | None
+) -> tuple[dict[str, autofill_catalog.Fact], bool]:
+    """The fact catalog and whether EEO answers may be disclosed.
+
+    Built from the CONSENT-GATED profile (inv-eeo-standing-consent): without
+    standing consent there is no `eeo.*` fact, so no model is ever offered one.
+    The resume is the one the panel points at — `_selected_resume`, as /context,
+    so an unknown application stays a 404 — and neither selector is a
+    profile-only fill."""
+    resume = (
+        None
+        if application_id is None and base is None
+        else _selected_resume(db, application_id, base)
+    )
+    try:
+        consented = eeo_consent.get_consent(db).enabled
+    except Exception:  # noqa: BLE001 — fail closed, as withhold_unconsented does
+        logger.exception("eeo consent could not be read; the fill treats it as not given")
+        consented = False
+    facts = autofill_catalog.build(
+        eeo_consent.disclosable_profile(db),
+        employment_blocks(resume) if resume else [],
+        resume_skills(resume) if resume else [],
+    )
+    return facts, consented
+
+
+def _job_hint(
+    db: Session, application_id: UUID | None, source_hint: str | None
+) -> autofill_pick.JobHint | None:
+    """What a low-stakes pick may lean on: the job, and where it was found (the
+    apply page's ?source=, else the tracked job URL's)."""
+    job = None
+    if application_id is not None and (row := db.get(Application, application_id)) is not None:
+        job = db.get(Job, row.job_id)
+    source = source_hint
+    if not source and job and job.source_url:
+        query = parse_qs(urlsplit(job.source_url).query)
+        source = next((query[k][0] for k in ("source", "utm_source", "src") if query.get(k)), None)
+    if job is None and not source:
+        return None
+    return autofill_pick.JobHint(
+        title=job.title if job else None,
+        company=job.company if job else None,
+        source=(source or "").lower()[:60] or None,
+    )
+
+
+@router.post("/map", response_model=MapResponse)
+def post_map(payload: MapRequest, db: Annotated[Session, Depends(get_db)]) -> MapResponse:
+    """Which applicant fact each field asks for; labels only reach the model.
+
+    Low-stakes comes from the server-side setting, never the request."""
+    facts, consented = _facts(db, _app_id(payload), payload.base)
+    return MapResponse(fields=autofill_map.map_fields(
+        payload.fields, facts, db, eeo_consented=consented,
+        low_stakes=model_settings.get_autofill_low_stakes(db)))
+
+
+@router.post("/pick", response_model=PickResponse)
+def post_pick(payload: PickRequest, db: Annotated[Session, Depends(get_db)]) -> PickResponse:
+    """Which live option states each field's fact."""
+    application_id = _app_id(payload)
+    facts, _ = _facts(db, application_id, payload.base)
+    return PickResponse(picks=autofill_pick.pick(
+        payload.fields, facts, db, _job_hint(db, application_id, payload.source_hint)))

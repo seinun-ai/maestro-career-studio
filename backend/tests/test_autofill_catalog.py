@@ -88,3 +88,9 @@ def test_resume_facts_and_saved_answers_are_flag_policy(slot, policy):
 ])
 def test_ym_reads_the_resume_date_shapes(text, expected):
     assert cat.ym(text) == expected
+
+
+def test_a_hand_edited_profile_of_the_wrong_shapes_builds_what_it_can():
+    f = cat.build({"personal": "Sample", "education": "State University", "custom": {"q": "a"},
+                   "preferences": {"how_heard": "LinkedIn"}}, [], [])
+    assert list(f) == ["preferences.how_heard"]

@@ -71,32 +71,52 @@ def _add(out: dict[str, Fact], slot: str, value: Any, describe: str | None = Non
         out[slot] = Fact(slot, text, describe or _describe(slot), policy_for(slot))
 
 
-def build(profile: dict[str, Any], employment: list[dict[str, Any]], skills: list[str]) -> dict[str, Fact]:
-    out: dict[str, Fact] = {}
-    profile = profile or {}
+def _profile_sections(out: dict[str, Fact], profile: dict[str, Any]) -> None:
     for section in ("personal", "work_auth", "eligibility", "eeo", "preferences"):
         values = profile.get(section)
-        if isinstance(values, dict):
-            for key, value in values.items():
-                if section == "eeo" and key == "gender" and value == "self_describe":
-                    value = values.get("gender_self_describe")
-                if isinstance(value, list):
-                    value = tuple(str(v).strip() for v in value if str(v).strip())
-                _add(out, f"{section}.{key}", value)
-    education = profile.get("education")
-    education = [education] if isinstance(education, dict) else (education or [])
-    for i, entry in enumerate([e for e in education if isinstance(e, dict)][:MAX_EDUCATION]):
+        if not isinstance(values, dict):
+            continue
+        for key, value in values.items():
+            if section == "eeo" and key == "gender" and value == "self_describe":
+                value = values.get("gender_self_describe")
+            if isinstance(value, list):
+                value = tuple(str(v).strip() for v in value if str(v).strip())
+            _add(out, f"{section}.{key}", value)
+
+
+def _education(out: dict[str, Fact], education: Any) -> None:
+    """Every entry, most recent first (a legacy profile holds one object)."""
+    education = [education] if isinstance(education, dict) else education
+    entries = [e for e in education if isinstance(e, dict)] if isinstance(education, list) else []
+    for i, entry in enumerate(entries[:MAX_EDUCATION]):
         for key, value in entry.items():
             _add(out, f"education.{i}.{key}", value)
-    for i, block in enumerate((employment or [])[:MAX_EXPERIENCE]):
+
+
+def _experience(out: dict[str, Fact], employment: list[dict[str, Any]]) -> None:
+    """Every job; dates as YYYY-MM, and a current job has no end."""
+    for i, block in enumerate(employment[:MAX_EXPERIENCE]):
         for key in ("employer", "title", "location", "description"):
             _add(out, f"experience.{i}.{key}", block.get(key) or None)
         _add(out, f"experience.{i}.start", ym(block.get("start_date")))
         if not block.get("current"):
             _add(out, f"experience.{i}.end", ym(block.get("end_date")))
         _add(out, f"experience.{i}.current", bool(block.get("current")))
-    _add(out, "skills", tuple(s for s in (skills or []) if s), "applicant skills (a list)")
-    for i, qa in enumerate((profile.get("custom") or [])[:MAX_CUSTOM]):
+
+
+def _custom(out: dict[str, Fact], custom: Any) -> None:
+    """Saved answers, each described by its own question."""
+    for i, qa in enumerate((custom if isinstance(custom, list) else [])[:MAX_CUSTOM]):
         if isinstance(qa, dict) and qa.get("question"):
             _add(out, f"custom.{i}", qa.get("answer"), f"saved answer to: {qa['question']}")
+
+
+def build(profile: dict[str, Any], employment: list[dict[str, Any]], skills: list[str]) -> dict[str, Fact]:
+    out: dict[str, Fact] = {}
+    profile = profile or {}
+    _profile_sections(out, profile)
+    _education(out, profile.get("education"))
+    _experience(out, employment or [])
+    _add(out, "skills", tuple(s for s in (skills or []) if s), "applicant skills (a list)")
+    _custom(out, profile.get("custom"))
     return dict(list(out.items())[:MAX_SLOTS])
