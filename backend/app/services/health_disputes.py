@@ -11,26 +11,33 @@ import logging
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.db import begin_write
+from app.models.bullet_classification import BulletClassification
 from app.models.bullet_dispute import BulletDispute
 from app.models.types import utcnow
 from app.services import bullet_classify, health_guards, model_settings, resume_lint
 
 logger = logging.getLogger(__name__)
 
-# The words the report UI uses for each level.
-LEVEL_WORDS = {
-    "direct": "a strong result",
-    "analogue": "a partial result",
-    "adjacent": "specific, but with no result",
-    "implied": "vague",
-    "unaddressed": "a duty statement",
+# The report UI's label for each level (finding-cards.tsx EVIDENCE_LEVELS), quoted in replies.
+LEVEL_LABELS = {
+    "direct": "Shows a result",
+    "analogue": "Partial result",
+    "adjacent": "Specific, no result",
+    "implied": "Vague",
+    "unaddressed": "Lists a duty",
 }
 ADD_IT_YOURSELF = "Add it to the bullet in your own words."
 UNREADABLE = "Couldn't re-read this bullet. Try again."
+OVERRIDDEN = "You set this rating yourself. Set it back to automatic first."
 
 
 class DisputeUnreadable(RuntimeError):
     """The model's answer failed validation. Nothing is stored; the user can send it again."""
+
+
+class DisputeOverridden(ValueError):
+    """The user set this text's rating by hand; a dispute would be hidden behind it."""
 
 
 def shown(result: dict) -> dict:
@@ -45,9 +52,9 @@ def shown(result: dict) -> dict:
 def _reply(before: dict, after: dict, reason: str) -> str:
     rank = bullet_classify._LEVEL_RANK.index
     if rank(after["level"]) > rank(before["level"]):
-        return f"Re-read: this now counts as {LEVEL_WORDS[after['level']]}."
+        return f'Re-read: now rated "{LEVEL_LABELS[after["level"]]}".'
     if rank(after["level"]) < rank(before["level"]):
-        return (f"Re-read: on a closer look this reads as {LEVEL_WORDS[after['level']]}. "
+        return (f'Re-read: on a closer look this is "{LEVEL_LABELS[after["level"]]}". '
                 f"{after['question'] or ''}").strip()
     if before["ask_kind"] == "measure" and after["ask_kind"] == "detail":
         return f"Understood. No number needed: {after['question']}"
@@ -56,7 +63,15 @@ def _reply(before: dict, after: dict, reason: str) -> str:
     return f"Still flagged: {reason.strip().rstrip('.') or 'the text reads the same'}."
 
 
-def _suggest(db: Session, text: str, new_fact: str, question: str | None) -> str | None:
+def _suggest(db: Session, text: str, note: str, new_fact: str | None,
+             question: str | None) -> str | None:
+    """A guarded rewrite carrying the note's fact. `new_fact` is MODEL output, and the guard
+    trusts its context's numbers, so a number the note never gave (nor the text) drops it."""
+    if not new_fact:
+        return None
+    given = set(health_guards._numbers(note)) | set(health_guards._numbers(text))
+    if set(health_guards._numbers(new_fact)) - given:
+        return None
     try:
         return health_guards.guarded_rewrite(db, text, context=new_fact, question=question or "")
     except Exception:  # noqa: BLE001 — a failed draft degrades to "add it yourself"
@@ -64,16 +79,14 @@ def _suggest(db: Session, text: str, new_fact: str, question: str | None) -> str
         return None
 
 
-def dispute(db: Session, text: str, note: str) -> dict:
-    text, note = str(text).strip(), str(note).strip()
-    if not text or not note:
-        raise ValueError("A dispute needs a bullet and a note.")
+def _evaluate(db: Session, text: str, note: str) -> tuple[dict, dict]:
+    """(before, after): the reading the user has now, and the uncached re-read with the note."""
     chash = bullet_classify.content_hash(text)
     hints = resume_lint._classify_hints(text)
     try:
         before = bullet_classify.classify_items(db, [{"text": text, "hints": hints}])[chash]
         # Uncached on purpose: the note must never reach the ordinary evaluation's cache row.
-        after = bullet_classify._evaluate_batch(
+        after = bullet_classify.evaluate_uncached(
             db, {chash: {"id": chash, "text": text, "note": note, "hints": hints}}).get(chash)
     except ValueError as e:  # llm.call_openai: no valid JSON after its retries
         raise DisputeUnreadable(UNREADABLE) from e
@@ -85,21 +98,16 @@ def dispute(db: Session, text: str, note: str) -> dict:
         # unaddressed or implied either. Keep the reading the user already had.
         after = {**after, "level": before["level"],
                  **{k: before.get(k) for k in ("question", "ask_kind", "measure_target",
-                                               "alt_question", "reason")}}
-    row = db.get(BulletDispute, chash)
-    # "No number exists", from this note or a stored one, holds until the user reopens it. Applied
-    # AFTER the level revert, which copies before's ask (possibly a number ask) back in.
-    if after["metric_unavailable"] or (row is not None and row.metric_unavailable):
-        after = bullet_classify._validate(text, after, metric_unavailable=True)
+                                               "alt_question", "reason", "confidence")}}
+    return before, after
 
-    before_shown, after_shown = shown(before), shown(after)
-    reply = _reply(before_shown, after_shown, after["reason"] or "")
-    suggestion = None
-    if after["new_fact"]:
-        suggestion = _suggest(db, text, after["new_fact"], after_shown["question"])
-        if suggestion is None:
-            reply = f"{reply} {ADD_IT_YOURSELF}"
 
+def _store(db: Session, chash: str, note: str, before: dict, after: dict, reply: str,
+           suggestion: str | None) -> None:
+    # Every LLM call is done. Take the write lock now (never across a call) and re-read, so a
+    # concurrent first dispute on this text is updated rather than inserted twice.
+    begin_write(db)
+    row = db.get(BulletDispute, chash, populate_existing=True)
     if row is None:
         row = BulletDispute(content_hash=chash)
         db.add(row)
@@ -110,6 +118,29 @@ def dispute(db: Session, text: str, note: str) -> dict:
     row.model = model_settings.get_smart_model(db)
     row.created_at = utcnow()
     db.commit()
+
+
+def dispute(db: Session, text: str, note: str) -> dict:
+    text, note = str(text).strip(), str(note).strip()
+    if not text or not note:
+        raise ValueError("A dispute needs a bullet and a note.")
+    chash = bullet_classify.content_hash(text)
+    classification = db.get(BulletClassification, chash)
+    if classification is not None and classification.override_level:
+        raise DisputeOverridden(OVERRIDDEN)
+    before, after = _evaluate(db, text, note)
+    row = db.get(BulletDispute, chash)
+    # "No number exists", from this note or a stored one, holds until the user reopens it. Applied
+    # AFTER the level revert, which copies before's ask (possibly a number ask) back in.
+    if after["metric_unavailable"] or (row is not None and row.metric_unavailable):
+        after = bullet_classify._validate(text, after, metric_unavailable=True)
+
+    before_shown, after_shown = shown(before), shown(after)
+    reply = _reply(before_shown, after_shown, after["reason"] or "")
+    suggestion = _suggest(db, text, note, after["new_fact"], after_shown["question"])
+    if after["new_fact"] and suggestion is None:
+        reply = f"{reply} {ADD_IT_YOURSELF}"
+    _store(db, chash, note, before, after, reply, suggestion)
     return {"before": {"level": before_shown["level"], "question": before_shown["question"]},
             "after": after_shown, "reply": reply, "suggestion": suggestion,
             "content_hash": chash}

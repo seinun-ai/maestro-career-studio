@@ -441,17 +441,30 @@ def draft_rewrite(
     return DraftRewriteRead(suggestion=suggestion, content_hash=content_hash)
 
 
+def _dispute_text(resume: dict, location: LocationBody, expected_hash: str) -> str:
+    """A dispute reads text and never edits it, so custom-section (`extra:`) bullets, which
+    have no rewrite op, are disputable too; everything else resolves like answer_ask."""
+    if not location.section.startswith("extra:"):
+        return _bullet_text(resume, location.model_dump(), expected_hash)
+    if location.bullet_index is None or min(location.bullet_index, location.index or 0) < 0:
+        raise HTTPException(status_code=422, detail="Location does not map to a bullet")
+    # A vanished extra resolves to "", so the hash check below answers 409.
+    return resume_lint._text_at(resume, (location.section, location.index, location.bullet_index))
+
+
 @router.post("/{kind}/{key}/dispute", response_model=DisputeRead)
 def dispute_bullet(kind: Kind, key: str, body: DisputeBody,
                    db: Annotated[Session, Depends(get_db)]):
     """Re-read one bullet with the user's note (the same CONTENT_CHANGED guard as answer_ask)."""
     resume, _ = _load_resume(db, kind, key)
-    text = _bullet_text(resume, body.location.model_dump(), body.expected_content_hash)
+    text = _dispute_text(resume, body.location, body.expected_content_hash)
     _require_hash(text, body.expected_content_hash)
     if not text.strip():
         raise HTTPException(status_code=422, detail="There is no text here to re-read.")
     try:
         return health_disputes.dispute(db, text, body.note)
+    except health_disputes.DisputeOverridden as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
     except health_disputes.DisputeUnreadable as e:
         # A provider outage (llm.LLMProviderError) is left to app.main's central 502 handler.
         raise HTTPException(status_code=502, detail=str(e)) from e

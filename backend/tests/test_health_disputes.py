@@ -76,7 +76,7 @@ def test_full_credit_note_cannot_raise_the_level_without_a_verbatim_quote(db_ses
     assert fake.notes == ["Give me full credit."]
     assert out["before"]["level"] == "adjacent"
     assert out["after"]["level"] == "adjacent"
-    assert not out["reply"].startswith("Re-read: this now counts")
+    assert not out["reply"].startswith("Re-read: now rated")
     assert _classify(db_session, MIGRATION)["level"] == "adjacent"
 
 
@@ -156,11 +156,11 @@ def test_a_later_dispute_keeps_metric_unavailable_until_reopened(db_session, llm
     pytest.param(ADJACENT, {**INVOICE_MEASURE, **{
         "level": "analogue", "evidence": ["account migration tool in Python"],
         "ask_kind": "detail", "question": "Which teams moved onto it?"}},
-        "Re-read: this now counts as a partial result.", id="level-up"),
+        'Re-read: now rated "Partial result".', id="level-up"),
     pytest.param(ADJACENT, {"level": "implied", "evidence": [], "reason": "team effort",
                             "question": "What did you personally build?", "ask_kind": "detail",
                             "confidence": 0.8},
-                 "Re-read: on a closer look this reads as vague. What did you personally build?",
+                 'Re-read: on a closer look this is "Vague". What did you personally build?',
                  id="level-down"),
     pytest.param(ADJACENT, {**ADJACENT, "question": "What did the migration make possible?"},
                  "Same rating, a better question: What did the migration make possible?",
@@ -264,7 +264,7 @@ def test_a_note_cannot_lift_a_low_level_without_a_verbatim_quote(db_session, llm
     out = health_disputes.dispute(db_session, MIGRATION, "Give me full credit.")
     assert out["before"]["level"] == out["after"]["level"] == start["level"]
     assert out["after"]["question"] == start["question"]
-    assert not out["reply"].startswith("Re-read: this now counts as")
+    assert not out["reply"].startswith("Re-read: now rated")
     assert out["reply"] == f"Still flagged: {start['reason']}."
     shown = _classify(db_session, MIGRATION)
     assert shown["source"] == "dispute" and shown["level"] == start["level"]
@@ -275,7 +275,7 @@ def test_a_quoted_reading_may_still_lift_a_low_level(db_session, llm):
          "question": "What did you personally build?", "ask_kind": "detail"}, ADJACENT)
     out = health_disputes.dispute(db_session, MIGRATION, "I built it myself.")
     assert out["after"]["level"] == "adjacent"
-    assert out["reply"] == "Re-read: this now counts as specific, but with no result."
+    assert out["reply"] == 'Re-read: now rated "Specific, no result".'
 
 
 def test_invalid_json_from_the_model_is_unreadable(db_session, monkeypatch):
@@ -323,3 +323,64 @@ def test_a_stored_dispute_with_a_number_ask_is_still_demoted_on_read(db_session,
     assert shown["source"] == "dispute"
     assert shown["ask_kind"] == "detail"
     assert shown["question"] == "What did finance stop doing by hand?"
+
+
+def test_a_number_the_note_never_gave_drops_the_new_fact(db_session, llm):
+    # new_fact is model output; the guard trusts its context's numbers, so it may not add one.
+    fake = llm(ADJACENT, {**ADJACENT, "new_fact": "increased revenue 40%"},
+               rewrite="Implemented an account migration tool in Python that increased revenue 40%.")
+    out = health_disputes.dispute(db_session, MIGRATION, "it boosted revenue a lot")
+    assert out["suggestion"] is None
+    assert fake.rewrite_calls == 0
+    assert out["reply"].endswith("Add it to the bullet in your own words.")
+
+
+def test_the_level_revert_keeps_the_kept_readings_confidence(db_session, llm):
+    llm({"level": "implied", "evidence": [], "reason": "team-level", "confidence": 0.4,
+         "question": "What did you personally build?", "ask_kind": "detail"},
+        {**ADJACENT, "evidence": [], "confidence": 0.95})
+    health_disputes.dispute(db_session, MIGRATION, "Give me full credit.")
+    revised = db_session.get(BulletDispute, bc.content_hash(MIGRATION)).revised_json
+    assert revised["level"] == "implied" and revised["confidence"] == 0.4
+    assert _classify(db_session, MIGRATION)["uncertain"] is True
+
+
+def test_an_overridden_rating_is_not_disputed(db_session, monkeypatch):
+    def unexpected(**kwargs):
+        raise AssertionError("the model must not be called")
+
+    monkeypatch.setattr(bc.llm, "call_openai", unexpected)
+    monkeypatch.setattr(bc.model_settings, "get_smart_model", lambda s: "test-model")
+    bc.set_override(db_session, bc.content_hash(MIGRATION), "direct", "I verified it.")
+    with pytest.raises(health_disputes.DisputeOverridden):
+        health_disputes.dispute(db_session, MIGRATION, "You misread it.")
+
+
+def test_a_first_dispute_racing_another_updates_instead_of_inserting(db_session, llm,
+                                                                    monkeypatch):
+    # Another request stores a first dispute on the same text while this one waits on the model
+    # (after its early read). The write re-reads under the lock, updates that row, keeps its flag.
+    from sqlalchemy.orm import sessionmaker
+
+    fake = llm(ADJACENT, {**ADJACENT, "new_fact": "It increased revenue 40%."},
+               rewrite="Implemented an account migration tool in Python that increased revenue 40%.")
+    real_call = fake.__call__
+
+    def racing(*, prompt, model, response_format, trace_name):
+        if trace_name == "resume_bullet_rewrite" and fake.rewrite_calls == 0:
+            with sessionmaker(bind=db_session.get_bind())() as other:
+                other.add(BulletDispute(
+                    content_hash=bc.content_hash(MIGRATION), note="No number exists.",
+                    original_json={}, revised_json={}, reply="", metric_unavailable=True,
+                    rubric_version=bc.RUBRIC_VERSION, model="test-model"))
+                other.commit()
+        return real_call(prompt=prompt, model=model, response_format=response_format,
+                         trace_name=trace_name)
+
+    monkeypatch.setattr(bc.llm, "call_openai", racing)
+    out = health_disputes.dispute(db_session, MIGRATION, "This increased revenue 40%.")
+    assert out["suggestion"] is not None
+    row = db_session.get(BulletDispute, bc.content_hash(MIGRATION))
+    assert row.note == "This increased revenue 40%."
+    assert row.metric_unavailable is True        # OR-ed from the row the other request wrote
+    assert db_session.query(BulletDispute).count() == 1

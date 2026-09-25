@@ -189,7 +189,7 @@ def test_cache_projects_fields_and_invalidates_version_and_model(db_session, mon
 def test_evaluation_only_seam_does_not_write_ordinary_cache(db_session, monkeypatch):
     key = bc.content_hash(TEXT)
     monkeypatch.setattr(bc.llm, "call_openai", lambda **kw: {"classifications": [{"id": key, **assessment()}]})
-    results = bc._evaluate_batch(db_session, {key: {"id": key, "text": TEXT}})
+    results = bc.evaluate_uncached(db_session, {key: {"id": key, "text": TEXT}})
     assert results[key]["level"] == "direct"
     assert db_session.get(bc.BulletClassification, key) is None
 

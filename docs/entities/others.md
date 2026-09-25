@@ -354,7 +354,9 @@
   `guarded_rewrite` suggestion, and the reply is written in code from the before/after comparison.
   `classify_items` precedence: override > dispute (same rubric version and model) > evaluation. A
   dispute's `metric_unavailable` survives later disputes and model changes (read-time demotion of number
-  asks) until DELETE reopens it. Disputed findings carry `classification_source="dispute"`.
+  asks) until DELETE reopens it. Disputed findings carry `classification_source="dispute"`. A dispute
+  on an overridden rating is 409; `extra:` bullets are disputable (text read with `_text_at`); a
+  `new_fact` carrying a number the note and bullet never gave yields no suggestion.
   Gates are `tier:
   "fatal"|"serious"` × `status: "pass"|"fail"|"not_assessed"`
   (`health_gates.py:3`), scored by `health_score.py`; a failing fatal, unwaived

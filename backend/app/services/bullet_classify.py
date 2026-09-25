@@ -160,6 +160,26 @@ def set_override(
     db.commit()
 
 
+def _stored_result(row: BulletClassification | None, dispute: BulletDispute | None,
+                   model: str) -> dict | None:
+    """What is already stored for one text, by precedence: override > dispute (same rubric
+    version and model) > cached evaluation (same rubric version and model). None = a miss."""
+    if row is not None and row.override_level:
+        return _result(row.override_level, reason=row.override_reason or "user override",
+                       confidence=1.0, source="override")
+    if dispute is not None and dispute.rubric_version == RUBRIC_VERSION and dispute.model == model:
+        return _dispute_result(dispute)
+    if row is None or row.rubric_version != RUBRIC_VERSION or row.model != model:
+        return None
+    return _result(
+        row.level, reason=row.reason or "", confidence=row.confidence, source="cache",
+        uncertain=(row.confidence if row.confidence is not None else 1.0) < CONFIDENCE_FLOOR,
+        assessment={"evidence": row.evidence_json, "question": row.question,
+                    "ask_kind": row.ask_kind, "measure_target": row.measure_target,
+                    "alt_question": row.alt_question, "language": row.language_json},
+    )
+
+
 def classify_items(db: Session, items: list[dict]) -> dict[str, dict]:
     """items: [{text, hints: [str]}] → {content_hash: result}.
     Empty text is deterministic; cached rows are free; only misses hit the LLM.
@@ -184,29 +204,10 @@ def classify_items(db: Session, items: list[dict]) -> dict[str, dict]:
                                  confidence=1.0, source="deterministic")
             continue
         texts[chash] = text
-        row = db.get(BulletClassification, chash)
-        if row is not None and row.override_level:
-            out[chash] = _result(row.override_level,
-                                 reason=row.override_reason or "user override",
-                                 confidence=1.0, source="override")
+        stored = _stored_result(db.get(BulletClassification, chash), disputes.get(chash), model)
+        if stored is not None:
+            out[chash] = stored
             continue
-        dispute = disputes.get(chash)
-        if (dispute is not None and dispute.rubric_version == RUBRIC_VERSION
-                and dispute.model == model):
-            out[chash] = _dispute_result(dispute)
-            continue
-        if row is not None:
-            if row.rubric_version == RUBRIC_VERSION and row.model == model:
-                out[chash] = _result(
-                    row.level, reason=row.reason or "", confidence=row.confidence,
-                    source="cache",
-                    uncertain=(row.confidence if row.confidence is not None else 1.0)
-                    < CONFIDENCE_FLOOR,
-                    assessment={"evidence": row.evidence_json, "question": row.question,
-                                "ask_kind": row.ask_kind, "measure_target": row.measure_target,
-                                "alt_question": row.alt_question, "language": row.language_json},
-                )
-                continue
         pending[chash] = {"id": chash, "text": text, "hints": item.get("hints") or []}
 
     if pending:
@@ -218,8 +219,10 @@ def classify_items(db: Session, items: list[dict]) -> dict[str, dict]:
     return out
 
 
-def _evaluate_batch(db: Session, pending: dict[str, dict]) -> dict[str, dict]:
-    """Uncached validated assessments; no classification writes (also used by disputes)."""
+def evaluate_uncached(db: Session, pending: dict[str, dict]) -> dict[str, dict]:
+    """Validated assessments straight from the evaluator. It NEVER reads or writes
+    `bullet_classifications`: disputes and the golden runner rely on that (cache isolation).
+    `_classify_batch` is the only caller that stores what it returns."""
     template = prompts.get_prompt("resume_bullet_classify", db)
     prompt = StringTemplate(template).safe_substitute(
         items_json=json.dumps(list(pending.values()), indent=2)
@@ -243,7 +246,7 @@ def _evaluate_batch(db: Session, pending: dict[str, dict]) -> dict[str, dict]:
 
 
 def _classify_batch(db: Session, pending: dict[str, dict]) -> dict[str, dict]:
-    by_id = _evaluate_batch(db, pending)
+    by_id = evaluate_uncached(db, pending)
     model = model_settings.get_smart_model(db)
     out: dict[str, dict] = {}
     for chash in pending:

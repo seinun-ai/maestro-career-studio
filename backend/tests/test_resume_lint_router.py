@@ -1034,3 +1034,39 @@ def test_dispute_provider_outage_uses_the_central_502(db_session, monkeypatch):
     r = _client_call(db_session, "post", _DISPUTE_URL, json=_dispute_body())
     assert r.status_code == 502
     assert r.json()["detail"] == "The AI model didn't answer."
+
+
+def test_dispute_on_an_overridden_rating_returns_409_without_llm(db_session, monkeypatch):
+    _seed(db_session)
+    monkeypatch.setattr(bullet_classify.llm, "call_openai", _unexpected_llm_call)
+    monkeypatch.setattr(bullet_classify.model_settings, "get_smart_model", lambda s: "test-model")
+    bullet_classify.set_override(db_session, bullet_classify.content_hash(DISPUTED_BULLET),
+                                 "direct", "I verified it.")
+    r = _client_call(db_session, "post", _DISPUTE_URL, json=_dispute_body())
+    assert r.status_code == 409
+    assert r.json()["detail"] == "You set this rating yourself. Set it back to automatic first."
+
+
+_EXTRA_BULLET = "Organised a volunteer tutoring rota for the local library."
+_WITH_EXTRA = {**SAMPLE_DATA, "extra_sections": [{
+    "key": "volunteering", "title": "Volunteering", "type": "entries", "enabled": True,
+    "entries": [{"heading": "Library", "enabled": True, "bullets": [_EXTRA_BULLET]}]}]}
+
+
+def test_a_custom_section_bullet_is_disputable(db_session, monkeypatch):
+    _seed(db_session, data_json=_WITH_EXTRA)
+    _install_evaluator(monkeypatch)
+    loc = {"section": "extra:volunteering", "index": 0, "bullet_index": 0}
+    chash = bullet_classify.content_hash(_EXTRA_BULLET)
+    r = _client_call(db_session, "post", _DISPUTE_URL, json={
+        "location": loc, "note": "You misread it.", "expected_content_hash": chash})
+    assert r.status_code == 200
+    assert r.json()["content_hash"] == chash
+    listed = _client_call(db_session, "get", "/api/resume-lint/base/data_scientist/disputes")
+    assert [row["location"] for row in listed.json()] == [loc]
+
+    # A vanished custom-section bullet is the same 409 as any other stale target.
+    stale = {**loc, "bullet_index": 3}
+    r = _client_call(db_session, "post", _DISPUTE_URL, json={
+        "location": stale, "note": "You misread it.", "expected_content_hash": chash})
+    assert r.status_code == 409
