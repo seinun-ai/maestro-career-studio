@@ -87,8 +87,9 @@ def dispute(db: Session, text: str, note: str) -> dict:
                  **{k: before.get(k) for k in ("question", "ask_kind", "measure_target",
                                                "alt_question", "reason")}}
     row = db.get(BulletDispute, chash)
-    # A stored "no number exists" stays until the user reopens it, whatever this note says.
-    if row is not None and row.metric_unavailable:
+    # "No number exists", from this note or a stored one, holds until the user reopens it. Applied
+    # AFTER the level revert, which copies before's ask (possibly a number ask) back in.
+    if after["metric_unavailable"] or (row is not None and row.metric_unavailable):
         after = bullet_classify._validate(text, after, metric_unavailable=True)
 
     before_shown, after_shown = shown(before), shown(after)

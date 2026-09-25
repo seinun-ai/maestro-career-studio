@@ -212,7 +212,8 @@ def classify_items(db: Session, items: list[dict]) -> dict[str, dict]:
     if pending:
         out.update(_classify_batch(db, pending))
     for chash, dispute in disputes.items():
-        if dispute.metric_unavailable and out.get(chash, {}).get("source") in ("cache", "llm"):
+        if dispute.metric_unavailable and out.get(chash, {}).get("source") in (
+                "cache", "llm", "dispute"):
             out[chash] = without_number_ask(texts[chash], out[chash])
     return out
 

@@ -287,3 +287,39 @@ def test_invalid_json_from_the_model_is_unreadable(db_session, monkeypatch):
     with pytest.raises(health_disputes.DisputeUnreadable):
         health_disputes.dispute(db_session, MIGRATION, "You misread it.")
     assert db_session.get(BulletDispute, bc.content_hash(MIGRATION)) is None
+
+
+IMPLIED_MEASURE = {**INVOICE_MEASURE, "level": "implied", "evidence": [], "reason": "vague"}
+
+
+def test_no_number_holds_when_the_level_is_kept_for_want_of_a_quote(db_session, llm):
+    # First dispute on a low bullet with a number ask: the unquoted "adjacent" is reverted to
+    # before's reading, which must not bring the number question back.
+    llm(IMPLIED_MEASURE, {"level": "adjacent", "evidence": [], "reason": "specific scope",
+                          "question": "What changed?", "ask_kind": "detail",
+                          "metric_unavailable": True, "confidence": 0.8})
+    out = health_disputes.dispute(db_session, INVOICES,
+                                  "No number exists, it's confidential; give me credit.")
+    assert out["after"] == {"level": "implied", "ask_kind": "detail",
+                            "question": "What did finance stop doing by hand?"}
+    assert out["reply"] == "Understood. No number needed: What did finance stop doing by hand?"
+    row = db_session.get(BulletDispute, bc.content_hash(INVOICES))
+    assert row.metric_unavailable is True and row.revised_json["ask_kind"] == "detail"
+    shown = _classify(db_session, INVOICES)
+    assert shown["source"] == "dispute" and shown["ask_kind"] == "detail"
+
+
+def test_a_stored_dispute_with_a_number_ask_is_still_demoted_on_read(db_session, llm):
+    # Defence in depth: whatever a dispute row holds, its flag keeps number asks off.
+    llm(INVOICE_MEASURE)
+    revised = {**bc._validate(INVOICES, INVOICE_MEASURE), "metric_unavailable": True}
+    assert revised["ask_kind"] == "measure"
+    db_session.add(BulletDispute(
+        content_hash=bc.content_hash(INVOICES), note="No number exists.", original_json=revised,
+        revised_json=revised, reply="", metric_unavailable=True,
+        rubric_version=bc.RUBRIC_VERSION, model="test-model"))
+    db_session.commit()
+    shown = _classify(db_session, INVOICES)
+    assert shown["source"] == "dispute"
+    assert shown["ask_kind"] == "detail"
+    assert shown["question"] == "What did finance stop doing by hand?"
