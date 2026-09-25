@@ -325,7 +325,7 @@
     /* The fill engine's page operations (content/fill-ops.js). Gated like
      * `guided_write`, each returning its empty shape in a refused frame: an
      * inventory with no fields, no explored options, no applied rows, no
-     * sweep rows, no focus. `fill_inventory` forwards the run's standing
+     * step state, no sweep rows, no focus. `fill_inventory` forwards the run's standing
      * consent AND its runId — a new runId is what releases a latched Stop.
      * `fill_cancel` is ungated on purpose: it carries nothing and only stops
      * work in flight, and a Stop that could miss a frame would be no Stop. */
@@ -338,6 +338,11 @@
     fill_apply: (msg) => (frameMayReceiveUserData()
       ? ns.fillOps.apply(msg.actions)
       : []),
+    // The adaptive step's state of ONE field. Broadcast like the rest: only
+    // the frame that minted the fid answers, every other frame says null.
+    fill_step_state: (msg) => (frameMayReceiveUserData()
+      ? ns.fillOps.stepState({ fid: msg.fid, fp: msg.fp, value: msg.value })
+      : null),
     fill_sweep: () => (frameMayReceiveUserData()
       ? ns.fillOps.sweep()
       : []),

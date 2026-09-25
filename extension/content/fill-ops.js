@@ -23,7 +23,7 @@
   if (loaded.has("content/fill-ops.js")) return;
   loaded.add("content/fill-ops.js");
   // Mutable so a test can force a timeout; the loop never changes them.
-  const budgets = { explore: 4000, apply: 6000, setItem: 4000, setMax: 20000 };
+  const budgets = { explore: 4000, apply: 6000, setItem: 4000, setMax: 20000, step: 2000 };
   const inv = () => ns.fillInventory;
   const core = () => ns.fillCore;
   let runId = null;
@@ -119,6 +119,8 @@
     if (a.op === "set") return core().set(el, shape, { texts: a.texts ?? [], terms: a.terms ?? [], consentForms }, t);
     if (a.op === "recommit") return core().recommit(el, shape, t);
     if (a.op === "close") return core().tidy(el, t).then(() => ({ outcome: "closed" }));
+    // An adaptive move carries the state version it was chosen from.
+    if (a.op === "move") return core().move(el, shape, { mid: a.mid, version: a.version, consentForms }, t);
     return Promise.resolve({ outcome: "unexpected", reason: "unknown_op" });
   };
 
@@ -147,6 +149,18 @@
       out.push({ fid: a.fid, ...row, committed: el.isConnected ? shape.read(el) : null });
     }
     return out;
+  };
+
+  // The adaptive step's view of one field: its state now and the moves code
+  // allows, under a version a move must name. A field's own held popup stays
+  // open; any other field's is closed first.
+  const stepState = async (r) => {
+    if (!mine(r?.fid)) return null;
+    await closeLeftOpen(r.fid);
+    const { el, shape, refused } = target(r.fid, r.fp);
+    if (refused) return { error: refused, version: null, candidates: [] };
+    const { got } = await run((t) => core().stepState(el, shape, { value: r.value, consentForms }, t), budgets.step, el);
+    return got.candidates ? got : { error: got.reason ?? got.outcome, version: null, candidates: [] };
   };
 
   const sweep = async () => {
@@ -201,7 +215,7 @@
       consentForms = opts.consentForms === true;
       return inv().list({ consentForms });
     }),
-    explore: serial(explore), apply: serial(applyNow), sweep: serial(sweep), focus, budgets,
+    explore: serial(explore), apply: serial(applyNow), stepState: serial(stepState), sweep: serial(sweep), focus, budgets,
     // Stop: latch at once, then close any popup a commit left open on purpose.
     cancel: () => {
       ns.fillBase.cancelAll();

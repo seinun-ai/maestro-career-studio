@@ -26,7 +26,7 @@ worker:
 | `content/fill-base.js` | every frame | the engine's page primitives: budgets with real cancellation and a latched Stop, validation state, popup ownership, human typing, closing only popups the engine opened |
 | `content/shapes.js` | every frame | widget shapes: recognise, group, read what is COMMITTED, how a choice widget opens |
 | `content/inventory.js` | every frame | every fillable control as a field with an element-bound fid and a fingerprint; marks fields the user changed |
-| `content/fill-core.js` | every frame | the generic mechanics: write / explore / choose / set / recommit, verified after the final blur |
+| `content/fill-core.js` | every frame | the generic mechanics: write / explore / choose / set / recommit, verified after the final blur; the adaptive step's versioned state and code-generated moves (stepState / move) |
 | `content/fill-ops.js` | every frame | the engine's page operations behind agent.js's `fill_*` handlers — fingerprint, touched and policy re-checked at execution; every throw returned as an outcome |
 | `content/job-posting.js` | every frame, every page | the shared JSON-LD JobPosting walk |
 | `content/eeo.js` | every frame | voluntary EEO rules and protected-class control handling |

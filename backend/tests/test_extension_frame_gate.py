@@ -110,6 +110,7 @@ ns.fillOps = {
   inventory: (opts) => { calls.push(["fillOps.inventory", opts]); return { frame: "f", host: "x", fields: [{ fid: "f-1" }] }; },
   explore: (requests) => { calls.push(["fillOps.explore", requests]); return { "f-1": { options: [] } }; },
   apply: (actions) => { calls.push(["fillOps.apply", actions]); return [{ fid: "f-1", outcome: "verified" }]; },
+  stepState: (r) => { calls.push(["fillOps.stepState", r]); return { version: 1, candidates: [{ mid: "give_up" }] }; },
   sweep: () => { calls.push(["fillOps.sweep", 0]); return [{ fid: "f-1", outcome: "verified" }]; },
   focus: (fid) => { calls.push(["fillOps.focus", fid]); return true; },
   cancel: () => { calls.push(["fillOps.cancel", 0]); },
@@ -121,7 +122,7 @@ main(async () => {
     type: spec.type, profile: { personal: { email: "a@b.test" } }, employment: [],
     skills: [], pairs: [], b64: "", filename: "resume.pdf",
     consentForms: true, runId: "run-2", requests: [{ fid: "f-1", fp: "p" }],
-    actions: [{ fid: "f-1", fp: "p", op: "write", value: "x" }], fid: "f-1",
+    actions: [{ fid: "f-1", fp: "p", op: "write", value: "x" }], fid: "f-1", fp: "p", value: "v",
     // Only when the fixture states one — `undefined` is the shape the floating
     // card sends, and it must keep meaning "unchecked".
     ...(spec.expect === null ? {} : { expect: spec.expect }),
@@ -380,6 +381,7 @@ FILL_GATED = {
     "fill_inventory": None,  # its empty shape carries the host: checked field by field
     "fill_explore": {},
     "fill_apply": [],
+    "fill_step_state": None,  # broadcast: every frame but the fid's own answers null
     "fill_sweep": [],
     "fill_focus": False,
 }
@@ -403,6 +405,13 @@ def test_fill_inventory_forwards_the_standing_consent_and_the_run_id(tmp_path):
     """A new runId is what releases a latched Stop, and consent is per call."""
     out = _run(tmp_path, type_="fill_inventory", top_frame=True)
     assert out["calls"] == [["fillOps.inventory", {"consentForms": True, "runId": "run-2"}]]
+
+
+def test_fill_step_state_forwards_the_field_and_nothing_else(tmp_path):
+    """One field's id, its fingerprint and the value the step is after — not
+    the rest of whatever message carried them."""
+    out = _run(tmp_path, type_="fill_step_state", top_frame=True)
+    assert out["calls"] == [["fillOps.stepState", {"fid": "f-1", "fp": "p", "value": "v"}]]
 
 
 def test_fill_cancel_reaches_every_frame(tmp_path):

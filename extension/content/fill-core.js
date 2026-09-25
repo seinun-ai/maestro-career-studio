@@ -14,6 +14,16 @@
  * including the menu a widget re-renders on every keystroke — because
  * closePopups only ever closes marked popups. Every option text is run through
  * the never-fill policy: a blocked option is never clicked or ticked.
+ *
+ * THE ADAPTIVE STEP (stepState/move) is for a popup widget the generic path
+ * could not finish. stepState reports the field's state now and the moves code
+ * allows — click:<oid> (never a blocked option, never an item a multi widget
+ * already holds), search:value, search:word:<n>, open, scroll, close, give_up —
+ * under a fresh VERSION. The model chooses one of those ids; move() acts only
+ * on the state it was chosen from, consumes that state (one move per state),
+ * refuses an id the state did not offer, and treats a click on a list that
+ * changed since as stale. A filtered search view is never complete.
+ *
  * Nothing here catches errors: fill-ops turns a throw (Cancelled, Unfocusable,
  * a refused editable box) into an outcome.
  */
@@ -39,6 +49,7 @@
   const leftOpen = new Map();
   const opened = new WeakMap(); // el -> the page's popups before the engine last opened it
   const typed = new WeakMap(); // el -> { prior, query }: a search query the engine typed
+  const searched = new WeakSet(); // fields whose held popup shows FILTERED results (a search move)
 
   const blockedText = (text, consentForms) => Boolean(ns.isPolicyBlocked?.(text ?? "", { consentForms }));
   const flag = (options, consentForms) => options.map(({ oid, text, selected }) => ({
@@ -204,6 +215,7 @@
   // search it re-triggers is waited out (bounded) so no late result stays open.
   const tidy = async (el, t, { cleanup = false } = {}) => {
     leftOpen.delete(el);
+    searched.delete(el);
     const before = opened.get(el);
     const q = typed.get(el);
     typed.delete(el);
@@ -415,5 +427,158 @@
     return { ...(await write(el, shape, value, t)), text: value };
   }
 
-  ns.fillCore = { write, explore, choose, set, recommit, verify, tidy, open, readAll, own, leftOpen };
+  // ---- the adaptive step: the field's state now, and the moves code allows.
+  const MAX_CLICKS = 50;
+  const MAX_WORDS = 4; // the backend accepts search:word:0..9
+  const GIVE_UP = { mid: "give_up", describe: "Stop: no move will select an option that states the value" };
+  const lastState = new WeakMap(); // el -> { version, mids, clicks: [{oid, text}], value, words }
+  let stateVersion = 0;
+  const quote = (s) => (s.length > 200 ? `${s.slice(0, 199)}…` : s);
+  const wordsOf = (value) => {
+    const whole = String(value ?? "").trim();
+    return [...new Set(whole.split(/[\s,/()&-]+/).filter((w) => w.length > 2 && w !== whole))].slice(0, MAX_WORDS);
+  };
+  // The popup a move (or a category commit) left open for this field, found
+  // again if the widget re-rendered it; forgotten if the page closed it.
+  const heldPopup = (el) => {
+    const held = leftOpen.get(el);
+    if (!held) return null;
+    const pop = (el.isConnected ? own(el, held.before) : null) ?? (b().visible(held.pop) ? held.pop : null);
+    if (!pop) {
+      leftOpen.delete(el);
+      searched.delete(el);
+      return null;
+    }
+    b().markEnginePopup(pop);
+    if (pop !== held.pop) leftOpen.set(el, { pop, before: held.before });
+    return { pop, before: held.before };
+  };
+  // A search box inside the popup, else the field's own box when it is one.
+  const searchBoxOf = (el, shape, pop) => {
+    const inner = pop && [...pop.querySelectorAll(INNER_SEARCH)].find((n) => b().visible(n) && !n.readOnly && !n.disabled);
+    return inner || (shape.open === "search" ? el : null);
+  };
+  // The options a click move may name: never a never-fill one, never an item a
+  // multi widget already holds (a click would un-pick it). Capped.
+  const clickable = (el, shape, pop, consentForms) => {
+    const multi = Boolean(shape.multi?.(el));
+    return b().optionsOf(pop)
+      .filter((o) => !blockedText(o.text, consentForms) && !(multi && (o.selected || holds(el, shape, o.text))))
+      .slice(0, MAX_CLICKS);
+  };
+  const ids = (options) => options.map(({ oid, text }) => ({ oid, text }));
+
+  async function stepState(el, shape, { value, consentForms } = {}, t) {
+    b().check(t);
+    const version = (stateVersion += 1);
+    // Passive shapes and text have no popup to explore: nothing but give_up.
+    const adaptive = shape.kind === "choice" && !shape.passive;
+    const held = adaptive ? heldPopup(el) : null;
+    const all = held ? b().optionsOf(held.pop) : [];
+    const clicks = held ? clickable(el, shape, held.pop, consentForms) : [];
+    const box = adaptive ? searchBoxOf(el, shape, held?.pop) : null;
+    const whole = String(value ?? "").trim();
+    const words = box ? wordsOf(whole) : [];
+    const scroller = held ? scrollerOf(held.pop) : null;
+    const more = Boolean(scroller) && scroller.scrollTop + scroller.clientHeight < scroller.scrollHeight - 4;
+    const candidates = adaptive ? [
+      ...clicks.map((o) => ({ mid: `click:${o.oid}`, describe: `Click the option "${quote(o.text)}"` })),
+      ...(box && whole ? [{ mid: "search:value", describe: "Type the applicant value into the search box" }] : []),
+      ...words.map((w, i) => ({ mid: `search:word:${i}`, describe: `Type "${quote(w)}" into the search box` })),
+      ...(held ? [] : [{ mid: "open", describe: "Open the dropdown" }]),
+      ...(more ? [{ mid: "scroll", describe: "Scroll the list to see more options" }] : []),
+      ...(held ? [{ mid: "close", describe: "Close the dropdown" }] : []),
+      GIVE_UP,
+    ] : [GIVE_UP];
+    lastState.set(el, { version, mids: new Set(candidates.map((c) => c.mid)), clicks: ids(clicks), value: whole, words });
+    // Complete = every option is in view: not capped, nothing to scroll, and
+    // not a filtered search result (a search widget's list always is one).
+    const complete = Boolean(held) && shape.open !== "search" && !searched.has(el)
+      && all.length <= MAX_CLICKS && !scroller;
+    return {
+      version, complete, committed: shape.read(el), invalid: b().invalid(el), popupOpen: Boolean(held),
+      options: flag(all.slice(0, MAX_CLICKS), consentForms), candidates,
+    };
+  }
+
+  // One move against the state it was chosen from (`version`). Outcomes:
+  // verified (a click committed), progressed (the page moved on: a popup
+  // opened, a search listed results, a category showed its children, the list
+  // scrolled), closed, stale, unexpected (with a reason), blocked.
+  async function move(el, shape, { mid, version, consentForms } = {}, t) {
+    b().check(t);
+    const last = lastState.get(el);
+    const closing = mid === "give_up" || mid === "close";
+    // Closing what the engine opened is allowed from any state.
+    if (!closing && (!last || last.version !== version)) return { outcome: "stale" };
+    lastState.delete(el); // consumed: the next move needs a fresh state
+    if (closing) {
+      await tidy(el, t);
+      return { outcome: "closed" };
+    }
+    if (!last.mids.has(mid)) return { outcome: "unexpected", reason: "not_offered" };
+    const held = heldPopup(el);
+    if (mid === "open") {
+      const o = await open(el, shape, undefined, t);
+      if (!o.pop) {
+        await tidy(el, t);
+        return { outcome: "unexpected", reason: "no_popup" };
+      }
+      leftOpen.set(el, { pop: o.pop, before: o.before });
+      return { outcome: "progressed" };
+    }
+    if (mid === "scroll") {
+      const box = held && scrollerOf(held.pop);
+      if (!box) return { outcome: "stale" };
+      b().check(t);
+      const top = box.scrollTop;
+      box.scrollTop = top + box.clientHeight;
+      await b().settle(t, 120);
+      return box.scrollTop === top ? { outcome: "unexpected", reason: "list_end" } : { outcome: "progressed" };
+    }
+    if (mid.startsWith("search:")) {
+      const box = searchBoxOf(el, shape, held?.pop);
+      const term = mid === "search:value" ? last.value : last.words[Number(mid.slice("search:word:".length))];
+      if (!box || !term) return { outcome: "unexpected", reason: "no_search_box" };
+      const before = held?.before ?? b().popups();
+      if (!held) opened.set(el, before);
+      await typeQuery(box, term, t, { own: box === el });
+      searched.add(el);
+      const pop = await waitOptions(el, before, t);
+      if (!pop) return { outcome: "unexpected", reason: "no_popup" };
+      leftOpen.set(el, { pop, before });
+      return b().optionsOf(pop).length ? { outcome: "progressed" } : { outcome: "unexpected", reason: "no_results" };
+    }
+    if (mid.startsWith("click:")) {
+      // The popup must still show the list the decision was made on.
+      const now = held ? clickable(el, shape, held.pop, consentForms) : [];
+      if (!held || !same(ids(now), last.clicks)) return { outcome: "stale" };
+      const hit = now.find((o) => `click:${o.oid}` === mid);
+      const before0 = shape.read(el);
+      const shown = b().optionsOf(held.pop).map((o) => o.text).join("\n");
+      hit.el.scrollIntoView?.({ block: "nearest" });
+      for (const gesture of GESTURES) {
+        gesture(hit.el, t);
+        await b().settle(t, 200);
+        const after = own(el, held.before) ?? (b().visible(held.pop) ? held.pop : null);
+        const next = after ? b().optionsOf(after).map((o) => o.text).join("\n") : "";
+        const unchanged = same(shape.read(el), before0);
+        if (next && next !== shown && unchanged) { // a category: its children are the next state
+          leftOpen.set(el, { pop: after, before: held.before });
+          return { outcome: "progressed" };
+        }
+        // Only a click that changed nothing at all gets the second gesture.
+        if (!unchanged || next !== shown || !hit.el.isConnected) break;
+      }
+      if (holds(el, shape, hit.text) && [shape.read(el)].flat().includes(el.value)) typed.delete(el);
+      await tidy(el, t);
+      return verify(el, shape, hit.text) === "verified"
+        ? { outcome: "verified", text: hit.text } : { outcome: "unexpected", reason: "not_committed" };
+    }
+    return { outcome: "unexpected", reason: "unknown_move" };
+  }
+
+  ns.fillCore = {
+    write, explore, choose, set, recommit, verify, tidy, open, readAll, own, leftOpen, stepState, move,
+  };
 })();
