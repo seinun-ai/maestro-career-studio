@@ -2606,7 +2606,7 @@ main(async () => {
 
 # What `attach_pdf` answers: the SW's per-frame array, whose `result` is how
 # many boxes in that frame really took the file (`attachResumePdf` re-reads
-# `input.files`). One frame, one box.
+# `input.files`, or finds the page's own new file row). One frame, one box.
 ATTACH_ONE = _reply([{"frameId": 0, "result": 1}])
 # The page answered and had nowhere to put it — a FINDING about the page.
 ATTACH_NONE = _reply([{"frameId": 0, "result": 0}])

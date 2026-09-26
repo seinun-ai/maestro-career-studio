@@ -420,8 +420,9 @@
      * claim about a page nothing was ever written to.
      *
      * The COUNT is the engine's readback and not the number of frames asked —
-     * `attachResumePdf` re-reads `input.files` after the assignment, so this is
-     * how many boxes really hold the file.
+     * `attachResumePdf` re-reads `input.files` after the assignment, or finds
+     * the page's own new file row when the uploader empties its input (Workday),
+     * so this is how many boxes really took the file.
      */
     attached: null,
     baseSlug: null,

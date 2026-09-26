@@ -573,8 +573,10 @@
    * exactly as a fill is.
    *
    * THE COUNT IS THE ENGINE'S READBACK. `attachResumePdf` re-reads
-   * `input.files` after the assignment, so a page that refused the write
-   * contributes nothing and this reports zero rather than a success. The two
+   * `input.files` after the assignment — or, for an uploader that empties its
+   * input as Workday's does, looks for the page's own new file row — so a page
+   * that refused the write contributes nothing and this reports zero rather
+   * than a success. The two
    * zero cases are told apart the way the fill path tells them apart: a frame
    * that ANSWERED and found nothing is a fact about the page, and no frame
    * answering at all is a fact about our reach.
@@ -679,7 +681,7 @@
     store.write({
       attached,
       // NAMED, and hedged on purpose. The extension set `input.files` and the
-      // page took it; whether the employer's own uploader has processed it is
+      // page took it (it held the file, or showed a new row naming it); whether the employer's own uploader has processed it is
       // not a thing this can see, and "Attached" full stop would be a stronger
       // claim than the evidence.
       note: { text: `Attached ${attached.filename}. Check the upload before you submit.` },

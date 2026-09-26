@@ -268,7 +268,15 @@ asking permission of itself.
   every frame refuses if its list no longer says the same thing — otherwise a
   Workday step that reveals a cover-letter uploader between the detect and the
   press puts the resume in both. The count reported afterwards is the engine's
-  readback of `input.files`, and there is no second press.
+  readback: a box counts when its input still holds the file, OR when the page's
+  own file row appeared — Workday uploads the file and empties `input.files` in
+  the same tick, so `files` alone reported "No upload box took the file" over a
+  page where it worked. The row must be NEW (more on-screen elements naming the
+  file than before the write, so an earlier upload of the same name proves
+  nothing), inside that input's own widget (at most three levels up, never an
+  ancestor holding another file input, never the whole document), with no new
+  error text, and still there a beat later; the page gets up to 3 s to show it.
+  A detached input counts only by that row. There is no second press.
 - **Mark applied** — the Draft/Applied segment lives in the footer permanently,
   so there is no nudge to hunt for. It is withheld for a status outside that pair,
   because pressing Draft on an `interviewing` application would silently walk the

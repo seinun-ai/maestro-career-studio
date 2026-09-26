@@ -152,18 +152,98 @@
     });
   }
 
+  // The row proof's bounds (`attachResumePdf`): how long the page gets to show
+  // its file row, how often we look, and how long a proof must keep holding.
+  const ATTACH_PROOF_WAIT_MS = 3000;
+  const ATTACH_POLL_MS = 100;
+  const ATTACH_HOLD_MS = 300;
+
+  // What an upload widget says when the file did NOT go. Counted before and
+  // after the write, so standing help text ("Upload failed? Try again") is
+  // not news; only an error that APPEARS voids a row proof.
+  const UPLOAD_ERROR = /\b(?:errors?|fail(?:ed|ure)?|invalid|unable|rejected|could\s*n[o']t|can\s*n[o']t|too\s+(?:large|big)|not\s+(?:allowed|supported|accepted))\b/gi;
+
+  /** The part of the page that belongs to ONE file input: where its uploader
+   * would print the row for a file it took.
+   *
+   * THE CLIMB is from the input's parent up to three levels, and the widget is
+   * the highest level reached. It stops BELOW an ancestor that holds any OTHER
+   * file input — so the cover-letter box's row can never vouch for the résumé
+   * box's write — and below `<body>`, `<html>` and a `<form>`, because those
+   * are the page or the application rather than the uploader: the proof is
+   * never a search of the whole document. A parent that already holds another
+   * file input leaves NO widget, and that box can then prove itself only by
+   * `files`. Three levels covers Workday (the input sits directly in
+   * `attachments-FileUpload`, the row a level below it) with room for a
+   * wrapper or two. */
+  function uploadWidgetOf(input) {
+    let widget = null;
+    let el = input.parentElement;
+    for (let level = 0; el && level < 3; level += 1, el = el.parentElement) {
+      if (el === document.body || el === document.documentElement || el.tagName === "FORM") break;
+      if ([...el.querySelectorAll('input[type="file"]')].some((other) => other !== input)) break;
+      widget = el;
+    }
+    return widget;
+  }
+
+  /** How many on-screen elements in `widget` name `filename`: the DEEPEST ones
+   * whose text holds it, so a row and the wrappers around it count once. */
+  function rowsNaming(widget, filename) {
+    return [widget, ...widget.querySelectorAll("*")].filter((el) =>
+      el.textContent.includes(filename)
+      && ![...el.children].some((child) => child.textContent.includes(filename))
+      && isOnScreen(el)).length;
+  }
+
+  /** Error words in the widget's RENDERED text (a hidden error template is not
+   * news until it shows), with the filename cut out first so a file called
+   * `error-log.pdf` is not its own failure. */
+  function uploadErrors(widget, filename) {
+    const text = String(widget.innerText ?? widget.textContent ?? "").split(filename).join(" ");
+    return text.match(UPLOAD_ERROR)?.length ?? 0;
+  }
+
   /** Attach a PDF to every attachable file input in this frame, and report how
    * many of them actually took it.
    *
-   * THE READBACK IS NEW and it is the same honesty the fill engine's `not_stuck`
-   * carries: `input.files = …` is an assignment a page can refuse — a control
-   * the framework has replaced, a sandboxed input, a `files` property the site
-   * has redefined — and the old loop counted the attempt. A count is the whole
-   * of what the surface above reports to the user ("Attached … to this page"),
-   * so counting a write that did not land is the surface claiming an upload
-   * that is not there. `length === 1` and not `> 0`: we put exactly one file in
-   * the DataTransfer, so anything else means the input holds something other
-   * than what we handed it.
+   * THE READBACK is the same honesty the fill engine's `not_stuck` carries:
+   * `input.files = …` is an assignment a page can refuse — a control the
+   * framework has replaced, a sandboxed input, a `files` property the site has
+   * redefined — and the loop this replaced counted the attempt. A count is the
+   * whole of what the surface above reports to the user ("Attached … to this
+   * page"), so counting a write that did not land is the surface claiming an
+   * upload that is not there.
+   *
+   * TWO PROOFS, because `input.files` ALONE UNDER-COUNTS ON WORKDAY. Its
+   * uploader takes the file on `change`, starts the upload, and empties its
+   * own input in the SAME tick (field notes §7): the upload succeeds —
+   * "Successfully Uploaded!" and a row naming the file — while `files` reads
+   * 0, so a `files`-only readback told the user "No upload box took the file.
+   * Attach it by hand." over a page where it had worked. So a box counts when
+   * EITHER holds once the page has settled:
+   *
+   * - `files` holds exactly our one file (`length === 1`, not `> 0`: anything
+   *   else means the input holds something other than what we handed it) on a
+   *   node still in the document — a plain input, or one a framework keeps; or
+   * - THE PAGE'S OWN FILE ROW: inside this input's upload widget
+   *   (`uploadWidgetOf`) there are MORE on-screen elements naming the file
+   *   than there were before the write, and no new error text. MORE, not
+   *   "any": a résumé of the same name uploaded earlier already shows its row,
+   *   and that row says nothing about this write — a page that ignores the
+   *   second copy counts zero (the user sees the earlier row and is told to
+   *   check it: the safe direction), while Workday's `multiple` uploader adds a
+   *   second row and counts. NO NEW ERROR because an error sentence names the
+   *   file too ("resume.pdf could not be uploaded"). Counting ELEMENTS rather
+   *   than remembering nodes survives a widget that re-renders its old rows.
+   *
+   * A DETACHED INPUT COUNTS ONLY BY ITS ROW. A node the uploader re-rendered
+   * away keeps whatever we assigned it forever, so its `files` is no evidence
+   * (`valueHolds`' first check). But Workday may replace its input after taking
+   * the file, and the row in the widget — which must itself still be in the
+   * document — is the page saying so. A widget that re-renders WHOLE is
+   * under-counted; that is the safe direction, where over-counting is the panel
+   * claiming an upload that is not there.
    *
    * `expect` IS THE CALLER'S REFUSAL, CHECKED WHERE IT CAN ACTUALLY HOLD. The
    * side panel offers an attach only when the page reports exactly ONE box, and
@@ -178,7 +258,8 @@
    * write unless its own list still says the same thing. WHOLE, not partial: a
    * frame that has grown a box cannot know which of them the offer was about,
    * and writing to "the one that was there before" is the guess the refusal
-   * exists to prevent.
+   * exists to prevent. The row proof changes nothing here — it is read only
+   * for boxes the refusal already let through.
    *
    * ABSENT MEANS UNCHECKED, and the option is kept for a caller that makes no
    * such promise to its user: it passes no `expect` and gets the old
@@ -190,39 +271,59 @@
   async function attachResumePdf(b64, filename, expect) {
     const inputs = attachableFileInputs();
     if (Number.isInteger(expect) && inputs.length !== expect) return 0;
+    if (!inputs.length) return 0;
     const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
     const file = new File([bytes], filename, { type: "application/pdf" });
-    const dt = new DataTransfer();
-    dt.items.add(file);
-    const written = [];
-    for (const input of inputs) {
+    // THE BEFORE PICTURE, taken ahead of every write: the row proof is a
+    // difference, and a later box's snapshot must not already hold an earlier
+    // box's row. An EMPTY filename is in every text, so it proves nothing and
+    // leaves such a box to `files` alone.
+    const targets = inputs.map((input) => {
+      const widget = filename ? uploadWidgetOf(input) : null;
+      return {
+        input, widget,
+        rows: widget ? rowsNaming(widget, filename) : 0,
+        errors: widget ? uploadErrors(widget, filename) : 0,
+      };
+    });
+    for (const { input } of targets) {
+      // A FRESH DataTransfer PER BOX. The input adopts the very FileList it is
+      // handed, and an uploader that clears itself (`value = ""`, Workday's
+      // move) empties that list IN PLACE — so a shared one reached every later
+      // box empty.
+      const dt = new DataTransfer();
+      dt.items.add(file);
       input.files = dt.files;
       input.dispatchEvent(new Event("change", { bubbles: true }));
-      if (input.files?.length === 1) written.push(input);
     }
-    if (!written.length) return 0;
+    const proven = (t) => (t.input.isConnected && t.input.files?.length === 1)
+      || (t.widget !== null && t.widget.isConnected
+        && rowsNaming(t.widget, filename) > t.rows
+        && uploadErrors(t.widget, filename) <= t.errors);
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     // THE SETTLE, and it is `valueHolds`' banner applied to the one writer that
     // did not have it. Reading `input.files` on the tick that assigned it reads
     // back our own write and says "stuck" almost always — a controlled uploader
     // (React/Angular) that rejects or discards the file does it on a LATER
     // render, exactly as a controlled text input does. 50ms then 150ms are
     // `valueHolds`' own first two samples, for its reason: timers keep running
-    // in a hidden tab where requestAnimationFrame is starved.
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    // A DETACHED NODE IS NOT COUNTED, `valueHolds`' first check and the same
-    // argument: a node the uploader re-rendered away keeps whatever we assigned
-    // it forever, so `files` alone would report a box the user sees empty.
-    //
-    // THE TRADE, stated because it is real and the next author should not have
-    // to rediscover it: an uploader that accepts the file and then replaces its
-    // own input (printing the filename in a new node) is under-counted here,
-    // and the panel will say "No upload box took the file. Attach it by hand."
-    // over a page where it worked. That is the SAFE direction — the user looks
-    // and sees it is fine — where over-counting is the panel claiming an upload
-    // that is not there, which is the defect this whole readback exists for.
-    return written.filter(
-      (input) => input.isConnected && input.files?.length === 1).length;
+    // in a hidden tab where requestAnimationFrame is starved — which is also
+    // why every wait below is a timer and the deadline is wall-clock.
+    const deadline = Date.now() + ATTACH_PROOF_WAIT_MS;
+    await sleep(50);
+    await sleep(100);
+    // THEN WAIT FOR THE ROW, bounded: Workday renders it ~200ms after
+    // `change`, a slow upload later. Only a box that HAS a widget can still
+    // prove itself this way, so a page of plain inputs does not wait at all.
+    while (Date.now() < deadline && targets.some((t) => t.widget !== null && !proven(t))) {
+      await sleep(ATTACH_POLL_MS);
+    }
+    // THE HOLD: a proof counts only if it is still true a beat later. A page
+    // that shows the row and then withdraws it for an error has not taken the
+    // file, and neither has a controlled input that discards it on a later
+    // render than the settle's.
+    await sleep(ATTACH_HOLD_MS);
+    return targets.filter(proven).length;
   }
 
   function isOnScreen(el) {

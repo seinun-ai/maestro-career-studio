@@ -300,11 +300,11 @@ def test_a_box_that_discards_the_file_on_a_later_render_is_not_counted(tmp_path)
 def test_a_box_the_widget_re_rendered_away_is_not_counted(tmp_path):
     """`valueHolds`' FIRST check, and the same argument: a detached node keeps
     whatever we assigned it forever, so `files` alone would report a box the
-    user cannot see. The known cost is written on `attachResumePdf` — an
-    uploader that accepts the file and then replaces its own input is
-    under-counted, and the panel then says "attach it by hand" over a page where
-    it worked. That is the safe direction; over-counting is the claim this
-    readback exists to stop.
+    user cannot see. A detached input counts only by its widget's own new file
+    row (`attachResumePdf`; tests/browser/test_attach.py drives that on a real
+    page), and this fake has no widget, so its `files` is all there is and it
+    does not count. Under-counting is the safe direction; over-counting is the
+    claim this readback exists to stop.
     """
     out = _run(tmp_path, type_="attach_resume_pdf", top_frame=True,
                file_inputs=[{"visible": True, "detaches": True}, {"visible": True}])
