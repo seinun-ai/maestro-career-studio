@@ -225,3 +225,130 @@ before it is updated.
 
 Chrome debugger / Puppeteer executor, vision, automatic wizard navigation,
 submitting.
+
+## Revision 2026-09-26 — live Workday findings
+
+The owner ran Tasks 1–8 on Guidehouse (Workday) and reported, page by page,
+what failed. Claude then probed a second Workday tenant (Home Depot) live,
+step by step, with the same synthetic events the extension sends. Field notes,
+with the DOM and every experiment: `docs/reports/2026-09-26-workday-field-interactions.md`
+(local-only). Most failures were **mechanics and proof**, not meaning: moves the
+engine did not have, and verification reading the wrong place, so a correct
+action still looked failed and the adaptive step never got a usable state.
+
+### Mechanics (page side)
+
+| Change | Where | Why (notes §) |
+|---|---|---|
+| **Enter a field:** `focus()`, then dispatch `focus`/`focusin` only if the browser did not fire them. **Leave a field:** blur `document.activeElement` if it is inside the field's widget, THEN dispatch `blur` + `focusout` only if the browser did not (no double handlers in a focused window). One helper, used by every writer | fill-base `typeText`/`leave` | `el.focus()/blur()` fire nothing in an unfocused window; Workday moves focus inside a date by itself; its blur check reads where focus is now (§1, §6) |
+| **Key press** = `keydown` + `keyup` | fill-base | Field of Study searched only on key-up (§2) |
+| **Search widget sequence:** press → wait for the list container → snapshot the committed value → type → Enter → wait until the list settles (busy gone and option text unchanged for a short quiet period — NOT "differs from before", a search can legitimately return the default list) → read pills (Enter may already have committed) → re-find by text → click → wait for the redraw → verify | fill-core `open`/`choose` | Workday needs a press before typing and Enter to search; reuses rows; streams results; auto-commits a single hit (§2) |
+| **Click the checkable inside an option** (radio/checkbox) when there is one; else the option | fill-core gestures | A row click only highlights (§2) |
+| **Identical option texts are one option** — take the first, but only when they also share the same visible category/path; identical text under different categories is ambiguous and goes to the adaptive step | fill-core `match` | Two identical "LinkedIn" leaves → "option missing" (§2) |
+| **Search-widget box = the widget container, never the input itself;** pills from `[data-uxi-widget-type="multiselect"]` / `formField-*`; multi = that container | shapes `box`/`chips`/`searchMulti` | The marker is on the input; pills read "" so no pick could verify (§2) |
+| **Popup-button committed value = its hidden input CHANGED from its pre-pick value** (and cleared by a placeholder pick), text only as display | shapes popup `read`/verify | Four picks showed Yes/No, then reverted; the hidden input tells saved from shown (§8a) |
+| **Open/closed by visibility,** not `aria-expanded` or DOM presence | fill-base `engineOpen` | An outside click hides the list but leaves `aria-expanded="true"` (§8a) |
+| **Errors:** `aria-invalid` on any part + a visible "Error:" text in the field box, not only `errorMessage`. An error is proof of failure; its absence is never proof of success | fill-base `invalid` | Workday's date error is a plain span (§6) |
+| **Money compares as a number** (parsed, keeping decimals and sign; currency symbols and thousands separators ignored), chosen by the fact's type, like phone | fill-base `equivalent` | "$80,000" is kept as "80000" (§8a) |
+| **Toggles:** never click a multi option twice without re-reading the pills after a redraw | fill-core `set` | A second click removed "SQL" (§2) |
+| **Order inside a section:** a "currently" checkbox before the dates; re-inventory after any commit that adds or removes fields | loop | Ticking it removes the To date (§4) |
+
+### New capabilities
+
+1. **Add entries.** Per repeating section (Work Experience, Education, Websites,
+   Languages, Certifications): **reconcile** the page's entries with the
+   profile's (an entry already holding a job/school is matched to it, an empty
+   one is used first), then press the section's own Add button only for
+   profile entries left over that have the facts the entry requires. Never
+   more than the profile can fill (Add makes the fields required); never
+   Delete.
+2. **Attach, verified by the page.** Proof is the uploaded file's row showing
+   the filename, not `input.files` (Workday empties it after a successful
+   upload). Attach stays its own button; its false "No upload box took the
+   file" is fixed.
+
+### Meaning (backend)
+
+- **Derived facts:** `full_name`, `today`, US citizen / sponsorship answers from
+  work-authorization status, "immediately" availability → today's date.
+- **Closest-option picks** where the fact's words never appear: "Masters of
+  Business analytics" → "Masters"; "no" → "Not Applicable"; "Asian" →
+  "Asian (Not Hispanic or Latino) (United States of America)". `/pick` already
+  does this; the fixes above let it see and commit the options.
+- **Salary** "requirements/compensation" wording joins the salary fact.
+- **Reasoning route** for choice questions derivable from the resume/KB
+  (government employment, clearance): the fast model with resume context,
+  answers marked "check it". It answers only from positive evidence — silence
+  in the resume is not "No" (e.g. no clearance is never inferred from absence);
+  derived work-authorization answers carry their provenance.
+- **Model routing:** Jev first, one fast-model fallback, same floors. No
+  smart-model tier (owner decision).
+- **Low-stakes scope (owner, widened):** willingness (relocate, travel, drug
+  test), how heard, contact preference, "related to / previously employed
+  here" style Nos, SMS/marketing contact consents, and job-description
+  self-assessment yes/no questions. Still never: factual education/experience
+  entries, work authorization, sponsorship, EEO, background, clearance,
+  salary, legal attestations.
+- **Consent-forms rule (owner, 2026-09-26, replaces the never-fill list):**
+  with the standing consent-forms permission on, NOTHING is refused by label —
+  signatures and typed-name attestations, initials, consents, terms, salary
+  "requirements" are all fillable when a fact exists. Only moving to the next
+  page and Submit stay the user's, always. Without the permission, today's
+  refusals stand. (`shared/policy.js`, SYSTEM.md `inv-policy-deny-list-single-source`.)
+- **Languages in the profile (in scope, owner 2026-09-26):** languages with
+  read / speak / write level, and "native" and "fluent" as separate flags, edited on the web
+  app's Autofill profile, served in the fact catalog as one entry per
+  language; Workday requires Language 1.
+
+### One field controller (from the second review, 2026-09-26)
+
+The generic path, the adaptive step and recipes are not three executors: they
+are three ways of proposing the NEXT MOVE to one controller per field —
+observe → propose → check preconditions → execute → leave → verify → keep or
+recover. Consequences:
+- **Exploration can commit.** Typing a search and pressing Enter committed a
+  single hit live. Every move snapshots the committed value first; an
+  unintended commit is undone (remove the pill it added) before the next move,
+  and if it cannot be undone the field stops and is reported.
+- **Deliberate writes are never experiments:** Add, consent ticks and
+  signatures run once, on a decision, not as trials.
+- **One budget per field** shared by every source (generic, recipe, adaptive,
+  re-commit); a state + move pair that failed is not retried.
+- **Outcomes:** verified · closest/assumed (check) · **unconfirmed** (evidence
+  missing or conflicting — never shown as Filled) · needs your answer · could
+  not operate · **unsupported** (the widget ignored every synthetic input;
+  said plainly, since the engine has no trusted input).
+- **Reverts:** a final sweep after a short quiet period re-reads every
+  engine-verified field's committed evidence; a field the engine wrote that
+  reverted gets **one** re-commit per run, then is reported unstable.
+
+### Tests
+
+Fixtures keep their own **application-state oracle** (the value the page
+really holds, invisible to the engine), so a test fails on any false "filled"
+or wrong write. Workday fixtures are rebuilt from the live DOM in the field notes (marker on
+the input, press-to-open, Enter-to-search on key-up, streamed and reused rows,
+radio/checkbox inside rows, virtualized lists, duplicate leaves, hidden-input
+commit, wrapper-level date blur with focus moving between parts, file input
+emptied after upload, Add sections). A behaviour the notes did not observe live
+is not modelled as Workday — labelled adversarial fixtures (delayed rollback,
+identical options in different categories, trusted-input-only widgets, recipe
+poisoning) are added as their own set. Then held-out widgets/tenants with cold
+and warm recipes, then live checks on several vendors. No corpus proves "any
+page"; the promise is bounded progress and honest reporting.
+
+### Remember what worked (in scope, owner 2026-09-26)
+
+A value-free, local **recipe** per widget FAMILY signature: structural marker
+names (`data-automation-id` / `data-uxi-widget-type`), roles, control
+topology, popup ownership, single/multi, the kind of commit evidence, and the
+engine version — never GUIDs, labels, values or option text. An origin-level
+override sits under the family key. A recipe stores parameterised moves with
+their pre/postconditions (e.g. "press; wait for list; type ⟨term⟩; Enter; click
+the checkable in ⟨option⟩"), not selectors or answers. It is a **shortcut
+proposal to the field controller**, never a separate executor, and never
+relaxes verification. Lifecycle: one success → probationary; promoted after
+independent successes that also survived the final sweep; cross-tenant use
+starts as a candidate that must verify fresh; demoted at once on a
+contradiction, quarantined on a structural mismatch, confidence expires with
+age. Local, bounded, clearable, no URLs.
