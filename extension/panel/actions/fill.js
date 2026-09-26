@@ -681,9 +681,10 @@
     store.write({
       attached,
       // NAMED, and hedged on purpose. The extension set `input.files` and the
-      // page took it (it held the file, or showed a new row naming it); whether the employer's own uploader has processed it is
-      // not a thing this can see, and "Attached" full stop would be a stronger
-      // claim than the evidence.
+      // page took it (it held the file, or showed a new row naming it);
+      // whether the employer's own uploader has processed it is not a thing
+      // this can see, and "Attached" full stop would be a stronger claim than
+      // the evidence.
       note: { text: `Attached ${attached.filename}. Check the upload before you submit.` },
     });
     if (finished) store.write({ touched: true });

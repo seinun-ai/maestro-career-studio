@@ -180,3 +180,76 @@ def test_an_input_the_page_re_rendered_counts_by_its_row(upload_page):
     }""")
     assert _attach(page) == {"ok": True, "data": 1}
     assert oracle(page, "files") == [NAME]
+
+
+# How pages say no. Each is what the page shows INSTEAD of a real row, 200 ms
+# after the change, and each names the file (or sits beside a line naming it),
+# so a proof that only looked for the name would count it.
+REFUSALS = {
+    "unsupported": f'<p>{NAME}: Unsupported file type</p>',
+    "exceeds": f'<p>{NAME} - File exceeds 5 MB</p>',
+    "unsuccessful": f'<p>{NAME}: Upload unsuccessful</p>',
+    "went-wrong": f'<p>Something went wrong uploading {NAME}</p>',
+    "cant": f'<p>We can’t take {NAME}</p>',
+    "virus": f'<p>{NAME} was flagged by the virus scan</p>',
+    "role-alert-no-error-words": f'<p>{NAME}</p><p role="alert">Please choose another file.</p>',
+    "aria-live-no-error-words": f'<p>{NAME}</p><span aria-live="assertive">Please choose another file.</span>',
+}
+
+
+@pytest.mark.parametrize("shown", REFUSALS.values(), ids=REFUSALS.keys())
+def test_a_page_that_says_no_counts_zero_however_it_says_it(upload_page, shown):
+    """A NEW error in the widget voids the row proof: error words in any common
+    phrasing, or a new alert / live region with text even when its words are
+    not on the list."""
+    page = upload_page
+    page.evaluate(REFUSE, f"""const box = document.createElement("div");
+      box.innerHTML = {shown!r};
+      widget.append(box);""")
+    assert _attach(page) == {"ok": True, "data": 0}
+    assert NAME in page.inner_text("[data-automation-id=attachments-FileUpload]")
+
+
+def test_a_row_that_names_its_own_failure_is_not_a_success(upload_page):
+    """The page clears a standing error and prints the file's row WITH its
+    failure. The widget's error count is unchanged (one out, one in), so only
+    the row's own words can say it did not go."""
+    page = upload_page
+    page.evaluate("""() => {
+      const old = document.createElement("p");
+      old.id = "old-error"; old.textContent = "Last upload failed.";
+      document.getElementById("uploaded").append(old);
+    }""")
+    page.evaluate(REFUSE, f"""widget.querySelector("#old-error").remove();
+      const p = document.createElement("p");
+      p.textContent = "{NAME} failed";
+      widget.append(p);""")
+    assert _attach(page) == {"ok": True, "data": 0}
+    assert page.locator("#old-error").count() == 0
+
+
+def test_standing_instructions_in_the_widget_do_not_void_a_real_row(upload_page):
+    """Help text that was there BEFORE the write is not news: the widget may
+    always say what fails, and a real row still counts."""
+    page = upload_page
+    page.evaluate("""() => {
+      const p = document.createElement("p");
+      p.textContent = "Files that exceed 5 MB are not supported. If an upload fails, try again.";
+      document.querySelector('[data-automation-id="attachments-FileUpload"]').prepend(p);
+    }""")
+    assert _attach(page) == {"ok": True, "data": 1}
+    assert oracle(page, "files") == [NAME]
+
+
+def test_a_detached_input_with_no_new_row_counts_zero(upload_page):
+    """The page swaps its input for a fresh one and shows nothing. The old node
+    still HOLDS the file — a detached node keeps what we assigned it forever —
+    so it counts only by a row, and there is none."""
+    page = upload_page
+    page.evaluate("""() => window.addEventListener("change", (e) => {
+      if (!e.target.matches?.('[data-automation-id="file-upload-input-ref"]')) return;
+      e.stopImmediatePropagation();
+      e.target.replaceWith(e.target.cloneNode());
+    }, true)""")
+    assert _attach(page) == {"ok": True, "data": 0}
+    assert oracle(page, "files") == []

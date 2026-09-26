@@ -75,8 +75,9 @@ global.document = {
   querySelector: () => null,
   createElement: () => ({ set innerHTML(_v) {}, get innerText() { return ""; } }),
 };
-// Node has File but no DataTransfer; attach_resume_pdf builds one before it
-// ever looks at the DOM, so the ALLOWED path needs it to reach the loop.
+// Node has File but no DataTransfer; attach_resume_pdf snapshots each box's
+// widget first (these fakes have none) and then builds ONE DataTransfer PER
+// BOX for its write, so the ALLOWED path needs it to reach the loop.
 // A DataTransfer that really COLLECTS, for the reason the `files` property
 // above is real: `attachResumePdf` checks `input.files?.length === 1` — exactly
 // one file, the one we put in — so a stub whose `add` dropped the file on the

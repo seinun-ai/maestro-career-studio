@@ -275,7 +275,10 @@ asking permission of itself.
   file than before the write, so an earlier upload of the same name proves
   nothing), inside that input's own widget (at most three levels up, never an
   ancestor holding another file input, never the whole document), with no new
-  error text, and still there a beat later; the page gets up to 3 s to show it.
+  error words and no new alert or live region with text in the widget, no error
+  words in the row itself, and still there a beat later; the page gets up to 3 s
+  to show it. A row shown mid-upload that fails later still counts, which is why
+  the panel says "Check the upload before you submit."
   A detached input counts only by that row. There is no second press.
 - **Mark applied** — the Draft/Applied segment lives in the footer permanently,
   so there is no nudge to hunt for. It is withheld for a status outside that pair,

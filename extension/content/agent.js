@@ -159,9 +159,25 @@
   const ATTACH_HOLD_MS = 300;
 
   // What an upload widget says when the file did NOT go. Counted before and
-  // after the write, so standing help text ("Upload failed? Try again") is
-  // not news; only an error that APPEARS voids a row proof.
-  const UPLOAD_ERROR = /\b(?:errors?|fail(?:ed|ure)?|invalid|unable|rejected|could\s*n[o']t|can\s*n[o']t|too\s+(?:large|big)|not\s+(?:allowed|supported|accepted))\b/gi;
+  // after the write, so standing help text ("Files that exceed 5 MB are not
+  // supported") is not news; only an error that APPEARS voids a row proof. A
+  // WIDE list on purpose: a phrasing it misses is the panel saying "Attached"
+  // over a refused upload, while a false hit only sends the user to look.
+  // Apostrophes both straight and curly ("can’t").
+  const UPLOAD_ERROR = new RegExp(String.raw`\b(?:${[
+    String.raw`errors?`, String.raw`fail(?:s|ed|ure|ing)?`, "invalid", "unable",
+    "rejected", "denied", "disallowed", "unsupported", String.raw`unsuccessful(?:ly)?`,
+    String.raw`exceed(?:s|ed|ing)?`, String.raw`went\s+wrong`, String.raw`corrupt(?:ed)?`,
+    String.raw`virus(?:es)?`, "malware", String.raw`could\s*n(?:o|['’])t`,
+    String.raw`can(?:\s*not|['’]t)`, String.raw`too\s+(?:large|big)`,
+    String.raw`not\s+(?:allowed|supported|accepted|permitted)`,
+  ].join("|")})\b`, "gi");
+
+  // An element that ANNOUNCES: a new one with text in the widget is the page
+  // reporting something about the write, and a successful upload is shown as a
+  // row, not announced as an alert — so it voids the row proof even when its
+  // words ("Please choose another file.") are on no list.
+  const UPLOAD_ALERT = '[role="alert"], [aria-invalid="true"], [aria-live]';
 
   /** The part of the page that belongs to ONE file input: where its uploader
    * would print the row for a file it took.
@@ -187,21 +203,32 @@
     return widget;
   }
 
+  /** Error words in `text`, with the filename cut out first so a file called
+   * `error-log.pdf` is not its own failure. */
+  function errorWords(text, filename) {
+    return String(text ?? "").split(filename).join(" ").match(UPLOAD_ERROR)?.length ?? 0;
+  }
+
   /** How many on-screen elements in `widget` name `filename`: the DEEPEST ones
-   * whose text holds it, so a row and the wrappers around it count once. */
+   * whose text holds it, so a row and the wrappers around it count once. A
+   * row whose OWN text carries error words ("resume.pdf failed") is never a
+   * success row, even where the widget's error total did not rise because the
+   * page cleared an old error as it printed the new one. */
   function rowsNaming(widget, filename) {
     return [widget, ...widget.querySelectorAll("*")].filter((el) =>
       el.textContent.includes(filename)
       && ![...el.children].some((child) => child.textContent.includes(filename))
-      && isOnScreen(el)).length;
+      && isOnScreen(el)
+      && errorWords(el.textContent, filename) === 0).length;
   }
 
-  /** Error words in the widget's RENDERED text (a hidden error template is not
-   * news until it shows), with the filename cut out first so a file called
-   * `error-log.pdf` is not its own failure. */
+  /** The widget's error total: error words in its RENDERED text (a hidden
+   * error template is not news until it shows), plus every announcing element
+   * (`UPLOAD_ALERT`) that holds rendered text. */
   function uploadErrors(widget, filename) {
-    const text = String(widget.innerText ?? widget.textContent ?? "").split(filename).join(" ");
-    return text.match(UPLOAD_ERROR)?.length ?? 0;
+    const announcing = [widget, ...widget.querySelectorAll(UPLOAD_ALERT)].filter((el) =>
+      el.matches(UPLOAD_ALERT) && String(el.innerText ?? "").trim() !== "").length;
+    return errorWords(widget.innerText ?? widget.textContent, filename) + announcing;
   }
 
   /** Attach a PDF to every attachable file input in this frame, and report how
@@ -234,8 +261,15 @@
    *   second copy counts zero (the user sees the earlier row and is told to
    *   check it: the safe direction), while Workday's `multiple` uploader adds a
    *   second row and counts. NO NEW ERROR because an error sentence names the
-   *   file too ("resume.pdf could not be uploaded"). Counting ELEMENTS rather
-   *   than remembering nodes survives a widget that re-renders its old rows.
+   *   file too ("resume.pdf could not be uploaded"), and a NEW alert or live
+   *   region with text counts as an error whatever it says. Counting ELEMENTS
+   *   rather than remembering nodes survives a widget that re-renders its old
+   *   rows.
+   *
+   * A ROW STILL IN PROGRESS COUNTS. An uploader that prints the name while the
+   * upload runs and fails more than about half a second later (past the hold
+   * below) is counted as attached; the panel's "Check the upload before you
+   * submit." is the line that covers it.
    *
    * A DETACHED INPUT COUNTS ONLY BY ITS ROW. A node the uploader re-rendered
    * away keeps whatever we assigned it forever, so its `files` is no evidence
