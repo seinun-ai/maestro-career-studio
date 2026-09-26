@@ -554,22 +554,32 @@ def test_enter_is_only_sent_to_search_widgets(page, load):
     assert page.input_value("#nm") == "Sam" and page.input_value("#cb") == "Boston"
 
 
-def staged(slow_ms=None, second_ms=None, declare=False, heard_ignores_enter=False):
-    """workday_search.html with its result stages moved (§2 rule 4), rows that
-    declare the full result count (aria-setsize), or a How Did You Hear box
-    whose Enter answers with the list it already shows."""
+def staged(slow_ms=None, second_ms=None, declare=None, heard_ignores_enter=False, restless=False, highlight=False):
+    """workday_search.html with its result stages moved (§2 rule 4); rows that
+    declare a size (aria-setsize: the full result count, `declare="total"`,
+    or only the rows of the stage drawn, `"stage"`); a How Did You Hear box
+    whose Enter answers with the list it already shows; results that never
+    stop reordering (`restless`); or the first row keyboard-highlighted
+    (aria-selected="true", `highlight`)."""
     html = fixture_html("workday_search.html")
     edits = []
     if slow_ms is not None:
-        edits.append(("const STAGE_1_MS = 100;", f"const STAGE_1_MS = {slow_ms};"))
+        edits.append(("const STAGE_1_MS = 150;", f"const STAGE_1_MS = {slow_ms};"))
     if second_ms is not None:
         edits.append(("const STAGE_2_MS = 400;", f"const STAGE_2_MS = {second_ms};"))
+    if declare == "total":
+        edits.append(("const token = open.token;", "const token = open.token; open.total = results.length;"))
     if declare:
-        edits += [("const token = open.token;", "const token = open.token; open.total = results.length;"),
-                  ("row.dataset.index = String(first + i);",
-                   "row.dataset.index = String(first + i); row.setAttribute('aria-setsize', String(open.total ?? items.length));")]
+        edits.append(("row.dataset.index = String(first + i);",
+                      "row.dataset.index = String(first + i); row.setAttribute('aria-setsize', String(open.total ?? items.length));"))
     if heard_ignores_enter:
         edits.append(("if (query) search(id, query);", "if (query && id !== 'heard') search(id, query);"))
+    if restless:
+        edits.append(("      // A search with exactly one result commits it on its own (§2 rule 5).",
+                      "      setInterval(() => { if (!live()) return; open.items = [...open.items].reverse(); render(); }, 200);\n"
+                      "      // A search with exactly one result commits it on its own (§2 rule 5)."))
+    if highlight:
+        edits.append(('row.setAttribute("aria-selected", "false");', 'row.setAttribute("aria-selected", String(first + i === 0));'))
     for old, new in edits:
         assert old in html, old
         html = html.replace(old, new)
@@ -579,7 +589,7 @@ def staged(slow_ms=None, second_ms=None, declare=False, heard_ignores_enter=Fals
 def test_slow_results_are_waited_for_not_read_as_the_empty_list(page, load):
     """School opens EMPTY; its answer starts 700 ms after the Enter — past the
     quiet period, so an unchanged list is never taken for the answer early."""
-    load(page, staged(slow_ms=700, second_ms=1000))
+    load(page, staged(slow_ms=700, second_ms=950))
     f = inv(page)["School or University"]
     got = explore(page, f, "Arlington")
     assert len(got["options"]) == 8 and "error" not in got
@@ -598,11 +608,110 @@ def test_a_search_that_answers_with_the_list_it_showed_still_resolves(page, load
 
 
 def test_a_list_that_declares_its_size_is_settled_when_it_holds_that_many(page, load):
-    """The first stage (1 row) and the second (5) are 1.2 s apart — past the
-    quiet period; rows that declare aria-setsize=5 are not settled at one."""
-    load(page, staged(second_ms=1200, declare=True))
+    """The first stage (1 row) and the second (5) are over a second apart —
+    past the quiet period; rows that declare aria-setsize=5 hold the wait: a
+    declared size is a veto on settling early."""
+    load(page, staged(second_ms=1200, declare="total"))
     got = explore(page, inv(page)["School or University"], "Texas")
     assert len(got["options"]) == 5
+
+
+def test_a_stage_that_declares_only_its_own_rows_still_waits_for_quiet(page, load):
+    """A declared size is never a shortcut: the first stage says aria-setsize=1
+    for its one row, and the second stage still lands before it is taken."""
+    load(page, staged(declare="stage"))
+    got = explore(page, inv(page)["School or University"], "Texas")
+    assert len(got["options"]) == 5
+
+
+def test_a_no_items_row_that_declares_its_size_resolves(page, load):
+    """"No Items." is a row (§2 rule 9) that is no option: counted the same way
+    on both sides, it settles as an honest empty answer, not a dead end."""
+    load(page, staged(declare="stage"))
+    started = time.monotonic()
+    got = explore(page, inv(page)["School or University"], "Arlignton")
+    assert (got["options"], got["error"]) == ([], "empty_popup")
+    assert time.monotonic() - started < 2.5
+
+
+def test_a_list_that_never_settles_is_never_picked_from(page, load):
+    """Results that keep reordering are still changing when time runs out:
+    not taken — `unsettled`, nothing clicked, nothing left open."""
+    load(page, staged(restless=True))
+    listen(page)
+    f = inv(page)["School or University"]
+    assert explore(page, f, "Texas")["error"] == "unsettled"
+    row = apply(page, f, op="choose", text="Texas A&M University", term="Texas")
+    assert (row["outcome"], row["reason"]) == ("unexpected", "unsettled")
+    assert page.evaluate("window.rowClicks") == [] and oracle(page, "school") == ""
+    assert not list_shown(page) and page.input_value("#school") == ""
+
+
+def test_a_keyboard_highlight_is_not_a_held_option(page, load):
+    """Workday's aria-selected="true" is its keyboard highlight (§2): an
+    unticked highlighted row is reported not selected and is still offered."""
+    load(page, staged(highlight=True))
+    f = inv(page)["Type to Add Skills"]
+    got = explore(page, f, "Python")
+    assert (got["options"][0]["text"], got["options"][0]["selected"]) == ("Python (Programming Language)", False)
+    assert apply(page, f, op="move", mid="search:value", version=page.evaluate(
+        f"(r) => {OPS}.stepState(r)", {"fid": f["fid"], "fp": f["fp"], "value": "Python"})["version"])["outcome"] == "progressed"
+    s = page.evaluate(f"(r) => {OPS}.stepState(r)", {"fid": f["fid"], "fp": f["fp"], "value": "Python"})
+    assert (s["options"][0]["text"], s["options"][0]["selected"]) == ("Python (Programming Language)", False)
+    assert 'Click the option "Python (Programming Language)"' in [c["describe"] for c in s["candidates"]]
+
+
+# Options that ignore the first click; after it, every redraw puts a radio in
+# each row — so a choose's second attempt meets a row with a tick and no
+# second gesture.
+GROWS_A_TICK = """<label for='pk'>Pick</label><input id='pk' role='combobox' aria-autocomplete='list' aria-controls='pk-list'>
+<ul id='pk-list' role='listbox' style='display:none'></ul>
+<script>
+(() => {
+  const input = document.getElementById('pk'); const list = document.getElementById('pk-list');
+  let clicked = 0;
+  input.addEventListener('input', () => {
+    const q = input.value.toLowerCase();
+    list.innerHTML = q ? ['Alpha', 'Beta'].filter((o) => o.toLowerCase().includes(q))
+      .map((o) => `<li role='option'>${clicked ? "<input type='radio'>" : ''}${o}</li>`).join('') : '';
+    for (const li of list.children) li.addEventListener('click', () => { clicked += 1; });
+    list.style.display = list.children.length ? 'block' : 'none';
+  });
+  document.addEventListener('mousedown', (e) => { if (e.target !== input && !list.contains(e.target)) list.style.display = 'none'; });
+})();
+</script>"""
+
+
+def test_a_retry_that_meets_a_row_with_a_tick_ends_without_a_second_gesture(page, load):
+    load(page, GROWS_A_TICK)
+    row = apply(page, inv(page)["Pick"], op="choose", text="Alpha", term="Al")
+    assert (row["outcome"], row["reason"]) == ("unexpected", "not_committed")
+
+
+def test_no_search_enter_while_the_box_names_a_highlighted_option(page, load):
+    """aria-activedescendant on the box: an Enter would pick that option."""
+    load(page, ENTER_SEARCH)
+    page.evaluate("""() => { window.enters = []; document.getElementById('cb').setAttribute('aria-activedescendant', 'x');
+      document.addEventListener('keydown', (e) => { if (e.key === 'Enter') window.enters.push(e.target.id); }, true); }""")
+    row = apply(page, inv(page)["Office"], op="choose", text="Boston", term="bos")
+    assert row["outcome"] == "unexpected" and page.evaluate("window.enters") == []
+
+
+def test_the_same_query_over_the_list_it_settled_is_not_searched_again(page, load):
+    """A second search:value for the same term, over the list the first one
+    settled: nothing typed, no Enter, no wait for a list that cannot change."""
+    load(page, fixture_html("workday_search.html"))
+    listen(page)
+    f = inv(page)["School or University"]
+
+    def step():
+        return page.evaluate(f"(r) => {OPS}.stepState(r)", {"fid": f["fid"], "fp": f["fp"], "value": "Texas"})
+
+    assert apply(page, f, op="move", mid="search:value", version=step()["version"])["outcome"] == "progressed"
+    started = time.monotonic()
+    assert apply(page, f, op="move", mid="search:value", version=step()["version"])["outcome"] == "progressed"
+    assert time.monotonic() - started < 0.4
+    assert [h for h in page.evaluate("window.heard") if h == "school:keyup:Enter"] == ["school:keyup:Enter"]
 
 
 # A combobox that opens its list on FOCUS and toggles it on a press (MUI-style
@@ -638,6 +747,7 @@ def test_a_list_that_opens_on_focus_is_not_pressed_shut(window, request, load):
     row = apply(page, inv(page)["Team"], op="choose", text="Blue", term="Bl")
     assert (row["outcome"], row["committed"]) == ("verified", "Blue")
     assert page.evaluate("window.presses") == 0
+
 
 def test_explore_never_runs_past_the_field_clock(page, load):
     """The loop sends what the field's clock has left (`ms`): an explore that

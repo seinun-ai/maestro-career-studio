@@ -790,6 +790,20 @@ def test_a_group_committed_inside_a_set_is_named_once(page, load):
     assert [s["item"] for s in bodies(out, "/api/autofill/step")] == ["B", "C"]
 
 
+def test_a_search_commit_inside_a_set_is_named_as_a_search(page, load):
+    """Nothing covered, one item landed by a search's own commit: the row's
+    lastOutcome says so (search_committed), not group_committed."""
+    searched = {"candidates": [{"mid": "search:word:0", "describe": 'Type "Py" into the search box'}, GIVE_UP]}
+    out = run(page, load, frames=[[f("k", "search", "Skills", multi=True)]],
+              map={"k": {"route": "slot", "slot": "skills", "value": ["B", "C"]}},
+              explore={"B": {"options": [], "error": "no_results"}, "C": {"options": [], "error": "no_results"}},
+              apply={"search:word:0": {"outcome": "unexpected", "reason": "search_committed", "committed": ["Bx"]}},
+              step={"states": [searched, {"candidates": [GIVE_UP]}], "moves": [{"mid": "search:word:0", "reason": "progress"}]})
+    r = row(out, "k")
+    assert (r["status"], r["lastOutcome"]) == ("needs_answer", "search_committed")
+    assert r["answer"] == 'Searching picked "Bx". Check it.'
+
+
 def test_a_field_re_listed_under_a_new_fid_keeps_its_row(page, load):
     out = run(page, load, frames=[[f("a", question="City", fp="same")],
                                   [f("a2", question="City", fp="same", committed="X", answered=True)]],

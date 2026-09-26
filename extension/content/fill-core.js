@@ -379,12 +379,12 @@
   // are judged by — texts, not nodes: Workday reuses its rows and swaps their
   // text (notes §2 rule 3). Every visible row counts, a "No Items." row too:
   // an honest empty answer is a change.
-  const textsOf = (p) => (p ? [...p.querySelectorAll(OPTIONISH)].filter((o) => b().visible(o))
-    .map((o) => b().clean(o.innerText || o.textContent)).join("\n") : "-");
-  // How many options the list SAYS it holds, where it says so: the one
-  // aria-setsize every row carries, or the list's aria-rowcount.
+  const rowsOf = (p) => [...p.querySelectorAll(OPTIONISH)].filter((o) => b().visible(o));
+  const textsOf = (p) => (p ? rowsOf(p).map((o) => b().clean(o.innerText || o.textContent)).join("\n") : "-");
+  // How many rows the list SAYS it holds, where it says so: the one
+  // aria-setsize every visible row carries, or the list's aria-rowcount.
   const declared = (p) => {
-    const rows = [...p.querySelectorAll(OPTIONISH)];
+    const rows = rowsOf(p);
     const sizes = new Set(rows.map((r) => r.getAttribute("aria-setsize")));
     const size = rows.length && sizes.size === 1 && !sizes.has(null) ? Number([...sizes][0]) : NaN;
     if (Number.isInteger(size) && size >= 0) return size;
@@ -398,41 +398,50 @@
   // row, then 8). An unchanged list (Workday's School opens EMPTY; How Did
   // You Hear shows its default categories) is the answer only once OPEN_MS
   // has passed with nothing new: a search may rightly answer with the list it
-  // showed, but a slow one must not be read as empty. Where every row is in
-  // the DOM and the list declares its size (aria-setsize / aria-rowcount), it
-  // is settled exactly when it holds that many. A list still changing when
-  // time runs out is never returned (null). A list that closed while the
-  // committed value moved is an Enter that committed its one hit (notes §2
-  // rule 5): null at once, the caller reads the evidence. The rows say whether
-  // the widget takes one answer or several: shapes remembers that.
+  // showed, but a slow one must not be read as empty. A declared size
+  // (aria-setsize / aria-rowcount, where every row is in the DOM) only ever
+  // holds the wait longer: fewer rows than it says are not settled — it is a
+  // veto, never a shortcut (a page may declare the rows of one stage). A
+  // list still changing — or still short of its declared size — when time
+  // runs out is not taken: `unsettled`, no popup. A list that closed while
+  // the committed value moved is an Enter that committed its one hit (notes
+  // §2 rule 5): no popup at once, the caller reads the evidence. The rows say
+  // whether the widget takes one answer or several: shapes remembers that.
+  // Returns { pop, unsettled }.
   const waitSettled = async (el, shape, before, snap, was, t) => {
     const start = Date.now();
     let last = null;
     let since = start;
+    let seen = false; // a list was up when time ran out
     const got = await b().waitFor(() => {
       const now = Date.now();
       const p = own(el, before);
       if (!p && moved(el, shape, snap)) return { pop: null };
+      seen = Boolean(p);
       if (!p || busy(p)) {
         last = null;
         since = now;
         return null;
       }
       const sig = textsOf(p);
-      const size = scrollerOf(p) ? null : declared(p);
-      if (size !== null && sig !== was) return b().optionsOf(p).length === size ? { pop: p } : null;
       if (sig !== last) {
         last = sig;
         since = now;
         return null;
       }
+      const size = scrollerOf(p) ? null : declared(p);
+      if (size !== null && rowsOf(p).length < size) return null; // the list says more are coming
       if (now - since < QUIET_MS) return null;
       return sig !== was || now - start >= OPEN_MS ? { pop: p } : null;
     }, OPEN_MS + QUIET_MS, t);
     const pop = got?.pop ?? null;
     ns.shapes.learnRows(el, pop);
-    return pop;
+    return { pop, unsettled: !got && seen };
   };
+  // What the engine last settled for a search box: the list, its texts and
+  // the query they answer. Typing that same query again into that same,
+  // unchanged list would only wait for a list that cannot change.
+  const settledFor = new WeakMap();
   // A query typed into the field's OWN box is remembered so tidy can take it
   // back; one typed into a search box inside the popup leaves with the popup.
   const typeQuery = async (box, term, t, { own: remember = false } = {}) => {
@@ -470,21 +479,22 @@
   const search = async (el, shape, box, term, before, t, w, { press = true } = {}) => {
     const snap = snapshot(el, shape);
     const workday = box === el && ns.shapes.workday(el);
-    if (press) {
+    // The same query, still answered by the list the engine settled for it
+    // (a choose's second gesture): nothing to type, nothing to wait for.
+    const prior = settledFor.get(box);
+    if (!press && prior && box.value === prior.query && box.value === term && own(el, before) === prior.pop
+      && textsOf(prior.pop) === prior.texts) return { pop: prior.pop, unsettled: false };
+    let pressing = press;
+    if (pressing) {
       b().enter(el, t);
       // A widget that opens its list on focus (MUI-style) is not pressed as
       // well: its press toggles that list shut.
-      if (!workday && (own(el, before) || el.getAttribute("aria-expanded") === "true")) press = false;
+      if (!workday && (own(el, before) || el.getAttribute("aria-expanded") === "true")) pressing = false;
     }
-    if (press) {
+    if (pressing) {
       const quiet = watch(el, shape);
       try {
-        b().press(el, t);
-        if (workday) await b().waitFor(() => own(el, before), OPEN_MS, t);
-        else await b().settle(t, 100);
-        quiet.saw();
-        w?.saw("pointer");
-        if (!quiet.ignored) reacted.add(el);
+        await pressWatched(el, quiet, t, w, () => (workday ? b().waitFor(() => own(el, before), OPEN_MS, t) : b().settle(t, 100)));
       } finally {
         quiet.stop();
       }
@@ -493,17 +503,33 @@
     let shown = textsOf(own(el, before)); // what the list showed before the search
     await typeQuery(box, term, t, { own: box === el });
     w?.saw("type");
-    if (workday || (comboBox(box) && !(await b().waitFor(() => searchView(el, shape, before) !== was, ANSWER_MS, t)))) {
+    // Never while the box names a highlighted option (aria-activedescendant):
+    // the Enter would pick it.
+    if (!box.getAttribute("aria-activedescendant") && (workday
+      || (comboBox(box) && !(await b().waitFor(() => searchView(el, shape, before) !== was, ANSWER_MS, t))))) {
       shown = textsOf(own(el, before));
       b().keyPress(box, "Enter", t);
       w?.saw("keyboard");
     }
-    return waitSettled(el, shape, before, snap, shown, t);
+    const got = await waitSettled(el, shape, before, snap, shown, t);
+    if (got.pop) settledFor.set(box, { pop: got.pop, texts: textsOf(got.pop), query: box.value });
+    return got;
   };
   // The list the engine opened for this search box, while it is still up.
   const heldList = (el) => {
     const before = opened.get(el);
     return before && own(el, before) ? before : null;
+  };
+  // A press of the field's control under `quiet` (a watch), then `until`.
+  // The ONE place the `reacted` rule is kept: a press that visibly did
+  // anything marks the element, and no key is ever sent to it after that.
+  const pressWatched = async (el, quiet, t, w, until) => {
+    b().press(el, t);
+    const got = await until();
+    quiet.saw();
+    w?.saw("pointer");
+    if (!quiet.ignored) reacted.add(el);
+    return got;
   };
   // A control the keyboard may open: a button or a combobox — never a plain
   // text box, a submit button or anything inside a link (a key there can
@@ -550,7 +576,7 @@
       const held = heldList(el);
       const before = held ?? b().popups();
       opened.set(el, before);
-      return { pop: await search(el, shape, el, term, before, t, w, { press: !held }), before, searchable };
+      return { ...(await search(el, shape, el, term, before, t, w, { press: !held })), before, searchable };
     }
     const before = b().popups();
     opened.set(el, before);
@@ -560,11 +586,7 @@
     let pop;
     let keyed = false;
     try {
-      b().press(el, t);
-      pop = await b().waitFor(() => own(el, before), searchable ? SEARCH_OPEN_MS : OPEN_MS, t);
-      quiet.saw();
-      w?.saw("pointer");
-      if (!quiet.ignored) reacted.add(el);
+      pop = await pressWatched(el, quiet, t, w, () => b().waitFor(() => own(el, before), searchable ? SEARCH_OPEN_MS : OPEN_MS, t));
       // A press that did nothing at all: the keyboard, a genuinely different gesture.
       let quietBody = true;
       for (const key of ["ArrowDown", "Enter"]) {
@@ -601,7 +623,7 @@
     if (!pop) return { pop: null, before, searchable };
     const box = pop.querySelector(INNER_SEARCH);
     if (box) searchable = true;
-    if (term && box) return { pop: await search(el, shape, box, term, before, t, w, { press: false }), before, searchable };
+    if (term && box) return { ...(await search(el, shape, box, term, before, t, w, { press: false })), before, searchable };
     return { pop: await waitOptions(el, before, t), before, searchable };
   };
   const scrollerOf = (pop) => [pop, ...pop.querySelectorAll("*")]
@@ -626,7 +648,7 @@
       await redrawn(t);
       if (box.scrollTop === top) complete = true; // the next pass reads the last page, then stops
     }
-    return { options: [...seen.values()].map((o, i) => ({ oid: `o${i + 1}`, text: o.text, selected: o.selected })), complete };
+    return { options: [...seen.values()].map((o, i) => ({ oid: `o${i + 1}`, text: o.text, selected: isHeld(o) })), complete };
   };
   // The one option to click (`one`: { hit } | { ambiguous } | {}): in view,
   // else from the top of a long list down, a page and a frame at a time.
@@ -660,6 +682,10 @@
   // (one answer) or a checkbox (several), and a click on the ROW only
   // highlights it (notes §2 "row vs radio").
   const checkableIn = (o) => o.querySelector('input[type="radio"], input[type="checkbox"]');
+  // Whether an option (from optionsOf) is already chosen: its own radio or
+  // checkbox where it holds one — Workday's aria-selected is only its
+  // keyboard highlight (notes §2) — else its aria-selected / aria-checked.
+  const isHeld = (o) => checkableIn(o.el)?.checked ?? o.selected;
 
   // Close what the engine opened. A search query the ENGINE typed, and only
   // while the box still holds exactly that query, is put back to what the box
@@ -774,7 +800,7 @@
     const w = watch(el, shape);
     try {
       // fill-ops owns explore's undo (whatever moved, keys included).
-      let { pop, searchable } = await open(el, shape, term, t, w, { reclaim: false });
+      let { pop, searchable, unsettled } = await open(el, shape, term, t, w, { reclaim: false });
       let options = pop ? b().optionsOf(pop) : [];
       if (!options.length && term) {
         const word = term.split(/\s+/).find((x) => x.length > 2 && x !== term);
@@ -782,7 +808,7 @@
         // word (fill-ops takes the commit back).
         if (word && !moved(el, shape, snap)) {
           await tidy(el, t);
-          ({ pop, searchable } = await open(el, shape, word, t, w, { reclaim: false }));
+          ({ pop, searchable, unsettled } = await open(el, shape, word, t, w, { reclaim: false }));
           options = pop ? b().optionsOf(pop) : [];
         }
       }
@@ -801,7 +827,8 @@
       if (!got.options.length) {
         if (pop) out.error = "empty_popup";
         else {
-          const why = w.reason("no_popup");
+          // A list that never settled is not "no popup": it is unsettled.
+          const why = unsettled ? { reason: "unsettled" } : w.reason("no_popup");
           out.error = why.reason;
           if (why.gestures) out.gestures = why.gestures;
         }
@@ -903,6 +930,29 @@
     outcome: verify(el, shape, text) === "verified" ? "verified" : "reverted", text,
   });
 
+  // The search's own Enter committed something (notes §2 rule 5: a single
+  // hit). The answer itself is verified without a click; anything else is
+  // taken back like any value the engine did not choose — and one that will
+  // not go back is `committed_while_opening`. Returns { result } to report,
+  // or { live }: the list still up to pick from (null when it closed).
+  const enterCommitted = async (el, shape, text, snap, popsBefore, { undo, consentForms, done }, t) => {
+    if (displayed(el, shape, text) === "verified") {
+      const got = verify(el, shape, text, { before: snap.evidence });
+      return { result: await done(got === "verified" || got === "unconfirmed" ? { outcome: got, text }
+        : { outcome: "unexpected", reason: "not_committed" }) };
+    }
+    const hits = added(el, shape, snap);
+    if (!undo) await takeBack(el, shape, snap, [], t);
+    if (moved(el, shape, snap)) {
+      await tidy(el, t);
+      return { result: { outcome: "unexpected", reason: "committed_while_opening" } };
+    }
+    const live = own(el, popsBefore);
+    if (live) return { live };
+    const options = flag(hits.map((h, i) => ({ oid: `o${i + 1}`, text: h })), consentForms);
+    return { result: await done({ outcome: "unexpected", reason: "option_missing", options }) };
+  };
+
   // `undo`: the engine's own undo (choosing a popup's placeholder to empty
   // it). Page actions never carry it, so a decision that names a placeholder
   // ("Select One" offered as an option) is refused, never clicked.
@@ -931,34 +981,22 @@
     };
     try {
       for (let attempt = 0; ; attempt += 1) {
-        const { pop, before: popsBefore, committed } = await open(el, shape,
+        const { pop, before: popsBefore, committed, unsettled } = await open(el, shape,
           shape.open === "search" ? (term ?? text) : term, t, w, { reclaim: !undo });
         if (committed) return { outcome: "unexpected", reason: "committed_while_opening" };
-        // The search's own Enter may have committed its one hit (notes §2
-        // rule 5): the answer is verified without a click; anything else it
-        // committed is taken back like any value the engine did not choose.
+        // Only a list the search let settle is picked from — or, once an
+        // Enter's commit was taken back, the list still up after it.
+        let live = pop?.isConnected ? pop : null;
         if (shape.open === "search" && moved(el, shape, snap)) {
-          if (displayed(el, shape, text) === "verified") {
-            const got = verify(el, shape, text, { before });
-            return done(got === "verified" || got === "unconfirmed" ? { outcome: got, text }
-              : { outcome: "unexpected", reason: "not_committed" });
-          }
-          const hits = added(el, shape, snap);
-          if (!undo) await takeBack(el, shape, snap, [], t);
-          if (moved(el, shape, snap)) {
-            await tidy(el, t);
-            return { outcome: "unexpected", reason: "committed_while_opening" };
-          }
-          if (!own(el, popsBefore)) {
-            return done({ outcome: "unexpected", reason: "option_missing", options: flag(hits.map((h, i) => ({ oid: `o${i + 1}`, text: h })), consentForms) });
-          }
+          const after = await enterCommitted(el, shape, text, snap, popsBefore, { undo, consentForms, done }, t);
+          if (after.result) return after.result;
+          live = after.live;
         }
         // The rows said "one answer": a set's item is not one to click.
         if (asSet && shape.multi?.(el) === false) return done({ outcome: "unexpected", reason: "not_a_set" });
-        const live = pop && pop.isConnected ? pop : own(el, popsBefore);
         if (!live) {
           await tidy(el, t);
-          return { outcome: "unexpected", ...w.reason("no_popup") };
+          return { outcome: "unexpected", ...(unsettled ? { reason: "unsettled" } : w.reason("no_popup")) };
         }
         const found = await findOption(live, text, t);
         if (!found.hit) {
@@ -969,17 +1007,15 @@
         let { hit } = found;
         if (blockedText(hit.text, consentForms)) return done({ outcome: "blocked" });
         if (!undo && ns.isPlaceholderText(hit.text)) return done({ outcome: "unexpected", reason: "placeholder" });
-        // The rows the list showed may only now have said "several". A row's
-        // own checkbox says whether it is held (its aria-selected is only
-        // Workday's keyboard highlight).
-        const ticked = (o) => (checkableIn(o.el) ? checkableIn(o.el).checked : o.selected);
-        if ((multi || shape.multi?.(el)) && (ticked(hit) || holds(el, shape, hit.text))) {
+        // The rows the list showed may only now have said "several".
+        if ((multi || shape.multi?.(el)) && (isHeld(hit) || holds(el, shape, hit.text))) {
           return done(alreadyThere(el, shape, hit.text));
         }
         hit = await refind(live, hit, text, t);
         if (!hit) return done({ outcome: "unexpected", reason: "option_missing", options: flag(b().optionsOf(live), consentForms) });
-        if ((multi || shape.multi?.(el)) && ticked(hit)) return done(alreadyThere(el, shape, hit.text));
+        if ((multi || shape.multi?.(el)) && isHeld(hit)) return done(alreadyThere(el, shape, hit.text));
         const gestures = gesturesFor(hit.el);
+        if (attempt >= gestures.length) break; // a row redrawn with a tick where a plain row was
         const shown = b().optionsOf(live).map((o) => o.text).join("\n");
         gestures[attempt](hit.el, t);
         await afterClick(el, shape, hit.el, hit.text, t);
@@ -1125,7 +1161,7 @@
   const clickable = (el, shape, pop, consentForms) => {
     const multi = Boolean(shape.multi?.(el));
     return b().optionsOf(pop)
-      .filter((o) => !blockedText(o.text, consentForms) && !(multi && (o.selected || holds(el, shape, o.text))));
+      .filter((o) => !blockedText(o.text, consentForms) && !(multi && (isHeld(o) || holds(el, shape, o.text))));
   };
   // At most MAX_CLICKS of them, nearest what the list shows now: from the
   // first one in view (filled up from before it at the end of the list).
@@ -1195,7 +1231,7 @@
     const shown = all.length <= MAX_CLICKS ? all : all.slice(lo, hi);
     return {
       version, complete, committed: shape.read(el), invalid: b().invalid(el), popupOpen: Boolean(held),
-      options: flag(shown, consentForms), candidates,
+      options: flag(shown.map((o) => ({ ...o, selected: isHeld(o) })), consentForms), candidates,
     };
   }
 
@@ -1259,7 +1295,7 @@
       if (!held) opened.set(el, before);
       const snap = snapshot(el, shape);
       // The search sequence, pressing the box only when no list is up yet.
-      const pop = await search(el, shape, box, term, before, t, null, { press: !held && box === el });
+      const { pop, unsettled } = await search(el, shape, box, term, before, t, null, { press: !held && box === el });
       searched.add(el);
       // The Enter committed a hit on its own (notes §2 rule 5). The value
       // itself is an answer; anything else is the page's pick, left for the
@@ -1272,9 +1308,9 @@
         }
         return { outcome: "unexpected", reason: "search_committed" };
       }
-      if (!pop) { // nothing opened: the query the engine typed is taken back
+      if (!pop) { // nothing opened, or nothing settled: the query the engine typed is taken back
         await tidy(el, t);
-        return { outcome: "unexpected", reason: "no_popup" };
+        return { outcome: "unexpected", reason: unsettled ? "unsettled" : "no_popup" };
       }
       leftOpen.set(el, { pop, before });
       return b().optionsOf(pop).length ? { outcome: "progressed" } : { outcome: "unexpected", reason: "no_results" };

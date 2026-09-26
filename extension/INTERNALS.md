@@ -461,30 +461,39 @@ know, and each one was learned from a live failure.
   before the search and then held still for 500 ms — results arrive in
   stages. A list that never changes (School opens empty; a search may
   rightly answer with the default list) is taken only after 2.5 s, so a slow
-  answer is never read as empty, and a list still changing when time runs
-  out is never taken. A list whose rows are all in the DOM and that declares
-  its size (`aria-setsize`, `aria-rowcount`) is settled when it holds that
-  many. The Enter is the search's own step, not the keyboard fallback: it
-  goes to a Workday box always, to a combobox or autocomplete box only when
-  its typing showed nothing new (a widget that filters as you type would
-  take an Enter as a pick), and never to a plain text box, a button or
-  anything inside a link. An Enter that finds one hit may commit it on its
-  own: the pills are read before anything is clicked (the answer: verified,
-  unclicked; anything else: taken back, or — from an adaptive search move —
-  left and named "Searching picked …", never filled). The click goes to the
-  radio or checkbox inside the result row, once (a click on the row only
-  highlights it; a tick is a toggle, redrawn a frame later, so it is never
-  repeated), after the option is found again by its text; a long list is
-  scrolled a page and a frame at a time (Workday keeps eight rows in the
-  DOM); an adaptive click whose row the list redrew for another option on
-  the way into view is `stale`, never clicked. Two options with the same
-  text are one option — the first — only when they sit under the same
-  visible category path; otherwise explore lists both, the adaptive step's
-  click moves name each one's place (`Click the option "Other" (under "Job
-  Board")`), and a choose by text alone is `ambiguous`, nothing clicked. A set's items share one open list:
-  each is typed over the last query, and the next waits for the last one's
-  pill. A Workday box not yet known to take one answer or several is
-  tried as a set; radio rows end it before any click.
+  answer is never read as empty. A declared size (`aria-setsize`,
+  `aria-rowcount`, every row in the DOM) only holds the wait longer while
+  fewer rows are shown — never a shortcut. A list still changing, or still
+  short of its declared size, when time runs out is not picked from by any
+  caller: explore, choose and the search move report it `unsettled`. The
+  same query typed again over the list the engine already settled for it is
+  not searched again. The Enter is the search's own step, not the keyboard
+  fallback: it goes to a Workday box always, to a combobox or autocomplete
+  box only when its typing showed nothing new (a widget that filters as you
+  type would take an Enter as a pick), and never to a plain text box, a
+  button, anything inside a link, or a box naming a highlighted option
+  (`aria-activedescendant`). An Enter that finds one hit may commit it on
+  its own: the pills are read before anything is clicked (the answer:
+  verified, unclicked; anything else: taken back, or — from an adaptive
+  search move — left and named "Searching picked …", never filled). The
+  click goes to the radio or checkbox inside the result row, once (a click
+  on the row only highlights it; a tick is a toggle, redrawn a frame later,
+  so it is never repeated), after the option is found again by its text; a
+  row's own tick, not its `aria-selected` (Workday's keyboard highlight),
+  says whether it is held. A long list is scrolled a page and a frame at a
+  time (Workday keeps eight rows in the DOM); an adaptive click whose row the
+  list redrew for another option on the way into view is `stale`, never
+  clicked. Two options with the same text are one option — the first — only
+  when they sit under the same visible category path; otherwise explore
+  lists both, the adaptive step's click moves name each one's place (`Click
+  the option "Other" (under "Job Board")`), and a choose by text alone is
+  `ambiguous`, nothing clicked. A set's items share one open list: each is
+  typed over the last query, and the next waits for the last one's pill. A
+  Workday box not yet known to take one answer or several is tried as a
+  set; radio rows end it before any click. UNMEASURED: the 500 ms quiet
+  period, the 300 ms a combobox's typing gets before it is sent the Enter,
+  and the 2.5 s bound on an unchanged list come from the fixtures, not from
+  live timings — the Task 13 live check measures them.
 - **A split date is written whole before anything blurs out of it.** Workday
   renders a date as several `spinbutton` inputs inside one widget, and the
   widget validates when focus leaves the WIDGET, not the section — so blurring

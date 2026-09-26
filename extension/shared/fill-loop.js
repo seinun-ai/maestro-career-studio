@@ -674,6 +674,7 @@
       if (halt()) return undefined;
       const covered = new Map(); // source item -> reason
       const landed = [];
+      let landedHow = "group_committed"; // how the last landed value got there
       let committed = null;
       if (pairs.length) {
         const texts = [...new Set(pairs.map(([t]) => t))];
@@ -709,6 +710,7 @@
             committed = r.committed ?? committed;
           } else if (r.outcome === "verified" || r.outcome === "landed" || r.outcome === "unconfirmed") {
             landed.push(landedNote(r.text ?? ([r.committed].flat().filter(Boolean).join(", ") || null), r.how));
+            landedHow = r.how ?? landedHow;
           } else if (r.outcome === "late") {
             late.push(...queue.slice(i).map(([x]) => x));
             break;
@@ -725,7 +727,7 @@
         ...new Set(landed),
       ];
       if (covered.size === n) return done(f, [...covered.values()].includes("closest") ? "closest" : "matched", committed);
-      const lastOutcome = late.length ? "timeout" : landed.length ? "group_committed" : "missing";
+      const lastOutcome = late.length ? "timeout" : landed.length ? landedHow : "missing";
       if (!covered.size) {
         if (byPolicy.size === n) return finish(f, "blocked", { lastOutcome: "blocked" });
         return finish(f, late.length ? "cannot_operate" : "needs_answer", {

@@ -75,7 +75,9 @@
   };
   const ROW_H = 30;
   const WINDOW = 8;   // rows ever in the DOM: long lists are virtualized (§2 rule 6)
-  const STAGE_1_MS = 100;
+  // The notes give no timings: the two stages sit 250 ms apart, so an engine
+  // that waits 500 ms of quiet has 250 ms of slack before the second lands.
+  const STAGE_1_MS = 150;
   const STAGE_2_MS = 400;
 
   const state = { heard: [], school: [], skills: ["SQL"] };
