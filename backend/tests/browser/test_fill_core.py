@@ -102,6 +102,16 @@ def test_native_select_radio_hidden_radio_and_lone_checkbox(page, load):
     assert apply(page, f["I have a preferred name"], op="choose", text="Yes")["outcome"] == "verified"
 
 
+@in_both_windows()
+def test_a_native_select_choice_is_entered_and_left_once(window, request, load):
+    page = request.getfixturevalue(window)
+    load(page, "<label for='s'>Country</label><select id='s'><option></option><option>Canada</option></select>")
+    page.evaluate("""() => { window.heard = {focus: 0, focusout: 0}; const s = document.getElementById('s');
+      s.addEventListener('focus', () => heard.focus++); s.addEventListener('focusout', () => heard.focusout++); }""")
+    assert apply(page, inv(page)["Country"], op="choose", text="Canada")["outcome"] == "verified"
+    assert page.evaluate("window.heard") == {"focus": 1, "focusout": 1}
+
+
 def test_sets_keep_existing_choices_and_never_untick(page, load):
     load(page, fixture_html("native.html"))
     f = inv(page)

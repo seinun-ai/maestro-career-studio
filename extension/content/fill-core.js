@@ -289,16 +289,14 @@
     clickTarget(input).click();
   };
   const selectIndex = (el, index, t) => {
-    b().check(t);
-    el.focus({ preventScroll: true });
+    b().enter(el, t);
     Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "selectedIndex").set.call(el, index);
     el.dispatchEvent(new Event("input", { bubbles: true }));
     el.dispatchEvent(new Event("change", { bubbles: true }));
   };
 
   const addSelected = (el, opts, t) => {
-    b().check(t);
-    el.focus({ preventScroll: true });
+    b().enter(el, t);
     for (const o of opts) o.selected = true;
     el.dispatchEvent(new Event("input", { bubbles: true }));
     el.dispatchEvent(new Event("change", { bubbles: true }));

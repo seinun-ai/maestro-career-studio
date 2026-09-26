@@ -271,6 +271,20 @@ def test_leave_reports_one_focusout_when_the_window_is_unfocused(page_unfocused,
 
 
 @in_both_windows()
+def test_leave_sends_nothing_when_the_page_already_moved_focus_out(window, request, load):
+    """A box that auto-advances when full (maxlength) has already left: the page
+    heard that leave, and a second focusout would be a leave that never happened."""
+    page = request.getfixturevalue(window)
+    load(page, """<input id='a' maxlength='3'><input id='b'><script>
+      a.addEventListener('input', () => { if (a.value.length === 3) b.focus(); });</script>""")
+    page.evaluate(HEARD)
+    page.evaluate(f"() => {B}.withinBudget(async (t) => {B}.typeText(document.getElementById('a'), 'abc', t), 1000)")
+    page.evaluate("window.outOfA = 0; document.getElementById('a').addEventListener('focusout', () => outOfA++)")
+    page.evaluate(f"() => {B}.leave(document.getElementById('a'))")
+    assert page.evaluate("[document.activeElement.id, window.outOfA]") == ["b", 0]
+
+
+@in_both_windows()
 def test_leave_blurs_what_has_focus_inside_the_widget_not_the_box_typed_in(window, request, load):
     """Workday moves focus inside a date widget by itself: leaving blurs the
     part that holds it NOW, and the page hears the leave from that part."""
@@ -304,8 +318,14 @@ def test_invalid_sees_a_plain_error_span_and_aria_invalid_on_any_part(page, load
       </div><span class='wd-date-error'>Error: The field To is required and must have a value.</span></div>
       <div data-automation-id='formField-why'><label for='why'>Error budget</label><input id='why' value='x'>
         <p>Tell us about an error you learned from.</p><p>Errors are welcome here.</p>
-        <span style='display:none'>Error: stale</span></div>""")
-    assert page.evaluate(INVALID, ["m", "tm", "why"]) == [True, True, False]
+        <p>Error messages you wrote:</p><span style='display:none'>Error: stale</span></div>
+      <div data-automation-id='formField-how'><label><span>Error: how do you handle it?</span>
+        <input id='how' value='x'></label></div>
+      <div data-automation-id='formField-rate'><fieldset><legend><div><p>Error: rate you tolerate?</p></div></legend>
+        <button id='rate' aria-haspopup='listbox'>Select One</button></fieldset></div>""")
+    # A plain "Error: ..." leaf flags; the word mid-sentence, a lead without the
+    # colon, a hidden span, and a question nested in a label or legend do not.
+    assert page.evaluate(INVALID, ["m", "tm", "why", "how", "rate"]) == [True, True, False, False, False]
 
 
 def test_money_compares_as_numbers(page, load):

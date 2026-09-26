@@ -136,12 +136,13 @@
     return box;
   };
   // Live Workday marks a date's error on ONE part (the year), and writes the
-  // message as a plain span "Error: …" with no errorMessage id. A
-  // leaf whose text merely mentions an error mid-sentence is help text, and a
-  // label or legend is the question ("Error budget"), never the error.
-  const ERROR_LEAD = /^error\b/i;
-  const errorLeaf = (n, el) => !n.childElementCount && !n.matches("label, legend, script, style, template")
-    && !n.contains(el) && ERROR_LEAD.test(clean(n.textContent)) && visible(n);
+  // message as a plain span "Error: …" with no errorMessage id. Only that
+  // "Error:" lead counts: the word mid-sentence or without the colon ("Error
+  // messages you wrote:") is help text, and text anywhere inside a label or
+  // legend is the question, never the error.
+  const ERROR_LEAD = /^error\s*:/i;
+  const errorLeaf = (n, el) => !n.childElementCount && !n.matches("script, style, template")
+    && !n.closest("label, legend") && !n.contains(el) && ERROR_LEAD.test(clean(n.textContent)) && visible(n);
   const invalid = (el) => {
     if (el.getAttribute("aria-invalid") === "true") return true;
     const described = (el.getAttribute("aria-describedby") ?? "").split(/\s+/).filter(Boolean)
@@ -259,14 +260,16 @@
   // moves focus between a date's parts by itself, so blurring the box typed
   // in leaves focus inside and nothing validates — THEN, only if the browser
   // stayed silent, tell the page focus left. Blur first, events second: a
-  // focusout sent while focus is still inside is ignored.
+  // focusout sent while focus is still inside is ignored. Focus already
+  // elsewhere (the page moved it out, as an auto-advancing box does) has
+  // nothing to leave: a second focusout would report a leave that never happened.
   const leave = (el, widget = el) => {
     const a = activeIn(el);
-    const who = a && a !== document.body && widget.contains(a) ? a : el;
-    const native = fired(who, "blur", () => who.blur?.());
+    if (!a || a === document.body || !(a === el || widget.contains(a))) return;
+    const native = fired(a, "blur", () => a.blur?.());
     if (!native) {
-      who.dispatchEvent(new FocusEvent("blur"));
-      who.dispatchEvent(new FocusEvent("focusout", { bubbles: true, composed: true, relatedTarget: null }));
+      a.dispatchEvent(new FocusEvent("blur"));
+      a.dispatchEvent(new FocusEvent("focusout", { bubbles: true, composed: true, relatedTarget: null }));
     }
   };
   // A key press is keydown AND keyup: Workday searches on the key-up. For
