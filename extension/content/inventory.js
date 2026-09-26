@@ -184,12 +184,14 @@
 
   // consentForms is per call and defaults to OFF: a caller that does not pass
   // the standing consent never inherits a previous run's.
+  let lastFields = null; // what the last list() returned, whoever called it
   const list = ({ consentForms = false } = {}) => {
     lastConsentForms = consentForms;
     flush();
     const fields = ns.shapes.pass(() => scan(consentForms));
     flush();
     listedAt = generation;
+    lastFields = fields;
     return { frame: FRAME, host: location.hostname, fields };
   };
 
@@ -241,6 +243,9 @@
   // an open shadow root reaches document retargeted to its host.
   const onUserChange = (e) => {
     if (!e.isTrusted) return;
+    // A value changed without the DOM changing: the last pass's committed
+    // values are old (`last()` answers null until the next list()).
+    generation += 1;
     const path = e.composedPath().filter((n) => n instanceof Element);
     if (!path.length) return;
     const busy = ns.fillBusyEl ?? null;
@@ -256,15 +261,17 @@
   };
   for (const type of ["input", "change"]) document.addEventListener(type, onUserChange, true);
 
-  // Whether nothing in the DOM changed since the last list(): a caller may
-  // reuse that pass's fields instead of listing again.
-  const current = () => {
+  // The last list()'s fields while nothing in the DOM changed since it, else
+  // null: a caller may reuse them instead of listing again. Kept HERE, with
+  // the generation it was taken at, because a list() can happen anywhere
+  // (resolve() re-lists on its own).
+  const last = () => {
     flush();
-    return listedAt === generation;
+    return listedAt === generation ? lastFields : null;
   };
 
   ns.fillInventory = {
-    list, peek, resolve, current, frame: FRAME,
+    list, peek, resolve, last, frame: FRAME,
     fpOf: (fid) => registry.get(fid)?.fp ?? null,
     liveFp,
     shapeOf: (fid) => (registry.has(fid) ? ns.shapes.byName(registry.get(fid).shape) : null),

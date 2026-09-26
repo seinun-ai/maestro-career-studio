@@ -147,6 +147,21 @@ def test_a_held_entry_that_does_not_match_in_place_adds_nothing(db_session, monk
 
 
 @pytest.mark.usefixtures("jev_on")
+def test_jobs_at_one_employer_are_told_apart_by_title(db_session, monkeypatch):
+    """Two profile jobs at the same employer: the employer alone cannot say
+    which one an entry holds, so its title must match too."""
+    facts = autofill_catalog.build({}, [{"employer": "Acme", "title": "Analyst"},
+                                        {"employer": "ACME Inc.", "title": "Senior Analyst"},
+                                        {"employer": "Globex", "title": "Lead"}], [])
+    fake_jev(monkeypatch, {"w": ("experience", 0.9)})
+    wrong = autofill_sections.plan([held_section("w", "Work Experience", ["Acme", "Senior Analyst"])],
+                                   facts, db_session)
+    assert (wrong["w"].wanted, wrong["w"].reason) == (1, "held_out_of_order")
+    right = autofill_sections.plan([held_section("w", "Work Experience", ["Acme", "analyst"])], facts, db_session)
+    assert (right["w"].wanted, right["w"].reason) == (3, None)
+
+
+@pytest.mark.usefixtures("jev_on")
 def test_education_matches_on_the_school(db_session, monkeypatch):
     fake_jev(monkeypatch, {"e": ("education", 0.9)})
     ok = autofill_sections.plan([held_section("e", "Education", ["State University", "MS"])], FACTS, db_session)

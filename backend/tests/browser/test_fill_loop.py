@@ -1553,6 +1553,10 @@ def test_one_fact_is_never_written_into_two_entries_of_a_section(page, load):
     out = run(page, load, frames=[[site(1, committed="https://GitHub.com/ada ", answered=True), site(2)]],
               map={"u2": {"route": "slot", "slot": "personal.github", "value": "https://github.com/ada"}})
     assert actions(out) == [] and row(out, "u2")["lastOutcome"] == "in_another_entry"
+    # A URL is the same URL whatever its scheme, `www.`, host case or trailing slash.
+    out = run(page, load, frames=[[site(1, committed="Example.dev/", answered=True), site(2)]],
+              map={"u2": {"route": "slot", "slot": "personal.website", "value": "https://www.example.dev"}})
+    assert actions(out) == [] and row(out, "u2")["lastOutcome"] == "in_another_entry"
     # A different fact in the second entry is written.
     out = run(page, load, frames=[[site(1), site(2)]],
               map={"u1": {"route": "slot", "slot": "personal.website", "value": "https://ada.dev"},

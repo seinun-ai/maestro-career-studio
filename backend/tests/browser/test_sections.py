@@ -169,3 +169,19 @@ def test_a_typeless_add_counts_outside_a_form_and_never_inside_one(page, load):
     load(page, """<div role="group" aria-labelledby="a"><h4 id="a">Websites</h4><button id="free">Add</button></div>
       <form><div role="group" aria-labelledby="b"><h4 id="b">Certifications</h4><button id="sends">Add</button></div></form>""")
     assert [(s["heading"], s["add"]) for s in sections(page)] == [("Websites", "Add")]
+
+
+def test_the_inventory_keeps_its_own_last_pass_for_reuse(page, load):
+    """`sections` may reuse the last inventory only while nothing changed
+    since it — and the inventory itself holds that pass, so a re-list
+    anywhere (resolve() re-lists on its own) is the pass that is reused."""
+    load(page, fixture_html("workday_sections.html"))
+    listed = page.evaluate("() => window.careerStudioCompanion.fillOps.inventory({runId: 'r1'})")
+    last = page.evaluate("() => window.careerStudioCompanion.fillInventory.last()")
+    assert [f["fid"] for f in last] == [f["fid"] for f in listed["fields"]]
+    page.click("#sec-web > [data-automation-id=add-button]")
+    assert page.evaluate("() => window.careerStudioCompanion.fillInventory.last()") is None
+    # A re-list (here the inventory's own) makes the NEW pass the one kept.
+    relisted = page.evaluate("() => window.careerStudioCompanion.fillInventory.list().fields.map((f) => f.fid)")
+    assert [f["fid"] for f in page.evaluate("() => window.careerStudioCompanion.fillInventory.last()")] == relisted
+    assert by_heading(page)["Websites"]["entries"] == 1

@@ -17,7 +17,8 @@ fact catalog here, so no value leaves the machine.
 RECONCILED FIRST. An entry already holding data keeps it, and /map places
 entries by page order (entry n ↔ profile entry n). So an Add is safe only when
 every entry holding data holds the profile entry of ITS position — matched on
-the employer (a job) or the school, normalized. Otherwise the added entry
+the employer (a job; and its title, when two jobs share an employer) or the
+school, normalized. Otherwise the added entry
 would repeat a profile entry already on the page: nothing is added (`wanted`
 is at most the entries there) and the plan says why, value-free. What the
 entries hold (`held`) comes to this local backend for that match only.
@@ -97,9 +98,23 @@ def _in_place(section: PageSection, kind: str, facts: dict[str, Fact]) -> bool:
         if not filled:
             continue
         name = facts.get(f"{kind}.{j}.{key}")
-        if name is None or _norm(str(name.value)) not in {_norm(h) for h in held}:
+        values = {_norm(h) for h in held}
+        if name is None or _norm(str(name.value)) not in values:
             return False
+        # Two profile jobs at one employer: the employer cannot say which one
+        # the entry holds, so its title must match too.
+        if kind == "experience" and _shares_employer(j, facts):
+            title = facts.get(f"experience.{j}.title")
+            if title is None or _norm(str(title.value)) not in values:
+                return False
     return True
+
+
+def _shares_employer(j: int, facts: dict[str, Fact]) -> bool:
+    employers = {slot: _norm(str(f.value)) for slot, f in facts.items()
+                 if re.fullmatch(r"experience\.\d+\.employer", slot)}
+    mine = employers.get(f"experience.{j}.employer")
+    return sum(e == mine for e in employers.values()) > 1
 
 
 def _payload(sections: list[PageSection]) -> list[dict]:

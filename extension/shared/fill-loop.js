@@ -1049,6 +1049,13 @@
     // HOLDS its value (the user's, a parsed resume's). Entry-numbered facts
     // (experience.0 / experience.1) are different facts whatever their values:
     // two jobs may share a title.
+    // A URL compares without its scheme, a leading `www.`, its host's case
+    // and a trailing slash: "Example.dev/" holds "https://www.example.dev".
+    const URLISH = /^(?:https?:\/\/)?(?:www\.)?([a-z0-9-]+(?:\.[a-z0-9-]+)+)(\/\S*)?$/i;
+    const asUrl = (v) => [v].flat().map((x) => {
+      const m = URLISH.exec(String(x ?? "").trim());
+      return m ? `${m[1].toLowerCase()}${(m[2] ?? "").replace(/\/+$/, "")}` : x;
+    });
     const claims = new Map(); // `${frame}\n${section}\n${slot}` -> the entry that has it
     const inAnotherEntry = (f) => {
       const row = rows.get(f.fid);
@@ -1061,7 +1068,7 @@
         const other = rows.get(fid);
         const o = ENTRY.exec(String(other?.field?.section ?? ""));
         return fid !== f.fid && other.frameId === row.frameId && o && o[1].toLowerCase() === family && o[2] !== m[2]
-          && other.field.answered && same(other.field.committed, row.value);
+          && other.field.answered && same(asUrl(other.field.committed), asUrl(row.value));
       });
       if ((claimed !== undefined && claimed !== m[2]) || held) {
         finish(f, "needs_answer", { lastOutcome: "in_another_entry", answer: "Already filled in another entry." });
