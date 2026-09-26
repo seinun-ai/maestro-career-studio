@@ -329,27 +329,17 @@ COLLECT_FRAMES = [{"frameId": 0, "result": {
     "retryables": [{"qid": "r1", "label": "country", "kind": "combobox",
                     "known_value": "United States"}],
 }}]
-CHOOSE_REPLY = _reply({"choices": {
-    "q1": {"answer": "Day", "reason": "matched"},
-    "q2": {"answer": None, "reason": "abstained"},
-}})
-# A page the run can FINISH: both questions answered, no essay, so nothing is
-# left for the user. It is a separate fixture rather than the default because
-# the ordinary ATS page is the one above — an abstain and an essay are what a
-# form of any size produces — and the two states are read differently by the
-# rail: only the finished one may tick Fill off.
-CLEAN_COLLECT_FRAMES = [{"frameId": 0, "result": {
-    **COLLECT_FRAMES[0]["result"],
-    "questions": [q for q in COLLECT_FRAMES[0]["result"]["questions"]
-                  if q["kind"] != "textarea"],
-}}]
-CLEAN_CHOOSE_REPLY = _reply({"choices": {
-    "q1": {"answer": "Day", "reason": "matched"},
-    "q2": {"answer": "LinkedIn", "reason": "matched"},
-}})
+# A page the rule pass can FINISH: "Saved answers only" asks the model nothing,
+# so every collected question is left for the user, and the only field that pass
+# can close is the retryable a rule already knew the answer to. A separate
+# fixture rather than the default because the ordinary ATS page is the one
+# above, and the two states are read differently by the rail: only the finished
+# one may tick Fill off.
+RULES_CLEAN_COLLECT_FRAMES = [{"frameId": 0, "result": {
+    **COLLECT_FRAMES[0]["result"], "questions": []}}]
 
 
-def _fill(tmp_path, driver=_FILL_STAGE_DRIVER_JS, **spec):
+def _fill(tmp_path, driver=_FILL_STAGE_DRIVER_JS, stored_mode="rules", **spec):
     """Boot on an apply page with a base-as-is arming remembered — the Fill
     stage, reached the way a user reaches it from the previous wizard step.
 
@@ -362,14 +352,19 @@ def _fill(tmp_path, driver=_FILL_STAGE_DRIVER_JS, **spec):
     """
     spec.setdefault("tabs", [{"id": 7, "url": LIGHTNING_APPLY_URL}])
     spec.setdefault("stored", {"widget.session": _armed_entry()})
-    replies = {"read_settings": SETTINGS_REPLY,
+    # "Saved answers only" by default: this section is the RULE PASS, which is
+    # what that mode runs until the loop replaces it (fill-engine Task 10).
+    # "Saved answers + AI" runs the loop, whose panel half is its own section
+    # below. `stored_mode=None` is the settings with no mode remembered.
+    settings = SETTINGS_REPLY if stored_mode is None else _reply(
+        {**SETTINGS_REPLY["data"], "fillMode": stored_mode})
+    replies = {"read_settings": settings,
                "panel_frame0": _reply({"tier": "B", "form": True, "score": 2}),
                "panel_prepare": _reply({"injected": True}),
                "telemetry": _reply({"posted": 0})}
     replies.update(spec.pop("replies", {}))
     api = {"lightningai": _reply({"match": "none", "job": None, "application": None}),
            "/api/autofill/context": _reply(FILL_CONTEXT),
-           "/api/autofill/choose": CHOOSE_REPLY,
            "/api/base-resumes": _reply(BASE_RESUMES),
            "/api/ats-scores": _reply(SCORES)}
     api.update(spec.pop("api", {}))
@@ -424,17 +419,18 @@ def test_before_a_fill_the_stage_offers_a_choice_and_reports_nothing(tmp_path):
     passes differ in the thing a user would want to know before pressing:
     whether anything leaves the browser.
     """
-    out = _fill(tmp_path)
+    out = _fill(tmp_path, stored_mode=None)
     rows = _rows(_rail_rows({"regions": out["loaded"]}))
     assert rows["fill"]["state"] == "active"
     assert out["modes"] == ["Saved answers only", "Saved answers + AI"]
     assert _by_class(out["loaded"]["rail"], "prog") == []
     assert _by_class(out["loaded"]["rail"], "resid") == []
-    # The AI mode says what the model is shown: /api/autofill/choose sends the
-    # saved answers and the career history (app/services/autofill_choose.py).
+    # The AI mode says what the model is shown: the loop sends each field's
+    # question and options (/map), the saved answer that answers it (/pick,
+    # /step) and, for a written answer, the career history (/choose).
     assert _by_class(out["loaded"]["rail"], "sub")[0]["text"] == (
-        "Uses your saved answers, then asks the AI for the rest. The AI sees your "
-        "saved answers and career history.")
+        "Uses your saved answers and the AI to fill the form. The AI sees the "
+        "form's questions, your saved answers and career history.")
     # One primary, in the one place, and it says what it starts.
     [cta] = _by_class(out["loaded"]["foot"], "cta")
     assert cta["text"] == "Fill this form"
@@ -543,7 +539,7 @@ def test_the_default_mode_is_assist_and_the_choice_is_remembered_for_the_profile
     user who turns the model off wants it off on the next posting and in the
     next browser, not until their next tab switch.
     """
-    out = _fill(tmp_path, mode="Saved answers only")
+    out = _fill(tmp_path, stored_mode=None, mode="Saved answers only")
     [rules, assist] = _by_class(out["loaded"]["rail"], "seg")[0]["children"]
     # Before: assist, from the settings default, and said in words as well as
     # in the tint — "which pass is about to run" must not have to be inferred
@@ -566,21 +562,20 @@ def test_a_stored_rules_only_choice_comes_back_as_the_mode(tmp_path):
     """The read half, through the settings message rather than a second copy
     of the key. Anything but `"rules"` is the assist pass — a missing key, or a
     value from an older build, is not a user who chose the narrower run."""
-    out = _fill(tmp_path, replies={"read_settings": {"ok": True, "data": {
-        **SETTINGS_REPLY["data"], "fillMode": "rules"}}})
+    out = _fill(tmp_path, stored_mode="rules")
     [rules, assist] = _by_class(out["loaded"]["rail"], "seg")[0]["children"]
     assert (rules["class"], assist["class"]) == ("on", "")
 
 
-def test_start_fill_runs_the_rules_then_the_model_and_reports_both(tmp_path):
-    """The whole pass, end to end, in the order the runner sequences it.
+def test_start_fill_runs_the_rules_and_writes_what_they_knew(tmp_path):
+    """"Saved answers only", end to end, in the order the runner sequences it.
 
     `panel_prepare` FIRST, because it is the sanctioned injection moment: a
     click is a user gesture, and a tab that was already open when the extension
     last reloaded has no content scripts at all until this runs. Then the rule
-    pass through the same `profile_fill` fan-out the card uses, then one
-    `/choose` batch for the remainder, then ONE `guided_write` for everything
-    that has an answer.
+    pass through the `profile_fill` fan-out, then the collect, then ONE
+    `guided_write` for what a rule already knew. No `/choose`: this mode asks
+    the model nothing.
     """
     out = _fill(tmp_path, start=True)
     # The injection is the first thing the click does, and it happens once.
@@ -595,15 +590,10 @@ def test_start_fill_runs_the_rules_then_the_model_and_reports_both(tmp_path):
     assert rules["eeoEnabled"] is False
     assert rules["consentForms"] is False
     assert rules["skills"] == ["python", "pytorch"]
-    # The retryable leads the write and never reaches the model: a value a rule
-    # already knows is not the model's to answer.
+    # The retryable is the whole write: a value a rule already knows.
     write = _page_message(out, "guided_write")["message"]
-    assert [pair["qid"] for pair in write["pairs"]] == ["r1", "q1"]
-    posted = json.dumps(_choose_calls(out))
-    assert "United States" not in posted
-    assert "r1" not in posted
-    # …and the essay is on neither list: `/api/qa` is a different feature.
-    assert "q3" not in posted
+    assert [pair["qid"] for pair in write["pairs"]] == ["r1"]
+    assert _choose_calls(out) == []
 
 
 def test_the_progress_rows_are_the_runs_own_report(tmp_path):
@@ -621,9 +611,9 @@ def test_the_progress_rows_are_the_runs_own_report(tmp_path):
         # filled + already + the one that would not stick, each its own count:
         # "0 filled" over a visibly full form was a lie on a re-run.
         ("Saved answers", "2 filled · 1 already filled · 1 not accepted"),
-        # r1 and q1 were written; q2 abstained and q3 is an essay, so two are
-        # still open.
-        ("Application questions", "2 filled · 2 need you"),
+        # r1 was written; q1 and q2 went to no model and q3 is an essay, so
+        # three are still open.
+        ("Application questions", "1 filled · 3 need you"),
         ("Diversity questions", "turned off in Profile › Autofill"),
     ]
     # The marks carry the state in WORDS as well, because an emoji reaches
@@ -639,41 +629,11 @@ def test_the_progress_rows_are_the_runs_own_report(tmp_path):
     # option list and buttons into the name of the field.
     assert [_jump_label(item) for item in
             _by_class(settled["rail"], "resid")[0]["children"]] == [
-        "how did you hear about us?", "why do you want this role? · written answer"]
+        "preferred shift", "how did you hear about us?",
+        "why do you want this role? · written answer"]
     [note] = _by_class(settled["foot"], "note")
-    assert note["text"] == "2 fields need your answer."
+    assert note["text"] == "3 fields need your answer."
 
-
-def test_a_closest_pick_is_listed_for_the_user_to_check(tmp_path):
-    """A `closest` answer is WRITTEN — the page had no exact option for the
-    profile's value and the nearest one was allowed — so it is filled, never
-    open; but the user must see it before submitting, so it has its own list."""
-    out = _fill(tmp_path, start=True, api={"/api/autofill/choose": _reply({"choices": {
-        "q1": {"answer": "Night", "reason": "closest"},
-        "q2": {"answer": "LinkedIn", "reason": "matched"},
-    }})})
-    [check] = [node for node in _by_class(out["settled"]["rail"], "resid")
-               if node.get("attrs", {}).get("aria-label") == "Closest matches to check"]
-    assert "preferred shift" in _text(check) and "Night" in _text(check)
-    # Written, so not among the fields still open.
-    rows = dict(_rows_of(out["settled"]["rail"]))
-    assert rows["Application questions"] == "3 filled · 1 needs you"
-
-def test_a_finished_fill_still_names_its_closest_picks(tmp_path):
-    """A finished fill ticks the step and takes the body — and its check list —
-    off screen, so the foot note is the only place left to say it. A closest
-    pick is a factual answer the page had no exact option for: finishing
-    silently would write a near-miss major or degree with nobody told."""
-    out = _fill(tmp_path, start=True,
-                frames={"collect_open_questions": CLEAN_COLLECT_FRAMES},
-                api={"/api/autofill/choose": _reply({"choices": {
-                    "q1": {"answer": "Night", "reason": "closest"},
-                    "q2": {"answer": "LinkedIn", "reason": "matched"},
-                }})})
-    [note] = _by_class(out["settled"]["foot"], "note")
-    assert note["text"] == (
-        "Fill finished. Check the closest match before you submit: "
-        "preferred shift (Night).")
 
 def test_the_progress_rows_move_with_what_the_writer_actually_did(tmp_path):
     """The other half of "the run's own report": change what the ENGINE says
@@ -684,15 +644,15 @@ def test_the_progress_rows_move_with_what_the_writer_actually_did(tmp_path):
     Pinned as a second scenario rather than as a source read, because the way
     this breaks is a body that counts `writeResults.length` and calls it filled.
     """
-    out = _fill(tmp_path, start=True, frames={"guided_write": {"q1": "not_stuck"}})
+    out = _fill(tmp_path, start=True, frames={"guided_write": {"r1": "not_stuck"}})
     rows = dict(_rows_of(out["settled"]["rail"]))
-    assert rows["Application questions"] == "1 filled · 3 need you"
-    # The runner's own order — the abstains it collected first, then the writes
-    # that did not stick — and the essays after both, because they are a
+    assert rows["Application questions"] == "0 filled · 4 need you"
+    # The runner's own order — the questions it collected first, then the
+    # write that did not stick — and the essays after both, because they are a
     # different list joined at the render.
     assert [_jump_label(item) for item in
             _by_class(out["settled"]["rail"], "resid")[0]["children"]] == [
-        "how did you hear about us?", "preferred shift",
+        "preferred shift", "how did you hear about us?", "country",
         "why do you want this role? · written answer"]
 
 
@@ -715,10 +675,12 @@ def test_rules_only_asks_the_model_nothing_at_all(tmp_path):
     assert dict(_rows_of(rules_only["settled"]["rail"]))[
         "Application questions"] == "1 filled · 3 need you"
 
-    # …and the same fixture with the default mode does ask, which is what makes
-    # the emptiness above a decision rather than a broken wire.
-    assisted = _fill(tmp_path, start=True)
-    assert len(_choose_calls(assisted)) == 1
+    # …and the same fixture with the default mode runs the fill loop instead,
+    # which is what makes the emptiness above a decision rather than a broken
+    # wire: its first message is the loop's inventory, and no rule pass runs.
+    assisted = _fill(tmp_path, stored_mode=None, start=True)
+    assert _broadcast_types(assisted)[:1] == ["fill_inventory"]
+    assert "profile_fill" not in _broadcast_types(assisted)
 
 
 def test_the_eeo_row_says_what_the_backend_consented_to_and_never_a_local_toggle(tmp_path):
@@ -770,7 +732,7 @@ def test_a_residue_row_jumps_to_its_field_and_carries_only_the_qid(tmp_path):
     """
     out = _fill(tmp_path, start=True, scrollRow=0)
     jump = _page_message(out, "scroll_to_field")
-    assert jump["message"] == {"type": "scroll_to_field", "qid": "q2"}
+    assert jump["message"] == {"type": "scroll_to_field", "qid": "q1"}
     assert jump["tabId"] == 7
 
 
@@ -780,7 +742,7 @@ def test_the_primary_is_out_of_reach_while_the_fill_runs(tmp_path):
     version of the double-click this rule exists for. The mode control goes
     with it: the mode is read once, at the top of the run, so a segment pressed
     mid-fill would change the label and not the run."""
-    out = _fill(tmp_path, start=True, hold=["/api/autofill/choose"])
+    out = _fill(tmp_path, start=True, hold=["page_broadcast:guided_write"])
     [cta] = _by_class(out["clicked"]["foot"], "cta")
     assert cta["disabled"] is True
     assert cta["class"] == "cta spin"
@@ -796,7 +758,7 @@ def test_a_fill_that_lands_after_you_switch_tabs_paints_nothing(tmp_path):
     Nothing about tab A's form may reach tab B — not the counts, not the list
     of what is still open, and not the sentence.
     """
-    out = _fill(tmp_path, start=True, hold=["/api/autofill/choose"], switchTo=42,
+    out = _fill(tmp_path, start=True, hold=["page_broadcast:guided_write"], switchTo=42,
                 tabUrls={"42": "chrome://settings"})
     settled = out["settled"]
     assert _by_class(settled["rail"], "prog") == []
@@ -827,11 +789,11 @@ def test_progress_from_a_fill_on_another_tab_never_paints_this_one(tmp_path):
     waiting to render a list. Without the check it renders the previous page's
     open questions as this page's.
 
-    The choose wire is held until after the switch, which puts the second
+    The write is held until after the switch, which puts the second
     `onProgress` — the residue — strictly on the far side of it.
     """
     next_step = f"{LIGHTNING_APPLY_URL}/step2"
-    out = _fill(tmp_path, start=True, hold=["/api/autofill/choose"], switchTo=42,
+    out = _fill(tmp_path, start=True, hold=["page_broadcast:guided_write"], switchTo=42,
                 tabUrls={"42": next_step})
     settled = out["settled"]
     # Tab B is at Fill and its body is the pre-run offer: a mode control, and
@@ -840,7 +802,7 @@ def test_progress_from_a_fill_on_another_tab_never_paints_this_one(tmp_path):
     assert len(_by_class(settled["rail"], "seg")) == 1
     assert _by_class(settled["rail"], "prog") == []
     assert _by_class(settled["rail"], "resid") == []
-    # The essay phase fires BEFORE /choose, so it landed while tab A was still
+    # The essay phase fires BEFORE the write, so it landed while tab A was still
     # bound and was cleared by the page change; the residue phase fires after,
     # and the token check is the only thing that can stop it.
     assert "why do you want this role?" not in json.dumps(settled)
@@ -913,10 +875,10 @@ def test_a_second_press_reports_the_second_run_and_never_the_first(tmp_path):
     out = _fill(tmp_path, start=True, again={
         "frames": {"profile_fill": SECOND_PROFILE_FRAMES,
                    "collect_open_questions": [{"frameId": 0}]}})
-    # Run 1 did what it always does: four fields reconciled, two still open.
+    # Run 1 did what it always does: four fields reconciled, three still open.
     assert dict(_rows_of(out["first"]["rail"]))["Saved answers"] == (
         "2 filled · 1 already filled · 1 not accepted")
-    assert len(_by_class(out["first"]["rail"], "resid")[0]["children"]) == 2
+    assert len(_by_class(out["first"]["rail"], "resid")[0]["children"]) == 3
 
     settled = out["settled"]
     # Run 2's rows, and only run 2's.
@@ -956,12 +918,10 @@ def test_a_finished_fill_is_reopened_for_the_wizards_next_page(tmp_path):
       body the user opened is the body the report lands in.
     """
     out = _fill(tmp_path, start=True,
-                frames={"collect_open_questions": CLEAN_COLLECT_FRAMES},
-                api={"/api/autofill/choose": CLEAN_CHOOSE_REPLY},
+                frames={"collect_open_questions": RULES_CLEAN_COLLECT_FRAMES},
                 again={"reopen": True,
                        "frames": {"profile_fill": SECOND_PROFILE_FRAMES,
-                                  "collect_open_questions": COLLECT_FRAMES},
-                       "api": {"/api/autofill/choose": CHOOSE_REPLY}})
+                                  "collect_open_questions": COLLECT_FRAMES}})
     # Run 1 ticked the step and the rail moved on — the state this feature is
     # about, pinned before it is escaped.
     first_rows = _rows(_rail_rows({"regions": out["first"]}))
@@ -974,14 +934,15 @@ def test_a_finished_fill_is_reopened_for_the_wizards_next_page(tmp_path):
     # Run 2's rows, and only run 2's: one field where run 1 reported four.
     assert _rows_of(settled["rail"]) == [
         ("Saved answers", "1 filled"),
-        ("Application questions", "2 filled · 2 need you"),
+        ("Application questions", "1 filled · 3 need you"),
         ("Diversity questions", "turned off in Profile › Autofill"),
     ]
     assert "2 filled · 1 already filled" not in _text(settled["rail"])
     # The still-open list is this page's, under a row that is still ticked.
     assert [_jump_label(item) for item in
             _by_class(settled["rail"], "resid")[0]["children"]] == [
-        "how did you hear about us?", "why do you want this role? · written answer"]
+        "preferred shift", "how did you hear about us?",
+        "why do you want this role? · written answer"]
     rows = _rows(_rail_rows({"regions": settled}))
     assert rows["fill"]["state"] == "done"
     assert rows["track"]["state"] == "active"
@@ -990,7 +951,7 @@ def test_a_finished_fill_is_reopened_for_the_wizards_next_page(tmp_path):
     # that follows the stage.
     [body] = _by_class(settled["rail"], "stg-body")
     assert body["id"] == "stg-body-fill"
-    assert _by_class(settled["foot"], "note")[0]["text"] == "2 fields need your answer."
+    assert _by_class(settled["foot"], "note")[0]["text"] == "3 fields need your answer."
     # WHILE THE RE-RUN IS OPEN the door is shut, `statusSegment`'s rule and its
     # reason: every control on this surface reads `busy`, and a reopen that
     # stayed live would swap the body out from under a fill the user is
@@ -1013,32 +974,32 @@ def test_no_panel_sentence_promises_the_ai_never_sees_your_details():
 
 def test_a_fill_with_no_saved_answers_says_where_to_add_them(tmp_path):
     """An empty profile makes the rule pass throw its sentence inside the
-    runner's swallow, so the run goes on to the AI pass. The sentence still
-    reaches the note: the user learns why nothing was filled from the profile."""
+    runner's swallow, so the run goes on to collect what is open. The sentence
+    still reaches the note: the user learns why nothing was filled from the
+    profile."""
     out = _fill(tmp_path, start=True,
                 api={"/api/autofill/context": _reply({**FILL_CONTEXT, "profile": {}})})
     [note] = _by_class(out["settled"]["foot"], "note")
     assert note["text"] == (
         "No saved answers yet. Add them in Maestro CS under Profile › Autofill. "
-        "2 fields need your answer.")
+        "3 fields need your answer.")
     # Nothing was filled from a profile that has nothing in it.
     assert "profile_fill" not in _broadcast_types(out)
 
 
-@pytest.mark.parametrize("frames, choose, tail", [
-    # The AI answered everything that was open: the run did finish the form.
-    (CLEAN_COLLECT_FRAMES, CLEAN_CHOOSE_REPLY, " Fill finished. Review before you submit."),
+@pytest.mark.parametrize("frames, tail", [
+    # The one open field was written: the run did finish the form.
+    (RULES_CLEAN_COLLECT_FRAMES, " Fill finished. Review before you submit."),
     # Nothing to answer and nothing written: "Fill finished" would claim a fill
     # that never happened (seen in Chrome over a form of name and email boxes).
     ([{"frameId": 0, "result": {"host": "job-boards.greenhouse.io", "questions": [],
-                                "retryables": []}}], _reply({"choices": {}}), ""),
+                                "retryables": []}}], ""),
 ])
 def test_with_no_saved_answers_only_a_run_that_wrote_says_it_finished(
-        tmp_path, frames, choose, tail):
+        tmp_path, frames, tail):
     out = _fill(tmp_path, start=True,
                 frames={"collect_open_questions": frames},
-                api={"/api/autofill/context": _reply({**FILL_CONTEXT, "profile": {}}),
-                     "/api/autofill/choose": choose})
+                api={"/api/autofill/context": _reply({**FILL_CONTEXT, "profile": {}})})
     [note] = _by_class(out["settled"]["foot"], "note")
     assert note["text"] == (
         "No saved answers yet. Add them in Maestro CS under Profile › Autofill." + tail)
@@ -1099,13 +1060,9 @@ def test_a_run_that_wrote_nothing_does_not_tick_the_step_off(tmp_path):
 
     `stageFor` reads it as `done.fill`, so a run that answered nothing must
     leave the rail on Fill and the session unremembered. The page here matches
-    no rule and the model abstains on everything: the honest report is a list,
-    not a tick.
+    no rule and asks no model: the honest report is a list, not a tick.
     """
     out = _fill(tmp_path, start=True,
-                api={"/api/autofill/choose": _reply({"choices": {
-                    "q1": {"answer": None, "reason": "abstained"},
-                    "q2": {"answer": None, "reason": "abstained"}}})},
                 frames={"profile_fill": [{"frameId": 0, "result": {
                     "filled": [], "corrected": [], "eeoFilled": [], "already": [],
                     "seen": 0, "observations": []}}],
@@ -1132,55 +1089,10 @@ def test_a_fill_with_fields_still_open_keeps_the_user_on_the_step(tmp_path):
     assert _rows(_rail_rows({"regions": settled}))["fill"]["state"] == "active"
     # The report is still on screen, which is the whole reason for the rule.
     assert len(_by_class(settled["rail"], "prog")) == 3
-    assert len(_by_class(settled["rail"], "resid")[0]["children"]) == 2
+    assert len(_by_class(settled["rail"], "resid")[0]["children"]) == 3
     # And nothing was remembered: `touched` rides the session entry to the next
     # page of the wizard, and this page is not done.
     assert out["writes"] == []
-
-
-def test_a_released_field_reaches_choose_without_its_profile_value(tmp_path):
-    """Panel wire pin: release makes an ordinary value-free ChooseField.
-
-    The profile in the same run carries the value that the rule rejected for
-    this Yes/No control. The raw /choose body may carry the question and its
-    rendered options, but never that rejected profile value.
-    """
-    label = "are you legally authorized to work in this country?"
-    context = {
-        **FILL_CONTEXT,
-        "profile": {"personal": {"country": "United States"}},
-    }
-    released = [{"frameId": 0, "result": {
-        "host": "job-boards.greenhouse.io",
-        "questions": [{
-            "qid": "released-auth",
-            "label": label,
-            "kind": "select",
-            "options": ["Yes", "No"],
-        }],
-        "retryables": [],
-    }}]
-    out = _fill(
-        tmp_path,
-        start=True,
-        api={
-            "/api/autofill/context": _reply(context),
-            "/api/autofill/choose": _reply({"choices": {
-                "released-auth": {"answer": None, "reason": "abstained"},
-            }}),
-        },
-        frames={"collect_open_questions": released},
-    )
-
-    [call] = _choose_calls(out)
-    body = json.loads(call["init"]["body"])
-    assert body["fields"] == [{
-        "qid": "released-auth",
-        "label": label,
-        "kind": "select",
-        "options": ["Yes", "No"],
-    }]
-    assert "United States" not in json.dumps(body)
 
 
 def test_a_finished_fill_ticks_the_step_and_is_remembered(tmp_path):
@@ -1193,8 +1105,7 @@ def test_a_finished_fill_ticks_the_step_and_is_remembered(tmp_path):
     a form this extension has already finished.
     """
     out = _fill(tmp_path, start=True,
-                api={"/api/autofill/choose": CLEAN_CHOOSE_REPLY},
-                frames={"collect_open_questions": CLEAN_COLLECT_FRAMES})
+                frames={"collect_open_questions": RULES_CLEAN_COLLECT_FRAMES})
     [write] = out["writes"]
     assert list(write) == ["widget.session"]
     assert write["widget.session"]["touched"] is True
@@ -1398,18 +1309,18 @@ def test_a_typed_answer_is_written_to_the_one_field_it_names(tmp_path):
     # The row is gone from the list, because it is not open any more.
     assert [_jump_label(item) for item in
             _by_class(out["answered"]["rail"], "resid")[0]["children"]] == [
-        "why do you want this role? · written answer"]
-    # …and the count moved WITH it. A qid that was pure residue — q2 abstained,
-    # so it is in no `guided_write` result — would otherwise leave the open
-    # count by one and the filled count by none.
+        "preferred shift", "why do you want this role? · written answer"]
+    # …and the count moved WITH it. A qid that was pure residue — q2 went to no
+    # model, so it is in no `guided_write` result — would otherwise leave the
+    # open count by one and the filled count by none.
     assert dict(_rows_of(out["answered"]["rail"]))["Application questions"] == (
-        "3 filled · 1 needs you")
+        "2 filled · 2 need you")
     [note] = _by_class(out["answered"]["foot"], "note")
     # "Saved to your profile", because this question HAS a declared key — the
     # sentence names which of the two things happened.
     assert note["text"] == (
         "Filled “how did you hear about us?”. Saved to Profile › Autofill. "
-        "1 field needs your answer.")
+        "2 fields need your answer.")
 
 
 def test_the_answer_is_remembered_in_the_profile_the_rules_actually_read(tmp_path):
@@ -1587,8 +1498,7 @@ def test_a_policy_blocked_row_is_offered_no_way_to_answer_it(tmp_path):
     }}]
     out = _fill(tmp_path, start=True,
                 frames={"collect_open_questions": blocked, "fill_answers": True},
-                api={"/api/autofill/choose": _reply({"choices": {}}),
-                     "/api/settings/autofill": STORED_PROFILE})
+                api={"/api/settings/autofill": STORED_PROFILE})
     rail = out["settled"]["rail"]
     # All three are listed and all three jump…
     assert [_jump_label(item) for item in _by_class(rail, "resid")[0]["children"]] == [
@@ -1674,7 +1584,8 @@ def test_a_value_the_page_refuses_keeps_the_row_and_says_what_happened(tmp_path)
                   frames={"fill_answers": []})
     assert [_jump_label(item) for item in
             _by_class(out["answered"]["rail"], "resid")[0]["children"]] == [
-        "how did you hear about us?", "why do you want this role? · written answer"]
+        "preferred shift", "how did you hear about us?",
+        "why do you want this role? · written answer"]
     [note] = _by_class(out["answered"]["foot"], "note")
     assert note["text"] == (
         "Couldn't fill that. Type one of the options exactly as shown.")
@@ -1693,7 +1604,7 @@ def test_a_page_that_stopped_answering_says_so_and_changes_nothing(tmp_path):
     [note] = _by_class(out["answered"]["foot"], "note")
     assert note["text"].startswith("Couldn't reach this page.")
     assert note["class"] == "note error"
-    assert len(_by_class(out["answered"]["rail"], "resid")[0]["children"]) == 2
+    assert len(_by_class(out["answered"]["rail"], "resid")[0]["children"]) == 3
     assert _profile_put(out) == []
 
 
@@ -1712,28 +1623,13 @@ def test_a_learn_that_fails_leaves_the_field_filled_and_says_both(tmp_path):
                                                   "error": "500: settings unavailable"}})
     assert [_jump_label(item) for item in
             _by_class(out["answered"]["rail"], "resid")[0]["children"]] == [
-        "why do you want this role? · written answer"]
+        "preferred shift", "why do you want this role? · written answer"]
     [note] = _by_class(out["answered"]["foot"], "note")
     # BOTH facts in one sentence, in the order they happened.
     assert note["text"] == (
         "Filled “how did you hear about us?”. Couldn't save the answer, so it "
-        "will ask again. 1 field needs your answer.")
+        "will ask again. 2 fields need your answer.")
 
-
-def test_the_pause_row_that_finishes_the_fill_names_its_closest_picks(tmp_path):
-    """The pause path's half of the finished note: it finishes a fill too, and
-    the check list goes off screen with the tick either way."""
-    out = _answer(tmp_path, answer={"qid": "q2", "text": "LinkedIn"},
-                  frames={"collect_open_questions": CLEAN_COLLECT_FRAMES,
-                          "fill_answers": True},
-                  api={"/api/autofill/choose": _reply({"choices": {
-                      "q1": {"answer": "Night", "reason": "closest"},
-                      "q2": {"answer": None, "reason": "abstained"}}}),
-                       "/api/settings/autofill": STORED_PROFILE})
-    [note] = _by_class(out["answered"]["foot"], "note")
-    assert note["text"].endswith(
-        "Fill finished. Check the closest match before you submit: "
-        "preferred shift (Night).")
 
 def test_the_last_open_field_finishes_the_fill_exactly_as_a_clean_run_would(tmp_path):
     """CONVERGENCE with `startFill`, which is the half of this feature that
@@ -1746,13 +1642,13 @@ def test_the_last_open_field_finishes_the_fill_exactly_as_a_clean_run_would(tmp_
     residue never changes after the run. `fillFinished` is one function read by
     both, over the store's own fields.
     """
+    # One question open after the run (the rules knew the retryable), and the
+    # pause row answers it.
+    one_open = [{"frameId": 0, "result": {
+        **COLLECT_FRAMES[0]["result"],
+        "questions": [q for q in COLLECT_FRAMES[0]["result"]["questions"] if q["qid"] == "q2"]}}]
     out = _answer(tmp_path, answer={"qid": "q2", "text": "LinkedIn"},
-                  frames={"collect_open_questions": CLEAN_COLLECT_FRAMES,
-                          "fill_answers": True},
-                  api={"/api/autofill/choose": _reply({"choices": {
-                      "q1": {"answer": "Day", "reason": "matched"},
-                      "q2": {"answer": None, "reason": "abstained"}}}),
-                       "/api/settings/autofill": STORED_PROFILE})
+                  frames={"collect_open_questions": one_open, "fill_answers": True})
     settled = out["answered"]
     rows = _rows(_rail_rows({"regions": settled}))
     assert rows["fill"]["state"] == "done"
@@ -1896,7 +1792,7 @@ def test_enter_in_the_box_sends_the_answer_the_button_would(tmp_path):
     # and the answer was learned.
     assert [_jump_label(item) for item in
             _by_class(out["answered"]["rail"], "resid")[0]["children"]] == [
-        "why do you want this role? · written answer"]
+        "preferred shift", "why do you want this role? · written answer"]
     assert _profile_put(out)[0]["value"]["preferences"]["how_heard"] == "LinkedIn"
 
 
@@ -2010,9 +1906,7 @@ def test_an_empty_box_is_not_an_answer(tmp_path):
             if msg["message"]["type"] == "fill_answers"] == []
     [note] = _by_class(out["answered"]["foot"], "note")
     assert note["text"] == "Type an answer first."
-    assert len(_by_class(out["answered"]["rail"], "resid")[0]["children"]) == 2
-
-
+    assert len(_by_class(out["answered"]["rail"], "resid")[0]["children"]) == 3
 
 
 # ---------- the QnA drawer: paste a question, copy the answer ----------------
@@ -2735,15 +2629,17 @@ def _attach(tmp_path, *, file_inputs=1, detail=None, attach_reply=ATTACH_ONE, **
     spec.setdefault("stored", {"widget.session": entry(touched=False)})
     spec.setdefault("page", {"detect_page": _reply(
         {"tier": "B", "form": True, "score": 2, "fileInputs": file_inputs})})
-    replies = {"read_settings": SETTINGS_REPLY,
+    # "Saved answers only": the rule pass is the run these tests attach on top
+    # of (the loop's own attach case is in the loop section).
+    replies = {"read_settings": _reply({**SETTINGS_REPLY["data"], "fillMode": "rules"}),
                "panel_prepare": _reply({"injected": True}),
                "attach_pdf": attach_reply,
                "telemetry": _reply({"posted": 0})}
     # A run that leaves NOTHING open, which is the only run an attach can
     # finish the step on top of — the point under test is the attach, not the
-    # residue, and `CLEAN_COLLECT_FRAMES` is this file's own fixture for it.
+    # residue, and `RULES_CLEAN_COLLECT_FRAMES` is this file's own fixture for it.
     spec.setdefault("frames", {"profile_fill": PROFILE_FRAMES,
-                               "collect_open_questions": CLEAN_COLLECT_FRAMES,
+                               "collect_open_questions": RULES_CLEAN_COLLECT_FRAMES,
                                "guided_write": True})
     replies.update(spec.pop("replies", {}))
     # THE APPLICATION DETAIL MAY BE A LIST, consumed in order with the last
@@ -2754,7 +2650,6 @@ def _attach(tmp_path, *, file_inputs=1, detail=None, attach_reply=ATTACH_ONE, **
            "/api/base-resumes": _reply(BASE_RESUMES),
            "/api/ats-scores": _reply(SCORES),
            "/api/autofill/context": _reply(FILL_CONTEXT),
-           "/api/autofill/choose": CLEAN_CHOOSE_REPLY,
            "GET /api/applications/app-remembered":
                detail if isinstance(detail, list) else _reply(detail or _TAILORED_DETAIL)}
     api.update(spec.pop("api", {}))
@@ -3106,39 +3001,10 @@ def _ai_line(region):
             if line["text"].startswith("AI help")]
 
 
-def test_an_ai_fill_with_no_api_key_says_ai_help_is_off(tmp_path):
-    """Task 25's first read: "Saved answers + AI" with no key ran, the model
-    was never asked, and nothing said so. The `/choose` failure still degrades
-    to the open list (the runner's rule 3); now the Fill step also says why."""
-    out = _fill(tmp_path, start=True, api={"/api/autofill/choose": NO_KEY_502})
-    assert _ai_line(out["settled"]["rail"]) == [
-        "AI help is off until you add an API key in Maestro CS under "
-        "Settings › AI & models."]
-    # The fields the AI would have answered are open, and listed.
-    assert dict(_rows_of(out["settled"]["rail"]))["Application questions"] == (
-        "1 filled · 3 need you")
-
-
-def test_a_refused_key_and_a_model_that_did_not_answer_say_different_things(tmp_path):
-    refused = _fill(tmp_path, start=True, api={"/api/autofill/choose": {
-        "ok": False, "status": 502, "error":
-        "The AI model didn't answer (your key was refused). Try again, or check "
-        "your key in Settings › AI & models."}})
-    assert _ai_line(refused["settled"]["rail"]) == [
-        "AI help didn't answer. Check your API key in Maestro CS under "
-        "Settings › AI & models."]
-    down = _fill(tmp_path, start=True, api={"/api/autofill/choose": {
-        "ok": False, "status": 500, "error": "boom"}})
-    assert _ai_line(down["settled"]["rail"]) == [
-        "AI help didn't answer this time. The fields it would have filled are "
-        "listed below."]
-
-
 def test_saved_answers_only_never_talks_about_ai_help(tmp_path):
     """Rules only asks the model nothing, so there is nothing to report about
     it, key or no key."""
-    out = _fill(tmp_path, start=True, replies={"read_settings": {"ok": True, "data": {
-        **SETTINGS_REPLY["data"], "fillMode": "rules"}}},
+    out = _fill(tmp_path, start=True, stored_mode="rules",
                 api={"/api/autofill/choose": NO_KEY_502})
     assert _choose_calls(out) == []
     assert _ai_line(out["settled"]["rail"]) == []
@@ -3154,20 +3020,21 @@ def test_the_note_counts_the_blank_fields_as_well_as_the_open_ones(tmp_path):
     [note] = _by_class(out["settled"]["foot"], "note")
     assert note["text"] == (
         "No saved answers yet. Add them in Maestro CS under Profile › Autofill. "
-        "9 fields are blank and 2 need your answer.")
+        "9 fields are blank and 3 need your answer.")
 
 
 @pytest.mark.parametrize("blank, open_frames, text", [
-    # q1 and q2 answered, the essay open.
-    (1, COLLECT_FRAMES, "1 field is blank and 1 needs your answer."),
+    # Only the essay open.
+    (1, [{"frameId": 0, "result": {**COLLECT_FRAMES[0]["result"], "questions": [
+        q for q in COLLECT_FRAMES[0]["result"]["questions"] if q["kind"] == "textarea"]}}],
+     "1 field is blank and 1 needs your answer."),
     # Nothing open, some blank: never "Fill finished" over empty boxes.
-    (3, CLEAN_COLLECT_FRAMES, "3 fields are still blank. Review before you submit."),
-    (0, CLEAN_COLLECT_FRAMES, "Fill finished. Review before you submit."),
+    (3, RULES_CLEAN_COLLECT_FRAMES, "3 fields are still blank. Review before you submit."),
+    (0, RULES_CLEAN_COLLECT_FRAMES, "Fill finished. Review before you submit."),
 ])
 def test_the_note_agrees_with_its_numbers(tmp_path, blank, open_frames, text):
     frames = [{"frameId": 0, "result": {**open_frames[0]["result"], "blank": blank}}]
-    out = _fill(tmp_path, start=True, frames={"collect_open_questions": frames},
-                api={"/api/autofill/choose": CLEAN_CHOOSE_REPLY})
+    out = _fill(tmp_path, start=True, frames={"collect_open_questions": frames})
     [note] = _by_class(out["settled"]["foot"], "note")
     assert note["text"] == text
 
@@ -3182,7 +3049,8 @@ def test_the_open_list_shows_each_question_as_the_page_wrote_it(tmp_path):
     out = _fill(tmp_path, start=True, frames={"collect_open_questions": frames})
     items = _by_class(out["settled"]["rail"], "resid")[0]["children"]
     assert [_jump_label(item) for item in items] == [
-        "How did you hear about Us?", "Why do you want this role? · written answer"]
+        "Preferred shift", "How did you hear about Us?",
+        "Why do you want this role? · written answer"]
     essay = items[-1]
     assert _text(essay).endswith("written answer · Ask below")
     # The screen reader still hears which question the Ask is about, in the
@@ -3205,53 +3073,6 @@ def test_the_question_box_has_a_label_you_can_see(tmp_path):
     assert label["text"] == "Your question"
 
 
-ESSAY_ONLY_FRAMES = [{"frameId": 0, "result": {
-    "host": "job-boards.greenhouse.io", "retryables": [], "blank": 0,
-    "questions": [{"qid": "q3", "label": "why do you want this role?",
-                   "text": "Why do you want this role?", "kind": "textarea",
-                   "options": []}]}}]
-NO_KEYS = _reply({"api_key_configured": False, "gemini_api_key_configured": False,
-                  "custom_endpoint": False, "fast_model": "gpt-5.4-mini"})
-
-
-def test_an_ai_fill_that_never_needed_choose_still_says_ai_help_is_off(tmp_path):
-    """Task 25's page: the only open field is an essay, so `/choose` is never
-    called and cannot fail, and "Saved answers + AI" said nothing about a
-    missing key. The panel reads the key booleans after the run (never the
-    key itself) and says AI help is off when there is none at all."""
-    out = _fill(tmp_path, start=True, frames={"collect_open_questions": ESSAY_ONLY_FRAMES},
-                api={"/api/settings/openai": NO_KEYS})
-    assert _choose_calls(out) == []
-    assert _ai_line(out["settled"]["rail"]) == [
-        "AI help is off until you add an API key in Maestro CS under "
-        "Settings › AI & models."]
-
-
-@pytest.mark.parametrize("info", [
-    {"api_key_configured": True, "gemini_api_key_configured": False,
-     "custom_endpoint": False},
-    {"api_key_configured": False, "gemini_api_key_configured": True,
-     "custom_endpoint": False},
-    # A model on your computer needs no key at all.
-    {"api_key_configured": False, "gemini_api_key_configured": False,
-     "custom_endpoint": True},
-])
-def test_any_key_or_a_custom_ai_server_is_not_called_off(tmp_path, info):
-    out = _fill(tmp_path, start=True, frames={"collect_open_questions": ESSAY_ONLY_FRAMES},
-                api={"/api/settings/openai": _reply(info)})
-    assert _ai_line(out["settled"]["rail"]) == []
-
-
-def test_the_key_read_is_skipped_in_saved_answers_only(tmp_path):
-    out = _fill(tmp_path, start=True, replies={"read_settings": {"ok": True, "data": {
-        **SETTINGS_REPLY["data"], "fillMode": "rules"}}},
-                frames={"collect_open_questions": ESSAY_ONLY_FRAMES},
-                api={"/api/settings/openai": NO_KEYS})
-    assert [msg for msg in out["sent"] if msg["type"] == "api"
-            and "/api/settings/openai" in msg["path"]] == []
-    assert _ai_line(out["settled"]["rail"]) == []
-
-
 def test_a_typed_answer_names_the_field_as_the_page_wrote_it_and_counts_the_blanks(tmp_path):
     """The pause row's note is the run's own sentence one open field down: the
     field in the page's words, and the blank count the run reported (Task 25)."""
@@ -3264,4 +3085,346 @@ def test_a_typed_answer_names_the_field_as_the_page_wrote_it_and_counts_the_blan
     [note] = _by_class(out["answered"]["foot"], "note")
     assert note["text"] == (
         "Filled “How did you hear about us?”. Saved to Profile › Autofill. "
-        "9 fields are blank and 1 needs your answer.")
+        "9 fields are blank and 2 need your answer.")
+
+
+# ---------- "Saved answers + AI": the fill loop, from the panel's side ---------
+#
+# The loop itself (`shared/fill-loop.js`) has its own suite in real Chromium
+# (tests/browser/test_fill_loop.py). What is pinned HERE is the panel around
+# it: what it hands the loop, how it reports what came back, Stop, the jump to
+# a field, and the telemetry. So `runFill` is STUBBED with a scripted report —
+# the rest of `shared/fill-loop.js` (`sourceHintOf`, `buildLoopObservations`) is
+# the real file, loaded by panel.html like everything else.
+
+_LOOP_DRIVER_JS = _PANEL_FAKES_JS + r"""
+const ns = loadModules();
+const runs = [];
+let open = null;
+const gate = () => new Promise((resolve) => { open = resolve; });
+ns.fillLoop.runFill = async (deps, options) => {
+  const run = { options, cancelledAtStart: deps.cancelled(), afterGate: null };
+  runs.push(run);
+  deps.onProgress({ phase: "round", round: 1 });
+  if (spec.holdRun) await gate();
+  run.cancelledAtEnd = deps.cancelled();
+  // A late page message from a run whose tab is gone: it must not leave.
+  run.afterGate = await deps.broadcast({ type: "fill_inventory", runId: "late" });
+  if (spec.throwMessage) throw ns.guidedRun.shown(spec.throwMessage);
+  const failure = spec.aiFailure
+    ? Object.assign(new Error(spec.aiFailure.message), { status: spec.aiFailure.status })
+    : null;
+  return { runId: "r", host: spec.report.host, fields: spec.report.fields,
+           aiFailure: failure, stopped: run.cancelledAtEnd && !spec.switchTo,
+           timedOut: spec.report.timedOut === true };
+};
+const stopButton = () => withClass(REGIONS.foot, "stop")[0] ?? null;
+main(async () => {
+  await settle();
+  const loaded = regions();
+  withClass(REGIONS.foot, "cta")[0].click();
+  const clicked = regions();
+  await settle();
+  const running = regions();
+  let stopping = null;
+  if (spec.pressStop) {
+    const stop = stopButton();
+    if (!stop) throw new Error("no Stop while the fill runs");
+    stop.click();
+    stopping = regions();
+    await settle();
+  }
+  if (spec.switchTo !== undefined) {
+    await onActivated({ tabId: spec.switchTo });
+    await settle();
+  }
+  if (open) open();
+  await settle();
+  const settled = regions();
+  if (spec.jump !== undefined) {
+    const button = withClass(REGIONS.rail, "loop").flatMap((one) => withClass(one, "resid"))
+      .flatMap((list) => list.children).map((item) => item.children[0])
+      .find((one) => one.textContent === spec.jump);
+    if (!button) throw new Error(`no report row reads "${spec.jump}"`);
+    button.click();
+    await settle();
+  }
+  if (spec.again) {
+    withClass(REGIONS.foot, "cta")[0].click();
+    await settle();
+    if (open) open();
+    await settle();
+  }
+  emit({ loaded, clicked, running, stopping, settled, runs, sent, broadcasts, writes });
+});
+"""
+
+LOOP_URL = f"{LIGHTNING_APPLY_URL}?source=LinkedIn&gh_src=abc"
+LOOP_HOST = "job-boards.greenhouse.io"
+
+
+def _field(fid, question, status, **extra):
+    return {"fid": fid, "frameId": 0, "question": question, "section": "",
+            "required": False, "shape": "text", "status": status, "answer": None,
+            "route": None, "slot": None, "lastOutcome": None, **extra}
+
+
+LOOP_REPORT = {"host": LOOP_HOST, "fields": [
+    _field("v1", "First name", "verified", answer="Ada", route="slot", slot="personal.first_name"),
+    _field("v2", "Email", "verified", answer="ada@example.test", route="slot", slot="personal.email"),
+    _field("c1", "Highest degree", "closest", shape="select", answer="Master's",
+           route="slot", slot="education.0.degree"),
+    _field("a1", "How did you hear about us?", "assumed", shape="popup", answer="LinkedIn",
+           route="low_stakes"),
+    _field("n1", "Preferred shift", "needs_answer", shape="group", route="none",
+           lastOutcome="no_fact"),
+    _field("p1", "Skills", "partial", shape="search", required=True, answer="3 of 5 added",
+           route="slot", slot="skills", lastOutcome="partial"),
+    _field("n2", "Start date", "needs_answer", shape="popup", required=True,
+           answer='Companion clicked "Next week". Check it.', route="slot",
+           slot="preferences.start_date", lastOutcome="group_committed"),
+    _field("x1", "Country", "cannot_operate", shape="unknown", lastOutcome="unsupported"),
+    _field("al", "Phone", "already", route=None),
+    _field("b1", "Signature", "blocked", lastOutcome="blocked"),
+    _field("y1", "City", "yours", lastOutcome="yours"),
+]}
+# Everything verified: the loop finished the page.
+DONE_REPORT = {"host": LOOP_HOST, "fields": [
+    _field("v1", "First name", "verified", answer="Ada"),
+    _field("al", "Phone", "already"),
+]}
+
+
+def _loop(tmp_path, report=LOOP_REPORT, **spec):
+    spec.setdefault("tabs", [{"id": 7, "url": LOOP_URL}])
+    spec.setdefault("stored", {"widget.session": _armed_entry()})
+    replies = {"read_settings": SETTINGS_REPLY,
+               "panel_frame0": _reply({"tier": "B", "form": True, "score": 2}),
+               "panel_prepare": _reply({"injected": True}),
+               "telemetry": _reply({"posted": 0})}
+    replies.update(spec.pop("replies", {}))
+    api = {"lightningai": _reply({"match": "none", "job": None, "application": None}),
+           "/api/base-resumes": _reply(BASE_RESUMES),
+           "/api/ats-scores": _reply(SCORES)}
+    # What the page answers the panel's own messages with; the loop's are the
+    # stub's business.
+    frames = {"fill_inventory": [], "fill_focus": [{"frameId": 0, "result": True}],
+              "fill_cancel": [{"frameId": 0, "result": True}]}
+    return run_node(_LOOP_DRIVER_JS, {**spec, "report": report, "api": api,
+                                      "replies": replies, "frames": frames},
+                    tmp_path, source=PANEL_SOURCE)
+
+
+def _loop_groups(region):
+    """The report as the user reads it: each heading or count line, and under
+    each heading its rows' text."""
+    [report] = _by_class(region, "loop")
+    out = []
+    for node in report["children"]:
+        if "grp" in node["class"].split() or "count" in node["class"].split():
+            out.append((node["text"], []))
+        else:
+            out[-1][1].extend(_text(item) for item in node["children"])
+    return out
+
+
+def test_ai_mode_runs_the_fill_loop_and_not_the_rule_pass(tmp_path):
+    """"Saved answers + AI" is the loop: prepared first (the one sanctioned
+    injection), then `runFill` with this page's resume source and the posting's
+    source hint. No rule pass, no collect, no /choose batch of its own."""
+    out = _loop(tmp_path)
+    assert [msg["type"] for msg in out["sent"] if msg["type"] == "panel_prepare"] == [
+        "panel_prepare"]
+    [run] = out["runs"]
+    assert run["options"] == {"applicationId": None, "base": "ai_ml_engineer",
+                              "sourceHint": "linkedin"}
+    assert run["cancelledAtStart"] is False
+    # The page messages are the loop's (the stub sent one); none of the rule pass's.
+    assert set(_broadcast_types(out)) == {"fill_inventory"}
+    assert _choose_calls(out) == []
+
+
+def test_the_loop_report_is_grouped_in_the_order_the_user_acts_on_it(tmp_path):
+    """Filled is a count; the two lists of values to check come next, then
+    what still needs the user (required first), then what the Companion could
+    not work, then one line for what it left alone. The note counts what is
+    left: needs-your-answer, partial and couldn't-operate rows."""
+    out = _loop(tmp_path)
+    settled = out["settled"]
+    assert _loop_groups(settled["rail"]) == [
+        ("2 filled", []),
+        ("Closest matches: check each one", ["Highest degree · closest match: Master's"]),
+        ("Answered for you: check each one", ["How did you hear about us? · LinkedIn"]),
+        ("Needs your answer", [
+            "Skills · 3 of 5 added",
+            'Start date · Companion clicked "Next week". Check it.',
+            "Preferred shift"]),
+        ("Couldn't operate these controls", ["Country"]),
+        ("1 already filled · 1 left to you by policy · 1 you edited", []),
+    ]
+    # The rule pass's rows describe a different run and are not drawn.
+    assert _by_class(settled["rail"], "prog") == []
+    [note] = _by_class(settled["foot"], "note")
+    assert note["text"] == "4 fields need your answer."
+    # Fields are still open, so the step is not ticked and nothing is remembered.
+    assert _rows(_rail_rows({"regions": settled}))["fill"]["state"] == "active"
+    assert out["writes"] == []
+
+
+def test_a_group_with_no_rows_is_not_shown(tmp_path):
+    out = _loop(tmp_path, report={"host": LOOP_HOST, "fields": [
+        *DONE_REPORT["fields"], _field("n1", "Preferred shift", "needs_answer")]})
+    assert _loop_groups(out["settled"]["rail"]) == [
+        ("1 filled", []), ("Needs your answer", ["Preferred shift"]), ("1 already filled", [])]
+
+
+def test_a_report_row_scrolls_to_and_focuses_its_field(tmp_path):
+    """A fan-out (the field can be in the form's subframe) carrying the fid
+    and nothing else: the frame that minted it focuses it, every other frame
+    answers false."""
+    out = _loop(tmp_path, jump="Skills")
+    [jump] = [msg for msg in out["broadcasts"] if msg["message"]["type"] == "fill_focus"]
+    assert jump["message"] == {"type": "fill_focus", "fid": "p1"}
+    assert jump["tabId"] == 7
+
+
+def test_stop_is_offered_only_while_the_loop_runs_and_cancels_the_page_too(tmp_path):
+    """Stop sets the flag the loop reads before every page action AND sends
+    `fill_cancel`, which stops the page operation already in flight."""
+    out = _loop(tmp_path, holdRun=True, pressStop=True)
+    assert _by_class(out["loaded"]["foot"], "stop") == []
+    [stop] = _by_class(out["running"]["foot"], "stop")
+    assert stop["text"] == "Stop"
+    assert stop["attrs"]["aria-label"] == "Stop filling"
+    assert stop["disabled"] is False
+    # The primary still spins beside it: the run is not over until it reports.
+    assert _by_class(out["running"]["foot"], "cta")[0]["class"] == "cta spin"
+    [stopping] = _by_class(out["stopping"]["foot"], "stop")
+    assert (stopping["text"], stopping["disabled"]) == ("Stopping…", True)
+    cancels = [msg for msg in out["broadcasts"] if msg["message"]["type"] == "fill_cancel"]
+    assert [(msg["tabId"], msg["message"]) for msg in cancels] == [(7, {"type": "fill_cancel"})]
+    [run] = out["runs"]
+    assert run["cancelledAtEnd"] is True
+    settled = out["settled"]
+    assert _by_class(settled["foot"], "stop") == []
+    [note] = _by_class(settled["foot"], "note")
+    # "Filled" is the body's Filled count; the values to check are listed.
+    assert note["text"] == "Stopped. 2 fields filled. The rest are listed below."
+    # A stopped run has not looked at everything: never a tick.
+    assert out["writes"] == []
+
+
+def test_a_loop_out_of_time_says_so_and_never_ticks(tmp_path):
+    out = _loop(tmp_path, report={**DONE_REPORT, "timedOut": True})
+    [note] = _by_class(out["settled"]["foot"], "note")
+    assert note["text"] == (
+        "Filling took too long, so it stopped. 1 field filled. The rest are listed below.")
+    assert out["writes"] == []
+
+
+def test_stop_does_not_carry_over_to_the_next_run(tmp_path):
+    out = _loop(tmp_path, holdRun=True, pressStop=True, again=True)
+    assert [run["cancelledAtStart"] for run in out["runs"]] == [False, False]
+    assert out["runs"][1]["cancelledAtEnd"] is False
+
+
+def test_the_running_body_says_how_far_the_loop_has_got(tmp_path):
+    out = _loop(tmp_path, holdRun=True)
+    assert _by_class(out["clicked"]["rail"], "sub")[0]["text"] == "Filling this form…"
+    assert _by_class(out["running"]["rail"], "sub")[0]["text"] == "Filling this form… pass 2."
+
+
+def test_loop_telemetry_is_one_value_free_observation_per_field(tmp_path):
+    """`loop_fill`, and nothing a field was answered with — not the value the
+    loop chose, not a "check it" note naming what landed."""
+    out = _loop(tmp_path)
+    [batch] = [msg for msg in out["sent"] if msg["type"] == "telemetry"]
+    assert batch["action"] == "loop_fill"
+    assert batch["page_host"] == LOOP_HOST
+    assert [(o["label"], o["kind"], o["outcome"], o["rule_id"]) for o in batch["observations"]] == [
+        ("First name", "text", "verified", "slot:personal.first_name"),
+        ("Email", "text", "verified", "slot:personal.email"),
+        ("Highest degree", "select", "closest_filled", "slot:education.0.degree"),
+        ("How did you hear about us?", "combobox", "assumed_filled", "route:low_stakes"),
+        ("Preferred shift", "radio", "needs_answer", "route:none"),
+        ("Skills", "combobox", "partial", "slot:skills"),
+        # A value landed without being confirmed as the answer.
+        ("Start date", "combobox", "filled_unverified", "slot:preferences.start_date"),
+        ("Country", "text", "cannot_operate", None),
+        ("Phone", "text", "prefilled", None),
+        ("Signature", "text", "blocked", None),
+        ("City", "text", "user_edited", None),
+    ]
+    assert {o["host"] for o in batch["observations"]} == {LOOP_HOST}
+    assert all(set(o) == {"label", "kind", "host", "outcome", "rule_id"}
+               for o in batch["observations"])
+    wire = json.dumps(batch)
+    for value in ("Ada", "ada@example.test", "Master's", "LinkedIn", "3 of 5", "Next week"):
+        assert value not in wire.replace("How did you hear about us?", ""), value
+
+
+def test_a_loop_that_filled_everything_ticks_the_step_and_names_what_to_check(tmp_path):
+    out = _loop(tmp_path, report=DONE_REPORT)
+    [note] = _by_class(out["settled"]["foot"], "note")
+    assert note["text"] == "Fill finished. Review before you submit."
+    assert _rows(_rail_rows({"regions": out["settled"]}))["fill"]["state"] == "done"
+    [write] = out["writes"]
+    assert write["widget.session"]["touched"] is True
+
+    checked = _loop(tmp_path, report={"host": LOOP_HOST, "fields": [
+        *DONE_REPORT["fields"],
+        _field("c1", "Highest degree", "closest", answer="Master's")]})
+    [note] = _by_class(checked["settled"]["foot"], "note")
+    assert note["text"] == (
+        "Fill finished. Check this answer before you submit: Highest degree (Master's).")
+
+
+@pytest.mark.parametrize("failure, line", [
+    ({"status": 502, "message": "No API key is set. Add one in Settings › AI & models › API keys."},
+     "AI help is off until you add an API key in Maestro CS under Settings › AI & models."),
+    ({"status": 502, "message": "The AI model didn't answer (your key was refused)."},
+     "AI help didn't answer. Check your API key in Maestro CS under Settings › AI & models."),
+    ({"status": 500, "message": "boom"},
+     "AI help didn't answer this time. The fields it would have filled are listed below."),
+])
+def test_the_loop_says_why_the_ai_did_not_answer(tmp_path, failure, line):
+    out = _loop(tmp_path, aiFailure=failure)
+    assert _ai_line(out["settled"]["rail"]) == [line]
+
+
+def test_a_loop_that_outlives_its_tab_reaches_no_other_page(tmp_path):
+    """The store's fan-out follows the panel's CURRENT tab, so a loop still
+    running after a switch would inventory and fill the page the user moved
+    to. It is cancelled the moment the generation moves, its page messages go
+    nowhere, and its report paints nothing."""
+    out = _loop(tmp_path, holdRun=True, switchTo=42,
+                tabUrls={"42": f"{LIGHTNING_APPLY_URL}/step2"})
+    [run] = out["runs"]
+    assert run["cancelledAtEnd"] is True
+    assert run["afterGate"] == []
+    assert [msg for msg in out["broadcasts"]
+            if msg["message"].get("runId") == "late"] == []
+    settled = out["settled"]
+    assert _by_class(settled["rail"], "loop") == []
+    assert _by_class(settled["foot"], "stop") == []
+    assert [msg for msg in out["sent"] if msg["type"] == "telemetry"] == []
+
+
+def test_a_loop_with_nothing_to_do_never_says_it_finished(tmp_path):
+    """"Fill finished" over a page the loop wrote nothing on would claim a
+    fill that never happened, and it is no tick either."""
+    out = _loop(tmp_path, report={"host": LOOP_HOST, "fields": [_field("al", "Phone", "already")]})
+    [note] = _by_class(out["settled"]["foot"], "note")
+    assert note["text"] == "Nothing left to fill here. Review before you submit."
+    assert out["writes"] == []
+    empty = _loop(tmp_path, report={"host": LOOP_HOST, "fields": []})
+    assert _loop_groups(empty["settled"]["rail"]) == [("No fields to fill here.", [])]
+
+
+def test_a_loop_that_reaches_no_page_says_so_and_takes_stop_away(tmp_path):
+    out = _loop(tmp_path, throwMessage="Couldn't reach this page. Reload the tab, then try again.")
+    settled = out["settled"]
+    [note] = _by_class(settled["foot"], "note")
+    assert note["text"].startswith("Couldn't reach this page.")
+    assert _by_class(settled["foot"], "stop") == []
+    assert _by_class(settled["rail"], "loop") == []

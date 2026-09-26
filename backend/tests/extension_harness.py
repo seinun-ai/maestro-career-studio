@@ -173,8 +173,8 @@ def observation_emitter_source() -> str:
     observation: all of them but the fill engine. Its `outcome`s ("verified",
     "stale", "yours", …) are PAGE-OPERATION statuses returned to the fill loop,
     never observations — the loop translates them into the telemetry contract
-    in one table (fill-engine plan Task 8), and that table is what the
-    contract's scan must read once it lands."""
+    in one table (`buildLoopObservations` in shared/fill-loop.js), which the
+    contract's own scan reads (test_autofill_telemetry_router.py)."""
     return _content_source([p for p in EXTENSION_SOURCES if p not in FILL_ENGINE_SOURCES])
 
 

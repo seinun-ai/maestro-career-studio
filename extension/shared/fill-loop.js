@@ -54,8 +54,14 @@
  *                  `lastOutcome` keeps the word that decided it.
  *   report status  verified | closest | assumed | already | blocked | yours |
  *                  partial | needs_answer | cannot_operate — what the panel shows.
+ *   telemetry      the report status as the contract's outcome (verified,
+ *                  closest_filled, assumed_filled, partial, prefilled, blocked,
+ *                  user_edited, needs_answer, cannot_operate; filled_unverified
+ *                  for a needs_answer row whose value landed unconfirmed) —
+ *                  buildLoopObservations, value-free.
  *
- * WHAT THIS FILE PUBLISHES: ns.fillLoop = { runFill, sourceHintOf, limits }.
+ * WHAT THIS FILE PUBLISHES: ns.fillLoop = { runFill, sourceHintOf, limits,
+ * buildLoopObservations }.
  */
 (() => {
   const ns = (window.careerStudioCompanion ??= {});
@@ -130,7 +136,9 @@
       return null;
     }
   };
-  const landedNote = (text) => (text ? `Companion clicked "${text}" — check it` : "Companion clicked an option — check it");
+  // Shown beside the field in the panel, so it keeps the panel's copy rules:
+  // two sentences, never an em dash joining them.
+  const landedNote = (text) => (text ? `Companion clicked "${text}". Check it.` : "Companion clicked an option. Check it.");
   // Options a model may be shown: never a never-fill one, never under the reserved key.
   const usable = (opts) => (opts ?? []).filter((o) => o && !o.policyBlocked && typeof o.text === "string"
     && typeof o.oid === "string" && o.oid.length >= 1 && o.oid.length <= 16 && o.oid !== "none");
@@ -784,7 +792,7 @@
         status: FINAL.has(r.status) ? r.status
           : r.status === "retry" && !stopped && !over ? "cannot_operate" : "needs_answer",
         answer: r.answer ?? (r.leftover && !DONE.has(r.status)
-          ? `Companion wrote "${r.leftover}" here for an earlier question — check it` : null),
+          ? `Companion wrote "${r.leftover}" here for an earlier question. Check it.` : null),
         route: r.route ?? null,
         slot: r.slot ?? null,
         // Left open when the run's clock ran out: the panel can say so.
@@ -794,5 +802,31 @@
     return { runId, fields, host, aiFailure, stopped, timedOut: over };
   }
 
-  ns.fillLoop = { runFill, sourceHintOf, limits };
+  // ---- telemetry: one observation per reported field, and never a value.
+  // The contract is app/schemas/autofill_telemetry.py (action "loop_fill").
+  // `answer` is what landed on the page (or a note naming it): it never leaves.
+  const TELEMETRY_KIND = { text: "text", date: "text", select: "select", group: "radio", search: "combobox", popup: "combobox" };
+  const TELEMETRY_OUTCOME = {
+    verified: "verified", closest: "closest_filled", assumed: "assumed_filled", partial: "partial",
+    already: "prefilled", blocked: "blocked", yours: "user_edited", needs_answer: "needs_answer",
+    cannot_operate: "cannot_operate",
+  };
+  // A value that landed without an answer reason is the user's to check: it
+  // was written, but not confirmed as the answer.
+  const LANDED = new Set(["unconfirmed", "group_committed"]);
+  const MAX_OBSERVATIONS = 200;
+  const buildLoopObservations = (report) => (report?.fields ?? []).flatMap((r) => {
+    const outcome = r.status === "needs_answer" && LANDED.has(r.lastOutcome) ? "filled_unverified"
+      : TELEMETRY_OUTCOME[r.status];
+    if (!outcome) return [];
+    return [{
+      label: String(r.question ?? "").slice(0, 160),
+      kind: TELEMETRY_KIND[r.shape] ?? "text",
+      host: String(report.host ?? "").slice(0, 255),
+      outcome,
+      rule_id: r.slot ? `slot:${r.slot}` : r.route ? `route:${r.route}` : null,
+    }];
+  }).slice(0, MAX_OBSERVATIONS);
+
+  ns.fillLoop = { runFill, sourceHintOf, limits, buildLoopObservations };
 })();

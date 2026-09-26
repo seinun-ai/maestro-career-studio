@@ -77,6 +77,10 @@ DECISIONS_JS = (ROOT / "extension" / "shared" / "decisions.js").read_text(encodi
 # sent from here, from a module loaded by both worlds. A scan over callers
 # that does not read it reports two live page handlers as dead code.
 GUIDED_RUN_JS = (ROOT / "extension" / "shared" / "guided-run.js").read_text(encoding="utf-8")
+# Fill-engine Task 8: the panel runs the fill loop, which sends the engine's
+# page operations (`fill_inventory` … `fill_sweep`) from this shared module; the
+# panel itself sends `fill_focus` (a report row's jump) and `fill_cancel` (Stop).
+FILL_LOOP_JS = (ROOT / "extension" / "shared" / "fill-loop.js").read_text(encoding="utf-8")
 
 # `sw.js` is not in EXTENSION_SOURCES' job — it never runs in a page — and is
 # read here on its own so `extract` can slice the fan-out out of it. decisions.js
@@ -492,26 +496,19 @@ def test_every_type_a_caller_sends_is_a_type_the_page_handles():
     find. Kept as an assertion rather than deleted: `called` being EMPTY is now
     the claim, and a new in-page caller should have to come and change it.
 
-    The scan reads every caller: both the panel's files and
-    `shared/guided-run.js`, which is where two of these messages are sent from.
-    A typo in any `type:` string is a feature that is silently dead.
+    The scan reads every caller: the panel's files, `shared/guided-run.js`
+    and `shared/fill-loop.js`, which is where the rule pass's and the fill
+    engine's page messages are sent from. A typo in any `type:` string is a
+    feature that is silently dead.
     """
-    sent = set(re.findall(
-        r'\btype:\s*"([a-z_]+)"', SW_JS + PANEL_JS + GUIDED_RUN_JS))
-    called = set(re.findall(r"ns\.pageHandlers\.([a-z_]+)\(", PANEL_JS + GUIDED_RUN_JS))
+    callers = SW_JS + PANEL_JS + GUIDED_RUN_JS + FILL_LOOP_JS
+    sent = set(re.findall(r'\btype:\s*"([a-z_]+)"', js_code(callers)))
+    called = set(re.findall(r"ns\.pageHandlers\.([a-z_]+)\(", callers))
     handled = set(_page_handler_keys())
 
     reachable = sent | called
-    # The fill engine's page operations landed before the loop that sends them
-    # (fill-engine plan Tasks 4 → 7/8). Named here so the exemption cannot
-    # outlive its reason: once a caller sends one, it must leave this set.
-    awaiting_sender = {
-        "fill_inventory", "fill_explore", "fill_apply", "fill_step_state", "fill_sweep", "fill_focus", "fill_cancel",
-    }
-    assert awaiting_sender & reachable == set(), (
-        f"these now have a sender — drop them from awaiting_sender: {sorted(awaiting_sender & reachable)}")
-    assert reachable & handled == handled - awaiting_sender, (
-        f"page handlers nobody reaches: {sorted(handled - reachable - awaiting_sender)}")
+    assert reachable & handled == handled, (
+        f"page handlers nobody reaches: {sorted(handled - reachable)}")
     assert handled == {
         "extract_job_posting", "detect_page", "profile_fill",
         "collect_open_questions", "fill_answers", "guided_write",

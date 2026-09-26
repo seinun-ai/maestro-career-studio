@@ -488,6 +488,67 @@
     return list;
   }
 
+  /** The fill loop's report, grouped by what happened to each field, in the
+   * order the user acts on them: what was filled (a count), what was filled
+   * with a value to check, what still needs them, what the Companion could not
+   * work, and one line for what it left alone. A group with no rows is not
+   * shown. Every row is a button that scrolls to its field and focuses it.
+   *
+   * THE STATUSES ARE THE LOOP'S (`shared/fill-loop.js`, "report status"); this
+   * file adds no reading of its own. `answer` is what the loop says beside a
+   * row: the value it chose, "3 of 5 added", or a "check it" note naming a
+   * value that landed without being confirmed. */
+  const LOOP_GROUPS = [
+    ["closest", "Closest matches: check each one", (answer) => `closest match: ${answer}`],
+    ["assumed", "Answered for you: check each one", (answer) => answer],
+    ["open", "Needs your answer", (answer) => answer],
+    ["cannot_operate", "Couldn't operate these controls", (answer) => answer],
+  ];
+  const LOOP_OPEN = new Set(["needs_answer", "partial"]);
+
+  function loopRows(ctx, rows, mark) {
+    const { build, act } = ctx;
+    const list = build.node("ul", "resid");
+    for (const row of rows) {
+      const button = build.node("button", null, row.question || "A field with no label");
+      button.type = "button";
+      button.addEventListener("click", () => act.focusField(row.fid));
+      const said = row.answer ? mark(row.answer) : null;
+      build.attach(list, build.attach(build.node("li"), button,
+        said ? build.node("span", "kindmark", ` · ${said} `) : null));
+    }
+    return list;
+  }
+
+  function loopReport(ctx, loop) {
+    const { build } = ctx;
+    const { node, attach } = build;
+    const fields = loop.fields ?? [];
+    const having = (status) => fields.filter((row) => row.status === status);
+    const report = node("div", "loop");
+    const filled = having("verified").length;
+    if (filled) attach(report, node("div", "sub count", `${filled} filled`));
+    for (const [key, heading, mark] of LOOP_GROUPS) {
+      const rows = key === "open"
+        // Required first; otherwise the page's own order.
+        ? [...fields.filter((row) => LOOP_OPEN.has(row.status) && row.required),
+           ...fields.filter((row) => LOOP_OPEN.has(row.status) && !row.required)]
+        : having(key);
+      if (!rows.length) continue;
+      const list = loopRows(ctx, rows, mark);
+      list.setAttribute("aria-label", heading);
+      attach(report, node("div", "grp", heading), list);
+    }
+    const left = [
+      [having("already").length, (n) => `${n} already filled`],
+      [having("blocked").length, (n) => `${n} left to you by policy`],
+      [having("yours").length, (n) => `${n} you edited`],
+    ].filter(([n]) => n).map(([n, say]) => say(n));
+    if (left.length) attach(report, node("div", "sub count", left.join(" · ")));
+    if (!report.children.length) attach(report, node("div", "sub count", "No fields to fill here."));
+    return report;
+  }
+
   /** The id the drawer trigger's `aria-controls` names, and the handle a focus
    * restore will reach for. A constant for `TAILOR_OPTIONS_ID`'s reason and
    * built the same way: two places forty lines apart have to agree on it. */
@@ -684,11 +745,18 @@
     const { facts, build } = ctx;
     const { node, attach } = build;
     const collected = facts.residue !== null || facts.essays !== null;
-    if (facts.hasForm !== true && !facts.fill && !collected) {
+    if (facts.hasForm !== true && !facts.fill && !collected && !facts.loop) {
       return attach(node("div", "stg-body"), node("div", "sub", NO_FORM_HERE),
                     attachRow(ctx), qnaDrawer(ctx));
     }
     const body = attach(node("div", "stg-body"), modeControl(ctx));
+    // A LOOP REPORT is its own body: the rule pass's three rows describe a
+    // different run. While the loop is still going there is no report yet, and
+    // the offer's sentence below gives way to how far it has got.
+    if (facts.loop) {
+      if (facts.aiNote) attach(body, node("div", "sub", facts.aiNote));
+      return attach(body, loopReport(ctx, facts.loop), attachRow(ctx), qnaDrawer(ctx));
+    }
     // THE DRAWER IS LAST ON BOTH PATHS, which is why it is appended here rather
     // than at either return: it is not part of the report, and a composer above
     // the fields that still need answering would compete with them. On the
@@ -696,12 +764,16 @@
     // will do; on the after path it sits under the list of what is still open,
     // which is where the essays that feed it are.
     if (!facts.fill && !collected) {
-      return attach(body, node("div", "sub", facts.fillMode === "rules"
-        ? "Uses only your saved answers. Nothing goes to the AI."
-        // What /api/autofill/choose sends: the saved answers (diversity
-        // answers only under standing consent) and the career history.
-        : "Uses your saved answers, then asks the AI for the rest. "
-          + "The AI sees your saved answers and career history."),
+      const running = facts.fillRound !== null && facts.fillRound !== undefined;
+      return attach(body, node("div", "sub", running
+        ? (facts.fillRound ? `Filling this form… pass ${facts.fillRound + 1}.` : "Filling this form…")
+        : facts.fillMode === "rules"
+          ? "Uses only your saved answers. Nothing goes to the AI."
+          // What the loop sends: each field's question and options to map it
+          // (never a value), then the one saved answer or career fact that
+          // answers it to choose among the page's own options.
+          : "Uses your saved answers and the AI to fill the form. "
+            + "The AI sees the form's questions, your saved answers and career history."),
                     // ON BOTH PATHS, and gated on neither: the attach is an
                     // offer about the PAGE, not a line of the run's report, so
                     // it stands before a fill as well as after one. A user who

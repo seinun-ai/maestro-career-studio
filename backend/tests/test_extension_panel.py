@@ -1363,6 +1363,10 @@ def test_a_page_change_clears_every_fact_that_was_about_the_page(tmp_path):
         # The run's two plain-words facts (Task 25): how many fields were
         # blank, and why the AI answered nothing. Both about THIS form.
         "blank": 9, "aiNote": "AI help is off until you add an API key.",
+        # The fill loop's report and run state: a fid is a token THIS page's
+        # inventory minted, and Stop has nothing to stop on the next tab.
+        "loop": {"fields": [{"fid": "f1", "status": "needs_answer"}]},
+        "fillRound": 2, "stopRequested": True,
         "eeoConsent": {"enabled": True, "consent_forms": False},
         # The QnA drawer, both halves. The question was asked about this posting
         # and the answer is grounded in this application, so a drawer that
@@ -1398,6 +1402,7 @@ def test_a_page_change_clears_every_fact_that_was_about_the_page(tmp_path):
         "revisit": None,
         "fill": None, "writeResults": None, "residue": None, "essays": None,
         "closest": None, "blank": None, "aiNote": None,
+        "loop": None, "fillRound": None, "stopRequested": False,
         "eeoConsent": None, "answers": {},
         "qna": {"open": False, "question": "", "answered": None, "answer": None,
                 "copied": False},

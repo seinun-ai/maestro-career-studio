@@ -405,7 +405,7 @@ def test_a_group_that_committed_a_value_is_left_for_the_user_to_check(page, load
               step={"states": [{"candidates": [{"mid": "click:o1", "describe": 'Open the group "Job \\"Board\\""'}, GIVE_UP]}],
                     "moves": [{"mid": "click:o1", "reason": "progress"}]})
     r = row(out, "h")
-    assert (r["status"], r["answer"]) == ("needs_answer", 'Companion clicked "Job "Board"" — check it')
+    assert (r["status"], r["answer"]) == ("needs_answer", 'Companion clicked "Job "Board"". Check it.')
     assert r["lastOutcome"] == "group_committed"
     assert [m["mid"] for m in actions(out, "move")] == ["click:o1"]  # not re-tried, not given up over it
 
@@ -667,7 +667,7 @@ def test_a_group_committed_inside_a_set_is_named_once(page, load):
                      "click:o1": {"outcome": "unexpected", "reason": "group_committed"}},
               step={"states": [group, group], "moves": [{"mid": "click:o1", "reason": "progress"}] * 2})
     r = row(out, "k")
-    assert (r["status"], r["answer"]) == ("partial", '1 of 3 added · Companion clicked "Job Board" — check it')
+    assert (r["status"], r["answer"]) == ("partial", '1 of 3 added · Companion clicked "Job Board". Check it.')
     assert [(m["mid"], m.get("as")) for m in actions(out, "move")] == [("click:o1", "progress")] * 2
     assert [s["item"] for s in bodies(out, "/api/autofill/step")] == ["B", "C"]
 
@@ -760,7 +760,7 @@ def test_a_relabelled_field_holding_the_engines_old_write_is_not_already(page, l
         assert [a["value"] for a in actions(out, "write")] == ["Springfield", "Acme"]
     else:
         assert r["status"] == "needs_answer"
-        assert r["answer"] == 'Companion wrote "Springfield" here for an earlier question — check it'
+        assert r["answer"] == 'Companion wrote "Springfield" here for an earlier question. Check it.'
 
 
 def test_a_relabelled_field_holding_someone_elses_value_is_already(page, load):
@@ -859,3 +859,23 @@ def test_the_panel_loads_the_loop_after_the_guided_runner():
     html = (Path(EXTENSION) / "panel" / "panel.html").read_text(encoding="utf-8")
     srcs = re.findall(r'<script src="([^"]+)"></script>', html)
     assert srcs.index("../shared/fill-loop.js") == srcs.index("../shared/guided-run.js") + 1
+
+
+# ---------- telemetry (Task 8)
+
+
+def test_a_real_report_becomes_value_free_observations(page, load):
+    out = run(page, load, frames=[[f("a", question="City"), f("d", "popup", "Authorized?"),
+                                   f("u", "unknown", "Mystery")]],
+              map={"a": {"route": "slot", "slot": "personal.city", "value": "Springfield"},
+                   "d": {"route": "slot", "slot": "work_auth.authorized_now", "value": "Yes"}},
+              explore={"d": {"options": [opt("o1", "Yes"), opt("o2", "No")], "complete": True}},
+              pick={"d": {"oids": ["o1"], "reason": "matched"}})
+    obs = page.evaluate("(r) => window.careerStudioCompanion.fillLoop.buildLoopObservations(r)", out["report"])
+    assert obs == [
+        {"label": "City", "kind": "text", "host": "x.test", "outcome": "verified", "rule_id": "slot:personal.city"},
+        {"label": "Authorized?", "kind": "combobox", "host": "x.test", "outcome": "verified",
+         "rule_id": "slot:work_auth.authorized_now"},
+        {"label": "Mystery", "kind": "text", "host": "x.test", "outcome": "cannot_operate", "rule_id": None},
+    ]
+    assert "Springfield" not in str(obs)

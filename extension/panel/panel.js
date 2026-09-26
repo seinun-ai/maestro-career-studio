@@ -598,6 +598,19 @@
      * null. The runner degrades a `/choose` failure to the open list, which is
      * right, and used to do it silently, which was not. */
     aiNote: null,
+    /** The fill loop's report (`shared/fill-loop.js`), or null until a "Saved
+     * answers + AI" run has finished on this page: `{fields: [{fid, question,
+     * required, shape, status, answer, …}], stopped, timedOut, …}`. The Fill
+     * body groups its rows by `status`. PAGE-SHAPED: a fid is a token this
+     * page's inventory minted. */
+    loop: null,
+    /** How many rounds the running loop has finished, or null when no loop is
+     * running. Non-null is also what puts Stop in the footer: `busy` alone
+     * cannot say it, because the attach runs under the same key. */
+    fillRound: null,
+    /** Stop was pressed on the running loop. The loop reads it before every
+     * page action; reset at every start. */
+    stopRequested: false,
     /** The per-qid outcomes of the run's ONE `guided_write`. The Application
      * questions row counts what was written from this and the residue, which
      * is the run's own reconciliation rather than a second reading of the
@@ -742,6 +755,12 @@
     store.blank = null;
     store.aiNote = null;
     store.writeResults = null;
+    // The loop's report with them, and its run state: a loop still running on
+    // the page the user left is cancelled by its own generation check, so Stop
+    // has nothing left to stop here.
+    store.loop = null;
+    store.fillRound = null;
+    store.stopRequested = false;
     // The half-typed answers with them: a qid is a token the collect stamped
     // into THAT page's DOM, so a draft that outlived its page names a control
     // nothing can find.
@@ -1778,6 +1797,9 @@
         closest: card.closest,
         aiNote: card.aiNote,
         eeoConsent: card.eeoConsent,
+        // The loop's report and, while it runs, how far it has got.
+        loop: card.loop,
+        fillRound: card.fillRound,
         // The pause rows' drafts. Handed over whole rather than per row: a body
         // renders the whole list in one pass, and a per-row lookup callback
         // would be a second way to read one store field.
@@ -1789,7 +1811,7 @@
       },
       act: { editPreview, pickApplication, unpickApplication, pickBase, useBaseAsIs,
              stopUsingBaseAsIs, openTailor, quickTailor,
-             setFillMode, startFill, attachResume, scrollToField, editAnswer,
+             setFillMode, startFill, attachResume, scrollToField, focusField, editAnswer,
              rememberAnswer, submitAnswer, toggleQna, askAbout, editQuestion,
              askQuestion, copyAnswer, trackThis },
       build: { node, attach, plural, statusLabel, dayLabel },
@@ -2014,6 +2036,29 @@
     ask("page_broadcast", {
       tabId: card.tabId, message: { type: "scroll_to_field", qid },
     }).catch((err) => console.warn(`[maestro-cs] could not scroll to ${qid}:`, err));
+  }
+
+  /** Put a field the loop reported in front of the user: scrolled to and
+   * focused, in whichever frame minted its fid (`fill_focus`; every other frame
+   * answers false). The fid and nothing else crosses, `scrollToField`'s rule,
+   * and it is fire-and-forget for the same reason. */
+  function focusField(fid) {
+    ask("page_broadcast", {
+      tabId: card.tabId, message: { type: "fill_focus", fid },
+    }).catch((err) => console.warn(`[maestro-cs] could not focus ${fid}:`, err));
+  }
+
+  /** Stop the running fill: the loop reads `stopRequested` before every page
+   * action, and `fill_cancel` stops the page operation already in flight (it
+   * latches until the next run's inventory), so a Stop never waits out a slow
+   * widget. What the run had already done stays, and its report says so. */
+  function stopFill() {
+    if (card.fillRound === null || card.stopRequested) return;
+    card.stopRequested = true;
+    render();
+    ask("page_broadcast", {
+      tabId: card.tabId, message: { type: "fill_cancel" },
+    }).catch((err) => console.warn("[maestro-cs] could not stop the fill:", err));
   }
 
   /** The stage bodies, from the roster that gathers them.
@@ -2339,6 +2384,14 @@
     const controls = [];
     const segment = statusSegment();
     if (segment) controls.push(segment);
+    // STOP, beside the spinning primary, for as long as a loop runs. Pressed
+    // once, it stays on screen, disabled, until the run hands back its report.
+    if (card.busy === "fill" && card.fillRound !== null) {
+      const stop = actionButton("stop", card.stopRequested ? "Stopping…" : "Stop", stopFill);
+      stop.setAttribute("aria-label", "Stop filling");
+      stop.disabled = card.stopRequested;
+      controls.push(stop);
+    }
     // THE PRIMARY BELONGS TO THE OPEN ROW, not to the inferred stage, and the
     // two are the same thing until a done row is reopened. It has to be this
     // way for the feature to be one: the design's promise is "one primary at a

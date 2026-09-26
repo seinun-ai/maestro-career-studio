@@ -585,9 +585,9 @@ file to open.
   BOTH. **`extension/INTERNALS.md` owns the rest.**
 - **Guided fill** (design doc `2026-08-16-guided-apply-design`, unpublished — §10):
   the panel's **Fill** stage — **Fill this form** → `panel_prepare` (the
-  gesture-backed injection; `preparePage` is the only other injector) → the
-  runner. The mode control picks `aiAssist` (`fillMode` in
-  `storage.sync`, default assist); its progress rows are `reconcileFill`'s
+  gesture-backed injection; `preparePage` is the only other injector) → a run. `fillMode` (`storage.sync`):
+  "Saved answers + AI" (default) runs the fill loop (`shared/fill-loop.js`: Stop, report grouped by status,
+  jump via `fill_focus`, `loop_fill` telemetry); "Saved answers only" runs the rule pass below; its rows are `reconcileFill`'s
   buckets plus the run's own writeResults-minus-residue, and the EEO row is the
   BACKEND's standing consent, never a local toggle. It claims `done.fill`
   (`touched`) only when a run both wrote something and left nothing open — a

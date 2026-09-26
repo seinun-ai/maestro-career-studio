@@ -7,7 +7,7 @@ from app.db import get_db
 from app.main import app
 from app.models.autofill_field_observation import AutofillFieldObservation
 from app.services import autofill_telemetry
-from tests.extension_harness import observation_emitter_source
+from tests.extension_harness import ROOT, observation_emitter_source
 
 
 def _client(db_session):
@@ -329,6 +329,44 @@ def test_policy_blocked_is_emitted_by_the_extension_and_accepted(db_session):
 
     assert resp.status_code == 204, resp.text
     assert _rows(db_session)[0].outcomes == {"policy_blocked": 1}
+
+
+def _outcomes_the_fill_loop_emits() -> set[str]:
+    """Every outcome `buildLoopObservations` (shared/fill-loop.js) can put in
+    a `loop_fill` observation: its status table's values plus the one it
+    picks outside the table. Scanned, for `_outcomes_emitted_by_the_extension`'s
+    reason: the panel module is not a content script, so that scan never reads
+    it, and a new status the loop maps would otherwise 422 every loop batch."""
+    src = (ROOT / "extension" / "shared" / "fill-loop.js").read_text(encoding="utf-8")
+    table = re.search(r"const TELEMETRY_OUTCOME = \{(.*?)\};", src, re.S)
+    builder = re.search(r"const buildLoopObservations = (.*?)\n  \}\)", src, re.S)
+    assert table and builder, "the loop's telemetry table moved"
+    return {*re.findall(r':\s*"([a-z_]+)"', table.group(1)),
+            # A ternary's literal, never a `??` default (that is the kind's).
+            *re.findall(r'(?<!\?)\?\s*"([a-z_]+)"', builder.group(1))}
+
+
+def test_a_loop_fill_batch_with_every_outcome_the_loop_emits_is_accepted(db_session):
+    emitted = sorted(_outcomes_the_fill_loop_emits())
+    # Nine report statuses and the unconfirmed landing; the floor is what
+    # catches a scan that silently stopped matching.
+    assert len(emitted) == 10, emitted
+    client = _client(db_session)
+    try:
+        resp = client.post(
+            "/api/autofill/telemetry",
+            json=_batch(
+                [_obs(label=f"Field {outcome}", kind="combobox", options=None,
+                      outcome=outcome, rule_id="slot:personal.city")
+                 for outcome in emitted],
+                action="loop_fill",
+            ),
+        )
+    finally:
+        app.dependency_overrides.clear()
+    assert resp.status_code == 204, resp.text
+    assert {row.label: row.outcomes for row in _rows(db_session)} == {
+        f"Field {outcome}": {outcome: 1} for outcome in emitted}
 
 
 def test_applied_detection_batch_is_accepted(db_session):

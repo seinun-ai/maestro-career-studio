@@ -369,3 +369,19 @@ def test_rest_fill_is_an_accepted_action():
         page_host="boards.greenhouse.io", action="rest_fill", observations=[]
     )
     assert batch.action == "rest_fill"
+
+
+def test_the_fill_loops_outcomes_are_classified():
+    """A verified write and the two written-to-check ones are successes; a
+    control the engine could not work is the loop's one failure; the rest are
+    fields nothing answered or the loop rightly left alone."""
+    assert {"verified", "closest_filled", "assumed_filled"} <= SUCCESS_OUTCOMES
+    assert "cannot_operate" in FAILURE_OUTCOMES
+    assert {"partial", "needs_answer", "prefilled", "blocked", "user_edited"} <= NEUTRAL_OUTCOMES
+
+
+def test_loop_fill_is_an_accepted_action():
+    batch = TelemetryBatch(
+        page_host="boards.greenhouse.io", action="loop_fill", observations=[]
+    )
+    assert batch.action == "loop_fill"

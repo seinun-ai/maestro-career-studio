@@ -179,12 +179,29 @@
    * different file since Task 15's split, and a predicate two files agree about
    * is a predicate that eventually does not.
    */
-  function fillFinished({ fill, writeResults, residue, essays, attached }) {
+  function fillFinished({ fill, writeResults, residue, essays, attached, loop }) {
     const written = writtenQids(writeResults, residue);
+    const tally = loopTally(loop);
     const wrote = (fill?.counts?.filled ?? 0) + (fill?.counts?.corrected ?? 0)
-      + written.length + (attached?.count ?? 0);
-    const open = (residue?.length ?? 0) + (essays?.length ?? 0);
-    return wrote > 0 && open === 0;
+      + written.length + (attached?.count ?? 0) + tally.wrote;
+    const open = (residue?.length ?? 0) + (essays?.length ?? 0) + tally.open;
+    // A stopped or timed-out loop has not looked at everything it would have.
+    const cut = loop?.stopped === true || loop?.timedOut === true;
+    return wrote > 0 && open === 0 && !cut;
+  }
+
+  /** The loop report's statuses that WROTE (a value the engine committed and
+   * verified: the Filled count and the two check-it lists) and the ones left
+   * OPEN for the user (the Needs-your-answer and Couldn't-operate lists).
+   * `already`, `blocked` and `yours` are neither: the loop left them alone. */
+  const LOOP_WROTE = new Set(["verified", "closest", "assumed"]);
+  const LOOP_OPEN = new Set(["needs_answer", "partial", "cannot_operate"]);
+  function loopTally(loop) {
+    const fields = loop?.fields ?? [];
+    return {
+      wrote: fields.filter((row) => LOOP_WROTE.has(row.status)).length,
+      open: fields.filter((row) => LOOP_OPEN.has(row.status)).length,
+    };
   }
 
   /** What is still left on the page, in one sentence, or null when nothing is.
@@ -238,34 +255,13 @@
   const AI_OFF = "AI help is off until you add an API key in Maestro CS under "
     + "Settings › AI & models.";
 
-  /** Is there no API key at all, and no custom AI server to use instead?
-   *
-   * Asked after an AI run whose `/choose` did not fail, because a form whose
-   * open fields are all essays or rule territory never calls it: the AI was
-   * "on" and nothing said it could not have answered (Task 25). Read off
-   * `GET /api/settings/openai`'s booleans (never key material), and only a
-   * plain "none at all" counts: which key a given model needs is the server's
-   * business, so this never claims more than the settings say. A failed read
-   * claims nothing. */
-  async function noKeyAtAll(store) {
-    try {
-      const info = await store.api("/api/settings/openai");
-      return info?.api_key_configured === false
-        && info?.gemini_api_key_configured === false
-        && info?.custom_endpoint !== true;
-    } catch (_) {
-      return false;
-    }
-  }
-
-  /** What the AI pass could not do, in the Fill body's words, or null.
-   *
-   * The runner residues every field a failed `/choose` would have answered
-   * (its rule 3), and the open list already shows them; what was missing is
-   * WHY. The key words come from the same matching every failure note uses
-   * (`ns.panelKeyProblem`, panel/actions/during.js). */
-  function aiNoteFor(failure, keyless) {
-    if (!failure) return keyless ? AI_OFF : null;
+  /** What the AI could not do on a loop run, in the Fill body's words, or
+   * null. The loop leaves every field it could not map or pick open, and the
+   * lists already show them; what was missing is WHY. The key words come from
+   * the same matching every failure note uses (`ns.panelKeyProblem`,
+   * panel/actions/during.js). */
+  function aiNoteFor(failure) {
+    if (!failure) return null;
     const key = ns.panelKeyProblem(failure);
     if (key === "missing") return AI_OFF;
     if (key === "refused") return `AI help didn't answer. ${ns.panelKeySteps.refused}`;
@@ -273,8 +269,96 @@
       + "listed below.";
   }
 
-  /** Start fill: the deterministic pass, then — unless the user said rules only
-   * — the model on what is left.
+  /** "Fill finished" after a loop run: every value it chose rather than read
+   * straight off the profile (a closest match, an answer given for the user)
+   * is named, because the tick that follows takes the lists off screen. */
+  function loopFinishedSentence(check) {
+    if (!check.length) return "Fill finished. Review before you submit.";
+    const picks = check.map((row) => `${row.question || "a field"} (${row.answer})`).join(", ");
+    const these = check.length === 1 ? "this answer" : "these answers";
+    return `Fill finished. Check ${these} before you submit: ${picks}.`;
+  }
+
+  /** The loop run's one sentence: how it ended, then what is left. "Filled"
+   * is the body's Filled count (verified values); the values to check are in
+   * the lists below it. A run that wrote nothing and left nothing open never
+   * says "Fill finished": there was nothing on the page for it to do. */
+  function loopNote(loop, plural) {
+    const { wrote, open } = loopTally(loop);
+    if (loop.stopped || loop.timedOut) {
+      const filled = loop.fields.filter((row) => row.status === "verified").length;
+      const how = loop.stopped ? "Stopped." : "Filling took too long, so it stopped.";
+      return `${how} ${plural(filled, "field")} filled. The rest are listed below.`;
+    }
+    if (!wrote && !open) return "Nothing left to fill here. Review before you submit.";
+    return leftSentence({ open, blank: 0 }, plural)
+      ?? loopFinishedSentence(loop.fields.filter((row) => row.status === "closest"
+        || row.status === "assumed"));
+  }
+
+  /** "Saved answers + AI": the fill loop (`shared/fill-loop.js`) — the page's
+   * fields listed, their meaning mapped by the AI, each one written and
+   * checked, the report grouped by what happened to each field.
+   *
+   * THE GENERATION RULE IS CARRIED INTO THE LOOP, not only around it. The run
+   * is many round trips long and the store's `broadcast` follows the panel's
+   * CURRENT tab, so a loop outliving a tab switch would inventory — and fill —
+   * the page the user moved to. `cancelled` therefore answers yes the moment
+   * the generation moves, and the fan-out refuses to leave for a newer page.
+   *
+   * STOP is two halves: `stopRequested` (read by the loop before every page
+   * action) and `fill_cancel` (sent by the footer's button, `stopFill` in
+   * panel.js, to cancel the operation in flight). */
+  async function startLoopFill(store, facts) {
+    const token = store.token();
+    const live = () => store.current(token);
+    // `startFill`'s per-run clear, plus the loop's own run state.
+    store.write({ fill: null, eeoConsent: null, residue: null, essays: null,
+                  closest: null, writeResults: null, blank: null, aiNote: null,
+                  loop: null, fillRound: 0, stopRequested: false });
+    const done = await duringAction(store, "fill", async () => {
+      await store.prepare();
+      return ns.fillLoop.runFill({
+        broadcast: (message) => (live() ? store.broadcast(message) : Promise.resolve([])),
+        api: store.api,
+        cancelled: () => !live() || store.read().stopRequested === true,
+        onProgress: (update) => {
+          if (update.phase !== "round" || !live()) return;
+          store.write({ fillRound: update.round });
+          store.render();
+        },
+      }, {
+        applicationId: facts.application?.id ?? null,
+        base: facts.application ? null : facts.baseSlug,
+        sourceHint: ns.fillLoop.sourceHintOf(facts.url),
+      });
+    }, "Couldn't fill this form.");
+    if (!done) {
+      if (live()) {
+        store.write({ fillRound: null, stopRequested: false });
+        store.render();
+      }
+      return;
+    }
+    const loop = done.out;
+    // Value-free: labels, shapes and outcomes, never an answer (fill-loop.js).
+    store.telemetry("loop_fill", ns.fillLoop.buildLoopObservations(loop));
+    const after = store.read();
+    const finished = fillFinished({ loop, attached: after.attached });
+    store.write({
+      loop,
+      fillRound: null,
+      stopRequested: false,
+      aiNote: aiNoteFor(loop.aiFailure),
+      note: { text: loopNote(loop, store.build.plural) },
+    });
+    if (finished) store.write({ touched: true });
+    store.render();
+    if (finished) store.remember();
+  }
+
+  /** Start fill. "Saved answers + AI" runs the loop (`startLoopFill`, above);
+   * "Saved answers only" runs the deterministic pass and lists what is left.
    *
    * THE ONE PLACE THIS PANEL INJECTS. A click is a user gesture, and
    * `panel_prepare` is what makes a tab that was already open when the
@@ -324,6 +408,9 @@
   async function startFill(store) {
     const facts = store.read();
     if (facts.busy !== null) return;
+    // "Saved answers + AI" is the fill loop now; "Saved answers only" keeps
+    // the rule pass below until the loop replaces it too (fill-engine Task 10).
+    if (facts.fillMode === "assist") return startLoopFill(store, facts);
     // TAKEN BEFORE `duringAction`, which takes the same value a line later
     // (nothing awaits in between). It is read out here because `onProgress`
     // needs it: that callback WRITES the store from inside the run, so it
@@ -348,8 +435,8 @@
     // press starts from nothing known, which is also what the body should show
     // while the run is open.
     store.write({ fill: null, eeoConsent: null, residue: null, essays: null,
-                  closest: null, writeResults: null, blank: null, aiNote: null });
-    const aiAssist = facts.fillMode === "assist";
+                  closest: null, writeResults: null, blank: null, aiNote: null,
+                  loop: null });
     let noSavedAnswers = false;
     const done = await duringAction(store, "fill", async () => {
       await store.prepare();
@@ -384,7 +471,8 @@
             if (update.phase === "residue") store.write({ residue: update.residue });
             store.render();
           },
-        }, { aiAssist, applicationId: facts.application?.id ?? null });
+        // Rules only: "Saved answers + AI" never reaches this runner now.
+        }, { aiAssist: false, applicationId: facts.application?.id ?? null });
       } catch (err) {
         // A THROW HERE IS NOT ALWAYS A PAGE NOBODY REACHED, and the difference
         // is two fields sitting in the form. The run is a sequence, so a
@@ -404,9 +492,7 @@
         throw ns.guidedRun.shown(
           "Couldn't finish filling this page. Reload the tab to fill the rest.");
       }
-      // Inside the span, like every await an action makes (during.js).
-      const keyless = aiAssist && !run.aiFailure && await noKeyAtAll(store);
-      return { ...run, keyless };
+      return run;
     }, "Couldn't fill this form.");
     if (!done) return;
     const { out } = done;
@@ -430,7 +516,6 @@
       closest: out.closest ?? [],
       writeResults: out.writeResults,
       blank,
-      aiNote: aiNoteFor(out.aiFailure, out.keyless),
       // The counts are the rows'; this slot gets the one sentence. "Needs you"
       // counts the essays with the residue because the user's question is what
       // is still open, and an unanswered essay is exactly that — they are kept
@@ -576,10 +661,10 @@
     // because the rules reached the page, and the attach then finishes the step
     // exactly as it should.
     const ranHere = after.fill !== null || after.residue !== null
-      || after.essays !== null;
+      || after.essays !== null || after.loop !== null;
     const finished = ranHere && fillFinished({
       fill: after.fill, writeResults: after.writeResults,
-      residue: after.residue, essays: after.essays, attached,
+      residue: after.residue, essays: after.essays, attached, loop: after.loop,
     });
     store.write({
       attached,

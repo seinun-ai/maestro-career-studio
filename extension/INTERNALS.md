@@ -487,7 +487,7 @@ click. This is the complete list of what is posted to
 | field | value |
 |---|---|
 | `page_host` | the hostname of the top frame (e.g. `boards.greenhouse.io`), capped at 255 chars |
-| `action` | `profile_fill` (the rule pass) or `rest_fill` (the remainder pass). The backend's frozen vocabulary is wider than what this extension now sends |
+| `action` | `profile_fill` (the rule pass, "Saved answers only"), `rest_fill` (its remainder pass) or `loop_fill` (the fill loop, "Saved answers + AI": one row per field it reported). The backend's frozen vocabulary is wider than what this extension now sends |
 | `observations` | up to 200 of the rows below |
 
 **Per observation** — exactly six keys, and the service worker drops everything
@@ -497,14 +497,15 @@ else before posting:
 |---|---|
 | `label` | the field's visible label text, capped at 160 chars |
 | `kind` | the control shape: `text`, `textarea`, `select`, `radio`, `checkbox`, or `combobox` |
-| `host` | the hostname of **the frame the field was in** — not the top frame, so an embedded Greenhouse form is attributed to `boards.greenhouse.io` |
-| `outcome` | what happened: `filled`, `corrected`, `filled_normalized`, `filled_unverified`, `not_stuck`, `combobox_snap_failed`, `no_rule`, `missing_source`, `skip_rule`, `skipped_checkbox`, `hidden`, `policy_blocked`, `eeo_disabled`, `retry_filled`, `match_recovered`, `ai_abstained`. (The backend also accepts `ai_answered`, `ai_no_stick`, `ai_unanswered` and `ai_unaligned` — stored rows carry them — but nothing emits one since the floating card was retired: its AI write-back path was their only source.) |
-| `rule_id` | which fill rule matched, or null |
-| `options` | for a `select`, a `radio` group, or a Workday listbox-button dropdown whose popup was open at the time, **the option texts as the page renders them** — up to 30, each capped at 160 chars. This is the one field that carries page content, and it is here because a dropdown that could not be matched is unfixable without knowing what its options said. Nothing is ever opened in order to collect them: a telemetry read may not drive the page, so a closed popup reports no options rather than being poked into rendering |
+| `host` | the hostname of **the frame the field was in** — not the top frame, so an embedded Greenhouse form is attributed to `boards.greenhouse.io` (a `loop_fill` row: the first frame the loop found fields in) |
+| `outcome` | what happened: `filled`, `corrected`, `filled_normalized`, `filled_unverified`, `not_stuck`, `combobox_snap_failed`, `no_rule`, `missing_source`, `skip_rule`, `skipped_checkbox`, `hidden`, `policy_blocked`, `eeo_disabled`, `retry_filled`, `match_recovered`, `ai_abstained`; on a `loop_fill` row the loop's report status: `verified`, `closest_filled`, `assumed_filled`, `partial`, `needs_answer`, `cannot_operate`, `prefilled`, `blocked`, `user_edited`, or `filled_unverified` for a value that landed unconfirmed (`buildLoopObservations` in `shared/fill-loop.js`). (The backend also accepts `ai_answered`, `ai_no_stick`, `ai_unanswered` and `ai_unaligned` — stored rows carry them — but nothing emits one since the floating card was retired: its AI write-back path was their only source.) |
+| `rule_id` | which fill rule matched, or null; on a `loop_fill` row the slot the AI mapped the question to (`slot:…`) or its route (`route:…`) |
+| `options` | for a `select`, a `radio` group, or a Workday listbox-button dropdown whose popup was open at the time, **the option texts as the page renders them** — up to 30, each capped at 160 chars. This is the one field that carries page content, and it is here because a dropdown that could not be matched is unfixable without knowing what its options said. Nothing is ever opened in order to collect them: a telemetry read may not drive the page, so a closed popup reports no options rather than being poked into rendering. A `loop_fill` row carries none |
 
 **What is never sent:** the value typed into any field, the value that was there
-before, any AI answer text, a field that already held its answer (no write, no
-observation), and the contents of any other field on the page. The backend has
+before, any AI answer text or value the fill loop chose, a field that already held its
+answer (no write, no observation — the loop reports it as `prefilled`, label
+only), and the contents of any other field on the page. The backend has
 no column for a value and rejects unknown keys outright (`422`), so an
 accidental extra key fails loudly rather than being stored.
 
