@@ -879,3 +879,20 @@ def test_a_real_report_becomes_value_free_observations(page, load):
         {"label": "Mystery", "kind": "text", "host": "x.test", "outcome": "cannot_operate", "rule_id": None},
     ]
     assert "Springfield" not in str(obs)
+
+
+def test_an_observation_label_never_carries_the_value_written(page, load):
+    load(page, "<div></div>", sources=LOOP_SOURCES)
+    report = {"host": "x.test", "fields": [
+        {"fid": "a", "question": "Country: United States", "shape": "popup", "status": "verified",
+         "answer": "united states", "route": "slot", "slot": "personal.country", "lastOutcome": "verified"},
+        {"fid": "b", "question": "Phone number", "shape": "text", "status": "verified",
+         "answer": "No", "route": "slot", "slot": "x", "lastOutcome": "verified"},
+        {"fid": "c", "question": "Start date: Next week", "shape": "popup", "status": "needs_answer",
+         "answer": 'Companion clicked "Next week". Check it.', "route": "slot", "slot": "y",
+         "lastOutcome": "group_committed"},
+    ]}
+    obs = page.evaluate("(r) => window.careerStudioCompanion.fillLoop.buildLoopObservations(r)", report)
+    # Blanked when it holds the value (whole words, any case); a word inside
+    # another word ("No" in "number") is not the value.
+    assert [o["label"] for o in obs] == ["", "Phone number", ""]

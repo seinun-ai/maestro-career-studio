@@ -274,9 +274,12 @@
    * is named, because the tick that follows takes the lists off screen. */
   function loopFinishedSentence(check) {
     if (!check.length) return "Fill finished. Review before you submit.";
-    const picks = check.map((row) => `${row.question || "a field"} (${row.answer})`).join(", ");
+    // The first three by name: past that the sentence stops being read, and
+    // the lists (on screen until the tick) hold them all.
+    const named = check.slice(0, 3).map((row) => `${row.question || "a field"} (${row.answer})`).join(", ");
+    const more = check.length > 3 ? ` and ${check.length - 3} more` : "";
     const these = check.length === 1 ? "this answer" : "these answers";
-    return `Fill finished. Check ${these} before you submit: ${picks}.`;
+    return `Fill finished. Check ${these} before you submit: ${named}${more}.`;
   }
 
   /** The loop run's one sentence: how it ended, then what is left. "Filled"
@@ -285,6 +288,7 @@
    * says "Fill finished": there was nothing on the page for it to do. */
   function loopNote(loop, plural) {
     const { wrote, open } = loopTally(loop);
+    if (loop.stopped && !loop.fields.length) return "Stopped before any field was filled.";
     if (loop.stopped || loop.timedOut) {
       const filled = loop.fields.filter((row) => row.status === "verified").length;
       const how = loop.stopped ? "Stopped." : "Filling took too long, so it stopped.";

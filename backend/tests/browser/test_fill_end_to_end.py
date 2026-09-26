@@ -24,7 +24,6 @@ The widgets themselves are unchanged.
 """
 
 import json
-import time
 
 import pytest
 
@@ -87,7 +86,7 @@ DRIVER = """(spec) => {
     posts.push({ path: path.split("?")[0], body });
     if (path.startsWith("/api/autofill/context")) return { eeo_consent: { consent_forms: false } };
     if (path === "/api/autofill/map") {
-      if (spec.holdMap) {
+      if (spec.holdMap && !window.__mapHeld) {
         window.__mapHeld = true;
         await new Promise((resolve) => { window.__openMap = resolve; });
       }
@@ -187,9 +186,7 @@ def e2e_page(page):
 
 def test_the_engine_fills_every_fixture_on_one_page(e2e_page):
     page = e2e_page
-    t0 = time.monotonic()
     out = _run(page)
-    elapsed = time.monotonic() - t0
     status = {q: r["status"] for q, r in out["by_question"].items()}
 
     # Workday text: committed by real typing, and no field error left.
@@ -224,10 +221,19 @@ def test_the_engine_fills_every_fixture_on_one_page(e2e_page):
         assert status[question] == "verified", (question, out["by_question"][question])
     assert status["Which days can you work?"] == "needs_answer"
     assert page.evaluate("[...document.querySelectorAll('input[name=days]:checked')].map((i) => i.value)") == ["mon"]
+    # Telemetry for the filled widgets names the question, never the value.
+    obs = page.evaluate("(r) => window.careerStudioCompanion.fillLoop.buildLoopObservations(r)", out["report"])
+    by_label = {o["label"]: o for o in obs}
+    for question, value in (("How did you hear about us?", "LinkedIn"),
+                            ("Are you legally authorized to work in the United States?", "Yes"),
+                            ("Field of study", "Information Systems")):
+        assert by_label[question]["outcome"] == "verified"
+    assert not any(v.lower() in o["label"].lower() for o in obs
+                   for v in ("LinkedIn", "Information Systems", "University of Texas", "Springfield", "Master's"))
     # Nothing left open, and the whole run inside its budget.
     assert _open_popups(page) == []
     assert out["report"]["stopped"] is False and out["report"]["timedOut"] is False
-    assert elapsed < 30, elapsed
+    assert out["ms"] < 30000, out["ms"]
     # Every page message the loop sent went through a real handler: the
     # inventory carried the run's id (the handler must forward it).
     inventories = [m for m in out["sent"] if m["type"] == "fill_inventory"]

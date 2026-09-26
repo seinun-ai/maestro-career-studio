@@ -3421,6 +3421,56 @@ def test_a_loop_with_nothing_to_do_never_says_it_finished(tmp_path):
     assert _loop_groups(empty["settled"]["rail"]) == [("No fields to fill here.", [])]
 
 
+def test_a_tab_switch_mid_loop_cancels_the_page_half_on_the_tab_it_left(tmp_path):
+    """The generation check ends the panel half; the page half (a held popup,
+    a set half-written) is ended by fill_cancel to the OLD tab — and nothing
+    is sent to the tab the user moved to."""
+    out = _loop(tmp_path, holdRun=True, switchTo=42,
+                tabUrls={"42": f"{LIGHTNING_APPLY_URL}/step2"})
+    cancels = [(msg["tabId"], msg["message"]) for msg in out["broadcasts"]
+               if msg["message"]["type"] == "fill_cancel"]
+    assert cancels == [(7, {"type": "fill_cancel"})]
+
+
+def test_a_rule_pass_switch_sends_no_fill_cancel(tmp_path):
+    out = _fill(tmp_path, start=True, hold=["page_broadcast:guided_write"], switchTo=42,
+                tabUrls={"42": "chrome://settings"})
+    assert [m for m in out["broadcasts"] if m["message"]["type"] == "fill_cancel"] == []
+
+
+def test_a_stop_before_any_field_says_only_that(tmp_path):
+    out = _loop(tmp_path, holdRun=True, pressStop=True, report={"host": LOOP_HOST, "fields": []})
+    [note] = _by_class(out["settled"]["foot"], "note")
+    assert note["text"] == "Stopped before any field was filled."
+
+
+def test_the_finished_note_names_three_answers_to_check_then_counts(tmp_path):
+    fields = [_field(f"c{i}", f"Question {i}", "closest", answer=f"Answer {i}") for i in range(5)]
+    out = _loop(tmp_path, report={"host": LOOP_HOST, "fields": fields})
+    [note] = _by_class(out["settled"]["foot"], "note")
+    assert note["text"] == (
+        "Fill finished. Check these answers before you submit: Question 0 (Answer 0), "
+        "Question 1 (Answer 1), Question 2 (Answer 2) and 2 more.")
+
+
+def test_group_headings_are_headings_to_a_screen_reader(tmp_path):
+    out = _loop(tmp_path)
+    [report] = _by_class(out["settled"]["rail"], "loop")
+    heads = _by_class(report, "grp")
+    assert heads and all(h["attrs"].get("role") == "heading" and h["attrs"].get("aria-level") == "3"
+                         for h in heads)
+
+
+def test_a_question_carrying_markup_is_shown_as_text(tmp_path):
+    """Page text is attacker-influenced: a question is never parsed as HTML."""
+    evil = "<img src=x onerror=alert(1)>"
+    out = _loop(tmp_path, report={"host": LOOP_HOST, "fields": [
+        _field("v1", "First name", "verified"), _field("n1", evil, "needs_answer")]})
+    rail = out["settled"]["rail"]
+    assert ("Needs your answer", [evil]) in _loop_groups(rail)
+    assert [n for n in _walk(rail) if n["tag"] == "IMG"] == []
+
+
 def test_a_loop_that_reaches_no_page_says_so_and_takes_stop_away(tmp_path):
     out = _loop(tmp_path, throwMessage="Couldn't reach this page. Reload the tab, then try again.")
     settled = out["settled"]

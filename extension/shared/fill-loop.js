@@ -815,12 +815,22 @@
   // was written, but not confirmed as the answer.
   const LANDED = new Set(["unconfirmed", "group_committed"]);
   const MAX_OBSERVATIONS = 200;
+  // A label that holds the value written (a reader that took the value into
+  // the question, a leftover note's quoted text) is sent blank: the label is
+  // the one free-text key, so it must not become a way for a value to leave.
+  // Whole words, any case: "No" is not in "Phone number".
+  const holdsValue = (label, answer) => {
+    const values = [answer, ...[...String(answer ?? "").matchAll(/"([^"]+)"/g)].map((m) => m[1])]
+      .map((v) => String(v ?? "").trim()).filter(Boolean);
+    return values.some((v) => new RegExp(`(^|[^\\p{L}\\p{N}])${v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}($|[^\\p{L}\\p{N}])`, "iu").test(label));
+  };
   const buildLoopObservations = (report) => (report?.fields ?? []).flatMap((r) => {
     const outcome = r.status === "needs_answer" && LANDED.has(r.lastOutcome) ? "filled_unverified"
       : TELEMETRY_OUTCOME[r.status];
     if (!outcome) return [];
+    const question = String(r.question ?? "");
     return [{
-      label: String(r.question ?? "").slice(0, 160),
+      label: holdsValue(question, r.answer) ? "" : question.slice(0, 160),
       kind: TELEMETRY_KIND[r.shape] ?? "text",
       host: String(report.host ?? "").slice(0, 255),
       outcome,

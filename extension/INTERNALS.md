@@ -188,16 +188,23 @@ asking permission of itself.
   tailor committed is not an error path — the application exists either way, and
   is remembered, or the next page of the wizard would offer to tailor a job that
   already has one.
-- **Fill this form** — the Fill stage runs the hybrid pipeline on this page: the
+- **Fill this form, "Saved answers + AI"** — the fill loop (`shared/fill-loop.js`),
+  reported in groups by what happened to each field, with **Stop** in the footer
+  while it runs. A tab switch or a same-tab url change also ends a run, as it does
+  the rule pass's: the panel half by the generation check, the page half by
+  `fill_cancel` to the tab being left.
+- **Fill this form, "Saved answers only"** — the Fill stage runs the hybrid pipeline on this page: the
   profile rule pass, then one batched `/api/autofill/choose` call for everything
   the rules did not cover (chunked at 40 fields), then the sequenced writer. The
   AI pass's prompt carries your saved answers and your career history; the EEO
   answers go only under the standing consent, through the one gate
   (`eeo_consent.withhold_unconsented` in `backend/app/services/eeo_consent.py`)
   that `GET /api/autofill/context` goes through as well, so which path asks
-  never decides what is disclosed. The mode segment picks the pass — **Saved
-  answers only** skips `/choose` entirely, **Saved answers + AI** is the default
-  because it answers more of the form — and the choice lives in
+  never decides what is disclosed. The panel now runs this pipeline rules only
+  (`/choose` skipped; the AI half described here is no longer reached from the
+  panel and goes when the loop replaces this pass). The mode segment picks the
+  run — **Saved answers + AI**, the loop above, is the default because it
+  answers more of the form — and the choice lives in
   `chrome.storage.sync` under `fillMode`, so it follows the profile. Identity
   fields a rule tried and could not land are **retryables**: they re-enter the
   writer with the profile's own value, in memory only, and are never offered to
@@ -503,9 +510,11 @@ else before posting:
 | `options` | for a `select`, a `radio` group, or a Workday listbox-button dropdown whose popup was open at the time, **the option texts as the page renders them** — up to 30, each capped at 160 chars. This is the one field that carries page content, and it is here because a dropdown that could not be matched is unfixable without knowing what its options said. Nothing is ever opened in order to collect them: a telemetry read may not drive the page, so a closed popup reports no options rather than being poked into rendering. A `loop_fill` row carries none |
 
 **What is never sent:** the value typed into any field, the value that was there
-before, any AI answer text or value the fill loop chose, a field that already held its
-answer (no write, no observation — the loop reports it as `prefilled`, label
-only), and the contents of any other field on the page. The backend has
+before, any AI answer text or value the fill loop chose, and the contents of any
+other field on the page. A field that already held its answer is never written:
+the rule pass sends no row for it, the loop sends one (`prefilled`) with the label
+and nothing else. A loop row's label is sent blank when it contains the value the
+loop wrote. The backend has
 no column for a value and rejects unknown keys outright (`422`), so an
 accidental extra key fails loudly rather than being stored.
 

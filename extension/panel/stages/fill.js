@@ -537,7 +537,10 @@
       if (!rows.length) continue;
       const list = loopRows(ctx, rows, mark);
       list.setAttribute("aria-label", heading);
-      attach(report, node("div", "grp", heading), list);
+      const head = node("div", "grp", heading);
+      head.setAttribute("role", "heading");
+      head.setAttribute("aria-level", "3");
+      attach(report, head, list);
     }
     const left = [
       [having("already").length, (n) => `${n} already filled`],

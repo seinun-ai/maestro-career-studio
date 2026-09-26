@@ -755,8 +755,9 @@
     store.blank = null;
     store.aiNote = null;
     store.writeResults = null;
-    // The loop's report with them, and its run state: a loop still running on
-    // the page the user left is cancelled by its own generation check, so Stop
+    // The loop's report with them, and its run state. A loop still running on
+    // the page the user left has been told to stop there (`onTab` sends that
+    // tab `fill_cancel`) and its generation check ends the panel half, so Stop
     // has nothing left to stop here.
     store.loop = null;
     store.fillRound = null;
@@ -2485,6 +2486,16 @@
   }
 
   async function onTab(tabId, url) {
+    // A LOOP STILL RUNNING is two halves. The panel half ends with the
+    // generation bump below (its `cancelled()` reads it); the page half — a
+    // popup it holds open, a set half-written — ends only when the page is
+    // told, so the tab being LEFT gets `fill_cancel` (the same tab on a
+    // same-tab url change, as the rule pass's run ended there too).
+    // Fire-and-forget, `stopFill`'s rule; nothing reaches the new tab.
+    if (card.busy === "fill" && card.fillRound !== null && card.tabId !== null) {
+      ask("page_broadcast", { tabId: card.tabId, message: { type: "fill_cancel" } })
+        .catch((err) => console.warn("[maestro-cs] could not stop the fill on the tab left:", err));
+    }
     // FIRST, and before anything is loaded: everything the store holds is
     // about the page we are leaving.
     resetPageFacts(card);
