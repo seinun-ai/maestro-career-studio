@@ -237,8 +237,9 @@ def test_answered_is_stricter_than_has_a_value(page, load):
     assert by_q["School or University"]["committed"] == ""
 
 
-@pytest.mark.xfail(strict=True, reason="Task 3: search pills are read from the multiselect container, not "
-                                        "from inside the input that carries the widget marker")
+@pytest.mark.xfail(strict=True, raises=AssertionError,
+                   reason="Task 3: search pills are read from the multiselect container, not "
+                          "from inside the input that carries the widget marker")
 def test_a_search_widgets_existing_pill_is_its_committed_value(page, load):
     load(page, fixture_html("workday_search.html"))
     assert by_question(page)["Type to Add Skills"]["committed"] == ["SQL"]
@@ -435,8 +436,9 @@ def test_two_unwrapped_date_widgets_under_one_parent_stay_two_fields(page, load)
     assert [(f["shape"], f["committed"]) for f in fields(page)] == [("date", "2020-01"), ("date", "2022-12")]
 
 
-@pytest.mark.xfail(strict=True, reason="Task 3: search pills are read from the multiselect container, not "
-                                        "from inside the input that carries the widget marker")
+@pytest.mark.xfail(strict=True, raises=AssertionError,
+                   reason="Task 3: search pills are read from the multiselect container, not "
+                          "from inside the input that carries the widget marker")
 def test_shape_readers_do_not_depend_on_this(page, load):
     load(page, fixture_html("workday_search.html"))
     got = page.evaluate(f"""() => {{ const read = {NS}.shapes.byName('search').read;

@@ -63,6 +63,45 @@ def page(browser):
     context.close()
 
 
+# UNFOCUSED-WINDOW MODE (notes §1, §6): live, while the browser window is not
+# focused, `el.focus()` / `el.blur()` still move focus but fire NO focus, blur,
+# focusin or focusout events — which is why text and dates never committed. The
+# test page's window IS focused, so this recreates it: during a native
+# focus()/blur() call every focus event is stopped at the window, in capture.
+# Trusted Playwright input and events the engine dispatches itself still pass.
+# Idempotent: set_content's document.open drops window listeners, so `load`
+# installs it again after every page.
+UNFOCUSED_WINDOW = """(() => {
+  const KEY = Symbol.for("careerStudioTests.unfocusedWindow");
+  const state = (HTMLElement.prototype[KEY] ??= { muted: 0, wrapped: false });
+  if (!state.wrapped) {
+    state.wrapped = true;
+    for (const name of ["focus", "blur"]) {
+      const native = HTMLElement.prototype[name];
+      HTMLElement.prototype[name] = function (...args) {
+        state.muted += 1;
+        try { return native.apply(this, args); } finally { state.muted -= 1; }
+      };
+    }
+  }
+  for (const type of ["focus", "blur", "focusin", "focusout"]) {
+    window.addEventListener(type, (e) => { if (state.muted) e.stopImmediatePropagation(); }, true);
+  }
+})();"""
+
+
+@pytest.fixture
+def page_unfocused(browser):
+    """A page whose window behaves as if the browser were not focused (see
+    UNFOCUSED_WINDOW). Opt in per test; `load` keeps the mode across pages."""
+    context = browser.new_context(viewport={"width": 1280, "height": 900}, offline=True)
+    context.add_init_script(UNFOCUSED_WINDOW)
+    pg = context.new_page()
+    pg.unfocused_window = True
+    yield pg
+    context.close()
+
+
 def fixture_html(name: str) -> str:
     return (FIXTURES / name).read_text(encoding="utf-8")
 
@@ -71,6 +110,8 @@ def fixture_html(name: str) -> str:
 def load():
     def _load(pg, html: str, sources: list[str] | None = None):
         pg.set_content(html)
+        if getattr(pg, "unfocused_window", False):
+            pg.evaluate(UNFOCUSED_WINDOW)
         for src in sources if sources is not None else ENGINE_SOURCES:
             pg.add_script_tag(content=(EXTENSION / src).read_text(encoding="utf-8"))
         return pg

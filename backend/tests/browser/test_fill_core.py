@@ -4,6 +4,7 @@
 import pytest
 
 from tests.browser.conftest import fixture_html
+from tests.browser.pages import CATEGORY_POPUP, POLICY_PAGE, in_both_windows, list_shown, oracle
 
 OPS = "window.careerStudioCompanion.fillOps"
 
@@ -20,69 +21,11 @@ def explore(page, f, term=None):
     return page.evaluate(f"(r) => {OPS}.explore([r])", {"fid": f["fid"], "fp": f["fp"], "term": term})[f["fid"]]
 
 
-# A GENERIC popup whose options open sub-lists (categories → leaves), plus a
-# plain Yes/No popup and a hidden stale list. Not a Workday reproduction — live
-# "How did you hear about us?" is a search box (notes §2, workday_search.html)
-# — so it stays inline here, guarding the engine's category handling for any
-# vendor that does render popup trees.
-CATEGORY_POPUP = """<fieldset><legend>How did you hear about us?</legend>
-  <button id="heard" aria-haspopup="listbox" aria-label=" Select One Required">Select One</button></fieldset>
-<fieldset><legend>Are you legally authorized to work in the United States?</legend>
-  <button id="auth" aria-haspopup="listbox" aria-label=" Select One Required">Select One</button></fieldset>
-<ul role="listbox" id="stale" style="display:none"><li role="option" id="stale-ca">Canada</li></ul>
-<div id="portal"></div>
-<script>
-(() => {
-  const TREES = {
-    heard: [["Job Board", ["LinkedIn", "Indeed"]], ["Social Media", ["Twitter"]], ["Employee Referral", null]],
-    auth: [["Yes", null], ["No", null]],
-  };
-  const portal = document.getElementById("portal");
-  let open = null;
-  const close = () => { portal.innerHTML = ""; open = null; };
-  const render = (btn, items) => {
-    portal.innerHTML = "";
-    const ul = document.createElement("ul");
-    ul.setAttribute("role", "listbox");
-    for (const [label, kids] of items) {
-      const li = document.createElement("li");
-      li.setAttribute("role", "option");
-      li.textContent = label;
-      li.addEventListener("click", (e) => {
-        e.stopPropagation();
-        if (kids) render(btn, kids.map((k) => [k, null]));
-        // Live Workday's aria-label is "<question> <value> Required": the value
-        // part follows the pick (the question part is empty on this step).
-        else { btn.textContent = label; btn.setAttribute("aria-label", ` ${label} Required`); close(); }
-      });
-      ul.append(li);
-    }
-    portal.append(ul);
-    open = btn;
-  };
-  for (const id of Object.keys(TREES)) {
-    const btn = document.getElementById(id);
-    btn.addEventListener("click", (e) => { e.stopPropagation(); render(btn, TREES[id]); });
-  }
-  document.addEventListener("click", () => { if (open) close(); });
-  document.getElementById("stale-ca").addEventListener("click", () => { window.staleHit = true; });
-})();
-</script>"""
-
-
-def oracle(page, key):
-    return page.evaluate("(k) => window.__oracle[k]", key)
-
-
-def list_shown(page, list_id="portal"):
-    """Whether anything inside `list_id` is VISIBLE: live Workday keeps a
-    closed popup's list in the DOM, hidden (notes §8a)."""
-    return page.evaluate("""(id) => [...document.getElementById(id).children]
-        .some((c) => c.offsetParent !== null)""", list_id)
-
-
 # --- text-like
-def test_text_commits_where_the_page_only_takes_real_typing(page, load):
+@in_both_windows(unfocused_xfail="Task 2: leaving a field must blur, then dispatch blur + focusout itself "
+                                 "(an unfocused window fires no events)")
+def test_text_commits_where_the_page_only_takes_real_typing(window, request, load):
+    page = request.getfixturevalue(window)
     load(page, fixture_html("workday_text.html"))
     row = apply(page, inv(page)["City"], op="write", value="Springfield")
     assert row["outcome"] == "verified" and oracle(page, "city") == "Springfield"
@@ -101,9 +44,12 @@ def test_a_text_the_page_clears_on_blur_is_reverted(page, load):
     assert apply(page, inv(page)["Q"], op="write", value="x")["outcome"] == "reverted"
 
 
-@pytest.mark.xfail(strict=True, reason="Task 2: leaving a date must blur the part Workday moved focus to (Month), "
-                                        "so the wrapper validates and commits")
-def test_workday_date_sections_are_written_before_one_blur(page, load):
+@pytest.mark.xfail(strict=True, raises=AssertionError,
+                   reason="Task 2: leaving a date must blur the part Workday moved focus to (Month), then "
+                          "dispatch blur + focusout, so the wrapper validates and commits")
+@in_both_windows()
+def test_workday_date_sections_are_written_before_one_blur(window, request, load):
+    page = request.getfixturevalue(window)
     load(page, fixture_html("workday_date.html"))
     fields = inv(page)
     assert apply(page, fields["From"], op="write", value="2019-08")["outcome"] == "verified"
@@ -145,8 +91,9 @@ def test_sets_keep_existing_choices_and_never_untick(page, load):
 
 
 # --- choice-like, popups
-@pytest.mark.xfail(strict=True, reason="Task 6: the live popup lists its 'Select One' placeholder as an option; "
-                                        "it must not be offered as an answer")
+@pytest.mark.xfail(strict=True, raises=AssertionError,
+                   reason="Task 6: the live popup lists its 'Select One' placeholder as an option; "
+                          "it must not be offered as an answer")
 def test_a_workday_dropdown_is_explored_and_closed_then_committed(page, load):
     load(page, fixture_html("workday_listbox.html"))
     f = inv(page)["Are you legally authorized to work in the United States?"]
@@ -183,8 +130,9 @@ def test_react_select_commits_and_a_rejected_click_is_not_filled(page, load):
     assert (row["outcome"], row["reason"], row["committed"]) == ("unexpected", "not_committed", "India")
 
 
-@pytest.mark.xfail(strict=True, reason="Task 5: search is press, type, Enter (key-up), wait for the staged "
-                                        "results to settle, click the row's radio")
+@pytest.mark.xfail(strict=True, raises=AssertionError,
+                   reason="Task 5: search is press, type, Enter (key-up), wait for the staged "
+                          "results to settle, click the row's radio")
 def test_workday_search_waits_past_searching_and_commits_the_pill(page, load):
     load(page, fixture_html("workday_search.html"))
     f = inv(page)["School or University"]
@@ -197,8 +145,9 @@ def test_workday_search_waits_past_searching_and_commits_the_pill(page, load):
     assert oracle(page, "school") == "The University of Texas at Arlington"
 
 
-@pytest.mark.xfail(strict=True, reason="Task 5: a multi search ticks the checkbox in a virtualized result list "
-                                        "(Python is #16), read back from the pills (Task 3)")
+@pytest.mark.xfail(strict=True, raises=AssertionError,
+                   reason="Task 5: a multi search ticks the checkbox in a virtualized result list "
+                          "(Python is #16), read back from the pills (Task 3)")
 def test_a_search_set_keeps_existing_chips_and_reports_partial_honestly(page, load):
     load(page, fixture_html("workday_search.html"))
     f = inv(page)["Type to Add Skills"]
@@ -316,32 +265,6 @@ def test_an_engine_click_on_a_radio_does_not_mark_the_field_touched(page, load):
     assert now["Willing to relocate?"]["touched"] is False and now["Which days can you work?"]["touched"] is False
 
 
-POLICY_PAGE = """
-<fieldset><legend>Before you continue</legend>
-  <label><input type='radio' name='c' value='a'>Email me updates</label>
-  <label><input type='radio' name='c' value='b'>I certify that the above is true</label></fieldset>
-<fieldset><legend>Topics</legend>
-  <label><input type='checkbox' name='t' value='1'>Data</label>
-  <label><input type='checkbox' name='t' value='2'>I agree to the privacy policy</label></fieldset>
-<label id='src-l'>Where did you find us?</label>
-<button id='src' aria-haspopup='listbox' aria-labelledby='src-l'>Select One</button>
-<div id='portal'></div>
-<script>
-(() => {
-  const btn = document.getElementById('src');
-  btn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    document.getElementById('portal').innerHTML =
-      "<ul role='listbox'><li role='option'>Website</li><li role='option'>I consent to the terms of use</li></ul>";
-    for (const li of document.querySelectorAll('#portal li')) {
-      li.addEventListener('click', (ev) => { ev.stopPropagation(); btn.textContent = li.textContent; document.getElementById('portal').innerHTML = ''; });
-    }
-  });
-  document.addEventListener('click', () => { document.getElementById('portal').innerHTML = ''; });
-})();
-</script>"""
-
-
 def test_a_policy_blocked_option_is_never_chosen_or_ticked(page, load):
     load(page, POLICY_PAGE)
     f = inv(page)
@@ -407,8 +330,9 @@ def test_a_timeout_is_reported_as_timeout_not_cancelled(page, load):
     assert not list_shown(page)
 
 
-@pytest.mark.xfail(strict=True, reason="Task 5: after a timeout, a full-budget choose on the live search "
-                                        "sequence (press, Enter, radio) verifies")
+@pytest.mark.xfail(strict=True, raises=AssertionError,
+                   reason="Task 5: after a timeout, a full-budget choose on the live search "
+                          "sequence (press, Enter, radio) verifies")
 def test_a_choose_after_a_timeout_starts_clean_and_verifies(page, load):
     load(page, fixture_html("workday_search.html"))
     f = inv(page)["School or University"]
@@ -575,8 +499,9 @@ def test_a_free_text_pick_equal_to_the_typed_query_is_kept(page, load):
     assert page.input_value("#loc") == "Springfield"
 
 
-@pytest.mark.xfail(strict=True, reason="Task 5: a multi search ticks each missing item's checkbox once and "
-                                        "never an item it already holds, read back from the pills (Task 3)")
+@pytest.mark.xfail(strict=True, raises=AssertionError,
+                   reason="Task 5: a multi search ticks each missing item's checkbox once and "
+                          "never an item it already holds, read back from the pills (Task 3)")
 def test_a_set_never_clicks_an_item_that_is_already_there(page, load):
     """The multiselect toggles (a second tick un-picks) and shows an error: SQL
     is kept (never re-ticked) and Python is added."""
@@ -610,8 +535,9 @@ def test_choose_on_a_multiple_select_keeps_the_other_selections(page, load):
     assert page.evaluate("[...document.getElementById('lang').selectedOptions].map(o => o.text)") == ["English", "Hindi"]
 
 
-@pytest.mark.xfail(strict=True, reason="Task 5: search commits through the row's radio; the engine then "
-                                        "takes back a query the widget left")
+@pytest.mark.xfail(strict=True, raises=AssertionError,
+                   reason="Task 5: search commits through the row's radio; the engine then "
+                          "takes back a query the widget left")
 def test_a_query_left_in_the_box_beside_a_committed_pill_is_taken_back(page, load):
     html = fixture_html("workday_search.html").replace(
         "      inputOf(id).value = \"\";\n      close();", "      close();")

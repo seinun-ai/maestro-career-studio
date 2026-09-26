@@ -24,9 +24,19 @@ value the fake APP holds — what live Workday would save — as distinct from w
 the page shows. It is set only by the widget's own commit path (a real leave for
 text and dates, the result row's radio or checkbox for a search, the option
 click that fills the backing input for a popup, the finished upload for a file).
-The engine never reads it; tests assert on it, so a false "verified" fails.
-Scripts use `window.__oracle = window.__oracle || {}` so fixtures composed on
-one page share it; keys are unique across fixtures.
+The engine never reads it (`test_the_extension_never_reads_the_oracle` pins
+that); tests assert on it, so a false "verified" fails. Scripts use
+`window.__oracle = window.__oracle || {}` so fixtures composed on one page share
+it; keys are unique across fixtures, and each is set at load (except
+`workday_sections.html`'s `"<entry>/<question>"` keys, which appear with an
+entry's first commit):
+
+- `null` — the app never received a commit for the field (the text boxes start so);
+- `""` / `[]` — the app holds an empty value (a commit of nothing, or a widget
+  whose empty state is itself app state, like a popup on "Select One").
+
+Tests read it through `tests/browser/pages.oracle(page, key)`, which raises on a
+missing key, so a typo never reads as "nothing committed".
 
 | Fixture | Notes | Oracle keys |
 |---|---|---|
@@ -42,10 +52,19 @@ one page share it; keys are unique across fixtures.
 `tests/browser/test_fixture_fidelity.py` drives each fixture with Playwright's
 trusted input and pins the behaviour above; change a fixture and that file first.
 
-What no fixture reproduces: live, `el.focus()`/`el.blur()` fire no events while
-the browser WINDOW is unfocused (§1). The test page is focused, so there the
-browser fires them natively — a fixture can check where focus went, not whether
-the window had it. During a native `focusout` Chrome already reports `<body>` as
+## Unfocused-window mode
+
+Live, while the browser WINDOW is not focused, `el.focus()` / `el.blur()` still
+move focus but fire no focus, blur, focusin or focusout events (§1, §6) — the
+reason text and dates showed but never committed. The test page's window is
+focused, so the browser fires them there. The opt-in `page_unfocused` fixture
+(`tests/browser/conftest.py`, `UNFOCUSED_WINDOW`) recreates the live condition:
+during a native `focus()`/`blur()` call every focus event is stopped at the
+window, while trusted Playwright input and events the engine dispatches itself
+still pass. `tests/browser/pages.in_both_windows(...)` runs a test in both modes;
+a leave that works only in the focused mode is not a fix.
+
+During a native `focusout` Chrome already reports `<body>` as
 `document.activeElement`, which is why the date wrapper checks after the event.
 
 ## Composition

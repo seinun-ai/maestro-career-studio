@@ -18,6 +18,7 @@
   const backing = btn.parentElement.querySelector(".hidden-backing");
   const portal = document.getElementById("portal");
   let picks = 0;
+  let revert = null;   // the first pick's pending take-back
   const show = (text) => { btn.textContent = text; btn.setAttribute("aria-label", ` ${text} Required`); };
   const ul = document.createElement("ul");
   ul.id = "relocate-list";
@@ -31,10 +32,11 @@
       e.stopPropagation();
       ul.style.display = "none";
       btn.setAttribute("aria-expanded", "false");
+      clearTimeout(revert);   // a later pick is not undone by the first one's timer
       show(text);
       picks += 1;
       if (picks === 1) {
-        setTimeout(() => show("Select One"), 500);
+        revert = setTimeout(() => show("Select One"), 500);
         return;
       }
       backing.value = text === "Select One" ? "" : "f00dfeedcafebeef0badc0dedeadbeef";

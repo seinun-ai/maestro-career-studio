@@ -7,14 +7,20 @@ holds. If one of these fails, the fixture no longer reproduces the field notes
 every engine test built on it proves nothing.
 """
 
-from tests.browser.conftest import fixture_html
+from tests.browser.conftest import EXTENSION, fixture_html
+from tests.browser.pages import oracle
 
 LIST = "[data-automation-id=activeListContainer]"
 ROWS = f"{LIST} [role=option]"
+# Proving a search did NOT run needs a wait: this outlasts the fixture's second
+# result stage (STAGE_2_MS = 400 in workday_search.html), so a search that was
+# going to answer has answered.
+PAST_SEARCH_MS = 500
 
 
-def oracle(page, key):
-    return page.evaluate("(k) => window.__oracle[k]", key)
+def wait_oracle(page, key, value):
+    """Wait until the app holds `value` for `key` (commits can land a frame or a timer later)."""
+    page.wait_for_function("([k, v]) => JSON.stringify(window.__oracle[k]) === JSON.stringify(v)", arg=[key, value])
 
 
 def row_texts(page):
@@ -37,14 +43,13 @@ def wait_rows(page, texts):
 
 def search(page, input_id, term, rows=None):
     """What a person does (§2): press, wait for the list, type, Enter; then
-    wait for the rows the search settles on (or, with none given, its second stage)."""
+    wait for the rows the search settles on. Without `rows` the caller waits
+    on its own condition."""
     page.click(f"#{input_id}")
     page.wait_for_selector(LIST)
     page.fill(f"#{input_id}", term)
     page.keyboard.press("Enter")
-    if rows is None:
-        page.wait_for_timeout(600)
-    else:
+    if rows is not None:
         wait_rows(page, rows)
 
 
@@ -88,7 +93,7 @@ def test_press_opens_the_list_on_the_next_frame_and_typing_alone_opens_nothing(p
     page.focus("#school")
     page.keyboard.type("Arlington")
     page.keyboard.press("Enter")
-    page.wait_for_timeout(500)
+    page.wait_for_timeout(PAST_SEARCH_MS)
     assert page.locator(LIST).count() == 0
     # A press: nothing in the same task, the list on the next frame.
     assert page.evaluate("""() => { const i = document.getElementById('heard');
@@ -101,7 +106,7 @@ def test_press_opens_the_list_on_the_next_frame_and_typing_alone_opens_nothing(p
     # School opens EMPTY (§2 rule 9).
     page.click("#school")
     page.wait_for_selector(LIST)
-    page.wait_for_timeout(50)
+    page.wait_for_timeout(50)   # a frame or two: nothing is drawn into it
     assert page.locator(ROWS).count() == 0
 
 
@@ -114,12 +119,12 @@ def test_enter_is_ignored_before_the_list_exists_and_searches_on_key_up(page, lo
       i.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true}));
       i.dispatchEvent(new KeyboardEvent('keyup', {key: 'Enter', bubbles: true})); }""")
     page.wait_for_selector(LIST)   # the press did open the list, a frame later
-    page.wait_for_timeout(500)
+    page.wait_for_timeout(PAST_SEARCH_MS)
     assert page.locator(ROWS).count() == 0
     # With the list open, a real key-DOWN alone does not search (§2 rule 1)…
     page.focus("#school")
     page.keyboard.down("Enter")
-    page.wait_for_timeout(500)
+    page.wait_for_timeout(PAST_SEARCH_MS)
     assert page.locator(ROWS).count() == 0
     # …the real key-UP does.
     page.keyboard.up("Enter")
@@ -157,8 +162,7 @@ def test_results_arrive_in_two_stages_in_reused_row_nodes(page, load):
 def test_a_single_result_commits_on_enter_with_no_click(page, load):
     load(page, fixture_html("workday_search.html"), sources=[])
     search(page, "school", "Dallas")
-    page.wait_for_function("window.__oracle.school !== ''")
-    assert oracle(page, "school") == "The University of Texas at Dallas"
+    wait_oracle(page, "school", "The University of Texas at Dallas")
     assert pills(page, "school") == ["The University of Texas at Dallas"]
 
 
@@ -355,17 +359,16 @@ def test_a_full_year_moves_focus_to_month_and_blurring_the_year_commits_nothing(
     assert page.evaluate("document.activeElement.id") == "m"
     # Blurring the box that was typed in does nothing: it no longer has focus.
     page.evaluate("document.getElementById('y').blur()")
-    page.wait_for_timeout(50)
+    page.wait_for_timeout(50)   # the wrapper checks after a 0 ms timer
     assert oracle(page, "from") == ""
     # A focusout while a part still has focus is ignored too.
     page.evaluate("document.getElementById('m').dispatchEvent(new FocusEvent('focusout', {bubbles: true}))")
-    page.wait_for_timeout(50)
+    page.wait_for_timeout(50)   # the wrapper checks after a 0 ms timer
     assert oracle(page, "from") == ""
     # The live sequence: blur what has focus NOW, then the events (§6).
     page.evaluate("""() => { const a = document.activeElement; a.blur();
       a.dispatchEvent(new FocusEvent('blur')); a.dispatchEvent(new FocusEvent('focusout', {bubbles: true})); }""")
-    page.wait_for_timeout(50)
-    assert oracle(page, "from") == "2026-06"
+    wait_oracle(page, "from", "2026-06")
     assert page.locator("text=Error:").count() == 0
 
 
@@ -382,7 +385,7 @@ def test_an_incomplete_date_shows_a_plain_error_span_and_marks_the_empty_part(pa
     page.click("#m")
     page.keyboard.type("06")
     page.mouse.click(1200, 880)
-    page.wait_for_timeout(50)
+    page.wait_for_selector("#from + span")
     error = page.locator("#from + span")
     assert error.inner_text() == "Error: The field From is required and must have a value."
     assert error.get_attribute("data-automation-id") is None
@@ -392,9 +395,8 @@ def test_an_incomplete_date_shows_a_plain_error_span_and_marks_the_empty_part(pa
     page.click("#y")
     page.keyboard.type("2026")
     page.mouse.click(1200, 880)
-    page.wait_for_timeout(50)
+    wait_oracle(page, "from", "2026-06")
     assert page.locator("#from + span").count() == 0 and page.get_attribute("#y", "aria-invalid") is None
-    assert oracle(page, "from") == "2026-06"
 
 
 def test_the_self_identify_date_has_a_day_part(page, load):
@@ -405,8 +407,7 @@ def test_the_self_identify_date_has_a_day_part(page, load):
         page.click(part)
         page.keyboard.type(value)
     page.mouse.click(1200, 880)
-    page.wait_for_timeout(50)
-    assert oracle(page, "signed") == "2026-09-26"
+    wait_oracle(page, "signed", "2026-09-26")
 
 
 # --- workday_upload.html (§7)
@@ -455,8 +456,7 @@ def test_ticking_currently_work_here_removes_the_to_date_a_frame_later(page, loa
     removed_at_once = page.evaluate("""() => { document.querySelector('label[for=Work-Experience-1-current]').click();
       return document.querySelector('[aria-labelledby=Work-Experience-1-panel] [data-automation-id=formField-endDate]') === null; }""")
     assert removed_at_once is False
-    page.wait_for_timeout(50)
-    assert entry.locator("[data-automation-id=formField-endDate]").count() == 0
+    entry.locator("[data-automation-id=formField-endDate]").wait_for(state="detached")
     assert oracle(page, "Work Experience 1/I currently work here") is True
     # The rest of the entry commits the §1/§6 way.
     page.fill("#Work-Experience-1-Job-Title", "Analyst")
@@ -471,13 +471,22 @@ def test_adversarial_revert_shows_the_first_pick_then_takes_it_back(page, load):
     page.click("#relocate-list > li:has-text('Yes')")
     assert page.inner_text("#relocate") == "Yes"
     assert page.evaluate("document.querySelector('.hidden-backing').value") == "" and oracle(page, "relocate") == ""
-    page.wait_for_timeout(600)
-    assert page.inner_text("#relocate") == "Select One"
+    page.wait_for_function("document.getElementById('relocate').textContent === 'Select One'")
+    assert oracle(page, "relocate") == ""
     page.click("#relocate")
     page.click("#relocate-list > li:has-text('Yes')")
-    page.wait_for_timeout(600)
     assert page.inner_text("#relocate") == "Yes" and oracle(page, "relocate") == "Yes"
     assert len(page.evaluate("document.querySelector('.hidden-backing').value")) == 32
+
+
+def test_adversarial_revert_timer_never_undoes_a_later_pick(page, load):
+    load(page, fixture_html("adversarial_revert.html"), sources=[])
+    page.click("#relocate")
+    page.click("#relocate-list > li:has-text('Yes')")   # shown, not taken, revert pending
+    page.click("#relocate")
+    page.click("#relocate-list > li:has-text('No')")    # taken, before the revert fires
+    page.wait_for_timeout(600)   # outlasts the first pick's 500 ms revert
+    assert page.inner_text("#relocate") == "No" and oracle(page, "relocate") == "No"
 
 
 def test_adversarial_same_text_has_two_others_under_different_visible_categories(page, load):
@@ -490,3 +499,47 @@ def test_adversarial_same_text_has_two_others_under_different_visible_categories
     assert oracle(page, "referral") == ""
     groups.nth(1).locator("input[type=radio]").click()
     assert oracle(page, "referral") == "Social Media / Other"
+
+
+# --- unfocused-window mode (conftest.UNFOCUSED_WINDOW; §1, §6): programmatic
+# focus()/blur() move focus but fire no events, as on the live page.
+LEAVE = """(el) => { el.blur(); el.dispatchEvent(new FocusEvent('blur'));
+  el.dispatchEvent(new FocusEvent('focusout', {bubbles: true, relatedTarget: null})); }"""
+
+
+def test_unfocused_a_bare_blur_commits_no_text_and_blur_then_events_does(page_unfocused, load):
+    page = page_unfocused
+    load(page, fixture_html("workday_text.html"), sources=[])
+    page.evaluate("""() => { const c = document.getElementById('city'); c.focus();
+      document.execCommand('insertText', false, 'Austin'); c.blur(); }""")
+    assert page.input_value("#city") == "Austin" and page.evaluate("document.activeElement.id") != "city"
+    assert oracle(page, "city") is None   # the text shows; the app never took it (§1)
+    page.evaluate(f"() => {{ const c = document.getElementById('city'); c.focus(); ({LEAVE})(c); }}")
+    assert oracle(page, "city") == "Austin"
+    assert page.is_hidden("#city-err")
+    # Trusted input is untouched by the mode: a real Tab still commits.
+    page.fill("#zip", "12345")
+    page.keyboard.press("Tab")
+    assert oracle(page, "zip") == "12345"
+
+
+def test_unfocused_a_bare_blur_commits_no_date_and_blurring_what_has_focus_then_events_does(page_unfocused, load):
+    page = page_unfocused
+    load(page, fixture_html("workday_date.html"), sources=[])
+    page.evaluate("""() => { const m = document.getElementById('m'), y = document.getElementById('y');
+      m.focus(); document.execCommand('insertText', false, '06');
+      y.focus(); document.execCommand('insertText', false, '2026');   // the widget moves focus to Month
+      document.activeElement.blur(); }""")
+    page.wait_for_timeout(50)   # the wrapper would check after a 0 ms timer
+    assert page.evaluate("document.getElementById('from').contains(document.activeElement)") is False
+    assert oracle(page, "from") == ""   # the date shows; the wrapper never ran (§6 finding 1)
+    page.evaluate(f"() => {{ document.getElementById('y').focus(); ({LEAVE})(document.getElementById('y')); }}")
+    wait_oracle(page, "from", "2026-06")
+    assert page.locator("text=Error:").count() == 0
+
+
+# --- the oracle is the tests' alone
+def test_the_extension_never_reads_the_oracle():
+    readers = [str(p.relative_to(EXTENSION)) for p in EXTENSION.rglob("*")
+               if p.is_file() and "__oracle" in p.read_bytes().decode("utf-8", "ignore")]
+    assert readers == []

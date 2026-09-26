@@ -1,4 +1,5 @@
 from tests.browser.conftest import fixture_html
+from tests.browser.pages import in_both_windows, oracle
 
 B = "window.careerStudioCompanion.fillBase"
 INVALID = f"ids => ids.map(id => {B}.invalid(document.getElementById(id)))"
@@ -211,13 +212,16 @@ def test_equivalence_keeps_punctuation_meaningful_except_for_phones(page, load):
     assert got == [False, True, True, False, False, False, False]
 
 
-def test_typing_is_trusted_input_a_workday_box_commits(page, load):
+@in_both_windows(unfocused_xfail="Task 2: leave with fillBase.leave (blur, then dispatch blur + focusout) "
+                                 "instead of a bare el.blur(), which an unfocused window does not report")
+def test_typing_is_trusted_input_a_workday_box_commits(window, request, load):
     """execCommand("insertText") fires the input events a Workday box takes
     into its draft, and leaving the box commits it and clears its error."""
+    page = request.getfixturevalue(window)
     load(page, fixture_html("workday_text.html"))
     page.evaluate(f"() => {B}.withinBudget(async (t) => {B}.typeText(document.getElementById('city'), 'Toronto', t), 1000)")
     page.evaluate("() => document.getElementById('city').blur()")
-    assert page.evaluate("() => window.__oracle.city") == "Toronto"
+    assert oracle(page, "city") == "Toronto"
     assert page.get_attribute("#city", "aria-invalid") == "false"
 
 

@@ -29,11 +29,16 @@ import pytest
 
 from app.schemas.autofill_fill import MapRequest, PickRequest, StepRequest
 from tests.browser.conftest import EXTENSION, fixture_html
+from tests.browser.pages import oracle
 
 MODELS = {"/api/autofill/map": MapRequest, "/api/autofill/pick": PickRequest,
           "/api/autofill/step": StepRequest}
 FIXTURES = ["workday_text.html", "workday_listbox.html", "workday_search.html",
             "popup_with_search.html", "native.html", "workday_date.html", "react_select.html"]
+# Task 5: restore — compose every test on FIXTURES. Until the engine operates the
+# live search box, a run on a page holding it spends the loop's whole budget
+# (~60 s) there, so only the search test pays that; the rest run without it.
+WITHOUT_SEARCH = [name for name in FIXTURES if name != "workday_search.html"]
 # The manifest's content scripts, in its order, then the panel-side loop.
 SOURCES = [*json.loads((EXTENSION / "manifest.json").read_text(encoding="utf-8"))
            ["content_scripts"][0]["js"], "shared/fill-loop.js"]
@@ -55,7 +60,7 @@ MAP = {
 }
 # The category a question's answer sits under, when no option names it. None
 # today: the live "How Did You Hear About Us?" is a search box (notes §2), and
-# the generic popup tree lives in test_fill_core.CATEGORY_POPUP.
+# the generic popup tree is tests/browser/pages.CATEGORY_POPUP.
 CATEGORIES: dict[str, str] = {}
 
 DRIVER = """(spec) => {
@@ -122,9 +127,9 @@ DRIVER = """(spec) => {
 }"""
 
 
-def _page_of_every_fixture() -> str:
+def _page_of(fixtures) -> str:
     parts = []
-    for name in FIXTURES:
+    for name in fixtures:
         html = fixture_html(name)
         own = f"portal-{name.removesuffix('.html')}"
         html = html.replace('id="portal"', f'id="{own}"').replace(
@@ -133,11 +138,11 @@ def _page_of_every_fixture() -> str:
     return "\n".join(parts)
 
 
-def _start(page, page_js=None, fresh=True, **spec):
-    """Load the page (unless `fresh` is False: the same page, a second run) and
-    start one run, left in flight as `window.__run`."""
+def _start(page, page_js=None, fresh=True, fixtures=WITHOUT_SEARCH, **spec):
+    """Load the page composed of `fixtures` (unless `fresh` is False: the same
+    page, a second run) and start one run, left in flight as `window.__run`."""
     if fresh:
-        page.set_content(_page_of_every_fixture())
+        page.set_content(_page_of(fixtures))
         if page_js:
             page.evaluate(page_js)
         # The listener agent.js registers is the page's whole message door.
@@ -161,8 +166,8 @@ def _finish(page):
     return out
 
 
-def _run(page, page_js=None, fresh=True, **spec):
-    _start(page, page_js, fresh, **spec)
+def _run(page, page_js=None, fresh=True, fixtures=WITHOUT_SEARCH, **spec):
+    _start(page, page_js, fresh, fixtures, **spec)
     return _finish(page)
 
 
@@ -180,38 +185,26 @@ def _open_popups(page):
     ]""")
 
 
-def _oracle(page, key):
-    """What the fake app HOLDS for a field (each fixture's window.__oracle)."""
-    return page.evaluate("(k) => window.__oracle[k]", key)
-
-
 @pytest.fixture
 def e2e_page(page):
     page.set_default_timeout(60000)
     return page
 
 
-@pytest.mark.xfail(strict=True, reason="Task 5: the live search widgets (press, Enter on key-up, settle, tick "
-                                        "the row's radio/checkbox, scroll a virtualized list); text and popups "
-                                        "already commit")
 def test_the_engine_fills_every_fixture_on_one_page(e2e_page):
+    """Every widget the engine operates today, on one page (Task 5: restore
+    workday_search.html to this page and fold the next test's asserts back in)."""
     page = e2e_page
     out = _run(page)
     status = {q: r["status"] for q, r in out["by_question"].items()}
 
     # Workday text: committed on leaving the box, and no field error left.
-    assert (_oracle(page, "city"), _oracle(page, "zip")) == ("Springfield", "12345")
+    assert (oracle(page, "city"), oracle(page, "zip")) == ("Springfield", "12345")
     assert page.input_value("#city") == "Springfield" and page.input_value("#zip") == "12345"
     assert page.evaluate("document.querySelectorAll('[aria-invalid=\"true\"]').length") == 0
     # Workday popups: the app took each pick (the backing input), not just the button text.
-    assert page.inner_text("#auth") == "Yes" and _oracle(page, "auth") == "Yes"
-    assert page.inner_text("#degree") == "Masters" and _oracle(page, "degree") == "Masters"
-    # Workday search: two identical LinkedIn leaves, the school after the staged
-    # results settle, and every skill (SQL was already there; "SQL" and
-    # "Python" sit below the fold of a virtualized list).
-    assert _oracle(page, "heard") == "LinkedIn"
-    assert _oracle(page, "school") == "The University of Texas at Arlington"
-    assert _oracle(page, "skills") == ["SQL", "Python", "Tableau"]
+    assert page.inner_text("#auth") == "Yes" and oracle(page, "auth") == "Yes"
+    assert page.inner_text("#degree") == "Masters" and oracle(page, "degree") == "Masters"
     # Native select.
     assert page.input_value("#deg") == "Master's"
     # A popup that needs its own search: open → search → click.
@@ -222,7 +215,6 @@ def test_the_engine_fills_every_fixture_on_one_page(e2e_page):
     assert [b["history"][-1] for b in fos[1:]] == ["open -> progressed", "search:value -> progressed"]
     # Reported as the page says: verified, and nothing guessed where no fact was.
     for question in ("City", "Postal Code", "Are you legally authorized to work in the United States?", "Degree",
-                     "How Did You Hear About Us?", "School or University", "Type to Add Skills",
                      "Highest degree", "Field of study"):
         assert status[question] == "verified", (question, out["by_question"][question])
     assert status["Which days can you work?"] == "needs_answer"
@@ -230,12 +222,10 @@ def test_the_engine_fills_every_fixture_on_one_page(e2e_page):
     # Telemetry for the filled widgets names the question, never the value.
     obs = page.evaluate("(r) => window.careerStudioCompanion.fillLoop.buildLoopObservations(r)", out["report"])
     by_label = {o["label"]: o for o in obs}
-    for question, value in (("How Did You Hear About Us?", "LinkedIn"),
-                            ("Are you legally authorized to work in the United States?", "Yes"),
-                            ("Field of study", "Information Systems")):
+    for question in ("Are you legally authorized to work in the United States?", "Field of study"):
         assert by_label[question]["outcome"] == "verified"
     assert not any(v.lower() in o["label"].lower() for o in obs
-                   for v in ("LinkedIn", "Information Systems", "University of Texas", "Springfield", "Master's"))
+                   for v in ("Information Systems", "Springfield", "Master's", "Masters"))
     # Nothing left open, and the whole run inside its budget.
     assert _open_popups(page) == []
     assert out["report"]["stopped"] is False and out["report"]["timedOut"] is False
@@ -244,6 +234,26 @@ def test_the_engine_fills_every_fixture_on_one_page(e2e_page):
     # inventory carried the run's id (the handler must forward it).
     inventories = [m for m in out["sent"] if m["type"] == "fill_inventory"]
     assert inventories and all(m["runId"] == out["report"]["runId"] for m in inventories)
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError,
+                   reason="Task 5: the live search widgets (press, Enter on key-up, settle, tick "
+                          "the row's radio/checkbox, scroll a virtualized list)")
+def test_the_engine_fills_the_live_search_widgets_among_every_fixture(e2e_page):
+    page = e2e_page
+    out = _run(page, fixtures=FIXTURES)
+    status = {q: r["status"] for q, r in out["by_question"].items()}
+    # Two identical LinkedIn leaves, the school after the staged results
+    # settle, and every skill (SQL was already there; "SQL" and "Python" sit
+    # below the fold of a virtualized list).
+    assert oracle(page, "heard") == "LinkedIn"
+    assert oracle(page, "school") == "The University of Texas at Arlington"
+    assert oracle(page, "skills") == ["SQL", "Python", "Tableau"]
+    for question in ("How Did You Hear About Us?", "School or University", "Type to Add Skills"):
+        assert status[question] == "verified", (question, out["by_question"][question])
+    obs = page.evaluate("(r) => window.careerStudioCompanion.fillLoop.buildLoopObservations(r)", out["report"])
+    assert {o["label"]: o for o in obs}["How Did You Hear About Us?"]["outcome"] == "verified"
+    assert not any(v.lower() in o["label"].lower() for o in obs for v in ("LinkedIn", "University of Texas"))
 
 
 def test_stop_between_two_fields_leaves_the_second_untouched(e2e_page):
@@ -257,8 +267,8 @@ def test_stop_between_two_fields_leaves_the_second_untouched(e2e_page):
     assert page.input_value("#city") == "Springfield"
     # Postal Code is next in the page: untouched, still the page's own value.
     assert page.input_value("#zip") == "00000"
-    assert page.inner_text("#auth") == "Select One" and _oracle(page, "auth") == ""
-    assert _oracle(page, "heard") == "" and _oracle(page, "school") == ""
+    assert page.inner_text("#auth") == "Select One" and oracle(page, "auth") == ""
+    # Task 5: restore — assert oracle(page, "heard") == "" and oracle(page, "school") == ""
     assert page.input_value("#deg") == ""
     assert _open_popups(page) == []
     assert out["by_question"]["City"]["status"] == "verified"
@@ -268,8 +278,8 @@ def test_stop_between_two_fields_leaves_the_second_untouched(e2e_page):
     # only works if the real handler forwards the run's id — and fills the rest.
     again = _run(page, fresh=False)
     assert again["report"]["stopped"] is False
-    assert page.input_value("#zip") == "12345" and _oracle(page, "zip") == "12345"
-    assert page.inner_text("#auth") == "Yes" and _oracle(page, "auth") == "Yes"
+    assert page.input_value("#zip") == "12345" and oracle(page, "zip") == "12345"
+    assert page.inner_text("#auth") == "Yes" and oracle(page, "auth") == "Yes"
     assert again["by_question"]["City"]["status"] == "already"
 
 def test_a_value_the_user_types_while_map_is_pending_is_theirs_and_kept(e2e_page):
@@ -323,7 +333,7 @@ def test_a_workday_dropdown_whose_label_never_updates_keeps_its_question(e2e_pag
     }""")
     assert page.get_attribute("#auth", "aria-label") == " Select One Required"
     assert page.inner_text("#auth") == "Yes" and page.inner_text("#degree") == "Masters"
-    assert (_oracle(page, "auth"), _oracle(page, "degree")) == ("Yes", "Masters")
+    assert (oracle(page, "auth"), oracle(page, "degree")) == ("Yes", "Masters")
     for question, answer in (("Are you legally authorized to work in the United States?", "Yes"), ("Degree", "Masters")):
         row = out["by_question"][question]
         assert (row["status"], row["answer"]) == ("verified", answer)

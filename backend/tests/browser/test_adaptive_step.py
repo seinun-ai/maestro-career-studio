@@ -5,7 +5,7 @@ against the state it was chosen from."""
 import pytest
 
 from tests.browser.conftest import fixture_html
-from tests.browser.test_fill_core import CATEGORY_POPUP, POLICY_PAGE
+from tests.browser.pages import CATEGORY_POPUP, POLICY_PAGE, list_shown, oracle
 
 OPS = "window.careerStudioCompanion.fillOps"
 MOVE_KINDS = {"click", "search", "open", "scroll", "give_up"}
@@ -30,16 +30,6 @@ def mids(s):
     return [c["mid"] for c in s["candidates"]]
 
 
-def oracle(page, key):
-    return page.evaluate("(k) => window.__oracle[k]", key)
-
-
-def portal_empty(page):
-    """Nothing VISIBLE in the portal: live Workday keeps a closed popup's list
-    in the DOM, hidden (notes §8a)."""
-    return not page.evaluate("[...document.getElementById('portal').children].some((c) => c.offsetParent !== null)")
-
-
 def test_a_category_continues_from_its_children_to_the_leaf(page, load):
     load(page, CATEGORY_POPUP)
     f = inv(page)["How did you hear about us?"]
@@ -51,7 +41,7 @@ def test_a_category_continues_from_its_children_to_the_leaf(page, load):
     row = move(page, f, "click:o1", "LinkedIn")
     assert (row["outcome"], row["committed"]) == ("verified", "LinkedIn")
     assert "text" not in row
-    assert portal_empty(page)
+    assert not list_shown(page)
 
 
 def test_a_popup_that_needs_a_search_is_opened_searched_and_picked(page, load):
@@ -68,8 +58,9 @@ def test_a_popup_that_needs_a_search_is_opened_searched_and_picked(page, load):
     assert page.inner_text("#fos") == "Information Systems"
 
 
-@pytest.mark.xfail(strict=True, reason="Task 5: search moves press, type, Enter (key-up) and settle; the click "
-                                        "move ticks the row's radio")
+@pytest.mark.xfail(strict=True, raises=AssertionError,
+                   reason="Task 5: search moves press, type, Enter (key-up) and settle; the click "
+                          "move ticks the row's radio")
 def test_a_search_field_types_into_its_own_box_and_takes_the_query_back(page, load):
     load(page, fixture_html("workday_search.html"))
     f = inv(page)["School or University"]
@@ -84,7 +75,7 @@ def test_a_search_field_types_into_its_own_box_and_takes_the_query_back(page, lo
     click = next(c["mid"] for c in s["candidates"] if c["describe"] == f'Click the option "{school}"')
     row = move(page, f, click, school)
     assert (row["outcome"], row["committed"]) == ("verified", school) and oracle(page, "school") == school
-    assert page.input_value("#school") == "" and portal_empty(page)
+    assert page.input_value("#school") == "" and not list_shown(page)
 
 
 def test_give_up_closes_everything(page, load):
@@ -92,7 +83,7 @@ def test_give_up_closes_everything(page, load):
     f = inv(page)["How did you hear about us?"]
     move(page, f, "open", "x")
     assert move(page, f, "give_up", "x")["outcome"] == "closed"
-    assert portal_empty(page)
+    assert not list_shown(page)
 
 
 def test_give_up_takes_back_a_query_the_engine_typed(page, load):
@@ -100,7 +91,7 @@ def test_give_up_takes_back_a_query_the_engine_typed(page, load):
     f = inv(page)["School or University"]
     move(page, f, "search:value", "Texas")
     assert move(page, f, "give_up", "Texas")["outcome"] == "closed"
-    assert page.input_value("#school") == "" and portal_empty(page)
+    assert page.input_value("#school") == "" and not list_shown(page)
 
 
 def test_a_state_is_consumed_by_one_move_and_a_changed_list_is_stale(page, load):
@@ -131,8 +122,9 @@ def test_a_filtered_search_view_is_never_complete(page, load):
     assert state(page, f, "Information Systems")["complete"] is False
 
 
-@pytest.mark.xfail(strict=True, reason="Task 6: the live popup lists its 'Select One' placeholder as an option; "
-                                        "it must not be offered as an answer")
+@pytest.mark.xfail(strict=True, raises=AssertionError,
+                   reason="Task 6: the live popup lists its 'Select One' placeholder as an option; "
+                          "it must not be offered as an answer")
 def test_an_unfiltered_short_list_is_complete(page, load):
     load(page, fixture_html("workday_listbox.html"))
     f = inv(page)["Are you legally authorized to work in the United States?"]
@@ -168,7 +160,7 @@ def test_candidates_are_ids_code_generated_and_capped(page, load):
     assert all(c["mid"].split(":")[0] in MOVE_KINDS for c in s["candidates"])
     assert len(s["candidates"]) <= 60 and s["candidates"][-1]["mid"] == "give_up"
     assert "close" not in mids(s)  # give_up closes; close stays a cleanup move only
-    assert move(page, f, "close", "Yes")["outcome"] == "closed" and portal_empty(page)
+    assert move(page, f, "close", "Yes")["outcome"] == "closed" and not list_shown(page)
 
 
 LONG_LIST = """<label id='l'>Country</label>
@@ -251,7 +243,7 @@ def test_another_field_closes_a_popup_a_move_left_open(page, load):
     load(page, CATEGORY_POPUP)
     fields = inv(page)
     move(page, fields["How did you hear about us?"], "open", "x")
-    assert not portal_empty(page)
+    assert list_shown(page)
     row = page.evaluate(f"(a) => {OPS}.apply([a])", {
         "fid": fields["Are you legally authorized to work in the United States?"]["fid"],
         "fp": fields["Are you legally authorized to work in the United States?"]["fp"], "op": "choose", "text": "No"})[0]
@@ -264,7 +256,7 @@ def test_stop_closes_a_popup_a_move_opened(page, load):
     move(page, f, "open", "x")
     page.evaluate(f"() => {OPS}.cancel()")
     page.wait_for_timeout(400)
-    assert portal_empty(page)
+    assert not list_shown(page)
     assert move(page, f, "open", "x", version=0)["outcome"] == "cancelled"
 
 
@@ -337,11 +329,12 @@ def test_a_group_that_commits_a_value_is_never_verified(page, load):
     move(page, f, "open", "LinkedIn")
     row = move(page, f, "click:o2", "LinkedIn")
     assert (row["outcome"], row["reason"]) == ("unexpected", "group_committed")
-    assert portal_empty(page)
+    assert not list_shown(page)
 
 
-@pytest.mark.xfail(strict=True, reason="Task 5: a search move presses Enter and reads a virtualized list "
-                                        "(\"SQL\" is #19 of 31) by scrolling it")
+@pytest.mark.xfail(strict=True, raises=AssertionError,
+                   reason="Task 5: a search move presses Enter and reads a virtualized list "
+                          "(\"SQL\" is #19 of 31) by scrolling it")
 def test_chips_a_multi_widget_already_holds_are_never_click_moves(page, load):
     load(page, fixture_html("workday_search.html"))
     f = inv(page)["Type to Add Skills"]

@@ -16,6 +16,7 @@
   // __oracle[<field>] is what the fake app HOLDS; the engine must never read it.
   // Postal Code shows "00000" that the app never took (the owner's §1 report).
   const oracle = (window.__oracle = window.__oracle || {});
+  oracle.city = oracle.zip = null;   // null: never committed ("" would be committed empty)
   for (const id of ["city", "zip"]) {
     const input = document.getElementById(id);
     const err = document.getElementById(`${id}-err`);
