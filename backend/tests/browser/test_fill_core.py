@@ -442,7 +442,8 @@ DEAF = """<label id='l'>Pick one</label><div><button id='deaf' aria-haspopup='li
 
 def test_a_widget_that_ignores_every_gesture_reports_no_effect(page, load):
     """With the kinds of gesture it tried: a press and then the keyboard for
-    the button; typing and then the setter for the box."""
+    the button; typing (insertText and its setter fallback: one gesture) for
+    the box."""
     load(page, DEAF)
     f = inv(page)
     got = explore(page, f["Pick one"])
@@ -450,7 +451,13 @@ def test_a_widget_that_ignores_every_gesture_reports_no_effect(page, load):
     row = apply(page, f["Pick one"], op="choose", text="Yes")
     assert (row["outcome"], row["reason"], sorted(row["gestures"])) == ("unexpected", "no_effect", ["keyboard", "pointer"])
     row = apply(page, f["Code"], op="write", value="ABC")
-    assert (row["outcome"], row["reason"], sorted(row["gestures"])) == ("reverted", "no_effect", ["setter", "type"])
+    assert (row["outcome"], row["reason"], row["gestures"]) == ("reverted", "no_effect", ["type"])
+
+
+def test_a_number_box_given_text_refuses_the_value_in_one_gesture(page, load):
+    load(page, "<label for='n'>Years</label><input id='n' type='number'>")
+    row = apply(page, inv(page)["Years"], op="write", value="ten")
+    assert (row["outcome"], row["reason"], row["gestures"]) == ("reverted", "no_effect", ["type"])
 
 
 # A popup that ignores a press and opens from the keyboard (ArrowDown), with
@@ -461,6 +468,8 @@ KEYBOARD_ONLY = """<label id='l'>Willing to travel?</label>
 <label id='m'>Shift</label><div><button id='bare' aria-haspopup='listbox' aria-labelledby='m'>Select One</button></div>
 <script>
 (() => {
+  window.bareKeys = [];
+  document.getElementById('bare').addEventListener('keydown', (e) => window.bareKeys.push(e.key));
   const btn = document.getElementById('kb');
   btn.addEventListener('keydown', (e) => {
     if (e.key !== 'ArrowDown' || document.getElementById('kb-list')) return;
@@ -490,11 +499,66 @@ def test_a_popup_that_opens_only_from_the_keyboard_is_filled(page, load):
 
 
 def test_a_press_that_opens_a_role_less_list_had_an_effect(page, load):
+    """…so no key follows it: not ArrowDown, and never an Enter."""
     load(page, KEYBOARD_ONLY)
     f = inv(page)["Shift"]
     got = explore(page, f)
     assert got["error"] == "no_popup" and "gestures" not in got
     assert apply(page, f, op="choose", text="Day")["reason"] == "no_popup"
+    assert page.evaluate("window.bareKeys") == []
+
+
+# A press appends a ROLE-LESS list with its first row highlighted; an Enter
+# on the button would accept it. `__oracle.team` is what the fake app holds.
+# A second button ignores the press and ArrowDown, and an Enter commits "Yes"
+# with no list at all; nothing gives it back.
+ENTER_PICKS = """<label id='l'>Team</label>
+<div><button id='team' aria-haspopup='listbox' aria-labelledby='l'>Select One</button><input type='hidden' value=''></div>
+<label id='m'>Relocate?</label>
+<div><button id='blind' aria-haspopup='listbox' aria-labelledby='m'>Select One</button><input type='hidden' value=''></div>
+<script>
+(() => {
+  const oracle = (window.__oracle = window.__oracle || {});
+  oracle.team = ""; oracle.blind = "";
+  const team = document.getElementById('team');
+  team.addEventListener('click', () => {
+    if (document.querySelector('.rows')) return;
+    const rows = document.createElement('div');
+    rows.className = 'rows'; rows.innerHTML = "<div class='hl'>Red</div><div>Blue</div>";
+    document.body.append(rows);
+  });
+  team.addEventListener('keydown', (e) => {
+    const hl = document.querySelector('.rows .hl');
+    if (e.key !== 'Enter' || !hl) return;
+    team.textContent = hl.textContent; team.nextElementSibling.value = hl.textContent; oracle.team = hl.textContent;
+  });
+  const blind = document.getElementById('blind');
+  blind.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    blind.textContent = 'Yes'; blind.nextElementSibling.value = 'Yes'; oracle.blind = 'Yes';
+  });
+})();
+</script>"""
+
+
+def test_no_enter_follows_a_press_that_opened_a_role_less_list(page, load):
+    load(page, ENTER_PICKS)
+    explore(page, inv(page)["Team"])
+    assert oracle(page, "team") == "" and page.inner_text("#team") == "Select One"
+    load(page, ENTER_PICKS)
+    apply(page, inv(page)["Team"], op="choose", text="Blue")
+    assert oracle(page, "team") == "" and page.inner_text("#team") == "Select One"
+
+
+def test_a_value_the_keyboard_committed_is_reported_never_silent(page, load):
+    load(page, ENTER_PICKS)
+    f = inv(page)["Relocate?"]
+    row = apply(page, f, op="choose", text="No")
+    assert (row["outcome"], row["reason"], row["committed"]) == ("unexpected", "committed_while_opening", "Yes")
+    assert oracle(page, "blind") == "Yes"
+    load(page, ENTER_PICKS)
+    got = explore(page, inv(page)["Relocate?"])
+    assert (got["error"], got["committed"]) == ("committed_while_exploring", "Yes")
 
 
 def test_a_gesture_that_changed_something_is_never_no_effect(page, load):

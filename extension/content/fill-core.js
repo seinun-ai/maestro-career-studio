@@ -24,11 +24,14 @@
  * element's own value or its aria-expanded / aria-activedescendant, and no
  * node changed in the field's box or was added to <body> — reports reason
  * `no_effect` with the KINDS of gesture it tried (`gestures`: pointer,
- * keyboard, type, setter, select). The loop calls a field `unsupported` only
- * once two different kinds have had no effect. A gesture that changed
- * anything is never no_effect. A press that opens nothing on a button or
- * combobox is followed by a genuinely different gesture: ArrowDown, then
- * Enter (never on a plain text box).
+ * keyboard, type, select; insertText and its setter fallback are one `type`).
+ * The loop calls a field `unsupported` only once two different kinds (or two
+ * separate writes) have had no effect. A gesture that changed anything is
+ * never no_effect. A press that did NOTHING on a button or combobox is
+ * followed by a genuinely different gesture: ArrowDown, then — only if that
+ * did nothing either — Enter (never on a plain text box, never after any
+ * effect). A value the keys committed is taken back, or reported
+ * (`committed_while_opening`).
  *
  * EXPLORING CAN COMMIT (notes §2 rule 5: a search that finds one hit picks
  * it). fill-ops snapshots the committed value before an explore and, with an
@@ -208,9 +211,6 @@
   };
 
   // ---- text-like
-  // The kinds of gesture one typeText tried: the setter fallback runs only
-  // when insertText changed nothing.
-  const typedKinds = (how) => (how === "setter" ? ["type", "setter"] : ["type"]);
   async function write(el, shape, value, t, { format } = {}) {
     if (shape.kind !== "text") return { outcome: "unexpected", reason: "not_text" };
     let parts = null;
@@ -238,10 +238,16 @@
     const w = watch(el, shape);
     try {
       if (parts) {
-        for (const [sec, part] of parts) w.saw(...typedKinds(b().typeText(sec, part, t)));
+        for (const [sec, part] of parts) {
+          b().typeText(sec, part, t);
+          w.saw("type");
+        }
         await blurOut(parts.at(-1)[0], t);
       } else {
-        w.saw(...typedKinds(b().typeText(el, text, t)));
+        // insertText and its setter fallback are ONE gesture: a box that takes
+        // neither may be refusing this VALUE (type=number, a mask), not the engine.
+        b().typeText(el, text, t);
+        w.saw("type");
         await blurOut(el, t);
       }
       w.saw();
@@ -294,8 +300,13 @@
   // text box (an Enter there can submit a form).
   const keyable = (el) => !(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) || el.readOnly
     || el.getAttribute("role") === "combobox";
-  // `w` (a watch) hears each gesture's kind.
-  const open = async (el, shape, term, t, w) => {
+  // `w` (a watch) hears each gesture's kind. A key is sent only while every
+  // gesture before it had NO effect at all (a fresh watch, not "no readable
+  // popup"): after a press that visibly did something — a role-less list —
+  // an Enter would accept its highlighted row. What the keys themselves
+  // committed is taken back (`reclaim`); what could not be is `committed`.
+  // `reclaim: false` for the engine's own undo, which must not undo itself.
+  const open = async (el, shape, term, t, w, { reclaim = true } = {}) => {
     const before = b().popups();
     opened.set(el, before);
     let searchable = shape.open === "search";
@@ -307,16 +318,35 @@
       return { pop: await waitOptions(el, before, t), before, searchable };
     }
     el.focus?.({ preventScroll: true });
-    b().press(el, t);
-    let pop = await b().waitFor(() => own(el, before), searchable ? SEARCH_OPEN_MS : OPEN_MS, t);
-    w?.saw("pointer");
-    // A press that opened nothing: the keyboard, a genuinely different gesture.
-    for (const key of ["ArrowDown", "Enter"]) {
-      if (pop || !keyable(el)) break;
-      b().enter(el, t);
-      b().keyPress(el, key, t);
-      pop = await b().waitFor(() => own(el, before), KEY_OPEN_MS, t);
-      w?.saw("keyboard");
+    const snap = snapshot(el, shape);
+    const quiet = watch(el, shape);
+    let pop;
+    let keyed = false;
+    try {
+      b().press(el, t);
+      pop = await b().waitFor(() => own(el, before), searchable ? SEARCH_OPEN_MS : OPEN_MS, t);
+      quiet.saw();
+      w?.saw("pointer");
+      // A press that did nothing at all: the keyboard, a genuinely different gesture.
+      for (const key of ["ArrowDown", "Enter"]) {
+        if (pop || !keyable(el) || !quiet.ignored) break;
+        keyed = true;
+        b().enter(el, t);
+        b().keyPress(el, key, t);
+        pop = await b().waitFor(() => own(el, before), KEY_OPEN_MS, t);
+        quiet.saw();
+        w?.saw("keyboard");
+      }
+    } finally {
+      quiet.stop();
+    }
+    if (keyed && reclaim && moved(el, shape, snap)) {
+      await takeBack(el, shape, snap, pop ? b().optionsOf(pop) : [], t);
+      if (moved(el, shape, snap)) {
+        if (pop) await tidy(el, t);
+        return { pop: null, before, searchable, committed: true };
+      }
+      pop = own(el, before);
     }
     if (!pop) return { pop: null, before, searchable };
     const box = pop.querySelector(INNER_SEARCH);
@@ -450,7 +480,12 @@
     b().check(t);
     const w = watch(el, shape);
     try {
-      let { pop, searchable } = await open(el, shape, term, t, w);
+      const first = await open(el, shape, term, t, w);
+      if (first.committed) {
+        return { options: [], complete: false, searchable: first.searchable, error: "committed_while_exploring",
+          committed: shape.read(el) };
+      }
+      let { pop, searchable } = first;
       let options = pop ? b().optionsOf(pop) : [];
       if (!options.length && term) {
         const word = term.split(/\s+/).find((x) => x.length > 2 && x !== term);
@@ -574,7 +609,9 @@
     const w = watch(el, shape);
     try {
       for (const gesture of GESTURES) {
-        const { pop, before: popsBefore } = await open(el, shape, shape.open === "search" ? (term ?? text) : term, t, w);
+        const { pop, before: popsBefore, committed } = await open(el, shape,
+          shape.open === "search" ? (term ?? text) : term, t, w, { reclaim: !undo });
+        if (committed) return { outcome: "unexpected", reason: "committed_while_opening" };
         if (!pop) {
           await tidy(el, t);
           return { outcome: "unexpected", ...w.reason("no_popup") };
@@ -824,6 +861,7 @@
       const w = watch(el, shape);
       try {
         const o = await open(el, shape, undefined, t, w);
+        if (o.committed) return { outcome: "unexpected", reason: "committed_while_opening" };
         if (!o.pop) {
           await tidy(el, t);
           return { outcome: "unexpected", ...w.reason("no_popup") };

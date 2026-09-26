@@ -534,13 +534,19 @@ know, and each one was learned from a live failure.
   which nothing moved: not the committed value, the open popups, the box's
   own value or its `aria-expanded` / `aria-activedescendant`, and no node
   changed in the field's box or was added to `<body>` (`no_effect`, judged on
-  the page, with the KINDS of gesture tried). A press that opens nothing on a
-  button or combobox is followed by the keyboard (ArrowDown, then Enter —
-  never on a plain text box); typing that changes nothing is followed by the
-  value setter. Only when two DIFFERENT kinds have had no effect since
-  anything last did is the field `unsupported`, listed under Couldn't operate
-  as "doesn't accept automated input": the Companion has no trusted input to
-  try instead. The same press ignored twice is not enough.
+  the page, with the KINDS of gesture tried). A press that did nothing at all
+  on a button or combobox is followed by the keyboard: ArrowDown, then Enter
+  only if ArrowDown did nothing either — never on a plain text box, and never
+  after anything reacted (an Enter would accept the row a role-less list
+  highlighted). A value the keys committed is taken back; one the page will
+  not give back leaves the field to the user, named ("Opening the list
+  picked …"). Only when two DIFFERENT kinds have had no effect since anything
+  last did is the field `unsupported`, listed under Couldn't operate as
+  "doesn't accept automated input": the Companion has no trusted input to try
+  instead. The same press ignored twice is not enough. Typing is one kind per
+  write (insertText and its setter fallback together: a box that takes
+  neither may be refusing that value, a type=number box given text), so a
+  text box needs a second, separate write ignored too.
 - Identity fields (name, email, phone) overwrite a wrong ATS prefill and are
   reported under "corrected"; identity **comboboxes** are fill-only-if-empty.
 - Hidden clone fields are skipped, a write a controlled input rejected is

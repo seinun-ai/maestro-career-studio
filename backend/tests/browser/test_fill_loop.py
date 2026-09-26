@@ -1075,13 +1075,13 @@ def test_a_widget_that_ignores_every_input_is_unsupported(page, load):
               map={"a": {"route": "slot", "slot": "custom.code", "value": "ABC"},
                    "d": {"route": "slot", "slot": "preferences.willing_to_relocate", "value": "Yes"}},
               explore={"d": {"options": [], "complete": False, "error": "no_effect", "gestures": ["pointer"]}},
-              apply={"ABC": {"outcome": "reverted", "reason": "no_effect", "gestures": ["type", "setter"]},
+              apply={"ABC": {"outcome": "reverted", "reason": "no_effect", "gestures": ["type"]},
                      "open": {"outcome": "unexpected", "reason": "no_effect", "gestures": ["keyboard"]}},
               step={"states": [{"candidates": [{"mid": "open", "describe": "Open the dropdown"}, GIVE_UP]}],
                     "moves": [{"mid": "open", "reason": "progress"}]})
     assert statuses(out) == {"a": "unsupported", "d": "unsupported"}
-    # Typing and the setter both ignored in one write; a press, then the keyboard.
-    assert len(actions(out, "write")) == 1
+    # Two separate writes ignored (one write is one gesture); a press, then the keyboard.
+    assert len(actions(out, "write")) == 2
     assert [a["mid"] for a in actions(out, "move")] == ["open"]
     obs = page.evaluate("(r) => window.careerStudioCompanion.fillLoop.buildLoopObservations(r)", out["report"])
     assert [o["outcome"] for o in obs] == ["unsupported", "unsupported"]
@@ -1099,11 +1099,36 @@ def test_the_same_gesture_ignored_twice_is_not_unsupported(page, load):
               apply={"open": {"outcome": "unexpected", "reason": "no_effect", "gestures": ["pointer"]},
                      "ABC": [{"outcome": "reverted", "reason": "no_effect", "gestures": ["type"]},
                              {"outcome": "reverted"},
-                             {"outcome": "reverted", "reason": "no_effect", "gestures": ["setter"]}]},
+                             {"outcome": "reverted", "reason": "no_effect", "gestures": ["type"]}]},
               step={"states": [state, dict(state)],
                     "moves": [{"mid": "open", "reason": "progress"}, {"mid": "give_up", "reason": "abstained"}]})
     assert statuses(out) == {"d": "needs_answer", "a": "cannot_operate"}
     assert len(actions(out, "write")) == 3
+
+
+def test_a_box_that_refuses_one_value_is_retried_not_unsupported(page, load):
+    """A type=number box given text takes neither insertText nor the setter:
+    that is the box refusing the VALUE. One write is one gesture — retried as
+    before, never unsupported for it."""
+    out = run(page, load, frames=[[f("n", question="Years")]] * 3,
+              map={"n": {"route": "slot", "slot": "custom.years", "value": "ten"}},
+              apply={"ten": [{"outcome": "reverted", "reason": "no_effect", "gestures": ["type"]}, {"outcome": "verified"}]})
+    assert statuses(out) == {"n": "verified"}
+    assert len(actions(out, "write")) == 2
+
+
+def test_a_keyboard_open_that_committed_is_left_for_the_user(page, load):
+    out = run(page, load, frames=[[f("d", "popup", "Relocate?")]] * 2,
+              map={"d": {"route": "slot", "slot": "preferences.willing_to_relocate", "value": "No"}},
+              explore={"d": {"options": [opt("o1", "Yes"), opt("o2", "No")], "complete": True}},
+              pick={"d": {"oids": ["o2"], "reason": "matched"}},
+              apply={"No": {"outcome": "unexpected", "reason": "committed_while_opening", "committed": "Yes"}})
+    r = row(out, "d")
+    assert (r["status"], r["lastOutcome"]) == ("needs_answer", "committed_while_opening")
+    assert r["answer"] == 'Opening the list picked "Yes" and Companion couldn\'t take it back. Check it.'
+    assert len(actions(out, "choose")) == 1 and "fill_step_state" not in out["calls"]
+    obs = page.evaluate("(r) => window.careerStudioCompanion.fillLoop.buildLoopObservations(r)", out["report"])
+    assert [o["outcome"] for o in obs] == ["filled_unverified"]
 
 
 def test_a_failed_search_for_one_item_is_still_tried_for_the_next(page, load):

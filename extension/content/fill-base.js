@@ -303,8 +303,6 @@
   // truncated (maxlength) what was typed has answered, and is not overwritten.
   // `undo` skips the token and latch checks for ONE purpose: a cancelled or
   // timed-out operation taking back a search query the engine itself typed.
-  // Returns how it typed: "insert", or "setter" when insertText changed
-  // nothing and the fallback ran too (two different gestures were tried).
   const typeText = (el, value, t, { undo = false } = {}) => {
     if (!undo) check(t);
     focusIn(el);
@@ -319,16 +317,15 @@
       if (!ok || (el.textContent === before && before !== value)) {
         throw new Error("the browser would not type into this editable box");
       }
-      return "insert";
+      return;
     }
     const before = el.value;
     el.select?.();
     const ok = document.execCommand?.("insertText", false, value);
-    if (ok && (el.value !== before || before === value)) return "insert";
+    if (ok && (el.value !== before || before === value)) return;
     Object.getOwnPropertyDescriptor(proto(el), "value")?.set?.call(el, value);
     el.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: value }));
     el.dispatchEvent(new Event("change", { bubbles: true }));
-    return "setter";
   };
   // Equal after folding case, accents and whitespace ONLY — punctuation is
   // meaning ("C" ≠ "C++", "123456.7" ≠ "12345.67"). Phone numbers and money

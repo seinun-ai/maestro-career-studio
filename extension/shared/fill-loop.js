@@ -36,8 +36,8 @@
  *   clock), a state + move pair that failed is never proposed to the page again
  *   (`failedMoves`: the state as shown, the value it was for, the move), and a
  *   field is `unsupported` only once two DIFFERENT kinds of gesture (pointer,
- *   keyboard, typing …) have had no effect at all (`no_effect`, with the kinds
- *   the page tried) since anything last did.
+ *   keyboard) — or two separate writes — have had no effect at all
+ *   (`no_effect`, with the kinds the page tried) since anything last did.
  * - Never stall: every backend wait is bounded (API_MS, and never past the
  *   field's or the run's clock); the run has a clock; rounds, attempts, steps
  *   and items are capped. A late answer is ignored. Before finishing, a quiet
@@ -169,10 +169,10 @@
   const unstableNote = (text) => (text ? `Companion filled "${text}" twice and the page took it back both times. Check it.`
     : "Companion filled this twice and the page took it back both times. Check it.");
   const revertedNote = (text) => `Companion filled "${text}", then the page took it back. Check it.`;
-  const stuckNote = (committed) => {
+  const stuckNote = (committed, how = "Searching") => {
     const text = [committed].flat().filter((v) => v != null && String(v).trim() !== "").join(", ");
-    return text ? `Searching picked "${text}" and Companion couldn't take it back. Check it.`
-      : "Searching picked a value and Companion couldn't take it back. Check it.";
+    return text ? `${how} picked "${text}" and Companion couldn't take it back. Check it.`
+      : `${how} picked a value and Companion couldn't take it back. Check it.`;
   };
   // Options a model may be shown: never a never-fill one, never under the reserved key.
   const usable = (opts) => (opts ?? []).filter((o) => o && !o.policyBlocked && typeof o.text === "string"
@@ -268,13 +268,19 @@
     const fieldLate = (f) => Date.now() >= (rows.get(f.fid)?.deadline ?? Infinity);
     // The kinds of gesture that changed nothing at all (`no_effect`, judged
     // on the page, which says which kinds it tried) since anything last did.
-    // Two DIFFERENT kinds ignored — a press and the keyboard, typing and the
-    // setter — and the widget ignores synthetic input, which is all the
-    // engine has: `unsupported`. The same press ignored twice is not that.
+    // Two DIFFERENT kinds ignored — a press and the keyboard — and the widget
+    // ignores synthetic input, which is all the engine has: `unsupported`.
+    // The same press ignored twice is not that. Typing is the exception: one
+    // write (insertText and its setter fallback) is one gesture, since a box
+    // may be refusing that VALUE (type=number, a mask); typing is all a text
+    // box takes, so a SEPARATE later write ignored too counts as a second.
     // True when that just made the field unsupported.
     const ignoredBy = (f, reason, gestures) => {
       const kinds = new Set(reason === "no_effect" ? rows.get(f.fid).ignored ?? [] : []);
-      if (reason === "no_effect") for (const k of gestures?.length ? gestures : ["unknown"]) kinds.add(String(k));
+      const typings = [...kinds].filter((k) => k.startsWith("type")).length;
+      if (reason === "no_effect") {
+        for (const k of gestures?.length ? gestures : ["unknown"]) kinds.add(k === "type" ? `type#${typings}` : String(k));
+      }
       set(f.fid, { ignored: [...kinds] });
       if (kinds.size < NO_EFFECT_KINDS) return false;
       finish(f, "unsupported", { lastOutcome: "no_effect" });
@@ -328,6 +334,12 @@
       if (got.outcome === "cancelled") return { outcome: "halted" };
       if (REFUSED[got.outcome]) {
         finish(f, REFUSED[got.outcome], { lastOutcome: got.outcome });
+        return { outcome: "refused" };
+      }
+      // Opening the list from the keyboard picked a value the page would not
+      // give back: nothing more is tried; the user is told what it holds.
+      if (got.reason === "committed_while_opening") {
+        finish(f, "needs_answer", { lastOutcome: got.reason, answer: stuckNote(got.committed, "Opening the list") });
         return { outcome: "refused" };
       }
       // A close is the engine tidying up, not an attempt on the field.
@@ -999,9 +1011,10 @@
     needs_answer: "needs_answer", cannot_operate: "cannot_operate", unsupported: "unsupported",
   };
   // A needs_answer row a value landed on without being chosen as the answer
-  // (a group click that committed one, a search that picked while exploring):
+  // (a group click that committed one, a search or a keyboard open that
+  // picked one the page would not give back):
   // the user's to check, sent as filled_unverified.
-  const LANDED = new Set(["group_committed", "committed_while_exploring"]);
+  const LANDED = new Set(["group_committed", "committed_while_exploring", "committed_while_opening"]);
   const MAX_OBSERVATIONS = 200;
   // A label that holds the value written (a reader that took the value into
   // the question, a leftover note's quoted text) is sent blank: the label is
