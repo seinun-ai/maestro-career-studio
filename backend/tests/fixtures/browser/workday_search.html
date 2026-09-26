@@ -260,7 +260,8 @@
       if (open && open.id === id) requestAnimationFrame(render);
     });
   }
-  // A press anywhere outside the open widget and its list closes the list.
+  // Where the notes are silent: a press anywhere outside the open widget and
+  // its list closes the list (the notes do not say how the live list closes).
   document.addEventListener("mousedown", (e) => {
     if (!open || portal.contains(e.target) || e.target === inputOf(open.id)) return;
     close();

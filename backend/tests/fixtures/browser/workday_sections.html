@@ -22,7 +22,8 @@
   /* The delete button's glyph is drawn, not named (§5). Its automation id is
      illustrative: the notes record only that it has no accessible name. */
   [data-automation-id="panel-set-delete-button"] { width: 20px; height: 20px; }
-  [data-automation-id="panel-set-delete-button"]::before { content: "\1F5D1"; }
+  /* The empty alt text ("/ ''") keeps the glyph out of the accessible name. */
+  [data-automation-id="panel-set-delete-button"]::before { content: "\1F5D1" / ""; }
 </style>
 <script>
 (() => {

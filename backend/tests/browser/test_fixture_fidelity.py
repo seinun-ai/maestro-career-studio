@@ -108,18 +108,21 @@ def test_press_opens_the_list_on_the_next_frame_and_typing_alone_opens_nothing(p
 def test_enter_is_ignored_before_the_list_exists_and_searches_on_key_up(page, load):
     load(page, fixture_html("workday_search.html"), sources=[])
     # Press and Enter in the same task: the list is not drawn yet, Enter is lost.
+    # (Dispatched: trusted input cannot land inside one task, before the frame.)
     page.evaluate("""() => { const i = document.getElementById('school'); i.value = 'Arlington';
       i.dispatchEvent(new MouseEvent('mousedown', {bubbles: true}));
       i.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true}));
       i.dispatchEvent(new KeyboardEvent('keyup', {key: 'Enter', bubbles: true})); }""")
+    page.wait_for_selector(LIST)   # the press did open the list, a frame later
     page.wait_for_timeout(500)
     assert page.locator(ROWS).count() == 0
-    # With the list open, key-DOWN alone does not search (§2 rule 1)…
-    page.evaluate("document.getElementById('school').dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true}))")
+    # With the list open, a real key-DOWN alone does not search (§2 rule 1)…
+    page.focus("#school")
+    page.keyboard.down("Enter")
     page.wait_for_timeout(500)
     assert page.locator(ROWS).count() == 0
-    # …key-up does.
-    page.evaluate("document.getElementById('school').dispatchEvent(new KeyboardEvent('keyup', {key: 'Enter', bubbles: true}))")
+    # …the real key-UP does.
+    page.keyboard.up("Enter")
     page.wait_for_function("document.querySelectorAll('[data-automation-id=activeListContainer] [role=option]').length === 8")
 
 
@@ -209,8 +212,12 @@ def test_skills_results_are_virtualized_and_scrolling_renders_the_rest(page, loa
     assert "SQL" not in row_texts(page)
     assert page.evaluate("document.querySelector('[data-automation-id=activeListContainer] [data-spacer]')"
                          ".style.height") == f"{31 * 30}px"
-    page.evaluate("document.querySelector('[data-automation-id=activeListContainer]').scrollTop = 18 * 30")
-    page.wait_for_timeout(50)
+    # A person's wheel over the list scrolls it; the window re-renders on `scroll`.
+    page.hover(LIST)
+    page.mouse.wheel(0, 18 * 30)
+    page.wait_for_function("""() => [...document.querySelectorAll(
+        '[data-automation-id=activeListContainer] [role=option] [data-automation-id=promptOption]')]
+        .some((p) => p.textContent === 'SQL')""")
     assert page.locator(ROWS).count() == 8
     exact = page.locator(ROWS).filter(has=page.locator("[data-automation-id=promptOption]", has_text="SQL")).filter(
         has_text="SQL").all()
@@ -431,6 +438,8 @@ def test_sections_list_their_entries_and_add_appends_a_numbered_required_entry(p
     # The entry's Delete button has no accessible name.
     delete = entry.locator("button").first
     assert delete.inner_text() == "" and delete.get_attribute("aria-label") is None
+    # Its computed accessible name is empty too (the drawn glyph is not a name).
+    assert entry.locator("[data-automation-id=panel-set-delete-button]").aria_snapshot() == "- button"
     delete.click()
     assert oracle(page, "entries")["Websites"] == 0 and oracle(page, "deleted") == 1
     work = page.locator("div[role=group][aria-labelledby=Work-Experience-section]")
