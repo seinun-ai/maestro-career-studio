@@ -1063,6 +1063,14 @@ function CompanionPermissions({
             certifications, signatures and typed-name attestations. It never
             moves to the next page or submits.
           </p>
+          {/* An agreement given under an older, narrower policy is served
+              off (consent_forms_lapsed); a yes now records the current one. */}
+          {consent.consent_forms_lapsed ? (
+            <p className="text-xs font-medium">
+              This now covers more than when you agreed. Turn it on again to
+              allow it.
+            </p>
+          ) : null}
         </div>
         <Switch
           id="consent-forms"

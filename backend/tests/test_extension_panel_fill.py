@@ -700,7 +700,7 @@ def test_the_eeo_row_says_what_the_backend_consented_to_and_never_a_local_toggle
         **FILL_CONTEXT,
         "eeo_consent": {"enabled": True, "consent_forms": True,
                         "acknowledged_at": "2026-08-01T00:00:00Z",
-                        "policy_version": "1"}})},
+                        "policy_version": "2"}})},
         frames={"profile_fill": [{"frameId": 0, "result": {
             **PROFILE_FRAMES[0]["result"],
             "eeoFilled": [{"label": "gender"}, {"label": "veteran status"}]}}]})

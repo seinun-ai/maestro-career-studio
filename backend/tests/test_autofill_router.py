@@ -77,8 +77,9 @@ def test_context_bundles_profile_employment_skills_and_eeo(
     assert body["eeo_consent"] == {
         "enabled": False,
         "consent_forms": False,
+        "consent_forms_lapsed": False,
         "acknowledged_at": None,
-        "policy_version": "1",
+        "policy_version": "2",
     }
 
 
@@ -252,6 +253,7 @@ def test_context_includes_eeo_consent_metadata_and_keeps_profile_eeo_values(
     assert body["eeo_consent"] == {
         "enabled": True,
         "consent_forms": False,
+        "consent_forms_lapsed": False,
         "acknowledged_at": "2026-07-30T12:00:00+00:00",
         "policy_version": "1",
     }

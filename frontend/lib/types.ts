@@ -298,6 +298,10 @@ export interface EeoConsent {
    *  attestations. Separate from `enabled` so opting into EEO fill cannot
    *  silently also opt into agreeing to terms; one record, two permissions. */
   consent_forms: boolean;
+  /** Server-derived, never sent: `consent_forms` was agreed under an older
+   *  policy that covered less, so it is served off until the user agrees
+   *  again (backend/app/schemas/eeo_consent.py). */
+  consent_forms_lapsed?: boolean;
   acknowledged_at: string | null;
   policy_version: string;
 }

@@ -699,3 +699,18 @@ def test_the_self_description_shows_only_for_self_describe_and_goes_with_it():
     assert "if (field.when && groupValues(profile, group.key)[field.when[0]] !== field.when[1]) {" in renderer
     set_field = _between(_AUTOFILL, "const setField = (", "\n  };")
     assert "if (field.when?.[0] === key && field.when[1] !== value) delete values[field.key];" in set_field
+
+
+def test_an_agreement_from_an_older_policy_asks_again():
+    """Policy 2 widened the agreement switch, so a policy-1 yes is served off
+    with `consent_forms_lapsed` (backend/app/services/eeo_consent.py). The box
+    shows the switch as served and says why it is off; a yes sends a null
+    stamp, which the server records under the current policy."""
+    boxes = _between(_AUTOFILL, "function CompanionPermissions(", "\n}\n")
+    assert "checked={consent.consent_forms}" in boxes
+    note = _between(boxes, "{consent.consent_forms_lapsed ? (", ") : null}")
+    assert "This now covers more than when you agreed. Turn it on again to allow it." in _flat(note)
+    agree = _between(_AUTOFILL, "const setConsentFormsEnabled = ", "\n  };")
+    assert "acknowledged_at: consentForms ? null : consent.acknowledged_at," in agree
+    types = _read("lib/types.ts")
+    assert "consent_forms_lapsed?: boolean;" in _between(types, "export interface EeoConsent {", "\n}")

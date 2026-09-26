@@ -392,10 +392,10 @@ file to open.
 - **EEO standing consent is enforced at the ENDPOINT.** `{#inv-eeo-standing-consent}` One record
   (`settings/eeo_consent.json`, `schemas/eeo_consent.py`; `eeo_consent` on `/api/autofill/context`),
   TWO permissions kept apart on purpose: `enabled` authorizes disclosing protected characteristics,
-  `consent_forms` lifts the label policy, agreement boxes and signatures included
-  (inv-policy-deny-list-single-source). One flag for both would make opting into EEO fill silently
-  agree to terms. ONE gate, `eeo_consent.withhold_unconsented`, strips `profile.eeo` unless `enabled`
-  for every reader that hands the profile outward: `GET /api/autofill/context`, the `/choose`
+  `consent_forms` lifts the label policy (inv-policy-deny-list-single-source), only if agreed under
+  policy ≥ 2 (an older yes is served off, `consent_forms_lapsed`; `test_eeo_consent.py`). One flag
+  for both would make an EEO yes agree to terms. ONE gate, `eeo_consent.withhold_unconsented`, strips
+  `profile.eeo` unless `enabled` for every outward reader: `GET /api/autofill/context`, the `/choose`
   prompt AND the Jev engine's slot catalog (model providers are recipients too — Jev, and OpenRouter
   when it serves Jev); it fails CLOSED when consent cannot be computed. The
   MCP client keeps its OWN strip — two gates, not a relocated one. Which path asks must never decide

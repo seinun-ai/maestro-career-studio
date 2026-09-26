@@ -9,12 +9,41 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from app.schemas.eeo_consent import CURRENT_POLICY_VERSION, EeoConsent
+from app.schemas.eeo_consent import (
+    CONSENT_FORMS_MIN_POLICY_VERSION,
+    CURRENT_POLICY_VERSION,
+    EeoConsent,
+    policy_at_least,
+)
 from app.services.json_settings import JsonSetting
 
 logger = logging.getLogger(__name__)
 
-EEO_CONSENT = JsonSetting("eeo_consent", "eeo_consent.json", EeoConsent)
+
+def _lapse_stale_agreement(payload: Any) -> Any:
+    """Serve an agreement given under an older policy as NOT granted.
+
+    The stored record keeps what the user said (so the lapse stays visible
+    until they answer again); every reader — the settings GET, the fill
+    context the extension reads, the MCP client — sees `consent_forms` false.
+    Only `consent_forms` has a policy floor; `enabled` is left alone."""
+    if not isinstance(payload, dict):
+        return payload
+    lapsed = payload.get("consent_forms") is True and not policy_at_least(
+        payload.get("policy_version"), CONSENT_FORMS_MIN_POLICY_VERSION
+    )
+    served = {**payload, "consent_forms_lapsed": lapsed}
+    if lapsed:
+        served["consent_forms"] = False
+    return served
+
+
+class _EeoConsentSetting(JsonSetting[EeoConsent]):
+    def migrate(self, payload: Any) -> Any:
+        return _lapse_stale_agreement(payload)
+
+
+EEO_CONSENT = _EeoConsentSetting("eeo_consent", "eeo_consent.json", EeoConsent)
 # Key/filename stay importable: callers and tests address the setting by
 # name, and the constants are now derived from the one definition above.
 EEO_CONSENT_KEY = EEO_CONSENT.key
@@ -37,7 +66,12 @@ def set_consent(consent: EeoConsent, session: Session | None = None) -> EeoConse
     """Persist standing consent. Enabling without an acknowledgement stamp
     gets a server-side timestamp and the current policy version — auditability
     must not depend on the client clock.
+
+    `consent_forms_lapsed` is derived, so whatever a client sent is dropped,
+    and the value returned is the one a reader will see: an agreement echoed
+    back under an older policy comes back not granted.
     """
+    consent = consent.model_copy(update={"consent_forms_lapsed": False})
     if (consent.enabled or consent.consent_forms) and not consent.acknowledged_at:
         consent = consent.model_copy(
             update={
@@ -45,7 +79,8 @@ def set_consent(consent: EeoConsent, session: Session | None = None) -> EeoConse
                 "policy_version": CURRENT_POLICY_VERSION,
             }
         )
-    return EEO_CONSENT.set(consent, session)
+    EEO_CONSENT.set(consent, session)
+    return EeoConsent.model_validate(_lapse_stale_agreement(consent.model_dump()))
 
 
 def withhold_unconsented(profile: Any, consent: Any) -> Any:
