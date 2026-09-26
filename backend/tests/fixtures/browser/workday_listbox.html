@@ -24,7 +24,9 @@
       li.addEventListener("click", (e) => {
         e.stopPropagation();
         if (kids) render(btn, kids.map((k) => [k, null]));
-        else { btn.textContent = label; close(); }
+        // Live Workday's aria-label is "<question> <value> Required": the value
+        // part follows the pick (the question part is empty on this step).
+        else { btn.textContent = label; btn.setAttribute("aria-label", ` ${label} Required`); close(); }
       });
       ul.append(li);
     }
