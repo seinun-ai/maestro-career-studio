@@ -521,6 +521,8 @@ ENTER_PICKS = """<label id='l'>Team</label>
   const oracle = (window.__oracle = window.__oracle || {});
   oracle.team = ""; oracle.blind = "";
   const team = document.getElementById('team');
+  window.teamKeys = [];
+  team.addEventListener('keydown', (e) => window.teamKeys.push(e.key));
   team.addEventListener('click', () => {
     if (document.querySelector('.rows')) return;
     const rows = document.createElement('div');
@@ -543,11 +545,64 @@ ENTER_PICKS = """<label id='l'>Team</label>
 
 def test_no_enter_follows_a_press_that_opened_a_role_less_list(page, load):
     load(page, ENTER_PICKS)
-    explore(page, inv(page)["Team"])
-    assert oracle(page, "team") == "" and page.inner_text("#team") == "Select One"
-    load(page, ENTER_PICKS)
     apply(page, inv(page)["Team"], op="choose", text="Blue")
+    assert oracle(page, "team") == "" and page.evaluate("window.teamKeys") == []
+
+
+def test_a_press_that_reacted_once_is_never_followed_by_keys(page, load):
+    """Explore's press opened the role-less list, which stays up; choose's
+    press on the SAME page then changes nothing — the list is still open, so
+    a key would act on it. No key is sent, the undo's own open included."""
+    load(page, ENTER_PICKS)
+    f = inv(page)["Team"]
+    explore(page, f)
+    apply(page, f, op="choose", text="Blue")
     assert oracle(page, "team") == "" and page.inner_text("#team") == "Select One"
+    assert page.evaluate("window.teamKeys") == []
+
+
+# A press does nothing; ArrowDown renders role-less rows into a portal that
+# was already on the page (not a new <body> child), the first highlighted;
+# an Enter would accept it.
+PORTAL_ENTER = """<label id='l'>Team</label>
+<div><button id='pb' aria-haspopup='listbox' aria-labelledby='l'>Select One</button><input type='hidden' value=''></div>
+<div id='portal'><div class='host'></div></div>
+<script>
+(() => {
+  const oracle = (window.__oracle = window.__oracle || {});
+  oracle.pb = "";
+  window.pbKeys = [];
+  const pb = document.getElementById('pb');
+  const host = document.querySelector('#portal .host');
+  pb.addEventListener('keydown', (e) => {
+    window.pbKeys.push(e.key);
+    if (e.key === 'ArrowDown') host.innerHTML = "<div class='hl'>Red</div><div>Blue</div>";
+    const hl = host.querySelector('.hl');
+    if (e.key === 'Enter' && hl) { pb.textContent = hl.textContent; pb.nextElementSibling.value = hl.textContent; oracle.pb = hl.textContent; }
+  });
+})();
+</script>"""
+
+
+def test_no_enter_follows_an_arrow_down_that_filled_a_portal(page, load):
+    load(page, PORTAL_ENTER)
+    row = apply(page, inv(page)["Team"], op="choose", text="Blue")
+    assert row["reason"] == "no_popup"   # it reacted: never no_effect
+    assert oracle(page, "pb") == "" and page.evaluate("window.pbKeys") == ["ArrowDown"]
+
+
+def test_a_deaf_control_that_cannot_take_focus_reports_no_effect(page, load):
+    load(page, "<label id='l'>Pick</label><div><div id='dd' role='button' aria-haspopup='listbox' "
+               "aria-labelledby='l'>Select One</div></div>")
+    got = explore(page, inv(page)["Pick"])
+    assert (got["error"], got["gestures"]) == ("no_effect", ["pointer"])
+
+
+def test_a_pill_removal_that_takes_a_moment_is_not_reported_as_stuck(page, load):
+    load(page, SINGLE_HIT_SEARCH)
+    page.evaluate("window.slowRemove = 400")
+    got = explore(page, inv(page)["Field of study"], "Analytics")
+    assert "error" not in got and oracle(page, "field_of_study") == ""
 
 
 def test_a_value_the_keyboard_committed_is_reported_never_silent(page, load):

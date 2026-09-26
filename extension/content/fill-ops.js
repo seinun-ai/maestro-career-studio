@@ -123,6 +123,12 @@
           row = { ...row, error: "committed_while_exploring", committed: shape.read(el) };
         }
       }
+      // Nothing moved in the end (a removal that took a moment): no commit to report.
+      if (row.error === "committed_while_exploring" && !core().moved(el, shape, snap)) {
+        row = { ...row };
+        delete row.error;
+        delete row.committed;
+      }
       out[r.fid] = row;
     }
     return out;

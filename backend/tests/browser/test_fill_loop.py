@@ -289,7 +289,7 @@ def test_a_user_edit_during_the_model_call_is_respected(page, load):
     assert len(actions(out)) == 1  # a refusal is final: never retried
 
 
-def test_a_late_reversion_found_by_the_tail_sweep_is_retried(page, load):
+def test_a_late_reversion_found_by_the_final_sweep_is_retried(page, load):
     load(page, "<div></div>", sources=LOOP_SOURCES)
     got = page.evaluate("""async () => {
       window.careerStudioCompanion.fillLoop.limits.QUIET_MS = 30;
@@ -307,10 +307,10 @@ def test_a_late_reversion_found_by_the_tail_sweep_is_retried(page, load):
       return {writes, sweeps, status: report.fields[0].status};
     }""")
     assert (got["writes"], got["status"]) == (2, "verified")
-    assert got["sweeps"] >= 3  # the tail sweep after the re-write found nothing more
+    assert got["sweeps"] >= 3  # the final sweep after the re-write found nothing more
 
 
-def test_the_tail_sweep_runs_even_when_the_rounds_run_out(page, load):
+def test_the_final_sweep_runs_even_when_the_rounds_run_out(page, load):
     out = run(page, load, frames=[[f("a", question="City")]], limits={"MAX_ROUNDS": 1},
               map={"a": {"route": "slot", "slot": "personal.city", "value": "X"}},
               sweep=[[], [{"fid": "a", "outcome": "reverted"}]])
@@ -1037,8 +1037,10 @@ def test_every_proposal_source_shares_the_field_budget(page, load):
     the 8 that would have verified."""
     states = [{"candidates": [{"mid": "scroll", "describe": "Scroll"}, GIVE_UP]} for _ in range(7)] + [
         {"candidates": [{"mid": "click:o1", "describe": 'Click the option "LinkedIn"'}, GIVE_UP]}]
-    out = run(page, load, frames=[[f("h", "popup", "How did you hear?")]] * 4, limits={"FIELD_MS": 800},
-              pageDelay={"Job Board": [450, 0]}, apiDelay={"/api/autofill/step": 60},
+    # Wide margins, for a slow machine: a fresh clock would leave 1500 ms for
+    # 8 steps of ~100 ms (verified); the shared one leaves ~500 ms (about 4).
+    out = run(page, load, frames=[[f("h", "popup", "How did you hear?")]] * 4, limits={"FIELD_MS": 1500},
+              pageDelay={"Job Board": [1000, 0]}, apiDelay={"/api/autofill/step": 100},
               map={"h": {"route": "slot", "slot": "preferences.how_heard", "value": "LinkedIn"}},
               explore={"h": {"options": [opt("o1", "Job Board")], "complete": True}},
               pick={"h": {"oids": ["o1"], "reason": "matched"}},
@@ -1071,20 +1073,28 @@ def test_a_failed_state_move_pair_is_not_retried(page, load):
 
 
 def test_a_widget_that_ignores_every_input_is_unsupported(page, load):
-    out = run(page, load, frames=[[f("a", question="Code"), f("d", "popup", "Relocate?")]] * 3,
-              map={"a": {"route": "slot", "slot": "custom.code", "value": "ABC"},
-                   "d": {"route": "slot", "slot": "preferences.willing_to_relocate", "value": "Yes"}},
+    """A press ignored, then the keyboard ignored: two different kinds."""
+    out = run(page, load, frames=[[f("d", "popup", "Relocate?")]] * 3,
+              map={"d": {"route": "slot", "slot": "preferences.willing_to_relocate", "value": "Yes"}},
               explore={"d": {"options": [], "complete": False, "error": "no_effect", "gestures": ["pointer"]}},
-              apply={"ABC": {"outcome": "reverted", "reason": "no_effect", "gestures": ["type"]},
-                     "open": {"outcome": "unexpected", "reason": "no_effect", "gestures": ["keyboard"]}},
+              apply={"open": {"outcome": "unexpected", "reason": "no_effect", "gestures": ["keyboard"]}},
               step={"states": [{"candidates": [{"mid": "open", "describe": "Open the dropdown"}, GIVE_UP]}],
                     "moves": [{"mid": "open", "reason": "progress"}]})
-    assert statuses(out) == {"a": "unsupported", "d": "unsupported"}
-    # Two separate writes ignored (one write is one gesture); a press, then the keyboard.
-    assert len(actions(out, "write")) == 2
+    assert statuses(out) == {"d": "unsupported"}
     assert [a["mid"] for a in actions(out, "move")] == ["open"]
     obs = page.evaluate("(r) => window.careerStudioCompanion.fillLoop.buildLoopObservations(r)", out["report"])
-    assert [o["outcome"] for o in obs] == ["unsupported", "unsupported"]
+    assert [o["outcome"] for o in obs] == ["unsupported"]
+
+
+def test_the_same_value_refused_every_time_never_counts_twice(page, load):
+    """A text box that takes neither typing nor the setter for this value
+    (type=number given text) is retried as before and ends "couldn't
+    operate" after its attempts — the same value twice is one gesture."""
+    out = run(page, load, frames=[[f("n", question="Years")]] * 4,
+              map={"n": {"route": "slot", "slot": "custom.years", "value": "ten"}},
+              apply={"ten": {"outcome": "reverted", "reason": "no_effect", "gestures": ["type"]}})
+    assert statuses(out) == {"n": "cannot_operate"}
+    assert len(actions(out, "write")) == 3
 
 
 def test_the_same_gesture_ignored_twice_is_not_unsupported(page, load):
@@ -1129,6 +1139,31 @@ def test_a_keyboard_open_that_committed_is_left_for_the_user(page, load):
     assert len(actions(out, "choose")) == 1 and "fill_step_state" not in out["calls"]
     obs = page.evaluate("(r) => window.careerStudioCompanion.fillLoop.buildLoopObservations(r)", out["report"])
     assert [o["outcome"] for o in obs] == ["filled_unverified"]
+
+
+def test_two_refusals_in_a_row_end_the_adaptive_step(page, load):
+    same = {"version": 1, "candidates": [{"mid": "click:o1", "describe": 'Click the option "Yes"'}, GIVE_UP]}
+    out = run(page, load, frames=[[f("d", "popup", "Relocate?")]],
+              map={"d": {"route": "slot", "slot": "preferences.willing_to_relocate", "value": "Yes"}},
+              explore={"d": {"options": [opt("o1", "Yes")], "complete": True}},
+              pick={"d": {"oids": [], "reason": "abstained"}},
+              apply={"click:o1": {"outcome": "unexpected", "reason": "not_committed"}},
+              step={"states": [same, dict(same)], "moves": [{"mid": "click:o1", "reason": "matched"}] * 4})
+    assert [a["mid"] for a in actions(out, "move")] == ["click:o1", "give_up"]
+    assert len(bodies(out, "/api/autofill/step")) == 3
+    assert (row(out, "d")["status"], row(out, "d")["lastOutcome"]) == ("needs_answer", "abstained")
+
+
+def test_a_recommit_that_does_not_commit_still_says_the_page_took_it_back(page, load):
+    out = run(page, load, frames=[[f("d", "popup", "Relocate?")]] * 3,
+              map={"d": {"route": "slot", "slot": "preferences.willing_to_relocate", "value": "Yes"}},
+              explore={"d": {"options": [opt("o1", "Yes"), opt("o2", "No")], "complete": True}},
+              pick={"d": {"oids": ["o1"], "reason": "matched"}},
+              apply={"Yes": [{"outcome": "verified"}, {"outcome": "unexpected", "reason": "not_committed"}]},
+              sweep=[[{"fid": "d", "outcome": "reverted"}], []])
+    r = row(out, "d")
+    assert (r["status"], r["answer"]) == ("unconfirmed", 'Companion filled "Yes", then the page took it back. Check it.')
+    assert len(actions(out, "choose")) == 2
 
 
 def test_a_failed_search_for_one_item_is_still_tried_for_the_next(page, load):

@@ -25,11 +25,12 @@
  * node changed in the field's box or was added to <body> — reports reason
  * `no_effect` with the KINDS of gesture it tried (`gestures`: pointer,
  * keyboard, type, select; insertText and its setter fallback are one `type`).
- * The loop calls a field `unsupported` only once two different kinds (or two
- * separate writes) have had no effect. A gesture that changed anything is
- * never no_effect. A press that did NOTHING on a button or combobox is
- * followed by a genuinely different gesture: ArrowDown, then — only if that
- * did nothing either — Enter (never on a plain text box, never after any
+ * The loop calls a field `unsupported` only once two different kinds (typing:
+ * two different values) have had no effect. A gesture that changed anything
+ * is never no_effect. A press that did NOTHING on a button or combobox whose
+ * press never reacted before is followed by a genuinely different gesture:
+ * ArrowDown, then — only if that changed nothing anywhere under <body> —
+ * Enter (never on a plain text box, a submit button or a link, never after any
  * effect). A value the keys committed is taken back, or reported
  * (`committed_while_opening`).
  *
@@ -69,6 +70,7 @@
   const b = () => ns.fillBase;
   const OPEN_MS = 2500; // a pressed widget's popup, or a typed search's results
   const KEY_OPEN_MS = 500; // a popup opened from the keyboard, once a press opened nothing
+  const PILL_GONE_MS = 1000; // a pill's remove control that takes a moment to take effect
   const SEARCH_OPEN_MS = 1000; // a search box pressed with no term may show nothing at all
   const EMPTY_MS = 600; // a popup that lists nothing and is not loading this long is empty
   const CLEANUP_WAIT_MS = 500; // a cancelled search's debounce, waited out before closing
@@ -82,6 +84,10 @@
   const opened = new WeakMap(); // el -> the page's popups before the engine last opened it
   const typed = new WeakMap(); // el -> { prior, query }: a search query the engine typed
   const searched = new WeakSet(); // fields whose held popup shows FILTERED results (a search move)
+  // Elements whose PRESS has visibly done something before: a pointer
+  // widget. When its press later does nothing, something it opened is still
+  // up (a role-less list), and a key would act on that — so no key is sent.
+  const reacted = new WeakSet();
 
   const blockedText = (text, consentForms) => Boolean(ns.isPolicyBlocked?.(text ?? "", { consentForms }));
   const flag = (options, consentForms) => options.map(({ oid, text, selected }) => ({
@@ -159,6 +165,10 @@
       },
       get ignored() {
         return ignored;
+      },
+      // Something the watch cannot see reacted (a change deeper under <body>).
+      felt() {
+        ignored = false;
       },
       // What to report: no_effect with the kinds tried, or the other reason.
       reason(otherwise) {
@@ -296,16 +306,39 @@
     if (remember) typed.get(box).query = box.value;
     await b().settle(t, 100); // let a debounced search replace the old list first
   };
-  // A control the keyboard may open: a button or a combobox, never a plain
-  // text box (an Enter there can submit a form).
-  const keyable = (el) => !(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) || el.readOnly
-    || el.getAttribute("role") === "combobox";
+  // A control the keyboard may open: a button or a combobox — never a plain
+  // text box, a submit button or anything inside a link (a key there can
+  // submit a form or navigate).
+  const keyable = (el) => {
+    if (el.closest("a[href]") || el.getAttribute("type") === "submit" || (el.form && el.type === "submit")) return false;
+    return !(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) || el.readOnly
+      || el.getAttribute("role") === "combobox";
+  };
+  // Whether anything under <body> changed while `fn` ran: the ArrowDown step
+  // is watched this widely (a role-less list rendered into a portal that was
+  // already there), and any change keeps the Enter from following it.
+  const bodyChanged = async (fn) => {
+    let changed = false;
+    const all = new MutationObserver(() => {
+      changed = true;
+    });
+    all.observe(document.body, { childList: true, subtree: true });
+    try {
+      await fn();
+      return changed || all.takeRecords().length > 0;
+    } finally {
+      all.disconnect();
+    }
+  };
   // `w` (a watch) hears each gesture's kind. A key is sent only while every
   // gesture before it had NO effect at all (a fresh watch, not "no readable
-  // popup"): after a press that visibly did something — a role-less list —
-  // an Enter would accept its highlighted row. What the keys themselves
-  // committed is taken back (`reclaim`); what could not be is `committed`.
-  // `reclaim: false` for the engine's own undo, which must not undo itself.
+  // popup"), and never to an element whose press has reacted before
+  // (`reacted`): after a press that visibly did something — a role-less
+  // list — an Enter would accept its highlighted row. The Enter also waits
+  // on the ArrowDown having changed nothing anywhere under <body>. What the
+  // keys themselves committed is taken back (`reclaim`); what could not be
+  // is `committed`. `reclaim: false` for explore (fill-ops owns its undo) and
+  // for the engine's own undo, which must not undo itself.
   const open = async (el, shape, term, t, w, { reclaim = true } = {}) => {
     const before = b().popups();
     opened.set(el, before);
@@ -327,15 +360,25 @@
       pop = await b().waitFor(() => own(el, before), searchable ? SEARCH_OPEN_MS : OPEN_MS, t);
       quiet.saw();
       w?.saw("pointer");
+      if (!quiet.ignored) reacted.add(el);
       // A press that did nothing at all: the keyboard, a genuinely different gesture.
+      let quietBody = true;
       for (const key of ["ArrowDown", "Enter"]) {
-        if (pop || !keyable(el) || !quiet.ignored) break;
+        if (pop || !keyable(el) || !quiet.ignored || reacted.has(el) || !quietBody) break;
+        try {
+          b().enter(el, t);
+        } catch (err) {
+          if (err?.name === "Unfocusable") break; // nothing takes keys it cannot focus
+          throw err;
+        }
         keyed = true;
-        b().enter(el, t);
-        b().keyPress(el, key, t);
-        pop = await b().waitFor(() => own(el, before), KEY_OPEN_MS, t);
+        quietBody = !(await bodyChanged(async () => {
+          b().keyPress(el, key, t);
+          pop = await b().waitFor(() => own(el, before), KEY_OPEN_MS, t);
+        }));
         quiet.saw();
         w?.saw("keyboard");
+        if (!quietBody) w?.felt(); // it reacted: a list somewhere the watch does not look
       }
     } finally {
       quiet.stop();
@@ -463,7 +506,9 @@
           ?? [...unit.querySelectorAll("*")].find((n) => n !== p.node && named(n)) ?? p.node;
         control.scrollIntoView?.({ block: "nearest" });
         b().press(control, t);
-        await b().settle(t, 150);
+        // The pill goes when the page takes the removal — maybe a moment later.
+        await b().waitFor(() => !p.node.isConnected, PILL_GONE_MS, t);
+        await b().settle(t, 60);
       }
       return;
     }
@@ -480,18 +525,14 @@
     b().check(t);
     const w = watch(el, shape);
     try {
-      const first = await open(el, shape, term, t, w);
-      if (first.committed) {
-        return { options: [], complete: false, searchable: first.searchable, error: "committed_while_exploring",
-          committed: shape.read(el) };
-      }
-      let { pop, searchable } = first;
+      // fill-ops owns explore's undo (whatever moved, keys included).
+      let { pop, searchable } = await open(el, shape, term, t, w, { reclaim: false });
       let options = pop ? b().optionsOf(pop) : [];
       if (!options.length && term) {
         const word = term.split(/\s+/).find((x) => x.length > 2 && x !== term);
         if (word) {
           await tidy(el, t);
-          ({ pop, searchable } = await open(el, shape, word, t, w));
+          ({ pop, searchable } = await open(el, shape, word, t, w, { reclaim: false }));
           options = pop ? b().optionsOf(pop) : [];
         }
       }

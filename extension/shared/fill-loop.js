@@ -36,7 +36,7 @@
  *   clock), a state + move pair that failed is never proposed to the page again
  *   (`failedMoves`: the state as shown, the value it was for, the move), and a
  *   field is `unsupported` only once two DIFFERENT kinds of gesture (pointer,
- *   keyboard) — or two separate writes — have had no effect at all
+ *   keyboard; typing: two different values) — have had no effect at all
  *   (`no_effect`, with the kinds the page tried) since anything last did.
  * - Never stall: every backend wait is bounded (API_MS, and never past the
  *   field's or the run's clock); the run has a clock; rounds, attempts, steps
@@ -202,6 +202,15 @@
     const asked = { ...selector, source_hint: options.sourceHint ? String(options.sourceHint).slice(0, 60) : null };
     // fid -> { fid, field, frameId, status, attempts, route, slot, value, answer, lastOutcome,
     //   deadline, spent, started, recommits, failedMoves, ignored, wrote, wroteAs }
+    //
+    // A ROW'S LIFE: new (observe) → open (work, when the loop starts on it)
+    // → a final status (finish / done / unconfirmed / outOfTime), or retry
+    // (fail: attempts + 1; or sweep: a verified value reverted, recommits = 1)
+    // → open again next round, on the field's remaining clock. A retry left
+    // at the end is reported cannot_operate — or unconfirmed when it is a
+    // revert the engine never got back (tookBackUnretried). A row that is
+    // re-committing and ends anywhere but a fill says the page took the value
+    // back (finish → tookBack).
     const rows = new Map();
     let listed = []; // the latest inventory's fids, in page order
     let aiFailure = null;
@@ -210,19 +219,23 @@
     // ---- rows and clocks
     const set = (fid, patch) => {
       const was = rows.get(fid)?.status;
-      // A field the engine wrote, that reverted and whose one re-commit ran
-      // out of time, is not "couldn't operate": the user must learn that the
-      // page took the value back.
-      const had = rows.get(fid);
-      if (patch.status === "cannot_operate" && patch.lastOutcome === "timeout" && had?.recommits && had.wrote) {
-        patch = { status: "unconfirmed", lastOutcome: "timeout", answer: revertedNote(had.wrote), wroteAs: null };
-      }
       const row = { ...rows.get(fid), ...patch };
       rows.set(fid, row);
       if (patch.status && patch.status !== was && FINAL.has(patch.status)) tell({ phase: "field", fid, status: patch.status });
       return row;
     };
-    const finish = (f, status, patch = {}) => set(f.fid, { status, ...patch });
+    // Re-committing a value the engine wrote that the page took back.
+    const recommitting = (row) => Boolean(row?.recommits && row.wrote && (row.status === "open" || row.status === "retry"));
+    // The user must learn that the page took the value back — whatever else
+    // stopped the re-commit (`why`: out of time, not committed, no answer).
+    const tookBack = (f, why) => set(f.fid, {
+      status: "unconfirmed", lastOutcome: why ?? "reverted", answer: revertedNote(rows.get(f.fid).wrote), wroteAs: null,
+    });
+    // Everything a field can end as, except a fill (and the user's own or
+    // the policy's refusal), ends a re-commit as tookBack.
+    const KEEPS = new Set([...DONE, "unconfirmed", "yours", "blocked", "already"]);
+    const finish = (f, status, patch = {}) => (recommitting(rows.get(f.fid)) && !KEEPS.has(status)
+      ? tookBack(f, patch.lastOutcome) : set(f.fid, { status, ...patch }));
     const fail = (f, outcome) => set(f.fid, {
       status: "retry", attempts: (rows.get(f.fid).attempts ?? 0) + 1, lastOutcome: outcome ?? "no_answer",
     });
@@ -235,7 +248,7 @@
     });
     const done = (f, reason, committed) => {
       const answer = Array.isArray(committed) ? committed.join(", ") : committed ?? null;
-      if (!STATUS[reason]) return unconfirmed(f, answer, reason === "unstable" ? reason : undefined); // never "verified" by default
+      if (!STATUS[reason]) return unconfirmed(f, answer); // never "verified" by default
       // Nothing, or a popup's placeholder, is never a filled answer — whatever the page said.
       if (!String(answer ?? "").trim() || ns.isPlaceholderText(answer)) return unconfirmed(f, answer || null);
       // `wroteAs`: what the engine made of it, kept so a re-render that makes
@@ -257,7 +270,7 @@
       const row = rows.get(f.fid);
       if (row?.started) set(f.fid, { spent: (row.spent ?? 0) + (Date.now() - row.started), started: null });
     };
-    const worked = async (f, ms, fn) => {
+    const onFieldClock = async (f, ms, fn) => {
       const row = work(f, ms);
       try {
         return await fn(row);
@@ -270,25 +283,27 @@
     // on the page, which says which kinds it tried) since anything last did.
     // Two DIFFERENT kinds ignored — a press and the keyboard — and the widget
     // ignores synthetic input, which is all the engine has: `unsupported`.
-    // The same press ignored twice is not that. Typing is the exception: one
-    // write (insertText and its setter fallback) is one gesture, since a box
-    // may be refusing that VALUE (type=number, a mask); typing is all a text
-    // box takes, so a SEPARATE later write ignored too counts as a second.
-    // True when that just made the field unsupported.
-    const ignoredBy = (f, reason, gestures) => {
+    // The same press ignored twice is not that. Typing counts per VALUE: one
+    // write (insertText and its setter fallback) is one gesture, and a box
+    // that refuses a value (type=number given text, a mask) refuses it every
+    // time — the same value twice never counts twice; such a box ends
+    // cannot_operate after MAX_ATTEMPTS, as before. `typed`: the value or
+    // query the operation typed. Returns nowUnsupported.
+    const noteNoEffect = (f, reason, gestures, typed) => {
       const kinds = new Set(reason === "no_effect" ? rows.get(f.fid).ignored ?? [] : []);
-      const typings = [...kinds].filter((k) => k.startsWith("type")).length;
       if (reason === "no_effect") {
-        for (const k of gestures?.length ? gestures : ["unknown"]) kinds.add(k === "type" ? `type#${typings}` : String(k));
+        for (const k of gestures?.length ? gestures : ["unknown"]) kinds.add(k === "type" ? `type:${typed ?? ""}` : String(k));
       }
       set(f.fid, { ignored: [...kinds] });
-      if (kinds.size < NO_EFFECT_KINDS) return false;
-      finish(f, "unsupported", { lastOutcome: "no_effect" });
-      return true;
+      const nowUnsupported = kinds.size >= NO_EFFECT_KINDS;
+      if (nowUnsupported) finish(f, "unsupported", { lastOutcome: "no_effect" });
+      return nowUnsupported;
     };
+    // The field's own clock ran out (a re-commit's too: finish says the page took the value back).
+    const outOfTime = (f) => finish(f, "cannot_operate", { lastOutcome: "timeout" });
     // Stopped, out of run time, or out of field time: only the last is the field's own fault.
     const lateOrHalted = (f) => {
-      if (!cancelled() && !timedOut() && fieldLate(f)) finish(f, "cannot_operate", { lastOutcome: "timeout" });
+      if (!cancelled() && !timedOut() && fieldLate(f)) outOfTime(f);
     };
 
     // ---- the backend: every wait bounded, never past the field's or the run's clock
@@ -343,14 +358,16 @@
         return { outcome: "refused" };
       }
       // A close is the engine tidying up, not an attempt on the field.
-      if (!closing && ignoredBy(f, got.reason, got.gestures)) return { outcome: "refused" };
+      if (!closing && noteNoEffect(f, got.reason, got.gestures, action.value ?? action.term ?? action.text)) {
+        return { outcome: "refused" };
+      }
       return got;
     };
     // True when the action did not happen and there is nothing more to do now.
     const notDone = (f, out) => {
       if (out.outcome === "halted" || out.outcome === "refused") return true;
       if (out.outcome === "late") {
-        finish(f, "cannot_operate", { lastOutcome: "timeout" });
+        outOfTime(f);
         return true;
       }
       return false;
@@ -363,13 +380,14 @@
       return got ?? { options: [], complete: false, error: "stale" };
     };
     // An explore that went wrong: true when it decided the field for now.
-    const exploreRefused = (f, got) => {
+    // `term`: what the explore typed (a no_effect on typing is counted per value).
+    const exploreRefused = (f, got, term) => {
       if (REFUSED[got.error]) {
         finish(f, REFUSED[got.error], { lastOutcome: got.error });
         return true;
       }
       if (got.error === "cancelled") return true;
-      if (ignoredBy(f, got.error, got.gestures)) return true;
+      if (noteNoEffect(f, got.error, got.gestures, term)) return true;
       // Exploring picked a value (a one-hit search) and the page could not
       // take it back: nothing more is tried on the field; the user is told
       // what it holds now.
@@ -467,6 +485,7 @@
       (state.options ?? []).length, (state.options ?? []).map((o) => o?.text),
       (state.candidates ?? []).map((c) => [c?.mid, c?.describe])]);
     const FAILED = new Set(["unexpected", "reverted"]);
+    const MAX_REFUSALS = 2;
     const adapt = async (f, row, first, item) => {
       const value = item ?? (typeof row.value === "string" ? row.value : undefined);
       const history = first ? [first] : [];
@@ -475,6 +494,7 @@
       const failedMoves = rows.get(f.fid).failedMoves ?? new Set();
       set(f.fid, { failedMoves });
       let state = null; // kept (not re-read) when a proposed move was refused here: the page's state is untouched
+      let refusals = 0; // proposals refused in a row as already failed
       for (let i = 0; i < L.MAX_STEPS; i += 1) {
         if (halt()) return halted(f);
         if (fieldLate(f)) return giveUp(f, "late");
@@ -510,11 +530,14 @@
         const tried = `${stateKey(state, value)}:${chosen.mid}`;
         if (failedMoves.has(tried)) {
           // Proposed again on the same state: not executed. The model hears so,
-          // and chooses again from the same state.
+          // and chooses again from the same state — twice in a row, and the
+          // step has nothing new to offer: it gives up.
+          if ((refusals += 1) >= MAX_REFUSALS) return giveUp(f, "gave_up");
           const refused = historyEntry(chosen.mid, "already_failed");
           if (refused) history.push(refused);
           continue;
         }
+        refusals = 0;
         const asProgress = res.reason === "progress" && chosen.mid.startsWith("click:");
         const out = await act(f, {
           op: "move", mid: chosen.mid, version: state.version, ...(asProgress ? { as: "progress" } : {}),
@@ -548,7 +571,7 @@
       else if (r.outcome === "gave_up") finish(f, "needs_answer", { lastOutcome: "abstained" });
       else if (r.outcome === "no_answer") finish(f, "needs_answer", { lastOutcome: "no_answer" });
       else if (r.outcome === "exhausted") finish(f, "cannot_operate", { lastOutcome: "step_budget" });
-      else if (r.outcome === "late") finish(f, "cannot_operate", { lastOutcome: "timeout" });
+      else if (r.outcome === "late") outOfTime(f);
       else if (r.outcome === "stale") fail(f, r.why);
     };
 
@@ -606,7 +629,7 @@
               late.push(...todo.slice(i));
               break;
             }
-            if (exploreRefused(f, got)) return undefined;
+            if (exploreRefused(f, got, item)) return undefined;
             // Radio rows: the widget takes ONE answer after all (nothing is committed yet).
             if (got.multi === false) {
               if (holdsOne(f, row, got)) return keepHeld(f, row);
@@ -728,7 +751,7 @@
         const first = String(value[0]);
         const got = await explore(f, first);
         if (!got) return lateOrHalted(f);
-        if (exploreRefused(f, got)) return undefined;
+        if (exploreRefused(f, got, first)) return undefined;
         if (holdsOne(f, row, got)) return keepHeld(f, row);
         if (got.multi === true) {
           multi = true;
@@ -747,7 +770,7 @@
         term = f.shape === "search" ? item ?? (typeof value === "string" ? value : undefined) : undefined;
         const got = await explore(f, term);
         if (!got) return lateOrHalted(f);
-        if (exploreRefused(f, got)) return undefined;
+        if (exploreRefused(f, got, term)) return undefined;
         if (holdsOne(f, row, got)) return keepHeld(f, row);
         if (got.options?.length) {
           opts = got.options;
@@ -871,7 +894,7 @@
           continue;
         }
         if ((row.recommits ?? 0) >= 1) {
-          done({ fid: r.fid }, "unstable", row.wrote);
+          unconfirmed({ fid: r.fid }, row.wrote, "unstable");
           continue;
         }
         set(r.fid, { status: "retry", recommits: 1, lastOutcome: r.outcome ?? "reverted" });
@@ -944,13 +967,13 @@
             finish(f, "needs_answer", { lastOutcome: "abstained" });
             continue;
           }
-          await worked(f, L.FIELD_MS, () => fillText(f, choice.answer));
+          await onFieldClock(f, L.FIELD_MS, () => fillText(f, choice.answer));
         }
       };
       const prepicking = pickBatch(choices.filter((f) => pickedTogether(f, rows.get(f.fid))));
       for (const f of texts) {
         if (halt()) break;
-        await worked(f, L.FIELD_MS, (row) => fillText(f, textOf(f, row), formatOf(row.slot)));
+        await onFieldClock(f, L.FIELD_MS, (row) => fillText(f, textOf(f, row), formatOf(row.slot)));
         await writeProse();
       }
       const prepicked = await prepicking;
@@ -959,7 +982,7 @@
         await writeProse();
         const row = rows.get(f.fid);
         const items = Array.isArray(row.value) ? Math.min(new Set(row.value).size, L.MAX_ITEMS) : 1;
-        await worked(f, L.FIELD_MS + L.ITEM_MS * Math.max(0, items - 1),
+        await onFieldClock(f, L.FIELD_MS + L.ITEM_MS * Math.max(0, items - 1),
           (working) => fillChoice(f, working, prepicked.has(f.fid) ? prepicked.get(f.fid) : undefined));
       }
       if (asking && !proseWritten && !halt()) {
@@ -976,7 +999,8 @@
 
     const stopped = cancelled();
     const over = timedOut();
-    const taken = (r) => Boolean(r.recommits && r.wrote && r.status === "retry");
+    // A revert the engine never got to re-commit (rounds, Stop or clock ran out).
+    const tookBackUnretried = (r) => Boolean(r.recommits && r.wrote && r.status === "retry");
     const fields = listed.map((fid) => {
       const r = rows.get(fid);
       return {
@@ -988,9 +1012,9 @@
         shape: r.field?.shape,
         // Reverted and never re-committed (out of rounds, stopped, out of
         // time): the page took back a value the engine wrote. Said so.
-        status: FINAL.has(r.status) ? r.status : taken(r) ? "unconfirmed"
+        status: FINAL.has(r.status) ? r.status : tookBackUnretried(r) ? "unconfirmed"
           : r.status === "retry" && !stopped && !over ? "cannot_operate" : "needs_answer",
-        answer: taken(r) && !FINAL.has(r.status) ? revertedNote(r.wrote) : r.answer ?? (r.leftover && !DONE.has(r.status)
+        answer: tookBackUnretried(r) && !FINAL.has(r.status) ? revertedNote(r.wrote) : r.answer ?? (r.leftover && !DONE.has(r.status)
           ? `Companion wrote "${r.leftover}" here for an earlier question. Check it.` : null),
         route: r.route ?? null,
         slot: r.slot ?? null,

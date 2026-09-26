@@ -536,17 +536,23 @@ know, and each one was learned from a live failure.
   changed in the field's box or was added to `<body>` (`no_effect`, judged on
   the page, with the KINDS of gesture tried). A press that did nothing at all
   on a button or combobox is followed by the keyboard: ArrowDown, then Enter
-  only if ArrowDown did nothing either — never on a plain text box, and never
-  after anything reacted (an Enter would accept the row a role-less list
-  highlighted). A value the keys committed is taken back; one the page will
+  only if ArrowDown changed nothing anywhere under `<body>` — never on a plain
+  text box, a submit button or inside a link, and never after anything
+  reacted, including an earlier press of the same control (an Enter would
+  accept the row a role-less list highlighted). Pills and a popup's pick
+  that an explore committed are taken back by fill-ops alone. A value the keys committed is taken back; one the page will
   not give back leaves the field to the user, named ("Opening the list
   picked …"). Only when two DIFFERENT kinds have had no effect since anything
   last did is the field `unsupported`, listed under Couldn't operate as
   "doesn't accept automated input": the Companion has no trusted input to try
-  instead. The same press ignored twice is not enough. Typing is one kind per
-  write (insertText and its setter fallback together: a box that takes
-  neither may be refusing that value, a type=number box given text), so a
-  text box needs a second, separate write ignored too.
+  instead. The same press ignored twice is not enough, and a re-proposed move
+  refused twice in a row as already failed ends the adaptive step. Typing
+  counts per VALUE (insertText and its setter fallback are one gesture): a
+  box that takes neither may be refusing that value — a type=number box given
+  text refuses it every time — so the same value twice never counts twice,
+  and such a box ends "couldn't operate" after its attempts, as before. A
+  re-commit that ends anywhere but a fill — out of time, not committed, no
+  answer — is reported as the page having taken the value back.
 - Identity fields (name, email, phone) overwrite a wrong ATS prefill and are
   reported under "corrected"; identity **comboboxes** are fill-only-if-empty.
 - Hidden clone fields are skipped, a write a controlled input rejected is

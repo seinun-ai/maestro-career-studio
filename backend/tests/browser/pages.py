@@ -119,7 +119,7 @@ POLICY_PAGE = """
 # list keeps showing the hit. "Field of study" pills carry a remove control;
 # "Minor" pills carry none and ignore a click, so what an explore commits there
 # cannot be taken back. `__oracle.field_of_study` / `.minor` is what the fake
-# app holds.
+# app holds. `window.slowRemove` delays what a remove control does.
 SINGLE_HIT_SEARCH = """<div class='q'><label for='fos'>Field of study</label>
   <div class='picker'><div class='pills'></div><input id='fos' role='combobox' aria-autocomplete='list'></div></div>
 <div class='q'><label for='minor'>Minor</label>
@@ -134,7 +134,8 @@ SINGLE_HIT_SEARCH = """<div class='q'><label for='fos'>Field of study</label>
   for (const input of document.querySelectorAll("input[role=combobox]")) {
     const pills = input.parentElement.querySelector(".pills");
     oracle[KEY[input.id]] = "";
-    const drop = () => { pills.replaceChildren(); oracle[KEY[input.id]] = ""; };
+    // `window.slowRemove` (ms): the remove control takes effect that late.
+    const drop = () => setTimeout(() => { pills.replaceChildren(); oracle[KEY[input.id]] = ""; }, window.slowRemove ?? 0);
     const pick = (text) => {
       const pill = document.createElement("span");
       pill.className = "pill";
