@@ -3,7 +3,7 @@
 
 import pytest
 
-from tests.browser.conftest import fixture_html
+from tests.browser.conftest import ENGINE_SOURCES, EXTENSION, fixture_html
 from tests.browser.pages import (
     CATEGORY_POPUP,
     POLICY_PAGE,
@@ -303,16 +303,13 @@ for (const input of document.querySelectorAll('input[role=combobox]')) {
 def test_a_search_widgets_rows_say_one_answer_or_several(page, load):
     load(page, ROWS_PAGE)
     f = inv(page)
-    assert (f["Skills"]["multi"], f["School"]["multi"]) == (False, False)   # not known before a list opened
+    assert (f["Skills"]["multi"], f["School"]["multi"]) == (None, None)   # not known before a list opened
     assert explore(page, f["Skills"], "Py")["multi"] is True
     assert explore(page, f["School"], "Py")["multi"] is False
     now = inv(page)
     assert (now["Skills"]["multi"], now["School"]["multi"]) == (True, False)
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError,
-                   reason="Task 5: the live search list opens only after a press and an Enter; "
-                          "its rows then say single (radio) or several (checkbox)")
 def test_a_workday_search_explore_learns_single_or_several(page, load):
     load(page, fixture_html("workday_search.html"))
     f = inv(page)
@@ -340,9 +337,6 @@ def test_react_select_commits_and_a_rejected_click_is_not_filled(page, load):
     assert (row["outcome"], row["reason"], row["committed"]) == ("unexpected", "not_committed", "India")
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError,
-                   reason="Task 5: search is press, type, Enter (key-up), wait for the staged "
-                          "results to settle, click the row's radio")
 def test_workday_search_waits_past_searching_and_commits_the_pill(page, load):
     load(page, fixture_html("workday_search.html"))
     f = inv(page)["School or University"]
@@ -355,15 +349,208 @@ def test_workday_search_waits_past_searching_and_commits_the_pill(page, load):
     assert oracle(page, "school") == "The University of Texas at Arlington"
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError,
-                   reason="Task 5: a multi search ticks the checkbox in a virtualized result list "
-                          "(Python is #16), read back from the pills (Task 3)")
 def test_a_search_set_keeps_existing_chips_and_reports_partial_honestly(page, load):
     load(page, fixture_html("workday_search.html"))
     f = inv(page)["Type to Add Skills"]
     row = apply(page, f, op="set", texts=["Python", "Rust"])
     assert row["outcome"] == "partial" and row["added"] == ["Python"] and row["missing"] == ["Rust"]
     assert row["committed"] == ["SQL", "Python"] and oracle(page, "skills") == ["SQL", "Python"]
+
+
+# --- the search-and-pick sequence (notes §2): press, wait for the list, type,
+# Enter, wait for the results to settle, click the row's radio or checkbox.
+# Every click, key and focus the page hears, in order (`window.heard`), and
+# which option rows were clicked and where (`window.rowClicks`).
+LISTEN = """() => {
+  window.heard = [];
+  for (const type of ['mousedown', 'input', 'keydown', 'keyup']) {
+    document.addEventListener(type, (e) => {
+      if (e.target.id) window.heard.push(`${e.target.id}:${type}${e.key ? ':' + e.key : ''}`);
+    }, true);
+  }
+  window.rowClicks = [];
+  document.addEventListener('click', (e) => {
+    const row = e.target.closest('[data-automation-id=activeListContainer] [role=option]');
+    if (row) window.rowClicks.push({ text: row.textContent, on: e.target.matches('input') ? e.target.type : 'row',
+                                     index: Number(row.dataset.index) });
+  }, true);
+}"""
+
+
+def listen(page):
+    page.evaluate(LISTEN)
+
+
+@in_both_windows()
+def test_search_presses_then_types_then_enters(window, request, load):
+    page = request.getfixturevalue(window)
+    load(page, fixture_html("workday_search.html"))
+    listen(page)
+    got = explore(page, inv(page)["How Did You Hear About Us?"], "LinkedIn")
+    # Two identical leaves are one option (§2 "duplicates"); nothing committed.
+    assert [o["text"] for o in got["options"]] == ["LinkedIn"] and "error" not in got
+    assert oracle(page, "heard") == ""
+    heard = [h for h in page.evaluate("window.heard") if h.startswith("heard:")]
+    assert heard[0] == "heard:mousedown"
+    typed, down, up = heard.index("heard:input"), heard.index("heard:keydown:Enter"), heard.index("heard:keyup:Enter")
+    assert 0 < typed < down < up
+    assert page.input_value("#heard") == "" and not list_shown(page)
+
+
+@in_both_windows()
+def test_identical_leaves_are_one_option_and_commit_the_first(window, request, load):
+    page = request.getfixturevalue(window)
+    load(page, fixture_html("workday_search.html"))
+    listen(page)
+    row = apply(page, inv(page)["How Did You Hear About Us?"], op="choose", text="LinkedIn")
+    assert (row["outcome"], row["committed"]) == ("verified", "LinkedIn") and oracle(page, "heard") == "LinkedIn"
+    assert page.evaluate("window.rowClicks") == [{"text": "LinkedIn", "on": "radio", "index": 0}]
+
+
+def test_same_text_under_different_categories_is_ambiguous(page, load):
+    load(page, fixture_html("adversarial_same_text.html"))
+    listen(page)
+    row = apply(page, inv(page)["Referral Source"], op="choose", text="Other")
+    assert (row["outcome"], row["reason"]) == ("unexpected", "ambiguous")
+    assert [o["text"] for o in row["options"]] == ["Other", "Other"]
+    assert oracle(page, "referral") == "" and page.evaluate("window.rowClicks") == []
+    assert not list_shown(page)
+
+
+@in_both_windows()
+def test_streamed_results_are_read_after_they_settle(window, request, load):
+    """"Arlington" answers in two stages: first the wrong school alone, then
+    all eight (§2 rule 4). Both the read and the pick wait for the list to
+    settle; the school, once its rows said radio, is a one-answer field that
+    holds its one pill."""
+    page = request.getfixturevalue(window)
+    load(page, fixture_html("workday_search.html"))
+    listen(page)
+    f = inv(page)["School or University"]
+    got = explore(page, f, "Arlington")
+    assert len(got["options"]) == 8 and "The University of Texas at Arlington" in [o["text"] for o in got["options"]]
+    row = apply(page, f, op="choose", text="The University of Texas at Arlington", term="Arlington")
+    assert (row["outcome"], row["committed"]) == ("verified", "The University of Texas at Arlington")
+    assert oracle(page, "school") == "The University of Texas at Arlington"
+    assert [c["text"] for c in page.evaluate("window.rowClicks")] == ["The University of Texas at Arlington"]
+    now = inv(page)["School or University"]
+    assert (now["multi"], now["committed"], now["answered"]) == (False, "The University of Texas at Arlington", True)
+
+
+def test_a_single_hit_that_enter_committed_is_verified_not_clicked_again(page, load):
+    load(page, fixture_html("workday_search.html"))
+    listen(page)
+    row = apply(page, inv(page)["School or University"], op="choose", text="University of Houston", term="Houston")
+    # Its rows never showed (the Enter committed and closed the list): not
+    # known to take one answer, it reads as the list of pills it holds.
+    assert (row["outcome"], row["committed"]) == ("verified", ["University of Houston"])
+    assert oracle(page, "school") == "University of Houston" and page.evaluate("window.rowClicks") == []
+
+
+def skill_pills(page):
+    return page.evaluate("""() => [...document.getElementById('skills').closest('[data-automation-id=multiSelectContainer]')
+        .querySelectorAll('[data-automation-id=selectedItem] [data-automation-id=promptOption]')].map((p) => p.textContent)""")
+
+
+@in_both_windows()
+def test_virtualized_results_are_scrolled_to_the_option(window, request, load):
+    """Exact "SQL" is #19 of 31 results and "Python" #16 of 17, with eight rows
+    in the DOM (§2 rule 6): both are scrolled to and ticked; a skill that was
+    already there is kept."""
+    page = request.getfixturevalue(window)
+    load(page, fixture_html("workday_search.html"), sources=[])
+    # The page as it was before the Companion arrived: SQL removed, Tableau
+    # added (trusted input, before the engine loads — after, it is the user's).
+    page.click("[data-automation-id=formField-skills] [data-automation-id=DELETE_charm]")
+    page.click("#skills")
+    page.wait_for_selector("[data-automation-id=activeListContainer]")
+    page.fill("#skills", "Tableau")
+    page.keyboard.press("Enter")
+    page.wait_for_function("JSON.stringify(window.__oracle.skills) === '[\"Tableau\"]'")
+    page.mouse.click(1000, 800)
+    page.fill("#skills", "")
+    for src in ENGINE_SOURCES:
+        page.add_script_tag(content=(EXTENSION / src).read_text(encoding="utf-8"))
+    listen(page)
+    row = apply(page, inv(page)["Type to Add Skills"], op="set", texts=["SQL", "Python"])
+    assert (row["outcome"], row["added"]) == ("verified", ["SQL", "Python"])
+    assert oracle(page, "skills") == ["Tableau", "SQL", "Python"] and skill_pills(page) == ["Tableau", "SQL", "Python"]
+    assert [(c["text"], c["on"], c["index"]) for c in page.evaluate("window.rowClicks")] == [
+        ("SQL", "checkbox", 18), ("Python", "checkbox", 15)]
+    assert page.input_value("#skills") == "" and not list_shown(page)
+
+
+def test_a_tick_is_never_repeated_before_the_redraw(page, load):
+    """A tick is a toggle, and the row shows it only a frame later (§2 rule 8):
+    exactly one click per item, the list kept open between items and each
+    next term typed over the last query (no ×, no second press)."""
+    load(page, fixture_html("workday_search.html"))
+    listen(page)
+    row = apply(page, inv(page)["Type to Add Skills"], op="set", texts=["Python", "Excel VBA"], terms=["Python", "Excel"])
+    assert row["outcome"] == "verified" and oracle(page, "skills") == ["SQL", "Python", "Excel VBA"]
+    assert [c["text"] for c in page.evaluate("window.rowClicks")] == ["Python", "Excel VBA"]
+    heard = [h for h in page.evaluate("window.heard") if h.startswith("skills:")]
+    assert heard.count("skills:mousedown") == 1 and heard.count("skills:keyup:Enter") == 2
+
+
+def test_the_row_is_never_clicked_when_it_holds_a_checkable(page, load):
+    load(page, fixture_html("workday_search.html"))
+    listen(page)
+    f = inv(page)
+    assert apply(page, f["How Did You Hear About Us?"], op="choose", text="LinkedIn")["outcome"] == "verified"
+    assert apply(page, f["School or University"], op="choose", text="Texas State University", term="Texas")["outcome"] == "verified"
+    row = apply(page, f["Type to Add Skills"], op="set", texts=["Microsoft Excel"], terms=["Excel"])
+    assert row["outcome"] == "verified"
+    clicks = page.evaluate("window.rowClicks")
+    assert [c["on"] for c in clicks] == ["radio", "radio", "checkbox"]
+    assert (oracle(page, "heard"), oracle(page, "school")) == ("LinkedIn", "Texas State University")
+
+
+# A combobox that searches only on Enter (its typing shows nothing), beside a
+# plain text box inside a <form> and the Workday boxes.
+ENTER_SEARCH = """<form><label for='nm'>Preferred name</label><input id='nm'></form>
+<label for='cb'>Office</label><input id='cb' role='combobox' aria-autocomplete='list' aria-controls='cb-list'>
+<ul id='cb-list' role='listbox' style='display:none'></ul>
+<script>
+(() => {
+  const cb = document.getElementById('cb'); const list = document.getElementById('cb-list');
+  cb.addEventListener('keyup', (e) => {
+    if (e.key !== 'Enter') return;
+    list.innerHTML = ['Austin', 'Boston'].filter((o) => o.toLowerCase().includes(cb.value.toLowerCase()))
+      .map((o) => `<li role='option'>${o}</li>`).join('');
+    for (const li of list.children) li.addEventListener('click', () => { cb.value = li.textContent; list.style.display = 'none'; });
+    list.style.display = 'block';
+  });
+})();
+</script>"""
+
+
+def test_enter_is_only_sent_to_search_widgets(page, load):
+    """The search's Enter goes to a Workday box and to a combobox whose typing
+    showed nothing — never to a plain text box (in a form, an Enter may submit
+    it), and never to a combobox that filtered as it was typed into."""
+    load(page, ENTER_SEARCH + fixture_html("workday_search.html") + fixture_html("react_select.html").replace(
+        'id="portal"', 'id="portal-rs"'))
+    page.evaluate("""() => { window.enters = [];
+      document.addEventListener('keydown', (e) => { if (e.key === 'Enter') window.enters.push(e.target.id); }, true); }""")
+    f = inv(page)
+    assert apply(page, f["Preferred name"], op="write", value="Sam")["outcome"] == "verified"
+    assert apply(page, f["Country"], op="choose", text="India", term="ind")["outcome"] == "verified"
+    assert apply(page, f["Office"], op="choose", text="Boston", term="bos")["outcome"] == "verified"
+    assert apply(page, f["School or University"], op="choose", text="Texas A&M University", term="Texas")["outcome"] == "verified"
+    assert page.evaluate("window.enters") == ["cb", "school"]
+    assert page.input_value("#nm") == "Sam" and page.input_value("#cb") == "Boston"
+
+
+def test_explore_never_runs_past_the_field_clock(page, load):
+    """The loop sends what the field's clock has left (`ms`): an explore that
+    would outlive it times out, and leaves nothing open or typed."""
+    load(page, fixture_html("workday_search.html"))
+    f = inv(page)["School or University"]
+    got = page.evaluate(f"(r) => {OPS}.explore([r])", {"fid": f["fid"], "fp": f["fp"], "term": "Arlington", "ms": 200})
+    assert got[f["fid"]]["error"] == "timeout"
+    page.wait_for_timeout(600)
+    assert page.input_value("#school") == "" and not list_shown(page) and oracle(page, "school") == ""
 
 
 def test_an_empty_popup_that_needs_a_search_is_unexpected_not_failed(page, load):
@@ -422,9 +609,6 @@ def test_an_undo_that_times_out_still_reports_the_commit(page, load):
     assert oracle(page, "move") == "Yes"
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError,
-                   reason="Task 5: the live search list opens only after a press and an Enter; "
-                          "an Enter that finds one school commits it, and explore takes it back")
 def test_explore_undoes_a_pick_that_enter_committed(page, load):
     load(page, fixture_html("workday_search.html"))
     got = explore(page, inv(page)["School or University"], "Houston")
@@ -806,9 +990,6 @@ def test_a_timeout_is_reported_as_timeout_not_cancelled(page, load):
     assert not list_shown(page)
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError,
-                   reason="Task 5: after a timeout, a full-budget choose on the live search "
-                          "sequence (press, Enter, radio) verifies")
 def test_a_choose_after_a_timeout_starts_clean_and_verifies(page, load):
     load(page, fixture_html("workday_search.html"))
     f = inv(page)["School or University"]
@@ -975,9 +1156,6 @@ def test_a_free_text_pick_equal_to_the_typed_query_is_kept(page, load):
     assert page.input_value("#loc") == "Springfield"
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError,
-                   reason="Task 5: a multi search ticks each missing item's checkbox once and "
-                          "never an item it already holds, read back from the pills (Task 3)")
 def test_a_set_never_clicks_an_item_that_is_already_there(page, load):
     """The multiselect toggles (a second tick un-picks) and shows an error: SQL
     is kept (never re-ticked) and Python is added."""
@@ -1011,9 +1189,6 @@ def test_choose_on_a_multiple_select_keeps_the_other_selections(page, load):
     assert page.evaluate("[...document.getElementById('lang').selectedOptions].map(o => o.text)") == ["English", "Hindi"]
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError,
-                   reason="Task 5: search commits through the row's radio; the engine then "
-                          "takes back a query the widget left")
 def test_a_query_left_in_the_box_beside_a_committed_pill_is_taken_back(page, load):
     html = fixture_html("workday_search.html").replace(
         "      inputOf(id).value = \"\";\n      close();", "      close();")

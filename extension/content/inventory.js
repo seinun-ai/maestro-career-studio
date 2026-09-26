@@ -150,7 +150,10 @@
       const optionTexts = (shape.name === "group" && shape.lone?.(el)) ? [] : (passive?.options ?? []).map((o) => o.text);
       registry.set(fid, { ref: new WeakRef(el), fp, shape: shape.name, question: d.question, options: optionTexts });
       const committed = shape.read(el);
-      const multi = Boolean(shape.multi?.(el));
+      // Tri-state: a search box may not know yet whether it takes one answer
+      // or several (null) — the loop explores it before deciding.
+      const several = shape.multi?.(el);
+      const multi = several === null ? null : Boolean(several);
       fields.push({
         fid, fp, shape: shape.name, kind: shape.kind, multi,
         question: d.question, source: d.source, section: d.section, repeatIndex: d.repeatIndex,

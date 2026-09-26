@@ -112,8 +112,11 @@
       // the undo's own budget — also after an explore that timed out. What
       // stays is reported with the value it left. A Stop takes nothing back.
       const snap = core().snapshot(el, shape);
+      // `ms`: what the field's clock has left (the loop sends it), so an
+      // explore never runs past it; the undo keeps its own allowance.
+      const ms = Number.isFinite(r.ms) ? Math.max(0, Math.min(budgets.explore, r.ms)) : budgets.explore;
       const { got, aborted } = await run((t) => core().explore(el, shape, { term: r.term ?? undefined, consentForms }, t),
-        budgets.explore, el);
+        ms, el);
       if (aborted) await cleanup(el);
       let row = got.options ? got : { options: [], complete: false, searchable: false, error: got.reason ?? got.outcome };
       if (!halted() && core().moved(el, shape, snap)) {

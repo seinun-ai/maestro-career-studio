@@ -115,8 +115,8 @@ POLICY_PAGE = """
 
 # A GENERIC search box whose one-hit search commits that hit as a pill on its
 # own (the behaviour notes §2 rule 5 saw on live Workday, where the Enter does
-# it; here the typing does, so it runs before Task 5's press-and-Enter). The
-# list keeps showing the hit. "Field of study" pills carry a remove control;
+# it; here the typing does — a widget that answers typing never gets the
+# Enter, so this also pins that path). The list keeps showing the hit. "Field of study" pills carry a remove control;
 # "Minor" pills carry none and ignore a click, so what an explore commits there
 # cannot be taken back. `__oracle.field_of_study` / `.minor` is what the fake
 # app holds. `window.slowRemove` delays what a remove control does.

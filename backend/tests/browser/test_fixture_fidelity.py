@@ -136,11 +136,18 @@ def test_results_arrive_in_two_stages_in_reused_row_nodes(page, load):
     page.click("#school")
     page.wait_for_selector(LIST)
     page.fill("#school", "Arlington")
+    # Stage one, as first drawn: recorded by an observer installed BEFORE the
+    # Enter, so the first rows the list ever holds are seen however late the
+    # test polls. A single row — the wrong school, if clicked now.
+    page.evaluate("""() => { window.firstSeen = null;
+      const list = document.querySelector('[data-automation-id=activeListContainer]');
+      const watch = new MutationObserver(() => {
+        const r = [...list.querySelectorAll('[role=option] [data-automation-id=promptOption]')];
+        if (r.length && r.every((p) => p.textContent)) { window.firstSeen = r.map((p) => p.textContent); watch.disconnect(); }
+      });
+      watch.observe(list, { childList: true, subtree: true, characterData: true }); }""")
     page.keyboard.press("Enter")
-    # Stage one, as first drawn: a single row — the wrong school, if clicked now.
-    first_seen = page.wait_for_function("""() => { const r = [...document.querySelectorAll(
-        '[data-automation-id=activeListContainer] [role=option] [data-automation-id=promptOption]')];
-      return r.length ? r.map((p) => p.textContent) : null; }""", polling="raf").json_value()
+    first_seen = page.wait_for_function("window.firstSeen").json_value()
     assert first_seen == ["Arlington Baptist College"]
     page.evaluate("window.firstRow = document.querySelector('[data-automation-id=activeListContainer] [role=option]')")
     page.wait_for_function("document.querySelectorAll('[data-automation-id=activeListContainer] [role=option]').length === 8")

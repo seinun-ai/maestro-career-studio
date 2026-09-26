@@ -24,6 +24,8 @@ The widgets themselves are unchanged.
 """
 
 import json
+import re
+from collections import Counter
 
 import pytest
 
@@ -35,10 +37,6 @@ MODELS = {"/api/autofill/map": MapRequest, "/api/autofill/pick": PickRequest,
           "/api/autofill/step": StepRequest}
 FIXTURES = ["workday_text.html", "workday_listbox.html", "workday_search.html",
             "popup_with_search.html", "native.html", "workday_date.html", "react_select.html"]
-# Task 5: restore — compose every test on FIXTURES. Until the engine operates the
-# live search box, a run on a page holding it spends the loop's whole budget
-# (~60 s) there, so only the search test pays that; the rest run without it.
-WITHOUT_SEARCH = [name for name in FIXTURES if name != "workday_search.html"]
 # The manifest's content scripts, in its order, then the panel-side loop.
 SOURCES = [*json.loads((EXTENSION / "manifest.json").read_text(encoding="utf-8"))
            ["content_scripts"][0]["js"], "shared/fill-loop.js"]
@@ -138,7 +136,7 @@ def _page_of(fixtures) -> str:
     return "\n".join(parts)
 
 
-def _start(page, page_js=None, fresh=True, fixtures=WITHOUT_SEARCH, **spec):
+def _start(page, page_js=None, fresh=True, fixtures=FIXTURES, **spec):
     """Load the page composed of `fixtures` (unless `fresh` is False: the same
     page, a second run) and start one run, left in flight as `window.__run`."""
     if fresh:
@@ -166,7 +164,7 @@ def _finish(page):
     return out
 
 
-def _run(page, page_js=None, fresh=True, fixtures=WITHOUT_SEARCH, **spec):
+def _run(page, page_js=None, fresh=True, fixtures=FIXTURES, **spec):
     _start(page, page_js, fresh, fixtures, **spec)
     return _finish(page)
 
@@ -185,6 +183,17 @@ def _open_popups(page):
     ]""")
 
 
+def test_the_composed_page_keeps_every_fixture_apart():
+    """The composition renames each popup portal to its own: no id is left
+    shared (a shared id would hand one fixture's list to another's script),
+    and no page still reaches for the plain "portal"."""
+    html = _page_of(FIXTURES)
+    ids = Counter(re.findall(r"""(?<![\w-])id=["']([^"'$]+)["']""", html))
+    assert {"heard", "school", "degree", "city", "portal-workday_search"} <= set(ids)
+    assert [i for i, n in ids.items() if n > 1] == []
+    assert '"portal"' not in html and "'portal'" not in html
+
+
 @pytest.fixture
 def e2e_page(page):
     page.set_default_timeout(60000)
@@ -192,8 +201,7 @@ def e2e_page(page):
 
 
 def test_the_engine_fills_every_fixture_on_one_page(e2e_page):
-    """Every widget the engine operates today, on one page (Task 5: restore
-    workday_search.html to this page and fold the next test's asserts back in)."""
+    """Every widget the engine operates today, on one page."""
     page = e2e_page
     out = _run(page)
     status = {q: r["status"] for q, r in out["by_question"].items()}
@@ -207,6 +215,14 @@ def test_the_engine_fills_every_fixture_on_one_page(e2e_page):
     assert page.inner_text("#degree") == "Masters" and oracle(page, "degree") == "Masters"
     # Native select.
     assert page.input_value("#deg") == "Master's"
+    # Workday search boxes (notes §2): two identical LinkedIn leaves are one
+    # option, the school is read after the staged results settle, and every
+    # skill lands (SQL was already there; "Python" sits below the fold of a
+    # virtualized list; "Tableau" is a single hit its Enter commits).
+    assert oracle(page, "heard") == "LinkedIn"
+    assert oracle(page, "school") == "The University of Texas at Arlington"
+    assert oracle(page, "skills") == ["SQL", "Python", "Tableau"]
+    assert [page.input_value(f"#{i}") for i in ("heard", "school", "skills")] == ["", "", ""]
     # A popup that needs its own search: open → search → click.
     assert page.inner_text("#fos") == "Information Systems"
     fos = [p["body"] for p in out["posts"] if p["path"] == "/api/autofill/step"
@@ -215,17 +231,20 @@ def test_the_engine_fills_every_fixture_on_one_page(e2e_page):
     assert [b["history"][-1] for b in fos[1:]] == ["open -> progressed", "search:value -> progressed"]
     # Reported as the page says: verified, and nothing guessed where no fact was.
     for question in ("City", "Postal Code", "Are you legally authorized to work in the United States?", "Degree",
-                     "Highest degree", "Field of study"):
+                     "Highest degree", "Field of study", "How Did You Hear About Us?", "School or University",
+                     "Type to Add Skills"):
         assert status[question] == "verified", (question, out["by_question"][question])
     assert status["Which days can you work?"] == "needs_answer"
     assert page.evaluate("[...document.querySelectorAll('input[name=days]:checked')].map((i) => i.value)") == ["mon"]
     # Telemetry for the filled widgets names the question, never the value.
     obs = page.evaluate("(r) => window.careerStudioCompanion.fillLoop.buildLoopObservations(r)", out["report"])
     by_label = {o["label"]: o for o in obs}
-    for question in ("Are you legally authorized to work in the United States?", "Field of study"):
+    for question in ("Are you legally authorized to work in the United States?", "Field of study",
+                     "How Did You Hear About Us?"):
         assert by_label[question]["outcome"] == "verified"
     assert not any(v.lower() in o["label"].lower() for o in obs
-                   for v in ("Information Systems", "Springfield", "Master's", "Masters"))
+                   for v in ("Information Systems", "Springfield", "Master's", "Masters", "LinkedIn",
+                             "University of Texas"))
     # Nothing left open, and the whole run inside its budget.
     assert _open_popups(page) == []
     assert out["report"]["stopped"] is False and out["report"]["timedOut"] is False
@@ -234,26 +253,6 @@ def test_the_engine_fills_every_fixture_on_one_page(e2e_page):
     # inventory carried the run's id (the handler must forward it).
     inventories = [m for m in out["sent"] if m["type"] == "fill_inventory"]
     assert inventories and all(m["runId"] == out["report"]["runId"] for m in inventories)
-
-
-@pytest.mark.xfail(strict=True, raises=AssertionError,
-                   reason="Task 5: the live search widgets (press, Enter on key-up, settle, tick "
-                          "the row's radio/checkbox, scroll a virtualized list)")
-def test_the_engine_fills_the_live_search_widgets_among_every_fixture(e2e_page):
-    page = e2e_page
-    out = _run(page, fixtures=FIXTURES)
-    status = {q: r["status"] for q, r in out["by_question"].items()}
-    # Two identical LinkedIn leaves, the school after the staged results
-    # settle, and every skill (SQL was already there; "SQL" and "Python" sit
-    # below the fold of a virtualized list).
-    assert oracle(page, "heard") == "LinkedIn"
-    assert oracle(page, "school") == "The University of Texas at Arlington"
-    assert oracle(page, "skills") == ["SQL", "Python", "Tableau"]
-    for question in ("How Did You Hear About Us?", "School or University", "Type to Add Skills"):
-        assert status[question] == "verified", (question, out["by_question"][question])
-    obs = page.evaluate("(r) => window.careerStudioCompanion.fillLoop.buildLoopObservations(r)", out["report"])
-    assert {o["label"]: o for o in obs}["How Did You Hear About Us?"]["outcome"] == "verified"
-    assert not any(v.lower() in o["label"].lower() for o in obs for v in ("LinkedIn", "University of Texas"))
 
 
 def test_stop_between_two_fields_leaves_the_second_untouched(e2e_page):
@@ -268,7 +267,7 @@ def test_stop_between_two_fields_leaves_the_second_untouched(e2e_page):
     # Postal Code is next in the page: untouched, still the page's own value.
     assert page.input_value("#zip") == "00000"
     assert page.inner_text("#auth") == "Select One" and oracle(page, "auth") == ""
-    # Task 5: restore — assert oracle(page, "heard") == "" and oracle(page, "school") == ""
+    assert oracle(page, "heard") == "" and oracle(page, "school") == ""
     assert page.input_value("#deg") == ""
     assert _open_popups(page) == []
     assert out["by_question"]["City"]["status"] == "verified"

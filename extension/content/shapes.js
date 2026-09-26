@@ -126,9 +126,9 @@
     return workdayBox(el) ?? el.parentElement?.closest('[role="combobox"]')
       ?? (container && box(el)?.contains(container) ? container : null);
   };
-  // A hidden backing input counts only inside the widget's root — never a
-  // form's csrf token.
-  const backing = (el) => widgetRoot(el)?.querySelector('input[type="hidden"]')?.value ?? "";
+  // A search widget's hidden backing input counts only inside the widget's
+  // root — never a form's csrf token.
+  const searchBacking = (el) => widgetRoot(el)?.querySelector('input[type="hidden"]')?.value ?? "";
   const chips = (el) => [...(box(el)?.querySelectorAll(CHIP) ?? [])].map((c) => clean(c.textContent)).filter(Boolean);
 
   // Single or several. Live Workday wraps School (one answer) and Skills
@@ -158,20 +158,26 @@
       || b?.querySelector('[aria-multiselectable="true"]') || chips(el).length > 1) return "multi";
     return null;
   };
-  const searchMulti = (el) => multiplicity(el) === "multi";
+  // Tri-state for the inventory and fill-core: true (several), false (one),
+  // null (not known yet — a Workday box before its list has been seen).
+  const searchMulti = (el) => {
+    const kind = multiplicity(el);
+    return kind === null ? null : kind === "multi";
+  };
   // A select-style widget shows its value somewhere other than the input.
   const selectStructure = (el) => Boolean(widgetRoot(el) || box(el)?.querySelector(SELECT_STRUCTURE));
-  const readSearch = (el) => {
-    const kind = multiplicity(el);
-    if (kind === "multi") return chips(el);
+  // `kind` (multiplicity) and `pills` (chips) are read once by a caller that
+  // needs them again.
+  const readSearch = (el, kind = multiplicity(el), pills = chips(el)) => {
+    if (kind === "multi") return pills;
     // A Workday pill box not yet known to be single reads as the list of pills
     // it shows (one, or none: ""); known single, its one pill.
-    if (workdayBox(el)) return kind === "single" ? (chips(el)[0] ?? "") : (chips(el).length ? chips(el) : "");
+    if (workdayBox(el)) return kind === "single" ? (pills[0] ?? "") : (pills.length ? pills : "");
     if (!selectStructure(el)) return el.value; // free-text autocomplete ("Location (City)")
     const single = box(el)?.querySelector(SINGLE);
     if (single) return clean(single.textContent);
-    if (chips(el)[0]) return chips(el)[0];
-    return backing(el);
+    if (pills[0]) return pills[0];
+    return searchBacking(el);
   };
   // A multi widget is never finished (items may be missing), and a Workday
   // pill box whose multiplicity is not known yet is not either: its one pill
@@ -179,13 +185,17 @@
   const searchAnswered = (el) => {
     const kind = multiplicity(el);
     if (kind === "multi" || (workdayBox(el) && kind !== "single")) return false;
-    return [readSearch(el)].flat().some(Boolean);
+    return [readSearch(el, kind)].flat().some(Boolean);
   };
-  // What the app saved: a Workday box's pills (the display, read again) or a
-  // multi widget's chips; any other search widget shows its value only.
-  const searchEvidence = (el) => ({
-    display: readSearch(el), proof: workdayBox(el) || searchMulti(el) ? chips(el) : null,
-  });
+  // What the app saved. A search box's PROOF is its pills: a Workday box's
+  // (the display, read again — Workday keeps what it saved nowhere else the
+  // page shows) or a multi widget's chips. Any other search widget shows its
+  // value only (proof null: the display decides).
+  const searchEvidence = (el) => {
+    const kind = multiplicity(el);
+    const pills = chips(el);
+    return { display: readSearch(el, kind, pills), proof: workdayBox(el) || kind === "multi" ? pills : null };
+  };
 
   // A popup's backing input: the one non-visible input BESIDE it — a direct
   // sibling, where Workday puts it and fills it only when the app takes the
@@ -194,7 +204,7 @@
   // good pick unconfirmed. Never one in the popup's own list or a menu (a
   // search box a closed menu keeps), never a checkable. Two candidates is no
   // backing: a guess would prove a neighbour's value.
-  const backingOf = (el) => {
+  const popupBacking = (el) => {
     const list = el.getAttribute("aria-controls");
     const hidden = [...(el.parentElement?.children ?? [])].filter((i) => i !== el && i.tagName === "INPUT"
       && !/^(checkbox|radio|file)$/.test(i.type) && !ns.fillBase.visible(i)
@@ -395,7 +405,7 @@
       // The button shows the pick at once; the app has it only when the
       // backing input beside it holds a value (notes §8a: picks that showed,
       // then reverted, never filled it). No backing input found: display only.
-      evidence: (el) => ({ display: readPopup(el), proof: backingOf(el)?.value ?? null }),
+      evidence: (el) => ({ display: readPopup(el), proof: popupBacking(el)?.value ?? null }),
     },
   ];
   // Every other shape shows what it holds: display and proof are its value.
@@ -438,6 +448,9 @@
     // nodes its box shows (explore takes back one it added).
     box,
     learnRows,
+    // A Workday search box (its `multiselect` container around the input):
+    // the one widget that searches on Enter, whatever its typing showed.
+    workday: (el) => Boolean(workdayBox(el)),
     pills: (el) => [...(box(el)?.querySelectorAll(CHIP) ?? [])].map((node) => ({ node, text: clean(node.textContent) })),
   };
 })();

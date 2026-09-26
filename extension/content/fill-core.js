@@ -4,12 +4,23 @@
  * leave per widget (date sections are written first, then left once, from
  * whichever section holds focus by then), then verify. CHOICE-LIKE: passive
  * shapes (select, radio/checkbox) act directly; popup shapes OPEN (press, or
- * type a term for search shapes), read the options of the popup they OWN
- * (scrolling long lists), and either close (explore) or click one (commit:
- * press, then click as a second gesture), leave, close, and verify. Verify
- * always runs after the final leave and treats a field error as
- * not filled. What the generic path cannot finish it reports as `unexpected`
- * with a reason; the loop's adaptive step takes it from there.
+ * the search sequence below for search shapes), read the options of the
+ * popup they OWN (scrolling long lists a frame at a time), and either close
+ * (explore) or click one (commit: the radio or checkbox inside the option
+ * where it holds one — once, a tick is a toggle — else press, then click as a
+ * second gesture), leave, close, and verify. Verify always runs after the
+ * final leave and treats a field error as not filled. What the generic path
+ * cannot finish it reports as `unexpected` with a reason; the loop's adaptive
+ * step takes it from there.
+ *
+ * THE SEARCH SEQUENCE (notes §2) is how a person searches a Workday box:
+ * press it and wait for its list, type the term (over any query already
+ * there — a set's items share one open list), press Enter where the widget
+ * searches on it, and wait until the option TEXTS stop changing (results
+ * arrive in stages, in row nodes the list reuses). An Enter that found one
+ * hit may commit it on its own: the evidence is read before anything is
+ * clicked. Identical option texts are one option only under one visible
+ * category path; otherwise the choice is `ambiguous`.
  *
  * VERIFY reads each widget's committed evidence (shapes `evidence`): the
  * display must state the value AND, where the page exposes what it saved
@@ -73,6 +84,12 @@
   const PILL_GONE_MS = 1000; // a pill's remove control that takes a moment to take effect
   const SEARCH_OPEN_MS = 1000; // a search box pressed with no term may show nothing at all
   const EMPTY_MS = 600; // a popup that lists nothing and is not loading this long is empty
+  // Search results are SETTLED once their option texts have not changed this
+  // long. Longer than the gap between two stages of one answer (notes §2 rule
+  // 4: School showed 1 row, then 8), so the first stage is never the answer.
+  const QUIET_MS = 500;
+  const ANSWER_MS = 300; // typing that shows nothing new this long did not search: a combobox gets the Enter
+  const FRAME_MS = 100; // a frame, or this long where none runs (a hidden tab starves requestAnimationFrame)
   const CLEANUP_WAIT_MS = 500; // a cancelled search's debounce, waited out before closing
   const BUSY = /^(loading|searching)/i;
   const OPTIONISH = '[role="option"], [role="menuitem"], [role="treeitem"], [role="menuitemradio"], [role="menuitemcheckbox"]';
@@ -94,11 +111,60 @@
     oid, text, selected: Boolean(selected), policyBlocked: blockedText(text, consentForms),
   }));
   const same = (x, y) => JSON.stringify(x) === JSON.stringify(y);
-  // The option a decision named: its exact text, else the one equivalent
-  // (case/space/accent-folded) text. Two candidates is no answer.
+  // The options a decision named: its exact text, else the equivalent
+  // (case/space/accent-folded) ones.
   const match = (options, text) => {
     const exact = options.filter((o) => o.text === text);
     return exact.length ? exact : options.filter((o) => b().equivalent(o.text, text));
+  };
+  // Where an option sits in its list, as a person sees it: the labels of the
+  // groups around it, its aria-level, and the nearest header before it (a
+  // non-option row with text).
+  const groupName = (g) => {
+    const by = (g.getAttribute("aria-labelledby") ?? "").split(/\s+/).filter(Boolean)
+      .map((id) => g.getRootNode().getElementById?.(id)?.textContent ?? "").join(" ");
+    return b().clean(g.getAttribute("aria-label") || by);
+  };
+  const headerBefore = (o) => {
+    for (let s = o.previousElementSibling; s; s = s.previousElementSibling) {
+      if (s.matches(OPTIONISH) || s.querySelector(OPTIONISH)) continue;
+      const text = b().clean(s.textContent);
+      if (text) return text;
+    }
+    return "";
+  };
+  const pathOf = (o, pop) => {
+    const parts = [];
+    for (let n = o.parentElement; n && n !== pop.parentElement; n = n.parentElement) {
+      if (n.matches('[role="group"], [role="treeitem"]')) parts.push(groupName(n));
+    }
+    return [...parts, o.getAttribute("aria-level") ?? "", headerBefore(o)].join("\u203a");
+  };
+  // Which of `hits` (options with nodes, from one popup) is THE option: the
+  // only one; or, of several with the same text, the first — they are one
+  // option when nothing a person sees tells them apart (notes §2: Workday
+  // lists "LinkedIn" twice) — but only when every one sits under the same
+  // visible category path. The same text under different categories is a
+  // choice nobody made: `ambiguous`.
+  const one = (hits, pop) => {
+    if (!hits.length) return {};
+    if (hits.length === 1) return { hit: hits[0] };
+    const where = pathOf(hits[0].el, pop);
+    return hits.every((h) => h.text === hits[0].text && pathOf(h.el, pop) === where) ? { hit: hits[0] } : { ambiguous: true };
+  };
+  // One animation frame (a virtualized list draws the rows for its new
+  // scroll position on the next one), bounded: a hidden tab runs none, so a
+  // timer stands in after FRAME_MS.
+  const frame = () => new Promise((resolve) => {
+    const timer = setTimeout(resolve, FRAME_MS);
+    requestAnimationFrame(() => {
+      clearTimeout(timer);
+      resolve();
+    });
+  });
+  const redrawn = async (t) => {
+    await frame();
+    await b().settle(t, 40);
   };
 
   const parseDate = (v) => {
@@ -298,6 +364,36 @@
     ns.shapes.learnRows(el, got);
     return got;
   };
+  // Search results once they SETTLE: nothing busy and the option texts
+  // unchanged for QUIET_MS — texts, not nodes (Workday reuses its rows and
+  // swaps their text), and not "different from before the search" (a search
+  // may rightly answer with the list it showed). A list that closed while
+  // the committed value moved is an Enter that committed its one hit (notes
+  // §2 rule 5): null at once, the caller reads the evidence. The rows say
+  // whether the widget takes one answer or several: shapes remembers that.
+  const waitSettled = async (el, shape, before, snap, t) => {
+    let last = null;
+    let since = Date.now();
+    const got = await b().waitFor(() => {
+      const p = own(el, before);
+      if (!p && moved(el, shape, snap)) return { pop: null };
+      if (!p || busy(p)) {
+        last = null;
+        since = Date.now();
+        return null;
+      }
+      const sig = b().optionsOf(p).map((o) => o.text).join("\n");
+      if (sig !== last) {
+        last = sig;
+        since = Date.now();
+        return null;
+      }
+      return Date.now() - since >= QUIET_MS ? { pop: p } : null;
+    }, OPEN_MS + QUIET_MS, t);
+    const pop = got ? got.pop : own(el, before);
+    ns.shapes.learnRows(el, pop);
+    return pop;
+  };
   // A query typed into the field's OWN box is remembered so tidy can take it
   // back; one typed into a search box inside the popup leaves with the popup.
   const typeQuery = async (box, term, t, { own: remember = false } = {}) => {
@@ -305,6 +401,63 @@
     b().typeText(box, term, t);
     if (remember) typed.get(box).query = box.value;
     await b().settle(t, 100); // let a debounced search replace the old list first
+  };
+  // A box whose own ARIA says it searches: a combobox or an autocomplete.
+  const comboBox = (box) => box instanceof HTMLInputElement && !box.closest("a[href]")
+    && (box.getAttribute("role") === "combobox"
+      || (box.hasAttribute("aria-autocomplete") && box.getAttribute("aria-autocomplete") !== "none"));
+  // What typing a query can visibly change: what the app saved (never the
+  // display — a free-text box shows the query itself), whether the box says
+  // its list is expanded, and the owned list.
+  const searchView = (el, shape, before) => {
+    const p = own(el, before);
+    return `${JSON.stringify(shape.evidence(el).proof)}|${el.getAttribute("aria-expanded")}|${
+      p ? `${busy(p)}:${b().optionsOf(p).map((o) => o.text).join("\n")}` : "-"}`;
+  };
+  // THE SEARCH SEQUENCE (notes §2). PRESS the field's box (entered first) and
+  // wait for its list — on Workday, typing into a box whose list is not open
+  // opens nothing and an Enter sent before the list exists is lost; any other
+  // widget gets a moment. `press: false` for a box inside an open popup and
+  // for a list the engine already holds open (a press may toggle it shut).
+  // TYPE the term over whatever query is there (no ×). ENTER (keydown and
+  // keyup: Workday searches on the key-up) — the search's own step, not the
+  // keyboard fallback, so no earlier effect (`reacted`) holds it back: sent
+  // to a Workday box always, to a combobox / autocomplete box only when its
+  // typing showed nothing new within ANSWER_MS (a widget that filters as you
+  // type would take the Enter as a pick), never to anything else — a plain
+  // text box, a button, anything inside a link. Then wait for the results to
+  // SETTLE. Returns the popup, or null (none; or the Enter committed its one
+  // hit and closed the list — the caller reads the evidence).
+  const search = async (el, shape, box, term, before, t, w, { press = true } = {}) => {
+    const snap = snapshot(el, shape);
+    const workday = box === el && ns.shapes.workday(el);
+    if (press) {
+      b().enter(el, t);
+      const quiet = watch(el, shape);
+      try {
+        b().press(el, t);
+        if (workday) await b().waitFor(() => own(el, before), OPEN_MS, t);
+        else await b().settle(t, 100);
+        quiet.saw();
+        w?.saw("pointer");
+        if (!quiet.ignored) reacted.add(el);
+      } finally {
+        quiet.stop();
+      }
+    }
+    const was = searchView(el, shape, before);
+    await typeQuery(box, term, t, { own: box === el });
+    w?.saw("type");
+    if (workday || (comboBox(box) && !(await b().waitFor(() => searchView(el, shape, before) !== was, ANSWER_MS, t)))) {
+      b().keyPress(box, "Enter", t);
+      w?.saw("keyboard");
+    }
+    return waitSettled(el, shape, before, snap, t);
+  };
+  // The list the engine opened for this search box, while it is still up.
+  const heldList = (el) => {
+    const before = opened.get(el);
+    return before && own(el, before) ? before : null;
   };
   // A control the keyboard may open: a button or a combobox — never a plain
   // text box, a submit button or anything inside a link (a key there can
@@ -344,16 +497,17 @@
   // is `committed`. `reclaim: false` for explore (fill-ops owns its undo) and
   // for the engine's own undo, which must not undo itself.
   const open = async (el, shape, term, t, w, { reclaim = true } = {}) => {
+    let searchable = shape.open === "search";
+    // A search widget with a term runs the search sequence — without the
+    // press when the list it opened for an earlier item is still up.
+    if (searchable && term) {
+      const held = heldList(el);
+      const before = held ?? b().popups();
+      opened.set(el, before);
+      return { pop: await search(el, shape, el, term, before, t, w, { press: !held }), before, searchable };
+    }
     const before = b().popups();
     opened.set(el, before);
-    let searchable = shape.open === "search";
-    // A search widget with a term is typed into, never pressed: some close
-    // their results on a click in their own box.
-    if (searchable && term) {
-      await typeQuery(el, term, t, { own: true });
-      w?.saw("type");
-      return { pop: await waitOptions(el, before, t), before, searchable };
-    }
     el.focus?.({ preventScroll: true });
     const snap = snapshot(el, shape);
     const quiet = watch(el, shape);
@@ -401,11 +555,14 @@
     if (!pop) return { pop: null, before, searchable };
     const box = pop.querySelector(INNER_SEARCH);
     if (box) searchable = true;
-    if (term && box) await typeQuery(box, term, t);
+    if (term && box) return { pop: await search(el, shape, box, term, before, t, w, { press: false }), before, searchable };
     return { pop: await waitOptions(el, before, t), before, searchable };
   };
   const scrollerOf = (pop) => [pop, ...pop.querySelectorAll("*")]
     .find((n) => n.scrollHeight > n.clientHeight + 4 && /(auto|scroll)/.test(getComputedStyle(n).overflowY)) ?? null;
+  // Every option, a page and a frame at a time down a long list (a
+  // virtualized one holds only the rows in view), until the scroll position
+  // stops changing. Identical texts are read once.
   const readAll = async (pop, t) => {
     const seen = new Map();
     const box = scrollerOf(pop);
@@ -415,24 +572,43 @@
       if (complete) break;
       const top = box.scrollTop;
       box.scrollTop = top + box.clientHeight;
-      await b().settle(t, 80);
+      await redrawn(t);
       if (box.scrollTop === top) complete = true; // the next pass reads the last page, then stops
     }
     return { options: [...seen.values()].map((o, i) => ({ oid: `o${i + 1}`, text: o.text, selected: o.selected })), complete };
   };
-  // The one option to click, scrolling a long list to find it.
+  // The one option to click (`one`: { hit } | { ambiguous } | {}): in view,
+  // else from the top of a long list down, a page and a frame at a time.
   const findOption = async (pop, text, t) => {
-    let hits = match(b().optionsOf(pop), text);
-    const box = hits.length ? null : scrollerOf(pop);
-    for (let i = 0; box && !hits.length && i < 30; i += 1) {
+    const look = () => one(match(b().optionsOf(pop), text), pop);
+    let found = look();
+    const box = found.hit || found.ambiguous ? null : scrollerOf(pop);
+    if (box && box.scrollTop > 0) {
+      box.scrollTop = 0;
+      await redrawn(t);
+      found = look();
+    }
+    for (let i = 0; box && !found.hit && !found.ambiguous && i < 30; i += 1) {
       const top = box.scrollTop;
       box.scrollTop = top + box.clientHeight;
-      await b().settle(t, 80);
-      hits = match(b().optionsOf(pop), text);
+      await redrawn(t);
+      found = look();
       if (box.scrollTop === top) break;
     }
-    return hits.length === 1 ? hits[0] : null;
+    return found;
   };
+  // The option found AGAIN by its text right before the click: bringing it
+  // into view makes a virtualized list redraw, and a reused row may show
+  // another option by then (notes §2 rules 3, 4).
+  const refind = async (pop, hit, text, t) => {
+    hit.el.scrollIntoView?.({ block: "nearest" });
+    await redrawn(t);
+    return (await findOption(pop, text, t)).hit ?? null;
+  };
+  // The real control inside an option: a Workday result row holds a radio
+  // (one answer) or a checkbox (several), and a click on the ROW only
+  // highlights it (notes §2 "row vs radio").
+  const checkableIn = (o) => o.querySelector('input[type="radio"], input[type="checkbox"]');
 
   // Close what the engine opened. A search query the ENGINE typed, and only
   // while the box still holds exactly that query, is put back to what the box
@@ -493,6 +669,19 @@
       && all.filter((c) => n.parentElement.contains(c)).length === 1) n = n.parentElement;
     return n;
   };
+  // What the field holds now that it did not at `snap`: a search box's new
+  // pills, else the new display values (a multiset difference).
+  const added = (el, shape, snap) => {
+    const search = shape.open === "search";
+    const left = search ? [...snap.held] : [snap.evidence.display].flat();
+    const now = search ? ns.shapes.pills(el).map((p) => p.text) : [shape.evidence(el).display].flat();
+    return now.filter((x) => {
+      const at = left.indexOf(x);
+      if (at < 0) return x != null && x !== "";
+      left.splice(at, 1);
+      return false;
+    });
+  };
   const REMOVE = /delete|remove|clear/i;
   // Take back what exploring committed. A pill it added: Workday's
   // DELETE_charm, else a control inside the pill named delete/remove/clear,
@@ -546,8 +735,13 @@
           options = pop ? b().optionsOf(pop) : [];
         }
       }
-      const got = pop && options.length ? await readAll(pop, t) : { options: [], complete: false };
+      let got = pop && options.length ? await readAll(pop, t) : { options: [], complete: false };
       const rows = pop && options.length ? ns.shapes.learnRows(el, pop) : null;
+      // The search's Enter committed its one hit and closed the list (notes §2
+      // rule 5): that hit is what the search found (fill-ops takes it back).
+      if (!got.options.length && !pop && term && moved(el, shape, snap)) {
+        got = { options: added(el, shape, snap).map((text, i) => ({ oid: `o${i + 1}`, text, selected: false })), complete: false };
+      }
       await tidy(el, t);
       // A filtered search view is never the complete list. `multi` only when the
       // rows said so: checkboxes (several answers) or radios (one).
@@ -632,9 +826,26 @@
     b().check(t);
     o.click();
   }];
+  // The gestures that may pick an option: its radio or checkbox ONCE (a tick
+  // is a toggle — a second click before the redraw takes the pick back,
+  // notes §2 rule 8), else a press and then a click.
+  const gesturesFor = (o) => (checkableIn(o) ? [(x, t) => {
+    b().check(t);
+    checkableIn(x).click();
+  }] : GESTURES);
+  // After a click: a moment for the page, and for a tick its pill — the next
+  // item is typed only once the page shows the one before (≤ OPEN_MS).
+  const afterClick = async (el, shape, o, text, t) => {
+    await b().settle(t, 200);
+    if (checkableIn(o)?.type === "checkbox") await b().waitFor(() => holds(el, shape, text), OPEN_MS, t);
+  };
   // Whether the field's committed value already holds this text — presence
   // only, whatever error the field shows.
   const holds = (el, shape, x) => [shape.read(el)].flat().some((h) => b().equivalent(h, x));
+  // Whether the query in the box has become the committed value (a free-text
+  // box whose pick equals the query): no pills, no backing — the box is it.
+  const queryIsValue = (el, shape, x) => holds(el, shape, x) && shape.evidence(el).proof === null
+    && [shape.read(el)].flat().includes(el.value);
   // An item a multi widget already holds is never clicked (a click toggles it
   // off); what the page holds is reported as it stands.
   const alreadyThere = (el, shape, text) => ({
@@ -644,7 +855,11 @@
   // `undo`: the engine's own undo (choosing a popup's placeholder to empty
   // it). Page actions never carry it, so a decision that names a placeholder
   // ("Select One" offered as an option) is refused, never clicked.
-  async function choose(el, shape, { text, term, consentForms, undo = false } = {}, t) {
+  // `keep` (a set's items on a search box): the list stays open and the query
+  // typed — the next item is typed over it; set tidies once, at its end.
+  // `asSet`: a set's item on a box not known to take several — rows that turn
+  // out to be radios end it (`not_a_set`) before anything is clicked.
+  async function choose(el, shape, { text, term, consentForms, undo = false, keep = false, asSet = false } = {}, t) {
     if (shape.kind !== "choice") return { outcome: "unexpected", reason: "not_a_choice" };
     if (blockedText(text, consentForms)) return { outcome: "blocked" };
     if (!undo && ns.isPlaceholderText(text)) return { outcome: "unexpected", reason: "placeholder" };
@@ -656,62 +871,90 @@
     // shows it (a popup whose backing input is empty) still gets the pick.
     if (!multi && verify(el, shape, text) === "verified") return { outcome: "verified", text };
     // What the field showed and the app held before the pick: its proof must move.
-    const before = shape.evidence(el);
+    const snap = snapshot(el, shape);
+    const before = snap.evidence;
     const w = watch(el, shape);
+    const done = async (result) => {
+      if (!keep) await tidy(el, t);
+      return result;
+    };
     try {
-      for (const gesture of GESTURES) {
+      for (let attempt = 0; ; attempt += 1) {
         const { pop, before: popsBefore, committed } = await open(el, shape,
           shape.open === "search" ? (term ?? text) : term, t, w, { reclaim: !undo });
         if (committed) return { outcome: "unexpected", reason: "committed_while_opening" };
-        if (!pop) {
+        // The search's own Enter may have committed its one hit (notes §2
+        // rule 5): the answer is verified without a click; anything else it
+        // committed is taken back like any value the engine did not choose.
+        if (shape.open === "search" && moved(el, shape, snap)) {
+          if (displayed(el, shape, text) === "verified") {
+            const got = verify(el, shape, text, { before });
+            return done(got === "verified" || got === "unconfirmed" ? { outcome: got, text }
+              : { outcome: "unexpected", reason: "not_committed" });
+          }
+          const hits = added(el, shape, snap);
+          if (!undo) await takeBack(el, shape, snap, [], t);
+          if (moved(el, shape, snap)) {
+            await tidy(el, t);
+            return { outcome: "unexpected", reason: "committed_while_opening" };
+          }
+          if (!own(el, popsBefore)) {
+            return done({ outcome: "unexpected", reason: "option_missing", options: flag(hits.map((h, i) => ({ oid: `o${i + 1}`, text: h })), consentForms) });
+          }
+        }
+        // The rows said "one answer": a set's item is not one to click.
+        if (asSet && shape.multi?.(el) === false) return done({ outcome: "unexpected", reason: "not_a_set" });
+        const live = pop && pop.isConnected ? pop : own(el, popsBefore);
+        if (!live) {
           await tidy(el, t);
           return { outcome: "unexpected", ...w.reason("no_popup") };
         }
-        const hit = await findOption(pop, text, t);
-        if (!hit) {
-          const options = flag(b().optionsOf(pop), consentForms);
-          await tidy(el, t);
-          return { outcome: "unexpected", reason: options.length ? "option_missing" : "empty_popup", options };
+        const found = await findOption(live, text, t);
+        if (!found.hit) {
+          const options = flag(b().optionsOf(live), consentForms);
+          if (found.ambiguous) return done({ outcome: "unexpected", reason: "ambiguous", options });
+          return done({ outcome: "unexpected", reason: options.length ? "option_missing" : "empty_popup", options });
         }
-        if (blockedText(hit.text, consentForms)) {
-          await tidy(el, t);
-          return { outcome: "blocked" };
+        let { hit } = found;
+        if (blockedText(hit.text, consentForms)) return done({ outcome: "blocked" });
+        if (!undo && ns.isPlaceholderText(hit.text)) return done({ outcome: "unexpected", reason: "placeholder" });
+        // The rows the list showed may only now have said "several". A row's
+        // own checkbox says whether it is held (its aria-selected is only
+        // Workday's keyboard highlight).
+        const ticked = (o) => (checkableIn(o.el) ? checkableIn(o.el).checked : o.selected);
+        if ((multi || shape.multi?.(el)) && (ticked(hit) || holds(el, shape, hit.text))) {
+          return done(alreadyThere(el, shape, hit.text));
         }
-        if (!undo && ns.isPlaceholderText(hit.text)) {
-          await tidy(el, t);
-          return { outcome: "unexpected", reason: "placeholder" };
-        }
-        // The rows the list showed may only now have said "several".
-        if ((multi || shape.multi?.(el)) && (hit.selected || holds(el, shape, hit.text))) {
-          await tidy(el, t);
-          return alreadyThere(el, shape, hit.text);
-        }
-        const shown = b().optionsOf(pop).map((o) => o.text).join("\n");
-        hit.el.scrollIntoView?.({ block: "nearest" });
-        gesture(hit.el, t);
-        await b().settle(t, 200);
+        hit = await refind(live, hit, text, t);
+        if (!hit) return done({ outcome: "unexpected", reason: "option_missing", options: flag(b().optionsOf(live), consentForms) });
+        if ((multi || shape.multi?.(el)) && ticked(hit)) return done(alreadyThere(el, shape, hit.text));
+        const gestures = gesturesFor(hit.el);
+        const shown = b().optionsOf(live).map((o) => o.text).join("\n");
+        gestures[attempt](hit.el, t);
+        await afterClick(el, shape, hit.el, hit.text, t);
         w.saw("pointer");
         // The pick is committed: the query typed to find it is no longer the
         // engine's to take back (a free-text box whose pick equals the query).
         // Only when the box's own value IS the committed value: a widget that
-        // shows the pick in a pill and leaves the query in its box still gets
-        // the query taken back.
-        if (holds(el, shape, hit.text) && [shape.read(el)].flat().includes(el.value)) typed.delete(el);
+        // shows the pick in a pill (proof) and leaves the query in its box
+        // still gets the query taken back, even one that reads like the pill.
+        if (queryIsValue(el, shape, hit.text)) typed.delete(el);
         const after = own(el, popsBefore);
         const next = after ? b().optionsOf(after) : [];
         if (next.length && next.map((o) => o.text).join("\n") !== shown && same(shape.read(el), before.display)) {
           leftOpen.set(el, { pop: after, before: popsBefore });
           return { outcome: "unexpected", reason: "new_options", options: flag(next, consentForms) };
         }
-        await tidy(el, t);
+        if (!keep) await tidy(el, t);
         const got = verify(el, shape, hit.text, { before, undo });
         if (got === "verified") return { outcome: "verified", text: hit.text };
         // It shows the pick, but the app did not take it: never a second click
         // (the loop decides what an unconfirmed value needs).
         if (got === "unconfirmed") return { outcome: "unconfirmed", text: hit.text };
         // Something else got committed: a second click could undo it (a chip
-        // that un-picks on click). Only a click that changed nothing is retried.
-        if (!same(shape.read(el), before.display)) break;
+        // that un-picks on click). Only a click that changed nothing is
+        // retried, with the next gesture — and a tick has no next one.
+        if (!same(shape.read(el), before.display) || attempt + 1 >= gestures.length) break;
       }
       return { outcome: "unexpected", ...w.reason("not_committed") };
     } finally {
@@ -722,9 +965,13 @@
   // Sets add, never remove: an existing choice is kept and never unticked,
   // and a set is verified only when EVERY requested item is committed. Items
   // the never-fill policy refuses are reported as `blocked`, apart from the
-  // `missing` ones the page did not offer or did not take.
+  // `missing` ones the page did not offer or did not take. A Workday search
+  // box not yet known to take one answer or several is tried as a set: its
+  // first item's rows decide (radios: `not_a_set`, nothing clicked).
   async function set(el, shape, { texts = [], terms = [], consentForms } = {}, t) {
-    if (shape.kind !== "choice" || !shape.multi?.(el)) return { outcome: "unexpected", reason: "not_a_set" };
+    const several = shape.multi?.(el);
+    const unknown = several == null && shape.open === "search" && ns.shapes.workday(el);
+    if (shape.kind !== "choice" || !(several || unknown)) return { outcome: "unexpected", reason: "not_a_set" };
     const options = shape.passive ? flag(shape.passive(el).options, consentForms) : null;
     // Blocked by its own text, or (passive) by the one option it names.
     const blocked = texts.filter((x) => blockedText(x, consentForms)
@@ -748,18 +995,26 @@
       }
       await blurOut(el, t);
     } else {
+      // A search box's items share ONE open list (notes §2 rule 7): each is
+      // typed over the last query, and the list is closed once, at the end.
+      const keep = shape.open === "search";
       for (const [i, text] of texts.entries()) {
         if (!allowed.includes(text) || holds(el, shape, text)) continue;
-        const got = await choose(el, shape, { text, term: terms[i] ?? text, consentForms }, t);
+        const got = await choose(el, shape, { text, term: terms[i] ?? text, consentForms, keep, asSet: true }, t);
+        if (got.reason === "not_a_set") {
+          await tidy(el, t);
+          return { outcome: "unexpected", reason: "not_a_set" };
+        }
         if (got.outcome === "blocked") blocked.push(text); // the option shown for it is a never-fill one
         if (leftOpen.has(el)) await tidy(el, t); // a category is not an item: close it and move on
       }
+      if (keep) await tidy(el, t);
     }
     // `added` is what THIS call added; `missing` what the field still lacks.
-    const added = allowed.filter((x) => holds(el, shape, x) && !had.some((h) => b().equivalent(h, x)));
+    const addedNow = allowed.filter((x) => holds(el, shape, x) && !had.some((h) => b().equivalent(h, x)));
     const missing = allowed.filter((x) => !holds(el, shape, x) && !blocked.includes(x));
-    if (b().invalid(el)) return { outcome: "reverted", added, missing, blocked };
-    return { outcome: missing.length || blocked.length ? "partial" : "verified", added, missing, blocked };
+    if (b().invalid(el)) return { outcome: "reverted", added: addedNow, missing, blocked };
+    return { outcome: missing.length || blocked.length ? "partial" : "verified", added: addedNow, missing, blocked };
   }
 
   // A text field holding a value the page shows an error on: commit its OWN
@@ -944,9 +1199,21 @@
       if (!box || !term) return { outcome: "unexpected", reason: "no_search_box" };
       const before = held?.before ?? b().popups();
       if (!held) opened.set(el, before);
-      await typeQuery(box, term, t, { own: box === el });
+      const snap = snapshot(el, shape);
+      // The search sequence, pressing the box only when no list is up yet.
+      const pop = await search(el, shape, box, term, before, t, null, { press: !held && box === el });
       searched.add(el);
-      const pop = await waitOptions(el, before, t);
+      // The Enter committed a hit on its own (notes §2 rule 5). The value
+      // itself is an answer; anything else is the page's pick, left for the
+      // loop to name (`search_committed`), never called filled.
+      if (moved(el, shape, snap)) {
+        const [text] = added(el, shape, snap);
+        await tidy(el, t);
+        if (text && b().equivalent(text, last.value) && verify(el, shape, text, { before: snap.evidence }) === "verified") {
+          return { outcome: "verified", text };
+        }
+        return { outcome: "unexpected", reason: "search_committed" };
+      }
       if (!pop) { // nothing opened: the query the engine typed is taken back
         await tidy(el, t);
         return { outcome: "unexpected", reason: "no_popup" };
@@ -967,9 +1234,9 @@
       hit.el.scrollIntoView?.({ block: "nearest" });
       const w = watch(el, shape);
       try {
-        for (const gesture of GESTURES) {
+        for (const gesture of gesturesFor(hit.el)) {
           gesture(hit.el, t);
-          await b().settle(t, 200);
+          await afterClick(el, shape, hit.el, hit.text, t);
           w.saw("pointer");
           const after = own(el, held.before) ?? (b().visible(held.pop) ? held.pop : null);
           const next = after ? b().optionsOf(after).map((o) => o.text).join("\n") : "";
@@ -987,7 +1254,7 @@
           await tidy(el, t);
           return { outcome: "unexpected", ...(committed ? { reason: "group_committed" } : w.reason("not_committed")) };
         }
-        if (holds(el, shape, hit.text) && [shape.read(el)].flat().includes(el.value)) typed.delete(el);
+        if (queryIsValue(el, shape, hit.text)) typed.delete(el);
         await tidy(el, t);
         const got = verify(el, shape, hit.text, { before });
         if (got === "verified" || got === "unconfirmed") return { outcome: got, text: hit.text };

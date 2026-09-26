@@ -220,7 +220,7 @@ def explored_terms(out):
 def test_a_search_whose_rows_show_checkboxes_takes_the_set_path(page, load):
     """Not known to take several at inventory (one Workday container for School
     and Skills); the first item's explore shows checkbox rows: a set."""
-    out = run(page, load, frames=[[f("k", "search", "Skills")]],
+    out = run(page, load, frames=[[f("k", "search", "Skills", multi=None)]],
               map={"k": {"route": "slot", "slot": "skills", "value": ["SQL", "Python"]}},
               explore={"SQL": {"options": [opt("o1", "SQL")], "multi": True},
                        "Python": {"options": [opt("o1", "Python")], "multi": True}},
@@ -228,16 +228,27 @@ def test_a_search_whose_rows_show_checkboxes_takes_the_set_path(page, load):
               apply={"SQL+Python": {"outcome": "verified", "added": ["SQL", "Python"], "missing": []}})
     assert statuses(out) == {"k": "verified"}
     assert explored_terms(out) == ["SQL", "Python"]   # the first item's explore is not repeated
+    # Each explore carries what the field's clock has left, so the page's explore never outlives it.
+    assert all(0 < r["ms"] <= 31000 for m in out["sent"] if m["type"] == "fill_explore" for r in m["requests"])
     assert [a["texts"] for a in actions(out, "set")] == [["SQL", "Python"]]
 
 
 def test_a_search_whose_rows_show_radios_takes_one_answer(page, load):
-    out = run(page, load, frames=[[f("k", "search", "School")]],
+    out = run(page, load, frames=[[f("k", "search", "School", multi=None)]],
               map={"k": {"route": "slot", "slot": "education.0.school", "value": ["UT Arlington", "UT Austin"]}},
               explore={"UT Arlington": {"options": [opt("o1", "UT Arlington")], "multi": False}})
     assert (row(out, "k")["status"], row(out, "k")["lastOutcome"]) == ("needs_answer", "set_for_one")
     assert explored_terms(out) == ["UT Arlington"]   # asked the rows first
     assert "/api/autofill/pick" not in out["calls"] and not actions(out)
+
+
+def test_a_search_known_to_take_one_answer_is_not_explored_for_a_set(page, load):
+    """Its rows already said single (inventory `multi: false`, not null): a
+    fact of several items is no answer, and nothing is typed to learn that."""
+    out = run(page, load, frames=[[f("k", "search", "School", multi=False)]],
+              map={"k": {"route": "slot", "slot": "education.0.school", "value": ["UT Arlington", "UT Austin"]}})
+    assert (row(out, "k")["status"], row(out, "k")["lastOutcome"]) == ("needs_answer", "set_for_one")
+    assert explored_terms(out) == [] and not actions(out)
 
 
 def test_a_one_answer_search_box_that_already_holds_a_value_is_left_alone(page, load):
@@ -494,6 +505,24 @@ def test_a_group_that_committed_a_value_is_left_for_the_user_to_check(page, load
     assert (r["status"], r["answer"]) == ("needs_answer", 'Companion clicked "Job "Board"". Check it.')
     assert r["lastOutcome"] == "group_committed"
     assert [m["mid"] for m in actions(out, "move")] == ["click:o1"]  # not re-tried, not given up over it
+
+
+def test_a_search_move_whose_enter_committed_a_hit_is_left_for_the_user_to_check(page, load):
+    """A search's one hit that the page committed on its own (notes §2 rule 5)
+    is named with what it left — never filled, never tried again."""
+    out = run(page, load, frames=[[f("k", "search", "Field of study")]] * 3,
+              map={"k": {"route": "slot", "slot": "education.0.discipline", "value": "Business analytics"}},
+              explore={"Business analytics": {"options": [], "complete": False, "error": "empty_popup"}},
+              apply={"search:word:1": {"outcome": "unexpected", "reason": "search_committed", "committed": "Analytics"}},
+              step={"states": [{"candidates": [{"mid": "search:word:1", "describe": 'Type "analytics" into the search box'},
+                                               GIVE_UP]}],
+                    "moves": [{"mid": "search:word:1", "reason": "progress"}]})
+    r = row(out, "k")
+    assert (r["status"], r["answer"], r["lastOutcome"]) == (
+        "needs_answer", 'Searching picked "Analytics". Check it.', "search_committed")
+    assert [m["mid"] for m in actions(out, "move")] == ["search:word:1"]
+    obs = page.evaluate("(r) => window.careerStudioCompanion.fillLoop.buildLoopObservations(r)", out["report"])
+    assert [o["outcome"] for o in obs] == ["filled_unverified"]
 
 
 def test_not_a_group_re_takes_the_state_and_steps_again(page, load):

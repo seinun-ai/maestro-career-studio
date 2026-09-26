@@ -244,12 +244,12 @@ def test_search_pills_are_read_from_the_multiselect_container(page, load):
     """Live Workday marks the INPUT `selectinput`; its pills are in the ancestor
     `multiselect` container. School and Skills share that markup, so one pill
     does not yet say single or several (only the open list's rows do): the pill
-    reads as a list, and neither field is `answered` or `multi` yet."""
+    reads as a list, neither field is `answered`, and `multi` is null (unknown)."""
     load(page, fixture_html("workday_search.html"))
     by_q = by_question(page)
     skills, school = by_q["Type to Add Skills"], by_q["School or University"]
-    assert (skills["committed"], skills["multi"], skills["answered"]) == (["SQL"], False, False)
-    assert (school["committed"], school["multi"], school["answered"]) == ("", False, False)
+    assert (skills["committed"], skills["multi"], skills["answered"]) == (["SQL"], None, False)
+    assert (school["committed"], school["multi"], school["answered"]) == ("", None, False)
     page.evaluate("""() => { const p = document.querySelector('#skills').closest('[data-uxi-widget-type=multiselect]')
         .querySelector('[data-automation-id=selectedItem]'); p.closest('ul').append(p.parentElement.cloneNode(true)); }""")
     assert by_question(page)["Type to Add Skills"]["multi"] is True   # two pills: several

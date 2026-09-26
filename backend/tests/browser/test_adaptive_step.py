@@ -69,9 +69,6 @@ def test_a_popup_that_needs_a_search_is_opened_searched_and_picked(page, load):
     assert page.inner_text("#fos") == "Information Systems"
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError,
-                   reason="Task 5: search moves press, type, Enter (key-up) and settle; the click "
-                          "move ticks the row's radio")
 def test_a_search_field_types_into_its_own_box_and_takes_the_query_back(page, load):
     load(page, fixture_html("workday_search.html"))
     f = inv(page)["School or University"]
@@ -87,6 +84,22 @@ def test_a_search_field_types_into_its_own_box_and_takes_the_query_back(page, lo
     row = move(page, f, click, school)
     assert (row["outcome"], row["committed"]) == ("verified", school) and oracle(page, "school") == school
     assert page.input_value("#school") == "" and not list_shown(page)
+
+
+def test_a_search_move_whose_enter_commits_the_value_is_verified_and_anything_else_named(page, load):
+    """A search that finds one hit commits it on the Enter (notes §2 rule 5):
+    the value itself is verified; another school is the page's pick, left in
+    place and named (search_committed), never called filled."""
+    load(page, fixture_html("workday_search.html"))
+    f = inv(page)["School or University"]
+    row = move(page, f, "search:word:1", "University of Houston")   # "Houston"
+    assert row["outcome"] == "verified" and oracle(page, "school") == "University of Houston"
+    load(page, fixture_html("workday_search.html"))
+    f = inv(page)["School or University"]
+    row = move(page, f, "search:word:1", "University of Houston Downtown")
+    assert (row["outcome"], row["reason"]) == ("unexpected", "search_committed")
+    assert oracle(page, "school") == "University of Houston" and not list_shown(page)
+    assert page.input_value("#school") == ""
 
 
 def test_give_up_closes_everything(page, load):
@@ -343,9 +356,6 @@ def test_a_group_that_commits_a_value_is_never_verified(page, load):
     assert not list_shown(page)
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError,
-                   reason="Task 5: a search move presses Enter and reads a virtualized list "
-                          "(\"SQL\" is #19 of 31) by scrolling it")
 def test_chips_a_multi_widget_already_holds_are_never_click_moves(page, load):
     load(page, fixture_html("workday_search.html"))
     f = inv(page)["Type to Add Skills"]

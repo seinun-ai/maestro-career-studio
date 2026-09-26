@@ -450,6 +450,32 @@ know, and each one was learned from a live failure.
   refuses chips. A popup's own "Select One" row is never chosen.
   Token inputs (Workday Skills) are typed one token at a time. Date controls
   receive only the part they asked for, in the format their own options use.
+- **A search box is searched the way a person does it** (`fill-core`'s
+  `search`, shared by explore, choose, a set's items and the adaptive step's
+  `search:*` moves). Press the box and wait for its list (on Workday, typing
+  into a closed box opens nothing, and an Enter sent before the list exists
+  is lost); type the term over any query already there; press Enter (keydown
+  and keyup — Workday searches on the key-up); then wait until the option
+  TEXTS have not changed for 500 ms (results arrive in stages, in row nodes
+  the list reuses, so neither "new nodes" nor "different from before" is the
+  signal). The Enter is the search's own step, not the keyboard fallback: it
+  goes to a Workday box always, to a combobox or autocomplete box only when
+  its typing showed nothing new (a widget that filters as you type would
+  take an Enter as a pick), and never to a plain text box, a button or
+  anything inside a link. An Enter that finds one hit may commit it on its
+  own: the pills are read before anything is clicked (the answer: verified,
+  unclicked; anything else: taken back, or — from an adaptive search move —
+  left and named "Searching picked …", never filled). The click goes to the
+  radio or checkbox inside the result row, once (a click on the row only
+  highlights it; a tick is a toggle, redrawn a frame later, so it is never
+  repeated), after the option is found again by its text; a long list is
+  scrolled a page and a frame at a time (Workday keeps eight rows in the
+  DOM). Two options with the same text are one option — the first — only
+  when they sit under the same visible category path; otherwise the choice
+  is `ambiguous` and nothing is clicked. A set's items share one open list:
+  each is typed over the last query, and the next waits for the last one's
+  pill. A Workday box not yet known to take one answer or several is
+  tried as a set; radio rows end it before any click.
 - **A split date is written whole before anything blurs out of it.** Workday
   renders a date as several `spinbutton` inputs inside one widget, and the
   widget validates when focus leaves the WIDGET, not the section — so blurring
@@ -506,9 +532,10 @@ know, and each one was learned from a live failure.
   Whether a Workday search box takes one answer or several shows only in its
   open list — radio rows or checkbox rows, under the same container — so it is
   learnt from the first list the engine opens for it (or several pills, or
-  `aria-multiselectable`); until then its one pill reads as a list, the field
-  is not "answered", and the loop explores a several-item fact's first item
-  before choosing between one answer and a set. A box whose rows turn out to
+  `aria-multiselectable`); until then the inventory reports `multi: null`,
+  its one pill reads as a list, the field is not "answered", and the loop
+  explores a several-item fact's first item before choosing between one
+  answer and a set (a box known to take one answer is not explored for it). A box whose rows turn out to
   be radios and that already holds a value is left as it stands (`already`),
   never overwritten — unless the engine itself wrote it earlier in the run (a
   re-render forgot what its rows said), which stays the engine's `verified`.

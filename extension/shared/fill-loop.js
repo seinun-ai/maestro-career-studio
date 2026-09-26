@@ -63,7 +63,7 @@
  *                  no_effect from a second kind of gesture — already recorded
  *                  as the row's final status) | stale (no frame owns it)
  *                  → the caller turns it into a row status (notDone, settle).
- *   adapt()        verified (+reason) | landed (group_committed) |
+ *   adapt()        verified (+reason) | landed (group_committed, search_committed) |
  *                  unconfirmed | gave_up | no_answer | exhausted | late |
  *                  stale | final | halted
  *                  → settle() (one value) or commitSet (one item).
@@ -165,7 +165,14 @@
   };
   // Shown beside the field in the panel, so it keeps the panel's copy rules:
   // two sentences, never an em dash joining them.
-  const landedNote = (text) => (text ? `Companion clicked "${text}". Check it.` : "Companion clicked an option. Check it.");
+  // `how`: search_committed — the page picked a search's one hit on its own.
+  const landedNote = (text, how) => {
+    const who = how === "search_committed" ? "Searching picked" : "Companion clicked";
+    return text ? `${who} "${text}". Check it.` : `${who} ${how === "search_committed" ? "a value" : "an option"}. Check it.`;
+  };
+  // A move that left a value the model did not choose as the answer: a group
+  // that committed one, or a search whose Enter committed its one hit.
+  const LANDS = new Set(["group_committed", "search_committed"]);
   const unstableNote = (text) => (text ? `Companion filled "${text}" twice and the page took it back both times. Check it.`
     : "Companion filled this twice and the page took it back both times. Check it.");
   const revertedNote = (text) => `Companion filled "${text}", then the page took it back. Check it.`;
@@ -377,8 +384,10 @@
     };
     const explore = async (f, term) => {
       if (halt() || fieldLate(f)) return null;
+      // The field's remaining time rides along: the page's explore never runs past it.
+      const left = (rows.get(f.fid)?.deadline ?? Infinity) - Date.now();
       const got = merged(await broadcast({
-        type: "fill_explore", requests: [{ fid: f.fid, fp: f.fp, ...(term ? { term } : {}) }],
+        type: "fill_explore", requests: [{ fid: f.fid, fp: f.fp, ...(term ? { term } : {}), ...(Number.isFinite(left) ? { ms: left } : {}) }],
       }))[f.fid];
       return got ?? { options: [], complete: false, error: "stale" };
     };
@@ -549,15 +558,17 @@
         if (out.outcome === "halted") return halted(f);
         if (out.outcome === "refused") return { outcome: "final" };
         if (out.outcome === "late") return giveUp(f, "late");
-        if (FAILED.has(out.outcome) && out.reason !== "group_committed") failedMoves.add(tried);
+        if (FAILED.has(out.outcome) && !LANDS.has(out.reason)) failedMoves.add(tried);
         const entry = historyEntry(chosen.mid, out.outcome, out.reason);
         if (entry) history.push(entry);
         if (out.outcome === "verified") return { outcome: "verified", reason: res.reason, committed: out.committed };
         if (out.outcome === "unconfirmed") {
           return { outcome: "unconfirmed", text: quotedText(chosen.describe) ?? ([out.committed].flat().filter(Boolean).join(", ") || null) };
         }
-        if (out.outcome === "unexpected" && out.reason === "group_committed") {
-          return { outcome: "landed", text: quotedText(chosen.describe) ?? ([out.committed].flat().filter(Boolean).join(", ") || null) };
+        if (out.outcome === "unexpected" && LANDS.has(out.reason)) {
+          // A search's describe quotes the term typed, not the value it left.
+          const left = [out.committed].flat().filter(Boolean).join(", ") || null;
+          return { outcome: "landed", how: out.reason, text: out.reason === "search_committed" ? left : quotedText(chosen.describe) ?? left };
         }
         // progressed, stale, not_a_group, anything else: a fresh state, and step again.
       }
@@ -569,7 +580,7 @@
       if (r.outcome === "verified") done(f, r.reason, r.committed);
       else if (r.outcome === "unconfirmed") unconfirmed(f, r.text);
       else if (r.outcome === "landed") {
-        finish(f, "needs_answer", { answer: landedNote(r.text), lastOutcome: "group_committed", wrote: r.text });
+        finish(f, "needs_answer", { answer: landedNote(r.text, r.how), lastOutcome: r.how ?? "group_committed", wrote: r.text });
       }
       else if (r.outcome === "gave_up") finish(f, "needs_answer", { lastOutcome: "abstained" });
       else if (r.outcome === "no_answer") finish(f, "needs_answer", { lastOutcome: "no_answer" });
@@ -696,7 +707,7 @@
             covered.set(item, r.reason);
             committed = r.committed ?? committed;
           } else if (r.outcome === "verified" || r.outcome === "landed" || r.outcome === "unconfirmed") {
-            landed.push(r.text ?? ([r.committed].flat().filter(Boolean).join(", ") || null));
+            landed.push(landedNote(r.text ?? ([r.committed].flat().filter(Boolean).join(", ") || null), r.how));
           } else if (r.outcome === "late") {
             late.push(...queue.slice(i).map(([x]) => x));
             break;
@@ -710,7 +721,7 @@
       const notes = [
         ...(byPolicy.size ? [`${byPolicy.size} left to you by policy`] : []),
         ...(late.length ? [`${late.length} ran out of time`] : []),
-        ...[...new Set(landed)].map(landedNote),
+        ...new Set(landed),
       ];
       if (covered.size === n) return done(f, [...covered.values()].includes("closest") ? "closest" : "matched", committed);
       const lastOutcome = late.length ? "timeout" : landed.length ? "group_committed" : "missing";
@@ -746,11 +757,12 @@
         return finish(f, "needs_answer", { lastOutcome: "no_value" });
       }
       // A search widget says one answer or several only in the rows of an open
-      // list (radios or checkboxes): a fact of several items on one not known
-      // to take several explores its first item before deciding.
+      // list (radios or checkboxes): a fact of several items on one whose
+      // multiplicity is not known yet (`multi` null) explores its first item
+      // before deciding. One known to take a single answer is not explored.
       let multi = Boolean(f.multi);
       let learnt = null;
-      if (f.shape === "search" && !multi && Array.isArray(value) && value.length > 1) {
+      if (f.shape === "search" && f.multi == null && Array.isArray(value) && value.length > 1) {
         const first = String(value[0]);
         const got = await explore(f, first);
         if (!got) return lateOrHalted(f);
@@ -1041,7 +1053,7 @@
   // (a group click that committed one, a search or a keyboard open that
   // picked one the page would not give back):
   // the user's to check, sent as filled_unverified.
-  const LANDED = new Set(["group_committed", "committed_while_exploring", "committed_while_opening"]);
+  const LANDED = new Set(["group_committed", "search_committed", "committed_while_exploring", "committed_while_opening"]);
   const MAX_OBSERVATIONS = 200;
   // A label that holds the value written (a reader that took the value into
   // the question, a leftover note's quoted text) is sent blank: the label is
