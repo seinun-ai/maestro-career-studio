@@ -166,24 +166,41 @@ def test_a_popup_pick_that_shows_but_never_saves_is_unconfirmed(page, load):
     row = apply(page, inv(page)["Are you willing to relocate?"], op="choose", text="Yes")
     assert (row["outcome"], row["committed"]) == ("unconfirmed", "Yes")
     assert oracle(page, "relocate") == "" and backing(page, "relocate") == ""
+    # The take-back the notes saw: the display goes; the app never held it.
+    assert page.evaluate("window.__revertNow()") is True
+    assert page.inner_text("#relocate") == "Select One" and oracle(page, "relocate") == ""
+
+
+def undo(page, button_id):
+    """The engine's own undo (fillCore.choose with `undo`): no page action carries it."""
+    return page.evaluate("""(id) => { const ns = window.careerStudioCompanion; const el = document.getElementById(id);
+        return ns.fillBase.withinBudget((t) => ns.fillCore.choose(el, ns.shapes.of(el), {text: 'Select One', undo: true}, t), 6000); }""",
+                         button_id)
 
 
 def test_placeholder_pick_clears_the_evidence(page, load):
     """Choosing "Select One" is the engine's own undo: verified only when the
     popup shows nothing AND the backing input emptied."""
     load(page, fixture_html("workday_listbox.html"))
-    f = inv(page)["Degree"]
-    assert apply(page, f, op="choose", text="Masters")["outcome"] == "verified"
-    row = apply(page, inv(page)["Degree"], op="choose", text="Select One")
-    assert (row["outcome"], row["committed"]) == ("verified", "")
-    assert oracle(page, "degree") == "" and backing(page, "degree") == ""
+    assert apply(page, inv(page)["Degree"], op="choose", text="Masters")["outcome"] == "verified"
+    assert undo(page, "degree")["outcome"] == "verified"
+    assert page.inner_text("#degree") == "Select One" and oracle(page, "degree") == "" and backing(page, "degree") == ""
     # A popup that shows the placeholder while the app still holds a value is not undone.
     assert apply(page, inv(page)["Degree"], op="choose", text="Masters")["outcome"] == "verified"
     page.evaluate("""() => { const li = [...document.querySelectorAll('#degree-list li')].find((o) => o.textContent === 'Select One');
         li.replaceWith(Object.assign(li.cloneNode(true), {onclick: (e) => { e.stopPropagation();
           document.getElementById('degree').textContent = 'Select One'; document.getElementById('degree-list').style.display = 'none'; }})); }""")
+    assert undo(page, "degree")["outcome"] == "unconfirmed" and oracle(page, "degree") == "Masters"
+
+
+def test_a_placeholder_is_never_chosen_as_an_answer(page, load):
+    """Live popups list "Select One" as an option (§3a, §8b): a decision that
+    names it is refused, never clicked, and never verified as an empty answer."""
+    load(page, fixture_html("workday_listbox.html"))
+    assert apply(page, inv(page)["Degree"], op="choose", text="Masters")["outcome"] == "verified"
     row = apply(page, inv(page)["Degree"], op="choose", text="Select One")
-    assert row["outcome"] == "unconfirmed" and oracle(page, "degree") == "Masters"
+    assert (row["outcome"], row["reason"], row["committed"]) == ("unexpected", "placeholder", "Masters")
+    assert oracle(page, "degree") == "Masters" and backing(page, "degree")
 
 
 def test_the_sweep_catches_a_popup_whose_backing_input_emptied(page, load):

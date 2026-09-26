@@ -488,7 +488,9 @@ know, and each one was learned from a live failure.
   (or the field already held that answer); a display over unmoved proof is
   `unconfirmed` — reported as a value to check (`filled_unverified`), never
   as filled, and never clicked a second time. Choosing the placeholder is the
-  engine's own undo and must empty the proof. The final sweep re-reads the
+  engine's own undo (an opt-in no page action carries) and must empty the
+  proof; a decision that names a placeholder is refused unclicked, and the
+  loop never reports an empty or placeholder value as filled. The final sweep re-reads the
   proof, so a backing input that empties later is a reversion. A popup with
   no discoverable backing input (not exactly one hidden input beside it) is
   judged by its display alone, which is weaker. Whether a Workday search box

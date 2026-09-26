@@ -193,6 +193,8 @@
     const done = (f, reason, committed) => {
       const answer = Array.isArray(committed) ? committed.join(", ") : committed ?? null;
       if (!STATUS[reason]) return unconfirmed(f, answer); // never "verified" by default
+      // Nothing, or a popup's placeholder, is never a filled answer — whatever the page said.
+      if (!String(answer ?? "").trim() || ns.isPlaceholderText?.(answer)) return unconfirmed(f, answer || null);
       return finish(f, STATUS[reason], { answer, lastOutcome: "verified", wrote: answer });
     };
     // One clock per field, started when the loop starts on it.
@@ -624,9 +626,12 @@
       return undefined;
     };
     const fillText = async (f, value, format) => {
+      // An empty write is no answer: refused here, never sent (and never retried).
+      if (!String(value ?? "").trim()) return finish(f, "needs_answer", { lastOutcome: "no_value" });
       const out = await act(f, { op: "write", value, ...(format ? { format } : {}) });
       if (notDone(f, out)) return undefined;
       if (out.outcome === "verified") return done(f, "matched", out.committed);
+      if (out.outcome === "unconfirmed") return unconfirmed(f, value);
       return fail(f, out.reason ?? out.outcome);
     };
 

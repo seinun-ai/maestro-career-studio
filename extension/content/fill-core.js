@@ -82,13 +82,15 @@
   const filled = (proof) => [proof].flat().some((p) => p != null && p !== "");
   // `before` (a pick's snapshot of shape.evidence) makes an unmoved proof
   // "unconfirmed" unless the display already stated the answer before.
-  // Choosing a popup's placeholder ("Select One") is the engine's own undo:
-  // verified when the popup shows nothing and its proof is empty — an error
-  // the page shows for an emptied required field is expected, not a failure.
-  const verify = (el, shape, expected, { format, before } = {}) => {
+  // `undo` (the engine's OWN undo callers only, never a page action): choosing
+  // a popup's placeholder ("Select One") is verified when the popup shows
+  // nothing and its proof is empty — an error the page shows for an emptied
+  // required field is expected, not a failure. Without it a placeholder is
+  // never a verified value (the display reads "" for it, which matches nothing).
+  const verify = (el, shape, expected, { format, before, undo = false } = {}) => {
     if (!el.isConnected) return "stale";
     const proof = shape.evidence?.(el).proof ?? null;
-    if (shape.name === "popup" && typeof expected === "string" && ns.isPlaceholderText(expected)) {
+    if (undo && shape.name === "popup" && typeof expected === "string" && ns.isPlaceholderText(expected)) {
       if (shape.read(el) !== "") return "reverted";
       return proof === null || !filled(proof) ? "verified" : "unconfirmed";
     }
@@ -374,9 +376,13 @@
     outcome: verify(el, shape, text) === "verified" ? "verified" : "reverted", text,
   });
 
-  async function choose(el, shape, { text, term, consentForms } = {}, t) {
+  // `undo`: the engine's own undo (choosing a popup's placeholder to empty
+  // it). Page actions never carry it, so a decision that names a placeholder
+  // ("Select One" offered as an option) is refused, never clicked.
+  async function choose(el, shape, { text, term, consentForms, undo = false } = {}, t) {
     if (shape.kind !== "choice") return { outcome: "unexpected", reason: "not_a_choice" };
     if (blockedText(text, consentForms)) return { outcome: "blocked" };
+    if (!undo && ns.isPlaceholderText(text)) return { outcome: "unexpected", reason: "placeholder" };
     if (shape.passive) return choosePassive(el, shape, text, t, consentForms);
     const multi = Boolean(shape.multi?.(el));
     if (multi && holds(el, shape, text)) return alreadyThere(el, shape, text);
@@ -397,6 +403,10 @@
       if (blockedText(hit.text, consentForms)) {
         await tidy(el, t);
         return { outcome: "blocked" };
+      }
+      if (!undo && ns.isPlaceholderText(hit.text)) {
+        await tidy(el, t);
+        return { outcome: "unexpected", reason: "placeholder" };
       }
       // The rows the list showed may only now have said "several".
       if ((multi || shape.multi?.(el)) && (hit.selected || holds(el, shape, hit.text))) {
@@ -420,7 +430,7 @@
         return { outcome: "unexpected", reason: "new_options", options: flag(next, consentForms) };
       }
       await tidy(el, t);
-      const got = verify(el, shape, hit.text, { before });
+      const got = verify(el, shape, hit.text, { before, undo });
       if (got === "verified") return { outcome: "verified", text: hit.text };
       // It shows the pick, but the app did not take it: never a second click
       // (the loop decides what an unconfirmed value needs).
@@ -667,6 +677,8 @@
       if (!held || !same(ids(now), last.clicks)) return { outcome: "stale" };
       const hit = now.find((o) => `click:${o.oid}` === mid);
       if (as === "progress" && !hit.group) return { outcome: "unexpected", reason: "not_a_group" };
+      // A placeholder row is never an answer (only the engine's undo chooses it).
+      if (!hit.group && ns.isPlaceholderText(hit.text)) return { outcome: "unexpected", reason: "placeholder" };
       const evidence0 = shape.evidence(el);
       const before0 = evidence0.display;
       const shown = b().optionsOf(held.pop).map((o) => o.text).join("\n");

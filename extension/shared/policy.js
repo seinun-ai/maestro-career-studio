@@ -75,4 +75,13 @@
   ns.consentFormRe = new RegExp(
     CONSENT_FORMS.map((pattern) => pattern.source).join("|"), "i");
   ns.salaryExpectationRe = SALARY_EXPECTATION;
+  // A popup's "choose something" text ("Select One", "Select…", "-- Select --",
+  // "Please choose an option"): never a question and never a value. ONE
+  // definition, read by the field reader and shapes (a popup showing it holds
+  // nothing), fill-core (it is never chosen as an answer) and the fill loop
+  // (it is never reported filled).
+  const PLACEHOLDER = new RegExp("^[-–—\\s]*(?:(?:please\\s+)?(?:select|choose|pick)"
+    + "(?:\\s+(?:an?\\s+option|one(?:\\s+or\\s+more)?|an?\\s+answer|an?\\s+item|a\\s+value|all\\s+that\\s+apply))?"
+    + "\\s*(?:\\.{2,}|…)?)?[-–—\\s]*$", "i");
+  ns.isPlaceholderText = (s) => PLACEHOLDER.test(String(s ?? ""));
 })();

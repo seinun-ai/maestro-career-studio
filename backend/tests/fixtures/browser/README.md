@@ -46,7 +46,7 @@ missing key, so a typo never reads as "nothing committed".
 | `workday_date.html` | §6 — the wrapper validates when focus has left it; Year moves focus to Month; MM/DD/YYYY variant | `from`, `signed` |
 | `workday_upload.html` | §7 — input emptied at once; the uploaded-file row is the proof | `files` |
 | `workday_sections.html` | §5, §4 — Add / Add Another, unnamed Delete, "I currently work here" removes To | `entries`, `deleted`, `"<entry>/<question>"` |
-| `adversarial_revert.html` | §8a's unexplained revert — first pick shows, never commits, reverts | `relocate` |
+| `adversarial_revert.html` | §8a's unexplained revert — first pick shows, never commits, reverts when a test calls `window.__revertNow()` | `relocate` |
 | `adversarial_same_text.html` | two "Other" options under different visible categories | `referral` |
 
 `tests/browser/test_fixture_fidelity.py` drives each fixture with Playwright's

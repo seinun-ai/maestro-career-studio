@@ -471,21 +471,23 @@ def test_adversarial_revert_shows_the_first_pick_then_takes_it_back(page, load):
     page.click("#relocate-list > li:has-text('Yes')")
     assert page.inner_text("#relocate") == "Yes"
     assert page.evaluate("document.querySelector('.hidden-backing').value") == "" and oracle(page, "relocate") == ""
-    page.wait_for_function("document.getElementById('relocate').textContent === 'Select One'")
-    assert oracle(page, "relocate") == ""
+    page.wait_for_timeout(600)
+    assert page.inner_text("#relocate") == "Yes"   # no clock: only the test takes it back
+    assert page.evaluate("window.__revertNow()") is True
+    assert page.inner_text("#relocate") == "Select One" and oracle(page, "relocate") == ""
     page.click("#relocate")
     page.click("#relocate-list > li:has-text('Yes')")
     assert page.inner_text("#relocate") == "Yes" and oracle(page, "relocate") == "Yes"
     assert len(page.evaluate("document.querySelector('.hidden-backing').value")) == 32
 
 
-def test_adversarial_revert_timer_never_undoes_a_later_pick(page, load):
+def test_adversarial_revert_never_undoes_a_later_pick(page, load):
     load(page, fixture_html("adversarial_revert.html"), sources=[])
     page.click("#relocate")
     page.click("#relocate-list > li:has-text('Yes')")   # shown, not taken, revert pending
     page.click("#relocate")
-    page.click("#relocate-list > li:has-text('No')")    # taken, before the revert fires
-    page.wait_for_timeout(600)   # outlasts the first pick's 500 ms revert
+    page.click("#relocate-list > li:has-text('No')")    # taken: the pending revert is cancelled
+    assert page.evaluate("window.__revertNow()") is False
     assert page.inner_text("#relocate") == "No" and oracle(page, "relocate") == "No"
 
 

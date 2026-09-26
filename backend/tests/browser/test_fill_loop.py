@@ -31,6 +31,13 @@ DRIVER = """async (spec) => {
   const peak = {};
   let round = 0;
   let stop = false;
+  // A click move commits the option it names, as the page reports it (its
+  // quoted text in the last state's description); an explicit `committed` wins.
+  let candidates = [];
+  const clicked = (mid) => {
+    const d = candidates.find((c) => c.mid === mid)?.describe ?? "";
+    try { return d.includes('"') ? JSON.parse(d.slice(d.indexOf('"'))) : null; } catch { return null; }
+  };
   const one = (result) => [{frameId: 0, result}];
   // A scripted answer may be a list: one entry per call, the last one repeating.
   const take = (v) => (Array.isArray(v) ? (v.length > 1 ? v.shift() : v[0]) : v);
@@ -49,10 +56,11 @@ DRIVER = """async (spec) => {
     if (msg.type === "fill_apply" && spec.stopAfterApply) stop = true;
     if (msg.type === "fill_apply") return one(msg.actions.map(a => {
       const key = a.op === "move" ? a.mid : (a.text ?? a.value ?? (a.texts || []).join("+") ?? a.fid);
-      return {fid: a.fid, committed: a.text ?? a.value ?? a.texts ?? null, ...(take(spec.apply[key]) ?? {outcome: a.op === "move" && a.mid === "give_up" ? "closed" : "verified"})};
+      return {fid: a.fid, committed: a.text ?? a.value ?? a.texts ?? (a.op === "move" ? clicked(a.mid) : null), ...(take(spec.apply[key]) ?? {outcome: a.op === "move" && a.mid === "give_up" ? "closed" : "verified"})};
     }));
     if (msg.type === "fill_step_state") {
       const s = spec.step.states.shift() ?? {candidates: [{mid: "give_up", describe: "stop"}]};
+      candidates = s.candidates ?? [];
       return [{frameId: 1, result: null}, {frameId: 0, result: {version: 1, complete: false, ...s}}];
     }
     if (msg.type === "fill_sweep") return one(take(spec.sweep) ?? []);
@@ -925,6 +933,35 @@ def test_an_unconfirmed_adaptive_click_is_never_counted_as_verified(page, load):
     r = row(out, "d")
     assert (r["status"], r["lastOutcome"], r["answer"]) == ("needs_answer", "unconfirmed", 'Companion clicked "Yes". Check it.')
     assert out["calls"].count("/api/autofill/step") == 1
+
+
+def test_an_empty_or_placeholder_commit_is_never_verified(page, load):
+    """Defence in depth: whatever the page says, nothing (or "Select One") is no answer."""
+    for committed in ("", "Select One"):
+        out = run(page, load, frames=[[f("d", "popup", "Degree")]],
+                  map={"d": {"route": "slot", "slot": "education.0.degree", "value": "Masters"}},
+                  explore={"d": {"options": [opt("o1", "Select One"), opt("o2", "Masters")], "complete": True}},
+                  pick={"d": {"oids": ["o1"], "reason": "matched"}},
+                  apply={"Select One": {"outcome": "verified", "committed": committed}})
+        r = row(out, "d")
+        assert (r["status"], r["lastOutcome"]) == ("needs_answer", "unconfirmed"), committed
+        obs = page.evaluate("(r) => window.careerStudioCompanion.fillLoop.buildLoopObservations(r)", out["report"])
+        assert [o["outcome"] for o in obs] == ["filled_unverified"]
+
+
+def test_an_empty_answer_is_never_written(page, load):
+    out = run(page, load, frames=[[f("p", question="Why us?")]], map={"p": {"route": "free_text"}},
+              choose={"p": {"answer": "   ", "reason": "matched"}})
+    assert (row(out, "p")["status"], row(out, "p")["lastOutcome"]) == ("needs_answer", "no_value")
+    assert not actions(out, "write")
+
+
+def test_an_unconfirmed_write_is_left_to_check_not_retried(page, load):
+    out = run(page, load, frames=[[f("a", question="City")]] * 3,
+              map={"a": {"route": "slot", "slot": "personal.city", "value": "Springfield"}},
+              apply={"Springfield": {"outcome": "unconfirmed"}})
+    assert (row(out, "a")["status"], row(out, "a")["lastOutcome"]) == ("needs_answer", "unconfirmed")
+    assert len(actions(out, "write")) == 1
 
 
 # ---------- the wire
