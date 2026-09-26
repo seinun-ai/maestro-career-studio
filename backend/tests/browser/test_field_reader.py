@@ -27,6 +27,17 @@ def test_a_workday_dropdown_labelled_only_by_its_value_asks_its_legend(page, loa
     assert page.evaluate(READ, "#a")["question"] == q
 
 
+@pytest.mark.parametrize("label", [" Select One Required", "Select... Required", "-- Select -- Required",
+                                   "Please choose an option Required"])
+def test_a_static_placeholder_label_after_a_pick_still_asks_its_legend(page, load, label):
+    """A widget that never updates its aria-label once a value is picked: what
+    is left after the value and "Required" is placeholder text, not a question."""
+    load(page, f"<fieldset><legend>Are you authorized?</legend><button id='a' aria-haspopup='listbox' "
+               f"aria-label='{label}'>Yes</button></fieldset>")
+    got = page.evaluate(READ, "#a")
+    assert (got["question"], got["source"], got["required"]) == ("Are you authorized?", "legend", True)
+
+
 def test_a_dropdown_that_names_its_question_keeps_it(page, load):
     load(page, "<fieldset><legend>Address</legend><button id='a' aria-haspopup='listbox' "
                "aria-label='State Select One Required'>Select One</button></fieldset>")

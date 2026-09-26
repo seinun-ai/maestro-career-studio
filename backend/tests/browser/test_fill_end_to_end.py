@@ -292,3 +292,27 @@ def test_a_field_that_reverts_after_verifying_is_filled_again(e2e_page):
               if a.get("text") == "Master's"]
     assert len(degree) == 2
     assert out["by_question"]["Highest degree"]["status"] == "verified"
+
+
+def test_a_workday_dropdown_whose_label_never_updates_keeps_its_question(e2e_page):
+    """Not every widget updates its aria-label after a pick: with the static
+    " Select One Required" left over the value, the field must still ask its
+    legend, so its fingerprint holds across the pick and the filled value is
+    reported verified — never re-mapped as a new question "Select One" with a
+    "wrote here for an earlier question" note."""
+    page = e2e_page
+    out = _run(page, page_js="""() => {
+      const set = Element.prototype.setAttribute;
+      Element.prototype.setAttribute = function (name, value) {
+        if (name === "aria-label" && (this.id === "heard" || this.id === "auth")) return;
+        return set.call(this, name, value);
+      };
+    }""")
+    assert page.get_attribute("#auth", "aria-label") == " Select One Required"
+    assert page.inner_text("#auth") == "Yes" and page.inner_text("#heard") == "LinkedIn"
+    for question in ("Are you legally authorized to work in the United States?", "How did you hear about us?"):
+        row = out["by_question"][question]
+        assert (row["status"], row["answer"]) == ("verified", "Yes" if "authorized" in question else "LinkedIn")
+    mapped = [f["question"] for p in out["posts"] if p["path"] == "/api/autofill/map" for f in p["body"]["fields"]]
+    assert "Select One" not in mapped
+    assert not any("earlier question" in (r["answer"] or "") for r in out["report"]["fields"])

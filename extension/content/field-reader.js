@@ -30,13 +30,24 @@
   // The value is matched without trailing glyphs ("United States▾"); when it
   // is not in the label at all, a bare trailing "Required" is still stripped.
   const BARE_REQUIRED = /(?:^|\s+)(required)\s*$/i;
+  // A popup's "choose something" text ("Select One", "Select…", "-- Select --",
+  // "Please choose an option"): never a question and never a value. ONE
+  // definition, read by shapes.js too (a popup showing it holds nothing).
+  const PLACEHOLDER = new RegExp("^[-–—\\s]*(?:(?:please\\s+)?(?:select|choose|pick)"
+    + "(?:\\s+(?:an?\\s+option|one(?:\\s+or\\s+more)?|an?\\s+answer|an?\\s+item|a\\s+value|all\\s+that\\s+apply))?"
+    + "\\s*(?:\\.{2,}|…)?)?[-–—\\s]*$", "i");
+  ns.isPlaceholderText = (s) => PLACEHOLDER.test(s);
   const popupLabel = (el) => {
     const label = clean(el.getAttribute("aria-label"));
     if (!label || !isPopupButton(el)) return { label, required: false };
     const own = clean(text(el).replace(/[\p{So}\s]+$/u, ""));
     const m = (own && new RegExp(`(?:^|\\s+)${escapeRe(own)}\\s*(required)?\\s*$`, "i").exec(label))
       || BARE_REQUIRED.exec(label);
-    return m ? { label: clean(label.slice(0, m.index)), required: Boolean(m[1]) } : { label, required: false };
+    const left = m ? clean(label.slice(0, m.index)) : label;
+    // A widget that never updates its label after a pick leaves its placeholder
+    // here ("<placeholder> Required" over the value): that is no question, so
+    // the reader falls through to the legend.
+    return { label: PLACEHOLDER.test(left) ? "" : left, required: Boolean(m?.[1]) };
   };
   // What counts as ANOTHER field's control; fill-base reads the same rule
   // (ns.fieldControls) for its field box. A same-name radio/checkbox is the

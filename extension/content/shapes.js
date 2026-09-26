@@ -28,11 +28,8 @@
   const SECTION = 'input[data-automation-id^="dateSection"]';
   const DATE_PATTERN = /^(mm|dd|yyyy)([/.\-](mm|dd|yyyy)){1,2}$/i;
   const HASPOPUP = /^(listbox|true|menu|dialog)$/;
-  // "Select", "Select One", "Select an option", "-- Select --", "Please
-  // choose", "Choose one…" — and nothing at all. Trailing glyphs (▾) go first.
-  const PLACEHOLDER = new RegExp("^[-–—\\s]*(?:(?:please\\s+)?(?:select|choose|pick)"
-    + "(?:\\s+(?:an?\\s+option|one(?:\\s+or\\s+more)?|an?\\s+answer|an?\\s+item|a\\s+value|all\\s+that\\s+apply))?"
-    + "\\s*(?:\\.{2,}|…)?)?[-–—\\s]*$", "i");
+  // Trailing glyphs (▾) go before a popup's text is read or tested as a
+  // placeholder (ns.isPlaceholderText, field-reader.js).
   const GLYPHS = /[\p{So}\s]+$/u;
   const CHIP = '[data-automation-id="selectedItem"], [class*="multi-value__label" i], [class*="multiValue" i] [class*="label" i]';
   const SINGLE = '[class*="single-value" i], [class*="singleValue" i], [class*="selection-item" i]';
@@ -309,7 +306,7 @@
         const own = el instanceof HTMLInputElement ? el.value : (el.innerText || el.textContent);
         let t = clean(clean(own).replace(GLYPHS, ""));
         if (!t && el instanceof HTMLInputElement) t = clean(box(el)?.querySelector(SINGLE)?.textContent);
-        return PLACEHOLDER.test(t) ? "" : t;
+        return ns.isPlaceholderText(t) ? "" : t;
       },
     },
   ];
