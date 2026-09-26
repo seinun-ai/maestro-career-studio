@@ -29,11 +29,22 @@
  *   re-takes the state and steps again. A group click that committed a value
  *   (group_committed) is left for the user, named — never "filled". History is
  *   built only from move ids and outcomes (`mid -> outcome (reason)`), last 8.
+ * - ONE CONTROLLER PER FIELD. The generic commit, the adaptive step and a
+ *   re-commit are ways of proposing the field's next move, not separate
+ *   executors: they share the field's one budget (FIELD_MS, charged for the
+ *   time the field was worked, across rounds — a retry never gets a fresh
+ *   clock), a state + move pair that failed is never proposed to the page again
+ *   (`failedMoves`), and two page operations in a row that changed nothing at
+ *   all (`no_effect`) make the field `unsupported`.
  * - Never stall: every backend wait is bounded (API_MS, and never past the
- *   field's or the run's clock); each field has ONE clock shared by its pick,
- *   commit and adaptive steps; the run has a clock; rounds, attempts, steps and
- *   items are capped. A late answer is ignored. Before finishing, a tail sweep
- *   gives a late reversion the chance to show, and it is retried.
+ *   field's or the run's clock); the run has a clock; rounds, attempts, steps
+ *   and items are capped. A late answer is ignored. Before finishing, a quiet
+ *   period (QUIET_MS) and a final sweep give a late reversion the chance to
+ *   show: a field the engine wrote that reverted gets ONE re-commit per run,
+ *   and a second reversion reports it `unconfirmed` (unstable).
+ * - Exploring can commit (a search that finds one hit picks it): the page
+ *   takes that back; one it could not take back leaves the field to the user,
+ *   named (committed_while_exploring).
  * - Nothing is guessed when the AI cannot be reached (`aiFailure`).
  * - Stop: `cancelled()` is checked before every page action; the panel also
  *   sends `fill_cancel`, which cancels the page operation in flight.
@@ -42,11 +53,13 @@
  *   page outcome   verified | partial | unexpected (+reason) | reverted | stale |
  *     (fill-ops)   unconfirmed (it shows, the page's proof did not move) |
  *                  progressed | closed | yours | blocked | unsupported |
- *                  cancelled | timeout
+ *                  cancelled | timeout; reason `no_effect` when no gesture
+ *                  changed the evidence, the open popups or the value
  *                  → read by act(); never leaves this file as a status.
  *   act()          the page's outcome, or halted (Stop / run clock) | late
- *                  (field clock) | refused (yours/blocked/unsupported, already
- *                  recorded as the row's final status) | stale (no frame owns it)
+ *                  (field clock) | refused (yours/blocked/unsupported, or a
+ *                  second no_effect in a row — already recorded as the row's
+ *                  final status) | stale (no frame owns it)
  *                  → the caller turns it into a row status (notDone, settle).
  *   adapt()        verified (+reason) | landed (group_committed) |
  *                  unconfirmed | gave_up | no_answer | exhausted | late |
@@ -55,11 +68,16 @@
  *   row status     new | open | retry while working; the final ones below.
  *                  `lastOutcome` keeps the word that decided it.
  *   report status  verified | closest | assumed | already | blocked | yours |
- *                  partial | needs_answer | cannot_operate — what the panel shows.
+ *                  partial | unconfirmed (a value that shows but was never
+ *                  confirmed, or reverted twice: `unstable`) | needs_answer |
+ *                  cannot_operate | unsupported (the widget ignored every
+ *                  synthetic input) — what the panel shows.
  *   telemetry      the report status as the contract's outcome (verified,
  *                  closest_filled, assumed_filled, partial, prefilled, blocked,
- *                  user_edited, needs_answer, cannot_operate; filled_unverified
- *                  for a needs_answer row whose value landed unconfirmed) —
+ *                  user_edited, unconfirmed, needs_answer, cannot_operate,
+ *                  unsupported; filled_unverified for a needs_answer row a value
+ *                  landed on without being chosen as the answer: a group that
+ *                  committed, a search that picked while exploring) —
  *                  buildLoopObservations, value-free.
  *
  * WHAT THIS FILE PUBLISHES: ns.fillLoop = { runFill, sourceHintOf, limits,
@@ -78,7 +96,7 @@
     FIELD_MS: 25000,
     ITEM_MS: 6000, // a set's clock grows by this per item worked, past the first
     RUN_MS: 180000,
-    TAIL_MS: 800,
+    QUIET_MS: 600, // waited before the final sweep, so a late reversion can show
   };
   // The backend's limits (app/schemas/autofill_fill.py).
   const CHUNK = 40;
@@ -88,14 +106,17 @@
   const HISTORY_KEPT = 8;
   const FID = /^[A-Za-z0-9_-]{1,64}$/;
   const HISTORY_ENTRY = /^(click:o\d+|search:value|search:word:\d|open|scroll|close|give_up|choose) -> [a-z_]+( \([a-z_]+\))?$/;
-  const FINAL = new Set(["verified", "closest", "assumed", "already", "blocked", "yours", "partial", "needs_answer", "cannot_operate"]);
-  // What the engine itself committed: the only rows a sweep may reopen.
+  const FINAL = new Set(["verified", "closest", "assumed", "already", "blocked", "yours", "partial", "unconfirmed",
+    "needs_answer", "cannot_operate", "unsupported"]);
+  // What the engine itself committed and confirmed: the only rows a sweep may
+  // reopen. `unconfirmed` and `unsupported` are final, never filled.
   const DONE = new Set(["verified", "closest", "assumed", "partial"]);
   // The only reasons that make an answer; anything else a backend says is an abstain.
   const STATUS = { matched: "verified", closest: "closest", assumed: "assumed" };
   const STEP_REASONS = new Set([...Object.keys(STATUS), "progress"]);
   const REFUSED = { yours: "yours", blocked: "blocked", unsupported: "cannot_operate" };
   const CAN_ADAPT = new Set(["popup", "search"]);
+  const NO_EFFECT_LIMIT = 2; // page operations in a row that changed nothing: the widget ignores the engine
 
   const sourceHintOf = (url) => {
     try {
@@ -141,6 +162,13 @@
   // Shown beside the field in the panel, so it keeps the panel's copy rules:
   // two sentences, never an em dash joining them.
   const landedNote = (text) => (text ? `Companion clicked "${text}". Check it.` : "Companion clicked an option. Check it.");
+  const unstableNote = (text) => (text ? `Companion filled "${text}" twice and the page took it back both times. Check it.`
+    : "Companion filled this twice and the page took it back both times. Check it.");
+  const stuckNote = (committed) => {
+    const text = [committed].flat().filter((v) => v != null && String(v).trim() !== "").join(", ");
+    return text ? `Searching picked "${text}" and Companion couldn't take it back. Check it.`
+      : "Searching picked a value and Companion couldn't take it back. Check it.";
+  };
   // Options a model may be shown: never a never-fill one, never under the reserved key.
   const usable = (opts) => (opts ?? []).filter((o) => o && !o.policyBlocked && typeof o.text === "string"
     && typeof o.oid === "string" && o.oid.length >= 1 && o.oid.length <= 16 && o.oid !== "none");
@@ -167,7 +195,9 @@
     if (options.applicationId) selector.application_id = options.applicationId;
     else if (options.base) selector.base = String(options.base).slice(0, 200);
     const asked = { ...selector, source_hint: options.sourceHint ? String(options.sourceHint).slice(0, 60) : null };
-    const rows = new Map(); // fid -> { fid, field, frameId, status, attempts, route, slot, value, answer, lastOutcome, deadline }
+    // fid -> { fid, field, frameId, status, attempts, route, slot, value, answer, lastOutcome,
+    //   deadline, spent, started, recommits, failedMoves, noEffect, wrote, wroteAs }
+    const rows = new Map();
     let listed = []; // the latest inventory's fids, in page order
     let aiFailure = null;
     let host = null;
@@ -185,21 +215,56 @@
       status: "retry", attempts: (rows.get(f.fid).attempts ?? 0) + 1, lastOutcome: outcome ?? "no_answer",
     });
     // A value that landed but is not confirmed as the answer — a pick the page
-    // shows over proof that did not move, or one without an answer reason:
-    // never filled, the user's to check (telemetry: filled_unverified).
-    const unconfirmed = (f, text) => finish(f, "needs_answer", {
-      answer: landedNote(text), lastOutcome: "unconfirmed", wrote: text ?? null,
+    // shows over proof that did not move, one without an answer reason, or one
+    // that reverted after its one re-commit (`unstable`): never filled, the
+    // user's to check.
+    const unconfirmed = (f, text, why = "unconfirmed") => finish(f, "unconfirmed", {
+      answer: why === "unstable" ? unstableNote(text) : landedNote(text), lastOutcome: why, wrote: text ?? null, wroteAs: null,
     });
     const done = (f, reason, committed) => {
       const answer = Array.isArray(committed) ? committed.join(", ") : committed ?? null;
-      if (!STATUS[reason]) return unconfirmed(f, answer); // never "verified" by default
+      if (!STATUS[reason]) return unconfirmed(f, answer, reason === "unstable" ? reason : undefined); // never "verified" by default
       // Nothing, or a popup's placeholder, is never a filled answer — whatever the page said.
       if (!String(answer ?? "").trim() || ns.isPlaceholderText(answer)) return unconfirmed(f, answer || null);
-      return finish(f, STATUS[reason], { answer, lastOutcome: "verified", wrote: answer });
+      // `wroteAs`: what the engine made of it, kept so a re-render that makes
+      // the field look "already answered" still reports the engine's own fill.
+      return finish(f, STATUS[reason], { answer, lastOutcome: "verified", wrote: answer, wroteAs: STATUS[reason] });
     };
-    // One clock per field, started when the loop starts on it.
-    const work = (f, ms = L.FIELD_MS) => set(f.fid, { status: "open", deadline: Date.now() + ms });
+    // ONE budget per field, shared by everything that works on it — its pick,
+    // its commit, its adaptive steps, a later round's retry and the sweep's one
+    // re-commit. The clock runs only while the loop works on the field
+    // (`started` … `rest`), and each start gets what the field has not already
+    // spent: never a fresh FIELD_MS. So a re-commit runs on the field's
+    // REMAINING time (not a fixed allowance), and a field that spent its budget
+    // getting the first commit in is reported out of time, not written again.
+    const work = (f, ms = L.FIELD_MS) => {
+      const now = Date.now();
+      return set(f.fid, { status: "open", started: now, deadline: now + Math.max(0, ms - (rows.get(f.fid).spent ?? 0)) });
+    };
+    const rest = (f) => {
+      const row = rows.get(f.fid);
+      if (row?.started) set(f.fid, { spent: (row.spent ?? 0) + (Date.now() - row.started), started: null });
+    };
+    const worked = async (f, ms, fn) => {
+      const row = work(f, ms);
+      try {
+        return await fn(row);
+      } finally {
+        rest(f);
+      }
+    };
     const fieldLate = (f) => Date.now() >= (rows.get(f.fid)?.deadline ?? Infinity);
+    // Two page operations in a row that changed nothing at all (`no_effect`,
+    // judged on the page): the widget ignores synthetic input, and the engine
+    // has no other kind. True when that just made the field `unsupported`.
+    // Anything else the page did resets the count.
+    const ignoredBy = (f, reason) => {
+      const n = reason === "no_effect" ? (rows.get(f.fid).noEffect ?? 0) + 1 : 0;
+      set(f.fid, { noEffect: n });
+      if (n < NO_EFFECT_LIMIT) return false;
+      finish(f, "unsupported", { lastOutcome: "no_effect" });
+      return true;
+    };
     // Stopped, out of run time, or out of field time: only the last is the field's own fault.
     const lateOrHalted = (f) => {
       if (!cancelled() && !timedOut() && fieldLate(f)) finish(f, "cannot_operate", { lastOutcome: "timeout" });
@@ -250,6 +315,8 @@
         finish(f, REFUSED[got.outcome], { lastOutcome: got.outcome });
         return { outcome: "refused" };
       }
+      // A close is the engine tidying up, not an attempt on the field.
+      if (!closing && ignoredBy(f, got.reason)) return { outcome: "refused" };
       return got;
     };
     // True when the action did not happen and there is nothing more to do now.
@@ -275,6 +342,14 @@
         return true;
       }
       if (got.error === "cancelled") return true;
+      if (ignoredBy(f, got.error)) return true;
+      // Exploring picked a value (a one-hit search) and the page could not
+      // take it back: nothing more is tried on the field; the user is told
+      // what it holds now.
+      if (got.error === "committed_while_exploring") {
+        finish(f, "needs_answer", { lastOutcome: got.error, answer: stuckNote(got.committed) });
+        return true;
+      }
       if (got.error === "stale") {
         fail(f, "stale");
         return true;
@@ -355,15 +430,28 @@
     // Stopped: the panel's fill_cancel closes what the engine held. The run's
     // clock ran out: nobody else will, so give_up closes it.
     const halted = (f) => (cancelled() ? { outcome: "halted" } : giveUp(f, "halted"));
+    // What a state SHOWS — its value, whether its popup is open, the moves on
+    // offer — never its version, which the page mints afresh on every read: a
+    // move that failed from a state that looks the same fails the same way.
+    const stateKey = (state) => JSON.stringify([state.committed ?? null, Boolean(state.popupOpen),
+      (state.candidates ?? []).map((c) => [c?.mid, c?.describe])]);
+    const FAILED = new Set(["unexpected", "reverted"]);
     const adapt = async (f, row, first, item) => {
       const value = item ?? (typeof row.value === "string" ? row.value : undefined);
       const history = first ? [first] : [];
+      // A state + move pair that failed, for this field and this run: never
+      // sent to the page again. The row keeps it across rounds and items.
+      const failedMoves = rows.get(f.fid).failedMoves ?? new Set();
+      set(f.fid, { failedMoves });
+      let state = null; // kept (not re-read) when a proposed move was refused here: the page's state is untouched
       for (let i = 0; i < L.MAX_STEPS; i += 1) {
         if (halt()) return halted(f);
         if (fieldLate(f)) return giveUp(f, "late");
-        const [state] = results(await broadcast({
-          type: "fill_step_state", fid: f.fid, fp: f.fp, ...(value !== undefined ? { value } : {}),
-        }));
+        if (!state) {
+          [state] = results(await broadcast({
+            type: "fill_step_state", fid: f.fid, fp: f.fp, ...(value !== undefined ? { value } : {}),
+          }));
+        }
         if (!state) return { outcome: "stale", why: "stale" };
         if (state.error || !Array.isArray(state.candidates)) {
           if (REFUSED[state.error]) {
@@ -388,13 +476,23 @@
         const chosen = res?.mid && res.mid !== "give_up" && STEP_REASONS.has(res.reason)
           ? state.candidates.find((c) => c.mid === res.mid) : null;
         if (!chosen) return giveUp(f, res ? "gave_up" : "no_answer");
+        const tried = `${stateKey(state)}:${chosen.mid}`;
+        if (failedMoves.has(tried)) {
+          // Proposed again on the same state: not executed. The model hears so,
+          // and chooses again from the same state.
+          const refused = historyEntry(chosen.mid, "already_failed");
+          if (refused) history.push(refused);
+          continue;
+        }
         const asProgress = res.reason === "progress" && chosen.mid.startsWith("click:");
         const out = await act(f, {
           op: "move", mid: chosen.mid, version: state.version, ...(asProgress ? { as: "progress" } : {}),
         });
+        state = null; // a move consumes the state it was chosen from
         if (out.outcome === "halted") return halted(f);
         if (out.outcome === "refused") return { outcome: "final" };
         if (out.outcome === "late") return giveUp(f, "late");
+        if (FAILED.has(out.outcome) && out.reason !== "group_committed") failedMoves.add(tried);
         const entry = historyEntry(chosen.mid, out.outcome, out.reason);
         if (entry) history.push(entry);
         if (out.outcome === "verified") return { outcome: "verified", reason: res.reason, committed: out.committed };
@@ -480,7 +578,7 @@
             if (exploreRefused(f, got)) return undefined;
             // Radio rows: the widget takes ONE answer after all (nothing is committed yet).
             if (got.multi === false) {
-              if (holdsOne(f, row, got)) return finish(f, "already");
+              if (holdsOne(f, row, got)) return keepHeld(f, row);
               if (all.length > 1) return finish(f, "needs_answer", { lastOutcome: "set_for_one" });
               return commitOne(f, row, got.options ?? [], false, item, item);
             }
@@ -577,6 +675,12 @@
     // engine wrote for an earlier question (a leftover) is not an answer.
     const holdsOne = (f, row, got) => f.shape === "search" && got?.multi === false && !row.leftover && !f.invalid
       && [f.committed].flat().some((v) => v != null && String(v).trim() !== "");
+    // What it holds is kept as it stands. If the ENGINE put it there (a
+    // re-render forgot the rows that made the field "answered", so it was
+    // explored again), it stays what the engine made of it — never `already`,
+    // which is somebody else's answer.
+    const keepHeld = (f, row) => (row.wroteAs && same(f.committed, row.wrote)
+      ? finish(f, row.wroteAs, { lastOutcome: "verified" }) : finish(f, "already"));
 
     // ---- a choice field: explore when the list is not already whole, then pick and commit
     const fillChoice = async (f, row, prepicked) => {
@@ -594,7 +698,7 @@
         const got = await explore(f, first);
         if (!got) return lateOrHalted(f);
         if (exploreRefused(f, got)) return undefined;
-        if (holdsOne(f, row, got)) return finish(f, "already");
+        if (holdsOne(f, row, got)) return keepHeld(f, row);
         if (got.multi === true) {
           multi = true;
           learnt = { item: first, got };
@@ -613,7 +717,7 @@
         const got = await explore(f, term);
         if (!got) return lateOrHalted(f);
         if (exploreRefused(f, got)) return undefined;
-        if (holdsOne(f, row, got)) return finish(f, "already");
+        if (holdsOne(f, row, got)) return keepHeld(f, row);
         if (got.options?.length) {
           opts = got.options;
           complete = Boolean(got.complete);
@@ -721,8 +825,10 @@
       }
     };
 
-    // A value the engine verified that no longer holds is retried; the sweep's
-    // word about any other field (the user's, a prefilled one) is not ours to act on.
+    // A value the engine verified that no longer holds gets ONE re-commit per
+    // run (on the field's remaining time: `work`); reverting again, it is
+    // reported unstable — `unconfirmed`, never filled. The sweep's word about
+    // any other field (the user's, a prefilled one) is not ours to act on.
     const sweep = async () => {
       if (cancelled()) return 0;
       let reverted = 0;
@@ -733,15 +839,20 @@
           set(r.fid, { status: REFUSED[r.outcome], lastOutcome: r.outcome });
           continue;
         }
-        set(r.fid, { status: "retry", attempts: (row.attempts ?? 0) + 1, lastOutcome: r.outcome ?? "reverted" });
+        if ((row.recommits ?? 0) >= 1) {
+          done({ fid: r.fid }, "unstable", row.wrote);
+          continue;
+        }
+        set(r.fid, { status: "retry", recommits: 1, lastOutcome: r.outcome ?? "reverted" });
         reverted += 1;
       }
       return reverted;
     };
-    // Before calling the page done: wait, sweep once more; done only if nothing reverted.
+    // Before calling the page done: a quiet period, then one more sweep; done
+    // only if nothing reverted.
     const settledDone = async () => {
       if (halt()) return true;
-      if (L.TAIL_MS > 0) await wait(Math.min(L.TAIL_MS, runDeadline - Date.now()));
+      if (L.QUIET_MS > 0) await wait(Math.min(L.QUIET_MS, runDeadline - Date.now()));
       if (halt()) return true;
       return (await sweep()) === 0;
     };
@@ -802,15 +913,13 @@
             finish(f, "needs_answer", { lastOutcome: "abstained" });
             continue;
           }
-          work(f);
-          await fillText(f, choice.answer);
+          await worked(f, L.FIELD_MS, () => fillText(f, choice.answer));
         }
       };
       const prepicking = pickBatch(choices.filter((f) => pickedTogether(f, rows.get(f.fid))));
       for (const f of texts) {
         if (halt()) break;
-        const row = work(f);
-        await fillText(f, textOf(f, row), formatOf(row.slot));
+        await worked(f, L.FIELD_MS, (row) => fillText(f, textOf(f, row), formatOf(row.slot)));
         await writeProse();
       }
       const prepicked = await prepicking;
@@ -819,8 +928,8 @@
         await writeProse();
         const row = rows.get(f.fid);
         const items = Array.isArray(row.value) ? Math.min(new Set(row.value).size, L.MAX_ITEMS) : 1;
-        await fillChoice(f, work(f, L.FIELD_MS + L.ITEM_MS * Math.max(0, items - 1)),
-          prepicked.has(f.fid) ? prepicked.get(f.fid) : undefined);
+        await worked(f, L.FIELD_MS + L.ITEM_MS * Math.max(0, items - 1),
+          (working) => fillChoice(f, working, prepicked.has(f.fid) ? prepicked.get(f.fid) : undefined));
       }
       if (asking && !proseWritten && !halt()) {
         await asking;
@@ -830,7 +939,7 @@
       tell({ phase: "round", round });
       if (snapshot() === before && (settled = await settledDone())) break;
     }
-    // Out of rounds with the last one still changing things: the tail sweep
+    // Out of rounds with the last one still changing things: the final sweep
     // still runs, and a reversion it finds is reported, not hidden.
     if (!settled) await settledDone();
 
@@ -864,12 +973,13 @@
   const TELEMETRY_KIND = { text: "text", date: "text", select: "select", group: "radio", search: "combobox", popup: "combobox" };
   const TELEMETRY_OUTCOME = {
     verified: "verified", closest: "closest_filled", assumed: "assumed_filled", partial: "partial",
-    already: "prefilled", blocked: "blocked", yours: "user_edited", needs_answer: "needs_answer",
-    cannot_operate: "cannot_operate",
+    already: "prefilled", blocked: "blocked", yours: "user_edited", unconfirmed: "unconfirmed",
+    needs_answer: "needs_answer", cannot_operate: "cannot_operate", unsupported: "unsupported",
   };
-  // A value that landed without an answer reason is the user's to check: it
-  // was written, but not confirmed as the answer.
-  const LANDED = new Set(["unconfirmed", "group_committed"]);
+  // A needs_answer row a value landed on without being chosen as the answer
+  // (a group click that committed one, a search that picked while exploring):
+  // the user's to check, sent as filled_unverified.
+  const LANDED = new Set(["group_committed", "committed_while_exploring"]);
   const MAX_OBSERVATIONS = 200;
   // A label that holds the value written (a reader that took the value into
   // the question, a leftover note's quoted text) is sent blank: the label is

@@ -348,9 +348,9 @@ def _outcomes_the_fill_loop_emits() -> set[str]:
 
 def test_a_loop_fill_batch_with_every_outcome_the_loop_emits_is_accepted(db_session):
     emitted = sorted(_outcomes_the_fill_loop_emits())
-    # Nine report statuses and the unconfirmed landing; the floor is what
-    # catches a scan that silently stopped matching.
-    assert len(emitted) == 10, emitted
+    # Eleven report statuses and the landed-unchosen value (filled_unverified);
+    # the floor is what catches a scan that silently stopped matching.
+    assert len(emitted) == 12, emitted
     client = _client(db_session)
     try:
         resp = client.post(

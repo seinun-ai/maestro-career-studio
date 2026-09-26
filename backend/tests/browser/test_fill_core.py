@@ -4,7 +4,15 @@
 import pytest
 
 from tests.browser.conftest import fixture_html
-from tests.browser.pages import CATEGORY_POPUP, POLICY_PAGE, in_both_windows, list_shown, oracle
+from tests.browser.pages import (
+    CATEGORY_POPUP,
+    POLICY_PAGE,
+    SELECT_ON_CLOSE,
+    SINGLE_HIT_SEARCH,
+    in_both_windows,
+    list_shown,
+    oracle,
+)
 
 OPS = "window.careerStudioCompanion.fillOps"
 
@@ -362,6 +370,76 @@ def test_an_empty_popup_that_needs_a_search_is_unexpected_not_failed(page, load)
     load(page, fixture_html("popup_with_search.html"))
     got = explore(page, inv(page)["Field of study"])
     assert got["options"] == [] and got["searchable"] is True and got["error"] == "empty_popup"
+
+
+# --- exploring can commit (notes §2 rule 5): what it commits is taken back
+def pill_texts(page, input_id):
+    return page.evaluate("(id) => [...document.getElementById(id).closest('.q').querySelectorAll('.multi-value__label')]"
+                         ".map((p) => p.textContent)", input_id)
+
+
+def test_explore_undoes_a_single_hit_the_search_committed(page, load):
+    load(page, SINGLE_HIT_SEARCH)
+    got = explore(page, inv(page)["Field of study"], "Analytics")
+    assert [o["text"] for o in got["options"]] == ["Analytics"] and "error" not in got
+    assert oracle(page, "field_of_study") == "" and pill_texts(page, "fos") == []
+    assert page.input_value("#fos") == ""
+
+
+def test_explore_reports_a_commit_it_could_not_undo(page, load):
+    """Minor's pill has no remove control and ignores a click: the field is
+    reported with what the explore left, never explored as if nothing happened."""
+    load(page, SINGLE_HIT_SEARCH)
+    got = explore(page, inv(page)["Minor"], "Analytics")
+    assert (got["error"], got["committed"]) == ("committed_while_exploring", "Analytics")
+    assert oracle(page, "minor") == "Analytics"
+
+
+def test_explore_takes_back_a_popup_pick_the_page_made_on_close(page, load):
+    """A popup that picks its highlighted row when its list closes: explore's
+    close committed "Yes"; the engine's own undo (choose the placeholder,
+    `undo: true`) empties it again."""
+    load(page, SELECT_ON_CLOSE)
+    got = explore(page, inv(page)["Willing to move?"])
+    assert {"Yes", "No"} <= {o["text"] for o in got["options"]} and "error" not in got
+    assert oracle(page, "move") == "" and page.inner_text("#move") == "Select One"
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError,
+                   reason="Task 5: the live search list opens only after a press and an Enter; "
+                          "an Enter that finds one school commits it, and explore takes it back")
+def test_explore_undoes_a_pick_that_enter_committed(page, load):
+    load(page, fixture_html("workday_search.html"))
+    got = explore(page, inv(page)["School or University"], "Houston")
+    assert [o["text"] for o in got["options"]] == ["University of Houston"] and "error" not in got
+    assert oracle(page, "school") == "" and oracle(page, "skills") == ["SQL"]
+    assert page.evaluate("""() => document.querySelector('[data-automation-id="formField-school"]')
+        .querySelectorAll('[data-automation-id="selectedItem"]').length""") == 0
+
+
+# --- a widget that ignores the engine's gestures says so (no_effect)
+DEAF = """<label id='l'>Pick one</label><div><button id='deaf' aria-haspopup='listbox' aria-labelledby='l'>Select One</button></div>
+<label for='t'>Code</label><input id='t'>
+<script>document.getElementById('t').addEventListener('input', (e) => { e.target.value = ''; });</script>"""
+
+
+def test_a_widget_that_ignores_every_gesture_reports_no_effect(page, load):
+    load(page, DEAF)
+    f = inv(page)
+    assert explore(page, f["Pick one"])["error"] == "no_effect"
+    row = apply(page, f["Pick one"], op="choose", text="Yes")
+    assert (row["outcome"], row["reason"]) == ("unexpected", "no_effect")
+    row = apply(page, f["Code"], op="write", value="ABC")
+    assert (row["outcome"], row["reason"]) == ("reverted", "no_effect")
+
+
+def test_a_gesture_that_changed_something_is_never_no_effect(page, load):
+    """react-select with its clicks refused: the typing opened its menu, so the
+    widget answers input — the pick is not committed, not unsupported."""
+    load(page, fixture_html("react_select.html"))
+    page.evaluate("window.rejectClicks = true")
+    row = apply(page, inv(page)["Country"], op="choose", text="Canada", term="can")
+    assert (row["outcome"], row["reason"]) == ("unexpected", "not_committed")
 
 
 # --- safety

@@ -42,7 +42,7 @@ DRIVER = """async (spec) => {
   // A scripted answer may be a list: one entry per call, the last one repeating.
   const take = (v) => (Array.isArray(v) ? (v.length > 1 ? v.shift() : v[0]) : v);
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-  Object.assign(window.careerStudioCompanion.fillLoop.limits, {TAIL_MS: 0}, spec.limits ?? {});
+  Object.assign(window.careerStudioCompanion.fillLoop.limits, {QUIET_MS: 0}, spec.limits ?? {});
   const broadcast = async (msg) => {
     calls.push(msg.type);
     sent.push(JSON.parse(JSON.stringify(msg)));
@@ -54,10 +54,15 @@ DRIVER = """async (spec) => {
     }
     if (msg.type === "fill_explore") return one(Object.fromEntries(msg.requests.map(r => [r.fid, take(spec.explore[r.term ?? r.fid]) ?? {options: [], complete: false, error: "no_popup"}])));
     if (msg.type === "fill_apply" && spec.stopAfterApply) stop = true;
-    if (msg.type === "fill_apply") return one(msg.actions.map(a => {
-      const key = a.op === "move" ? a.mid : (a.text ?? a.value ?? (a.texts || []).join("+") ?? a.fid);
-      return {fid: a.fid, committed: a.text ?? a.value ?? a.texts ?? (a.op === "move" ? clicked(a.mid) : null), ...(take(spec.apply[key]) ?? {outcome: a.op === "move" && a.mid === "give_up" ? "closed" : "verified"})};
-    }));
+    // `pageDelay[key]`: how long the page takes over that action.
+    const keyOf = (a) => (a.op === "move" ? a.mid : (a.text ?? a.value ?? (a.texts || []).join("+") ?? a.fid));
+    if (msg.type === "fill_apply") {
+      for (const a of msg.actions) if (spec.pageDelay?.[keyOf(a)]) await sleep(spec.pageDelay[keyOf(a)]);
+      return one(msg.actions.map(a => {
+        const key = keyOf(a);
+        return {fid: a.fid, committed: a.text ?? a.value ?? a.texts ?? (a.op === "move" ? clicked(a.mid) : null), ...(take(spec.apply[key]) ?? {outcome: a.op === "move" && a.mid === "give_up" ? "closed" : "verified"})};
+      }));
+    }
     if (msg.type === "fill_step_state") {
       const s = spec.step.states.shift() ?? {candidates: [{mid: "give_up", describe: "stop"}]};
       candidates = s.candidates ?? [];
@@ -284,7 +289,7 @@ def test_a_user_edit_during_the_model_call_is_respected(page, load):
 def test_a_late_reversion_found_by_the_tail_sweep_is_retried(page, load):
     load(page, "<div></div>", sources=LOOP_SOURCES)
     got = page.evaluate("""async () => {
-      window.careerStudioCompanion.fillLoop.limits.TAIL_MS = 30;
+      window.careerStudioCompanion.fillLoop.limits.QUIET_MS = 30;
       let sweeps = 0, writes = 0;
       const field = {fid: "a", fp: "p", shape: "text", kind: "text", question: "City", options: null, committed: "", answered: false};
       const broadcast = async (m) => {
@@ -401,7 +406,7 @@ def test_a_field_that_appears_after_an_answer_is_filled_next_round(page, load):
 def test_an_unreachable_ai_guesses_nothing(page, load):
     load(page, "<div></div>", sources=LOOP_SOURCES)
     got = page.evaluate("""async () => {
-      window.careerStudioCompanion.fillLoop.limits.TAIL_MS = 0;
+      window.careerStudioCompanion.fillLoop.limits.QUIET_MS = 0;
       const broadcast = async (m) => m.type === "fill_inventory"
         ? [{frameId: 0, result: {frame: "f", host: "x", fields: [{fid: "a", fp: "p", shape: "text", kind: "text", question: "City", options: null, committed: ""}]}}]
         : [{frameId: 0, result: []}];
@@ -437,7 +442,7 @@ def test_one_run_id_for_every_inventory_of_a_run_and_a_new_one_per_run(page, loa
     load(page, "<div></div>", sources=LOOP_SOURCES)
     got = page.evaluate("""async () => {
       const ns = window.careerStudioCompanion;
-      ns.fillLoop.limits.TAIL_MS = 0;
+      ns.fillLoop.limits.QUIET_MS = 0;
       const ids = [];
       const broadcast = async (m) => {
         if (m.type === "fill_inventory") { ids.push([m.runId, m.consentForms]); return [{frameId: 0, result: {frame: "f", host: "x", fields: []}}]; }
@@ -535,7 +540,10 @@ def test_a_step_state_refused_as_yours_is_final(page, load):
 
 def test_history_is_built_from_move_ids_and_outcomes_and_keeps_the_last_eight(page, load):
     n = 11
-    states = [{"version": i, "candidates": [{"mid": "scroll", "describe": "Scroll"}, GIVE_UP]} for i in range(n)]
+    # Each scroll shows a different window of the list: a different state, so
+    # a scroll that failed from one is tried again from the next.
+    states = [{"version": i, "candidates": [{"mid": f"click:o{i}", "describe": f'Click the option "Row {i}"'},
+                                            {"mid": "scroll", "describe": "Scroll"}, GIVE_UP]} for i in range(n)]
     out = run(page, load, frames=[[f("h", "popup", "Where did you hear about this very long question? " * 8)]],
               limits={"MAX_STEPS": n},
               map={"h": {"route": "slot", "slot": "preferences.how_heard", "value": "LinkedIn"}},
@@ -696,7 +704,7 @@ def test_a_stop_between_native_set_items_stops_the_picks(page, load):
     options = [opt(f"o{i}", t) for i, t in enumerate("ABCD")]
     load(page, "<div></div>", sources=LOOP_SOURCES)
     got = page.evaluate("""async (options) => {
-      const ns = window.careerStudioCompanion; ns.fillLoop.limits.TAIL_MS = 0;
+      const ns = window.careerStudioCompanion; ns.fillLoop.limits.QUIET_MS = 0;
       let stop = false, picks = 0, applies = 0;
       const field = {fid: "k", fp: "p", shape: "select", kind: "choice", multi: true, question: "Skills",
                      options, optionsComplete: true, committed: [], answered: false};
@@ -927,10 +935,10 @@ def test_an_unconfirmed_pick_is_never_counted_as_verified(page, load):
               pick={"d": {"oids": ["o1"], "reason": "matched"}},
               apply={"Yes": {"outcome": "unconfirmed"}})
     r = row(out, "d")
-    assert (r["status"], r["lastOutcome"], r["answer"]) == ("needs_answer", "unconfirmed", 'Companion clicked "Yes". Check it.')
+    assert (r["status"], r["lastOutcome"], r["answer"]) == ("unconfirmed", "unconfirmed", 'Companion clicked "Yes". Check it.')
     assert len(actions(out, "choose")) == 1   # final for this run: not retried as a failure
     obs = page.evaluate("(r) => window.careerStudioCompanion.fillLoop.buildLoopObservations(r)", out["report"])
-    assert [o["outcome"] for o in obs] == ["filled_unverified"]
+    assert [o["outcome"] for o in obs] == ["unconfirmed"]
 
 
 def test_an_unconfirmed_adaptive_click_is_never_counted_as_verified(page, load):
@@ -942,7 +950,7 @@ def test_an_unconfirmed_adaptive_click_is_never_counted_as_verified(page, load):
               step={"states": [{"candidates": [{"mid": "click:o1", "describe": 'Click the option "Yes"'}, GIVE_UP]}],
                     "moves": [{"mid": "click:o1", "reason": "matched"}]})
     r = row(out, "d")
-    assert (r["status"], r["lastOutcome"], r["answer"]) == ("needs_answer", "unconfirmed", 'Companion clicked "Yes". Check it.')
+    assert (r["status"], r["lastOutcome"], r["answer"]) == ("unconfirmed", "unconfirmed", 'Companion clicked "Yes". Check it.')
     assert out["calls"].count("/api/autofill/step") == 1
 
 
@@ -955,9 +963,9 @@ def test_an_empty_or_placeholder_commit_is_never_verified(page, load):
                   pick={"d": {"oids": ["o1"], "reason": "matched"}},
                   apply={"Select One": {"outcome": "verified", "committed": committed}})
         r = row(out, "d")
-        assert (r["status"], r["lastOutcome"]) == ("needs_answer", "unconfirmed"), committed
+        assert (r["status"], r["lastOutcome"]) == ("unconfirmed", "unconfirmed"), committed
         obs = page.evaluate("(r) => window.careerStudioCompanion.fillLoop.buildLoopObservations(r)", out["report"])
-        assert [o["outcome"] for o in obs] == ["filled_unverified"]
+        assert [o["outcome"] for o in obs] == ["unconfirmed"]
 
 
 def test_an_empty_answer_is_never_written(page, load):
@@ -971,8 +979,123 @@ def test_an_unconfirmed_write_is_left_to_check_not_retried(page, load):
     out = run(page, load, frames=[[f("a", question="City")]] * 3,
               map={"a": {"route": "slot", "slot": "personal.city", "value": "Springfield"}},
               apply={"Springfield": {"outcome": "unconfirmed"}})
-    assert (row(out, "a")["status"], row(out, "a")["lastOutcome"]) == ("needs_answer", "unconfirmed")
+    assert (row(out, "a")["status"], row(out, "a")["lastOutcome"]) == ("unconfirmed", "unconfirmed")
     assert len(actions(out, "write")) == 1
+
+
+# ---------- one controller per field (Task 4)
+
+
+def test_an_unconfirmed_commit_is_reported_as_unconfirmed_never_filled(page, load):
+    out = run(page, load, frames=[[f("a", question="City"), f("d", "popup", "Relocate?")]] * 2,
+              map={"a": {"route": "slot", "slot": "personal.city", "value": "Springfield"},
+                   "d": {"route": "slot", "slot": "preferences.willing_to_relocate", "value": "Yes"}},
+              explore={"d": {"options": [opt("o1", "Yes"), opt("o2", "No")], "complete": True}},
+              pick={"d": {"oids": ["o1"], "reason": "matched"}},
+              apply={"Springfield": {"outcome": "unconfirmed"}, "Yes": {"outcome": "unconfirmed"}})
+    assert statuses(out) == {"a": "unconfirmed", "d": "unconfirmed"}
+    assert {"phase": "field", "fid": "d", "status": "unconfirmed"} in out["progress"]
+    obs = page.evaluate("(r) => window.careerStudioCompanion.fillLoop.buildLoopObservations(r)", out["report"])
+    assert [o["outcome"] for o in obs] == ["unconfirmed", "unconfirmed"]
+
+
+def test_a_reverted_field_gets_exactly_one_recommit(page, load):
+    out = run(page, load, frames=[[f("a", question="City")]] * 4,
+              map={"a": {"route": "slot", "slot": "personal.city", "value": "Springfield"}},
+              sweep=[[{"fid": "a", "outcome": "reverted"}], [{"fid": "a", "outcome": "reverted"}], []])
+    assert len(actions(out, "write")) == 2   # the first commit and ONE re-commit
+    r = row(out, "a")
+    assert (r["status"], r["lastOutcome"]) == ("unconfirmed", "unstable")
+    assert r["answer"] == 'Companion filled "Springfield" twice and the page took it back both times. Check it.'
+
+
+def test_a_recommit_runs_on_the_fields_remaining_time(page, load):
+    """The sweep's re-commit gets no fresh clock: a field that spent its
+    budget on the first commit is out of time, not written again."""
+    out = run(page, load, frames=[[f("a", question="City")]] * 3, limits={"FIELD_MS": 300},
+              pageDelay={"Springfield": 320},
+              map={"a": {"route": "slot", "slot": "personal.city", "value": "Springfield"}},
+              sweep=[[{"fid": "a", "outcome": "reverted"}], []])
+    assert len(actions(out, "write")) == 1
+    assert (row(out, "a")["status"], row(out, "a")["lastOutcome"]) == ("cannot_operate", "timeout")
+
+
+def test_every_proposal_source_shares_the_field_budget(page, load):
+    """Round 1's commit spends most of the field's clock; round 2's retry
+    (the commit, then the adaptive step) runs on what is left, never on a
+    fresh FIELD_MS — so its 8 adaptive steps never start."""
+    states = [{"candidates": [{"mid": "scroll", "describe": "Scroll"}, GIVE_UP]} for _ in range(7)] + [
+        {"candidates": [{"mid": "click:o1", "describe": 'Click the option "LinkedIn"'}, GIVE_UP]}]
+    out = run(page, load, frames=[[f("h", "popup", "How did you hear?")]] * 4, limits={"FIELD_MS": 800},
+              pageDelay={"Job Board": 450}, apiDelay={"/api/autofill/step": 20},
+              map={"h": {"route": "slot", "slot": "preferences.how_heard", "value": "LinkedIn"}},
+              explore={"h": {"options": [opt("o1", "Job Board")], "complete": True}},
+              pick={"h": {"oids": ["o1"], "reason": "matched"}},
+              apply={"Job Board": [{"outcome": "reverted"}, {"outcome": "unexpected", "reason": "new_options"}],
+                     "scroll": {"outcome": "progressed"}, "click:o1": {"outcome": "verified"}},
+              step={"states": states, "moves": [{"mid": "scroll", "reason": "progress"}] * 7
+                    + [{"mid": "click:o1", "reason": "matched"}]})
+    assert (row(out, "h")["status"], row(out, "h")["lastOutcome"]) == ("cannot_operate", "timeout")
+    assert len(actions(out, "choose")) == 2
+    assert bodies(out, "/api/autofill/step") == []
+
+
+def test_a_failed_state_move_pair_is_not_retried(page, load):
+    same = {"version": 1, "candidates": [{"mid": "click:o1", "describe": 'Click the option "Yes"'}, GIVE_UP]}
+    out = run(page, load, frames=[[f("d", "popup", "Relocate?")]],
+              map={"d": {"route": "slot", "slot": "preferences.willing_to_relocate", "value": "Yes"}},
+              explore={"d": {"options": [opt("o1", "Yes")], "complete": True}},
+              pick={"d": {"oids": [], "reason": "abstained"}},
+              apply={"click:o1": {"outcome": "unexpected", "reason": "not_committed"}},
+              step={"states": [same, dict(same)],
+                    "moves": [{"mid": "click:o1", "reason": "matched"}, {"mid": "click:o1", "reason": "matched"},
+                              {"mid": "give_up", "reason": "abstained"}]})
+    assert [a["mid"] for a in actions(out, "move")] == ["click:o1", "give_up"]
+    steps = bodies(out, "/api/autofill/step")
+    assert steps[-1]["history"] == ["choose -> abstained", "click:o1 -> unexpected (not_committed)",
+                                    "click:o1 -> already_failed"]
+    assert all(HISTORY_ENTRY.match(e) for s in steps for e in s["history"])
+    assert statuses(out) == {"d": "needs_answer"}
+
+
+def test_a_widget_that_ignores_every_input_is_unsupported(page, load):
+    out = run(page, load, frames=[[f("a", question="Code"), f("d", "popup", "Relocate?")]] * 3,
+              map={"a": {"route": "slot", "slot": "custom.code", "value": "ABC"},
+                   "d": {"route": "slot", "slot": "preferences.willing_to_relocate", "value": "Yes"}},
+              explore={"d": {"options": [], "complete": False, "error": "no_effect"}},
+              apply={"ABC": {"outcome": "reverted", "reason": "no_effect"},
+                     "open": {"outcome": "unexpected", "reason": "no_effect"}},
+              step={"states": [{"candidates": [{"mid": "open", "describe": "Open the dropdown"}, GIVE_UP]}],
+                    "moves": [{"mid": "open", "reason": "progress"}]})
+    assert statuses(out) == {"a": "unsupported", "d": "unsupported"}
+    assert len(actions(out, "write")) == 2   # two in a row that did nothing, then no more
+    assert [a["mid"] for a in actions(out, "move")] == ["open"]
+    obs = page.evaluate("(r) => window.careerStudioCompanion.fillLoop.buildLoopObservations(r)", out["report"])
+    assert [o["outcome"] for o in obs] == ["unsupported", "unsupported"]
+
+
+def test_a_field_the_engine_filled_is_not_already_after_a_re_render(page, load):
+    """Verified, then re-rendered under a new fid (its learnt single-answer
+    rows forgotten, so its one pill reads as a list): the explore that follows
+    finds it holding what the ENGINE wrote — still verified, never "already"."""
+    out = run(page, load, frames=[[f("k", "search", "School", fp="school")],
+                                  [f("k2", "search", "School", fp="school", committed=["UT Arlington"])]],
+              map={"k": {"route": "slot", "slot": "education.0.school", "value": "UT Arlington"}},
+              explore={"UT Arlington": {"options": [opt("o1", "UT Arlington")], "multi": False}},
+              pick={"k": {"oids": ["o1"], "reason": "matched"}})
+    assert statuses(out) == {"k2": "verified"}
+    assert len(actions(out, "choose")) == 1
+
+
+def test_a_commit_explore_could_not_take_back_is_left_for_the_user(page, load):
+    out = run(page, load, frames=[[f("m", "search", "Minor")]] * 2,
+              map={"m": {"route": "slot", "slot": "education.0.minor", "value": "Analytics"}},
+              explore={"Analytics": {"options": [opt("o1", "Analytics")], "error": "committed_while_exploring",
+                                     "committed": "Analytics"}})
+    r = row(out, "m")
+    assert (r["status"], r["lastOutcome"]) == ("needs_answer", "committed_while_exploring")
+    assert r["answer"] == 'Searching picked "Analytics" and Companion couldn\'t take it back. Check it.'
+    assert not actions(out) and "/api/autofill/pick" not in out["calls"]
 
 
 # ---------- the wire

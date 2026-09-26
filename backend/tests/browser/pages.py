@@ -111,3 +111,94 @@ POLICY_PAGE = """
   document.addEventListener('click', () => { document.getElementById('portal').innerHTML = ''; });
 })();
 </script>"""
+
+
+# A GENERIC search box whose one-hit search commits that hit as a pill on its
+# own (the behaviour notes §2 rule 5 saw on live Workday, where the Enter does
+# it; here the typing does, so it runs before Task 5's press-and-Enter). The
+# list keeps showing the hit. "Field of study" pills carry a remove control;
+# "Minor" pills carry none and ignore a click, so what an explore commits there
+# cannot be taken back. `__oracle.field_of_study` / `.minor` is what the fake
+# app holds.
+SINGLE_HIT_SEARCH = """<div class='q'><label for='fos'>Field of study</label>
+  <div class='picker'><div class='pills'></div><input id='fos' role='combobox' aria-autocomplete='list'></div></div>
+<div class='q'><label for='minor'>Minor</label>
+  <div class='picker'><div class='pills'></div><input id='minor' role='combobox' aria-autocomplete='list'></div></div>
+<div id='portal'></div>
+<script>
+(() => {
+  const oracle = (window.__oracle = window.__oracle || {});
+  const LEAVES = ["Analytics", "Business", "Business Administration", "Business Economics"];
+  const KEY = { fos: "field_of_study", minor: "minor" };
+  const portal = document.getElementById("portal");
+  for (const input of document.querySelectorAll("input[role=combobox]")) {
+    const pills = input.parentElement.querySelector(".pills");
+    oracle[KEY[input.id]] = "";
+    const drop = () => { pills.replaceChildren(); oracle[KEY[input.id]] = ""; };
+    const pick = (text) => {
+      const pill = document.createElement("span");
+      pill.className = "pill";
+      pill.innerHTML = `<span class="multi-value__label"></span>`;
+      pill.firstChild.textContent = text;
+      if (input.id === "fos") {
+        const x = document.createElement("button");
+        x.type = "button";
+        x.setAttribute("aria-label", `Remove ${text}`);
+        x.textContent = "×";
+        x.addEventListener("click", drop);
+        pill.append(x);
+      }
+      pills.replaceChildren(pill);
+      oracle[KEY[input.id]] = text;
+    };
+    input.addEventListener("input", () => {
+      const q = input.value.trim().toLowerCase();
+      if (!q) { portal.replaceChildren(); return; }
+      const hits = LEAVES.filter((t) => q.split(/\\s+/).every((w) => t.toLowerCase().includes(w)));
+      portal.innerHTML = "<div role='listbox'>" + hits.map((t) => `<div role='option'>${t}</div>`).join("") + "</div>";
+      for (const o of portal.querySelectorAll("[role=option]")) o.addEventListener("click", () => pick(o.textContent));
+      if (hits.length === 1) pick(hits[0]);   // one hit: picked with no click
+    });
+  }
+  document.addEventListener("mousedown", (e) => { if (!portal.contains(e.target)) portal.replaceChildren(); });
+})();
+</script>"""
+
+
+# A GENERIC popup that picks its highlighted row whenever its list closes
+# (a "select on blur" dropdown): opening highlights the first real option, so
+# merely opening and closing it commits "Yes". Its backing input sits beside
+# the button, as on Workday, and is what the fake app holds (`__oracle.move`).
+SELECT_ON_CLOSE = """<label id='l'>Willing to move?</label>
+<div><button id='move' aria-haspopup='listbox' aria-labelledby='l'>Select One</button><input type='hidden' value=''></div>
+<div id='portal'></div>
+<script>
+(() => {
+  const oracle = (window.__oracle = window.__oracle || {});
+  oracle.move = "";
+  const OPTIONS = ["Select One", "Yes", "No"];
+  const btn = document.getElementById("move");
+  const backing = btn.nextElementSibling;
+  const portal = document.getElementById("portal");
+  let highlighted = null;
+  const close = () => {
+    if (highlighted === null) return;
+    btn.textContent = highlighted;
+    backing.value = highlighted === "Select One" ? "" : highlighted;
+    oracle.move = backing.value;
+    highlighted = null;
+    portal.replaceChildren();
+  };
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (highlighted !== null) { close(); return; }
+    highlighted = OPTIONS[1];
+    portal.innerHTML = "<ul role='listbox'>" + OPTIONS.map((t) => `<li role='option'>${t}</li>`).join("") + "</ul>";
+    for (const li of portal.querySelectorAll("li")) {
+      li.addEventListener("click", (ev) => { ev.stopPropagation(); highlighted = li.textContent; close(); });
+    }
+  });
+  document.addEventListener("click", close);
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") close(); });
+})();
+</script>"""

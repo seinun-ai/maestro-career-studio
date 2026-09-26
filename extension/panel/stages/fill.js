@@ -497,12 +497,17 @@
    * THE STATUSES ARE THE LOOP'S (`shared/fill-loop.js`, "report status"); this
    * file adds no reading of its own. `answer` is what the loop says beside a
    * row: the value it chose, "3 of 5 added", or a "check it" note naming a
-   * value that landed without being confirmed. */
+   * value that landed without being confirmed. `unconfirmed` (the page shows
+   * a value it never confirmed) is a value to check, never Filled;
+   * `unsupported` (the control ignored every input the Companion can send) is
+   * a control it could not work, and says so. */
   const LOOP_GROUPS = [
-    ["closest", "Closest matches: check each one", (answer) => `closest match: ${answer}`],
-    ["assumed", "Answered for you: check each one", (answer) => answer],
-    ["open", "Needs your answer", (answer) => answer],
-    ["cannot_operate", "Couldn't operate these controls", (answer) => answer],
+    [["closest"], "Closest matches: check each one", (row) => row.answer && `closest match: ${row.answer}`],
+    [["assumed"], "Answered for you: check each one", (row) => row.answer],
+    [["unconfirmed"], "Filled but not confirmed: check each one", (row) => row.answer],
+    ["open", "Needs your answer", (row) => row.answer],
+    [["cannot_operate", "unsupported"], "Couldn't operate these controls",
+      (row) => (row.status === "unsupported" ? "doesn't accept automated input" : row.answer)],
   ];
   const LOOP_OPEN = new Set(["needs_answer", "partial"]);
 
@@ -513,7 +518,7 @@
       const button = build.node("button", null, row.question || "A field with no label");
       button.type = "button";
       button.addEventListener("click", () => act.focusField(row.fid));
-      const said = row.answer ? mark(row.answer) : null;
+      const said = mark(row) || null;
       build.attach(list, build.attach(build.node("li"), button,
         said ? build.node("span", "kindmark", ` · ${said} `) : null));
     }
@@ -533,7 +538,7 @@
         // Required first; otherwise the page's own order.
         ? [...fields.filter((row) => LOOP_OPEN.has(row.status) && row.required),
            ...fields.filter((row) => LOOP_OPEN.has(row.status) && !row.required)]
-        : having(key);
+        : fields.filter((row) => key.includes(row.status));
       if (!rows.length) continue;
       const list = loopRows(ctx, rows, mark);
       list.setAttribute("aria-label", heading);

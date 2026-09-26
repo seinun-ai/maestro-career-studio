@@ -380,6 +380,17 @@ def test_the_fill_loops_outcomes_are_classified():
     assert {"partial", "needs_answer", "prefilled", "blocked", "user_edited"} <= NEUTRAL_OUTCOMES
 
 
+def test_the_loops_unconfirmed_and_unsupported_are_accepted_failures():
+    """A value the page shows but never confirmed, and a control that ignored
+    every synthetic input, are both the engine not getting a field filled:
+    failures, never a success and never neutral."""
+    batch = TelemetryBatch(page_host="x.myworkdayjobs.com", action="loop_fill", observations=[
+        {"label": "Degree", "kind": "combobox", "host": "x.myworkdayjobs.com", "outcome": outcome, "rule_id": None}
+        for outcome in ("unconfirmed", "unsupported")])
+    assert [o.outcome for o in batch.observations] == ["unconfirmed", "unsupported"]
+    assert {"unconfirmed", "unsupported"} <= FAILURE_OUTCOMES
+
+
 def test_loop_fill_is_an_accepted_action():
     batch = TelemetryBatch(
         page_host="boards.greenhouse.io", action="loop_fill", observations=[]

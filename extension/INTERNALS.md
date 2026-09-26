@@ -489,14 +489,16 @@ know, and each one was learned from a live failure.
   `selectinput` marker sits on the input itself, which holds no pills). A pick
   is verified when the display states it AND the proof holds something that
   moved since before the click (or the field already held that answer); a
-  display over unmoved proof is `unconfirmed` — reported as a value to check
-  (`filled_unverified`), never as filled, and never clicked a second time. A
+  display over unmoved proof is `unconfirmed` — listed under **Filled but not
+  confirmed**, never counted as filled, and never clicked a second time. A
   one-answer widget that already shows and holds the answer is not clicked at
   all. Choosing the placeholder is the engine's own undo (an opt-in no page
   action carries) and must empty the proof; a decision that names a
   placeholder is refused unclicked, and the loop never reports an empty or
-  placeholder value as filled. The final sweep re-reads the proof, so a
-  backing input that empties later is a reversion. A popup with no
+  placeholder value as filled. The final sweep (after a quiet 600 ms) re-reads
+  the proof, so a backing input that empties later is a reversion: a field the
+  engine wrote gets ONE re-commit per run, and if it goes back again it is
+  reported `unconfirmed` (unstable), never filled. A popup with no
   discoverable backing input is judged by its display alone, which is weaker.
   Whether a Workday search box takes one answer or several shows only in its
   open list — radio rows or checkbox rows, under the same container — so it is
@@ -505,7 +507,25 @@ know, and each one was learned from a live failure.
   is not "answered", and the loop explores a several-item fact's first item
   before choosing between one answer and a set. A box whose rows turn out to
   be radios and that already holds a value is left as it stands (`already`),
-  never overwritten.
+  never overwritten — unless the engine itself wrote it earlier in the run (a
+  re-render forgot what its rows said), which stays the engine's `verified`.
+- **One controller per field.** The generic commit, the adaptive step and a
+  re-commit are ways of proposing the field's next move to ONE controller, not
+  separate executors: they share one budget (`FIELD_MS`, charged only while the
+  field is worked, across rounds — a retry or a re-commit runs on what is left,
+  never on a fresh clock), and a move that failed from a state is never sent
+  again from a state that looks the same (the model is told `already_failed`
+  and chooses again). **Exploring can commit** — a search that finds one hit
+  picks it (live on Workday's Field of Study): explore snapshots the committed
+  value first and takes back anything it added before it returns (a pill by
+  its remove control, a popup's pick by choosing the placeholder with the
+  engine's own undo); one it cannot take back leaves the field to the user,
+  named ("Searching picked … and Companion couldn't take it back"). **A widget
+  that ignores the engine** — an operation after which neither the committed
+  value, nor the open popups, nor the box's own value changed (`no_effect`,
+  judged on the page) — twice in a row is `unsupported`, listed under
+  Couldn't operate as "doesn't accept automated input": the Companion has no
+  trusted input to try instead.
 - Identity fields (name, email, phone) overwrite a wrong ATS prefill and are
   reported under "corrected"; identity **comboboxes** are fill-only-if-empty.
 - Hidden clone fields are skipped, a write a controlled input rejected is
@@ -546,7 +566,7 @@ else before posting:
 | `label` | the field's visible label text, capped at 160 chars |
 | `kind` | the control shape: `text`, `textarea`, `select`, `radio`, `checkbox`, or `combobox` |
 | `host` | the hostname of **the frame the field was in** — not the top frame, so an embedded Greenhouse form is attributed to `boards.greenhouse.io` (a `loop_fill` row: the first frame the loop found fields in) |
-| `outcome` | what happened: `filled`, `corrected`, `filled_normalized`, `filled_unverified`, `not_stuck`, `combobox_snap_failed`, `no_rule`, `missing_source`, `skip_rule`, `skipped_checkbox`, `hidden`, `policy_blocked`, `eeo_disabled`, `retry_filled`, `match_recovered`, `ai_abstained`; on a `loop_fill` row the loop's report status: `verified`, `closest_filled`, `assumed_filled`, `partial`, `needs_answer`, `cannot_operate`, `prefilled`, `blocked`, `user_edited`, or `filled_unverified` for a value that landed unconfirmed (`buildLoopObservations` in `shared/fill-loop.js`). (The backend also accepts `ai_answered`, `ai_no_stick`, `ai_unanswered` and `ai_unaligned` — stored rows carry them — but nothing emits one since the floating card was retired: its AI write-back path was their only source.) |
+| `outcome` | what happened: `filled`, `corrected`, `filled_normalized`, `filled_unverified`, `not_stuck`, `combobox_snap_failed`, `no_rule`, `missing_source`, `skip_rule`, `skipped_checkbox`, `hidden`, `policy_blocked`, `eeo_disabled`, `retry_filled`, `match_recovered`, `ai_abstained`; on a `loop_fill` row the loop's report status: `verified`, `closest_filled`, `assumed_filled`, `partial`, `unconfirmed` (a value the page shows but never confirmed, or that reverted after its one re-commit), `needs_answer`, `cannot_operate`, `unsupported` (the control ignored every synthetic input), `prefilled`, `blocked`, `user_edited`, or `filled_unverified` for a value that landed without being chosen as the answer — a group click that committed one, a search that picked while exploring (`buildLoopObservations` in `shared/fill-loop.js`). (The backend also accepts `ai_answered`, `ai_no_stick`, `ai_unanswered` and `ai_unaligned` — stored rows carry them — but nothing emits one since the floating card was retired: its AI write-back path was their only source.) |
 | `rule_id` | which fill rule matched, or null; on a `loop_fill` row the slot the AI mapped the question to (`slot:…`) or its route (`route:…`) |
 | `options` | for a `select`, a `radio` group, or a Workday listbox-button dropdown whose popup was open at the time, **the option texts as the page renders them** — up to 30, each capped at 160 chars. This is the one field that carries page content, and it is here because a dropdown that could not be matched is unfixable without knowing what its options said. Nothing is ever opened in order to collect them: a telemetry read may not drive the page, so a closed popup reports no options rather than being poked into rendering. A `loop_fill` row carries none |
 

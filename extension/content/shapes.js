@@ -433,9 +433,11 @@
     companionSearch,
     readField,
     pass,
-    // For fill-core: a search widget's boundary (its leave), and what the rows
-    // of a list the engine opened say about single or several.
+    // For fill-core: a search widget's boundary (its leave), what the rows
+    // of a list the engine opened say about single or several, and the pill
+    // nodes its box shows (explore takes back one it added).
     box,
     learnRows,
+    pills: (el) => [...(box(el)?.querySelectorAll(CHIP) ?? [])].map((node) => ({ node, text: clean(node.textContent) })),
   };
 })();

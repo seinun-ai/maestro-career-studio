@@ -3278,6 +3278,36 @@ def test_a_group_with_no_rows_is_not_shown(tmp_path):
         ("1 filled", []), ("Needs your answer", ["Preferred shift"]), ("1 already filled", [])]
 
 
+def test_unconfirmed_and_unsupported_rows_are_listed_never_counted_filled(tmp_path):
+    """A value the page shows but never confirmed is its own check-it list,
+    never in the Filled count; a control that ignored every synthetic input
+    joins Couldn't operate, saying why. Both keep the step open, and their
+    telemetry is their own outcome."""
+    out = _loop(tmp_path, jump="Willing to relocate?", report={"host": LOOP_HOST, "fields": [
+        *DONE_REPORT["fields"],
+        _field("u1", "Willing to relocate?", "unconfirmed", shape="popup",
+               answer='Companion clicked "Yes". Check it.', lastOutcome="unconfirmed"),
+        _field("s1", "Rate your SQL", "unsupported", shape="popup", lastOutcome="no_effect"),
+        _field("x1", "Country", "cannot_operate", shape="unknown", lastOutcome="unsupported")]})
+    settled = out["settled"]
+    assert _loop_groups(settled["rail"]) == [
+        ("1 filled", []),
+        ("Filled but not confirmed: check each one",
+         ['Willing to relocate? · Companion clicked "Yes". Check it.']),
+        ("Couldn't operate these controls",
+         ["Rate your SQL · doesn't accept automated input", "Country"]),
+        ("1 already filled", []),
+    ]
+    [note] = _by_class(settled["foot"], "note")
+    assert note["text"] == "3 fields need your answer."
+    assert out["writes"] == []
+    [jump] = [msg for msg in out["broadcasts"] if msg["message"]["type"] == "fill_focus"]
+    assert jump["message"] == {"type": "fill_focus", "fid": "u1"}
+    [batch] = [msg for msg in out["sent"] if msg["type"] == "telemetry"]
+    assert [o["outcome"] for o in batch["observations"]] == [
+        "verified", "prefilled", "unconfirmed", "unsupported", "cannot_operate"]
+
+
 def test_a_report_row_scrolls_to_and_focuses_its_field(tmp_path):
     """A fan-out (the field can be in the form's subframe) carrying the fid
     and nothing else: the frame that minted it focuses it, every other frame

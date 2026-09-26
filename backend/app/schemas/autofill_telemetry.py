@@ -109,7 +109,11 @@ ObservationOutcome = Literal[
     # `cannot_operate` are left for the user (nothing answered it; the control
     # could not be worked); `prefilled`, `blocked` and `user_edited` are fields
     # the loop left alone (already answered, never-fill policy, the user's own
-    # edit). A value that landed unconfirmed reuses `filled_unverified`.
+    # edit). `unconfirmed` is a value the page shows but never confirmed (or
+    # that reverted after its one re-commit); `unsupported` is a control that
+    # ignored every synthetic input the engine sent. A value that landed
+    # without being chosen as the answer (a group click that committed one, a
+    # search that picked while exploring) reuses `filled_unverified`.
     "verified",
     "closest_filled",
     "assumed_filled",
@@ -119,6 +123,8 @@ ObservationOutcome = Literal[
     "user_edited",
     "prefilled",
     "blocked",
+    "unconfirmed",
+    "unsupported",
 ]
 
 # The kind of THING an observation is about. Six form controls plus one value

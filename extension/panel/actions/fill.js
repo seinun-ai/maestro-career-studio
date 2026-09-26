@@ -192,10 +192,12 @@
 
   /** The loop report's statuses that WROTE (a value the engine committed and
    * verified: the Filled count and the two check-it lists) and the ones left
-   * OPEN for the user (the Needs-your-answer and Couldn't-operate lists).
+   * OPEN for the user (the not-confirmed, Needs-your-answer and
+   * Couldn't-operate lists). `unconfirmed` shows on the page but was never
+   * confirmed, so it is never a write: a run that leaves one is not finished.
    * `already`, `blocked` and `yours` are neither: the loop left them alone. */
   const LOOP_WROTE = new Set(["verified", "closest", "assumed"]);
-  const LOOP_OPEN = new Set(["needs_answer", "partial", "cannot_operate"]);
+  const LOOP_OPEN = new Set(["needs_answer", "partial", "unconfirmed", "cannot_operate", "unsupported"]);
   function loopTally(loop) {
     const fields = loop?.fields ?? [];
     return {

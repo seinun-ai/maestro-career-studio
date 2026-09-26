@@ -360,13 +360,16 @@ def test_chips_a_multi_widget_already_holds_are_never_click_moves(page, load):
     assert oracle(page, "skills") == ["SQL"]
 
 
-def test_a_click_the_widget_ignores_is_not_committed(page, load):
+def test_a_click_the_widget_ignores_has_no_effect(page, load):
+    """Both click gestures changed nothing — not the value, not the list, not
+    the box: the move says so (no_effect), which the loop counts toward
+    "doesn't accept automated input"."""
     load(page, fixture_html("react_select.html"))
     f = inv(page)["Country"]
     page.evaluate("window.rejectClicks = true")
     assert move(page, f, "search:value", "India")["outcome"] == "progressed"
     row = move(page, f, "click:o1", "India")
-    assert (row["outcome"], row["reason"], row["committed"]) == ("unexpected", "not_committed", "")
+    assert (row["outcome"], row["reason"], row["committed"]) == ("unexpected", "no_effect", "")
 
 
 def test_a_menu_the_widget_re_renders_is_found_again_and_still_closed(page, load):
