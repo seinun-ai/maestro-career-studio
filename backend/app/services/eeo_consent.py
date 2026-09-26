@@ -24,9 +24,10 @@ def _lapse_stale_agreement(payload: Any) -> Any:
     """Serve an agreement given under an older policy as NOT granted.
 
     The stored record keeps what the user said (so the lapse stays visible
-    until they answer again); every reader — the settings GET, the fill
-    context the extension reads, the MCP client — sees `consent_forms` false.
-    Only `consent_forms` has a policy floor; `enabled` is left alone."""
+    until they answer again); the settings GET and the fill context the
+    extension reads both serve `consent_forms` false. (The MCP client drops
+    `consent_forms` from that context altogether.) Only `consent_forms` has a
+    policy floor; `enabled` is left alone."""
     if not isinstance(payload, dict):
         return payload
     lapsed = payload.get("consent_forms") is True and not policy_at_least(
@@ -63,24 +64,37 @@ def peek_consent(session: Session | None = None) -> EeoConsent:
 
 
 def set_consent(consent: EeoConsent, session: Session | None = None) -> EeoConsent:
-    """Persist standing consent. Enabling without an acknowledgement stamp
-    gets a server-side timestamp and the current policy version — auditability
-    must not depend on the client clock.
+    """Persist standing consent. The server owns the audit stamp.
 
-    `consent_forms_lapsed` is derived, so whatever a client sent is dropped,
-    and the value returned is the one a reader will see: an agreement echoed
-    back under an older policy comes back not granted.
+    `acknowledged_at` and `policy_version` decide whether `consent_forms` is
+    granted, so neither comes from the client: a permission turning ON stamps
+    the server's time and the current policy; anything else keeps the stored
+    stamp. `consent_forms` turns on only on its own yes — a null stamp, no
+    diversity change riding with it, and `agreed_policy` naming the current
+    policy. Anything short of that is HELD at the served value, never refused,
+    and turning a permission off always goes through. The value returned is
+    the one a reader will see.
     """
-    consent = consent.model_copy(update={"consent_forms_lapsed": False})
-    if (consent.enabled or consent.consent_forms) and not consent.acknowledged_at:
-        consent = consent.model_copy(
-            update={
-                "acknowledged_at": _now_iso(),
-                "policy_version": CURRENT_POLICY_VERSION,
-            }
+    stored = EEO_CONSENT.get(session)  # as served: a lapsed agreement reads off
+    consent_forms = consent.consent_forms and (
+        stored.consent_forms
+        or (
+            consent.acknowledged_at is None
+            and consent.enabled == stored.enabled
+            and consent.agreed_policy == CURRENT_POLICY_VERSION
         )
-    EEO_CONSENT.set(consent, session)
-    return EeoConsent.model_validate(_lapse_stale_agreement(consent.model_dump()))
+    )
+    turned_on = (consent.enabled and not stored.enabled) or (
+        consent_forms and not stored.consent_forms
+    )
+    record = EeoConsent(
+        enabled=consent.enabled,
+        consent_forms=consent_forms,
+        acknowledged_at=_now_iso() if turned_on else stored.acknowledged_at,
+        policy_version=CURRENT_POLICY_VERSION if turned_on else stored.policy_version,
+    )
+    EEO_CONSENT.set(record, session)
+    return EeoConsent.model_validate(_lapse_stale_agreement(record.model_dump()))
 
 
 def withhold_unconsented(profile: Any, consent: Any) -> Any:

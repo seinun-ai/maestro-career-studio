@@ -306,6 +306,15 @@ export interface EeoConsent {
   policy_version: string;
 }
 
+/** What the web app PUTs. The server owns `acknowledged_at` / `policy_version`;
+ *  `agreed_policy` is request-only (never stored or served): the policy whose
+ *  wording the agreement confirm showed, sent on that switch's yes. Without it
+ *  the server holds `consent_forms` off, so a tab loaded before a policy change
+ *  cannot grant the permission under the old wording. */
+export interface EeoConsentUpdate extends EeoConsent {
+  agreed_policy?: string;
+}
+
 export interface ModelOption {
   id: string;
   label: string;

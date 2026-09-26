@@ -4,6 +4,8 @@ Metadata only — never stores EEO answer values. Answers live in the autofill
 profile; this record only authorizes the extension/tool-side exact-match path.
 """
 
+import re
+
 from pydantic import BaseModel, Field
 
 CURRENT_POLICY_VERSION = "2"
@@ -19,7 +21,8 @@ def policy_at_least(version: object, minimum: str) -> bool:
     """Whether `version` is `minimum` or later. Fails CLOSED: a version that
     is not a whole number (empty, missing, "1.5", anything hand-edited) is
     older than every policy."""
-    if not isinstance(version, str) or not version.isdigit():
+    # ASCII digits only: `str.isdigit` also accepts "²", which `int` rejects.
+    if not isinstance(version, str) or not re.fullmatch(r"[0-9]+", version):
         return False
     return int(version) >= int(minimum)
 
@@ -57,5 +60,12 @@ class EeoConsent(BaseModel):
     # off. `acknowledged_at` / `policy_version` are shared by both permissions;
     # a yes to either restamps them with the current policy.
     consent_forms_lapsed: bool = False
+    # The SERVER's audit stamp: set_consent writes both on a yes and ignores
+    # whatever a client sends for them.
     acknowledged_at: str | None = None
     policy_version: str = Field(default=CURRENT_POLICY_VERSION)
+    # Request-only, never stored or served: the policy whose wording the
+    # client showed when the user said yes to `consent_forms`. The web app
+    # sends the policy its agreement confirm describes; a client that does not
+    # (a tab loaded before a policy change) cannot grant it.
+    agreed_policy: str | None = Field(default=None, exclude=True)

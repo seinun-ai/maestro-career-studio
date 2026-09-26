@@ -32,7 +32,18 @@ import { apiFetch } from "@/lib/api";
 import { couldnt } from "@/lib/error-text";
 import { formatAbsoluteDateTime } from "@/lib/format-date";
 import { cn } from "@/lib/utils";
-import type { EeoConsent, KBProfileOut, SettingEnvelope } from "@/lib/types";
+import type {
+  EeoConsent,
+  EeoConsentUpdate,
+  KBProfileOut,
+  SettingEnvelope,
+} from "@/lib/types";
+
+/** The policy whose wording the agreement confirm (setConsentFormsEnabled)
+ *  describes. Bump it with CURRENT_POLICY_VERSION
+ *  (backend/app/schemas/eeo_consent.py) whenever that wording changes; the
+ *  server grants the agreement only under its current policy. */
+const AGREEMENT_POLICY = "2";
 
 type FieldDef = {
   key: string;
@@ -585,7 +596,7 @@ function AutofillEditor({
   };
 
   const saveConsent = useMutation({
-    mutationFn: (value: EeoConsent) =>
+    mutationFn: (value: EeoConsentUpdate) =>
       apiFetch<SettingEnvelope<EeoConsent>>("/api/settings/eeo-consent", {
         method: "PUT",
         body: JSON.stringify({ value }),
@@ -671,14 +682,23 @@ function AutofillEditor({
         consent_forms: consentForms,
         acknowledged_at: consentForms ? null : consent.acknowledged_at,
         policy_version: consent.policy_version,
+        // The policy the confirm above describes; the server grants nothing else.
+        agreed_policy: consentForms ? AGREEMENT_POLICY : undefined,
       },
       {
-        onSuccess: () =>
-          toast.success(
-            consentForms
-              ? "The Companion can now fill agreements and signatures"
-              : "The Companion won't fill agreements and signatures",
-          ),
+        // The server may hold a yes off (it names an older policy than the
+        // server's), so the toast reads the saved value, not the request.
+        onSuccess: (result) => {
+          if (!consentForms) {
+            toast.success("The Companion won't fill agreements and signatures");
+          } else if (result.value.consent_forms) {
+            toast.success("The Companion can now fill agreements and signatures");
+          } else {
+            toast.warning(
+              "Agreements and signatures weren't turned on. Reload the page and try again.",
+            );
+          }
+        },
       },
     );
   };
@@ -1048,6 +1068,8 @@ function CompanionPermissions({
   pending: boolean;
   onChange: (consentForms: boolean) => void;
 }) {
+  const hintId = useId();
+  const lapsedId = useId();
   return (
     <CardSection className="border-primary/40 grid gap-3 border-l-2 px-3 py-2.5">
       <p className="text-xs font-medium tracking-wide uppercase">
@@ -1058,7 +1080,7 @@ function CompanionPermissions({
           <Label htmlFor="consent-forms">
             Let the Companion fill agreements and signatures
           </Label>
-          <p className="text-muted-foreground text-xs">
+          <p id={hintId} className="text-muted-foreground text-xs">
             The Companion can fill every field, including terms boxes,
             certifications, signatures and typed-name attestations. It never
             moves to the next page or submits.
@@ -1066,7 +1088,7 @@ function CompanionPermissions({
           {/* An agreement given under an older, narrower policy is served
               off (consent_forms_lapsed); a yes now records the current one. */}
           {consent.consent_forms_lapsed ? (
-            <p className="text-xs font-medium">
+            <p id={lapsedId} className="text-xs font-medium">
               This now covers more than when you agreed. Turn it on again to
               allow it.
             </p>
@@ -1074,6 +1096,9 @@ function CompanionPermissions({
         </div>
         <Switch
           id="consent-forms"
+          aria-describedby={
+            consent.consent_forms_lapsed ? `${hintId} ${lapsedId}` : hintId
+          }
           checked={consent.consent_forms}
           disabled={pending}
           onCheckedChange={onChange}

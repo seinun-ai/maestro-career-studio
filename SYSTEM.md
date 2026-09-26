@@ -393,19 +393,19 @@ file to open.
   (`settings/eeo_consent.json`, `schemas/eeo_consent.py`; `eeo_consent` on `/api/autofill/context`),
   TWO permissions kept apart on purpose: `enabled` authorizes disclosing protected characteristics,
   `consent_forms` lifts the label policy (inv-policy-deny-list-single-source), only if agreed under
-  policy ≥ 2 (an older yes is served off, `consent_forms_lapsed`; `test_eeo_consent.py`). One flag
-  for both would make an EEO yes agree to terms. ONE gate, `eeo_consent.withhold_unconsented`, strips
-  `profile.eeo` unless `enabled` for every outward reader: `GET /api/autofill/context`, the `/choose`
-  prompt AND the Jev engine's slot catalog (model providers are recipients too — Jev, and OpenRouter
-  when it serves Jev); it fails CLOSED when consent cannot be computed. The
-  MCP client keeps its OWN strip — two gates, not a relocated one. Which path asks must never decide
-  whether protected-class data is served. Pinned by `test_autofill_router.py`,
-  `test_autofill_choose.py` (`test_without_consent_no_diversity_answer_reaches_the_model`) and
-  `test_autofill_choose_jev.py` (`test_eeo_values_never_reach_jev_without_consent`). No
-  inference or invented EEO answers; never solicit pasted demographic answers in chat when consented
-  values are in Profile. Human-only at ANY setting is Next/Submit and nothing wider; `consent_forms`
-  lifts every label refusal for callers that pass it (the fill loop, a model included), while the old
-  collector and pause rows never pass it.
+  policy ≥ 2 (an older yes is served off, `consent_forms_lapsed`). The server owns the stamp
+  (`acknowledged_at`, `policy_version`); `consent_forms` turns on only on its own yes carrying the
+  current policy (`agreed_policy`; `test_eeo_consent.py`). One flag for both would make an EEO yes
+  agree to terms. ONE gate, `eeo_consent.withhold_unconsented`, strips `profile.eeo` unless `enabled`
+  for every outward reader: `GET /api/autofill/context`, the `/choose` prompt AND the Jev engine's
+  slot catalog (model providers — Jev, OpenRouter serving Jev — are recipients too); it fails CLOSED
+  when consent cannot be computed. The MCP client keeps its OWN strip — two gates, not a relocated
+  one. Which path asks never decides whether protected-class data is served. Pinned by
+  `test_autofill_router.py`, `test_autofill_choose.py` (`test_without_consent_no_diversity_answer_reaches_the_model`)
+  and `test_autofill_choose_jev.py` (`test_eeo_values_never_reach_jev_without_consent`). No inference
+  or invented EEO answers; never solicit pasted demographic answers in chat when consented values are
+  in Profile. Human-only at ANY setting is Next/Submit and nothing wider; `consent_forms` lifts every
+  label refusal for callers that pass it (the fill loop, a model included), never the old collector/pause rows.
 - **PDF word-spacing** `{#inv-pdf-word-spacing}`: pdflatex+XCharter joins words for strict
   extractors; `pdfinterwordspaceon` + the parse_certified gate protect this — see the shared header
   partial `_header.tex.j2`, which BOTH resume and cover-letter templates include (format/scanner

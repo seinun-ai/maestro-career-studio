@@ -704,13 +704,35 @@ def test_the_self_description_shows_only_for_self_describe_and_goes_with_it():
 def test_an_agreement_from_an_older_policy_asks_again():
     """Policy 2 widened the agreement switch, so a policy-1 yes is served off
     with `consent_forms_lapsed` (backend/app/services/eeo_consent.py). The box
-    shows the switch as served and says why it is off; a yes sends a null
-    stamp, which the server records under the current policy."""
+    shows the switch as served and says why it is off, and the switch reads
+    both its hint and that note."""
     boxes = _between(_AUTOFILL, "function CompanionPermissions(", "\n}\n")
     assert "checked={consent.consent_forms}" in boxes
     note = _between(boxes, "{consent.consent_forms_lapsed ? (", ") : null}")
+    assert "<p id={lapsedId}" in note
     assert "This now covers more than when you agreed. Turn it on again to allow it." in _flat(note)
-    agree = _between(_AUTOFILL, "const setConsentFormsEnabled = ", "\n  };")
-    assert "acknowledged_at: consentForms ? null : consent.acknowledged_at," in agree
+    assert "<p id={hintId}" in boxes
+    assert (
+        "aria-describedby={ consent.consent_forms_lapsed ? `${hintId} ${lapsedId}` : hintId }"
+        in _flat(boxes)
+    )
     types = _read("lib/types.ts")
     assert "consent_forms_lapsed?: boolean;" in _between(types, "export interface EeoConsent {", "\n}")
+
+
+def test_an_agreement_yes_names_the_policy_it_agreed_to():
+    """The server owns the stamp and grants `consent_forms` only on a yes that
+    names its current policy, so the web app's constant must track it; a held
+    yes says so instead of claiming the permission is on."""
+    from app.schemas.eeo_consent import CURRENT_POLICY_VERSION
+
+    assert f'const AGREEMENT_POLICY = "{CURRENT_POLICY_VERSION}";' in _AUTOFILL
+    agree = _between(_AUTOFILL, "const setConsentFormsEnabled = ", "\n  };")
+    assert "acknowledged_at: consentForms ? null : consent.acknowledged_at," in agree
+    assert "agreed_policy: consentForms ? AGREEMENT_POLICY : undefined," in agree
+    assert "} else if (result.value.consent_forms) {" in agree
+    assert "Agreements and signatures weren't turned on. Reload the page and try again." in _flat(agree)
+    types = _read("lib/types.ts")
+    update = _between(types, "export interface EeoConsentUpdate extends EeoConsent {", "\n}")
+    assert "agreed_policy?: string;" in update
+    assert "mutationFn: (value: EeoConsentUpdate) =>" in _AUTOFILL

@@ -236,7 +236,8 @@ def test_context_includes_eeo_consent_metadata_and_keeps_profile_eeo_values(
         },
         db_session,
     )
-    eeo_consent.set_consent(
+    # A historical record, so through the raw writer: set_consent owns the stamp.
+    eeo_consent.EEO_CONSENT.set(
         EeoConsent(
             enabled=True,
             acknowledged_at="2026-07-30T12:00:00+00:00",
