@@ -248,7 +248,7 @@ Run → FAIL.
 - `findOption`/`readAll`: scroll the list container (`scrollerOf`) and wait for a frame (`await new Promise(requestAnimationFrame)` then `settle`) between reads.
 - `set`: per item — type over the query (no ×), Enter, settle, re-find, click the checkbox once, then `waitFor` the pill to appear (≤ OPEN_MS) before the next item; never click an item whose checkbox is checked or whose pill exists.
 - Adaptive `search:value`/`search:word:n` moves use the same helper.
-Run → PASS; remove the Task 5 xfails.
+Run → PASS; remove the Task 5 xfails, drop `WITHOUT_SEARCH` in `test_fill_end_to_end.py` so every e2e test composes all `FIXTURES` again, and restore the commented Stop assert (`grep -rn "Task 5: restore" backend/tests/browser` finds every spot).
 
 **Commit:** `fix(companion): Workday search-and-pick — press, Enter, settle, click the checkable`
 
@@ -264,7 +264,7 @@ Run → PASS; remove the Task 5 xfails.
 - `test_currently_employed_is_ticked_before_the_dates` (workday_sections: map gives `experience.0.current = Yes` and start/end dates → the checkbox is committed first; the To field disappears; no write is attempted to it; report has no `stale` row for it).
 - `test_fields_added_or_removed_by_a_commit_are_re_observed_before_continuing` (after the tick, the loop re-inventories before the next field of that section).
 - `test_a_placeholder_option_is_never_offered_as_an_answer` — live Workday lists "Select One" as an option (§3a, §8b): `explore`, `stepState` candidates and the options sent to `/pick` drop every option for which `ns.isPlaceholderText(text)` is true; choosing "Select One" stays possible only as the engine's own undo. Un-xfails the three Task 1 xfails attributed to Task 6.
-- `test_the_category_path_runs_end_to_end` — extend `test_fill_end_to_end.py` with the inline generic `CATEGORY_POPUP` page (from `test_fill_core.py`) so the category descent through the real `/api/autofill/step` driver is covered again with both halves running.
+- `test_the_category_path_runs_end_to_end` — extend `test_fill_end_to_end.py` with the generic `CATEGORY_POPUP` page (`tests/browser/pages.py`) so the category descent through the real `/api/autofill/step` driver is covered again with both halves running.
 Run → FAIL.
 
 **Step 2: implement**
