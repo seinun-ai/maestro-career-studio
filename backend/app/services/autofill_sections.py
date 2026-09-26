@@ -14,19 +14,23 @@ call fails. Below the floor, refused or unreadable: `none`, and nothing is
 added. The model sees headings and entry counts only; the counts come from the
 fact catalog here, so no value leaves the machine.
 
-RECONCILED FIRST. An entry already holding data keeps it, and /map places
-entries by page order (entry n ↔ profile entry n). So an Add is safe only when
-every entry holding data holds the profile entry of ITS position — matched on
-the employer (a job; and its title, when two jobs share an employer) or the
-school, normalized. Otherwise the added entry
-would repeat a profile entry already on the page: nothing is added (`wanted`
-is at most the entries there) and the plan says why, value-free. What the
-entries hold (`held`) comes to this local backend for that match only.
+PLACED BY WHAT THE ENTRIES HOLD. An entry already holding data keeps it, and
+is matched to the profile entry it holds — on the employer (a job; and its
+title, when two jobs share an employer) or the school, normalized. Empty
+entries (and entries to add) take the profile entries no entry holds, lowest
+first, in page order. `order` says so per entry, and /map writes each entry's
+facts from ITS profile entry (`MapField.entry_slot`), so an entry pre-filled
+out of profile order is never given a job the page already shows. An Add is
+safe only when every entry holding data holds a profile entry, each a
+different one: otherwise nothing is added (`wanted` is the entries there) and
+the plan says why, value-free. What the entries hold (`held`) comes to this
+local backend for that match only.
 """
 
 import json
 import logging
 import re
+from itertools import takewhile
 
 from sqlalchemy.orm import Session
 
@@ -71,12 +75,12 @@ def wanted(kind: str, facts: dict[str, Fact]) -> int:
     needs = _NEEDS.get(kind)
     if not needs:
         return 0
-    # Entries pair with profile entries by POSITION (/map's repeat_index), so
-    # only the complete ones before the first gap count: an entry added past
-    # an incomplete profile entry would pair with it and leave a REQUIRED
-    # field empty.
+    # What `plan` wants of a section with no entries yet: added entries take
+    # the profile entries in order, so only the complete ones before the first
+    # gap count — an entry added for an incomplete profile entry would leave a
+    # REQUIRED field empty.
     n = 0
-    while all(f"{kind}.{n}.{need}" in facts for need in needs):
+    while _complete(kind, n, facts):
         n += 1
     return n
 
@@ -92,30 +96,55 @@ def _norm(text: str) -> str:
     return " ".join(_SUFFIX.sub(" ", re.sub(r"[^\w\s]", " ", text.casefold().replace(".", ""))).split())
 
 
-def _in_place(section: PageSection, kind: str, facts: dict[str, Fact]) -> bool:
-    """Whether every entry holding data holds the profile entry of its own
-    position (by the value that names it). A kind named by nothing (websites)
-    is not placed by position, so there is nothing to check."""
-    key = _NAMED_BY.get(kind)
-    if not key:
-        return True
-    for j in range(section.entries):
-        held = section.held[j] if j < len(section.held) else []
-        filled = (section.filled[j] if j < len(section.filled) else False) or bool(held)
-        if not filled:
-            continue
-        # A value that normalizes to nothing ("Inc.") names nothing.
-        values = {_norm(h) for h in held} - {""}
-        name = facts.get(f"{kind}.{j}.{key}")
+def _entries(kind: str, facts: dict[str, Fact]) -> list[int]:
+    """The profile's entries of `kind`, by catalog index."""
+    return sorted({int(m[1]) for slot in facts if (m := re.fullmatch(rf"{kind}\.(\d+)\..+", slot))})
+
+
+def _complete(kind: str, i: int, facts: dict[str, Fact]) -> bool:
+    return all(f"{kind}.{i}.{need}" in facts for need in _NEEDS[kind])
+
+
+def _match(kind: str, values: set[str], facts: dict[str, Fact], taken: set[int]) -> int | None:
+    """The profile entry an entry holding `values` (normalized) holds, by the
+    value that names it; the first not already taken when several do."""
+    key = _NAMED_BY[kind]
+    hits = []
+    for i in _entries(kind, facts):
+        name = facts.get(f"{kind}.{i}.{key}")
         if name is None or _norm(str(name.value)) not in values:
-            return False
+            continue
         # Two profile jobs at one employer: the employer cannot say which one
         # the entry holds, so its title must match too.
-        if kind == "experience" and _shares_employer(j, facts):
-            title = facts.get(f"experience.{j}.title")
+        if kind == "experience" and _shares_employer(i, facts):
+            title = facts.get(f"experience.{i}.title")
             if title is None or _norm(str(title.value)) not in values:
-                return False
-    return True
+                continue
+        hits.append(i)
+    return next((i for i in hits if i not in taken), hits[0] if hits else None)
+
+
+def place(section: PageSection, kind: str, facts: dict[str, Fact]) -> tuple[list[int | None], list[int], bool]:
+    """Per page entry, the profile entry it holds or is given (None: one the
+    profile does not have, a second holding of one, or past the profile);
+    the profile entries left for entries to add; and whether every entry
+    holding data holds a different profile entry (an Add is safe)."""
+    held: dict[int, int | None] = {}
+    taken: set[int] = set()
+    for j in range(section.entries):
+        values = section.held[j] if j < len(section.held) else []
+        if not ((section.filled[j] if j < len(section.filled) else False) or values):
+            continue
+        # A value that normalizes to nothing ("Inc.") names nothing.
+        i = _match(kind, {_norm(v) for v in values} - {""}, facts, taken)
+        if i is None or i in taken:
+            held[j] = None
+        else:
+            held[j] = i
+            taken.add(i)
+    free = [i for i in _entries(kind, facts) if i not in taken]
+    order = [held[j] if j in held else (free.pop(0) if free else None) for j in range(section.entries)]
+    return order, free, None not in held.values()
 
 
 def _shares_employer(j: int, facts: dict[str, Fact]) -> bool:
@@ -174,9 +203,15 @@ def plan(sections: list[PageSection], facts: dict[str, Fact], session: Session) 
     for s in sections:
         kind, p = picked.get(s.sid, (NONE, 0.0))
         kind = kind if p >= SLOT_FLOOR else NONE
-        want = wanted(kind, facts)
-        if want > s.entries and not _in_place(s, kind, facts):
-            out[s.sid] = SectionPlan(kind=kind, wanted=s.entries, reason="held_out_of_order")
+        if kind not in _NAMED_BY:
+            out[s.sid] = SectionPlan(kind=kind, wanted=wanted(kind, facts))
+            continue
+        order, free, safe = place(s, kind, facts)
+        # Added entries take the free profile entries in order, so only those
+        # before the first one missing a required fact are added.
+        add = len(list(takewhile(lambda i, k=kind: _complete(k, i, facts), free)))
+        if add and not safe:
+            out[s.sid] = SectionPlan(kind=kind, wanted=s.entries, reason="held_out_of_order", order=order)
         else:
-            out[s.sid] = SectionPlan(kind=kind, wanted=want)
+            out[s.sid] = SectionPlan(kind=kind, wanted=s.entries + add, order=order + free[:add])
     return out

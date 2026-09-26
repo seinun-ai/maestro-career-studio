@@ -70,7 +70,7 @@ def test_map_builds_facts_from_the_consent_gated_profile(db_session, monkeypatch
     seen = _spy_map(monkeypatch)
     r = _post(db_session, "/api/autofill/map", {"fields": [MAP_FIELD]})
     assert r.status_code == 200
-    assert r.json() == {"fields": {"a": {"route": "none", "slot": None, "value": None}}}
+    assert r.json() == {"fields": {"a": {"route": "none", "slot": None, "value": None, "format": None}}}
     assert "personal.city" in seen["facts"]
     assert not [slot for slot in seen["facts"] if slot.startswith("eeo")]
     assert seen["kw"] == {"eeo_consented": False, "low_stakes": False}
@@ -173,7 +173,7 @@ def test_the_real_map_returns_the_value_but_never_sends_it(db_session, monkeypat
 
     monkeypatch.setattr(autofill_map.llm, "call_openai", call_openai)
     r = _post(db_session, "/api/autofill/map", {"fields": [MAP_FIELD]})
-    assert r.json() == {"fields": {"a": {"route": "slot", "slot": "personal.city", "value": "Springfield"}}}
+    assert r.json() == {"fields": {"a": {"route": "slot", "slot": "personal.city", "value": "Springfield", "format": None}}}
     assert "Springfield" not in prompts[0] and "female" not in prompts[0].lower()
 
 
@@ -273,3 +273,32 @@ def test_step_provider_failures_are_502(db_session, monkeypatch):
     monkeypatch.setattr(autofill_step.llm, "call_openai", unreadable)
     r = _post(db_session, "/api/autofill/step", {**STEP, "slot": "personal.city"})
     assert r.status_code == 502 and r.json()["detail"] == "The AI model sent an answer we couldn't read."
+
+
+# ---------- today's date is the applicant's, not the server's (a container runs on UTC)
+
+
+@pytest.mark.usefixtures("profile")
+@pytest.mark.parametrize("shift, kept", [(-1, True), (0, True), (1, True), (-2, False), (400, False)])
+def test_the_browsers_date_is_today_within_a_day_of_the_servers(db_session, monkeypatch, shift, kept):
+    """An evening in the US is already tomorrow in UTC: a date signed "today"
+    is the applicant's. A date further off than any time zone is not taken."""
+    from datetime import date, timedelta
+
+    seen = _spy_map(monkeypatch)
+    theirs = date.today() + timedelta(days=shift)
+    r = _post(db_session, "/api/autofill/map", {"today": theirs.isoformat(), "fields": [MAP_FIELD]})
+    assert r.status_code == 200
+    assert seen["facts"]["derived.today"].value == (theirs if kept else date.today()).isoformat()
+
+
+@pytest.mark.usefixtures("profile")
+def test_every_fact_route_reads_the_browsers_date(db_session, monkeypatch):
+    from datetime import date, timedelta
+
+    yesterday = (date.today() - timedelta(days=1)).isoformat()
+    seen = _spy_pick(monkeypatch)
+    _post(db_session, "/api/autofill/pick", {"today": yesterday, "fields": [PICK_FIELD]})
+    assert seen["facts"]["derived.today"].value == yesterday
+    r = _post(db_session, "/api/autofill/map", {"today": "not a date", "fields": [MAP_FIELD]})
+    assert r.status_code == 422

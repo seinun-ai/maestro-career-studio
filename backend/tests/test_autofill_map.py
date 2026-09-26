@@ -65,7 +65,7 @@ def run(fields, db_session, *, eeo_consented=True, low_stakes=False):
 def test_a_confident_slot_returns_its_value_for_code_to_type(db_session, monkeypatch):
     fake_jev(monkeypatch, {"a": ("personal.city", 0.9)})
     got = run([field("a", "City")], db_session)
-    assert got["a"].model_dump() == {"route": "slot", "slot": "personal.city", "value": "Springfield"}
+    assert got["a"].model_dump() == {"route": "slot", "slot": "personal.city", "value": "Springfield", "format": None}
 
 
 @pytest.mark.usefixtures("jev_on")
@@ -371,3 +371,107 @@ def test_page_text_is_quoted_as_data(db_session, monkeypatch):
     assert json.dumps(question) in calls[0]["questions"]["a"]["instructions"]
     assert json.dumps(section) in calls[0]["questions"]["a"]["instructions"]
     assert json.dumps(question) in calls[1]["questions"]["t"]["instructions"]
+
+
+# ---------- the write format, decided by the slot (fill-engine plan Task 9)
+
+
+@pytest.mark.parametrize("slot, fmt", [
+    ("personal.phone", "phone"), ("personal.phone_number", "phone"), ("personal.mobile_phone", "phone"),
+    ("preferences.desired_salary", "money"), ("preferences.salary", "money"),
+    ("preferences.expected_compensation", "money"), ("custom.pay", "money"),
+    ("personal.payroll_id", None), ("personal.paypal_email", None), ("custom.display_name", None),
+    ("personal.city", None), ("experience.0.title", None), (None, None),
+])
+def test_the_format_follows_the_slot_never_the_value(slot, fmt):
+    assert autofill_map.format_of(slot) == fmt
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_mapped_phone_or_salary_slot_carries_its_format(db_session, monkeypatch):
+    facts = autofill_catalog.build({"personal": {"phone": "555-0100", "city": "Springfield"},
+                                    "preferences": {"desired_salary": "80000"}}, [], [])
+    fake_jev(monkeypatch, {"p": ("personal.phone", 0.9), "s": ("preferences.desired_salary", 0.9),
+                           "c": ("personal.city", 0.9)})
+    got = autofill_map.map_fields([field("p", "Phone"), field("s", "What are your annual salary requirements?"),
+                                   field("c", "City"), field("n", "Anything else?")],
+                                  facts, db_session, eeo_consented=True, low_stakes=False)
+    assert {fid: m.format for fid, m in got.items()} == {"p": "phone", "s": "money", "c": None, "n": None}
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_salary_requirements_are_offered_as_the_desired_salary_fact(db_session, monkeypatch):
+    """The owner's "What are your annual salary requirements" found no fact:
+    the salary fact's description now says it in the form's words."""
+    facts = autofill_catalog.build({"preferences": {"desired_salary": "80000"}}, [], [])
+    calls = fake_jev(monkeypatch)
+    autofill_map.map_fields([field("s", "What are your annual salary requirements?")], facts, db_session,
+                            eeo_consented=True, low_stakes=False)
+    described = calls[0]["questions"]["s"]["criteria"]["preferences.desired_salary"]
+    assert "salary requirements" in described and "compensation" in described and "80000" not in described
+
+
+# ---------- entry placement: the model reads entries in page order, code places them
+
+
+JOBS3 = autofill_catalog.build({"education": [{"school": "State University"}, {"school": "City College"}]},
+                               [{"employer": "Acme", "title": "Analyst"}, {"employer": "Initech", "title": "Intern"},
+                                {"employer": "Globex", "title": "Lead"}], [])
+
+
+def placed(db_session, monkeypatch, picked, low_stakes=False, noul=None, **kw):
+    fake_jev(monkeypatch, {"a": picked}, noul=noul)
+    return autofill_map.map_fields([field("a", "Job Title", section="Work Experience 1", **kw)], JOBS3, db_session,
+                                   eeo_consented=True, low_stakes=low_stakes)["a"]
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_an_entry_slot_places_the_fact_by_profile_match(db_session, monkeypatch):
+    """Page entry 1 is empty and entry 2 holds job #1: /sections placed job #2
+    in entry 1. The model still reads "entry 1" as experience.0; code writes
+    job #2 there, never a duplicate of job #1."""
+    got = placed(db_session, monkeypatch, ("experience.0.title", 0.9), repeat_index=0, entry_slot=1)
+    assert (got.route, got.slot, got.value) == ("slot", "experience.1.title", "Intern")
+    got = placed(db_session, monkeypatch, ("education.1.school", 0.9), repeat_index=1, entry_slot=0)
+    assert (got.slot, got.value) == ("education.0.school", "State University")
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_without_an_entry_slot_page_order_stands(db_session, monkeypatch):
+    got = placed(db_session, monkeypatch, ("experience.1.title", 0.9), repeat_index=1)
+    assert (got.slot, got.value) == ("experience.1.title", "Intern")
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_foreign_entry_routes_none_and_is_never_a_guess(db_session, monkeypatch):
+    """entry_slot null: the entry holds a job the profile does not have (or
+    lies past the profile's entries). Nothing of the profile's goes into it —
+    not even at full confidence, and never as a low-stakes guess."""
+    assert placed(db_session, monkeypatch, ("experience.0.title", 0.99), entry_slot=None).route == "none"
+    assert placed(db_session, monkeypatch, ("none", 0.95), low_stakes=True, noul={"a": 0.99},
+                  shape="select", options=["Yes", "No"], entry_slot=None).route == "none"
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_placed_slot_the_profile_entry_lacks_is_none(db_session, monkeypatch):
+    got = placed(db_session, monkeypatch, ("experience.0.employer", 0.9), entry_slot=7)
+    assert got.route == "none"
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_fact_with_no_entry_number_is_not_moved(db_session, monkeypatch):
+    fake_jev(monkeypatch, {"a": ("personal.city", 0.9)})
+    got = autofill_map.map_fields([field("a", "City", entry_slot=2)], FACTS, db_session,
+                                  eeo_consented=True, low_stakes=False)["a"]
+    assert (got.slot, got.value) == ("personal.city", "Springfield")
+
+
+def test_entry_slot_is_optional_bounded_and_absent_is_not_null():
+    assert "entry_slot" not in field("a", "Q").model_fields_set
+    assert field("a", "Q", entry_slot=None).entry_slot is None
+    assert "entry_slot" in MapField.model_validate({"fid": "a", "question": "Q", "shape": "text",
+                                                    "entry_slot": None}).model_fields_set
+    with pytest.raises(ValueError):
+        field("a", "Q", entry_slot=-1)
+    with pytest.raises(ValueError):
+        field("a", "Q", entry_slot=21)

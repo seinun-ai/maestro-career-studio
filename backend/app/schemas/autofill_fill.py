@@ -1,5 +1,6 @@
 """The fill loop's asks, keyed by `fid` both ways."""
 
+from datetime import date
 from typing import Annotated, Literal
 from uuid import UUID
 
@@ -7,6 +8,9 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 Shape = Literal["text", "date", "select", "group", "search", "popup"]
 Route = Literal["slot", "free_text", "low_stakes", "none", "blocked"]
+# How a written value compares with what the page shows: decided by the fact's
+# SLOT (autofill_map.format_of), never by what the value looks like.
+Format = Literal["phone", "money"]
 Reason = Literal["matched", "closest", "assumed", "abstained"]
 MAX_FIELDS = 40
 MAX_MAP_OPTIONS = 30
@@ -25,6 +29,9 @@ class Selector(BaseModel):
     base: str | None = Field(default=None, max_length=200)
     # e.g. "rec_linkedin" read from the apply page's ?source= by the extension.
     source_hint: str | None = Field(default=None, max_length=60)
+    # The browser's own date: "today" is the applicant's, and the server may
+    # run on UTC. Taken only within a day of the server's (routers/autofill).
+    today: date | None = None
 
 
 class MapField(BaseModel):
@@ -33,6 +40,11 @@ class MapField(BaseModel):
     question: str = Field(max_length=300)
     section: str | None = Field(default=None, max_length=200)
     repeat_index: int = Field(default=0, ge=0, le=20)
+    # The profile entry /sections placed this field's entry at (its `order`),
+    # by what the page's entries hold. ABSENT: no placement, page order stands.
+    # NULL: an entry holding something the profile does not have, or past the
+    # profile's entries — nothing of the profile's goes into it.
+    entry_slot: int | None = Field(default=None, ge=0, le=20)
     shape: Shape
     multi: bool = False
     required: bool = False
@@ -47,6 +59,7 @@ class Mapped(BaseModel):
     route: Route
     slot: str | None = None
     value: str | list[str] | None = None  # to the LOCAL extension only
+    format: Format | None = None
 
 
 class MapResponse(BaseModel):
@@ -176,12 +189,19 @@ class SectionsRequest(Selector):
 
 class SectionPlan(BaseModel):
     kind: SectionKind
-    # Profile entries of that kind holding the facts a new entry would REQUIRE:
-    # the loop presses Add only up to this many entries.
+    # How many entries the section should have: the loop presses Add only up
+    # to this many. An added entry takes a profile entry holding every fact it
+    # would REQUIRE, never more.
     wanted: int = Field(ge=0)
-    # Why fewer are wanted than the profile has: entries on the page hold
-    # profile entries out of page order, so an added one would repeat one.
+    # Why none is added although the profile has more: an entry on the page
+    # holds something the profile does not have, or two hold the same one, so
+    # the page cannot be reconciled with the profile.
     reason: Literal["held_out_of_order"] | None = None
+    # Jobs and schools only: per page entry, then per entry to add, the profile
+    # entry (its catalog index) that entry holds or is given — null for one the
+    # profile does not have. Numbers, never values; /map places by it
+    # (`MapField.entry_slot`).
+    order: list[int | None] | None = None
 
 
 class SectionsResponse(BaseModel):

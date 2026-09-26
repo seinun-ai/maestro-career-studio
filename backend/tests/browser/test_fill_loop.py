@@ -492,6 +492,32 @@ def test_only_a_salary_word_in_the_slot_name_makes_it_money(page, load):
     assert writes == {"a": "money", "b": "money", "c": "money", "d": None, "e": None, "g": None}
 
 
+def test_the_backends_format_wins_over_the_slot_name(page, load):
+    """/map says the format (decided by the slot, server-side); the loop's own
+    reading of the slot name is only for a response that does not say."""
+    out = run(page, load, frames=[[f("p", question="Contact number"), f("s", question="Desired salary"),
+                                   f("o", question="Phone")]],
+              map={"p": {"route": "slot", "slot": "custom.4", "value": "5550100000", "format": "phone"},
+                   "s": {"route": "slot", "slot": "preferences.desired_salary", "value": "80000", "format": None},
+                   "o": {"route": "slot", "slot": "personal.phone", "value": "5550100000"}})
+    writes = {a["fid"]: a.get("format") for a in actions(out, "write")}
+    assert writes == {"p": "phone", "s": None, "o": "phone"}
+    # A format the loop does not know is none at all.
+    out = run(page, load, frames=[[f("x", question="X")]],
+              map={"x": {"route": "slot", "slot": "personal.phone", "value": "1", "format": "zip"}})
+    assert "format" not in actions(out, "write")[0]
+
+
+def test_every_backend_call_carries_the_browsers_date(page, load):
+    """"Today" is the applicant's date: the backend may run on UTC."""
+    out = run(page, load, frames=[[f("a", question="City")]],
+              map={"a": {"route": "slot", "slot": "personal.city", "value": "Springfield"}})
+    local = page.evaluate("""() => { const d = new Date();
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }""")
+    [body] = bodies(out, "/api/autofill/map")
+    assert body["today"] == local
+
+
 def test_unknown_controls_are_listed_as_could_not_operate(page, load):
     out = run(page, load, frames=[[f("u", "unknown", "Rate your SQL", kind="unknown")]])
     assert statuses(out) == {"u": "cannot_operate"}
@@ -1534,6 +1560,44 @@ def test_entries_held_out_of_order_add_nothing_and_the_report_says_why(page, loa
     assert out["report"]["sections"] == [{"heading": "Work Experience", "kind": "experience", "wanted": 1,
                                           "entries": 1, "added": 0, "outcome": None,
                                           "reason": "held_out_of_order"}]
+
+
+def test_each_entrys_fields_carry_the_profile_entry_it_was_placed_at(page, load):
+    """/sections placed the page's entries by what they hold (`order`): entry 1
+    is empty and entry 2 holds job #1, so entry 1 gets job #2 and the added
+    entry 3 gets job #3. /map is told each field's `entry_slot`; a field in
+    no listed section is told nothing."""
+    held = work(2, committed="Acme", answered=True)
+    out = run(page, load, frames=[work(1) + held, work(1) + held + work(3)],
+              sections=[[section(entries=2, filled=[False, True], held=[[], ["Acme"]])],
+                        [section(entries=3, filled=[False, True, False], held=[[], ["Acme"], []])]],
+              kinds={"f-s1": {"kind": "experience", "wanted": 3, "order": [1, 0, 2]}},
+              map=JOBS | {"city": {"route": "slot", "slot": "personal.city", "value": "Springfield"}})
+    assert len(adds(out)) == 1
+    [body] = bodies(out, "/api/autofill/map")
+    assert {x["fid"]: x.get("entry_slot", "absent") for x in body["fields"]} == {
+        "t1": 1, "c1": 1, "t3": 2, "c3": 2}
+
+
+def test_a_foreign_entry_and_one_past_the_order_are_placed_nowhere(page, load):
+    """null in `order` (an entry holding a job the profile does not have), or
+    an entry the order does not reach: sent as null, never absent, so /map
+    puts nothing of the profile's there."""
+    out = run(page, load, frames=[work(1) + work(2) + work(3)],
+              sections=[[section(entries=3)]],
+              kinds={"f-s1": {"kind": "experience", "wanted": 3, "reason": "held_out_of_order",
+                              "order": [None, 0]}}, map=JOBS)
+    [body] = bodies(out, "/api/autofill/map")
+    assert {x["fid"]: x.get("entry_slot", "absent") for x in body["fields"]} == {
+        "t1": None, "c1": None, "t2": 0, "c2": 0, "t3": None, "c3": None}
+
+
+@pytest.mark.parametrize("order", [None, "0,1", [0, "1"], [0, -1], [0, 1.5], [0, 21]])
+def test_without_a_usable_order_page_order_stands(page, load, order):
+    kinds = {"kind": "experience", "wanted": 1} | ({} if order is None else {"order": order})
+    out = run(page, load, frames=[work(1)], sections=[[section(entries=1)]], kinds={"f-s1": kinds}, map=JOBS)
+    [body] = bodies(out, "/api/autofill/map")
+    assert all("entry_slot" not in x for x in body["fields"])
 
 
 def site(n, **kw):

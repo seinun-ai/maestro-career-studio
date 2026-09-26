@@ -397,7 +397,8 @@ know, and each one was learned from a live failure.
   and on Workday an added entry's fields are REQUIRED, so an entry nothing
   can fill blocks the page. Before anything is mapped, the fill loop reads
   each section's heading and entry count (`fill_sections`), and the backend
-  (`/api/autofill/sections`, headings and counts in, kinds and counts out)
+  (`/api/autofill/sections`, headings and counts in, kinds, counts and
+  profile entry numbers out)
   names the profile list it holds and how many profile entries have every
   fact an entry requires: a job its employer and title, a school its name,
   a website its address (the LinkedIn box is not a section; languages and
@@ -412,14 +413,20 @@ know, and each one was learned from a live failure.
   a submit, a control inside a link, the page's header or footer, or
   anything whose words, name or automation id say delete, remove or trash
   (a button with no type counts outside a form; inside one it would submit).
-  Entries already holding data are reconciled first: /map places entries by
-  page order, so when an entry holds a profile job or school other than the
-  one for its place (matched on the employer or school, ignoring case,
-  punctuation and company suffixes such as Inc, LLC, Ltd, Corp, Co and
-  GmbH), nothing is added, since the new entry would repeat one; and only the complete profile entries before the first
-  gap count (an entry added past a school with no name would pair with it
-  and leave School empty). What the entries hold goes to the local backend
-  for that match only, never to a model. Within one section the page
+  Entries are PLACED before anything is added: an entry already holding data
+  is matched to the profile job or school it holds (on the employer, and the
+  title when two jobs share an employer, or the school, ignoring case,
+  punctuation and company suffixes such as Inc, LLC, Ltd, Corp, Co and GmbH);
+  empty entries, then added ones, take the profile entries no entry holds,
+  in order. /map is told each field's place (`entry_slot`) and writes that
+  profile entry's facts there, whatever order the page's entries are in — so
+  an empty entry above a pre-filled job #1 gets job #2, never job #1 again,
+  and a job the resume parser dropped is added in its own place. An entry
+  holding something the profile does not have gets nothing of the profile's,
+  and then nothing is added (nor when two entries hold the same one); an
+  added entry never takes a profile entry missing a fact it requires (a
+  school with no name). What the entries hold goes to the local backend for
+  that match only, never to a model. Within one section the page
   listed, a fact is written into one entry only: a website that one entry
   was given, or already holds in a text box, is left for you in another. A
   numbered title that is not such a section ("Question 2", "Step 2") is not
@@ -474,7 +481,16 @@ know, and each one was learned from a live failure.
   salary/wage/compensation label are blocked by the shared policy. Explicit expectations such as expected, desired, target, or salary
   range may fill `preferences.desired_salary`; an expectation phrase never
   overrides another policy block such as signature, consent, terms, credentials,
-  or government-ID wording.
+  or government-ID wording. With the permission, "salary requirements" and
+  "compensation" questions fill from the same fact.
+- **Some answers are derived, never stored.** The backend adds facts computed
+  from the profile (`derived.*`, described to the model as derived): your
+  full legal name (first and last, for name and signature boxes), today's
+  date (the browser's, so an evening in the US is not already tomorrow),
+  whether you are a US citizen (from the work-authorization status: a
+  citizen is Yes, a green card or any visa No, no status nothing), and —
+  when your earliest start date says immediately or ASAP — that date as
+  today, for a date box. Each is absent when what it comes from is.
 - **A subframe has to look like an application form before it gets anything.**
   The fill and attach fan-out reaches every frame in the tab — that is why a
   Greenhouse or Lever form in a subframe works at all — so an ad, analytics or
@@ -596,7 +612,7 @@ know, and each one was learned from a live failure.
   the leave of the field focus came from. Salary slots compare as numbers only
   when both sides are a single amount (`$80,000` is 80000; a range, `80k` or
   two different currencies are not); like phone numbers, the slot decides
-  that, never the characters.
+  that (/map says which, `format`), never the characters.
 - **Every writer commits the way a human would.** A `<select>` set through the
   native setter and a radio driven by `click()` fire no focus events, so
   Workday's required-field validation never runs over answers the page is

@@ -1,3 +1,5 @@
+from datetime import date
+
 import pytest
 
 from app.services import autofill_catalog as cat
@@ -94,7 +96,8 @@ def test_ym_reads_the_resume_date_shapes(text, expected):
 def test_a_hand_edited_profile_of_the_wrong_shapes_builds_what_it_can():
     f = cat.build({"personal": "Sample", "education": "State University", "custom": {"q": "a"},
                    "preferences": {"how_heard": "LinkedIn"}}, [], [])
-    assert list(f) == ["preferences.how_heard"]
+    # (Today's date is derived from the clock alone, so it is always there.)
+    assert list(f) == ["preferences.how_heard", "derived.today"]
 
 
 def test_exact_slots_are_described_in_words_a_form_uses():
@@ -113,7 +116,101 @@ def test_exact_slots_are_described_in_words_a_form_uses():
     assert f["eligibility.over_18"].describe == "is 18 or older (yes/no)"
     assert f["eligibility.previously_employed_here"].describe == "has worked for this company before (yes/no)"
     exact = [fact for fact in f.values() if fact.policy == "exact"]
-    assert len(exact) == 14
+    assert len(exact) == 15  # 14 profile answers and the citizenship derived from the status
     for fact in exact:
         assert ":" not in fact.describe, fact.slot  # hand-written, not the slot's path
         assert str(fact.value) not in fact.describe, fact.slot
+
+
+# ---------- derived facts (fill-engine plan Task 9): their own `derived.*`
+# section, so /map is told honestly where each one comes from.
+
+TODAY = date(2026, 9, 26)
+
+
+def derived(profile, **kw):
+    return {slot: fact for slot, fact in cat.build(profile, [], [], today=TODAY, **kw).items()
+            if slot.startswith("derived.")}
+
+
+def test_full_name_is_the_legal_first_and_last_name():
+    f = derived({"personal": {"first_name": " Sample ", "last_name": "Person", "preferred_name": "Sam"}})
+    assert f["derived.full_name"].value == "Sample Person"
+    assert f["derived.full_name"].describe == "your full legal name, for name and signature boxes"
+    assert f["derived.full_name"].policy == "flag"
+
+
+@pytest.mark.parametrize("personal", [{"first_name": "Sample"}, {"last_name": "Person"}, {"first_name": " ", "last_name": "P"},
+                                      {"preferred_name": "Sam"}, {}])
+def test_a_full_name_is_never_invented_from_half_of_one(personal):
+    assert "derived.full_name" not in derived({"personal": personal})
+
+
+def test_today_is_an_iso_date_from_the_injected_clock():
+    f = derived({})
+    assert f["derived.today"].value == "2026-09-26"
+    assert f["derived.today"].describe == "today's date, for a date the applicant signs or fills in today"
+    assert f["derived.today"].policy == "any"
+
+
+def test_today_defaults_to_the_real_clock():
+    assert cat.build({}, [], [])["derived.today"].value == date.today().isoformat()
+
+
+@pytest.mark.parametrize("status, citizen", [
+    ("citizen", "Yes"),
+    ("permanent_resident", "No"), ("opt", "No"), ("stem_opt", "No"), ("h1b", "No"), ("tn", "No"),
+    ("other_visa", "No"), ("not_authorized", "No"),
+])
+def test_us_citizen_is_derived_from_every_work_authorization_status(status, citizen):
+    f = derived({"work_auth": {"status": status}})
+    assert f["derived.us_citizen"].value == citizen
+    assert f["derived.us_citizen"].describe == ("whether you are a US citizen, derived from your "
+                                                "work-authorization status (yes/no)")
+    # A knockout answer: it maps only at the exact floor, and a near miss is refused.
+    assert f["derived.us_citizen"].policy == "exact"
+
+
+@pytest.mark.parametrize("work_auth", [{}, {"status": None}, {"status": ""}, {"status": "martian"},
+                                       {"authorized_now": True}, "citizen"])
+def test_an_unknown_status_derives_no_citizenship(work_auth):
+    assert "derived.us_citizen" not in derived({"work_auth": work_auth})
+
+
+@pytest.mark.parametrize("stored", ["Immedietly", "Immediately", "immediate", "ASAP", "right away", "Now",
+                                    "available now", "asap!"])
+def test_an_immediate_start_is_also_a_date(stored):
+    f = cat.build({"preferences": {"earliest_start_date": stored}}, [], [], today=TODAY)
+    # The words stay the answer to a question asked in words…
+    assert f["preferences.earliest_start_date"].value == stored
+    # …and a date box gets a date.
+    assert f["derived.earliest_start_date"].value == "2026-09-26"
+    assert f["derived.earliest_start_date"].describe == "the earliest date you can start, as a calendar date"
+    assert f["derived.earliest_start_date"].policy == "any"
+
+
+@pytest.mark.parametrize("stored", ["2 weeks notice", "January 2027", "known in a month", "", None])
+def test_a_start_that_is_not_immediate_derives_no_date(stored):
+    f = cat.build({"preferences": {"earliest_start_date": stored}}, [], [], today=TODAY)
+    assert "derived.earliest_start_date" not in f
+
+
+def test_desired_salary_is_described_in_the_words_forms_ask_with():
+    f = cat.build({"preferences": {"desired_salary": "80000"}}, [], [])
+    assert f["preferences.desired_salary"].describe == (
+        "desired salary, compensation or salary requirements (expected pay)")
+
+
+def test_derived_descriptions_carry_no_values():
+    f = cat.build({"personal": {"first_name": "Sample", "last_name": "Person"}, "work_auth": {"status": "citizen"},
+                   "preferences": {"earliest_start_date": "Immedietly"}}, [], [], today=TODAY)
+    for slot in ("derived.full_name", "derived.today", "derived.us_citizen", "derived.earliest_start_date"):
+        assert str(f[slot].value) not in f[slot].describe, slot
+
+
+def test_derived_facts_survive_the_size_cap():
+    many = [{"employer": f"E{i}", "title": "T", "location": "L", "description": "D", "start_date": "2020-01",
+             "end_date": "2021-01"} for i in range(8)]
+    f = cat.build({"personal": {"first_name": "A", "last_name": "B"}, "work_auth": {"status": "opt"},
+                   "custom": [{"question": f"q{i}", "answer": "a"} for i in range(30)]}, many, ["x"] * 50, today=TODAY)
+    assert {"derived.full_name", "derived.today", "derived.us_citizen"} <= set(f)

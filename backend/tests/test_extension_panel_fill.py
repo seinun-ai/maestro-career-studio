@@ -3505,7 +3505,7 @@ def test_entries_the_loop_did_not_add_are_named_and_keep_the_step_open(tmp_path)
     assert _loop_groups(settled["rail"]) == [
         ("1 filled", []), ("1 already filled", []),
         ("Work Experience: 1 of 2 added. Add the rest yourself.", []),
-        ("Education: the items on the page don't match your profile's order, so none were added.", []),
+        ("Education: the items on the page don't match your profile, so none were added.", []),
     ]
     [note] = _by_class(settled["foot"], "note")
     assert note["text"] == "Some items weren't added. Add them yourself, then fill again."

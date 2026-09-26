@@ -11,7 +11,7 @@ employer something the resume beside it does not say."""
 import hashlib
 import logging
 from collections import Counter
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Annotated, Any
 from urllib.parse import parse_qs, urlsplit
 from uuid import UUID
@@ -319,8 +319,15 @@ def post_choose(
 # ---------- the fill loop's asks: /map, /pick, /step and /sections ----------
 
 
+def _today(theirs: date | None) -> date:
+    """The applicant's date: the browser's, when it is within a day of the
+    server's (no time zone is further apart), else the server's."""
+    ours = date.today()
+    return theirs if theirs is not None and abs((theirs - ours).days) <= 1 else ours
+
+
 def _facts(
-    db: Session, application_id: UUID | None, base: str | None
+    db: Session, application_id: UUID | None, base: str | None, today: date | None = None
 ) -> tuple[dict[str, autofill_catalog.Fact], bool]:
     """The fact catalog and whether EEO answers may be disclosed.
 
@@ -343,6 +350,7 @@ def _facts(
         eeo_consent.disclosable_profile(db),
         employment_blocks(resume) if resume else [],
         resume_skills(resume) if resume else [],
+        today=_today(today),
     )
     return facts, consented
 
@@ -373,7 +381,7 @@ def post_map(payload: MapRequest, db: Annotated[Session, Depends(get_db)]) -> Ma
     """Which applicant fact each field asks for; labels only reach the model.
 
     Low-stakes comes from the server-side setting, never the request."""
-    facts, consented = _facts(db, payload.application_id, payload.base)
+    facts, consented = _facts(db, payload.application_id, payload.base, payload.today)
     return MapResponse(fields=autofill_map.map_fields(
         payload.fields, facts, db, eeo_consented=consented,
         low_stakes=model_settings.get_autofill_low_stakes(db)))
@@ -382,7 +390,7 @@ def post_map(payload: MapRequest, db: Annotated[Session, Depends(get_db)]) -> Ma
 @router.post("/pick", response_model=PickResponse)
 def post_pick(payload: PickRequest, db: Annotated[Session, Depends(get_db)]) -> PickResponse:
     """Which live option states each field's fact."""
-    facts, _ = _facts(db, payload.application_id, payload.base)
+    facts, _ = _facts(db, payload.application_id, payload.base, payload.today)
     return PickResponse(picks=autofill_pick.pick(
         payload.fields, facts, db, _job_hint(db, payload.application_id, payload.source_hint)))
 
@@ -391,15 +399,17 @@ def post_pick(payload: PickRequest, db: Annotated[Session, Depends(get_db)]) -> 
 def post_step(payload: StepRequest, db: Annotated[Session, Depends(get_db)]) -> StepResponse:
     """The next move for a field the generic path could not finish, chosen from
     the moves the page's code generated. The fact comes from the slot."""
-    facts, _ = _facts(db, payload.application_id, payload.base)
+    facts, _ = _facts(db, payload.application_id, payload.base, payload.today)
     return autofill_step.step(payload, facts, db, _job_hint(db, payload.application_id, payload.source_hint))
 
 
 @router.post("/sections", response_model=SectionsResponse)
 def post_sections(payload: SectionsRequest, db: Annotated[Session, Depends(get_db)]) -> SectionsResponse:
     """Which profile list each repeating section holds, and how many of its
-    entries the profile can fill (the loop presses Add up to that many).
-    Headings and counts in, kinds and counts out: the counts come from the
-    fact catalog here, so no value reaches the model or the response."""
-    facts, _ = _facts(db, payload.application_id, payload.base)
+    entries the profile can fill (the loop presses Add up to that many), and
+    which profile entry each page entry holds or is given (`order`). Headings,
+    counts and what entries hold in; kinds, counts and entry NUMBERS out: the
+    counts and the match come from the fact catalog here, so no value reaches
+    the model or the response."""
+    facts, _ = _facts(db, payload.application_id, payload.base, payload.today)
     return SectionsResponse(sections=autofill_sections.plan(payload.sections, facts, db))

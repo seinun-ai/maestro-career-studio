@@ -59,16 +59,19 @@
  *   are REQUIRED (notes §5), so each round, before /map, a section gets Add
  *   pressed only up to the profile entries that can fill one (/sections:
  *   `wanted`): add = wanted − the entries on the page, never more, never a
- *   Delete. Entries already there are matched to profile entries in page
- *   order by /map (repeat_index); one holding data keeps it (`already`).
+ *   Delete. Each entry is PLACED at a profile entry by the backend
+ *   (/sections `order`, matched on what the entries hold): /map is told it
+ *   per field (`entry_slot`; null for an entry holding something the profile
+ *   does not have), so an empty entry before a pre-filled one is never given
+ *   the job the page already shows. One holding data keeps it (`already`).
  *   Each press is a deliberate write, not a trial: once per wanted entry,
  *   counted only when the page's entry count grew; a press that did not grow
  *   it is not pressed again this run. A full inventory follows the adds, so
  *   the new entries' fields are mapped in the same round. The report's
  *   `sections` says what was added, by kind — value-free. The backend adds
- *   nothing when entries already on the page hold profile entries out of
- *   their place (`reason` held_out_of_order). Within a section, one fact is
- *   written into ONE entry (`in_another_entry`).
+ *   nothing when an entry on the page holds something the profile does not
+ *   have, or two hold the same one (`reason` held_out_of_order). Within a
+ *   section, one fact is written into ONE entry (`in_another_entry`).
  * - Nothing is guessed when the AI cannot be reached (`aiFailure`).
  * - Stop: `cancelled()` is checked before every page action; the panel also
  *   sends `fill_cancel`, which cancels the page operation in flight.
@@ -250,7 +253,12 @@
         // A progress hook never stops a fill.
       }
     };
-    const selector = {};
+    // `today`: the browser's date, so a date the applicant signs "today" is
+    // theirs (the backend may run on UTC; it takes it within a day of its own).
+    const now = new Date();
+    const selector = {
+      today: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`,
+    };
     if (options.applicationId) selector.application_id = options.applicationId;
     else if (options.base) selector.base = String(options.base).slice(0, 200);
     const asked = { ...selector, source_hint: options.sourceHint ? String(options.sourceHint).slice(0, 60) : null };
@@ -855,7 +863,10 @@
 
     // The format a written value is compared in, decided by the FACT's slot,
     // never by what the value looks like: a page re-punctuates a phone number
-    // and a salary ("$80,000" for 80000).
+    // and a salary ("$80,000" for 80000). /map says it (`format`, from the
+    // slot, server-side); this reading of the slot name is only the fallback
+    // for a response that does not.
+    const FORMATS = new Set(["phone", "money"]);
     const formatOf = (slot) => {
       if (/phone/i.test(slot ?? "")) return "phone";
       if (/(^|[._])(desired_)?(salary|compensation|pay)([._]|$)/i.test(slot ?? "")) return "money";
@@ -926,6 +937,19 @@
       return open;
     };
 
+    // The profile entry /sections placed a field's entry at (`order`, by what
+    // the page's entries hold): { entry_slot } — a number, or null for an
+    // entry holding something the profile does not have or past the order —
+    // for a field in a section the page listed and the backend placed; else
+    // nothing, and /map places by page order.
+    const placement = (f) => {
+      const frameId = rows.get(f.fid)?.frameId;
+      const mine = entryOf(frameId, f.section);
+      const order = mine ? orders.get(`${frameId}\n${mine.family}`) : undefined;
+      if (!order) return {};
+      const at = Math.min(Math.max(Number(f.repeatIndex) || 0, 0), 20);
+      return { entry_slot: at < order.length ? order[at] : null };
+    };
     const mapFields = async (open) => {
       const unmapped = open.filter((f) => !rows.get(f.fid).route);
       for (let i = 0; i < unmapped.length; i += CHUNK) {
@@ -935,14 +959,17 @@
           ...selector,
           fields: part.map((f) => ({
             fid: f.fid, question: question(f), section: f.section ? String(f.section).slice(0, 200) : null,
-            repeat_index: Math.min(Math.max(Number(f.repeatIndex) || 0, 0), 20), shape: f.shape,
+            repeat_index: Math.min(Math.max(Number(f.repeatIndex) || 0, 0), 20), ...placement(f), shape: f.shape,
             multi: Boolean(f.multi), required: Boolean(f.required),
             options: usable(f.options).slice(0, MAP_OPTIONS).map((o) => o.text.slice(0, 300)),
           })),
         });
         for (const f of part) {
           const m = res?.fields?.[f.fid];
-          if (m) set(f.fid, { route: m.route, slot: m.slot ?? null, value: m.value ?? null });
+          // The write format is the backend's (decided by the slot); an older
+          // response that does not say gets the loop's own reading of the slot.
+          const format = m && "format" in m ? (FORMATS.has(m.format) ? m.format : undefined) : formatOf(m?.slot);
+          if (m) set(f.fid, { route: m.route, slot: m.slot ?? null, value: m.value ?? null, format });
         }
       }
     };
@@ -1053,8 +1080,8 @@
 
     // ---- one fact, one entry. Within one repeating section the page listed
     // (`fill_sections`: "Websites 1", "Websites 2"), a fact is written into ONE
-    // entry: /map places entries by page order, and a fact with no entry
-    // number (personal.website) can be handed to two entries' fields. The
+    // entry: /map maps each entry's fields on their own, and a fact with no
+    // entry number (personal.website) can be handed to two entries' fields. The
     // first entry to claim it keeps it; another entry's field for it is left
     // for the user, never written. Nor is a TEXT field given a fact with no
     // entry number that another entry's text field already HOLDS (the user's,
@@ -1108,6 +1135,11 @@
     // hung ask is recorded as nothing to add, never asked again), a failed
     // press is never repeated, and the report has one row for it.
     const plans = new Map(); // key -> { kind, wanted, reason }
+    // `${frameId}\n${heading, lowercased}` -> the profile entry each entry holds or is given (/sections `order`)
+    const orders = new Map();
+    const ENTRY_SLOT_MAX = 20;
+    const orderOk = (order) => Array.isArray(order) && order.length <= MAX_ENTRIES
+      && order.every((x) => x === null || (Number.isInteger(x) && x >= 0 && x <= ENTRY_SLOT_MAX));
     const sectionLog = new Map(); // key -> { heading, kind, wanted, entries, added, outcome, reason }
     const sectionKey = (s) => `${s.frameId}\n${s.heading}`;
     const NOTHING = { kind: "none", wanted: 0, reason: null };
@@ -1140,6 +1172,7 @@
         plans.set(sectionKey(s), ok ? {
           kind: p.kind, wanted: Math.min(p.wanted, MAX_ENTRIES), reason: p.reason === "held_out_of_order" ? p.reason : null,
         } : NOTHING);
+        if (ok && orderOk(p.order)) orders.set(`${s.frameId}\n${s.heading.toLowerCase()}`, p.order);
       }
     };
     // What one press did, as the report's word: `added` only when the page's
@@ -1266,7 +1299,7 @@
         worked.add(f.fid).add(sameField(f));
         if (leftForAnotherEntry(f)) continue;
         if (f.kind === "text") {
-          await onFieldClock(f, L.FIELD_MS, (row) => fillText(f, textOf(f, row), formatOf(row.slot)));
+          await onFieldClock(f, L.FIELD_MS, (row) => fillText(f, textOf(f, row), row.format));
           await writeProse();
           continue;
         }
@@ -1312,8 +1345,8 @@
       };
     });
     // Per section of a profile kind: how many entries were added (value-free).
-    // `reason` held_out_of_order: entries on the page hold profile entries out
-    // of their order, so none was added (an added one would repeat one).
+    // `reason` held_out_of_order: an entry on the page holds something the
+    // profile does not have (or two hold the same one), so none was added.
     const sections = [...sectionLog.values()].map(({ heading, kind, wanted, entries, added, outcome, reason }) => ({
       heading, kind, wanted, entries, added, outcome, reason: reason ?? null,
     }));
@@ -1360,12 +1393,12 @@
 
   // ---- the report's repeating sections, as the panel says them: one line per
   // section still short of what the profile can fill (a press that added
-  // nothing, Stop, the clock), or where none was added because the entries
-  // on the page hold profile entries out of their order. Empty when there is
-  // nothing for the user to add.
+  // nothing, Stop, the clock), or where none was added because an entry on
+  // the page holds something the profile does not have (or two hold the same
+  // one). Empty when there is nothing for the user to add.
   const sectionLines = (report) => (report?.sections ?? []).flatMap((s) => {
     if (s.reason === "held_out_of_order") {
-      return [`${s.heading}: the items on the page don't match your profile's order, so none were added.`];
+      return [`${s.heading}: the items on the page don't match your profile, so none were added.`];
     }
     if (!(s.entries < s.wanted)) return [];
     const needed = s.wanted - (s.entries - s.added); // what the section was short of before the run

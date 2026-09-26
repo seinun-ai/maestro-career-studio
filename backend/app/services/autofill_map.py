@@ -15,10 +15,11 @@ authorization, eligibility, background, EEO) is never turned into a guess.
 
 import json
 import logging
+import re
 
 from sqlalchemy.orm import Session
 
-from app.schemas.autofill_fill import MapField, Mapped
+from app.schemas.autofill_fill import Format, MapField, Mapped
 from app.services import jev, llm, model_settings
 from app.services.autofill_catalog import Fact
 from app.services.autofill_choose import _PAGE_TEXT_IS_DATA, MATCH_FLOOR, SLOT_FLOOR
@@ -142,14 +143,50 @@ def _low_stakes(fields: list[MapField], session: Session) -> set[str]:
             if fid in ask and jev._unit(p) and p >= LOW_STAKES_FLOOR}
 
 
+# The loop's own mirror (shared/fill-loop.js `formatOf`) serves older responses only.
+_PHONE = re.compile(r"phone", re.IGNORECASE)
+_MONEY = re.compile(r"(^|[._])(desired_)?(salary|compensation|pay)([._]|$)", re.IGNORECASE)
+_ENTRY = re.compile(r"(experience|education)\.(\d+)\.(.+)")
+
+
+def format_of(slot: str | None) -> Format | None:
+    """How a value written for `slot` compares with what the page shows: a
+    page re-punctuates a phone number, and writes "$80,000" for 80000."""
+    if not slot:
+        return None
+    if _PHONE.search(slot):
+        return "phone"
+    return "money" if _MONEY.search(slot) else None
+
+
+def _foreign(field: MapField) -> bool:
+    """An entry /sections placed at NO profile entry (`entry_slot` sent as
+    null): it holds something the profile does not have, or lies past it."""
+    return "entry_slot" in field.model_fields_set and field.entry_slot is None
+
+
+def _placed(field: MapField, key: str) -> str:
+    """The model reads repeated entries in PAGE order; the entry's place in the
+    profile is code's (/sections matched what the entries hold): an entry
+    fact's number becomes the entry's `entry_slot`."""
+    m = _ENTRY.fullmatch(key)
+    if m is None or field.entry_slot is None:
+        return key
+    return f"{m[1]}.{field.entry_slot}.{m[3]}"
+
+
 def _route(field: MapField, picked: tuple[str, float] | None, facts: dict[str, Fact], *,
            eeo_consented: bool) -> Mapped:
-    if picked is None:
+    if picked is None or _foreign(field):
         return Mapped(route="none")
     key, p = picked
     if key in facts and p >= _floor(facts[key]):
+        key = _placed(field, key)
+        if key not in facts:
+            return Mapped(route="none")
         value = facts[key].value
-        return Mapped(route="slot", slot=key, value=list(value) if isinstance(value, tuple) else value)
+        return Mapped(route="slot", slot=key, value=list(value) if isinstance(value, tuple) else value,
+                      format=format_of(key))
     if key == FREE_TEXT and field.shape == "text" and p >= SLOT_FLOOR:
         return Mapped(route="free_text")
     if key == BLOCKED_EEO and not eeo_consented and p >= SLOT_FLOOR:
@@ -179,7 +216,7 @@ def map_fields(fields: list[MapField], facts: dict[str, Fact], session: Session,
     out = {f.fid: _route(f, picked.get(f.fid), facts, eeo_consented=eeo_consented) for f in fields}
     if low_stakes:
         leftovers = [f for f in fields if out[f.fid].route == "none" and f.shape not in _WRITTEN_SHAPES
-                     and _said_no_fact(picked.get(f.fid))]
+                     and not _foreign(f) and _said_no_fact(picked.get(f.fid))]
         for fid in _low_stakes(leftovers, session):
             out[fid] = Mapped(route="low_stakes")
     return out

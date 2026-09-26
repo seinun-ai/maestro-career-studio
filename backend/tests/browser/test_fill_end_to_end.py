@@ -92,7 +92,7 @@ DRIVER = """(spec) => {
   const api = async (path, init) => {
     const body = init?.body ? JSON.parse(init.body) : null;
     posts.push({ path: path.split("?")[0], body });
-    if (path.startsWith("/api/autofill/context")) return { eeo_consent: { consent_forms: false } };
+    if (path.startsWith("/api/autofill/context")) return { eeo_consent: { consent_forms: spec.consentForms === true } };
     if (path === "/api/autofill/map") {
       if (spec.holdMap && !window.__mapHeld) {
         window.__mapHeld = true;
@@ -438,3 +438,48 @@ def test_the_loop_adds_the_entries_the_profile_can_fill_and_fills_them(e2e_page)
     filled = {(r["section"], r["question"]): r["status"] for r in out["report"]["fields"]}
     for key in (("Work Experience 2", "Job Title"), ("Work Experience 2", "Company"), ("Websites 1", "URL")):
         assert filled[key] == "verified", key
+
+
+# A Workday-style text box asking the owner's Guidehouse salary question
+# (notes §8): the app takes the amount on leaving the box and shows it back
+# re-punctuated, "$80,000.00" for 80000.
+SALARY = "What are your annual salary requirements?"
+SALARY_PAGE = """
+<div data-automation-id="formField-salary">
+  <label for="sal">What are your annual salary requirements?*</label>
+  <input id="sal" type="text" aria-required="true">
+</div>
+<script>
+(() => {
+  const oracle = (window.__oracle = window.__oracle || {});
+  oracle.salary = null;
+  const input = document.getElementById("sal");
+  input.addEventListener("focusout", () => {
+    if (document.activeElement === input) return;
+    const n = Number(input.value.replace(/[^0-9.]/g, ""));
+    oracle.salary = n || null;
+    if (n) input.value = "$" + n.toLocaleString("en-US") + ".00";
+  });
+})();
+</script>
+"""
+
+
+def test_salary_requirements_are_filled_only_with_the_agreement_permission(e2e_page):
+    """Without the standing agreement permission a salary question is refused
+    by its label and never reaches /map. With it, /map answers it with the
+    desired-salary fact (its description names "salary requirements") and
+    the money format the backend chose for that slot, so the app's own
+    "$80,000.00" reads back as the 80000 written."""
+    page = e2e_page
+    salary = {SALARY: {"route": "slot", "slot": "preferences.desired_salary", "value": "80000", "format": "money"}}
+    off = _run(page, html=SALARY_PAGE, map=salary)
+    assert off["by_question"][SALARY]["status"] == "blocked"
+    assert not [f for p in off["posts"] if p["path"] == "/api/autofill/map" for f in p["body"]["fields"]]
+    assert oracle(page, "salary") is None and page.input_value("#sal") == ""
+
+    on = _run(page, html=SALARY_PAGE, map=salary, consentForms=True)
+    assert on["by_question"][SALARY]["status"] == "verified", on["by_question"][SALARY]
+    assert oracle(page, "salary") == 80000 and page.input_value("#sal") == "$80,000.00"
+    [write] = [a for m in on["sent"] if m["type"] == "fill_apply" for a in m["actions"] if a["op"] == "write"]
+    assert (write["value"], write["format"]) == ("80000", "money")

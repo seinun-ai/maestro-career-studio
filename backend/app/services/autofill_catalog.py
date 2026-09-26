@@ -5,12 +5,20 @@ the selected resume's employment blocks and skills. `value` is what code types
 or Pick compares against (never sent to Jev during /map); `describe` is the
 label-only text /map offers; `policy` is `autofill_slots.policy_for`. Codes
 become the words a form shows ("stem_opt" → "F-1 STEM OPT extension").
+
+DERIVED facts (`derived.*`) are computed here from the profile and the clock,
+in their own section so /map's description says where each comes from: the
+full legal name, today's date, US citizenship read off the work-authorization
+status, and an "immediately" availability as a date. Each is absent when what
+it is derived from is.
 """
 
 import re
 from dataclasses import dataclass
+from datetime import date
 from typing import Any
 
+from app.services.autofill_profile import canonical_identity_from_profile
 from app.services.autofill_slots import Policy, _as_text, policy_for
 
 MAX_SLOTS = 240  # Jev Choice ceiling 255 incl. sentinels
@@ -50,7 +58,17 @@ _DESCRIBES: dict[str, str] = {
     "eeo.hispanic_latino": "is Hispanic or Latino (voluntary self-identification)",
     "eeo.veteran_status": "protected veteran status (voluntary self-identification)",
     "eeo.disability_status": "disability status (voluntary self-identification)",
+    # A form asks for it as "salary requirements" or "compensation" as often
+    # as "desired salary": one fact, described in each wording.
+    "preferences.desired_salary": "desired salary, compensation or salary requirements (expected pay)",
 }
+# Work-authorization statuses that answer "are you a US citizen?". Only a
+# citizen is one: every other status (a green card, any visa, none) is a No.
+# A status not listed here derives nothing.
+_US_CITIZEN = {"citizen": "Yes", "permanent_resident": "No", "opt": "No", "stem_opt": "No", "h1b": "No",
+               "tn": "No", "other_visa": "No", "not_authorized": "No"}
+# A stored availability that means "today" (the owner's profile says "Immedietly").
+_IMMEDIATE = re.compile(r"immediate|immediet|\basap\b|right away|\bnow\b", re.IGNORECASE)
 _MONTHS = {m: i for i, m in enumerate(
     ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"], start=1)}
 
@@ -137,10 +155,36 @@ def _custom(out: dict[str, Fact], custom: Any) -> None:
             _add(out, f"custom.{i}", qa.get("answer"), f"saved answer to: {qa['question']}")
 
 
-def build(profile: dict[str, Any], employment: list[dict[str, Any]], skills: list[str]) -> dict[str, Fact]:
+def _derived(out: dict[str, Fact], profile: dict[str, Any], today: date) -> None:
+    """Facts computed from the profile and the clock, never invented: each is
+    absent when what it is derived from is."""
+    personal = profile.get("personal") if isinstance(profile.get("personal"), dict) else {}
+    identity = canonical_identity_from_profile({"personal": personal})
+    if identity["legal_first"] and identity["legal_last"]:
+        out["derived.full_name"] = Fact("derived.full_name", f"{identity['legal_first']} {identity['legal_last']}",
+                                        "your full legal name, for name and signature boxes", "flag")
+    out["derived.today"] = Fact("derived.today", today.isoformat(),
+                                "today's date, for a date the applicant signs or fills in today", "any")
+    work_auth = profile.get("work_auth") if isinstance(profile.get("work_auth"), dict) else {}
+    status = work_auth.get("status")
+    if isinstance(status, str) and status in _US_CITIZEN:
+        out["derived.us_citizen"] = Fact(
+            "derived.us_citizen", _US_CITIZEN[status],
+            "whether you are a US citizen, derived from your work-authorization status (yes/no)", "exact")
+    preferences = profile.get("preferences") if isinstance(profile.get("preferences"), dict) else {}
+    start = preferences.get("earliest_start_date")
+    if isinstance(start, str) and _IMMEDIATE.search(start):
+        out["derived.earliest_start_date"] = Fact("derived.earliest_start_date", today.isoformat(),
+                                                  "the earliest date you can start, as a calendar date", "any")
+
+
+def build(profile: dict[str, Any], employment: list[dict[str, Any]], skills: list[str], *,
+          today: date | None = None) -> dict[str, Fact]:
+    """`today`: the clock derived dates read (tests inject it); the server's by default."""
     out: dict[str, Fact] = {}
     profile = profile or {}
     _profile_sections(out, profile)
+    _derived(out, profile, today or date.today())
     _education(out, profile.get("education"))
     _experience(out, employment or [])
     _add(out, "skills", tuple(s for s in (skills or []) if s), "applicant skills (a list)")
