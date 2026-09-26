@@ -503,10 +503,11 @@
     let shown = textsOf(own(el, before)); // what the list showed before the search
     await typeQuery(box, term, t, { own: box === el });
     w?.saw("type");
-    // Never while the box names a highlighted option (aria-activedescendant):
-    // the Enter would pick it.
-    if (!box.getAttribute("aria-activedescendant") && (workday
-      || (comboBox(box) && !(await b().waitFor(() => searchView(el, shape, before) !== was, ANSWER_MS, t))))) {
+    // A generic combobox naming a highlighted option (aria-activedescendant)
+    // never gets it: its Enter would pick that option. Workday's Enter
+    // searches, highlight or not.
+    if (workday || (!box.getAttribute("aria-activedescendant") && comboBox(box)
+      && !(await b().waitFor(() => searchView(el, shape, before) !== was, ANSWER_MS, t)))) {
       shown = textsOf(own(el, before));
       b().keyPress(box, "Enter", t);
       w?.saw("keyboard");

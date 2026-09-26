@@ -697,6 +697,18 @@ def test_no_search_enter_while_the_box_names_a_highlighted_option(page, load):
     assert row["outcome"] == "unexpected" and page.evaluate("window.enters") == []
 
 
+def test_a_workday_box_naming_a_highlighted_row_still_gets_its_search_enter(page, load):
+    """Workday's Enter SEARCHES, it does not pick: a Workday box that names its
+    list's keyboard highlight (aria-activedescendant) still gets the Enter."""
+    load(page, fixture_html("workday_search.html"))
+    listen(page)
+    page.evaluate("""() => { const school = document.getElementById('school');
+      school.addEventListener('mousedown', () => school.setAttribute('aria-activedescendant', 'hl-row')); }""")
+    got = explore(page, inv(page)["School or University"], "Arlington")
+    assert len(got["options"]) == 8 and "error" not in got
+    assert [h for h in page.evaluate("window.heard") if h == "school:keyup:Enter"] == ["school:keyup:Enter"]
+
+
 def test_the_same_query_over_the_list_it_settled_is_not_searched_again(page, load):
     """A second search:value for the same term, over the list the first one
     settled: nothing typed, no Enter, no wait for a list that cannot change."""

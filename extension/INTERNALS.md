@@ -471,8 +471,9 @@ know, and each one was learned from a live failure.
   fallback: it goes to a Workday box always, to a combobox or autocomplete
   box only when its typing showed nothing new (a widget that filters as you
   type would take an Enter as a pick), and never to a plain text box, a
-  button, anything inside a link, or a box naming a highlighted option
-  (`aria-activedescendant`). An Enter that finds one hit may commit it on
+  button, anything inside a link, or a combobox naming a highlighted
+  option (`aria-activedescendant`, where an Enter picks; Workday's Enter
+  searches either way). An Enter that finds one hit may commit it on
   its own: the pills are read before anything is clicked (the answer:
   verified, unclicked; anything else: taken back, or — from an adaptive
   search move — left and named "Searching picked …", never filled). The
