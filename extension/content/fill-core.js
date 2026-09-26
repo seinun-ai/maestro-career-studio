@@ -19,17 +19,23 @@
  * display that matches over proof that did not move is `unconfirmed`, never
  * verified. No proof to read: the display decides, as it always did.
  *
- * NO EFFECT is judged here, on the page: an operation whose every gesture
- * left the committed evidence, the page's open popups and the element's own
- * value exactly as they were reports reason `no_effect` (the widget ignored
- * the engine; the loop counts two in a row as `unsupported`). A gesture that
- * changed anything — a list that opened, a value typed — is never no_effect.
+ * NO EFFECT is judged here, on the page: an operation after whose every
+ * gesture nothing moved — not the committed evidence, the open popups, the
+ * element's own value or its aria-expanded / aria-activedescendant, and no
+ * node changed in the field's box or was added to <body> — reports reason
+ * `no_effect` with the KINDS of gesture it tried (`gestures`: pointer,
+ * keyboard, type, setter, select). The loop calls a field `unsupported` only
+ * once two different kinds have had no effect. A gesture that changed
+ * anything is never no_effect. A press that opens nothing on a button or
+ * combobox is followed by a genuinely different gesture: ArrowDown, then
+ * Enter (never on a plain text box).
  *
  * EXPLORING CAN COMMIT (notes §2 rule 5: a search that finds one hit picks
- * it). explore snapshots the committed evidence first; whatever it committed
- * is taken back before it returns (a pill by its remove control, a popup's
- * pick by the engine's own undo), and what could not be taken back is
- * reported (`committed_while_exploring`) with the value it left.
+ * it). fill-ops snapshots the committed value before an explore and, with an
+ * allowance of its own, takes back whatever the explore committed (`moved`,
+ * `takeBack`: a pill by its remove control, a popup's pick by the engine's
+ * own undo); what could not be taken back is reported
+ * (`committed_while_exploring`) with the value it left.
  *
  * Every popup the engine opens or reads is MARKED (fillBase.markEnginePopup) —
  * including the menu a widget re-renders on every keystroke — because
@@ -59,6 +65,7 @@
   loaded.add("content/fill-core.js");
   const b = () => ns.fillBase;
   const OPEN_MS = 2500; // a pressed widget's popup, or a typed search's results
+  const KEY_OPEN_MS = 500; // a popup opened from the keyboard, once a press opened nothing
   const SEARCH_OPEN_MS = 1000; // a search box pressed with no term may show nothing at all
   const EMPTY_MS = 600; // a popup that lists nothing and is not loading this long is empty
   const CLEANUP_WAIT_MS = 500; // a cancelled search's debounce, waited out before closing
@@ -114,22 +121,48 @@
     return displayed(el, shape, expected, { format, have: before.display }) === "verified" ? "verified" : "unconfirmed";
   };
   // What a gesture can change, and a watch over one operation's gestures:
-  // `saw()` after each gesture (never after the engine's own tidy-up);
-  // `ignored` while none of them changed anything.
-  const look = (el, shape) => ({ ev: JSON.stringify(shape.evidence(el)), value: el.value, pops: b().popups() });
-  const differs = (a, z) => a.ev !== z.ev || a.value !== z.value || a.pops.length !== z.pops.length
-    || a.pops.some((p, i) => p !== z.pops[i]);
+  // `saw(...kinds)` after each gesture of those kinds (never after the
+  // engine's own tidy-up); `ignored` while none of them changed anything;
+  // `gestures` the kinds tried. Besides what the engine reads (evidence,
+  // value, role-bearing popups, the element's expanded / active-descendant
+  // state), ANY structural change in the field's box or a node added to
+  // <body> (a role-less list, a portal) counts: a widget that reacted at all
+  // is never reported as ignoring the engine. Always `stop()`ped.
+  const look = (el, shape) => ({
+    ev: JSON.stringify(shape.evidence(el)), value: el.value, pops: b().popups(),
+    aria: `${el.getAttribute("aria-expanded")}|${el.getAttribute("aria-activedescendant")}`,
+  });
+  const differs = (a, z) => a.ev !== z.ev || a.value !== z.value || a.aria !== z.aria
+    || a.pops.length !== z.pops.length || a.pops.some((p, i) => p !== z.pops[i]);
   const watch = (el, shape) => {
+    // Records reach the callback once the gesture's task ends, or the next
+    // saw() takes them: either way they are counted.
+    let mutated = false;
+    const nodes = new MutationObserver(() => {
+      mutated = true;
+    });
+    nodes.observe(ns.shapes.box(el) ?? el, { subtree: true, childList: true, attributes: true, characterData: true });
+    if (document.body) nodes.observe(document.body, { childList: true });
     let last = el.isConnected ? look(el, shape) : null;
     let ignored = true;
+    const tried = new Set();
     return {
-      saw() {
+      saw(...kinds) {
+        for (const k of kinds) tried.add(k);
         const now = el.isConnected ? look(el, shape) : null;
-        if (!last || !now || differs(last, now)) ignored = false;
+        if (nodes.takeRecords().length || mutated || !last || !now || differs(last, now)) ignored = false;
+        mutated = false;
         last = now;
       },
       get ignored() {
         return ignored;
+      },
+      // What to report: no_effect with the kinds tried, or the other reason.
+      reason(otherwise) {
+        return ignored ? { reason: "no_effect", gestures: [...tried] } : { reason: otherwise };
+      },
+      stop() {
+        nodes.disconnect();
       },
     };
   };
@@ -175,11 +208,13 @@
   };
 
   // ---- text-like
+  // The kinds of gesture one typeText tried: the setter fallback runs only
+  // when insertText changed nothing.
+  const typedKinds = (how) => (how === "setter" ? ["type", "setter"] : ["type"]);
   async function write(el, shape, value, t, { format } = {}) {
     if (shape.kind !== "text") return { outcome: "unexpected", reason: "not_text" };
-    // A box already showing the value cannot show an effect: never no_effect.
-    const shown = displayed(el, shape, value, { format }) === "verified";
-    const w = watch(el, shape);
+    let parts = null;
+    let text = String(value ?? "");
     if (shape.name === "date") {
       const d = parseDate(value);
       if (!d) return { outcome: "unexpected", reason: "not_a_date" };
@@ -192,25 +227,30 @@
           : ["yyyy", "mm", "dd"].filter((p) => new RegExp(p, "i").test(placeholder))
             .map((p) => ({ yyyy: "year", mm: "month", dd: "day" })[p]);
       if (asks.some((part) => !d[part])) return { outcome: "unexpected", reason: "needs_more_date_precision" };
-      if (kind === "sections") {
-        const parts = shape.dateSections(el);
-        for (const s of parts) b().typeText(s, d[shape.partOf(s)], t);
-        w.saw();
-        await blurOut(parts.at(-1), t);
+      if (kind === "sections") parts = shape.dateSections(el).map((sec) => [sec, d[shape.partOf(sec)]]);
+      else {
+        text = kind === "month" ? `${d.year}-${d.month}` : kind === "date" ? `${d.year}-${d.month}-${d.day}`
+          : formatPattern(placeholder, d);
+      }
+    }
+    // A box already showing the value cannot show an effect: never no_effect.
+    const shown = displayed(el, shape, value, { format }) === "verified";
+    const w = watch(el, shape);
+    try {
+      if (parts) {
+        for (const [sec, part] of parts) w.saw(...typedKinds(b().typeText(sec, part, t)));
+        await blurOut(parts.at(-1)[0], t);
       } else {
-        b().typeText(el, kind === "month" ? `${d.year}-${d.month}` : kind === "date" ? `${d.year}-${d.month}-${d.day}`
-          : formatPattern(placeholder, d), t);
-        w.saw();
+        w.saw(...typedKinds(b().typeText(el, text, t)));
         await blurOut(el, t);
       }
-    } else {
-      b().typeText(el, String(value ?? ""), t);
       w.saw();
-      await blurOut(el, t);
+      const outcome = verify(el, shape, value, { format });
+      return outcome !== "verified" && outcome !== "stale" && w.ignored && !shown
+        ? { outcome, ...w.reason() } : { outcome };
+    } finally {
+      w.stop();
     }
-    w.saw();
-    const outcome = verify(el, shape, value, { format });
-    return outcome !== "verified" && outcome !== "stale" && w.ignored && !shown ? { outcome, reason: "no_effect" } : { outcome };
   }
 
   // ---- choice-like: popups
@@ -250,7 +290,12 @@
     if (remember) typed.get(box).query = box.value;
     await b().settle(t, 100); // let a debounced search replace the old list first
   };
-  const open = async (el, shape, term, t) => {
+  // A control the keyboard may open: a button or a combobox, never a plain
+  // text box (an Enter there can submit a form).
+  const keyable = (el) => !(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) || el.readOnly
+    || el.getAttribute("role") === "combobox";
+  // `w` (a watch) hears each gesture's kind.
+  const open = async (el, shape, term, t, w) => {
     const before = b().popups();
     opened.set(el, before);
     let searchable = shape.open === "search";
@@ -258,11 +303,21 @@
     // their results on a click in their own box.
     if (searchable && term) {
       await typeQuery(el, term, t, { own: true });
+      w?.saw("type");
       return { pop: await waitOptions(el, before, t), before, searchable };
     }
     el.focus?.({ preventScroll: true });
     b().press(el, t);
-    const pop = await b().waitFor(() => own(el, before), searchable ? SEARCH_OPEN_MS : OPEN_MS, t);
+    let pop = await b().waitFor(() => own(el, before), searchable ? SEARCH_OPEN_MS : OPEN_MS, t);
+    w?.saw("pointer");
+    // A press that opened nothing: the keyboard, a genuinely different gesture.
+    for (const key of ["ArrowDown", "Enter"]) {
+      if (pop || !keyable(el)) break;
+      b().enter(el, t);
+      b().keyPress(el, key, t);
+      pop = await b().waitFor(() => own(el, before), KEY_OPEN_MS, t);
+      w?.saw("keyboard");
+    }
     if (!pop) return { pop: null, before, searchable };
     const box = pop.querySelector(INNER_SEARCH);
     if (box) searchable = true;
@@ -331,10 +386,20 @@
     else if (restore) b().leave(el, widgetOf(el)); // the undo focused the box: focus is not left in it
   };
 
-  // Whether the field's committed value moved: its proof where the page
-  // exposes one; else what it shows — unless that is the box's own text (a
-  // free-text box's display IS the query tidy takes back, not a commit).
-  const moved = (el, was, now) => {
+  // What an explore must leave as it found it (fill-ops takes it before the
+  // explore): the committed evidence, and a search box's pill texts.
+  const snapshot = (el, shape) => ({
+    evidence: shape.evidence(el), held: shape.open === "search" ? ns.shapes.pills(el).map((p) => p.text) : [],
+  });
+  // Whether the field's committed value moved since `snap`: its proof where
+  // the page exposes one; else what it shows — unless that is the box's own
+  // text (a free-text box's display IS the query tidy takes back, not a
+  // commit; so a search box whose only display is its own input cannot have
+  // an explore commit noticed — INTERNALS.md says so).
+  const moved = (el, shape, snap) => {
+    if (!el.isConnected) return false;
+    const was = snap.evidence;
+    const now = shape.evidence(el);
     if (was.proof !== null || now.proof !== null) return !same(was.proof, now.proof);
     if (same(was.display, now.display)) return false;
     return !(el instanceof HTMLInputElement && [now.display].flat().join(", ") === el.value);
@@ -353,9 +418,9 @@
   // DELETE_charm, else a control inside the pill named delete/remove/clear,
   // else the pill itself (pills that un-pick on a click). A popup's pick: the
   // engine's own undo — choose what it showed before, or its placeholder.
-  const takeBack = async (el, shape, before, held, options, t) => {
+  const takeBack = async (el, shape, snap, options, t) => {
     if (shape.open === "search") {
-      const left = [...held];
+      const left = [...snap.held];
       for (const p of ns.shapes.pills(el)) {
         const at = left.indexOf(p.text);
         if (at >= 0) {
@@ -372,7 +437,7 @@
       }
       return;
     }
-    const text = before.display || options.find((o) => ns.isPlaceholderText(o.text))?.text;
+    const text = snap.evidence.display || (options ?? []).find((o) => ns.isPlaceholderText(o.text))?.text;
     if (text) await choose(el, shape, { text, undo: true }, t);
   };
 
@@ -383,37 +448,37 @@
       return { options: flag(p.options, consentForms), complete: p.complete, searchable: false };
     }
     b().check(t);
-    // What the field held before: exploring must leave it so.
-    const before = shape.evidence(el);
-    const held = shape.open === "search" ? ns.shapes.pills(el).map((p) => p.text) : [];
     const w = watch(el, shape);
-    let { pop, searchable } = await open(el, shape, term, t);
-    w.saw();
-    let options = pop ? b().optionsOf(pop) : [];
-    if (!options.length && term) {
-      const word = term.split(/\s+/).find((x) => x.length > 2 && x !== term);
-      if (word) {
-        await tidy(el, t);
-        ({ pop, searchable } = await open(el, shape, word, t));
-        w.saw();
-        options = pop ? b().optionsOf(pop) : [];
+    try {
+      let { pop, searchable } = await open(el, shape, term, t, w);
+      let options = pop ? b().optionsOf(pop) : [];
+      if (!options.length && term) {
+        const word = term.split(/\s+/).find((x) => x.length > 2 && x !== term);
+        if (word) {
+          await tidy(el, t);
+          ({ pop, searchable } = await open(el, shape, word, t, w));
+          options = pop ? b().optionsOf(pop) : [];
+        }
       }
-    }
-    const got = pop && options.length ? await readAll(pop, t) : { options: [], complete: false };
-    const rows = pop && options.length ? ns.shapes.learnRows(el, pop) : null;
-    await tidy(el, t);
-    // A filtered search view is never the complete list. `multi` only when the
-    // rows said so: checkboxes (several answers) or radios (one).
-    const out = { options: flag(got.options, consentForms), complete: got.complete && !term, searchable };
-    if (rows) out.multi = rows === "multi";
-    if (!got.options.length) out.error = pop ? "empty_popup" : w.ignored ? "no_effect" : "no_popup";
-    if (el.isConnected && moved(el, before, shape.evidence(el))) {
-      await takeBack(el, shape, before, held, got.options, t);
-      if (el.isConnected && moved(el, before, shape.evidence(el))) {
-        return { ...out, error: "committed_while_exploring", committed: shape.read(el) };
+      const got = pop && options.length ? await readAll(pop, t) : { options: [], complete: false };
+      const rows = pop && options.length ? ns.shapes.learnRows(el, pop) : null;
+      await tidy(el, t);
+      // A filtered search view is never the complete list. `multi` only when the
+      // rows said so: checkboxes (several answers) or radios (one).
+      const out = { options: flag(got.options, consentForms), complete: got.complete && !term, searchable };
+      if (rows) out.multi = rows === "multi";
+      if (!got.options.length) {
+        if (pop) out.error = "empty_popup";
+        else {
+          const why = w.reason("no_popup");
+          out.error = why.reason;
+          if (why.gestures) out.gestures = why.gestures;
+        }
       }
+      return out;
+    } finally {
+      w.stop();
     }
-    return out;
   }
 
   // A hidden custom radio/checkbox is operated through its label.
@@ -443,31 +508,38 @@
     if (hits.length !== 1) return { outcome: "unexpected", reason: "option_missing", options };
     if (hits[0].policyBlocked) return { outcome: "blocked" };
     const want = hits[0].text;
-    const w = watch(el, shape);
-    let acted = false; // a control already on the answer gets no gesture, so shows no effect
     // The control behind the option, found again: an option the page dropped
-    // since it was read is missing, not an error.
+    // since it was read is missing, not an error. `gesture` is null when the
+    // control already holds the answer (no gesture, so no effect to judge).
+    let gesture = null;
+    let kind = "pointer";
     if (shape.name === "select") {
       const opt = shape.realOptions(el).find((o) => b().clean(o.text) === want);
       if (!opt) return { outcome: "unexpected", reason: "option_missing", options };
-      acted = !opt.selected;
-      if (!opt.selected && el.multiple) addSelected(el, [opt], t); // the other selections stay
-      else if (!opt.selected) selectIndex(el, opt.index, t);
+      kind = "select";
+      if (!opt.selected && el.multiple) gesture = () => addSelected(el, [opt], t); // the other selections stay
+      else if (!opt.selected) gesture = () => selectIndex(el, opt.index, t);
     } else if (shape.lone(el)) {
       if (want !== "Yes" && want !== "No") return { outcome: "unexpected", reason: "option_missing", options };
-      acted = el.checked !== (want === "Yes");
-      if (acted) tick(el, t);
+      if (el.checked !== (want === "Yes")) gesture = () => tick(el, t);
     } else {
       const input = shape.members(el).find((m) => shape.labelOf(m) === want);
       if (!input) return { outcome: "unexpected", reason: "option_missing", options };
-      acted = !input.checked;
-      if (acted) tick(input, t);
+      if (!input.checked) gesture = () => tick(input, t);
     }
-    w.saw();
-    await blurOut(el, t);
-    w.saw();
-    return verify(el, shape, want) === "verified" ? { outcome: "verified", text: want }
-      : { outcome: "unexpected", reason: acted && w.ignored ? "no_effect" : "not_committed" };
+    const w = watch(el, shape);
+    try {
+      if (gesture) {
+        gesture();
+        w.saw(kind);
+      }
+      await blurOut(el, t);
+      w.saw();
+      if (verify(el, shape, want) === "verified") return { outcome: "verified", text: want };
+      return { outcome: "unexpected", ...(gesture ? w.reason("not_committed") : { reason: "not_committed" }) };
+    } finally {
+      w.stop();
+    }
   }
 
   const GESTURES = [(o, t) => b().press(o, t), (o, t) => {
@@ -500,60 +572,63 @@
     // What the field showed and the app held before the pick: its proof must move.
     const before = shape.evidence(el);
     const w = watch(el, shape);
-    for (const gesture of GESTURES) {
-      const { pop, before: popsBefore } = await open(el, shape, shape.open === "search" ? (term ?? text) : term, t);
-      w.saw();
-      if (!pop) {
+    try {
+      for (const gesture of GESTURES) {
+        const { pop, before: popsBefore } = await open(el, shape, shape.open === "search" ? (term ?? text) : term, t, w);
+        if (!pop) {
+          await tidy(el, t);
+          return { outcome: "unexpected", ...w.reason("no_popup") };
+        }
+        const hit = await findOption(pop, text, t);
+        if (!hit) {
+          const options = flag(b().optionsOf(pop), consentForms);
+          await tidy(el, t);
+          return { outcome: "unexpected", reason: options.length ? "option_missing" : "empty_popup", options };
+        }
+        if (blockedText(hit.text, consentForms)) {
+          await tidy(el, t);
+          return { outcome: "blocked" };
+        }
+        if (!undo && ns.isPlaceholderText(hit.text)) {
+          await tidy(el, t);
+          return { outcome: "unexpected", reason: "placeholder" };
+        }
+        // The rows the list showed may only now have said "several".
+        if ((multi || shape.multi?.(el)) && (hit.selected || holds(el, shape, hit.text))) {
+          await tidy(el, t);
+          return alreadyThere(el, shape, hit.text);
+        }
+        const shown = b().optionsOf(pop).map((o) => o.text).join("\n");
+        hit.el.scrollIntoView?.({ block: "nearest" });
+        gesture(hit.el, t);
+        await b().settle(t, 200);
+        w.saw("pointer");
+        // The pick is committed: the query typed to find it is no longer the
+        // engine's to take back (a free-text box whose pick equals the query).
+        // Only when the box's own value IS the committed value: a widget that
+        // shows the pick in a pill and leaves the query in its box still gets
+        // the query taken back.
+        if (holds(el, shape, hit.text) && [shape.read(el)].flat().includes(el.value)) typed.delete(el);
+        const after = own(el, popsBefore);
+        const next = after ? b().optionsOf(after) : [];
+        if (next.length && next.map((o) => o.text).join("\n") !== shown && same(shape.read(el), before.display)) {
+          leftOpen.set(el, { pop: after, before: popsBefore });
+          return { outcome: "unexpected", reason: "new_options", options: flag(next, consentForms) };
+        }
         await tidy(el, t);
-        return { outcome: "unexpected", reason: w.ignored ? "no_effect" : "no_popup" };
+        const got = verify(el, shape, hit.text, { before, undo });
+        if (got === "verified") return { outcome: "verified", text: hit.text };
+        // It shows the pick, but the app did not take it: never a second click
+        // (the loop decides what an unconfirmed value needs).
+        if (got === "unconfirmed") return { outcome: "unconfirmed", text: hit.text };
+        // Something else got committed: a second click could undo it (a chip
+        // that un-picks on click). Only a click that changed nothing is retried.
+        if (!same(shape.read(el), before.display)) break;
       }
-      const hit = await findOption(pop, text, t);
-      if (!hit) {
-        const options = flag(b().optionsOf(pop), consentForms);
-        await tidy(el, t);
-        return { outcome: "unexpected", reason: options.length ? "option_missing" : "empty_popup", options };
-      }
-      if (blockedText(hit.text, consentForms)) {
-        await tidy(el, t);
-        return { outcome: "blocked" };
-      }
-      if (!undo && ns.isPlaceholderText(hit.text)) {
-        await tidy(el, t);
-        return { outcome: "unexpected", reason: "placeholder" };
-      }
-      // The rows the list showed may only now have said "several".
-      if ((multi || shape.multi?.(el)) && (hit.selected || holds(el, shape, hit.text))) {
-        await tidy(el, t);
-        return alreadyThere(el, shape, hit.text);
-      }
-      const shown = b().optionsOf(pop).map((o) => o.text).join("\n");
-      hit.el.scrollIntoView?.({ block: "nearest" });
-      gesture(hit.el, t);
-      await b().settle(t, 200);
-      w.saw();
-      // The pick is committed: the query typed to find it is no longer the
-      // engine's to take back (a free-text box whose pick equals the query).
-      // Only when the box's own value IS the committed value: a widget that
-      // shows the pick in a pill and leaves the query in its box still gets
-      // the query taken back.
-      if (holds(el, shape, hit.text) && [shape.read(el)].flat().includes(el.value)) typed.delete(el);
-      const after = own(el, popsBefore);
-      const next = after ? b().optionsOf(after) : [];
-      if (next.length && next.map((o) => o.text).join("\n") !== shown && same(shape.read(el), before.display)) {
-        leftOpen.set(el, { pop: after, before: popsBefore });
-        return { outcome: "unexpected", reason: "new_options", options: flag(next, consentForms) };
-      }
-      await tidy(el, t);
-      const got = verify(el, shape, hit.text, { before, undo });
-      if (got === "verified") return { outcome: "verified", text: hit.text };
-      // It shows the pick, but the app did not take it: never a second click
-      // (the loop decides what an unconfirmed value needs).
-      if (got === "unconfirmed") return { outcome: "unconfirmed", text: hit.text };
-      // Something else got committed: a second click could undo it (a chip
-      // that un-picks on click). Only a click that changed nothing is retried.
-      if (!same(shape.read(el), before.display)) break;
+      return { outcome: "unexpected", ...w.reason("not_committed") };
+    } finally {
+      w.stop();
     }
-    return { outcome: "unexpected", reason: w.ignored ? "no_effect" : "not_committed" };
   }
 
   // Sets add, never remove: an existing choice is kept and never unticked,
@@ -747,14 +822,17 @@
     const held = heldPopup(el);
     if (mid === "open") {
       const w = watch(el, shape);
-      const o = await open(el, shape, undefined, t);
-      w.saw();
-      if (!o.pop) {
-        await tidy(el, t);
-        return { outcome: "unexpected", reason: w.ignored ? "no_effect" : "no_popup" };
+      try {
+        const o = await open(el, shape, undefined, t, w);
+        if (!o.pop) {
+          await tidy(el, t);
+          return { outcome: "unexpected", ...w.reason("no_popup") };
+        }
+        leftOpen.set(el, { pop: o.pop, before: o.before });
+        return { outcome: "progressed" };
+      } finally {
+        w.stop();
       }
-      leftOpen.set(el, { pop: o.pop, before: o.before });
-      return { outcome: "progressed" };
     }
     if (mid === "scroll") {
       const box = held && scrollerOf(held.pop);
@@ -796,39 +874,44 @@
       // A placeholder row is never an answer (only the engine's undo chooses it).
       if (!hit.group && ns.isPlaceholderText(hit.text)) return { outcome: "unexpected", reason: "placeholder" };
       const before = shape.evidence(el);
-      const w = watch(el, shape);
       const shown = b().optionsOf(held.pop).map((o) => o.text).join("\n");
       hit.el.scrollIntoView?.({ block: "nearest" });
-      for (const gesture of GESTURES) {
-        gesture(hit.el, t);
-        await b().settle(t, 200);
-        w.saw();
-        const after = own(el, held.before) ?? (b().visible(held.pop) ? held.pop : null);
-        const next = after ? b().optionsOf(after).map((o) => o.text).join("\n") : "";
-        const unchanged = same(shape.read(el), before.display);
-        if (next && next !== shown && unchanged) { // a category: its children are the next state
-          leftOpen.set(el, { pop: after, before: held.before });
-          return { outcome: "progressed" };
+      const w = watch(el, shape);
+      try {
+        for (const gesture of GESTURES) {
+          gesture(hit.el, t);
+          await b().settle(t, 200);
+          w.saw("pointer");
+          const after = own(el, held.before) ?? (b().visible(held.pop) ? held.pop : null);
+          const next = after ? b().optionsOf(after).map((o) => o.text).join("\n") : "";
+          const unchanged = same(shape.read(el), before.display);
+          if (next && next !== shown && unchanged) { // a category: its children are the next state
+            leftOpen.set(el, { pop: after, before: held.before });
+            return { outcome: "progressed" };
+          }
+          // Only a click that changed nothing at all gets the second gesture.
+          if (!unchanged || next !== shown || !hit.el.isConnected) break;
         }
-        // Only a click that changed nothing at all gets the second gesture.
-        if (!unchanged || next !== shown || !hit.el.isConnected) break;
-      }
-      if (hit.group) {
-        // Not an answer: one that committed a value is reported, never verified.
-        const committed = !same(shape.read(el), before.display);
+        if (hit.group) {
+          // Not an answer: one that committed a value is reported, never verified.
+          const committed = !same(shape.read(el), before.display);
+          await tidy(el, t);
+          return { outcome: "unexpected", ...(committed ? { reason: "group_committed" } : w.reason("not_committed")) };
+        }
+        if (holds(el, shape, hit.text) && [shape.read(el)].flat().includes(el.value)) typed.delete(el);
         await tidy(el, t);
-        return { outcome: "unexpected", reason: committed ? "group_committed" : w.ignored ? "no_effect" : "not_committed" };
+        const got = verify(el, shape, hit.text, { before });
+        if (got === "verified" || got === "unconfirmed") return { outcome: got, text: hit.text };
+        return { outcome: "unexpected", ...w.reason("not_committed") };
+      } finally {
+        w.stop();
       }
-      if (holds(el, shape, hit.text) && [shape.read(el)].flat().includes(el.value)) typed.delete(el);
-      await tidy(el, t);
-      const got = verify(el, shape, hit.text, { before });
-      if (got === "verified" || got === "unconfirmed") return { outcome: got, text: hit.text };
-      return { outcome: "unexpected", reason: w.ignored ? "no_effect" : "not_committed" };
     }
     return { outcome: "unexpected", reason: "unknown_move" };
   }
 
   ns.fillCore = {
     write, explore, choose, set, recommit, verify, tidy, open, readAll, own, leftOpen, stepState, move,
+    snapshot, moved, takeBack,
   };
 })();

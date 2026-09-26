@@ -23,7 +23,9 @@
   if (loaded.has("content/fill-ops.js")) return;
   loaded.add("content/fill-ops.js");
   // Mutable so a test can force a timeout; the loop never changes them.
-  const budgets = { explore: 4000, apply: 6000, setItem: 4000, setMax: 20000, step: 2000 };
+  // `undo`: explore's own allowance for taking back what it committed, apart
+  // from the explore's, so a slow explore never eats the undo (or the reverse).
+  const budgets = { explore: 5000, undo: 6000, apply: 6000, setItem: 4000, setMax: 20000, step: 2000 };
   const inv = () => ns.fillInventory;
   const core = () => ns.fillCore;
   let runId = null;
@@ -105,10 +107,23 @@
         out[r.fid] = { options: [], complete: false, searchable: false, error: refused };
         continue;
       }
+      // Exploring can commit (a search that finds one hit picks it): what the
+      // field held is taken first, and whatever moved is taken back under
+      // the undo's own budget — also after an explore that timed out. What
+      // stays is reported with the value it left. A Stop takes nothing back.
+      const snap = core().snapshot(el, shape);
       const { got, aborted } = await run((t) => core().explore(el, shape, { term: r.term ?? undefined, consentForms }, t),
         budgets.explore, el);
       if (aborted) await cleanup(el);
-      out[r.fid] = got.options ? got : { options: [], complete: false, searchable: false, error: got.reason ?? got.outcome };
+      let row = got.options ? got : { options: [], complete: false, searchable: false, error: got.reason ?? got.outcome };
+      if (!halted() && core().moved(el, shape, snap)) {
+        const undo = await run((t) => core().takeBack(el, shape, snap, row.options, t), budgets.undo, el);
+        if (undo.aborted) await cleanup(el);
+        if (!halted() && core().moved(el, shape, snap)) {
+          row = { ...row, error: "committed_while_exploring", committed: shape.read(el) };
+        }
+      }
+      out[r.fid] = row;
     }
     return out;
   };

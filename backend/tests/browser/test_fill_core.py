@@ -405,6 +405,23 @@ def test_explore_takes_back_a_popup_pick_the_page_made_on_close(page, load):
     assert oracle(page, "move") == "" and page.inner_text("#move") == "Select One"
 
 
+def test_the_undo_has_its_own_budget_after_a_slow_explore(page, load):
+    """The popup reopens slowly for the undo: an explore budget that the
+    explore alone fits in does not cut the undo short."""
+    load(page, SELECT_ON_CLOSE)
+    page.evaluate(f"() => {{ {OPS}.budgets.explore = 1200; window.slowReopen = 1500; }}")
+    got = explore(page, inv(page)["Willing to move?"])
+    assert "error" not in got and oracle(page, "move") == ""
+
+
+def test_an_undo_that_times_out_still_reports_the_commit(page, load):
+    load(page, SELECT_ON_CLOSE)
+    page.evaluate(f"() => {{ {OPS}.budgets.undo = 300; window.slowReopen = 1500; }}")
+    got = explore(page, inv(page)["Willing to move?"])
+    assert (got["error"], got["committed"]) == ("committed_while_exploring", "Yes")
+    assert oracle(page, "move") == "Yes"
+
+
 @pytest.mark.xfail(strict=True, raises=AssertionError,
                    reason="Task 5: the live search list opens only after a press and an Enter; "
                           "an Enter that finds one school commits it, and explore takes it back")
@@ -424,13 +441,60 @@ DEAF = """<label id='l'>Pick one</label><div><button id='deaf' aria-haspopup='li
 
 
 def test_a_widget_that_ignores_every_gesture_reports_no_effect(page, load):
+    """With the kinds of gesture it tried: a press and then the keyboard for
+    the button; typing and then the setter for the box."""
     load(page, DEAF)
     f = inv(page)
-    assert explore(page, f["Pick one"])["error"] == "no_effect"
+    got = explore(page, f["Pick one"])
+    assert (got["error"], sorted(got["gestures"])) == ("no_effect", ["keyboard", "pointer"])
     row = apply(page, f["Pick one"], op="choose", text="Yes")
-    assert (row["outcome"], row["reason"]) == ("unexpected", "no_effect")
+    assert (row["outcome"], row["reason"], sorted(row["gestures"])) == ("unexpected", "no_effect", ["keyboard", "pointer"])
     row = apply(page, f["Code"], op="write", value="ABC")
-    assert (row["outcome"], row["reason"]) == ("reverted", "no_effect")
+    assert (row["outcome"], row["reason"], sorted(row["gestures"])) == ("reverted", "no_effect", ["setter", "type"])
+
+
+# A popup that ignores a press and opens from the keyboard (ArrowDown), with
+# a backing input beside it; and one whose press appends a ROLE-LESS list to
+# <body> — a reaction the engine cannot read as a popup, but a reaction.
+KEYBOARD_ONLY = """<label id='l'>Willing to travel?</label>
+<div><button id='kb' aria-haspopup='listbox' aria-labelledby='l'>Select One</button><input type='hidden' value=''></div>
+<label id='m'>Shift</label><div><button id='bare' aria-haspopup='listbox' aria-labelledby='m'>Select One</button></div>
+<script>
+(() => {
+  const btn = document.getElementById('kb');
+  btn.addEventListener('keydown', (e) => {
+    if (e.key !== 'ArrowDown' || document.getElementById('kb-list')) return;
+    const ul = document.createElement('ul');
+    ul.id = 'kb-list'; ul.setAttribute('role', 'listbox');
+    ul.innerHTML = "<li role='option'>Yes</li><li role='option'>No</li>";
+    for (const li of ul.children) li.addEventListener('click', (ev) => {
+      ev.stopPropagation(); btn.textContent = li.textContent; btn.nextElementSibling.value = li.textContent; ul.remove(); });
+    document.body.append(ul);
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') document.getElementById('kb-list')?.remove(); });
+  document.getElementById('bare').addEventListener('click', () => {
+    const menu = document.createElement('div');
+    menu.className = 'menu'; menu.innerHTML = '<div>Day</div><div>Night</div>';
+    document.body.append(menu);
+  });
+})();
+</script>"""
+
+
+def test_a_popup_that_opens_only_from_the_keyboard_is_filled(page, load):
+    load(page, KEYBOARD_ONLY)
+    f = inv(page)["Willing to travel?"]
+    assert [o["text"] for o in explore(page, f)["options"]] == ["Yes", "No"]
+    row = apply(page, f, op="choose", text="No")
+    assert (row["outcome"], row["committed"]) == ("verified", "No")
+
+
+def test_a_press_that_opens_a_role_less_list_had_an_effect(page, load):
+    load(page, KEYBOARD_ONLY)
+    f = inv(page)["Shift"]
+    got = explore(page, f)
+    assert got["error"] == "no_popup" and "gestures" not in got
+    assert apply(page, f, op="choose", text="Day")["reason"] == "no_popup"
 
 
 def test_a_gesture_that_changed_something_is_never_no_effect(page, load):

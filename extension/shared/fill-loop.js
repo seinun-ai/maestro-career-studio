@@ -34,8 +34,10 @@
  *   executors: they share the field's one budget (FIELD_MS, charged for the
  *   time the field was worked, across rounds — a retry never gets a fresh
  *   clock), a state + move pair that failed is never proposed to the page again
- *   (`failedMoves`), and two page operations in a row that changed nothing at
- *   all (`no_effect`) make the field `unsupported`.
+ *   (`failedMoves`: the state as shown, the value it was for, the move), and a
+ *   field is `unsupported` only once two DIFFERENT kinds of gesture (pointer,
+ *   keyboard, typing …) have had no effect at all (`no_effect`, with the kinds
+ *   the page tried) since anything last did.
  * - Never stall: every backend wait is bounded (API_MS, and never past the
  *   field's or the run's clock); the run has a clock; rounds, attempts, steps
  *   and items are capped. A late answer is ignored. Before finishing, a quiet
@@ -53,13 +55,13 @@
  *   page outcome   verified | partial | unexpected (+reason) | reverted | stale |
  *     (fill-ops)   unconfirmed (it shows, the page's proof did not move) |
  *                  progressed | closed | yours | blocked | unsupported |
- *                  cancelled | timeout; reason `no_effect` when no gesture
- *                  changed the evidence, the open popups or the value
+ *                  cancelled | timeout; reason `no_effect` (+ `gestures`,
+ *                  the kinds tried) when no gesture changed anything
  *                  → read by act(); never leaves this file as a status.
  *   act()          the page's outcome, or halted (Stop / run clock) | late
- *                  (field clock) | refused (yours/blocked/unsupported, or a
- *                  second no_effect in a row — already recorded as the row's
- *                  final status) | stale (no frame owns it)
+ *                  (field clock) | refused (yours/blocked/unsupported, or
+ *                  no_effect from a second kind of gesture — already recorded
+ *                  as the row's final status) | stale (no frame owns it)
  *                  → the caller turns it into a row status (notDone, settle).
  *   adapt()        verified (+reason) | landed (group_committed) |
  *                  unconfirmed | gave_up | no_answer | exhausted | late |
@@ -69,7 +71,9 @@
  *                  `lastOutcome` keeps the word that decided it.
  *   report status  verified | closest | assumed | already | blocked | yours |
  *                  partial | unconfirmed (a value that shows but was never
- *                  confirmed, or reverted twice: `unstable`) | needs_answer |
+ *                  confirmed; or one that reverted and was not re-committed
+ *                  in time, `timeout`, or reverted again, `unstable`) |
+ *                  needs_answer |
  *                  cannot_operate | unsupported (the widget ignored every
  *                  synthetic input) — what the panel shows.
  *   telemetry      the report status as the contract's outcome (verified,
@@ -116,7 +120,7 @@
   const STEP_REASONS = new Set([...Object.keys(STATUS), "progress"]);
   const REFUSED = { yours: "yours", blocked: "blocked", unsupported: "cannot_operate" };
   const CAN_ADAPT = new Set(["popup", "search"]);
-  const NO_EFFECT_LIMIT = 2; // page operations in a row that changed nothing: the widget ignores the engine
+  const NO_EFFECT_KINDS = 2; // different kinds of gesture that changed nothing: the widget ignores the engine
 
   const sourceHintOf = (url) => {
     try {
@@ -164,6 +168,7 @@
   const landedNote = (text) => (text ? `Companion clicked "${text}". Check it.` : "Companion clicked an option. Check it.");
   const unstableNote = (text) => (text ? `Companion filled "${text}" twice and the page took it back both times. Check it.`
     : "Companion filled this twice and the page took it back both times. Check it.");
+  const revertedNote = (text) => `Companion filled "${text}", then the page took it back. Check it.`;
   const stuckNote = (committed) => {
     const text = [committed].flat().filter((v) => v != null && String(v).trim() !== "").join(", ");
     return text ? `Searching picked "${text}" and Companion couldn't take it back. Check it.`
@@ -196,7 +201,7 @@
     else if (options.base) selector.base = String(options.base).slice(0, 200);
     const asked = { ...selector, source_hint: options.sourceHint ? String(options.sourceHint).slice(0, 60) : null };
     // fid -> { fid, field, frameId, status, attempts, route, slot, value, answer, lastOutcome,
-    //   deadline, spent, started, recommits, failedMoves, noEffect, wrote, wroteAs }
+    //   deadline, spent, started, recommits, failedMoves, ignored, wrote, wroteAs }
     const rows = new Map();
     let listed = []; // the latest inventory's fids, in page order
     let aiFailure = null;
@@ -205,6 +210,13 @@
     // ---- rows and clocks
     const set = (fid, patch) => {
       const was = rows.get(fid)?.status;
+      // A field the engine wrote, that reverted and whose one re-commit ran
+      // out of time, is not "couldn't operate": the user must learn that the
+      // page took the value back.
+      const had = rows.get(fid);
+      if (patch.status === "cannot_operate" && patch.lastOutcome === "timeout" && had?.recommits && had.wrote) {
+        patch = { status: "unconfirmed", lastOutcome: "timeout", answer: revertedNote(had.wrote), wroteAs: null };
+      }
       const row = { ...rows.get(fid), ...patch };
       rows.set(fid, row);
       if (patch.status && patch.status !== was && FINAL.has(patch.status)) tell({ phase: "field", fid, status: patch.status });
@@ -254,14 +266,17 @@
       }
     };
     const fieldLate = (f) => Date.now() >= (rows.get(f.fid)?.deadline ?? Infinity);
-    // Two page operations in a row that changed nothing at all (`no_effect`,
-    // judged on the page): the widget ignores synthetic input, and the engine
-    // has no other kind. True when that just made the field `unsupported`.
-    // Anything else the page did resets the count.
-    const ignoredBy = (f, reason) => {
-      const n = reason === "no_effect" ? (rows.get(f.fid).noEffect ?? 0) + 1 : 0;
-      set(f.fid, { noEffect: n });
-      if (n < NO_EFFECT_LIMIT) return false;
+    // The kinds of gesture that changed nothing at all (`no_effect`, judged
+    // on the page, which says which kinds it tried) since anything last did.
+    // Two DIFFERENT kinds ignored — a press and the keyboard, typing and the
+    // setter — and the widget ignores synthetic input, which is all the
+    // engine has: `unsupported`. The same press ignored twice is not that.
+    // True when that just made the field unsupported.
+    const ignoredBy = (f, reason, gestures) => {
+      const kinds = new Set(reason === "no_effect" ? rows.get(f.fid).ignored ?? [] : []);
+      if (reason === "no_effect") for (const k of gestures?.length ? gestures : ["unknown"]) kinds.add(String(k));
+      set(f.fid, { ignored: [...kinds] });
+      if (kinds.size < NO_EFFECT_KINDS) return false;
       finish(f, "unsupported", { lastOutcome: "no_effect" });
       return true;
     };
@@ -316,7 +331,7 @@
         return { outcome: "refused" };
       }
       // A close is the engine tidying up, not an attempt on the field.
-      if (!closing && ignoredBy(f, got.reason)) return { outcome: "refused" };
+      if (!closing && ignoredBy(f, got.reason, got.gestures)) return { outcome: "refused" };
       return got;
     };
     // True when the action did not happen and there is nothing more to do now.
@@ -342,7 +357,7 @@
         return true;
       }
       if (got.error === "cancelled") return true;
-      if (ignoredBy(f, got.error)) return true;
+      if (ignoredBy(f, got.error, got.gestures)) return true;
       // Exploring picked a value (a one-hit search) and the page could not
       // take it back: nothing more is tried on the field; the user is told
       // what it holds now.
@@ -430,10 +445,14 @@
     // Stopped: the panel's fill_cancel closes what the engine held. The run's
     // clock ran out: nobody else will, so give_up closes it.
     const halted = (f) => (cancelled() ? { outcome: "halted" } : giveUp(f, "halted"));
-    // What a state SHOWS — its value, whether its popup is open, the moves on
-    // offer — never its version, which the page mints afresh on every read: a
-    // move that failed from a state that looks the same fails the same way.
-    const stateKey = (state) => JSON.stringify([state.committed ?? null, Boolean(state.popupOpen),
+    // What a move acts on: the value it is for (a set's item — "search:value"
+    // for one item is not the same move for the next), and what the state
+    // SHOWS — its value, whether its popup is open, its options (a lazy list
+    // that grew can scroll again), the moves on offer — never its version,
+    // which the page mints afresh on every read. A move that failed from a
+    // state that looks the same, for the same value, fails the same way.
+    const stateKey = (state, value) => JSON.stringify([value ?? null, state.committed ?? null, Boolean(state.popupOpen),
+      (state.options ?? []).length, (state.options ?? []).map((o) => o?.text),
       (state.candidates ?? []).map((c) => [c?.mid, c?.describe])]);
     const FAILED = new Set(["unexpected", "reverted"]);
     const adapt = async (f, row, first, item) => {
@@ -476,7 +495,7 @@
         const chosen = res?.mid && res.mid !== "give_up" && STEP_REASONS.has(res.reason)
           ? state.candidates.find((c) => c.mid === res.mid) : null;
         if (!chosen) return giveUp(f, res ? "gave_up" : "no_answer");
-        const tried = `${stateKey(state)}:${chosen.mid}`;
+        const tried = `${stateKey(state, value)}:${chosen.mid}`;
         if (failedMoves.has(tried)) {
           // Proposed again on the same state: not executed. The model hears so,
           // and chooses again from the same state.
@@ -945,6 +964,7 @@
 
     const stopped = cancelled();
     const over = timedOut();
+    const taken = (r) => Boolean(r.recommits && r.wrote && r.status === "retry");
     const fields = listed.map((fid) => {
       const r = rows.get(fid);
       return {
@@ -954,9 +974,11 @@
         section: r.field?.section ?? "",
         required: Boolean(r.field?.required),
         shape: r.field?.shape,
-        status: FINAL.has(r.status) ? r.status
+        // Reverted and never re-committed (out of rounds, stopped, out of
+        // time): the page took back a value the engine wrote. Said so.
+        status: FINAL.has(r.status) ? r.status : taken(r) ? "unconfirmed"
           : r.status === "retry" && !stopped && !over ? "cannot_operate" : "needs_answer",
-        answer: r.answer ?? (r.leftover && !DONE.has(r.status)
+        answer: taken(r) && !FINAL.has(r.status) ? revertedNote(r.wrote) : r.answer ?? (r.leftover && !DONE.has(r.status)
           ? `Companion wrote "${r.leftover}" here for an earlier question. Check it.` : null),
         route: r.route ?? null,
         slot: r.slot ?? null,

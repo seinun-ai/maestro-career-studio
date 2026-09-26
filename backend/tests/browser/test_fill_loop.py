@@ -54,10 +54,13 @@ DRIVER = """async (spec) => {
     }
     if (msg.type === "fill_explore") return one(Object.fromEntries(msg.requests.map(r => [r.fid, take(spec.explore[r.term ?? r.fid]) ?? {options: [], complete: false, error: "no_popup"}])));
     if (msg.type === "fill_apply" && spec.stopAfterApply) stop = true;
-    // `pageDelay[key]`: how long the page takes over that action.
+    // `pageDelay[key]`: how long the page takes over that action (a list: one per call).
     const keyOf = (a) => (a.op === "move" ? a.mid : (a.text ?? a.value ?? (a.texts || []).join("+") ?? a.fid));
     if (msg.type === "fill_apply") {
-      for (const a of msg.actions) if (spec.pageDelay?.[keyOf(a)]) await sleep(spec.pageDelay[keyOf(a)]);
+      for (const a of msg.actions) {
+        const delay = take(spec.pageDelay?.[keyOf(a)]);
+        if (delay) await sleep(delay);
+      }
       return one(msg.actions.map(a => {
         const key = keyOf(a);
         return {fid: a.fid, committed: a.text ?? a.value ?? a.texts ?? (a.op === "move" ? clicked(a.mid) : null), ...(take(spec.apply[key]) ?? {outcome: a.op === "move" && a.mid === "give_up" ? "closed" : "verified"})};
@@ -311,7 +314,10 @@ def test_the_tail_sweep_runs_even_when_the_rounds_run_out(page, load):
     out = run(page, load, frames=[[f("a", question="City")]], limits={"MAX_ROUNDS": 1},
               map={"a": {"route": "slot", "slot": "personal.city", "value": "X"}},
               sweep=[[], [{"fid": "a", "outcome": "reverted"}]])
-    assert (row(out, "a")["status"], row(out, "a")["lastOutcome"]) == ("cannot_operate", "reverted")
+    # Reverted and never re-committed: the user learns the page took it back.
+    r = row(out, "a")
+    assert (r["status"], r["lastOutcome"]) == ("unconfirmed", "reverted")
+    assert r["answer"] == 'Companion filled "X", then the page took it back. Check it.'
     assert out["calls"].count("fill_sweep") == 2
 
 
@@ -1011,23 +1017,28 @@ def test_a_reverted_field_gets_exactly_one_recommit(page, load):
 
 def test_a_recommit_runs_on_the_fields_remaining_time(page, load):
     """The sweep's re-commit gets no fresh clock: a field that spent its
-    budget on the first commit is out of time, not written again."""
+    budget on the first commit is out of time, not written again — and is
+    reported as a value the page took back, never "couldn't operate"."""
     out = run(page, load, frames=[[f("a", question="City")]] * 3, limits={"FIELD_MS": 300},
               pageDelay={"Springfield": 320},
               map={"a": {"route": "slot", "slot": "personal.city", "value": "Springfield"}},
               sweep=[[{"fid": "a", "outcome": "reverted"}], []])
     assert len(actions(out, "write")) == 1
-    assert (row(out, "a")["status"], row(out, "a")["lastOutcome"]) == ("cannot_operate", "timeout")
+    r = row(out, "a")
+    assert (r["status"], r["lastOutcome"]) == ("unconfirmed", "timeout")
+    assert r["answer"] == 'Companion filled "Springfield", then the page took it back. Check it.'
+
 
 
 def test_every_proposal_source_shares_the_field_budget(page, load):
     """Round 1's commit spends most of the field's clock; round 2's retry
-    (the commit, then the adaptive step) runs on what is left, never on a
-    fresh FIELD_MS — so its 8 adaptive steps never start."""
+    (a quick commit, then the adaptive step) runs on what is left, never on a
+    fresh FIELD_MS: some adaptive steps run, and the clock stops them before
+    the 8 that would have verified."""
     states = [{"candidates": [{"mid": "scroll", "describe": "Scroll"}, GIVE_UP]} for _ in range(7)] + [
         {"candidates": [{"mid": "click:o1", "describe": 'Click the option "LinkedIn"'}, GIVE_UP]}]
     out = run(page, load, frames=[[f("h", "popup", "How did you hear?")]] * 4, limits={"FIELD_MS": 800},
-              pageDelay={"Job Board": 450}, apiDelay={"/api/autofill/step": 20},
+              pageDelay={"Job Board": [450, 0]}, apiDelay={"/api/autofill/step": 60},
               map={"h": {"route": "slot", "slot": "preferences.how_heard", "value": "LinkedIn"}},
               explore={"h": {"options": [opt("o1", "Job Board")], "complete": True}},
               pick={"h": {"oids": ["o1"], "reason": "matched"}},
@@ -1037,7 +1048,8 @@ def test_every_proposal_source_shares_the_field_budget(page, load):
                     + [{"mid": "click:o1", "reason": "matched"}]})
     assert (row(out, "h")["status"], row(out, "h")["lastOutcome"]) == ("cannot_operate", "timeout")
     assert len(actions(out, "choose")) == 2
-    assert bodies(out, "/api/autofill/step") == []
+    assert 1 <= len(bodies(out, "/api/autofill/step")) < 8
+    assert "click:o1" not in [a["mid"] for a in actions(out, "move")]
 
 
 def test_a_failed_state_move_pair_is_not_retried(page, load):
@@ -1062,16 +1074,65 @@ def test_a_widget_that_ignores_every_input_is_unsupported(page, load):
     out = run(page, load, frames=[[f("a", question="Code"), f("d", "popup", "Relocate?")]] * 3,
               map={"a": {"route": "slot", "slot": "custom.code", "value": "ABC"},
                    "d": {"route": "slot", "slot": "preferences.willing_to_relocate", "value": "Yes"}},
-              explore={"d": {"options": [], "complete": False, "error": "no_effect"}},
-              apply={"ABC": {"outcome": "reverted", "reason": "no_effect"},
-                     "open": {"outcome": "unexpected", "reason": "no_effect"}},
+              explore={"d": {"options": [], "complete": False, "error": "no_effect", "gestures": ["pointer"]}},
+              apply={"ABC": {"outcome": "reverted", "reason": "no_effect", "gestures": ["type", "setter"]},
+                     "open": {"outcome": "unexpected", "reason": "no_effect", "gestures": ["keyboard"]}},
               step={"states": [{"candidates": [{"mid": "open", "describe": "Open the dropdown"}, GIVE_UP]}],
                     "moves": [{"mid": "open", "reason": "progress"}]})
     assert statuses(out) == {"a": "unsupported", "d": "unsupported"}
-    assert len(actions(out, "write")) == 2   # two in a row that did nothing, then no more
+    # Typing and the setter both ignored in one write; a press, then the keyboard.
+    assert len(actions(out, "write")) == 1
     assert [a["mid"] for a in actions(out, "move")] == ["open"]
     obs = page.evaluate("(r) => window.careerStudioCompanion.fillLoop.buildLoopObservations(r)", out["report"])
     assert [o["outcome"] for o in obs] == ["unsupported", "unsupported"]
+
+
+def test_the_same_gesture_ignored_twice_is_not_unsupported(page, load):
+    """Explore's press and the adaptive step's open are the same press: a
+    widget that needed another kind of gesture is never called unsupported
+    for ignoring one kind twice. And an effect in between starts over."""
+    state = {"candidates": [{"mid": "open", "describe": "Open the dropdown"}, GIVE_UP]}
+    out = run(page, load, frames=[[f("d", "popup", "Relocate?"), f("a", question="Code")]] * 3,
+              map={"d": {"route": "slot", "slot": "preferences.willing_to_relocate", "value": "Yes"},
+                   "a": {"route": "slot", "slot": "custom.code", "value": "ABC"}},
+              explore={"d": {"options": [], "complete": False, "error": "no_effect", "gestures": ["pointer"]}},
+              apply={"open": {"outcome": "unexpected", "reason": "no_effect", "gestures": ["pointer"]},
+                     "ABC": [{"outcome": "reverted", "reason": "no_effect", "gestures": ["type"]},
+                             {"outcome": "reverted"},
+                             {"outcome": "reverted", "reason": "no_effect", "gestures": ["setter"]}]},
+              step={"states": [state, dict(state)],
+                    "moves": [{"mid": "open", "reason": "progress"}, {"mid": "give_up", "reason": "abstained"}]})
+    assert statuses(out) == {"d": "needs_answer", "a": "cannot_operate"}
+    assert len(actions(out, "write")) == 3
+
+
+def test_a_failed_search_for_one_item_is_still_tried_for_the_next(page, load):
+    """`search:value` reads the same for every item of a set; what it types
+    does not. A search that failed for A is not a failed search for B."""
+    search = {"candidates": [{"mid": "search:value", "describe": "Type the applicant value into the search box"}, GIVE_UP]}
+    out = run(page, load, frames=[[f("k", "search", "Skills", multi=True)]],
+              map={"k": {"route": "slot", "slot": "skills", "value": ["A", "B"]}},
+              explore={"A": {"options": [], "error": "no_results"}, "B": {"options": [], "error": "no_results"}},
+              apply={"search:value": {"outcome": "unexpected", "reason": "no_results"}},
+              step={"states": [dict(search) for _ in range(4)],
+                    "moves": [{"mid": "search:value", "reason": "progress"}, {"mid": "give_up", "reason": "abstained"},
+                              {"mid": "search:value", "reason": "progress"}, {"mid": "give_up", "reason": "abstained"}]})
+    assert [a["mid"] for a in actions(out, "move")] == ["search:value", "give_up", "search:value", "give_up"]
+    assert [s["item"] for s in bodies(out, "/api/autofill/step")] == ["A", "A", "B", "B"]
+
+
+def test_a_scroll_that_hit_the_end_is_tried_again_once_the_list_grew(page, load):
+    scroll = [{"mid": "scroll", "describe": "Scroll the list to see more options"}, GIVE_UP]
+    five = [opt(f"o{i}", f"Row {i}") for i in range(5)]
+    out = run(page, load, frames=[[f("h", "popup", "How did you hear?")]],
+              map={"h": {"route": "slot", "slot": "preferences.how_heard", "value": "LinkedIn"}},
+              explore={"h": {"options": [], "complete": False, "error": "empty_popup"}},
+              apply={"scroll": [{"outcome": "unexpected", "reason": "list_end"}, {"outcome": "progressed"}]},
+              step={"states": [{"options": five, "candidates": scroll},
+                               {"options": five + [opt("o5", "Row 5")], "candidates": scroll},
+                               {"options": five + [opt("o5", "Row 5")], "candidates": scroll}],
+                    "moves": [{"mid": "scroll", "reason": "progress"}] * 2 + [{"mid": "give_up", "reason": "abstained"}]})
+    assert [a["mid"] for a in actions(out, "move")] == ["scroll", "scroll", "give_up"]
 
 
 def test_a_field_the_engine_filled_is_not_already_after_a_re_render(page, load):

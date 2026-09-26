@@ -169,6 +169,7 @@ SINGLE_HIT_SEARCH = """<div class='q'><label for='fos'>Field of study</label>
 # (a "select on blur" dropdown): opening highlights the first real option, so
 # merely opening and closing it commits "Yes". Its backing input sits beside
 # the button, as on Workday, and is what the fake app holds (`__oracle.move`).
+# `window.slowReopen` makes every later open that many ms late.
 SELECT_ON_CLOSE = """<label id='l'>Willing to move?</label>
 <div><button id='move' aria-haspopup='listbox' aria-labelledby='l'>Select One</button><input type='hidden' value=''></div>
 <div id='portal'></div>
@@ -189,14 +190,20 @@ SELECT_ON_CLOSE = """<label id='l'>Willing to move?</label>
     highlighted = null;
     portal.replaceChildren();
   };
-  btn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    if (highlighted !== null) { close(); return; }
+  // `window.slowReopen` (ms): every open after the first renders that late.
+  let opens = 0;
+  const render = () => {
     highlighted = OPTIONS[1];
     portal.innerHTML = "<ul role='listbox'>" + OPTIONS.map((t) => `<li role='option'>${t}</li>`).join("") + "</ul>";
     for (const li of portal.querySelectorAll("li")) {
       li.addEventListener("click", (ev) => { ev.stopPropagation(); highlighted = li.textContent; close(); });
     }
+  };
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (highlighted !== null) { close(); return; }
+    if (opens++ && window.slowReopen) setTimeout(render, window.slowReopen);
+    else render();
   });
   document.addEventListener("click", close);
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") close(); });

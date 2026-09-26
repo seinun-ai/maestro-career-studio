@@ -498,7 +498,10 @@ know, and each one was learned from a live failure.
   placeholder value as filled. The final sweep (after a quiet 600 ms) re-reads
   the proof, so a backing input that empties later is a reversion: a field the
   engine wrote gets ONE re-commit per run, and if it goes back again it is
-  reported `unconfirmed` (unstable), never filled. A popup with no
+  reported `unconfirmed` (unstable), never filled. One that reverted and was
+  not re-committed — the rounds ran out, or its budget did — is `unconfirmed`
+  too ("Companion filled … then the page took it back"), never "couldn't
+  operate". A popup with no
   discoverable backing input is judged by its display alone, which is weaker.
   Whether a Workday search box takes one answer or several shows only in its
   open list — radio rows or checkbox rows, under the same container — so it is
@@ -513,19 +516,31 @@ know, and each one was learned from a live failure.
   re-commit are ways of proposing the field's next move to ONE controller, not
   separate executors: they share one budget (`FIELD_MS`, charged only while the
   field is worked, across rounds — a retry or a re-commit runs on what is left,
-  never on a fresh clock), and a move that failed from a state is never sent
-  again from a state that looks the same (the model is told `already_failed`
-  and chooses again). **Exploring can commit** — a search that finds one hit
-  picks it (live on Workday's Field of Study): explore snapshots the committed
-  value first and takes back anything it added before it returns (a pill by
-  its remove control, a popup's pick by choosing the placeholder with the
-  engine's own undo); one it cannot take back leaves the field to the user,
-  named ("Searching picked … and Companion couldn't take it back"). **A widget
-  that ignores the engine** — an operation after which neither the committed
-  value, nor the open popups, nor the box's own value changed (`no_effect`,
-  judged on the page) — twice in a row is `unsupported`, listed under
-  Couldn't operate as "doesn't accept automated input": the Companion has no
-  trusted input to try instead.
+  never on a fresh clock), and a move that failed is never sent again for the
+  same value from a state that looks the same — same options, same moves on
+  offer (the model is told `already_failed` and chooses again; a lazy list
+  that grew, or a set's next item, is a different state). **Exploring can
+  commit** — a search that finds one hit picks it (live on Workday's Field of
+  Study): the committed value is snapshot before an explore, and anything the
+  explore added is taken back under an allowance of its own (`budgets.undo`,
+  so a slow explore never eats it): a pill by its remove control, a popup's
+  pick by choosing the placeholder with the engine's own undo. One it cannot
+  take back leaves the field to the user, named ("Searching picked … and
+  Companion couldn't take it back"). BLIND SPOT: a search box whose only
+  display is its own input (a free-text autocomplete, no pill, no
+  single-value node, no backing input) cannot have an explore commit noticed —
+  that text is the query the engine typed and takes back, so it is not read
+  as a commit. **A widget that ignores the engine** — an operation after
+  which nothing moved: not the committed value, the open popups, the box's
+  own value or its `aria-expanded` / `aria-activedescendant`, and no node
+  changed in the field's box or was added to `<body>` (`no_effect`, judged on
+  the page, with the KINDS of gesture tried). A press that opens nothing on a
+  button or combobox is followed by the keyboard (ArrowDown, then Enter —
+  never on a plain text box); typing that changes nothing is followed by the
+  value setter. Only when two DIFFERENT kinds have had no effect since
+  anything last did is the field `unsupported`, listed under Couldn't operate
+  as "doesn't accept automated input": the Companion has no trusted input to
+  try instead. The same press ignored twice is not enough.
 - Identity fields (name, email, phone) overwrite a wrong ATS prefill and are
   reported under "corrected"; identity **comboboxes** are fill-only-if-empty.
 - Hidden clone fields are skipped, a write a controlled input rejected is
