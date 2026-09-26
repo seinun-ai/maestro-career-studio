@@ -326,11 +326,12 @@
      * `guided_write`, each returning its empty shape in a refused frame: an
      * inventory with no fields, no explored options, no applied rows, no
      * step state, no sweep rows, no focus. `fill_inventory` forwards the run's standing
-     * consent AND its runId — a new runId is what releases a latched Stop.
+     * consent AND its runId — a new runId is what releases a latched Stop — and
+     * `peek` (the fids only, after a commit that may add or remove fields).
      * `fill_cancel` is ungated on purpose: it carries nothing and only stops
      * work in flight, and a Stop that could miss a frame would be no Stop. */
     fill_inventory: (msg) => (frameMayReceiveUserData()
-      ? ns.fillOps.inventory({ consentForms: msg.consentForms === true, runId: msg.runId })
+      ? ns.fillOps.inventory({ consentForms: msg.consentForms === true, runId: msg.runId, peek: msg.peek === true })
       : { frame: null, host: location.hostname, fields: [] }),
     fill_explore: (msg) => (frameMayReceiveUserData()
       ? ns.fillOps.explore(msg.requests)

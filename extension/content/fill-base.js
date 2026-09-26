@@ -378,6 +378,10 @@
   // Engine popup -> outside clicks it outlived IN A ROW: a popup seen closed
   // starts again at zero, so only one that never closes stops being clicked at.
   const survived = new WeakMap();
+  // OPEN IS VISIBLE. An outside click hides a Workday list and leaves
+  // aria-expanded="true" on its button, the list still in the DOM (notes
+  // §8a): aria-expanded is never read, so a hidden list is closed and the
+  // next press opens it rather than "closing" it.
   const engineOpen = () => {
     for (const p of enginePopups) {
       if (!p.isConnected) enginePopups.delete(p);
@@ -393,6 +397,6 @@
   ns.fillBase = {
     Cancelled, Unfocusable, check, sleep, settle, withinBudget, cancelAll, resume, waitFor, visible, invalid,
     popups, ownedPopup, optionsOf, press, closePopups, enter, leave, keyPress, typeText, equivalent, clean,
-    markEnginePopup, insideEnginePopup,
+    markEnginePopup, insideEnginePopup, engineOpen,
   };
 })();

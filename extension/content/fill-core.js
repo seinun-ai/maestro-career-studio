@@ -54,6 +54,11 @@
  * own undo); what could not be taken back is reported
  * (`committed_while_exploring`) with the value it left.
  *
+ * A PLACEHOLDER ROW ("Select One", which live Workday lists as an option, or
+ * an empty or dash-only row) is never offered as an answer: explore, a
+ * choose's surprise options and the adaptive step drop it. Choosing it stays
+ * the engine's own undo alone (explore remembers the row for takeBack).
+ *
  * Every popup the engine opens or reads is MARKED (fillBase.markEnginePopup) —
  * including the menu a widget re-renders on every keystroke — because
  * closePopups only ever closes marked popups. Every option text is run through
@@ -61,9 +66,10 @@
  *
  * THE ADAPTIVE STEP (stepState/move) is for a popup widget the generic path
  * could not finish. stepState reports the field's state now and the moves code
- * allows — click:<oid> (never a blocked option, never an item a multi widget
- * already holds; an option that opens a group is described as one), search:value,
- * search:word:<n>, open, scroll, give_up — under a fresh VERSION. A long list is
+ * allows — click:<oid> (never a placeholder row, never a blocked option, never
+ * an item a multi widget already holds; an option that opens a group is
+ * described as one), search:value, search:word:<n>, open, scroll, give_up —
+ * under a fresh VERSION. A long list is
  * offered 50 options at a time, starting at the first one in view. The model chooses one of those ids; move() acts only
  * on the state it was chosen from, consumes that state (one move per state),
  * refuses an id the state did not offer, and treats a click on a list that
@@ -107,9 +113,19 @@
   // widget. When its press later does nothing, something it opened is still
   // up (a role-less list), and a key would act on that — so no key is sent.
   const reacted = new WeakSet();
+  // el -> the placeholder row ("Select One") its popup listed when explored:
+  // never among the options a model sees, and still what the engine's own
+  // undo chooses to empty the popup again (takeBack).
+  const blankRow = new WeakMap();
 
   const blockedText = (text, consentForms) => Boolean(ns.isPolicyBlocked?.(text ?? "", { consentForms }));
-  const flag = (options, consentForms) => options.map(({ oid, text, selected }) => ({
+  // A popup's "choose something" row — live Workday lists "Select One" as an
+  // option (notes §3a, §8b) — or an empty or dash-only row is never an answer:
+  // every list a model sees (explore's, a choose's surprise, the adaptive
+  // step's options and click moves) drops it. Only that row goes: oids keep
+  // numbering the list as the page shows it, and nothing else is hidden.
+  const answer = (o) => !ns.isPlaceholderText(o.text);
+  const flag = (options, consentForms) => options.filter(answer).map(({ oid, text, selected }) => ({
     oid, text, selected: Boolean(selected), policyBlocked: blockedText(text, consentForms),
   }));
   const same = (x, y) => JSON.stringify(x) === JSON.stringify(y);
@@ -764,7 +780,8 @@
   // Take back what exploring committed. A pill it added: Workday's
   // DELETE_charm, else a control inside the pill named delete/remove/clear,
   // else the pill itself (pills that un-pick on a click). A popup's pick: the
-  // engine's own undo — choose what it showed before, or its placeholder.
+  // engine's own undo — choose what it showed before, or its placeholder
+  // (from `options`, else the row the explore saw: explore never returns it).
   const takeBack = async (el, shape, snap, options, t) => {
     if (shape.open === "search") {
       const left = [...snap.held];
@@ -786,7 +803,8 @@
       }
       return;
     }
-    const text = snap.evidence.display || (options ?? []).find((o) => ns.isPlaceholderText(o.text))?.text;
+    const text = snap.evidence.display || (options ?? []).find((o) => ns.isPlaceholderText(o.text))?.text
+      || blankRow.get(el);
     if (text) await choose(el, shape, { text, undo: true }, t);
   };
 
@@ -815,6 +833,8 @@
       }
       let got = pop && options.length ? await readAll(pop, t) : { options: [], complete: false };
       const rows = pop && options.length ? ns.shapes.learnRows(el, pop) : null;
+      const blank = got.options.find((o) => ns.isPlaceholderText(o.text));
+      if (blank) blankRow.set(el, blank.text);
       // The search's Enter committed its one hit and closed the list (notes §2
       // rule 5): that hit is what the search found (fill-ops takes it back).
       if (!got.options.length && !pop && term && moved(el, shape, snap)) {
@@ -825,7 +845,7 @@
       // rows said so: checkboxes (several answers) or radios (one).
       const out = { options: flag(got.options, consentForms), complete: got.complete && !term, searchable };
       if (rows) out.multi = rows === "multi";
-      if (!got.options.length) {
+      if (!out.options.length) {
         if (pop) out.error = "empty_popup";
         else {
           // A list that never settled is not "no popup": it is unsettled.
@@ -1157,12 +1177,13 @@
     const inner = pop && [...pop.querySelectorAll(INNER_SEARCH)].find((n) => b().visible(n) && !n.readOnly && !n.disabled);
     return inner || (shape.open === "search" ? el : null);
   };
-  // The options a click move may name: never a never-fill one, never an item a
-  // multi widget already holds (a click would un-pick it).
+  // The options a click move may name: never a placeholder row, never a
+  // never-fill one, never an item a multi widget already holds (a click would
+  // un-pick it).
   const clickable = (el, shape, pop, consentForms) => {
     const multi = Boolean(shape.multi?.(el));
-    return b().optionsOf(pop)
-      .filter((o) => !blockedText(o.text, consentForms) && !(multi && (isHeld(o) || holds(el, shape, o.text))));
+    return b().optionsOf(pop).filter((o) => answer(o) && !blockedText(o.text, consentForms)
+      && !(multi && (isHeld(o) || holds(el, shape, o.text))));
   };
   // At most MAX_CLICKS of them, nearest what the list shows now: from the
   // first one in view (filled up from before it at the end of the list).

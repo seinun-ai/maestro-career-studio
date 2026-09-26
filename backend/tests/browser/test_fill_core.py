@@ -131,9 +131,6 @@ def test_sets_keep_existing_choices_and_never_untick(page, load):
 
 
 # --- choice-like, popups
-@pytest.mark.xfail(strict=True, raises=AssertionError,
-                   reason="Task 6: the live popup lists its 'Select One' placeholder as an option; "
-                          "it must not be offered as an answer")
 def test_a_workday_dropdown_is_explored_and_closed_then_committed(page, load):
     load(page, fixture_html("workday_listbox.html"))
     f = inv(page)["Are you legally authorized to work in the United States?"]
@@ -151,6 +148,38 @@ def test_a_workday_dropdown_pick_is_explored_closed_and_committed_to_the_app(pag
     assert not list_shown(page)
     row = apply(page, f, op="choose", text="Masters")   # below the fold of a 12-option list
     assert (row["outcome"], row["committed"]) == ("verified", "Masters") and oracle(page, "degree") == "Masters"
+
+
+def test_popup_open_state_is_judged_by_visibility(page, load):
+    """An outside click HIDES a Workday list and leaves aria-expanded="true"
+    (notes §8a): the list is closed because it is not visible, so nothing
+    tries to close it again and the next press opens it."""
+    load(page, fixture_html("workday_listbox.html"))
+    f = inv(page)["Are you legally authorized to work in the United States?"]
+    explore(page, f)
+    assert page.get_attribute("#auth", "aria-expanded") == "true" and not page.is_visible("#auth-list")
+    assert page.evaluate("window.careerStudioCompanion.fillBase.engineOpen()") is False
+    row = apply(page, f, op="choose", text="Yes")
+    assert (row["outcome"], row["committed"]) == ("verified", "Yes") and oracle(page, "auth") == "Yes"
+
+
+def test_a_long_popup_commits_an_option_below_the_fold(page, load):
+    """Degree lists 12 options in a 5-row window; "Masters" (the 10th) is
+    reached by scrolling, and the whole list is read, placeholder aside."""
+    load(page, fixture_html("workday_listbox.html"))
+    f = inv(page)["Degree"]
+    got = explore(page, f)
+    assert got["complete"] and [o["text"] for o in got["options"]] == [
+        "Associates", "Bachelors", "Certificate", "College Diploma", "Doctorate", "GED", "HS Diploma", "JD",
+        "Masters", "MBA", "Other"]
+    row = apply(page, f, op="choose", text="Masters")
+    assert (row["outcome"], row["committed"]) == ("verified", "Masters") and oracle(page, "degree") == "Masters"
+    # It was below the fold: the list only shows its first rows when opened.
+    page.click("#degree")
+    page.evaluate("document.getElementById('degree-list').scrollTop = 0")
+    assert page.evaluate("""() => { const ul = document.getElementById('degree-list');
+        const li = [...ul.children].find((o) => o.textContent === 'Masters');
+        return li.offsetTop >= ul.scrollTop + ul.clientHeight; }""")
 
 
 # --- committed evidence (notes §8a): a popup pick shows at once, but only its
@@ -266,6 +295,25 @@ def test_a_hidden_input_that_is_not_beside_the_button_is_no_backing(page, load, 
         return window.careerStudioCompanion.shapes.of(el).evidence(el).proof; }""") is None
     row = apply(page, inv(page)["How did you hear about us?"], op="choose", text="LinkedIn")
     assert (row["outcome"], row["committed"]) == ("verified", "LinkedIn")
+
+
+def test_a_placeholder_option_is_never_offered_as_an_answer(page, load):
+    """Live Workday lists "Select One" as an option (§3a, §8b): explore never
+    returns it, nor an empty or dash-only row — and a real option that only
+    mentions selecting is kept."""
+    load(page, fixture_html("workday_listbox.html"))
+    got = explore(page, inv(page)["Degree"])
+    assert "Select One" not in [o["text"] for o in got["options"]] and len(got["options"]) == 11
+    load(page, """<label id='l'>Plan</label><button id='p' aria-haspopup='listbox' aria-labelledby='l'>Select One</button>
+      <div id='portal'></div><script>
+      document.getElementById('p').addEventListener('click', (e) => { e.stopPropagation();
+        document.getElementById('portal').innerHTML = "<ul role='listbox'><li role='option'>-- Select --</li>"
+          + "<li role='option'>—</li><li role='option'>Please choose an option</li><li role='option'>Basic</li>"
+          + "<li role='option'>Select Plus</li></ul>"; });
+      document.addEventListener('click', () => { document.getElementById('portal').innerHTML = ''; });
+      </script>""")
+    got = explore(page, inv(page)["Plan"])
+    assert [o["text"] for o in got["options"]] == ["Basic", "Select Plus"] and got["complete"]
 
 
 def test_a_placeholder_is_never_chosen_as_an_answer(page, load):
@@ -804,10 +852,11 @@ def test_explore_reports_a_commit_it_could_not_undo(page, load):
 def test_explore_takes_back_a_popup_pick_the_page_made_on_close(page, load):
     """A popup that picks its highlighted row when its list closes: explore's
     close committed "Yes"; the engine's own undo (choose the placeholder,
-    `undo: true`) empties it again."""
+    `undo: true`) empties it again — though the placeholder row is never
+    among the options explore returns."""
     load(page, SELECT_ON_CLOSE)
     got = explore(page, inv(page)["Willing to move?"])
-    assert {"Yes", "No"} <= {o["text"] for o in got["options"]} and "error" not in got
+    assert [o["text"] for o in got["options"]] == ["Yes", "No"] and "error" not in got
     assert oracle(page, "move") == "" and page.inner_text("#move") == "Select One"
 
 

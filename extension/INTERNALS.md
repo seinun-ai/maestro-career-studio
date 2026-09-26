@@ -441,13 +441,22 @@ know, and each one was learned from a live failure.
   backing input instead — see "A fill is proven by what the app saved"). A
   button already showing an answer is left alone. The header's own menus
   (Settings, the account menu) carry `aria-haspopup` too and are excluded by
-  their automation id.
+  their automation id. A list is open only while it is VISIBLE: an outside
+  click hides Workday's list but leaves `aria-expanded="true"` on its button
+  (and the list in the DOM), so that attribute is never read — a hidden list
+  is not "closed" again, and the next press opens it.
 - **A popup write stays inside its own control.** `[role="option"]` is
   document-wide, so an unscoped read collects every open popup on the page —
   and Workday marks a multiselect's already-chosen chips as options too, where
   the only thing a click can do is un-pick a committed value. Options come from
   the control's own `aria-controls` list where there is one; the fallback
-  refuses chips. A popup's own "Select One" row is never chosen.
+  refuses chips. A popup's own "Select One" row — live Workday lists it as
+  an option — is never offered as an answer: explore, a choose's surprise
+  options, the adaptive step's options and click moves, and what the loop
+  sends to /pick and /map all drop it, and an empty or dash-only row with it
+  (only those rows: oids keep numbering the list as shown). Choosing it is
+  the engine's own undo alone; explore remembers the row so that undo can
+  still find it.
   Token inputs (Workday Skills) are typed one token at a time. Date controls
   receive only the part they asked for, in the format their own options use.
 - **A search box is searched the way a person does it** (`fill-core`'s
@@ -507,6 +516,18 @@ know, and each one was learned from a live failure.
   write holds once the blur moves. The leave blurs whichever section holds
   focus by then (the widget moves focus back to Month after a full Year), not
   the section last typed in.
+- **"I currently work here" is ticked before its entry's dates, and a commit
+  that adds or removes fields is looked at before the next field.** Ticking
+  it removes the entry's To date a frame later. The loop works a choice whose
+  MAPPED SLOT is an entry's `.current` first (by the slot, never the label),
+  then text and dates, then the other choices. After any choice that acted
+  on the page it peeks at the frames' fids (`fill_inventory` with `peek`: no
+  field is read, one frame waited first); if a field came or went, a full
+  inventory comes before the next field: one that went is dropped — never
+  written, never reported — and one that came (an "Other, please specify"
+  box) is mapped and filled in the same round. A typed value is not followed
+  by a peek: text almost never reshapes a form, and a peek per field would
+  cost a page pass each.
 - **Entering and leaving a field are reported by hand when the browser will
   not.** While the Chrome window is not focused (you are looking at the panel
   or another window), `focus()`/`blur()` move focus but fire no events, so

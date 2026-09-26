@@ -2,8 +2,6 @@
 Chromium: the field's state now, the moves code allows, and one move at a time
 against the state it was chosen from."""
 
-import pytest
-
 from tests.browser.conftest import fixture_html
 from tests.browser.pages import CATEGORY_POPUP, POLICY_PAGE, list_shown, oracle
 
@@ -44,14 +42,18 @@ def test_a_category_continues_from_its_children_to_the_leaf(page, load):
     assert not list_shown(page)
 
 
-def test_a_placeholder_row_is_never_clicked_as_an_answer(page, load):
+def test_a_placeholder_row_is_never_offered_or_clicked_as_an_answer(page, load):
+    """Live Workday lists "Select One" as an option (§3a, §8b): the state
+    neither shows it nor offers a click on it, and its oid is refused."""
     load(page, fixture_html("workday_listbox.html"))
     f = inv(page)["Degree"]
     assert move(page, f, "open", "Masters")["outcome"] == "progressed"
     s = state(page, f, "Masters")
-    mid = next(c["mid"] for c in s["candidates"] if c["describe"] == 'Click the option "Select One"')
-    row = move(page, f, mid, "Masters", version=s["version"])
-    assert (row["outcome"], row["reason"]) == ("unexpected", "placeholder")
+    assert "Select One" not in [o["text"] for o in s["options"]]
+    assert not any("Select One" in c["describe"] for c in s["candidates"])
+    assert "click:o1" not in mids(s) and "click:o2" in mids(s)   # oids still number the full list
+    row = move(page, f, "click:o1", "Masters", version=s["version"])
+    assert (row["outcome"], row["reason"]) == ("unexpected", "not_offered")
     assert oracle(page, "degree") == "" and page.inner_text("#degree") == "Select One"
 
 
@@ -182,9 +184,6 @@ def test_a_filtered_search_view_is_never_complete(page, load):
     assert state(page, f, "Information Systems")["complete"] is False
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError,
-                   reason="Task 6: the live popup lists its 'Select One' placeholder as an option; "
-                          "it must not be offered as an answer")
 def test_an_unfiltered_short_list_is_complete(page, load):
     load(page, fixture_html("workday_listbox.html"))
     f = inv(page)["Are you legally authorized to work in the United States?"]

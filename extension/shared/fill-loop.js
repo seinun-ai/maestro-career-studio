@@ -15,12 +15,20 @@
  * - `answered` (not "has a value") decides "already". Unknown controls are
  *   listed as cannot_operate and never mapped. Page refusals (yours, blocked,
  *   unsupported) are final and never retried.
- * - Policy-blocked options are never offered to /pick or /map. Every set, search
+ * - Policy-blocked options are never offered to /pick or /map, nor a popup's
+ *   placeholder row ("Select One", or an empty or dash-only one). Every set, search
  *   or native, is picked one source item at a time (`item`); single-answer
  *   fields whose whole list the inventory read are picked together, 40 a call.
  *   Only matched / closest / assumed (and /step's progress) count as answers.
  * - A field whose fingerprint changed under the same fid is a new question:
  *   mapped again, nothing carried over.
+ * - A round works LEADS first — a choice whose mapped slot is an entry's
+ *   `.current`, which removes that entry's To date when ticked (notes §4) —
+ *   then text and dates, then the other choices. After a choice acts on the
+ *   page, a peek (the frames' fids only) asks whether fields came or went; if
+ *   so, a fresh inventory comes before the next field: one that went is
+ *   dropped, never written and never reported; one that came is mapped and
+ *   joins the round.
  * - When the generic path is surprised (an unexpected commit, no options, an
  *   honest "no option states it" over a popup), /step picks the next move from
  *   the moves the page's code listed. A click is sent `as: "progress"` only when
@@ -182,9 +190,15 @@
     return text ? `${how} picked "${text}" and Companion couldn't take it back. Check it.`
       : `${how} picked a value and Companion couldn't take it back. Check it.`;
   };
-  // Options a model may be shown: never a never-fill one, never under the reserved key.
-  const usable = (opts) => (opts ?? []).filter((o) => o && !o.policyBlocked && typeof o.text === "string"
+  // The options that could be an answer: never a popup's placeholder row
+  // ("Select One", which live Workday lists as an option) nor an empty or
+  // dash-only one. The page drops them already; this holds for any list.
+  const answerOptions = (opts) => (opts ?? []).filter((o) => o && !ns.isPlaceholderText(o.text));
+  // Options a model may be shown: answers only, never a never-fill one, never under the reserved key.
+  const usable = (opts) => answerOptions(opts).filter((o) => !o.policyBlocked && typeof o.text === "string"
     && typeof o.oid === "string" && o.oid.length >= 1 && o.oid.length <= 16 && o.oid !== "none");
+  // Every answer the list offers is a never-fill one (a placeholder row does not count either way).
+  const allBlocked = (opts) => answerOptions(opts).length > 0 && !usable(opts).length;
 
   async function runFill(deps, options = {}) {
     const { broadcast, api } = deps ?? {};
@@ -221,6 +235,7 @@
     // back (finish → tookBack).
     const rows = new Map();
     let listed = []; // the latest inventory's fids, in page order
+    let applied = 0; // page actions sent (a close aside): whether a field's work touched the page
     let aiFailure = null;
     let host = null;
 
@@ -354,6 +369,7 @@
     const act = async (f, action, { closing = false, overtime = false } = {}) => {
       if (cancelled() || (!closing && timedOut())) return { outcome: "halted" };
       if (!closing && !overtime && fieldLate(f)) return { outcome: "late" };
+      if (!closing) applied += 1;
       const [got] = rowsOf(await broadcast({ type: "fill_apply", actions: [{ fid: f.fid, fp: f.fp, ...action }] }))
         .filter((r) => r?.fid === f.fid);
       if (!got) return { outcome: "stale" }; // no frame owns the fid any more
@@ -438,8 +454,8 @@
           fid: f.fid, question: question(f), route: routeOf(row), slot: row.slot ?? null,
           ...(item !== undefined ? { item: String(item).slice(0, 300) } : {}),
           options: offered.slice(0, PICK_OPTIONS).map(({ oid, text }) => ({ oid, text: text.slice(0, 300) })),
-          // Complete only when the model sees EVERY option: none hidden by policy, none past the cap.
-          complete: Boolean(complete) && offered.length === (opts ?? []).length && offered.length <= PICK_OPTIONS,
+          // Complete only when the model sees EVERY answer: none hidden by policy, none past the cap.
+          complete: Boolean(complete) && offered.length === answerOptions(opts).length && offered.length <= PICK_OPTIONS,
         },
       };
     };
@@ -651,7 +667,7 @@
               if (all.length > 1) return finish(f, "needs_answer", { lastOutcome: "set_for_one" });
               return commitOne(f, row, got.options ?? [], false, item, item);
             }
-            if (got.options?.length && !usable(got.options).length) {
+            if (allBlocked(got.options)) {
               byPolicy.add(item); // every option shown for it is a never-fill one
               continue;
             }
@@ -797,7 +813,7 @@
           noOptions = historyEntry(term ? "search:value" : "open", "unexpected", got.error ?? "empty_popup");
         }
       }
-      if (opts.length && !usable(opts).length) return finish(f, "blocked", { lastOutcome: "blocked" });
+      if (allBlocked(opts)) return finish(f, "blocked", { lastOutcome: "blocked" });
       if (isSet) return commitSet(f, row, opts, complete, noOptions, learnt);
       if (noOptions) return settle(f, await adapt(f, row, noOptions, item));
       return commitOne(f, row, opts, complete, term, item, prepicked);
@@ -934,6 +950,69 @@
     };
     const snapshot = () => JSON.stringify([...rows.values()].map((r) => [r.fid, r.status, r.attempts]));
 
+    // ---- a round's fields, and the order they are worked in
+    // What each open field is: text (a fact to type), choice, or prose (a
+    // free-text answer the model writes); one with nothing to fill it is
+    // finished here.
+    const routed = (open) => {
+      const texts = [];
+      const choices = [];
+      const prose = [];
+      for (const f of open) {
+        const row = rows.get(f.fid);
+        if (!row.route || row.route === "none") finish(f, "needs_answer", { lastOutcome: row.route ? "no_fact" : "not_mapped" });
+        else if (row.route === "blocked") finish(f, "blocked", { lastOutcome: "blocked" });
+        else if (row.route === "free_text") {
+          if (f.kind === "text") prose.push(f);
+          else finish(f, "needs_answer", { lastOutcome: "no_fact" });
+        } else if (f.kind === "text") {
+          if (row.route === "slot" && textOf(f, row)) texts.push(f);
+          else finish(f, "needs_answer", { lastOutcome: "no_value" });
+        } else choices.push(f);
+      }
+      return { texts, choices, prose };
+    };
+    // A LEAD decides which of its entry's fields exist: a choice whose MAPPED
+    // SLOT is an entry's `.current` ("I currently work here") removes that
+    // entry's To date a frame after it is ticked (notes §4). Leads go before
+    // every text and date field, so nothing is written to a field about to go.
+    // By the slot the map gave, never by label text.
+    const leads = (f) => f.kind === "choice" && /\.current$/.test(rows.get(f.fid)?.slot ?? "");
+    // Leads, then text (dates included), then the other choices; page order within each.
+    const order = (fields) => [
+      ...fields.filter(leads), ...fields.filter((f) => !leads(f) && f.kind === "text"),
+      ...fields.filter((f) => !leads(f) && f.kind !== "text"),
+    ];
+    // Whether the page's fields came or went: the frames' fid sets only (a
+    // peek reads no field), against the last inventory's. Asked after a
+    // CHOICE that acted on the page — a tick, a pick, a step — because those
+    // are what reveal and remove fields ("I currently work here", "Other,
+    // please specify"); a typed value almost never does, and a peek per text
+    // field would cost a page pass per field. Nobody answering says nothing.
+    const reshaped = async () => {
+      const got = results(await broadcast({ type: "fill_inventory", peek: true, consentForms, runId }))
+        .filter((r) => Array.isArray(r?.fids));
+      if (!got.length) return false;
+      const now = new Set(got.flatMap((r) => r.fids));
+      return now.size !== listed.length || listed.some((fid) => !now.has(fid));
+    };
+    // A fresh inventory before the next field. A field that went is dropped
+    // from the round — never written, and never reported (the report lists
+    // the page as it is); one that came is mapped (the new ones only) and
+    // joins the round in order. Fields already worked this round wait for the
+    // next — one re-rendered under a new fid too (same frame, same
+    // fingerprint: `sameField`) — and a new prose field (its answers are
+    // asked once per round).
+    const sameField = (f) => `${rows.get(f.fid)?.frameId}\n${f.fp}`;
+    const reobserve = async (worked, queue) => {
+      const frames = await broadcast({ type: "fill_inventory", consentForms, runId });
+      if (!(frames ?? []).some((fr) => fr?.result !== undefined)) return queue;
+      const open = observe(frames).filter((f) => !worked.has(f.fid) && !worked.has(sameField(f)));
+      await mapFields(open);
+      const { texts, choices } = routed(open);
+      return order([...texts, ...choices]);
+    };
+
     let settled = false;
     for (let round = 1; round <= L.MAX_ROUNDS; round += 1) {
       if (halt()) break;
@@ -954,21 +1033,7 @@
       await mapFields(open);
       if (halt()) break;
 
-      const texts = [];
-      const choices = [];
-      const prose = [];
-      for (const f of open) {
-        const row = rows.get(f.fid);
-        if (!row.route || row.route === "none") finish(f, "needs_answer", { lastOutcome: row.route ? "no_fact" : "not_mapped" });
-        else if (row.route === "blocked") finish(f, "blocked", { lastOutcome: "blocked" });
-        else if (row.route === "free_text") {
-          if (f.kind === "text") prose.push(f);
-          else finish(f, "needs_answer", { lastOutcome: "no_fact" });
-        } else if (f.kind === "text") {
-          if (row.route === "slot" && textOf(f, row)) texts.push(f);
-          else finish(f, "needs_answer", { lastOutcome: "no_value" });
-        } else choices.push(f);
-      }
+      const { texts, choices, prose } = routed(open);
 
       // Model calls run beside the page work; page actions stay one at a time.
       let answers = null;
@@ -988,20 +1053,31 @@
           await onFieldClock(f, L.FIELD_MS, () => fillText(f, choice.answer));
         }
       };
-      const prepicking = pickBatch(choices.filter((f) => pickedTogether(f, rows.get(f.fid))));
-      for (const f of texts) {
+      // A lead picks on its own, first; the rest are picked together while the texts are written.
+      const batch = choices.filter((f) => !leads(f) && pickedTogether(f, rows.get(f.fid)));
+      const pickedFor = new Map(batch.map((f) => [f.fid, f.fp])); // a pick answers the question it was asked for
+      const prepicking = pickBatch(batch);
+      let prepicked = null;
+      let queue = order([...texts, ...choices]);
+      const worked = new Set();
+      while (queue.length) {
         if (halt()) break;
-        await onFieldClock(f, L.FIELD_MS, (row) => fillText(f, textOf(f, row), formatOf(row.slot)));
+        const f = queue.shift();
+        worked.add(f.fid).add(sameField(f));
+        if (f.kind === "text") {
+          await onFieldClock(f, L.FIELD_MS, (row) => fillText(f, textOf(f, row), formatOf(row.slot)));
+          await writeProse();
+          continue;
+        }
         await writeProse();
-      }
-      const prepicked = await prepicking;
-      for (const f of choices) {
-        if (halt()) break;
-        await writeProse();
+        if (!leads(f)) prepicked ??= await prepicking;
+        const given = prepicked?.has(f.fid) && pickedFor.get(f.fid) === f.fp ? prepicked.get(f.fid) : undefined;
         const row = rows.get(f.fid);
         const items = Array.isArray(row.value) ? Math.min(new Set(row.value).size, L.MAX_ITEMS) : 1;
-        await onFieldClock(f, L.FIELD_MS + L.ITEM_MS * Math.max(0, items - 1),
-          (working) => fillChoice(f, working, prepicked.has(f.fid) ? prepicked.get(f.fid) : undefined));
+        const acted = applied;
+        await onFieldClock(f, L.FIELD_MS + L.ITEM_MS * Math.max(0, items - 1), (working) => fillChoice(f, working, given));
+        // A choice that acted on the page may have added or removed fields.
+        if (applied !== acted && !halt() && (await reshaped())) queue = await reobserve(worked, queue);
       }
       if (asking && !proseWritten && !halt()) {
         await asking;

@@ -190,6 +190,22 @@
     return { frame: FRAME, host: location.hostname, fields };
   };
 
+  // The fids a full pass would list, cheaply (the loop's check after a
+  // commit that may add or remove fields): nothing is described, read or
+  // registered. A control no pass has given a fid yet — a field the page just
+  // added, or a node it re-rendered — counts as new, so the set differs and
+  // the loop takes a full inventory, which names (or reacquires) it.
+  const peek = () => ns.shapes.pass(() => {
+    const fids = new Set();
+    let fresh = 0;
+    for (const el of walk(document)) {
+      if (!eligible(el)) continue;
+      const fid = fidOf.get(el);
+      fids.add(fid && registry.has(fid) ? fid : `new-${(fresh += 1)}`);
+    }
+    return [...fids];
+  });
+
   // The fingerprint as the page reads NOW (question, section, repeat may have
   // changed on a live node); the ordinal is the one recorded at inventory.
   const liveFp = (fid) => {
@@ -238,7 +254,7 @@
   for (const type of ["input", "change"]) document.addEventListener(type, onUserChange, true);
 
   ns.fillInventory = {
-    list, resolve, frame: FRAME,
+    list, peek, resolve, frame: FRAME,
     fpOf: (fid) => registry.get(fid)?.fp ?? null,
     liveFp,
     shapeOf: (fid) => (registry.has(fid) ? ns.shapes.byName(registry.get(fid).shape) : null),

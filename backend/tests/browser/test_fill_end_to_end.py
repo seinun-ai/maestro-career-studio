@@ -31,7 +31,7 @@ import pytest
 
 from app.schemas.autofill_fill import MapRequest, PickRequest, StepRequest
 from tests.browser.conftest import EXTENSION, fixture_html
-from tests.browser.pages import oracle
+from tests.browser.pages import CATEGORY_POPUP, oracle
 
 MODELS = {"/api/autofill/map": MapRequest, "/api/autofill/pick": PickRequest,
           "/api/autofill/step": StepRequest}
@@ -56,10 +56,10 @@ MAP = {
     "Field of study": {"route": "slot", "slot": "education.0.discipline", "value": "Information Systems"},
     "Which days can you work?": {"route": "none"},
 }
-# The category a question's answer sits under, when no option names it. None
-# today: the live "How Did You Hear About Us?" is a search box (notes §2), and
-# the generic popup tree is tests/browser/pages.CATEGORY_POPUP.
-CATEGORIES: dict[str, str] = {}
+# The category a question's answer sits under, when no option names it: the
+# generic popup tree (tests/browser/pages.CATEGORY_POPUP). The live Workday
+# "How Did You Hear About Us?" is a search box instead (notes §2).
+CATEGORIES = {"How did you hear about us?": "Job Board"}
 
 DRIVER = """(spec) => {
   const ns = window.careerStudioCompanion;
@@ -136,11 +136,12 @@ def _page_of(fixtures) -> str:
     return "\n".join(parts)
 
 
-def _start(page, page_js=None, fresh=True, fixtures=FIXTURES, **spec):
-    """Load the page composed of `fixtures` (unless `fresh` is False: the same
-    page, a second run) and start one run, left in flight as `window.__run`."""
+def _start(page, page_js=None, fresh=True, fixtures=FIXTURES, html=None, **spec):
+    """Load the page composed of `fixtures` — or `html` as it is — (unless
+    `fresh` is False: the same page, a second run) and start one run, left in
+    flight as `window.__run`."""
     if fresh:
-        page.set_content(_page_of(fixtures))
+        page.set_content(html if html is not None else _page_of(fixtures))
         if page_js:
             page.evaluate(page_js)
         # The listener agent.js registers is the page's whole message door.
@@ -164,8 +165,8 @@ def _finish(page):
     return out
 
 
-def _run(page, page_js=None, fresh=True, fixtures=FIXTURES, **spec):
-    _start(page, page_js, fresh, fixtures, **spec)
+def _run(page, page_js=None, fresh=True, fixtures=FIXTURES, html=None, **spec):
+    _start(page, page_js, fresh, fixtures, html, **spec)
     return _finish(page)
 
 
@@ -339,3 +340,55 @@ def test_a_workday_dropdown_whose_label_never_updates_keeps_its_question(e2e_pag
     mapped = [f["question"] for p in out["posts"] if p["path"] == "/api/autofill/map" for f in p["body"]["fields"]]
     assert "Select One" not in mapped
     assert not any("earlier question" in (r["answer"] or "") for r in out["report"]["fields"])
+
+
+def test_the_category_path_runs_end_to_end(e2e_page):
+    """A generic popup tree: no option names "LinkedIn", so /pick abstains and
+    the adaptive step opens the list, steps into "Job Board" and clicks the
+    leaf, through the real /step driver with both halves running."""
+    page = e2e_page
+    out = _run(page, html=CATEGORY_POPUP,
+               map={"How did you hear about us?": {"route": "slot", "slot": "preferences.how_heard", "value": "LinkedIn"},
+                    "Are you legally authorized to work in the United States?":
+                        {"route": "slot", "slot": "work_auth.authorized_now", "value": "Yes"}})
+    assert page.inner_text("#heard") == "LinkedIn" and page.inner_text("#auth") == "Yes"
+    heard = out["by_question"]["How did you hear about us?"]
+    assert (heard["status"], heard["answer"]) == ("verified", "LinkedIn")
+    assert out["by_question"]["Are you legally authorized to work in the United States?"]["status"] == "verified"
+    steps = [p["body"] for p in out["posts"] if p["path"] == "/api/autofill/step"]
+    assert [b["history"][-1] for b in steps] == ["choose -> abstained", "open -> progressed", "click:o1 -> progressed"]
+    assert not page.evaluate("window.staleHit === true")
+    assert _open_popups(page) == []
+
+
+# workday_sections.html's first work entry, and the facts /map holds for it.
+SECTIONS_MAP = {
+    "Job Title": {"route": "slot", "slot": "experience.0.title", "value": "Analyst"},
+    "Company": {"route": "slot", "slot": "experience.0.company", "value": "Acme"},
+    "I currently work here": {"route": "slot", "slot": "experience.0.current", "value": "Yes"},
+    "From": {"route": "slot", "slot": "experience.0.start_date", "value": "2021-05"},
+    "To": {"route": "slot", "slot": "experience.0.end_date", "value": "2023-01"},
+}
+
+
+def test_currently_employed_is_ticked_before_the_dates(e2e_page):
+    """Ticking "I currently work here" removes the entry's To date a frame
+    later (notes §4). The tick is committed first (by its mapped slot), the
+    loop sees the To date go before it reaches the dates, never writes to it,
+    and the report has no row for it."""
+    page = e2e_page
+    out = _run(page, fixtures=["workday_sections.html"], map=SECTIONS_MAP)
+    entry = "Work Experience 1"
+    assert oracle(page, f"{entry}/I currently work here") is True
+    assert page.locator('[aria-labelledby="Work-Experience-1-panel"] [data-automation-id="formField-endDate"]').count() == 0
+    assert (oracle(page, f"{entry}/Job Title"), oracle(page, f"{entry}/Company"), oracle(page, f"{entry}/From")) == (
+        "Analyst", "Acme", "2021-05")
+    applies = [a for m in out["sent"] if m["type"] == "fill_apply" for a in m["actions"]]
+    questions = {r["fid"]: r["question"] for r in out["report"]["fields"]}
+    assert questions[applies[0]["fid"]] == "I currently work here"
+    # The To date got no write at all: every action names a field still reported.
+    assert all(a["fid"] in questions for a in applies)
+    assert "To" not in out["by_question"]
+    assert not any(r["status"] == "stale" or r["lastOutcome"] == "stale" for r in out["report"]["fields"])
+    for question in ("I currently work here", "Job Title", "Company", "From"):
+        assert out["by_question"][question]["status"] == "verified", out["by_question"][question]

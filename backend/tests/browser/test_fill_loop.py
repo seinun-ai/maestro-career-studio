@@ -44,8 +44,15 @@ DRIVER = """async (spec) => {
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   Object.assign(window.careerStudioCompanion.fillLoop.limits, {QUIET_MS: 0}, spec.limits ?? {});
   const broadcast = async (msg) => {
-    calls.push(msg.type);
+    // A peek (the fid set only, after a commit) is its own call: it is not a round.
+    calls.push(msg.type === "fill_inventory" && msg.peek ? "fill_peek" : msg.type);
     sent.push(JSON.parse(JSON.stringify(msg)));
+    if (msg.type === "fill_inventory" && msg.peek) {
+      // `peek`: the fid sets the page answers (a list: one per call); else the current frame's.
+      const fields = spec.frames[Math.min(Math.max(round, 1), spec.frames.length) - 1];
+      return fields === null ? [{frameId: 0, error: "gone"}]
+        : one({frame: "f", fids: take(spec.peek) ?? fields.map((x) => x.fid)});
+    }
     if (msg.type === "fill_inventory") {
       round += 1;
       const fields = spec.frames[Math.min(round, spec.frames.length) - 1];
@@ -291,6 +298,75 @@ def test_an_unchecked_lone_checkbox_is_not_already_answered(page, load):
               pick={"c": {"oids": ["yes"], "reason": "matched"}})
     assert statuses(out) == {"c": "verified"}
     assert "fill_explore" not in out["calls"]  # a complete passive list is not explored again
+
+
+# ---------- a commit that adds or removes fields (notes §4)
+def current_box(fid="c", **kw):
+    return f(fid, "group", "I currently work here", **{"section": "Work Experience", "committed": "No",
+             "options": [opt("yes", "Yes"), opt("no", "No")], "optionsComplete": True, **kw})
+
+
+SECTION_MAP = {
+    "c": {"route": "slot", "slot": "experience.0.current", "value": "Yes"},
+    "t": {"route": "slot", "slot": "experience.0.title", "value": "Analyst"},
+    "d1": {"route": "slot", "slot": "experience.0.start_date", "value": "2021-05"},
+    "d2": {"route": "slot", "slot": "experience.0.end_date", "value": "2023-01"},
+}
+
+
+def test_currently_employed_is_ticked_before_the_dates_of_its_entry(page, load):
+    """By the MAPPED SLOT, never the label: a choice mapped to `<…>.current`
+    goes before the text and date fields, though the page lists it after them."""
+    t = f("t", question="Job Title", section="Work Experience")
+    d1 = f("d1", "date", "From", section="Work Experience")
+    d2 = f("d2", "date", "To", section="Work Experience")
+    out = run(page, load, frames=[[t, d1, d2, current_box()]], map=SECTION_MAP,
+              pick={"c": {"oids": ["yes"], "reason": "matched"}})
+    assert [a["fid"] for a in actions(out)] == ["c", "t", "d1", "d2"]
+    assert statuses(out) == {"t": "verified", "d1": "verified", "d2": "verified", "c": "verified"}
+
+
+def test_fields_added_or_removed_by_a_commit_are_re_observed_before_continuing(page, load):
+    """Ticking "I currently work here" removes the entry's To date a frame
+    later: the peek after the commit sees the fid set change, the loop takes a
+    fresh inventory before the next field, never writes the To date, and the
+    report has no row for it (no `stale`)."""
+    t = f("t", question="Job Title", section="Work Experience")
+    d1 = f("d1", "date", "From", section="Work Experience")
+    d2 = f("d2", "date", "To", section="Work Experience")
+    ticked = current_box(committed="Yes", answered=True)
+    out = run(page, load, frames=[[t, d1, d2, current_box()], [t, d1, ticked]], map=SECTION_MAP,
+              peek=[["t", "d1", "c"]], pick={"c": {"oids": ["yes"], "reason": "matched"}})
+    assert [a["fid"] for a in actions(out)] == ["c", "t", "d1"]
+    calls = [c for c in out["calls"] if c.startswith("fill_")]
+    assert calls[:5] == ["fill_inventory", "fill_apply", "fill_peek", "fill_inventory", "fill_apply"]
+    assert statuses(out) == {"t": "verified", "d1": "verified", "c": "verified"}
+    # The new inventory mapped nothing again: every field it listed was known.
+    assert [len(b["fields"]) for b in bodies(out, "/api/autofill/map")] == [4]
+
+
+def test_a_field_a_commit_adds_is_mapped_and_filled_in_the_same_round(page, load):
+    """A choice that reveals a field (an "Other, please specify" box): the peek
+    sees a new fid, the fresh inventory lists it, only IT is mapped, and it is
+    filled before the round moves on. A commit that changes nothing is not
+    followed by a second inventory."""
+    q = f("q", "popup", "How did you hear?")
+    other = f("o", question="Please specify")
+    p = f("p", "popup", "Degree")
+    out = run(page, load, frames=[[q, p], [q, other, p]],
+              peek=[["q", "o", "p"]],
+              map={"q": {"route": "slot", "slot": "preferences.how_heard", "value": "Other"},
+                   "p": {"route": "slot", "slot": "education.0.degree", "value": "MBA"},
+                   "o": {"route": "slot", "slot": "preferences.how_heard_other", "value": "A friend"}},
+              explore={"q": {"options": [opt("o1", "Other")], "complete": True},
+                       "p": {"options": [opt("o1", "MBA")], "complete": True}},
+              pick={"q": {"oids": ["o1"], "reason": "matched"}, "p": {"oids": ["o1"], "reason": "matched"}})
+    assert [a["fid"] for a in actions(out)] == ["q", "o", "p"]
+    assert statuses(out) == {"q": "verified", "o": "verified", "p": "verified"}
+    assert [[x["fid"] for x in b["fields"]] for b in bodies(out, "/api/autofill/map")] == [["q", "p"], ["o"]]
+    # One re-inventory (after q); p's commit changed nothing, so its peek is all.
+    first_round = out["calls"][:out["calls"].index("fill_sweep")]
+    assert first_round.count("fill_inventory") == 2 and first_round.count("fill_peek") == 2
 
 
 def test_a_user_edit_during_the_model_call_is_respected(page, load):
@@ -1003,14 +1079,34 @@ def test_an_unconfirmed_adaptive_click_is_never_counted_as_verified(page, load):
     assert out["calls"].count("/api/autofill/step") == 1
 
 
+def test_a_placeholder_option_is_never_offered_as_an_answer(page, load):
+    """Live Workday lists "Select One" as an option (§3a, §8b): whatever a list
+    carries, /pick and /map see neither it nor an empty or dash-only row, and
+    the list still counts as complete (it hides no answer)."""
+    blanks = [opt("o1", "Select One"), opt("o2", ""), opt("o3", "--")]
+    out = run(page, load, frames=[[f("d", "popup", "Degree"), f("s", "select", "Country", options=[
+                  *blanks, opt("o4", "Canada")], optionsComplete=True)]],
+              map={"d": {"route": "slot", "slot": "education.0.degree", "value": "Masters"},
+                   "s": {"route": "slot", "slot": "personal.country", "value": "Canada"}},
+              explore={"d": {"options": [*blanks, opt("o4", "Masters")], "complete": True}},
+              pick={"d": {"oids": ["o4"], "reason": "matched"}, "s": {"oids": ["o4"], "reason": "matched"}})
+    assert statuses(out) == {"d": "verified", "s": "verified"}
+    fields = [x for b in bodies(out, "/api/autofill/pick") for x in b["fields"]]
+    assert {x["fid"]: x["options"] for x in fields} == {
+        "d": [{"oid": "o4", "text": "Masters"}], "s": [{"oid": "o4", "text": "Canada"}]}
+    assert all(x["complete"] for x in fields)
+    [mapped] = bodies(out, "/api/autofill/map")
+    assert {x["fid"]: x["options"] for x in mapped["fields"]}["s"] == ["Canada"]
+
+
 def test_an_empty_or_placeholder_commit_is_never_verified(page, load):
     """Defence in depth: whatever the page says, nothing (or "Select One") is no answer."""
     for committed in ("", "Select One"):
         out = run(page, load, frames=[[f("d", "popup", "Degree")]],
                   map={"d": {"route": "slot", "slot": "education.0.degree", "value": "Masters"}},
                   explore={"d": {"options": [opt("o1", "Select One"), opt("o2", "Masters")], "complete": True}},
-                  pick={"d": {"oids": ["o1"], "reason": "matched"}},
-                  apply={"Select One": {"outcome": "verified", "committed": committed}})
+                  pick={"d": {"oids": ["o2"], "reason": "matched"}},
+                  apply={"Masters": {"outcome": "verified", "committed": committed}})
         r = row(out, "d")
         assert (r["status"], r["lastOutcome"]) == ("unconfirmed", "unconfirmed"), committed
         obs = page.evaluate("(r) => window.careerStudioCompanion.fillLoop.buildLoopObservations(r)", out["report"])

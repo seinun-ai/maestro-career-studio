@@ -234,7 +234,21 @@
     // defaults to OFF.
     // Queued like every other operation: a Stop latched under an operation
     // already waiting is never released before that operation starts.
+    // `peek`: only the frame's fids, after a commit that may have added or
+    // removed fields; it starts no run and changes no consent. A commit's
+    // structural change can land a frame later (notes §4: the To date goes
+    // on the next frame), so one frame (bounded, for a hidden tab) comes first.
     inventory: serial(async (opts = {}) => {
+      if (opts.peek) {
+        await new Promise((resolve) => {
+          const timer = setTimeout(resolve, 100);
+          requestAnimationFrame(() => {
+            clearTimeout(timer);
+            resolve();
+          });
+        });
+        return { frame: inv().frame, fids: inv().peek() };
+      }
       if (opts.runId && opts.runId !== runId) {
         runId = opts.runId;
         ns.fillBase.resume();

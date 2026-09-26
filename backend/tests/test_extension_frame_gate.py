@@ -126,6 +126,7 @@ main(async () => {
     // Only when the fixture states one — `undefined` is the shape the floating
     // card sends, and it must keep meaning "unchecked".
     ...(spec.expect === null ? {} : { expect: spec.expect }),
+    ...(spec.peek ? { peek: true } : {}),
   });
   emit({ calls, data });
 });
@@ -133,13 +134,13 @@ main(async () => {
 
 
 def _run(tmp_path, *, type_, top_frame, form=False, detect_throws=False, file_inputs=(),
-         expect=None):
+         expect=None, peek=False):
     return run_node(
         _GATE_DRIVER_JS,
         {
             "type": type_, "topFrame": top_frame, "form": form,
             "detectThrows": detect_throws, "fileInputs": list(file_inputs),
-            "expect": expect,
+            "expect": expect, "peek": peek,
         },
         tmp_path,
         source=page_runtime_source(),
@@ -402,9 +403,12 @@ def test_fill_operations_are_gated_by_frame(tmp_path, type_):
 
 
 def test_fill_inventory_forwards_the_standing_consent_and_the_run_id(tmp_path):
-    """A new runId is what releases a latched Stop, and consent is per call."""
+    """A new runId is what releases a latched Stop, and consent is per call.
+    `peek` (the fids only, after a commit) is forwarded, and only a literal true."""
     out = _run(tmp_path, type_="fill_inventory", top_frame=True)
-    assert out["calls"] == [["fillOps.inventory", {"consentForms": True, "runId": "run-2"}]]
+    assert out["calls"] == [["fillOps.inventory", {"consentForms": True, "runId": "run-2", "peek": False}]]
+    out = _run(tmp_path, type_="fill_inventory", top_frame=True, peek=True)
+    assert out["calls"] == [["fillOps.inventory", {"consentForms": True, "runId": "run-2", "peek": True}]]
 
 
 def test_fill_step_state_forwards_the_field_and_nothing_else(tmp_path):
