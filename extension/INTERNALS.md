@@ -457,7 +457,17 @@ know, and each one was learned from a live failure.
   moves to a different date or reaches the end of the run. Measured on a live
   form, the same writes hold six sections across three dates with no error on
   the page. Trusted input is NOT what was missing — the identical untrusted
-  write holds once the blur moves.
+  write holds once the blur moves. The leave blurs whichever section holds
+  focus by then (the widget moves focus back to Month after a full Year), not
+  the section last typed in.
+- **Entering and leaving a field are reported by hand when the browser will
+  not.** While the Chrome window is not focused (you are looking at the panel
+  or another window), `focus()`/`blur()` move focus but fire no events, so
+  Workday never took a typed City or date even though the box showed it.
+  `fillBase.enter`/`leave` send focus + focusin / blur + focusout themselves,
+  only when the browser stayed silent, so the page hears each once. Salary
+  slots compare as numbers (`$80,000` is 80000); like phone numbers, the
+  slot decides that, never the characters.
 - **Every writer commits the way a human would.** A `<select>` set through the
   native setter and a radio driven by `click()` fire no focus events, so
   Workday's required-field validation never runs over answers the page is

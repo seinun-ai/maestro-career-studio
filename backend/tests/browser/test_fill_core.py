@@ -22,14 +22,25 @@ def explore(page, f, term=None):
 
 
 # --- text-like
-@in_both_windows(unfocused_xfail="Task 2: leaving a field must blur, then dispatch blur + focusout itself "
-                                 "(an unfocused window fires no events)")
+@in_both_windows()
 def test_text_commits_where_the_page_only_takes_real_typing(window, request, load):
     page = request.getfixturevalue(window)
     load(page, fixture_html("workday_text.html"))
     row = apply(page, inv(page)["City"], op="write", value="Springfield")
     assert row["outcome"] == "verified" and oracle(page, "city") == "Springfield"
     assert page.get_attribute("#city", "aria-invalid") == "false"
+
+
+@in_both_windows()
+def test_text_commits_only_after_leaving_the_field(window, request, load):
+    """Postal Code shows a value the app never took, with its error: a write
+    commits the new value only by leaving the box, and the error goes."""
+    page = request.getfixturevalue(window)
+    load(page, fixture_html("workday_text.html"))
+    row = apply(page, inv(page)["Postal Code"], op="write", value="12345")
+    assert row["outcome"] == "verified" and oracle(page, "zip") == "12345"
+    assert page.is_hidden("#zip-err") and page.get_attribute("#zip", "aria-invalid") == "false"
+    assert page.evaluate("document.activeElement === document.body")
 
 
 def test_sweep_recommits_text_that_shows_an_error_with_its_own_value(page, load):
@@ -44,9 +55,6 @@ def test_a_text_the_page_clears_on_blur_is_reverted(page, load):
     assert apply(page, inv(page)["Q"], op="write", value="x")["outcome"] == "reverted"
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError,
-                   reason="Task 2: leaving a date must blur the part Workday moved focus to (Month), then "
-                          "dispatch blur + focusout, so the wrapper validates and commits")
 @in_both_windows()
 def test_workday_date_sections_are_written_before_one_blur(window, request, load):
     page = request.getfixturevalue(window)
@@ -57,6 +65,18 @@ def test_workday_date_sections_are_written_before_one_blur(window, request, load
     assert (page.input_value("#m"), page.input_value("#y")) == ("8", "2019")
     assert oracle(page, "from") == "2019-08"
     assert page.locator("text=Error:").count() == 0
+
+
+@in_both_windows()
+def test_date_leave_blurs_the_part_the_widget_moved_focus_to(window, request, load):
+    """After the Year the widget moves focus to Month by itself; leaving the
+    date blurs Month (not the Year typed in), so the wrapper validates."""
+    page = request.getfixturevalue(window)
+    load(page, fixture_html("workday_date.html"))
+    assert apply(page, inv(page)["From"], op="write", value="2026-06")["outcome"] == "verified"
+    assert oracle(page, "from") == "2026-06"
+    assert page.locator("text=Error:").count() == 0
+    assert page.evaluate("document.getElementById('from').contains(document.activeElement)") is False
 
 
 def test_a_plain_date_box_is_written_in_its_placeholder_format(page, load):

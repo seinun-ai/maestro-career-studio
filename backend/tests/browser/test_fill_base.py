@@ -212,17 +212,109 @@ def test_equivalence_keeps_punctuation_meaningful_except_for_phones(page, load):
     assert got == [False, True, True, False, False, False, False]
 
 
-@in_both_windows(unfocused_xfail="Task 2: leave with fillBase.leave (blur, then dispatch blur + focusout) "
-                                 "instead of a bare el.blur(), which an unfocused window does not report")
+@in_both_windows()
 def test_typing_is_trusted_input_a_workday_box_commits(window, request, load):
     """execCommand("insertText") fires the input events a Workday box takes
     into its draft, and leaving the box commits it and clears its error."""
     page = request.getfixturevalue(window)
     load(page, fixture_html("workday_text.html"))
     page.evaluate(f"() => {B}.withinBudget(async (t) => {B}.typeText(document.getElementById('city'), 'Toronto', t), 1000)")
-    page.evaluate("() => document.getElementById('city').blur()")
+    page.evaluate(f"() => {B}.leave(document.getElementById('city'))")
     assert oracle(page, "city") == "Toronto"
     assert page.get_attribute("#city", "aria-invalid") == "false"
+
+
+# Every focus event the PAGE hears (document, capture), per type.
+HEARD = """() => { window.heard = {focus: 0, focusin: 0, blur: 0, focusout: 0};
+  for (const t of Object.keys(window.heard)) document.addEventListener(t, () => window.heard[t]++, true); }"""
+
+
+@in_both_windows()
+def test_enter_reports_focus_once_and_not_again_on_a_field_already_entered(window, request, load):
+    """Unfocused, focus() fires nothing, so enter dispatches focus + focusin;
+    focused, the browser's own pair is the only one. Entering the field that
+    already has focus moves nothing, so it reports nothing."""
+    page = request.getfixturevalue(window)
+    load(page, "<input id='a'>")
+    page.evaluate(HEARD)
+    page.evaluate(f"() => {B}.enter(document.getElementById('a'))")
+    assert page.evaluate("[document.activeElement.id, window.heard.focus, window.heard.focusin]") == ["a", 1, 1]
+    page.evaluate(f"() => {B}.enter(document.getElementById('a'))")
+    assert page.evaluate("[window.heard.focus, window.heard.focusin]") == [1, 1]
+
+
+def test_enter_throws_unfocusable_rather_than_reporting_a_focus_that_did_not_happen(page, load):
+    load(page, "<input id='a' disabled>")
+    page.evaluate(HEARD)
+    got = page.evaluate(f"() => {{ try {{ {B}.enter(document.getElementById('a')); return 'entered'; }} catch (e) {{ return e.name; }} }}")
+    assert got == "Unfocusable" and page.evaluate("window.heard.focus + window.heard.focusin") == 0
+
+
+def test_leave_does_not_double_fire_when_the_window_has_focus(page, load):
+    load(page, "<input id='a'>")
+    page.focus("#a")
+    page.evaluate(HEARD)
+    page.evaluate(f"() => {B}.leave(document.getElementById('a'))")
+    assert page.evaluate("[document.activeElement === document.body, window.heard.blur, window.heard.focusout]") \
+        == [True, 1, 1]
+
+
+def test_leave_reports_one_focusout_when_the_window_is_unfocused(page_unfocused, load):
+    """The native blur is silent here; the dispatched pair is the only one."""
+    page = page_unfocused
+    load(page, "<input id='a'>")
+    page.evaluate("document.getElementById('a').focus()")
+    page.evaluate(HEARD)
+    page.evaluate(f"() => {B}.leave(document.getElementById('a'))")
+    assert page.evaluate("[document.activeElement === document.body, window.heard.blur, window.heard.focusout]") \
+        == [True, 1, 1]
+
+
+@in_both_windows()
+def test_leave_blurs_what_has_focus_inside_the_widget_not_the_box_typed_in(window, request, load):
+    """Workday moves focus inside a date widget by itself: leaving blurs the
+    part that holds it NOW, and the page hears the leave from that part."""
+    page = request.getfixturevalue(window)
+    load(page, "<div id='w'><input id='m'><input id='y'></div><input id='z'>")
+    page.evaluate("document.getElementById('m').focus()")
+    page.evaluate("window.from = []; document.getElementById('w').addEventListener('focusout', (e) => from.push(e.target.id))")
+    page.evaluate(f"() => {B}.leave(document.getElementById('y'), document.getElementById('w'))")
+    assert page.evaluate("[document.activeElement === document.body, window.from]") == [True, ["m"]]
+
+
+def test_a_key_press_is_keydown_and_keyup_with_the_legacy_codes(page, load):
+    load(page, "<input id='a'>")
+    got = page.evaluate(f"""() => {{ const seen = []; const a = document.getElementById('a');
+        for (const t of ['keydown', 'keypress', 'keyup']) a.addEventListener(t, (e) => seen.push([t, e.key, e.keyCode, e.bubbles]));
+        {B}.keyPress(a, 'Enter'); return seen; }}""")
+    assert got == [["keydown", "Enter", 13, True], ["keyup", "Enter", 13, True]]
+    stopped = page.evaluate(f"() => {{ {B}.cancelAll(); try {{ {B}.keyPress(document.getElementById('a'), 'Enter'); }} catch (e) {{ return e.name; }} }}")
+    assert stopped == "Cancelled"
+
+
+def test_invalid_sees_a_plain_error_span_and_aria_invalid_on_any_part(page, load):
+    """Live Workday marks a date's error on ONE part (the year) and writes it as
+    a plain "Error: ..." span with no errorMessage id (notes §6)."""
+    load(page, """
+      <div data-automation-id='formField-from'><div data-automation-id='dateInputWrapper' role='group'>
+        <input role='spinbutton' id='m' aria-label='Month'><input role='spinbutton' id='y' aria-label='Year' aria-invalid='true'>
+      </div></div>
+      <div data-automation-id='formField-to'><div data-automation-id='dateInputWrapper' role='group'>
+        <input role='spinbutton' id='tm' aria-label='Month'><input role='spinbutton' id='ty' aria-label='Year'>
+      </div><span class='wd-date-error'>Error: The field To is required and must have a value.</span></div>
+      <div data-automation-id='formField-why'><label for='why'>Error budget</label><input id='why' value='x'>
+        <p>Tell us about an error you learned from.</p><p>Errors are welcome here.</p>
+        <span style='display:none'>Error: stale</span></div>""")
+    assert page.evaluate(INVALID, ["m", "tm", "why"]) == [True, True, False]
+
+
+def test_money_compares_as_numbers(page, load):
+    load(page, "<div></div>")
+    got = page.evaluate(f"""() => [
+        {B}.equivalent('80000', '$80,000', {{format: 'money'}}), {B}.equivalent('80000.50', '$80,000.5', {{format: 'money'}}),
+        {B}.equivalent('8000050', '$80,000.50', {{format: 'money'}}), {B}.equivalent('80,000', '80000'),
+        {B}.equivalent('', '', {{format: 'money'}}), {B}.equivalent('about 80k', '80000', {{format: 'money'}})]""")
+    assert got == [True, True, False, False, False, False]
 
 
 TYPE = f"([sel, v]) => {B}.withinBudget(async (t) => {B}.typeText(document.querySelector(sel), v, t), 1000)"

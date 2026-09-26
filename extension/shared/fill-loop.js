@@ -582,6 +582,14 @@
       return commitOne(f, row, opts, complete, term, item, prepicked);
     };
 
+    // The format a written value is compared in, decided by the FACT's slot,
+    // never by what the value looks like: a page re-punctuates a phone number
+    // and a salary ("$80,000" for 80000).
+    const formatOf = (slot) => {
+      if (/phone/i.test(slot ?? "")) return "phone";
+      if (/salary|compensation|pay/i.test(slot ?? "")) return "money";
+      return undefined;
+    };
     const fillText = async (f, value, format) => {
       const out = await act(f, { op: "write", value, ...(format ? { format } : {}) });
       if (notDone(f, out)) return undefined;
@@ -754,7 +762,7 @@
       for (const f of texts) {
         if (halt()) break;
         const row = work(f);
-        await fillText(f, textOf(f, row), /phone/i.test(row.slot ?? "") ? "phone" : undefined);
+        await fillText(f, textOf(f, row), formatOf(row.slot));
         await writeProse();
       }
       const prepicked = await prepicking;

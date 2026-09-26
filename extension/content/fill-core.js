@@ -1,12 +1,13 @@
 /* Maestro CS Companion — the generic fill mechanics.
  *
  * Two kinds of field. TEXT-LIKE: type like a person (fillBase.typeText), one
- * blur per widget (date sections are written first, then blurred once), then
- * verify. CHOICE-LIKE: passive shapes (select, radio/checkbox) act directly;
- * popup shapes OPEN (press, or type a term for search shapes), read the options
- * of the popup they OWN (scrolling long lists), and either close (explore) or
- * click one (commit: press, then click as a second gesture), blur, close, and
- * verify. Verify always runs after the final blur and treats a field error as
+ * leave per widget (date sections are written first, then left once, from
+ * whichever section holds focus by then), then verify. CHOICE-LIKE: passive
+ * shapes (select, radio/checkbox) act directly; popup shapes OPEN (press, or
+ * type a term for search shapes), read the options of the popup they OWN
+ * (scrolling long lists), and either close (explore) or click one (commit:
+ * press, then click as a second gesture), leave, close, and verify. Verify
+ * always runs after the final leave and treats a field error as
  * not filled. What the generic path cannot finish it reports as `unexpected`
  * with a reason; the loop's adaptive step takes it from there.
  *
@@ -87,9 +88,26 @@
     return [expected].flat().every((w) => have.some((h) => b().equivalent(h, w, { format }))) ? "verified" : "reverted";
   };
 
+  // The widget a field's focus may wander inside: a split date's own sections
+  // (Workday moves focus between them by itself), a Workday search box's
+  // multiselect container; else the element alone. Search widgets without that
+  // container stay on the element until shapes knows their box properly.
+  const widgetOf = (el) => {
+    const shape = ns.shapes.of(el);
+    if (shape?.name === "date" && shape.dateKind(el) === "sections") {
+      const run = shape.dateSections(el);
+      let n = el.closest('[data-automation-id="dateInputWrapper"]') ?? el.parentElement;
+      while (n && !run.every((s) => n.contains(s))) n = n.parentElement;
+      return n ?? el;
+    }
+    if (shape?.open === "search") return el.closest('[data-uxi-widget-type="multiselect"]') ?? el;
+    return el;
+  };
+  // Leave the field the way Workday commits it (fillBase.leave), then let the
+  // page validate.
   const blurOut = async (el, t) => {
     b().check(t);
-    el.blur?.();
+    b().leave(el, widgetOf(el));
     await b().settle(t, 150);
   };
 
@@ -235,7 +253,7 @@
     if (before && el.isConnected) own(el, before); // a menu re-rendered by that typing
     await b().closePopups(el, t, { cleanup });
     if (!cleanup) await blurOut(el, t);
-    else if (restore) el.blur?.(); // the undo focused the box: focus is not left in it
+    else if (restore) b().leave(el, widgetOf(el)); // the undo focused the box: focus is not left in it
   };
 
   async function explore(el, shape, { term, consentForms } = {}, t) {

@@ -264,6 +264,17 @@ def test_phone_slots_are_written_with_the_phone_format(page, load):
     assert writes["p"]["format"] == "phone" and "format" not in writes["c"]
 
 
+def test_salary_slots_write_with_money_format(page, load):
+    """The FACT decides the format: a salary slot compares as a number, a
+    number-looking answer in another slot does not."""
+    out = run(page, load, frames=[[f("s", question="Desired salary"), f("y", question="Years of experience")]],
+              map={"s": {"route": "slot", "slot": "preferences.desired_salary", "value": "80000"},
+                   "y": {"route": "slot", "slot": "experience.years", "value": "8"}})
+    assert statuses(out) == {"s": "verified", "y": "verified"}
+    writes = {a["fid"]: a for a in actions(out, "write")}
+    assert writes["s"]["format"] == "money" and "format" not in writes["y"]
+
+
 def test_unknown_controls_are_listed_as_could_not_operate(page, load):
     out = run(page, load, frames=[[f("u", "unknown", "Rate your SQL", kind="unknown")]])
     assert statuses(out) == {"u": "cannot_operate"}

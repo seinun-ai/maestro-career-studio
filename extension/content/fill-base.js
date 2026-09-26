@@ -1,12 +1,20 @@
 /* Maestro CS Companion — page primitives every fill operation shares.
  *
  * CANCELLATION IS REAL. Every operation runs under `withinBudget(fn, ms)`,
- * which hands `fn` its own token. Every gesture primitive (press, typeText,
- * closePopups, settle, waitFor) checks the token AND the latched Stop before it
- * acts and throws `Cancelled`, so a timed-out or stopped operation cannot land
- * a click later — Promise.race alone would only stop waiting for it. The one
- * exception is closePopups in cleanup mode, which may still close a popup the
- * engine itself opened. Stop (cancelAll) also settles every budget at once.
+ * which hands `fn` its own token. Every gesture primitive (press, enter,
+ * keyPress, typeText, closePopups, settle, waitFor) checks the token AND the
+ * latched Stop before it acts and throws `Cancelled`, so a timed-out or stopped
+ * operation cannot land a click later — Promise.race alone would only stop
+ * waiting for it. The exceptions: closePopups in cleanup mode, which may still
+ * close a popup the engine itself opened, and `leave`, which takes no token —
+ * moving focus OUT of a field is what a cancelled operation may still do.
+ * Stop (cancelAll) also settles every budget at once.
+ *
+ * FOCUS IS REPORTED BY HAND WHEN THE BROWSER WILL NOT. While the browser
+ * window is not focused, el.focus()/el.blur() move focus but fire no focus
+ * events, so Workday never commits text or dates. `enter` and `leave` send the
+ * missing events only when the browser stayed silent: the page hears one
+ * focus and one leave either way.
  */
 (() => {
   const ns = (window.careerStudioCompanion ??= {});
@@ -127,13 +135,25 @@
     }
     return box;
   };
+  // Live Workday marks a date's error on ONE part (the year), and writes the
+  // message as a plain span "Error: …" with no errorMessage id. A
+  // leaf whose text merely mentions an error mid-sentence is help text, and a
+  // label or legend is the question ("Error budget"), never the error.
+  const ERROR_LEAD = /^error\b/i;
+  const errorLeaf = (n, el) => !n.childElementCount && !n.matches("label, legend, script, style, template")
+    && !n.contains(el) && ERROR_LEAD.test(clean(n.textContent)) && visible(n);
   const invalid = (el) => {
     if (el.getAttribute("aria-invalid") === "true") return true;
     const described = (el.getAttribute("aria-describedby") ?? "").split(/\s+/).filter(Boolean)
       .map((id) => byId(el, id));
     if (described.some((n) => n && describedError(n))) return true;
-    return [...(fieldBox(el)?.querySelectorAll(ERROR_NODE) ?? [])]
-      .some((n) => visible(n) && !n.contains(el) && clean(n.textContent));
+    const box = fieldBox(el);
+    if (!box) return false;
+    if ([...box.querySelectorAll(ns.fieldControls.CONTROL)].some((c) => c.getAttribute("aria-invalid") === "true")) {
+      return true;
+    }
+    return [...box.querySelectorAll(ERROR_NODE)].some((n) => visible(n) && !n.contains(el) && clean(n.textContent))
+      || [...box.querySelectorAll("*")].some((n) => errorLeaf(n, el));
   };
 
   const POPUP = '[role="listbox"], [role="menu"], [role="tree"], [role="grid"], [role="dialog"]';
@@ -201,20 +221,77 @@
     }
   };
   const proto = (el) => (el instanceof HTMLTextAreaElement ? HTMLTextAreaElement : HTMLInputElement).prototype;
-  const focused = (el) => (el.getRootNode().activeElement ?? document.activeElement) === el;
+  const activeIn = (el) => el.getRootNode().activeElement ?? document.activeElement;
+  // Whether the browser itself fired `type` on el while fn ran (a focused
+  // window does; an unfocused one moves focus in silence).
+  const fired = (el, type, fn) => {
+    let hit = false;
+    const h = () => {
+      hit = true;
+    };
+    el.addEventListener(type, h, { capture: true, once: true });
+    try {
+      fn();
+    } finally {
+      el.removeEventListener(type, h, { capture: true });
+    }
+    return hit;
+  };
+  // ENTER a field: real focus, plus the focus + focusin an unfocused window
+  // does not fire — so the page hears exactly one pair either way. A field
+  // that already has focus moves nothing and hears nothing; one that will not
+  // take focus throws Unfocusable. `focusIn` skips the token check, for
+  // typeText's undo alone.
+  const enter = (el, t) => {
+    check(t);
+    focusIn(el);
+  };
+  const focusIn = (el) => {
+    if (activeIn(el) === el) return;
+    const native = fired(el, "focus", () => el.focus({ preventScroll: true }));
+    if (activeIn(el) !== el) throw new Unfocusable();
+    if (!native) {
+      el.dispatchEvent(new FocusEvent("focus"));
+      el.dispatchEvent(new FocusEvent("focusin", { bubbles: true, composed: true }));
+    }
+  };
+  // LEAVE a field: blur whatever inside its WIDGET holds focus now — Workday
+  // moves focus between a date's parts by itself, so blurring the box typed
+  // in leaves focus inside and nothing validates — THEN, only if the browser
+  // stayed silent, tell the page focus left. Blur first, events second: a
+  // focusout sent while focus is still inside is ignored.
+  const leave = (el, widget = el) => {
+    const a = activeIn(el);
+    const who = a && a !== document.body && widget.contains(a) ? a : el;
+    const native = fired(who, "blur", () => who.blur?.());
+    if (!native) {
+      who.dispatchEvent(new FocusEvent("blur"));
+      who.dispatchEvent(new FocusEvent("focusout", { bubbles: true, composed: true, relatedTarget: null }));
+    }
+  };
+  // A key press is keydown AND keyup: Workday searches on the key-up. For
+  // search widgets only — never sent to a plain text box.
+  const KEYS = { Enter: 13, Escape: 27, ArrowDown: 40 };
+  const keyPress = (el, key, t) => {
+    check(t);
+    const code = KEYS[key] ?? 0;
+    const init = { key, code: key, keyCode: code, which: code, bubbles: true, cancelable: true, composed: true };
+    el.dispatchEvent(new KeyboardEvent("keydown", init));
+    el.dispatchEvent(new KeyboardEvent("keyup", init));
+  };
   // Typing the way a person does: the browser fires REAL input events for
   // execCommand("insertText"), which React-controlled boxes (Workday) accept
   // where a setter + synthetic event is ignored. execCommand types into
-  // whatever HAS focus, so a target that did not take focus (disabled, hidden)
-  // throws Unfocusable rather than typing into another field. The setter is a
+  // whatever HAS focus, so the box is ENTERED first, and a target that did not
+  // take focus (disabled, hidden) throws Unfocusable rather than typing into
+  // another field. Typing does not leave: the caller does. The setter is a
   // fallback only when typing changed nothing; a page that reformatted or
   // truncated (maxlength) what was typed has answered, and is not overwritten.
   // `undo` skips the token and latch checks for ONE purpose: a cancelled or
   // timed-out operation taking back a search query the engine itself typed.
   const typeText = (el, value, t, { undo = false } = {}) => {
     if (!undo) check(t);
-    el.focus({ preventScroll: true });
-    if (!focused(el)) throw new Unfocusable();
+    focusIn(el);
     if (el.isContentEditable) {
       const before = el.textContent;
       const range = document.createRange();
@@ -237,16 +314,23 @@
     el.dispatchEvent(new Event("change", { bubbles: true }));
   };
   // Equal after folding case, accents and whitespace ONLY — punctuation is
-  // meaning ("C" ≠ "C++", "123456.7" ≠ "12345.67"). A phone number is the one
-  // value a page may re-punctuate, and only the FACT decides it is a phone
-  // (the loop passes format "phone" for phone slots) — never its characters.
-  // Both empty is NOT equal.
+  // meaning ("C" ≠ "C++", "123456.7" ≠ "12345.67"). Phone numbers and money
+  // are the values a page may re-punctuate ("$80,000" for 80000), and only the
+  // FACT decides which it is (the loop passes format "phone" / "money" by
+  // slot) — never its characters. Money compares as a number. Both empty is
+  // NOT equal.
   const fold = (s) => String(s ?? "").normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase().replace(/\s+/g, " ").trim();
+  // The first number in a money text: "$80,000.50" -> 80000.5; none -> NaN.
+  const amount = (s) => {
+    const m = /-?\d[\d,]*(?:\.\d+)?/.exec(String(s ?? "").replace(/\s/g, ""));
+    return m ? Number(m[0].replace(/,/g, "")) : NaN;
+  };
   const equivalent = (actual, wrote, { format } = {}) => {
     const a = fold(actual);
     const w = fold(wrote);
     if (!a || !w) return false;
     if (format === "phone") return a.replace(/\D/g, "") !== "" && a.replace(/\D/g, "") === w.replace(/\D/g, "");
+    if (format === "money") return Number.isFinite(amount(actual)) && amount(actual) === amount(wrote);
     return a === w;
   };
   // Popups the engine itself opened: their controls are never inventoried as
@@ -275,7 +359,7 @@
 
   ns.fillBase = {
     Cancelled, Unfocusable, check, sleep, settle, withinBudget, cancelAll, resume, waitFor, visible, invalid,
-    popups, ownedPopup, optionsOf, press, closePopups, typeText, equivalent, clean,
+    popups, ownedPopup, optionsOf, press, closePopups, enter, leave, keyPress, typeText, equivalent, amount, clean,
     markEnginePopup, insideEnginePopup,
   };
 })();
