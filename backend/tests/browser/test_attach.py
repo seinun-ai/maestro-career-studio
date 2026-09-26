@@ -84,8 +84,8 @@ def test_an_upload_the_page_accepted_counts_even_after_it_cleared_its_input(uplo
 
 
 def test_an_upload_the_page_refused_still_counts_zero(upload_page):
-    """No row, an emptied input: nothing proves the write, and the panel keeps
-    its honest "No upload box took the file"."""
+    """No row, an emptied input: nothing proves the write, and the panel says
+    it could not confirm the upload rather than claiming one."""
     page = upload_page
     page.evaluate(REFUSE, "")
     assert _attach(page) == {"ok": True, "data": 0}
@@ -193,15 +193,15 @@ REFUSALS = {
     "cant": f'<p>We can’t take {NAME}</p>',
     "virus": f'<p>{NAME} was flagged by the virus scan</p>',
     "role-alert-no-error-words": f'<p>{NAME}</p><p role="alert">Please choose another file.</p>',
-    "aria-live-no-error-words": f'<p>{NAME}</p><span aria-live="assertive">Please choose another file.</span>',
+    "aria-live-upload-failed": f'<p>{NAME}</p><span aria-live="assertive">Upload failed</span>',
 }
 
 
 @pytest.mark.parametrize("shown", REFUSALS.values(), ids=REFUSALS.keys())
 def test_a_page_that_says_no_counts_zero_however_it_says_it(upload_page, shown):
     """A NEW error in the widget voids the row proof: error words in any common
-    phrasing, or a new alert / live region with text even when its words are
-    not on the list."""
+    phrasing (a live region counts only through its words), or a new on-screen
+    alert with text even when its words are not on the list."""
     page = upload_page
     page.evaluate(REFUSE, f"""const box = document.createElement("div");
       box.innerHTML = {shown!r};
@@ -253,3 +253,73 @@ def test_a_detached_input_with_no_new_row_counts_zero(upload_page):
     }, true)""")
     assert _attach(page) == {"ok": True, "data": 0}
     assert oracle(page, "files") == []
+
+
+def test_a_live_region_that_announces_success_is_not_an_error(upload_page):
+    """The standard upload-status pattern: an EMPTY live region already in the
+    widget gets "Successfully Uploaded!". Gaining text is not an error — read
+    as one, the panel said "attach it yourself" over a page holding the file,
+    and Workday's `multiple` uploader then takes a SECOND copy."""
+    page = upload_page
+    page.evaluate("""() => {
+      const live = document.createElement("div");
+      live.id = "status"; live.setAttribute("aria-live", "polite");
+      document.querySelector('[data-automation-id="attachments-FileUpload"]').append(live);
+      document.querySelector('[data-automation-id="file-upload-input-ref"]').addEventListener("change",
+        () => setTimeout(() => { live.textContent = "Successfully Uploaded!"; }, 200));
+    }""")
+    assert _attach(page) == {"ok": True, "data": 1}
+    assert page.inner_text("#status") == "Successfully Uploaded!"
+    assert oracle(page, "files") == [NAME]
+
+
+def test_a_hidden_alert_is_not_news(upload_page):
+    """An alert the user cannot see says nothing to them, and `innerText` on a
+    hidden element still returns its text — so only an ON-SCREEN alert counts."""
+    page = upload_page
+    page.evaluate("""() => {
+      document.querySelector('[data-automation-id="file-upload-input-ref"]').addEventListener("change", () => {
+        const p = document.createElement("p");
+        p.setAttribute("role", "alert"); p.style.display = "none"; p.textContent = "Upload failed";
+        document.querySelector('[data-automation-id="attachments-FileUpload"]').append(p);
+      });
+    }""")
+    assert _attach(page) == {"ok": True, "data": 1}
+    assert page.locator("[role=alert]").count() == 1
+
+
+def test_a_filename_made_of_error_words_still_counts(page):
+    """The name is cut out of the text before the error words are read, so a
+    file whose separators leave "failed" and "error" at word boundaries is not
+    its own failure."""
+    page.set_default_timeout(20000)
+    _load(page, fixture_html("workday_upload.html"))
+    name = "cv - upload failed - error copy.pdf"
+    assert _attach(page, name=name) == {"ok": True, "data": 1}
+    assert oracle(page, "files") == [name]
+
+
+def test_the_widget_stops_below_a_container_holding_other_fields(page):
+    """An uploader holds no text box, select or combobox, so an ancestor that
+    does is the step, not the widget — and a row printed out there is not this
+    box's proof. Here the grandparent is still this input's alone as far as
+    FILE inputs go; only the City field says it is the step."""
+    page.set_default_timeout(20000)
+    _load(page, """
+      <div id="step">
+        <label>City <input type="text" id="city"></label>
+        <div id="wrap"><div id="box"><p>Resume</p><input type="file" id="resume" style="display:none"></div></div>
+        <div id="rows"></div>
+      </div>
+      <script>
+        document.getElementById("resume").addEventListener("change", (e) => {
+          const names = [...e.target.files].map((f) => f.name);
+          e.target.value = "";
+          setTimeout(() => { for (const n of names) {
+            const d = document.createElement("div"); d.textContent = n;
+            document.getElementById("rows").append(d);
+          } }, 200);
+        });
+      </script>""")
+    assert _attach(page) == {"ok": True, "data": 0}
+    assert page.inner_text("#rows") == NAME

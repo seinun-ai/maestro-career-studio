@@ -274,12 +274,16 @@ asking permission of itself.
   page where it worked. The row must be NEW (more on-screen elements naming the
   file than before the write, so an earlier upload of the same name proves
   nothing), inside that input's own widget (at most three levels up, never an
-  ancestor holding another file input, never the whole document), with no new
-  error words and no new alert or live region with text in the widget, no error
+  ancestor holding another file input or any other field, never the whole
+  document), with no new error words (a live region's text included) and no new
+  on-screen alert or invalid-marked element with text in the widget, no error
   words in the row itself, and still there a beat later; the page gets up to 3 s
   to show it. A row shown mid-upload that fails later still counts, which is why
-  the panel says "Check the upload before you submit."
-  A detached input counts only by that row. There is no second press.
+  the panel says "Check the upload before you submit." A detached input counts
+  only by that row. A zero on the same boxes is hedged — "Couldn't confirm the
+  upload. Check the upload box, and attach your resume only if it isn't
+  listed." — because a page can take the file without either proof, and a
+  second press there is a second copy. There is no second press.
 - **Mark applied** — the Draft/Applied segment lives in the footer permanently,
   so there is no nudge to hunt for. It is withheld for a status outside that pair,
   because pressing Draft on an `interviewing` application would silently walk the

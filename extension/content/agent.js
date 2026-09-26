@@ -162,22 +162,33 @@
   // after the write, so standing help text ("Files that exceed 5 MB are not
   // supported") is not news; only an error that APPEARS voids a row proof. A
   // WIDE list on purpose: a phrasing it misses is the panel saying "Attached"
-  // over a refused upload, while a false hit only sends the user to look.
-  // Apostrophes both straight and curly ("can’t").
+  // over a refused upload, while a false hit only sends the user to look —
+  // which is why some SUCCESS copy ("No errors", "0 failed") appearing after
+  // the write errs to zero, by design. Apostrophes both straight and curly
+  // ("can’t").
   const UPLOAD_ERROR = new RegExp(String.raw`\b(?:${[
     String.raw`errors?`, String.raw`fail(?:s|ed|ure|ing)?`, "invalid", "unable",
     "rejected", "denied", "disallowed", "unsupported", String.raw`unsuccessful(?:ly)?`,
     String.raw`exceed(?:s|ed|ing)?`, String.raw`went\s+wrong`, String.raw`corrupt(?:ed)?`,
     String.raw`virus(?:es)?`, "malware", String.raw`could\s*n(?:o|['’])t`,
     String.raw`can(?:\s*not|['’]t)`, String.raw`too\s+(?:large|big)`,
-    String.raw`not\s+(?:allowed|supported|accepted|permitted)`,
+    String.raw`not\s+(?:allowed|supported|accepted|permitted)`, String.raw`try\s+again`,
   ].join("|")})\b`, "gi");
 
-  // An element that ANNOUNCES: a new one with text in the widget is the page
-  // reporting something about the write, and a successful upload is shown as a
-  // row, not announced as an alert — so it voids the row proof even when its
-  // words ("Please choose another file.") are on no list.
-  const UPLOAD_ALERT = '[role="alert"], [aria-invalid="true"], [aria-live]';
+  // An element that ALARMS: a new ON-SCREEN alert, or an element marked
+  // invalid, with text in the widget is the page objecting to the write, so it
+  // voids the row proof even when its words ("Please choose another file.")
+  // are on no list. NOT `[aria-live]`: a polite live region that GAINS text is
+  // the standard upload-status pattern ("Successfully Uploaded!" into an empty
+  // region), and reading that as an error told the user to attach it again —
+  // a second copy on Workday's `multiple` uploader. A live region's words are
+  // still read, as part of the widget's text, against `UPLOAD_ERROR`.
+  const UPLOAD_ALERT = '[role="alert"], [aria-invalid="true"]';
+
+  // What an uploader never holds: a field of its own. An ancestor holding one
+  // is the application step around the uploader, not the uploader. Hidden
+  // inputs are left out — an uploader may keep the uploaded file's id in one.
+  const NOT_AN_UPLOADER = 'input:not([type="file"]):not([type="hidden"]), select, textarea, [role="combobox"]';
 
   /** The part of the page that belongs to ONE file input: where its uploader
    * would print the row for a file it took.
@@ -185,9 +196,11 @@
    * THE CLIMB is from the input's parent up to three levels, and the widget is
    * the highest level reached. It stops BELOW an ancestor that holds any OTHER
    * file input — so the cover-letter box's row can never vouch for the résumé
-   * box's write — and below `<body>`, `<html>` and a `<form>`, because those
-   * are the page or the application rather than the uploader: the proof is
-   * never a search of the whole document. A parent that already holds another
+   * box's write — below one that holds any other field (`NOT_AN_UPLOADER`), so
+   * a whole step container never becomes the widget, and below `<body>`,
+   * `<html>` and a `<form>`, because those are the page or the application
+   * rather than the uploader: the proof is never a search of the whole
+   * document. A parent that already holds another
    * file input leaves NO widget, and that box can then prove itself only by
    * `files`. Three levels covers Workday (the input sits directly in
    * `attachments-FileUpload`, the row a level below it) with room for a
@@ -198,6 +211,7 @@
     for (let level = 0; el && level < 3; level += 1, el = el.parentElement) {
       if (el === document.body || el === document.documentElement || el.tagName === "FORM") break;
       if ([...el.querySelectorAll('input[type="file"]')].some((other) => other !== input)) break;
+      if (el.querySelector(NOT_AN_UPLOADER)) break;
       widget = el;
     }
     return widget;
@@ -215,6 +229,7 @@
    * success row, even where the widget's error total did not rise because the
    * page cleared an old error as it printed the new one. */
   function rowsNaming(widget, filename) {
+    if (!widget.textContent.includes(filename)) return 0;
     return [widget, ...widget.querySelectorAll("*")].filter((el) =>
       el.textContent.includes(filename)
       && ![...el.children].some((child) => child.textContent.includes(filename))
@@ -223,12 +238,14 @@
   }
 
   /** The widget's error total: error words in its RENDERED text (a hidden
-   * error template is not news until it shows), plus every announcing element
-   * (`UPLOAD_ALERT`) that holds rendered text. */
+   * error template is not news until it shows), plus every ON-SCREEN alarming
+   * element (`UPLOAD_ALERT`) that holds text — on screen because `innerText`
+   * of a hidden element still returns its text, and an alert nobody can see
+   * tells the user nothing. */
   function uploadErrors(widget, filename) {
-    const announcing = [widget, ...widget.querySelectorAll(UPLOAD_ALERT)].filter((el) =>
-      el.matches(UPLOAD_ALERT) && String(el.innerText ?? "").trim() !== "").length;
-    return errorWords(widget.innerText ?? widget.textContent, filename) + announcing;
+    const alarming = [widget, ...widget.querySelectorAll(UPLOAD_ALERT)].filter((el) =>
+      el.matches(UPLOAD_ALERT) && isOnScreen(el) && String(el.innerText ?? "").trim() !== "").length;
+    return errorWords(widget.innerText ?? widget.textContent, filename) + alarming;
   }
 
   /** Attach a PDF to every attachable file input in this frame, and report how
@@ -261,8 +278,9 @@
    *   second copy counts zero (the user sees the earlier row and is told to
    *   check it: the safe direction), while Workday's `multiple` uploader adds a
    *   second row and counts. NO NEW ERROR because an error sentence names the
-   *   file too ("resume.pdf could not be uploaded"), and a NEW alert or live
-   *   region with text counts as an error whatever it says. Counting ELEMENTS
+   *   file too ("resume.pdf could not be uploaded"), and a NEW on-screen
+   *   alert or invalid-marked element with text counts as an error whatever
+   *   it says (a live region only through its words — see `UPLOAD_ALERT`). Counting ELEMENTS
    *   rather than remembering nodes survives a widget that re-renders its old
    *   rows.
    *
@@ -352,12 +370,15 @@
     while (Date.now() < deadline && targets.some((t) => t.widget !== null && !proven(t))) {
       await sleep(ATTACH_POLL_MS);
     }
-    // THE HOLD: a proof counts only if it is still true a beat later. A page
-    // that shows the row and then withdraws it for an error has not taken the
-    // file, and neither has a controlled input that discards it on a later
-    // render than the settle's.
+    // THE HOLD: a proof counts only if it held when the wait ended AND is
+    // still true a beat later — sampled at both ends, so a proof that merely
+    // arrives during the hold is not one that held. A page that shows the row
+    // and then withdraws it for an error has not taken the file, and neither
+    // has a controlled input that discards it on a later render than the
+    // settle's.
+    const held = targets.map(proven);
     await sleep(ATTACH_HOLD_MS);
-    return targets.filter(proven).length;
+    return targets.filter((t, i) => held[i] && proven(t)).length;
   }
 
   function isOnScreen(el) {

@@ -2792,7 +2792,7 @@ def test_a_page_whose_boxes_simply_refused_keeps_its_own_sentence(tmp_path):
     the boxes are the same boxes and they turned the file down."""
     out = _attach(tmp_path, press=True, attach_reply=ATTACH_NONE)
     note = _by_class(out["settled"]["foot"], "note")[0]["text"]
-    assert "No upload box took it" in note
+    assert "Couldn't confirm the upload" in note
     assert "upload boxes changed" not in note
 
 
@@ -2869,7 +2869,7 @@ def test_a_page_that_answered_and_had_nowhere_to_put_it_says_so(tmp_path):
     looked at — the same distinction the fill path makes."""
     out = _attach(tmp_path, press=True, attach_reply=ATTACH_NONE)
     note = _by_class(out["settled"]["foot"], "note")[0]
-    assert "No upload box took it" in note["text"]
+    assert "Couldn't confirm the upload" in note["text"]
     # Nothing is claimed: no report row, and the step is not ticked.
     assert "Resume attached" not in dict(_rows_of(out["settled"]["rail"]))
     assert _rows(_rail_rows({"regions": out["settled"]}))["fill"]["state"] != "done"
@@ -2880,7 +2880,7 @@ def test_a_page_nobody_reached_gets_the_other_sentence(tmp_path):
     the second is the one whose fix is reloading the tab."""
     out = _attach(tmp_path, press=True, attach_reply=ATTACH_UNREACHED)
     note = _by_class(out["settled"]["foot"], "note")[0]
-    assert "No upload box" not in note["text"]
+    assert "Couldn't confirm the upload" not in note["text"]
     assert note["text"] != ""
 
 

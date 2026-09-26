@@ -645,11 +645,19 @@
         // WRITING IT BACK is what makes the row itself say why — it flips to
         // the several-boxes refusal, in the same words the offer would have
         // used had the page looked like this when we first asked.
+        //
+        // THE SAME-BOXES ZERO IS HEDGED, not "no box took it". The engine's
+        // zero means it could not CONFIRM the upload — no file held, no new
+        // row naming it in time — and a page can take the file with neither
+        // (an uploader whose row is slower than the wait, or shaped in a way
+        // the proof does not read). Telling the user to attach it again on
+        // such a page is how Workday's `multiple` uploader ends up with two
+        // copies, so the sentence sends them to look first.
         const now = await store.detectFileInputs();
         if (store.current(token)) store.write({ fileInputs: now });
         throw ns.guidedRun.shown(now === expect
-          ? "Couldn't attach your resume. No upload box took it, so attach it "
-            + "yourself."
+          ? "Couldn't confirm the upload. Check the upload box, and attach your "
+            + "resume only if it isn't listed."
           : "Couldn't attach your resume. The page's upload boxes changed, so "
             + "check them and try again.");
       }
