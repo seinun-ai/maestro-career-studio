@@ -520,14 +520,17 @@ know, and each one was learned from a live failure.
   that adds or removes fields is looked at before the next field.** Ticking
   it removes the entry's To date a frame later. The loop works a choice whose
   MAPPED SLOT is an entry's `.current` first (by the slot, never the label),
-  then text and dates, then the other choices. After any choice that acted
-  on the page it peeks at the frames' fids (`fill_inventory` with `peek`: no
-  field is read, one frame waited first); if a field came or went, a full
-  inventory comes before the next field: one that went is dropped — never
-  written, never reported — and one that came (an "Other, please specify"
-  box) is mapped and filled in the same round. A typed value is not followed
-  by a peek: text almost never reshapes a form, and a peek per field would
-  cost a page pass each.
+  then text and dates, then the other choices; the leads' picks are one
+  call, the others' another. After any choice that changed the page (a
+  commit, or a value an explore left) it peeks at the frames' fids
+  (`fill_inventory` with `peek`: no field is read; one frame is waited first
+  unless the tab is hidden); if a field came or went, a full inventory comes
+  before the next field: one that went is dropped — never written after it
+  went, and not reported — and one that came (an "Other, please specify"
+  box) is mapped and filled in the same round. A free-text answer whose box
+  a commit re-rendered is written to the new box next round. A typed value
+  is not followed by a peek: text almost never reshapes a form, and a peek
+  per field would cost a page pass each.
 - **Entering and leaving a field are reported by hand when the browser will
   not.** While the Chrome window is not focused (you are looking at the panel
   or another window), `focus()`/`blur()` move focus but fire no events, so

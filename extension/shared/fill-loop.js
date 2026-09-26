@@ -24,11 +24,11 @@
  *   mapped again, nothing carried over.
  * - A round works LEADS first — a choice whose mapped slot is an entry's
  *   `.current`, which removes that entry's To date when ticked (notes §4) —
- *   then text and dates, then the other choices. After a choice acts on the
+ *   then text and dates, then the other choices. After a choice changes the
  *   page, a peek (the frames' fids only) asks whether fields came or went; if
  *   so, a fresh inventory comes before the next field: one that went is
- *   dropped, never written and never reported; one that came is mapped and
- *   joins the round.
+ *   dropped, never written after it went and not reported; one that came is
+ *   mapped and joins the round.
  * - When the generic path is surprised (an unexpected commit, no options, an
  *   honest "no option states it" over a popup), /step picks the next move from
  *   the moves the page's code listed. A click is sent `as: "progress"` only when
@@ -235,7 +235,8 @@
     // back (finish → tookBack).
     const rows = new Map();
     let listed = []; // the latest inventory's fids, in page order
-    let applied = 0; // page actions sent (a close aside): whether a field's work touched the page
+    // Page actions sent (a close aside) and commits an explore left: whether a field's work changed the page.
+    let pageActions = 0;
     let aiFailure = null;
     let host = null;
 
@@ -290,7 +291,7 @@
     // getting the first commit in is reported out of time, not written again.
     const work = (f, ms = L.FIELD_MS) => {
       const now = Date.now();
-      return set(f.fid, { status: "open", started: now, deadline: now + Math.max(0, ms - (rows.get(f.fid).spent ?? 0)) });
+      return set(f.fid, { status: "open", started: now, deadline: now + Math.max(0, ms - (rows.get(f.fid)?.spent ?? 0)) });
     };
     const rest = (f) => {
       const row = rows.get(f.fid);
@@ -369,7 +370,7 @@
     const act = async (f, action, { closing = false, overtime = false } = {}) => {
       if (cancelled() || (!closing && timedOut())) return { outcome: "halted" };
       if (!closing && !overtime && fieldLate(f)) return { outcome: "late" };
-      if (!closing) applied += 1;
+      if (!closing) pageActions += 1;
       const [got] = rowsOf(await broadcast({ type: "fill_apply", actions: [{ fid: f.fid, fp: f.fp, ...action }] }))
         .filter((r) => r?.fid === f.fid);
       if (!got) return { outcome: "stale" }; // no frame owns the fid any more
@@ -421,6 +422,7 @@
       // take it back: nothing more is tried on the field; the user is told
       // what it holds now.
       if (got.error === "committed_while_exploring") {
+        pageActions += 1; // it changed the page like any commit: a peek follows
         finish(f, "needs_answer", { lastOutcome: got.error, answer: stuckNote(got.committed) });
         return true;
       }
@@ -997,17 +999,21 @@
       return now.size !== listed.length || listed.some((fid) => !now.has(fid));
     };
     // A fresh inventory before the next field. A field that went is dropped
-    // from the round — never written, and never reported (the report lists
-    // the page as it is); one that came is mapped (the new ones only) and
-    // joins the round in order. Fields already worked this round wait for the
-    // next — one re-rendered under a new fid too (same frame, same
-    // fingerprint: `sameField`) — and a new prose field (its answers are
-    // asked once per round).
+    // from the round — never written after it went, and not reported (the
+    // report lists the page as it is); one that came is mapped (the new ones
+    // only) and joins the round in order. Fields already worked this round
+    // wait for the next — one re-rendered under a new fid too — and a new
+    // prose field (its answers are asked once per round).
+    // A field is known across a re-render by its frame and fingerprint. Two
+    // fields sharing a fingerprint are told apart only by their ordinal, so
+    // when one of them goes the other may take its ordinal and wait a round
+    // as though worked: deferred, never lost.
     const sameField = (f) => `${rows.get(f.fid)?.frameId}\n${f.fp}`;
+    const wasWorked = (worked, f) => worked.has(f.fid) || worked.has(sameField(f));
     const reobserve = async (worked, queue) => {
       const frames = await broadcast({ type: "fill_inventory", consentForms, runId });
       if (!(frames ?? []).some((fr) => fr?.result !== undefined)) return queue;
-      const open = observe(frames).filter((f) => !worked.has(f.fid) && !worked.has(sameField(f)));
+      const open = observe(frames).filter((f) => !wasWorked(worked, f));
       await mapFields(open);
       const { texts, choices } = routed(open);
       return order([...texts, ...choices]);
@@ -1040,11 +1046,15 @@
       const asking = prose.length ? answerProse(prose).then((got) => { answers = got; }) : null;
       let proseWritten = !prose.length;
       // Prose is written as soon as its answers are in, between other fields.
+      // A prose field no longer on the page (gone, or re-rendered under a new
+      // fid by a commit) is skipped: its replacement is answered next round.
       const writeProse = async () => {
         if (proseWritten || !answers || halt()) return;
         proseWritten = true;
+        const onPage = new Set(listed);
         for (const f of prose) {
           if (halt()) break;
+          if (!onPage.has(f.fid)) continue;
           const choice = answers[f.fid];
           if (!(choice?.answer && choice.reason === "matched")) {
             finish(f, "needs_answer", { lastOutcome: "abstained" });
@@ -1053,11 +1063,25 @@
           await onFieldClock(f, L.FIELD_MS, () => fillText(f, choice.answer));
         }
       };
-      // A lead picks on its own, first; the rest are picked together while the texts are written.
-      const batch = choices.filter((f) => !leads(f) && pickedTogether(f, rows.get(f.fid)));
-      const pickedFor = new Map(batch.map((f) => [f.fid, f.fp])); // a pick answers the question it was asked for
-      const prepicking = pickBatch(batch);
-      let prepicked = null;
+      // Picks made ahead, while the texts are written, in two calls: the
+      // leads' (awaited before the first lead) and the rest's. A pick answers
+      // the question it was asked for: a field whose fingerprint changed since
+      // picks again.
+      const ahead = (fields) => pickBatch(fields.filter((f) => pickedTogether(f, rows.get(f.fid))));
+      const picking = { lead: ahead(choices.filter(leads)), rest: ahead(choices.filter((f) => !leads(f))) };
+      const askedFp = new Map(choices.map((f) => [f.fid, f.fp]));
+      const picked = {};
+      // One choice field, and whether its work changed the page.
+      const workChoice = async (f) => {
+        const which = leads(f) ? "lead" : "rest";
+        picked[which] ??= await picking[which];
+        const given = picked[which].has(f.fid) && askedFp.get(f.fid) === f.fp ? picked[which].get(f.fid) : undefined;
+        const row = rows.get(f.fid);
+        const items = Array.isArray(row.value) ? Math.min(new Set(row.value).size, L.MAX_ITEMS) : 1;
+        const before = pageActions;
+        await onFieldClock(f, L.FIELD_MS + L.ITEM_MS * Math.max(0, items - 1), (working) => fillChoice(f, working, given));
+        return pageActions !== before;
+      };
       let queue = order([...texts, ...choices]);
       const worked = new Set();
       while (queue.length) {
@@ -1070,14 +1094,8 @@
           continue;
         }
         await writeProse();
-        if (!leads(f)) prepicked ??= await prepicking;
-        const given = prepicked?.has(f.fid) && pickedFor.get(f.fid) === f.fp ? prepicked.get(f.fid) : undefined;
-        const row = rows.get(f.fid);
-        const items = Array.isArray(row.value) ? Math.min(new Set(row.value).size, L.MAX_ITEMS) : 1;
-        const acted = applied;
-        await onFieldClock(f, L.FIELD_MS + L.ITEM_MS * Math.max(0, items - 1), (working) => fillChoice(f, working, given));
-        // A choice that acted on the page may have added or removed fields.
-        if (applied !== acted && !halt() && (await reshaped())) queue = await reobserve(worked, queue);
+        // A choice that changed the page may have added or removed fields.
+        if ((await workChoice(f)) && !halt() && (await reshaped())) queue = await reobserve(worked, queue);
       }
       if (asking && !proseWritten && !halt()) {
         await asking;

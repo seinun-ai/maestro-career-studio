@@ -105,10 +105,13 @@
   };
   const baseFp = (el, shape, d) => [shape.name, d.question, d.section, d.repeatIndex, el.getAttribute("name") ?? ""].join("|");
   const blocked = (text, consentForms) => Boolean(ns.isPolicyBlocked?.(text ?? "", { consentForms }));
-  // Blocked by its question, or when EVERY option is a never-fill one (an
-  // "Acknowledgements" set of attestations). Lone checkboxes' Yes/No never are.
-  const fieldBlocked = (question, options, consentForms) => blocked(question, consentForms)
-    || (options.length > 0 && options.every((t) => blocked(t, consentForms)));
+  // Blocked by its question, or when EVERY answer is a never-fill one (an
+  // "Acknowledgements" set of attestations); a placeholder or dash row is no
+  // answer either way. Lone checkboxes' Yes/No never are.
+  const fieldBlocked = (question, options, consentForms) => {
+    const answers = options.filter((t) => !ns.isPlaceholderText(t));
+    return blocked(question, consentForms) || (answers.length > 0 && answers.every((t) => blocked(t, consentForms)));
+  };
 
   const scan = (consentForms) => {
     const groups = new Set();

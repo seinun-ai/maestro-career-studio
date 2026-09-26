@@ -1,3 +1,5 @@
+import pytest
+
 from tests.browser.conftest import fixture_html
 
 NS = "window.careerStudioCompanion"
@@ -459,3 +461,29 @@ def test_aria_haspopup_noise_is_not_listed(page, load):
       <div role='button' aria-haspopup='false' tabindex='0'>More</div>
       <label id='d'>Degree</label><div role='button' aria-haspopup='listbox' aria-labelledby='d' tabindex='0'>Select</div>""")
     assert [(f["shape"], f["question"]) for f in fields(page)] == [("text", "Name"), ("popup", "Degree")]
+
+
+# The peek after a commit (inventory.peek) must name exactly the fids a full
+# pass lists, or every commit on such a page would cost a needless re-inventory.
+ARIA_RADIOS = """<span id='g'>Preferred contact</span><div role='radiogroup' aria-labelledby='g'>
+  <div role='radio' aria-checked='false' tabindex='0'>Email</div><div role='radio' aria-checked='false'>Phone</div></div>"""
+
+
+@pytest.mark.parametrize("html", [
+    *(fixture_html(n) for n in ("workday_sections.html", "workday_listbox.html", "native.html", "workday_date.html",
+                                "workday_search.html", "react_select.html", "popup_with_search.html",
+                                "workday_text.html")),
+    ARIA_RADIOS,
+], ids=["sections", "listbox", "native-radios", "date", "search", "react-select", "popup-search", "text", "aria-radios"])
+def test_a_peek_names_the_fids_a_full_pass_lists_on_an_unchanged_page(page, load, html):
+    load(page, html)
+    listed = sorted(f["fid"] for f in fields(page))
+    assert listed and sorted(page.evaluate(f"() => {INV}.peek()")) == listed
+
+
+def test_a_placeholder_row_does_not_hide_that_every_answer_is_never_fill(page, load):
+    """Every real option is an attestation; a dash row among them is no answer,
+    so it cannot make the field look fillable."""
+    load(page, """<label for='s'>Your statement</label><select id='s'>
+      <option>I certify that the above is true</option><option>—</option></select>""")
+    assert by_question(page)["Your statement"]["policyBlocked"] is True

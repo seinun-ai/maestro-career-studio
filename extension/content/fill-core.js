@@ -124,8 +124,8 @@
   // every list a model sees (explore's, a choose's surprise, the adaptive
   // step's options and click moves) drops it. Only that row goes: oids keep
   // numbering the list as the page shows it, and nothing else is hidden.
-  const answer = (o) => !ns.isPlaceholderText(o.text);
-  const flag = (options, consentForms) => options.filter(answer).map(({ oid, text, selected }) => ({
+  const isAnswerRow = (o) => !ns.isPlaceholderText(o.text);
+  const flag = (options, consentForms) => options.filter(isAnswerRow).map(({ oid, text, selected }) => ({
     oid, text, selected: Boolean(selected), policyBlocked: blockedText(text, consentForms),
   }));
   const same = (x, y) => JSON.stringify(x) === JSON.stringify(y);
@@ -1182,7 +1182,7 @@
   // un-pick it).
   const clickable = (el, shape, pop, consentForms) => {
     const multi = Boolean(shape.multi?.(el));
-    return b().optionsOf(pop).filter((o) => answer(o) && !blockedText(o.text, consentForms)
+    return b().optionsOf(pop).filter((o) => isAnswerRow(o) && !blockedText(o.text, consentForms)
       && !(multi && (isHeld(o) || holds(el, shape, o.text))));
   };
   // At most MAX_CLICKS of them, nearest what the list shows now: from the

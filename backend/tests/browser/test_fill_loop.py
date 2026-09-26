@@ -369,6 +369,46 @@ def test_a_field_a_commit_adds_is_mapped_and_filled_in_the_same_round(page, load
     assert first_round.count("fill_inventory") == 2 and first_round.count("fill_peek") == 2
 
 
+def test_a_prose_field_a_commit_re_renders_is_picked_up_next_round(page, load):
+    """A commit re-renders a free-text box under a new fid (same frame, same
+    fingerprint) while its answer is still being written: the old fid is gone
+    from the page, so the round skips it (no crash, no write to it) and the
+    replacement is answered and written in the next round."""
+    q = f("q", "popup", "How did you hear?")
+    w1 = f("w1", question="Why us?", fp="fp-w")
+    w2 = f("w2", question="Why us?", fp="fp-w")
+    out = run(page, load, frames=[[q, w1], [q, w2]], peek=[["q", "w2"]],
+              apiDelay={"/api/autofill/choose": 300},
+              map={"q": {"route": "slot", "slot": "preferences.how_heard", "value": "LinkedIn"},
+                   "w1": {"route": "free_text"}, "w2": {"route": "free_text"}},
+              explore={"q": {"options": [opt("o1", "LinkedIn")], "complete": True}},
+              pick={"q": {"oids": ["o1"], "reason": "matched"}},
+              choose={"w1": {"answer": "Because.", "reason": "matched"}, "w2": {"answer": "Because.", "reason": "matched"}})
+    assert statuses(out) == {"q": "verified", "w2": "verified"}
+    assert [a["fid"] for a in actions(out)] == ["q", "w2"]
+
+
+def test_the_leads_are_picked_in_one_call(page, load):
+    """However many entries carry a `.current` box, their picks are one /pick call."""
+    boxes = [current_box(f"c{i}", repeatIndex=i) for i in range(3)]
+    out = run(page, load, frames=[boxes],
+              map={f"c{i}": {"route": "slot", "slot": f"experience.{i}.current", "value": "Yes"} for i in range(3)},
+              pick={f"c{i}": {"oids": ["yes"], "reason": "matched"} for i in range(3)})
+    assert statuses(out) == {"c0": "verified", "c1": "verified", "c2": "verified"}
+    assert [[x["fid"] for x in b["fields"]] for b in bodies(out, "/api/autofill/pick")] == [["c0", "c1", "c2"]]
+
+
+def test_a_commit_an_explore_could_not_take_back_is_followed_by_a_peek(page, load):
+    """Exploring picked a value the page would not give back: that is a change
+    on the page like any commit, so the loop peeks before the next field."""
+    out = run(page, load, frames=[[f("k", "search", "Minor")]],
+              map={"k": {"route": "slot", "slot": "education.0.minor", "value": "Analytics"}},
+              explore={"Analytics": {"options": [], "complete": False, "error": "committed_while_exploring",
+                                     "committed": "Analytics"}})
+    assert statuses(out) == {"k": "needs_answer"}
+    assert "fill_peek" in out["calls"] and not actions(out)
+
+
 def test_a_user_edit_during_the_model_call_is_respected(page, load):
     out = run(page, load, frames=[[f("a", question="City")]] * 3,
               map={"a": {"route": "slot", "slot": "personal.city", "value": "X"}}, apply={"X": {"outcome": "yours"}})

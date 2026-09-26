@@ -237,10 +237,11 @@
     // `peek`: only the frame's fids, after a commit that may have added or
     // removed fields; it starts no run and changes no consent. A commit's
     // structural change can land a frame later (notes §4: the To date goes
-    // on the next frame), so one frame (bounded, for a hidden tab) comes first.
+    // on the next frame), so one frame (bounded) comes first — not in a
+    // hidden tab, which runs no frames and stretches its timers.
     inventory: serial(async (opts = {}) => {
       if (opts.peek) {
-        await new Promise((resolve) => {
+        if (!document.hidden) await new Promise((resolve) => {
           const timer = setTimeout(resolve, 100);
           requestAnimationFrame(() => {
             clearTimeout(timer);
