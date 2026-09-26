@@ -507,6 +507,18 @@ LEAVE = """(el) => { el.blur(); el.dispatchEvent(new FocusEvent('blur'));
   el.dispatchEvent(new FocusEvent('focusout', {bubbles: true, relatedTarget: null})); }"""
 
 
+def test_unfocused_mode_survives_a_direct_set_content(page_unfocused):
+    """Not only `load`: a test that calls set_content itself (the end-to-end
+    `_start`) still gets an unfocused window, never a silently focused one."""
+    page = page_unfocused
+    for html in ("<input id='a'><input id='b'>", "<input id='a'><input id='b'><p>second page</p>"):
+        page.set_content(html)
+        got = page.evaluate("""() => { let n = 0; for (const t of ['focus', 'blur', 'focusin', 'focusout'])
+            document.addEventListener(t, () => n++, true);
+          a.focus(); b.focus(); b.blur(); return [n, document.activeElement === document.body]; }""")
+        assert got == [0, True]
+
+
 def test_unfocused_a_bare_blur_commits_no_text_and_blur_then_events_does(page_unfocused, load):
     page = page_unfocused
     load(page, fixture_html("workday_text.html"), sources=[])

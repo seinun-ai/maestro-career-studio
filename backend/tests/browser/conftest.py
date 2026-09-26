@@ -69,8 +69,9 @@ def page(browser):
 # test page's window IS focused, so this recreates it: during a native
 # focus()/blur() call every focus event is stopped at the window, in capture.
 # Trusted Playwright input and events the engine dispatches itself still pass.
-# Idempotent: set_content's document.open drops window listeners, so `load`
-# installs it again after every page.
+# Idempotent: set_content's document.open drops window listeners, so
+# `page_unfocused` wraps its set_content to install it again after every page
+# — `load` or a direct call (the end-to-end `_start`) alike.
 UNFOCUSED_WINDOW = """(() => {
   const KEY = Symbol.for("careerStudioTests.unfocusedWindow");
   const state = (HTMLElement.prototype[KEY] ??= { muted: 0, wrapped: false });
@@ -93,11 +94,17 @@ UNFOCUSED_WINDOW = """(() => {
 @pytest.fixture
 def page_unfocused(browser):
     """A page whose window behaves as if the browser were not focused (see
-    UNFOCUSED_WINDOW). Opt in per test; `load` keeps the mode across pages."""
+    UNFOCUSED_WINDOW). Opt in per test; every set_content keeps the mode."""
     context = browser.new_context(viewport={"width": 1280, "height": 900}, offline=True)
     context.add_init_script(UNFOCUSED_WINDOW)
     pg = context.new_page()
-    pg.unfocused_window = True
+    set_content = pg.set_content
+
+    def _set_content(*args, **kwargs):
+        set_content(*args, **kwargs)
+        pg.evaluate(UNFOCUSED_WINDOW)
+
+    pg.set_content = _set_content
     yield pg
     context.close()
 
@@ -110,8 +117,6 @@ def fixture_html(name: str) -> str:
 def load():
     def _load(pg, html: str, sources: list[str] | None = None):
         pg.set_content(html)
-        if getattr(pg, "unfocused_window", False):
-            pg.evaluate(UNFOCUSED_WINDOW)
         for src in sources if sources is not None else ENGINE_SOURCES:
             pg.add_script_tag(content=(EXTENSION / src).read_text(encoding="utf-8"))
         return pg
