@@ -79,7 +79,7 @@
   };
   const formatPattern = (pattern, d) => pattern.replace(/yyyy/i, d.year).replace(/mm/i, d.month).replace(/dd/i, d.day);
 
-  const filled = (proof) => [proof].flat().some((p) => p != null && p !== "");
+  const nonEmpty = (proof) => [proof].flat().some((p) => p != null && p !== "");
   // `before` (a pick's snapshot of shape.evidence) makes an unmoved proof
   // "unconfirmed" unless the display already stated the answer before.
   // `undo` (the engine's OWN undo callers only, never a page action): choosing
@@ -89,21 +89,22 @@
   // never a verified value (the display reads "" for it, which matches nothing).
   const verify = (el, shape, expected, { format, before, undo = false } = {}) => {
     if (!el.isConnected) return "stale";
-    const proof = shape.evidence?.(el).proof ?? null;
+    const { proof } = shape.evidence(el);
     if (undo && shape.name === "popup" && typeof expected === "string" && ns.isPlaceholderText(expected)) {
       if (shape.read(el) !== "") return "reverted";
-      return proof === null || !filled(proof) ? "verified" : "unconfirmed";
+      return proof === null || !nonEmpty(proof) ? "verified" : "unconfirmed";
     }
     if (b().invalid(el)) return "reverted";
-    const shown = displayed(el, shape, expected, { format });
-    if (shown !== "verified" || proof === null) return shown;
-    if (!filled(proof)) return "unconfirmed";
+    const onScreen = displayed(el, shape, expected, { format });
+    if (onScreen !== "verified" || proof === null) return onScreen;
+    if (!nonEmpty(proof)) return "unconfirmed";
     if (!before || !same(proof, before.proof)) return "verified";
     return displayed(el, shape, expected, { format, have: before.display }) === "verified" ? "verified" : "unconfirmed";
   };
-  // Whether the display states the value (`have`: a display read earlier).
-  const displayed = (el, shape, expected, { format, have: shown } = {}) => {
-    const have = [shown === undefined ? shape.read(el) : shown].flat();
+  // Whether the display states the value: the one on screen now, or `have`
+  // (a display read earlier).
+  const displayed = (el, shape, expected, { format, have: earlier } = {}) => {
+    const have = [earlier === undefined ? shape.read(el) : earlier].flat();
     if (shape.name === "date") {
       const want = parseDate(expected);
       if (shape.dateKind(el) === "pattern") {
@@ -371,7 +372,8 @@
   // Whether the field's committed value already holds this text — presence
   // only, whatever error the field shows.
   const holds = (el, shape, x) => [shape.read(el)].flat().some((h) => b().equivalent(h, x));
-  // An item a multi widget already holds is never clicked (a click toggles it off).
+  // An item a multi widget already holds is never clicked (a click toggles it
+  // off); what the page holds is reported as it stands.
   const alreadyThere = (el, shape, text) => ({
     outcome: verify(el, shape, text) === "verified" ? "verified" : "reverted", text,
   });
@@ -386,6 +388,10 @@
     if (shape.passive) return choosePassive(el, shape, text, t, consentForms);
     const multi = Boolean(shape.multi?.(el));
     if (multi && holds(el, shape, text)) return alreadyThere(el, shape, text);
+    // A one-answer widget that already holds this answer — shown AND, where
+    // the page exposes it, saved — is never clicked again. One that only
+    // shows it (a popup whose backing input is empty) still gets the pick.
+    if (!multi && verify(el, shape, text) === "verified") return { outcome: "verified", text };
     // What the field showed and the app held before the pick: its proof must move.
     const before = shape.evidence(el);
     for (const gesture of GESTURES) {
@@ -679,8 +685,7 @@
       if (as === "progress" && !hit.group) return { outcome: "unexpected", reason: "not_a_group" };
       // A placeholder row is never an answer (only the engine's undo chooses it).
       if (!hit.group && ns.isPlaceholderText(hit.text)) return { outcome: "unexpected", reason: "placeholder" };
-      const evidence0 = shape.evidence(el);
-      const before0 = evidence0.display;
+      const before = shape.evidence(el);
       const shown = b().optionsOf(held.pop).map((o) => o.text).join("\n");
       hit.el.scrollIntoView?.({ block: "nearest" });
       for (const gesture of GESTURES) {
@@ -688,7 +693,7 @@
         await b().settle(t, 200);
         const after = own(el, held.before) ?? (b().visible(held.pop) ? held.pop : null);
         const next = after ? b().optionsOf(after).map((o) => o.text).join("\n") : "";
-        const unchanged = same(shape.read(el), before0);
+        const unchanged = same(shape.read(el), before.display);
         if (next && next !== shown && unchanged) { // a category: its children are the next state
           leftOpen.set(el, { pop: after, before: held.before });
           return { outcome: "progressed" };
@@ -698,13 +703,13 @@
       }
       if (hit.group) {
         // Not an answer: one that committed a value is reported, never verified.
-        const committed = !same(shape.read(el), before0);
+        const committed = !same(shape.read(el), before.display);
         await tidy(el, t);
         return { outcome: "unexpected", reason: committed ? "group_committed" : "not_committed" };
       }
       if (holds(el, shape, hit.text) && [shape.read(el)].flat().includes(el.value)) typed.delete(el);
       await tidy(el, t);
-      const got = verify(el, shape, hit.text, { before: evidence0 });
+      const got = verify(el, shape, hit.text, { before });
       if (got === "verified" || got === "unconfirmed") return { outcome: got, text: hit.text };
       return { outcome: "unexpected", reason: "not_committed" };
     }

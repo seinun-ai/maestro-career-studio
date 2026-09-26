@@ -158,13 +158,18 @@ def test_popup_evidence_is_the_backing_input_changing(window, request, load):
     assert row["outcome"] == "verified" and oracle(page, "degree") == "Masters" and backing(page, "degree")
 
 
-def test_a_popup_pick_that_shows_but_never_saves_is_unconfirmed(page, load):
+@in_both_windows()
+def test_a_popup_pick_that_shows_but_never_saves_is_unconfirmed(window, request, load):
     """adversarial_revert.html: the first pick shows its text, the backing
     input stays empty (the app never took it). Never verified, never clicked
     a second time."""
+    page = request.getfixturevalue(window)
     load(page, fixture_html("adversarial_revert.html"))
+    page.evaluate("""() => { window.optionClicks = 0; document.addEventListener('click', (e) => {
+        if (e.target.closest('#relocate-list li')) window.optionClicks += 1; }, true); }""")
     row = apply(page, inv(page)["Are you willing to relocate?"], op="choose", text="Yes")
     assert (row["outcome"], row["committed"]) == ("unconfirmed", "Yes")
+    assert page.evaluate("window.optionClicks") == 1
     assert oracle(page, "relocate") == "" and backing(page, "relocate") == ""
     # The take-back the notes saw: the display goes; the app never held it.
     assert page.evaluate("window.__revertNow()") is True
@@ -191,6 +196,66 @@ def test_placeholder_pick_clears_the_evidence(page, load):
         li.replaceWith(Object.assign(li.cloneNode(true), {onclick: (e) => { e.stopPropagation();
           document.getElementById('degree').textContent = 'Select One'; document.getElementById('degree-list').style.display = 'none'; }})); }""")
     assert undo(page, "degree")["outcome"] == "unconfirmed" and oracle(page, "degree") == "Masters"
+
+
+def test_an_answer_already_held_is_not_clicked_again(page, load):
+    """A one-answer widget that shows AND holds the answer is left alone: a
+    popup whose backing input holds it, a search box whose pill states it."""
+    load(page, fixture_html("workday_listbox.html"))
+    assert apply(page, inv(page)["Degree"], op="choose", text="Masters")["outcome"] == "verified"
+    held = backing(page, "degree")
+    page.evaluate("""() => { window.optionClicks = 0; document.addEventListener('click', (e) => {
+        if (e.target.closest('#degree-list li') || e.target.id === 'degree') window.optionClicks += 1; }, true); }""")
+    assert apply(page, inv(page)["Degree"], op="choose", text="Masters")["outcome"] == "verified"
+    assert page.evaluate("window.optionClicks") == 0 and backing(page, "degree") == held
+    load(page, fixture_html("workday_search.html"))
+    row = apply(page, inv(page)["Type to Add Skills"], op="choose", text="SQL")
+    assert (row["outcome"], row["committed"]) == ("verified", ["SQL"])
+    assert page.input_value("#skills") == "" and oracle(page, "skills") == ["SQL"]
+
+
+def test_unmoved_proof_verifies_only_an_answer_the_field_already_held(page, load):
+    """verify with a pick's snapshot: the proof did not move, so the pick is
+    verified only if the display already stated it before."""
+    load(page, fixture_html("workday_listbox.html"))
+    assert apply(page, inv(page)["Degree"], op="choose", text="Masters")["outcome"] == "verified"
+    got = page.evaluate("""() => { const ns = window.careerStudioCompanion; const el = document.getElementById('degree');
+        const shape = ns.shapes.of(el); const before = shape.evidence(el);
+        return [ns.fillCore.verify(el, shape, 'Masters', {before}),
+                ns.fillCore.verify(el, shape, 'Masters', {before: {...before, display: ''}})]; }""")
+    assert got == ["verified", "unconfirmed"]
+
+
+# A generic popup (not Workday) whose question wrapper also holds hidden
+# inputs that are NOT its backing: proof must stay null and the display decide.
+GENERIC_POPUP = """<div id='portal'></div><script>
+(() => { const btn = document.getElementById('src'); const list = document.getElementById('src-list');
+  btn.addEventListener('click', (e) => { e.stopPropagation(); list.style.display = list.style.display === 'none' ? 'block' : 'none'; });
+  for (const li of list.querySelectorAll('li')) li.addEventListener('click', (e) => {
+    e.stopPropagation(); btn.textContent = li.textContent; list.style.display = 'none'; });
+  document.addEventListener('click', () => { list.style.display = 'none'; });
+})();
+</script>"""
+OPTIONS = "<ul role='listbox' id='src-list' style='display:none'><li role='option'>Website</li><li role='option'>LinkedIn</li></ul>"
+
+
+@pytest.mark.parametrize("markup", [
+    # An "Other, please specify" text box, hidden, in the question's wrapper.
+    f"""<div class='question'><label id='l'>How did you hear about us?</label>
+      <div class='wrap'><button id='src' aria-haspopup='listbox' aria-labelledby='l' aria-controls='src-list'>Select One</button></div>
+      <input type='text' style='display:none' name='other_source'></div>{OPTIONS}""",
+    # A closed menu next to the button, holding its own (hidden) search box.
+    """<label id='l'>How did you hear about us?</label>
+      <div><button id='src' aria-haspopup='listbox' aria-labelledby='l' aria-controls='src-list'>Select One</button>
+      <div role='menu' id='src-list' style='display:none'><input type='text' placeholder='Search'>
+        <ul role='listbox'><li role='option'>Website</li><li role='option'>LinkedIn</li></ul></div></div>""",
+], ids=["hidden-other-box-in-wrapper", "search-box-in-closed-menu"])
+def test_a_hidden_input_that_is_not_beside_the_button_is_no_backing(page, load, markup):
+    load(page, markup + GENERIC_POPUP)
+    assert page.evaluate("""() => { const el = document.getElementById('src');
+        return window.careerStudioCompanion.shapes.of(el).evidence(el).proof; }""") is None
+    row = apply(page, inv(page)["How did you hear about us?"], op="choose", text="LinkedIn")
+    assert (row["outcome"], row["committed"]) == ("verified", "LinkedIn")
 
 
 def test_a_placeholder_is_never_chosen_as_an_answer(page, load):

@@ -438,9 +438,10 @@ know, and each one was learned from a live failure.
   emitting no telemetry. The rule pass's writer opens the popup, picks by the
   same scorer, and reads the BUTTON'S OWN TEXT back: a click the page cancelled
   is reported as a snap failure, never as filled (the fill loop reads the
-  backing input instead — see "A fill is proven by what the app saved"). A button already showing an answer is left
-  alone. The header's own menus (Settings, the account menu) carry
-  `aria-haspopup` too and are excluded by their automation id.
+  backing input instead — see "A fill is proven by what the app saved"). A
+  button already showing an answer is left alone. The header's own menus
+  (Settings, the account menu) carry `aria-haspopup` too and are excluded by
+  their automation id.
 - **A popup write stays inside its own control.** `[role="option"]` is
   document-wide, so an unscoped read collects every open popup on the page —
   and Workday marks a multiselect's already-chosen chips as options too, where
@@ -479,27 +480,32 @@ know, and each one was learned from a live failure.
 - **A fill is proven by what the app saved, not by what the widget shows.**
   Each shape reports `evidence` (`content/shapes.js`): the display, and the
   proof where the page exposes it. A Workday popup shows a pick at once, but
-  the app has it only when the hidden input beside the button holds a value
-  (live, picks that showed later went back to "Select One" with that input
-  still empty); a Workday search box's proof is its pills, read from the
-  `multiselect` container around the input (the `selectinput` marker sits on
-  the input itself, which holds no pills). A pick is verified when the display
-  states it AND the proof holds something that moved since before the click
-  (or the field already held that answer); a display over unmoved proof is
-  `unconfirmed` — reported as a value to check (`filled_unverified`), never
-  as filled, and never clicked a second time. Choosing the placeholder is the
-  engine's own undo (an opt-in no page action carries) and must empty the
-  proof; a decision that names a placeholder is refused unclicked, and the
-  loop never reports an empty or placeholder value as filled. The final sweep re-reads the
-  proof, so a backing input that empties later is a reversion. A popup with
-  no discoverable backing input (not exactly one hidden input beside it) is
-  judged by its display alone, which is weaker. Whether a Workday search box
-  takes one answer or several shows only in its open list — radio rows or
-  checkbox rows, under the same container — so it is learnt from the first
-  list the engine opens for it (or several pills, or `aria-multiselectable`);
-  until then its one pill reads as a list, the field is not "answered", and
-  the loop explores a several-item fact's first item before choosing between
-  one answer and a set.
+  the app has it only when the hidden input beside the button (a direct
+  sibling, the only one) holds a value (live, picks that showed later went
+  back to "Select One" with that input still empty); a hidden input further
+  out — an "Other" text box in the question's wrapper, a search box inside a
+  closed menu — is never taken for it. A Workday search box's proof is its
+  pills, read from the `multiselect` container around the input (the
+  `selectinput` marker sits on the input itself, which holds no pills). A pick
+  is verified when the display states it AND the proof holds something that
+  moved since before the click (or the field already held that answer); a
+  display over unmoved proof is `unconfirmed` — reported as a value to check
+  (`filled_unverified`), never as filled, and never clicked a second time. A
+  one-answer widget that already shows and holds the answer is not clicked at
+  all. Choosing the placeholder is the engine's own undo (an opt-in no page
+  action carries) and must empty the proof; a decision that names a
+  placeholder is refused unclicked, and the loop never reports an empty or
+  placeholder value as filled. The final sweep re-reads the proof, so a
+  backing input that empties later is a reversion. A popup with no
+  discoverable backing input is judged by its display alone, which is weaker.
+  Whether a Workday search box takes one answer or several shows only in its
+  open list — radio rows or checkbox rows, under the same container — so it is
+  learnt from the first list the engine opens for it (or several pills, or
+  `aria-multiselectable`); until then its one pill reads as a list, the field
+  is not "answered", and the loop explores a several-item fact's first item
+  before choosing between one answer and a set. A box whose rows turn out to
+  be radios and that already holds a value is left as it stands (`already`),
+  never overwritten.
 - Identity fields (name, email, phone) overwrite a wrong ATS prefill and are
   reported under "corrected"; identity **comboboxes** are fill-only-if-empty.
 - Hidden clone fields are skipped, a write a controlled input rejected is

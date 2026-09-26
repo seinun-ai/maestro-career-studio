@@ -194,7 +194,7 @@
       const answer = Array.isArray(committed) ? committed.join(", ") : committed ?? null;
       if (!STATUS[reason]) return unconfirmed(f, answer); // never "verified" by default
       // Nothing, or a popup's placeholder, is never a filled answer — whatever the page said.
-      if (!String(answer ?? "").trim() || ns.isPlaceholderText?.(answer)) return unconfirmed(f, answer || null);
+      if (!String(answer ?? "").trim() || ns.isPlaceholderText(answer)) return unconfirmed(f, answer || null);
       return finish(f, STATUS[reason], { answer, lastOutcome: "verified", wrote: answer });
     };
     // One clock per field, started when the loop starts on it.
@@ -480,6 +480,7 @@
             if (exploreRefused(f, got)) return undefined;
             // Radio rows: the widget takes ONE answer after all (nothing is committed yet).
             if (got.multi === false) {
+              if (holdsOne(f, row, got)) return finish(f, "already");
               if (all.length > 1) return finish(f, "needs_answer", { lastOutcome: "set_for_one" });
               return commitOne(f, row, got.options ?? [], false, item, item);
             }
@@ -570,6 +571,13 @@
       });
     };
 
+    // A search box whose rows turned out to be radios (ONE answer) and that
+    // already holds a value — the user's, or a parsed resume's — is left as
+    // it stands, like any answered field: never overwritten. A value the
+    // engine wrote for an earlier question (a leftover) is not an answer.
+    const holdsOne = (f, row, got) => f.shape === "search" && got?.multi === false && !row.leftover && !f.invalid
+      && [f.committed].flat().some((v) => v != null && String(v).trim() !== "");
+
     // ---- a choice field: explore when the list is not already whole, then pick and commit
     const fillChoice = async (f, row, prepicked) => {
       const { value } = row;
@@ -586,6 +594,7 @@
         const got = await explore(f, first);
         if (!got) return lateOrHalted(f);
         if (exploreRefused(f, got)) return undefined;
+        if (holdsOne(f, row, got)) return finish(f, "already");
         if (got.multi === true) {
           multi = true;
           learnt = { item: first, got };
@@ -604,6 +613,7 @@
         const got = await explore(f, term);
         if (!got) return lateOrHalted(f);
         if (exploreRefused(f, got)) return undefined;
+        if (holdsOne(f, row, got)) return finish(f, "already");
         if (got.options?.length) {
           opts = got.options;
           complete = Boolean(got.complete);

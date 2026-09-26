@@ -38,7 +38,7 @@
   const DATE_PATTERN = /^(mm|dd|yyyy)([/.\-](mm|dd|yyyy)){1,2}$/i;
   const HASPOPUP = /^(listbox|true|menu|dialog)$/;
   // Trailing glyphs (▾) go before a popup's text is read or tested as a
-  // placeholder (ns.isPlaceholderText, field-reader.js).
+  // placeholder (ns.isPlaceholderText, shared/policy.js).
   const GLYPHS = /[\p{So}\s]+$/u;
   const CHIP = '[data-automation-id="selectedItem"], [class*="multi-value__label" i], [class*="multiValue" i] [class*="label" i]';
   const SINGLE = '[class*="single-value" i], [class*="singleValue" i], [class*="selection-item" i]';
@@ -187,21 +187,19 @@
     display: readSearch(el), proof: workdayBox(el) || searchMulti(el) ? chips(el) : null,
   });
 
-  // A popup's backing input: the one non-visible input beside it (Workday
-  // puts it in the button's parent and fills it only when the app takes the
-  // pick, notes §8a), else the one in the field's box — an ancestor (3
-  // levels, never <body>/<form>) holding no other visible control. Two
-  // candidates is no backing: a guess would prove a neighbour's value.
+  // A popup's backing input: the one non-visible input BESIDE it — a direct
+  // sibling, where Workday puts it and fills it only when the app takes the
+  // pick (notes §8a). Never one further out: a hidden "Other" text box in the
+  // question's wrapper is a different answer, and proving by it would call a
+  // good pick unconfirmed. Never one in the popup's own list or a menu (a
+  // search box a closed menu keeps), never a checkable. Two candidates is no
+  // backing: a guess would prove a neighbour's value.
   const backingOf = (el) => {
-    const { CONTROL } = ns.fieldControls;
-    const shown = (n) => ns.fillBase.visible(n);
-    for (let n = el.parentElement, d = 0; n && d < 3 && !edge(n); n = n.parentElement, d += 1) {
-      if ([...n.querySelectorAll(CONTROL)].some((c) => c !== el && !el.contains(c) && shown(c))) break;
-      const hidden = [...n.querySelectorAll("input")]
-        .filter((i) => i !== el && !el.contains(i) && !/^(checkbox|radio|file)$/.test(i.type) && !shown(i));
-      if (hidden.length) return hidden.length === 1 ? hidden[0] : null;
-    }
-    return null;
+    const list = el.getAttribute("aria-controls");
+    const hidden = [...(el.parentElement?.children ?? [])].filter((i) => i !== el && i.tagName === "INPUT"
+      && !/^(checkbox|radio|file)$/.test(i.type) && !ns.fillBase.visible(i)
+      && !i.closest('[role="listbox"], [role="menu"]') && !(list && i.closest(`[id="${CSS.escape(list)}"]`)));
+    return hidden.length === 1 ? hidden[0] : null;
   };
   // A popup's text (placeholder: nothing), else a read-only input's value or
   // the single-value node beside it.

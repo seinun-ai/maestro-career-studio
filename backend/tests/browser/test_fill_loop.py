@@ -232,6 +232,17 @@ def test_a_search_whose_rows_show_radios_takes_one_answer(page, load):
     assert "/api/autofill/pick" not in out["calls"] and not actions(out)
 
 
+def test_a_one_answer_search_box_that_already_holds_a_value_is_left_alone(page, load):
+    """Its one pill did not say single or several; the rows (radios) did. What
+    it holds — the user's, or a parsed resume's — is never overwritten."""
+    out = run(page, load, frames=[[f("k", "search", "School", committed=["UT Austin"])]],
+              map={"k": {"route": "slot", "slot": "education.0.school", "value": "UT Arlington"}},
+              explore={"UT Arlington": {"options": [opt("o1", "UT Arlington")], "multi": False}},
+              pick={"k": {"oids": ["o1"], "reason": "matched"}})
+    assert statuses(out) == {"k": "already"}
+    assert not actions(out) and "/api/autofill/pick" not in out["calls"]
+
+
 def test_radio_rows_turn_a_one_item_set_into_one_answer(page, load):
     out = run(page, load, frames=[[f("k", "search", "School", multi=True)]],
               map={"k": {"route": "slot", "slot": "education.0.school", "value": ["UT Arlington"]}},

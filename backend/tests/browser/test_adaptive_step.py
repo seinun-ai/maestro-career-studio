@@ -44,6 +44,17 @@ def test_a_category_continues_from_its_children_to_the_leaf(page, load):
     assert not list_shown(page)
 
 
+def test_a_placeholder_row_is_never_clicked_as_an_answer(page, load):
+    load(page, fixture_html("workday_listbox.html"))
+    f = inv(page)["Degree"]
+    assert move(page, f, "open", "Masters")["outcome"] == "progressed"
+    s = state(page, f, "Masters")
+    mid = next(c["mid"] for c in s["candidates"] if c["describe"] == 'Click the option "Select One"')
+    row = move(page, f, mid, "Masters", version=s["version"])
+    assert (row["outcome"], row["reason"]) == ("unexpected", "placeholder")
+    assert oracle(page, "degree") == "" and page.inner_text("#degree") == "Select One"
+
+
 def test_a_popup_that_needs_a_search_is_opened_searched_and_picked(page, load):
     load(page, fixture_html("popup_with_search.html"))
     f = inv(page)["Field of study"]
