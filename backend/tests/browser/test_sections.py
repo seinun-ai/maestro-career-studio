@@ -235,3 +235,40 @@ def test_step_page_and_of_numbers_are_not_entries(page, load):
                          "window.careerStudioCompanion.repeatOf('Step 2'), "
                          "window.careerStudioCompanion.repeatOf('Websites')]") == [
         {"base": "Work Experience", "n": 2}, None, None]
+
+
+def test_an_add_that_hides_itself_after_the_press_still_counts_its_entry(page, load):
+    """Some sections take one entry and hide their Add: the entry the press
+    made is counted (the section is re-read without needing its Add), so no
+    false "0 of 1 added" line."""
+    load(page, """<div role="group" aria-labelledby="h"><h4 id="h">Websites</h4><div class="entries"></div>
+      <button type="button" id="add" data-automation-id="add-button">Add</button></div>
+    <script>
+      document.getElementById("add").addEventListener("click", (e) => {
+        document.querySelector(".entries").innerHTML =
+          '<div role="group" aria-label="Websites 1"><input aria-label="URL"></div>';
+        e.target.hidden = true;
+      });
+    </script>""")
+    [web] = sections(page)
+    assert add(page, web["sid"], "Websites", 0) == {"sid": web["sid"], "outcome": "added", "entries": 1}
+
+
+def test_a_flat_section_takes_the_add_after_its_last_entry_not_one_inside_an_entry(page, load):
+    """In a flat layout nothing marks where an entry ends, so an Add-like
+    button inside entry 1 ("Add responsibility") would read as the section's:
+    the section's Add is the last one after its last entry title."""
+    load(page, """<div><h3>Work Experience</h3>
+      <h4>Work Experience 1</h4><label>Job Title <input></label>
+      <button type="button" id="resp1">Add responsibility</button>
+      <h4>Work Experience 2</h4><label>Job Title <input></label>
+      <button type="button" id="resp2">Add responsibility</button>
+      <button type="button" id="own">Add another</button></div>
+    <script>
+      window.pressed = [];
+      for (const b of document.querySelectorAll("button")) b.addEventListener("click", () => window.pressed.push(b.id));
+    </script>""")
+    [work] = sections(page)
+    assert (work["entries"], work["add"]) == (2, "Add another")
+    add(page, work["sid"], "Work Experience", 2)
+    assert page.evaluate("window.pressed") == ["own"]

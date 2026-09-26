@@ -96,3 +96,12 @@ def test_a_label_after_its_checkbox_is_read(page, load):
     load(page, "<div class='row'><div class='c'><input type='checkbox' id='a'><div class='checkbox-label'>I agree to the terms</div></div>"
                "<div class='c'><input type='checkbox' id='b'><div class='checkbox-label'>Send me updates</div></div></div>")
     assert [page.evaluate(READ, s)["question"] for s in ("#a", "#b")] == ["I agree to the terms", "Send me updates"]
+
+
+def test_an_h6_sub_label_inside_an_entry_is_not_its_section(page, load):
+    """Section names come from h1–h5: an <h6> sub-label ("Dates") inside
+    "Work Experience 2" must not become the field's section, or its repeat
+    index falls to 0 and entry 2 is paired with the first job."""
+    load(page, "<div><h4>Work Experience 2</h4><h6>Dates</h6><input id='a' aria-label='From'></div>")
+    got = page.evaluate(READ, "#a")
+    assert (got["section"], got["repeatIndex"]) == ("Work Experience 2", 1)

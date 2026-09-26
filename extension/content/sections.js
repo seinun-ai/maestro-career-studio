@@ -18,8 +18,9 @@
  *   the container — the run of the page up to the next title.
  * A numbered title is `ns.repeatOf`'s (field-reader.js): "Step 2", "Page 3"
  * and "… of 4" are never entries. A hidden prototype entry is not one.
- * Its Add button is its OWN: in the section (in the stretch, for a heading),
- * inside no entry block and no other labelled group, reading
+ * Its Add button is its OWN: in the section (in the stretch, for a heading —
+ * after its last entry title when entries sit flat in the container, the
+ * last one there), inside no entry block and no other labelled group, reading
  * /^add( another)?\b/i or marked `data-automation-id="add-button"`. Never a
  * form's submit or a declared one, a control inside a link, the page's
  * header/nav/footer, and never anything whose words, name or automation id
@@ -50,7 +51,7 @@
   const LEVELS = 3; // how far a heading's container is looked for
   const text = (el) => ns.readFieldText(el?.textContent ?? "");
   const base = () => ns.fillBase;
-  const headingsIn = (root) => [...root.querySelectorAll(ns.HEADING)];
+  const headingsIn = (root) => [...root.querySelectorAll(ns.ANY_HEADING)];
   // A numbered title's base, lowercased ("work experience" for "Work Experience 2"), else null.
   const baseOf = (title) => ns.repeatOf(title)?.base.toLowerCase() ?? null;
   const precedes = (a, b) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
@@ -73,12 +74,12 @@
   // A labelledby heading's words, or null when it names no heading.
   const labelledHeading = (el) => {
     const ids = (el.getAttribute("aria-labelledby") ?? "").split(/\s+/).filter(Boolean);
-    const heads = ids.map((id) => ns.byIdIn(el, id)).filter((h) => h?.matches(ns.HEADING));
+    const heads = ids.map((id) => ns.byIdIn(el, id)).filter((h) => h?.matches(ns.ANY_HEADING));
     return heads.length ? ns.readFieldText(heads.map(text).join(" ")) : null;
   };
   // An entry's title: its label, else its first heading.
   const titleOf = (el) => labelledHeading(el) || ns.readFieldText(el.getAttribute("aria-label") ?? "")
-    || text(el.querySelector(ns.HEADING));
+    || text(el.querySelector(ns.ANY_HEADING));
   // Words, name, title and automation id: any of them saying delete, remove
   // or trash rules the control out, whatever else it says.
   const says = (b) => [text(b), b.getAttribute("aria-label"), b.getAttribute("title"),
@@ -94,22 +95,24 @@
     if (NEVER.test(says(b)) || (auto && auto !== "add-button" && NAV_ID.test(auto))) return false;
     return auto === "add-button" || ADD.test(text(b) || b.value || "");
   };
-  // The first Add in `root` that `mine` admits, in no entry BLOCK and no
-  // other labelled group (`group`: the section's own, or none).
-  const ownAdd = (root, entries, group, mine = () => true) => [...root.querySelectorAll(BUTTON)].find((b) => mine(b)
+  // The Adds in `root` that `mine` admits, in no entry BLOCK and no other
+  // labelled group (`group`: the section's own, or none), in page order.
+  const ownAdds = (root, entries, group, mine = () => true) => [...root.querySelectorAll(BUTTON)].filter((b) => mine(b)
     && addLike(b) && !entries.some((e) => e.block && e.el.contains(b)) && (b.closest(ARIA_SECTION) ?? null) === group);
 
-  // ---- the two shapes: { key, aria, heading, entries: [{ el, block, has(node) }], button } or null
-  const ariaSection = (el) => {
+  // ---- the two shapes: { key, aria, heading, entries: [{ el, block, has(node) }], button } or null.
+  // A section is one only with an Add of its own — except when re-read after
+  // its own press (`again`), since some sections hide their Add once full.
+  const ariaSection = (el, needAdd = true) => {
     const heading = labelledHeading(el);
     if (!heading || ns.repeatOf(heading) || !base().visible(el)) return null;
     const groups = [...el.querySelectorAll('[role="group"]')].filter((g) => ns.repeatOf(titleOf(g)) && base().visible(g));
     const entries = groups.filter((g) => !groups.some((o) => o !== g && o.contains(g)))
       .map((g) => ({ el: g, block: true, has: (n) => g.contains(n) }));
-    const button = ownAdd(el, entries, el);
-    return button ? { key: el, aria: true, heading, entries, button } : null;
+    const button = ownAdds(el, entries, el)[0] ?? null;
+    return button || !needAdd ? { key: el, aria: true, heading, entries, button } : null;
   };
-  const headingSection = (h, heads) => {
+  const headingSection = (h, heads, needAdd = true) => {
     const heading = text(h);
     const own = heading.toLowerCase();
     if (h.closest(ARIA_SECTION) || !base().visible(h)) return null;
@@ -135,8 +138,13 @@
       while (node.parentElement !== container && titlesIn(node.parentElement) === 1) node = node.parentElement;
       return { el: node, block: true, has: (n) => node.contains(n) };
     }).filter((e) => base().visible(e.el));
-    const button = ownAdd(container, entries, null, (b) => inStretch(b));
-    return button ? { key: h, aria: false, heading, entries, button } : null;
+    // Nothing marks where a FLAT entry ends, so an Add-like button inside one
+    // ("Add responsibility") could pass for the section's: with flat entries,
+    // only a button after the last entry title counts, and the last one wins.
+    const last = titles.at(-1);
+    const flat = entries.some((e) => !e.block);
+    const button = ownAdds(container, entries, null, (b) => inStretch(b) && (!flat || precedes(last, b))).at(-1) ?? null;
+    return button || !needAdd ? { key: h, aria: false, heading, entries, button } : null;
   };
 
   // Every section in this frame, in page order. Only headings some numbered
@@ -157,12 +165,13 @@
     }
     return out.sort((a, b) => (precedes(a.key, b.key) ? -1 : 1));
   };
-  // ONE section again, by its sid: what `add` checks and counts, without a whole find().
+  // ONE section again, by its sid — its Add not required — for what `add`
+  // checks and counts, without a whole find().
   const again = (sid) => {
     const entry = bySid.get(sid);
     const key = entry?.ref.deref();
     if (!key?.isConnected) return null;
-    return entry.aria ? ariaSection(key) : headingSection(key, headingsIn(document));
+    return entry.aria ? ariaSection(key, false) : headingSection(key, headingsIn(document), false);
   };
 
   // `fields`: the inventory's, so "holds a value" means what the loop's
@@ -191,7 +200,7 @@
   const ADD_WAIT_MS = 2500;
   const add = async (sid, { heading, entries }, t) => {
     const now = again(sid);
-    if (!now) return { outcome: "stale", entries: null };
+    if (!now?.button) return { outcome: "stale", entries: now?.entries.length ?? null };
     if (now.heading !== heading || now.entries.length !== entries) return { outcome: "stale", entries: now.entries.length };
     base().check(t);
     now.button.scrollIntoView?.({ block: "center" });

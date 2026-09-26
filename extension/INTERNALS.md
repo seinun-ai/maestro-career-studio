@@ -400,8 +400,8 @@ know, and each one was learned from a live failure.
   Entries already holding data are reconciled first: /map places entries by
   page order, so when an entry holds a profile job or school other than the
   one for its place (matched on the employer or school, ignoring case,
-  punctuation and Inc/LLC/Ltd/Corp), nothing is added, since the new entry
-  would repeat one; and only the complete profile entries before the first
+  punctuation and company suffixes such as Inc, LLC, Ltd, Corp, Co and
+  GmbH), nothing is added, since the new entry would repeat one; and only the complete profile entries before the first
   gap count (an entry added past a school with no name would pair with it
   and leave School empty). What the entries hold goes to the local backend
   for that match only, never to a model. Within one section the page

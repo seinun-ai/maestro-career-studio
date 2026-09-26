@@ -88,7 +88,11 @@
       return "";
     }],
   ];
-  const HEADING = "h1, h2, h3, h4, h5, h6, [role=heading]";
+  // A field's SECTION comes from h1–h5: an <h6> is a sub-label inside an
+  // entry ("Dates" in "Work Experience 2"), and taking it would drop the
+  // entry's number. ANY_HEADING (h6 too) is for content/sections.js alone.
+  const HEADING = "h1, h2, h3, h4, h5, [role=heading]";
+  const ANY_HEADING = "h1, h2, h3, h4, h5, h6, [role=heading]";
   // "Work Experience 2" is the second repeat; "Step 2 of 4" / "Page 2" is not.
   // ONE rule for what a numbered title is: `ns.repeatOf` (also content/
   // sections.js); shared/fill-loop.js keeps a mirror of these two patterns,
@@ -117,7 +121,7 @@
 
   ns.readFieldText = clean;
   ns.repeatOf = repeatOf;
-  ns.HEADING = HEADING;
+  ns.ANY_HEADING = ANY_HEADING;
   ns.byIdIn = byId; // an id, resolved in the element's own root
   ns.readField = (el) => {
     let question = "";

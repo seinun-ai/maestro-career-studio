@@ -1583,8 +1583,10 @@ def test_one_fact_per_entry_holds_only_in_a_section_the_page_lists(page, load):
               map={f"q{n}": {"route": "slot", "slot": "eligibility.over_18", "value": "Yes"} for n in (1, 2)},
               pick={"q1": {"oids": ["o1"], "reason": "matched"}, "q2": {"oids": ["o1"], "reason": "matched"}})
     assert statuses(out) == {"q1": "verified", "q2": "verified"}
+    # Even with a "Step" section listed: "Step 2" is never an entry title.
     out = run(page, load, frames=[[f("e1", question="Email", section="Step 1", committed="a@b.test", answered=True),
                                    f("e2", question="Confirm email", section="Step 2", repeatIndex=1)]],
+              sections=[[section("f-s2", "Step", 2)]],
               map={"e2": {"route": "slot", "slot": "personal.email", "value": "a@b.test"}})
     assert statuses(out) == {"e1": "already", "e2": "verified"}
 
