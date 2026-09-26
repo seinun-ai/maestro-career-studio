@@ -70,8 +70,11 @@ def test_sections_maps_headings_to_profile_lists(db_session, monkeypatch):
     assert {sid: (p.kind, p.wanted) for sid, p in got.items()} == {
         # Two jobs have an employer AND a title; Globex has no title.
         "w": ("experience", 2),
-        # Two schools; the BS entry names none.
-        "e": ("education", 2),
+        # Entries pair with profile entries by POSITION, so only the complete
+        # ones before the first gap count: State University, then the BS
+        # entry names no school — an added entry 2 would pair with it and
+        # leave its required School empty. City College is past the gap.
+        "e": ("education", 1),
         # A personal website and a GitHub profile; LinkedIn has its own box.
         "s": ("websites", 2),
         # No language or certification facts exist yet (languages: Task 10).
@@ -163,11 +166,44 @@ def test_jobs_at_one_employer_are_told_apart_by_title(db_session, monkeypatch):
 
 @pytest.mark.usefixtures("jev_on")
 def test_education_matches_on_the_school(db_session, monkeypatch):
+    facts = autofill_catalog.build({"education": [{"school": "State University"}, {"school": "City College"}]}, [], [])
     fake_jev(monkeypatch, {"e": ("education", 0.9)})
-    ok = autofill_sections.plan([held_section("e", "Education", ["State University", "MS"])], FACTS, db_session)
+    ok = autofill_sections.plan([held_section("e", "Education", ["State University", "MS"])], facts, db_session)
     assert (ok["e"].wanted, ok["e"].reason) == (2, None)
-    wrong = autofill_sections.plan([held_section("e", "Education", ["City College"])], FACTS, db_session)
+    wrong = autofill_sections.plan([held_section("e", "Education", ["City College"])], facts, db_session)
     assert (wrong["e"].wanted, wrong["e"].reason) == (1, "held_out_of_order")
+
+
+def test_only_complete_entries_before_the_first_gap_are_wanted():
+    facts = autofill_catalog.build({"education": [{"school": "State U"}, {"degree": "BS"}, {"school": "City"}]},
+                                   [{"employer": "Acme"}, {"employer": "Initech", "title": "Intern"}], [])
+    # A gap at entry 1 (no school) or entry 0 (no title): nothing past it.
+    assert autofill_sections.wanted("education", facts) == 1
+    assert autofill_sections.wanted("experience", facts) == 0
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("held, employer", [
+    ("Acme Corporation", "ACME"), ("Acme Co.", "Acme"), ("Acme Company", "acme"), ("Acme Limited", "Acme Ltd."),
+    ("Acme PLC", "Acme"), ("Acme GmbH", "Acme"), ("Acme LLP", "Acme"), ("Acme L.L.C.", "Acme, LLC"),
+])
+def test_company_suffixes_and_dotted_forms_are_not_a_difference(db_session, monkeypatch, held, employer):
+    facts = autofill_catalog.build({}, [{"employer": employer, "title": "Analyst"},
+                                        {"employer": "Initech", "title": "Intern"}], [])
+    fake_jev(monkeypatch, {"w": ("experience", 0.9)})
+    got = autofill_sections.plan([held_section("w", "Work Experience", [held])], facts, db_session)
+    assert (got["w"].wanted, got["w"].reason) == (2, None)
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_a_held_value_that_normalizes_to_nothing_matches_nothing(db_session, monkeypatch):
+    """"Inc." normalizes to "" — and an employer that ALSO normalizes to ""
+    must not match it."""
+    facts = autofill_catalog.build({}, [{"employer": "Co.", "title": "Analyst"},
+                                        {"employer": "Initech", "title": "Intern"}], [])
+    fake_jev(monkeypatch, {"w": ("experience", 0.9)})
+    got = autofill_sections.plan([held_section("w", "Work Experience", ["Inc.", "Analyst"])], facts, db_session)
+    assert (got["w"].wanted, got["w"].reason) == (1, "held_out_of_order")
 
 
 @pytest.mark.usefixtures("jev_on")

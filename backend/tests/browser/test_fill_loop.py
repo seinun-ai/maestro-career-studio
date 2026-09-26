@@ -1540,28 +1540,53 @@ def site(n, **kw):
     return f(f"u{n}", question="URL", section=f"Websites {n}", repeatIndex=n - 1, **kw)
 
 
+WEBSITES = [[section("f-s2", "Websites", 2)]]  # the section fill_sections returned; no kind, no Add
+
+
 def test_one_fact_is_never_written_into_two_entries_of_a_section(page, load):
     """personal.website carries no entry number, so /map can hand the same
     fact to both Websites entries: the second entry's field is left for the
     user, never written."""
-    out = run(page, load, frames=[[site(1), site(2)]],
+    out = run(page, load, frames=[[site(1), site(2)]], sections=WEBSITES,
               map={"u1": {"route": "slot", "slot": "personal.website", "value": "https://ada.dev"},
                    "u2": {"route": "slot", "slot": "personal.website", "value": "https://ada.dev"}})
     assert [a["fid"] for a in actions(out)] == ["u1"]
     assert (row(out, "u2")["status"], row(out, "u2")["lastOutcome"]) == ("needs_answer", "in_another_entry")
     # Nor a fact another entry already HOLDS (the user's, a parsed resume's).
     out = run(page, load, frames=[[site(1, committed="https://GitHub.com/ada ", answered=True), site(2)]],
+              sections=WEBSITES,
               map={"u2": {"route": "slot", "slot": "personal.github", "value": "https://github.com/ada"}})
     assert actions(out) == [] and row(out, "u2")["lastOutcome"] == "in_another_entry"
-    # A URL is the same URL whatever its scheme, `www.`, host case or trailing slash.
-    out = run(page, load, frames=[[site(1, committed="Example.dev/", answered=True), site(2)]],
-              map={"u2": {"route": "slot", "slot": "personal.website", "value": "https://www.example.dev"}})
-    assert actions(out) == [] and row(out, "u2")["lastOutcome"] == "in_another_entry"
+    # A URL is the same URL whatever its scheme, `www.`, host case, default
+    # port, trailing slash or #fragment.
+    for held, fact in (("Example.dev/", "https://www.example.dev"),
+                       ("example.dev/#top", "https://example.dev:443/"),
+                       ("http://example.dev:80/about", "example.dev/about/")):
+        out = run(page, load, frames=[[site(1, committed=held, answered=True), site(2)]], sections=WEBSITES,
+                  map={"u2": {"route": "slot", "slot": "personal.website", "value": fact}})
+        assert actions(out) == [] and row(out, "u2")["lastOutcome"] == "in_another_entry", (held, fact)
     # A different fact in the second entry is written.
-    out = run(page, load, frames=[[site(1), site(2)]],
+    out = run(page, load, frames=[[site(1), site(2)]], sections=WEBSITES,
               map={"u1": {"route": "slot", "slot": "personal.website", "value": "https://ada.dev"},
                    "u2": {"route": "slot", "slot": "personal.github", "value": "https://github.com/ada"}})
     assert statuses(out) == {"u1": "verified", "u2": "verified"}
+
+
+def test_one_fact_per_entry_holds_only_in_a_section_the_page_lists(page, load):
+    """Numbered titles that are not a repeating section the page listed
+    ("Question 1", "Step 2") are not entries: the same answer is written in
+    each, and a confirm-email box is written with the email the other holds."""
+    yes_no = [opt("o1", "Yes"), opt("o2", "No")]
+    q = lambda n: f(f"q{n}", "group", "Are you 18 or older?", section=f"Question {n}", repeatIndex=n - 1,  # noqa: E731
+                    options=yes_no, optionsComplete=True)
+    out = run(page, load, frames=[[q(1), q(2)]], sections=WEBSITES,
+              map={f"q{n}": {"route": "slot", "slot": "eligibility.over_18", "value": "Yes"} for n in (1, 2)},
+              pick={"q1": {"oids": ["o1"], "reason": "matched"}, "q2": {"oids": ["o1"], "reason": "matched"}})
+    assert statuses(out) == {"q1": "verified", "q2": "verified"}
+    out = run(page, load, frames=[[f("e1", question="Email", section="Step 1", committed="a@b.test", answered=True),
+                                   f("e2", question="Confirm email", section="Step 2", repeatIndex=1)]],
+              map={"e2": {"route": "slot", "slot": "personal.email", "value": "a@b.test"}})
+    assert statuses(out) == {"e1": "already", "e2": "verified"}
 
 
 def test_the_same_value_in_numbered_entries_of_different_facts_is_written(page, load):
@@ -1600,6 +1625,20 @@ def test_sections_the_backend_could_not_classify_add_nothing(page, load):
               limits={"API_MS": 200}, map=JOBS)
     assert "fill_add" not in out["calls"]
     assert statuses(out) == {"t1": "verified", "c1": "verified"}
+    # Asked once per run, not once a round: a hung backend costs one wait.
+    assert out["calls"].count("fill_sections") >= 2 and out["calls"].count("/api/autofill/sections") == 1
+
+
+def test_a_section_re_rendered_after_a_failed_add_is_not_pressed_again(page, load):
+    """A press that added nothing is remembered by the section's frame and
+    heading, not only its sid: the page re-rendering it under a new sid does
+    not buy a second press, nor a second report row."""
+    out = run(page, load, frames=[work(1)], sections=[[section("f-s1", entries=1)], [section("f-s9", entries=1)]],
+              kinds={"f-s1": {"kind": "experience", "wanted": 2}, "f-s9": {"kind": "experience", "wanted": 2}},
+              add={"f-s1": {"outcome": "not_added", "entries": 1}}, map=JOBS)
+    assert out["calls"].count("fill_sections") >= 2
+    assert adds(out) == [{"sid": "f-s1", "heading": "Work Experience", "entries": 1}]
+    assert [(r["heading"], r["outcome"]) for r in out["report"]["sections"]] == [("Work Experience", "not_added")]
 
 
 # ---------- the wire
@@ -1614,6 +1653,16 @@ def test_every_page_message_the_loop_sends_is_a_page_handler():
     assert sent == {"fill_inventory", "fill_explore", "fill_apply", "fill_step_state", "fill_sweep", "fill_sections",
                     "fill_add"}
     assert sent <= handled
+
+
+def test_the_loop_reads_repeated_titles_by_the_field_readers_rule():
+    """The loop runs in the panel, where field-reader.js never loads, so it
+    keeps a MIRROR of `ns.repeatOf`'s two patterns: they must stay identical."""
+    reader = (EXTENSION / "content" / "field-reader.js").read_text(encoding="utf-8")
+    loop = (EXTENSION / "shared" / "fill-loop.js").read_text(encoding="utf-8")
+    for name in ("REPEAT", "NOT_REPEAT"):
+        pattern = re.compile(rf"const {name} = (/.*?/[a-z]*);")
+        assert pattern.search(reader).group(1) == pattern.search(loop).group(1), name
 
 
 def test_the_panel_loads_the_loop_after_the_guided_runner():

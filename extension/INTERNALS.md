@@ -401,10 +401,21 @@ know, and each one was learned from a live failure.
   page order, so when an entry holds a profile job or school other than the
   one for its place (matched on the employer or school, ignoring case,
   punctuation and Inc/LLC/Ltd/Corp), nothing is added, since the new entry
-  would repeat one. What the entries hold goes to the local backend for that
-  match only, never to a model. Within one section a fact is written into
-  one entry only: a website that one entry was given, or already holds, is
-  left for you in another. The Fill report names every section still short
+  would repeat one; and only the complete profile entries before the first
+  gap count (an entry added past a school with no name would pair with it
+  and leave School empty). What the entries hold goes to the local backend
+  for that match only, never to a model. Within one section the page
+  listed, a fact is written into one entry only: a website that one entry
+  was given, or already holds in a text box, is left for you in another. A
+  numbered title that is not such a section ("Question 2", "Step 2") is not
+  an entry, and none of this applies there. A section is known by its
+  frame and heading: its kind and count are asked once per run (a failed or
+  slow ask means nothing is added this run), and a press that added
+  nothing is not repeated even when the page re-renders the section. A
+  section without a labelled group runs from its heading to the next
+  heading of its level or higher, so two such sections can share one
+  container. Sections inside a shadow root are not seen (the search is the
+  document's own), so nothing is added there. The Fill report names every section still short
   of what your profile can fill ("Work Experience: 1 of 2 added. Add the
   rest yourself.") and keeps the step open.
 - **Without the standing agreement permission, signatures, initials,

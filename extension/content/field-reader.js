@@ -88,13 +88,23 @@
       return "";
     }],
   ];
-  const HEADING = "h1, h2, h3, h4, h5, [role=heading]";
+  const HEADING = "h1, h2, h3, h4, h5, h6, [role=heading]";
   // "Work Experience 2" is the second repeat; "Step 2 of 4" / "Page 2" is not.
+  // ONE rule for what a numbered title is: `ns.repeatOf` (also content/
+  // sections.js); shared/fill-loop.js keeps a mirror of these two patterns,
+  // pinned identical by test_the_loop_reads_repeated_titles_by_the_field_readers_rule.
   const REPEAT = /(\p{L}+)\s+(\d+)$/u;
   const NOT_REPEAT = /^(of|step|page)$/i;
+  // "Work Experience 2" → { base: "Work Experience", n: 2 }; else null.
+  const repeatOf = (title) => {
+    const t = clean(title);
+    const m = REPEAT.exec(t);
+    if (!m || NOT_REPEAT.test(m[1])) return null;
+    return { base: clean(t.slice(0, m.index + m[1].length)), n: Number(m[2]) };
+  };
   const repeatIndex = (section) => {
-    const m = REPEAT.exec(section);
-    return m && !NOT_REPEAT.test(m[1]) ? Math.max(0, Number(m[2]) - 1) : 0;
+    const r = repeatOf(section);
+    return r ? Math.max(0, r.n - 1) : 0;
   };
   const sectionOf = (el) => {
     for (let node = el.parentElement; node; node = node.parentElement) {
@@ -106,6 +116,9 @@
   };
 
   ns.readFieldText = clean;
+  ns.repeatOf = repeatOf;
+  ns.HEADING = HEADING;
+  ns.byIdIn = byId; // an id, resolved in the element's own root
   ns.readField = (el) => {
     let question = "";
     let source = null;

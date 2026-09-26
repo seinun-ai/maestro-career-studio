@@ -185,3 +185,53 @@ def test_the_inventory_keeps_its_own_last_pass_for_reuse(page, load):
     relisted = page.evaluate("() => window.careerStudioCompanion.fillInventory.list().fields.map((f) => f.fid)")
     assert [f["fid"] for f in page.evaluate("() => window.careerStudioCompanion.fillInventory.last()")] == relisted
     assert by_heading(page)["Websites"]["entries"] == 1
+
+
+# Two sections with no ARIA and no wrapper each: one container, headings
+# and controls side by side.
+FLAT = """<div id="form">
+  <h3>Education</h3>
+  <h4>Education 1</h4><label>School <input id="school1"></label>
+  <button type="button" id="add-edu">Add another</button>
+  <h3>Websites</h3>
+  <h4>Websites 1</h4><label>URL <input id="url1"></label>
+  <button type="button" id="add-web">Add</button>
+</div>
+<script>
+  window.pressed = [];
+  for (const b of document.querySelectorAll("button")) b.addEventListener("click", () => {
+    window.pressed.push(b.id);
+    const title = b.id === "add-edu" ? "Education 2" : "Websites 2";
+    const h = document.createElement("h4");
+    h.textContent = title;
+    b.before(h);
+  });
+</script>"""
+
+
+def test_sections_sharing_one_container_are_each_listed_with_their_own_add(page, load):
+    """A heading's section runs to the next heading of its level or higher:
+    its entries and its Add are the ones in that stretch, and a second
+    section in the same container is its own section, never dropped."""
+    load(page, FLAT)
+    page.fill("#school1", "State University")
+    got = sections(page)
+    assert [(s["heading"], s["entries"], s["add"], s["held"]) for s in got] == [
+        ("Education", 1, "Add another", [["State University"]]), ("Websites", 1, "Add", [[]])]
+    assert got[0]["sid"] != got[1]["sid"]
+    assert add(page, got[1]["sid"], "Websites", 1)["outcome"] == "added"
+    assert page.evaluate("window.pressed") == ["add-web"]
+    assert [s["entries"] for s in sections(page)] == [1, 2]
+
+
+def test_step_page_and_of_numbers_are_not_entries(page, load):
+    load(page, """<div role="group" aria-labelledby="h"><h4 id="h">Application</h4>
+      <div role="group" aria-label="Step 2"><input aria-label="Email"></div>
+      <div role="group" aria-label="Page 3"><input aria-label="Phone"></div>
+      <button type="button" data-automation-id="add-button">Add</button></div>""")
+    [app] = sections(page)
+    assert app["entries"] == 0
+    assert page.evaluate("[window.careerStudioCompanion.repeatOf('Work Experience 2'), "
+                         "window.careerStudioCompanion.repeatOf('Step 2'), "
+                         "window.careerStudioCompanion.repeatOf('Websites')]") == [
+        {"base": "Work Experience", "n": 2}, None, None]

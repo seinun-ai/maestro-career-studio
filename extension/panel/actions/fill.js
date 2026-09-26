@@ -188,7 +188,7 @@
     // A stopped or timed-out loop has not looked at everything it would have.
     const cut = loop?.stopped === true || loop?.timedOut === true;
     // Entries of a repeating section left for the user to add are work left.
-    const short = loop ? ns.fillLoop.sectionLines(loop).length : 0;
+    const short = loop ? ns.fillLoop.sectionLines(loop).length > 0 : false;
     return wrote > 0 && open === 0 && !cut && !short;
   }
 

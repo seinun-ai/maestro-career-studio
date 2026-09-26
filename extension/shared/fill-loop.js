@@ -134,8 +134,19 @@
   const SECTION_KINDS = new Set(["experience", "education", "languages", "websites", "certifications"]);
   const MAX_HELD = 10;
   const HELD_CHARS = 200;
-  // "Work Experience 2": an entry of a repeating section, and its number.
-  const ENTRY = /^(.*\S)\s+(\d+)$/;
+  // A MIRROR of content/field-reader.js's `ns.repeatOf` (the loop runs in the
+  // panel, where field-reader.js never loads): "Work Experience 2" →
+  // { base: "Work Experience", n: 2 }; "Step 2", "Page 3", "… of 4" → null.
+  // The two patterns are pinned identical to the reader's by
+  // test_the_loop_reads_repeated_titles_by_the_field_readers_rule.
+  const REPEAT = /(\p{L}+)\s+(\d+)$/u;
+  const NOT_REPEAT = /^(of|step|page)$/i;
+  const repeatOf = (title) => {
+    const t = String(title ?? "").replace(/\s+/g, " ").trim();
+    const m = REPEAT.exec(t);
+    if (!m || NOT_REPEAT.test(m[1])) return null;
+    return { base: t.slice(0, m.index + m[1].length).trim(), n: Number(m[2]) };
+  };
   const HISTORY_KEPT = 8;
   const FID = /^[A-Za-z0-9_-]{1,64}$/;
   const HISTORY_ENTRY = /^(click:o\d+|search:value|search:word:\d|open|scroll|close|give_up|choose) -> [a-z_]+( \([a-z_]+\))?$/;
@@ -1040,56 +1051,77 @@
       return order([...texts, ...choices]);
     };
 
-    // ---- one fact, one entry. Within one repeating section ("Websites 1",
-    // "Websites 2"), a fact is written into ONE entry: /map places entries by
-    // page order, and a fact with no entry number (personal.website) can be
-    // handed to two entries' fields. The first entry to claim it keeps it;
-    // another entry's field for it is left for the user, never written. Nor
-    // is a fact with no entry number written where another entry already
-    // HOLDS its value (the user's, a parsed resume's). Entry-numbered facts
-    // (experience.0 / experience.1) are different facts whatever their values:
-    // two jobs may share a title.
-    // A URL compares without its scheme, a leading `www.`, its host's case
-    // and a trailing slash: "Example.dev/" holds "https://www.example.dev".
-    const URLISH = /^(?:https?:\/\/)?(?:www\.)?([a-z0-9-]+(?:\.[a-z0-9-]+)+)(\/\S*)?$/i;
+    // ---- one fact, one entry. Within one repeating section the page listed
+    // (`fill_sections`: "Websites 1", "Websites 2"), a fact is written into ONE
+    // entry: /map places entries by page order, and a fact with no entry
+    // number (personal.website) can be handed to two entries' fields. The
+    // first entry to claim it keeps it; another entry's field for it is left
+    // for the user, never written. Nor is a TEXT field given a fact with no
+    // entry number that another entry's text field already HOLDS (the user's,
+    // a parsed resume's). Entry-numbered facts (experience.0 / experience.1)
+    // are different facts whatever their values: two jobs may share a title.
+    // A numbered title the page did not list as a section ("Question 2",
+    // "Step 2") is no entry at all: the rule does not apply there.
+    // A URL compares without its scheme, a leading `www.`, its host's case, a
+    // default port, a trailing slash and a #fragment: "Example.dev/" holds
+    // "https://www.example.dev:443/#top" (treating them as different would
+    // write the duplicate).
+    const URLISH = /^(?:https?:\/\/)?(?:www\.)?([a-z0-9-]+(?:\.[a-z0-9-]+)+)(?::(\d+))?(\/[^\s#]*)?(?:#\S*)?$/i;
     const asUrl = (v) => [v].flat().map((x) => {
       const m = URLISH.exec(String(x ?? "").trim());
-      return m ? `${m[1].toLowerCase()}${(m[2] ?? "").replace(/\/+$/, "")}` : x;
+      if (!m) return x;
+      const port = m[2] && m[2] !== "80" && m[2] !== "443" ? `:${m[2]}` : "";
+      return `${m[1].toLowerCase()}${port}${(m[3] ?? "").replace(/\/+$/, "")}`;
     });
+    const listedSections = new Set(); // `${frameId}\n${heading, lowercased}` fill_sections returned
+    const entryOf = (frameId, section) => {
+      const r = repeatOf(section);
+      return r && listedSections.has(`${frameId}\n${r.base.toLowerCase()}`) ? { family: r.base.toLowerCase(), n: r.n } : null;
+    };
     const claims = new Map(); // `${frame}\n${section}\n${slot}` -> the entry that has it
-    const inAnotherEntry = (f) => {
+    // True (and the field finished as needs_answer) when its fact belongs to
+    // another entry; otherwise the fact is claimed for this field's entry.
+    const leftForAnotherEntry = (f) => {
       const row = rows.get(f.fid);
-      const m = ENTRY.exec(String(f.section ?? ""));
-      if (!m || row?.route !== "slot" || !row.slot) return false;
-      const family = m[1].toLowerCase();
-      const key = `${row.frameId}\n${family}\n${row.slot}`;
+      const mine = entryOf(row?.frameId, f.section);
+      if (!mine || row.route !== "slot" || !row.slot) return false;
+      const key = `${row.frameId}\n${mine.family}\n${row.slot}`;
       const claimed = claims.get(key);
-      const held = !/\.\d+\./.test(row.slot) && listed.some((fid) => {
+      const held = f.kind === "text" && !/\.\d+\./.test(row.slot) && listed.some((fid) => {
         const other = rows.get(fid);
-        const o = ENTRY.exec(String(other?.field?.section ?? ""));
-        return fid !== f.fid && other.frameId === row.frameId && o && o[1].toLowerCase() === family && o[2] !== m[2]
-          && other.field.answered && same(asUrl(other.field.committed), asUrl(row.value));
+        const theirs = entryOf(other?.frameId, other?.field?.section);
+        return fid !== f.fid && other.frameId === row.frameId && theirs?.family === mine.family && theirs.n !== mine.n
+          && other.field.kind === "text" && other.field.answered && same(asUrl(other.field.committed), asUrl(row.value));
       });
-      if ((claimed !== undefined && claimed !== m[2]) || held) {
+      if ((claimed !== undefined && claimed !== mine.n) || held) {
         finish(f, "needs_answer", { lastOutcome: "in_another_entry", answer: "Already filled in another entry." });
         return true;
       }
-      claims.set(key, m[2]);
+      claims.set(key, mine.n);
       return false;
     };
 
     // ---- repeating sections: Add the entries the profile can fill (see the header)
-    // A section is known by its frame, sid and heading; its plan (kind and
-    // `wanted`) is asked once per run, its log is what the report says.
-    const plans = new Map(); // key -> { kind, wanted }
-    const sectionLog = new Map(); // key -> { heading, kind, wanted, entries, added, outcome }
-    const sectionKey = (s) => `${s.frameId}\n${s.sid}\n${s.heading}`;
+    // A section is known by its frame and heading — not its sid, which the page
+    // mints per element, so a section re-rendered under a new sid is the same
+    // section: its plan (kind and `wanted`) is asked ONCE per run (a failed or
+    // hung ask is recorded as nothing to add, never asked again), a failed
+    // press is never repeated, and the report has one row for it.
+    const plans = new Map(); // key -> { kind, wanted, reason }
+    const sectionLog = new Map(); // key -> { heading, kind, wanted, entries, added, outcome, reason }
+    const sectionKey = (s) => `${s.frameId}\n${s.heading}`;
+    const NOTHING = { kind: "none", wanted: 0, reason: null };
     const sectionOk = (s) => typeof s?.sid === "string" && FID.test(s.sid) && typeof s.heading === "string"
       && s.heading.trim() !== "" && Number.isInteger(s.entries) && s.entries >= 0 && s.entries <= MAX_ENTRIES;
-    const readSections = async () => (await broadcast({ type: "fill_sections" }) ?? []).flatMap((fr) => (
-      Array.isArray(fr?.result) ? fr.result.filter(sectionOk).map((s) => ({ ...s, frameId: fr.frameId })) : []));
+    const readSections = async () => {
+      const seen = (await broadcast({ type: "fill_sections" }) ?? []).flatMap((fr) => (
+        Array.isArray(fr?.result) ? fr.result.filter(sectionOk).map((s) => ({ ...s, frameId: fr.frameId })) : []));
+      for (const s of seen) listedSections.add(`${s.frameId}\n${s.heading.toLowerCase()}`);
+      return seen;
+    };
     const planSections = async (seen) => {
-      const ask = seen.filter((s) => !plans.has(sectionKey(s))).slice(0, MAX_SECTIONS);
+      const ask = [...new Map(seen.filter((s) => !plans.has(sectionKey(s))).map((s) => [sectionKey(s), s])).values()]
+        .slice(0, MAX_SECTIONS);
       if (!ask.length || halt()) return;
       const res = await post("/api/autofill/sections", {
         ...selector,
@@ -1102,14 +1134,20 @@
             .slice(0, MAX_HELD).map((v) => String(v).slice(0, HELD_CHARS))),
         })),
       });
-      if (!res) return; // asked again next round
       for (const s of ask) {
-        const p = res.sections?.[s.sid];
+        const p = res?.sections?.[s.sid];
         const ok = SECTION_KINDS.has(p?.kind) && Number.isInteger(p.wanted) && p.wanted >= 0;
         plans.set(sectionKey(s), ok ? {
           kind: p.kind, wanted: Math.min(p.wanted, MAX_ENTRIES), reason: p.reason === "held_out_of_order" ? p.reason : null,
-        } : { kind: "none", wanted: 0, reason: null });
+        } : NOTHING);
       }
+    };
+    // What one press did, as the report's word: `added` only when the page's
+    // entry count grew; no frame answering is `stale` (decided afresh).
+    const pressOutcome = (got, entries) => {
+      if (!got) return "stale";
+      if (got.outcome === "added") return Number.isInteger(got.entries) && got.entries > entries ? "added" : "not_added";
+      return wordOf(got.outcome) ?? "stale";
     };
     // Returns whether any entry was added. ONE section per kind: a second
     // section the model gives the same kind gets nothing, so a kind's entries
@@ -1136,15 +1174,14 @@
           if (halt()) return added;
           const [got] = results(await broadcast({ type: "fill_add", sid: s.sid, heading: s.heading, entries }))
             .filter((r) => r?.sid === s.sid);
-          const now = Number.isInteger(got?.entries) ? got.entries : entries;
-          if (got?.outcome !== "added" || now <= entries) {
-            sectionLog.set(key, { ...sectionLog.get(key), outcome: wordOf(got?.outcome) === "added" ? "not_added"
-              : wordOf(got?.outcome) ?? "stale" });
+          const outcome = pressOutcome(got, entries);
+          const row = sectionLog.get(key);
+          if (outcome !== "added") {
+            sectionLog.set(key, { ...row, outcome });
             break;
           }
-          const row = sectionLog.get(key);
-          sectionLog.set(key, { ...row, entries: now, added: row.added + (now - entries), outcome: "added" });
-          entries = now;
+          sectionLog.set(key, { ...row, entries: got.entries, added: row.added + (got.entries - entries), outcome });
+          entries = got.entries;
           added = true;
         }
       }
@@ -1227,7 +1264,7 @@
         if (halt()) break;
         const f = queue.shift();
         worked.add(f.fid).add(sameField(f));
-        if (inAnotherEntry(f)) continue;
+        if (leftForAnotherEntry(f)) continue;
         if (f.kind === "text") {
           await onFieldClock(f, L.FIELD_MS, (row) => fillText(f, textOf(f, row), formatOf(row.slot)));
           await writeProse();

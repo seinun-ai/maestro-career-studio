@@ -71,18 +71,25 @@ def wanted(kind: str, facts: dict[str, Fact]) -> int:
     needs = _NEEDS.get(kind)
     if not needs:
         return 0
-    entries = {m[1] for slot in facts if (m := re.fullmatch(rf"{kind}\.(\d+)\.\w+", slot))}
-    return sum(all(f"{kind}.{i}.{need}" in facts for need in needs) for i in entries)
+    # Entries pair with profile entries by POSITION (/map's repeat_index), so
+    # only the complete ones before the first gap count: an entry added past
+    # an incomplete profile entry would pair with it and leave a REQUIRED
+    # field empty.
+    n = 0
+    while all(f"{kind}.{n}.{need}" in facts for need in needs):
+        n += 1
+    return n
 
 
 # What names a profile entry, per kind: the value an entry holding it must show.
 _NAMED_BY = {"experience": "employer", "education": "school"}
-_SUFFIX = re.compile(r"\b(inc|llc|ltd|corp)\b")
+_SUFFIX = re.compile(r"\b(inc|llc|llp|ltd|limited|corp|corporation|co|company|plc|gmbh)\b")
 
 
 def _norm(text: str) -> str:
-    """Casefold, no punctuation, no Inc/LLC/Ltd/Corp, single spaces."""
-    return " ".join(_SUFFIX.sub(" ", re.sub(r"[^\w\s]", " ", text.casefold())).split())
+    """Casefold, no company suffix (Inc, LLC, Co., GmbH… — dots dropped
+    first, so "L.L.C." is "llc"), no punctuation, single spaces."""
+    return " ".join(_SUFFIX.sub(" ", re.sub(r"[^\w\s]", " ", text.casefold().replace(".", ""))).split())
 
 
 def _in_place(section: PageSection, kind: str, facts: dict[str, Fact]) -> bool:
@@ -97,8 +104,9 @@ def _in_place(section: PageSection, kind: str, facts: dict[str, Fact]) -> bool:
         filled = (section.filled[j] if j < len(section.filled) else False) or bool(held)
         if not filled:
             continue
+        # A value that normalizes to nothing ("Inc.") names nothing.
+        values = {_norm(h) for h in held} - {""}
         name = facts.get(f"{kind}.{j}.{key}")
-        values = {_norm(h) for h in held}
         if name is None or _norm(str(name.value)) not in values:
             return False
         # Two profile jobs at one employer: the employer cannot say which one
