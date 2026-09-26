@@ -3094,8 +3094,8 @@ def test_a_typed_answer_names_the_field_as_the_page_wrote_it_and_counts_the_blan
 # (tests/browser/test_fill_loop.py). What is pinned HERE is the panel around
 # it: what it hands the loop, how it reports what came back, Stop, the jump to
 # a field, and the telemetry. So `runFill` is STUBBED with a scripted report —
-# the rest of `shared/fill-loop.js` (`sourceHintOf`, `buildLoopObservations`) is
-# the real file, loaded by panel.html like everything else.
+# the rest of `shared/fill-loop.js` (`sourceHintOf`, `buildLoopObservations`,
+# `sectionLines`) is the real file, loaded by panel.html like everything else.
 
 _LOOP_DRIVER_JS = _PANEL_FAKES_JS + r"""
 const ns = loadModules();
@@ -3116,7 +3116,8 @@ ns.fillLoop.runFill = async (deps, options) => {
     : null;
   return { runId: "r", host: spec.report.host, fields: spec.report.fields,
            aiFailure: failure, stopped: run.cancelledAtEnd && !spec.switchTo,
-           timedOut: spec.report.timedOut === true };
+           timedOut: spec.report.timedOut === true,
+           ...(spec.report.sections ? { sections: spec.report.sections } : {}) };
 };
 const stopButton = () => withClass(REGIONS.foot, "stop")[0] ?? null;
 main(async () => {
@@ -3481,6 +3482,43 @@ def test_the_finished_note_names_three_answers_to_check_then_counts(tmp_path):
     assert note["text"] == (
         "Fill finished. Check these answers before you submit: Question 0 (Answer 0), "
         "Question 1 (Answer 1), Question 2 (Answer 2) and 2 more.")
+
+
+def _section(heading, kind, wanted, entries, added, outcome, reason=None):
+    return {"heading": heading, "kind": kind, "wanted": wanted, "entries": entries, "added": added,
+            "outcome": outcome, "reason": reason}
+
+
+def test_entries_the_loop_did_not_add_are_named_and_keep_the_step_open(tmp_path):
+    """A section still short of what the profile can fill gets one line: how
+    many of the entries it needed were added, or why none were. It is work
+    left for the user, so the step is not ticked and the note does not say
+    the fill finished. A section with nothing to add, or all of it added,
+    says nothing."""
+    out = _loop(tmp_path, report={**DONE_REPORT, "sections": [
+        _section("Work Experience", "experience", 3, 2, 1, "not_added"),
+        _section("Education", "education", 1, 1, 0, None, "held_out_of_order"),
+        _section("Websites", "websites", 1, 1, 1, "added"),
+        _section("Languages", "languages", 0, 1, 0, None),
+    ]})
+    settled = out["settled"]
+    assert _loop_groups(settled["rail"]) == [
+        ("1 filled", []), ("1 already filled", []),
+        ("Work Experience: 1 of 2 added. Add the rest yourself.", []),
+        ("Education: the items on the page don't match your profile's order, so none were added.", []),
+    ]
+    [note] = _by_class(settled["foot"], "note")
+    assert note["text"] == "Some items weren't added. Add them yourself, then fill again."
+    assert _rows(_rail_rows({"regions": settled}))["fill"]["state"] == "active"
+    assert out["writes"] == []
+
+
+def test_a_section_with_everything_added_leaves_the_fill_finished(tmp_path):
+    out = _loop(tmp_path, report={**DONE_REPORT, "sections": [
+        _section("Work Experience", "experience", 2, 2, 1, "added")]})
+    [note] = _by_class(out["settled"]["foot"], "note")
+    assert note["text"] == "Fill finished. Review before you submit."
+    assert out["writes"] != []
 
 
 def test_group_headings_are_headings_to_a_screen_reader(tmp_path):

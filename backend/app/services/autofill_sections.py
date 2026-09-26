@@ -13,6 +13,14 @@ confidence that must clear the same floor, when the engine is `fast` or a Jev
 call fails. Below the floor, refused or unreadable: `none`, and nothing is
 added. The model sees headings and entry counts only; the counts come from the
 fact catalog here, so no value leaves the machine.
+
+RECONCILED FIRST. An entry already holding data keeps it, and /map places
+entries by page order (entry n ↔ profile entry n). So an Add is safe only when
+every entry holding data holds the profile entry of ITS position — matched on
+the employer (a job) or the school, normalized. Otherwise the added entry
+would repeat a profile entry already on the page: nothing is added (`wanted`
+is at most the entries there) and the plan says why, value-free. What the
+entries hold (`held`) comes to this local backend for that match only.
 """
 
 import json
@@ -66,6 +74,34 @@ def wanted(kind: str, facts: dict[str, Fact]) -> int:
     return sum(all(f"{kind}.{i}.{need}" in facts for need in needs) for i in entries)
 
 
+# What names a profile entry, per kind: the value an entry holding it must show.
+_NAMED_BY = {"experience": "employer", "education": "school"}
+_SUFFIX = re.compile(r"\b(inc|llc|ltd|corp)\b")
+
+
+def _norm(text: str) -> str:
+    """Casefold, no punctuation, no Inc/LLC/Ltd/Corp, single spaces."""
+    return " ".join(_SUFFIX.sub(" ", re.sub(r"[^\w\s]", " ", text.casefold())).split())
+
+
+def _in_place(section: PageSection, kind: str, facts: dict[str, Fact]) -> bool:
+    """Whether every entry holding data holds the profile entry of its own
+    position (by the value that names it). A kind named by nothing (websites)
+    is not placed by position, so there is nothing to check."""
+    key = _NAMED_BY.get(kind)
+    if not key:
+        return True
+    for j in range(section.entries):
+        held = section.held[j] if j < len(section.held) else []
+        filled = (section.filled[j] if j < len(section.filled) else False) or bool(held)
+        if not filled:
+            continue
+        name = facts.get(f"{kind}.{j}.{key}")
+        if name is None or _norm(str(name.value)) not in {_norm(h) for h in held}:
+            return False
+    return True
+
+
 def _payload(sections: list[PageSection]) -> list[dict]:
     return [{"id": s.sid, "heading": s.heading, "entries": s.entries} for s in sections]
 
@@ -115,5 +151,9 @@ def plan(sections: list[PageSection], facts: dict[str, Fact], session: Session) 
     for s in sections:
         kind, p = picked.get(s.sid, (NONE, 0.0))
         kind = kind if p >= SLOT_FLOOR else NONE
-        out[s.sid] = SectionPlan(kind=kind, wanted=wanted(kind, facts))
+        want = wanted(kind, facts)
+        if want > s.entries and not _in_place(s, kind, facts):
+            out[s.sid] = SectionPlan(kind=kind, wanted=s.entries, reason="held_out_of_order")
+        else:
+            out[s.sid] = SectionPlan(kind=kind, wanted=want)
     return out

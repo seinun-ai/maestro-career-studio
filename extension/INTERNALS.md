@@ -395,8 +395,18 @@ know, and each one was learned from a live failure.
   grew; a press that added nothing is not repeated in that run. The
   section's own Add is the only control pressed: never one inside an entry,
   a submit, a control inside a link, the page's header or footer, or
-  anything whose words, name or automation id say delete, remove or trash.
-  The run report lists what was added per section.
+  anything whose words, name or automation id say delete, remove or trash
+  (a button with no type counts outside a form; inside one it would submit).
+  Entries already holding data are reconciled first: /map places entries by
+  page order, so when an entry holds a profile job or school other than the
+  one for its place (matched on the employer or school, ignoring case,
+  punctuation and Inc/LLC/Ltd/Corp), nothing is added, since the new entry
+  would repeat one. What the entries hold goes to the local backend for that
+  match only, never to a model. Within one section a fact is written into
+  one entry only: a website that one entry was given, or already holds, is
+  left for you in another. The Fill report names every section still short
+  of what your profile can fill ("Work Experience: 1 of 2 added. Add the
+  rest yourself.") and keeps the step open.
 - **Without the standing agreement permission, signatures, initials,
   passwords and government IDs** (SSN, passport, licence numbers) are refused by
   label (`NEVER_FILLED` in `shared/policy.js`). A `type="password"` input is

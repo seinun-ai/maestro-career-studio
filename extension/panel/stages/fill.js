@@ -553,6 +553,8 @@
       [having("yours").length, (n) => `${n} you edited`],
     ].filter(([n]) => n).map(([n, say]) => say(n));
     if (left.length) attach(report, node("div", "sub count", left.join(" · ")));
+    // Entries of a repeating section the Companion did not add: the user's to add.
+    for (const line of ns.fillLoop?.sectionLines?.(loop) ?? []) attach(report, node("div", "sub count", line));
     if (!report.children.length) attach(report, node("div", "sub count", "No fields to fill here."));
     return report;
   }

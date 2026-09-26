@@ -256,8 +256,15 @@
   };
   for (const type of ["input", "change"]) document.addEventListener(type, onUserChange, true);
 
+  // Whether nothing in the DOM changed since the last list(): a caller may
+  // reuse that pass's fields instead of listing again.
+  const current = () => {
+    flush();
+    return listedAt === generation;
+  };
+
   ns.fillInventory = {
-    list, peek, resolve, frame: FRAME,
+    list, peek, resolve, current, frame: FRAME,
     fpOf: (fid) => registry.get(fid)?.fp ?? null,
     liveFp,
     shapeOf: (fid) => (registry.has(fid) ? ns.shapes.byName(registry.get(fid).shape) : null),

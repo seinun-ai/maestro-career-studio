@@ -27,20 +27,24 @@ def test_sections_lists_repeating_groups_with_their_entries_and_add_button(page,
     load(page, fixture_html("workday_sections.html"))
     got = sections(page)
     assert [{k: v for k, v in s.items() if k != "sid"} for s in got] == [
-        {"heading": "Work Experience", "entries": 1, "filled": [False], "add": "Add Another"},
-        {"heading": "Education", "entries": 1, "filled": [False], "add": "Add Another"},
-        {"heading": "Websites", "entries": 0, "filled": [], "add": "Add"},
+        {"heading": "Work Experience", "entries": 1, "filled": [False], "held": [[]], "add": "Add Another"},
+        {"heading": "Education", "entries": 1, "filled": [False], "held": [[]], "add": "Add Another"},
+        {"heading": "Websites", "entries": 0, "filled": [], "held": [], "add": "Add"},
     ]
     assert all(SID.match(s["sid"]) for s in got) and len({s["sid"] for s in got}) == 3
-    # Only the heading, the counts and the button's words: never an element.
-    assert all(set(s) == {"sid", "heading", "entries", "filled", "add"} for s in got)
-    # An entry holding a committed value is `filled`; the same section keeps its sid.
+    # Only the heading, the counts, what each entry holds and the button's words: never an element.
+    assert all(set(s) == {"sid", "heading", "entries", "filled", "held", "add"} for s in got)
+    # An entry holding a committed value is `filled`, and says what it holds
+    # (for the local backend's reconciliation); the same section keeps its sid.
     page.fill("#Work-Experience-1-Job-Title", "Analyst")
+    page.keyboard.press("Tab")
+    page.fill("#Work-Experience-1-Company", "A" * 250)
     page.keyboard.press("Tab")
     again = by_heading(page)
     assert again["Work Experience"]["filled"] == [True]
+    assert again["Work Experience"]["held"] == [["Analyst", "A" * 200]]
     assert again["Work Experience"]["sid"] == got[0]["sid"]
-    assert again["Education"]["filled"] == [False]
+    assert again["Education"]["filled"] == [False] and again["Education"]["held"] == [[]]
 
 
 def test_add_presses_only_the_sections_own_add_button_and_never_delete(page, load):
@@ -156,3 +160,12 @@ def test_a_labelled_section_counts_every_numbered_entry_whatever_its_words(page,
       <button type="button" data-automation-id="add-button">Add Another</button></div>""")
     [work] = sections(page)
     assert (work["heading"], work["entries"]) == ("Work History", 1)
+
+
+def test_a_typeless_add_counts_outside_a_form_and_never_inside_one(page, load):
+    """A <button> with no type is a submit only inside a form: outside one it
+    is an ordinary button (Workday's Add); inside one, pressing it would send
+    the form."""
+    load(page, """<div role="group" aria-labelledby="a"><h4 id="a">Websites</h4><button id="free">Add</button></div>
+      <form><div role="group" aria-labelledby="b"><h4 id="b">Certifications</h4><button id="sends">Add</button></div></form>""")
+    assert [(s["heading"], s["add"]) for s in sections(page)] == [("Websites", "Add")]

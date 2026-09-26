@@ -65,7 +65,10 @@
  *   counted only when the page's entry count grew; a press that did not grow
  *   it is not pressed again this run. A full inventory follows the adds, so
  *   the new entries' fields are mapped in the same round. The report's
- *   `sections` says what was added, by kind — value-free.
+ *   `sections` says what was added, by kind — value-free. The backend adds
+ *   nothing when entries already on the page hold profile entries out of
+ *   their place (`reason` held_out_of_order). Within a section, one fact is
+ *   written into ONE entry (`in_another_entry`).
  * - Nothing is guessed when the AI cannot be reached (`aiFailure`).
  * - Stop: `cancelled()` is checked before every page action; the panel also
  *   sends `fill_cancel`, which cancels the page operation in flight.
@@ -104,7 +107,7 @@
  *                  buildLoopObservations, value-free.
  *
  * WHAT THIS FILE PUBLISHES: ns.fillLoop = { runFill, sourceHintOf, limits,
- * buildLoopObservations }.
+ * buildLoopObservations, sectionLines }.
  */
 (() => {
   const ns = (window.careerStudioCompanion ??= {});
@@ -129,6 +132,10 @@
   const MAX_SECTIONS = 20;
   const MAX_ENTRIES = 50;
   const SECTION_KINDS = new Set(["experience", "education", "languages", "websites", "certifications"]);
+  const MAX_HELD = 10;
+  const HELD_CHARS = 200;
+  // "Work Experience 2": an entry of a repeating section, and its number.
+  const ENTRY = /^(.*\S)\s+(\d+)$/;
   const HISTORY_KEPT = 8;
   const FID = /^[A-Za-z0-9_-]{1,64}$/;
   const HISTORY_ENTRY = /^(click:o\d+|search:value|search:word:\d|open|scroll|close|give_up|choose) -> [a-z_]+( \([a-z_]+\))?$/;
@@ -1033,6 +1040,37 @@
       return order([...texts, ...choices]);
     };
 
+    // ---- one fact, one entry. Within one repeating section ("Websites 1",
+    // "Websites 2"), a fact is written into ONE entry: /map places entries by
+    // page order, and a fact with no entry number (personal.website) can be
+    // handed to two entries' fields. The first entry to claim it keeps it;
+    // another entry's field for it is left for the user, never written. Nor
+    // is a fact with no entry number written where another entry already
+    // HOLDS its value (the user's, a parsed resume's). Entry-numbered facts
+    // (experience.0 / experience.1) are different facts whatever their values:
+    // two jobs may share a title.
+    const claims = new Map(); // `${frame}\n${section}\n${slot}` -> the entry that has it
+    const inAnotherEntry = (f) => {
+      const row = rows.get(f.fid);
+      const m = ENTRY.exec(String(f.section ?? ""));
+      if (!m || row?.route !== "slot" || !row.slot) return false;
+      const family = m[1].toLowerCase();
+      const key = `${row.frameId}\n${family}\n${row.slot}`;
+      const claimed = claims.get(key);
+      const held = !/\.\d+\./.test(row.slot) && listed.some((fid) => {
+        const other = rows.get(fid);
+        const o = ENTRY.exec(String(other?.field?.section ?? ""));
+        return fid !== f.fid && other.frameId === row.frameId && o && o[1].toLowerCase() === family && o[2] !== m[2]
+          && other.field.answered && same(other.field.committed, row.value);
+      });
+      if ((claimed !== undefined && claimed !== m[2]) || held) {
+        finish(f, "needs_answer", { lastOutcome: "in_another_entry", answer: "Already filled in another entry." });
+        return true;
+      }
+      claims.set(key, m[2]);
+      return false;
+    };
+
     // ---- repeating sections: Add the entries the profile can fill (see the header)
     // A section is known by its frame, sid and heading; its plan (kind and
     // `wanted`) is asked once per run, its log is what the report says.
@@ -1048,16 +1086,22 @@
       if (!ask.length || halt()) return;
       const res = await post("/api/autofill/sections", {
         ...selector,
+        // `held`: what each entry already holds, for the LOCAL backend to
+        // match entries to profile entries (it never reaches a model).
         sections: ask.map((s) => ({
           sid: s.sid, heading: s.heading.slice(0, 200), entries: s.entries,
           filled: (Array.isArray(s.filled) ? s.filled : []).slice(0, MAX_ENTRIES).map(Boolean),
+          held: (Array.isArray(s.held) ? s.held : []).slice(0, MAX_ENTRIES).map((vs) => (Array.isArray(vs) ? vs : [])
+            .slice(0, MAX_HELD).map((v) => String(v).slice(0, HELD_CHARS))),
         })),
       });
       if (!res) return; // asked again next round
       for (const s of ask) {
         const p = res.sections?.[s.sid];
         const ok = SECTION_KINDS.has(p?.kind) && Number.isInteger(p.wanted) && p.wanted >= 0;
-        plans.set(sectionKey(s), ok ? { kind: p.kind, wanted: Math.min(p.wanted, MAX_ENTRIES) } : { kind: "none", wanted: 0 });
+        plans.set(sectionKey(s), ok ? {
+          kind: p.kind, wanted: Math.min(p.wanted, MAX_ENTRIES), reason: p.reason === "held_out_of_order" ? p.reason : null,
+        } : { kind: "none", wanted: 0, reason: null });
       }
     };
     // Returns whether any entry was added. ONE section per kind: a second
@@ -1074,7 +1118,8 @@
         if (!plan || plan.kind === "none" || kinds.has(plan.kind)) continue;
         kinds.add(plan.kind);
         const key = sectionKey(s);
-        const log = sectionLog.get(key) ?? { heading: s.heading, kind: plan.kind, wanted: plan.wanted, added: 0, outcome: null };
+        const log = sectionLog.get(key)
+          ?? { heading: s.heading, kind: plan.kind, wanted: plan.wanted, added: 0, outcome: null, reason: plan.reason };
         sectionLog.set(key, { ...log, entries: s.entries });
         // A press that did not add (or failed) is never pressed again this run;
         // one refused as `stale` (the view changed) is decided afresh.
@@ -1175,6 +1220,7 @@
         if (halt()) break;
         const f = queue.shift();
         worked.add(f.fid).add(sameField(f));
+        if (inAnotherEntry(f)) continue;
         if (f.kind === "text") {
           await onFieldClock(f, L.FIELD_MS, (row) => fillText(f, textOf(f, row), formatOf(row.slot)));
           await writeProse();
@@ -1222,8 +1268,10 @@
       };
     });
     // Per section of a profile kind: how many entries were added (value-free).
-    const sections = [...sectionLog.values()].map(({ heading, kind, wanted, entries, added, outcome }) => ({
-      heading, kind, wanted, entries, added, outcome,
+    // `reason` held_out_of_order: entries on the page hold profile entries out
+    // of their order, so none was added (an added one would repeat one).
+    const sections = [...sectionLog.values()].map(({ heading, kind, wanted, entries, added, outcome, reason }) => ({
+      heading, kind, wanted, entries, added, outcome, reason: reason ?? null,
     }));
     return { runId, fields, host, aiFailure, stopped, timedOut: over, sections };
   }
@@ -1266,5 +1314,19 @@
     }];
   }).slice(0, MAX_OBSERVATIONS);
 
-  ns.fillLoop = { runFill, sourceHintOf, limits, buildLoopObservations };
+  // ---- the report's repeating sections, as the panel says them: one line per
+  // section still short of what the profile can fill (a press that added
+  // nothing, Stop, the clock), or where none was added because the entries
+  // on the page hold profile entries out of their order. Empty when there is
+  // nothing for the user to add.
+  const sectionLines = (report) => (report?.sections ?? []).flatMap((s) => {
+    if (s.reason === "held_out_of_order") {
+      return [`${s.heading}: the items on the page don't match your profile's order, so none were added.`];
+    }
+    if (!(s.entries < s.wanted)) return [];
+    const needed = s.wanted - (s.entries - s.added); // what the section was short of before the run
+    return [`${s.heading}: ${s.added} of ${needed} added. Add the rest yourself.`];
+  });
+
+  ns.fillLoop = { runFill, sourceHintOf, limits, buildLoopObservations, sectionLines };
 })();

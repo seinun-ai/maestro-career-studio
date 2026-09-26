@@ -1439,9 +1439,10 @@ def work(n, **kw):
     return [f(f"t{n}", question="Job Title", **sec, **kw), f(f"c{n}", question="Company", **sec, **kw)]
 
 
-def section(sid="f-s1", heading="Work Experience", entries=1, filled=None):
+def section(sid="f-s1", heading="Work Experience", entries=1, filled=None, held=None):
     return {"sid": sid, "heading": heading, "entries": entries,
-            "filled": filled if filled is not None else [False] * entries, "add": "Add Another"}
+            "filled": filled if filled is not None else [False] * entries,
+            "held": held if held is not None else [[]] * entries, "add": "Add Another"}
 
 
 JOBS = {"t1": {"route": "slot", "slot": "experience.0.title", "value": "Analyst"},
@@ -1471,17 +1472,22 @@ def test_the_loop_adds_entries_the_profile_can_fill_then_fills_them(page, load):
         "t1": "Analyst", "c1": "Acme", "t2": "Intern", "c2": "Initech"}
     # Headings and counts go out; kinds and counts come back — asked once per section.
     [ask] = bodies(out, "/api/autofill/sections")
-    assert ask["sections"] == [{"sid": "f-s1", "heading": "Work Experience", "entries": 1, "filled": [False]}]
+    assert ask["sections"] == [{"sid": "f-s1", "heading": "Work Experience", "entries": 1, "filled": [False],
+                                "held": [[]]}]
     # The report says what was added, by kind (value-free).
     assert out["report"]["sections"] == [{"heading": "Work Experience", "kind": "experience", "wanted": 2,
-                                          "entries": 2, "added": 1, "outcome": "added"}]
+                                          "entries": 2, "added": 1, "outcome": "added", "reason": None}]
 
 
-def test_an_entry_already_holding_data_is_reconciled_not_duplicated(page, load):
-    held = work(1, committed="Someone's job", answered=True)
+def test_an_entry_already_holding_data_counts_and_is_never_overwritten(page, load):
+    held = work(1, committed="Acme", answered=True)
     out = run(page, load, frames=[held, held + work(2)],
-              sections=[[section(entries=1, filled=[True])], [section(entries=2, filled=[True, False])]],
+              sections=[[section(entries=1, filled=[True], held=[["Acme", "Acme"]])],
+                        [section(entries=2, filled=[True, False])]],
               kinds={"f-s1": {"kind": "experience", "wanted": 2}}, map=JOBS)
+    # What the entry holds goes to the (local) backend, which reconciles it.
+    [ask] = bodies(out, "/api/autofill/sections")
+    assert ask["sections"][0]["held"] == [["Acme", "Acme"]]
     # The held entry counts as one of the two: one Add, never two.
     assert len(adds(out)) == 1
     # What it holds stays: never written over.
@@ -1518,6 +1524,50 @@ def test_add_never_exceeds_what_the_profile_can_fill(page, load):
     assert adds(out) == []
 
 
+def test_entries_held_out_of_order_add_nothing_and_the_report_says_why(page, load):
+    """The backend found an entry holding a later profile entry than its place
+    (reconciliation, app/services/autofill_sections): nothing is added."""
+    out = run(page, load, frames=[work(1, committed="Initech", answered=True)],
+              sections=[[section(entries=1, filled=[True], held=[["Initech"]])]],
+              kinds={"f-s1": {"kind": "experience", "wanted": 1, "reason": "held_out_of_order"}}, map=JOBS)
+    assert adds(out) == []
+    assert out["report"]["sections"] == [{"heading": "Work Experience", "kind": "experience", "wanted": 1,
+                                          "entries": 1, "added": 0, "outcome": None,
+                                          "reason": "held_out_of_order"}]
+
+
+def site(n, **kw):
+    return f(f"u{n}", question="URL", section=f"Websites {n}", repeatIndex=n - 1, **kw)
+
+
+def test_one_fact_is_never_written_into_two_entries_of_a_section(page, load):
+    """personal.website carries no entry number, so /map can hand the same
+    fact to both Websites entries: the second entry's field is left for the
+    user, never written."""
+    out = run(page, load, frames=[[site(1), site(2)]],
+              map={"u1": {"route": "slot", "slot": "personal.website", "value": "https://ada.dev"},
+                   "u2": {"route": "slot", "slot": "personal.website", "value": "https://ada.dev"}})
+    assert [a["fid"] for a in actions(out)] == ["u1"]
+    assert (row(out, "u2")["status"], row(out, "u2")["lastOutcome"]) == ("needs_answer", "in_another_entry")
+    # Nor a fact another entry already HOLDS (the user's, a parsed resume's).
+    out = run(page, load, frames=[[site(1, committed="https://GitHub.com/ada ", answered=True), site(2)]],
+              map={"u2": {"route": "slot", "slot": "personal.github", "value": "https://github.com/ada"}})
+    assert actions(out) == [] and row(out, "u2")["lastOutcome"] == "in_another_entry"
+    # A different fact in the second entry is written.
+    out = run(page, load, frames=[[site(1), site(2)]],
+              map={"u1": {"route": "slot", "slot": "personal.website", "value": "https://ada.dev"},
+                   "u2": {"route": "slot", "slot": "personal.github", "value": "https://github.com/ada"}})
+    assert statuses(out) == {"u1": "verified", "u2": "verified"}
+
+
+def test_the_same_value_in_numbered_entries_of_different_facts_is_written(page, load):
+    """Two jobs can share a title: entry-numbered facts (experience.0 / .1)
+    are different facts, whatever their values."""
+    out = run(page, load, frames=[work(1, committed="Analyst", answered=True)[:1] + work(2)[:1]],
+              map={"t2": {"route": "slot", "slot": "experience.1.title", "value": "Analyst"}})
+    assert statuses(out) == {"t1": "already", "t2": "verified"}
+
+
 def test_an_add_that_did_not_grow_the_section_is_pressed_once(page, load):
     """A deliberate write, never a trial: a press that added nothing is not
     pressed again — not for the next wanted entry, not in a later round."""
@@ -1526,7 +1576,7 @@ def test_an_add_that_did_not_grow_the_section_is_pressed_once(page, load):
               add={"f-s1": {"outcome": "not_added", "entries": 1}}, map=JOBS)
     assert len(adds(out)) == 1
     assert out["report"]["sections"] == [{"heading": "Work Experience", "kind": "experience", "wanted": 3,
-                                          "entries": 1, "added": 0, "outcome": "not_added"}]
+                                          "entries": 1, "added": 0, "outcome": "not_added", "reason": None}]
     assert statuses(out) == {"t1": "verified", "c1": "verified"}
     # The page answering "added" without the count growing is not an entry either.
     out = run(page, load, frames=[work(1)], sections=[[section(entries=1)]],

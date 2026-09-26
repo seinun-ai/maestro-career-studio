@@ -221,8 +221,12 @@
   };
 
   // The frame's repeating sections (content/sections.js): headings, entry
-  // counts, which entries hold a value, and the words on each one's own Add.
-  const sections = () => ns.fillSections.list(inv().list({ consentForms }).fields);
+  // counts, which entries hold a value (and what), and the words on each
+  // one's own Add. The round's inventory is reused while the DOM has not
+  // changed since it; otherwise the frame is listed again.
+  let lastFields = null; // the last full inventory's fields
+  const sections = () => ns.fillSections.list(
+    lastFields && inv().current() ? lastFields : inv().list({ consentForms }).fields);
   // Press ONE section's own Add, once — a deliberate write, never a trial: on
   // the view the loop decided from (`heading`, `entries`, else `stale`), under
   // its own budget and token, so a latched Stop never presses it. Only the
@@ -277,7 +281,9 @@
         verified.clear();
       }
       consentForms = opts.consentForms === true;
-      return inv().list({ consentForms });
+      const listed = inv().list({ consentForms });
+      lastFields = listed.fields;
+      return listed;
     }),
     explore: serial(explore), apply: serial(applyNow), stepState: serial(stepState), sweep: serial(sweep), focus, budgets,
     sections: serial(sections), add: serial(add),

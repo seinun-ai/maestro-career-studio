@@ -187,7 +187,9 @@
     const open = (residue?.length ?? 0) + (essays?.length ?? 0) + tally.open;
     // A stopped or timed-out loop has not looked at everything it would have.
     const cut = loop?.stopped === true || loop?.timedOut === true;
-    return wrote > 0 && open === 0 && !cut;
+    // Entries of a repeating section left for the user to add are work left.
+    const short = loop ? ns.fillLoop.sectionLines(loop).length : 0;
+    return wrote > 0 && open === 0 && !cut && !short;
   }
 
   /** The loop report's statuses that WROTE (a value the engine committed and
@@ -296,8 +298,10 @@
       const how = loop.stopped ? "Stopped." : "Filling took too long, so it stopped.";
       return `${how} ${plural(filled, "field")} filled. The rest are listed below.`;
     }
-    if (!wrote && !open) return "Nothing left to fill here. Review before you submit.";
+    const short = ns.fillLoop.sectionLines(loop).length > 0;
+    if (!wrote && !open && !short) return "Nothing left to fill here. Review before you submit.";
     return leftSentence({ open, blank: 0 }, plural)
+      ?? (short ? "Some items weren't added. Add them yourself, then fill again." : null)
       ?? loopFinishedSentence(loop.fields.filter((row) => row.status === "closest"
         || row.status === "assumed"));
   }

@@ -428,9 +428,12 @@ def test_the_loop_adds_the_entries_the_profile_can_fill_and_fills_them(e2e_page)
     adds = [m for m in out["sent"] if m["type"] == "fill_add"]
     assert [(m["heading"], m["entries"]) for m in adds] == [("Work Experience", 1), ("Websites", 0)]
     assert out["report"]["sections"] == [
-        {"heading": "Work Experience", "kind": "experience", "wanted": 2, "entries": 2, "added": 1, "outcome": "added"},
-        {"heading": "Education", "kind": "education", "wanted": 1, "entries": 1, "added": 0, "outcome": None},
-        {"heading": "Websites", "kind": "websites", "wanted": 1, "entries": 1, "added": 1, "outcome": "added"},
+        {"heading": "Work Experience", "kind": "experience", "wanted": 2, "entries": 2, "added": 1, "outcome": "added",
+         "reason": None},
+        {"heading": "Education", "kind": "education", "wanted": 1, "entries": 1, "added": 0, "outcome": None,
+         "reason": None},
+        {"heading": "Websites", "kind": "websites", "wanted": 1, "entries": 1, "added": 1, "outcome": "added",
+         "reason": None},
     ]
     filled = {(r["section"], r["question"]): r["status"] for r in out["report"]["fields"]}
     for key in (("Work Experience 2", "Job Title"), ("Work Experience 2", "Company"), ("Websites 1", "URL")):

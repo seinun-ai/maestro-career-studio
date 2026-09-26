@@ -26,7 +26,13 @@ HEADINGS = {"w": "Work Experience", "e": "Education", "s": "Websites", "l": "Lan
 
 
 def sections(headings=HEADINGS):
-    return [PageSection(sid=sid, heading=h, entries=1, filled=[False]) for sid, h in headings.items()]
+    return [PageSection(sid=sid, heading=h, entries=1, filled=[False], held=[[]]) for sid, h in headings.items()]
+
+
+def held_section(sid, heading, *held):
+    """A section whose entries hold these committed values (one list per entry)."""
+    return PageSection(sid=sid, heading=heading, entries=len(held), filled=[bool(h) for h in held],
+                       held=[list(h) for h in held])
 
 
 def fake_jev(monkeypatch, kinds):
@@ -80,13 +86,73 @@ def test_sections_maps_headings_to_profile_lists(db_session, monkeypatch):
     assert "Work Experience" in q["instructions"] and _PAGE_TEXT_IS_DATA in q["instructions"]
 
 
+HELD = ("Initech Inc.", "Intern", "2020-01", "held-secret-value")
+
+
 @pytest.mark.usefixtures("jev_on")
 def test_the_model_sees_headings_and_counts_never_values(db_session, monkeypatch):
+    """Neither the profile's values nor what the page's entries HOLD (`held`,
+    sent to this local backend only for reconciliation) reach the model."""
     calls = fake_jev(monkeypatch, KINDS)
-    autofill_sections.plan(sections(), FACTS, db_session)
+    secs = [*sections(), held_section("h", "Employment", HELD)]
+    autofill_sections.plan(secs, FACTS, db_session)
     blob = repr(calls)
     assert "Websites" in blob
-    assert not [v for v in VALUES if v in blob]
+    assert not [v for v in (*VALUES, *HELD) if v in blob]
+    model_settings.set_autofill_engine(db_session, "fast")
+    prompts = fake_llm(monkeypatch, {"sections": {}})
+    autofill_sections.plan(secs, FACTS, db_session)
+    assert not [v for v in (*VALUES, *HELD) if v in prompts[0]["prompt"]]
+
+
+# ---------- entries already holding data: reconciled before anything is added
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_an_entry_holding_a_later_job_adds_nothing(db_session, monkeypatch):
+    """The page's first entry holds profile job #2: an added entry 2 would be
+    mapped to job #2 again (by page order) and job #1 never placed. So nothing
+    is added, and the report says why — value-free."""
+    fake_jev(monkeypatch, {"w": ("experience", 0.9)})
+    got = autofill_sections.plan([held_section("w", "Work Experience", ["Intern", "INITECH, Inc."])],
+                                 FACTS, db_session)
+    assert got["w"].model_dump() == {"kind": "experience", "wanted": 1, "reason": "held_out_of_order"}
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_entries_holding_the_first_jobs_in_order_leave_the_rest_to_add(db_session, monkeypatch):
+    facts = autofill_catalog.build({}, [{"employer": "Acme Corp", "title": "Analyst"},
+                                        {"employer": "Initech", "title": "Intern"},
+                                        {"employer": "Globex LLC", "title": "Lead"}], [])
+    fake_jev(monkeypatch, {"w": ("experience", 0.9)})
+    # Punctuation, case and company suffixes are not a difference.
+    got = autofill_sections.plan([held_section("w", "Work Experience", ["acme"], ["Intern", "Initech, Ltd."])],
+                                 facts, db_session)
+    assert got["w"].model_dump() == {"kind": "experience", "wanted": 3, "reason": None}
+
+
+@pytest.mark.usefixtures("jev_on")
+@pytest.mark.parametrize("held", [
+    (["Somewhere Else"],),                  # a job the profile does not have
+    (["Yes"],),                            # held, but nothing names the employer
+    ([], ["Acme"]),                         # job #1 in the SECOND entry: entry 1 would get it again
+])
+def test_a_held_entry_that_does_not_match_in_place_adds_nothing(db_session, monkeypatch, held):
+    facts = autofill_catalog.build({}, [{"employer": "Acme", "title": "Analyst"},
+                                        {"employer": "Initech", "title": "Intern"},
+                                        {"employer": "Globex", "title": "Lead"}], [])
+    fake_jev(monkeypatch, {"w": ("experience", 0.9)})
+    got = autofill_sections.plan([held_section("w", "Work Experience", *held)], facts, db_session)
+    assert (got["w"].wanted, got["w"].reason) == (len(held), "held_out_of_order")
+
+
+@pytest.mark.usefixtures("jev_on")
+def test_education_matches_on_the_school(db_session, monkeypatch):
+    fake_jev(monkeypatch, {"e": ("education", 0.9)})
+    ok = autofill_sections.plan([held_section("e", "Education", ["State University", "MS"])], FACTS, db_session)
+    assert (ok["e"].wanted, ok["e"].reason) == (2, None)
+    wrong = autofill_sections.plan([held_section("e", "Education", ["City College"])], FACTS, db_session)
+    assert (wrong["e"].wanted, wrong["e"].reason) == (1, "held_out_of_order")
 
 
 @pytest.mark.usefixtures("jev_on")
@@ -146,6 +212,8 @@ def test_the_request_carries_headings_and_counts_only():
     with pytest.raises(ValueError):
         SectionsRequest.model_validate({"sections": [{"sid": "f-s1", "heading": "Websites", "entries": 0,
                                                       "filled": [], "values": ["https://ada.dev"]}]})
+    with pytest.raises(ValueError):  # held: at most 10 values an entry, 200 characters each
+        PageSection(sid="f-s1", heading="Websites", entries=1, held=[["x" * 201]])
     with pytest.raises(ValueError):
         SectionsRequest.model_validate({"sections": []})
 
@@ -170,7 +238,7 @@ def test_the_route_counts_from_the_selected_resume(db_session, monkeypatch, tmp_
     assert r.status_code == 200
     got = r.json()["sections"]["f-s1"]
     assert got["kind"] == "experience" and got["wanted"] >= 1
-    assert set(got) == {"kind", "wanted"}  # a kind and a count, never a value
+    assert set(got) == {"kind", "wanted", "reason"}  # a kind, a count and a word, never a value
     assert "experience.0.employer" in seen["facts"]
 
 

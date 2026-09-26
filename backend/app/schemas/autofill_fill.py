@@ -146,13 +146,17 @@ class StepResponse(BaseModel):
 
 MAX_SECTIONS = 20
 MAX_ENTRIES = 50
+MAX_HELD = 10  # committed values read per entry
+HELD_CHARS = 200
 # The profile lists a repeating section can hold; `none` for anything else
 # (Skills, Resume/CV, a section the model is unsure of).
 SectionKind = Literal["experience", "education", "languages", "websites", "certifications", "none"]
 
 
 class PageSection(BaseModel):
-    """A section as the page reads it: its heading and counts, never a value."""
+    """A section as the page reads it: its heading, its counts, and what each
+    entry already HOLDS (`held`) — values, read by THIS local backend only to
+    match entries to profile entries, never passed to a model."""
 
     model_config = ConfigDict(extra="forbid")
     # `<frame>-s<n>` (content/sections.js), shaped like a fid.
@@ -161,6 +165,9 @@ class PageSection(BaseModel):
     entries: int = Field(ge=0, le=MAX_ENTRIES)
     # Per entry, whether it already holds any committed value.
     filled: list[bool] = Field(default_factory=list, max_length=MAX_ENTRIES)
+    # Per entry, the committed values of its answered fields.
+    held: list[Annotated[list[Annotated[str, Field(max_length=HELD_CHARS)]], Field(max_length=MAX_HELD)]] = Field(
+        default_factory=list, max_length=MAX_ENTRIES)
 
 
 class SectionsRequest(Selector):
@@ -172,6 +179,9 @@ class SectionPlan(BaseModel):
     # Profile entries of that kind holding the facts a new entry would REQUIRE:
     # the loop presses Add only up to this many entries.
     wanted: int = Field(ge=0)
+    # Why fewer are wanted than the profile has: entries on the page hold
+    # profile entries out of page order, so an added one would repeat one.
+    reason: Literal["held_out_of_order"] | None = None
 
 
 class SectionsResponse(BaseModel):

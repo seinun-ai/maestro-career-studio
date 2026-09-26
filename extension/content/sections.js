@@ -13,7 +13,7 @@
  * Its ENTRIES are the visible blocks titled "<Heading> <n>" inside it (in a
  * labelled group, any group titled "… <n>"; a hidden prototype is not one). Its Add button is its OWN: inside the section,
  * inside no entry and no other section, reading /^add( another)?\b/i or marked
- * `data-automation-id="add-button"`. Never a submit, a control inside a link,
+ * `data-automation-id="add-button"`. Never a form's submit, a control inside a link,
  * the page's header/nav/footer, and never anything whose words, name or
  * automation id say delete, remove or trash — Workday's Delete has no name at
  * all, and it is inside the entry, where no Add is looked for. What leaves
@@ -75,7 +75,11 @@
     b.getAttribute("data-automation-id"), b.value].filter(Boolean).join(" ");
   const addLike = (b) => {
     if (!base().visible(b) || b.disabled || b.getAttribute("aria-disabled") === "true") return false;
-    if (b.type === "submit" || b.closest("a[href]") || b.closest(CHROME)) return false;
+    // A typeless <button> reports type "submit" everywhere, but submits only
+    // inside a form: Workday's Add is one, outside any form. One DECLARED a
+    // submit is refused anywhere.
+    const submit = b.getAttribute("type")?.trim().toLowerCase() === "submit" || (b.type === "submit" && b.form);
+    if (submit || b.closest("a[href]") || b.closest(CHROME)) return false;
     const auto = b.getAttribute("data-automation-id") ?? "";
     if (NEVER.test(says(b)) || (auto && auto !== "add-button" && NAV_ID.test(auto))) return false;
     return auto === "add-button" || ADD.test(text(b) || b.value || "");
@@ -138,13 +142,21 @@
   };
 
   // `fields`: the inventory's, so "holds a value" means what the loop's
-  // "answered" means (a set: any item).
+  // "answered" means (a set: any item). `held`: per entry, the committed
+  // values of its answered fields (at most MAX_HELD, HELD_CHARS each) — for
+  // the LOCAL backend to match entries to profile entries before any Add
+  // (/sections never passes them to a model).
+  const MAX_HELD = 10;
+  const HELD_CHARS = 200;
   const list = (fields) => {
     const held = (fields ?? []).filter((f) => f.answered || (Array.isArray(f.committed) && f.committed.length))
-      .map((f) => ns.fillInventory.resolve(f.fid)).filter(Boolean);
+      .map((f) => [ns.fillInventory.resolve(f.fid), [f.committed].flat()]).filter(([n]) => n);
+    const holds = (e) => held.filter(([n]) => e.contains(n)).flatMap(([, values]) => values)
+      .map((v) => String(v ?? "").trim()).filter(Boolean).slice(0, MAX_HELD).map((v) => v.slice(0, HELD_CHARS));
     return find().map(({ el, heading, entries, button }) => ({
       sid: mint(el), heading, entries: entries.length,
-      filled: entries.map((e) => held.some((n) => e.contains(n))),
+      filled: entries.map((e) => held.some(([n]) => e.contains(n))),
+      held: entries.map(holds),
       add: text(button) || button.value || "",
     }));
   };
