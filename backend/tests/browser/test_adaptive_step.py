@@ -102,6 +102,42 @@ def test_a_search_move_whose_enter_commits_the_value_is_verified_and_anything_el
     assert page.input_value("#school") == ""
 
 
+def test_a_click_move_on_a_row_the_list_reused_after_scrolling_is_stale(page, load):
+    """Eight rows of 31 are in the DOM and six are in view (§2 rule 6): the
+    click move for the eighth, brought into view, finds its row redrawn with
+    another skill — stale, nothing ticked. The next state offers it again,
+    and that click lands."""
+    load(page, fixture_html("workday_search.html"))
+    page.evaluate("""() => { window.ticks = []; document.getElementById('portal').addEventListener('click', (e) => {
+        if (e.target.matches('input')) window.ticks.push(e.target.closest('[role=option]').textContent); }, true); }""")
+    f = inv(page)["Type to Add Skills"]
+    assert move(page, f, "search:value", "SQL")["outcome"] == "progressed"
+    s = state(page, f, "SQL")
+    mid = next(c["mid"] for c in s["candidates"] if c["describe"] == 'Click the option "PostgreSQL"')
+    assert move(page, f, mid, "SQL", version=s["version"])["outcome"] == "stale"
+    assert page.evaluate("window.ticks") == [] and oracle(page, "skills") == ["SQL"]
+    s = state(page, f, "SQL")
+    mid = next(c["mid"] for c in s["candidates"] if c["describe"] == 'Click the option "PostgreSQL"')
+    row = move(page, f, mid, "SQL", version=s["version"])
+    assert row["outcome"] == "verified" and oracle(page, "skills") == ["SQL", "PostgreSQL"]
+    assert page.evaluate("window.ticks") == ["PostgreSQL"]
+
+
+def test_the_same_text_under_two_categories_is_two_options_named_by_place(page, load):
+    """Explore lists both "Other" options; the click moves say where each sits,
+    so the model can tell them apart (choose itself answers `ambiguous`)."""
+    load(page, fixture_html("adversarial_same_text.html"))
+    f = inv(page)["Referral Source"]
+    got = page.evaluate(f"(r) => {OPS}.explore([r])", {"fid": f["fid"], "fp": f["fp"], "term": "Other"})[f["fid"]]
+    assert [o["text"] for o in got["options"]] == ["Other", "Other"]
+    assert move(page, f, "search:value", "Other")["outcome"] == "progressed"
+    s = state(page, f, "Other")
+    clicks = {c["describe"]: c["mid"] for c in s["candidates"] if c["mid"].startswith("click:")}
+    assert list(clicks) == ['Click the option "Other" (under "Job Board")', 'Click the option "Other" (under "Social Media")']
+    row = move(page, f, clicks['Click the option "Other" (under "Social Media")'], "Other", version=s["version"])
+    assert row["outcome"] == "verified" and oracle(page, "referral") == "Social Media / Other"
+
+
 def test_give_up_closes_everything(page, load):
     load(page, CATEGORY_POPUP)
     f = inv(page)["How did you hear about us?"]

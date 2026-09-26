@@ -454,11 +454,17 @@ know, and each one was learned from a live failure.
   `search`, shared by explore, choose, a set's items and the adaptive step's
   `search:*` moves). Press the box and wait for its list (on Workday, typing
   into a closed box opens nothing, and an Enter sent before the list exists
-  is lost); type the term over any query already there; press Enter (keydown
-  and keyup — Workday searches on the key-up); then wait until the option
-  TEXTS have not changed for 500 ms (results arrive in stages, in row nodes
-  the list reuses, so neither "new nodes" nor "different from before" is the
-  signal). The Enter is the search's own step, not the keyboard fallback: it
+  is lost; a box whose list opened on focus is not pressed shut); type the
+  term over any query already there; press Enter (keydown and keyup —
+  Workday searches on the key-up); then wait until the row TEXTS (not the
+  nodes: Workday reuses its rows) have changed from what the list showed
+  before the search and then held still for 500 ms — results arrive in
+  stages. A list that never changes (School opens empty; a search may
+  rightly answer with the default list) is taken only after 2.5 s, so a slow
+  answer is never read as empty, and a list still changing when time runs
+  out is never taken. A list whose rows are all in the DOM and that declares
+  its size (`aria-setsize`, `aria-rowcount`) is settled when it holds that
+  many. The Enter is the search's own step, not the keyboard fallback: it
   goes to a Workday box always, to a combobox or autocomplete box only when
   its typing showed nothing new (a widget that filters as you type would
   take an Enter as a pick), and never to a plain text box, a button or
@@ -470,9 +476,12 @@ know, and each one was learned from a live failure.
   highlights it; a tick is a toggle, redrawn a frame later, so it is never
   repeated), after the option is found again by its text; a long list is
   scrolled a page and a frame at a time (Workday keeps eight rows in the
-  DOM). Two options with the same text are one option — the first — only
-  when they sit under the same visible category path; otherwise the choice
-  is `ambiguous` and nothing is clicked. A set's items share one open list:
+  DOM); an adaptive click whose row the list redrew for another option on
+  the way into view is `stale`, never clicked. Two options with the same
+  text are one option — the first — only when they sit under the same
+  visible category path; otherwise explore lists both, the adaptive step's
+  click moves name each one's place (`Click the option "Other" (under "Job
+  Board")`), and a choose by text alone is `ambiguous`, nothing clicked. A set's items share one open list:
   each is typed over the last query, and the next waits for the last one's
   pill. A Workday box not yet known to take one answer or several is
   tried as a set; radio rows end it before any click.

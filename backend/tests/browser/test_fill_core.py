@@ -1,6 +1,8 @@
 """The generic fill mechanics (fill-core.js) through the page operations
 (fill-ops.js), in real Chromium against the committed fixtures."""
 
+import time
+
 import pytest
 
 from tests.browser.conftest import ENGINE_SOURCES, EXTENSION, fixture_html
@@ -534,13 +536,108 @@ def test_enter_is_only_sent_to_search_widgets(page, load):
     page.evaluate("""() => { window.enters = [];
       document.addEventListener('keydown', (e) => { if (e.key === 'Enter') window.enters.push(e.target.id); }, true); }""")
     f = inv(page)
-    assert apply(page, f["Preferred name"], op="write", value="Sam")["outcome"] == "verified"
+    # Every op on the plain box: a write, and the choice ops it refuses.
+    name = f["Preferred name"]
+    assert apply(page, name, op="write", value="Sam")["outcome"] == "verified"
+    assert explore(page, name, "Sam")["error"] == "not_a_choice"
+    assert apply(page, name, op="choose", text="Sam", term="Sam")["reason"] == "not_a_choice"
+    assert apply(page, name, op="set", texts=["Sam"])["reason"] == "not_a_set"
+    s = page.evaluate(f"(r) => {OPS}.stepState(r)", {"fid": name["fid"], "fp": name["fp"], "value": "Sam"})
+    assert [c["mid"] for c in s["candidates"]] == ["give_up"]
+    assert apply(page, name, op="move", mid="search:value", version=s["version"])["reason"] == "not_offered"
+    assert apply(page, name, op="move", mid="give_up", version=s["version"])["outcome"] == "closed"
+    assert page.evaluate("window.enters") == []
     assert apply(page, f["Country"], op="choose", text="India", term="ind")["outcome"] == "verified"
     assert apply(page, f["Office"], op="choose", text="Boston", term="bos")["outcome"] == "verified"
     assert apply(page, f["School or University"], op="choose", text="Texas A&M University", term="Texas")["outcome"] == "verified"
     assert page.evaluate("window.enters") == ["cb", "school"]
     assert page.input_value("#nm") == "Sam" and page.input_value("#cb") == "Boston"
 
+
+def staged(slow_ms=None, second_ms=None, declare=False, heard_ignores_enter=False):
+    """workday_search.html with its result stages moved (§2 rule 4), rows that
+    declare the full result count (aria-setsize), or a How Did You Hear box
+    whose Enter answers with the list it already shows."""
+    html = fixture_html("workday_search.html")
+    edits = []
+    if slow_ms is not None:
+        edits.append(("const STAGE_1_MS = 100;", f"const STAGE_1_MS = {slow_ms};"))
+    if second_ms is not None:
+        edits.append(("const STAGE_2_MS = 400;", f"const STAGE_2_MS = {second_ms};"))
+    if declare:
+        edits += [("const token = open.token;", "const token = open.token; open.total = results.length;"),
+                  ("row.dataset.index = String(first + i);",
+                   "row.dataset.index = String(first + i); row.setAttribute('aria-setsize', String(open.total ?? items.length));")]
+    if heard_ignores_enter:
+        edits.append(("if (query) search(id, query);", "if (query && id !== 'heard') search(id, query);"))
+    for old, new in edits:
+        assert old in html, old
+        html = html.replace(old, new)
+    return html
+
+
+def test_slow_results_are_waited_for_not_read_as_the_empty_list(page, load):
+    """School opens EMPTY; its answer starts 700 ms after the Enter — past the
+    quiet period, so an unchanged list is never taken for the answer early."""
+    load(page, staged(slow_ms=700, second_ms=1000))
+    f = inv(page)["School or University"]
+    got = explore(page, f, "Arlington")
+    assert len(got["options"]) == 8 and "error" not in got
+    row = apply(page, f, op="choose", text="The University of Texas at Arlington", term="Arlington")
+    assert (row["outcome"], oracle(page, "school")) == ("verified", "The University of Texas at Arlington")
+
+
+def test_a_search_that_answers_with_the_list_it_showed_still_resolves(page, load):
+    """A search may rightly answer with the default list: taken once the long
+    bound has passed with nothing new, never before it."""
+    load(page, staged(heard_ignores_enter=True))
+    started = time.monotonic()
+    got = explore(page, inv(page)["How Did You Hear About Us?"], "Job")
+    assert [o["text"] for o in got["options"]] == ["Job Board", "Social Media"] and "error" not in got
+    assert time.monotonic() - started >= 2.5
+
+
+def test_a_list_that_declares_its_size_is_settled_when_it_holds_that_many(page, load):
+    """The first stage (1 row) and the second (5) are 1.2 s apart — past the
+    quiet period; rows that declare aria-setsize=5 are not settled at one."""
+    load(page, staged(second_ms=1200, declare=True))
+    got = explore(page, inv(page)["School or University"], "Texas")
+    assert len(got["options"]) == 5
+
+
+# A combobox that opens its list on FOCUS and toggles it on a press (MUI-style
+# Autocomplete): pressing after the focus would shut the list, and typing
+# filters only an open list. `window.presses` counts presses on the box.
+OPEN_ON_FOCUS = """<label for='mui'>Team</label><div class='ac-root'><input id='mui' role='combobox'
+  aria-autocomplete='list' aria-expanded='false' aria-controls='mui-list'></div>
+<ul id='mui-list' role='listbox' style='display:none'></ul>
+<script>
+(() => {
+  const input = document.getElementById('mui'); const list = document.getElementById('mui-list');
+  window.presses = 0;
+  const OPTIONS = ['Red', 'Blue', 'Green'];
+  const shown = () => list.style.display !== 'none';
+  const render = () => {
+    const q = input.value.toLowerCase();
+    list.innerHTML = OPTIONS.filter((o) => o.toLowerCase().includes(q)).map((o) => `<li role='option'>${o}</li>`).join('');
+    for (const li of list.children) li.addEventListener('click', () => { input.value = li.textContent; hide(); });
+  };
+  const show = () => { render(); list.style.display = 'block'; input.setAttribute('aria-expanded', 'true'); };
+  const hide = () => { list.style.display = 'none'; input.setAttribute('aria-expanded', 'false'); };
+  input.addEventListener('focus', show);
+  input.addEventListener('mousedown', () => { window.presses += 1; if (shown()) hide(); else show(); });
+  input.addEventListener('input', () => { if (shown()) render(); });
+})();
+</script>"""
+
+
+@in_both_windows()
+def test_a_list_that_opens_on_focus_is_not_pressed_shut(window, request, load):
+    page = request.getfixturevalue(window)
+    load(page, OPEN_ON_FOCUS)
+    row = apply(page, inv(page)["Team"], op="choose", text="Blue", term="Bl")
+    assert (row["outcome"], row["committed"]) == ("verified", "Blue")
+    assert page.evaluate("window.presses") == 0
 
 def test_explore_never_runs_past_the_field_clock(page, load):
     """The loop sends what the field's clock has left (`ms`): an explore that

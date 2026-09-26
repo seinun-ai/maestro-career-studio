@@ -16,11 +16,13 @@
  * THE SEARCH SEQUENCE (notes §2) is how a person searches a Workday box:
  * press it and wait for its list, type the term (over any query already
  * there — a set's items share one open list), press Enter where the widget
- * searches on it, and wait until the option TEXTS stop changing (results
- * arrive in stages, in row nodes the list reuses). An Enter that found one
- * hit may commit it on its own: the evidence is read before anything is
- * clicked. Identical option texts are one option only under one visible
- * category path; otherwise the choice is `ambiguous`.
+ * searches on it, and wait until the row TEXTS change from what the list
+ * showed and then stop changing (results arrive in stages, in row nodes the
+ * list reuses). An Enter that found one hit may commit it on its own: the
+ * evidence is read before anything is clicked. Identical option texts are
+ * one option only under one visible category path; otherwise they are
+ * listed apart, named by place in the click moves, and a choose by text is
+ * `ambiguous`.
  *
  * VERIFY reads each widget's committed evidence (shapes `evidence`): the
  * display must state the value AND, where the page exposes what it saved
@@ -139,6 +141,15 @@
       if (n.matches('[role="group"], [role="treeitem"]')) parts.push(groupName(n));
     }
     return [...parts, o.getAttribute("aria-level") ?? "", headerBefore(o)].join("\u203a");
+  };
+  // The same, in words a model reads: the groups and the header, outermost first.
+  const placeOf = (o, pop) => {
+    const parts = [];
+    for (let n = o.parentElement; n && n !== pop.parentElement; n = n.parentElement) {
+      if (n.matches('[role="group"], [role="treeitem"]')) parts.unshift(groupName(n));
+    }
+    parts.push(headerBefore(o));
+    return parts.filter((x, i) => x && x !== parts[i - 1]).join(" \u203a ");
   };
   // Which of `hits` (options with nodes, from one popup) is THE option: the
   // only one; or, of several with the same text, the first — they are one
@@ -364,33 +375,61 @@
     ns.shapes.learnRows(el, got);
     return got;
   };
-  // Search results once they SETTLE: nothing busy and the option texts
-  // unchanged for QUIET_MS — texts, not nodes (Workday reuses its rows and
-  // swaps their text), and not "different from before the search" (a search
-  // may rightly answer with the list it showed). A list that closed while
-  // the committed value moved is an Enter that committed its one hit (notes
-  // §2 rule 5): null at once, the caller reads the evidence. The rows say
-  // whether the widget takes one answer or several: shapes remembers that.
-  const waitSettled = async (el, shape, before, snap, t) => {
+  // The row texts of a list (or "-": no list), the signal a search's results
+  // are judged by — texts, not nodes: Workday reuses its rows and swaps their
+  // text (notes §2 rule 3). Every visible row counts, a "No Items." row too:
+  // an honest empty answer is a change.
+  const textsOf = (p) => (p ? [...p.querySelectorAll(OPTIONISH)].filter((o) => b().visible(o))
+    .map((o) => b().clean(o.innerText || o.textContent)).join("\n") : "-");
+  // How many options the list SAYS it holds, where it says so: the one
+  // aria-setsize every row carries, or the list's aria-rowcount.
+  const declared = (p) => {
+    const rows = [...p.querySelectorAll(OPTIONISH)];
+    const sizes = new Set(rows.map((r) => r.getAttribute("aria-setsize")));
+    const size = rows.length && sizes.size === 1 && !sizes.has(null) ? Number([...sizes][0]) : NaN;
+    if (Number.isInteger(size) && size >= 0) return size;
+    const count = p.hasAttribute("aria-rowcount") ? Number(p.getAttribute("aria-rowcount")) : NaN;
+    return Number.isInteger(count) && count >= 0 ? count : null;
+  };
+  // Search results once they SETTLE. `was`: the texts the list showed just
+  // before the search (before the Enter; before the typing where no Enter
+  // follows). Settled is: nothing busy, the texts CHANGED from `was`, then
+  // stayed unchanged QUIET_MS (results arrive in stages — School showed 1
+  // row, then 8). An unchanged list (Workday's School opens EMPTY; How Did
+  // You Hear shows its default categories) is the answer only once OPEN_MS
+  // has passed with nothing new: a search may rightly answer with the list it
+  // showed, but a slow one must not be read as empty. Where every row is in
+  // the DOM and the list declares its size (aria-setsize / aria-rowcount), it
+  // is settled exactly when it holds that many. A list still changing when
+  // time runs out is never returned (null). A list that closed while the
+  // committed value moved is an Enter that committed its one hit (notes §2
+  // rule 5): null at once, the caller reads the evidence. The rows say whether
+  // the widget takes one answer or several: shapes remembers that.
+  const waitSettled = async (el, shape, before, snap, was, t) => {
+    const start = Date.now();
     let last = null;
-    let since = Date.now();
+    let since = start;
     const got = await b().waitFor(() => {
+      const now = Date.now();
       const p = own(el, before);
       if (!p && moved(el, shape, snap)) return { pop: null };
       if (!p || busy(p)) {
         last = null;
-        since = Date.now();
+        since = now;
         return null;
       }
-      const sig = b().optionsOf(p).map((o) => o.text).join("\n");
+      const sig = textsOf(p);
+      const size = scrollerOf(p) ? null : declared(p);
+      if (size !== null && sig !== was) return b().optionsOf(p).length === size ? { pop: p } : null;
       if (sig !== last) {
         last = sig;
-        since = Date.now();
+        since = now;
         return null;
       }
-      return Date.now() - since >= QUIET_MS ? { pop: p } : null;
+      if (now - since < QUIET_MS) return null;
+      return sig !== was || now - start >= OPEN_MS ? { pop: p } : null;
     }, OPEN_MS + QUIET_MS, t);
-    const pop = got ? got.pop : own(el, before);
+    const pop = got?.pop ?? null;
     ns.shapes.learnRows(el, pop);
     return pop;
   };
@@ -433,6 +472,11 @@
     const workday = box === el && ns.shapes.workday(el);
     if (press) {
       b().enter(el, t);
+      // A widget that opens its list on focus (MUI-style) is not pressed as
+      // well: its press toggles that list shut.
+      if (!workday && (own(el, before) || el.getAttribute("aria-expanded") === "true")) press = false;
+    }
+    if (press) {
       const quiet = watch(el, shape);
       try {
         b().press(el, t);
@@ -446,13 +490,15 @@
       }
     }
     const was = searchView(el, shape, before);
+    let shown = textsOf(own(el, before)); // what the list showed before the search
     await typeQuery(box, term, t, { own: box === el });
     w?.saw("type");
     if (workday || (comboBox(box) && !(await b().waitFor(() => searchView(el, shape, before) !== was, ANSWER_MS, t)))) {
+      shown = textsOf(own(el, before));
       b().keyPress(box, "Enter", t);
       w?.saw("keyboard");
     }
-    return waitSettled(el, shape, before, snap, t);
+    return waitSettled(el, shape, before, snap, shown, t);
   };
   // The list the engine opened for this search box, while it is still up.
   const heldList = (el) => {
@@ -562,13 +608,18 @@
     .find((n) => n.scrollHeight > n.clientHeight + 4 && /(auto|scroll)/.test(getComputedStyle(n).overflowY)) ?? null;
   // Every option, a page and a frame at a time down a long list (a
   // virtualized one holds only the rows in view), until the scroll position
-  // stops changing. Identical texts are read once.
+  // stops changing. Identical options — the same text under the same
+  // category path (`one`) — are read once; the same text under different
+  // categories is two options, both listed.
   const readAll = async (pop, t) => {
     const seen = new Map();
     const box = scrollerOf(pop);
     let complete = !box;
     for (let i = 0; i < 30; i += 1) {
-      for (const o of b().optionsOf(pop)) if (!seen.has(o.text)) seen.set(o.text, o);
+      for (const o of b().optionsOf(pop)) {
+        const key = `${o.text}\n${pathOf(o.el, pop)}`;
+        if (!seen.has(key)) seen.set(key, o);
+      }
       if (complete) break;
       const top = box.scrollTop;
       box.scrollTop = top + box.clientHeight;
@@ -1034,9 +1085,9 @@
   let stateVersion = 0;
   // Page text inside a description is a JSON string: a quote in it cannot end
   // the description early. Kept well under the backend's 320 characters.
-  const quote = (text) => {
+  const quote = (text, max = 280) => {
     let s = text.length > 200 ? `${text.slice(0, 199)}…` : text;
-    while (JSON.stringify(s).length > 280) s = s.slice(0, -10);
+    while (JSON.stringify(s).length > max) s = s.slice(0, -10);
     return JSON.stringify(s);
   };
   // An option that opens a group of options rather than being an answer.
@@ -1087,8 +1138,15 @@
     return options.slice(start, start + MAX_CLICKS);
   };
   const offered = (el, shape, pop, consentForms) => windowOf(clickable(el, shape, pop, consentForms), scrollerOf(pop))
-    .map((o) => ({ ...o, group: isGroup(o.el) }));
-  const ids = (options) => options.map(({ oid, text, group }) => ({ oid, text, group }));
+    .map((o) => ({ ...o, group: isGroup(o.el), where: pathOf(o.el, pop), place: placeOf(o.el, pop) }));
+  const ids = (options) => options.map(({ oid, text, group, where }) => ({ oid, text, group, where }));
+  // A click move's words. The same text under more than one category path
+  // names its place, so the two moves read differently: `Click the option
+  // "Other" (under "Job Board")` — choose never guesses between them.
+  const describeClick = (o, shared) => {
+    const verb = o.group ? "Open the group" : "Click the option";
+    return shared && o.place ? `${verb} ${quote(o.text, 180)} (under ${quote(o.place, 100)})` : `${verb} ${quote(o.text)}`;
+  };
   // Whether a scroll can show an option not already offered: the list is not
   // at its end, and it holds options past the window — or rows it has not
   // rendered yet (a virtualized list's scroll area reaches past its last row).
@@ -1116,10 +1174,10 @@
     const words = box ? wordsOf(whole) : [];
     const more = held ? canScroll(scroller, all, clicksAll, windowOf(clicksAll, scroller)) : false;
     // No `close`: give_up closes. (move() still takes `close` for cleanup.)
+    // Texts shown under more than one category path in the offered window.
+    const shared = new Set(clicks.filter((o) => clicks.some((x) => x.text === o.text && x.where !== o.where)).map((o) => o.text));
     const candidates = adaptive ? [
-      ...clicks.map((o) => ({
-        mid: `click:${o.oid}`, describe: `${o.group ? "Open the group" : "Click the option"} ${quote(o.text)}`,
-      })),
+      ...clicks.map((o) => ({ mid: `click:${o.oid}`, describe: describeClick(o, shared.has(o.text)) })),
       ...(box && whole ? [{ mid: "search:value", describe: "Type the applicant value into the search box" }] : []),
       ...words.map((w, i) => ({ mid: `search:word:${i}`, describe: `Type ${quote(w)} into the search box` })),
       ...(held ? [] : [{ mid: "open", describe: "Open the dropdown" }]),
@@ -1230,8 +1288,14 @@
       // A placeholder row is never an answer (only the engine's undo chooses it).
       if (!hit.group && ns.isPlaceholderText(hit.text)) return { outcome: "unexpected", reason: "placeholder" };
       const before = shape.evidence(el);
-      const shown = b().optionsOf(held.pop).map((o) => o.text).join("\n");
+      // Brought into view, a virtualized list redraws and may reuse the row
+      // for another option (notes §2 rules 3, 6): the row must still show the
+      // option the decision named, in the same place, or the move is stale.
       hit.el.scrollIntoView?.({ block: "nearest" });
+      await redrawn(t);
+      const still = b().optionsOf(held.pop).find((o) => o.el === hit.el);
+      if (!still || still.text !== hit.text || pathOf(hit.el, held.pop) !== hit.where) return { outcome: "stale" };
+      const shown = b().optionsOf(held.pop).map((o) => o.text).join("\n");
       const w = watch(el, shape);
       try {
         for (const gesture of gesturesFor(hit.el)) {

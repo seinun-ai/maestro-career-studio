@@ -152,12 +152,13 @@
     return null;
   };
   // The option text inside a candidate's description (fill-core quotes it as
-  // a JSON string: `Open the group "Job Board"`).
+  // a JSON string: `Open the group "Job Board"`) — the FIRST string: a place
+  // may follow it (`Click the option "Other" (under "Job Board")`).
   const quotedText = (describe) => {
-    const at = typeof describe === "string" ? describe.indexOf('"') : -1;
-    if (at < 0) return null;
+    const m = typeof describe === "string" ? /"(?:[^"\\]|\\.)*"/.exec(describe) : null;
+    if (!m) return null;
     try {
-      const text = JSON.parse(describe.slice(at));
+      const text = JSON.parse(m[0]);
       return typeof text === "string" ? text : null;
     } catch {
       return null;
