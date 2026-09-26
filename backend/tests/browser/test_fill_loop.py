@@ -1154,6 +1154,23 @@ def test_two_refusals_in_a_row_end_the_adaptive_step(page, load):
     assert (row(out, "d")["status"], row(out, "d")["lastOutcome"]) == ("needs_answer", "abstained")
 
 
+def test_a_recommit_whose_explore_left_another_value_names_that_value(page, load):
+    """The page took "UT Arlington" back; exploring for the re-commit left
+    "UT Austin" behind. The note names what the field holds now — never
+    "filled UT Arlington, then the page took it back"."""
+    out = run(page, load, frames=[[f("k", "search", "School")]] * 3,
+              map={"k": {"route": "slot", "slot": "education.0.school", "value": "UT Arlington"}},
+              explore={"UT Arlington": [{"options": [opt("o1", "UT Arlington")], "multi": False},
+                                        {"options": [], "error": "committed_while_exploring", "committed": "UT Austin"}]},
+              pick={"k": {"oids": ["o1"], "reason": "matched"}},
+              sweep=[[{"fid": "k", "outcome": "reverted"}], []])
+    r = row(out, "k")
+    assert (r["status"], r["lastOutcome"]) == ("needs_answer", "committed_while_exploring")
+    assert r["answer"] == 'Searching picked "UT Austin" and Companion couldn\'t take it back. Check it.'
+    obs = page.evaluate("(r) => window.careerStudioCompanion.fillLoop.buildLoopObservations(r)", out["report"])
+    assert [o["outcome"] for o in obs] == ["filled_unverified"]
+
+
 def test_a_recommit_that_does_not_commit_still_says_the_page_took_it_back(page, load):
     out = run(page, load, frames=[[f("d", "popup", "Relocate?")]] * 3,
               map={"d": {"route": "slot", "slot": "preferences.willing_to_relocate", "value": "Yes"}},

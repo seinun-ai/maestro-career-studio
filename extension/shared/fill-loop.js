@@ -232,10 +232,13 @@
       status: "unconfirmed", lastOutcome: why ?? "reverted", answer: revertedNote(rows.get(f.fid).wrote), wroteAs: null,
     });
     // Everything a field can end as, except a fill (and the user's own or
-    // the policy's refusal), ends a re-commit as tookBack.
+    // the policy's refusal), ends a re-commit as tookBack — unless the
+    // re-commit itself left ANOTHER value on the page (LANDED: a search or a
+    // keyboard open that picked one, a group that committed one), whose own
+    // note names what the field holds now.
     const KEEPS = new Set([...DONE, "unconfirmed", "yours", "blocked", "already"]);
     const finish = (f, status, patch = {}) => (recommitting(rows.get(f.fid)) && !KEEPS.has(status)
-      ? tookBack(f, patch.lastOutcome) : set(f.fid, { status, ...patch }));
+      && !LANDED.has(patch.lastOutcome) ? tookBack(f, patch.lastOutcome) : set(f.fid, { status, ...patch }));
     const fail = (f, outcome) => set(f.fid, {
       status: "retry", attempts: (rows.get(f.fid).attempts ?? 0) + 1, lastOutcome: outcome ?? "no_answer",
     });

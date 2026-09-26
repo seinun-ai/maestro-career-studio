@@ -322,7 +322,11 @@
     const all = new MutationObserver(() => {
       changed = true;
     });
-    all.observe(document.body, { childList: true, subtree: true });
+    // Attributes too (a highlight moving): this only gates the Enter.
+    all.observe(document.body, {
+      childList: true, subtree: true, attributes: true,
+      attributeFilter: ["class", "style", "hidden", "aria-hidden", "aria-selected"],
+    });
     try {
       await fn();
       return changed || all.takeRecords().length > 0;
@@ -379,6 +383,9 @@
         quiet.saw();
         w?.saw("keyboard");
         if (!quietBody) w?.felt(); // it reacted: a list somewhere the watch does not look
+        // …and that list may still be up next time, where an ArrowDown would
+        // only move its highlight: no key goes to this control again.
+        if (!quietBody && !pop) reacted.add(el);
       }
     } finally {
       quiet.stop();
@@ -523,6 +530,7 @@
       return { options: flag(p.options, consentForms), complete: p.complete, searchable: false };
     }
     b().check(t);
+    const snap = snapshot(el, shape);
     const w = watch(el, shape);
     try {
       // fill-ops owns explore's undo (whatever moved, keys included).
@@ -530,7 +538,9 @@
       let options = pop ? b().optionsOf(pop) : [];
       if (!options.length && term) {
         const word = term.split(/\s+/).find((x) => x.length > 2 && x !== term);
-        if (word) {
+        // A term that already committed something is not searched again by a
+        // word (fill-ops takes the commit back).
+        if (word && !moved(el, shape, snap)) {
           await tidy(el, t);
           ({ pop, searchable } = await open(el, shape, word, t, w, { reclaim: false }));
           options = pop ? b().optionsOf(pop) : [];

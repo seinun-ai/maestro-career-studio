@@ -562,8 +562,9 @@ def test_a_press_that_reacted_once_is_never_followed_by_keys(page, load):
 
 
 # A press does nothing; ArrowDown renders role-less rows into a portal that
-# was already on the page (not a new <body> child), the first highlighted;
-# an Enter would accept it.
+# was already on the page (not a new <body> child), the first highlighted —
+# and, once they are up, only moves the highlight (a class change); an Enter
+# would accept the highlighted row.
 PORTAL_ENTER = """<label id='l'>Team</label>
 <div><button id='pb' aria-haspopup='listbox' aria-labelledby='l'>Select One</button><input type='hidden' value=''></div>
 <div id='portal'><div class='host'></div></div>
@@ -576,7 +577,8 @@ PORTAL_ENTER = """<label id='l'>Team</label>
   const host = document.querySelector('#portal .host');
   pb.addEventListener('keydown', (e) => {
     window.pbKeys.push(e.key);
-    if (e.key === 'ArrowDown') host.innerHTML = "<div class='hl'>Red</div><div>Blue</div>";
+    if (e.key === 'ArrowDown' && !host.children.length) host.innerHTML = "<div class='hl'>Red</div><div>Blue</div>";
+    else if (e.key === 'ArrowDown') for (const r of host.children) r.classList.toggle('hl');
     const hl = host.querySelector('.hl');
     if (e.key === 'Enter' && hl) { pb.textContent = hl.textContent; pb.nextElementSibling.value = hl.textContent; oracle.pb = hl.textContent; }
   });
@@ -588,6 +590,17 @@ def test_no_enter_follows_an_arrow_down_that_filled_a_portal(page, load):
     load(page, PORTAL_ENTER)
     row = apply(page, inv(page)["Team"], op="choose", text="Blue")
     assert row["reason"] == "no_popup"   # it reacted: never no_effect
+    assert oracle(page, "pb") == "" and page.evaluate("window.pbKeys") == ["ArrowDown"]
+
+
+def test_a_list_the_keyboard_opened_blocks_keys_on_the_next_open(page, load):
+    """Explore's ArrowDown opened a role-less list (no Enter followed). On
+    the same page a later choose's press changes nothing and an ArrowDown
+    would only move the highlight: no key is sent at all."""
+    load(page, PORTAL_ENTER)
+    f = inv(page)["Team"]
+    explore(page, f)
+    apply(page, f, op="choose", text="Blue")
     assert oracle(page, "pb") == "" and page.evaluate("window.pbKeys") == ["ArrowDown"]
 
 

@@ -538,8 +538,8 @@ know, and each one was learned from a live failure.
   on a button or combobox is followed by the keyboard: ArrowDown, then Enter
   only if ArrowDown changed nothing anywhere under `<body>` — never on a plain
   text box, a submit button or inside a link, and never after anything
-  reacted, including an earlier press of the same control (an Enter would
-  accept the row a role-less list highlighted). Pills and a popup's pick
+  reacted, including an earlier press or keyboard open of the same control
+  (an Enter would accept the row a role-less list highlighted). Pills and a popup's pick
   that an explore committed are taken back by fill-ops alone. A value the keys committed is taken back; one the page will
   not give back leaves the field to the user, named ("Opening the list
   picked …"). Only when two DIFFERENT kinds have had no effect since anything
