@@ -377,28 +377,26 @@ know, and each one was learned from a live failure.
   every later entry. DOM order survives only as the fallback for pages that
   publish no block identity at all. The extension cannot click "Add another"
   for you — add the blocks first, then fill.
-- **Never-filled at any setting: signatures, initials, passwords and
-  government IDs** (SSN, passport, licence numbers). There is no profile value
-  and no consent that unlocks these (`NEVER_FILLED` in `shared/policy.js`). A
-  signature field asks you to produce your name, which is an ACT rather than an
-  agreement; the others are credentials, not consent. A `type="password"` input
-  is refused on its TYPE as well, so the protection does not depend on its label
-  reading like a password. The panel's pause rows consult the same deny list
-  rather than trusting that collection already refused it.
+- **Without the standing agreement permission, signatures, initials,
+  passwords and government IDs** (SSN, passport, licence numbers) are refused by
+  label (`NEVER_FILLED` in `shared/policy.js`). A `type="password"` input is
+  refused on its TYPE as well, at every setting, so that protection does not
+  depend on its label reading like a password. The panel's pause rows consult
+  the same deny list (with no permission argument, so always refusing) rather
+  than trusting that collection already refused it.
 - **An application's own agreement boxes** — "Yes, I have read and consent to
   the terms and conditions", acknowledgements, attestations, arbitration and
-  waiver boxes — are **refused by default and unlocked by a standing consent**
-  you give in Profile, beside the EEO opt-in (`CONSENT_FORMS`, unlocked only by
-  an explicit `consentForms: true`). Two switches side by side, because they are
-  one question to you ("what may this fill answer for me") and two decisions: a
-  single switch would mean opting into EEO fill also opted you into agreeing to
-  terms. Consent is recorded with a timestamp and a policy version and can be
-  withdrawn. Even then it only ever TICKS A BOX: it looks before it clicks, never
-  re-ticks a box that already carries your answer, reports a cancelled click as
-  "not accepted" rather than as agreed, and never submits. The AI path is
-  unaffected — a consent field is still never offered to a model, because
-  authorizing this engine to tick a box you decided to tick is not a licence for
-  a model to decide what to agree to.
+  waiver boxes (`CONSENT_FORMS`) — are also refused without that permission.
+  **With it** (an explicit `consentForms: true`) `isPolicyBlocked` refuses NO
+  label: every field above, agreement boxes and salary history become fillable
+  (owner's decision, 2026-09-26: it is your application and your recorded,
+  revocable consent). Next / Save and Continue and Submit are never clicked at
+  any setting. It is a switch you give in Profile beside the EEO opt-in: two
+  switches, because opting into EEO fill must not also opt you into agreeing to
+  terms. A box is looked at before it is clicked, never re-ticked, and a
+  cancelled click is "not accepted", not agreed. Only callers that pass the
+  permission get it: `fillFormFromProfile` and the fill loop's inventory; the
+  old engine's model path (`collectOpenQuestions`) and the pause rows never do.
 - **Standing eligibility answers** (Profile → Eligibility) cover the three
   questions nearly every US application asks that nothing else in the profile
   can derive: *are you 18 or older*, *have you previously been employed by this
@@ -414,10 +412,10 @@ know, and each one was learned from a live failure.
   one nobody may supply for you. "Previously employed here" is stored as a
   single standing answer even though it is per-employer by nature; where it is
   not true, change it by hand before filling.
-- **Salary history is never filled.** Current/present/previous salary, last
-  drawn salary, current CTC, salary history, wage history, compensation history,
-  and an unqualified salary/wage/compensation label are blocked by the shared
-  policy. Explicit expectations such as expected, desired, target, or salary
+- **Salary history is refused without the agreement permission.**
+  Current/present/previous salary, last drawn salary, current CTC, salary
+  history, wage history, compensation history, and an unqualified
+  salary/wage/compensation label are blocked by the shared policy. Explicit expectations such as expected, desired, target, or salary
   range may fill `preferences.desired_salary`; an expectation phrase never
   overrides another policy block such as signature, consent, terms, credentials,
   or government-ID wording.

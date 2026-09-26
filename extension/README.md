@@ -44,14 +44,16 @@ Otherwise the backend refuses the old id and the panel cannot reach it.
 
 ## What it never does
 
-- **Never fills** signatures or initials, passwords, or government IDs (Social
-  Security, passport or driver's licence numbers). No setting unlocks these.
-- **Never fills salary history** (current or past pay). It can fill a salary
-  *expectation* from your profile.
-- **Agreement and consent boxes** ("I have read and agree to the terms",
-  attestations, arbitration or waiver boxes) are left alone unless you have
-  turned on the standing agreement consent in **Profile** in the web app. Even
-  then it only ticks a box and never unticks one you already ticked.
+- **Without the agreement permission** (off by default), it never fills
+  signatures or initials, passwords, government IDs (Social Security, passport
+  or driver's licence numbers), salary history (current or past pay), or
+  agreement and consent boxes ("I have read and agree to the terms",
+  attestations, arbitration or waiver boxes). It can fill a salary
+  *expectation* from your profile either way.
+- **With the agreement permission** turned on in **Profile** in the web app, it
+  may fill every field, signatures and typed-name attestations included. It
+  never unticks a box you already ticked. A password box is still skipped by
+  its type.
 - **Voluntary EEO questions** are skipped unless you have turned on the EEO
   consent in **Profile**.
 - **Never submits** a form or moves a multi-step application to the next page.

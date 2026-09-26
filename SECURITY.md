@@ -152,7 +152,8 @@ What we do instead is bound what an injection can reach:
 - **Privileged actions it must not reach** are cut off structurally, not
   detected: template source cannot execute code (§3), and the deny-list for
   signatures, attestations, consent, credentials and government IDs is consulted
-  before a field is ever offered to a model.
+  before a field is ever offered to a model — unless the user has turned on the
+  standing agreement permission, which lifts it; Next and Submit are never clicked.
 
 **What the consent ledger is, precisely.** Approving or submitting a proposal
 writes an append-only consent event, approval reserves a slot against a daily

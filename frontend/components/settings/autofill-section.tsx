@@ -608,9 +608,9 @@ function AutofillEditor({
         description:
           "The Companion will fill race, ethnicity, gender, veteran and "
           + "disability questions using only your exact answers below. It never "
-          + "guesses and never uses AI for these. Tax-credit questions, "
-          + "signatures and legal statements stay with you. You can turn this "
-          + "off anytime.",
+          + "guesses and never uses AI for these. Tax-credit questions stay "
+          + "with you, and this doesn't cover signatures or legal statements. "
+          + "You can turn this off anytime.",
         confirmLabel: "Allow",
         consent: true,
       });
@@ -635,31 +635,31 @@ function AutofillEditor({
     );
   };
 
-  /** The second permission in the same record: may the extension tick the
-   *  application's OWN agreement boxes — "Yes, I have read and consent to the
-   *  terms and conditions" and its family.
+  /** The second permission in the same record: with it on, the extension's
+   *  label policy (extension/shared/policy.js) refuses nothing, so a fill may
+   *  complete every field — the application's own agreement boxes, and also
+   *  signatures, initials and typed-name attestations (owner's decision,
+   *  2026-09-26).
    *
    *  Asked for separately from the EEO opt-in on purpose. They are one thing
    *  to the user — what may this fill answer for me — and two decisions, and
    *  folding them into one switch would make enabling EEO fill also enable
    *  agreeing to terms, which nobody chose.
    *
-   *  What it does NOT unlock is in the confirm text, because it is the part
-   *  worth knowing: signatures and initials stay manual (producing your name
-   *  is an act, not an agreement), and passwords and government identifiers
-   *  are never filled at any setting. */
+   *  What it never does, at any setting, is in the confirm text: it never
+   *  moves to the next page and never submits. */
   const setConsentFormsEnabled = async (consentForms: boolean) => {
     if (consentForms) {
       const acknowledged = await confirm({
-        title: "Let the Companion tick agreement boxes?",
-        // Every family extension/shared/policy.js's CONSENT_FORMS unlocks.
+        title: "Let the Companion fill agreements and signatures?",
+        // Every family extension/shared/policy.js refuses without it.
         description:
-          "This covers an application's own agreement boxes: terms, "
-          + "acknowledgements, certifications, arbitration and waivers. It "
-          + "ticks a box. It never signs and never submits. "
-          + "Signatures, initials, passwords and government ID numbers are "
-          + "never filled, whatever you choose here. Check every form before "
-          + "you submit it. You can turn this off anytime.",
+          "With this on, the Companion can fill every field on an application "
+          + "form, including terms, acknowledgements, certifications, "
+          + "arbitration and waivers, signatures, initials and typed-name "
+          + "attestations. It never moves to the next page and never submits. "
+          + "Check every form before you submit it. You can turn this off "
+          + "anytime.",
         confirmLabel: "Allow",
         consent: true,
       });
@@ -676,8 +676,8 @@ function AutofillEditor({
         onSuccess: () =>
           toast.success(
             consentForms
-              ? "The Companion can now tick agreement boxes"
-              : "The Companion won't tick agreement boxes",
+              ? "The Companion can now fill agreements and signatures"
+              : "The Companion won't fill agreements and signatures",
           ),
       },
     );
@@ -820,7 +820,7 @@ function AutofillEditor({
                   </Label>
                   <p className="text-muted-foreground text-xs">
                     Uses only your exact answers below. Off by default. Tax-credit
-                    questions and signatures are always yours to fill.
+                    questions are always yours to fill.
                   </p>
                 </div>
                 <Switch
@@ -1056,11 +1056,12 @@ function CompanionPermissions({
       <div className="flex items-center justify-between gap-4">
         <div className="grid gap-1">
           <Label htmlFor="consent-forms">
-            Let the Companion tick agreement boxes
+            Let the Companion fill agreements and signatures
           </Label>
           <p className="text-muted-foreground text-xs">
-            Terms, certifications, arbitration and waiver boxes. It never signs
-            or submits, and never fills signatures, passwords or ID numbers.
+            The Companion can fill every field, including terms boxes,
+            certifications, signatures and typed-name attestations. It never
+            moves to the next page or submits.
           </p>
         </div>
         <Switch

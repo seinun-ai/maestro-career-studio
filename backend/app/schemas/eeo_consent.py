@@ -15,8 +15,9 @@ class EeoConsent(BaseModel):
     They travel together because they are one thing to the user — "what may
     this extension answer on my behalf" — and they are stored apart because
     they are not one decision. `enabled` authorizes disclosing protected
-    characteristics; `consent_forms` authorizes ticking an application's own
-    agreement boxes. Folding them into a single flag would make opting into
+    characteristics; `consent_forms` lifts the extension's label policy, so it
+    may fill an application's own agreement boxes and every other field it
+    refuses without it. Folding them into a single flag would make opting into
     EEO fill silently also opt into agreeing to terms, which is not a trade
     anyone chose.
 
@@ -26,16 +27,13 @@ class EeoConsent(BaseModel):
     model_config = {"extra": "forbid"}
 
     enabled: bool = False
-    # Ticking "Yes, I have read and consent to the terms and conditions" and
-    # its family — acknowledgements, attestations, arbitration and waiver
-    # boxes. OFF by default, and it stays a standing consent rather than a
-    # per-form question because that is what the user gives once, on purpose.
-    #
-    # What it does NOT unlock, at any setting: signature and initials fields,
-    # passwords, and government identifiers (SSN, passport, licence numbers).
-    # A signature is a distinct act rather than an agreement, and the other two
-    # are credentials, not consent — nothing in a profile authorizes typing
-    # them into a page.
+    # With it ON, the extension's label policy (extension/shared/policy.js)
+    # refuses nothing: "Yes, I have read and consent to the terms and
+    # conditions" and its family, and also signatures, initials, typed-name
+    # attestations and salary history. OFF by default, and a standing consent
+    # rather than a per-form question because that is what the user gives
+    # once, on purpose. At every setting the extension never clicks Next or
+    # Submit — those stay the user's.
     consent_forms: bool = False
     acknowledged_at: str | None = None
     policy_version: str = Field(default=CURRENT_POLICY_VERSION)

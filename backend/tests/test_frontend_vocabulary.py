@@ -124,9 +124,6 @@ _ALLOWED: frozenset[tuple[str, str]] = frozenset(
         ("frontend/components/settings/connected-agents-card.tsx", "browser extension"),
         # The sidebar group that holds Career history, Base resumes and Templates.
         ("frontend/components/app-sidebar.tsx", "library"),
-        # A legal waiver box the Companion may tick (extension/shared/policy.js),
-        # not the health check's "waive".
-        ("frontend/components/settings/autofill-section.tsx", "waiver"),
         # A COUNT of actual applications (linked to a referral; one base
         # resume's), not the page, which is Jobs.
         ("frontend/app/referrals/page.tsx", "Applications"),

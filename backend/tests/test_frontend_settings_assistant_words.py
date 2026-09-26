@@ -56,19 +56,20 @@ def test_each_consent_switch_announces_itself():
     assert '"The Companion can now answer diversity questions"' in diversity
     assert '"The Companion won\'t answer diversity questions"' in diversity
     boxes = _between(_AUTOFILL, "const setConsentFormsEnabled = ", "\n  };")
-    assert '"The Companion can now tick agreement boxes"' in boxes
-    assert '"The Companion won\'t tick agreement boxes"' in boxes
+    assert '"The Companion can now fill agreements and signatures"' in boxes
+    assert '"The Companion won\'t fill agreements and signatures"' in boxes
 
 
 def test_the_consent_words_keep_every_promise():
-    """Shortened, never dropped: no AI, no signing, no submitting, no passwords
-    or ID numbers, and the switch can be turned off (Goal Card)."""
+    """Shortened, never dropped: no AI for diversity answers, never the next
+    page, never Submit, and the switch can be turned off (Goal Card). Since
+    2026-09-26 the agreement permission unlocks every field (signatures
+    included), so no promise says a signature is never filled."""
     flat = _flat(_AUTOFILL.replace('"\n          + "', ""))
     for promise in (
         "It never guesses and never uses AI for these.",
-        "Tax-credit questions, signatures and legal statements stay with you.",
-        "It never signs and never submits.",
-        "Signatures, initials, passwords and government ID numbers are never filled",
+        "Tax-credit questions stay with you, and this doesn't cover signatures or legal statements.",
+        "It never moves to the next page and never submits.",
         "Check every form before you submit it.",
         "Let the Companion answer the voluntary diversity questions?",
     ):
@@ -185,15 +186,22 @@ def _joined(src: str) -> str:
 
 
 def test_the_agreement_box_consent_lists_what_it_unlocks():
-    """C1: `consent_forms` unlocks every family in the extension's CONSENT_FORMS
-    (extension/shared/policy.js), not only terms and acknowledgements."""
+    """C1: `consent_forms` unlocks every field the label policy refuses
+    (extension/shared/policy.js): every CONSENT_FORMS family AND the
+    signatures, initials and typed-name attestations of NEVER_FILLED."""
     flat = _joined(_AUTOFILL)
     assert (
-        "This covers an application's own agreement boxes: terms, acknowledgements, "
-        "certifications, arbitration and waivers. It ticks a box."
+        "With this on, the Companion can fill every field on an application form, "
+        "including terms, acknowledgements, certifications, arbitration and waivers, "
+        "signatures, initials and typed-name attestations."
     ) in flat
-    assert "Terms, certifications, arbitration and waiver boxes." in flat
+    assert (
+        "The Companion can fill every field, including terms boxes, certifications, "
+        "signatures and typed-name attestations."
+    ) in flat
     assert "Terms and acknowledgement boxes only." not in flat
+    assert "never fills signatures" not in flat
+    assert "It ticks a box." not in flat
     policy = (_ROOT / "extension/shared/policy.js").read_text(encoding="utf-8")
     consent = _between(policy, "const CONSENT_FORMS = [", "];")
     for family in ("terms", "acknowledge", "certif", "arbitration", "waiver"):
@@ -203,8 +211,9 @@ def test_the_agreement_box_consent_lists_what_it_unlocks():
 def test_the_consent_switches_keep_their_promises():
     """M3, M4: each switch's hint keeps what it never does."""
     flat = _joined(_AUTOFILL)
-    assert "It never signs or submits, and never fills signatures, passwords or ID numbers." in flat
-    assert "Tax-credit questions and signatures are always yours to fill." in flat
+    assert "It never moves to the next page or submits." in flat
+    assert "Tax-credit questions are always yours to fill." in flat
+    assert "signatures are always yours" not in flat
     assert "(WOTC)" not in _AUTOFILL
     # M21: the group says the questions are voluntary.
     assert 'title: "Diversity questions (voluntary)",' in _AUTOFILL
@@ -276,7 +285,7 @@ def test_sentences_say_the_companion():
     """Planner decision 20: "the Companion" in a sentence, bare "Companion" only in a label."""
     for rel, sentence in (
         ("components/settings/autofill-section.tsx", 'description="The Companion uses these to fill job applications."'),
-        ("components/settings/autofill-section.tsx", 'title: "Let the Companion tick agreement boxes?",'),
+        ("components/settings/autofill-section.tsx", 'title: "Let the Companion fill agreements and signatures?",'),
         ("components/settings/prompts-section.tsx", '"How the Companion picks answers for form choices."'),
         ("components/settings/connected-agents-card.tsx", "and the Companion, the Maestro CS browser extension,"),
     ):

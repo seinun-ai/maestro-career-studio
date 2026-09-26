@@ -143,6 +143,21 @@ def test_consent_forms_unlock_only_when_the_run_says_so(page, load):
     assert page.evaluate(f"(fid) => {INV}.isBlocked(fid)", fid) is False
 
 
+def test_consent_forms_unlock_every_label_and_only_consent_does(page, load):
+    """With the standing permission nothing is refused by its label: a
+    signature, a typed-name attestation, initials, a salary requirement. Without
+    it the same fields are the policy's, as they always were."""
+    load(page, """<label for='s'>Signature</label><input id='s'>
+      <label for='n'>Please type your full name to sign</label><input id='n'>
+      <label for='i'>Initials</label><input id='i'>
+      <label for='p'>Password</label><input id='p'>
+      <label for='w'>What are your annual salary requirements</label><input id='w'>
+      <label><input type='checkbox'>I willingly accept the Terms and Conditions</label>""")
+    assert [f["policyBlocked"] for f in fields(page)] == [True] * 6
+    assert [f["policyBlocked"] for f in fields(page, consent_forms=True)] == [False] * 6
+    assert page.evaluate(f"() => {INV}.list().fields.map((f) => f.policyBlocked)") == [True] * 6
+
+
 def test_touching_any_member_of_a_group_marks_the_group(page, load):
     load(page, """<fieldset><legend>Are you 18 or older?</legend>
         <label><input type='radio' name='age' id='y'>Yes</label><label><input type='radio' name='age' id='n'>No</label></fieldset>

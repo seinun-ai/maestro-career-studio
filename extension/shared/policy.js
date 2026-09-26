@@ -6,31 +6,30 @@
 (() => {
   const ns = (window.careerStudioCompanion ??= {});
 
-  // NEVER, at any setting. Not a default, not a preference — there is no
-  // profile value that authorizes these and no consent that unlocks them.
+  // THE RULE (owner's decision, 2026-09-26). Without the standing
+  // `consent_forms` permission, the two lists below and the salary rule refuse
+  // a field by its label. With it, NOTHING is refused by label: it is the
+  // user's application and their recorded, revocable consent, and the
+  // extension never clicks Next / Save and Continue or Submit — those stay the
+  // user's at every setting, enforced by the engines, not here. Consent removes
+  // the refusal; it does not invent a value — an engine still writes only what
+  // it has a fact for.
   //
-  // A signature or a set of initials is a distinct ACT rather than an
-  // agreement: the field expects you to produce your name, and producing it
-  // for you is not the same as ticking a box you were going to tick. The other
-  // two are credentials and government identifiers, which are not consent at
-  // all — nothing in a settings page makes it right to type a password or an
-  // SSN into a page on somebody's behalf.
+  // Without the permission these are fields the user produces themselves: a
+  // signature or a set of initials (an act, not a box to tick), credentials,
+  // and government identifiers.
   const NEVER_FILLED = [
     /signature|\bsign\b|\be-?sign\b|\binitials\b/i,
     /password|passcode/i,
     /social security|\bssn\b|national id|passport number|driver'?s? licen[cs]e number/i,
   ];
 
-  // Agreements: the application's OWN consent boxes. Refused by default and
-  // unlocked by a standing consent the user gives once, in Profile — the same
-  // shape the EEO opt-in already has, and stored in the same record.
-  //
-  // Why this stopped being absolute: it is the user's application and their
-  // consent, this extension never submits anything, and every competitor ticks
-  // these.
-  // What makes it defensible is that the permission is explicit, recorded with
-  // a timestamp and a policy version, and revocable — not that the wording
-  // happened to look harmless.
+  // Agreements: the application's OWN consent boxes. Refused without the
+  // permission, which the user gives once in Profile, stored in the same record
+  // as the EEO opt-in. What makes unlocking them (and everything above)
+  // defensible is that the permission is explicit, recorded with a timestamp
+  // and a policy version, and revocable — not that the wording happened to
+  // look harmless.
   const CONSENT_FORMS = [
     /\bi\b[^|]{0,25}\b(certify|attest|acknowledge|consent|agree)\b/i,
     /certif(y|ication) that|\b(acknowledge?ment|attestation)\b|\bconsent (to|for)\b|authoriz\w+ (to|for) (release|disclose)/i,
@@ -38,10 +37,11 @@
   ];
 
   // What separates a question about YOUR EXPECTATIONS (fillable) from one about
-  // what you are paid today (never filled). Published below, because the fill
-  // engine's `salary` rule needs exactly this distinction and a second copy of
-  // it drifted: the first alternative used to require `desired` ADJACENT to
-  // `salary`, so "what is your desired annual base salary or hourly rate?" —
+  // what you are paid today (refused without the permission). Published below,
+  // because the fill engine's `salary` rule needs exactly this distinction and
+  // a second copy of it drifted: the first alternative used to require
+  // `desired` ADJACENT to `salary`, so "what is your desired annual base
+  // salary or hourly rate?" —
   // live, from the corpus — failed the exemption, matched SALARY_MENTION, and
   // was refused as salary history. One pattern, two consumers, no drift.
   //
@@ -55,21 +55,23 @@
   /** `consentForms` comes from the backend's standing consent and defaults to
    * FALSE — an omitted argument is the absence of permission, never its
    * presence, so a caller that has not been taught about it cannot accidentally
-   * unlock anything. */
+   * unlock anything. Only a literal `true` is the permission; a truthy
+   * stand-in (a "true" string, a 1) is not. */
   const isPolicyBlocked = (labelText, { consentForms = false } = {}) => {
+    if (consentForms === true) return false;
     const label = String(labelText ?? "");
     if (NEVER_FILLED.some((pattern) => pattern.test(label))) return true;
-    if (CONSENT_FORMS.some((pattern) => pattern.test(label))) return !consentForms;
+    if (CONSENT_FORMS.some((pattern) => pattern.test(label))) return true;
     if (SALARY_EXPECTATION.test(label)) return false;
     if (SALARY_MENTION.test(label)) return true;
     return false;
   };
 
   ns.isPolicyBlocked = isPolicyBlocked;
-  // The same family, as one pattern, for the fill rule that ticks these once
-  // consent is given. Published rather than restated: the list that REFUSES a
-  // field and the list that fills it must be the same list, or a wording will
-  // sooner or later be in one and not the other.
+  // The agreement family, as one pattern, for the old engine's rule that ticks
+  // these once consent is given. Published rather than restated: the list that
+  // REFUSES a field and the list that fills it must be the same list, or a
+  // wording will sooner or later be in one and not the other.
   ns.consentFormRe = new RegExp(
     CONSENT_FORMS.map((pattern) => pattern.source).join("|"), "i");
   ns.salaryExpectationRe = SALARY_EXPECTATION;

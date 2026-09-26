@@ -1125,7 +1125,7 @@
     Settings tab, whose first card says what one is and what it cannot do),
     **Companion** (the browser extension; a proper name in a label that is a
     name, "Open Companion", and "the Companion" in running sentences and in a
-    label that reads as one, "Let the Companion tick agreement boxes"). **Suggested edits** ("Suggested edit"
+    label that reads as one, "Let the Companion fill agreements and signatures"). **Suggested edits** ("Suggested edit"
     for one: the Assistant's edit card and the studio's Ask for changes
     sheet) and **Suggested project** (the Assistant's project card).
     "Proposal" means only a job a connected agent filed, and a filer is named

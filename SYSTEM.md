@@ -353,21 +353,21 @@ file to open.
   `tests/test_extension_frame_gate.py`.
 - **The policy deny-list is single-source, and it is TWO lists.**
   `{#inv-policy-deny-list-single-source}` `extension/shared/policy.js` (in `shared/`, not
-  `content/`, since the panel consults it too) declares each exactly once. `NEVER_FILLED` —
-  signatures/initials, passwords, government IDs — is absolute: no setting unlocks it, because a
-  signature is an ACT and the other two are credentials, not consent. `CONSENT_FORMS` — the
-  application's OWN certify/acknowledge/ attest/terms/arbitration/waiver boxes — is refused by
-  default and unlocked only by the standing `consent_forms` permission (inv-eeo-standing-consent).
-  Both run through `isPolicyBlocked(label, {consentForms})`, whose option DEFAULTS to false, so a
-  caller that never learned about the permission cannot unlock anything by omission — which is why
-  only `fillFormFromProfile` passes it. FOUR consumers across THREE surfaces: `fillFormFromProfile`
+  `content/`, since the panel consults it too) declares each exactly once: `NEVER_FILLED`
+  (signatures/initials, passwords, government IDs) and `CONSENT_FORMS` (the application's OWN
+  certify/acknowledge/attest/terms/arbitration/waiver boxes). WITHOUT the standing `consent_forms`
+  permission (inv-eeo-standing-consent) both lists and the salary rule refuse; WITH it
+  `isPolicyBlocked(label, {consentForms: true})` refuses NO label (owner, 2026-09-26: the user's
+  application, recorded revocable consent); Next/Submit stay the user's at every setting. It DEFAULTS
+  to false and only a literal `true` counts, so omitting it unlocks nothing; only `fillFormFromProfile`
+  and the fill loop's inventory pass it. FOUR consumers across THREE surfaces: `fillFormFromProfile`
   ahead of rule matching and `collectOpenQuestions` ahead of EXCLUDE and the per-type ladder — so a
   consent question rendered as a select/radio is never offered to the model or tagged `data-rt-qid`
   — plus the panel's PAIR, the half a reader would not guess: the pause row's body renders no input
   for a blocked label AND `submitAnswer` refuses one again, because the first decides what to draw
   and the second is what touches the page. Salary history/current/CTC and unqualified
-  salary/wage/compensation mentions are also blocked; explicit salary expectations are allowed only
-  AFTER both lists, so an expectation phrase cannot bypass a signature/credential/consent match.
+  salary/wage/compensation mentions are also blocked without consent; explicit salary expectations
+  are allowed only AFTER both lists, so an expectation phrase cannot bypass a list match.
   `test_both_copies_of_the_policy_deny_list_stay_identical` asserts exactly one declaration of EACH
   list; only the page-INJECTED commit ladder stays deliberately duplicated
   (`…commit_ladder_stay_identical`).
@@ -392,7 +392,7 @@ file to open.
 - **EEO standing consent is enforced at the ENDPOINT.** `{#inv-eeo-standing-consent}` One record
   (`settings/eeo_consent.json`, `schemas/eeo_consent.py`; `eeo_consent` on `/api/autofill/context`),
   TWO permissions kept apart on purpose: `enabled` authorizes disclosing protected characteristics,
-  `consent_forms` authorizes ticking the application's OWN agreement boxes
+  `consent_forms` lifts the label policy, agreement boxes and signatures included
   (inv-policy-deny-list-single-source). One flag for both would make opting into EEO fill silently
   agree to terms. ONE gate, `eeo_consent.withhold_unconsented`, strips `profile.eeo` unless `enabled`
   for every reader that hands the profile outward: `GET /api/autofill/context`, the `/choose`
@@ -403,9 +403,9 @@ file to open.
   `test_autofill_choose.py` (`test_without_consent_no_diversity_answer_reaches_the_model`) and
   `test_autofill_choose_jev.py` (`test_eeo_values_never_reach_jev_without_consent`). No
   inference or invented EEO answers; never solicit pasted demographic answers in chat when consented
-  values are in Profile. Human-only at ANY setting is `NEVER_FILLED` and nothing wider:
-  signatures/initials, passwords, government IDs. The MODEL path is the separate rule —
-  `consent_forms` unlocks the deterministic tick, never an agent's judgment.
+  values are in Profile. Human-only at ANY setting is Next/Submit and nothing wider; `consent_forms`
+  lifts every label refusal for callers that pass it (the fill loop, a model included), while the old
+  collector and pause rows never pass it.
 - **PDF word-spacing** `{#inv-pdf-word-spacing}`: pdflatex+XCharter joins words for strict
   extractors; `pdfinterwordspaceon` + the parse_certified gate protect this — see the shared header
   partial `_header.tex.j2`, which BOTH resume and cover-letter templates include (format/scanner

@@ -1401,8 +1401,9 @@ async function fillFormFromProfile(
     const labelText = labelByInput.get(input);
     if (!labelText) continue; // unlabeled junk stays out of telemetry too
     // FIRST, ahead of the EEO opt-in, matchRule, and the visibility gate below:
-    // a never-fill control is a statement about the CONTROL, so no user
-    // setting, rule table, or rendering detail may change the answer. An EEO
+    // a never-fill control is a statement about the CONTROL, so only the
+    // standing consent_forms permission — never a rule table or a rendering
+    // detail — changes the answer (shared/policy.js). An EEO
     // self-identification SIGNATURE reported eeo_disabled while the opt-in was
     // off, which reads as "turn the opt-in on and we will handle this" — and we
     // never will.

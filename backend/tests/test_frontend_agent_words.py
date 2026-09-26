@@ -72,7 +72,7 @@ _WORDS = [
     ("components/settings/autofill-section.tsx", "Allow extension to fill these answers",
      "Let the Companion fill these answers"),
     ("components/settings/autofill-section.tsx", "Allow extension to tick agreement boxes",
-     "Let the Companion tick agreement boxes"),
+     "Let the Companion fill agreements and signatures"),
     ("components/settings/autofill-section.tsx", "matching the extension&apos;s",
      "Most recent first."),
     # The Companion has no ⋯ menu and no switch for capture (extension/README.md, "Turn it off").
