@@ -143,6 +143,96 @@ def test_a_workday_dropdown_pick_is_explored_closed_and_committed_to_the_app(pag
     assert (row["outcome"], row["committed"]) == ("verified", "Masters") and oracle(page, "degree") == "Masters"
 
 
+# --- committed evidence (notes §8a): a popup pick shows at once, but only its
+# hidden backing input says the app took it.
+def backing(page, button_id):
+    return page.evaluate("(id) => document.getElementById(id).parentElement.querySelector('.hidden-backing').value",
+                         button_id)
+
+
+@in_both_windows()
+def test_popup_evidence_is_the_backing_input_changing(window, request, load):
+    page = request.getfixturevalue(window)
+    load(page, fixture_html("workday_listbox.html"))
+    row = apply(page, inv(page)["Degree"], op="choose", text="Masters")
+    assert row["outcome"] == "verified" and oracle(page, "degree") == "Masters" and backing(page, "degree")
+
+
+def test_a_popup_pick_that_shows_but_never_saves_is_unconfirmed(page, load):
+    """adversarial_revert.html: the first pick shows its text, the backing
+    input stays empty (the app never took it). Never verified, never clicked
+    a second time."""
+    load(page, fixture_html("adversarial_revert.html"))
+    row = apply(page, inv(page)["Are you willing to relocate?"], op="choose", text="Yes")
+    assert (row["outcome"], row["committed"]) == ("unconfirmed", "Yes")
+    assert oracle(page, "relocate") == "" and backing(page, "relocate") == ""
+
+
+def test_placeholder_pick_clears_the_evidence(page, load):
+    """Choosing "Select One" is the engine's own undo: verified only when the
+    popup shows nothing AND the backing input emptied."""
+    load(page, fixture_html("workday_listbox.html"))
+    f = inv(page)["Degree"]
+    assert apply(page, f, op="choose", text="Masters")["outcome"] == "verified"
+    row = apply(page, inv(page)["Degree"], op="choose", text="Select One")
+    assert (row["outcome"], row["committed"]) == ("verified", "")
+    assert oracle(page, "degree") == "" and backing(page, "degree") == ""
+    # A popup that shows the placeholder while the app still holds a value is not undone.
+    assert apply(page, inv(page)["Degree"], op="choose", text="Masters")["outcome"] == "verified"
+    page.evaluate("""() => { const li = [...document.querySelectorAll('#degree-list li')].find((o) => o.textContent === 'Select One');
+        li.replaceWith(Object.assign(li.cloneNode(true), {onclick: (e) => { e.stopPropagation();
+          document.getElementById('degree').textContent = 'Select One'; document.getElementById('degree-list').style.display = 'none'; }})); }""")
+    row = apply(page, inv(page)["Degree"], op="choose", text="Select One")
+    assert row["outcome"] == "unconfirmed" and oracle(page, "degree") == "Masters"
+
+
+def test_the_sweep_catches_a_popup_whose_backing_input_emptied(page, load):
+    """The button still shows the pick; the app no longer holds it (§8a)."""
+    load(page, fixture_html("workday_listbox.html"))
+    f = inv(page)["Degree"]
+    assert apply(page, f, op="choose", text="Masters")["outcome"] == "verified"
+    page.evaluate("() => { document.getElementById('degree').parentElement.querySelector('.hidden-backing').value = ''; }")
+    assert {r["fid"]: r["outcome"] for r in page.evaluate(f"() => {OPS}.sweep()")}[f["fid"]] == "reverted"
+
+
+# A generic search box whose results are checkbox rows (several answers) or
+# radio rows (one): the rows are the only place single-or-several shows.
+ROWS_PAGE = """<label for='k'>Skills</label><div><input id='k' role='combobox' aria-autocomplete='list' data-kind='checkbox'></div>
+<label for='s'>School</label><div><input id='s' role='combobox' aria-autocomplete='list' data-kind='radio'></div>
+<div id='portal'></div>
+<script>
+for (const input of document.querySelectorAll('input[role=combobox]')) {
+  input.addEventListener('input', () => {
+    document.getElementById('portal').innerHTML = input.value ? "<div role='listbox'>" + ['Python', 'Python 3']
+      .map((t) => `<div role='option'><input type='${input.dataset.kind}' tabindex='-1'>${t}</div>`).join('') + '</div>' : '';
+  });
+}
+</script>"""
+
+
+def test_a_search_widgets_rows_say_one_answer_or_several(page, load):
+    load(page, ROWS_PAGE)
+    f = inv(page)
+    assert (f["Skills"]["multi"], f["School"]["multi"]) == (False, False)   # not known before a list opened
+    assert explore(page, f["Skills"], "Py")["multi"] is True
+    assert explore(page, f["School"], "Py")["multi"] is False
+    now = inv(page)
+    assert (now["Skills"]["multi"], now["School"]["multi"]) == (True, False)
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError,
+                   reason="Task 5: the live search list opens only after a press and an Enter; "
+                          "its rows then say single (radio) or several (checkbox)")
+def test_a_workday_search_explore_learns_single_or_several(page, load):
+    load(page, fixture_html("workday_search.html"))
+    f = inv(page)
+    assert explore(page, f["Type to Add Skills"], "SQL").get("multi") is True
+    assert explore(page, f["School or University"], "Arlington").get("multi") is False
+    now = inv(page)
+    assert (now["Type to Add Skills"]["multi"], now["School or University"]["multi"]) == (True, False)
+    assert now["Type to Add Skills"]["committed"] == ["SQL"] and now["School or University"]["committed"] == ""
+
+
 def test_a_category_is_unexpected_with_its_children_and_the_popup_stays_open(page, load):
     load(page, CATEGORY_POPUP)
     row = apply(page, inv(page)["How did you hear about us?"], op="choose", text="Job Board")

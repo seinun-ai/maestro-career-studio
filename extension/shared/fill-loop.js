@@ -40,15 +40,17 @@
  *
  * THE OUTCOME VOCABULARIES, and where each one ends
  *   page outcome   verified | partial | unexpected (+reason) | reverted | stale |
- *     (fill-ops)   progressed | closed | yours | blocked | unsupported |
+ *     (fill-ops)   unconfirmed (it shows, the page's proof did not move) |
+ *                  progressed | closed | yours | blocked | unsupported |
  *                  cancelled | timeout
  *                  → read by act(); never leaves this file as a status.
  *   act()          the page's outcome, or halted (Stop / run clock) | late
  *                  (field clock) | refused (yours/blocked/unsupported, already
  *                  recorded as the row's final status) | stale (no frame owns it)
  *                  → the caller turns it into a row status (notDone, settle).
- *   adapt()        verified (+reason) | landed (group_committed) | gave_up |
- *                  no_answer | exhausted | late | stale | final | halted
+ *   adapt()        verified (+reason) | landed (group_committed) |
+ *                  unconfirmed | gave_up | no_answer | exhausted | late |
+ *                  stale | final | halted
  *                  → settle() (one value) or commitSet (one item).
  *   row status     new | open | retry while working; the final ones below.
  *                  `lastOutcome` keeps the word that decided it.
@@ -182,10 +184,15 @@
     const fail = (f, outcome) => set(f.fid, {
       status: "retry", attempts: (rows.get(f.fid).attempts ?? 0) + 1, lastOutcome: outcome ?? "no_answer",
     });
+    // A value that landed but is not confirmed as the answer — a pick the page
+    // shows over proof that did not move, or one without an answer reason:
+    // never filled, the user's to check (telemetry: filled_unverified).
+    const unconfirmed = (f, text) => finish(f, "needs_answer", {
+      answer: landedNote(text), lastOutcome: "unconfirmed", wrote: text ?? null,
+    });
     const done = (f, reason, committed) => {
       const answer = Array.isArray(committed) ? committed.join(", ") : committed ?? null;
-      // Never "verified" by default: a value that landed without an answer reason is the user's to check.
-      if (!STATUS[reason]) return finish(f, "needs_answer", { answer: landedNote(answer), lastOutcome: "unconfirmed", wrote: answer });
+      if (!STATUS[reason]) return unconfirmed(f, answer); // never "verified" by default
       return finish(f, STATUS[reason], { answer, lastOutcome: "verified", wrote: answer });
     };
     // One clock per field, started when the loop starts on it.
@@ -389,6 +396,9 @@
         const entry = historyEntry(chosen.mid, out.outcome, out.reason);
         if (entry) history.push(entry);
         if (out.outcome === "verified") return { outcome: "verified", reason: res.reason, committed: out.committed };
+        if (out.outcome === "unconfirmed") {
+          return { outcome: "unconfirmed", text: quotedText(chosen.describe) ?? ([out.committed].flat().filter(Boolean).join(", ") || null) };
+        }
         if (out.outcome === "unexpected" && out.reason === "group_committed") {
           return { outcome: "landed", text: quotedText(chosen.describe) ?? ([out.committed].flat().filter(Boolean).join(", ") || null) };
         }
@@ -400,6 +410,7 @@
     const settle = (f, r) => {
       if (FINAL.has(rows.get(f.fid).status)) return; // refused while stepping
       if (r.outcome === "verified") done(f, r.reason, r.committed);
+      else if (r.outcome === "unconfirmed") unconfirmed(f, r.text);
       else if (r.outcome === "landed") {
         finish(f, "needs_answer", { answer: landedNote(r.text), lastOutcome: "group_committed", wrote: r.text });
       }
@@ -426,6 +437,7 @@
       const out = await act(f, { op: "choose", text: picked.text, ...(f.shape === "search" ? { term: term ?? picked.text } : {}) });
       if (notDone(f, out)) return undefined;
       if (out.outcome === "verified") return done(f, picked.reason, out.committed);
+      if (out.outcome === "unconfirmed") return unconfirmed(f, picked.text);
       if (out.outcome === "unexpected" && CAN_ADAPT.has(f.shape)) {
         return settle(f, await adapt(f, row, historyEntry("choose", "unexpected", out.reason), item));
       }
@@ -433,7 +445,8 @@
     };
 
     // ---- a set: every source item picked on its own, coverage counted per item
-    const commitSet = async (f, row, opts, complete, noOptions) => {
+    // `learnt`: the explore fillChoice already ran for the first item.
+    const commitSet = async (f, row, opts, complete, noOptions, learnt) => {
       const all = [...new Set(row.value.map(String))];
       const worked = all.slice(0, L.MAX_ITEMS);
       const byPolicy = new Set(worked.filter(policyBlocks));
@@ -456,13 +469,18 @@
           let shown = opts;
           let whole = complete;
           if (f.shape === "search") {
-            const got = await explore(f, item);
+            const got = learnt?.item === item ? learnt.got : await explore(f, item);
             if (!got) {
               if (halt()) return undefined;
               late.push(...todo.slice(i));
               break;
             }
             if (exploreRefused(f, got)) return undefined;
+            // Radio rows: the widget takes ONE answer after all (nothing is committed yet).
+            if (got.multi === false) {
+              if (all.length > 1) return finish(f, "needs_answer", { lastOutcome: "set_for_one" });
+              return commitOne(f, row, got.options ?? [], false, item, item);
+            }
             if (got.options?.length && !usable(got.options).length) {
               byPolicy.add(item); // every option shown for it is a never-fill one
               continue;
@@ -519,7 +537,7 @@
           if (r.outcome === "verified" && STATUS[r.reason]) {
             covered.set(item, r.reason);
             committed = r.committed ?? committed;
-          } else if (r.outcome === "verified" || r.outcome === "landed") {
+          } else if (r.outcome === "verified" || r.outcome === "landed" || r.outcome === "unconfirmed") {
             landed.push(r.text ?? ([r.committed].flat().filter(Boolean).join(", ") || null));
           } else if (r.outcome === "late") {
             late.push(...queue.slice(i).map(([x]) => x));
@@ -556,7 +574,22 @@
       if (row.route === "slot" && (value == null || value === "" || (Array.isArray(value) && !value.length))) {
         return finish(f, "needs_answer", { lastOutcome: "no_value" });
       }
-      const isSet = Array.isArray(value) && Boolean(f.multi);
+      // A search widget says one answer or several only in the rows of an open
+      // list (radios or checkboxes): a fact of several items on one not known
+      // to take several explores its first item before deciding.
+      let multi = Boolean(f.multi);
+      let learnt = null;
+      if (f.shape === "search" && !multi && Array.isArray(value) && value.length > 1) {
+        const first = String(value[0]);
+        const got = await explore(f, first);
+        if (!got) return lateOrHalted(f);
+        if (exploreRefused(f, got)) return undefined;
+        if (got.multi === true) {
+          multi = true;
+          learnt = { item: first, got };
+        }
+      }
+      const isSet = Array.isArray(value) && multi;
       const item = itemOf(f, row);
       // A set fact on a one-answer field: no single item is THE answer — unless it holds just one.
       if (Array.isArray(value) && !isSet && item === undefined) return finish(f, "needs_answer", { lastOutcome: "set_for_one" });
@@ -577,7 +610,7 @@
         }
       }
       if (opts.length && !usable(opts).length) return finish(f, "blocked", { lastOutcome: "blocked" });
-      if (isSet) return commitSet(f, row, opts, complete, noOptions);
+      if (isSet) return commitSet(f, row, opts, complete, noOptions, learnt);
       if (noOptions) return settle(f, await adapt(f, row, noOptions, item));
       return commitOne(f, row, opts, complete, term, item, prepicked);
     };

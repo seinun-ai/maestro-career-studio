@@ -1,5 +1,3 @@
-import pytest
-
 from tests.browser.conftest import fixture_html
 
 NS = "window.careerStudioCompanion"
@@ -237,12 +235,24 @@ def test_answered_is_stricter_than_has_a_value(page, load):
     assert by_q["School or University"]["committed"] == ""
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError,
-                   reason="Task 3: search pills are read from the multiselect container, not "
-                          "from inside the input that carries the widget marker")
 def test_a_search_widgets_existing_pill_is_its_committed_value(page, load):
     load(page, fixture_html("workday_search.html"))
     assert by_question(page)["Type to Add Skills"]["committed"] == ["SQL"]
+
+
+def test_search_pills_are_read_from_the_multiselect_container(page, load):
+    """Live Workday marks the INPUT `selectinput`; its pills are in the ancestor
+    `multiselect` container. School and Skills share that markup, so one pill
+    does not yet say single or several (only the open list's rows do): the pill
+    reads as a list, and neither field is `answered` or `multi` yet."""
+    load(page, fixture_html("workday_search.html"))
+    by_q = by_question(page)
+    skills, school = by_q["Type to Add Skills"], by_q["School or University"]
+    assert (skills["committed"], skills["multi"], skills["answered"]) == (["SQL"], False, False)
+    assert (school["committed"], school["multi"], school["answered"]) == ("", False, False)
+    page.evaluate("""() => { const p = document.querySelector('#skills').closest('[data-uxi-widget-type=multiselect]')
+        .querySelector('[data-automation-id=selectedItem]'); p.closest('ul').append(p.parentElement.cloneNode(true)); }""")
+    assert by_question(page)["Type to Add Skills"]["multi"] is True   # two pills: several
 
 
 def test_an_aria_1_1_combobox_wrapper_is_its_input_not_a_second_field(page, load):
@@ -436,9 +446,6 @@ def test_two_unwrapped_date_widgets_under_one_parent_stay_two_fields(page, load)
     assert [(f["shape"], f["committed"]) for f in fields(page)] == [("date", "2020-01"), ("date", "2022-12")]
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError,
-                   reason="Task 3: search pills are read from the multiselect container, not "
-                          "from inside the input that carries the widget marker")
 def test_shape_readers_do_not_depend_on_this(page, load):
     load(page, fixture_html("workday_search.html"))
     got = page.evaluate(f"""() => {{ const read = {NS}.shapes.byName('search').read;

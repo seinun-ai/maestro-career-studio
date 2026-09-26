@@ -4,14 +4,21 @@
  * elements that are one field share a key — radio/checkbox members, date
  * sections), `parts` (those elements), `describe` (a question that belongs to
  * the group, not the element), `read` (what is COMMITTED), `passive` (options
- * readable without touching the page), `answered`, and `open` (how a choice
- * widget shows its options: "press" or "search"). No shape acts or verifies;
- * fill-core runs one generic path over all of them.
+ * readable without touching the page), `answered`, `open` (how a choice
+ * widget shows its options: "press" or "search") and `evidence` (below). No
+ * shape acts or verifies; fill-core runs one generic path over all of them.
  *
  * The committed reader is the load-bearing part: search text is never a value;
  * a single-value node, pill, chip, hidden backing input, button text or
  * checked state is. The one exception is a free-text autocomplete (a search
  * box with no select structure at all): what its input holds IS the answer.
+ *
+ * `evidence(el)` is `{ display, proof }`: what the widget SHOWS (the reader
+ * above) and what the app SAVED, where the page exposes it — a Workday search
+ * box's pills, a popup's hidden backing input (a Workday popup shows a pick
+ * before it saves it, and may take it back). `proof` is null where there is
+ * nothing but the display to read; fill-core's verify then falls back to the
+ * display, which is weaker.
  */
 (() => {
   const ns = (window.careerStudioCompanion ??= {});
@@ -23,7 +30,9 @@
   loaded.add("content/shapes.js");
   const clean = (s) => ns.readFieldText(s);
   const TEXT_TYPES = new Set(["text", "email", "tel", "url", "number", "search"]);
-  const SEARCH_BOX = '[data-uxi-widget-type="selectinput"], [data-uxi-widget-type="multiselectinput"]';
+  // Workday's search widget markers. Live, `selectinput` sits ON the input and
+  // the pills live in the ancestor `multiselect` container (notes §2).
+  const SEARCH_BOX = '[data-uxi-widget-type="selectinput"], [data-uxi-widget-type="multiselectinput"], [data-uxi-widget-type="multiselect"]';
   const DATE_SECTION = /dateSection(Month|Day|Year)-input/;
   const SECTION = 'input[data-automation-id^="dateSection"]';
   const DATE_PATTERN = /^(mm|dd|yyyy)([/.\-](mm|dd|yyyy)){1,2}$/i;
@@ -90,12 +99,17 @@
     return null;
   };
 
-  // A search widget's box: Workday's widget wrapper, else the highest ancestor
-  // (3 levels) holding no OTHER field (its own toggle button is not one), never
+  // Workday's widget wrapper around a search input (the `multiselect`
+  // container that holds its pills). Never the element itself: live Workday
+  // marks the INPUT `selectinput`, and a box that is the input holds no pills.
+  const workdayBox = (el) => el.parentElement?.closest(SEARCH_BOX) ?? null;
+  // A search widget's box — the ONE boundary of a search widget (fill-core's
+  // leave uses it too): Workday's wrapper, else the highest ancestor (3
+  // levels) holding no OTHER field (its own toggle button is not one), never
   // <body>, <html> or a <form> — a page-wide wrapper would read a neighbour's
   // value as this one's. No such ancestor: no box.
   const box = (el) => {
-    const own = el.closest(SEARCH_BOX);
+    const own = workdayBox(el);
     if (own) return own;
     const { CONTROL, otherControl } = ns.fieldControls;
     let found = null;
@@ -109,24 +123,99 @@
   // own combobox wrapper, or a react-select-style container within the box.
   const widgetRoot = (el) => {
     const container = el.closest('[class*="container" i]');
-    return el.closest(SEARCH_BOX) ?? el.parentElement?.closest('[role="combobox"]')
+    return workdayBox(el) ?? el.parentElement?.closest('[role="combobox"]')
       ?? (container && box(el)?.contains(container) ? container : null);
   };
   // A hidden backing input counts only inside the widget's root — never a
   // form's csrf token.
   const backing = (el) => widgetRoot(el)?.querySelector('input[type="hidden"]')?.value ?? "";
   const chips = (el) => [...(box(el)?.querySelectorAll(CHIP) ?? [])].map((c) => clean(c.textContent)).filter(Boolean);
-  const searchMulti = (el) => el.closest('[data-uxi-widget-type="multiselectinput"]') !== null
-    || /is-multi/i.test(box(el)?.className ?? "") || box(el)?.querySelector('[class*="is-multi" i]') != null;
+
+  // Single or several. Live Workday wraps School (one answer) and Skills
+  // (several) in the SAME container; the difference shows only when its list
+  // is open — single rows hold a radio, multi rows a checkbox (notes §2 rule
+  // 7). So what a list the engine opened for this element showed is
+  // remembered (fill-core's open calls `learnRows`), and it outranks
+  // everything else; before that, several pills, an `aria-multiselectable`
+  // list or a multi-value widget's own marker say "several". Anything else is
+  // not known yet (null) — never guessed from the question.
+  const learned = new WeakMap(); // el -> "multi" | "single", from the rows of a list it opened
+  const rowsKind = (pop) => {
+    if (!pop) return null;
+    if (pop.matches('[aria-multiselectable="true"]') || pop.querySelector('[role="option"] input[type="checkbox"]')) return "multi";
+    return pop.querySelector('[role="option"] input[type="radio"]') ? "single" : null;
+  };
+  const learnRows = (el, pop) => {
+    const kind = rowsKind(pop);
+    if (kind) learned.set(el, kind);
+    return kind;
+  };
+  const multiplicity = (el) => {
+    if (learned.has(el)) return learned.get(el);
+    const b = box(el);
+    if (el.closest('[data-uxi-widget-type="multiselectinput"]') || /is-multi/i.test(b?.className ?? "")
+      || b?.querySelector('[class*="is-multi" i]') || b?.matches('[aria-multiselectable="true"]')
+      || b?.querySelector('[aria-multiselectable="true"]') || chips(el).length > 1) return "multi";
+    return null;
+  };
+  const searchMulti = (el) => multiplicity(el) === "multi";
   // A select-style widget shows its value somewhere other than the input.
   const selectStructure = (el) => Boolean(widgetRoot(el) || box(el)?.querySelector(SELECT_STRUCTURE));
   const readSearch = (el) => {
-    if (searchMulti(el)) return chips(el);
+    const kind = multiplicity(el);
+    if (kind === "multi") return chips(el);
+    // A Workday pill box not yet known to be single reads as the list of pills
+    // it shows (one, or none: ""); known single, its one pill.
+    if (workdayBox(el)) return kind === "single" ? (chips(el)[0] ?? "") : (chips(el).length ? chips(el) : "");
     if (!selectStructure(el)) return el.value; // free-text autocomplete ("Location (City)")
     const single = box(el)?.querySelector(SINGLE);
     if (single) return clean(single.textContent);
     if (chips(el)[0]) return chips(el)[0];
     return backing(el);
+  };
+  // A multi widget is never finished (items may be missing), and a Workday
+  // pill box whose multiplicity is not known yet is not either: its one pill
+  // may be the first of several.
+  const searchAnswered = (el) => {
+    const kind = multiplicity(el);
+    if (kind === "multi" || (workdayBox(el) && kind !== "single")) return false;
+    return [readSearch(el)].flat().some(Boolean);
+  };
+  // What the app saved: a Workday box's pills (the display, read again) or a
+  // multi widget's chips; any other search widget shows its value only.
+  const searchEvidence = (el) => ({
+    display: readSearch(el), proof: workdayBox(el) || searchMulti(el) ? chips(el) : null,
+  });
+
+  // A popup's backing input: the one non-visible input beside it (Workday
+  // puts it in the button's parent and fills it only when the app takes the
+  // pick, notes §8a), else the one in the field's box — an ancestor (3
+  // levels, never <body>/<form>) holding no other visible control. Two
+  // candidates is no backing: a guess would prove a neighbour's value.
+  const backingOf = (el) => {
+    const { CONTROL } = ns.fieldControls;
+    const shown = (n) => ns.fillBase.visible(n);
+    for (let n = el.parentElement, d = 0; n && d < 3 && !edge(n); n = n.parentElement, d += 1) {
+      if ([...n.querySelectorAll(CONTROL)].some((c) => c !== el && !el.contains(c) && shown(c))) break;
+      const hidden = [...n.querySelectorAll("input")]
+        .filter((i) => i !== el && !el.contains(i) && !/^(checkbox|radio|file)$/.test(i.type) && !shown(i));
+      if (hidden.length) return hidden.length === 1 ? hidden[0] : null;
+    }
+    return null;
+  };
+  // A popup's text (placeholder: nothing), else a read-only input's value or
+  // the single-value node beside it.
+  const readPopup = (el) => {
+    const own = el instanceof HTMLInputElement ? el.value : (el.innerText || el.textContent);
+    let t = clean(clean(own).replace(GLYPHS, ""));
+    if (!t && el instanceof HTMLInputElement) t = clean(box(el)?.querySelector(SINGLE)?.textContent);
+    return ns.isPlaceholderText(t) ? "" : t;
+  };
+  // Display and proof are one thing for a text box, a date, a select and a
+  // checked state: the element's own value is what the page holds.
+  const selfEvidence = (read) => (el) => {
+    const v = read(el);
+    return { display: v, proof: v };
   };
 
   // Radio/checkbox members: same name in the same form (or root), else the
@@ -289,7 +378,9 @@
       name: "search", kind: "choice", open: "search",
       match: (el) => el instanceof HTMLInputElement && TEXT_TYPES.has(el.type) && !el.readOnly && searchLike(el),
       multi: searchMulti,
+      answered: searchAnswered,
       read: readSearch,
+      evidence: searchEvidence,
     },
     {
       // A button (or div role=button, or read-only input) that opens a list,
@@ -302,14 +393,15 @@
         if (el.getAttribute("role") === "combobox") return !el.querySelector('input:not([type="hidden"])');
         return buttonLike(el) && HASPOPUP.test(el.getAttribute("aria-haspopup") ?? "");
       },
-      read: (el) => {
-        const own = el instanceof HTMLInputElement ? el.value : (el.innerText || el.textContent);
-        let t = clean(clean(own).replace(GLYPHS, ""));
-        if (!t && el instanceof HTMLInputElement) t = clean(box(el)?.querySelector(SINGLE)?.textContent);
-        return ns.isPlaceholderText(t) ? "" : t;
-      },
+      read: readPopup,
+      // The button shows the pick at once; the app has it only when the
+      // backing input beside it holds a value (notes §8a: picks that showed,
+      // then reverted, never filled it). No backing input found: display only.
+      evidence: (el) => ({ display: readPopup(el), proof: backingOf(el)?.value ?? null }),
     },
   ];
+  // Every other shape shows what it holds: display and proof are its value.
+  for (const s of SHAPES) s.evidence ??= selfEvidence(s.read);
 
   // A control no shape recognises: LISTED so the panel can name it (and the
   // user can jump to it), never acted on. ARIA radios/checkboxes in one group
@@ -343,5 +435,9 @@
     companionSearch,
     readField,
     pass,
+    // For fill-core: a search widget's boundary (its leave), and what the rows
+    // of a list the engine opened say about single or several.
+    box,
+    learnRows,
   };
 })();

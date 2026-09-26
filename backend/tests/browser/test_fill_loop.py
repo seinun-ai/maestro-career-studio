@@ -197,6 +197,42 @@ def test_an_existing_chip_does_not_stop_missing_items_being_added(page, load):
     assert statuses(out) == {"k": "verified"}
 
 
+def explored_terms(out):
+    return [r.get("term") for m in out["sent"] if m["type"] == "fill_explore" for r in m["requests"]]
+
+
+def test_a_search_whose_rows_show_checkboxes_takes_the_set_path(page, load):
+    """Not known to take several at inventory (one Workday container for School
+    and Skills); the first item's explore shows checkbox rows: a set."""
+    out = run(page, load, frames=[[f("k", "search", "Skills")]],
+              map={"k": {"route": "slot", "slot": "skills", "value": ["SQL", "Python"]}},
+              explore={"SQL": {"options": [opt("o1", "SQL")], "multi": True},
+                       "Python": {"options": [opt("o1", "Python")], "multi": True}},
+              pick={"k:SQL": {"oids": ["o1"], "reason": "matched"}, "k:Python": {"oids": ["o1"], "reason": "matched"}},
+              apply={"SQL+Python": {"outcome": "verified", "added": ["SQL", "Python"], "missing": []}})
+    assert statuses(out) == {"k": "verified"}
+    assert explored_terms(out) == ["SQL", "Python"]   # the first item's explore is not repeated
+    assert [a["texts"] for a in actions(out, "set")] == [["SQL", "Python"]]
+
+
+def test_a_search_whose_rows_show_radios_takes_one_answer(page, load):
+    out = run(page, load, frames=[[f("k", "search", "School")]],
+              map={"k": {"route": "slot", "slot": "education.0.school", "value": ["UT Arlington", "UT Austin"]}},
+              explore={"UT Arlington": {"options": [opt("o1", "UT Arlington")], "multi": False}})
+    assert (row(out, "k")["status"], row(out, "k")["lastOutcome"]) == ("needs_answer", "set_for_one")
+    assert explored_terms(out) == ["UT Arlington"]   # asked the rows first
+    assert "/api/autofill/pick" not in out["calls"] and not actions(out)
+
+
+def test_radio_rows_turn_a_one_item_set_into_one_answer(page, load):
+    out = run(page, load, frames=[[f("k", "search", "School", multi=True)]],
+              map={"k": {"route": "slot", "slot": "education.0.school", "value": ["UT Arlington"]}},
+              explore={"UT Arlington": {"options": [opt("o1", "UT Arlington")], "multi": False}},
+              pick={"k:UT Arlington": {"oids": ["o1"], "reason": "matched"}})
+    assert statuses(out) == {"k": "verified"}
+    assert [(a["op"], a.get("text")) for a in actions(out)] == [("choose", "UT Arlington")]
+
+
 def test_eleven_skills_with_ten_added_is_partial_not_verified(page, load):
     skills = [f"S{i}" for i in range(11)]
     out = run(page, load, frames=[[f("k", "search", "Skills", multi=True)]],
@@ -860,6 +896,35 @@ def test_a_one_item_list_fact_answers_a_one_answer_field(page, load):
     [pick] = bodies(out, "/api/autofill/pick")
     assert pick["fields"][0]["item"] == "SQL"
     assert [a.get("value") for a in actions(out, "write")] == ["SQL"]
+
+
+# ---------- committed evidence (Task 3): a pick that shows but did not save
+
+
+def test_an_unconfirmed_pick_is_never_counted_as_verified(page, load):
+    out = run(page, load, frames=[[f("d", "popup", "Willing to relocate?")]] * 2,
+              map={"d": {"route": "slot", "slot": "preferences.willing_to_relocate", "value": "Yes"}},
+              explore={"d": {"options": [opt("o1", "Yes"), opt("o2", "No")], "complete": True}},
+              pick={"d": {"oids": ["o1"], "reason": "matched"}},
+              apply={"Yes": {"outcome": "unconfirmed"}})
+    r = row(out, "d")
+    assert (r["status"], r["lastOutcome"], r["answer"]) == ("needs_answer", "unconfirmed", 'Companion clicked "Yes". Check it.')
+    assert len(actions(out, "choose")) == 1   # final for this run: not retried as a failure
+    obs = page.evaluate("(r) => window.careerStudioCompanion.fillLoop.buildLoopObservations(r)", out["report"])
+    assert [o["outcome"] for o in obs] == ["filled_unverified"]
+
+
+def test_an_unconfirmed_adaptive_click_is_never_counted_as_verified(page, load):
+    out = run(page, load, frames=[[f("d", "popup", "Willing to relocate?")]],
+              map={"d": {"route": "slot", "slot": "preferences.willing_to_relocate", "value": "Yes"}},
+              explore={"d": {"options": [opt("o1", "Yes")], "complete": True}},
+              pick={"d": {"oids": [], "reason": "abstained"}},
+              apply={"click:o1": {"outcome": "unconfirmed"}},
+              step={"states": [{"candidates": [{"mid": "click:o1", "describe": 'Click the option "Yes"'}, GIVE_UP]}],
+                    "moves": [{"mid": "click:o1", "reason": "matched"}]})
+    r = row(out, "d")
+    assert (r["status"], r["lastOutcome"], r["answer"]) == ("needs_answer", "unconfirmed", 'Companion clicked "Yes". Check it.')
+    assert out["calls"].count("/api/autofill/step") == 1
 
 
 # ---------- the wire

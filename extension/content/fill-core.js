@@ -11,6 +11,14 @@
  * not filled. What the generic path cannot finish it reports as `unexpected`
  * with a reason; the loop's adaptive step takes it from there.
  *
+ * VERIFY reads each widget's committed evidence (shapes `evidence`): the
+ * display must state the value AND, where the page exposes what it saved
+ * (`proof`: a popup's backing input, a Workday box's pills), that proof must
+ * hold something and — for a pick, measured against its snapshot from before
+ * the gesture — have CHANGED, unless the field already held the answer. A
+ * display that matches over proof that did not move is `unconfirmed`, never
+ * verified. No proof to read: the display decides, as it always did.
+ *
  * Every popup the engine opens or reads is MARKED (fillBase.markEnginePopup) —
  * including the menu a widget re-renders on every keystroke — because
  * closePopups only ever closes marked popups. Every option text is run through
@@ -71,10 +79,29 @@
   };
   const formatPattern = (pattern, d) => pattern.replace(/yyyy/i, d.year).replace(/mm/i, d.month).replace(/dd/i, d.day);
 
-  const verify = (el, shape, expected, { format } = {}) => {
+  const filled = (proof) => [proof].flat().some((p) => p != null && p !== "");
+  // `before` (a pick's snapshot of shape.evidence) makes an unmoved proof
+  // "unconfirmed" unless the display already stated the answer before.
+  // Choosing a popup's placeholder ("Select One") is the engine's own undo:
+  // verified when the popup shows nothing and its proof is empty — an error
+  // the page shows for an emptied required field is expected, not a failure.
+  const verify = (el, shape, expected, { format, before } = {}) => {
     if (!el.isConnected) return "stale";
+    const proof = shape.evidence?.(el).proof ?? null;
+    if (shape.name === "popup" && typeof expected === "string" && ns.isPlaceholderText(expected)) {
+      if (shape.read(el) !== "") return "reverted";
+      return proof === null || !filled(proof) ? "verified" : "unconfirmed";
+    }
     if (b().invalid(el)) return "reverted";
-    const have = [shape.read(el)].flat();
+    const shown = displayed(el, shape, expected, { format });
+    if (shown !== "verified" || proof === null) return shown;
+    if (!filled(proof)) return "unconfirmed";
+    if (!before || !same(proof, before.proof)) return "verified";
+    return displayed(el, shape, expected, { format, have: before.display }) === "verified" ? "verified" : "unconfirmed";
+  };
+  // Whether the display states the value (`have`: a display read earlier).
+  const displayed = (el, shape, expected, { format, have: shown } = {}) => {
+    const have = [shown === undefined ? shape.read(el) : shown].flat();
     if (shape.name === "date") {
       const want = parseDate(expected);
       if (shape.dateKind(el) === "pattern") {
@@ -89,9 +116,9 @@
   };
 
   // The widget a field's focus may wander inside: a split date's own sections
-  // (Workday moves focus between them by itself), a Workday search box's
-  // multiselect container; else the element alone. Search widgets without that
-  // container stay on the element until shapes knows their box properly.
+  // (Workday moves focus between them by itself), a search widget's box (the
+  // one boundary shapes.box draws: a Workday box's multiselect container);
+  // else the element alone.
   const widgetOf = (el) => {
     const shape = ns.shapes.of(el);
     if (shape?.name === "date" && shape.dateKind(el) === "sections") {
@@ -100,7 +127,7 @@
       while (n && !run.every((s) => n.contains(s))) n = n.parentElement;
       return n ?? el;
     }
-    if (shape?.open === "search") return el.closest('[data-uxi-widget-type="multiselect"]') ?? el;
+    if (shape?.open === "search") return ns.shapes.box(el) ?? el;
     return el;
   };
   // Leave the field the way Workday commits it (fillBase.leave), then let the
@@ -153,6 +180,8 @@
   // The popup the element owns once it lists options — or once it has listed
   // nothing, without loading, for EMPTY_MS (an honest empty result). Every
   // popup seen on the way is marked: widgets re-render their menu per keystroke.
+  // Its rows say whether the widget takes one answer or several (radio or
+  // checkbox rows): shapes remembers that for the element.
   const waitOptions = async (el, before, t) => {
     let emptySince = null;
     const pop = await b().waitFor(() => {
@@ -165,7 +194,9 @@
       emptySince ??= Date.now();
       return Date.now() - emptySince >= EMPTY_MS ? p : null;
     }, OPEN_MS, t);
-    return pop ?? own(el, before);
+    const got = pop ?? own(el, before);
+    ns.shapes.learnRows(el, got);
+    return got;
   };
   // A query typed into the field's OWN box is remembered so tidy can take it
   // back; one typed into a search box inside the popup leaves with the popup.
@@ -274,9 +305,12 @@
       }
     }
     const got = pop && options.length ? await readAll(pop, t) : { options: [], complete: false };
+    const rows = pop && options.length ? ns.shapes.learnRows(el, pop) : null;
     await tidy(el, t);
-    // A filtered search view is never the complete list.
+    // A filtered search view is never the complete list. `multi` only when the
+    // rows said so: checkboxes (several answers) or radios (one).
     const out = { options: flag(got.options, consentForms), complete: got.complete && !term, searchable };
+    if (rows) out.multi = rows === "multi";
     if (!got.options.length) out.error = pop ? "empty_popup" : "no_popup";
     return out;
   }
@@ -346,9 +380,10 @@
     if (shape.passive) return choosePassive(el, shape, text, t, consentForms);
     const multi = Boolean(shape.multi?.(el));
     if (multi && holds(el, shape, text)) return alreadyThere(el, shape, text);
-    const before0 = shape.read(el);
+    // What the field showed and the app held before the pick: its proof must move.
+    const before = shape.evidence(el);
     for (const gesture of GESTURES) {
-      const { pop, before } = await open(el, shape, shape.open === "search" ? (term ?? text) : term, t);
+      const { pop, before: popsBefore } = await open(el, shape, shape.open === "search" ? (term ?? text) : term, t);
       if (!pop) {
         await tidy(el, t);
         return { outcome: "unexpected", reason: "no_popup" };
@@ -363,7 +398,8 @@
         await tidy(el, t);
         return { outcome: "blocked" };
       }
-      if (multi && (hit.selected || holds(el, shape, hit.text))) {
+      // The rows the list showed may only now have said "several".
+      if ((multi || shape.multi?.(el)) && (hit.selected || holds(el, shape, hit.text))) {
         await tidy(el, t);
         return alreadyThere(el, shape, hit.text);
       }
@@ -377,17 +413,21 @@
       // shows the pick in a pill and leaves the query in its box still gets
       // the query taken back.
       if (holds(el, shape, hit.text) && [shape.read(el)].flat().includes(el.value)) typed.delete(el);
-      const after = own(el, before);
+      const after = own(el, popsBefore);
       const next = after ? b().optionsOf(after) : [];
-      if (next.length && next.map((o) => o.text).join("\n") !== shown && same(shape.read(el), before0)) {
-        leftOpen.set(el, { pop: after, before });
+      if (next.length && next.map((o) => o.text).join("\n") !== shown && same(shape.read(el), before.display)) {
+        leftOpen.set(el, { pop: after, before: popsBefore });
         return { outcome: "unexpected", reason: "new_options", options: flag(next, consentForms) };
       }
       await tidy(el, t);
-      if (verify(el, shape, hit.text) === "verified") return { outcome: "verified", text: hit.text };
+      const got = verify(el, shape, hit.text, { before });
+      if (got === "verified") return { outcome: "verified", text: hit.text };
+      // It shows the pick, but the app did not take it: never a second click
+      // (the loop decides what an unconfirmed value needs).
+      if (got === "unconfirmed") return { outcome: "unconfirmed", text: hit.text };
       // Something else got committed: a second click could undo it (a chip
       // that un-picks on click). Only a click that changed nothing is retried.
-      if (!same(shape.read(el), before0)) break;
+      if (!same(shape.read(el), before.display)) break;
     }
     return { outcome: "unexpected", reason: "not_committed" };
   }
@@ -566,7 +606,8 @@
   // refused unclicked (not_a_group). Outcomes:
   // verified (a click committed), progressed (the page moved on: a popup
   // opened, a search listed results, a category showed its children, the list
-  // scrolled), closed, stale, unexpected (with a reason), blocked.
+  // scrolled), unconfirmed (the click shows but its proof did not move),
+  // closed, stale, unexpected (with a reason), blocked.
   async function move(el, shape, { mid, version, as = "answer", consentForms } = {}, t) {
     b().check(t);
     const last = lastState.get(el);
@@ -626,7 +667,8 @@
       if (!held || !same(ids(now), last.clicks)) return { outcome: "stale" };
       const hit = now.find((o) => `click:${o.oid}` === mid);
       if (as === "progress" && !hit.group) return { outcome: "unexpected", reason: "not_a_group" };
-      const before0 = shape.read(el);
+      const evidence0 = shape.evidence(el);
+      const before0 = evidence0.display;
       const shown = b().optionsOf(held.pop).map((o) => o.text).join("\n");
       hit.el.scrollIntoView?.({ block: "nearest" });
       for (const gesture of GESTURES) {
@@ -650,8 +692,9 @@
       }
       if (holds(el, shape, hit.text) && [shape.read(el)].flat().includes(el.value)) typed.delete(el);
       await tidy(el, t);
-      return verify(el, shape, hit.text) === "verified"
-        ? { outcome: "verified", text: hit.text } : { outcome: "unexpected", reason: "not_committed" };
+      const got = verify(el, shape, hit.text, { before: evidence0 });
+      if (got === "verified" || got === "unconfirmed") return { outcome: got, text: hit.text };
+      return { outcome: "unexpected", reason: "not_committed" };
     }
     return { outcome: "unexpected", reason: "unknown_move" };
   }
