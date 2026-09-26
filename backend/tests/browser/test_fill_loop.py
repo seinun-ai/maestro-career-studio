@@ -275,6 +275,15 @@ def test_salary_slots_write_with_money_format(page, load):
     assert writes["s"]["format"] == "money" and "format" not in writes["y"]
 
 
+def test_only_a_salary_word_in_the_slot_name_makes_it_money(page, load):
+    slots = {"a": "preferences.salary", "b": "preferences.expected_compensation", "c": "custom.pay",
+             "d": "personal.payroll_id", "e": "personal.paypal_email", "g": "custom.display_name"}
+    out = run(page, load, frames=[[f(k, question=f"Q{k}") for k in slots]],
+              map={k: {"route": "slot", "slot": v, "value": "1"} for k, v in slots.items()})
+    writes = {a["fid"]: a.get("format") for a in actions(out, "write")}
+    assert writes == {"a": "money", "b": "money", "c": "money", "d": None, "e": None, "g": None}
+
+
 def test_unknown_controls_are_listed_as_could_not_operate(page, load):
     out = run(page, load, frames=[[f("u", "unknown", "Rate your SQL", kind="unknown")]])
     assert statuses(out) == {"u": "cannot_operate"}

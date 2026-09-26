@@ -465,9 +465,11 @@ know, and each one was learned from a live failure.
   or another window), `focus()`/`blur()` move focus but fire no events, so
   Workday never took a typed City or date even though the box showed it.
   `fillBase.enter`/`leave` send focus + focusin / blur + focusout themselves,
-  only when the browser stayed silent, so the page hears each once. Salary
-  slots compare as numbers (`$80,000` is 80000); like phone numbers, the
-  slot decides that, never the characters.
+  only when the browser stayed silent, so the page hears each once — including
+  the leave of the field focus came from. Salary slots compare as numbers only
+  when both sides are a single amount (`$80,000` is 80000; a range, `80k` or
+  two different currencies are not); like phone numbers, the slot decides
+  that, never the characters.
 - **Every writer commits the way a human would.** A `<select>` set through the
   native setter and a radio driven by `click()` fire no focus events, so
   Workday's required-field validation never runs over answers the page is

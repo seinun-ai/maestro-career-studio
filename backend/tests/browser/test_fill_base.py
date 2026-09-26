@@ -271,6 +271,44 @@ def test_leave_reports_one_focusout_when_the_window_is_unfocused(page_unfocused,
 
 
 @in_both_windows()
+def test_enter_reports_the_leave_of_the_field_it_takes_focus_from(window, request, load):
+    """Unfocused, moving focus from a to b is silent: a must still hear it left
+    (its typed text commits on that leave), before b hears it was entered."""
+    page = request.getfixturevalue(window)
+    load(page, "<input id='a'><input id='b'>")
+    page.evaluate("document.getElementById('a').focus()")
+    page.evaluate("""() => { window.seen = []; for (const id of ['a', 'b']) for (const t of ['focus', 'focusin', 'blur', 'focusout'])
+        document.getElementById(id).addEventListener(t, (e) => seen.push([id, t, e.relatedTarget?.id ?? null])); }""")
+    page.evaluate(f"() => {B}.enter(document.getElementById('b'))")
+    seen = page.evaluate("window.seen")
+    assert [e for e in seen if e[0] == "a"] == [["a", "blur", "b"], ["a", "focusout", "b"]]
+    assert [e[1] for e in seen if e[0] == "b"] == ["focus", "focusin"]
+    assert seen.index(["a", "focusout", "b"]) < next(i for i, e in enumerate(seen) if e[0] == "b")
+
+
+@in_both_windows()
+def test_enter_and_leave_work_inside_a_shadow_root(window, request, load):
+    page = request.getfixturevalue(window)
+    load(page, "<div id='host'></div>")
+    got = page.evaluate(f"""() => {{ const root = document.getElementById('host').attachShadow({{mode: 'open'}});
+        root.innerHTML = "<input id='s'>"; const s = root.getElementById('s'); const heard = [];
+        for (const t of ['focusin', 'focusout']) document.addEventListener(t, () => heard.push(t), true);
+        {B}.enter(s); const inside = root.activeElement === s; {B}.leave(s);
+        return [inside, root.activeElement, heard]; }}""")
+    assert got == [True, None, ["focusin", "focusout"]]
+
+
+@in_both_windows()
+def test_leave_still_works_after_stop_so_cleanup_can_move_focus_out(window, request, load):
+    page = request.getfixturevalue(window)
+    load(page, "<input id='a'>")
+    page.evaluate("document.getElementById('a').focus()")
+    page.evaluate(HEARD)
+    page.evaluate(f"() => {{ {B}.cancelAll(); {B}.leave(document.getElementById('a')); }}")
+    assert page.evaluate("[document.activeElement === document.body, window.heard.focusout]") == [True, 1]
+
+
+@in_both_windows()
 def test_leave_sends_nothing_when_the_page_already_moved_focus_out(window, request, load):
     """A box that auto-advances when full (maxlength) has already left: the page
     heard that leave, and a second focusout would be a leave that never happened."""
@@ -321,20 +359,37 @@ def test_invalid_sees_a_plain_error_span_and_aria_invalid_on_any_part(page, load
         <p>Error messages you wrote:</p><span style='display:none'>Error: stale</span></div>
       <div data-automation-id='formField-how'><label><span>Error: how do you handle it?</span>
         <input id='how' value='x'></label></div>
+      <div data-automation-id='formField-note'><label for='note'>Notes</label>
+        <div id='note' contenteditable='true'><p>Error: my own answer, quoting a log line</p></div></div>
       <div data-automation-id='formField-rate'><fieldset><legend><div><p>Error: rate you tolerate?</p></div></legend>
         <button id='rate' aria-haspopup='listbox'>Select One</button></fieldset></div>""")
     # A plain "Error: ..." leaf flags; the word mid-sentence, a lead without the
     # colon, a hidden span, and a question nested in a label or legend do not.
-    assert page.evaluate(INVALID, ["m", "tm", "why", "how", "rate"]) == [True, True, False, False, False]
+    # An editable answer that itself says "Error: ..." is the answer, not an error.
+    assert page.evaluate(INVALID, ["m", "tm", "why", "how", "rate", "note"]) == [True, True, False, False, False, False]
+
+
+MONEY_CASES = [
+    # Same single amount, re-punctuated or with a currency on one side only.
+    ("80000", "$80,000", True), ("80000.50", "$80,000.5", True), ("80,000.50", "80000.5", True),
+    ("$80,000 USD", "80000 USD", True), ("80 000", "80000", True),
+    # Different amounts, or not ONE plain amount on both sides: never equal by number.
+    ("8000050", "$80,000.50", False), ("80", "80k", False), ("$120,000", "$120,000-$140,000", False),
+    ("80000", "80000-90000", False), ("80.000", "80", False), ("80000 CAD", "80000 USD", False),
+    ("€80000", "$80000", False), ("80000/hour", "80000/year", False), ("about 80k", "80000", False),
+    ("", "", False),
+    # Not an amount at all: the folded text comparison.
+    ("Negotiable", "Negotiable", True), ("negotiable ", "Negotiable", True),
+]
 
 
 def test_money_compares_as_numbers(page, load):
     load(page, "<div></div>")
-    got = page.evaluate(f"""() => [
-        {B}.equivalent('80000', '$80,000', {{format: 'money'}}), {B}.equivalent('80000.50', '$80,000.5', {{format: 'money'}}),
-        {B}.equivalent('8000050', '$80,000.50', {{format: 'money'}}), {B}.equivalent('80,000', '80000'),
-        {B}.equivalent('', '', {{format: 'money'}}), {B}.equivalent('about 80k', '80000', {{format: 'money'}})]""")
-    assert got == [True, True, False, False, False, False]
+    got = page.evaluate(f"(cases) => cases.map(([a, w]) => {B}.equivalent(a, w, {{format: 'money'}}))",
+                        [[a, w] for a, w, _ in MONEY_CASES])
+    assert dict(zip([(a, w) for a, w, _ in MONEY_CASES], got)) == {(a, w): want for a, w, want in MONEY_CASES}
+    assert page.evaluate(f"() => {B}.equivalent('80,000', '80000')") is False   # no format: punctuation is meaning
+    assert page.evaluate(f"() => 'amount' in {B}") is False
 
 
 TYPE = f"([sel, v]) => {B}.withinBudget(async (t) => {B}.typeText(document.querySelector(sel), v, t), 1000)"

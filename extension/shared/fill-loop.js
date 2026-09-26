@@ -587,7 +587,7 @@
     // and a salary ("$80,000" for 80000).
     const formatOf = (slot) => {
       if (/phone/i.test(slot ?? "")) return "phone";
-      if (/salary|compensation|pay/i.test(slot ?? "")) return "money";
+      if (/(^|[._])(desired_)?(salary|compensation|pay)([._]|$)/i.test(slot ?? "")) return "money";
       return undefined;
     };
     const fillText = async (f, value, format) => {

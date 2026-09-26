@@ -139,10 +139,13 @@
   // message as a plain span "Error: …" with no errorMessage id. Only that
   // "Error:" lead counts: the word mid-sentence or without the colon ("Error
   // messages you wrote:") is help text, and text anywhere inside a label or
-  // legend is the question, never the error.
+  // legend is the question, never the error; text inside the control itself
+  // (an editable answer) is the answer. Leaves only: an error split across
+  // elements ("Error: <b>…</b>") is not seen by this rule.
   const ERROR_LEAD = /^error\s*:/i;
   const errorLeaf = (n, el) => !n.childElementCount && !n.matches("script, style, template")
-    && !n.closest("label, legend") && !n.contains(el) && ERROR_LEAD.test(clean(n.textContent)) && visible(n);
+    && !n.closest("label, legend") && !n.contains(el) && !el.contains(n)
+    && ERROR_LEAD.test(clean(n.textContent)) && visible(n);
   const invalid = (el) => {
     if (el.getAttribute("aria-invalid") === "true") return true;
     const described = (el.getAttribute("aria-describedby") ?? "").split(/\s+/).filter(Boolean)
@@ -224,7 +227,9 @@
   const proto = (el) => (el instanceof HTMLTextAreaElement ? HTMLTextAreaElement : HTMLInputElement).prototype;
   const activeIn = (el) => el.getRootNode().activeElement ?? document.activeElement;
   // Whether the browser itself fired `type` on el while fn ran (a focused
-  // window does; an unfocused one moves focus in silence).
+  // window does; an unfocused one moves focus in silence). A page that stops
+  // focus events at the window in capture fools it into a second, dispatched
+  // pair — rare, and a repeat focus is harmless where a missing one is not.
   const fired = (el, type, fn) => {
     let hit = false;
     const h = () => {
@@ -247,14 +252,20 @@
     check(t);
     focusIn(el);
   };
+  // Silent too is the LEAVE of the field focus came from: it hears blur +
+  // focusout first (relatedTarget: el, so a widget sees a move inside itself).
   const focusIn = (el) => {
-    if (activeIn(el) === el) return;
+    const prev = activeIn(el);
+    if (prev === el) return;
     const native = fired(el, "focus", () => el.focus({ preventScroll: true }));
     if (activeIn(el) !== el) throw new Unfocusable();
-    if (!native) {
-      el.dispatchEvent(new FocusEvent("focus"));
-      el.dispatchEvent(new FocusEvent("focusin", { bubbles: true, composed: true }));
+    if (native) return;
+    if (prev && prev !== document.body && prev !== el) {
+      prev.dispatchEvent(new FocusEvent("blur", { composed: true, relatedTarget: el }));
+      prev.dispatchEvent(new FocusEvent("focusout", { bubbles: true, composed: true, relatedTarget: el }));
     }
+    el.dispatchEvent(new FocusEvent("focus", { composed: true }));
+    el.dispatchEvent(new FocusEvent("focusin", { bubbles: true, composed: true }));
   };
   // LEAVE a field: blur whatever inside its WIDGET holds focus now — Workday
   // moves focus between a date's parts by itself, so blurring the box typed
@@ -268,7 +279,7 @@
     if (!a || a === document.body || !(a === el || widget.contains(a))) return;
     const native = fired(a, "blur", () => a.blur?.());
     if (!native) {
-      a.dispatchEvent(new FocusEvent("blur"));
+      a.dispatchEvent(new FocusEvent("blur", { composed: true }));
       a.dispatchEvent(new FocusEvent("focusout", { bubbles: true, composed: true, relatedTarget: null }));
     }
   };
@@ -320,20 +331,34 @@
   // meaning ("C" ≠ "C++", "123456.7" ≠ "12345.67"). Phone numbers and money
   // are the values a page may re-punctuate ("$80,000" for 80000), and only the
   // FACT decides which it is (the loop passes format "phone" / "money" by
-  // slot) — never its characters. Money compares as a number. Both empty is
-  // NOT equal.
+  // slot) — never its characters. Both empty is NOT equal.
   const fold = (s) => String(s ?? "").normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase().replace(/\s+/g, " ").trim();
-  // The first number in a money text: "$80,000.50" -> 80000.5; none -> NaN.
-  const amount = (s) => {
-    const m = /-?\d[\d,]*(?:\.\d+)?/.exec(String(s ?? "").replace(/\s/g, ""));
-    return m ? Number(m[0].replace(/,/g, "")) : NaN;
+  // ONE plain amount: an optional currency (code and/or symbol) either side,
+  // digits grouped by 3 with commas or spaces, at most 2 decimals, nothing
+  // else. A range, "80k", "/hour" or "80.000" (a European thousands mark) is
+  // not one, and is compared as text.
+  const MONEY = /^([A-Z]{3})?\s*([^\d\p{L}\s-]*)\s*(\d{1,3}(?:[,\u00a0 ]\d{3})+|\d+)(?:\.(\d{1,2}))?\s*([^\d\p{L}\s-]*)\s*([A-Z]{3})?$/u;
+  const moneyOf = (s) => {
+    const m = MONEY.exec(String(s ?? "").trim());
+    if (!m) return null;
+    const [, code1, sym1, whole, cents = "", sym2, code2] = m;
+    if (code1 && code2 && code1 !== code2) return null;
+    return { value: Number(`${whole.replace(/\D/g, "")}.${cents || "0"}`), code: code1 ?? code2 ?? "", symbol: sym1 + sym2 };
   };
+  // Money compares as a number only when BOTH sides are one plain amount, and
+  // a currency both sides state must be the same one ("80000 CAD" ≠ "80000 USD").
+  const sameMoney = (x, y) => x.value === y.value && (!x.code || !y.code || x.code === y.code)
+    && (!x.symbol || !y.symbol || x.symbol === y.symbol);
   const equivalent = (actual, wrote, { format } = {}) => {
     const a = fold(actual);
     const w = fold(wrote);
     if (!a || !w) return false;
     if (format === "phone") return a.replace(/\D/g, "") !== "" && a.replace(/\D/g, "") === w.replace(/\D/g, "");
-    if (format === "money") return Number.isFinite(amount(actual)) && amount(actual) === amount(wrote);
+    if (format === "money") {
+      const x = moneyOf(actual);
+      const y = moneyOf(wrote);
+      if (x && y) return sameMoney(x, y);
+    }
     return a === w;
   };
   // Popups the engine itself opened: their controls are never inventoried as
@@ -362,7 +387,7 @@
 
   ns.fillBase = {
     Cancelled, Unfocusable, check, sleep, settle, withinBudget, cancelAll, resume, waitFor, visible, invalid,
-    popups, ownedPopup, optionsOf, press, closePopups, enter, leave, keyPress, typeText, equivalent, amount, clean,
+    popups, ownedPopup, optionsOf, press, closePopups, enter, leave, keyPress, typeText, equivalent, clean,
     markEnginePopup, insideEnginePopup,
   };
 })();
