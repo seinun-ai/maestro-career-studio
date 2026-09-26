@@ -263,10 +263,13 @@ Run → PASS; remove the Task 5 xfails.
 - `test_a_long_popup_commits_an_option_below_the_fold` (degree "Masters").
 - `test_currently_employed_is_ticked_before_the_dates` (workday_sections: map gives `experience.0.current = Yes` and start/end dates → the checkbox is committed first; the To field disappears; no write is attempted to it; report has no `stale` row for it).
 - `test_fields_added_or_removed_by_a_commit_are_re_observed_before_continuing` (after the tick, the loop re-inventories before the next field of that section).
+- `test_a_placeholder_option_is_never_offered_as_an_answer` — live Workday lists "Select One" as an option (§3a, §8b): `explore`, `stepState` candidates and the options sent to `/pick` drop every option for which `ns.isPlaceholderText(text)` is true; choosing "Select One" stays possible only as the engine's own undo. Un-xfails the three Task 1 xfails attributed to Task 6.
+- `test_the_category_path_runs_end_to_end` — extend `test_fill_end_to_end.py` with the inline generic `CATEGORY_POPUP` page (from `test_fill_core.py`) so the category descent through the real `/api/autofill/step` driver is covered again with both halves running.
 Run → FAIL.
 
 **Step 2: implement**
 - `engineOpen`/`closePopups`: open ⇔ `visible(p)`; ignore `aria-expanded`.
+- Placeholder options: filter `ns.isPlaceholderText` options out of `optionsOf` results used for explore/pick/step (keep them reachable for undo).
 - Loop ordering: within a round, sort choice fields so a lone checkbox whose mapped slot ends in `.current` precedes text/date fields of the same `section`+`repeatIndex`. After any commit, compare the frame's field-id set (a cheap `fill_inventory` with `{peek:true}` returning fids only); if it changed, re-observe before the next field.
 Run → PASS.
 
