@@ -848,9 +848,15 @@ citation. Priority lives in the item text, not in the ordinal.
     Settings, Analytics and Career repeats one error (a page-level message needs a shared mechanism).
 39. Windows is unverified end to end: install, update, Companion load from `\\wsl.localhost\...` (GETTING_STARTED
     gives a copy-to-`C:` fallback), `.mcpb` on Windows Claude Desktop, and the WSL upload host root.
+40. Companion reliability: ARIA label resolution, retry identity, unmatched combobox discovery, live-option
+    decisions, popup ownership and committed-selection verification remain open. Reproductions and Jev-first proposal:
+    [extension research report](docs/reports/2026-09-25-extension-reliability-research.md).
 
 ## 12. Gotchas that have bitten before
 
+- **Retry keys must identify controls** (2026-09-25): rule attempts use composite labels, collection uses
+  clean questions, so `country | field-12` never reaches the `country` retry → use element identity and
+  stable descriptors; a model upgrade cannot repair fields collection never sends (§11 item 40).
 - **Same page is not same URL** (2026-09-23): the leave guard stopped every popstate to the same pathname,
   so Back between `?tab=` or `?session=` entries changed the URL and not the screen → `samePage` decides what
   asks, the URL decides what renders (`lib/leave-guard.ts`).
