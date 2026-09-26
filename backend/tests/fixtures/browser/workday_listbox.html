@@ -1,43 +1,117 @@
-<fieldset><legend>How did you hear about us?</legend>
-  <button id="heard" aria-haspopup="listbox" aria-label=" Select One Required">Select One</button></fieldset>
-<fieldset><legend>Are you legally authorized to work in the United States?</legend>
-  <button id="auth" aria-haspopup="listbox" aria-label=" Select One Required">Select One</button></fieldset>
+<!-- Workday popup button (field notes §3, §8a). The question is the fieldset's
+     rich-text legend; the button's aria-label carries only "<value> Required".
+     The COMMITTED signal is the hidden input beside the button: it gets a
+     32-character id when Workday takes the pick, and empties on "Select One". -->
+<div data-automation-id="formField-degree">
+  <fieldset><legend><div id="rich-label-degree"><div data-automation-id="richText"><p>Degree</p></div><abbr title="required">*</abbr></div></legend>
+    <div><button id="degree" type="button" aria-haspopup="listbox" aria-label=" Select One Required" aria-controls="degree-list"
+      aria-expanded="false">Select One</button>
+      <input type="text" class="hidden-backing" style="display:none"></div></fieldset></div>
+<div data-automation-id="formField-authorized">
+  <fieldset><legend><div id="rich-label-auth"><div data-automation-id="richText"><p>Are you legally authorized to work in the United States?</p></div><abbr title="required">*</abbr></div></legend>
+    <div><button id="auth" type="button" aria-haspopup="listbox" aria-label=" Select One Required" aria-controls="auth-list"
+      aria-expanded="false">Select One</button>
+      <input type="text" class="hidden-backing" style="display:none"></div></fieldset></div>
+<!-- A hidden list left over from another widget: an option in it must never be clicked. -->
 <ul role="listbox" id="stale" style="display:none"><li role="option" id="stale-ca">Canada</li></ul>
 <div id="portal"></div>
+<style>
+  .wd-popup { position: absolute; z-index: 10; margin: 0; padding: 0; width: 260px; max-height: 120px; overflow-y: auto;
+    list-style: none; background: #fff; border: 1px solid #888; }
+  .wd-popup > li { height: 24px; line-height: 24px; padding: 0 8px; }
+</style>
 <script>
 (() => {
-  const TREES = {
-    heard: [["Job Board", ["LinkedIn", "Indeed"]], ["Social Media", ["Twitter"]], ["Employee Referral", null]],
-    auth: [["Yes", null], ["No", null]],
+  // __oracle[<field>] is the value the fake app HOLDS (set with the backing
+  // input, cleared by "Select One"); the engine must never read it.
+  const oracle = (window.__oracle = window.__oracle || {});
+  const OPTIONS = {
+    // Degree: 12 options, all in the DOM, "Masters" below the fold (§3 probe step 2).
+    degree: ["Select One", "Associates", "Bachelors", "Certificate", "College Diploma", "Doctorate", "GED",
+             "HS Diploma", "JD", "Masters", "MBA", "Other"],
+    auth: ["Select One", "Yes", "No"],
   };
+  // One list opens ABOVE its button (§8b saw it on Race; the direction, not
+  // the field, is the behaviour reproduced).
+  const UPWARD = new Set(["auth"]);
   const portal = document.getElementById("portal");
-  let open = null;
-  const close = () => { portal.innerHTML = ""; open = null; };
-  const render = (btn, items) => {
-    portal.innerHTML = "";
+  // A 32-hex id per pick, made at run time (no long digit runs in this file).
+  let seed = 7;
+  const workdayId = () => {
+    let out = "";
+    while (out.length < 32) { seed = (Math.imul(seed, 0x41c64e6d) + 0x3039) >>> 0; out += (seed >>> 8).toString(16).padStart(6, "0"); }
+    return out.slice(0, 32);
+  };
+  const lists = {};
+
+  const place = (id) => {
+    const btn = document.getElementById(id);
+    const ul = lists[id];
+    const r = btn.getBoundingClientRect();
+    ul.style.left = `${r.left + scrollX}px`;
+    ul.style.top = UPWARD.has(id) ? `${r.top + scrollY - ul.offsetHeight}px` : `${r.bottom + scrollY}px`;
+  };
+  const shown = (id) => lists[id] && lists[id].style.display !== "none";
+  const hide = (id) => { if (lists[id]) lists[id].style.display = "none"; };
+
+  const pick = (id, li) => {
+    const btn = document.getElementById(id);
+    const backing = btn.parentElement.querySelector(".hidden-backing");
+    const text = li.textContent;
+    for (const o of lists[id].children) o.setAttribute("aria-selected", String(o === li));
+    if (text === "Select One") { backing.value = ""; oracle[id] = ""; }
+    else { backing.value = workdayId(); oracle[id] = text; }
+    btn.textContent = text;
+    // Live aria-label is "<question> <value> Required"; the question part is
+    // empty on these buttons (§8a).
+    btn.setAttribute("aria-label", ` ${text} Required`);
+    hide(id);
+    btn.setAttribute("aria-expanded", "false");
+  };
+
+  const build = (id) => {
+    // Rendered on first open and then kept in the DOM (§8a).
     const ul = document.createElement("ul");
+    ul.id = `${id}-list`;
+    ul.className = "wd-popup";
     ul.setAttribute("role", "listbox");
-    for (const [label, kids] of items) {
+    ul.style.display = "none";
+    for (const text of OPTIONS[id]) {
       const li = document.createElement("li");
       li.setAttribute("role", "option");
-      li.textContent = label;
-      li.addEventListener("click", (e) => {
-        e.stopPropagation();
-        if (kids) render(btn, kids.map((k) => [k, null]));
-        // Live Workday's aria-label is "<question> <value> Required": the value
-        // part follows the pick (the question part is empty on this step).
-        else { btn.textContent = label; btn.setAttribute("aria-label", ` ${label} Required`); close(); }
-      });
+      li.setAttribute("aria-selected", String(text === "Select One"));
+      li.textContent = text;
+      // A plain li.click() commits (§3, §8a: the option has only onClick).
+      li.addEventListener("click", (e) => { e.stopPropagation(); pick(id, li); });
       ul.append(li);
     }
     portal.append(ul);
-    open = btn;
+    lists[id] = ul;
   };
-  for (const id of Object.keys(TREES)) {
+
+  for (const id of Object.keys(OPTIONS)) {
+    oracle[id] = "";
     const btn = document.getElementById(id);
-    btn.addEventListener("click", (e) => { e.stopPropagation(); render(btn, TREES[id]); });
+    btn.addEventListener("click", () => {
+      if (!lists[id]) build(id);
+      if (shown(id)) { hide(id); btn.setAttribute("aria-expanded", "false"); return; }
+      for (const other of Object.keys(lists)) hide(other);
+      lists[id].style.display = "block";
+      btn.setAttribute("aria-expanded", "true");
+      place(id);
+      // Reopened, the list jumps to the current value (§3).
+      const current = lists[id].querySelector('[aria-selected="true"]');
+      lists[id].scrollTop = current ? current.offsetTop : 0;
+    });
   }
-  document.addEventListener("click", () => { if (open) close(); });
+  // An outside click HIDES the list but leaves aria-expanded="true" and the ul
+  // in the DOM (§8a): "is it open" must be judged by visibility.
+  document.addEventListener("click", (e) => {
+    for (const id of Object.keys(lists)) {
+      if (lists[id].contains(e.target) || document.getElementById(id).contains(e.target)) continue;
+      hide(id);
+    }
+  });
   document.getElementById("stale-ca").addEventListener("click", () => { window.staleHit = true; });
 })();
 </script>

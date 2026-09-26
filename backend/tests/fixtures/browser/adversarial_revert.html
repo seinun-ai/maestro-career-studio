@@ -1,0 +1,55 @@
+<!-- ADVERSARIAL, not a reproduction: models the unexplained revert of field
+     notes §8a (picks that displayed, then went back to "Select One"). The
+     FIRST pick shows its text but the app does not take it (the backing input
+     stays empty) and the button text reverts after 500 ms. Later picks behave
+     like workday_listbox.html. -->
+<div data-automation-id="formField-relocate">
+  <fieldset><legend><div id="rich-label-relocate"><div data-automation-id="richText"><p>Are you willing to relocate?</p></div><abbr title="required">*</abbr></div></legend>
+    <div><button id="relocate" type="button" aria-haspopup="listbox" aria-label=" Select One Required" aria-controls="relocate-list"
+      aria-expanded="false">Select One</button>
+      <input type="text" class="hidden-backing" style="display:none"></div></fieldset></div>
+<div id="portal"></div>
+<script>
+(() => {
+  // __oracle.relocate is what the fake app HOLDS; the engine must never read it.
+  const oracle = (window.__oracle = window.__oracle || {});
+  oracle.relocate = "";
+  const btn = document.getElementById("relocate");
+  const backing = btn.parentElement.querySelector(".hidden-backing");
+  const portal = document.getElementById("portal");
+  let picks = 0;
+  const show = (text) => { btn.textContent = text; btn.setAttribute("aria-label", ` ${text} Required`); };
+  const ul = document.createElement("ul");
+  ul.id = "relocate-list";
+  ul.setAttribute("role", "listbox");
+  ul.style.display = "none";
+  for (const text of ["Select One", "Yes", "No"]) {
+    const li = document.createElement("li");
+    li.setAttribute("role", "option");
+    li.textContent = text;
+    li.addEventListener("click", (e) => {
+      e.stopPropagation();
+      ul.style.display = "none";
+      btn.setAttribute("aria-expanded", "false");
+      show(text);
+      picks += 1;
+      if (picks === 1) {
+        setTimeout(() => show("Select One"), 500);
+        return;
+      }
+      backing.value = text === "Select One" ? "" : "f00dfeedcafebeef0badc0dedeadbeef";
+      oracle.relocate = text === "Select One" ? "" : text;
+    });
+    ul.append(li);
+  }
+  portal.append(ul);
+  btn.addEventListener("click", () => {
+    const opening = ul.style.display === "none";
+    ul.style.display = opening ? "block" : "none";
+    btn.setAttribute("aria-expanded", String(opening));
+  });
+  document.addEventListener("click", (e) => {
+    if (!ul.contains(e.target) && !btn.contains(e.target)) ul.style.display = "none";
+  });
+})();
+</script>

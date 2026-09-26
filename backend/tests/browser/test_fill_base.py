@@ -212,13 +212,12 @@ def test_equivalence_keeps_punctuation_meaningful_except_for_phones(page, load):
 
 
 def test_typing_is_trusted_input_a_workday_box_commits(page, load):
-    """execCommand("insertText") fires TRUSTED input events: the Workday box
-    only commits isTrusted input, and a blur then clears its error. If this ever
-    fails, the Workday fix needs the debugger executor (out of scope)."""
+    """execCommand("insertText") fires the input events a Workday box takes
+    into its draft, and leaving the box commits it and clears its error."""
     load(page, fixture_html("workday_text.html"))
     page.evaluate(f"() => {B}.withinBudget(async (t) => {B}.typeText(document.getElementById('city'), 'Toronto', t), 1000)")
     page.evaluate("() => document.getElementById('city').blur()")
-    assert page.evaluate("() => window.committed.city") == "Toronto"
+    assert page.evaluate("() => window.__oracle.city") == "Toronto"
     assert page.get_attribute("#city", "aria-invalid") == "false"
 
 

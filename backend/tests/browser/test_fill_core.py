@@ -1,6 +1,8 @@
 """The generic fill mechanics (fill-core.js) through the page operations
 (fill-ops.js), in real Chromium against the committed fixtures."""
 
+import pytest
+
 from tests.browser.conftest import fixture_html
 
 OPS = "window.careerStudioCompanion.fillOps"
@@ -18,18 +20,79 @@ def explore(page, f, term=None):
     return page.evaluate(f"(r) => {OPS}.explore([r])", {"fid": f["fid"], "fp": f["fp"], "term": term})[f["fid"]]
 
 
+# A GENERIC popup whose options open sub-lists (categories → leaves), plus a
+# plain Yes/No popup and a hidden stale list. Not a Workday reproduction — live
+# "How did you hear about us?" is a search box (notes §2, workday_search.html)
+# — so it stays inline here, guarding the engine's category handling for any
+# vendor that does render popup trees.
+CATEGORY_POPUP = """<fieldset><legend>How did you hear about us?</legend>
+  <button id="heard" aria-haspopup="listbox" aria-label=" Select One Required">Select One</button></fieldset>
+<fieldset><legend>Are you legally authorized to work in the United States?</legend>
+  <button id="auth" aria-haspopup="listbox" aria-label=" Select One Required">Select One</button></fieldset>
+<ul role="listbox" id="stale" style="display:none"><li role="option" id="stale-ca">Canada</li></ul>
+<div id="portal"></div>
+<script>
+(() => {
+  const TREES = {
+    heard: [["Job Board", ["LinkedIn", "Indeed"]], ["Social Media", ["Twitter"]], ["Employee Referral", null]],
+    auth: [["Yes", null], ["No", null]],
+  };
+  const portal = document.getElementById("portal");
+  let open = null;
+  const close = () => { portal.innerHTML = ""; open = null; };
+  const render = (btn, items) => {
+    portal.innerHTML = "";
+    const ul = document.createElement("ul");
+    ul.setAttribute("role", "listbox");
+    for (const [label, kids] of items) {
+      const li = document.createElement("li");
+      li.setAttribute("role", "option");
+      li.textContent = label;
+      li.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (kids) render(btn, kids.map((k) => [k, null]));
+        // Live Workday's aria-label is "<question> <value> Required": the value
+        // part follows the pick (the question part is empty on this step).
+        else { btn.textContent = label; btn.setAttribute("aria-label", ` ${label} Required`); close(); }
+      });
+      ul.append(li);
+    }
+    portal.append(ul);
+    open = btn;
+  };
+  for (const id of Object.keys(TREES)) {
+    const btn = document.getElementById(id);
+    btn.addEventListener("click", (e) => { e.stopPropagation(); render(btn, TREES[id]); });
+  }
+  document.addEventListener("click", () => { if (open) close(); });
+  document.getElementById("stale-ca").addEventListener("click", () => { window.staleHit = true; });
+})();
+</script>"""
+
+
+def oracle(page, key):
+    return page.evaluate("(k) => window.__oracle[k]", key)
+
+
+def list_shown(page, list_id="portal"):
+    """Whether anything inside `list_id` is VISIBLE: live Workday keeps a
+    closed popup's list in the DOM, hidden (notes §8a)."""
+    return page.evaluate("""(id) => [...document.getElementById(id).children]
+        .some((c) => c.offsetParent !== null)""", list_id)
+
+
 # --- text-like
 def test_text_commits_where_the_page_only_takes_real_typing(page, load):
     load(page, fixture_html("workday_text.html"))
     row = apply(page, inv(page)["City"], op="write", value="Springfield")
-    assert row["outcome"] == "verified" and page.evaluate("window.committed.city") == "Springfield"
+    assert row["outcome"] == "verified" and oracle(page, "city") == "Springfield"
     assert page.get_attribute("#city", "aria-invalid") == "false"
 
 
 def test_sweep_recommits_text_that_shows_an_error_with_its_own_value(page, load):
     load(page, fixture_html("workday_text.html"))
     assert [r["outcome"] for r in page.evaluate(f"() => {OPS}.sweep()")] == ["verified"]
-    assert page.evaluate("window.committed.zip") == "00000"
+    assert oracle(page, "zip") == "00000"
 
 
 def test_a_text_the_page_clears_on_blur_is_reverted(page, load):
@@ -38,12 +101,21 @@ def test_a_text_the_page_clears_on_blur_is_reverted(page, load):
     assert apply(page, inv(page)["Q"], op="write", value="x")["outcome"] == "reverted"
 
 
+@pytest.mark.xfail(strict=True, reason="Task 2: leaving a date must blur the part Workday moved focus to (Month), "
+                                        "so the wrapper validates and commits")
 def test_workday_date_sections_are_written_before_one_blur(page, load):
     load(page, fixture_html("workday_date.html"))
     fields = inv(page)
     assert apply(page, fields["From"], op="write", value="2019-08")["outcome"] == "verified"
-    assert (page.input_value("#m"), page.input_value("#y")) == ("08", "2019")
-    assert apply(page, fields["End date"], op="write", value="2021-05")["outcome"] == "verified"
+    # Live Workday shows "08" but holds "8" (notes §6); the app's value is the proof.
+    assert (page.input_value("#m"), page.input_value("#y")) == ("8", "2019")
+    assert oracle(page, "from") == "2019-08"
+    assert page.locator("text=Error:").count() == 0
+
+
+def test_a_plain_date_box_is_written_in_its_placeholder_format(page, load):
+    load(page, fixture_html("workday_date.html"))
+    assert apply(page, inv(page)["End date"], op="write", value="2021-05")["outcome"] == "verified"
     assert page.input_value("#p") == "05/2021"
 
 
@@ -73,18 +145,29 @@ def test_sets_keep_existing_choices_and_never_untick(page, load):
 
 
 # --- choice-like, popups
+@pytest.mark.xfail(strict=True, reason="Task 6: the live popup lists its 'Select One' placeholder as an option; "
+                                        "it must not be offered as an answer")
 def test_a_workday_dropdown_is_explored_and_closed_then_committed(page, load):
     load(page, fixture_html("workday_listbox.html"))
     f = inv(page)["Are you legally authorized to work in the United States?"]
     got = explore(page, f)
     assert [o["text"] for o in got["options"]] == ["Yes", "No"] and got["complete"]
-    assert page.evaluate("document.getElementById('portal').children.length") == 0
+    assert not list_shown(page)
     row = apply(page, f, op="choose", text="No")
-    assert (row["outcome"], row["committed"]) == ("verified", "No")
+    assert (row["outcome"], row["committed"]) == ("verified", "No") and oracle(page, "auth") == "No"
+
+
+def test_a_workday_dropdown_pick_is_explored_closed_and_committed_to_the_app(page, load):
+    load(page, fixture_html("workday_listbox.html"))
+    f = inv(page)["Degree"]
+    assert "Masters" in [o["text"] for o in explore(page, f)["options"]]
+    assert not list_shown(page)
+    row = apply(page, f, op="choose", text="Masters")   # below the fold of a 12-option list
+    assert (row["outcome"], row["committed"]) == ("verified", "Masters") and oracle(page, "degree") == "Masters"
 
 
 def test_a_category_is_unexpected_with_its_children_and_the_popup_stays_open(page, load):
-    load(page, fixture_html("workday_listbox.html"))
+    load(page, CATEGORY_POPUP)
     row = apply(page, inv(page)["How did you hear about us?"], op="choose", text="Job Board")
     assert (row["outcome"], row["reason"]) == ("unexpected", "new_options")
     assert [o["text"] for o in row["options"]] == ["LinkedIn", "Indeed"]
@@ -100,23 +183,28 @@ def test_react_select_commits_and_a_rejected_click_is_not_filled(page, load):
     assert (row["outcome"], row["reason"], row["committed"]) == ("unexpected", "not_committed", "India")
 
 
+@pytest.mark.xfail(strict=True, reason="Task 5: search is press, type, Enter (key-up), wait for the staged "
+                                        "results to settle, click the row's radio")
 def test_workday_search_waits_past_searching_and_commits_the_pill(page, load):
     load(page, fixture_html("workday_search.html"))
     f = inv(page)["School or University"]
-    got = explore(page, f, "University of Texas")
-    assert [o["text"] for o in got["options"]] == [
-        "University of Texas at Austin", "University of Texas at Dallas", "Not in List"]
-    assert page.input_value("#school") == ""
-    row = apply(page, f, op="choose", text="University of Texas at Dallas", term="Texas")
-    assert (row["outcome"], row["committed"]) == ("verified", "University of Texas at Dallas")
+    got = explore(page, f, "Arlington")
+    texts = [o["text"] for o in got["options"]]
+    assert len(texts) == 8 and "The University of Texas at Arlington" in texts
+    assert page.input_value("#school") == "" and oracle(page, "school") == ""
+    row = apply(page, f, op="choose", text="The University of Texas at Arlington", term="Arlington")
+    assert (row["outcome"], row["committed"]) == ("verified", "The University of Texas at Arlington")
+    assert oracle(page, "school") == "The University of Texas at Arlington"
 
 
+@pytest.mark.xfail(strict=True, reason="Task 5: a multi search ticks the checkbox in a virtualized result list "
+                                        "(Python is #16), read back from the pills (Task 3)")
 def test_a_search_set_keeps_existing_chips_and_reports_partial_honestly(page, load):
     load(page, fixture_html("workday_search.html"))
     f = inv(page)["Type to Add Skills"]
     row = apply(page, f, op="set", texts=["Python", "Rust"])
     assert row["outcome"] == "partial" and row["added"] == ["Python"] and row["missing"] == ["Rust"]
-    assert row["committed"] == ["SQL", "Python"]
+    assert row["committed"] == ["SQL", "Python"] and oracle(page, "skills") == ["SQL", "Python"]
 
 
 def test_an_empty_popup_that_needs_a_search_is_unexpected_not_failed(page, load):
@@ -144,10 +232,10 @@ def test_cancel_stops_a_choose_before_it_clicks(page, load):
                         {"fid": f["fid"], "fp": f["fp"], "op": "choose", "text": "Texas A&M University", "term": "Texas"})[0]
     assert row["outcome"] == "cancelled"
     page.wait_for_timeout(600)
-    assert page.evaluate("document.getElementById('school-pills').children.length") == 0
+    assert oracle(page, "school") == ""
     # The engine's own query is taken back and no late search result is left open.
     assert page.input_value("#school") == ""
-    assert page.evaluate("document.getElementById('portal').children.length") == 0
+    assert not list_shown(page)
     assert page.evaluate("document.activeElement.id") != "school"  # focus is not left in the engine's box
 
 
@@ -314,11 +402,22 @@ def test_a_timeout_is_reported_as_timeout_not_cancelled(page, load):
     row = apply(page, f, op="choose", text="Texas A&M University", term="Texas")
     assert row["outcome"] == "timeout"
     page.wait_for_timeout(600)
-    assert page.evaluate("document.getElementById('school-pills').children.length") == 0
+    assert oracle(page, "school") == ""
     assert page.input_value("#school") == ""
-    assert page.evaluate("document.getElementById('portal').children.length") == 0
+    assert not list_shown(page)
+
+
+@pytest.mark.xfail(strict=True, reason="Task 5: after a timeout, a full-budget choose on the live search "
+                                        "sequence (press, Enter, radio) verifies")
+def test_a_choose_after_a_timeout_starts_clean_and_verifies(page, load):
+    load(page, fixture_html("workday_search.html"))
+    f = inv(page)["School or University"]
+    page.evaluate("window.careerStudioCompanion.fillOps.budgets.apply = 150")
+    assert apply(page, f, op="choose", text="Texas A&M University", term="Texas")["outcome"] == "timeout"
+    page.wait_for_timeout(600)
     page.evaluate("window.careerStudioCompanion.fillOps.budgets.apply = 6000")
     assert apply(page, f, op="choose", text="Texas A&M University", term="Texas")["outcome"] == "verified"
+    assert oracle(page, "school") == "Texas A&M University"
 
 
 def test_focus_scrolls_to_an_owned_field_only(page, load):
@@ -476,22 +575,27 @@ def test_a_free_text_pick_equal_to_the_typed_query_is_kept(page, load):
     assert page.input_value("#loc") == "Springfield"
 
 
+@pytest.mark.xfail(strict=True, reason="Task 5: a multi search ticks each missing item's checkbox once and "
+                                        "never an item it already holds, read back from the pills (Task 3)")
 def test_a_set_never_clicks_an_item_that_is_already_there(page, load):
-    """A toggling multiselect showing an error: SQL is kept (never re-clicked,
-    which would un-pick it) and Python is added."""
+    """The multiselect toggles (a second tick un-picks) and shows an error: SQL
+    is kept (never re-ticked) and Python is added."""
     html = fixture_html("workday_search.html").replace(
-        '<input id="skills"', '<div data-automation-id="errorMessage">Please fix</div><input id="skills"').replace(
-        "else if (![...pills.children].some((p) => p.textContent === hit)) pills.append(makePill(hit));",
-        "else { window.clicks = (window.clicks || []).concat(hit); const ex = [...pills.children].find((p) => p.textContent === hit);"
-        " if (ex) ex.remove(); else pills.append(makePill(hit)); }")
+        '<input id="skills"', '<p data-automation-id="errorMessage">Please fix</p><input id="skills"')
+    assert html != fixture_html("workday_search.html")
     load(page, html)
+    page.evaluate("""() => { window.clicks = [];
+      document.getElementById('portal').addEventListener('click', (e) => {
+        if (e.target.matches('input[type=checkbox]')) window.clicks.push(e.target.closest('[role=option]').textContent);
+      }, true); }""")
     row = apply(page, inv(page)["Type to Add Skills"], op="set", texts=["SQL", "Python"])
     assert row["committed"] == ["SQL", "Python"] and row["added"] == ["Python"]
+    assert oracle(page, "skills") == ["SQL", "Python"]
     assert page.evaluate("window.clicks") == ["Python"]
 
 
 def test_stop_closes_a_category_popup_left_open(page, load):
-    load(page, fixture_html("workday_listbox.html"))
+    load(page, CATEGORY_POPUP)
     row = apply(page, inv(page)["How did you hear about us?"], op="choose", text="Job Board")
     assert row["reason"] == "new_options"
     page.evaluate(f"() => {OPS}.cancel()")
@@ -506,13 +610,17 @@ def test_choose_on_a_multiple_select_keeps_the_other_selections(page, load):
     assert page.evaluate("[...document.getElementById('lang').selectedOptions].map(o => o.text)") == ["English", "Hindi"]
 
 
+@pytest.mark.xfail(strict=True, reason="Task 5: search commits through the row's radio; the engine then "
+                                        "takes back a query the widget left")
 def test_a_query_left_in_the_box_beside_a_committed_pill_is_taken_back(page, load):
     html = fixture_html("workday_search.html").replace(
-        "            input.value = \"\";\n            close();", "            close();")
+        "      inputOf(id).value = \"\";\n      close();", "      close();")
     assert html != fixture_html("workday_search.html")
     load(page, html)
-    row = apply(page, inv(page)["School or University"], op="choose", text="University of Texas at Dallas", term="Texas")
-    assert (row["outcome"], row["committed"]) == ("verified", "University of Texas at Dallas")
+    row = apply(page, inv(page)["School or University"], op="choose", text="The University of Texas at Dallas",
+                term="Texas")
+    assert (row["outcome"], row["committed"]) == ("verified", "The University of Texas at Dallas")
+    assert oracle(page, "school") == "The University of Texas at Dallas"
     assert page.input_value("#school") == ""
 
 

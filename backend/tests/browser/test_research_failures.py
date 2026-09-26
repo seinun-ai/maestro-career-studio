@@ -1,6 +1,8 @@
 """The six failures docs/reports/2026-09-25-extension-reliability-research.md
 reproduced, asserted as the new engine must behave."""
 
+import pytest
+
 from tests.browser.conftest import fixture_html
 
 NS = "window.careerStudioCompanion"
@@ -30,6 +32,8 @@ def test_3_an_unmatched_input_combobox_is_listed(page, load):
     assert [(f["shape"], f["question"]) for f in inventory(page)] == [("search", "What is your preferred shift?")]
 
 
+@pytest.mark.xfail(strict=True, reason="Task 6: the live popup lists its 'Select One' placeholder as an option; "
+                                        "it must not be offered as an answer")
 def test_4_a_closed_dropdown_is_explored_before_anyone_decides(page, load):
     load(page, fixture_html("workday_listbox.html"))
     f = next(f for f in inventory(page) if f["question"].startswith("Are you legally"))

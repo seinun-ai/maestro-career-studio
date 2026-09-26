@@ -2,8 +2,10 @@
 Chromium: the field's state now, the moves code allows, and one move at a time
 against the state it was chosen from."""
 
+import pytest
+
 from tests.browser.conftest import fixture_html
-from tests.browser.test_fill_core import POLICY_PAGE
+from tests.browser.test_fill_core import CATEGORY_POPUP, POLICY_PAGE
 
 OPS = "window.careerStudioCompanion.fillOps"
 MOVE_KINDS = {"click", "search", "open", "scroll", "give_up"}
@@ -28,12 +30,18 @@ def mids(s):
     return [c["mid"] for c in s["candidates"]]
 
 
+def oracle(page, key):
+    return page.evaluate("(k) => window.__oracle[k]", key)
+
+
 def portal_empty(page):
-    return page.evaluate("document.getElementById('portal').children.length") == 0
+    """Nothing VISIBLE in the portal: live Workday keeps a closed popup's list
+    in the DOM, hidden (notes §8a)."""
+    return not page.evaluate("[...document.getElementById('portal').children].some((c) => c.offsetParent !== null)")
 
 
 def test_a_category_continues_from_its_children_to_the_leaf(page, load):
-    load(page, fixture_html("workday_listbox.html"))
+    load(page, CATEGORY_POPUP)
     f = inv(page)["How did you hear about us?"]
     first = page.evaluate(f"(a) => {OPS}.apply([a])", {"fid": f["fid"], "fp": f["fp"], "op": "choose", "text": "Job Board"})[0]
     assert first["reason"] == "new_options"
@@ -60,23 +68,27 @@ def test_a_popup_that_needs_a_search_is_opened_searched_and_picked(page, load):
     assert page.inner_text("#fos") == "Information Systems"
 
 
+@pytest.mark.xfail(strict=True, reason="Task 5: search moves press, type, Enter (key-up) and settle; the click "
+                                        "move ticks the row's radio")
 def test_a_search_field_types_into_its_own_box_and_takes_the_query_back(page, load):
     load(page, fixture_html("workday_search.html"))
     f = inv(page)["School or University"]
-    s = state(page, f, "University of Texas at Dallas")
+    school = "The University of Texas at Arlington"
+    s = state(page, f, school)
     assert [c["describe"] for c in s["candidates"] if c["mid"].startswith("search:word:")] == [
-        'Type "University" into the search box', 'Type "Texas" into the search box', 'Type "Dallas" into the search box']
-    assert move(page, f, "search:word:1", "University of Texas at Dallas")["outcome"] == "progressed"
-    s = state(page, f, "University of Texas at Dallas")
+        'Type "The" into the search box', 'Type "University" into the search box',
+        'Type "Texas" into the search box', 'Type "Arlington" into the search box']
+    assert move(page, f, "search:word:3", school)["outcome"] == "progressed"
+    s = state(page, f, school)
     assert s["popupOpen"] is True and s["complete"] is False
-    click = next(c["mid"] for c in s["candidates"] if c["describe"] == 'Click the option "University of Texas at Dallas"')
-    row = move(page, f, click, "University of Texas at Dallas")
-    assert (row["outcome"], row["committed"]) == ("verified", "University of Texas at Dallas")
+    click = next(c["mid"] for c in s["candidates"] if c["describe"] == f'Click the option "{school}"')
+    row = move(page, f, click, school)
+    assert (row["outcome"], row["committed"]) == ("verified", school) and oracle(page, "school") == school
     assert page.input_value("#school") == "" and portal_empty(page)
 
 
 def test_give_up_closes_everything(page, load):
-    load(page, fixture_html("workday_listbox.html"))
+    load(page, CATEGORY_POPUP)
     f = inv(page)["How did you hear about us?"]
     move(page, f, "open", "x")
     assert move(page, f, "give_up", "x")["outcome"] == "closed"
@@ -92,7 +104,7 @@ def test_give_up_takes_back_a_query_the_engine_typed(page, load):
 
 
 def test_a_state_is_consumed_by_one_move_and_a_changed_list_is_stale(page, load):
-    load(page, fixture_html("workday_listbox.html"))
+    load(page, CATEGORY_POPUP)
     f = inv(page)["How did you hear about us?"]
     move(page, f, "open", "LinkedIn")
     v = state(page, f, "LinkedIn")["version"]
@@ -101,7 +113,7 @@ def test_a_state_is_consumed_by_one_move_and_a_changed_list_is_stale(page, load)
 
 
 def test_a_click_on_a_list_that_changed_since_the_state_is_stale(page, load):
-    load(page, fixture_html("workday_listbox.html"))
+    load(page, CATEGORY_POPUP)
     f = inv(page)["How did you hear about us?"]
     move(page, f, "open", "LinkedIn")
     v = state(page, f, "LinkedIn")["version"]
@@ -119,6 +131,8 @@ def test_a_filtered_search_view_is_never_complete(page, load):
     assert state(page, f, "Information Systems")["complete"] is False
 
 
+@pytest.mark.xfail(strict=True, reason="Task 6: the live popup lists its 'Select One' placeholder as an option; "
+                                        "it must not be offered as an answer")
 def test_an_unfiltered_short_list_is_complete(page, load):
     load(page, fixture_html("workday_listbox.html"))
     f = inv(page)["Are you legally authorized to work in the United States?"]
@@ -234,7 +248,7 @@ def test_standing_consent_offers_consent_options(page, load):
 
 
 def test_another_field_closes_a_popup_a_move_left_open(page, load):
-    load(page, fixture_html("workday_listbox.html"))
+    load(page, CATEGORY_POPUP)
     fields = inv(page)
     move(page, fields["How did you hear about us?"], "open", "x")
     assert not portal_empty(page)
@@ -245,7 +259,7 @@ def test_another_field_closes_a_popup_a_move_left_open(page, load):
 
 
 def test_stop_closes_a_popup_a_move_opened(page, load):
-    load(page, fixture_html("workday_listbox.html"))
+    load(page, CATEGORY_POPUP)
     f = inv(page)["How did you hear about us?"]
     move(page, f, "open", "x")
     page.evaluate(f"() => {OPS}.cancel()")
@@ -255,7 +269,7 @@ def test_stop_closes_a_popup_a_move_opened(page, load):
 
 
 def test_a_step_on_a_stale_fingerprint_or_another_frame_is_refused(page, load):
-    load(page, fixture_html("workday_listbox.html"))
+    load(page, CATEGORY_POPUP)
     f = inv(page)["How did you hear about us?"]
     assert page.evaluate(f"(r) => {OPS}.stepState(r)", {"fid": f["fid"], "fp": "other", "value": "x"}) == {
         "error": "stale", "version": None, "candidates": []}
@@ -326,13 +340,20 @@ def test_a_group_that_commits_a_value_is_never_verified(page, load):
     assert portal_empty(page)
 
 
+@pytest.mark.xfail(strict=True, reason="Task 5: a search move presses Enter and reads a virtualized list "
+                                        "(\"SQL\" is #19 of 31) by scrolling it")
 def test_chips_a_multi_widget_already_holds_are_never_click_moves(page, load):
     load(page, fixture_html("workday_search.html"))
     f = inv(page)["Type to Add Skills"]
     assert move(page, f, "search:value", "SQL")["outcome"] == "progressed"
-    s = state(page, f, "SQL")
-    assert [o["text"] for o in s["options"]] == ["SQL"]
-    assert not [m for m in mids(s) if m.startswith("click:")]
+    for _ in range(6):
+        s = state(page, f, "SQL")
+        if "SQL" in [o["text"] for o in s["options"]] or "scroll" not in mids(s):
+            break
+        move(page, f, "scroll", "SQL", version=s["version"])
+    assert "SQL" in [o["text"] for o in s["options"]]
+    assert 'Click the option "SQL"' not in [c["describe"] for c in s["candidates"]]
+    assert oracle(page, "skills") == ["SQL"]
 
 
 def test_a_click_the_widget_ignores_is_not_committed(page, load):
@@ -359,7 +380,7 @@ def test_a_menu_the_widget_re_renders_is_found_again_and_still_closed(page, load
 
 def test_an_unmarked_category_is_clicked_as_progress_then_its_leaf_as_the_answer(page, load):
     """Workday: "Job Board" carries no ARIA marker; it is clicked as an answer."""
-    load(page, fixture_html("workday_listbox.html"))
+    load(page, CATEGORY_POPUP)
     f = inv(page)["How did you hear about us?"]
     assert move(page, f, "open", "LinkedIn")["outcome"] == "progressed"
     s = state(page, f, "LinkedIn")
@@ -375,7 +396,7 @@ def test_an_unmarked_category_is_clicked_as_progress_then_its_leaf_as_the_answer
 
 
 def test_a_plain_option_sent_as_progress_is_refused_without_a_click(page, load):
-    load(page, fixture_html("workday_listbox.html"))
+    load(page, CATEGORY_POPUP)
     f = inv(page)["How did you hear about us?"]
     move(page, f, "open", "LinkedIn")
     row = move(page, f, "click:o3", "LinkedIn", **{"as": "progress"})  # "Employee Referral" is a leaf

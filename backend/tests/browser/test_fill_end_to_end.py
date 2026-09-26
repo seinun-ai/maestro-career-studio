@@ -44,16 +44,19 @@ MAP = {
     "Postal Code": {"route": "slot", "slot": "personal.postal_code", "value": "12345"},
     "Are you legally authorized to work in the United States?":
         {"route": "slot", "slot": "work_auth.authorized_now", "value": "Yes"},
-    "How did you hear about us?": {"route": "slot", "slot": "preferences.how_heard", "value": "LinkedIn"},
+    "Degree": {"route": "slot", "slot": "education.0.degree", "value": "Masters"},
+    "How Did You Hear About Us?": {"route": "slot", "slot": "preferences.how_heard", "value": "LinkedIn"},
     "School or University": {"route": "slot", "slot": "education.0.school",
-                             "value": "University of Texas at Dallas"},
+                             "value": "The University of Texas at Arlington"},
     "Type to Add Skills": {"route": "slot", "slot": "skills", "value": ["SQL", "Python", "Tableau"]},
     "Highest degree": {"route": "slot", "slot": "education.0.degree", "value": "Master's"},
     "Field of study": {"route": "slot", "slot": "education.0.discipline", "value": "Information Systems"},
     "Which days can you work?": {"route": "none"},
 }
-# The category a question's answer sits under, when no option names it.
-CATEGORIES = {"How did you hear about us?": "Job Board"}
+# The category a question's answer sits under, when no option names it. None
+# today: the live "How Did You Hear About Us?" is a search box (notes §2), and
+# the generic popup tree lives in test_fill_core.CATEGORY_POPUP.
+CATEGORIES: dict[str, str] = {}
 
 DRIVER = """(spec) => {
   const ns = window.careerStudioCompanion;
@@ -164,18 +167,22 @@ def _run(page, page_js=None, fresh=True, **spec):
 
 
 def _open_popups(page):
-    """Every popup or menu still showing: the portals, the react-select menu,
-    and any visible listbox on the page."""
+    """Every popup or menu still SHOWING: a portal or the react-select menu with
+    a visible child, and any visible listbox (a search widget's pill list is
+    not a popup). Live Workday keeps a closed popup's list in the DOM, hidden
+    (notes §8a), so presence is not "open"."""
     return page.evaluate("""() => [
-      ...[...document.querySelectorAll('[id^="portal-"], #menu-root')].filter((p) => p.children.length).map((p) => p.id),
+      ...[...document.querySelectorAll('[id^="portal-"], #menu-root')]
+        .filter((p) => [...p.children].some((c) => c.offsetParent !== null)).map((p) => p.id),
       ...[...document.querySelectorAll('[role=listbox], [role=dialog]')]
-        .filter((el) => el.offsetParent !== null && el.id !== 'stale').map((el) => el.outerHTML.slice(0, 60)),
+        .filter((el) => el.offsetParent !== null && el.id !== 'stale' && el.dataset.automationId !== 'selectedItemList')
+        .map((el) => el.outerHTML.slice(0, 60)),
     ]""")
 
 
-def _pills(page, list_id):
-    return page.evaluate(f"[...document.querySelectorAll('#{list_id} [data-automation-id=selectedItem]')]"
-                         ".map((p) => p.textContent)")
+def _oracle(page, key):
+    """What the fake app HOLDS for a field (each fixture's window.__oracle)."""
+    return page.evaluate("(k) => window.__oracle[k]", key)
 
 
 @pytest.fixture
@@ -184,28 +191,27 @@ def e2e_page(page):
     return page
 
 
+@pytest.mark.xfail(strict=True, reason="Task 5: the live search widgets (press, Enter on key-up, settle, tick "
+                                        "the row's radio/checkbox, scroll a virtualized list); text and popups "
+                                        "already commit")
 def test_the_engine_fills_every_fixture_on_one_page(e2e_page):
     page = e2e_page
     out = _run(page)
     status = {q: r["status"] for q, r in out["by_question"].items()}
 
-    # Workday text: committed by real typing, and no field error left.
-    assert page.evaluate("window.committed") == {"city": "Springfield", "zip": "12345"}
+    # Workday text: committed on leaving the box, and no field error left.
+    assert (_oracle(page, "city"), _oracle(page, "zip")) == ("Springfield", "12345")
     assert page.input_value("#city") == "Springfield" and page.input_value("#zip") == "12345"
     assert page.evaluate("document.querySelectorAll('[aria-invalid=\"true\"]').length") == 0
-    # Workday listboxes: the plain one, and the category one through the adaptive step.
-    assert page.inner_text("#auth") == "Yes"
-    assert page.inner_text("#heard") == "LinkedIn"
-    heard = [p["body"] for p in out["posts"] if p["path"] == "/api/autofill/step"
-             and p["body"]["question"] == "How did you hear about us?"]
-    assert heard, "LinkedIn was not reached through the adaptive step"
-    # The category was offered, clicked, and opened onto LinkedIn.
-    assert any(c["describe"] == 'Click the option "Job Board"' for b in heard for c in b["candidates"])
-    assert any(c["describe"] == 'Click the option "LinkedIn"' for c in heard[-1]["candidates"])
-    assert heard[-1]["history"][-1] == "click:o1 -> progressed"
-    # Workday search: the school pill, and every skill (SQL was already there).
-    assert _pills(page, "school-pills") == ["University of Texas at Dallas"]
-    assert _pills(page, "skills-pills") == ["SQL", "Python", "Tableau"]
+    # Workday popups: the app took each pick (the backing input), not just the button text.
+    assert page.inner_text("#auth") == "Yes" and _oracle(page, "auth") == "Yes"
+    assert page.inner_text("#degree") == "Masters" and _oracle(page, "degree") == "Masters"
+    # Workday search: two identical LinkedIn leaves, the school after the staged
+    # results settle, and every skill (SQL was already there; "SQL" and
+    # "Python" sit below the fold of a virtualized list).
+    assert _oracle(page, "heard") == "LinkedIn"
+    assert _oracle(page, "school") == "The University of Texas at Arlington"
+    assert _oracle(page, "skills") == ["SQL", "Python", "Tableau"]
     # Native select.
     assert page.input_value("#deg") == "Master's"
     # A popup that needs its own search: open → search → click.
@@ -215,8 +221,8 @@ def test_the_engine_fills_every_fixture_on_one_page(e2e_page):
     assert fos, "Field of study was not reached through the adaptive step"
     assert [b["history"][-1] for b in fos[1:]] == ["open -> progressed", "search:value -> progressed"]
     # Reported as the page says: verified, and nothing guessed where no fact was.
-    for question in ("City", "Postal Code", "Are you legally authorized to work in the United States?",
-                     "How did you hear about us?", "School or University", "Type to Add Skills",
+    for question in ("City", "Postal Code", "Are you legally authorized to work in the United States?", "Degree",
+                     "How Did You Hear About Us?", "School or University", "Type to Add Skills",
                      "Highest degree", "Field of study"):
         assert status[question] == "verified", (question, out["by_question"][question])
     assert status["Which days can you work?"] == "needs_answer"
@@ -224,7 +230,7 @@ def test_the_engine_fills_every_fixture_on_one_page(e2e_page):
     # Telemetry for the filled widgets names the question, never the value.
     obs = page.evaluate("(r) => window.careerStudioCompanion.fillLoop.buildLoopObservations(r)", out["report"])
     by_label = {o["label"]: o for o in obs}
-    for question, value in (("How did you hear about us?", "LinkedIn"),
+    for question, value in (("How Did You Hear About Us?", "LinkedIn"),
                             ("Are you legally authorized to work in the United States?", "Yes"),
                             ("Field of study", "Information Systems")):
         assert by_label[question]["outcome"] == "verified"
@@ -251,9 +257,9 @@ def test_stop_between_two_fields_leaves_the_second_untouched(e2e_page):
     assert page.input_value("#city") == "Springfield"
     # Postal Code is next in the page: untouched, still the page's own value.
     assert page.input_value("#zip") == "00000"
-    assert page.inner_text("#auth") == "Select One" and page.inner_text("#heard") == "Select One"
+    assert page.inner_text("#auth") == "Select One" and _oracle(page, "auth") == ""
+    assert _oracle(page, "heard") == "" and _oracle(page, "school") == ""
     assert page.input_value("#deg") == ""
-    assert _pills(page, "school-pills") == []
     assert _open_popups(page) == []
     assert out["by_question"]["City"]["status"] == "verified"
     assert out["by_question"]["Postal Code"]["status"] == "needs_answer"
@@ -262,7 +268,8 @@ def test_stop_between_two_fields_leaves_the_second_untouched(e2e_page):
     # only works if the real handler forwards the run's id — and fills the rest.
     again = _run(page, fresh=False)
     assert again["report"]["stopped"] is False
-    assert page.input_value("#zip") == "12345" and page.inner_text("#auth") == "Yes"
+    assert page.input_value("#zip") == "12345" and _oracle(page, "zip") == "12345"
+    assert page.inner_text("#auth") == "Yes" and _oracle(page, "auth") == "Yes"
     assert again["by_question"]["City"]["status"] == "already"
 
 def test_a_value_the_user_types_while_map_is_pending_is_theirs_and_kept(e2e_page):
@@ -310,15 +317,16 @@ def test_a_workday_dropdown_whose_label_never_updates_keeps_its_question(e2e_pag
     out = _run(page, page_js="""() => {
       const set = Element.prototype.setAttribute;
       Element.prototype.setAttribute = function (name, value) {
-        if (name === "aria-label" && (this.id === "heard" || this.id === "auth")) return;
+        if (name === "aria-label" && (this.id === "degree" || this.id === "auth")) return;
         return set.call(this, name, value);
       };
     }""")
     assert page.get_attribute("#auth", "aria-label") == " Select One Required"
-    assert page.inner_text("#auth") == "Yes" and page.inner_text("#heard") == "LinkedIn"
-    for question in ("Are you legally authorized to work in the United States?", "How did you hear about us?"):
+    assert page.inner_text("#auth") == "Yes" and page.inner_text("#degree") == "Masters"
+    assert (_oracle(page, "auth"), _oracle(page, "degree")) == ("Yes", "Masters")
+    for question, answer in (("Are you legally authorized to work in the United States?", "Yes"), ("Degree", "Masters")):
         row = out["by_question"][question]
-        assert (row["status"], row["answer"]) == ("verified", "Yes" if "authorized" in question else "LinkedIn")
+        assert (row["status"], row["answer"]) == ("verified", answer)
     mapped = [f["question"] for p in out["posts"] if p["path"] == "/api/autofill/map" for f in p["body"]["fields"]]
     assert "Select One" not in mapped
     assert not any("earlier question" in (r["answer"] or "") for r in out["report"]["fields"])

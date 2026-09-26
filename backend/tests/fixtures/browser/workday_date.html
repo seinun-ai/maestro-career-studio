@@ -1,17 +1,89 @@
-<fieldset><legend>From*</legend>
-  <div data-automation-id="dateInputWrapper" id="from">
-    <input data-automation-id="dateSectionMonth-input" role="spinbutton" aria-label="Month" id="m">
-    <input data-automation-id="dateSectionYear-input" role="spinbutton" aria-label="Year" id="y">
-  </div></fieldset>
+<!-- Workday date sections (field notes §6). The parts only take input; the
+     WRAPPER validates and commits when focus has LEFT it — and it looks at where
+     focus is now, so a focusout while a part still has focus changes nothing.
+     After a Year is typed the widget moves focus to Month by itself. -->
+<div data-automation-id="formField-startDate">
+  <fieldset><legend>From*</legend>
+    <div data-automation-id="dateInputWrapper" role="group" id="from">
+      <div data-automation-id="dateSectionMonth">
+        <input id="m" type="text" data-automation-id="dateSectionMonth-input" role="spinbutton" aria-label="Month"
+          aria-valuemin="1" aria-valuemax="12">
+        <div data-automation-id="dateSectionMonth-display" aria-hidden="true">MM</div></div>
+      <div data-automation-id="dateSectionYear">
+        <input id="y" type="text" data-automation-id="dateSectionYear-input" role="spinbutton" aria-label="Year">
+        <div data-automation-id="dateSectionYear-display" aria-hidden="true">YYYY</div></div>
+    </div></fieldset></div>
+<!-- The Self-Identify variant: MM/DD/YYYY with a Day part (§6, "Still to probe"). -->
+<div data-automation-id="formField-dateSignedOn">
+  <fieldset><legend>Date*</legend>
+    <div data-automation-id="dateInputWrapper" role="group" id="signed">
+      <div data-automation-id="dateSectionMonth">
+        <input id="sm" type="text" data-automation-id="dateSectionMonth-input" role="spinbutton" aria-label="Month"
+          aria-valuemin="1" aria-valuemax="12">
+        <div data-automation-id="dateSectionMonth-display" aria-hidden="true">MM</div></div>
+      <div data-automation-id="dateSectionDay">
+        <input id="sd" type="text" data-automation-id="dateSectionDay-input" role="spinbutton" aria-label="Day"
+          aria-valuemin="1" aria-valuemax="31">
+        <div data-automation-id="dateSectionDay-display" aria-hidden="true">DD</div></div>
+      <div data-automation-id="dateSectionYear">
+        <input id="sy" type="text" data-automation-id="dateSectionYear-input" role="spinbutton" aria-label="Year">
+        <div data-automation-id="dateSectionYear-display" aria-hidden="true">YYYY</div></div>
+    </div></fieldset></div>
+<!-- Not Workday: generic date boxes the engine also writes. -->
 <label for="n">Graduation date</label><input id="n" type="month">
 <label for="p">End date</label><input id="p" placeholder="MM/YYYY">
 <script>
 (() => {
-  const box = document.getElementById("from");
-  box.addEventListener("focusout", (e) => {
-    if (box.contains(e.relatedTarget)) return;
-    const m = document.getElementById("m"), y = document.getElementById("y");
-    if (m.value && !y.value) m.value = "";
-  });
+  // __oracle[<field>] is the date the fake app HOLDS ("YYYY-MM" or
+  // "YYYY-MM-DD"); the engine must never read it.
+  const oracle = (window.__oracle = window.__oracle || {});
+  const DATES = { from: { question: "From", parts: ["m", "y"] }, signed: { question: "Date", parts: ["sm", "sd", "sy"] } };
+  const display = (input) => input.parentElement.querySelector('[aria-hidden="true"]');
+  const PLACEHOLDER = { Month: "MM", Day: "DD", Year: "YYYY" };
+
+  for (const [key, { question, parts }] of Object.entries(DATES)) {
+    const wrapper = document.getElementById(key);
+    const inputs = parts.map((id) => document.getElementById(id));
+    const month = inputs[0];
+    oracle[key] = "";
+    for (const input of inputs) {
+      const kind = input.getAttribute("aria-label");
+      input.addEventListener("input", () => {
+        const digits = input.value.replace(/\D/g, "").slice(0, kind === "Year" ? 4 : 2);
+        display(input).textContent = digits || PLACEHOLDER[kind];
+        // Typing "06" shows "06" but the input holds "6" (§6 probe step 2).
+        input.value = kind !== "Year" && digits.length === 2 ? String(Number(digits)) : digits;
+        // A full year: the widget moves focus back to Month on its own (§6 finding 3).
+        if (kind === "Year" && digits.length === 4) month.focus();
+      });
+    }
+    const validate = () => {
+      const errorSpan = wrapper.parentElement.querySelector(":scope > span.wd-date-error");
+      if (inputs.every((i) => i.value)) {
+        const [m, d, y] = inputs.length === 3 ? inputs.map((i) => i.value) : [inputs[0].value, null, inputs[1].value];
+        oracle[key] = [y, m.padStart(2, "0"), d?.padStart(2, "0")].filter(Boolean).join("-");
+        errorSpan?.remove();
+        for (const i of inputs) i.removeAttribute("aria-invalid");
+        return;
+      }
+      oracle[key] = "";
+      for (const i of inputs) {
+        if (i.value) i.removeAttribute("aria-invalid");
+        else i.setAttribute("aria-invalid", "true");
+      }
+      if (!errorSpan) {
+        // A plain span, with no errorMessage automation id (§6).
+        const span = document.createElement("span");
+        span.className = "wd-date-error";
+        span.textContent = `Error: The field ${question} is required and must have a value.`;
+        wrapper.after(span);
+      }
+    };
+    // During a real focusout Chrome already reports <body> as active, so the
+    // check runs after the event: a move between parts leaves focus inside.
+    wrapper.addEventListener("focusout", () => {
+      setTimeout(() => { if (!wrapper.contains(document.activeElement)) validate(); }, 0);
+    });
+  }
 })();
 </script>
